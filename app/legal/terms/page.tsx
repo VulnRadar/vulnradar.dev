@@ -121,9 +121,9 @@ export default function TermsPage() {
 
       <h2 className="text-lg font-semibold text-foreground mt-8">12. Contact</h2>
       <p className="leading-relaxed text-foreground/90">
-        For questions about these Terms, please contact us via GitHub at{" "}
-        <a href="https://github.com/RejectModders" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
-          github.com/RejectModders
+        For questions about these Terms, please contact us at{" "}
+        <a href="mailto:legal@vulnradar.dev" className="text-primary hover:underline">
+          legal@vulnradar.dev
         </a>.
       </p>
     </article>

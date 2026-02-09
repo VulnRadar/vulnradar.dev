@@ -79,9 +79,9 @@ export default function AcceptableUsePage() {
 
       <h2 className="text-lg font-semibold text-foreground mt-8">6. Reporting Abuse</h2>
       <p className="leading-relaxed text-foreground/90">
-        If you believe VulnRadar is being used in violation of this policy, please report it via GitHub at{" "}
-        <a href="https://github.com/RejectModders" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
-          github.com/RejectModders
+        If you believe VulnRadar is being used in violation of this policy, please report it to{" "}
+        <a href="mailto:security@vulnradar.dev" className="text-primary hover:underline">
+          security@vulnradar.dev
         </a>.
       </p>
     </article>
