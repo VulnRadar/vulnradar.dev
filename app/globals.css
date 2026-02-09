@@ -1,0 +1,86 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+}
+
+@layer base {
+  :root {
+    --background: 220 20% 97%;
+    --foreground: 220 20% 10%;
+    --card: 0 0% 100%;
+    --card-foreground: 220 20% 10%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 220 20% 10%;
+    --primary: 190 90% 42%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 220 15% 92%;
+    --secondary-foreground: 220 20% 10%;
+    --muted: 220 15% 92%;
+    --muted-foreground: 220 10% 46%;
+    --accent: 190 90% 42%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 220 15% 88%;
+    --input: 220 15% 88%;
+    --ring: 190 90% 42%;
+    --chart-1: 190 90% 42%;
+    --chart-2: 160 60% 45%;
+    --chart-3: 30 80% 55%;
+    --chart-4: 280 65% 60%;
+    --chart-5: 340 75% 55%;
+    --radius: 0.625rem;
+
+    --severity-critical: 0 84% 60%;
+    --severity-high: 25 95% 53%;
+    --severity-medium: 45 93% 47%;
+    --severity-low: 210 90% 56%;
+    --severity-info: 220 10% 46%;
+  }
+  .dark {
+    --background: 224 20% 6%;
+    --foreground: 210 20% 95%;
+    --card: 224 18% 9%;
+    --card-foreground: 210 20% 95%;
+    --popover: 224 18% 9%;
+    --popover-foreground: 210 20% 95%;
+    --primary: 190 90% 50%;
+    --primary-foreground: 224 20% 6%;
+    --secondary: 224 15% 14%;
+    --secondary-foreground: 210 20% 95%;
+    --muted: 224 15% 14%;
+    --muted-foreground: 215 15% 55%;
+    --accent: 190 90% 50%;
+    --accent-foreground: 224 20% 6%;
+    --destructive: 0 72% 50%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 224 15% 16%;
+    --input: 224 15% 16%;
+    --ring: 190 90% 50%;
+    --chart-1: 190 90% 50%;
+    --chart-2: 160 60% 45%;
+    --chart-3: 30 80% 55%;
+    --chart-4: 280 65% 60%;
+    --chart-5: 340 75% 55%;
+
+    --severity-critical: 0 84% 60%;
+    --severity-high: 25 95% 53%;
+    --severity-medium: 45 93% 47%;
+    --severity-low: 210 90% 56%;
+    --severity-info: 215 15% 55%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
