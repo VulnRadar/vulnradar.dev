@@ -13,24 +13,51 @@ export async function GET(
 
   const { id } = await params
 
-  const result = await pool.query(
-    `SELECT id, url, summary, findings, findings_count, duration, scanned_at
+  // First, get the scan and its owner
+  const scanResult = await pool.query(
+    `SELECT id, url, summary, findings, findings_count, duration, scanned_at, user_id
      FROM scan_history
-     WHERE id = $1 AND user_id = $2`,
-    [id, session.userId],
+     WHERE id = $1`,
+    [id],
   )
 
-  if (result.rows.length === 0) {
+  if (scanResult.rows.length === 0) {
     return NextResponse.json({ error: "Scan not found" }, { status: 404 })
   }
 
-  const row = result.rows[0]
+  const scan = scanResult.rows[0]
 
-  return NextResponse.json({
-    url: row.url,
-    scannedAt: row.scanned_at,
-    duration: row.duration,
-    summary: row.summary,
-    findings: row.findings || [],
-  })
+  // Allow if it's the user's own scan
+  if (scan.user_id === session.userId) {
+    return NextResponse.json({
+      url: scan.url,
+      scannedAt: scan.scanned_at,
+      duration: scan.duration,
+      summary: scan.summary,
+      findings: scan.findings || [],
+    })
+  }
+
+  // Check if both users are members of the same team
+  const teamCheck = await pool.query(
+    `SELECT COUNT(*) as team_count
+     FROM team_members tm1
+     JOIN team_members tm2 ON tm1.team_id = tm2.team_id
+     WHERE tm1.user_id = $1 AND tm2.user_id = $2`,
+    [session.userId, scan.user_id],
+  )
+
+  if (teamCheck.rows[0].team_count > 0) {
+    // They're on the same team, allow access
+    return NextResponse.json({
+      url: scan.url,
+      scannedAt: scan.scanned_at,
+      duration: scan.duration,
+      summary: scan.summary,
+      findings: scan.findings || [],
+    })
+  }
+
+  // Not authorized to view this scan
+  return NextResponse.json({ error: "Scan not found" }, { status: 404 })
 }

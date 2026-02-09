@@ -44,11 +44,16 @@ export async function POST(request: NextRequest) {
         [user.id, token, expiresAt],
     )
 
-    // Send reset email via SMTP
+    // Send reset email via SMTP in the background
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "https://vulnradar.dev"
     const resetLink = `${baseUrl}/reset-password?token=${token}`
     const emailPayload = passwordResetEmail(resetLink)
-    await sendEmail({ to: normalizedEmail, ...emailPayload })
+
+    queueMicrotask(() => {
+      sendEmail({ to: normalizedEmail, ...emailPayload }).catch((err) => {
+        console.error("Password reset email failed:", err)
+      })
+    })
 
     return NextResponse.json(successMsg)
   } catch {

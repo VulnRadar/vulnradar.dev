@@ -3,16 +3,18 @@ import { NextRequest, NextResponse } from "next/server"
 const SECURITY_HEADERS: Record<string, string> = {
   "Content-Security-Policy": [
     "default-src 'self'",
+    // Note: 'unsafe-eval' and 'unsafe-inline' required for Next.js to function properly
     "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://challenges.cloudflare.com https://static.cloudflareinsights.com",
-    "script-src-elem 'self' 'unsafe-inline' 'unsafe-eval' https://challenges.cloudflare.com https://static.cloudflareinsights.com",
+    "script-src-elem 'self' 'unsafe-inline' https://challenges.cloudflare.com https://static.cloudflareinsights.com",
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
     "font-src 'self' https://fonts.gstatic.com",
     "img-src 'self' data: blob: https:",
-    "connect-src 'self' https:",
+    "connect-src 'self' https://challenges.cloudflare.com",
     "frame-src https://challenges.cloudflare.com",
     "frame-ancestors 'none'",
     "base-uri 'self'",
     "form-action 'self'",
+    "object-src 'none'",
     "upgrade-insecure-requests",
   ].join("; "),
   "X-Frame-Options": "DENY",
@@ -22,7 +24,7 @@ const SECURITY_HEADERS: Record<string, string> = {
   "X-XSS-Protection": "1; mode=block",
   "Cross-Origin-Opener-Policy": "same-origin",
   "Cross-Origin-Resource-Policy": "same-origin",
-  "X-DNS-Prefetch-Control": "on",
+  "X-DNS-Prefetch-Control": "off",
   "Strict-Transport-Security": "max-age=63072000; includeSubDomains; preload",
 }
 
@@ -30,9 +32,14 @@ function applySecurityHeaders(response: NextResponse): NextResponse {
   for (const [key, value] of Object.entries(SECURITY_HEADERS)) {
     response.headers.set(key, value)
   }
-  // Remove server info
+  // Remove all server technology disclosure headers
   response.headers.delete("X-Powered-By")
   response.headers.delete("Server")
+  response.headers.delete("X-AspNet-Version")
+  response.headers.delete("X-AspNetMvc-Version")
+  response.headers.delete("X-Runtime")
+  response.headers.delete("X-Version")
+
   return response
 }
 

@@ -23,7 +23,10 @@ export const metadata: Metadata = {
     title: 'VulnRadar - Web Vulnerability Scanner',
     description: 'Scan any website for 65+ security vulnerabilities. Get severity ratings, actionable fix guidance, and exportable reports.',
   },
-  metadataBase: new URL('https://vulnradar.app'),
+  other: {
+    'security-contact': 'https://vulnradar.dev/.well-known/security.txt',
+  },
+  metadataBase: new URL('https://vulnradar.dev'),
 }
 
 export const viewport: Viewport = {
@@ -40,6 +43,9 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className="dark" suppressHydrationWarning>
+      <head>
+        <link rel="security" type="text/plain" href="/.well-known/security.txt" />
+      </head>
       <body className="font-sans antialiased">
         <ThemeProvider
           attribute="class"

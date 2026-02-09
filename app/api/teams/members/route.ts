@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { getSession } from "@/lib/auth"
 import pool from "@/lib/db"
+import { sendEmail, teamInviteEmail } from "@/lib/email"
 
 // Get team members
 export async function GET(request: Request) {
@@ -90,6 +91,25 @@ export async function POST(request: Request) {
      VALUES ($1, $2, $3, $4, $5, $6)`,
     [teamId, email.trim().toLowerCase(), role, session.userId, token, expiresAt],
   )
+
+  // Get team name and inviter name for email
+  const teamInfo = await pool.query("SELECT name FROM teams WHERE id = $1", [teamId])
+  const inviterInfo = await pool.query("SELECT name FROM users WHERE id = $1", [session.userId])
+
+  if (teamInfo.rows.length > 0 && inviterInfo.rows.length > 0) {
+    const teamName = teamInfo.rows[0].name
+    const invitedBy = inviterInfo.rows[0].name
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "https://vulnradar.dev"
+    const inviteLink = `${baseUrl}/teams/join?token=${token}`
+    const emailPayload = teamInviteEmail(teamName, inviteLink, invitedBy)
+
+    // Send email in background
+    queueMicrotask(() => {
+      sendEmail({ to: email.trim().toLowerCase(), ...emailPayload }).catch((err) => {
+        console.error("Team invite email failed:", err)
+      })
+    })
+  }
 
   return NextResponse.json({ message: "Invite sent.", token })
 }

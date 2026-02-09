@@ -1,7 +1,7 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
-import { useRouter } from "next/navigation"
+import { useState, useEffect, useCallback, Suspense } from "react"
+import { useRouter, useSearchParams } from "next/navigation"
 import {
   Clock,
   Globe,
@@ -65,8 +65,9 @@ function SeverityDot({ severity, count }: { severity: string; count: number }) {
   )
 }
 
-export default function HistoryPage() {
+function HistoryPageContent() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const [scans, setScans] = useState<ScanRecord[]>([])
   const [loading, setLoading] = useState(true)
   const [clearing, setClearing] = useState(false)
@@ -85,6 +86,43 @@ export default function HistoryPage() {
   const [bulkUrls, setBulkUrls] = useState("")
   const [bulkLoading, setBulkLoading] = useState(false)
   const [bulkResult, setBulkResult] = useState<{ total: number; successful: number; failed: number } | null>(null)
+
+  // Check for id parameter in URL and load that scan
+  useEffect(() => {
+    const scanId = searchParams.get('id')
+    if (scanId) {
+      const id = parseInt(scanId, 10)
+      if (!isNaN(id)) {
+        setSelectedScanId(id)
+        loadScanDetail(id)
+      }
+    }
+  }, [searchParams])
+
+  async function loadScanDetail(scanId: number) {
+    setDetailLoading(true)
+    try {
+      const res = await fetch(`/api/history/${scanId}`)
+      if (!res.ok) {
+        // If forbidden or not found, go back to history list
+        setSelectedScanId(null)
+        return
+      }
+      const data = await res.json()
+      setScanDetail({
+        url: data.url,
+        scannedAt: data.scannedAt,
+        duration: data.duration,
+        summary: data.summary,
+        findings: data.findings,
+      })
+    } catch (err) {
+      console.error("Failed to load scan:", err)
+      setSelectedScanId(null)
+    } finally {
+      setDetailLoading(false)
+    }
+  }
 
   const fetchHistory = useCallback(async () => {
     try {
@@ -172,21 +210,8 @@ export default function HistoryPage() {
 
   async function handleViewScan(scan: ScanRecord) {
     setSelectedScanId(scan.id)
-    setDetailLoading(true)
-    setScanDetail(null)
     setSelectedIssue(null)
-
-    try {
-      const res = await fetch(`/api/history/${scan.id}`)
-      if (res.ok) {
-        const data = await res.json()
-        setScanDetail(data)
-      }
-    } catch {
-      // silently fail
-    } finally {
-      setDetailLoading(false)
-    }
+    loadScanDetail(scan.id)
   }
 
   function handleBackToList() {
@@ -573,3 +598,23 @@ export default function HistoryPage() {
     </div>
   )
 }
+
+export default function HistoryPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex flex-col bg-background">
+        <Header />
+        <main className="flex-1 flex items-center justify-center">
+          <div className="flex flex-col items-center gap-3">
+            <Loader2 className="h-6 w-6 animate-spin text-primary" />
+            <p className="text-sm text-muted-foreground">Loading...</p>
+          </div>
+        </main>
+        <Footer />
+      </div>
+    }>
+      <HistoryPageContent />
+    </Suspense>
+  )
+}
+

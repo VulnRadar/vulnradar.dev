@@ -80,6 +80,11 @@ export default function TeamsPage() {
   const [inviteToken, setInviteToken] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
 
+  // Member scan history
+  const [viewingMember, setViewingMember] = useState<Member | null>(null)
+  const [memberScans, setMemberScans] = useState<any[]>([])
+  const [scansLoading, setScansLoading] = useState(false)
+
   const fetchTeams = useCallback(async () => {
     try {
       const res = await fetch("/api/teams")
@@ -186,6 +191,22 @@ export default function TeamsPage() {
     if (res.ok) {
       setSelectedTeam(null)
       await fetchTeams()
+    }
+  }
+
+  async function handleViewMemberScans(member: Member) {
+    setViewingMember(member)
+    setScansLoading(true)
+    try {
+      const res = await fetch(`/api/teams/member-scans?teamId=${selectedTeam?.id}&userId=${member.user_id}`)
+      if (res.ok) {
+        const data = await res.json()
+        setMemberScans(data.scans || [])
+      }
+    } catch (err) {
+      console.error("Failed to fetch member scans:", err)
+    } finally {
+      setScansLoading(false)
     }
   }
 
@@ -302,6 +323,11 @@ export default function TeamsPage() {
                       <span className={cn("inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full border", ROLE_COLORS[m.role])}>
                         <Icon className="h-3 w-3" />{m.role}
                       </span>
+                      <Button variant="ghost" size="sm" className="h-8 px-2 text-muted-foreground hover:text-foreground gap-1" onClick={() => handleViewMemberScans(m)}>
+                        <Eye className="h-3.5 w-3.5" />
+                        <span className="text-xs">View Scans</span>
+                        <ChevronRight className="h-3 w-3" />
+                      </Button>
                       {canManage && m.role !== "owner" && (
                         <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive" onClick={() => handleRemoveMember(m.user_id)}>
                           <X className="h-3.5 w-3.5" />
@@ -337,6 +363,57 @@ export default function TeamsPage() {
                   </>
                 )}
               </div>
+            )}
+
+            {/* Member Scan History Modal */}
+            {viewingMember && (
+              <Card className="bg-card border-border">
+                <CardHeader className="pb-3">
+                  <div className="flex items-center justify-between">
+                    <CardTitle className="text-base flex items-center gap-2">
+                      <Eye className="h-4 w-4 text-primary" />
+                      {viewingMember.name || viewingMember.email}'s Scan History
+                    </CardTitle>
+                    <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => setViewingMember(null)}>
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  {scansLoading ? (
+                    <div className="flex items-center gap-2 py-8 justify-center">
+                      <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                      <p className="text-sm text-muted-foreground">Loading scans...</p>
+                    </div>
+                  ) : memberScans.length === 0 ? (
+                    <div className="py-8 text-center">
+                      <p className="text-sm text-muted-foreground">No scans found</p>
+                    </div>
+                  ) : (
+                    <div className="flex flex-col gap-2 max-h-96 overflow-y-auto">
+                      {memberScans.map((scan: any) => (
+                        <div key={scan.id} className="flex items-center justify-between p-3 rounded-lg border border-border bg-background hover:bg-muted/50 transition-colors">
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium text-foreground truncate">{scan.url}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {new Date(scan.scanned_at).toLocaleDateString()} • {scan.findings_count} issue{scan.findings_count !== 1 ? 's' : ''}
+                            </p>
+                          </div>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-8 px-3 gap-1.5"
+                            onClick={() => router.push(`/history?id=${scan.id}`)}
+                          >
+                            View
+                            <ChevronRight className="h-3 w-3" />
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
             )}
           </div>
         ) : (
