@@ -1,0 +1,37 @@
+import { NextResponse } from "next/server"
+import { getSession } from "@/lib/auth"
+import pool from "@/lib/db"
+
+export async function GET() {
+  const session = await getSession()
+  if (!session) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  }
+
+  const result = await pool.query(
+    `SELECT sh.id, sh.url, sh.summary, sh.findings_count, sh.duration, sh.scanned_at, sh.source,
+       COALESCE(
+         (SELECT json_agg(st.tag ORDER BY st.tag) FROM scan_tags st WHERE st.scan_id = sh.id AND st.user_id = $1),
+         '[]'::json
+       ) as tags
+     FROM scan_history sh
+     WHERE sh.user_id = $1
+     ORDER BY sh.scanned_at DESC
+     LIMIT 100`,
+    [session.userId],
+  )
+
+  return NextResponse.json({ scans: result.rows })
+}
+
+export async function DELETE() {
+  const session = await getSession()
+  if (!session) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  }
+
+  await pool.query("DELETE FROM scan_tags WHERE user_id = $1", [session.userId])
+  await pool.query("DELETE FROM scan_history WHERE user_id = $1", [session.userId])
+
+  return NextResponse.json({ success: true })
+}
