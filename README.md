@@ -128,8 +128,30 @@ DATABASE_SSL=false
 |----------|----------|-------------|
 | `DATABASE_URL` | Yes | PostgreSQL connection string |
 | `DATABASE_SSL` | No | Set to `true` if your database requires SSL (e.g., most hosted providers). Defaults to `false`. |
+| `SMTP_HOST` | Yes | SMTP server hostname (e.g., `smtp.protonmail.ch`) |
+| `SMTP_PORT` | No | SMTP port. Defaults to `587`. |
+| `SMTP_USER` | Yes | SMTP username for the noreply account |
+| `SMTP_PASS` | Yes | SMTP password / app token for the noreply account |
+| `SMTP_FROM` | No | Sender address. Defaults to `SMTP_USER`. (e.g., `noreply@vulnradar.dev`) |
+| `SMTP_SUPPORT_USER` | No | SMTP username for support email (used for future contact form) |
+| `SMTP_SUPPORT_PASS` | No | SMTP password / app token for the support account |
+| `SMTP_SUPPORT_FROM` | No | Support sender address. Defaults to `SMTP_SUPPORT_USER`. |
+| `NEXT_PUBLIC_APP_URL` | No | Public URL of your app. Defaults to `https://vulnradar.dev`. Used in email links. |
 
-> **Note:** That's it -- just two environment variables. The database schema is created automatically on first startup via the instrumentation hook. No manual migrations needed.
+### Email Addresses
+
+VulnRadar uses the following email addresses:
+
+| Address | Purpose |
+|---------|---------|
+| `noreply@vulnradar.dev` | Automated emails (password resets, team invites, scan alerts) |
+| `support@vulnradar.dev` | User support and general inquiries |
+| `security@vulnradar.dev` | Security vulnerability reports (referenced in `security.txt`) |
+| `legal@vulnradar.dev` | Legal inquiries (referenced on legal pages) |
+
+Only `noreply@` and `support@` need SMTP credentials. The others are receive-only.
+
+> **Note:** The database schema is created automatically on first startup via the instrumentation hook. No manual migrations needed.
 
 ### 5. Run the development server
 
@@ -182,6 +204,7 @@ vulnradar/
 │   │   └── types.ts            # TypeScript types for scan results
 │   ├── db.ts                   # PostgreSQL connection pool
 │   ├── auth.ts                 # Session management utilities
+│   ├── email.ts                # Email sending utility (nodemailer + templates)
 │   └── rate-limit.ts           # Rate limiting utility
 ├── instrumentation.ts          # Auto-migration on startup
 └── middleware.ts                # Auth protection & security headers
@@ -241,8 +264,8 @@ curl -X POST https://your-domain.com/api/scan \
 1. Push your code to GitHub
 2. Import the repository on [Vercel](https://vercel.com)
 3. Add environment variables in the Vercel dashboard:
-    - `DATABASE_URL` -- your PostgreSQL connection string
-    - `DATABASE_SSL` -- set to `true` for hosted databases
+   - `DATABASE_URL` -- your PostgreSQL connection string
+   - `DATABASE_SSL` -- set to `true` for hosted databases
 4. Deploy
 
 ### Self-Hosted

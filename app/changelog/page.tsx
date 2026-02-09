@@ -4,10 +4,24 @@ import { Newspaper, Zap, Shield, Users, Tag, List, RefreshCw, Lock, Gauge, Messa
 
 const CHANGELOG = [
   {
-    version: "1.0.0",
-    date: "February 2026",
-    title: "First Release",
+    version: "1.1.0",
+    date: "February 9, 2026",
+    title: "Contact System & UI Enhancements",
     highlights: true,
+    changes: [
+      { icon: MessageSquare, label: "Enhanced Contact Form", desc: "Redesigned contact page with category selection (Bug Report, Feature Request, Security Issue, General Help) and instant email delivery without blocking the UI." },
+      { icon: Sparkles, label: "Professional Email Templates", desc: "Beautiful dark-themed email templates with gradient accents for contact confirmations, password resets, and team invitations." },
+      { icon: Zap, label: "Instant Response Times", desc: "Contact form submissions now respond immediately while emails are sent in the background, dramatically improving user experience." },
+      { icon: Shield, label: "Smart Email Routing", desc: "Contact emails route with proper Reply-To headers and automatic user confirmations for every submission." },
+      { icon: Eye, label: "Improved Scanner UI", desc: "Added 'Scan Another URL' button above results for easier navigation and better user flow." },
+      { icon: Lock, label: "Enhanced Security Labels", desc: "Renamed 'Data & Privacy' to 'Security' across the application for clearer communication." },
+    ],
+  },
+  {
+    version: "1.0.0",
+    date: "February 8, 2026",
+    title: "First Release",
+    highlights: false,
     changes: [
       { icon: Shield, label: "65+ Security Checks", desc: "Comprehensive vulnerability scanning covering HTTP headers, SSL/TLS, content security policies, cookies, server disclosure, DNS, and much more." },
       { icon: Users, label: "User Accounts & Auth", desc: "Full authentication system with sign up, login, profile management, two-factor authentication (TOTP), backup codes, and secure password reset." },
@@ -29,64 +43,64 @@ const CHANGELOG = [
 
 export default function ChangelogPage() {
   return (
-      <div className="min-h-screen flex flex-col bg-background">
-        <Header />
-        <main className="flex-1 w-full max-w-3xl mx-auto px-4 py-6 sm:py-10">
-          <div className="flex flex-col gap-2 mb-8">
-            <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
-              <Newspaper className="h-6 w-6 text-primary" />
-              Changelog
-            </h1>
-            <p className="text-sm text-muted-foreground leading-relaxed">
-              {"What's"} new in VulnRadar. Follow along as we ship new checks, features, and improvements.
-            </p>
-          </div>
+    <div className="min-h-screen flex flex-col bg-background">
+      <Header />
+      <main className="flex-1 w-full max-w-3xl mx-auto px-4 py-6 sm:py-10">
+        <div className="flex flex-col gap-2 mb-8">
+          <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
+            <Newspaper className="h-6 w-6 text-primary" />
+            Changelog
+          </h1>
+          <p className="text-sm text-muted-foreground leading-relaxed">
+            {"What's"} new in VulnRadar. Follow along as we ship new checks, features, and improvements.
+          </p>
+        </div>
 
-          <div className="relative">
-            {/* Timeline line */}
-            <div className="absolute left-[19px] top-0 bottom-0 w-px bg-border hidden sm:block" />
+        <div className="relative">
+          {/* Timeline line */}
+          <div className="absolute left-[19px] top-0 bottom-0 w-px bg-border hidden sm:block" />
 
-            <div className="flex flex-col gap-10">
-              {CHANGELOG.map((release) => (
-                  <div key={release.version} className="relative">
-                    {/* Timeline dot */}
-                    <div className="absolute left-[13px] top-1 w-[13px] h-[13px] rounded-full border-2 border-primary bg-background hidden sm:block" />
+          <div className="flex flex-col gap-10">
+            {CHANGELOG.map((release) => (
+              <div key={release.version} className="relative">
+                {/* Timeline dot */}
+                <div className="absolute left-[13px] top-1 w-[13px] h-[13px] rounded-full border-2 border-primary bg-background hidden sm:block" />
 
-                    <div className="sm:pl-12 flex flex-col gap-4">
-                      <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3">
+                <div className="sm:pl-12 flex flex-col gap-4">
+                  <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3">
                     <span className="inline-flex items-center rounded-md bg-primary/10 text-primary border border-primary/20 px-2 py-0.5 text-xs font-semibold font-mono w-fit">
                       v{release.version}
                     </span>
-                        <span className="text-xs text-muted-foreground">{release.date}</span>
-                        {release.highlights && (
-                            <span className="inline-flex items-center rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider w-fit">
+                    <span className="text-xs text-muted-foreground">{release.date}</span>
+                    {release.highlights && (
+                      <span className="inline-flex items-center rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider w-fit">
                         Latest
                       </span>
-                        )}
-                      </div>
-
-                      <h2 className="text-lg font-bold text-foreground">{release.title}</h2>
-
-                      <div className="flex flex-col gap-3">
-                        {release.changes.map((change) => (
-                            <div key={change.label} className="flex gap-3 p-3 rounded-xl border border-border bg-card">
-                              <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-primary/10 shrink-0 mt-0.5">
-                                <change.icon className="h-4 w-4 text-primary" />
-                              </div>
-                              <div className="flex-1">
-                                <p className="text-sm font-medium text-foreground">{change.label}</p>
-                                <p className="text-xs text-muted-foreground leading-relaxed mt-0.5">{change.desc}</p>
-                              </div>
-                            </div>
-                        ))}
-                      </div>
-                    </div>
+                    )}
                   </div>
-              ))}
-            </div>
+
+                  <h2 className="text-lg font-bold text-foreground">{release.title}</h2>
+
+                  <div className="flex flex-col gap-3">
+                    {release.changes.map((change) => (
+                      <div key={change.label} className="flex gap-3 p-3 rounded-xl border border-border bg-card">
+                        <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-primary/10 shrink-0 mt-0.5">
+                          <change.icon className="h-4 w-4 text-primary" />
+                        </div>
+                        <div className="flex-1">
+                          <p className="text-sm font-medium text-foreground">{change.label}</p>
+                          <p className="text-xs text-muted-foreground leading-relaxed mt-0.5">{change.desc}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            ))}
           </div>
-        </main>
-        <Footer />
-      </div>
+        </div>
+      </main>
+      <Footer />
+    </div>
   )
 }

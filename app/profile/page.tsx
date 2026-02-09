@@ -467,7 +467,7 @@ export default function ProfilePage() {
     { id: "api-keys", label: "API Keys", icon: <Key className="h-4 w-4" /> },
     { id: "webhooks", label: "Webhooks", icon: <Webhook className="h-4 w-4" /> },
     { id: "schedules", label: "Schedules", icon: <CalendarClock className="h-4 w-4" /> },
-    { id: "data", label: "Privacy", icon: <Shield className="h-4 w-4" /> },
+    { id: "data", label: "Data & Privacy", icon: <Shield className="h-4 w-4" /> },
   ]
 
   return (

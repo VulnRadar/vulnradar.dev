@@ -34,24 +34,24 @@ export const viewport: Viewport = {
 }
 
 export default function RootLayout({
-                                     children,
-                                   }: Readonly<{
+  children,
+}: Readonly<{
   children: React.ReactNode
 }>) {
   return (
-      <html lang="en" className="dark" suppressHydrationWarning>
+    <html lang="en" className="dark" suppressHydrationWarning>
       <body className="font-sans antialiased">
-      <ThemeProvider
+        <ThemeProvider
           attribute="class"
           defaultTheme="dark"
           enableSystem
           disableTransitionOnChange
-      >
-        <TosGate>
-          {children}
-        </TosGate>
-      </ThemeProvider>
+        >
+          <TosGate>
+            {children}
+          </TosGate>
+        </ThemeProvider>
       </body>
-      </html>
+    </html>
   )
 }

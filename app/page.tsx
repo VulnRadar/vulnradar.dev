@@ -63,63 +63,63 @@ export default function Page() {
   }
 
   return (
-      <div className="min-h-screen flex flex-col bg-background">
-        <OnboardingTour />
-        <Header />
+  <div className="min-h-screen flex flex-col bg-background">
+  <OnboardingTour />
+  <Header />
 
-        <main className="flex-1 w-full max-w-5xl mx-auto px-4 pb-12">
-          {/* Scan form always visible at top */}
-          {status !== "done" && <ScanForm onScan={handleScan} status={status} />}
+      <main className="flex-1 w-full max-w-5xl mx-auto px-4 pb-12">
+        {/* Scan form always visible at top */}
+        {status !== "done" && <ScanForm onScan={handleScan} status={status} />}
 
-          {/* Dashboard when idle */}
-          {status === "idle" && <Dashboard />}
+        {/* Dashboard when idle */}
+        {status === "idle" && <Dashboard />}
 
-          {/* Scanning state */}
-          {status === "scanning" && <ScanningIndicator />}
+        {/* Scanning state */}
+        {status === "scanning" && <ScanningIndicator />}
 
-          {/* Error state */}
-          {status === "failed" && error && (
-              <div className="flex flex-col items-center gap-5 py-12">
-                <div className="flex items-center justify-center w-12 h-12 rounded-xl bg-destructive/10">
-                  <AlertCircle className="h-6 w-6 text-destructive" />
+        {/* Error state */}
+        {status === "failed" && error && (
+          <div className="flex flex-col items-center gap-5 py-12">
+            <div className="flex items-center justify-center w-12 h-12 rounded-xl bg-destructive/10">
+              <AlertCircle className="h-6 w-6 text-destructive" />
+            </div>
+            <div className="flex flex-col items-center gap-2 text-center max-w-sm">
+              <h2 className="text-base font-semibold text-foreground">Scan Failed</h2>
+              <p className="text-sm text-muted-foreground leading-relaxed">{error}</p>
+            </div>
+            <Button variant="outline" onClick={handleReset} className="bg-transparent">
+              <RotateCcw className="mr-2 h-4 w-4" />
+              Try Again
+            </Button>
+          </div>
+        )}
+
+        {/* Results */}
+        {status === "done" && result && (
+          <div className="flex flex-col gap-6 pt-6">
+            {!selectedIssue ? (
+              <>
+                <div className="flex items-center justify-end gap-2 flex-wrap">
+                  <Button variant="outline" size="sm" onClick={handleReset} className="bg-transparent">
+                    <RotateCcw className="mr-2 h-4 w-4" />
+                    Scan Another URL
+                  </Button>
+                  <ExportButton result={result} />
+                  {scanHistoryId && <ShareButton scanId={scanHistoryId} />}
                 </div>
-                <div className="flex flex-col items-center gap-2 text-center max-w-sm">
-                  <h2 className="text-base font-semibold text-foreground">Scan Failed</h2>
-                  <p className="text-sm text-muted-foreground leading-relaxed">{error}</p>
-                </div>
-                <Button variant="outline" onClick={handleReset} className="bg-transparent">
-                  <RotateCcw className="mr-2 h-4 w-4" />
-                  Try Again
-                </Button>
-              </div>
-          )}
-
-          {/* Results */}
-          {status === "done" && result && (
-              <div className="flex flex-col gap-6 pt-6">
-                {!selectedIssue ? (
-                    <>
-                      <div className="flex items-center justify-end gap-2 flex-wrap">
-                        <Button variant="outline" size="sm" onClick={handleReset} className="bg-transparent">
-                          <RotateCcw className="mr-2 h-4 w-4" />
-                          Scan Another URL
-                        </Button>
-                        <ExportButton result={result} />
-                        {scanHistoryId && <ShareButton scanId={scanHistoryId} />}
-                      </div>
-                      <ScanSummary result={result} />
-                      {result.findings.length > 0 && (
-                          <ResultsList findings={result.findings} onSelectIssue={setSelectedIssue} />
-                      )}
-                    </>
-                ) : (
-                    <IssueDetail issue={selectedIssue} onBack={() => setSelectedIssue(null)} />
+                <ScanSummary result={result} />
+                {result.findings.length > 0 && (
+                  <ResultsList findings={result.findings} onSelectIssue={setSelectedIssue} />
                 )}
-              </div>
-          )}
-        </main>
+              </>
+            ) : (
+              <IssueDetail issue={selectedIssue} onBack={() => setSelectedIssue(null)} />
+            )}
+          </div>
+        )}
+      </main>
 
-        <Footer />
-      </div>
+      <Footer />
+    </div>
   )
 }

@@ -37,11 +37,44 @@ export default function ContactPage() {
   const [subject, setSubject] = useState("")
   const [message, setMessage] = useState("")
   const [submitted, setSubmitted] = useState(false)
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    // In production this would send to an API/email service
-    setSubmitted(true)
+    if (!category) {
+      setError("Please choose a category.")
+      return
+    }
+
+    setIsSubmitting(true)
+    setError(null)
+
+    try {
+      const res = await fetch("/api/contact", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name,
+          email,
+          subject,
+          message,
+          category,
+        }),
+      })
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => null)
+        setError(data?.error || "Unable to send your message. Please try again.")
+        return
+      }
+
+      setSubmitted(true)
+    } catch {
+      setError("Unable to send your message. Please try again.")
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   return (
@@ -71,7 +104,7 @@ export default function ContactPage() {
                 </p>
               </div>
               <div className="flex gap-3 mt-2">
-                <Button variant="outline" className="bg-transparent" onClick={() => { setSubmitted(false); setCategory(null); setSubject(""); setMessage("") }}>
+                <Button variant="outline" className="bg-transparent" onClick={() => { setSubmitted(false); setCategory(null); setSubject(""); setMessage(""); setName(""); setEmail(""); setError(null) }}>
                   Send Another
                 </Button>
                 <Link href="/"><Button>Back to Scanner</Button></Link>
@@ -164,8 +197,13 @@ export default function ContactPage() {
                         <span>Security reports are handled with priority. We aim to acknowledge within 24 hours and will keep you updated on the resolution.</span>
                       </div>
                     )}
-                    <Button type="submit" className="w-full sm:w-auto self-end gap-1.5">
-                      <Send className="h-3.5 w-3.5" />Send Message
+                    {error && (
+                      <div className="text-sm text-red-500 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">
+                        {error}
+                      </div>
+                    )}
+                    <Button type="submit" className="w-full sm:w-auto self-end gap-1.5" disabled={isSubmitting}>
+                      <Send className="h-3.5 w-3.5" />{isSubmitting ? "Sending..." : "Send Message"}
                     </Button>
                   </form>
                 </CardContent>

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import pool from "@/lib/db"
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 import crypto from "crypto"
+import { sendEmail, passwordResetEmail } from "@/lib/email"
 
 export async function POST(request: NextRequest) {
   try {
@@ -9,8 +10,8 @@ export async function POST(request: NextRequest) {
     const rl = await checkRateLimit({ key: `forgot:${ip}`, ...RATE_LIMITS.forgotPassword })
     if (!rl.allowed) {
       return NextResponse.json(
-        { error: `Too many reset attempts. Please try again in ${Math.ceil(rl.retryAfterSeconds / 60)} minute(s).` },
-        { status: 429 },
+          { error: `Too many reset attempts. Please try again in ${Math.ceil(rl.retryAfterSeconds / 60)} minute(s).` },
+          { status: 429 },
       )
     }
 
@@ -39,18 +40,17 @@ export async function POST(request: NextRequest) {
     const expiresAt = new Date(Date.now() + 60 * 60 * 1000) // 1 hour
 
     await pool.query(
-      "INSERT INTO password_reset_tokens (user_id, token_hash, expires_at) VALUES ($1, $2, $3)",
-      [user.id, token, expiresAt],
+        "INSERT INTO password_reset_tokens (user_id, token_hash, expires_at) VALUES ($1, $2, $3)",
+        [user.id, token, expiresAt],
     )
 
-    // In production you'd send an email here. For now we return the token
-    // so the UI can construct the reset link. This simulates the email flow.
-    return NextResponse.json({
-      ...successMsg,
-      // This would normally be sent via email only:
-      resetToken: token,
-      has2FA: user.totp_enabled,
-    })
+    // Send reset email via SMTP
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "https://vulnradar.dev"
+    const resetLink = `${baseUrl}/reset-password?token=${token}`
+    const emailPayload = passwordResetEmail(resetLink)
+    await sendEmail({ to: normalizedEmail, ...emailPayload })
+
+    return NextResponse.json(successMsg)
   } catch {
     return NextResponse.json({ error: "Something went wrong." }, { status: 500 })
   }
