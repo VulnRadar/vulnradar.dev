@@ -12,6 +12,18 @@ const _jetbrainsMono = JetBrains_Mono({ subsets: ['latin'], variable: '--font-je
 export const metadata: Metadata = {
   title: 'VulnRadar - Web Vulnerability Scanner',
   description: 'Scan any website for security vulnerabilities. Get a prioritized list of issues with severity ratings and actionable fix guidance.',
+  openGraph: {
+    title: 'VulnRadar - Web Vulnerability Scanner',
+    description: 'Scan any website for 65+ security vulnerabilities. Get severity ratings, actionable fix guidance, and exportable reports.',
+    siteName: 'VulnRadar',
+    type: 'website',
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'VulnRadar - Web Vulnerability Scanner',
+    description: 'Scan any website for 65+ security vulnerabilities. Get severity ratings, actionable fix guidance, and exportable reports.',
+  },
+  metadataBase: new URL('https://vulnradar.app'),
 }
 
 export const viewport: Viewport = {
@@ -22,24 +34,24 @@ export const viewport: Viewport = {
 }
 
 export default function RootLayout({
-  children,
-}: Readonly<{
+                                     children,
+                                   }: Readonly<{
   children: React.ReactNode
 }>) {
   return (
-    <html lang="en" suppressHydrationWarning>
+      <html lang="en" className="dark" suppressHydrationWarning>
       <body className="font-sans antialiased">
-        <ThemeProvider
+      <ThemeProvider
           attribute="class"
           defaultTheme="dark"
           enableSystem
           disableTransitionOnChange
-        >
-          <TosGate>
-            {children}
-          </TosGate>
-        </ThemeProvider>
+      >
+        <TosGate>
+          {children}
+        </TosGate>
+      </ThemeProvider>
       </body>
-    </html>
+      </html>
   )
 }
