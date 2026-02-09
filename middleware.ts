@@ -3,11 +3,13 @@ import { NextRequest, NextResponse } from "next/server"
 const SECURITY_HEADERS: Record<string, string> = {
   "Content-Security-Policy": [
     "default-src 'self'",
-    "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
+    "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://challenges.cloudflare.com https://static.cloudflareinsights.com",
+    "script-src-elem 'self' 'unsafe-inline' 'unsafe-eval' https://challenges.cloudflare.com https://static.cloudflareinsights.com",
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
     "font-src 'self' https://fonts.gstatic.com",
     "img-src 'self' data: blob: https:",
     "connect-src 'self' https:",
+    "frame-src https://challenges.cloudflare.com",
     "frame-ancestors 'none'",
     "base-uri 'self'",
     "form-action 'self'",

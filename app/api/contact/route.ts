@@ -34,6 +34,27 @@ export async function POST(request: NextRequest) {
     const subject = asTrimmedString(body?.subject)
     const message = asTrimmedString(body?.message)
     const category = asTrimmedString(body?.category)
+    const turnstileToken = asTrimmedString(body?.turnstileToken)
+
+    if (!turnstileToken) {
+      return NextResponse.json({ error: "Captcha verification required." }, { status: 400 })
+    }
+
+    // Verify Turnstile token
+    const turnstileRes = await fetch("https://challenges.cloudflare.com/turnstile/v0/siteverify", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        secret: process.env.TURNSTILE_SECRET_KEY,
+        response: turnstileToken,
+        remoteip: ip,
+      }),
+    })
+
+    const turnstileData = await turnstileRes.json()
+    if (!turnstileData.success) {
+      return NextResponse.json({ error: "Captcha verification failed. Please try again." }, { status: 400 })
+    }
 
     if (!name || !email || !subject || !message || !category) {
       return NextResponse.json({ error: "All fields are required." }, { status: 400 })

@@ -2,7 +2,8 @@
 
 import React from "react"
 
-import { useState } from "react"
+import { useState, useEffect, useRef } from "react"
+import Script from "next/script"
 import { Header } from "@/components/scanner/header"
 import { Footer } from "@/components/scanner/footer"
 import { Button } from "@/components/ui/button"
@@ -39,11 +40,50 @@ export default function ContactPage() {
   const [submitted, setSubmitted] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [turnstileToken, setTurnstileToken] = useState<string | null>(null)
+  const [scriptLoaded, setScriptLoaded] = useState(false)
+  const widgetRef = useRef<HTMLDivElement>(null)
+  const widgetIdRef = useRef<string | null>(null)
+
+  // Render Turnstile widget after script loads and category is selected
+  useEffect(() => {
+    if (!scriptLoaded || !widgetRef.current || !category || widgetIdRef.current) return
+
+    const turnstile = (window as any).turnstile
+    if (!turnstile) return
+
+    try {
+      widgetIdRef.current = turnstile.render(widgetRef.current, {
+        sitekey: process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY,
+        theme: "dark",
+        callback: (token: string) => {
+          setTurnstileToken(token)
+        },
+      })
+    } catch (err) {
+      console.error("Failed to render Turnstile:", err)
+    }
+
+    return () => {
+      if (widgetIdRef.current && turnstile) {
+        try {
+          turnstile.remove(widgetIdRef.current)
+          widgetIdRef.current = null
+        } catch {}
+      }
+    }
+  }, [scriptLoaded, category])
+
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!category) {
       setError("Please choose a category.")
+      return
+    }
+
+    if (!turnstileToken) {
+      setError("Please complete the captcha verification.")
       return
     }
 
@@ -60,6 +100,7 @@ export default function ContactPage() {
           subject,
           message,
           category,
+          turnstileToken,
         }),
       })
 
@@ -104,7 +145,16 @@ export default function ContactPage() {
                 </p>
               </div>
               <div className="flex gap-3 mt-2">
-                <Button variant="outline" className="bg-transparent" onClick={() => { setSubmitted(false); setCategory(null); setSubject(""); setMessage(""); setName(""); setEmail(""); setError(null) }}>
+                <Button variant="outline" className="bg-transparent" onClick={() => {
+                  setSubmitted(false);
+                  setCategory(null);
+                  setSubject("");
+                  setMessage("");
+                  setName("");
+                  setEmail("");
+                  setError(null);
+                  setTurnstileToken(null);
+                }}>
                   Send Another
                 </Button>
                 <Link href="/"><Button>Back to Scanner</Button></Link>
@@ -197,14 +247,18 @@ export default function ContactPage() {
                         <span>Security reports are handled with priority. We aim to acknowledge within 24 hours and will keep you updated on the resolution.</span>
                       </div>
                     )}
+
                     {error && (
                       <div className="text-sm text-red-500 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">
                         {error}
                       </div>
                     )}
-                    <Button type="submit" className="w-full sm:w-auto self-end gap-1.5" disabled={isSubmitting}>
+
+                    <Button type="submit" className="w-full sm:w-auto self-end gap-1.5" disabled={isSubmitting || !turnstileToken}>
                       <Send className="h-3.5 w-3.5" />{isSubmitting ? "Sending..." : "Send Message"}
                     </Button>
+
+                    <div ref={widgetRef} className="flex justify-center" />
                   </form>
                 </CardContent>
               </Card>
@@ -213,6 +267,11 @@ export default function ContactPage() {
         )}
       </main>
       <Footer />
+      <Script
+        src="https://challenges.cloudflare.com/turnstile/v0/api.js"
+        strategy="afterInteractive"
+        onLoad={() => setScriptLoaded(true)}
+      />
     </div>
   )
 }
