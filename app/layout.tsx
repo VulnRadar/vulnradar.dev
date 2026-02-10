@@ -3,6 +3,7 @@ import type { Metadata, Viewport } from 'next'
 import { Inter, JetBrains_Mono } from 'next/font/google'
 import { ThemeProvider } from '@/components/theme-provider'
 import { TosGate } from '@/components/tos-gate'
+import { VersionNotification } from '@/components/version-notification'
 
 import './globals.css'
 
@@ -77,6 +78,7 @@ export default function RootLayout({
           <TosGate>
             {children}
           </TosGate>
+          <VersionNotification />
         </ThemeProvider>
       </body>
     </html>
