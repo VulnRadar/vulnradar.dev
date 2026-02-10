@@ -4,10 +4,21 @@ import { Newspaper, Zap, Shield, Users, Tag, List, RefreshCw, Lock, Gauge, Messa
 
 const CHANGELOG = [
   {
+    version: "1.1.1",
+    date: "February 9, 2026",
+    title: "Metadata & Branding Polish",
+    highlights: true,
+    changes: [
+      { icon: Sparkles, label: "Consistent Social Cards", desc: "All pages now display unified OpenGraph metadata with consistent VulnRadar branding when shared on Discord, Twitter, or other social platforms." },
+      { icon: Eye, label: "Unified Page Titles", desc: "Browser tabs now show 'VulnRadar' consistently across all pages for cleaner branding and better recognition." },
+      { icon: Shield, label: "Enhanced Security Headers", desc: "Improved Content Security Policy configuration to allow Cloudflare Turnstile while maintaining strong security protections." },
+    ],
+  },
+  {
     version: "1.1.0",
     date: "February 9, 2026",
     title: "Contact System & UI Enhancements",
-    highlights: true,
+    highlights: false,
     changes: [
       { icon: MessageSquare, label: "Enhanced Contact Form", desc: "Redesigned contact page with category selection (Bug Report, Feature Request, Security Issue, General Help) and instant email delivery without blocking the UI." },
       { icon: Shield, label: "CAPTCHA Protection", desc: "Integrated Cloudflare Turnstile to prevent spam and bot submissions on the contact form while maintaining a seamless user experience." },
