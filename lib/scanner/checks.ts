@@ -2747,40 +2747,84 @@ const checkCommandInjectionHints: CheckFn = (_url, _headers, body) => {
 
 // ── NEW: XML External Entity (XXE) Hints ──
 const checkXXEVulnerabilityHints: CheckFn = (_url, _headers, body) => {
-  const xxePatterns = [
-    /<!ENTITY.*SYSTEM/gi,
-    /<!DOCTYPE.*SYSTEM/gi,
-    /DOMParser\(\)\.parseFromString/gi,
-    /XMLHttpRequest.*responseXML/gi,
+  // XXE is a SERVER-SIDE vulnerability - client-side DOMParser is safe
+  // Only flag if we detect actual XXE entity declarations or server-side XML parsing
+
+  const actualXXEPatterns = [
+    /<!ENTITY\s+\w+\s+SYSTEM\s+["'](?:file|http|ftp):/gi, // Actual XXE entity declaration
+    /<!DOCTYPE\s+\w+\s+\[[\s\S]*?<!ENTITY[\s\S]*?SYSTEM/gi, // DOCTYPE with ENTITY SYSTEM
   ]
 
-  const matches: string[] = []
-  for (const pattern of xxePatterns) {
+  // Server-side XML parsing (Node.js/backend only) - exclude browser APIs
+  const serverSideXMLPatterns = [
+    /libxmljs\.parseXml/gi,
+    /xml2js\.parseString/gi,
+    /fast-xml-parser/gi,
+    /saxjs\.parser/gi,
+  ]
+
+  const xxeMatches: string[] = []
+  const serverMatches: string[] = []
+
+  // Check for actual XXE declarations (highest confidence)
+  for (const pattern of actualXXEPatterns) {
     const found = body.match(pattern)
-    if (found) matches.push(...found.slice(0, 2))
+    if (found) xxeMatches.push(...found.slice(0, 2))
   }
 
-  if (matches.length > 0) {
+  // Check for server-side XML parsing libraries
+  for (const pattern of serverSideXMLPatterns) {
+    const found = body.match(pattern)
+    if (found) serverMatches.push(...found.slice(0, 2))
+  }
+
+  // Only flag if we found actual XXE patterns OR server-side parsing
+  // Do NOT flag client-side DOMParser or XMLHttpRequest.responseXML (these are safe)
+  if (xxeMatches.length > 0) {
     return {
       id: generateId(),
-      title: "Potential XML External Entity (XXE) Processing",
+      title: "XML External Entity (XXE) Declaration Detected",
       severity: "high",
       category: "content",
-      description: "Found XML parsing operations that may be vulnerable to XXE attacks if external entities are not disabled.",
-      evidence: `Found ${matches.length} XML processing pattern(s)`,
-      riskImpact: "XXE attacks can lead to file disclosure, SSRF, denial of service, and in some cases, remote code execution.",
-      explanation: "XML parsers that process external entities can be exploited to read local files, make internal network requests, or cause denial of service. External entity processing should be disabled.",
+      description: "Found XML entity declarations using SYSTEM keyword, which can enable XXE attacks if processed by a vulnerable XML parser.",
+      evidence: xxeMatches.slice(0, 3).join("; "),
+      riskImpact: "XXE attacks can lead to file disclosure (reading /etc/passwd), SSRF (internal network scanning), denial of service (billion laughs attack), and in some cases, remote code execution.",
+      explanation: "XML External Entity attacks exploit XML parsers that process external entities. When a parser encounters <!ENTITY name SYSTEM 'file:///etc/passwd'>, it attempts to read the file and include it in the XML document. This is a critical server-side vulnerability.",
       fixSteps: [
-        "Disable external entity processing in all XML parsers.",
+        "Disable external entity processing in all XML parsers (libxml_disable_entity_loader(true) in PHP, setFeature in Java).",
         "Use JSON instead of XML for data interchange when possible.",
-        "Validate and sanitize all XML input.",
-        "Keep XML parsing libraries up to date.",
+        "If XML is required, validate against a strict schema and reject DOCTYPE declarations.",
+        "Keep XML parsing libraries up to date with security patches.",
       ],
       codeExamples: [
-        { label: "Safe XML parsing", language: "javascript", code: `// Disable external entities\nconst parser = new DOMParser();\nparser.setFeature("http://xml.org/sax/features/external-general-entities", false);\nparser.setFeature("http://xml.org/sax/features/external-parameter-entities", false);` },
+        { label: "Disable XXE (Node.js libxmljs)", language: "javascript", code: `const libxmljs = require('libxmljs');\nconst doc = libxmljs.parseXml(xmlString, {\n  noent: false,  // Disable entity substitution\n  nonet: true,   // Disable network access\n});` },
+        { label: "Disable XXE (Java)", language: "java", code: `DocumentBuilderFactory dbf = DocumentBuilderFactory.newInstance();\ndbf.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);\ndbf.setFeature("http://xml.org/sax/features/external-general-entities", false);\ndbf.setFeature("http://xml.org/sax/features/external-parameter-entities", false);` },
       ],
     }
   }
+
+  if (serverMatches.length > 0) {
+    return {
+      id: generateId(),
+      title: "Server-Side XML Parsing Detected",
+      severity: "medium",
+      category: "content",
+      description: "Found server-side XML parsing library usage. Ensure external entity processing is disabled to prevent XXE vulnerabilities.",
+      evidence: `Found ${serverMatches.length} server-side XML parsing pattern(s)`,
+      riskImpact: "If external entities are not disabled, XXE attacks can read local files, perform SSRF attacks, or cause denial of service.",
+      explanation: "Server-side XML parsers (libxmljs, xml2js, etc.) can be vulnerable to XXE if not properly configured. Client-side parsing (DOMParser) is generally safe as browsers disable external entities by default.",
+      fixSteps: [
+        "Disable external entity processing in your XML parser configuration.",
+        "Validate that noent: false and nonet: true are set (Node.js).",
+        "Consider using JSON instead of XML for API responses.",
+        "Review XML parser security documentation for your specific library.",
+      ],
+      codeExamples: [
+        { label: "Safe xml2js config", language: "javascript", code: `const xml2js = require('xml2js');\nconst parser = new xml2js.Parser({\n  strict: true,\n  normalize: true,\n  // Don't process external entities\n  xmlns: false,\n});` },
+      ],
+    }
+  }
+
   return null
 }
 

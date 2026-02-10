@@ -19,47 +19,106 @@ interface ScanSummaryProps {
 type SafetyRating = "safe" | "caution" | "unsafe"
 
 function getSafetyRating(summary: ScanResult["summary"], findings: ScanResult["findings"]): SafetyRating {
-  // Filter out framework-related info issues that don't represent real security threats
-  const actualThreats = findings.filter((f) => {
-    // Exclude framework-required CSP directives (info level)
-    if (f.title.includes("Framework-Required") || f.title.includes("framework-required")) {
-      return false
-    }
-    // Include actual security issues
+  // ── Categories of Vulnerability Severity ──
+
+  // CRITICAL EXPLOITABLE THREATS (always unsafe)
+  const criticalExploitable = [
+    "Unencrypted HTTP",
+    "SQL Injection",
+    "Command Injection",
+    "Dangerous CORS",
+    "Credentials in URL",
+    "Exposed API Keys",
+    "Exposed Error Messages", // Only if showing stack traces
+  ]
+
+  // HIGH SEVERITY ACTIVE VULNERABILITIES (2+ = unsafe)
+  const highActiveVulns = [
+    "XXE Vulnerability",
+    "SSRF Vulnerability",
+    "Path Traversal",
+    "Insecure Deserialization",
+    "Prototype Pollution",
+    "XSS Patterns",
+    "SQL Error",
+    "eval() Usage",
+  ]
+
+  // HIGH SEVERITY CONFIGURATION ISSUES (less dangerous, need 3+ for unsafe)
+  const highConfigIssues = [
+    "Missing HSTS",
+    "Missing CSP",
+    "Weak Crypto",
+    "Open Redirect",
+    "Clickjacking",
+    "Mixed Content",
+  ]
+
+  // INFORMATIONAL (never count toward unsafe)
+  const informationalOnly = [
+    "Framework-Required",
+    "Server Technology",
+    "DNS Prefetch",
+    "Cookie without HttpOnly", // Low risk
+    "Missing security.txt", // Informational only
+  ]
+
+  // ── Filter and Categorize Findings ──
+
+  const criticalThreats = findings.filter((f) => {
+    if (f.severity !== "critical" && f.severity !== "high") return false
+    if (informationalOnly.some(pattern => f.title.includes(pattern))) return false
+    return criticalExploitable.some(pattern => f.title.includes(pattern))
+  })
+
+  const activeVulns = findings.filter((f) => {
+    if (f.severity !== "high") return false
+    if (informationalOnly.some(pattern => f.title.includes(pattern))) return false
+    return highActiveVulns.some(pattern => f.title.includes(pattern))
+  })
+
+  const configIssues = findings.filter((f) => {
+    if (f.severity !== "high" && f.severity !== "medium") return false
+    if (informationalOnly.some(pattern => f.title.includes(pattern))) return false
+    return highConfigIssues.some(pattern => f.title.includes(pattern))
+  })
+
+  // Count medium issues that aren't already counted
+  const otherMediumIssues = findings.filter((f) => {
+    if (f.severity !== "medium") return false
+    if (informationalOnly.some(pattern => f.title.includes(pattern))) return false
+    if (highConfigIssues.some(pattern => f.title.includes(pattern))) return false
     return true
   })
 
-  // Count actual threats by severity
-  const criticalCount = actualThreats.filter((f) => f.severity === "critical").length
-  const highCount = actualThreats.filter((f) => f.severity === "high").length
-  const mediumCount = actualThreats.filter((f) => f.severity === "medium").length
+  // ── Smart Safety Rating Logic ──
 
-  // Critical vulnerabilities = Always Unsafe
-  if (criticalCount > 0) {
+  // ANY critical exploitable threat = UNSAFE
+  if (criticalThreats.length > 0) {
     return "unsafe"
   }
 
-  // Multiple high-severity issues = Unsafe
-  if (highCount >= 2) {
+  // Multiple active high-severity vulnerabilities (2+) = UNSAFE
+  if (activeVulns.length >= 2) {
     return "unsafe"
   }
 
-  // Single high-severity with medium issues = Caution
-  if (highCount === 1 && mediumCount > 0) {
+  // Many configuration issues (3+) OR 1 active vuln + config issues = UNSAFE
+  if (configIssues.length >= 3 || (activeVulns.length === 1 && configIssues.length >= 2)) {
+    return "unsafe"
+  }
+
+  // Single active vulnerability OR 1-2 config issues = CAUTION
+  if (activeVulns.length === 1 || configIssues.length >= 1) {
     return "caution"
   }
 
-  // Single high-severity issue alone = Caution (could be low-risk high-severity)
-  if (highCount === 1) {
+  // Multiple medium issues (4+) = CAUTION
+  if (otherMediumIssues.length >= 4) {
     return "caution"
   }
 
-  // Medium vulnerabilities = Caution
-  if (mediumCount > 0) {
-    return "caution"
-  }
-
-  // No actual threats or only Low/Info = Safe
+  // Only Low/Info OR minimal medium issues = SAFE
   return "safe"
 }
 

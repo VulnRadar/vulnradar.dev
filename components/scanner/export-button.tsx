@@ -5,6 +5,8 @@ import { Check, FileJson, FileText } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import type { ScanResult } from "@/lib/scanner/types"
 import { generatePdfReport } from "@/lib/pdf-report"
+import { APP_VERSION } from "@/lib/version"
+
 
 interface ExportButtonProps {
   result: ScanResult
@@ -23,7 +25,7 @@ export function ExportButton({ result }: ExportButtonProps) {
     const exportData = {
       meta: {
         tool: "VulnRadar",
-        version: "1.0.0",
+        version: APP_VERSION,
         exportedAt: new Date().toISOString(),
       },
       scan: {
@@ -40,7 +42,9 @@ export function ExportButton({ result }: ExportButtonProps) {
         description: f.description,
         evidence: f.evidence,
         riskImpact: f.riskImpact,
+        explanation: f.explanation,
         fixSteps: f.fixSteps,
+        codeExamples: f.codeExamples,
       })),
     }
 
