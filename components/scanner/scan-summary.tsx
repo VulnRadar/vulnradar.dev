@@ -5,6 +5,7 @@ import {
   ExternalLink,
   Info,
   ShieldAlert,
+  ShieldCheck,
   ShieldX,
   TriangleAlert,
 } from "lucide-react"
@@ -13,6 +14,53 @@ import { cn } from "@/lib/utils"
 
 interface ScanSummaryProps {
   result: ScanResult
+}
+
+type SafetyRating = "safe" | "caution" | "unsafe"
+
+function getSafetyRating(summary: ScanResult["summary"], findings: ScanResult["findings"]): SafetyRating {
+  // Filter out framework-related info issues that don't represent real security threats
+  const actualThreats = findings.filter((f) => {
+    // Exclude framework-required CSP directives (info level)
+    if (f.title.includes("Framework-Required") || f.title.includes("framework-required")) {
+      return false
+    }
+    // Include actual security issues
+    return true
+  })
+
+  // Count actual threats by severity
+  const criticalCount = actualThreats.filter((f) => f.severity === "critical").length
+  const highCount = actualThreats.filter((f) => f.severity === "high").length
+  const mediumCount = actualThreats.filter((f) => f.severity === "medium").length
+
+  // Critical vulnerabilities = Always Unsafe
+  if (criticalCount > 0) {
+    return "unsafe"
+  }
+
+  // Multiple high-severity issues = Unsafe
+  if (highCount >= 2) {
+    return "unsafe"
+  }
+
+  // Single high-severity with medium issues = Caution
+  if (highCount === 1 && mediumCount > 0) {
+    return "caution"
+  }
+
+  // Single high-severity issue alone = Caution (could be low-risk high-severity)
+  if (highCount === 1) {
+    return "caution"
+  }
+
+  // Medium vulnerabilities = Caution
+  if (mediumCount > 0) {
+    return "caution"
+  }
+
+  // No actual threats or only Low/Info = Safe
+  return "safe"
 }
 
 const severityCards = [
@@ -66,9 +114,64 @@ const severityCards = [
 export function ScanSummary({ result }: ScanSummaryProps) {
   const hasIssues = result.summary.total > 0
   const scanDate = new Date(result.scannedAt)
+  const safetyRating = getSafetyRating(result.summary, result.findings)
+
+  const safetyConfig = {
+    safe: {
+      label: "Safe to View",
+      description: "No critical security issues detected. This website appears safe to browse.",
+      icon: ShieldCheck,
+      iconColor: "text-emerald-500",
+      bg: "bg-emerald-500/10",
+      border: "border-emerald-500/30",
+      textColor: "text-emerald-600 dark:text-emerald-400",
+    },
+    caution: {
+      label: "View with Caution",
+      description: "Medium-severity issues detected. Exercise caution when browsing this website.",
+      icon: ShieldAlert,
+      iconColor: "text-yellow-500",
+      bg: "bg-yellow-500/10",
+      border: "border-yellow-500/30",
+      textColor: "text-yellow-600 dark:text-yellow-400",
+    },
+    unsafe: {
+      label: "Not Safe to View",
+      description: "Critical or high-severity vulnerabilities detected. Avoid using this website.",
+      icon: ShieldX,
+      iconColor: "text-red-500",
+      bg: "bg-red-500/10",
+      border: "border-red-500/30",
+      textColor: "text-red-600 dark:text-red-400",
+    },
+  }
+
+  const config = safetyConfig[safetyRating]
+  const SafetyIcon = config.icon
 
   return (
     <div className="flex flex-col gap-4">
+      {/* Safety Rating Banner */}
+      <div
+        className={cn(
+          "flex items-start gap-3 rounded-xl border p-4",
+          config.bg,
+          config.border,
+        )}
+      >
+        <div className={cn("flex items-center justify-center w-10 h-10 rounded-lg shrink-0", config.bg)}>
+          <SafetyIcon className={cn("h-6 w-6", config.iconColor)} />
+        </div>
+        <div className="flex flex-col gap-1">
+          <h3 className={cn("text-sm font-semibold", config.textColor)}>
+            {config.label}
+          </h3>
+          <p className="text-xs text-muted-foreground leading-relaxed">
+            {config.description}
+          </p>
+        </div>
+      </div>
+
       {/* Status banner */}
       <div
         className={cn(

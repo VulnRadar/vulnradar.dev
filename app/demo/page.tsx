@@ -61,7 +61,7 @@ export default function DemoPage() {
           </h1>
           <p className="text-muted-foreground max-w-lg mx-auto leading-relaxed text-pretty">
             See VulnRadar in action by running a full vulnerability scan against this very site.
-            This demonstrates the 65+ security checks in real-time on our own infrastructure.
+            This demonstrates the 75+ security checks in real-time on our own infrastructure.
           </p>
         </div>
 
@@ -75,7 +75,7 @@ export default function DemoPage() {
               <div>
                 <h2 className="text-lg font-semibold text-foreground mb-1">Ready to self-scan</h2>
                 <p className="text-sm text-muted-foreground">
-                  This will scan <span className="font-mono text-xs bg-muted px-1.5 py-0.5 rounded text-foreground">{typeof window !== "undefined" ? window.location.origin : "this site"}</span> using all 65+ checks.
+                  This will scan <span className="font-mono text-xs bg-muted px-1.5 py-0.5 rounded text-foreground">{typeof window !== "undefined" ? window.location.origin : "this site"}</span> using all 75+ checks.
                 </p>
               </div>
               <Button size="lg" className="gap-2" onClick={handleSelfScan}>
@@ -99,7 +99,7 @@ export default function DemoPage() {
               <div>
                 <h2 className="text-lg font-semibold text-foreground mb-1">Scanning in progress...</h2>
                 <p className="text-sm text-muted-foreground">
-                  Running 65+ vulnerability checks against VulnRadar. This usually takes a few seconds.
+                  Running 75+ vulnerability checks against VulnRadar. This usually takes a few seconds.
                 </p>
               </div>
               <div className="w-full bg-muted rounded-full h-1.5 overflow-hidden">
@@ -172,7 +172,7 @@ export default function DemoPage() {
             },
             {
               title: "Real Results",
-              description: "These are live scan results, not pre-generated. The same 65+ checks run in real-time.",
+              description: "These are live scan results, not pre-generated. The same 75+ checks run in real-time.",
               color: "text-amber-500",
             },
           ].map((item) => (

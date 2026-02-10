@@ -253,7 +253,7 @@ export default function DocsPage() {
             <p className="text-muted-foreground leading-relaxed">
               The VulnRadar API lets you programmatically scan any public website
               for security vulnerabilities. It runs{" "}
-              <strong className="text-foreground">65+ different vulnerability checks</strong>{" "}
+              <strong className="text-foreground">75+ different vulnerability checks</strong>{" "}
               across HTTP headers, SSL configuration, cookies, content analysis,
               and server configuration, returning a structured JSON report with
               severity ratings and actionable fix guidance.

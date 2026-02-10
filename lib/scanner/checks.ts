@@ -391,19 +391,35 @@ server_tokens off;`,
 const checkMixedContent: CheckFn = (url, _headers, body) => {
   if (!url.startsWith("https://")) return null
 
+  // More precise patterns that avoid false positives
   const httpPatterns = [
-    /src=["']http:\/\//gi,
-    /href=["']http:\/\//gi,
-    /url\(["']?http:\/\//gi,
+    /src=["']http:\/\/[^"']+["']/gi,
+    /href=["']http:\/\/[^"']+["']/gi,
+    /url\(["']?http:\/\/[^)"']+["']?\)/gi,
   ]
 
   const matches: string[] = []
   for (const pattern of httpPatterns) {
     const found = body.match(pattern)
-    if (found) matches.push(...found.slice(0, 3))
+    if (found) {
+      // Filter out common false positives
+      const filtered = found.filter(match => {
+        const lower = match.toLowerCase()
+        // Exclude localhost, example domains, and documentation URLs
+        return !lower.includes('localhost') &&
+               !lower.includes('example.com') &&
+               !lower.includes('example.org') &&
+               !lower.includes('127.0.0.1') &&
+               !lower.includes('placeholder') &&
+               // Exclude data URIs that might contain http:// in base64
+               !match.startsWith('data:')
+      })
+      matches.push(...filtered.slice(0, 3))
+    }
   }
 
-  if (matches.length > 0) {
+  // Only flag if we have actual mixed content (minimum threshold to avoid noise)
+  if (matches.length >= 2) {
     return {
       id: generateId(),
       title: "Mixed Content Detected",
@@ -456,21 +472,33 @@ export default nextConfig;`,
 }
 
 const checkOpenRedirectHints: CheckFn = (_url, _headers, body) => {
+  // More comprehensive patterns for redirect parameters
   const patterns = [
-    /\?redirect=/gi,
-    /\?next=/gi,
-    /\?url=/gi,
-    /\?return_to=/gi,
-    /\?returnUrl=/gi,
-    /\?goto=/gi,
+    /[?&](redirect|next|url|return_to|returnUrl|goto|destination|redir|forward|target)=["']?https?:\/\//gi,
+    /window\.location\s*=\s*(?:params|query|search)\.get\(['"](?:redirect|url|next|goto)/gi,
+    /location\.href\s*=\s*(?:params|query|request)\.get\(['"](?:redirect|url)/gi,
   ]
 
   const matches: string[] = []
   for (const pattern of patterns) {
     const found = body.match(pattern)
-    if (found) matches.push(...found.slice(0, 2))
+    if (found) {
+      // Filter out false positives
+      const filtered = found.filter(match => {
+        const lower = match.toLowerCase()
+        // Exclude documentation, examples, and obvious non-vulnerable code
+        return !lower.includes('example.com') &&
+               !lower.includes('example.org') &&
+               !lower.includes('yourdomain.com') &&
+               !lower.includes('placeholder') &&
+               !lower.includes('// example') &&
+               !lower.includes('<!-- example')
+      })
+      matches.push(...filtered.slice(0, 2))
+    }
   }
 
+  // Only flag if we have strong evidence (actual URL values or JS redirect code)
   if (matches.length > 0) {
     return {
       id: generateId(),
@@ -478,8 +506,8 @@ const checkOpenRedirectHints: CheckFn = (_url, _headers, body) => {
       severity: "medium",
       category: "content",
       description:
-        "The page contains URL parameters commonly associated with open redirect vulnerabilities.",
-      evidence: `Found redirect-related parameters: ${matches.join(", ")}`,
+        "The page contains URL parameters or JavaScript patterns commonly associated with open redirect vulnerabilities.",
+      evidence: `Found redirect-related patterns: ${matches.slice(0, 2).join(", ")}`,
       riskImpact:
         "Open redirects can be used in phishing attacks by making malicious URLs appear to originate from your trusted domain.",
       explanation:
@@ -492,44 +520,9 @@ const checkOpenRedirectHints: CheckFn = (_url, _headers, body) => {
       ],
       codeExamples: [
         {
-          label: "Next.js (Route Handler)",
+          label: "Next.js validation",
           language: "typescript",
-          code: `// app/api/redirect/route.ts
-import { NextRequest, NextResponse } from "next/server";
-
-const ALLOWED_HOSTS = ["yourdomain.com", "app.yourdomain.com"];
-
-export async function GET(request: NextRequest) {
-  const target = request.nextUrl.searchParams.get("url") || "/";
-
-  // Only allow relative URLs or URLs to allowed hosts
-  try {
-    const url = new URL(target, request.url);
-    if (!ALLOWED_HOSTS.includes(url.hostname)) {
-      return NextResponse.redirect(new URL("/", request.url));
-    }
-    return NextResponse.redirect(url);
-  } catch {
-    return NextResponse.redirect(new URL("/", request.url));
-  }
-}`,
-        },
-        {
-          label: "Generic Validation",
-          language: "javascript",
-          code: `function isSafeRedirect(url) {
-  // Only allow relative URLs
-  if (url.startsWith("/") && !url.startsWith("//")) {
-    return true;
-  }
-  // Or URLs to your own domain
-  try {
-    const parsed = new URL(url);
-    return parsed.hostname === "yourdomain.com";
-  } catch {
-    return false;
-  }
-}`,
+          code: "const ALLOWED = ['yourdomain.com'];\nconst url = new URL(redirect);\nif (!ALLOWED.includes(url.hostname)) throw new Error('Invalid');",
         },
       ],
     }
@@ -577,34 +570,9 @@ const checkCookieSecurity: CheckFn = (_url, headers) => {
       ],
       codeExamples: [
         {
-          label: "Next.js (Route Handler)",
+          label: "Secure cookie",
           language: "typescript",
-          code: `// app/api/login/route.ts
-import { NextResponse } from "next/server";
-
-export async function POST() {
-  const response = NextResponse.json({ success: true });
-  response.cookies.set("session", "token-value", {
-    httpOnly: true,
-    secure: true,
-    sameSite: "lax",
-    maxAge: 60 * 60 * 24 * 7, // 7 days
-    path: "/",
-  });
-  return response;
-}`,
-        },
-        {
-          label: "Express.js",
-          language: "javascript",
-          code: `app.use(session({
-  cookie: {
-    httpOnly: true,
-    secure: true,
-    sameSite: 'lax',
-    maxAge: 7 * 24 * 60 * 60 * 1000,
-  },
-}));`,
+          code: "response.cookies.set('session', token, { httpOnly: true, secure: true, sameSite: 'lax' });",
         },
       ],
     }
@@ -635,27 +603,9 @@ const checkDeprecatedTLS: CheckFn = (url) => {
       ],
       codeExamples: [
         {
-          label: "Nginx HTTPS Redirect",
+          label: "HTTPS redirect",
           language: "nginx",
-          code: `server {
-  listen 80;
-  server_name yourdomain.com;
-  return 301 https://$host$request_uri;
-}`,
-        },
-        {
-          label: "Vercel (vercel.json)",
-          language: "json",
-          code: `{
-  "redirects": [
-    {
-      "source": "/(.*)",
-      "has": [{ "type": "header", "key": "x-forwarded-proto", "value": "http" }],
-      "destination": "https://yourdomain.com/$1",
-      "permanent": true
-    }
-  ]
-}`,
+          code: "server { listen 80; return 301 https://domain.com$request_uri; }",
         },
       ],
     }
@@ -946,19 +896,37 @@ export default nextConfig;`,
 const checkEmailExposure: CheckFn = (_url, _headers, body) => {
   const emailPattern = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g
   const emails = body.match(emailPattern) || []
-  // Filter out common false positives
+
+  // More comprehensive false positive filter
   const filtered = emails.filter(
-    (e) =>
-      !e.includes("example.com") &&
-      !e.includes("schema.org") &&
-      !e.includes("w3.org") &&
-      !e.includes("sentry.io") &&
-      !e.endsWith(".png") &&
-      !e.endsWith(".jpg"),
+    (e) => {
+      const lower = e.toLowerCase()
+      return !lower.includes("example.com") &&
+        !lower.includes("example.org") &&
+        !lower.includes("test.com") &&
+        !lower.includes("schema.org") &&
+        !lower.includes("w3.org") &&
+        !lower.includes("sentry.io") &&
+        !lower.includes("yoursite.com") &&
+        !lower.includes("yourdomain.com") &&
+        !lower.includes("placeholder") &&
+        !lower.includes("noreply@") && // Common non-sensitive addresses
+        !lower.includes("no-reply@") &&
+        !lower.endsWith(".png") &&
+        !lower.endsWith(".jpg") &&
+        !lower.endsWith(".gif") &&
+        !lower.endsWith(".svg") &&
+        // Exclude documentation/comments
+        !body.includes(`<!-- ${e}`) &&
+        !body.includes(`// ${e}`)
+    }
   )
 
-  if (filtered.length > 0) {
-    const unique = [...new Set(filtered)].slice(0, 5)
+  // Deduplicate
+  const unique = [...new Set(filtered)]
+
+  // Only flag if we have at least 2 real email addresses (reduces single false positive noise)
+  if (unique.length >= 2) {
     return {
       id: generateId(),
       title: "Email Address Exposure",
@@ -966,7 +934,7 @@ const checkEmailExposure: CheckFn = (_url, _headers, body) => {
       category: "information-disclosure",
       description:
         "Email addresses were found in the page source, which can be harvested by spammers and used in targeted phishing attacks.",
-      evidence: `Found email(s): ${unique.join(", ")}${filtered.length > 5 ? ` and ${filtered.length - 5} more` : ""}`,
+      evidence: `Found email(s): ${unique.slice(0, 5).join(", ")}${unique.length > 5 ? ` and ${unique.length - 5} more` : ""}`,
       riskImpact:
         "Exposed email addresses can be harvested by bots for spam, or used in targeted spear-phishing attacks against your organization.",
       explanation:
@@ -1949,7 +1917,7 @@ const checkExcessivePermissions: CheckFn = (_url, headers) => {
 const checkPostMessageOrigin: CheckFn = (_url, _headers, body) => {
   const listeners = body.match(/addEventListener\s*\(\s*["']message["']/g) || []
   // Check if any message listener doesn't verify event.origin
-  const listenerBlocks = body.match(/addEventListener\s*\(\s*["']message["']\s*,\s*(?:function\s*\([^)]*\)|(?:\([^)]*\)|\w+)\s*=>)\s*\{[^}]{0,500}\}/gs) || []
+  const listenerBlocks = body.match(/addEventListener\s*\(\s*["']message["']\s*,\s*(?:function\s*\([^)]*\)|(?:\([^)]*\)|\w+)\s*=>)\s*\{[^}]{0,500}\}/g) || []
   const unsafeListeners = listenerBlocks.filter((block) => !block.includes(".origin") && !block.includes("event.source"))
 
   if (listeners.length > 0 && unsafeListeners.length > 0) {
@@ -2114,36 +2082,90 @@ const checkClickjackProtection: CheckFn = (_url, headers, body) => {
   }
 }
 
-const checkWeakCSPDirectives: CheckFn = (_url, headers) => {
+const checkWeakCSPDirectives: CheckFn = (_url, headers, body) => {
   const csp = headers.get("content-security-policy")
   if (!csp) return null
+
+  // Detect if site is using frameworks that require unsafe-inline/unsafe-eval
+  const isNextJs = body.includes("/_next/") || body.includes("__NEXT_DATA__") || body.includes("next/script")
+  const isReact = body.includes("react") && (body.includes("__REACT_") || body.includes("ReactDOM"))
+  const isVue = body.includes("createApp") || body.includes("Vue.component")
+  const isAngular = body.includes("ng-version") || body.includes("angular")
+  const requiresUnsafeDirectives = isNextJs || isReact || isVue || isAngular
+
   const weakPatterns: string[] = []
-  if (csp.includes("'unsafe-eval'")) weakPatterns.push("'unsafe-eval' allows dynamic code execution (eval, Function, setTimeout with strings)")
-  if (csp.includes("'unsafe-inline'") && !csp.includes("'nonce-") && !csp.includes("'sha256-")) {
-    weakPatterns.push("'unsafe-inline' without nonces/hashes defeats XSS protection")
+  const frameworkPatterns: string[] = []
+
+  // Check for unsafe-eval
+  if (csp.includes("'unsafe-eval'")) {
+    if (requiresUnsafeDirectives) {
+      frameworkPatterns.push("'unsafe-eval' (required by framework)")
+    } else {
+      weakPatterns.push("'unsafe-eval' allows dynamic code execution (eval, Function, setTimeout with strings)")
+    }
   }
+
+  // Check for unsafe-inline
+  if (csp.includes("'unsafe-inline'") && !csp.includes("'nonce-") && !csp.includes("'sha256-")) {
+    if (requiresUnsafeDirectives) {
+      frameworkPatterns.push("'unsafe-inline' (required by framework)")
+    } else {
+      weakPatterns.push("'unsafe-inline' without nonces/hashes defeats XSS protection")
+    }
+  }
+
+  // Always flag these as weak regardless of framework
   if (/script-src[^;]*\*/.test(csp)) weakPatterns.push("Wildcard (*) in script-src allows scripts from any origin")
   if (csp.includes("data:") && /script-src[^;]*data:/i.test(csp)) weakPatterns.push("data: URIs in script-src allow inline script injection")
-  if (weakPatterns.length === 0) return null
-  return {
-    id: generateId(),
-    title: "Content Security Policy Contains Weak Directives",
-    severity: "high",
-    category: "headers",
-    description: `The CSP header is present but contains ${weakPatterns.length} weak directive(s) that significantly reduce its effectiveness against XSS.`,
-    evidence: weakPatterns.join("; "),
-    riskImpact: "Weak CSP directives create exploitable gaps that allow attackers to bypass the policy and execute malicious scripts.",
-    explanation: "A CSP is only as strong as its weakest directive. Using unsafe-eval, unsafe-inline without nonces, wildcards in script-src, or data: URIs for scripts effectively negates the protection CSP provides. Attackers can craft payloads that exploit these gaps.",
-    fixSteps: [
-      "Replace 'unsafe-inline' with nonce-based or hash-based script loading.",
-      "Remove 'unsafe-eval' and refactor code to avoid eval(), new Function(), etc.",
-      "Replace wildcard (*) sources with explicit trusted domains.",
-      "Remove data: from script-src directive.",
-    ],
-    codeExamples: [
-      { label: "Strong CSP", language: "text", code: `Content-Security-Policy: default-src 'self'; script-src 'self' 'nonce-{random}'; style-src 'self' 'nonce-{random}'; img-src 'self' data:; font-src 'self'; connect-src 'self'; frame-ancestors 'self';` },
-    ],
+
+  // If only framework-required directives, downgrade to info
+  if (weakPatterns.length === 0 && frameworkPatterns.length > 0) {
+    return {
+      id: generateId(),
+      title: "CSP Contains Framework-Required Directives",
+      severity: "info",
+      category: "headers",
+      description: `The CSP includes directives required by the frontend framework (${frameworkPatterns.length} directive(s)). This is expected for Next.js, React, Vue, or Angular applications.`,
+      evidence: frameworkPatterns.join("; "),
+      riskImpact: "Framework-required CSP directives (unsafe-inline, unsafe-eval) slightly reduce XSS protection, but are necessary for the framework to function. The risk is mitigated by proper input sanitization and other CSP directives.",
+      explanation: "Modern frameworks like Next.js, React, Vue, and Angular require 'unsafe-inline' and/or 'unsafe-eval' for their runtime features (hot reloading, hydration, dynamic imports). While these directives weaken CSP, they're necessary trade-offs. Security should focus on input sanitization, output encoding, and strict CSP for other directives.",
+      fixSteps: [
+        "Ensure all user input is properly sanitized before rendering.",
+        "Keep framework and dependencies up to date for security patches.",
+        "Use strict CSP for other directives (frame-ancestors, object-src, etc.).",
+        "Consider using strict-dynamic with nonces for better security (framework permitting).",
+        "Implement additional layers: input validation, output encoding, CSRF tokens.",
+      ],
+      codeExamples: [
+        { label: "Next.js CSP", language: "javascript", code: `// next.config.mjs - CSP for Next.js\nconst csp = [\n  "default-src 'self'",\n  "script-src 'self' 'unsafe-inline' 'unsafe-eval'", // Required for Next.js\n  "style-src 'self' 'unsafe-inline'", // Required for styled-jsx\n  "img-src 'self' data: blob: https:",\n  "font-src 'self'",\n  "connect-src 'self'",\n  "frame-ancestors 'none'",\n  "base-uri 'self'",\n  "form-action 'self'",\n].join("; ");` },
+      ],
+    }
   }
+
+  // If actual weak patterns found
+  if (weakPatterns.length > 0) {
+    return {
+      id: generateId(),
+      title: "Content Security Policy Contains Weak Directives",
+      severity: "high",
+      category: "headers",
+      description: `The CSP header contains ${weakPatterns.length} weak directive(s) that significantly reduce its effectiveness against XSS.`,
+      evidence: weakPatterns.join("; "),
+      riskImpact: "Weak CSP directives create exploitable gaps that allow attackers to bypass the policy and execute malicious scripts.",
+      explanation: "A CSP is only as strong as its weakest directive. Using unsafe-eval, unsafe-inline without nonces, wildcards in script-src, or data: URIs for scripts effectively negates the protection CSP provides. Attackers can craft payloads that exploit these gaps.",
+      fixSteps: [
+        "Replace 'unsafe-inline' with nonce-based or hash-based script loading.",
+        "Remove 'unsafe-eval' and refactor code to avoid eval(), new Function(), etc.",
+        "Replace wildcard (*) sources with explicit trusted domains.",
+        "Remove data: from script-src directive.",
+      ],
+      codeExamples: [
+        { label: "Strong CSP", language: "text", code: `Content-Security-Policy: default-src 'self'; script-src 'self' 'nonce-{random}'; style-src 'self' 'nonce-{random}'; img-src 'self' data:; font-src 'self'; connect-src 'self'; frame-ancestors 'self';` },
+      ],
+    }
+  }
+
+  return null
 }
 
 const checkUnencryptedConnections: CheckFn = (url) => {
@@ -2477,26 +2499,43 @@ const checkDocumentDomainUsage: CheckFn = (_url, _headers, body) => {
 }
 
 const checkPrototypePollutionSinks: CheckFn = (_url, _headers, body) => {
-  const sinkPatterns = /(?:Object\.assign\s*\(\s*\{\}|_\.merge|_\.defaultsDeep|_\.set|jQuery\.extend\s*\(\s*true|\$\.extend\s*\(\s*true|\.prototype\s*\[)/gi
-  const matches = body.match(sinkPatterns)
-  if (matches && matches.length > 0) {
+  // Look for specific vulnerable patterns while avoiding framework false positives
+  const vulnerablePatterns = [
+    /_\.merge\s*\(/gi,           // Lodash merge (vulnerable in old versions)
+    /_\.defaultsDeep\s*\(/gi,    // Lodash defaultsDeep
+    /_\.set\s*\(/gi,             // Lodash set with user input
+    /jQuery\.extend\s*\(\s*true/gi,  // jQuery deep extend
+    /\$\.extend\s*\(\s*true/gi,      // jQuery deep extend (shorthand)
+  ]
+
+  const matches: string[] = []
+  for (const pattern of vulnerablePatterns) {
+    const found = body.match(pattern)
+    if (found) matches.push(...found)
+  }
+
+  // Only flag if we find actual vulnerable library usage (not just framework code)
+  // Minimum threshold to reduce false positives from minified framework code
+  if (matches.length > 0 && matches.length < 20) {
     return {
       id: generateId(),
       title: "Potential Prototype Pollution Sinks Detected",
       severity: "medium",
       category: "content",
-      description: `Found ${matches.length} potential prototype pollution sink(s) that could allow attackers to modify Object.prototype and affect application behavior.`,
+      description: `Found ${matches.length} potential prototype pollution sink(s) from vulnerable library functions that could allow attackers to modify Object.prototype.`,
       evidence: matches.slice(0, 3).join(", "),
       riskImpact: "Prototype pollution can lead to XSS, privilege escalation, or denial of service by injecting properties into Object.prototype that are inherited by all objects.",
-      explanation: "Prototype pollution occurs when an attacker can inject properties into JavaScript's Object.prototype. Functions like deep merge, recursive extend, and direct prototype access can be exploited via crafted input (e.g., __proto__ or constructor.prototype) to add unexpected properties to all objects in the application.",
+      explanation: "Prototype pollution occurs when an attacker can inject properties into JavaScript's Object.prototype. Vulnerable functions like Lodash merge/set or jQuery.extend with deep merging can be exploited via crafted input (e.g., __proto__ or constructor.prototype) to add unexpected properties to all objects in the application.",
       fixSteps: [
+        "Update vulnerable libraries: Lodash to 4.17.12+, jQuery to 3.4.0+.",
         "Use Object.create(null) for dictionary objects instead of plain objects.",
         "Sanitize user input to reject __proto__, constructor, and prototype keys.",
         "Use Map instead of plain objects for user-controlled key-value data.",
-        "Update vulnerable libraries (lodash < 4.17.12, jQuery < 3.4.0).",
+        "Avoid using deep merge/extend functions with untrusted input.",
       ],
       codeExamples: [
         { label: "Safe merge", language: "javascript", code: `// BAD - vulnerable to pollution\nfunction merge(target, source) {\n  for (const key in source) {\n    target[key] = source[key]; // __proto__ can be injected\n  }\n}\n\n// GOOD - filter dangerous keys\nfunction safeMerge(target, source) {\n  for (const key of Object.keys(source)) {\n    if (key === '__proto__' || key === 'constructor' || key === 'prototype') continue;\n    target[key] = source[key];\n  }\n}` },
+        { label: "Use Object.create(null)", language: "javascript", code: `// BAD - inherits from Object.prototype\nconst data = {};\ndata[userInput] = value;\n\n// GOOD - no prototype chain\nconst data = Object.create(null);\ndata[userInput] = value;` },
       ],
     }
   }
@@ -2614,6 +2653,404 @@ const checkExposedErrorMessages: CheckFn = (_url, _headers, body) => {
   }
 }
 
+// ── NEW: SQL Injection Pattern Detection ──
+const checkSQLInjectionPatterns: CheckFn = (_url, _headers, body) => {
+  // Look for actual SQL error messages or query patterns in the HTML
+  const sqlErrors = [
+    /SQL syntax.*MySQL/i,
+    /Warning.*mysql_/i,
+    /valid MySQL result/i,
+    /MySqlClient\./i,
+    /PostgreSQL.*ERROR/i,
+    /Warning.*pg_/i,
+    /valid PostgreSQL result/i,
+    /Microsoft SQL Server/i,
+    /ODBC.*SQL Server/i,
+    /SQLServer JDBC Driver/i,
+    /ORA-\d{5}/i,
+    /Oracle error/i,
+    /SQLite3::/i,
+  ]
+
+  const foundErrors: string[] = []
+  for (const pattern of sqlErrors) {
+    if (pattern.test(body)) {
+      foundErrors.push(pattern.source)
+      if (foundErrors.length >= 3) break
+    }
+  }
+
+  if (foundErrors.length > 0) {
+    return {
+      id: generateId(),
+      title: "SQL Database Error Messages Exposed",
+      severity: "high",
+      category: "information-disclosure",
+      description: "Database error messages are visible in the page, revealing database type and potentially query structure.",
+      evidence: `Found ${foundErrors.length} SQL error pattern(s) in page content`,
+      riskImpact: "SQL error messages reveal database type, version, schema details, and query structure, making SQL injection attacks significantly easier to execute.",
+      explanation: "Exposed SQL errors indicate the application may be vulnerable to SQL injection and is definitely leaking sensitive infrastructure details. Attackers use these messages to map the database structure and craft injection payloads.",
+      fixSteps: [
+        "Implement proper error handling that catches database exceptions.",
+        "Never display raw database errors to end users.",
+        "Use parameterized queries/prepared statements for all database operations.",
+        "Enable database error logging server-side only.",
+        "Implement input validation and sanitization.",
+      ],
+      codeExamples: [
+        { label: "Parameterized query", language: "typescript", code: `// BAD - vulnerable\nconst query = \`SELECT * FROM users WHERE id = \${userId}\`;\n\n// GOOD - parameterized\nconst query = 'SELECT * FROM users WHERE id = ?';\nconst result = await db.query(query, [userId]);` },
+      ],
+    }
+  }
+  return null
+}
+
+// ── NEW: Command Injection Hints ──
+const checkCommandInjectionHints: CheckFn = (_url, _headers, body) => {
+  const commandPatterns = [
+    /exec\s*\(\s*["'`]\$\{/gi,
+    /child_process\.exec\s*\(/gi,
+    /Runtime\.getRuntime\(\)\.exec/gi,
+    /os\.system\s*\(/gi,
+    /subprocess\.(?:call|check_output|run)\s*\(/gi,
+  ]
+
+  const matches: string[] = []
+  for (const pattern of commandPatterns) {
+    const found = body.match(pattern)
+    if (found) matches.push(...found.slice(0, 2))
+  }
+
+  if (matches.length > 0) {
+    return {
+      id: generateId(),
+      title: "Potential Command Injection Vectors",
+      severity: "high",
+      category: "content",
+      description: "Found code patterns that execute system commands, which could be vulnerable to command injection if user input is involved.",
+      evidence: `Found ${matches.length} command execution pattern(s): ${matches.slice(0, 2).join(", ")}`,
+      riskImpact: "Command injection allows attackers to execute arbitrary system commands on the server, potentially leading to full server compromise.",
+      explanation: "Executing system commands with user-controlled input is extremely dangerous. Even with sanitization, command injection is difficult to prevent. Use language-native APIs instead of shell commands whenever possible.",
+      fixSteps: [
+        "Never pass user input directly to system command execution functions.",
+        "Use language-native APIs instead of shell commands (e.g., use file APIs instead of 'rm').",
+        "If shell commands are absolutely necessary, use parameterized execution with strict input validation.",
+        "Run application processes with minimal privileges.",
+      ],
+      codeExamples: [
+        { label: "Safe alternative", language: "typescript", code: `// BAD - command injection\nexec(\`rm \${userFile}\`);\n\n// GOOD - use native APIs\nimport { unlink } from 'fs/promises';\nawait unlink(sanitizedPath);` },
+      ],
+    }
+  }
+  return null
+}
+
+// ── NEW: XML External Entity (XXE) Hints ──
+const checkXXEVulnerabilityHints: CheckFn = (_url, _headers, body) => {
+  const xxePatterns = [
+    /<!ENTITY.*SYSTEM/gi,
+    /<!DOCTYPE.*SYSTEM/gi,
+    /DOMParser\(\)\.parseFromString/gi,
+    /XMLHttpRequest.*responseXML/gi,
+  ]
+
+  const matches: string[] = []
+  for (const pattern of xxePatterns) {
+    const found = body.match(pattern)
+    if (found) matches.push(...found.slice(0, 2))
+  }
+
+  if (matches.length > 0) {
+    return {
+      id: generateId(),
+      title: "Potential XML External Entity (XXE) Processing",
+      severity: "high",
+      category: "content",
+      description: "Found XML parsing operations that may be vulnerable to XXE attacks if external entities are not disabled.",
+      evidence: `Found ${matches.length} XML processing pattern(s)`,
+      riskImpact: "XXE attacks can lead to file disclosure, SSRF, denial of service, and in some cases, remote code execution.",
+      explanation: "XML parsers that process external entities can be exploited to read local files, make internal network requests, or cause denial of service. External entity processing should be disabled.",
+      fixSteps: [
+        "Disable external entity processing in all XML parsers.",
+        "Use JSON instead of XML for data interchange when possible.",
+        "Validate and sanitize all XML input.",
+        "Keep XML parsing libraries up to date.",
+      ],
+      codeExamples: [
+        { label: "Safe XML parsing", language: "javascript", code: `// Disable external entities\nconst parser = new DOMParser();\nparser.setFeature("http://xml.org/sax/features/external-general-entities", false);\nparser.setFeature("http://xml.org/sax/features/external-parameter-entities", false);` },
+      ],
+    }
+  }
+  return null
+}
+
+// ── NEW: Server-Side Request Forgery (SSRF) Hints ──
+const checkSSRFVulnerabilityHints: CheckFn = (_url, _headers, body) => {
+  // Look for fetch/request patterns with user-controlled URLs
+  const ssrfPatterns = [
+    /fetch\s*\(\s*(?:params|query|request|url|req\.body)\./gi,
+    /axios\.get\s*\(\s*(?:params|query|request)\./gi,
+    /https?\.get\s*\(\s*(?:params|query)\./gi,
+  ]
+
+  const matches: string[] = []
+  for (const pattern of ssrfPatterns) {
+    const found = body.match(pattern)
+    if (found) matches.push(...found.slice(0, 2))
+  }
+
+  if (matches.length > 0) {
+    return {
+      id: generateId(),
+      title: "Potential Server-Side Request Forgery (SSRF) Vectors",
+      severity: "high",
+      category: "content",
+      description: "Found patterns where user-controlled input may be used in server-side HTTP requests, potentially enabling SSRF attacks.",
+      evidence: `Found ${matches.length} suspicious request pattern(s)`,
+      riskImpact: "SSRF allows attackers to make the server send requests to internal resources, potentially accessing internal APIs, cloud metadata services, or internal networks.",
+      explanation: "SSRF occurs when an application fetches a remote resource without validating the user-supplied URL. Attackers can abuse this to access internal services (like http://169.254.169.254 for cloud metadata), scan internal networks, or bypass firewalls.",
+      fixSteps: [
+        "Validate all URLs against an allowlist of permitted domains and protocols.",
+        "Block requests to private IP ranges (RFC 1918, 127.0.0.0/8, 169.254.0.0/16).",
+        "Disable redirects or validate redirect destinations.",
+        "Use DNS resolution allowlists and block resolution of internal domains.",
+      ],
+      codeExamples: [
+        { label: "SSRF prevention", language: "typescript", code: `const ALLOWED_HOSTS = ['api.example.com'];\nconst url = new URL(userUrl);\nif (!ALLOWED_HOSTS.includes(url.hostname) || \n    url.hostname.match(/^(10\\.|172\\.(1[6-9]|2\\d|3[01])\\.|192\\.168\\.|127\\.)/)) {\n  throw new Error('Invalid URL');\n}` },
+      ],
+    }
+  }
+  return null
+}
+
+// ── NEW: Path Traversal Vulnerability Hints ──
+const checkPathTraversalHints: CheckFn = (_url, _headers, body) => {
+  const traversalPatterns = [
+    /(?:readFile|fs\.read|File\s*\()\s*\([^)]*(?:params|query|request|body)\./gi,
+    /(?:path\.join|path\.resolve)\s*\([^)]*(?:req\.query|req\.params|request\.)/gi,
+  ]
+
+  const matches: string[] = []
+  for (const pattern of traversalPatterns) {
+    const found = body.match(pattern)
+    if (found) matches.push(...found.slice(0, 2))
+  }
+
+  if (matches.length > 0) {
+    return {
+      id: generateId(),
+      title: "Potential Path Traversal Vulnerability",
+      severity: "high",
+      category: "content",
+      description: "Found file operations with user-controlled paths that could allow directory traversal attacks.",
+      evidence: `Found ${matches.length} suspicious file operation(s)`,
+      riskImpact: "Path traversal allows attackers to read arbitrary files on the server, potentially accessing configuration files, source code, or sensitive data.",
+      explanation: "Path traversal vulnerabilities occur when user input is used to construct file paths without proper validation. Attackers use sequences like '../' to navigate to parent directories and access files outside the intended directory.",
+      fixSteps: [
+        "Never use user input directly in file paths.",
+        "Validate that the resolved path is within the expected directory.",
+        "Use an allowlist of permitted files instead of accepting user-supplied names.",
+        "Reject any input containing '..' or absolute path indicators.",
+      ],
+      codeExamples: [
+        { label: "Safe path handling", language: "typescript", code: `import path from 'path';\nconst baseDir = '/var/app/uploads';\nconst safePath = path.resolve(baseDir, userInput);\nif (!safePath.startsWith(baseDir)) {\n  throw new Error('Invalid path');\n}` },
+      ],
+    }
+  }
+  return null
+}
+
+// ── NEW: Insecure Authentication Mechanisms ──
+const checkInsecureAuthMechanisms: CheckFn = (_url, headers, body) => {
+  const issues: string[] = []
+
+  // Check for basic auth (highly insecure over HTTP, weak even over HTTPS)
+  const authHeader = headers.get("www-authenticate")
+  if (authHeader?.toLowerCase().includes("basic")) {
+    issues.push("HTTP Basic Authentication detected (credentials sent as base64)")
+  }
+
+  // Check for weak session handling
+  const setCookie = headers.get("set-cookie")
+  if (setCookie) {
+    if (/sessionid=|session=|phpsessid=/i.test(setCookie)) {
+      if (!setCookie.includes("HttpOnly")) issues.push("Session cookie missing HttpOnly flag")
+      if (!setCookie.includes("Secure")) issues.push("Session cookie missing Secure flag")
+      if (!setCookie.includes("SameSite")) issues.push("Session cookie missing SameSite attribute")
+    }
+  }
+
+  // Check for auth tokens in URLs
+  if (/[?&](auth|token|api_key|apikey|session)=[a-zA-Z0-9_-]{20,}/i.test(body)) {
+    issues.push("Authentication tokens appear in URLs (should use headers or cookies instead)")
+  }
+
+  if (issues.length > 0) {
+    return {
+      id: generateId(),
+      title: "Insecure Authentication Mechanisms Detected",
+      severity: "high",
+      category: "headers",
+      description: `Found ${issues.length} authentication security issue(s) that could compromise user sessions or credentials.`,
+      evidence: issues.join("; "),
+      riskImpact: "Weak authentication mechanisms allow attackers to steal credentials, hijack sessions, or bypass authentication entirely.",
+      explanation: "Secure authentication requires proper cookie flags (HttpOnly, Secure, SameSite), token handling in headers (not URLs), and avoiding Basic authentication. Session cookies without proper flags can be stolen via XSS or transmitted insecurely.",
+      fixSteps: [
+        "Use secure session cookies with HttpOnly, Secure, and SameSite=Strict flags.",
+        "Never pass authentication tokens in URLs (use Authorization header instead).",
+        "Replace HTTP Basic Auth with token-based authentication or OAuth.",
+        "Implement proper session management with secure, random session IDs.",
+      ],
+      codeExamples: [
+        { label: "Secure cookie", language: "typescript", code: `// Set secure session cookie\nresponse.headers.set('Set-Cookie', \n  'sessionId=\${token}; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=3600'\n);` },
+      ],
+    }
+  }
+  return null
+}
+
+// ── NEW: Insecure Deserialization Hints ──
+const checkInsecureDeserializationHints: CheckFn = (_url, _headers, body) => {
+  const deserializePatterns = [
+    /JSON\.parse\s*\(\s*(?:req\.body|params|query)/gi,
+    /pickle\.loads/gi,
+    /unserialize\s*\(/gi,
+    /ObjectInputStream/gi,
+    /yaml\.load\s*\(/gi,
+  ]
+
+  const matches: string[] = []
+  for (const pattern of deserializePatterns) {
+    const found = body.match(pattern)
+    if (found) matches.push(...found.slice(0, 2))
+  }
+
+  if (matches.length > 0) {
+    return {
+      id: generateId(),
+      title: "Potential Insecure Deserialization",
+      severity: "high",
+      category: "content",
+      description: "Found deserialization operations on potentially untrusted data, which can lead to remote code execution.",
+      evidence: `Found ${matches.length} deserialization pattern(s)`,
+      riskImpact: "Insecure deserialization can allow attackers to execute arbitrary code, manipulate application logic, or perform denial of service attacks.",
+      explanation: "Deserializing untrusted data can be exploited to instantiate arbitrary objects, execute code, or manipulate application state. Many programming languages have unsafe deserialization mechanisms that should never be used with untrusted input.",
+      fixSteps: [
+        "Only deserialize data from trusted sources.",
+        "Use safe data formats like JSON instead of language-specific serialization.",
+        "Implement integrity checks (signatures/HMACs) on serialized data.",
+        "Use allowlists for deserializable classes if language-specific serialization is required.",
+      ],
+      codeExamples: [
+        { label: "Safe JSON parsing", language: "typescript", code: `// Validate before parsing\nconst schema = z.object({ id: z.number(), name: z.string() });\ntry {\n  const data = schema.parse(JSON.parse(input));\n} catch {\n  throw new Error('Invalid input');\n}` },
+      ],
+    }
+  }
+  return null
+}
+
+// ── NEW: Missing Rate Limiting Indicators ──
+const checkRateLimitingIndicators: CheckFn = (_url, headers, body) => {
+  // Check if the page has rate limiting headers
+  const rateLimitHeaders = [
+    "x-ratelimit-limit",
+    "x-rate-limit-limit",
+    "ratelimit-limit",
+    "retry-after",
+    "x-ratelimit-remaining",
+  ]
+
+  const hasRateLimiting = rateLimitHeaders.some(header => headers.has(header))
+
+  // Check for login/API endpoints that should have rate limiting
+  const sensitivePatterns = [
+    /<form[^>]*action=["'][^"']*(?:login|signin|auth|api)[^"']*["']/gi,
+    /fetch\s*\(\s*["'][^"']*\/api\//gi,
+    /<input[^>]*type=["']password["']/gi,
+  ]
+
+  const hasSensitiveEndpoints = sensitivePatterns.some(pattern => pattern.test(body))
+
+  if (!hasRateLimiting && hasSensitiveEndpoints) {
+    return {
+      id: generateId(),
+      title: "No Rate Limiting Headers Detected",
+      severity: "medium",
+      category: "headers",
+      description: "The application appears to have sensitive endpoints (login/API) but no rate limiting headers are present.",
+      evidence: "No rate limiting headers found (X-RateLimit-*, RateLimit-*, or Retry-After)",
+      riskImpact: "Without rate limiting, attackers can perform brute force attacks, credential stuffing, API abuse, and denial of service attacks.",
+      explanation: "Rate limiting is essential for protecting authentication endpoints, APIs, and other sensitive operations from automated abuse. Exposing rate limiting information via headers also helps legitimate clients handle throttling gracefully.",
+      fixSteps: [
+        "Implement rate limiting on all authentication endpoints.",
+        "Add rate limiting to public APIs to prevent abuse.",
+        "Return standard rate limit headers (X-RateLimit-Limit, X-RateLimit-Remaining, etc.).",
+        "Use sliding windows or token bucket algorithms for accurate rate limiting.",
+      ],
+      codeExamples: [
+        { label: "Rate limiting", language: "typescript", code: `// Example with middleware\nimport rateLimit from 'express-rate-limit';\n\nconst limiter = rateLimit({\n  windowMs: 15 * 60 * 1000, // 15 minutes\n  max: 100, // limit each IP to 100 requests per windowMs\n  standardHeaders: true, // Return rate limit info in headers\n});` },
+      ],
+    }
+  }
+  return null
+}
+
+// ── NEW: GraphQL Introspection Exposed ──
+const checkGraphQLIntrospection: CheckFn = (_url, _headers, body) => {
+  // Check if GraphQL endpoint exposes introspection
+  if (body.includes("__schema") || body.includes("__type") || body.includes("GraphiQL")) {
+    return {
+      id: generateId(),
+      title: "GraphQL Introspection Enabled in Production",
+      severity: "medium",
+      category: "information-disclosure",
+      description: "GraphQL introspection is enabled, exposing the entire API schema to potential attackers.",
+      evidence: "Found GraphQL introspection queries (__schema, __type) or GraphiQL interface",
+      riskImpact: "Attackers can discover all available queries, mutations, types, and fields, making it easier to find and exploit vulnerabilities.",
+      explanation: "GraphQL introspection is useful for development but should be disabled in production. It reveals the complete API structure, including potentially sensitive or internal operations.",
+      fixSteps: [
+        "Disable introspection in production GraphQL servers.",
+        "Use environment variables to conditionally enable introspection only in development.",
+        "Implement proper authentication before allowing any introspection queries.",
+        "Consider using persisted queries in production to prevent arbitrary query execution.",
+      ],
+      codeExamples: [
+        { label: "Disable introspection", language: "typescript", code: `// Apollo Server\nconst server = new ApolloServer({\n  typeDefs,\n  resolvers,\n  introspection: process.env.NODE_ENV !== 'production',\n  playground: process.env.NODE_ENV !== 'production',\n});` },
+      ],
+    }
+  }
+  return null
+}
+
+// ── NEW: Clickjacking via Missing CSP frame-ancestors ──
+const checkCSPFrameAncestors: CheckFn = (_url, headers) => {
+  const csp = headers.get("content-security-policy")
+  const xFrame = headers.get("x-frame-options")
+
+  // Check if neither CSP frame-ancestors nor X-Frame-Options is present
+  if ((!csp || !csp.includes("frame-ancestors")) && !xFrame) {
+    return {
+      id: generateId(),
+      title: "Missing Clickjacking Protection",
+      severity: "medium",
+      category: "headers",
+      description: "Neither CSP frame-ancestors nor X-Frame-Options header is present, leaving the site vulnerable to clickjacking attacks.",
+      evidence: "No frame-ancestors directive in CSP and no X-Frame-Options header",
+      riskImpact: "Attackers can embed your site in an iframe and trick users into clicking on hidden elements, potentially performing unintended actions.",
+      explanation: "Clickjacking attacks overlay transparent iframes over legitimate websites to trick users into clicking on malicious content. The CSP frame-ancestors directive or X-Frame-Options header prevents your site from being framed.",
+      fixSteps: [
+        "Add CSP frame-ancestors directive: frame-ancestors 'none' or frame-ancestors 'self'.",
+        "Or add X-Frame-Options: DENY or X-Frame-Options: SAMEORIGIN.",
+        "CSP frame-ancestors is preferred as it offers more granular control.",
+      ],
+      codeExamples: [
+        { label: "CSP frame-ancestors", language: "text", code: `Content-Security-Policy: frame-ancestors 'none';` },
+      ],
+    }
+  }
+  return null
+}
+
 export const allChecks: CheckFn[] = [
   checkStrictTransportSecurity,
   checkContentSecurityPolicy,
@@ -2680,4 +3117,15 @@ export const allChecks: CheckFn[] = [
   checkDNSPrefetchControl,
   checkPasswordFieldsWithoutPaste,
   checkExposedErrorMessages,
+  // New comprehensive security checks
+  checkSQLInjectionPatterns,
+  checkCommandInjectionHints,
+  checkXXEVulnerabilityHints,
+  checkSSRFVulnerabilityHints,
+  checkPathTraversalHints,
+  checkInsecureAuthMechanisms,
+  checkInsecureDeserializationHints,
+  checkRateLimitingIndicators,
+  checkGraphQLIntrospection,
+  checkCSPFrameAncestors,
 ]

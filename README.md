@@ -1,14 +1,18 @@
 # VulnRadar - Web Vulnerability Scanner
 
-VulnRadar is a full-stack web vulnerability scanner built with Next.js 15, React 19, and PostgreSQL. Scan any public URL for 65+ security checks covering HTTP headers, SSL/TLS configuration, content security policies, cookies, server disclosure, DNS, and more.
+VulnRadar is a full-stack web vulnerability scanner built with Next.js 15, React 19, and PostgreSQL. Scan any public URL for **75+ security checks** covering HTTP headers, SSL/TLS configuration, content security policies, cookies, injection vulnerabilities, authentication issues, and more.
+
+**Version 1.2.0** - Latest release with comprehensive OWASP Top 10 coverage and intelligent false-positive reduction.
 
 ---
 
 ## Features
 
 **Scanning**
-- 65+ automated security checks across headers, SSL, CSP, cookies, DNS, and more
+- **75+ automated security checks** including SQL injection, command injection, XXE, SSRF, path traversal, and more
+- Framework-aware detection (Next.js, React, Vue, Angular) with intelligent false-positive filtering
 - Severity ratings (Critical, High, Medium, Low, Info) with actionable fix guidance
+- Safety rating indicator (Safe to View / View with Caution / Not Safe to View)
 - Bulk scanning -- scan up to 10 URLs at once
 - Scheduled scans on daily, weekly, or monthly intervals
 - Scan comparison -- side-by-side diff of two scan results over time
@@ -75,6 +79,8 @@ VulnRadar is a full-stack web vulnerability scanner built with Next.js 15, React
 
 ## Getting Started
 
+> **📋 Quick Setup:** See [SETUP.md](SETUP.md) for a step-by-step checklist with all required services and configurations.
+
 ### 1. Clone the repository
 
 ```bash
@@ -117,39 +123,77 @@ Use the connection string provided by your hosting provider.
 
 ### 4. Configure environment variables
 
-Create a `.env.local` file in the project root:
+Copy the example environment file and configure it:
+
+```bash
+cp .env.example .env.local
+```
+
+Then edit `.env.local` with your actual values:
 
 ```env
+# Database
 DATABASE_URL=postgresql://vulnradar:yourpassword@localhost:5432/vulnradar
 DATABASE_SSL=false
+
+# SMTP - No-Reply (password resets, team invites, scan alerts)
+SMTP_HOST=smtp.protonmail.ch
+SMTP_PORT=587
+SMTP_USER=noreply@yourdomain.com
+SMTP_PASS=your-smtp-password
+SMTP_FROM=noreply@yourdomain.com
+
+# Contact Form
+CONTACT_EMAIL=support@yourdomain.com
+
+# Turnstile (Cloudflare CAPTCHA)
+TURNSTILE_SITE_KEY=your-turnstile-site-key
+TURNSTILE_SECRET_KEY=your-turnstile-secret-key
 ```
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `DATABASE_URL` | Yes | PostgreSQL connection string |
-| `DATABASE_SSL` | No | Set to `true` if your database requires SSL (e.g., most hosted providers). Defaults to `false`. |
-| `SMTP_HOST` | Yes | SMTP server hostname (e.g., `smtp.protonmail.ch`) |
-| `SMTP_PORT` | No | SMTP port. Defaults to `587`. |
-| `SMTP_USER` | Yes | SMTP username for the noreply account |
-| `SMTP_PASS` | Yes | SMTP password / app token for the noreply account |
-| `SMTP_FROM` | No | Sender address. Defaults to `SMTP_USER`. (e.g., `noreply@vulnradar.dev`) |
-| `SMTP_SUPPORT_USER` | No | SMTP username for support email (used for future contact form) |
-| `SMTP_SUPPORT_PASS` | No | SMTP password / app token for the support account |
-| `SMTP_SUPPORT_FROM` | No | Support sender address. Defaults to `SMTP_SUPPORT_USER`. |
-| `NEXT_PUBLIC_APP_URL` | No | Public URL of your app. Defaults to `https://vulnradar.dev`. Used in email links. |
+| **Database** | | |
+| `DATABASE_URL` | ✅ Yes | PostgreSQL connection string in format: `postgresql://user:password@host:port/database` |
+| `DATABASE_SSL` | No | Set to `true` if your database requires SSL (e.g., hosted providers like Neon, Supabase). Defaults to `false`. |
+| **Email (SMTP)** | | |
+| `SMTP_HOST` | ✅ Yes | SMTP server hostname (e.g., `smtp.protonmail.ch`, `smtp.gmail.com`, `smtp.sendgrid.net`) |
+| `SMTP_PORT` | No | SMTP port. Use `587` for TLS (recommended) or `465` for SSL. Defaults to `587`. |
+| `SMTP_USER` | ✅ Yes | SMTP username/email for sending automated emails (password resets, team invites, alerts) |
+| `SMTP_PASS` | ✅ Yes | SMTP password or app-specific token. For ProtonMail, use Bridge password or app password. |
+| `SMTP_FROM` | ✅ Yes | Email address shown as sender for automated emails (e.g., `noreply@yourdomain.com`) |
+| **Contact Form** | | |
+| `CONTACT_EMAIL` | ✅ Yes | Email address where contact form submissions are sent (e.g., `support@yourdomain.com`) |
+| **Cloudflare Turnstile** | | |
+| `TURNSTILE_SITE_KEY` | ✅ Yes | Cloudflare Turnstile site key (public). Get from [Cloudflare Dashboard](https://dash.cloudflare.com/?to=/:account/turnstile) |
+| `TURNSTILE_SECRET_KEY` | ✅ Yes | Cloudflare Turnstile secret key (private). Get from Cloudflare Dashboard. |
+| **Optional** | | |
+| `NEXT_PUBLIC_APP_URL` | No | Public URL of your app (e.g., `https://vulnradar.dev`). Used in email links. Defaults to production URL. |
 
-### Email Addresses
+### Email Configuration
 
-VulnRadar uses the following email addresses:
+VulnRadar sends emails for:
+- **Password Resets** - Secure token-based password recovery
+- **Team Invitations** - Invite users to join your team
+- **Scan Alerts** - Scheduled scan notifications (future feature)
 
-| Address | Purpose |
-|---------|---------|
-| `noreply@vulnradar.dev` | Automated emails (password resets, team invites, scan alerts) |
-| `support@vulnradar.dev` | User support and general inquiries |
-| `security@vulnradar.dev` | Security vulnerability reports (referenced in `security.txt`) |
-| `legal@vulnradar.dev` | Legal inquiries (referenced on legal pages) |
+**Recommended SMTP Providers:**
+- [ProtonMail](https://proton.me/mail) - Privacy-focused, requires Bridge or app password
+- [SendGrid](https://sendgrid.com/) - Free tier: 100 emails/day
+- [Mailgun](https://www.mailgun.com/) - Free tier: 5,000 emails/month
+- [Gmail](https://mail.google.com/) - Use app passwords (2FA required)
 
-Only `noreply@` and `support@` need SMTP credentials. The others are receive-only.
+### Cloudflare Turnstile Setup
+
+Turnstile is Cloudflare's privacy-friendly CAPTCHA alternative, used on the contact form to prevent spam.
+
+1. Go to [Cloudflare Turnstile](https://dash.cloudflare.com/?to=/:account/turnstile)
+2. Create a new site
+3. Choose **"Managed"** challenge mode
+4. Copy the **Site Key** → `TURNSTILE_SITE_KEY`
+5. Copy the **Secret Key** → `TURNSTILE_SECRET_KEY`
+
+**Free forever** - No credit card required.
 
 > **Note:** The database schema is created automatically on first startup via the instrumentation hook. No manual migrations needed.
 
@@ -199,7 +243,7 @@ vulnradar/
 │   ├── scanner/                # Scanner-specific components (header, footer, results)
 │   └── ui/                     # shadcn/ui components
 ├── lib/
-│   ├── scanner/                # Scan engine (65+ security checks)
+│   ├── scanner/                # Scan engine (75+ security checks)
 │   │   ├── checks.ts           # All security check implementations
 │   │   └── types.ts            # TypeScript types for scan results
 │   ├── db.ts                   # PostgreSQL connection pool
@@ -296,29 +340,105 @@ VulnRadar ships with hardened security headers configured in both `next.config.m
 
 ## Troubleshooting
 
+### Database connection issues
+
+**Problem:** Can't connect to PostgreSQL
+
+**Solutions:**
+- Verify your `DATABASE_URL` format: `postgresql://user:password@host:port/database`
+- Check the database is running: `psql -U vulnradar -d vulnradar` (local) or test connection with your database client
+- For hosted databases (Neon, Supabase, Railway), set `DATABASE_SSL=true`
+- Check firewall rules allow connections from your IP address
+- Verify the database user has sufficient permissions
+
+**Problem:** "Database schema not initialized" 
+
+**Solution:** The schema is auto-created on first startup. If it fails:
+1. Check the logs for errors
+2. Manually run the schema from `instrumentation.ts` or use a database client
+3. Ensure the database user has `CREATE TABLE` permissions
+
+### Email (SMTP) issues
+
+**Problem:** Emails not sending / "Failed to send email"
+
+**Solutions:**
+- **ProtonMail:** Must use ProtonMail Bridge or generate an app-specific password
+- **Gmail:** Enable "2-Step Verification" then create an [App Password](https://myaccount.google.com/apppasswords)
+- **SMTP credentials:** Verify `SMTP_USER` and `SMTP_PASS` are correct
+- **Port:** Use `587` (TLS) not `465` (SSL) for most providers
+- **Firewall:** Some networks block port 587 - test with `telnet smtp.protonmail.ch 587`
+
+**Problem:** Contact form submissions fail
+
+**Solution:** Verify `CONTACT_EMAIL` is set to a valid email address where you want to receive messages
+
+### Turnstile (CAPTCHA) issues
+
+**Problem:** Turnstile widget doesn't appear on contact form
+
+**Solutions:**
+- Verify `TURNSTILE_SITE_KEY` and `TURNSTILE_SECRET_KEY` are set in `.env.local`
+- Check Cloudflare Dashboard that the site key is for the correct domain
+- For localhost testing, add `localhost` to allowed domains in Turnstile settings
+- Clear browser cache and hard refresh (Ctrl+Shift+R / Cmd+Shift+R)
+
+**Problem:** "Turnstile verification failed"
+
+**Solutions:**
+- Check `TURNSTILE_SECRET_KEY` matches the site in Cloudflare Dashboard
+- Verify the domain in Turnstile settings matches your deployment URL
+- Try switching challenge mode from "Managed" to "Non-Interactive" in Cloudflare
+
+### Environment variables not loading
+
+**Problem:** App can't find environment variables
+
+**Solutions:**
+- Ensure file is named `.env.local` (not `.env` or `.env.development`)
+- Restart the dev server after changing `.env.local`
+- Variables starting with `NEXT_PUBLIC_` are exposed to the browser; others are server-only
+- For Vercel deployments, add variables in the dashboard (Settings → Environment Variables)
+
 ### Windows: Turbopack junction point error
 
-Next.js 15 uses Webpack by default, so this shouldn't occur. If you see Turbopack errors, ensure your `package.json` scripts are:
+Next.js 15 uses Webpack by default, so this shouldn't occur. If you see Turbopack errors:
+
 ```json
+// package.json - ensure these scripts:
 "dev": "next dev",
 "build": "next build"
 ```
 
-If you previously ran Next.js 16 with Turbopack and have corrupted symlinks, delete `node_modules`, `.next`, and any broken files, then reinstall:
+If you have corrupted symlinks from Next.js 16+:
 ```powershell
 Remove-Item -Recurse -Force node_modules, .next
 npm install
 ```
 
-### Database connection issues
-
-- Verify your `DATABASE_URL` is correct and the database is running
-- For hosted databases, set `DATABASE_SSL=true`
-- Check that your IP is allowed in the database firewall rules
-
 ### `instrumentationHook` warning
 
 If you see "Unrecognized key: instrumentationHook", remove it from `next.config.mjs`. Next.js 15.3+ auto-detects `instrumentation.ts` without this config key.
+
+### Admin access
+
+**Problem:** Can't access `/admin` dashboard
+
+**Solution:** Connect to your database and run:
+```sql
+UPDATE users SET is_admin = true WHERE email = 'your@email.com';
+```
+
+Then log out and log back in.
+
+### Build errors
+
+**Problem:** TypeScript compilation errors
+
+**Solutions:**
+- Run `npm install` to ensure all dependencies are installed
+- Delete `.next` folder and rebuild: `rm -rf .next && npm run build`
+- Check Node.js version: `node --version` (must be 18.17+)
 
 ---
 
