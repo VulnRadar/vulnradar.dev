@@ -320,14 +320,14 @@ export default function TeamsPage() {
                         <p className="text-sm font-medium text-foreground truncate">{m.name || "Unnamed"}</p>
                         <p className="text-xs text-muted-foreground truncate">{m.email}</p>
                       </div>
-                      <span className={cn("inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full border", ROLE_COLORS[m.role])}>
-                        <Icon className="h-3 w-3" />{m.role}
-                      </span>
                       <Button variant="ghost" size="sm" className="h-8 px-2 text-muted-foreground hover:text-foreground gap-1" onClick={() => handleViewMemberScans(m)}>
                         <Eye className="h-3.5 w-3.5" />
                         <span className="text-xs">View Scans</span>
                         <ChevronRight className="h-3 w-3" />
                       </Button>
+                      <span className={cn("inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full border", ROLE_COLORS[m.role])}>
+                        <Icon className="h-3 w-3" />{m.role}
+                      </span>
                       {canManage && m.role !== "owner" && (
                         <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive" onClick={() => handleRemoveMember(m.user_id)}>
                           <X className="h-3.5 w-3.5" />
