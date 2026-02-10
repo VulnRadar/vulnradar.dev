@@ -14,7 +14,7 @@ export const metadata: Metadata = {
     default: 'VulnRadar - Web Vulnerability Scanner',
     template: '%s | VulnRadar'
   },
-  description: 'Scan websites for 65+ security vulnerabilities. Get instant reports with severity ratings, actionable fix guidance, and team collaboration tools.',
+  description: 'Scan websites for 75+ security vulnerabilities. Get instant reports with severity ratings, actionable fix guidance, and team collaboration tools.',
   applicationName: 'VulnRadar',
   keywords: ['vulnerability scanner', 'security scanner', 'web security', 'penetration testing', 'security audit', 'website scanner'],
   authors: [{ name: 'VulnRadar' }],
@@ -27,7 +27,7 @@ export const metadata: Metadata = {
   },
   openGraph: {
     title: 'VulnRadar - Web Vulnerability Scanner',
-    description: 'Scan websites for 65+ security vulnerabilities. Get instant reports with severity ratings, actionable fix guidance, and team collaboration tools.',
+    description: 'Scan websites for 75+ security vulnerabilities. Get instant reports with severity ratings, actionable fix guidance, and team collaboration tools.',
     siteName: 'VulnRadar',
     type: 'website',
     url: 'https://vulnradar.dev',
@@ -36,7 +36,7 @@ export const metadata: Metadata = {
   twitter: {
     card: 'summary_large_image',
     title: 'VulnRadar - Web Vulnerability Scanner',
-    description: 'Scan websites for 65+ security vulnerabilities. Get instant reports with severity ratings, actionable fix guidance, and team collaboration tools.',
+    description: 'Scan websites for 75+ security vulnerabilities. Get instant reports with severity ratings, actionable fix guidance, and team collaboration tools.',
     site: '@VulnRadar',
   },
   robots: {

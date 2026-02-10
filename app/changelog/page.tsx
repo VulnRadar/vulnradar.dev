@@ -1,13 +1,57 @@
 import { Header } from "@/components/scanner/header"
 import { Footer } from "@/components/scanner/footer"
-import { Newspaper, Zap, Shield, Users, Tag, List, RefreshCw, Lock, Gauge, MessageSquare, Sparkles, Eye } from "lucide-react"
+import { Newspaper, Zap, Shield, Users, Tag, List, RefreshCw, Lock, Gauge, MessageSquare, Sparkles, Eye, ShieldCheck, Target, Brain, AlertTriangle, Search } from "lucide-react"
 
 const CHANGELOG = [
+  {
+    version: "1.2.0",
+    date: "February 9, 2026",
+    title: "Comprehensive Security Check Expansion",
+    highlights: true,
+    changes: [
+      { icon: Shield, label: "10 New Critical Security Checks", desc: "Added detection for SQL injection patterns, command injection, XXE vulnerabilities, SSRF, path traversal, insecure authentication, deserialization flaws, missing rate limiting, GraphQL introspection, and clickjacking protection gaps." },
+      { icon: AlertTriangle, label: "Stricter Detection Logic", desc: "Dramatically reduced false positives across all checks. Mixed content detection now filters localhost and examples. Email exposure requires 2+ addresses. Open redirect detection identifies actual vulnerable patterns, not just parameter names." },
+      { icon: Search, label: "Enhanced Pattern Matching", desc: "Improved detection of SQL errors (MySQL, PostgreSQL, MSSQL, Oracle, SQLite), command execution (Node.js, Python, Java), and framework-specific patterns. All checks now filter documentation and placeholder code." },
+      { icon: Target, label: "Context-Aware Filtering", desc: "Every check now excludes common false positives: example.com, localhost, placeholder text, HTML comments, and documentation code. Minimum thresholds prevent single-occurrence noise." },
+      { icon: Brain, label: "Smarter Vulnerability Assessment", desc: "New checks identify actual exploitable vulnerabilities (SQL errors visible, insecure auth mechanisms, missing cookie flags) rather than theoretical risks. Focus on real-world attack vectors." },
+    ],
+  },
+  {
+    version: "1.1.4",
+    date: "February 9, 2026",
+    title: "Smart Security Analysis",
+    highlights: false,
+    changes: [
+      { icon: Brain, label: "Framework-Aware Scanning", desc: "Scanner now detects Next.js, React, Vue, and Angular frameworks and recognizes when 'unsafe-inline' or 'unsafe-eval' CSP directives are framework requirements rather than security vulnerabilities. These are now marked as 'info' level instead of 'high'." },
+      { icon: ShieldCheck, label: "Intelligent Safety Rating", desc: "Safety rating now considers actual security threats rather than just counting severity levels. Framework-required directives don't count against the safety score. Sites need multiple high-severity issues or critical vulnerabilities to be marked 'unsafe'." },
+      { icon: Target, label: "Context-Aware Analysis", desc: "Improved threat assessment logic that distinguishes between necessary framework trade-offs and actual exploitable vulnerabilities, providing more accurate security assessments for modern web applications." },
+    ],
+  },
+  {
+    version: "1.1.3",
+    date: "February 9, 2026",
+    title: "Scanner Accuracy Improvements",
+    highlights: false,
+    changes: [
+      { icon: Target, label: "Reduced False Positives", desc: "Improved prototype pollution detection to focus on actual vulnerable library functions (Lodash, jQuery) rather than flagging legitimate framework code patterns." },
+      { icon: Shield, label: "Better Threat Detection", desc: "Enhanced scanning logic now distinguishes between potentially dangerous code patterns and safe framework implementations, providing more accurate security assessments." },
+    ],
+  },
+  {
+    version: "1.1.2",
+    date: "February 9, 2026",
+    title: "Safety Rating Indicator",
+    highlights: false,
+    changes: [
+      { icon: ShieldCheck, label: "Website Safety Rating", desc: "Scan reports now prominently display a safety indicator (Safe to View / View with Caution / Not Safe to View) based on vulnerability severity. This helps non-technical users quickly understand if a website is safe to browse." },
+      { icon: Eye, label: "PDF Report Safety Rating", desc: "Exported PDF reports now include the safety rating section, making it easy to share security assessments with clients and stakeholders." },
+    ],
+  },
   {
     version: "1.1.1",
     date: "February 9, 2026",
     title: "Metadata & Branding Polish",
-    highlights: true,
+    highlights: false,
     changes: [
       { icon: Sparkles, label: "Consistent Social Cards", desc: "All pages now display unified OpenGraph metadata with consistent VulnRadar branding when shared on Discord, Twitter, or other social platforms." },
       { icon: Eye, label: "Unified Page Titles", desc: "Browser tabs now show 'VulnRadar' consistently across all pages for cleaner branding and better recognition." },

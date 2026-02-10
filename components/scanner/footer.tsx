@@ -35,7 +35,7 @@ export function Footer() {
                 Open-source web vulnerability scanner
               </span>
               <span className="inline-flex items-center rounded-md bg-primary/10 text-primary border border-primary/20 px-1.5 py-0.5 text-[10px] font-semibold font-mono">
-                v1.1.0
+                v1.2.0
               </span>
             </div>
 

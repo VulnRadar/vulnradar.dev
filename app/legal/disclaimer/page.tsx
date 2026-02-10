@@ -43,7 +43,7 @@ export default function DisclaimerPage() {
 
       <h2 className="text-lg font-semibold text-foreground mt-8">3. Accuracy of Results</h2>
       <p className="leading-relaxed text-foreground/90">
-        VulnRadar performs 65+ automated vulnerability checks based on publicly observable
+        VulnRadar performs 75+ automated vulnerability checks based on publicly observable
         information (HTTP headers, HTML content, SSL/TLS configuration, JavaScript analysis,
         and more). Results may include:
       </p>
