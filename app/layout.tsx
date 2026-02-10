@@ -34,7 +34,7 @@ export const metadata: Metadata = {
     locale: 'en_US',
   },
   twitter: {
-    card: 'summary',
+    card: 'summary_large_image',
     title: 'VulnRadar - Web Vulnerability Scanner',
     description: 'Scan websites for 65+ security vulnerabilities. Get instant reports with severity ratings, actionable fix guidance, and team collaboration tools.',
     site: '@VulnRadar',
