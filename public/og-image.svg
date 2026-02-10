@@ -1,0 +1,52 @@
+<svg width="1200" height="630" viewBox="0 0 1200 630" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background -->
+  <rect width="1200" height="630" fill="#0b0f14"/>
+
+  <!-- Gradient overlay -->
+  <defs>
+    <linearGradient id="grad1" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#2563eb;stop-opacity:0.2" />
+      <stop offset="100%" style="stop-color:#22d3ee;stop-opacity:0.2" />
+    </linearGradient>
+
+    <!-- Radar animation circles -->
+    <radialGradient id="radarGrad" cx="50%" cy="50%">
+      <stop offset="0%" style="stop-color:#2563eb;stop-opacity:0.3" />
+      <stop offset="100%" style="stop-color:#2563eb;stop-opacity:0" />
+    </radialGradient>
+  </defs>
+
+  <rect width="1200" height="630" fill="url(#grad1)"/>
+
+  <!-- Radar circles -->
+  <circle cx="600" cy="315" r="350" fill="none" stroke="#2563eb" stroke-width="1" opacity="0.1"/>
+  <circle cx="600" cy="315" r="250" fill="none" stroke="#2563eb" stroke-width="1" opacity="0.15"/>
+  <circle cx="600" cy="315" r="150" fill="none" stroke="#2563eb" stroke-width="2" opacity="0.2"/>
+
+  <!-- Radar icon/logo -->
+  <g transform="translate(600, 315)">
+    <circle r="60" fill="#2563eb" opacity="0.2"/>
+    <circle r="40" fill="#2563eb" opacity="0.3"/>
+    <path d="M -20 0 L 20 -35 L 20 35 Z" fill="#2563eb" opacity="0.8"/>
+    <circle r="8" fill="#22d3ee"/>
+  </g>
+
+  <!-- Title -->
+  <text x="600" y="480" font-family="system-ui, -apple-system, sans-serif" font-size="72" font-weight="700" fill="#f8fafc" text-anchor="middle" letter-spacing="1">
+    VulnRadar
+  </text>
+
+  <!-- Subtitle -->
+  <text x="600" y="530" font-family="system-ui, -apple-system, sans-serif" font-size="28" font-weight="400" fill="#94a3b8" text-anchor="middle">
+    Web Vulnerability Scanner
+  </text>
+
+  <!-- Feature badges -->
+  <g transform="translate(300, 580)">
+    <rect x="0" y="0" width="600" height="32" rx="16" fill="#1f2937" opacity="0.6"/>
+    <text x="300" y="21" font-family="system-ui, -apple-system, sans-serif" font-size="14" fill="#e2e8f0" text-anchor="middle" font-weight="500">
+      65+ Security Checks • Instant Reports • Team Collaboration
+    </text>
+  </g>
+</svg>
+

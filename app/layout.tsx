@@ -10,21 +10,42 @@ const _inter = Inter({ subsets: ['latin'], variable: '--font-inter' })
 const _jetbrainsMono = JetBrains_Mono({ subsets: ['latin'], variable: '--font-jetbrains-mono' })
 
 export const metadata: Metadata = {
-  title: 'VulnRadar - Web Vulnerability Scanner',
-  description: 'Scan any website for security vulnerabilities. Get a prioritized list of issues with severity ratings and actionable fix guidance.',
+  title: {
+    default: 'VulnRadar - Web Vulnerability Scanner',
+    template: '%s | VulnRadar'
+  },
+  description: 'Scan websites for 65+ security vulnerabilities. Get instant reports with severity ratings, actionable fix guidance, and team collaboration tools.',
+  applicationName: 'VulnRadar',
+  keywords: ['vulnerability scanner', 'security scanner', 'web security', 'penetration testing', 'security audit', 'website scanner'],
+  authors: [{ name: 'VulnRadar' }],
+  icons: {
+    icon: [
+      { url: '/favicon.ico', sizes: 'any' },
+      { url: '/favicon.png', type: 'image/png' },
+    ],
+    apple: '/favicon.png',
+  },
   openGraph: {
     title: 'VulnRadar - Web Vulnerability Scanner',
-    description: 'Scan any website for 65+ security vulnerabilities. Get severity ratings, actionable fix guidance, and exportable reports.',
+    description: 'Scan websites for 65+ security vulnerabilities. Get instant reports with severity ratings, actionable fix guidance, and team collaboration tools.',
     siteName: 'VulnRadar',
     type: 'website',
+    url: 'https://vulnradar.dev',
+    locale: 'en_US',
   },
   twitter: {
-    card: 'summary_large_image',
+    card: 'summary',
     title: 'VulnRadar - Web Vulnerability Scanner',
-    description: 'Scan any website for 65+ security vulnerabilities. Get severity ratings, actionable fix guidance, and exportable reports.',
+    description: 'Scan websites for 65+ security vulnerabilities. Get instant reports with severity ratings, actionable fix guidance, and team collaboration tools.',
+    site: '@VulnRadar',
+  },
+  robots: {
+    index: true,
+    follow: true,
   },
   other: {
     'security-contact': 'https://vulnradar.dev/.well-known/security.txt',
+    'theme-color': '#2563eb',
   },
   metadataBase: new URL('https://vulnradar.dev'),
 }
