@@ -98,18 +98,21 @@ export function generatePdfReport(result: ScanResult): Uint8Array {
   addText(`Total Findings: ${result.findings.length}`, 10, true)
   addSpacer(10)
 
-  // Safety Rating - filter out framework-related info issues
-  const actualThreats = result.findings.filter((f) =>
-    !f.title.includes("Framework-Required") && !f.title.includes("framework-required")
-  )
-  const criticalCount = actualThreats.filter((f) => f.severity === "critical").length
-  const highCount = actualThreats.filter((f) => f.severity === "high").length
-  const mediumCount = actualThreats.filter((f) => f.severity === "medium").length
+  // Safety Rating - smart categorization by threat type
+  const criticalExploitable = ["Unencrypted HTTP", "SQL Injection", "Command Injection", "Dangerous CORS", "Credentials in URL", "Exposed API Keys", "Exposed Error Messages"]
+  const highActiveVulns = ["XXE Vulnerability", "SSRF Vulnerability", "Path Traversal", "Insecure Deserialization", "Prototype Pollution", "XSS Patterns", "SQL Error", "eval() Usage"]
+  const highConfigIssues = ["Missing HSTS", "Missing CSP", "Weak Crypto", "Open Redirect", "Clickjacking", "Mixed Content"]
+  const informationalOnly = ["Framework-Required", "Server Technology", "DNS Prefetch", "Cookie without HttpOnly", "Missing security.txt"]
+
+  const criticalThreats = result.findings.filter((f) => (f.severity === "critical" || f.severity === "high") && !informationalOnly.some(p => f.title.includes(p)) && criticalExploitable.some(p => f.title.includes(p)))
+  const activeVulns = result.findings.filter((f) => f.severity === "high" && !informationalOnly.some(p => f.title.includes(p)) && highActiveVulns.some(p => f.title.includes(p)))
+  const configIssues = result.findings.filter((f) => (f.severity === "high" || f.severity === "medium") && !informationalOnly.some(p => f.title.includes(p)) && highConfigIssues.some(p => f.title.includes(p)))
+  const otherMediumIssues = result.findings.filter((f) => f.severity === "medium" && !informationalOnly.some(p => f.title.includes(p)) && !highConfigIssues.some(p => f.title.includes(p)))
 
   const safetyRating =
-    criticalCount > 0 || highCount >= 2
-      ? { label: "NOT SAFE TO VIEW", color: [0.8, 0.2, 0.2] as [number, number, number], desc: "Critical/high vulnerabilities detected" }
-      : (highCount === 1 || mediumCount > 0)
+    criticalThreats.length > 0 || activeVulns.length >= 2
+      ? { label: "NOT SAFE TO VIEW", color: [0.8, 0.2, 0.2] as [number, number, number], desc: "Critical exploitable vulnerabilities detected" }
+      : (configIssues.length >= 3 || (activeVulns.length === 1 && configIssues.length >= 2) || activeVulns.length === 1 || configIssues.length >= 1 || otherMediumIssues.length >= 4)
         ? { label: "VIEW WITH CAUTION", color: [0.85, 0.65, 0.1] as [number, number, number], desc: "Security issues require attention" }
         : { label: "SAFE TO VIEW", color: [0.1, 0.65, 0.3] as [number, number, number], desc: "No critical security issues detected" }
 
