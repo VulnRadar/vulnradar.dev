@@ -9,6 +9,7 @@ import { Loader2, Eye, EyeOff } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 
 export default function SignupPage() {
   const router = useRouter()
@@ -84,79 +85,65 @@ export default function SignupPage() {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-background px-4 py-8">
-      <div className="w-full max-w-sm flex flex-col gap-8">
-        {/* Logo */}
-        <div className="flex items-center justify-center gap-2 mb-0">
-          <Image
-            src="/favicon.svg"
-            alt="VulnRadar logo"
-            width={32}
-            height={32}
-            className="h-8 w-8"
-          />
-          <span className="text-2xl font-bold text-foreground font-mono tracking-tight">VulnRadar</span>
-        </div>
-
-        <div className="flex flex-col items-center gap-4">
-          <div className="flex flex-col items-center gap-1">
-            <h1 className="text-xl font-bold tracking-tight text-foreground">
-              Create an account
-            </h1>
-            <p className="text-sm text-muted-foreground">
-              Get started with VulnRadar
-            </p>
+      <Card className="w-full max-w-sm bg-card border-border">
+        <CardHeader className="text-center space-y-2 pb-6 pt-8">
+          <div className="flex items-center justify-center gap-2 mb-4">
+            <Image
+              src="/favicon.svg"
+              alt="VulnRadar logo"
+              width={32}
+              height={32}
+              className="h-8 w-8"
+            />
+            <span className="text-2xl font-bold text-foreground font-mono tracking-tight">VulnRadar</span>
           </div>
-        </div>
+          <CardTitle className="text-xl font-bold tracking-tight">Create an account</CardTitle>
+          <CardDescription>Enter your details below to create your account and start scanning.</CardDescription>
+        </CardHeader>
 
-        {/* Form */}
+        <CardContent>
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
           <div className="flex flex-col gap-2">
-            <Label htmlFor="name" className="text-sm">Name</Label>
+            <Label htmlFor="name">Name</Label>
             <Input
               id="name"
               type="text"
-              placeholder="Your name"
+              placeholder="Your Name"
               value={name}
               onChange={(e) => setName(e.target.value)}
               required
-              autoComplete="name"
-              className="h-11 bg-card"
+              className="h-10"
             />
           </div>
 
           <div className="flex flex-col gap-2">
-            <Label htmlFor="email" className="text-sm">Email</Label>
+            <Label htmlFor="email">Email</Label>
             <Input
               id="email"
               type="email"
-              placeholder="you@example.com"
+              placeholder="name@example.com"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
-              autoComplete="email"
-              className="h-11 bg-card"
+              className="h-10"
             />
           </div>
 
           <div className="flex flex-col gap-2">
-            <Label htmlFor="password" className="text-sm">Password</Label>
+            <Label htmlFor="password">Password</Label>
             <div className="relative">
               <Input
                 id="password"
                 type={showPassword ? "text" : "password"}
-                placeholder="At least 8 characters"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
-                minLength={8}
-                autoComplete="new-password"
-                className="h-11 bg-card pr-10"
+                className="h-10 pr-10"
               />
               <button
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
-                aria-label={showPassword ? "Hide password" : "Show password"}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
               >
                 {showPassword ? (
                   <EyeOff className="h-4 w-4" />
@@ -165,56 +152,41 @@ export default function SignupPage() {
                 )}
               </button>
             </div>
+            {/* Password strength indicator */}
             {password && (
-              <div className="flex flex-col gap-1.5 mt-1">
-                <div className="flex gap-1 h-1.5 rounded-full overflow-hidden bg-muted">
-                  {[1, 2, 3, 4, 5].map((i) => (
+              <div className="space-y-1.5 mt-1">
+                <div className="flex gap-1 h-1">
+                  {[1, 2, 3, 4, 5].map((level) => (
                     <div
-                      key={i}
-                      className={`flex-1 rounded-full transition-colors duration-300 ${
-                        i <= strength.level ? strength.color : "bg-transparent"
+                      key={level}
+                      className={`h-full flex-1 rounded-full transition-colors duration-200 ${
+                        strength.level >= level ? strength.color : "bg-muted"
                       }`}
                     />
                   ))}
                 </div>
-                <div className="flex items-center justify-between">
-                  <span
-                    className={`text-xs font-medium ${
-                      strength.level <= 1
-                        ? "text-[hsl(var(--severity-critical))]"
-                        : strength.level <= 2
-                          ? "text-[hsl(var(--severity-high))]"
-                          : strength.level <= 3
-                            ? "text-[hsl(var(--severity-medium))]"
-                            : strength.level <= 4
-                              ? "text-primary"
-                              : "text-emerald-500"
-                    }`}
-                  >
-                    {strength.label}
-                  </span>
-                  {strength.level < 3 && (
-                    <span className="text-xs text-muted-foreground">
-                      Medium or higher recommended
-                    </span>
-                  )}
-                </div>
+                <p className="text-xs text-muted-foreground text-right">
+                  Strength: <span className="font-medium text-foreground">{strength.label}</span>
+                </p>
               </div>
             )}
+            <p className="text-xs text-muted-foreground">
+              Must be at least 8 characters.
+            </p>
           </div>
 
           <div className="flex flex-col gap-2">
-            <Label htmlFor="confirm-password" className="text-sm">Confirm Password</Label>
-            <Input
-              id="confirm-password"
-              type={showPassword ? "text" : "password"}
-              placeholder="Repeat your password"
-              value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
-              required
-              autoComplete="new-password"
-              className="h-11 bg-card"
-            />
+            <Label htmlFor="confirmPassword">Confirm Password</Label>
+            <div className="relative">
+              <Input
+                id="confirmPassword"
+                type={showPassword ? "text" : "password"}
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                required
+                className="h-10"
+              />
+            </div>
           </div>
 
           {error && (
@@ -225,29 +197,26 @@ export default function SignupPage() {
             </div>
           )}
 
-          <Button type="submit" disabled={loading} className="h-11 w-full mt-2">
+          <Button type="submit" disabled={loading} className="h-10 w-full mt-2">
             {loading ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                 Creating account...
               </>
             ) : (
-              "Create account"
+              "Sign Up"
             )}
           </Button>
-        </form>
 
-        {/* Footer */}
-        <p className="text-center text-sm text-muted-foreground">
-          {"Already have an account? "}
-          <Link
-            href="/login"
-            className="text-primary hover:underline font-medium"
-          >
-            Sign in
-          </Link>
-        </p>
-      </div>
+          <p className="text-center text-sm text-muted-foreground mt-2">
+            Already have an account?{" "}
+            <Link href="/login" className="text-primary hover:underline font-medium">
+              Sign in
+            </Link>
+          </p>
+        </form>
+        </CardContent>
+      </Card>
     </div>
   )
 }

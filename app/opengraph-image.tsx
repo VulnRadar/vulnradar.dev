@@ -19,162 +19,62 @@ export default async function Image() {
           flexDirection: 'column',
           alignItems: 'center',
           justifyContent: 'center',
-          background: 'linear-gradient(135deg, #0a0e13 0%, #0f1419 50%, #1a1f2e 100%)',
-          position: 'relative',
+          backgroundColor: '#0b0f14', // Matching the dark theme bg
+          backgroundImage: 'radial-gradient(circle at 25px 25px, #1f2937 2%, transparent 0%), radial-gradient(circle at 75px 75px, #1f2937 2%, transparent 0%)',
+          backgroundSize: '100px 100px',
         }}
       >
-        {/* Radar circles in background */}
-        <div
-          style={{
-            position: 'absolute',
-            width: '500px',
-            height: '500px',
-            border: '2px solid rgba(59, 130, 246, 0.15)',
-            borderRadius: '50%',
-            display: 'flex',
-          }}
-        />
-        <div
-          style={{
-            position: 'absolute',
-            width: '400px',
-            height: '400px',
-            border: '2px solid rgba(59, 130, 246, 0.2)',
-            borderRadius: '50%',
-            display: 'flex',
-          }}
-        />
-        <div
-          style={{
-            position: 'absolute',
-            width: '300px',
-            height: '300px',
-            border: '3px solid rgba(96, 165, 250, 0.3)',
-            borderRadius: '50%',
-            display: 'flex',
-          }}
-        />
-
-        {/* Center glow */}
-        <div
-          style={{
-            position: 'absolute',
-            width: '150px',
-            height: '150px',
-            background: 'radial-gradient(circle, rgba(96, 165, 250, 0.4) 0%, rgba(59, 130, 246, 0.1) 50%, transparent 100%)',
-            borderRadius: '50%',
-            display: 'flex',
-          }}
-        />
-
-        {/* Content */}
         <div
           style={{
             display: 'flex',
-            flexDirection: 'column',
             alignItems: 'center',
             justifyContent: 'center',
-            zIndex: 10,
+            marginBottom: 40,
           }}
         >
-          {/* Logo/Icon */}
-          <div
-            style={{
-              width: '120px',
-              height: '120px',
-              background: 'linear-gradient(135deg, #3b82f6, #60a5fa)',
-              borderRadius: '30px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              marginBottom: '40px',
-              boxShadow: '0 20px 60px rgba(59, 130, 246, 0.6)',
-            }}
+          {/* Logo SVG scaled up */}
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            width="256"
+            height="256"
+            viewBox="0 0 24 24"
+            style={{ marginRight: 0 }}
           >
-            <div
-              style={{
-                width: '80px',
-                height: '80px',
-                border: '4px solid white',
-                borderRadius: '50%',
-                position: 'relative',
-                display: 'flex',
-              }}
-            >
-              {/* Scanning beam */}
-              <div
-                style={{
-                  position: 'absolute',
-                  width: '4px',
-                  height: '50px',
-                  background: 'white',
-                  top: '15px',
-                  left: '38px',
-                  transform: 'rotate(-45deg)',
-                  transformOrigin: 'bottom',
-                  display: 'flex',
-                }}
-              />
-            </div>
-          </div>
+            <circle cx="12" cy="12" r="11" fill="#0f172a" />
 
-          {/* Title */}
-          <div
-            style={{
-              fontSize: '80px',
-              fontWeight: 'bold',
-              color: '#f8fafc',
-              letterSpacing: '-2px',
-              marginBottom: '20px',
-              textShadow: '0 4px 20px rgba(0, 0, 0, 0.5)',
-              display: 'flex',
-            }}
-          >
-            VulnRadar
-          </div>
+            <path d="M12 2a10 10 0 1 1-7.07 17.07l1.41-1.41A8 8 0 1 0 12 4V2z" fill="#3b82f6" opacity="0.2" />
 
-          {/* Subtitle */}
-          <div
-            style={{
-              fontSize: '32px',
-              color: '#94a3b8',
-              letterSpacing: '1px',
-              textTransform: 'uppercase',
-              fontWeight: 600,
-              marginBottom: '30px',
-              display: 'flex',
-            }}
-          >
-            Web Vulnerability Scanner
-          </div>
+            <path d="M12 6a6 6 0 1 1-4.24 10.24l1.41-1.41A4 4 0 1 0 12 8V6z" fill="#3b82f6" opacity="0.4" />
 
-          {/* Description */}
-          <div
-            style={{
-              fontSize: '24px',
-              color: '#cbd5e1',
-              textAlign: 'center',
-              maxWidth: '900px',
-              lineHeight: 1.5,
-              display: 'flex',
-            }}
-          >
-            Scan websites for 65+ security vulnerabilities
-          </div>
+            {/* Group for strokes */}
+            <path d="M19.07 4.93A10 10 0 0 0 6.99 3.34" fill="none" stroke="#60a5fa" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+            <path d="M2.29 9.62A10 10 0 1 0 21.31 8.35" fill="none" stroke="#60a5fa" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+            <path d="M16.24 7.76A6 6 0 1 0 8.23 16.67" fill="none" stroke="#60a5fa" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+            <path d="M17.99 11.66A6 6 0 0 1 15.77 16.67" fill="none" stroke="#60a5fa" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+
+            <path d="m13.41 10.59 5.66-5.66" stroke="#ffffff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+
+            <circle cx="12" cy="12" r="2" fill="#60a5fa" stroke="none" />
+
+            <circle cx="4" cy="6" r="1" fill="#fbbf24" stroke="none" />
+            <circle cx="12" cy="18" r="1" fill="#fbbf24" stroke="none" />
+          </svg>
         </div>
 
-        {/* Bottom accent line */}
         <div
           style={{
-            position: 'absolute',
-            bottom: 0,
-            left: 0,
-            right: 0,
-            height: '4px',
-            background: 'linear-gradient(90deg, transparent 0%, #2563eb 20%, #3b82f6 50%, #60a5fa 80%, transparent 100%)',
             display: 'flex',
+            fontSize: 130,
+            fontFamily: 'Courier New', // Using a mono font if available or fallback
+            fontWeight: 700,
+            color: '#f8fafc',
+            letterSpacing: '-2px',
+            lineHeight: 1,
+            textShadow: '0 10px 30px rgba(0,0,0,0.5)',
           }}
-        />
+        >
+          VulnRadar
+        </div>
       </div>
     ),
     {
@@ -182,4 +82,3 @@ export default async function Image() {
     }
   )
 }
-
