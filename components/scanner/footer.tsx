@@ -2,6 +2,7 @@
 
 import Link from "next/link"
 import Image from "next/image"
+import { APP_VERSION } from "@/lib/version"
 
 const LEGAL_LINKS = [
   { href: "/legal/terms", label: "Terms" },
@@ -35,7 +36,7 @@ export function Footer() {
                 Open-source web vulnerability scanner
               </span>
               <span className="inline-flex items-center rounded-md bg-primary/10 text-primary border border-primary/20 px-1.5 py-0.5 text-[10px] font-semibold font-mono">
-                v1.2.0
+                v{APP_VERSION}
               </span>
             </div>
 
