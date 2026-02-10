@@ -32,19 +32,12 @@ export const metadata: Metadata = {
     type: 'website',
     url: 'https://vulnradar.dev',
     locale: 'en_US',
-    images: [{
-      url: '/opengraph-image',
-      width: 1200,
-      height: 630,
-      alt: 'VulnRadar - Web Vulnerability Scanner',
-    }],
   },
   twitter: {
     card: 'summary_large_image',
     title: 'VulnRadar - Web Vulnerability Scanner',
     description: 'Scan websites for 65+ security vulnerabilities. Get instant reports with severity ratings, actionable fix guidance, and team collaboration tools.',
     site: '@VulnRadar',
-    images: ['/opengraph-image'],
   },
   robots: {
     index: true,
