@@ -4,8 +4,8 @@ import React from "react"
 
 import { useState, useEffect, useRef } from "react"
 import { useRouter } from "next/navigation"
+import Image from "next/image"
 import {
-  Radar,
   Copy,
   Check,
   BookOpen,
@@ -1096,7 +1096,13 @@ if ($result) {
           {/* ── Bottom CTA ──────────────────────────────────── */}
           <div className="rounded-xl border border-border bg-card p-8 flex flex-col items-center gap-4 text-center">
             <div className="flex items-center justify-center w-12 h-12 rounded-2xl bg-primary/10">
-              <Radar className="h-6 w-6 text-primary" />
+              <Image
+                src="/favicon.svg"
+                alt="VulnRadar logo"
+                width={24}
+                height={24}
+                className="h-6 w-6"
+              />
             </div>
             <h3 className="text-lg font-bold text-foreground">
               Ready to start scanning?

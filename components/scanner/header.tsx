@@ -1,12 +1,13 @@
 "use client"
 
-import { Radar, LogOut, User, Clock, Book, Menu, X, GitCompareArrows, ShieldAlert, Users } from "lucide-react"
+import { LogOut, User, Clock, Book, Menu, X, GitCompareArrows, ShieldAlert, Users, Radar } from "lucide-react"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { Button } from "@/components/ui/button"
 import { useRouter, usePathname } from "next/navigation"
 import { useState } from "react"
 import useSWR from "swr"
 import { cn } from "@/lib/utils"
+import Image from "next/image"
 
 const NAV_LINKS = [
   { href: "/", label: "Scanner", icon: Radar },
@@ -42,7 +43,13 @@ export function Header() {
           className="flex items-center gap-2 hover:opacity-80 transition-opacity shrink-0"
           aria-label="Go to scanner"
         >
-          <Radar className="h-5 w-5 text-primary" />
+          <Image
+            src="/favicon.svg"
+            alt="VulnRadar logo"
+            width={20}
+            height={20}
+            className="h-5 w-5"
+          />
           <span className="text-base font-semibold text-foreground tracking-tight">
             VulnRadar
           </span>

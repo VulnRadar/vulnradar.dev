@@ -1,7 +1,7 @@
 "use client"
 
-import { Radar } from "lucide-react"
 import Link from "next/link"
+import Image from "next/image"
 
 const LEGAL_LINKS = [
   { href: "/legal/terms", label: "Terms" },
@@ -21,7 +21,13 @@ export function Footer() {
           {/* Top row */}
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-center gap-2">
-              <Radar className="h-4 w-4 text-primary" />
+              <Image
+                src="/favicon.svg"
+                alt="VulnRadar logo"
+                width={16}
+                height={16}
+                className="h-4 w-4"
+              />
               <span className="text-sm font-semibold text-foreground">
                 VulnRadar
               </span>

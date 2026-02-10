@@ -5,10 +5,11 @@ import React from "react"
 import { useState, Suspense } from "react"
 import { useSearchParams } from "next/navigation"
 import Link from "next/link"
+import Image from "next/image"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Radar, Lock, CheckCircle2, AlertTriangle, Eye, EyeOff } from "lucide-react"
+import { Lock, CheckCircle2, AlertTriangle, Eye, EyeOff } from "lucide-react"
 
 function ResetForm() {
   const searchParams = useSearchParams()
@@ -148,7 +149,13 @@ export default function ResetPasswordPage() {
     <div className="min-h-screen bg-background flex flex-col items-center justify-center px-4">
       <div className="w-full max-w-md">
         <div className="flex items-center justify-center gap-2 mb-8">
-          <Radar className="h-8 w-8 text-primary" />
+          <Image
+            src="/favicon.svg"
+            alt="VulnRadar logo"
+            width={32}
+            height={32}
+            className="h-8 w-8"
+          />
           <span className="text-2xl font-bold text-foreground font-mono tracking-tight">VulnRadar</span>
         </div>
         <Suspense fallback={null}>

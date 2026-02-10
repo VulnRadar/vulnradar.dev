@@ -4,7 +4,8 @@ import React from "react"
 import { useState } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
-import { Radar, Loader2, Eye, EyeOff } from "lucide-react"
+import Image from "next/image"
+import { Loader2, Eye, EyeOff } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -85,10 +86,18 @@ export default function SignupPage() {
     <div className="min-h-screen flex items-center justify-center bg-background px-4 py-8">
       <div className="w-full max-w-sm flex flex-col gap-8">
         {/* Logo */}
+        <div className="flex items-center justify-center gap-2 mb-0">
+          <Image
+            src="/favicon.svg"
+            alt="VulnRadar logo"
+            width={32}
+            height={32}
+            className="h-8 w-8"
+          />
+          <span className="text-2xl font-bold text-foreground font-mono tracking-tight">VulnRadar</span>
+        </div>
+
         <div className="flex flex-col items-center gap-4">
-          <div className="flex items-center justify-center w-12 h-12 rounded-xl bg-primary/10 border border-primary/20">
-            <Radar className="h-6 w-6 text-primary" />
-          </div>
           <div className="flex flex-col items-center gap-1">
             <h1 className="text-xl font-bold tracking-tight text-foreground">
               Create an account

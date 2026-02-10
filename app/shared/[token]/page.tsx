@@ -2,8 +2,8 @@
 
 import { useState, useEffect } from "react"
 import { useParams, useRouter } from "next/navigation"
+import Image from "next/image"
 import {
-  Radar,
   Loader2,
   AlertCircle,
   ExternalLink,
@@ -53,7 +53,13 @@ export default function SharedScanPage() {
       {/* Minimal public header */}
       <header className="sticky top-0 z-50 h-14 flex items-center justify-between px-4 sm:px-6 border-b border-border bg-card/95 backdrop-blur-sm">
         <div className="flex items-center gap-2">
-          <Radar className="h-5 w-5 text-primary" />
+          <Image
+            src="/favicon.svg"
+            alt="VulnRadar logo"
+            width={20}
+            height={20}
+            className="h-5 w-5"
+          />
           <span className="text-base font-semibold text-foreground tracking-tight">VulnRadar</span>
           <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded-md font-medium">
             Shared Report

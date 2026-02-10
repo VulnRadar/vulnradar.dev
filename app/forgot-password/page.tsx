@@ -4,10 +4,11 @@ import React from "react"
 
 import { useState } from "react"
 import Link from "next/link"
+import Image from "next/image"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Radar, ArrowLeft, Mail, CheckCircle2, AlertTriangle } from "lucide-react"
+import { ArrowLeft, Mail, CheckCircle2, AlertTriangle } from "lucide-react"
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState("")
@@ -39,7 +40,13 @@ export default function ForgotPasswordPage() {
       <div className="min-h-screen bg-background flex flex-col items-center justify-center px-4">
         <div className="w-full max-w-md">
           <div className="flex items-center justify-center gap-2 mb-8">
-            <Radar className="h-8 w-8 text-primary" />
+            <Image
+              src="/favicon.svg"
+              alt="VulnRadar logo"
+              width={32}
+              height={32}
+              className="h-8 w-8"
+            />
             <span className="text-2xl font-bold text-foreground font-mono tracking-tight">VulnRadar</span>
           </div>
 

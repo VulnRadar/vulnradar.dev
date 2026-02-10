@@ -2,7 +2,7 @@
 
 import React from "react"
 
-import { Radar } from "lucide-react"
+import Image from "next/image"
 import { useRouter } from "next/navigation"
 import { ThemeToggle } from "@/components/theme-toggle"
 
@@ -21,7 +21,13 @@ export default function LegalLayout({
             onClick={() => router.push("/")}
             className="flex items-center gap-2 hover:opacity-80 transition-opacity"
           >
-            <Radar className="h-5 w-5 text-primary" />
+            <Image
+              src="/favicon.svg"
+              alt="VulnRadar logo"
+              width={20}
+              height={20}
+              className="h-5 w-5"
+            />
             <span className="text-base font-semibold text-foreground tracking-tight">
               VulnRadar
             </span>
