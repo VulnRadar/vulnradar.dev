@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { APP_NAME } from "@/lib/constants"
 
 export default function SignupPage() {
   const [name, setName] = useState("")
@@ -103,7 +104,7 @@ export default function SignupPage() {
             <div className="flex items-start gap-3 p-3 bg-muted/50 rounded-lg">
               <CheckCircle2 className="h-5 w-5 text-primary mt-0.5 shrink-0" />
               <p className="text-sm text-muted-foreground">
-                Click the link in your email to verify your account and start using VulnRadar.
+                Click the link in your email to verify your account and start using {APP_NAME}.
               </p>
             </div>
             <p className="text-xs text-muted-foreground text-center">
@@ -128,12 +129,12 @@ export default function SignupPage() {
           <div className="flex items-center justify-center gap-2 mb-4">
             <Image
               src="/favicon.svg"
-              alt="VulnRadar logo"
+              alt={`${APP_NAME} logo`}
               width={32}
               height={32}
               className="h-8 w-8"
             />
-            <span className="text-2xl font-bold text-foreground font-mono tracking-tight">VulnRadar</span>
+            <span className="text-2xl font-bold text-foreground font-mono tracking-tight">{APP_NAME}</span>
           </div>
           <CardTitle className="text-xl font-bold tracking-tight">Create an account</CardTitle>
           <CardDescription>Enter your details below to create your account and start scanning.</CardDescription>

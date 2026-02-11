@@ -1,100 +1,90 @@
-import { NextRequest, NextResponse } from "next/server"
+import { NextResponse } from "next/server"
 import { getUserByEmail, verifyPassword, createSession } from "@/lib/auth"
 import pool from "@/lib/db"
-import { checkRateLimit, getClientIP, RATE_LIMITS } from "@/lib/rate-limit"
+import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
+import { ApiResponse, Validate, parseBody, withErrorHandling } from "@/lib/api-utils"
+import { getClientIp, getUserAgent } from "@/lib/request-utils"
+import { AUTH_2FA_PENDING_COOKIE, AUTH_2FA_PENDING_MAX_AGE } from "@/lib/constants"
 
-export async function POST(request: NextRequest) {
-  try {
-    const ip = await getClientIP()
-    const body = await request.json()
-    const { email, password } = body
+export const POST = withErrorHandling(async (request: Request) => {
+  // Parse body
+  const parsed = await parseBody<{ email: string; password: string }>(request)
+  if (!parsed.success) return ApiResponse.badRequest(parsed.error)
+  const { email, password } = parsed.data
 
-    if (!email || !password) {
-      return NextResponse.json(
-        { error: "Email and password are required." },
-        { status: 400 },
-      )
-    }
+  // Validate input
+  const error = Validate.multiple([
+    Validate.required(email, "Email"),
+    Validate.email(email),
+    Validate.required(password, "Password"),
+  ])
+  if (error) return ApiResponse.badRequest(error)
 
-    // Rate limit by IP
-    const rl = await checkRateLimit({ key: `login:${ip}`, ...RATE_LIMITS.login })
-    if (!rl.allowed) {
-      return NextResponse.json(
-        { error: `Too many login attempts. Please try again in ${Math.ceil(rl.retryAfterSeconds / 60)} minute(s).` },
-        { status: 429 },
-      )
-    }
-
-    const user = await getUserByEmail(email)
-    if (!user) {
-      return NextResponse.json(
-        { error: "Invalid email or password." },
-        { status: 401 },
-      )
-    }
-
-    const valid = verifyPassword(password, user.password_hash)
-    if (!valid) {
-      return NextResponse.json(
-        { error: "Invalid email or password." },
-        { status: 401 },
-      )
-    }
-
-    // Check if account is disabled or email not verified
-    const userInfoResult = await pool.query(
-      "SELECT totp_enabled, disabled_at, email_verified_at FROM users WHERE id = $1",
-      [user.id],
-    )
-    const userInfo = userInfoResult.rows[0]
-    if (userInfo?.disabled_at) {
-      return NextResponse.json(
-        { error: "This account has been suspended. Please contact support for assistance." },
-        { status: 403 },
-      )
-    }
-
-    // Check if email is verified
-    if (!userInfo?.email_verified_at) {
-      return NextResponse.json(
-        { error: "Please verify your email address before logging in. Check your inbox for the verification link.", unverified: true },
-        { status: 403 },
-      )
-    }
-
-    // Check if 2FA is enabled
-    const totpResult = { rows: [userInfo] }
-    const has2FA = totpResult.rows[0]?.totp_enabled === true
-
-    if (has2FA) {
-      // Don't create session yet -- return pending state
-      const response = NextResponse.json({
-        requires2FA: true,
-        userId: user.id,
-      })
-      // Set a short-lived cookie to validate the 2FA verification request
-      response.cookies.set("vulnradar_2fa_pending", String(user.id), {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
-        sameSite: "lax",
-        path: "/",
-        maxAge: 300, // 5 minutes to enter TOTP code
-      })
-      return response
-    }
-
-    // No 2FA -- create session directly
-    const userAgent = request.headers.get("user-agent") || undefined
-    await createSession(user.id, ip, userAgent)
-
-    return NextResponse.json({
-      user: { id: user.id, email: user.email, name: user.name },
-    })
-  } catch (error) {
-    console.error("Login error:", error)
-    return NextResponse.json(
-      { error: "Something went wrong. Please try again." },
-      { status: 500 },
+  // Rate limit by IP
+  const ip = await getClientIp()
+  const rl = await checkRateLimit({ key: `login:${ip}`, ...RATE_LIMITS.login })
+  if (!rl.allowed) {
+    const minutes = Math.ceil(rl.retryAfterSeconds / 60)
+    return ApiResponse.tooManyRequests(
+      `Too many login attempts. Try again in ${minutes} minute(s).`,
+      rl.retryAfterSeconds,
     )
   }
-}
+
+  const user = await getUserByEmail(email)
+  if (!user) {
+    return ApiResponse.unauthorized("Invalid email or password")
+  }
+
+  const valid = verifyPassword(password, user.password_hash)
+  if (!valid) {
+    return ApiResponse.unauthorized("Invalid email or password")
+  }
+
+  // Check if account is disabled or email not verified
+  const userInfoResult = await pool.query(
+    "SELECT totp_enabled, disabled_at, email_verified_at FROM users WHERE id = $1",
+    [user.id],
+  )
+  const userInfo = userInfoResult.rows[0]
+  if (userInfo?.disabled_at) {
+    return ApiResponse.forbidden("This account has been suspended. Please contact support.")
+  }
+
+  // Check if email is verified
+  if (!userInfo?.email_verified_at) {
+    const response = NextResponse.json(
+      { error: "Please verify your email before logging in.", unverified: true },
+      { status: 403 },
+    )
+    return response
+  }
+
+  // Check if 2FA is enabled
+  const has2FA = userInfo?.totp_enabled === true
+
+  if (has2FA) {
+    // Don't create session yet -- return pending state
+    const response = NextResponse.json({
+      requires2FA: true,
+      userId: user.id,
+    })
+    // Set a short-lived cookie to validate the 2FA verification request
+    response.cookies.set(AUTH_2FA_PENDING_COOKIE, String(user.id), {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      path: "/",
+      maxAge: AUTH_2FA_PENDING_MAX_AGE, // seconds
+    })
+    return response
+  }
+
+  // No 2FA -- create session directly
+  const ua = await getUserAgent()
+  await createSession(user.id, ip, ua)
+
+  return ApiResponse.success({
+    user: { id: user.id, email: user.email, name: user.name },
+  })
+})

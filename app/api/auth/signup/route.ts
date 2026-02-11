@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createUser, getUserByEmail } from "@/lib/auth"
-import { sendEmail, emailVerificationEmail, APP_URL } from "@/lib/email"
+import { sendEmail, emailVerificationEmail } from "@/lib/email"
 import pool from "@/lib/db"
 import crypto from "crypto"
+import { APP_URL } from "@/lib/constants"
+
 
 export async function POST(request: NextRequest) {
   try {

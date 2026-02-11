@@ -14,6 +14,7 @@ import { ScanSummary } from "@/components/scanner/scan-summary"
 import { ResultsList } from "@/components/scanner/results-list"
 import { IssueDetail } from "@/components/scanner/issue-detail"
 import { ExportButton } from "@/components/scanner/export-button"
+import { APP_NAME } from "@/lib/constants"
 import type { ScanResult, Vulnerability } from "@/lib/scanner/types"
 
 export default function SharedScanPage() {
@@ -55,12 +56,12 @@ export default function SharedScanPage() {
         <div className="flex items-center gap-2">
           <Image
             src="/favicon.svg"
-            alt="VulnRadar logo"
+            alt={`${APP_NAME} logo`}
             width={20}
             height={20}
             className="h-5 w-5"
           />
-          <span className="text-base font-semibold text-foreground tracking-tight">VulnRadar</span>
+          <span className="text-base font-semibold text-foreground tracking-tight">{APP_NAME}</span>
           <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded-md font-medium">
             Shared Report
           </span>
@@ -93,7 +94,7 @@ export default function SharedScanPage() {
               <p className="text-sm text-muted-foreground leading-relaxed">{error}</p>
             </div>
             <Button variant="outline" onClick={() => router.push("/login")} className="bg-transparent">
-              Sign In to VulnRadar
+              Sign In to {APP_NAME}
             </Button>
           </div>
         )}
@@ -140,7 +141,7 @@ export default function SharedScanPage() {
       {/* Minimal footer */}
       <footer className="border-t border-border py-4 px-4 text-center">
         <p className="text-xs text-muted-foreground">
-          VulnRadar - Security vulnerability scanner.{" "}
+          {APP_NAME} - Security vulnerability scanner. {" "}
           <button
             onClick={() => router.push("/signup")}
             className="text-primary hover:underline"

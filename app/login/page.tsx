@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { APP_NAME } from "@/lib/constants"
 
 export default function LoginPage() {
   const router = useRouter()
@@ -132,12 +133,12 @@ export default function LoginPage() {
           <div className="flex items-center justify-center gap-2 mb-4">
             <Image
               src="/favicon.svg"
-              alt="VulnRadar logo"
+              alt={`${APP_NAME} logo`}
               width={32}
               height={32}
               className="h-8 w-8"
             />
-            <span className="text-2xl font-bold text-foreground font-mono tracking-tight">VulnRadar</span>
+            <span className="text-2xl font-bold text-foreground font-mono tracking-tight">{APP_NAME}</span>
           </div>
           <CardTitle className="text-xl font-bold tracking-tight">
             {needs2FA
@@ -149,7 +150,7 @@ export default function LoginPage() {
               ? useBackupCode
                 ? "Enter one of your 8-character backup codes"
                 : "Enter the 6-digit code from your authenticator app"
-              : "Sign in to your VulnRadar account"}
+              : `Sign in to your ${APP_NAME} account`}
           </CardDescription>
         </CardHeader>
         <CardContent className="pb-8">

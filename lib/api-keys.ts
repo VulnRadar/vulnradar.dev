@@ -1,13 +1,14 @@
 import { randomBytes, createHash } from "node:crypto"
 import pool from "./db"
+import { API_KEY_PREFIX, DEFAULT_API_KEY_DAILY_LIMIT } from "./constants"
 
-const DAILY_LIMIT = 50
+const DAILY_LIMIT = DEFAULT_API_KEY_DAILY_LIMIT
 
 // Generate a new API key - returns the raw key (only shown once) and metadata
 export async function generateApiKey(userId: number, name: string = "Default") {
     // Generate a random key: vr_live_<32 hex chars>
-    const raw = `vr_live_${randomBytes(24).toString("hex")}`
-    const prefix = raw.slice(0, 12) // "vr_live_xxxx" for display
+    const raw = `${API_KEY_PREFIX}${randomBytes(24).toString("hex")}`
+    const prefix = raw.slice(0, API_KEY_PREFIX.length + 8) // show prefix + some chars
     const keyHash = hashKey(raw)
 
     const result = await pool.query(

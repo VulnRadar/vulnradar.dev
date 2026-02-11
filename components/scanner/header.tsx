@@ -8,6 +8,7 @@ import { useState } from "react"
 import useSWR from "swr"
 import { cn } from "@/lib/utils"
 import Image from "next/image"
+import { APP_NAME } from "@/lib/constants"
 
 const NAV_LINKS = [
   { href: "/dashboard", label: "Scanner", icon: Radar },
@@ -45,13 +46,13 @@ export function Header() {
         >
           <Image
             src="/favicon.svg"
-            alt="VulnRadar logo"
+            alt={`${APP_NAME} logo`}
             width={20}
             height={20}
             className="h-5 w-5"
           />
           <span className="text-base font-semibold text-foreground tracking-tight">
-            VulnRadar
+            {APP_NAME}
           </span>
         </button>
 

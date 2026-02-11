@@ -4,6 +4,7 @@ import { Inter, JetBrains_Mono } from 'next/font/google'
 import { ThemeProvider } from '@/components/theme-provider'
 import { TosGate } from '@/components/tos-gate'
 import { VersionNotification } from '@/components/version-notification'
+import { APP_NAME, APP_DESCRIPTION, APP_URL, APP_VERSION, LOGO_URL } from '@/lib/constants'
 
 import './globals.css'
 
@@ -12,13 +13,13 @@ const _jetbrainsMono = JetBrains_Mono({ subsets: ['latin'], variable: '--font-je
 
 export const metadata: Metadata = {
   title: {
-    default: 'VulnRadar - Web Vulnerability Scanner',
-    template: '%s | VulnRadar'
+    default: `${APP_NAME} - Web Vulnerability Scanner`,
+    template: '%s | ' + APP_NAME,
   },
-  description: 'Scan websites for 75+ security vulnerabilities. Get instant reports with severity ratings, actionable fix guidance, and team collaboration tools.',
-  applicationName: 'VulnRadar',
+  description: APP_DESCRIPTION,
+  applicationName: APP_NAME,
   keywords: ['vulnerability scanner', 'security scanner', 'web security', 'penetration testing', 'security audit', 'website scanner'],
-  authors: [{ name: 'VulnRadar' }],
+  authors: [{ name: APP_NAME }],
   icons: {
     icon: [
       { url: '/favicon.ico', sizes: 'any' },
@@ -27,37 +28,37 @@ export const metadata: Metadata = {
     apple: '/favicon.png',
   },
   openGraph: {
-    title: 'VulnRadar - Web Vulnerability Scanner',
-    description: 'Scan websites for 75+ security vulnerabilities. Get instant reports with severity ratings, actionable fix guidance, and team collaboration tools.',
-    siteName: 'VulnRadar',
+    title: `${APP_NAME} - Web Vulnerability Scanner`,
+    description: APP_DESCRIPTION,
+    siteName: APP_NAME,
     type: 'website',
-    url: 'https://vulnradar.dev',
+    url: APP_URL,
     locale: 'en_US',
     images: [
       {
-        url: 'https://vulnradar.dev/og-image.png',
+        url: `${APP_URL}/og-image.png`,
         width: 1200,
         height: 630,
-        alt: 'VulnRadar - Web Vulnerability Scanner',
+        alt: `${APP_NAME} - Web Vulnerability Scanner`,
       },
     ],
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'VulnRadar - Web Vulnerability Scanner',
-    description: 'Scan websites for 75+ security vulnerabilities. Get instant reports with severity ratings, actionable fix guidance, and team collaboration tools.',
-    site: '@VulnRadar',
-    images: ['https://vulnradar.dev/og-image.png'],
+    title: `${APP_NAME} - Web Vulnerability Scanner`,
+    description: APP_DESCRIPTION,
+    site: '@' + APP_NAME,
+    images: [`${APP_URL}/og-image.png`],
   },
   robots: {
     index: true,
     follow: true,
   },
   other: {
-    'security-contact': 'https://vulnradar.dev/.well-known/security.txt',
+    'security-contact': `${APP_URL}/.well-known/security.txt`,
     'theme-color': '#2563eb',
   },
-  metadataBase: new URL('https://vulnradar.dev'),
+  metadataBase: new URL(APP_URL),
 }
 
 export const viewport: Viewport = {

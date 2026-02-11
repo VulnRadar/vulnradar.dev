@@ -1,5 +1,6 @@
 import pool from "@/lib/db"
-import { headers } from "next/headers"
+import { getClientIp } from "./request-utils"
+import { RATE_LIMITS as RATE_LIMIT_CONFIGS } from "./constants"
 
 interface RateLimitConfig {
   key: string
@@ -50,17 +51,12 @@ export async function checkRateLimit({ key, maxAttempts, windowSeconds }: RateLi
   return { allowed: true, remaining: maxAttempts - count - 1, retryAfterSeconds: 0 }
 }
 
+/**
+ * @deprecated Use getClientIp from request-utils instead
+ */
 export async function getClientIP(): Promise<string> {
-  const h = await headers()
-  return h.get("x-forwarded-for")?.split(",")[0]?.trim() || h.get("x-real-ip") || "unknown"
+  return getClientIp()
 }
 
-// Presets for common rate limits
-export const RATE_LIMITS = {
-  login: { maxAttempts: 5, windowSeconds: 300 },       // 5 attempts per 5 min
-  forgotPassword: { maxAttempts: 3, windowSeconds: 600 }, // 3 per 10 min
-  scan: { maxAttempts: 10, windowSeconds: 60 },          // 10 scans per minute
-  api: { maxAttempts: 30, windowSeconds: 60 },           // 30 API calls per minute
-  signup: { maxAttempts: 3, windowSeconds: 3600 },       // 3 signups per hour per IP
-  bulkScan: { maxAttempts: 3, windowSeconds: 300 },      // 3 bulk scans per 5 min
-} as const
+// Export rate limit configs from constants
+export const RATE_LIMITS = RATE_LIMIT_CONFIGS

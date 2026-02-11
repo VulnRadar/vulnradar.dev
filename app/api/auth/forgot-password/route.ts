@@ -1,12 +1,15 @@
 import { NextRequest, NextResponse } from "next/server"
 import pool from "@/lib/db"
-import { checkRateLimit, getClientIP, RATE_LIMITS } from "@/lib/rate-limit"
+import { checkRateLimit } from "@/lib/rate-limit"
+import { RATE_LIMITS } from "@/lib/constants"
+import { getClientIp } from "@/lib/request-utils"
+import { PASSWORD_RESET_TOKEN_LIFETIME } from "@/lib/constants"
 import crypto from "crypto"
 import { sendEmail, passwordResetEmail } from "@/lib/email"
 
 export async function POST(request: NextRequest) {
   try {
-    const ip = await getClientIP()
+    const ip = await getClientIp()
     const rl = await checkRateLimit({ key: `forgot:${ip}`, ...RATE_LIMITS.forgotPassword })
     if (!rl.allowed) {
       return NextResponse.json(
@@ -37,7 +40,7 @@ export async function POST(request: NextRequest) {
 
     // Generate a secure token
     const token = crypto.randomBytes(32).toString("hex")
-    const expiresAt = new Date(Date.now() + 60 * 60 * 1000) // 1 hour
+    const expiresAt = new Date(Date.now() + PASSWORD_RESET_TOKEN_LIFETIME * 1000)
 
     await pool.query(
         "INSERT INTO password_reset_tokens (user_id, token_hash, expires_at) VALUES ($1, $2, $3)",

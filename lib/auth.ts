@@ -1,10 +1,11 @@
 import { cookies } from "next/headers"
 import { randomBytes, scryptSync, timingSafeEqual } from "node:crypto"
 import pool from "./db"
+import { AUTH_SESSION_COOKIE_NAME, AUTH_SESSION_MAX_AGE, AUTH_CLEANUP_INTERVAL } from "./constants"
 
-const SESSION_COOKIE = "vulnradar_session"
-const SESSION_MAX_AGE = 30 * 24 * 60 * 60 * 1000 // 30 days
-const CLEANUP_INTERVAL = 24 * 60 * 60 * 1000 // 24 hours
+const SESSION_COOKIE = AUTH_SESSION_COOKIE_NAME
+const SESSION_MAX_AGE = AUTH_SESSION_MAX_AGE * 1000 // AUTH_SESSION_MAX_AGE is in seconds
+const CLEANUP_INTERVAL = AUTH_CLEANUP_INTERVAL
 
 let lastCleanupTime = 0
 
@@ -42,7 +43,7 @@ export async function createSession(userId: number, ipAddress?: string, userAgen
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax",
     path: "/",
-    maxAge: SESSION_MAX_AGE / 1000,
+    maxAge: Math.floor(SESSION_MAX_AGE / 1000),
   })
 
   return sessionId

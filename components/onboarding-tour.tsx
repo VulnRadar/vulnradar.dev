@@ -16,12 +16,13 @@ import {
   X,
   Sparkles,
 } from "lucide-react"
+import { APP_NAME } from "@/lib/constants"
 
 const STEPS = [
   {
     icon: Radar,
-    title: "Welcome to VulnRadar",
-    description: "Your all-in-one web vulnerability scanner. Let's walk you through the key features so you can get the most out of the platform.",
+    title: `Welcome to ${APP_NAME}`,
+    description: `Your all-in-one web vulnerability scanner. Let's walk you through the key features so you can get the most out of ${APP_NAME}.`,
     color: "text-primary",
   },
   {
@@ -45,7 +46,7 @@ const STEPS = [
   {
     icon: Key,
     title: "API Access",
-    description: "Generate API keys in your Profile to automate scanning. Integrate VulnRadar into your CI/CD pipeline for continuous security monitoring.",
+    description: `Generate API keys in your Profile to automate scanning. Integrate ${APP_NAME} into your CI/CD pipeline for continuous security monitoring.`,
     color: "text-purple-500",
   },
   {
@@ -63,7 +64,7 @@ const STEPS = [
   {
     icon: Sparkles,
     title: "You're All Set!",
-    description: "Head to the Scanner and run your first scan. If you need help, check out the Docs page or reach out via the Contact page. Happy scanning!",
+    description: `Head to the Scanner and run your first scan. If you need help, check out the Docs page or reach out via the Contact page. Happy scanning with ${APP_NAME}!`,
     color: "text-primary",
   },
 ]
