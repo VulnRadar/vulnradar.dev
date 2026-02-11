@@ -265,7 +265,7 @@ The database schema is **automatically created and migrated** when the server st
 | Table | Purpose |
 |-------|---------|
 | `users` | User accounts, passwords, 2FA settings, admin flag |
-| `sessions` | Active login sessions |
+| `sessions` | Active login sessions with IP address and user agent tracking |
 | `api_keys` | API keys for programmatic access |
 | `api_usage` | API key usage tracking |
 | `scan_history` | All scan results with findings |

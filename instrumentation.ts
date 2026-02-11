@@ -290,6 +290,30 @@ export async function register() {
         END $$;
       `)
 
+      // Add IP address tracking to sessions
+      await pool.query(`
+        DO $$ BEGIN
+          IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name = 'sessions' AND column_name = 'ip_address'
+          ) THEN
+            ALTER TABLE sessions ADD COLUMN ip_address VARCHAR(45);
+          END IF;
+        END $$;
+      `)
+
+      // Add user_agent tracking to sessions
+      await pool.query(`
+        DO $$ BEGIN
+          IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name = 'sessions' AND column_name = 'user_agent'
+          ) THEN
+            ALTER TABLE sessions ADD COLUMN user_agent TEXT;
+          END IF;
+        END $$;
+      `)
+
       console.log("[VulnRadar] Database schema verified / migrated successfully.")
 
       // Cleanup: expired sessions, old api_usage (> 90 days), old revoked keys (> 30 days), old data requests (> 60 days)

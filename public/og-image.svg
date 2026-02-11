@@ -1,88 +1,206 @@
 <svg width="1200" height="630" viewBox="0 0 1200 630" xmlns="http://www.w3.org/2000/svg">
-  <!-- Background -->
-  <rect width="1200" height="630" fill="#0f172a"/>
-
-  <!-- Gradient overlay -->
   <defs>
-    <linearGradient id="grad1" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" style="stop-color:#3b82f6;stop-opacity:0.15" />
-      <stop offset="100%" style="stop-color:#60a5fa;stop-opacity:0.1" />
+    <!-- Background gradient - deeper and richer -->
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#050810"/>
+      <stop offset="30%" style="stop-color:#0a0f1a"/>
+      <stop offset="70%" style="stop-color:#0f172a"/>
+      <stop offset="100%" style="stop-color:#0a1225"/>
     </linearGradient>
 
-    <radialGradient id="radarGlow" cx="50%" cy="50%">
-      <stop offset="0%" style="stop-color:#60a5fa;stop-opacity:0.3" />
-      <stop offset="50%" style="stop-color:#3b82f6;stop-opacity:0.1" />
-      <stop offset="100%" style="stop-color:#3b82f6;stop-opacity:0" />
+    <!-- Radar glow - more intense -->
+    <radialGradient id="radarGlow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" style="stop-color:#3b82f6;stop-opacity:0.4"/>
+      <stop offset="40%" style="stop-color:#3b82f6;stop-opacity:0.15"/>
+      <stop offset="70%" style="stop-color:#1d4ed8;stop-opacity:0.05"/>
+      <stop offset="100%" style="stop-color:#1e3a8a;stop-opacity:0"/>
     </radialGradient>
+
+    <!-- Sweep gradient for radar beam -->
+    <linearGradient id="sweepGrad" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#60a5fa;stop-opacity:0"/>
+      <stop offset="50%" style="stop-color:#60a5fa;stop-opacity:0.5"/>
+      <stop offset="100%" style="stop-color:#ffffff;stop-opacity:1"/>
+    </linearGradient>
+
+    <!-- Text gradient - more dynamic -->
+    <linearGradient id="textGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#ffffff"/>
+      <stop offset="50%" style="stop-color:#f1f5f9"/>
+      <stop offset="100%" style="stop-color:#cbd5e1"/>
+    </linearGradient>
+
+    <!-- Glow filter for elements -->
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="3" result="coloredBlur"/>
+      <feMerge>
+        <feMergeNode in="coloredBlur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+
+    <!-- Stronger glow for center -->
+    <filter id="strongGlow" x="-100%" y="-100%" width="300%" height="300%">
+      <feGaussianBlur stdDeviation="8" result="coloredBlur"/>
+      <feMerge>
+        <feMergeNode in="coloredBlur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+
+    <!-- Blip pulse glow -->
+    <filter id="blipGlow" x="-100%" y="-100%" width="300%" height="300%">
+      <feGaussianBlur stdDeviation="4" result="coloredBlur"/>
+      <feMerge>
+        <feMergeNode in="coloredBlur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
   </defs>
 
-  <rect width="1200" height="630" fill="url(#grad1)"/>
+  <!-- Background -->
+  <rect width="1200" height="630" fill="url(#bgGrad)"/>
 
-  <!-- Radar display -->
-  <g transform="translate(600, 315)">
-    <!-- Glow effect -->
-    <circle r="200" fill="url(#radarGlow)" opacity="0.6"/>
+  <!-- Subtle noise texture overlay -->
+  <rect width="1200" height="630" fill="#3b82f6" opacity="0.02"/>
 
-    <!-- Outer radar rings -->
-    <circle r="180" fill="none" stroke="#3b82f6" stroke-width="1.5" opacity="0.15"/>
-    <circle r="150" fill="none" stroke="#3b82f6" stroke-width="1.5" opacity="0.2"/>
-    <circle r="120" fill="none" stroke="#3b82f6" stroke-width="2" opacity="0.25"/>
-    <circle r="90" fill="none" stroke="#60a5fa" stroke-width="2" opacity="0.3"/>
-    <circle r="60" fill="none" stroke="#60a5fa" stroke-width="2.5" opacity="0.4"/>
-
-    <!-- Center core -->
-    <circle r="30" fill="#3b82f6" opacity="0.2"/>
-    <circle r="20" fill="#3b82f6" opacity="0.3"/>
-
-    <!-- Scanning beam (main feature from favicon) -->
-    <line x1="0" y1="0" x2="127" y2="-127" stroke="#ffffff" stroke-width="3" opacity="0.9" stroke-linecap="round"/>
-    <line x1="0" y1="0" x2="127" y2="-127" stroke="#60a5fa" stroke-width="6" opacity="0.4" stroke-linecap="round"/>
-
-    <!-- Center dot -->
-    <circle r="8" fill="#60a5fa"/>
-    <circle r="5" fill="#ffffff" opacity="0.8"/>
-
-    <!-- Target blips (like in favicon) -->
-    <circle cx="-80" cy="-140" r="6" fill="#fbbf24"/>
-    <circle cx="-80" cy="-140" r="10" fill="none" stroke="#fbbf24" stroke-width="1.5" opacity="0.5"/>
-
-    <circle cx="100" cy="90" r="6" fill="#fbbf24"/>
-    <circle cx="100" cy="90" r="10" fill="none" stroke="#fbbf24" stroke-width="1.5" opacity="0.5"/>
-
-    <circle cx="-120" cy="60" r="5" fill="#fbbf24" opacity="0.8"/>
-    <circle cx="140" cy="-50" r="5" fill="#fbbf24" opacity="0.8"/>
-  </g>
-
-  <!-- Grid lines for tech aesthetic -->
-  <g opacity="0.05" stroke="#60a5fa" stroke-width="1">
+  <!-- Subtle grid pattern - more refined -->
+  <g opacity="0.04" stroke="#60a5fa" stroke-width="1">
+    <line x1="0" y1="105" x2="1200" y2="105"/>
+    <line x1="0" y1="210" x2="1200" y2="210"/>
     <line x1="0" y1="315" x2="1200" y2="315"/>
+    <line x1="0" y1="420" x2="1200" y2="420"/>
+    <line x1="0" y1="525" x2="1200" y2="525"/>
+    <line x1="200" y1="0" x2="200" y2="630"/>
+    <line x1="400" y1="0" x2="400" y2="630"/>
     <line x1="600" y1="0" x2="600" y2="630"/>
+    <line x1="800" y1="0" x2="800" y2="630"/>
+    <line x1="1000" y1="0" x2="1000" y2="630"/>
   </g>
 
-  <!-- Title -->
-  <text x="600" y="480" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="72" font-weight="700" fill="#f8fafc" text-anchor="middle" letter-spacing="1">
+  <!-- Main radar area -->
+  <g transform="translate(600, 260)">
+
+    <!-- Large ambient glow -->
+    <circle r="320" fill="url(#radarGlow)"/>
+
+    <!-- Outer radar rings with varying opacity -->
+    <circle r="200" fill="none" stroke="#1e3a8a" stroke-width="1" opacity="0.15"/>
+    <circle r="160" fill="none" stroke="#1e40af" stroke-width="1.5" opacity="0.2"/>
+    <circle r="120" fill="none" stroke="#2563eb" stroke-width="2" opacity="0.25"/>
+    <circle r="80" fill="none" stroke="#3b82f6" stroke-width="2" opacity="0.35"/>
+    <circle r="40" fill="none" stroke="#60a5fa" stroke-width="2" opacity="0.5"/>
+
+    <!-- Partial arc strokes - more dynamic positioning -->
+    <path d="M-200 0 A200 200 0 0 1 0 -200" fill="none" stroke="#1e40af" stroke-width="2" opacity="0.15" stroke-linecap="round"/>
+    <path d="M141 141 A200 200 0 0 1 -141 141" fill="none" stroke="#2563eb" stroke-width="2" opacity="0.12" stroke-linecap="round"/>
+
+    <path d="M-120 0 A120 120 0 0 1 0 -120" fill="none" stroke="#3b82f6" stroke-width="3" opacity="0.25" stroke-linecap="round"/>
+    <path d="M84.8 84.8 A120 120 0 0 1 -84.8 84.8" fill="none" stroke="#60a5fa" stroke-width="3" opacity="0.2" stroke-linecap="round"/>
+
+    <path d="M0 80 A80 80 0 0 1 -80 0" fill="none" stroke="#60a5fa" stroke-width="3" opacity="0.35" stroke-linecap="round"/>
+
+    <!-- Radar sweep cone/wedge effect -->
+    <path d="M0 0 L100 -173 A200 200 0 0 1 200 0 Z" fill="#3b82f6" opacity="0.08"/>
+    <path d="M0 0 L60 -104 A120 120 0 0 1 120 0 Z" fill="#60a5fa" opacity="0.1"/>
+
+    <!-- Scanning beam - enhanced with glow -->
+    <g filter="url(#glow)">
+      <line x1="0" y1="0" x2="140" y2="-140" stroke="#3b82f6" stroke-width="12" opacity="0.2" stroke-linecap="round"/>
+      <line x1="0" y1="0" x2="140" y2="-140" stroke="#60a5fa" stroke-width="6" opacity="0.5" stroke-linecap="round"/>
+      <line x1="0" y1="0" x2="140" y2="-140" stroke="#ffffff" stroke-width="3" opacity="0.95" stroke-linecap="round"/>
+    </g>
+
+    <!-- Center core with glow -->
+    <g filter="url(#strongGlow)">
+      <circle r="16" fill="#3b82f6" opacity="0.6"/>
+      <circle r="10" fill="#60a5fa"/>
+      <circle r="5" fill="#ffffff"/>
+    </g>
+
+    <!-- Target blips with glow effects -->
+    <g filter="url(#blipGlow)">
+      <!-- Primary threat - top left -->
+      <circle cx="-70" cy="-150" r="10" fill="#ef4444"/>
+      <circle cx="-70" cy="-150" r="18" fill="none" stroke="#ef4444" stroke-width="2" opacity="0.5"/>
+      <circle cx="-70" cy="-150" r="26" fill="none" stroke="#ef4444" stroke-width="1" opacity="0.25"/>
+
+      <!-- Warning - right -->
+      <circle cx="150" cy="30" r="9" fill="#f59e0b"/>
+      <circle cx="150" cy="30" r="16" fill="none" stroke="#f59e0b" stroke-width="2" opacity="0.5"/>
+      <circle cx="150" cy="30" r="24" fill="none" stroke="#f59e0b" stroke-width="1" opacity="0.25"/>
+
+      <!-- Info blips - smaller -->
+      <circle cx="-160" cy="60" r="6" fill="#fbbf24" opacity="0.9"/>
+      <circle cx="-160" cy="60" r="11" fill="none" stroke="#fbbf24" stroke-width="1.5" opacity="0.4"/>
+
+      <circle cx="80" cy="140" r="6" fill="#fbbf24" opacity="0.8"/>
+      <circle cx="80" cy="140" r="11" fill="none" stroke="#fbbf24" stroke-width="1.5" opacity="0.35"/>
+
+      <circle cx="40" cy="-100" r="5" fill="#22c55e" opacity="0.9"/>
+      <circle cx="40" cy="-100" r="9" fill="none" stroke="#22c55e" stroke-width="1.5" opacity="0.4"/>
+    </g>
+
+    <!-- Cross hairs -->
+    <line x1="-220" y1="0" x2="-30" y2="0" stroke="#3b82f6" stroke-width="1" opacity="0.1"/>
+    <line x1="30" y1="0" x2="220" y2="0" stroke="#3b82f6" stroke-width="1" opacity="0.1"/>
+    <line x1="0" y1="-220" x2="0" y2="-30" stroke="#3b82f6" stroke-width="1" opacity="0.1"/>
+    <line x1="0" y1="30" x2="0" y2="220" stroke="#3b82f6" stroke-width="1" opacity="0.1"/>
+  </g>
+
+  <!-- Brand name with shadow -->
+  <text x="600" y="485" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif" font-size="86" font-weight="800" fill="#0f172a" text-anchor="middle" letter-spacing="-2" opacity="0.3">
+    VulnRadar
+  </text>
+  <text x="600" y="482" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif" font-size="86" font-weight="800" fill="url(#textGrad)" text-anchor="middle" letter-spacing="-2">
     VulnRadar
   </text>
 
-  <!-- Subtitle -->
-  <text x="600" y="530" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="28" font-weight="400" fill="#94a3b8" text-anchor="middle">
-    Web Vulnerability Scanner
+  <!-- Tagline -->
+  <text x="600" y="535" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif" font-size="22" font-weight="600" fill="#64748b" text-anchor="middle" letter-spacing="6">
+    WEB VULNERABILITY SCANNER
   </text>
 
-  <!-- Feature badges -->
-  <g transform="translate(300, 575)">
-    <rect x="0" y="0" width="600" height="36" rx="18" fill="#1e293b" opacity="0.8"/>
-    <text x="300" y="23" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="14" fill="#e2e8f0" text-anchor="middle" font-weight="500">
-      65+ Security Checks • Instant Reports • Team Collaboration
+  <!-- Bottom feature bar - enhanced -->
+  <g transform="translate(600, 588)">
+    <rect x="-320" y="-20" width="640" height="40" rx="20" fill="#0f172a" stroke="#1e293b" stroke-width="1"/>
+    <circle cx="-240" cy="0" r="4" fill="#22c55e"/>
+    <text x="-220" y="5" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif" font-size="13" fill="#94a3b8" font-weight="600">
+      75+ CHECKS
+    </text>
+    <circle cx="-60" cy="0" r="4" fill="#3b82f6"/>
+    <text x="-40" y="5" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif" font-size="13" fill="#94a3b8" font-weight="600">
+      INSTANT REPORTS
+    </text>
+    <circle cx="140" cy="0" r="4" fill="#f59e0b"/>
+    <text x="160" y="5" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif" font-size="13" fill="#94a3b8" font-weight="600">
+      OPEN SOURCE
     </text>
   </g>
 
-  <!-- Corner accents -->
-  <g opacity="0.1" stroke="#60a5fa" stroke-width="2">
-    <path d="M 20 20 L 80 20 M 20 20 L 20 80"/>
-    <path d="M 1180 20 L 1120 20 M 1180 20 L 1180 80"/>
-    <path d="M 20 610 L 80 610 M 20 610 L 20 550"/>
-    <path d="M 1180 610 L 1120 610 M 1180 610 L 1180 550"/>
+  <!-- Corner accents - more tech feel -->
+  <g stroke="#3b82f6" stroke-width="2" opacity="0.25">
+    <path d="M24 24 L80 24 M24 24 L24 80" fill="none" stroke-linecap="round"/>
+    <path d="M1176 24 L1120 24 M1176 24 L1176 80" fill="none" stroke-linecap="round"/>
+    <path d="M24 606 L80 606 M24 606 L24 550" fill="none" stroke-linecap="round"/>
+    <path d="M1176 606 L1120 606 M1176 606 L1176 550" fill="none" stroke-linecap="round"/>
   </g>
+
+  <!-- Inner corner accents -->
+  <g stroke="#60a5fa" stroke-width="1" opacity="0.15">
+    <path d="M40 40 L70 40 M40 40 L40 70" fill="none" stroke-linecap="round"/>
+    <path d="M1160 40 L1130 40 M1160 40 L1160 70" fill="none" stroke-linecap="round"/>
+    <path d="M40 590 L70 590 M40 590 L40 560" fill="none" stroke-linecap="round"/>
+    <path d="M1160 590 L1130 590 M1160 590 L1160 560" fill="none" stroke-linecap="round"/>
+  </g>
+
+  <!-- Decorative dots -->
+  <circle cx="24" cy="24" r="3" fill="#3b82f6" opacity="0.4"/>
+  <circle cx="1176" cy="24" r="3" fill="#3b82f6" opacity="0.4"/>
+  <circle cx="24" cy="606" r="3" fill="#3b82f6" opacity="0.4"/>
+  <circle cx="1176" cy="606" r="3" fill="#3b82f6" opacity="0.4"/>
+
+  <!-- Top accent line -->
+  <rect x="400" y="0" width="400" height="3" fill="url(#sweepGrad)" opacity="0.5"/>
 </svg>
 

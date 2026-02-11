@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import crypto from "crypto"
 import { getSession, verifyPassword } from "@/lib/auth"
+import { sendEmail, backupCodesRegeneratedEmail } from "@/lib/email"
 import pool from "@/lib/db"
 
 function generateBackupCodes(count = 8): string[] {
@@ -49,6 +50,13 @@ export async function POST(request: NextRequest) {
 
   const backupCodes = generateBackupCodes(8)
   await pool.query("UPDATE users SET backup_codes = $1 WHERE id = $2", [JSON.stringify(backupCodes), session.userId])
+
+  // Send security notification email (don't await)
+  const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "Unknown"
+  const userAgent = request.headers.get("user-agent") || "Unknown"
+
+  const emailContent = backupCodesRegeneratedEmail({ ipAddress: ip, userAgent })
+  sendEmail({ to: session.email, ...emailContent }).catch(console.error)
 
   return NextResponse.json({ backupCodes })
 }

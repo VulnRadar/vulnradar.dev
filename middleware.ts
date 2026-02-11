@@ -44,36 +44,60 @@ function applySecurityHeaders(response: NextResponse): NextResponse {
 }
 
 const PUBLIC_PATHS = [
+  // ─── Root & Landing ────────────────────────────────────────────
+  "/",
+  "/landing",
+  "/donate",
+
+  // ─── Authentication Pages ──────────────────────────────────────
   "/login",
   "/signup",
   "/forgot-password",
   "/reset-password",
+
+  // ─── Authentication API Routes ─────────────────────────────────
   "/api/auth/login",
   "/api/auth/signup",
   "/api/auth/forgot-password",
   "/api/auth/reset-password",
+  "/api/auth/accept-tos",
+  "/api/auth/2fa/verify",
+
+  // ─── Legal Pages ───────────────────────────────────────────────
   "/legal/terms",
   "/legal/privacy",
   "/legal/disclaimer",
   "/legal/acceptable-use",
-  "/api/auth/accept-tos",
-  "/api/auth/2fa/verify",
+
+  // ─── Shared Scan Reports ───────────────────────────────────────
   "/shared",
   "/api/shared",
-  "/demo",
-  "/changelog",
-  "/contact",
+
+  // ─── Public API Endpoints ──────────────────────────────────────
+  "/api/landing-contact",
 ]
 
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
   const sessionCookie = request.cookies.get("vulnradar_session")
 
+  // Check if path is public (exact match for "/" and "/landing", startsWith for others)
+  const isPublicPath = PUBLIC_PATHS.some((p) => {
+    if (p === "/" || p === "/landing") {
+      return pathname === p
+    }
+    return pathname.startsWith(p)
+  })
+
   // Allow public paths
-  if (PUBLIC_PATHS.some((p) => pathname.startsWith(p))) {
-    // If logged in and trying to access login/signup, redirect to home
+  if (isPublicPath) {
+    // If logged in and trying to access login/signup, redirect to dashboard
     if (sessionCookie && (pathname === "/login" || pathname === "/signup")) {
-      return applySecurityHeaders(NextResponse.redirect(new URL("/", request.url)))
+      return applySecurityHeaders(NextResponse.redirect(new URL("/dashboard", request.url)))
+    }
+    // If not logged in and on root, redirect to landing
+    if (!sessionCookie && pathname === "/") {
+      return applySecurityHeaders(NextResponse.redirect(new URL("/landing", request.url)))
     }
     return applySecurityHeaders(NextResponse.next())
   }

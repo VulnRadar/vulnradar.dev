@@ -10,7 +10,7 @@ import { cn } from "@/lib/utils"
 import Image from "next/image"
 
 const NAV_LINKS = [
-  { href: "/", label: "Scanner", icon: Radar },
+  { href: "/dashboard", label: "Scanner", icon: Radar },
   { href: "/history", label: "History", icon: Clock },
   { href: "/compare", label: "Compare", icon: GitCompareArrows },
   { href: "/teams", label: "Teams", icon: Users },
@@ -39,7 +39,7 @@ export function Header() {
       <div className="max-w-5xl mx-auto flex items-center justify-between px-4 h-14">
         {/* Logo */}
         <button
-          onClick={() => router.push("/")}
+          onClick={() => router.push("/dashboard")}
           className="flex items-center gap-2 hover:opacity-80 transition-opacity shrink-0"
           aria-label="Go to scanner"
         >

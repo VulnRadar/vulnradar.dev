@@ -76,7 +76,8 @@ export async function POST(request: NextRequest) {
     }
 
     // No 2FA -- create session directly
-    await createSession(user.id)
+    const userAgent = request.headers.get("user-agent") || undefined
+    await createSession(user.id, ip, userAgent)
 
     return NextResponse.json({
       user: { id: user.id, email: user.email, name: user.name },

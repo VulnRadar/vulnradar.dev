@@ -2,6 +2,7 @@
 
 import Link from "next/link"
 import Image from "next/image"
+import { Heart } from "lucide-react"
 import { APP_VERSION } from "@/lib/version"
 
 const LEGAL_LINKS = [
@@ -41,6 +42,14 @@ export function Footer() {
             </div>
 
             <div className="flex items-center gap-3 text-xs text-muted-foreground">
+              <Link
+                href="/donate"
+                className="inline-flex items-center gap-1.5 text-yellow-500 hover:text-yellow-400 transition-colors"
+              >
+                <Heart className="h-3.5 w-3.5" />
+                Support Us
+              </Link>
+              <span className="text-border">|</span>
               <a
                 href="https://github.com/RejectModders"
                 target="_blank"

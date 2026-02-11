@@ -27,62 +27,56 @@ function layout(content: string): string {
   </style>
   <![endif]-->
 </head>
-<body style="margin: 0; padding: 0; background-color: #0a0e13; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; color: #e5e7eb; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale;">
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background: linear-gradient(135deg, #0a0e13 0%, #0f1419 50%, #1a1f2e 100%); padding: 40px 20px;">
+<body style="margin: 0; padding: 0; background-color: #0a0e13; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; color: #e5e7eb;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color: #0a0e13; padding: 40px 20px;">
     <tr>
       <td align="center">
         <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="max-width: 600px; width: 100%;">
           <!-- Header with Logo -->
           <tr>
-            <td style="padding: 0 0 24px 0; text-align: center;">
+            <td style="padding: 0 0 20px 0; text-align: center;">
               <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
                 <tr>
-                  <td align="center" style="padding-bottom: 16px;">
-                    <img src="${LOGO_URL}" alt="VulnRadar" width="64" height="64" style="display: block; margin: 0 auto; border-radius: 16px; box-shadow: 0 8px 24px rgba(59, 130, 246, 0.4);" />
+                  <td align="center" style="padding-bottom: 12px;">
+                    <img src="${LOGO_URL}" alt="VulnRadar" width="48" height="48" style="display: block; margin: 0 auto;" />
                   </td>
                 </tr>
                 <tr>
                   <td align="center">
-                    <h1 style="margin: 0; font-size: 28px; font-weight: 700; color: #f8fafc; letter-spacing: -0.5px; text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);">VulnRadar</h1>
-                    <p style="margin: 4px 0 0 0; font-size: 13px; color: #94a3b8; letter-spacing: 0.5px; text-transform: uppercase; font-weight: 500;">Web Vulnerability Scanner</p>
+                    <h1 style="margin: 0; font-size: 24px; font-weight: 700; color: #f8fafc; letter-spacing: -0.3px;">VulnRadar</h1>
                   </td>
                 </tr>
               </table>
             </td>
           </tr>
           
-          <!-- Gradient Divider -->
+          <!-- Divider -->
           <tr>
-            <td style="padding: 0 0 28px 0;">
-              <div style="height: 3px; background: linear-gradient(90deg, transparent 0%, #2563eb 20%, #3b82f6 50%, #60a5fa 80%, transparent 100%); border-radius: 999px;"></div>
+            <td style="padding: 0 0 24px 0;">
+              <div style="height: 2px; background: linear-gradient(90deg, #2563eb, #3b82f6); border-radius: 999px;"></div>
             </td>
           </tr>
           
           <!-- Main Content Card -->
           <tr>
-            <td style="background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); border: 1px solid rgba(96, 165, 250, 0.2); border-radius: 20px; padding: 36px 32px; box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.05);">
+            <td style="background-color: #0f172a; border: 1px solid #1e293b; border-radius: 12px; padding: 32px 28px;">
               ${content}
             </td>
           </tr>
           
           <!-- Footer -->
           <tr>
-            <td style="padding: 32px 20px 0 20px;">
+            <td style="padding: 28px 20px 0 20px;">
               <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
                 <tr>
-                  <td style="padding-bottom: 16px; text-align: center;">
-                    <div style="border-top: 1px solid rgba(71, 85, 105, 0.3); padding-top: 20px;">
-                      <p style="margin: 0 0 12px 0; font-size: 13px; color: #94a3b8; line-height: 1.6;">
-                        <a href="https://vulnradar.dev" style="color: #60a5fa; text-decoration: none; font-weight: 600;">vulnradar.dev</a> · 
-                        <a href="https://vulnradar.dev/docs" style="color: #94a3b8; text-decoration: none;">Docs</a> · 
-                        <a href="https://vulnradar.dev/changelog" style="color: #94a3b8; text-decoration: none;">Changelog</a> · 
-                        <a href="mailto:legal@vulnradar.dev" style="color: #94a3b8; text-decoration: none;">Legal</a>
-                      </p>
-                      <p style="margin: 0; font-size: 11px; color: #64748b; line-height: 1.5;">
-                        &copy; 2026 VulnRadar. All rights reserved.<br />
-                        This email was sent to you as part of your VulnRadar account activity.
-                      </p>
-                    </div>
+                  <td style="text-align: center;">
+                    <p style="margin: 0 0 8px 0; font-size: 12px; color: #64748b; line-height: 1.6;">
+                      <a href="https://vulnradar.dev" style="color: #3b82f6; text-decoration: none;">vulnradar.dev</a>
+                    </p>
+                    <p style="margin: 0; font-size: 11px; color: #475569; line-height: 1.5;">
+                      VulnRadar - Web Vulnerability Scanner<br />
+                      This is an automated message. Please do not reply directly.
+                    </p>
                   </td>
                 </tr>
               </table>
@@ -133,15 +127,6 @@ export function contactEmail(input: {
     const message = escapeHtml(input.message).replace(/\n/g, "<br />")
     const category = escapeHtml(input.category)
 
-    // Category badge colors
-    const categoryColors: Record<string, string> = {
-        "Bug Report": "#ef4444",
-        "Feature Request": "#3b82f6",
-        "Security Issue": "#f59e0b",
-        "General Help": "#10b981",
-    }
-    const badgeColor = categoryColors[input.category] || "#6366f1"
-
     return {
         subject: `[Contact] ${input.subject}`,
         text: [
@@ -152,69 +137,48 @@ export function contactEmail(input: {
             input.message,
         ].join("\n"),
         html: `
-      <!-- Header with Category Badge -->
-      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom: 24px;">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom: 20px;">
         <tr>
-          <td style="vertical-align: top;">
-            <div style="display: inline-block; margin-bottom: 8px;">
-              <span style="display: inline-block; padding: 8px 16px; border-radius: 8px; background: linear-gradient(135deg, ${badgeColor}, ${badgeColor}dd); color: #ffffff; font-size: 12px; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase; box-shadow: 0 4px 12px ${badgeColor}40;">
-                ${category}
-              </span>
-            </div>
-            <h1 style="margin: 0 0 8px 0; font-size: 24px; font-weight: 700; color: #f8fafc; line-height: 1.2;">New Contact Request</h1>
-            <p style="margin: 0; font-size: 14px; color: #94a3b8; line-height: 1.6;">
-              Submitted via contact form · Reply directly to respond
-            </p>
+          <td>
+            <span style="display: inline-block; padding: 6px 12px; border-radius: 6px; background-color: #1e293b; border: 1px solid #334155; color: #94a3b8; font-size: 11px; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase; margin-bottom: 12px;">
+              ${category}
+            </span>
+            <h1 style="margin: 8px 0 0 0; font-size: 20px; font-weight: 600; color: #f8fafc;">New Contact Request</h1>
           </td>
         </tr>
       </table>
 
-      <!-- Contact Details Card -->
-      <div style="background: linear-gradient(135deg, #0a0f1a 0%, #111827 100%); border: 1px solid rgba(96, 165, 250, 0.15); border-radius: 16px; padding: 20px; margin-bottom: 20px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);">
-        <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+      <div style="background-color: #1e293b; border-radius: 8px; padding: 16px; margin-bottom: 16px;">
+        <p style="margin: 0 0 12px 0; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: #64748b; font-weight: 600;">Contact Details</p>
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="font-size: 14px; line-height: 1.8;">
           <tr>
-            <td style="padding-bottom: 12px;">
-              <p style="margin: 0; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: #60a5fa; font-weight: 700;">Contact Information</p>
-            </td>
+            <td style="padding: 4px 0; width: 80px; color: #94a3b8;">Name</td>
+            <td style="padding: 4px 0; color: #f1f5f9;">${name}</td>
           </tr>
-        </table>
-        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="font-size: 14px; line-height: 2;">
           <tr>
-            <td style="padding: 8px 0; width: 120px; color: #94a3b8; font-weight: 500;">Name</td>
-            <td style="padding: 8px 0; color: #f1f5f9; font-weight: 600;">${name}</td>
+            <td style="padding: 4px 0; width: 80px; color: #94a3b8;">Email</td>
+            <td style="padding: 4px 0;"><a href="mailto:${email}" style="color: #3b82f6; text-decoration: none;">${email}</a></td>
           </tr>
-          <tr style="border-top: 1px solid rgba(71, 85, 105, 0.3);">
-            <td style="padding: 8px 0; width: 120px; color: #94a3b8; font-weight: 500;">Email</td>
-            <td style="padding: 8px 0;"><a href="mailto:${email}" style="color: #60a5fa; text-decoration: none; font-weight: 600;">${email}</a></td>
-          </tr>
-          <tr style="border-top: 1px solid rgba(71, 85, 105, 0.3);">
-            <td style="padding: 8px 0; width: 120px; color: #94a3b8; font-weight: 500;">Subject</td>
-            <td style="padding: 8px 0; color: #f1f5f9; font-weight: 600;">${subject}</td>
+          <tr>
+            <td style="padding: 4px 0; width: 80px; color: #94a3b8;">Subject</td>
+            <td style="padding: 4px 0; color: #f1f5f9;">${subject}</td>
           </tr>
         </table>
       </div>
 
-      <!-- Message Card -->
-      <div style="background: linear-gradient(135deg, #0a0f1a 0%, #111827 100%); border: 1px solid rgba(96, 165, 250, 0.15); border-radius: 16px; padding: 20px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);">
-        <p style="margin: 0 0 12px 0; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: #60a5fa; font-weight: 700;">Message</p>
-        <div style="font-size: 14px; color: #e2e8f0; line-height: 1.8; padding: 12px; background-color: rgba(15, 23, 42, 0.6); border-radius: 10px; border-left: 3px solid #3b82f6;">
+      <div style="background-color: #1e293b; border-radius: 8px; padding: 16px;">
+        <p style="margin: 0 0 12px 0; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: #64748b; font-weight: 600;">Message</p>
+        <div style="font-size: 14px; color: #e2e8f0; line-height: 1.7;">
           ${message}
         </div>
       </div>
 
-      <!-- Quick Actions -->
-      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-top: 28px; padding-top: 24px; border-top: 1px solid rgba(71, 85, 105, 0.3);">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-top: 24px;">
         <tr>
           <td align="center">
-            <table role="presentation" cellpadding="0" cellspacing="0">
-              <tr>
-                <td style="background: linear-gradient(135deg, #2563eb, #3b82f6); border-radius: 10px; box-shadow: 0 4px 12px rgba(37, 99, 235, 0.4);">
-                  <a href="mailto:${email}" style="display: inline-block; padding: 14px 32px; font-size: 14px; font-weight: 600; color: #ffffff; text-decoration: none; letter-spacing: 0.3px;">
-                    Reply to ${name}
-                  </a>
-                </td>
-              </tr>
-            </table>
+            <a href="mailto:${email}" style="display: inline-block; padding: 12px 28px; background-color: #2563eb; color: #ffffff; font-size: 14px; font-weight: 600; text-decoration: none; border-radius: 8px;">
+              Reply to ${name}
+            </a>
           </td>
         </tr>
       </table>
@@ -238,57 +202,38 @@ export function contactConfirmationEmail(input: { name: string; category: string
             "- VulnRadar Support",
         ].join("\n"),
         html: `
-      <!-- Success Icon -->
-      <div style="text-align: center; margin-bottom: 24px;">
-        <div style="display: inline-block; width: 80px; height: 80px; background: linear-gradient(135deg, #10b981, #059669); border-radius: 50%; box-shadow: 0 8px 24px rgba(16, 185, 129, 0.4);">
-          <svg width="80" height="80" viewBox="0 0 80 80" style="display: block;">
-            <path d="M25 40 L35 50 L55 30" stroke="#ffffff" stroke-width="4" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
-          </svg>
-        </div>
-      </div>
-
-      <!-- Main Heading -->
-      <h1 style="margin: 0 0 12px 0; font-size: 26px; font-weight: 700; color: #f8fafc; text-align: center; line-height: 1.2;">Message Received!</h1>
-      <p style="margin: 0 0 28px 0; font-size: 15px; color: #94a3b8; text-align: center; line-height: 1.6;">
-        Thanks for reaching out, <strong style="color: #f8fafc;">${name}</strong>
+      <h1 style="margin: 0 0 8px 0; font-size: 20px; font-weight: 600; color: #f8fafc;">Message Received</h1>
+      <p style="margin: 0 0 24px 0; font-size: 14px; color: #94a3b8; line-height: 1.6;">
+        Hi ${name}, thank you for reaching out.
       </p>
 
-      <!-- Info Card -->
-      <div style="background: linear-gradient(135deg, #0a0f1a 0%, #111827 100%); border: 1px solid rgba(96, 165, 250, 0.15); border-radius: 16px; padding: 24px; margin-bottom: 24px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);">
+      <div style="background-color: #1e293b; border-radius: 8px; padding: 16px; margin-bottom: 20px;">
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
           <tr>
-            <td style="padding: 8px 0;">
-              <p style="margin: 0 0 4px 0; font-size: 13px; color: #94a3b8; font-weight: 500;">Request Type</p>
-              <p style="margin: 0; font-size: 16px; color: #f8fafc; font-weight: 600;">${category}</p>
+            <td style="padding: 4px 0;">
+              <p style="margin: 0 0 4px 0; font-size: 12px; color: #64748b;">Request Type</p>
+              <p style="margin: 0; font-size: 15px; color: #f8fafc; font-weight: 500;">${category}</p>
             </td>
           </tr>
           <tr>
-            <td style="padding: 16px 0 8px 0; border-top: 1px solid rgba(71, 85, 105, 0.3);">
-              <p style="margin: 0 0 4px 0; font-size: 13px; color: #94a3b8; font-weight: 500;">Status</p>
-              <p style="margin: 0; font-size: 16px; color: #10b981; font-weight: 600;">
-                <span style="display: inline-block; width: 8px; height: 8px; background-color: #10b981; border-radius: 50%; margin-right: 6px; box-shadow: 0 0 8px #10b981;"></span>
-                In Review Queue
-              </p>
+            <td style="padding: 12px 0 4px 0; border-top: 1px solid #334155;">
+              <p style="margin: 0 0 4px 0; font-size: 12px; color: #64748b;">Status</p>
+              <p style="margin: 0; font-size: 15px; color: #10b981; font-weight: 500;">In Review</p>
             </td>
           </tr>
         </table>
       </div>
 
-      <!-- What's Next -->
-      <div style="background: rgba(59, 130, 246, 0.1); border-left: 3px solid #3b82f6; border-radius: 8px; padding: 18px 20px; margin-bottom: 24px;">
-        <p style="margin: 0 0 8px 0; font-size: 14px; color: #60a5fa; font-weight: 700;">What happens next?</p>
-        <p style="margin: 0; font-size: 14px; color: #cbd5e1; line-height: 1.7;">
-          Our team will review your message and respond within <strong style="color: #f8fafc;">24-48 hours</strong>. If you need to add more context, just reply to this email.
+      <div style="background-color: #1e3a5f; border-left: 3px solid #3b82f6; border-radius: 6px; padding: 14px 16px; margin-bottom: 20px;">
+        <p style="margin: 0 0 4px 0; font-size: 13px; color: #93c5fd; font-weight: 600;">What happens next?</p>
+        <p style="margin: 0; font-size: 13px; color: #cbd5e1; line-height: 1.6;">
+          Our team will review your message and respond within 24-48 hours. If you need to add more context, reply to this email.
         </p>
       </div>
 
-      <!-- Footer Info -->
-      <div style="text-align: center; padding-top: 20px; border-top: 1px solid rgba(71, 85, 105, 0.3);">
-        <p style="margin: 0; font-size: 13px; color: #64748b; line-height: 1.6;">
-          Thanks for using VulnRadar<br />
-          <span style="color: #94a3b8; font-weight: 600;">- The VulnRadar Team</span>
-        </p>
-      </div>
+      <p style="margin: 0; font-size: 13px; color: #64748b; text-align: center;">
+        Thank you for using VulnRadar.
+      </p>
     `,
     }
 }
@@ -307,61 +252,72 @@ export function passwordResetEmail(resetLink: string) {
             "If you did not request this, you can safely ignore this email.",
         ].join("\n"),
         html: `
-      <!-- Security Icon -->
-      <div style="text-align: center; margin-bottom: 24px;">
-        <div style="display: inline-block; width: 80px; height: 80px; background: linear-gradient(135deg, #3b82f6, #2563eb); border-radius: 50%; box-shadow: 0 8px 24px rgba(59, 130, 246, 0.4);">
-          <svg width="80" height="80" viewBox="0 0 80 80" style="display: block;">
-            <rect x="30" y="35" width="20" height="25" rx="2" fill="none" stroke="#ffffff" stroke-width="3"/>
-            <path d="M 32 35 V 28 Q 32 22 40 22 Q 48 22 48 28 V 35" fill="none" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/>
-            <circle cx="40" cy="47" r="3" fill="#ffffff"/>
-          </svg>
-        </div>
-      </div>
-
-      <!-- Main Heading -->
-      <h1 style="margin: 0 0 12px 0; font-size: 26px; font-weight: 700; color: #f8fafc; text-align: center; line-height: 1.2;">Reset Your Password</h1>
-      <p style="margin: 0 0 28px 0; font-size: 15px; color: #94a3b8; text-align: center; line-height: 1.6;">
-        We received a request to reset your VulnRadar password
+      <h1 style="margin: 0 0 8px 0; font-size: 20px; font-weight: 600; color: #f8fafc;">Reset Your Password</h1>
+      <p style="margin: 0 0 24px 0; font-size: 14px; color: #94a3b8; line-height: 1.6;">
+        We received a request to reset your VulnRadar account password.
       </p>
 
-      <!-- CTA Button -->
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom: 24px;">
         <tr>
           <td align="center">
-            <table role="presentation" cellpadding="0" cellspacing="0">
-              <tr>
-                <td style="background: linear-gradient(135deg, #2563eb, #3b82f6); border-radius: 12px; box-shadow: 0 6px 20px rgba(37, 99, 235, 0.5);">
-                  <a href="${resetLink}" style="display: inline-block; padding: 16px 48px; font-size: 16px; font-weight: 700; color: #ffffff; text-decoration: none; letter-spacing: 0.3px;">
-                    Reset Password
-                  </a>
-                </td>
-              </tr>
-            </table>
+            <a href="${resetLink}" style="display: inline-block; padding: 14px 40px; background-color: #2563eb; color: #ffffff; font-size: 15px; font-weight: 600; text-decoration: none; border-radius: 8px;">
+              Reset Password
+            </a>
           </td>
         </tr>
       </table>
 
-      <!-- Security Info -->
-      <div style="background: rgba(249, 115, 22, 0.1); border-left: 3px solid #f97316; border-radius: 8px; padding: 18px 20px; margin-bottom: 24px;">
-        <p style="margin: 0 0 8px 0; font-size: 14px; color: #fb923c; font-weight: 700;">Security Notice</p>
-        <p style="margin: 0; font-size: 14px; color: #cbd5e1; line-height: 1.7;">
-          This password reset link will expire in <strong style="color: #f8fafc;">1 hour</strong> for your security. If you didn't request this reset, please ignore this email.
+      <div style="background-color: #422006; border-left: 3px solid #f59e0b; border-radius: 6px; padding: 14px 16px; margin-bottom: 20px;">
+        <p style="margin: 0 0 4px 0; font-size: 13px; color: #fbbf24; font-weight: 600;">Security Notice</p>
+        <p style="margin: 0; font-size: 13px; color: #fef3c7; line-height: 1.6;">
+          This link expires in 1 hour. If you did not request this reset, please ignore this email.
         </p>
       </div>
 
-      <!-- Alternative Link -->
-      <div style="background: linear-gradient(135deg, #0a0f1a 0%, #111827 100%); border: 1px solid rgba(96, 165, 250, 0.15); border-radius: 12px; padding: 16px; margin-bottom: 20px;">
-        <p style="margin: 0 0 8px 0; font-size: 12px; color: #94a3b8; font-weight: 600;">If the button doesn't work, copy and paste this link:</p>
-        <div style="padding: 10px; background-color: rgba(15, 23, 42, 0.6); border-radius: 6px; font-family: 'Courier New', monospace; font-size: 11px; color: #60a5fa; word-break: break-all; line-height: 1.5;">
+      <div style="background-color: #1e293b; border-radius: 8px; padding: 14px 16px;">
+        <p style="margin: 0 0 8px 0; font-size: 12px; color: #64748b;">If the button doesn't work, copy this link:</p>
+        <p style="margin: 0; font-size: 12px; color: #3b82f6; word-break: break-all; line-height: 1.5; font-family: monospace;">
           ${resetLink}
-        </div>
+        </p>
+      </div>
+    `,
+    }
+}
+
+export function passwordChangedEmail(hasTwoFactor: boolean) {
+    return {
+        subject: "Password Changed - VulnRadar",
+        text: [
+            "Your VulnRadar account password has been successfully reset.",
+            "",
+            hasTwoFactor
+                ? "Note: Your account has two-factor authentication enabled. You will need to enter your 6-digit code when logging in."
+                : "All active sessions have been logged out for security. You can now log in with your new password.",
+            "",
+            "If you did not make this change, please contact support immediately at support@vulnradar.dev",
+            "",
+            "- VulnRadar Security",
+        ].join("\n"),
+        html: `
+      <h1 style="margin: 0 0 8px 0; font-size: 20px; font-weight: 600; color: #f8fafc;">Password Changed Successfully</h1>
+      <p style="margin: 0 0 24px 0; font-size: 14px; color: #94a3b8; line-height: 1.6;">
+        Your VulnRadar account password has been reset.
+      </p>
+
+      <div style="background-color: #1e293b; border-radius: 8px; padding: 16px; margin-bottom: 20px;">
+        <p style="margin: 0 0 4px 0; font-size: 12px; color: #64748b;">Security Information</p>
+        <p style="margin: 0; font-size: 14px; color: #e2e8f0; line-height: 1.6;">
+          ${hasTwoFactor 
+            ? 'Your account has two-factor authentication enabled. You will need your 6-digit authenticator code when logging in.'
+            : 'All active sessions have been logged out. You can now log in with your new password.'
+          }
+        </p>
       </div>
 
-      <!-- Footer Info -->
-      <div style="text-align: center; padding-top: 20px; border-top: 1px solid rgba(71, 85, 105, 0.3);">
-        <p style="margin: 0; font-size: 13px; color: #64748b; line-height: 1.6;">
-          This is an automated security email from VulnRadar<br />
-          <span style="color: #94a3b8; font-weight: 600;">For help, contact legal@vulnradar.dev</span>
+      <div style="background-color: #450a0a; border-left: 3px solid #dc2626; border-radius: 6px; padding: 14px 16px;">
+        <p style="margin: 0 0 4px 0; font-size: 13px; color: #fca5a5; font-weight: 600;">Didn't request this?</p>
+        <p style="margin: 0; font-size: 13px; color: #fecaca; line-height: 1.6;">
+          If you did not reset your password, your account may be compromised. Contact support immediately at support@vulnradar.dev
         </p>
       </div>
     `,
@@ -380,84 +336,380 @@ export function teamInviteEmail(teamName: string, inviteLink: string, invitedBy:
             "This invitation expires in 7 days.",
         ].join("\n"),
         html: `
-      <!-- Team Icon -->
-      <div style="text-align: center; margin-bottom: 24px;">
-        <div style="display: inline-block; width: 80px; height: 80px; background: linear-gradient(135deg, #8b5cf6, #7c3aed); border-radius: 50%; box-shadow: 0 8px 24px rgba(139, 92, 246, 0.4);">
-          <svg width="80" height="80" viewBox="0 0 80 80" style="display: block;">
-            <circle cx="40" cy="28" r="8" fill="none" stroke="#ffffff" stroke-width="3"/>
-            <path d="M 28 60 Q 28 44 40 44 Q 52 44 52 60" fill="none" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/>
-            <circle cx="58" cy="32" r="6" fill="none" stroke="#ffffff" stroke-width="2.5"/>
-            <path d="M 54 58 Q 54 48 58 48 Q 64 48 64 58" fill="none" stroke="#ffffff" stroke-width="2.5" stroke-linecap="round"/>
-            <circle cx="22" cy="32" r="6" fill="none" stroke="#ffffff" stroke-width="2.5"/>
-            <path d="M 16 58 Q 16 48 22 48 Q 26 48 26 58" fill="none" stroke="#ffffff" stroke-width="2.5" stroke-linecap="round"/>
-          </svg>
-        </div>
-      </div>
-
-      <!-- Main Heading -->
-      <h1 style="margin: 0 0 12px 0; font-size: 26px; font-weight: 700; color: #f8fafc; text-align: center; line-height: 1.2;">You're Invited!</h1>
-      <p style="margin: 0 0 28px 0; font-size: 15px; color: #94a3b8; text-align: center; line-height: 1.6;">
-        <strong style="color: #f8fafc;">${invitedBy}</strong> wants you to join their team
+      <h1 style="margin: 0 0 8px 0; font-size: 20px; font-weight: 600; color: #f8fafc;">Team Invitation</h1>
+      <p style="margin: 0 0 24px 0; font-size: 14px; color: #94a3b8; line-height: 1.6;">
+        <strong style="color: #f8fafc;">${invitedBy}</strong> has invited you to join their team.
       </p>
 
-      <!-- Team Info Card -->
-      <div style="background: linear-gradient(135deg, #0a0f1a 0%, #111827 100%); border: 1px solid rgba(139, 92, 246, 0.3); border-radius: 16px; padding: 24px; margin-bottom: 28px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3); text-align: center;">
-        <div style="display: inline-block; padding: 10px 20px; background: rgba(139, 92, 246, 0.2); border: 1px solid rgba(139, 92, 246, 0.4); border-radius: 8px; margin-bottom: 16px;">
-          <p style="margin: 0; font-size: 12px; color: #c4b5fd; font-weight: 600; text-transform: uppercase; letter-spacing: 1px;">Team Name</p>
-        </div>
-        <h2 style="margin: 0; font-size: 24px; font-weight: 700; color: #f8fafc; line-height: 1.2;">${teamName}</h2>
+      <div style="background-color: #1e293b; border-radius: 8px; padding: 20px; margin-bottom: 24px; text-align: center;">
+        <p style="margin: 0 0 4px 0; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: #64748b;">Team Name</p>
+        <h2 style="margin: 0; font-size: 22px; font-weight: 600; color: #f8fafc;">${teamName}</h2>
       </div>
 
-      <!-- CTA Button -->
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom: 24px;">
         <tr>
           <td align="center">
-            <table role="presentation" cellpadding="0" cellspacing="0">
-              <tr>
-                <td style="background: linear-gradient(135deg, #8b5cf6, #7c3aed); border-radius: 12px; box-shadow: 0 6px 20px rgba(139, 92, 246, 0.5);">
-                  <a href="${inviteLink}" style="display: inline-block; padding: 16px 48px; font-size: 16px; font-weight: 700; color: #ffffff; text-decoration: none; letter-spacing: 0.3px;">
-                    Accept Invitation
-                  </a>
-                </td>
-              </tr>
-            </table>
+            <a href="${inviteLink}" style="display: inline-block; padding: 14px 40px; background-color: #2563eb; color: #ffffff; font-size: 15px; font-weight: 600; text-decoration: none; border-radius: 8px;">
+              Accept Invitation
+            </a>
           </td>
         </tr>
       </table>
 
-      <!-- Benefits Info -->
-      <div style="background: rgba(59, 130, 246, 0.1); border-left: 3px solid #3b82f6; border-radius: 8px; padding: 18px 20px; margin-bottom: 24px;">
-        <p style="margin: 0 0 12px 0; font-size: 14px; color: #60a5fa; font-weight: 700;">What you'll get:</p>
-        <ul style="margin: 0; padding-left: 20px; font-size: 14px; color: #cbd5e1; line-height: 2;">
+      <div style="background-color: #1e293b; border-radius: 8px; padding: 16px; margin-bottom: 20px;">
+        <p style="margin: 0 0 10px 0; font-size: 13px; color: #94a3b8; font-weight: 600;">As a team member you can:</p>
+        <ul style="margin: 0; padding-left: 20px; font-size: 13px; color: #cbd5e1; line-height: 1.8;">
           <li>Collaborate on vulnerability scans</li>
           <li>Share scan history and reports</li>
-          <li>Team-wide security insights</li>
-          <li>Centralized scan management</li>
+          <li>Access team-wide security insights</li>
         </ul>
       </div>
 
-      <!-- Expiration Warning -->
-      <div style="background: linear-gradient(135deg, #0a0f1a 0%, #111827 100%); border: 1px solid rgba(96, 165, 250, 0.15); border-radius: 12px; padding: 16px; margin-bottom: 20px; text-align: center;">
-        <p style="margin: 0; font-size: 13px; color: #94a3b8;">
-          This invitation expires in <strong style="color: #f8fafc; font-size: 15px;">7 days</strong>
-        </p>
-      </div>
+      <p style="margin: 0 0 16px 0; font-size: 13px; color: #64748b; text-align: center;">
+        This invitation expires in 7 days.
+      </p>
 
-      <!-- Alternative Link -->
-      <div style="background: rgba(15, 23, 42, 0.6); border-radius: 8px; padding: 12px; margin-bottom: 20px;">
-        <p style="margin: 0 0 8px 0; font-size: 11px; color: #94a3b8; font-weight: 600;">If the button doesn't work, copy this link:</p>
-        <div style="font-family: 'Courier New', monospace; font-size: 10px; color: #60a5fa; word-break: break-all; line-height: 1.5;">
+      <div style="background-color: #1e293b; border-radius: 8px; padding: 14px 16px;">
+        <p style="margin: 0 0 8px 0; font-size: 12px; color: #64748b;">If the button doesn't work, copy this link:</p>
+        <p style="margin: 0; font-size: 11px; color: #3b82f6; word-break: break-all; line-height: 1.5; font-family: monospace;">
           ${inviteLink}
-        </div>
-      </div>
-
-      <!-- Footer Info -->
-      <div style="text-align: center; padding-top: 20px; border-top: 1px solid rgba(71, 85, 105, 0.3);">
-        <p style="margin: 0; font-size: 13px; color: #64748b; line-height: 1.6;">
-          Join your team on VulnRadar<br />
-          <span style="color: #94a3b8; font-weight: 600;">Start collaborating on security scans today</span>
         </p>
       </div>
     `,
     }
 }
+
+export function landingContactEmail(input: { email: string; message: string }) {
+    const email = escapeHtml(input.email)
+    const message = escapeHtml(input.message).replace(/\n/g, "<br />")
+
+    return {
+        subject: "[Landing Page] New Inquiry",
+        text: [
+            "New Landing Page Inquiry",
+            "",
+            `Email: ${input.email}`,
+            "",
+            "Message:",
+            input.message,
+        ].join("\n"),
+        html: `
+      <h1 style="margin: 0 0 8px 0; font-size: 20px; font-weight: 600; color: #f8fafc;">New Landing Page Inquiry</h1>
+      <p style="margin: 0 0 24px 0; font-size: 14px; color: #94a3b8; line-height: 1.6;">
+        Someone reached out via the VulnRadar landing page.
+      </p>
+
+      <div style="background-color: #1e293b; border-radius: 8px; padding: 16px; margin-bottom: 16px;">
+        <p style="margin: 0 0 12px 0; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: #64748b; font-weight: 600;">Contact Info</p>
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="font-size: 14px; line-height: 1.8;">
+          <tr>
+            <td style="padding: 4px 0; width: 80px; color: #94a3b8;">Email</td>
+            <td style="padding: 4px 0;"><a href="mailto:${email}" style="color: #3b82f6; text-decoration: none;">${email}</a></td>
+          </tr>
+        </table>
+      </div>
+
+      <div style="background-color: #1e293b; border-radius: 8px; padding: 16px;">
+        <p style="margin: 0 0 12px 0; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: #64748b; font-weight: 600;">Message</p>
+        <div style="font-size: 14px; color: #e2e8f0; line-height: 1.7;">
+          ${message}
+        </div>
+      </div>
+
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-top: 24px;">
+        <tr>
+          <td align="center">
+            <a href="mailto:${email}" style="display: inline-block; padding: 12px 28px; background-color: #2563eb; color: #ffffff; font-size: 14px; font-weight: 600; text-decoration: none; border-radius: 8px;">
+              Reply
+            </a>
+          </td>
+        </tr>
+      </table>
+    `,
+    }
+}
+
+export function landingContactConfirmationEmail(message: string) {
+    const escapedMessage = escapeHtml(message).replace(/\n/g, "<br />")
+
+    return {
+        subject: "We received your message - VulnRadar",
+        text: [
+            "Thanks for reaching out!",
+            "",
+            "We've received your message and will get back to you within 24 hours.",
+            "",
+            "Your Message:",
+            message,
+            "",
+            "In the meantime, feel free to explore our documentation or start scanning for free by creating an account.",
+        ].join("\n"),
+        html: `
+      <h1 style="margin: 0 0 8px 0; font-size: 20px; font-weight: 600; color: #f8fafc;">Message Received</h1>
+      <p style="margin: 0 0 24px 0; font-size: 14px; color: #94a3b8; line-height: 1.6;">
+        Thank you for reaching out. We will get back to you within 24 hours.
+      </p>
+
+      <div style="background-color: #1e293b; border-radius: 8px; padding: 16px; margin-bottom: 20px;">
+        <p style="margin: 0 0 12px 0; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: #64748b; font-weight: 600;">Your Message</p>
+        <div style="font-size: 14px; color: #e2e8f0; line-height: 1.7;">
+          ${escapedMessage}
+        </div>
+      </div>
+
+      <div style="background-color: #1e3a5f; border-left: 3px solid #3b82f6; border-radius: 6px; padding: 14px 16px;">
+        <p style="margin: 0; font-size: 13px; color: #cbd5e1; line-height: 1.6;">
+          In the meantime, feel free to explore our <a href="https://vulnradar.dev/docs" style="color: #93c5fd; text-decoration: none;">documentation</a> or start scanning by <a href="https://vulnradar.dev/signup" style="color: #93c5fd; text-decoration: none;">creating an account</a>.
+        </p>
+      </div>
+    `,
+    }
+}
+
+// ─── Security Alert Emails for Profile Changes ───────────────────────────────
+
+interface SecurityAlertDetails {
+    ipAddress: string
+    userAgent: string
+}
+
+function securityDetailsBlock(details: SecurityAlertDetails): string {
+    return `
+      <div style="background-color: #1e293b; border-radius: 8px; padding: 16px; margin-bottom: 20px;">
+        <p style="margin: 0 0 12px 0; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: #64748b; font-weight: 600;">Session Details</p>
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="font-size: 13px; line-height: 1.8;">
+          <tr>
+            <td style="padding: 4px 0; width: 100px; color: #94a3b8;">IP Address</td>
+            <td style="padding: 4px 0; color: #f1f5f9; font-family: monospace;">${escapeHtml(details.ipAddress)}</td>
+          </tr>
+          <tr>
+            <td style="padding: 4px 0; width: 100px; color: #94a3b8;">Device</td>
+            <td style="padding: 4px 0; color: #f1f5f9; font-size: 12px;">${escapeHtml(details.userAgent.length > 80 ? details.userAgent.substring(0, 80) + '...' : details.userAgent)}</td>
+          </tr>
+        </table>
+      </div>
+    `
+}
+
+function securityWarningBlock(): string {
+    return `
+      <div style="background-color: #450a0a; border-left: 3px solid #dc2626; border-radius: 6px; padding: 14px 16px;">
+        <p style="margin: 0 0 4px 0; font-size: 13px; color: #fca5a5; font-weight: 600;">Wasn't you?</p>
+        <p style="margin: 0; font-size: 13px; color: #fecaca; line-height: 1.6;">
+          If you did not make this change, your account may be compromised. Please reset your password immediately and contact support at support@vulnradar.dev
+        </p>
+      </div>
+    `
+}
+
+export function profileNameChangedEmail(oldName: string, newName: string, details: SecurityAlertDetails) {
+    return {
+        subject: "Profile Name Changed - VulnRadar",
+        text: [
+            "Your VulnRadar profile name has been changed.",
+            "",
+            `Previous Name: ${oldName}`,
+            `New Name: ${newName}`,
+            "",
+            `IP Address: ${details.ipAddress}`,
+            `Device: ${details.userAgent}`,
+            "",
+            "If you did not make this change, please reset your password immediately.",
+        ].join("\n"),
+        html: `
+      <h1 style="margin: 0 0 8px 0; font-size: 20px; font-weight: 600; color: #f8fafc;">Profile Name Changed</h1>
+      <p style="margin: 0 0 24px 0; font-size: 14px; color: #94a3b8; line-height: 1.6;">
+        Your VulnRadar account name has been updated.
+      </p>
+
+      <div style="background-color: #1e293b; border-radius: 8px; padding: 16px; margin-bottom: 16px;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="font-size: 14px; line-height: 1.8;">
+          <tr>
+            <td style="padding: 4px 0; width: 120px; color: #94a3b8;">Previous Name</td>
+            <td style="padding: 4px 0; color: #f1f5f9;">${escapeHtml(oldName)}</td>
+          </tr>
+          <tr>
+            <td style="padding: 4px 0; width: 120px; color: #94a3b8;">New Name</td>
+            <td style="padding: 4px 0; color: #10b981; font-weight: 500;">${escapeHtml(newName)}</td>
+          </tr>
+        </table>
+      </div>
+
+      ${securityDetailsBlock(details)}
+      ${securityWarningBlock()}
+    `,
+    }
+}
+
+export function profileEmailChangedEmail(oldEmail: string, newEmail: string, details: SecurityAlertDetails) {
+    return {
+        subject: "Email Address Changed - VulnRadar",
+        text: [
+            "Your VulnRadar account email has been changed.",
+            "",
+            `Previous Email: ${oldEmail}`,
+            `New Email: ${newEmail}`,
+            "",
+            `IP Address: ${details.ipAddress}`,
+            `Device: ${details.userAgent}`,
+            "",
+            "If you did not make this change, please contact support immediately.",
+        ].join("\n"),
+        html: `
+      <h1 style="margin: 0 0 8px 0; font-size: 20px; font-weight: 600; color: #f8fafc;">Email Address Changed</h1>
+      <p style="margin: 0 0 24px 0; font-size: 14px; color: #94a3b8; line-height: 1.6;">
+        Your VulnRadar account email has been updated.
+      </p>
+
+      <div style="background-color: #1e293b; border-radius: 8px; padding: 16px; margin-bottom: 16px;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="font-size: 14px; line-height: 1.8;">
+          <tr>
+            <td style="padding: 4px 0; width: 120px; color: #94a3b8;">Previous Email</td>
+            <td style="padding: 4px 0; color: #f1f5f9;">${escapeHtml(oldEmail)}</td>
+          </tr>
+          <tr>
+            <td style="padding: 4px 0; width: 120px; color: #94a3b8;">New Email</td>
+            <td style="padding: 4px 0; color: #10b981; font-weight: 500;">${escapeHtml(newEmail)}</td>
+          </tr>
+        </table>
+      </div>
+
+      ${securityDetailsBlock(details)}
+      ${securityWarningBlock()}
+    `,
+    }
+}
+
+export function profilePasswordChangedEmail(details: SecurityAlertDetails) {
+    return {
+        subject: "Password Changed - VulnRadar",
+        text: [
+            "Your VulnRadar account password has been changed.",
+            "",
+            `IP Address: ${details.ipAddress}`,
+            `Device: ${details.userAgent}`,
+            "",
+            "If you did not make this change, please reset your password immediately.",
+        ].join("\n"),
+        html: `
+      <h1 style="margin: 0 0 8px 0; font-size: 20px; font-weight: 600; color: #f8fafc;">Password Changed</h1>
+      <p style="margin: 0 0 24px 0; font-size: 14px; color: #94a3b8; line-height: 1.6;">
+        Your VulnRadar account password has been successfully updated.
+      </p>
+
+      <div style="background-color: #1e3a5f; border-left: 3px solid #3b82f6; border-radius: 6px; padding: 14px 16px; margin-bottom: 20px;">
+        <p style="margin: 0; font-size: 13px; color: #cbd5e1; line-height: 1.6;">
+          For security, you may want to review your active sessions in your profile settings.
+        </p>
+      </div>
+
+      ${securityDetailsBlock(details)}
+      ${securityWarningBlock()}
+    `,
+    }
+}
+
+export function twoFactorEnabledEmail(details: SecurityAlertDetails) {
+    return {
+        subject: "Two-Factor Authentication Enabled - VulnRadar",
+        text: [
+            "Two-factor authentication has been enabled on your VulnRadar account.",
+            "",
+            "Your account is now more secure. You will need to enter a code from your authenticator app when logging in.",
+            "",
+            `IP Address: ${details.ipAddress}`,
+            `Device: ${details.userAgent}`,
+            "",
+            "If you did not enable 2FA, please contact support immediately.",
+        ].join("\n"),
+        html: `
+      <h1 style="margin: 0 0 8px 0; font-size: 20px; font-weight: 600; color: #f8fafc;">Two-Factor Authentication Enabled</h1>
+      <p style="margin: 0 0 24px 0; font-size: 14px; color: #94a3b8; line-height: 1.6;">
+        Two-factor authentication has been enabled on your account.
+      </p>
+
+      <div style="background-color: #052e16; border-left: 3px solid #22c55e; border-radius: 6px; padding: 14px 16px; margin-bottom: 20px;">
+        <p style="margin: 0 0 4px 0; font-size: 13px; color: #86efac; font-weight: 600;">Enhanced Security Active</p>
+        <p style="margin: 0; font-size: 13px; color: #bbf7d0; line-height: 1.6;">
+          Your account is now protected with two-factor authentication. You'll need your authenticator app to log in.
+        </p>
+      </div>
+
+      <div style="background-color: #1e293b; border-radius: 8px; padding: 16px; margin-bottom: 16px;">
+        <p style="margin: 0 0 8px 0; font-size: 12px; color: #64748b;">Remember to:</p>
+        <ul style="margin: 0; padding-left: 20px; font-size: 13px; color: #cbd5e1; line-height: 1.8;">
+          <li>Store your backup codes in a safe place</li>
+          <li>Keep your authenticator app accessible</li>
+        </ul>
+      </div>
+
+      ${securityDetailsBlock(details)}
+      ${securityWarningBlock()}
+    `,
+    }
+}
+
+export function twoFactorDisabledEmail(details: SecurityAlertDetails) {
+    return {
+        subject: "Two-Factor Authentication Disabled - VulnRadar",
+        text: [
+            "Two-factor authentication has been disabled on your VulnRadar account.",
+            "",
+            "Your account no longer requires a 2FA code to log in.",
+            "",
+            `IP Address: ${details.ipAddress}`,
+            `Device: ${details.userAgent}`,
+            "",
+            "If you did not disable 2FA, please re-enable it and reset your password immediately.",
+        ].join("\n"),
+        html: `
+      <h1 style="margin: 0 0 8px 0; font-size: 20px; font-weight: 600; color: #f8fafc;">Two-Factor Authentication Disabled</h1>
+      <p style="margin: 0 0 24px 0; font-size: 14px; color: #94a3b8; line-height: 1.6;">
+        Two-factor authentication has been removed from your account.
+      </p>
+
+      <div style="background-color: #422006; border-left: 3px solid #f59e0b; border-radius: 6px; padding: 14px 16px; margin-bottom: 20px;">
+        <p style="margin: 0 0 4px 0; font-size: 13px; color: #fbbf24; font-weight: 600;">Security Reduced</p>
+        <p style="margin: 0; font-size: 13px; color: #fef3c7; line-height: 1.6;">
+          Your account is no longer protected with two-factor authentication. Consider re-enabling it for better security.
+        </p>
+      </div>
+
+      ${securityDetailsBlock(details)}
+      ${securityWarningBlock()}
+    `,
+    }
+}
+
+export function backupCodesRegeneratedEmail(details: SecurityAlertDetails) {
+    return {
+        subject: "Backup Codes Regenerated - VulnRadar",
+        text: [
+            "Your VulnRadar two-factor authentication backup codes have been regenerated.",
+            "",
+            "All previous backup codes are now invalid. Please store your new codes securely.",
+            "",
+            `IP Address: ${details.ipAddress}`,
+            `Device: ${details.userAgent}`,
+            "",
+            "If you did not regenerate your backup codes, please contact support immediately.",
+        ].join("\n"),
+        html: `
+      <h1 style="margin: 0 0 8px 0; font-size: 20px; font-weight: 600; color: #f8fafc;">Backup Codes Regenerated</h1>
+      <p style="margin: 0 0 24px 0; font-size: 14px; color: #94a3b8; line-height: 1.6;">
+        Your two-factor authentication backup codes have been regenerated.
+      </p>
+
+      <div style="background-color: #422006; border-left: 3px solid #f59e0b; border-radius: 6px; padding: 14px 16px; margin-bottom: 20px;">
+        <p style="margin: 0 0 4px 0; font-size: 13px; color: #fbbf24; font-weight: 600;">Previous Codes Invalidated</p>
+        <p style="margin: 0; font-size: 13px; color: #fef3c7; line-height: 1.6;">
+          All previous backup codes are now invalid. Make sure to store your new codes in a secure location.
+        </p>
+      </div>
+
+      ${securityDetailsBlock(details)}
+      ${securityWarningBlock()}
+    `,
+    }
+}
+

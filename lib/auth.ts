@@ -24,13 +24,13 @@ function generateSessionId(): string {
   return randomBytes(32).toString("hex")
 }
 
-export async function createSession(userId: number): Promise<string> {
+export async function createSession(userId: number, ipAddress?: string, userAgent?: string): Promise<string> {
   const sessionId = generateSessionId()
   const expiresAt = new Date(Date.now() + SESSION_MAX_AGE)
 
   await pool.query(
-    "INSERT INTO sessions (id, user_id, expires_at) VALUES ($1, $2, $3)",
-    [sessionId, userId, expiresAt],
+    "INSERT INTO sessions (id, user_id, expires_at, ip_address, user_agent) VALUES ($1, $2, $3, $4, $5)",
+    [sessionId, userId, expiresAt, ipAddress || null, userAgent || null],
   )
 
   const cookieStore = await cookies()

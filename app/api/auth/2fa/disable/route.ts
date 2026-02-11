@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getSession, verifyPassword } from "@/lib/auth"
+import { sendEmail, twoFactorDisabledEmail } from "@/lib/email"
 import pool from "@/lib/db"
 
 // POST: Disable 2FA (requires current password)
@@ -24,6 +25,13 @@ export async function POST(request: NextRequest) {
     "UPDATE users SET totp_enabled = false, totp_secret = NULL, backup_codes = NULL WHERE id = $1",
     [session.userId],
   )
+
+  // Send security notification email (don't await)
+  const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "Unknown"
+  const userAgent = request.headers.get("user-agent") || "Unknown"
+
+  const emailContent = twoFactorDisabledEmail({ ipAddress: ip, userAgent })
+  sendEmail({ to: session.email, ...emailContent }).catch(console.error)
 
   return NextResponse.json({ success: true })
 }

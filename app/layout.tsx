@@ -33,12 +33,21 @@ export const metadata: Metadata = {
     type: 'website',
     url: 'https://vulnradar.dev',
     locale: 'en_US',
+    images: [
+      {
+        url: 'https://vulnradar.dev/og-image.png',
+        width: 1200,
+        height: 630,
+        alt: 'VulnRadar - Web Vulnerability Scanner',
+      },
+    ],
   },
   twitter: {
     card: 'summary_large_image',
     title: 'VulnRadar - Web Vulnerability Scanner',
     description: 'Scan websites for 75+ security vulnerabilities. Get instant reports with severity ratings, actionable fix guidance, and team collaboration tools.',
     site: '@VulnRadar',
+    images: ['https://vulnradar.dev/og-image.png'],
   },
   robots: {
     index: true,
@@ -68,7 +77,7 @@ export default function RootLayout({
       <head>
         <link rel="security" type="text/plain" href="/.well-known/security.txt" />
       </head>
-      <body className="font-sans antialiased">
+      <body className="font-sans antialiased" suppressHydrationWarning>
         <ThemeProvider
           attribute="class"
           defaultTheme="dark"

@@ -10,7 +10,6 @@ import {
   ExternalLink,
   ChevronRight,
   Loader2,
-  RotateCcw,
   ArrowLeft,
   Tag,
   Plus,
@@ -270,22 +269,6 @@ function HistoryPageContent() {
         ) : selectedScanId !== null ? (
           /* ── DETAIL VIEW ──────────────────────────── */
           <>
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-              <button
-                type="button"
-                onClick={handleBackToList}
-                className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors w-fit"
-              >
-                <ArrowLeft className="h-4 w-4" />
-                Back to History
-              </button>
-              {!detailLoading && scanDetail && !selectedIssue && (
-                <div className="flex items-center gap-2">
-                  <ExportButton result={scanDetail} />
-                  <ShareButton scanId={selectedScanId!} />
-                </div>
-              )}
-            </div>
 
             {detailLoading && (
               <div className="flex flex-col items-center gap-3 py-16">
@@ -303,6 +286,22 @@ function HistoryPageContent() {
                   />
                 ) : (
                   <>
+                    {/* Action buttons at top */}
+                    <div className="flex flex-wrap items-center justify-between gap-3 p-4 rounded-xl border border-border/40 bg-card/30 backdrop-blur-sm">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs text-muted-foreground mb-1">Scanned URL</p>
+                        <p className="text-sm font-medium text-foreground truncate">{scanDetail.url}</p>
+                      </div>
+                      <div className="flex gap-2 flex-shrink-0 flex-wrap">
+                        <Button variant="outline" onClick={handleBackToList} size="sm" className="bg-transparent">
+                          <ArrowLeft className="mr-2 h-4 w-4" />
+                          Back to History
+                        </Button>
+                        <ExportButton result={scanDetail} />
+                        <ShareButton scanId={selectedScanId!} />
+                      </div>
+                    </div>
+
                     <ScanSummary result={scanDetail} />
 
                     {scanDetail.findings.length > 0 ? (
@@ -321,7 +320,6 @@ function HistoryPageContent() {
                         </p>
                       </div>
                     )}
-
 
                   </>
                 )}

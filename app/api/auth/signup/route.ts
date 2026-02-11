@@ -37,7 +37,11 @@ export async function POST(request: NextRequest) {
     }
 
     const user = await createUser(email, password, name)
-    await createSession(user.id)
+
+    // Create session with IP and user agent
+    const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown"
+    const userAgent = request.headers.get("user-agent") || undefined
+    await createSession(user.id, ip, userAgent)
 
     return NextResponse.json({
       user: { id: user.id, email: user.email, name: user.name },

@@ -58,8 +58,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Invalid code. Please try again." }, { status: 400 })
     }
 
-    // Create session
-    await createSession(userId)
+    // Create session with IP and user agent
+    const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown"
+    const userAgent = request.headers.get("user-agent") || undefined
+    await createSession(userId, ip, userAgent)
 
     // Clear the pending cookie
     const response = NextResponse.json({ success: true })

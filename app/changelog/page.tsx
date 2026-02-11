@@ -1,13 +1,33 @@
 import { Header } from "@/components/scanner/header"
 import { Footer } from "@/components/scanner/footer"
-import { Newspaper, Zap, Shield, Users, Tag, List, RefreshCw, Lock, Gauge, MessageSquare, Sparkles, Eye, ShieldCheck, Target, Brain, AlertTriangle, Search } from "lucide-react"
+import { Newspaper, Zap, Shield, Users, Tag, List, RefreshCw, Lock, Gauge, MessageSquare, Sparkles, Eye, ShieldCheck, Target, Brain, AlertTriangle, Search, Bell, Heart, Layout } from "lucide-react"
 
 const CHANGELOG = [
+  {
+    version: "1.3.0",
+    date: "February 10, 2026",
+    title: "Landing Page, Donations & Major UI Polish",
+    highlights: true,
+    changes: [
+      { icon: Eye, label: "Beautiful Landing Page", desc: "New public landing page showcasing VulnRadar's features, benefits, and capabilities. Professional hero section, feature grid, stats showcase, FAQ, and vulnerability coverage highlights." },
+      { icon: Heart, label: "Support VulnRadar", desc: "New donation system via Buy Me a Coffee. Support the project to help fund development and keep VulnRadar free for everyone. Access via /donate or the footer links." },
+      { icon: Shield, label: "Smart Routing", desc: "Intelligent routing system: unauthenticated visitors see the landing page at /, while authenticated users are automatically redirected to /dashboard for seamless access to the scanner." },
+      { icon: Layout, label: "Unified Results UI", desc: "Scan results now display in a consistent gray card with the scanned URL and all action buttons (Scan Again, Export PDF/JSON, Share) grouped together at the top for easy access." },
+      { icon: Eye, label: "History Page Polish", desc: "History detail view now matches the dashboard styling with the same gray card layout, showing scanned URL and action buttons in a unified design." },
+      { icon: Sparkles, label: "Enhanced OG Image", desc: "Completely redesigned Open Graph image with radar visualization, gradient backgrounds, glow effects, threat blips, and professional typography. Matches the favicon style perfectly." },
+      { icon: Shield, label: "Consistent OpenGraph", desc: "Fixed OpenGraph metadata to use consistent URLs across all pages. All shared links now display the same professional embed on Discord and social platforms." },
+      { icon: Zap, label: "Improved Login Flow", desc: "Login and signup now redirect directly to /dashboard instead of going through the landing page, providing a faster and smoother user experience." },
+      { icon: Shield, label: "2FA-Enabled Password Resets", desc: "Users with two-factor authentication can now reset their passwords via email. After reset, they still need their authenticator code to log in, maintaining security while improving usability." },
+      { icon: Bell, label: "Security Notifications", desc: "All password resets now trigger a security notification email. If users didn't request the reset, they're immediately alerted with instructions to contact support." },
+      { icon: Lock, label: "Atomic Password Reset", desc: "Password reset now uses database transactions with row-level locking to prevent race conditions and ensure emails are only sent once per request." },
+      { icon: MessageSquare, label: "Landing Page Contact Form", desc: "Public contact form with Turnstile protection allows visitors to reach out before signing up. Sends professional emails to both the team and the user." },
+    ],
+  },
   {
     version: "1.2.0",
     date: "February 9, 2026",
     title: "Comprehensive Security Check Expansion",
-    highlights: true,
+    highlights: false,
     changes: [
       { icon: Shield, label: "10 New Critical Security Checks", desc: "Added detection for SQL injection patterns, command injection, XXE vulnerabilities, SSRF, path traversal, insecure authentication, deserialization flaws, missing rate limiting, GraphQL introspection, and clickjacking protection gaps." },
       { icon: AlertTriangle, label: "Stricter Detection Logic", desc: "Dramatically reduced false positives across all checks. Mixed content detection now filters localhost and examples. Email exposure requires 2+ addresses. Open redirect detection identifies actual vulnerable patterns, not just parameter names." },

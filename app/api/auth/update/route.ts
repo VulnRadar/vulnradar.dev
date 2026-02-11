@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getSession, hashPassword, verifyPassword } from "@/lib/auth"
+import { sendEmail, profileNameChangedEmail, profileEmailChangedEmail, profilePasswordChangedEmail } from "@/lib/email"
 import pool from "@/lib/db"
 
 export async function PATCH(request: NextRequest) {
@@ -12,13 +13,32 @@ export async function PATCH(request: NextRequest) {
     const body = await request.json()
     const { name, email, currentPassword, newPassword } = body
 
+    // Get IP and user agent for security emails
+    const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "Unknown"
+    const userAgent = request.headers.get("user-agent") || "Unknown"
+
+    // Get current user info for comparison
+    const currentUser = await pool.query(
+      "SELECT name, email FROM users WHERE id = $1",
+      [session.userId]
+    )
+    const currentName = currentUser.rows[0]?.name || ""
+    const currentEmail = currentUser.rows[0]?.email || ""
+
     // Update name
     if (typeof name === "string") {
       const trimmed = name.trim()
       if (!trimmed) {
         return NextResponse.json({ error: "Name cannot be empty." }, { status: 400 })
       }
-      await pool.query("UPDATE users SET name = $1 WHERE id = $2", [trimmed, session.userId])
+
+      if (trimmed !== currentName) {
+        await pool.query("UPDATE users SET name = $1 WHERE id = $2", [trimmed, session.userId])
+
+        // Send security email (don't await to avoid blocking)
+        const emailContent = profileNameChangedEmail(currentName || "Not set", trimmed, { ipAddress: ip, userAgent })
+        sendEmail({ to: currentEmail, ...emailContent }).catch(console.error)
+      }
     }
 
     // Update email
@@ -28,16 +48,23 @@ export async function PATCH(request: NextRequest) {
         return NextResponse.json({ error: "Please enter a valid email." }, { status: 400 })
       }
 
-      // Check if email is already taken by another user
-      const existing = await pool.query(
-        "SELECT id FROM users WHERE email = $1 AND id != $2",
-        [trimmedEmail, session.userId],
-      )
-      if (existing.rows.length > 0) {
-        return NextResponse.json({ error: "Email is already in use." }, { status: 409 })
-      }
+      if (trimmedEmail !== currentEmail) {
+        // Check if email is already taken by another user
+        const existing = await pool.query(
+          "SELECT id FROM users WHERE email = $1 AND id != $2",
+          [trimmedEmail, session.userId],
+        )
+        if (existing.rows.length > 0) {
+          return NextResponse.json({ error: "Email is already in use." }, { status: 409 })
+        }
 
-      await pool.query("UPDATE users SET email = $1 WHERE id = $2", [trimmedEmail, session.userId])
+        await pool.query("UPDATE users SET email = $1 WHERE id = $2", [trimmedEmail, session.userId])
+
+        // Send security email to BOTH old and new email addresses (don't await)
+        const emailContent = profileEmailChangedEmail(currentEmail, trimmedEmail, { ipAddress: ip, userAgent })
+        sendEmail({ to: currentEmail, ...emailContent }).catch(console.error)
+        sendEmail({ to: trimmedEmail, ...emailContent }).catch(console.error)
+      }
     }
 
     // Update password
@@ -72,6 +99,10 @@ export async function PATCH(request: NextRequest) {
 
       const newHash = hashPassword(newPassword)
       await pool.query("UPDATE users SET password_hash = $1 WHERE id = $2", [newHash, session.userId])
+
+      // Send security email (don't await)
+      const emailContent = profilePasswordChangedEmail({ ipAddress: ip, userAgent })
+      sendEmail({ to: currentEmail, ...emailContent }).catch(console.error)
     }
 
     // Fetch updated user info

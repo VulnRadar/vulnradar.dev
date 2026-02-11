@@ -82,7 +82,7 @@ interface UserDetail {
   apiKeys: { id: number; key_prefix: string; name: string; daily_limit: number; created_at: string; last_used_at: string | null; revoked_at: string | null }[]
   webhooks: { id: number; name: string; url: string; type: string; active: boolean }[]
   schedules: { id: number; url: string; frequency: string; active: boolean; last_run_at: string | null; next_run_at: string | null }[]
-  activeSessions: { id: string; created_at: string; expires_at: string }[]
+  activeSessions: { id: string; created_at: string; expires_at: string; ip_address: string | null; user_agent: string | null }[]
 }
 
 interface AuditEntry {
@@ -1100,14 +1100,26 @@ function UserDetailPanel({
               ) : (
                 <div className="flex flex-col gap-1.5">
                   {detail.activeSessions.map((sess) => (
-                    <div key={sess.id} className="flex items-center justify-between p-2.5 rounded-lg bg-muted/20 border border-border">
-                      <div className="flex items-center gap-2">
-                        <Globe className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                        <span className="text-xs font-mono text-muted-foreground">{sess.id.substring(0, 12)}...</span>
+                    <div key={sess.id} className="flex flex-col gap-1 p-2.5 rounded-lg bg-muted/20 border border-border">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <Globe className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                          <span className="text-xs font-mono text-muted-foreground">{sess.id.substring(0, 12)}...</span>
+                        </div>
+                        <span className="text-[10px] text-muted-foreground">
+                          expires {new Date(sess.expires_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                        </span>
                       </div>
-                      <span className="text-[10px] text-muted-foreground">
-                        expires {new Date(sess.expires_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
-                      </span>
+                      <div className="flex items-center gap-3 text-[10px] text-muted-foreground pl-5">
+                        {sess.ip_address && (
+                          <span className="font-mono">{sess.ip_address}</span>
+                        )}
+                        {sess.user_agent && (
+                          <span className="truncate max-w-[200px]" title={sess.user_agent}>
+                            {sess.user_agent.length > 40 ? sess.user_agent.substring(0, 40) + "..." : sess.user_agent}
+                          </span>
+                        )}
+                      </div>
                     </div>
                   ))}
                 </div>
