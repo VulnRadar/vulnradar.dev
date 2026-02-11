@@ -22,16 +22,16 @@ export async function checkRateLimit({ key, maxAttempts, windowSeconds }: RateLi
 
   // Get current count for this key within the window
   const result = await pool.query(
-    "SELECT id, \"count\", window_start FROM rate_limits WHERE key = $1 AND window_start >= $2 ORDER BY window_start DESC LIMIT 1",
-    [key, windowStart],
+      "SELECT id, \"count\", window_start FROM rate_limits WHERE key = $1 AND window_start >= $2 ORDER BY window_start DESC LIMIT 1",
+      [key, windowStart],
   )
 
   if (result.rows.length === 0) {
     // First attempt in this window - delete any stale row for this key, then insert fresh
     await pool.query("DELETE FROM rate_limits WHERE key = $1", [key])
     await pool.query(
-      "INSERT INTO rate_limits (key, \"count\", window_start) VALUES ($1, 1, $2)",
-      [key, now],
+        "INSERT INTO rate_limits (key, \"count\", window_start) VALUES ($1, 1, $2)",
+        [key, now],
     )
     return { allowed: true, remaining: maxAttempts - 1, retryAfterSeconds: 0 }
   }

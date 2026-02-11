@@ -60,7 +60,7 @@ export function generatePdfReport(result: ScanResult): Uint8Array {
   function addLine() {
     if (y < margin + 20) return
     streams.push(
-      `0.85 0.85 0.87 RG\n0.5 w\n${margin} ${y.toFixed(2)} m ${pageWidth - margin} ${y.toFixed(2)} l S\n`
+        `0.85 0.85 0.87 RG\n0.5 w\n${margin} ${y.toFixed(2)} m ${pageWidth - margin} ${y.toFixed(2)} l S\n`
     )
     y -= 10
   }
@@ -110,11 +110,11 @@ export function generatePdfReport(result: ScanResult): Uint8Array {
   const otherMediumIssues = result.findings.filter((f) => f.severity === "medium" && !informationalOnly.some(p => f.title.includes(p)) && !highConfigIssues.some(p => f.title.includes(p)))
 
   const safetyRating =
-    criticalThreats.length > 0 || activeVulns.length >= 2
-      ? { label: "NOT SAFE TO VIEW", color: [0.8, 0.2, 0.2] as [number, number, number], desc: "Critical exploitable vulnerabilities detected" }
-      : (configIssues.length >= 3 || (activeVulns.length === 1 && configIssues.length >= 2) || activeVulns.length === 1 || configIssues.length >= 1 || otherMediumIssues.length >= 4)
-        ? { label: "VIEW WITH CAUTION", color: [0.85, 0.65, 0.1] as [number, number, number], desc: "Security issues require attention" }
-        : { label: "SAFE TO VIEW", color: [0.1, 0.65, 0.3] as [number, number, number], desc: "No critical security issues detected" }
+      criticalThreats.length > 0 || activeVulns.length >= 2
+          ? { label: "NOT SAFE TO VIEW", color: [0.8, 0.2, 0.2] as [number, number, number], desc: "Critical exploitable vulnerabilities detected" }
+          : (configIssues.length >= 3 || (activeVulns.length === 1 && configIssues.length >= 2) || activeVulns.length === 1 || configIssues.length >= 1 || otherMediumIssues.length >= 4)
+              ? { label: "VIEW WITH CAUTION", color: [0.85, 0.65, 0.1] as [number, number, number], desc: "Security issues require attention" }
+              : { label: "SAFE TO VIEW", color: [0.1, 0.65, 0.3] as [number, number, number], desc: "No critical security issues detected" }
 
   addText("SAFETY RATING", 12, true, [0.1, 0.7, 0.8])
   addSpacer(4)
@@ -183,7 +183,7 @@ export function generatePdfReport(result: ScanResult): Uint8Array {
   const pagesObj = addObj("<< /Type /Pages /Kids [3 0 R] /Count 1 >>")
   // 3: Page
   addObj(
-    `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${pageWidth} ${pageHeight}] /Contents 4 0 R /Resources << /Font << /F1 5 0 R /F2 6 0 R >> >> >>`
+      `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${pageWidth} ${pageHeight}] /Contents 4 0 R /Resources << /Font << /F1 5 0 R /F2 6 0 R >> >> >>`
   )
   // 4: Content stream
   const streamBytes = new TextEncoder().encode(stream)

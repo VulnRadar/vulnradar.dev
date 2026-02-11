@@ -43,10 +43,10 @@ function hotpGenerate(secret: string, counter: number): string {
 
   const offset = hmacResult[hmacResult.length - 1] & 0x0f
   const code =
-    ((hmacResult[offset] & 0x7f) << 24) |
-    ((hmacResult[offset + 1] & 0xff) << 16) |
-    ((hmacResult[offset + 2] & 0xff) << 8) |
-    (hmacResult[offset + 3] & 0xff)
+      ((hmacResult[offset] & 0x7f) << 24) |
+      ((hmacResult[offset + 1] & 0xff) << 16) |
+      ((hmacResult[offset + 2] & 0xff) << 8) |
+      (hmacResult[offset + 3] & 0xff)
 
   return (code % 1000000).toString().padStart(6, "0")
 }
