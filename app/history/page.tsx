@@ -1,4 +1,5 @@
 "use client"
+import { SEVERITY_LEVELS } from "@/lib/constants"
 
 import { useState, useEffect, useCallback, Suspense } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
@@ -548,11 +549,11 @@ function HistoryPageContent() {
 
                   {/* Severity dots - desktop */}
                   <div className="hidden sm:flex items-center gap-2 shrink-0">
-                    <SeverityDot severity="critical" count={scan.summary?.critical || 0} />
-                    <SeverityDot severity="high" count={scan.summary?.high || 0} />
-                    <SeverityDot severity="medium" count={scan.summary?.medium || 0} />
-                    <SeverityDot severity="low" count={scan.summary?.low || 0} />
-                    <SeverityDot severity="info" count={scan.summary?.info || 0} />
+                    <SeverityDot severity={SEVERITY_LEVELS.CRITICAL} count={scan.summary?.critical || 0} />
+                    <SeverityDot severity={SEVERITY_LEVELS.HIGH} count={scan.summary?.high || 0} />
+                    <SeverityDot severity={SEVERITY_LEVELS.MEDIUM} count={scan.summary?.medium || 0} />
+                    <SeverityDot severity={SEVERITY_LEVELS.LOW} count={scan.summary?.low || 0} />
+                    <SeverityDot severity={SEVERITY_LEVELS.INFO} count={scan.summary?.info || 0} />
                   </div>
 
                   <span

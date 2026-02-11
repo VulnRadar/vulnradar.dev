@@ -81,7 +81,7 @@ export async function verifyTeamMembership(
  * Verify user has permission (owner/admin) in team
  */
 export async function verifyTeamAdmin(teamId: number, userId: number): Promise<{ isAdmin: boolean; error?: any }> {
-  const result = await verifyTeamMembership(teamId, userId, "admin")
+  const result = await verifyTeamMembership(teamId, userId, TEAM_ROLES.ADMIN)
   return {
     isAdmin: result.isMember && [TEAM_ROLES.OWNER, TEAM_ROLES.ADMIN].includes(result.role || ""),
     error: result.error,
@@ -92,7 +92,7 @@ export async function verifyTeamAdmin(teamId: number, userId: number): Promise<{
  * Verify user is team owner
  */
 export async function verifyTeamOwner(teamId: number, userId: number): Promise<{ isOwner: boolean; error?: any }> {
-  const result = await verifyTeamMembership(teamId, userId, "owner")
+  const result = await verifyTeamMembership(teamId, userId, TEAM_ROLES.OWNER)
   return {
     isOwner: result.isMember && result.role === TEAM_ROLES.OWNER,
     error: result.error,

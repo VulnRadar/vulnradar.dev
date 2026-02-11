@@ -1,3 +1,4 @@
+import { SEVERITY_LEVELS } from "@/lib/constants"
 import type { Vulnerability } from "./types"
 
 type CheckFn = (url: string, headers: Headers, body: string) => Vulnerability | null
@@ -12,7 +13,7 @@ const checkStrictTransportSecurity: CheckFn = (url, headers) => {
     return {
       id: generateId(),
       title: "Missing HTTP Strict Transport Security (HSTS)",
-      severity: "high",
+      severity: SEVERITY_LEVELS.HIGH,
       category: "headers",
       description:
           "The server does not send the Strict-Transport-Security header, which tells browsers to only connect via HTTPS.",
@@ -68,7 +69,7 @@ const checkContentSecurityPolicy: CheckFn = (_url, headers) => {
     return {
       id: generateId(),
       title: "Missing Content Security Policy (CSP)",
-      severity: "high",
+      severity: SEVERITY_LEVELS.HIGH,
       category: "headers",
       description:
           "No Content-Security-Policy header was found. CSP helps prevent cross-site scripting (XSS) and data injection attacks.",
@@ -127,7 +128,7 @@ const checkXFrameOptions: CheckFn = (_url, headers) => {
     return {
       id: generateId(),
       title: "Missing Clickjacking Protection",
-      severity: "medium",
+      severity: SEVERITY_LEVELS.MEDIUM,
       category: "headers",
       description:
           "Neither X-Frame-Options nor CSP frame-ancestors directive is set, leaving the site vulnerable to clickjacking.",
@@ -182,7 +183,7 @@ const checkXContentTypeOptions: CheckFn = (_url, headers) => {
     return {
       id: generateId(),
       title: "Missing X-Content-Type-Options Header",
-      severity: "medium",
+      severity: SEVERITY_LEVELS.MEDIUM,
       category: "headers",
       description:
           "The X-Content-Type-Options header is not set. This header prevents MIME-type sniffing.",
@@ -235,7 +236,7 @@ const checkReferrerPolicy: CheckFn = (_url, headers) => {
     return {
       id: generateId(),
       title: "Missing Referrer-Policy Header",
-      severity: "low",
+      severity: SEVERITY_LEVELS.LOW,
       category: "headers",
       description:
           "The Referrer-Policy header is not set. This controls how much referrer information is sent with requests.",
@@ -290,7 +291,7 @@ const checkPermissionsPolicy: CheckFn = (_url, headers) => {
     return {
       id: generateId(),
       title: "Missing Permissions-Policy Header",
-      severity: "low",
+      severity: SEVERITY_LEVELS.LOW,
       category: "headers",
       description:
           "The Permissions-Policy (formerly Feature-Policy) header is not set. This header controls which browser features and APIs can be used.",
@@ -351,7 +352,7 @@ const checkServerHeader: CheckFn = (_url, headers) => {
     return {
       id: generateId(),
       title: "Server Technology Information Disclosure",
-      severity: "info",
+      severity: SEVERITY_LEVELS.INFO,
       category: "information-disclosure",
       description:
           "The server reveals technology information through response headers, which can help attackers target known vulnerabilities.",
@@ -423,7 +424,7 @@ const checkMixedContent: CheckFn = (url, _headers, body) => {
     return {
       id: generateId(),
       title: "Mixed Content Detected",
-      severity: "medium",
+      severity: SEVERITY_LEVELS.MEDIUM,
       category: "content",
       description:
           "The HTTPS page loads resources over insecure HTTP connections, which can be intercepted or tampered with.",
@@ -503,7 +504,7 @@ const checkOpenRedirectHints: CheckFn = (_url, _headers, body) => {
     return {
       id: generateId(),
       title: "Potential Open Redirect Parameters",
-      severity: "medium",
+      severity: SEVERITY_LEVELS.MEDIUM,
       category: "content",
       description:
           "The page contains URL parameters or JavaScript patterns commonly associated with open redirect vulnerabilities.",
@@ -554,7 +555,7 @@ const checkCookieSecurity: CheckFn = (_url, headers) => {
     return {
       id: generateId(),
       title: "Insecure Cookie Configuration",
-      severity: "medium",
+      severity: SEVERITY_LEVELS.MEDIUM,
       category: "cookies",
       description:
           "One or more cookies are missing important security flags that protect against common attacks.",
@@ -586,7 +587,7 @@ const checkDeprecatedTLS: CheckFn = (url) => {
     return {
       id: generateId(),
       title: "Site Accessible Over Unencrypted HTTP",
-      severity: "high",
+      severity: SEVERITY_LEVELS.HIGH,
       category: "ssl",
       description:
           "The site was scanned over plain HTTP. All traffic including credentials and sensitive data is transmitted without encryption.",
@@ -619,7 +620,7 @@ const checkCORSMisconfiguration: CheckFn = (_url, headers) => {
     return {
       id: generateId(),
       title: "Wildcard CORS Policy",
-      severity: "medium",
+      severity: SEVERITY_LEVELS.MEDIUM,
       category: "headers",
       description:
           "The Access-Control-Allow-Origin header is set to '*', allowing any origin to make cross-origin requests.",
@@ -684,7 +685,7 @@ const checkSubresourceIntegrity: CheckFn = (_url, _headers, body) => {
     return {
       id: generateId(),
       title: "Missing Subresource Integrity (SRI)",
-      severity: "medium",
+      severity: SEVERITY_LEVELS.MEDIUM,
       category: "content",
       description:
           "External scripts are loaded without Subresource Integrity hashes, which cannot verify the integrity of fetched resources.",
@@ -742,7 +743,7 @@ const checkFormAction: CheckFn = (_url, _headers, body) => {
     return {
       id: generateId(),
       title: "Form Submitting Over HTTP",
-      severity: "high",
+      severity: SEVERITY_LEVELS.HIGH,
       category: "content",
       description:
           "One or more forms submit data over unencrypted HTTP, exposing submitted data to interception.",
@@ -784,7 +785,7 @@ const checkCacheControlHeaders: CheckFn = (_url, headers) => {
     return {
       id: generateId(),
       title: "Missing Cache-Control Headers",
-      severity: "low",
+      severity: SEVERITY_LEVELS.LOW,
       category: "headers",
       description:
           "No Cache-Control or Pragma headers are set. Sensitive responses may be cached by browsers or intermediate proxies.",
@@ -845,7 +846,7 @@ const checkXXSSProtection: CheckFn = (_url, headers) => {
     return {
       id: generateId(),
       title: "Missing X-XSS-Protection Header",
-      severity: "low",
+      severity: SEVERITY_LEVELS.LOW,
       category: "headers",
       description:
           "The X-XSS-Protection header is not set and no Content-Security-Policy is present. While the XSS auditor is deprecated in modern browsers, having protection headers is still recommended.",
@@ -930,7 +931,7 @@ const checkEmailExposure: CheckFn = (_url, _headers, body) => {
     return {
       id: generateId(),
       title: "Email Address Exposure",
-      severity: "info",
+      severity: SEVERITY_LEVELS.INFO,
       category: "information-disclosure",
       description:
           "Email addresses were found in the page source, which can be harvested by spammers and used in targeted phishing attacks.",
@@ -984,7 +985,7 @@ const checkDirectoryListingHints: CheckFn = (_url, _headers, body) => {
     return {
       id: generateId(),
       title: "Directory Listing Appears Enabled",
-      severity: "high",
+      severity: SEVERITY_LEVELS.HIGH,
       category: "configuration",
       description:
           "The response contains patterns indicating directory listing is enabled, exposing file and folder structures to visitors.",
@@ -1039,7 +1040,7 @@ const checkSensitiveFileReferences: CheckFn = (_url, _headers, body) => {
     return {
       id: generateId(),
       title: "Sensitive File References Detected",
-      severity: "medium",
+      severity: SEVERITY_LEVELS.MEDIUM,
       category: "information-disclosure",
       description:
           "The page references files commonly associated with sensitive configuration or development artifacts.",
@@ -1106,7 +1107,7 @@ const checkOutdatedJsLibraries: CheckFn = (_url, _headers, body) => {
     return {
       id: generateId(),
       title: "Potentially Outdated JavaScript Libraries",
-      severity: "high",
+      severity: SEVERITY_LEVELS.HIGH,
       category: "content",
       description: "The page references JavaScript libraries with known security vulnerabilities.",
       evidence: `Detected: ${found.join("; ")}`,
@@ -1139,7 +1140,7 @@ const checkRobotsTxtExposure: CheckFn = (_url, _headers, body) => {
       return {
         id: generateId(),
         title: "Sensitive Paths Exposed in Robots.txt",
-        severity: "info",
+        severity: SEVERITY_LEVELS.INFO,
         category: "information-disclosure",
         description: "The robots.txt file reveals potentially sensitive directory paths that attackers could target.",
         evidence: `Sensitive disallowed paths found: ${sensitivePaths.join(", ")}`,
@@ -1189,7 +1190,7 @@ const checkCMSFingerprinting: CheckFn = (_url, headers, body) => {
     return {
       id: generateId(),
       title: "CMS / Technology Fingerprinting",
-      severity: "info",
+      severity: SEVERITY_LEVELS.INFO,
       category: "information-disclosure",
       description: "The site exposes CMS or technology stack details that aid attacker reconnaissance.",
       evidence: findings.join("; "),
@@ -1217,7 +1218,7 @@ const checkSecurityTxt: CheckFn = (_url, _headers, body) => {
     return {
       id: generateId(),
       title: "Missing security.txt File",
-      severity: "info",
+      severity: SEVERITY_LEVELS.INFO,
       category: "configuration",
       description: "No reference to a security.txt file was found. This file helps security researchers report vulnerabilities responsibly.",
       evidence: "No reference to /.well-known/security.txt found in the page.",
@@ -1247,7 +1248,7 @@ const checkInlineJavaScript: CheckFn = (_url, _headers, body) => {
       return {
         id: generateId(),
         title: "Potentially Dangerous Inline JavaScript",
-        severity: "medium",
+        severity: SEVERITY_LEVELS.MEDIUM,
         category: "content",
         description: "The page contains inline JavaScript with potentially dangerous patterns like eval(), document.write(), or dynamic script creation.",
         evidence: `Found ${dangerousPatterns.length} inline script block(s) with dangerous patterns (eval, document.write, innerHTML assignment, or dynamic script creation).`,
@@ -1276,7 +1277,7 @@ const checkAccessControlHeaders: CheckFn = (_url, headers) => {
     return {
       id: generateId(),
       title: "Dangerous CORS Configuration",
-      severity: "critical",
+      severity: SEVERITY_LEVELS.CRITICAL,
       category: "headers",
       description: "The server allows credentials with a wildcard origin, which is a severe CORS misconfiguration.",
       evidence: "Access-Control-Allow-Origin: * combined with Access-Control-Allow-Credentials: true",
@@ -1303,7 +1304,7 @@ const checkCrossOriginOpenerPolicy: CheckFn = (_url, headers) => {
     return {
       id: generateId(),
       title: "Missing Cross-Origin-Opener-Policy (COOP)",
-      severity: "low",
+      severity: SEVERITY_LEVELS.LOW,
       category: "headers",
       description: "The server does not set the Cross-Origin-Opener-Policy header, leaving the site vulnerable to cross-origin attacks like Spectre.",
       evidence: "Header 'Cross-Origin-Opener-Policy' is not present.",
@@ -1331,7 +1332,7 @@ const checkCrossOriginResourcePolicy: CheckFn = (_url, headers) => {
     return {
       id: generateId(),
       title: "Missing Cross-Origin-Resource-Policy (CORP)",
-      severity: "info",
+      severity: SEVERITY_LEVELS.INFO,
       category: "headers",
       description: "No Cross-Origin-Resource-Policy header is set. This header controls which origins can load your resources.",
       evidence: "Header 'Cross-Origin-Resource-Policy' is not present.",
@@ -1360,7 +1361,7 @@ const checkReverseTabnabbing: CheckFn = (_url, _headers, body) => {
     return {
       id: generateId(),
       title: "Reverse Tabnabbing Vulnerability",
-      severity: "medium",
+      severity: SEVERITY_LEVELS.MEDIUM,
       category: "content",
       description: `Found ${vulnerable.length} link(s) with target="_blank" that are missing rel="noopener", enabling reverse tabnabbing attacks.`,
       evidence: `${vulnerable.length} anchor tag(s) use target="_blank" without rel="noopener" or rel="noreferrer".`,
@@ -1391,7 +1392,7 @@ const checkSourceMapExposure: CheckFn = (_url, _headers, body) => {
     return {
       id: generateId(),
       title: "JavaScript Source Maps Exposed",
-      severity: "low",
+      severity: SEVERITY_LEVELS.LOW,
       category: "information-disclosure",
       description: `Found ${total} source map reference(s) in the page. Source maps expose your original, unminified source code to anyone.`,
       evidence: `Detected ${mapRefs.length} inline sourceMappingURL directive(s) and ${externalMaps.length} .js.map file reference(s).`,
@@ -1440,7 +1441,7 @@ const checkSensitiveComments: CheckFn = (_url, _headers, body) => {
     return {
       id: generateId(),
       title: "Sensitive Information in HTML Comments",
-      severity: "medium",
+      severity: SEVERITY_LEVELS.MEDIUM,
       category: "information-disclosure",
       description: `Found ${found.length} HTML comment(s) containing potentially sensitive information.`,
       evidence: `Detected comments with: ${[...new Set(found)].join(", ")}.`,
@@ -1489,7 +1490,7 @@ const checkHardcodedSecrets: CheckFn = (_url, _headers, body) => {
     return {
       id: generateId(),
       title: "Hardcoded API Keys or Secrets Detected",
-      severity: "critical",
+      severity: SEVERITY_LEVELS.CRITICAL,
       category: "information-disclosure",
       description: `Found ${found.length} potential API key(s) or secret(s) exposed in the page source.`,
       evidence: `Detected: ${found.join(", ")}.`,
@@ -1522,7 +1523,7 @@ const checkPrivateIPExposure: CheckFn = (_url, _headers, body) => {
     return {
       id: generateId(),
       title: "Internal/Private IP Addresses Exposed",
-      severity: "low",
+      severity: SEVERITY_LEVELS.LOW,
       category: "information-disclosure",
       description: `Found ${allRefs.length} internal or private IP address(es) in the page source.`,
       evidence: `Detected: ${allRefs.slice(0, 5).join(", ")}${allRefs.length > 5 ? ` and ${allRefs.length - 5} more` : ""}.`,
@@ -1573,7 +1574,7 @@ const checkDebugIndicators: CheckFn = (_url, headers, body) => {
     return {
       id: generateId(),
       title: "Debug Mode or Error Information Exposed",
-      severity: "high",
+      severity: SEVERITY_LEVELS.HIGH,
       category: "information-disclosure",
       description: `Found ${indicators.length} debug/error indicator(s) that reveal internal application details.`,
       evidence: indicators.join("; "),
@@ -1617,7 +1618,7 @@ const checkDOMXSSSinks: CheckFn = (_url, _headers, body) => {
     return {
       id: generateId(),
       title: "Potential DOM-Based XSS Sinks",
-      severity: "high",
+      severity: SEVERITY_LEVELS.HIGH,
       category: "content",
       description: `Found ${found.length} pattern(s) where user-controlled input flows into dangerous DOM sinks.`,
       evidence: `Detected: ${found.join("; ")}.`,
@@ -1647,7 +1648,7 @@ const checkInsecureIframes: CheckFn = (url, _headers, body) => {
     return {
       id: generateId(),
       title: "Insecure Iframe Sources on HTTPS Page",
-      severity: "medium",
+      severity: SEVERITY_LEVELS.MEDIUM,
       category: "content",
       description: `Found ${iframes.length} iframe(s) loading content over HTTP on an HTTPS page.`,
       evidence: `${iframes.length} iframe(s) use http:// src on an HTTPS page.`,
@@ -1691,7 +1692,7 @@ const checkTokenExposure: CheckFn = (_url, _headers, body) => {
     return {
       id: generateId(),
       title: "Authentication Tokens Exposed in Page Source",
-      severity: "high",
+      severity: SEVERITY_LEVELS.HIGH,
       category: "information-disclosure",
       description: `Found token(s) or session identifiers exposed in the HTML source: ${findings.join(", ")}.`,
       evidence: findings.join("; "),
@@ -1735,7 +1736,7 @@ const checkAutocompleteOnSensitiveFields: CheckFn = (_url, _headers, body) => {
     return {
       id: generateId(),
       title: "Missing Autocomplete Attributes on Sensitive Fields",
-      severity: "low",
+      severity: SEVERITY_LEVELS.LOW,
       category: "content",
       description: `Found ${total} sensitive input field(s) without proper autocomplete attributes: ${details.join(", ")}.`,
       evidence: `${details.join(" and ")} missing autocomplete directives.`,
@@ -1764,7 +1765,7 @@ const checkCSPReportOnly: CheckFn = (_url, headers) => {
     return {
       id: generateId(),
       title: "CSP Report-Only Without Enforcement",
-      severity: "medium",
+      severity: SEVERITY_LEVELS.MEDIUM,
       category: "headers",
       description: "Content-Security-Policy-Report-Only is set but no enforcing Content-Security-Policy header exists. Reports are collected but no protection is active.",
       evidence: "Header 'Content-Security-Policy-Report-Only' present, but 'Content-Security-Policy' is absent.",
@@ -1791,7 +1792,7 @@ const checkFormTargetBlank: CheckFn = (_url, _headers, body) => {
     return {
       id: generateId(),
       title: "Forms Targeting New Windows",
-      severity: "low",
+      severity: SEVERITY_LEVELS.LOW,
       category: "content",
       description: `Found ${forms.length} form(s) with target="_blank" which can be abused for phishing via reverse tabnabbing.`,
       evidence: `${forms.length} form element(s) submit to a new window/tab.`,
@@ -1818,7 +1819,7 @@ const checkMetaRefresh: CheckFn = (_url, _headers, body) => {
     return {
       id: generateId(),
       title: "Meta Refresh Redirect Detected",
-      severity: "low",
+      severity: SEVERITY_LEVELS.LOW,
       category: "content",
       description: `Found ${metaRefresh.length} meta refresh redirect(s). These can be abused for open redirect attacks and phishing.`,
       evidence: `${metaRefresh.length} <meta http-equiv="refresh"> tag(s) with URL redirects.`,
@@ -1847,7 +1848,7 @@ const checkBaseTag: CheckFn = (_url, _headers, body) => {
     return {
       id: generateId(),
       title: "Insecure Base Tag Detected",
-      severity: "high",
+      severity: SEVERITY_LEVELS.HIGH,
       category: "content",
       description: "The page uses a <base> tag with an HTTP URL, making all relative URLs resolve insecurely.",
       evidence: `Found <base> tag(s) pointing to insecure HTTP origin.`,
@@ -1867,7 +1868,7 @@ const checkBaseTag: CheckFn = (_url, _headers, body) => {
     return {
       id: generateId(),
       title: "External Base Tag Detected",
-      severity: "medium",
+      severity: SEVERITY_LEVELS.MEDIUM,
       category: "content",
       description: "The page uses a <base> tag pointing to an external origin. All relative URLs resolve against this external domain.",
       evidence: `Found <base> tag(s) pointing to external origin.`,
@@ -1893,7 +1894,7 @@ const checkExcessivePermissions: CheckFn = (_url, headers) => {
     return {
       id: generateId(),
       title: "Overly Permissive Permissions-Policy",
-      severity: "medium",
+      severity: SEVERITY_LEVELS.MEDIUM,
       category: "headers",
       description: "The Permissions-Policy header grants wildcard (*) access to browser features, defeating its purpose.",
       evidence: `Permissions-Policy contains wildcard (*) grants: ${pp.substring(0, 200)}`,
@@ -1924,7 +1925,7 @@ const checkPostMessageOrigin: CheckFn = (_url, _headers, body) => {
     return {
       id: generateId(),
       title: "postMessage Listener Without Origin Validation",
-      severity: "high",
+      severity: SEVERITY_LEVELS.HIGH,
       category: "content",
       description: `Found ${unsafeListeners.length} postMessage event listener(s) that don't appear to validate the message origin.`,
       evidence: `${listeners.length} message listener(s) found, ${unsafeListeners.length} missing origin checks.`,
@@ -1966,7 +1967,7 @@ const checkSensitiveEndpoints: CheckFn = (_url, _headers, body) => {
     return {
       id: generateId(),
       title: "Sensitive Endpoints Referenced in Page Source",
-      severity: "low",
+      severity: SEVERITY_LEVELS.LOW,
       category: "information-disclosure",
       description: `Found ${found.length} reference(s) to potentially sensitive endpoints in the page source.`,
       evidence: `Detected: ${found.join(", ")}.`,
@@ -2007,7 +2008,7 @@ const checkDangerousHTMLAttrs: CheckFn = (_url, _headers, body) => {
     return {
       id: generateId(),
       title: "Dangerous HTML Attributes Detected",
-      severity: "high",
+      severity: SEVERITY_LEVELS.HIGH,
       category: "content",
       description: `Found ${findings.length} category(ies) of potentially dangerous HTML attributes.`,
       evidence: findings.join("; "),
@@ -2036,7 +2037,7 @@ const checkInsecureFormSubmission: CheckFn = (url, _headers, body) => {
     return {
       id: generateId(),
       title: "Form Submits Data Over Insecure HTTP",
-      severity: "critical",
+      severity: SEVERITY_LEVELS.CRITICAL,
       category: "content",
       description: "An HTTPS page contains a form that submits data to an HTTP endpoint, exposing user input (including credentials) in plaintext.",
       evidence: `Found form posting to HTTP: ${formActionHttp[0].substring(0, 120)}`,
@@ -2065,7 +2066,7 @@ const checkClickjackProtection: CheckFn = (_url, headers, body) => {
   return {
     id: generateId(),
     title: "No Clickjacking Protection Detected",
-    severity: "medium",
+    severity: SEVERITY_LEVELS.MEDIUM,
     category: "headers",
     description: "The page has no X-Frame-Options header, no CSP frame-ancestors directive, and no JavaScript frame-busting code detected.",
     evidence: "Missing: X-Frame-Options header, CSP frame-ancestors directive, and JavaScript frame-busting.",
@@ -2123,7 +2124,7 @@ const checkWeakCSPDirectives: CheckFn = (_url, headers, body) => {
     return {
       id: generateId(),
       title: "CSP Contains Framework-Required Directives",
-      severity: "info",
+      severity: SEVERITY_LEVELS.INFO,
       category: "headers",
       description: `The CSP includes directives required by the frontend framework (${frameworkPatterns.length} directive(s)). This is expected for Next.js, React, Vue, or Angular applications.`,
       evidence: frameworkPatterns.join("; "),
@@ -2147,7 +2148,7 @@ const checkWeakCSPDirectives: CheckFn = (_url, headers, body) => {
     return {
       id: generateId(),
       title: "Content Security Policy Contains Weak Directives",
-      severity: "high",
+      severity: SEVERITY_LEVELS.HIGH,
       category: "headers",
       description: `The CSP header contains ${weakPatterns.length} weak directive(s) that significantly reduce its effectiveness against XSS.`,
       evidence: weakPatterns.join("; "),
@@ -2173,7 +2174,7 @@ const checkUnencryptedConnections: CheckFn = (url) => {
     return {
       id: generateId(),
       title: "Site Served Over Unencrypted HTTP",
-      severity: "critical",
+      severity: SEVERITY_LEVELS.CRITICAL,
       category: "ssl",
       description: "The site is accessible over plain HTTP without TLS encryption, exposing all traffic to interception.",
       evidence: `URL scheme is HTTP: ${url}`,
@@ -2200,7 +2201,7 @@ const checkCORSWildcardCredentials: CheckFn = (_url, headers) => {
     return {
       id: generateId(),
       title: "CORS Wildcard Origin with Credentials Allowed",
-      severity: "critical",
+      severity: SEVERITY_LEVELS.CRITICAL,
       category: "headers",
       description: "The server allows any origin (*) to make credentialed cross-origin requests, which is a severe misconfiguration.",
       evidence: "Access-Control-Allow-Origin: * combined with Access-Control-Allow-Credentials: true",
@@ -2228,7 +2229,7 @@ const checkHTMLCommentLeaks: CheckFn = (_url, _headers, body) => {
     return {
       id: generateId(),
       title: "HTML Comments Contain Sensitive Keywords",
-      severity: "medium",
+      severity: SEVERITY_LEVELS.MEDIUM,
       category: "information-disclosure",
       description: `Found ${matches.length} HTML comment(s) containing sensitive keywords (passwords, API keys, TODO notes, internal references).`,
       evidence: sanitized.join(" | "),
@@ -2254,7 +2255,7 @@ const checkJWTInURL: CheckFn = (_url, _headers, body) => {
     return {
       id: generateId(),
       title: "JWT Token Exposed in URL",
-      severity: "critical",
+      severity: SEVERITY_LEVELS.CRITICAL,
       category: "information-disclosure",
       description: "A JSON Web Token (JWT) was found embedded in a URL within the page HTML. JWTs in URLs are logged in browser history, server logs, and referrer headers.",
       evidence: `Found JWT in URL: ${match[0].substring(0, 100)}...`,
@@ -2267,7 +2268,7 @@ const checkJWTInURL: CheckFn = (_url, _headers, body) => {
         "Implement token rotation and revocation.",
       ],
       codeExamples: [
-        { label: "Fetch with header", language: "javascript", code: `// BAD: Token in URL\nfetch('/api/data?token=eyJ...');\n\n// GOOD: Token in header\nfetch('/api/data', {\n  headers: {\n    'Authorization': 'Bearer ' + token\n  }\n});` },
+        { label: "Fetch with header", language: "javascript", code: `// BAD: Token in URL\nfetch('/api/data?token=eyJ...');\n\n// GOOD: Token in header\nfetch('/api/data', {\n  headers: {\n    'Authorization': BEARER_PREFIX + token\n  }\n});` },
       ],
     }
   }
@@ -2293,7 +2294,7 @@ const checkSensitiveMetaTags: CheckFn = (_url, _headers, body) => {
   return {
     id: generateId(),
     title: "Sensitive Information in Meta Tags",
-    severity: issues.some(i => i.includes("API key") || i.includes("CSRF")) ? "high" : "low",
+    severity: issues.some(i => i.includes("API key") || i.includes("CSRF")) ? SEVERITY_LEVELS.HIGH : SEVERITY_LEVELS.LOW,
     category: "information-disclosure",
     description: `Found ${issues.length} meta tag(s) that expose sensitive or unnecessary information.`,
     evidence: issues.join("; "),
@@ -2323,7 +2324,7 @@ const checkStorageAPIUsage: CheckFn = (_url, _headers, body) => {
   return {
     id: generateId(),
     title: "Sensitive Data Stored in Browser Storage APIs",
-    severity: "high",
+    severity: SEVERITY_LEVELS.HIGH,
     category: "content",
     description: "JavaScript code stores sensitive values (tokens, secrets, credentials) in localStorage or sessionStorage, which are accessible to any script on the page.",
     evidence: issues.join("; "),
@@ -2349,7 +2350,7 @@ const checkMissingSubresourceIntegrity: CheckFn = (_url, _headers, body) => {
   return {
     id: generateId(),
     title: "CDN Resources Loaded Without Subresource Integrity",
-    severity: "medium",
+    severity: SEVERITY_LEVELS.MEDIUM,
     category: "content",
     description: `${withoutSRI.length} script(s) loaded from CDNs lack integrity attributes. If a CDN is compromised, malicious code would execute on your site.`,
     evidence: withoutSRI.slice(0, 2).map(s => s.substring(0, 100)).join(" | "),
@@ -2379,7 +2380,7 @@ const checkOpenGraphInjection: CheckFn = (_url, _headers, body) => {
   return {
     id: generateId(),
     title: "Suspicious Content in Open Graph Tags",
-    severity: "medium",
+    severity: SEVERITY_LEVELS.MEDIUM,
     category: "content",
     description: "Open Graph meta tags contain suspicious content that could indicate injection or be exploited by link preview renderers.",
     evidence: suspiciousOg[0].substring(0, 120),
@@ -2404,7 +2405,7 @@ const checkServiceWorkerScope: CheckFn = (_url, _headers, body) => {
     return {
       id: generateId(),
       title: "Service Worker Registered Over Insecure HTTP",
-      severity: "high",
+      severity: SEVERITY_LEVELS.HIGH,
       category: "content",
       description: "A service worker is being registered from an HTTP URL. Service workers over HTTP can be intercepted and replaced with malicious code.",
       evidence: `Service worker URL: ${swUrl}`,
@@ -2429,7 +2430,7 @@ const checkWindowOpenerAbuse: CheckFn = (_url, _headers, body) => {
     return {
       id: generateId(),
       title: "Window.opener Access Detected",
-      severity: "medium",
+      severity: SEVERITY_LEVELS.MEDIUM,
       category: "content",
       description: "JavaScript code accesses window.opener properties, which can be exploited for reverse tabnabbing if the page was opened from a cross-origin link.",
       evidence: `Found: ${openerAccess.slice(0, 3).join(", ")}`,
@@ -2454,7 +2455,7 @@ const checkCrossSiteWebSocketHijacking: CheckFn = (_url, _headers, body) => {
     return {
       id: generateId(),
       title: "Insecure WebSocket Connection (ws://)",
-      severity: "high",
+      severity: SEVERITY_LEVELS.HIGH,
       category: "content",
       description: `Found ${wsConnections.length} WebSocket connection(s) using unencrypted ws:// instead of wss://. WebSocket traffic is not protected by same-origin policy.`,
       evidence: `${wsConnections.length} insecure WebSocket connection(s) detected using ws:// protocol`,
@@ -2479,7 +2480,7 @@ const checkDocumentDomainUsage: CheckFn = (_url, _headers, body) => {
     return {
       id: generateId(),
       title: "Deprecated document.domain Usage Detected",
-      severity: "medium",
+      severity: SEVERITY_LEVELS.MEDIUM,
       category: "content",
       description: "The page sets document.domain, a deprecated practice that relaxes same-origin policy restrictions and is being removed from browsers.",
       evidence: "Found document.domain assignment in page JavaScript.",
@@ -2520,7 +2521,7 @@ const checkPrototypePollutionSinks: CheckFn = (_url, _headers, body) => {
     return {
       id: generateId(),
       title: "Potential Prototype Pollution Sinks Detected",
-      severity: "medium",
+      severity: SEVERITY_LEVELS.MEDIUM,
       category: "content",
       description: `Found ${matches.length} potential prototype pollution sink(s) from vulnerable library functions that could allow attackers to modify Object.prototype.`,
       evidence: matches.slice(0, 3).join(", "),
@@ -2555,7 +2556,7 @@ const checkInsecureCryptoUsage: CheckFn = (_url, _headers, body) => {
   return {
     id: generateId(),
     title: "Weak or Broken Cryptography Detected",
-    severity: "high",
+    severity: SEVERITY_LEVELS.HIGH,
     category: "content",
     description: `Found ${weakCrypto.length} instance(s) of weak or broken cryptographic algorithms in client-side JavaScript.`,
     evidence: weakCrypto.join("; "),
@@ -2580,7 +2581,7 @@ const checkDNSPrefetchControl: CheckFn = (_url, headers) => {
     return {
       id: generateId(),
       title: "DNS Prefetch Explicitly Enabled",
-      severity: "low",
+      severity: SEVERITY_LEVELS.LOW,
       category: "headers",
       description: "The X-DNS-Prefetch-Control header is set to 'on', which instructs browsers to perform DNS lookups for all links on the page before the user clicks them.",
       evidence: `X-DNS-Prefetch-Control: ${dnsPrefetch}`,
@@ -2604,7 +2605,7 @@ const checkPasswordFieldsWithoutPaste: CheckFn = (_url, _headers, body) => {
     return {
       id: generateId(),
       title: "Password Fields Block Pasting",
-      severity: "low",
+      severity: SEVERITY_LEVELS.LOW,
       category: "content",
       description: "Password input fields have paste functionality disabled, which discourages the use of password managers and strong passwords.",
       evidence: `Found ${noPastePassword.length} password field(s) with onpaste="return false" or similar.`,
@@ -2635,7 +2636,7 @@ const checkExposedErrorMessages: CheckFn = (_url, _headers, body) => {
   return {
     id: generateId(),
     title: "Application Error Messages Exposed to Users",
-    severity: "medium",
+    severity: SEVERITY_LEVELS.MEDIUM,
     category: "information-disclosure",
     description: `Found ${errorPatterns.length} type(s) of detailed error messages visible in the page HTML, revealing internal application details.`,
     evidence: errorPatterns.join("; "),
@@ -2653,7 +2654,6 @@ const checkExposedErrorMessages: CheckFn = (_url, _headers, body) => {
   }
 }
 
-// ── NEW: SQL Injection Pattern Detection ──
 const checkSQLInjectionPatterns: CheckFn = (_url, _headers, body) => {
   // Look for actual SQL error messages or query patterns in the HTML
   const sqlErrors = [
@@ -2684,7 +2684,7 @@ const checkSQLInjectionPatterns: CheckFn = (_url, _headers, body) => {
     return {
       id: generateId(),
       title: "SQL Database Error Messages Exposed",
-      severity: "high",
+      severity: SEVERITY_LEVELS.HIGH,
       category: "information-disclosure",
       description: "Database error messages are visible in the page, revealing database type and potentially query structure.",
       evidence: `Found ${foundErrors.length} SQL error pattern(s) in page content`,
@@ -2705,7 +2705,6 @@ const checkSQLInjectionPatterns: CheckFn = (_url, _headers, body) => {
   return null
 }
 
-// ── NEW: Command Injection Hints ──
 const checkCommandInjectionHints: CheckFn = (_url, _headers, body) => {
   const commandPatterns = [
     /exec\s*\(\s*["'`]\$\{/gi,
@@ -2725,7 +2724,7 @@ const checkCommandInjectionHints: CheckFn = (_url, _headers, body) => {
     return {
       id: generateId(),
       title: "Potential Command Injection Vectors",
-      severity: "high",
+      severity: SEVERITY_LEVELS.HIGH,
       category: "content",
       description: "Found code patterns that execute system commands, which could be vulnerable to command injection if user input is involved.",
       evidence: `Found ${matches.length} command execution pattern(s): ${matches.slice(0, 2).join(", ")}`,
@@ -2745,7 +2744,6 @@ const checkCommandInjectionHints: CheckFn = (_url, _headers, body) => {
   return null
 }
 
-// ── NEW: XML External Entity (XXE) Hints ──
 const checkXXEVulnerabilityHints: CheckFn = (_url, _headers, body) => {
   // XXE is a SERVER-SIDE vulnerability - client-side DOMParser is safe
   // Only flag if we detect actual XXE entity declarations or server-side XML parsing
@@ -2784,7 +2782,7 @@ const checkXXEVulnerabilityHints: CheckFn = (_url, _headers, body) => {
     return {
       id: generateId(),
       title: "XML External Entity (XXE) Declaration Detected",
-      severity: "high",
+      severity: SEVERITY_LEVELS.HIGH,
       category: "content",
       description: "Found XML entity declarations using SYSTEM keyword, which can enable XXE attacks if processed by a vulnerable XML parser.",
       evidence: xxeMatches.slice(0, 3).join("; "),
@@ -2807,7 +2805,7 @@ const checkXXEVulnerabilityHints: CheckFn = (_url, _headers, body) => {
     return {
       id: generateId(),
       title: "Server-Side XML Parsing Detected",
-      severity: "medium",
+      severity: SEVERITY_LEVELS.MEDIUM,
       category: "content",
       description: "Found server-side XML parsing library usage. Ensure external entity processing is disabled to prevent XXE vulnerabilities.",
       evidence: `Found ${serverMatches.length} server-side XML parsing pattern(s)`,
@@ -2828,7 +2826,6 @@ const checkXXEVulnerabilityHints: CheckFn = (_url, _headers, body) => {
   return null
 }
 
-// ── NEW: Server-Side Request Forgery (SSRF) Hints ──
 const checkSSRFVulnerabilityHints: CheckFn = (_url, _headers, body) => {
   // Look for fetch/request patterns with user-controlled URLs
   const ssrfPatterns = [
@@ -2847,7 +2844,7 @@ const checkSSRFVulnerabilityHints: CheckFn = (_url, _headers, body) => {
     return {
       id: generateId(),
       title: "Potential Server-Side Request Forgery (SSRF) Vectors",
-      severity: "high",
+      severity: SEVERITY_LEVELS.HIGH,
       category: "content",
       description: "Found patterns where user-controlled input may be used in server-side HTTP requests, potentially enabling SSRF attacks.",
       evidence: `Found ${matches.length} suspicious request pattern(s)`,
@@ -2867,7 +2864,6 @@ const checkSSRFVulnerabilityHints: CheckFn = (_url, _headers, body) => {
   return null
 }
 
-// ── NEW: Path Traversal Vulnerability Hints ──
 const checkPathTraversalHints: CheckFn = (_url, _headers, body) => {
   const traversalPatterns = [
     /(?:readFile|fs\.read|File\s*\()\s*\([^)]*(?:params|query|request|body)\./gi,
@@ -2884,7 +2880,7 @@ const checkPathTraversalHints: CheckFn = (_url, _headers, body) => {
     return {
       id: generateId(),
       title: "Potential Path Traversal Vulnerability",
-      severity: "high",
+      severity: SEVERITY_LEVELS.HIGH,
       category: "content",
       description: "Found file operations with user-controlled paths that could allow directory traversal attacks.",
       evidence: `Found ${matches.length} suspicious file operation(s)`,
@@ -2904,7 +2900,6 @@ const checkPathTraversalHints: CheckFn = (_url, _headers, body) => {
   return null
 }
 
-// ── NEW: Insecure Authentication Mechanisms ──
 const checkInsecureAuthMechanisms: CheckFn = (_url, headers, body) => {
   const issues: string[] = []
 
@@ -2933,7 +2928,7 @@ const checkInsecureAuthMechanisms: CheckFn = (_url, headers, body) => {
     return {
       id: generateId(),
       title: "Insecure Authentication Mechanisms Detected",
-      severity: "high",
+      severity: SEVERITY_LEVELS.HIGH,
       category: "headers",
       description: `Found ${issues.length} authentication security issue(s) that could compromise user sessions or credentials.`,
       evidence: issues.join("; "),
@@ -2953,7 +2948,6 @@ const checkInsecureAuthMechanisms: CheckFn = (_url, headers, body) => {
   return null
 }
 
-// ── NEW: Insecure Deserialization Hints ──
 const checkInsecureDeserializationHints: CheckFn = (_url, _headers, body) => {
   const deserializePatterns = [
     /JSON\.parse\s*\(\s*(?:req\.body|params|query)/gi,
@@ -2973,7 +2967,7 @@ const checkInsecureDeserializationHints: CheckFn = (_url, _headers, body) => {
     return {
       id: generateId(),
       title: "Potential Insecure Deserialization",
-      severity: "high",
+      severity: SEVERITY_LEVELS.HIGH,
       category: "content",
       description: "Found deserialization operations on potentially untrusted data, which can lead to remote code execution.",
       evidence: `Found ${matches.length} deserialization pattern(s)`,
@@ -2993,7 +2987,6 @@ const checkInsecureDeserializationHints: CheckFn = (_url, _headers, body) => {
   return null
 }
 
-// ── NEW: Missing Rate Limiting Indicators ──
 const checkRateLimitingIndicators: CheckFn = (_url, headers, body) => {
   // Check if the page has rate limiting headers
   const rateLimitHeaders = [
@@ -3019,7 +3012,7 @@ const checkRateLimitingIndicators: CheckFn = (_url, headers, body) => {
     return {
       id: generateId(),
       title: "No Rate Limiting Headers Detected",
-      severity: "medium",
+      severity: SEVERITY_LEVELS.MEDIUM,
       category: "headers",
       description: "The application appears to have sensitive endpoints (login/API) but no rate limiting headers are present.",
       evidence: "No rate limiting headers found (X-RateLimit-*, RateLimit-*, or Retry-After)",
@@ -3039,14 +3032,13 @@ const checkRateLimitingIndicators: CheckFn = (_url, headers, body) => {
   return null
 }
 
-// ── NEW: GraphQL Introspection Exposed ──
 const checkGraphQLIntrospection: CheckFn = (_url, _headers, body) => {
   // Check if GraphQL endpoint exposes introspection
   if (body.includes("__schema") || body.includes("__type") || body.includes("GraphiQL")) {
     return {
       id: generateId(),
       title: "GraphQL Introspection Enabled in Production",
-      severity: "medium",
+      severity: SEVERITY_LEVELS.MEDIUM,
       category: "information-disclosure",
       description: "GraphQL introspection is enabled, exposing the entire API schema to potential attackers.",
       evidence: "Found GraphQL introspection queries (__schema, __type) or GraphiQL interface",
@@ -3066,7 +3058,6 @@ const checkGraphQLIntrospection: CheckFn = (_url, _headers, body) => {
   return null
 }
 
-// ── NEW: Clickjacking via Missing CSP frame-ancestors ──
 const checkCSPFrameAncestors: CheckFn = (_url, headers) => {
   const csp = headers.get("content-security-policy")
   const xFrame = headers.get("x-frame-options")
@@ -3076,7 +3067,7 @@ const checkCSPFrameAncestors: CheckFn = (_url, headers) => {
     return {
       id: generateId(),
       title: "Missing Clickjacking Protection",
-      severity: "medium",
+      severity: SEVERITY_LEVELS.MEDIUM,
       category: "headers",
       description: "Neither CSP frame-ancestors nor X-Frame-Options header is present, leaving the site vulnerable to clickjacking attacks.",
       evidence: "No frame-ancestors directive in CSP and no X-Frame-Options header",
@@ -3161,7 +3152,6 @@ export const allChecks: CheckFn[] = [
   checkDNSPrefetchControl,
   checkPasswordFieldsWithoutPaste,
   checkExposedErrorMessages,
-  // New comprehensive security checks
   checkSQLInjectionPatterns,
   checkCommandInjectionHints,
   checkXXEVulnerabilityHints,

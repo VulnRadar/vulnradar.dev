@@ -1,5 +1,6 @@
 import type { ScanResult, Severity } from "./scanner/types"
 import { APP_NAME } from "./constants"
+import { SEVERITY_LEVELS } from "@/lib/constants"
 
 // Lightweight PDF generation using raw PDF syntax -- no external dependencies needed
 export function generatePdfReport(result: ScanResult): Uint8Array {
@@ -104,10 +105,10 @@ export function generatePdfReport(result: ScanResult): Uint8Array {
   const highConfigIssues = ["Missing HSTS", "Missing CSP", "Weak Crypto", "Open Redirect", "Clickjacking", "Mixed Content"]
   const informationalOnly = ["Framework-Required", "Server Technology", "DNS Prefetch", "Cookie without HttpOnly", "Missing security.txt"]
 
-  const criticalThreats = result.findings.filter((f) => (f.severity === "critical" || f.severity === "high") && !informationalOnly.some(p => f.title.includes(p)) && criticalExploitable.some(p => f.title.includes(p)))
-  const activeVulns = result.findings.filter((f) => f.severity === "high" && !informationalOnly.some(p => f.title.includes(p)) && highActiveVulns.some(p => f.title.includes(p)))
-  const configIssues = result.findings.filter((f) => (f.severity === "high" || f.severity === "medium") && !informationalOnly.some(p => f.title.includes(p)) && highConfigIssues.some(p => f.title.includes(p)))
-  const otherMediumIssues = result.findings.filter((f) => f.severity === "medium" && !informationalOnly.some(p => f.title.includes(p)) && !highConfigIssues.some(p => f.title.includes(p)))
+  const criticalThreats = result.findings.filter((f) => (f.severity === SEVERITY_LEVELS.CRITICAL || f.severity === SEVERITY_LEVELS.HIGH) && !informationalOnly.some(p => f.title.includes(p)) && criticalExploitable.some(p => f.title.includes(p)))
+  const activeVulns = result.findings.filter((f) => f.severity === SEVERITY_LEVELS.HIGH && !informationalOnly.some(p => f.title.includes(p)) && highActiveVulns.some(p => f.title.includes(p)))
+  const configIssues = result.findings.filter((f) => (f.severity === SEVERITY_LEVELS.HIGH || f.severity === SEVERITY_LEVELS.MEDIUM) && !informationalOnly.some(p => f.title.includes(p)) && highConfigIssues.some(p => f.title.includes(p)))
+  const otherMediumIssues = result.findings.filter((f) => f.severity === SEVERITY_LEVELS.MEDIUM && !informationalOnly.some(p => f.title.includes(p)) && !highConfigIssues.some(p => f.title.includes(p)))
 
   const safetyRating =
       criticalThreats.length > 0 || activeVulns.length >= 2
@@ -127,7 +128,13 @@ export function generatePdfReport(result: ScanResult): Uint8Array {
   // Summary
   addText("SEVERITY SUMMARY", 12, true, [0.1, 0.7, 0.8])
   addSpacer(4)
-  const severities: Severity[] = ["critical", "high", "medium", "low", "info"]
+  const severities: Severity[] = [
+    SEVERITY_LEVELS.CRITICAL,
+    SEVERITY_LEVELS.HIGH,
+    SEVERITY_LEVELS.MEDIUM,
+    SEVERITY_LEVELS.LOW,
+    SEVERITY_LEVELS.INFO
+  ] as Severity[]
   for (const sev of severities) {
     const count = result.summary[sev]
     if (count > 0) {

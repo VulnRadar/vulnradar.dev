@@ -1,4 +1,5 @@
 "use client"
+import { TEAM_ROLES } from "@/lib/constants"
 
 import { useState, useEffect, useCallback } from "react"
 import { useRouter } from "next/navigation"
@@ -218,7 +219,7 @@ export default function TeamsPage() {
     }
   }
 
-  const canManage = currentRole === "owner" || currentRole === "admin"
+  const canManage = currentRole === TEAM_ROLES.OWNER || currentRole === TEAM_ROLES.ADMIN
 
   return (
     <div className="min-h-screen flex flex-col bg-background">
@@ -252,7 +253,7 @@ export default function TeamsPage() {
                     <UserPlus className="h-3.5 w-3.5" />Invite
                   </Button>
                 )}
-                {currentRole === "owner" ? (
+                {currentRole === TEAM_ROLES.OWNER ? (
                   <Button variant="outline" size="sm" className="bg-transparent text-destructive hover:text-destructive gap-1.5" onClick={() => handleDelete(selectedTeam.id)}>
                     <Trash2 className="h-3.5 w-3.5" />Delete Team
                   </Button>
@@ -328,7 +329,7 @@ export default function TeamsPage() {
                       <span className={cn("inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full border", ROLE_COLORS[m.role])}>
                         <Icon className="h-3 w-3" />{m.role}
                       </span>
-                      {canManage && m.role !== "owner" && (
+                      {canManage && m.role !== TEAM_ROLES.OWNER && (
                         <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive" onClick={() => handleRemoveMember(m.user_id)}>
                           <X className="h-3.5 w-3.5" />
                         </Button>

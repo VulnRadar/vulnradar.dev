@@ -1,12 +1,12 @@
 import { NextResponse } from "next/server"
 import { getSession } from "@/lib/auth"
 import pool from "@/lib/db"
-import crypto from "crypto"
+import { ERROR_MESSAGES, TEAM_ROLES } from "@/lib/constants"
 
 // List user's teams
 export async function GET() {
   const session = await getSession()
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  if (!session) return NextResponse.json({ error: ERROR_MESSAGES.UNAUTHORIZED }, { status: 401 })
 
   const result = await pool.query(
     `SELECT t.id, t.name, t.created_at, tm.role,
@@ -23,7 +23,7 @@ export async function GET() {
 // Create a new team
 export async function POST(request: Request) {
   const session = await getSession()
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  if (!session) return NextResponse.json({ error: ERROR_MESSAGES.UNAUTHORIZED }, { status: 401 })
 
   const { name } = await request.json()
   if (!name || typeof name !== "string" || name.trim().length < 2 || name.trim().length > 50) {
@@ -32,8 +32,8 @@ export async function POST(request: Request) {
 
   // Limit teams per user
   const countRes = await pool.query(
-    "SELECT COUNT(*) as cnt FROM team_members WHERE user_id = $1 AND role = 'owner'",
-    [session.userId],
+    `SELECT COUNT(*) as cnt FROM team_members WHERE user_id = $1 AND role = $2`,
+    [session.userId, TEAM_ROLES.OWNER],
   )
   if (Number(countRes.rows[0].cnt) >= 5) {
     return NextResponse.json({ error: "Maximum 5 teams per user." }, { status: 400 })
@@ -49,11 +49,11 @@ export async function POST(request: Request) {
     )
     const team = teamRes.rows[0]
     await client.query(
-      "INSERT INTO team_members (team_id, user_id, role) VALUES ($1, $2, 'owner')",
+      "INSERT INTO team_members (team_id, user_id, role) VALUES ($1, $2, TEAM_ROLES.OWNER)",
       [team.id, session.userId],
     )
     await client.query("COMMIT")
-    return NextResponse.json({ team: { ...team, role: "owner", member_count: 1 } })
+    return NextResponse.json({ team: { ...team, role: TEAM_ROLES.OWNER, member_count: 1 } })
   } catch {
     await client.query("ROLLBACK")
     return NextResponse.json({ error: "Failed to create team." }, { status: 500 })
@@ -65,7 +65,7 @@ export async function POST(request: Request) {
 // Delete a team
 export async function DELETE(request: Request) {
   const session = await getSession()
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  if (!session) return NextResponse.json({ error: ERROR_MESSAGES.UNAUTHORIZED }, { status: 401 })
 
   const { teamId } = await request.json()
   if (!teamId) return NextResponse.json({ error: "teamId required." }, { status: 400 })
@@ -75,7 +75,7 @@ export async function DELETE(request: Request) {
     "SELECT role FROM team_members WHERE team_id = $1 AND user_id = $2",
     [teamId, session.userId],
   )
-  if (memberRes.rows.length === 0 || memberRes.rows[0].role !== "owner") {
+  if (memberRes.rows.length === 0 || memberRes.rows[0].role !== TEAM_ROLES.OWNER) {
     return NextResponse.json({ error: "Only team owners can delete teams." }, { status: 403 })
   }
 

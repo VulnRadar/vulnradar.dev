@@ -23,6 +23,7 @@ import {
 } from "lucide-react"
 import Link from "next/link"
 import { cn } from "@/lib/utils"
+import { SUPPORT_EMAIL } from "@/lib/constants"
 
 const CATEGORIES = [
   { id: "bug", label: "Bug Report", icon: Bug, desc: "Something is broken or not working as expected" },
@@ -168,7 +169,7 @@ export default function ContactPage() {
               {[
                 { icon: BookOpen, label: "Documentation", href: "/docs", desc: "Guides & API reference" },
                 { icon: FileText, label: "Changelog", href: "/changelog", desc: "Latest updates" },
-                { icon: Mail, label: "Email Us", href: "mailto:support@vulnradar.dev", desc: "support@vulnradar.dev" },
+                { icon: Mail, label: "Email Us", href: `mailto:${SUPPORT_EMAIL}`, desc: SUPPORT_EMAIL },
               ].map((link) => (
                 <Link key={link.label} href={link.href} className="flex items-center gap-3 p-3 rounded-xl border border-border bg-card hover:bg-muted/50 hover:border-primary/20 transition-all">
                   <div className="flex items-center justify-center w-9 h-9 rounded-lg bg-primary/10 shrink-0">

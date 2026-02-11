@@ -29,7 +29,7 @@ export async function register() {
                                               id SERIAL PRIMARY KEY,
                                               user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
           key_hash VARCHAR(255) NOT NULL,
-          key_prefix VARCHAR(12) NOT NULL,
+          key_prefix VARCHAR(64) NOT NULL,
           name VARCHAR(100) NOT NULL DEFAULT 'Default',
           daily_limit INTEGER NOT NULL DEFAULT 50,
           created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
@@ -37,6 +37,17 @@ export async function register() {
           revoked_at TIMESTAMP WITH TIME ZONE,
                                                                                               UNIQUE(key_hash)
           );
+
+        -- Ensure existing installations have a sufficient key_prefix length
+        DO $$ BEGIN
+          IF EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name = 'api_keys' AND column_name = 'key_prefix'
+          ) THEN
+            -- Increase to 64 to be future-proof
+            ALTER TABLE api_keys ALTER COLUMN key_prefix TYPE VARCHAR(64);
+          END IF;
+        END $$;
 
         CREATE TABLE IF NOT EXISTS api_usage (
                                                id SERIAL PRIMARY KEY,

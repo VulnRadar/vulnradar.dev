@@ -3,6 +3,7 @@ import { randomBytes, scryptSync } from "node:crypto"
 import { getSession } from "@/lib/auth"
 import pool from "@/lib/db"
 import { getClientIP } from "@/lib/rate-limit"
+import { ERROR_MESSAGES } from "@/lib/constants"
 
 async function requireAdmin() {
   const session = await getSession()
@@ -23,7 +24,7 @@ async function logAction(adminId: number, targetUserId: number | null, action: s
 // GET: Admin dashboard stats + user list + audit log
 export async function GET(request: NextRequest) {
   const session = await requireAdmin()
-  if (!session) return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+  if (!session) return NextResponse.json({ error: ERROR_MESSAGES.FORBIDDEN }, { status: 403 })
 
   const { searchParams } = new URL(request.url)
   const page = Math.max(1, Number(searchParams.get("page") || 1))
@@ -149,7 +150,7 @@ export async function GET(request: NextRequest) {
 // PATCH: Admin actions on users
 export async function PATCH(request: NextRequest) {
   const session = await requireAdmin()
-  if (!session) return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+  if (!session) return NextResponse.json({ error: ERROR_MESSAGES.FORBIDDEN }, { status: 403 })
 
   const ip = await getClientIP()
   const { action, userId } = await request.json()

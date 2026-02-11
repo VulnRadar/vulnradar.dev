@@ -1,12 +1,14 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getSession, verifyPassword } from "@/lib/auth"
-import { sendEmail, twoFactorDisabledEmail } from "@/lib/email"
+import { twoFactorDisabledEmail } from "@/lib/email"
+import { sendNotificationEmail } from "@/lib/notifications"
 import pool from "@/lib/db"
+import { ERROR_MESSAGES } from "@/lib/constants"
 
 // POST: Disable 2FA (requires current password)
 export async function POST(request: NextRequest) {
   const session = await getSession()
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  if (!session) return NextResponse.json({ error: ERROR_MESSAGES.UNAUTHORIZED }, { status: 401 })
 
   const { password } = await request.json()
   if (!password) {
@@ -31,7 +33,12 @@ export async function POST(request: NextRequest) {
   const userAgent = request.headers.get("user-agent") || "Unknown"
 
   const emailContent = twoFactorDisabledEmail({ ipAddress: ip, userAgent })
-  sendEmail({ to: session.email, ...emailContent }).catch(console.error)
+  sendNotificationEmail({
+    userId: session.userId,
+    userEmail: session.email,
+    type: "security",
+    emailContent,
+  }).catch((err) => console.error("Failed to send 2FA disabled notification:", err))
 
   return NextResponse.json({ success: true })
 }

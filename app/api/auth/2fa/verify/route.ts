@@ -2,12 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { createSession } from "@/lib/auth"
 import { verifyTOTP } from "@/lib/totp"
 import pool from "@/lib/db"
-import { 
-  AUTH_2FA_PENDING_COOKIE, 
-  AUTH_2FA_PENDING_MAX_AGE,
-  DEVICE_TRUST_COOKIE_NAME,
-  DEVICE_TRUST_MAX_AGE,
-} from "@/lib/constants"
+import { AUTH_2FA_PENDING_COOKIE, AUTH_2FA_PENDING_MAX_AGE, DEVICE_TRUST_COOKIE_NAME, DEVICE_TRUST_MAX_AGE, ERROR_MESSAGES } from "@/lib/constants"
 
 // POST: Verify 2FA code during login
 export async function POST(request: NextRequest) {
@@ -21,7 +16,7 @@ export async function POST(request: NextRequest) {
     // Verify the pending 2FA token
     const pending = request.cookies.get(AUTH_2FA_PENDING_COOKIE)?.value
     if (!pending || pending !== String(userId)) {
-      return NextResponse.json({ error: "Invalid or expired 2FA session. Please log in again." }, { status: 401 })
+      return NextResponse.json({ error: ERROR_MESSAGES.INVALID_2FA_SESSION }, { status: 401 })
     }
 
     // Get user's TOTP secret and backup codes
