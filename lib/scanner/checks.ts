@@ -15,12 +15,12 @@ const checkStrictTransportSecurity: CheckFn = (url, headers) => {
       severity: "high",
       category: "headers",
       description:
-        "The server does not send the Strict-Transport-Security header, which tells browsers to only connect via HTTPS.",
+          "The server does not send the Strict-Transport-Security header, which tells browsers to only connect via HTTPS.",
       evidence: "Header 'Strict-Transport-Security' is not present in the response.",
       riskImpact:
-        "Attackers could intercept traffic via man-in-the-middle attacks by downgrading the connection from HTTPS to HTTP.",
+          "Attackers could intercept traffic via man-in-the-middle attacks by downgrading the connection from HTTPS to HTTP.",
       explanation:
-        "HSTS instructs browsers to only access the site over HTTPS for a specified duration. Without it, users who type the URL without 'https://' or follow an HTTP link are vulnerable to SSL-stripping attacks. Once a browser sees the HSTS header, it will refuse to connect over plain HTTP for the specified max-age period.",
+          "HSTS instructs browsers to only access the site over HTTPS for a specified duration. Without it, users who type the URL without 'https://' or follow an HTTP link are vulnerable to SSL-stripping attacks. Once a browser sees the HSTS header, it will refuse to connect over plain HTTP for the specified max-age period.",
       fixSteps: [
         "Add the Strict-Transport-Security header to all HTTPS responses.",
         "Set a max-age of at least 31536000 (1 year).",
@@ -71,12 +71,12 @@ const checkContentSecurityPolicy: CheckFn = (_url, headers) => {
       severity: "high",
       category: "headers",
       description:
-        "No Content-Security-Policy header was found. CSP helps prevent cross-site scripting (XSS) and data injection attacks.",
+          "No Content-Security-Policy header was found. CSP helps prevent cross-site scripting (XSS) and data injection attacks.",
       evidence: "Header 'Content-Security-Policy' is not present in the response.",
       riskImpact:
-        "Without CSP, the site is more vulnerable to XSS attacks because browsers have no policy to restrict which scripts and resources can execute.",
+          "Without CSP, the site is more vulnerable to XSS attacks because browsers have no policy to restrict which scripts and resources can execute.",
       explanation:
-        "Content Security Policy is a defense-in-depth mechanism that restricts which resources (scripts, styles, images, etc.) the browser is allowed to load. By defining a strict policy, you prevent attackers from injecting malicious scripts even if they find an injection point in your application.",
+          "Content Security Policy is a defense-in-depth mechanism that restricts which resources (scripts, styles, images, etc.) the browser is allowed to load. By defining a strict policy, you prevent attackers from injecting malicious scripts even if they find an injection point in your application.",
       fixSteps: [
         "Define a Content-Security-Policy header with restrictive defaults.",
         "Start with a report-only policy to identify issues: Content-Security-Policy-Report-Only.",
@@ -130,13 +130,13 @@ const checkXFrameOptions: CheckFn = (_url, headers) => {
       severity: "medium",
       category: "headers",
       description:
-        "Neither X-Frame-Options nor CSP frame-ancestors directive is set, leaving the site vulnerable to clickjacking.",
+          "Neither X-Frame-Options nor CSP frame-ancestors directive is set, leaving the site vulnerable to clickjacking.",
       evidence:
-        "Header 'X-Frame-Options' is not present and 'frame-ancestors' directive was not found in CSP.",
+          "Header 'X-Frame-Options' is not present and 'frame-ancestors' directive was not found in CSP.",
       riskImpact:
-        "Attackers can embed your site in a hidden iframe and trick users into clicking on elements they don't intend to, potentially performing unauthorized actions.",
+          "Attackers can embed your site in a hidden iframe and trick users into clicking on elements they don't intend to, potentially performing unauthorized actions.",
       explanation:
-        "Clickjacking is an attack where a malicious site embeds your site in a transparent iframe. Users think they're interacting with the visible page but are actually clicking on your site. X-Frame-Options and CSP frame-ancestors both prevent your page from being framed by unauthorized origins.",
+          "Clickjacking is an attack where a malicious site embeds your site in a transparent iframe. Users think they're interacting with the visible page but are actually clicking on your site. X-Frame-Options and CSP frame-ancestors both prevent your page from being framed by unauthorized origins.",
       fixSteps: [
         "Add X-Frame-Options: DENY or SAMEORIGIN to your responses.",
         "Alternatively, use the CSP frame-ancestors directive for more granular control.",
@@ -185,12 +185,12 @@ const checkXContentTypeOptions: CheckFn = (_url, headers) => {
       severity: "medium",
       category: "headers",
       description:
-        "The X-Content-Type-Options header is not set. This header prevents MIME-type sniffing.",
+          "The X-Content-Type-Options header is not set. This header prevents MIME-type sniffing.",
       evidence: "Header 'X-Content-Type-Options' is not present in the response.",
       riskImpact:
-        "Browsers may interpret files as a different MIME type than declared, which can lead to XSS attacks if, for example, a plaintext file is sniffed as HTML.",
+          "Browsers may interpret files as a different MIME type than declared, which can lead to XSS attacks if, for example, a plaintext file is sniffed as HTML.",
       explanation:
-        "MIME sniffing is when browsers try to determine the content type by examining the content rather than trusting the Content-Type header. Setting X-Content-Type-Options to 'nosniff' tells the browser to strictly follow the declared Content-Type and not attempt to sniff the content type.",
+          "MIME sniffing is when browsers try to determine the content type by examining the content rather than trusting the Content-Type header. Setting X-Content-Type-Options to 'nosniff' tells the browser to strictly follow the declared Content-Type and not attempt to sniff the content type.",
       fixSteps: [
         "Add the header X-Content-Type-Options: nosniff to all responses.",
         "Ensure all resources are served with the correct Content-Type header.",
@@ -238,12 +238,12 @@ const checkReferrerPolicy: CheckFn = (_url, headers) => {
       severity: "low",
       category: "headers",
       description:
-        "The Referrer-Policy header is not set. This controls how much referrer information is sent with requests.",
+          "The Referrer-Policy header is not set. This controls how much referrer information is sent with requests.",
       evidence: "Header 'Referrer-Policy' is not present in the response.",
       riskImpact:
-        "Sensitive information in URLs (tokens, IDs) may be leaked to third-party sites through the Referer header when users navigate away.",
+          "Sensitive information in URLs (tokens, IDs) may be leaked to third-party sites through the Referer header when users navigate away.",
       explanation:
-        "By default, browsers send the full URL in the Referer header when navigating between pages. If your URLs contain sensitive data (session tokens, user IDs, search queries), this data leaks to any external site the user visits next. Setting a Referrer-Policy limits this disclosure.",
+          "By default, browsers send the full URL in the Referer header when navigating between pages. If your URLs contain sensitive data (session tokens, user IDs, search queries), this data leaks to any external site the user visits next. Setting a Referrer-Policy limits this disclosure.",
       fixSteps: [
         "Add Referrer-Policy: strict-origin-when-cross-origin (recommended default).",
         "For maximum privacy, use no-referrer or same-origin.",
@@ -285,7 +285,7 @@ export default nextConfig;`,
 
 const checkPermissionsPolicy: CheckFn = (_url, headers) => {
   const pp =
-    headers.get("permissions-policy") || headers.get("feature-policy")
+      headers.get("permissions-policy") || headers.get("feature-policy")
   if (!pp) {
     return {
       id: generateId(),
@@ -293,13 +293,13 @@ const checkPermissionsPolicy: CheckFn = (_url, headers) => {
       severity: "low",
       category: "headers",
       description:
-        "The Permissions-Policy (formerly Feature-Policy) header is not set. This header controls which browser features and APIs can be used.",
+          "The Permissions-Policy (formerly Feature-Policy) header is not set. This header controls which browser features and APIs can be used.",
       evidence:
-        "Neither 'Permissions-Policy' nor 'Feature-Policy' headers are present in the response.",
+          "Neither 'Permissions-Policy' nor 'Feature-Policy' headers are present in the response.",
       riskImpact:
-        "Third-party scripts or iframes could access powerful browser APIs like camera, microphone, or geolocation without explicit permission from your site.",
+          "Third-party scripts or iframes could access powerful browser APIs like camera, microphone, or geolocation without explicit permission from your site.",
       explanation:
-        "Permissions-Policy allows you to selectively enable or disable browser features for your page and any embedded iframes. This limits the attack surface by preventing unauthorized access to sensitive device APIs like camera, microphone, geolocation, and payment requests.",
+          "Permissions-Policy allows you to selectively enable or disable browser features for your page and any embedded iframes. This limits the attack surface by preventing unauthorized access to sensitive device APIs like camera, microphone, geolocation, and payment requests.",
       fixSteps: [
         "Add a Permissions-Policy header that disables features you don't use.",
         "Common features to restrict: camera, microphone, geolocation, payment, usb.",
@@ -354,12 +354,12 @@ const checkServerHeader: CheckFn = (_url, headers) => {
       severity: "info",
       category: "information-disclosure",
       description:
-        "The server reveals technology information through response headers, which can help attackers target known vulnerabilities.",
+          "The server reveals technology information through response headers, which can help attackers target known vulnerabilities.",
       evidence: `Disclosed headers: ${disclosed.join(", ")}`,
       riskImpact:
-        "Knowing the exact server software and version allows attackers to search for and exploit known vulnerabilities specific to that technology stack.",
+          "Knowing the exact server software and version allows attackers to search for and exploit known vulnerabilities specific to that technology stack.",
       explanation:
-        "HTTP response headers like Server and X-Powered-By reveal the technology stack running on the server. While this information alone isn't a vulnerability, it aids attackers in reconnaissance by narrowing down which exploits to try. Removing or obscuring these headers follows the principle of security through obscurity as a defense layer.",
+          "HTTP response headers like Server and X-Powered-By reveal the technology stack running on the server. While this information alone isn't a vulnerability, it aids attackers in reconnaissance by narrowing down which exploits to try. Removing or obscuring these headers follows the principle of security through obscurity as a defense layer.",
       fixSteps: [
         "Remove or obscure the Server header in your web server configuration.",
         "Remove the X-Powered-By header entirely.",
@@ -407,12 +407,12 @@ const checkMixedContent: CheckFn = (url, _headers, body) => {
         const lower = match.toLowerCase()
         // Exclude localhost, example domains, and documentation URLs
         return !lower.includes('localhost') &&
-               !lower.includes('example.com') &&
-               !lower.includes('example.org') &&
-               !lower.includes('127.0.0.1') &&
-               !lower.includes('placeholder') &&
-               // Exclude data URIs that might contain http:// in base64
-               !match.startsWith('data:')
+            !lower.includes('example.com') &&
+            !lower.includes('example.org') &&
+            !lower.includes('127.0.0.1') &&
+            !lower.includes('placeholder') &&
+            // Exclude data URIs that might contain http:// in base64
+            !match.startsWith('data:')
       })
       matches.push(...filtered.slice(0, 3))
     }
@@ -426,12 +426,12 @@ const checkMixedContent: CheckFn = (url, _headers, body) => {
       severity: "medium",
       category: "content",
       description:
-        "The HTTPS page loads resources over insecure HTTP connections, which can be intercepted or tampered with.",
+          "The HTTPS page loads resources over insecure HTTP connections, which can be intercepted or tampered with.",
       evidence: `Found ${matches.length} HTTP resource reference(s): ${matches.slice(0, 3).join(", ")}${matches.length > 3 ? "..." : ""}`,
       riskImpact:
-        "Resources loaded over HTTP on an HTTPS page can be intercepted by attackers, potentially injecting malicious scripts or altering content.",
+          "Resources loaded over HTTP on an HTTPS page can be intercepted by attackers, potentially injecting malicious scripts or altering content.",
       explanation:
-        "Mixed content occurs when an HTTPS page includes resources fetched over HTTP. Browsers may block some types (active mixed content like scripts) and warn about others (passive mixed content like images). All resources on HTTPS pages should also be loaded via HTTPS.",
+          "Mixed content occurs when an HTTPS page includes resources fetched over HTTP. Browsers may block some types (active mixed content like scripts) and warn about others (passive mixed content like images). All resources on HTTPS pages should also be loaded via HTTPS.",
       fixSteps: [
         "Update all resource URLs to use HTTPS or protocol-relative URLs (//).",
         "Use the CSP directive upgrade-insecure-requests to automatically upgrade HTTP to HTTPS.",
@@ -488,11 +488,11 @@ const checkOpenRedirectHints: CheckFn = (_url, _headers, body) => {
         const lower = match.toLowerCase()
         // Exclude documentation, examples, and obvious non-vulnerable code
         return !lower.includes('example.com') &&
-               !lower.includes('example.org') &&
-               !lower.includes('yourdomain.com') &&
-               !lower.includes('placeholder') &&
-               !lower.includes('// example') &&
-               !lower.includes('<!-- example')
+            !lower.includes('example.org') &&
+            !lower.includes('yourdomain.com') &&
+            !lower.includes('placeholder') &&
+            !lower.includes('// example') &&
+            !lower.includes('<!-- example')
       })
       matches.push(...filtered.slice(0, 2))
     }
@@ -506,12 +506,12 @@ const checkOpenRedirectHints: CheckFn = (_url, _headers, body) => {
       severity: "medium",
       category: "content",
       description:
-        "The page contains URL parameters or JavaScript patterns commonly associated with open redirect vulnerabilities.",
+          "The page contains URL parameters or JavaScript patterns commonly associated with open redirect vulnerabilities.",
       evidence: `Found redirect-related patterns: ${matches.slice(0, 2).join(", ")}`,
       riskImpact:
-        "Open redirects can be used in phishing attacks by making malicious URLs appear to originate from your trusted domain.",
+          "Open redirects can be used in phishing attacks by making malicious URLs appear to originate from your trusted domain.",
       explanation:
-        "Open redirect vulnerabilities occur when a web application takes a user-supplied URL parameter and redirects to it without validation. Attackers craft links that appear to be on your domain but redirect users to malicious sites, making phishing attacks more convincing.",
+          "Open redirect vulnerabilities occur when a web application takes a user-supplied URL parameter and redirects to it without validation. Attackers craft links that appear to be on your domain but redirect users to malicious sites, making phishing attacks more convincing.",
       fixSteps: [
         "Validate all redirect URLs against an allowlist of permitted domains.",
         "Use relative URLs for redirects instead of absolute URLs.",
@@ -557,12 +557,12 @@ const checkCookieSecurity: CheckFn = (_url, headers) => {
       severity: "medium",
       category: "cookies",
       description:
-        "One or more cookies are missing important security flags that protect against common attacks.",
+          "One or more cookies are missing important security flags that protect against common attacks.",
       evidence: `Insecure cookies: ${insecureCookies.join("; ")}`,
       riskImpact:
-        "Cookies without proper security flags can be stolen via XSS attacks (missing HttpOnly), sent over insecure connections (missing Secure), or exploited in CSRF attacks (missing SameSite).",
+          "Cookies without proper security flags can be stolen via XSS attacks (missing HttpOnly), sent over insecure connections (missing Secure), or exploited in CSRF attacks (missing SameSite).",
       explanation:
-        "Cookie security flags provide essential protection: HttpOnly prevents JavaScript from accessing the cookie (mitigating XSS-based session theft), Secure ensures cookies are only sent over HTTPS, and SameSite prevents the cookie from being sent in cross-site requests (mitigating CSRF attacks).",
+          "Cookie security flags provide essential protection: HttpOnly prevents JavaScript from accessing the cookie (mitigating XSS-based session theft), Secure ensures cookies are only sent over HTTPS, and SameSite prevents the cookie from being sent in cross-site requests (mitigating CSRF attacks).",
       fixSteps: [
         "Add HttpOnly flag to all session and authentication cookies.",
         "Add Secure flag to ensure cookies are only sent over HTTPS.",
@@ -589,12 +589,12 @@ const checkDeprecatedTLS: CheckFn = (url) => {
       severity: "high",
       category: "ssl",
       description:
-        "The site was scanned over plain HTTP. All traffic including credentials and sensitive data is transmitted without encryption.",
+          "The site was scanned over plain HTTP. All traffic including credentials and sensitive data is transmitted without encryption.",
       evidence: `URL scheme: ${url.split("://")[0]}://`,
       riskImpact:
-        "All data transmitted between the user and server can be intercepted, read, and modified by anyone on the network path (man-in-the-middle attacks).",
+          "All data transmitted between the user and server can be intercepted, read, and modified by anyone on the network path (man-in-the-middle attacks).",
       explanation:
-        "HTTP transmits data in plaintext, making it trivial for attackers on the same network to intercept login credentials, session tokens, personal data, and any other information exchanged. HTTPS encrypts all traffic using TLS, preventing eavesdropping and tampering.",
+          "HTTP transmits data in plaintext, making it trivial for attackers on the same network to intercept login credentials, session tokens, personal data, and any other information exchanged. HTTPS encrypts all traffic using TLS, preventing eavesdropping and tampering.",
       fixSteps: [
         "Obtain and install an SSL/TLS certificate (e.g., from Let's Encrypt).",
         "Configure your server to redirect all HTTP traffic to HTTPS.",
@@ -622,12 +622,12 @@ const checkCORSMisconfiguration: CheckFn = (_url, headers) => {
       severity: "medium",
       category: "headers",
       description:
-        "The Access-Control-Allow-Origin header is set to '*', allowing any origin to make cross-origin requests.",
+          "The Access-Control-Allow-Origin header is set to '*', allowing any origin to make cross-origin requests.",
       evidence: `Access-Control-Allow-Origin: ${acao}`,
       riskImpact:
-        "Any website can make authenticated requests to your API, potentially stealing sensitive data or performing unauthorized actions on behalf of users.",
+          "Any website can make authenticated requests to your API, potentially stealing sensitive data or performing unauthorized actions on behalf of users.",
       explanation:
-        "CORS (Cross-Origin Resource Sharing) controls which external domains can access your API. A wildcard '*' means any website in the world can make requests. While sometimes acceptable for public APIs, it's dangerous for any endpoint that handles authentication or private data.",
+          "CORS (Cross-Origin Resource Sharing) controls which external domains can access your API. A wildcard '*' means any website in the world can make requests. While sometimes acceptable for public APIs, it's dangerous for any endpoint that handles authentication or private data.",
       fixSteps: [
         "Replace the wildcard '*' with specific trusted origins.",
         "Validate the Origin header against an allowlist before reflecting it.",
@@ -677,7 +677,7 @@ const checkSubresourceIntegrity: CheckFn = (_url, _headers, body) => {
   // Check for external scripts without integrity attributes
   const externalScripts = body.match(/<script[^>]+src=["']https?:\/\/[^"']+["'][^>]*>/gi) || []
   const withoutIntegrity = externalScripts.filter(
-    (tag) => !tag.toLowerCase().includes("integrity="),
+      (tag) => !tag.toLowerCase().includes("integrity="),
   )
 
   if (withoutIntegrity.length > 0) {
@@ -687,12 +687,12 @@ const checkSubresourceIntegrity: CheckFn = (_url, _headers, body) => {
       severity: "medium",
       category: "content",
       description:
-        "External scripts are loaded without Subresource Integrity hashes, which cannot verify the integrity of fetched resources.",
+          "External scripts are loaded without Subresource Integrity hashes, which cannot verify the integrity of fetched resources.",
       evidence: `Found ${withoutIntegrity.length} external script(s) without integrity attribute: ${withoutIntegrity.slice(0, 2).join(", ")}${withoutIntegrity.length > 2 ? "..." : ""}`,
       riskImpact:
-        "If a CDN or third-party host is compromised, attackers could serve malicious scripts to your users. Without SRI, browsers have no way to detect the modification.",
+          "If a CDN or third-party host is compromised, attackers could serve malicious scripts to your users. Without SRI, browsers have no way to detect the modification.",
       explanation:
-        "Subresource Integrity (SRI) allows browsers to verify that files fetched from CDNs or third-party origins haven't been tampered with. By adding a cryptographic hash to script and link tags, the browser will refuse to execute the file if its content doesn't match the expected hash.",
+          "Subresource Integrity (SRI) allows browsers to verify that files fetched from CDNs or third-party origins haven't been tampered with. By adding a cryptographic hash to script and link tags, the browser will refuse to execute the file if its content doesn't match the expected hash.",
       fixSteps: [
         "Generate SRI hashes for all external scripts and stylesheets.",
         "Add the 'integrity' and 'crossorigin' attributes to external resource tags.",
@@ -745,12 +745,12 @@ const checkFormAction: CheckFn = (_url, _headers, body) => {
       severity: "high",
       category: "content",
       description:
-        "One or more forms submit data over unencrypted HTTP, exposing submitted data to interception.",
+          "One or more forms submit data over unencrypted HTTP, exposing submitted data to interception.",
       evidence: `Found ${httpForms.length} form(s) with HTTP action: ${httpForms.slice(0, 2).join(", ")}`,
       riskImpact:
-        "Form data including passwords, personal information, and other sensitive inputs are transmitted in plaintext and can be intercepted by attackers on the network.",
+          "Form data including passwords, personal information, and other sensitive inputs are transmitted in plaintext and can be intercepted by attackers on the network.",
       explanation:
-        "When a form's action URL uses HTTP instead of HTTPS, all data submitted through that form (including passwords, credit cards, personal info) is sent in plaintext. Anyone monitoring the network can read this data. All forms should submit to HTTPS endpoints.",
+          "When a form's action URL uses HTTP instead of HTTPS, all data submitted through that form (including passwords, credit cards, personal info) is sent in plaintext. Anyone monitoring the network can read this data. All forms should submit to HTTPS endpoints.",
       fixSteps: [
         "Update all form action URLs to use HTTPS.",
         "Use relative URLs for form actions to inherit the page's protocol.",
@@ -787,12 +787,12 @@ const checkCacheControlHeaders: CheckFn = (_url, headers) => {
       severity: "low",
       category: "headers",
       description:
-        "No Cache-Control or Pragma headers are set. Sensitive responses may be cached by browsers or intermediate proxies.",
+          "No Cache-Control or Pragma headers are set. Sensitive responses may be cached by browsers or intermediate proxies.",
       evidence: "Neither 'Cache-Control' nor 'Pragma' headers are present in the response.",
       riskImpact:
-        "Without cache control directives, sensitive data might be stored in browser caches or shared proxy caches, where it could be accessed by other users or remain after logout.",
+          "Without cache control directives, sensitive data might be stored in browser caches or shared proxy caches, where it could be accessed by other users or remain after logout.",
       explanation:
-        "Cache-Control headers instruct browsers and CDNs on how to cache responses. For pages that contain sensitive or personalized data, you should explicitly set no-store to prevent caching. For public static assets, proper cache headers improve performance while maintaining security.",
+          "Cache-Control headers instruct browsers and CDNs on how to cache responses. For pages that contain sensitive or personalized data, you should explicitly set no-store to prevent caching. For public static assets, proper cache headers improve performance while maintaining security.",
       fixSteps: [
         "Set 'Cache-Control: no-store' for sensitive/authenticated responses.",
         "Use 'Cache-Control: public, max-age=31536000, immutable' for versioned static assets.",
@@ -848,12 +848,12 @@ const checkXXSSProtection: CheckFn = (_url, headers) => {
       severity: "low",
       category: "headers",
       description:
-        "The X-XSS-Protection header is not set and no Content-Security-Policy is present. While the XSS auditor is deprecated in modern browsers, having protection headers is still recommended.",
+          "The X-XSS-Protection header is not set and no Content-Security-Policy is present. While the XSS auditor is deprecated in modern browsers, having protection headers is still recommended.",
       evidence: "Header 'X-XSS-Protection' is not present and no CSP fallback exists.",
       riskImpact:
-        "Older browsers that still support the XSS auditor won't have it activated, providing no built-in XSS protection for users on legacy browsers.",
+          "Older browsers that still support the XSS auditor won't have it activated, providing no built-in XSS protection for users on legacy browsers.",
       explanation:
-        "X-XSS-Protection was designed to enable the browser's built-in XSS filtering. While modern browsers have deprecated the XSS auditor (it can be exploited itself), setting this header to '0' or using CSP instead is best practice. If you have CSP, this header is unnecessary.",
+          "X-XSS-Protection was designed to enable the browser's built-in XSS filtering. While modern browsers have deprecated the XSS auditor (it can be exploited itself), setting this header to '0' or using CSP instead is best practice. If you have CSP, this header is unnecessary.",
       fixSteps: [
         "Implement a strong Content-Security-Policy (preferred approach).",
         "If CSP is not feasible, set X-XSS-Protection: 0 (to avoid the buggy auditor).",
@@ -899,27 +899,27 @@ const checkEmailExposure: CheckFn = (_url, _headers, body) => {
 
   // More comprehensive false positive filter
   const filtered = emails.filter(
-    (e) => {
-      const lower = e.toLowerCase()
-      return !lower.includes("example.com") &&
-        !lower.includes("example.org") &&
-        !lower.includes("test.com") &&
-        !lower.includes("schema.org") &&
-        !lower.includes("w3.org") &&
-        !lower.includes("sentry.io") &&
-        !lower.includes("yoursite.com") &&
-        !lower.includes("yourdomain.com") &&
-        !lower.includes("placeholder") &&
-        !lower.includes("noreply@") && // Common non-sensitive addresses
-        !lower.includes("no-reply@") &&
-        !lower.endsWith(".png") &&
-        !lower.endsWith(".jpg") &&
-        !lower.endsWith(".gif") &&
-        !lower.endsWith(".svg") &&
-        // Exclude documentation/comments
-        !body.includes(`<!-- ${e}`) &&
-        !body.includes(`// ${e}`)
-    }
+      (e) => {
+        const lower = e.toLowerCase()
+        return !lower.includes("example.com") &&
+            !lower.includes("example.org") &&
+            !lower.includes("test.com") &&
+            !lower.includes("schema.org") &&
+            !lower.includes("w3.org") &&
+            !lower.includes("sentry.io") &&
+            !lower.includes("yoursite.com") &&
+            !lower.includes("yourdomain.com") &&
+            !lower.includes("placeholder") &&
+            !lower.includes("noreply@") && // Common non-sensitive addresses
+            !lower.includes("no-reply@") &&
+            !lower.endsWith(".png") &&
+            !lower.endsWith(".jpg") &&
+            !lower.endsWith(".gif") &&
+            !lower.endsWith(".svg") &&
+            // Exclude documentation/comments
+            !body.includes(`<!-- ${e}`) &&
+            !body.includes(`// ${e}`)
+      }
   )
 
   // Deduplicate
@@ -933,12 +933,12 @@ const checkEmailExposure: CheckFn = (_url, _headers, body) => {
       severity: "info",
       category: "information-disclosure",
       description:
-        "Email addresses were found in the page source, which can be harvested by spammers and used in targeted phishing attacks.",
+          "Email addresses were found in the page source, which can be harvested by spammers and used in targeted phishing attacks.",
       evidence: `Found email(s): ${unique.slice(0, 5).join(", ")}${unique.length > 5 ? ` and ${unique.length - 5} more` : ""}`,
       riskImpact:
-        "Exposed email addresses can be harvested by bots for spam, or used in targeted spear-phishing attacks against your organization.",
+          "Exposed email addresses can be harvested by bots for spam, or used in targeted spear-phishing attacks against your organization.",
       explanation:
-        "Bots constantly crawl websites looking for email addresses in the HTML source. Once harvested, these addresses receive spam and can be used in social engineering attacks. Consider using contact forms, email obfuscation, or JavaScript-based rendering to protect addresses.",
+          "Bots constantly crawl websites looking for email addresses in the HTML source. Once harvested, these addresses receive spam and can be used in social engineering attacks. Consider using contact forms, email obfuscation, or JavaScript-based rendering to protect addresses.",
       fixSteps: [
         "Replace plaintext emails with contact forms.",
         "Use JavaScript to dynamically render email addresses.",
@@ -987,12 +987,12 @@ const checkDirectoryListingHints: CheckFn = (_url, _headers, body) => {
       severity: "high",
       category: "configuration",
       description:
-        "The response contains patterns indicating directory listing is enabled, exposing file and folder structures to visitors.",
+          "The response contains patterns indicating directory listing is enabled, exposing file and folder structures to visitors.",
       evidence: "Response contains directory listing indicators (e.g., 'Index of', 'Parent Directory').",
       riskImpact:
-        "Attackers can browse your server's file structure, discovering backup files, configuration files, source code, and other sensitive resources that should not be publicly accessible.",
+          "Attackers can browse your server's file structure, discovering backup files, configuration files, source code, and other sensitive resources that should not be publicly accessible.",
       explanation:
-        "Directory listing allows anyone to see all files in a directory when no index file (like index.html) is present. This can expose sensitive files such as backups (.bak, .sql), configuration files (.env, .config), source maps, and other resources the developer didn't intend to be public.",
+          "Directory listing allows anyone to see all files in a directory when no index file (like index.html) is present. This can expose sensitive files such as backups (.bak, .sql), configuration files (.env, .config), source maps, and other resources the developer didn't intend to be public.",
       fixSteps: [
         "Disable directory listing in your web server configuration.",
         "Ensure every directory has an index file.",
@@ -1042,12 +1042,12 @@ const checkSensitiveFileReferences: CheckFn = (_url, _headers, body) => {
       severity: "medium",
       category: "information-disclosure",
       description:
-        "The page references files commonly associated with sensitive configuration or development artifacts.",
+          "The page references files commonly associated with sensitive configuration or development artifacts.",
       evidence: `References to: ${found.join(", ")}`,
       riskImpact:
-        "References to sensitive files may indicate they are accessible, potentially exposing database credentials, API keys, source code, or server configuration.",
+          "References to sensitive files may indicate they are accessible, potentially exposing database credentials, API keys, source code, or server configuration.",
       explanation:
-        "Sensitive files like .env (environment variables), .git/ (version control), and configuration files should never be referenced in or accessible from public-facing pages. Their presence in the HTML source suggests they may be accessible to attackers.",
+          "Sensitive files like .env (environment variables), .git/ (version control), and configuration files should never be referenced in or accessible from public-facing pages. Their presence in the HTML source suggests they may be accessible to attackers.",
       fixSteps: [
         "Remove all references to sensitive files from public HTML.",
         "Block access to sensitive files in your web server configuration.",
@@ -1133,7 +1133,7 @@ const checkRobotsTxtExposure: CheckFn = (_url, _headers, body) => {
   if (sensitiveDisallows && sensitiveDisallows.length > 0) {
     const paths = sensitiveDisallows.slice(0, 5).map((d) => d.replace(/Disallow:\s*/i, "").trim())
     const sensitivePaths = paths.filter((p) =>
-      /admin|login|dashboard|api|internal|private|secret|backup|config|\.env/i.test(p)
+        /admin|login|dashboard|api|internal|private|secret|backup|config|\.env/i.test(p)
     )
     if (sensitivePaths.length > 0) {
       return {
@@ -1241,7 +1241,7 @@ const checkInlineJavaScript: CheckFn = (_url, _headers, body) => {
   const inlineScripts = body.match(/<script(?![^>]*src=)[^>]*>[\s\S]*?<\/script>/gi)
   if (inlineScripts && inlineScripts.length > 3) {
     const dangerousPatterns = inlineScripts.filter(
-      (s) => /eval\s*\(|document\.write|innerHTML\s*=|\.createElement\s*\(\s*["']script/i.test(s)
+        (s) => /eval\s*\(|document\.write|innerHTML\s*=|\.createElement\s*\(\s*["']script/i.test(s)
     )
     if (dangerousPatterns.length > 0) {
       return {

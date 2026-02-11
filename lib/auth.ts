@@ -29,8 +29,8 @@ export async function createSession(userId: number, ipAddress?: string, userAgen
   const expiresAt = new Date(Date.now() + SESSION_MAX_AGE)
 
   await pool.query(
-    "INSERT INTO sessions (id, user_id, expires_at, ip_address, user_agent) VALUES ($1, $2, $3, $4, $5)",
-    [sessionId, userId, expiresAt, ipAddress || null, userAgent || null],
+      "INSERT INTO sessions (id, user_id, expires_at, ip_address, user_agent) VALUES ($1, $2, $3, $4, $5)",
+      [sessionId, userId, expiresAt, ipAddress || null, userAgent || null],
   )
 
   const cookieStore = await cookies()
@@ -52,11 +52,11 @@ export async function getSession(): Promise<{ userId: number; email: string; nam
   if (!sessionId) return null
 
   const result = await pool.query(
-    `SELECT s.user_id, s.expires_at, u.email, u.name, u.tos_accepted_at, u.disabled_at
-     FROM sessions s 
-     JOIN users u ON s.user_id = u.id 
-     WHERE s.id = $1`,
-    [sessionId],
+      `SELECT s.user_id, s.expires_at, u.email, u.name, u.tos_accepted_at, u.disabled_at
+       FROM sessions s
+              JOIN users u ON s.user_id = u.id
+       WHERE s.id = $1`,
+      [sessionId],
   )
 
   if (result.rows.length === 0) {
@@ -96,8 +96,8 @@ export async function createUser(email: string, password: string, name?: string)
   const passwordHash = hashPassword(password)
 
   const result = await pool.query(
-    "INSERT INTO users (email, password_hash, name) VALUES ($1, $2, $3) RETURNING id, email, name",
-    [email.toLowerCase().trim(), passwordHash, name || null],
+      "INSERT INTO users (email, password_hash, name) VALUES ($1, $2, $3) RETURNING id, email, name",
+      [email.toLowerCase().trim(), passwordHash, name || null],
   )
 
   return result.rows[0]
@@ -105,8 +105,8 @@ export async function createUser(email: string, password: string, name?: string)
 
 export async function getUserByEmail(email: string) {
   const result = await pool.query(
-    "SELECT id, email, password_hash, name FROM users WHERE email = $1",
-    [email.toLowerCase().trim()],
+      "SELECT id, email, password_hash, name FROM users WHERE email = $1",
+      [email.toLowerCase().trim()],
   )
 
   return result.rows[0] || null
