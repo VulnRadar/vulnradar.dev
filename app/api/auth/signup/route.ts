@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from "next/server"
-import { createUser, createSession, getUserByEmail } from "@/lib/auth"
+import { createUser, getUserByEmail } from "@/lib/auth"
+import { sendEmail, emailVerificationEmail, APP_URL } from "@/lib/email"
+import pool from "@/lib/db"
+import crypto from "crypto"
 
 export async function POST(request: NextRequest) {
   try {
@@ -36,15 +39,40 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Create user (without verified email)
     const user = await createUser(email, password, name)
 
-    // Create session with IP and user agent
-    const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown"
-    const userAgent = request.headers.get("user-agent") || undefined
-    await createSession(user.id, ip, userAgent)
+    // Generate verification token
+    const token = crypto.randomBytes(32).toString("hex")
+    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000) // 24 hours
+
+    // Delete any existing verification tokens for this user
+    await pool.query("DELETE FROM email_verification_tokens WHERE user_id = $1", [user.id])
+
+    // Store token
+    await pool.query(
+      "INSERT INTO email_verification_tokens (user_id, token_hash, expires_at) VALUES ($1, $2, $3)",
+      [user.id, token, expiresAt]
+    )
+
+    // Send verification email in background (don't block the response)
+    const verifyLink = `${APP_URL}/verify-email?token=${token}`
+    const emailContent = emailVerificationEmail(name.trim(), verifyLink)
+
+    setImmediate(() => {
+      sendEmail({
+        to: email,
+        subject: emailContent.subject,
+        text: emailContent.text,
+        html: emailContent.html,
+      }).catch((err) => {
+        console.error("Failed to send verification email:", err)
+      })
+    })
 
     return NextResponse.json({
-      user: { id: user.id, email: user.email, name: user.name },
+      message: "Account created! Please check your email to verify your account.",
+      requiresVerification: true,
     })
   } catch (error) {
     console.error("Signup error:", error)

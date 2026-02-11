@@ -6,11 +6,6 @@ export function generateSecret(): string {
   return base32Encode(bytes)
 }
 
-// Generate TOTP code for the current time period
-export function generateTOTP(secret: string, timeStep = 30): string {
-  const time = Math.floor(Date.now() / 1000 / timeStep)
-  return hotpGenerate(secret, time)
-}
 
 // Verify a TOTP code (checks current and +/- 1 window)
 export function verifyTOTP(secret: string, token: string, timeStep = 30, window = 1): boolean {

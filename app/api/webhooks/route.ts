@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getSession } from "@/lib/auth"
 import pool from "@/lib/db"
+import { sendNotificationEmail } from "@/lib/notifications"
+import { webhookCreatedEmail, webhookDeletedEmail } from "@/lib/email"
 
 function detectWebhookType(url: string): string {
   if (/discord\.com\/api\/webhooks/i.test(url) || /discordapp\.com\/api\/webhooks/i.test(url)) return "discord"
@@ -40,11 +42,25 @@ export async function POST(request: NextRequest) {
 
   // Auto-detect type from URL if user didn't specify or chose "auto"
   const webhookType = (userType && userType !== "auto") ? userType : detectWebhookType(url)
+  const webhookName = name || "Default"
 
   const result = await pool.query(
     "INSERT INTO webhooks (user_id, url, name, type) VALUES ($1, $2, $3, $4) RETURNING id, url, name, type, active, created_at",
-    [session.userId, url, name || "Default", webhookType],
+    [session.userId, url, webhookName, webhookType],
   )
+
+  // Send notification email
+  const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "Unknown"
+  const userAgent = request.headers.get("user-agent") || "Unknown"
+  const emailContent = webhookCreatedEmail(webhookName, url, webhookType, { ipAddress: ip, userAgent })
+
+  sendNotificationEmail({
+    userId: session.userId,
+    userEmail: session.email,
+    type: "webhooks",
+    emailContent,
+  }).catch((err) => console.error("Failed to send webhook created notification:", err))
+
   return NextResponse.json(result.rows[0], { status: 201 })
 }
 
@@ -53,6 +69,28 @@ export async function DELETE(request: NextRequest) {
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
   const { id } = await request.json()
+
+  // Get webhook details before deleting for the email
+  const webhookResult = await pool.query(
+    "SELECT name FROM webhooks WHERE id = $1 AND user_id = $2",
+    [id, session.userId]
+  )
+
   await pool.query("DELETE FROM webhooks WHERE id = $1 AND user_id = $2", [id, session.userId])
+
+  // Send notification email if webhook was found
+  if (webhookResult.rows.length > 0) {
+    const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "Unknown"
+    const userAgent = request.headers.get("user-agent") || "Unknown"
+    const emailContent = webhookDeletedEmail(webhookResult.rows[0].name, { ipAddress: ip, userAgent })
+
+    sendNotificationEmail({
+      userId: session.userId,
+      userEmail: session.email,
+      type: "webhooks",
+      emailContent,
+    }).catch((err) => console.error("Failed to send webhook deleted notification:", err))
+  }
+
   return NextResponse.json({ success: true })
 }

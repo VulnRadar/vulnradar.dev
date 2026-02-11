@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { randomBytes, scryptSync } from "node:crypto"
 import { getSession } from "@/lib/auth"
 import pool from "@/lib/db"
+import { getClientIP } from "@/lib/rate-limit"
 
 async function requireAdmin() {
   const session = await getSession()
@@ -18,11 +19,6 @@ async function logAction(adminId: number, targetUserId: number | null, action: s
   )
 }
 
-function getClientIP(request: NextRequest): string {
-  return request.headers.get("x-forwarded-for")?.split(",")[0]?.trim()
-    || request.headers.get("x-real-ip")
-    || "unknown"
-}
 
 // GET: Admin dashboard stats + user list + audit log
 export async function GET(request: NextRequest) {
@@ -155,7 +151,7 @@ export async function PATCH(request: NextRequest) {
   const session = await requireAdmin()
   if (!session) return NextResponse.json({ error: "Forbidden" }, { status: 403 })
 
-  const ip = getClientIP(request)
+  const ip = await getClientIP()
   const { action, userId } = await request.json()
 
   if (!userId || !action) {

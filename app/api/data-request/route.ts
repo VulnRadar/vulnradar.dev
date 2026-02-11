@@ -1,6 +1,8 @@
-import { NextResponse } from "next/server"
+import { NextRequest, NextResponse } from "next/server"
 import { getSession } from "@/lib/auth"
 import pool from "@/lib/db"
+import { sendNotificationEmail } from "@/lib/notifications"
+import { dataRequestCreatedEmail } from "@/lib/email"
 
 const COOLDOWN_HOURS = 30
 
@@ -43,7 +45,7 @@ export async function GET() {
   })
 }
 
-export async function POST() {
+export async function POST(request: NextRequest) {
   const session = await getSession()
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
@@ -105,6 +107,18 @@ export async function POST() {
      VALUES ($1, 'completed', $2, NOW())`,
     [session.userId, JSON.stringify(exportData)],
   )
+
+  // Send notification email
+  const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "Unknown"
+  const userAgent = request.headers.get("user-agent") || "Unknown"
+  const emailContent = dataRequestCreatedEmail("export", { ipAddress: ip, userAgent })
+
+  sendNotificationEmail({
+    userId: session.userId,
+    userEmail: session.email,
+    type: "data_requests",
+    emailContent,
+  }).catch((err) => console.error("Failed to send data request notification:", err))
 
   return NextResponse.json({ success: true, data: exportData })
 }

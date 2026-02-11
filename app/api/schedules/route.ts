@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getSession } from "@/lib/auth"
 import pool from "@/lib/db"
+import { sendNotificationEmail } from "@/lib/notifications"
+import { scheduleCreatedEmail, scheduleDeletedEmail } from "@/lib/email"
 
 const FREQ_INTERVALS: Record<string, string> = {
   daily: "1 day",
@@ -47,6 +49,19 @@ export async function POST(request: NextRequest) {
      RETURNING id, url, frequency, active, last_run_at, next_run_at, created_at`,
     [session.userId, url, freq],
   )
+
+  // Send notification email
+  const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "Unknown"
+  const userAgent = request.headers.get("user-agent") || "Unknown"
+  const emailContent = scheduleCreatedEmail(url, freq, { ipAddress: ip, userAgent })
+
+  sendNotificationEmail({
+    userId: session.userId,
+    userEmail: session.email,
+    type: "schedules",
+    emailContent,
+  }).catch((err) => console.error("Failed to send schedule created notification:", err))
+
   return NextResponse.json(result.rows[0], { status: 201 })
 }
 
@@ -55,6 +70,28 @@ export async function DELETE(request: NextRequest) {
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
   const { id } = await request.json()
+
+  // Get schedule details before deleting for the email
+  const scheduleResult = await pool.query(
+    "SELECT url FROM scheduled_scans WHERE id = $1 AND user_id = $2",
+    [id, session.userId]
+  )
+
   await pool.query("DELETE FROM scheduled_scans WHERE id = $1 AND user_id = $2", [id, session.userId])
+
+  // Send notification email if schedule was found
+  if (scheduleResult.rows.length > 0) {
+    const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "Unknown"
+    const userAgent = request.headers.get("user-agent") || "Unknown"
+    const emailContent = scheduleDeletedEmail(scheduleResult.rows[0].url, { ipAddress: ip, userAgent })
+
+    sendNotificationEmail({
+      userId: session.userId,
+      userEmail: session.email,
+      type: "schedules",
+      emailContent,
+    }).catch((err) => console.error("Failed to send schedule deleted notification:", err))
+  }
+
   return NextResponse.json({ success: true })
 }

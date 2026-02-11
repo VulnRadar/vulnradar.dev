@@ -1,10 +1,13 @@
-import { NextResponse } from "next/server"
+import { NextRequest, NextResponse } from "next/server"
 import pool from "@/lib/db"
 import { hashPassword } from "@/lib/auth"
 import { sendEmail, passwordChangedEmail } from "@/lib/email"
+import { getClientIP } from "@/lib/rate-limit"
 
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
   try {
+    const ip = await getClientIP()
+    const userAgent = request.headers.get("user-agent") || "Unknown"
     const { token, password } = await request.json()
 
     if (!token || !password) {
@@ -55,7 +58,10 @@ export async function POST(request: Request) {
       await client.query("COMMIT")
 
       // Send security notification email in background (only after successful commit)
-      const emailContent = passwordChangedEmail(resetToken.totp_enabled)
+      const emailContent = passwordChangedEmail(resetToken.totp_enabled, {
+        ipAddress: ip,
+        userAgent: userAgent,
+      })
       const emailTo = resetToken.email
 
       setImmediate(() => {

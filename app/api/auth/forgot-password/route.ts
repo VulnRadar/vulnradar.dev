@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from "next/server"
 import pool from "@/lib/db"
-import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
+import { checkRateLimit, getClientIP, RATE_LIMITS } from "@/lib/rate-limit"
 import crypto from "crypto"
 import { sendEmail, passwordResetEmail } from "@/lib/email"
 
 export async function POST(request: NextRequest) {
   try {
-    const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown"
+    const ip = await getClientIP()
     const rl = await checkRateLimit({ key: `forgot:${ip}`, ...RATE_LIMITS.forgotPassword })
     if (!rl.allowed) {
       return NextResponse.json(

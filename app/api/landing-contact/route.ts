@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
+import { checkRateLimit, getClientIP, RATE_LIMITS } from "@/lib/rate-limit"
 import { sendEmail, landingContactEmail, landingContactConfirmationEmail } from "@/lib/email"
 
 function asTrimmedString(value: unknown): string | null {
@@ -12,7 +12,7 @@ function asTrimmedString(value: unknown): string | null {
 
 export async function POST(request: NextRequest) {
   try {
-    const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown"
+    const ip = await getClientIP()
     const rl = await checkRateLimit({ key: `landing-contact:${ip}`, ...RATE_LIMITS.api })
     if (!rl.allowed) {
       return NextResponse.json(

@@ -1,9 +1,3 @@
-import type { Metadata } from "next"
-
-export const metadata: Metadata = {
-  title: "Privacy Policy - VulnRadar",
-}
-
 export default function PrivacyPage() {
   return (
     <article className="prose prose-sm dark:prose-invert max-w-none">

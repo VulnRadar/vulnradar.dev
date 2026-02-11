@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getUserByEmail, verifyPassword, createSession } from "@/lib/auth"
 import pool from "@/lib/db"
-import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
+import { checkRateLimit, getClientIP, RATE_LIMITS } from "@/lib/rate-limit"
 
 export async function POST(request: NextRequest) {
   try {
-    const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown"
+    const ip = await getClientIP()
     const body = await request.json()
     const { email, password } = body
 
@@ -41,15 +41,23 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Check if account is disabled
+    // Check if account is disabled or email not verified
     const userInfoResult = await pool.query(
-      "SELECT totp_enabled, disabled_at FROM users WHERE id = $1",
+      "SELECT totp_enabled, disabled_at, email_verified_at FROM users WHERE id = $1",
       [user.id],
     )
     const userInfo = userInfoResult.rows[0]
     if (userInfo?.disabled_at) {
       return NextResponse.json(
         { error: "This account has been suspended. Please contact support for assistance." },
+        { status: 403 },
+      )
+    }
+
+    // Check if email is verified
+    if (!userInfo?.email_verified_at) {
+      return NextResponse.json(
+        { error: "Please verify your email address before logging in. Check your inbox for the verification link.", unverified: true },
         { status: 403 },
       )
     }

@@ -14,6 +14,8 @@ const CONFIG = {
   },
 } as const
 
+export const APP_URL = CONFIG.APP_URL
+
 const COLORS = {
   BG_DARK: "#0a0e13",
   BG_CARD: "#0f172a",
@@ -44,15 +46,18 @@ const COLORS = {
   WHITE: "#ffffff",
 } as const
 
-const transporter = nodemailer.createTransport({
-  host: CONFIG.SMTP.HOST,
-  port: CONFIG.SMTP.PORT,
-  secure: false,
-  auth: {
-    user: CONFIG.SMTP.USER,
-    pass: CONFIG.SMTP.PASS,
-  },
-})
+// Only create transporter if SMTP is configured
+const transporter = CONFIG.SMTP.HOST && CONFIG.SMTP.USER && CONFIG.SMTP.PASS
+  ? nodemailer.createTransport({
+      host: CONFIG.SMTP.HOST,
+      port: CONFIG.SMTP.PORT,
+      secure: false,
+      auth: {
+        user: CONFIG.SMTP.USER,
+        pass: CONFIG.SMTP.PASS,
+      },
+    })
+  : null
 
 interface SendEmailOptions {
   to: string
@@ -171,6 +176,22 @@ function securityWarningBlock(): string {
 }
 
 export async function sendEmail({ to, subject, text, html, replyTo, skipLayout }: SendEmailOptions) {
+  // Check if SMTP is configured
+  if (!transporter) {
+    console.warn("SMTP not configured. Email not sent:")
+    console.warn(`  To: ${to}`)
+    console.warn(`  Subject: ${subject}`)
+    console.warn(`  Text: ${text.substring(0, 200)}...`)
+
+    // In development, just log and return successfully
+    if (process.env.NODE_ENV !== "production") {
+      console.warn("  (Skipping email send in development - SMTP not configured)")
+      return
+    }
+
+    throw new Error("Email service not configured")
+  }
+
   const from = `"${CONFIG.APP_NAME}" <${CONFIG.SMTP.FROM}>`
   const finalHtml = skipLayout ? html : layout(html)
   await transporter.sendMail({ from, to, subject, text, html: finalHtml, replyTo })
@@ -245,6 +266,37 @@ export function contactConfirmationEmail(input: { name: string; category: string
   }
 }
 
+export function emailVerificationEmail(name: string, verifyLink: string) {
+  const safeName = escapeHtml(name)
+  return {
+    subject: `Verify your email - ${CONFIG.APP_NAME}`,
+    text: `Welcome to ${CONFIG.APP_NAME}, ${name}!\n\nPlease verify your email address by clicking the link below:\n${verifyLink}\n\nThis link expires in 24 hours.\n\nIf you did not create an account, you can safely ignore this email.`,
+    html: `
+      <h1 style="margin: 0 0 8px 0; font-size: 20px; font-weight: 600; color: ${COLORS.TEXT_PRIMARY};">Welcome to ${CONFIG.APP_NAME}!</h1>
+      <p style="margin: 0 0 24px 0; font-size: 14px; color: ${COLORS.TEXT_SECONDARY}; line-height: 1.6;">Hi ${safeName}, thanks for signing up. Please verify your email address to get started.</p>
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom: 24px;">
+        <tr>
+          <td align="center">
+            <a href="${verifyLink}" style="display: inline-block; padding: 14px 40px; background-color: ${COLORS.ACCENT_GREEN}; color: ${COLORS.WHITE}; font-size: 15px; font-weight: 600; text-decoration: none; border-radius: 8px;">Verify Email Address</a>
+          </td>
+        </tr>
+      </table>
+      <div style="background-color: ${COLORS.BG_INFO}; border-left: 3px solid ${COLORS.ACCENT_BLUE_LIGHT}; border-radius: 6px; padding: 14px 16px; margin-bottom: 20px;">
+        <p style="margin: 0 0 4px 0; font-size: 13px; color: ${COLORS.ACCENT_BLUE_PALE}; font-weight: 600;">Why verify?</p>
+        <p style="margin: 0; font-size: 13px; color: #cbd5e1; line-height: 1.6;">Email verification helps us ensure your account is secure and allows you to receive important notifications about your scans.</p>
+      </div>
+      <div style="background-color: ${COLORS.BG_WARNING}; border-left: 3px solid ${COLORS.ACCENT_YELLOW}; border-radius: 6px; padding: 14px 16px; margin-bottom: 20px;">
+        <p style="margin: 0 0 4px 0; font-size: 13px; color: ${COLORS.ACCENT_YELLOW_LIGHT}; font-weight: 600;">Link Expires</p>
+        <p style="margin: 0; font-size: 13px; color: ${COLORS.ACCENT_YELLOW_PALE}; line-height: 1.6;">This verification link expires in 24 hours. If you need a new link, you can request one from the login page.</p>
+      </div>
+      <div style="background-color: ${COLORS.BG_SECTION}; border-radius: 8px; padding: 14px 16px;">
+        <p style="margin: 0 0 8px 0; font-size: 12px; color: ${COLORS.TEXT_MUTED};">If the button doesn't work, copy this link:</p>
+        <p style="margin: 0; font-size: 12px; color: ${COLORS.ACCENT_BLUE_LIGHT}; word-break: break-all; line-height: 1.5; font-family: monospace;">${verifyLink}</p>
+      </div>
+    `,
+  }
+}
+
 export function passwordResetEmail(resetLink: string) {
   return {
     subject: `Reset your ${CONFIG.APP_NAME} password`,
@@ -271,14 +323,14 @@ export function passwordResetEmail(resetLink: string) {
   }
 }
 
-export function passwordChangedEmail(hasTwoFactor: boolean) {
+export function passwordChangedEmail(hasTwoFactor: boolean, details: SecurityAlertDetails) {
   const securityInfo = hasTwoFactor
     ? "Your account has two-factor authentication enabled. You will need your 6-digit authenticator code when logging in."
     : "All active sessions have been logged out. You can now log in with your new password."
 
   return {
     subject: `Password Changed - ${CONFIG.APP_NAME}`,
-    text: `Your ${CONFIG.APP_NAME} account password has been successfully reset.\n\n${securityInfo}\n\nIf you did not make this change, please contact support immediately at ${CONFIG.SUPPORT_EMAIL}\n\n- ${CONFIG.APP_NAME} Security`,
+    text: `Your ${CONFIG.APP_NAME} account password has been successfully reset.\n\n${securityInfo}\n\nIP Address: ${details.ipAddress}\nDevice: ${details.userAgent}\n\nIf you did not make this change, please contact support immediately at ${CONFIG.SUPPORT_EMAIL}\n\n- ${CONFIG.APP_NAME} Security`,
     html: `
       <h1 style="margin: 0 0 8px 0; font-size: 20px; font-weight: 600; color: ${COLORS.TEXT_PRIMARY};">Password Changed Successfully</h1>
       <p style="margin: 0 0 24px 0; font-size: 14px; color: ${COLORS.TEXT_SECONDARY}; line-height: 1.6;">Your ${CONFIG.APP_NAME} account password has been reset.</p>
@@ -286,10 +338,8 @@ export function passwordChangedEmail(hasTwoFactor: boolean) {
         <p style="margin: 0 0 4px 0; font-size: 12px; color: ${COLORS.TEXT_MUTED};">Security Information</p>
         <p style="margin: 0; font-size: 14px; color: #e2e8f0; line-height: 1.6;">${securityInfo}</p>
       </div>
-      <div style="background-color: ${COLORS.BG_DANGER}; border-left: 3px solid ${COLORS.ACCENT_RED}; border-radius: 6px; padding: 14px 16px;">
-        <p style="margin: 0 0 4px 0; font-size: 13px; color: ${COLORS.ACCENT_RED_LIGHT}; font-weight: 600;">Didn't request this?</p>
-        <p style="margin: 0; font-size: 13px; color: ${COLORS.ACCENT_RED_PALE}; line-height: 1.6;">If you did not reset your password, your account may be compromised. Contact support immediately at ${CONFIG.SUPPORT_EMAIL}</p>
-      </div>
+      ${securityDetailsBlock(details)}
+      ${securityWarningBlock()}
     `,
   }
 }
@@ -491,4 +541,156 @@ export function backupCodesRegeneratedEmail(details: SecurityAlertDetails) {
     `,
   }
 }
+
+// API Key emails
+export function apiKeyCreatedEmail(keyName: string, keyPrefix: string, details: SecurityAlertDetails) {
+  const safeName = escapeHtml(keyName)
+  return {
+    subject: `API Key Created - ${CONFIG.APP_NAME}`,
+    text: `A new API key "${keyName}" has been created on your ${CONFIG.APP_NAME} account.\n\nKey Prefix: ${keyPrefix}...\n\nIP Address: ${details.ipAddress}\nDevice: ${details.userAgent}\n\nIf you did not create this API key, please revoke it immediately and contact support.`,
+    html: `
+      <h1 style="margin: 0 0 8px 0; font-size: 20px; font-weight: 600; color: ${COLORS.TEXT_PRIMARY};">API Key Created</h1>
+      <p style="margin: 0 0 24px 0; font-size: 14px; color: ${COLORS.TEXT_SECONDARY}; line-height: 1.6;">A new API key has been created on your account.</p>
+      <div style="background-color: ${COLORS.BG_SECTION}; border-radius: 8px; padding: 16px; margin-bottom: 20px;">
+        <p style="margin: 0 0 4px 0; font-size: 12px; color: ${COLORS.TEXT_MUTED};">Key Name</p>
+        <p style="margin: 0 0 12px 0; font-size: 15px; color: ${COLORS.TEXT_PRIMARY}; font-weight: 500;">${safeName}</p>
+        <p style="margin: 0 0 4px 0; font-size: 12px; color: ${COLORS.TEXT_MUTED};">Key Prefix</p>
+        <p style="margin: 0; font-size: 15px; color: ${COLORS.ACCENT_BLUE_LIGHT}; font-family: monospace;">${keyPrefix}...</p>
+      </div>
+      ${securityDetailsBlock(details)}
+      ${securityWarningBlock()}
+    `,
+  }
+}
+
+export function apiKeyDeletedEmail(keyName: string, details: SecurityAlertDetails) {
+  const safeName = escapeHtml(keyName)
+  return {
+    subject: `API Key Revoked - ${CONFIG.APP_NAME}`,
+    text: `The API key "${keyName}" has been revoked from your ${CONFIG.APP_NAME} account.\n\nThis key can no longer be used for API access.\n\nIP Address: ${details.ipAddress}\nDevice: ${details.userAgent}\n\nIf you did not revoke this API key, please contact support immediately.`,
+    html: `
+      <h1 style="margin: 0 0 8px 0; font-size: 20px; font-weight: 600; color: ${COLORS.TEXT_PRIMARY};">API Key Revoked</h1>
+      <p style="margin: 0 0 24px 0; font-size: 14px; color: ${COLORS.TEXT_SECONDARY}; line-height: 1.6;">An API key has been revoked from your account.</p>
+      <div style="background-color: ${COLORS.BG_SECTION}; border-radius: 8px; padding: 16px; margin-bottom: 20px;">
+        <p style="margin: 0 0 4px 0; font-size: 12px; color: ${COLORS.TEXT_MUTED};">Key Name</p>
+        <p style="margin: 0 0 12px 0; font-size: 15px; color: ${COLORS.TEXT_PRIMARY}; font-weight: 500;">${safeName}</p>
+        <p style="margin: 0 0 4px 0; font-size: 12px; color: ${COLORS.TEXT_MUTED};">Status</p>
+        <p style="margin: 0; font-size: 15px; color: ${COLORS.ACCENT_RED}; font-weight: 500;">Revoked</p>
+      </div>
+      ${securityDetailsBlock(details)}
+      ${securityWarningBlock()}
+    `,
+  }
+}
+
+// Webhook emails
+export function webhookCreatedEmail(webhookName: string, webhookUrl: string, webhookType: string, details: SecurityAlertDetails) {
+  const safeName = escapeHtml(webhookName)
+  const safeType = escapeHtml(webhookType)
+  return {
+    subject: `Webhook Created - ${CONFIG.APP_NAME}`,
+    text: `A new ${webhookType} webhook "${webhookName}" has been created on your ${CONFIG.APP_NAME} account.\n\nIP Address: ${details.ipAddress}\nDevice: ${details.userAgent}\n\nIf you did not create this webhook, please delete it immediately.`,
+    html: `
+      <h1 style="margin: 0 0 8px 0; font-size: 20px; font-weight: 600; color: ${COLORS.TEXT_PRIMARY};">Webhook Created</h1>
+      <p style="margin: 0 0 24px 0; font-size: 14px; color: ${COLORS.TEXT_SECONDARY}; line-height: 1.6;">A new webhook has been added to your account.</p>
+      <div style="background-color: ${COLORS.BG_SECTION}; border-radius: 8px; padding: 16px; margin-bottom: 20px;">
+        <p style="margin: 0 0 4px 0; font-size: 12px; color: ${COLORS.TEXT_MUTED};">Webhook Name</p>
+        <p style="margin: 0 0 12px 0; font-size: 15px; color: ${COLORS.TEXT_PRIMARY}; font-weight: 500;">${safeName}</p>
+        <p style="margin: 0 0 4px 0; font-size: 12px; color: ${COLORS.TEXT_MUTED};">Type</p>
+        <p style="margin: 0; font-size: 15px; color: ${COLORS.ACCENT_BLUE_LIGHT}; font-weight: 500;">${safeType}</p>
+      </div>
+      ${securityDetailsBlock(details)}
+      <div style="background-color: ${COLORS.BG_INFO}; border-left: 3px solid ${COLORS.ACCENT_BLUE_LIGHT}; border-radius: 6px; padding: 14px 16px;">
+        <p style="margin: 0 0 4px 0; font-size: 13px; color: ${COLORS.ACCENT_BLUE_PALE}; font-weight: 600;">Didn't do this?</p>
+        <p style="margin: 0; font-size: 13px; color: #cbd5e1; line-height: 1.6;">If you did not create this webhook, please delete it from your profile settings immediately.</p>
+      </div>
+    `,
+  }
+}
+
+export function webhookDeletedEmail(webhookName: string, details: SecurityAlertDetails) {
+  const safeName = escapeHtml(webhookName)
+  return {
+    subject: `Webhook Deleted - ${CONFIG.APP_NAME}`,
+    text: `The webhook "${webhookName}" has been deleted from your ${CONFIG.APP_NAME} account.\n\nIP Address: ${details.ipAddress}\nDevice: ${details.userAgent}\n\nIf you did not delete this webhook, please contact support.`,
+    html: `
+      <h1 style="margin: 0 0 8px 0; font-size: 20px; font-weight: 600; color: ${COLORS.TEXT_PRIMARY};">Webhook Deleted</h1>
+      <p style="margin: 0 0 24px 0; font-size: 14px; color: ${COLORS.TEXT_SECONDARY}; line-height: 1.6;">A webhook has been removed from your account.</p>
+      <div style="background-color: ${COLORS.BG_SECTION}; border-radius: 8px; padding: 16px; margin-bottom: 20px;">
+        <p style="margin: 0 0 4px 0; font-size: 12px; color: ${COLORS.TEXT_MUTED};">Webhook Name</p>
+        <p style="margin: 0 0 12px 0; font-size: 15px; color: ${COLORS.TEXT_PRIMARY}; font-weight: 500;">${safeName}</p>
+        <p style="margin: 0 0 4px 0; font-size: 12px; color: ${COLORS.TEXT_MUTED};">Status</p>
+        <p style="margin: 0; font-size: 15px; color: ${COLORS.ACCENT_RED}; font-weight: 500;">Deleted</p>
+      </div>
+      ${securityDetailsBlock(details)}
+    `,
+  }
+}
+
+// Scheduled scan emails
+export function scheduleCreatedEmail(url: string, frequency: string, details: SecurityAlertDetails) {
+  const safeUrl = escapeHtml(url)
+  const safeFrequency = escapeHtml(frequency)
+  return {
+    subject: `Scheduled Scan Created - ${CONFIG.APP_NAME}`,
+    text: `A new scheduled scan has been created for ${url} (${frequency}).\n\nIP Address: ${details.ipAddress}\nDevice: ${details.userAgent}\n\nIf you did not create this schedule, please delete it from your profile.`,
+    html: `
+      <h1 style="margin: 0 0 8px 0; font-size: 20px; font-weight: 600; color: ${COLORS.TEXT_PRIMARY};">Scheduled Scan Created</h1>
+      <p style="margin: 0 0 24px 0; font-size: 14px; color: ${COLORS.TEXT_SECONDARY}; line-height: 1.6;">A new scheduled scan has been added to your account.</p>
+      <div style="background-color: ${COLORS.BG_SECTION}; border-radius: 8px; padding: 16px; margin-bottom: 20px;">
+        <p style="margin: 0 0 4px 0; font-size: 12px; color: ${COLORS.TEXT_MUTED};">URL</p>
+        <p style="margin: 0 0 12px 0; font-size: 15px; color: ${COLORS.ACCENT_BLUE_LIGHT}; word-break: break-all;">${safeUrl}</p>
+        <p style="margin: 0 0 4px 0; font-size: 12px; color: ${COLORS.TEXT_MUTED};">Frequency</p>
+        <p style="margin: 0; font-size: 15px; color: ${COLORS.TEXT_PRIMARY}; font-weight: 500; text-transform: capitalize;">${safeFrequency}</p>
+      </div>
+      ${securityDetailsBlock(details)}
+    `,
+  }
+}
+
+export function scheduleDeletedEmail(url: string, details: SecurityAlertDetails) {
+  const safeUrl = escapeHtml(url)
+  return {
+    subject: `Scheduled Scan Deleted - ${CONFIG.APP_NAME}`,
+    text: `The scheduled scan for ${url} has been deleted from your ${CONFIG.APP_NAME} account.\n\nIP Address: ${details.ipAddress}\nDevice: ${details.userAgent}`,
+    html: `
+      <h1 style="margin: 0 0 8px 0; font-size: 20px; font-weight: 600; color: ${COLORS.TEXT_PRIMARY};">Scheduled Scan Deleted</h1>
+      <p style="margin: 0 0 24px 0; font-size: 14px; color: ${COLORS.TEXT_SECONDARY}; line-height: 1.6;">A scheduled scan has been removed from your account.</p>
+      <div style="background-color: ${COLORS.BG_SECTION}; border-radius: 8px; padding: 16px; margin-bottom: 20px;">
+        <p style="margin: 0 0 4px 0; font-size: 12px; color: ${COLORS.TEXT_MUTED};">URL</p>
+        <p style="margin: 0 0 12px 0; font-size: 15px; color: ${COLORS.ACCENT_BLUE_LIGHT}; word-break: break-all;">${safeUrl}</p>
+        <p style="margin: 0 0 4px 0; font-size: 12px; color: ${COLORS.TEXT_MUTED};">Status</p>
+        <p style="margin: 0; font-size: 15px; color: ${COLORS.ACCENT_RED}; font-weight: 500;">Deleted</p>
+      </div>
+      ${securityDetailsBlock(details)}
+    `,
+  }
+}
+
+// Data request emails
+export function dataRequestCreatedEmail(requestType: string, details: SecurityAlertDetails) {
+  const safeType = escapeHtml(requestType)
+  const typeLabel = requestType === "export" ? "Data Export" : "Account Deletion"
+  return {
+    subject: `${typeLabel} Request Submitted - ${CONFIG.APP_NAME}`,
+    text: `A ${typeLabel.toLowerCase()} request has been submitted for your ${CONFIG.APP_NAME} account.\n\nOur team will process your request within 30 days as required by privacy regulations.\n\nIP Address: ${details.ipAddress}\nDevice: ${details.userAgent}\n\nIf you did not make this request, please contact support immediately.`,
+    html: `
+      <h1 style="margin: 0 0 8px 0; font-size: 20px; font-weight: 600; color: ${COLORS.TEXT_PRIMARY};">${typeLabel} Request Submitted</h1>
+      <p style="margin: 0 0 24px 0; font-size: 14px; color: ${COLORS.TEXT_SECONDARY}; line-height: 1.6;">Your ${typeLabel.toLowerCase()} request has been received.</p>
+      <div style="background-color: ${COLORS.BG_SECTION}; border-radius: 8px; padding: 16px; margin-bottom: 20px;">
+        <p style="margin: 0 0 4px 0; font-size: 12px; color: ${COLORS.TEXT_MUTED};">Request Type</p>
+        <p style="margin: 0 0 12px 0; font-size: 15px; color: ${COLORS.TEXT_PRIMARY}; font-weight: 500;">${typeLabel}</p>
+        <p style="margin: 0 0 4px 0; font-size: 12px; color: ${COLORS.TEXT_MUTED};">Status</p>
+        <p style="margin: 0; font-size: 15px; color: ${COLORS.ACCENT_YELLOW}; font-weight: 500;">Pending Review</p>
+      </div>
+      <div style="background-color: ${COLORS.BG_INFO}; border-left: 3px solid ${COLORS.ACCENT_BLUE_LIGHT}; border-radius: 6px; padding: 14px 16px; margin-bottom: 20px;">
+        <p style="margin: 0 0 4px 0; font-size: 13px; color: ${COLORS.ACCENT_BLUE_PALE}; font-weight: 600;">What happens next?</p>
+        <p style="margin: 0; font-size: 13px; color: #cbd5e1; line-height: 1.6;">Our team will process your request within 30 days as required by GDPR and other privacy regulations. You'll receive an email when it's complete.</p>
+      </div>
+      ${securityDetailsBlock(details)}
+      ${securityWarningBlock()}
+    `,
+  }
+}
+
 

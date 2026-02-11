@@ -29,6 +29,7 @@ import {
   CalendarClock,
   Globe,
   Loader2,
+  Bell,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
@@ -42,6 +43,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
+import { Switch } from "@/components/ui/switch"
 import { Header } from "@/components/scanner/header"
 import { Footer } from "@/components/scanner/footer"
 
@@ -76,7 +78,7 @@ interface DataRequestInfo {
   }
 }
 
-type Tab = "account" | "api-keys" | "webhooks" | "schedules" | "data"
+type Tab = "account" | "api-keys" | "webhooks" | "schedules" | "notifications" | "data"
 
 interface WebhookItem {
   id: number
@@ -162,14 +164,32 @@ export default function ProfilePage() {
   const [scheduleFreq, setScheduleFreq] = useState("weekly")
   const [addingSchedule, setAddingSchedule] = useState(false)
 
+  // Notification preferences state
+  interface NotificationPrefs {
+    email_api_keys: boolean
+    email_webhooks: boolean
+    email_schedules: boolean
+    email_data_requests: boolean
+    email_security: boolean
+  }
+  const [notifPrefs, setNotifPrefs] = useState<NotificationPrefs>({
+    email_api_keys: true,
+    email_webhooks: true,
+    email_schedules: true,
+    email_data_requests: true,
+    email_security: true,
+  })
+  const [savingNotifPrefs, setSavingNotifPrefs] = useState(false)
+
   const fetchData = useCallback(async () => {
     try {
-      const [userRes, keysRes, dataReqRes, webhooksRes, schedulesRes] = await Promise.all([
+      const [userRes, keysRes, dataReqRes, webhooksRes, schedulesRes, notifRes] = await Promise.all([
         fetch("/api/auth/me"),
         fetch("/api/keys"),
         fetch("/api/data-request"),
         fetch("/api/webhooks"),
         fetch("/api/schedules"),
+        fetch("/api/account/notifications"),
       ])
 
       if (!userRes.ok) {
@@ -182,6 +202,7 @@ export default function ProfilePage() {
       const dataReqData = await dataReqRes.json()
       const webhooksData = await webhooksRes.json()
       const schedulesData = await schedulesRes.json()
+      const notifData = notifRes.ok ? await notifRes.json() : null
       setUser(userData)
       setTotpEnabled(userData.totpEnabled || false)
       if (userData.totpEnabled) {
@@ -191,6 +212,15 @@ export default function ProfilePage() {
       setDataReqInfo(dataReqData)
       setWebhooks(Array.isArray(webhooksData) ? webhooksData : [])
       setSchedules(Array.isArray(schedulesData) ? schedulesData : [])
+      if (notifData) {
+        setNotifPrefs({
+          email_api_keys: notifData.email_api_keys ?? true,
+          email_webhooks: notifData.email_webhooks ?? true,
+          email_schedules: notifData.email_schedules ?? true,
+          email_data_requests: notifData.email_data_requests ?? true,
+          email_security: notifData.email_security ?? true,
+        })
+      }
     } catch {
       setError("Failed to load profile data.")
     } finally {
@@ -427,6 +457,36 @@ export default function ProfilePage() {
     }
   }
 
+  // ---- Notification preferences ----
+  async function handleSaveNotifPrefs() {
+    setSavingNotifPrefs(true)
+    setError(null)
+    try {
+      const res = await fetch("/api/account/notifications", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(notifPrefs),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setError(data.error || "Failed to save notification preferences.")
+        return
+      }
+      setNotifPrefs({
+        email_api_keys: data.email_api_keys,
+        email_webhooks: data.email_webhooks,
+        email_schedules: data.email_schedules,
+        email_data_requests: data.email_data_requests,
+        email_security: data.email_security,
+      })
+      setSuccess("Notification preferences saved.")
+    } catch {
+      setError("Failed to save notification preferences.")
+    } finally {
+      setSavingNotifPrefs(false)
+    }
+  }
+
   // ---- Helpers ----
   function formatDate(dateStr: string | null) {
     if (!dateStr) return "Never"
@@ -467,6 +527,7 @@ export default function ProfilePage() {
     { id: "api-keys", label: "API Keys", icon: <Key className="h-4 w-4" /> },
     { id: "webhooks", label: "Webhooks", icon: <Webhook className="h-4 w-4" /> },
     { id: "schedules", label: "Schedules", icon: <CalendarClock className="h-4 w-4" /> },
+    { id: "notifications", label: "Notifications", icon: <Bell className="h-4 w-4" /> },
     { id: "data", label: "Data & Privacy", icon: <Shield className="h-4 w-4" /> },
   ]
 
@@ -494,19 +555,23 @@ export default function ProfilePage() {
         )}
 
         {/* Tab Navigation */}
-        <div className="flex items-center gap-1 p-1 rounded-lg bg-secondary/50 border border-border overflow-x-auto">
+        <div className="flex items-center gap-1 p-1 rounded-lg bg-secondary/50 border border-border overflow-x-auto scrollbar-thin scrollbar-thumb-muted/40 scrollbar-track-transparent min-w-0">
           {TABS.map((tab) => (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
-              className={`flex items-center gap-2 px-4 py-2.5 rounded-md text-sm font-medium transition-all flex-1 justify-center ${
-                activeTab === tab.id
-                  ? "bg-card text-foreground shadow-sm"
-                  : "text-muted-foreground hover:text-foreground"
-              }`}
+              className={
+                cn(
+                  // Responsive: column on xs, row on sm+
+                  "flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2 px-4 py-2.5 rounded-md text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60",
+                  activeTab === tab.id
+                    ? "bg-card text-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+                )
+              }
             >
               {tab.icon}
-              <span className="hidden sm:inline">{tab.label}</span>
+              <span className="text-xs sm:text-sm">{tab.label}</span>
             </button>
           ))}
         </div>
@@ -1372,6 +1437,147 @@ export default function ProfilePage() {
           </div>
         )}
 
+        {/* ===================== NOTIFICATIONS TAB ===================== */}
+        {activeTab === "notifications" && (
+          <div className="flex flex-col gap-6">
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <Bell className="h-4 w-4 text-primary" />
+                  Email Notifications
+                </CardTitle>
+                <CardDescription>
+                  Choose which email notifications you&apos;d like to receive. These settings apply to automated emails only.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="flex flex-col gap-4">
+                {/* Security notifications - always recommended */}
+                <div className="flex items-center justify-between p-4 rounded-lg border border-border bg-secondary/30">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2">
+                      <Shield className="h-4 w-4 text-primary" />
+                      <p className="text-sm font-medium text-foreground">Security Alerts</p>
+                      <Badge variant="secondary" className="text-[10px] px-1.5 py-0 uppercase font-semibold">Recommended</Badge>
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Get notified about password changes, new logins, 2FA changes, and other security events.
+                    </p>
+                  </div>
+                  <Switch
+                    checked={notifPrefs.email_security}
+                    onCheckedChange={(checked) => setNotifPrefs(prev => ({ ...prev, email_security: checked }))}
+                  />
+                </div>
+
+                {/* API Keys notifications */}
+                <div className="flex items-center justify-between p-4 rounded-lg border border-border bg-secondary/30">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2">
+                      <Key className="h-4 w-4 text-muted-foreground" />
+                      <p className="text-sm font-medium text-foreground">API Key Activity</p>
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Notifications when API keys are created, revoked, or near their usage limits.
+                    </p>
+                  </div>
+                  <Switch
+                    checked={notifPrefs.email_api_keys}
+                    onCheckedChange={(checked) => setNotifPrefs(prev => ({ ...prev, email_api_keys: checked }))}
+                  />
+                </div>
+
+                {/* Webhooks notifications */}
+                <div className="flex items-center justify-between p-4 rounded-lg border border-border bg-secondary/30">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2">
+                      <Webhook className="h-4 w-4 text-muted-foreground" />
+                      <p className="text-sm font-medium text-foreground">Webhook Events</p>
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Get notified when webhooks fail to deliver or are automatically disabled.
+                    </p>
+                  </div>
+                  <Switch
+                    checked={notifPrefs.email_webhooks}
+                    onCheckedChange={(checked) => setNotifPrefs(prev => ({ ...prev, email_webhooks: checked }))}
+                  />
+                </div>
+
+                {/* Schedules notifications */}
+                <div className="flex items-center justify-between p-4 rounded-lg border border-border bg-secondary/30">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2">
+                      <CalendarClock className="h-4 w-4 text-muted-foreground" />
+                      <p className="text-sm font-medium text-foreground">Scheduled Scan Reports</p>
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Receive email summaries when scheduled scans complete, including severity breakdowns.
+                    </p>
+                  </div>
+                  <Switch
+                    checked={notifPrefs.email_schedules}
+                    onCheckedChange={(checked) => setNotifPrefs(prev => ({ ...prev, email_schedules: checked }))}
+                  />
+                </div>
+
+                {/* Data request notifications */}
+                <div className="flex items-center justify-between p-4 rounded-lg border border-border bg-secondary/30">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2">
+                      <Download className="h-4 w-4 text-muted-foreground" />
+                      <p className="text-sm font-medium text-foreground">Data Export Updates</p>
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Notifications when your data export is ready for download.
+                    </p>
+                  </div>
+                  <Switch
+                    checked={notifPrefs.email_data_requests}
+                    onCheckedChange={(checked) => setNotifPrefs(prev => ({ ...prev, email_data_requests: checked }))}
+                  />
+                </div>
+
+                {/* Save button */}
+                <div className="flex items-center justify-between pt-4 border-t border-border">
+                  <p className="text-xs text-muted-foreground">
+                    Changes are saved when you click the button.
+                  </p>
+                  <Button onClick={handleSaveNotifPrefs} disabled={savingNotifPrefs}>
+                    {savingNotifPrefs ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Saving...
+                      </>
+                    ) : (
+                      <>
+                        <Save className="mr-2 h-4 w-4" />
+                        Save Preferences
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Info card */}
+            <Card className="bg-muted/30 border-muted">
+              <CardContent className="pt-4">
+                <div className="flex gap-3">
+                  <Mail className="h-5 w-5 text-muted-foreground shrink-0 mt-0.5" />
+                  <div className="flex flex-col gap-1">
+                    <p className="text-sm font-medium text-foreground">About Email Notifications</p>
+                    <p className="text-xs text-muted-foreground leading-relaxed">
+                      We only send essential notifications related to your account activity.
+                      You will always receive critical security alerts for unusual activity regardless of your preferences.
+                      We never share your email or send marketing content.
+                    </p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        )}
+
         {/* ===================== DATA & PRIVACY TAB ===================== */}
         {activeTab === "data" && (
           <div className="flex flex-col gap-6">
@@ -1443,8 +1649,7 @@ export default function ProfilePage() {
               <CardHeader>
                 <CardTitle className="text-lg flex items-center gap-2 text-destructive">
                   <AlertTriangle className="h-4 w-4" />
-                  Danger Zone
-                </CardTitle>
+                  Danger Zone                </CardTitle>
                 <CardDescription>Permanently delete your account and all associated data. This action cannot be undone.</CardDescription>
               </CardHeader>
               <CardContent>

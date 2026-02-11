@@ -54,6 +54,7 @@ const PUBLIC_PATHS = [
   "/signup",
   "/forgot-password",
   "/reset-password",
+  "/verify-email",
 
   // ─── Authentication API Routes ─────────────────────────────────
   "/api/auth/login",
@@ -62,6 +63,8 @@ const PUBLIC_PATHS = [
   "/api/auth/reset-password",
   "/api/auth/accept-tos",
   "/api/auth/2fa/verify",
+  "/api/auth/verify-email",
+  "/api/auth/resend-verification",
 
   // ─── Legal Pages ───────────────────────────────────────────────
   "/legal/terms",

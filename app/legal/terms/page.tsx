@@ -1,9 +1,3 @@
-import type { Metadata } from "next"
-
-export const metadata: Metadata = {
-  title: "Terms of Service - VulnRadar",
-}
-
 export default function TermsPage() {
   return (
     <article className="prose prose-sm dark:prose-invert max-w-none">

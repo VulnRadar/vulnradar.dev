@@ -1,8 +1,7 @@
-import type { ScanResult, Vulnerability, Severity } from "./scanner/types"
+import type { ScanResult, Severity } from "./scanner/types"
 
 // Lightweight PDF generation using raw PDF syntax -- no external dependencies needed
 export function generatePdfReport(result: ScanResult): Uint8Array {
-  const lines: string[] = []
   const objects: { offset: number; content: string }[] = []
   let currentObj = 0
 
@@ -180,7 +179,7 @@ export function generatePdfReport(result: ScanResult): Uint8Array {
   // 1: Catalog
   const catalogObj = addObj("<< /Type /Catalog /Pages 2 0 R >>")
   // 2: Pages
-  const pagesObj = addObj("<< /Type /Pages /Kids [3 0 R] /Count 1 >>")
+  addObj("<< /Type /Pages /Kids [3 0 R] /Count 1 >>")
   // 3: Page
   addObj(
       `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${pageWidth} ${pageHeight}] /Contents 4 0 R /Resources << /Font << /F1 5 0 R /F2 6 0 R >> >> >>`

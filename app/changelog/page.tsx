@@ -1,26 +1,32 @@
 import { Header } from "@/components/scanner/header"
 import { Footer } from "@/components/scanner/footer"
-import { Newspaper, Zap, Shield, Users, Tag, List, RefreshCw, Lock, Gauge, MessageSquare, Sparkles, Eye, ShieldCheck, Target, Brain, AlertTriangle, Search, Bell, Heart, Layout } from "lucide-react"
+import { Newspaper, Zap, Shield, Users, Tag, List, RefreshCw, Lock, Gauge, MessageSquare, Sparkles, Eye, ShieldCheck, Target, Brain, AlertTriangle, Search, Bell, Heart, Layout, Mail, CheckCircle, Trash2 } from "lucide-react"
 
 const CHANGELOG = [
   {
     version: "1.3.0",
     date: "February 10, 2026",
-    title: "Landing Page, Donations & Major UI Polish",
+    title: "Email Verification, Landing Page & Major UI Polish",
     highlights: true,
     changes: [
+      { icon: Mail, label: "Email Verification Required", desc: "New users must verify their email address before logging in. A verification link is sent upon signup that expires in 24 hours." },
+      { icon: CheckCircle, label: "Auto-Login on Verification", desc: "Clicking the email verification link automatically verifies your account and logs you in, redirecting straight to the dashboard." },
+      { icon: RefreshCw, label: "Resend Verification", desc: "Can't find your verification email? Request a new one directly from the login page. Rate-limited to prevent abuse." },
+      { icon: Shield, label: "Verification Token Security", desc: "Tokens are single-use and expire after 24 hours. Already-used tokens show a clear message instead of a generic error." },
       { icon: Eye, label: "Beautiful Landing Page", desc: "New public landing page showcasing VulnRadar's features, benefits, and capabilities. Professional hero section, feature grid, stats showcase, FAQ, and vulnerability coverage highlights." },
       { icon: Heart, label: "Support VulnRadar", desc: "New donation system via Buy Me a Coffee. Support the project to help fund development and keep VulnRadar free for everyone. Access via /donate or the footer links." },
       { icon: Shield, label: "Smart Routing", desc: "Intelligent routing system: unauthenticated visitors see the landing page at /, while authenticated users are automatically redirected to /dashboard for seamless access to the scanner." },
       { icon: Layout, label: "Unified Results UI", desc: "Scan results now display in a consistent gray card with the scanned URL and all action buttons (Scan Again, Export PDF/JSON, Share) grouped together at the top for easy access." },
       { icon: Eye, label: "History Page Polish", desc: "History detail view now matches the dashboard styling with the same gray card layout, showing scanned URL and action buttons in a unified design." },
       { icon: Sparkles, label: "Enhanced OG Image", desc: "Completely redesigned Open Graph image with radar visualization, gradient backgrounds, glow effects, threat blips, and professional typography. Matches the favicon style perfectly." },
-      { icon: Shield, label: "Consistent OpenGraph", desc: "Fixed OpenGraph metadata to use consistent URLs across all pages. All shared links now display the same professional embed on Discord and social platforms." },
-      { icon: Zap, label: "Improved Login Flow", desc: "Login and signup now redirect directly to /dashboard instead of going through the landing page, providing a faster and smoother user experience." },
+      { icon: Zap, label: "Instant Response Times", desc: "Signup, verification emails, and password resets are sent in the background, so you get an immediate response without waiting for email delivery." },
+      { icon: Lock, label: "Password Reset Security Info", desc: "Password reset confirmation emails now include the IP address and device information of who requested the reset for better security awareness." },
       { icon: Shield, label: "2FA-Enabled Password Resets", desc: "Users with two-factor authentication can now reset their passwords via email. After reset, they still need their authenticator code to log in, maintaining security while improving usability." },
       { icon: Bell, label: "Security Notifications", desc: "All password resets now trigger a security notification email. If users didn't request the reset, they're immediately alerted with instructions to contact support." },
       { icon: Lock, label: "Atomic Password Reset", desc: "Password reset now uses database transactions with row-level locking to prevent race conditions and ensure emails are only sent once per request." },
       { icon: MessageSquare, label: "Landing Page Contact Form", desc: "Public contact form with Turnstile protection allows visitors to reach out before signing up. Sends professional emails to both the team and the user." },
+      { icon: RefreshCw, label: "Auto Session Cleanup", desc: "Expired sessions are now automatically cleaned up every 24 hours to keep the database tidy." },
+      { icon: Trash2, label: "Code Cleanup", desc: "Removed unused functions and variables across the codebase. Consolidated duplicate IP detection logic into a shared utility." },
     ],
   },
   {

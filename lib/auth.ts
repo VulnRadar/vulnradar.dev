@@ -4,6 +4,9 @@ import pool from "./db"
 
 const SESSION_COOKIE = "vulnradar_session"
 const SESSION_MAX_AGE = 30 * 24 * 60 * 60 * 1000 // 30 days
+const CLEANUP_INTERVAL = 24 * 60 * 60 * 1000 // 24 hours
+
+let lastCleanupTime = 0
 
 // Password hashing using scrypt (built-in, no extra dependency)
 export function hashPassword(password: string): string {
@@ -46,6 +49,13 @@ export async function createSession(userId: number, ipAddress?: string, userAgen
 }
 
 export async function getSession(): Promise<{ userId: number; email: string; name: string | null; tosAcceptedAt: string | null } | null> {
+  // Run cleanup every 24 hours
+  const now = Date.now()
+  if (now - lastCleanupTime > CLEANUP_INTERVAL) {
+    lastCleanupTime = now
+    cleanupExpiredSessions().catch((err) => console.error("Session cleanup error:", err))
+  }
+
   const cookieStore = await cookies()
   const sessionId = cookieStore.get(SESSION_COOKIE)?.value
 

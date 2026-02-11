@@ -5,7 +5,7 @@ import { useState } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import Image from "next/image"
-import { Loader2, Eye, EyeOff } from "lucide-react"
+import { Loader2, Eye, EyeOff, Mail } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -18,6 +18,9 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState("")
   const [loading, setLoading] = useState(false)
+  const [unverifiedEmail, setUnverifiedEmail] = useState(false)
+  const [resendingVerification, setResendingVerification] = useState(false)
+  const [resendSuccess, setResendSuccess] = useState(false)
 
   // 2FA state
   const [needs2FA, setNeeds2FA] = useState(false)
@@ -27,9 +30,34 @@ export default function LoginPage() {
   const [useBackupCode, setUseBackupCode] = useState(false)
   const [backupCodeInput, setBackupCodeInput] = useState("")
 
+  async function handleResendVerification() {
+    setResendingVerification(true)
+    setResendSuccess(false)
+    try {
+      const res = await fetch("/api/auth/resend-verification", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      })
+      const data = await res.json()
+      if (res.ok && data.success) {
+        setResendSuccess(true)
+        setError("") // Clear the error when resend succeeds
+      } else if (!res.ok) {
+        setError(data.error || "Failed to send verification email.")
+      }
+    } catch {
+      setError("Failed to send verification email. Please try again.")
+    } finally {
+      setResendingVerification(false)
+    }
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setError("")
+    setUnverifiedEmail(false)
+    setResendSuccess(false)
     setLoading(true)
 
     try {
@@ -42,6 +70,9 @@ export default function LoginPage() {
       const data = await res.json()
 
       if (!res.ok) {
+        if (data.unverified) {
+          setUnverifiedEmail(true)
+        }
         setError(data.error || "Login failed.")
         setLoading(false)
         return
@@ -258,6 +289,31 @@ export default function LoginPage() {
                 <p className="text-sm text-destructive" role="alert">
                   {error}
                 </p>
+                {unverifiedEmail && !resendSuccess && (
+                  <button
+                    type="button"
+                    onClick={handleResendVerification}
+                    disabled={resendingVerification}
+                    className="mt-2 text-sm text-primary hover:underline flex items-center gap-1"
+                  >
+                    {resendingVerification ? (
+                      <>
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                        Sending...
+                      </>
+                    ) : (
+                      <>
+                        <Mail className="h-3 w-3" />
+                        Resend verification email
+                      </>
+                    )}
+                  </button>
+                )}
+                {resendSuccess && (
+                  <p className="mt-2 text-sm text-green-500">
+                    Verification email sent! Check your inbox.
+                  </p>
+                )}
               </div>
             )}
 

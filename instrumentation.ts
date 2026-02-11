@@ -9,6 +9,7 @@ export async function register() {
                                            email VARCHAR(255) UNIQUE NOT NULL,
           password_hash VARCHAR(255) NOT NULL,
           name VARCHAR(255),
+          email_verified_at TIMESTAMP WITH TIME ZONE,
           created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
           updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
           );
@@ -201,6 +202,19 @@ export async function register() {
         END $$;
       `)
 
+      await pool.query(`
+        DO $$ BEGIN
+          IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name = 'users' AND column_name = 'email_verified_at'
+          ) THEN
+            ALTER TABLE users ADD COLUMN email_verified_at TIMESTAMP WITH TIME ZONE;
+            -- Mark existing users as verified so they aren't locked out
+            UPDATE users SET email_verified_at = created_at WHERE email_verified_at IS NULL;
+          END IF;
+        END $$;
+      `)
+
       // Password reset tokens
       await pool.query(`
         CREATE TABLE IF NOT EXISTS password_reset_tokens (
@@ -213,6 +227,36 @@ export async function register() {
           );
         CREATE INDEX IF NOT EXISTS idx_prt_token_hash ON password_reset_tokens(token_hash);
         CREATE INDEX IF NOT EXISTS idx_prt_user_id ON password_reset_tokens(user_id);
+      `)
+
+      // Email verification tokens
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS email_verification_tokens (
+          id SERIAL PRIMARY KEY,
+          user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          token_hash VARCHAR(255) NOT NULL,
+          expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
+          used_at TIMESTAMP WITH TIME ZONE,
+          created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+        );
+        CREATE INDEX IF NOT EXISTS idx_evt_token_hash ON email_verification_tokens(token_hash);
+        CREATE INDEX IF NOT EXISTS idx_evt_user_id ON email_verification_tokens(user_id);
+      `)
+
+      // Notification preferences
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS notification_preferences (
+          id SERIAL PRIMARY KEY,
+          user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE UNIQUE,
+          email_api_keys BOOLEAN NOT NULL DEFAULT true,
+          email_webhooks BOOLEAN NOT NULL DEFAULT true,
+          email_schedules BOOLEAN NOT NULL DEFAULT true,
+          email_data_requests BOOLEAN NOT NULL DEFAULT true,
+          email_security BOOLEAN NOT NULL DEFAULT true,
+          created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+          updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+        );
+        CREATE INDEX IF NOT EXISTS idx_notif_prefs_user_id ON notification_preferences(user_id);
       `)
 
       // Rate limiting

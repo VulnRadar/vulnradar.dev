@@ -2,17 +2,15 @@
 
 import React from "react"
 import { useState } from "react"
-import { useRouter } from "next/navigation"
 import Link from "next/link"
 import Image from "next/image"
-import { Loader2, Eye, EyeOff } from "lucide-react"
+import { Loader2, Eye, EyeOff, Mail, CheckCircle2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 
 export default function SignupPage() {
-  const router = useRouter()
   const [name, setName] = useState("")
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
@@ -20,6 +18,7 @@ export default function SignupPage() {
   const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState("")
   const [loading, setLoading] = useState(false)
+  const [signupSuccess, setSignupSuccess] = useState(false)
 
   function getPasswordStrength(pw: string): { level: number; label: string; color: string } {
     if (!pw) return { level: 0, label: "", color: "" }
@@ -75,12 +74,51 @@ export default function SignupPage() {
         return
       }
 
-      router.push("/dashboard")
-      router.refresh()
+      // Show success message - user needs to verify email
+      setSignupSuccess(true)
+      setLoading(false)
     } catch {
       setError("Something went wrong. Please try again.")
       setLoading(false)
     }
+  }
+
+  // Show success screen after signup
+  if (signupSuccess) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background px-4 py-8">
+        <Card className="w-full max-w-sm bg-card border-border">
+          <CardHeader className="text-center space-y-2 pb-6 pt-8">
+            <div className="flex justify-center mb-4">
+              <div className="p-3 bg-primary/10 rounded-full">
+                <Mail className="h-8 w-8 text-primary" />
+              </div>
+            </div>
+            <CardTitle className="text-xl font-bold tracking-tight">Check your email</CardTitle>
+            <CardDescription className="text-muted-foreground">
+              We&apos;ve sent a verification link to <span className="font-medium text-foreground">{email}</span>
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4 pb-8">
+            <div className="flex items-start gap-3 p-3 bg-muted/50 rounded-lg">
+              <CheckCircle2 className="h-5 w-5 text-primary mt-0.5 shrink-0" />
+              <p className="text-sm text-muted-foreground">
+                Click the link in your email to verify your account and start using VulnRadar.
+              </p>
+            </div>
+            <p className="text-xs text-muted-foreground text-center">
+              Didn&apos;t receive the email? Check your spam folder or{" "}
+              <Link href="/login" className="text-primary hover:underline">
+                request a new link
+              </Link>
+            </p>
+            <Button asChild variant="outline" className="w-full mt-4">
+              <Link href="/login">Back to Login</Link>
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    )
   }
 
   return (
