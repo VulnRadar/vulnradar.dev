@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server"
+import { NextResponse, NextRequest } from "next/server"
 import { getSession } from "@/lib/auth"
 import { revokeApiKey, getUserApiKeys } from "@/lib/api-keys"
 import { sendNotificationEmail } from "@/lib/notifications"
@@ -7,6 +7,7 @@ import { ERROR_MESSAGES } from "@/lib/constants"
 import { getClientIp, getUserAgent } from "@/lib/request-utils";
 
 export async function POST(
+  _request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
   const session = await getSession()

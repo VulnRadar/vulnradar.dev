@@ -5,6 +5,16 @@ import { APP_NAME } from "@/lib/constants"
 
 const CHANGELOG = [
   {
+    version: "1.3.2",
+    date: "February 11, 2026",
+    title: "Bugfix: API key revoke route & minor stability improvements",
+    highlights: true,
+    changes: [
+      { icon: Zap, label: "Fix: API key revoke route", desc: "Resolved a runtime TypeError when revoking API keys by ensuring dynamic route `params` are awaited per Next.js App Router guidance (prevents `Cannot destructure property 'id'` errors)." },
+      { icon: Search, label: "Stability improvements", desc: "Small robustness fixes across API routes and improved logging for notification decisions." },
+    ],
+  },
+  {
     version: "1.3.1",
     date: "February 11, 2026",
     title: "Notification preference fixes & DB migration improvements",
