@@ -8,7 +8,7 @@ import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import Image from "next/image"
-import { APP_VERSION } from "@/lib/version"
+import { APP_VERSION, APP_NAME, SUPPORT_EMAIL } from "@/lib/constants"
 import { useState, useEffect, useRef } from "react"
 
 export default function LandingPage() {
@@ -106,9 +106,9 @@ export default function LandingPage() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 sm:py-4 flex items-center justify-between">
           <Link href="/" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
             <div className="relative w-6 h-6 sm:w-8 sm:h-8">
-              <Image src="/favicon.svg" alt="VulnRadar" fill className="object-contain" />
+              <Image src="/favicon.svg" alt={APP_NAME} fill className="object-contain" />
             </div>
-            <span className="text-lg sm:text-xl font-bold font-mono tracking-tight">VulnRadar</span>
+            <span className="text-lg sm:text-xl font-bold font-mono tracking-tight">{APP_NAME}</span>
           </Link>
           <nav className="flex items-center gap-2 sm:gap-4">
             <Link href="/login">
@@ -658,7 +658,7 @@ export default function LandingPage() {
 
               {emailStatus === "error" && (
                 <p className="text-sm text-center text-destructive">
-                  Failed to send message. Please try again or email us directly at support@vulnradar.dev
+                  Failed to send message. Please try again or email us directly at {SUPPORT_EMAIL}
                 </p>
               )}
             </form>
@@ -695,7 +695,7 @@ export default function LandingPage() {
             <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-full bg-pink-500/10 flex items-center justify-center mx-auto mb-4 sm:mb-6">
               <Heart className="h-6 w-6 sm:h-8 sm:w-8 text-pink-500" />
             </div>
-            <h2 className="text-2xl sm:text-3xl lg:text-4xl font-bold mb-3 sm:mb-4">Support VulnRadar</h2>
+            <h2 className="text-2xl sm:text-3xl lg:text-4xl font-bold mb-3 sm:mb-4">Support {APP_NAME}</h2>
             <p className="text-base sm:text-lg text-muted-foreground max-w-2xl mx-auto mb-6 sm:mb-8 px-4">
               VulnRadar is free and open source. If you find it useful, consider supporting development to help us add new features and keep the project running.
             </p>
@@ -712,7 +712,7 @@ export default function LandingPage() {
               </a>
             </div>
             <p className="mt-6 text-xs sm:text-sm text-muted-foreground">
-              Every contribution helps keep VulnRadar free for everyone.
+              Every contribution helps keep {APP_NAME} free for everyone.
             </p>
           </div>
         </div>
@@ -774,7 +774,7 @@ export default function LandingPage() {
               </ul>
             </div>
             <div>
-              <h3 className="font-semibold mb-3 sm:mb-4 text-sm sm:text-base">VulnRadar</h3>
+              <h3 className="font-semibold mb-3 sm:mb-4 text-sm sm:text-base">{APP_NAME}</h3>
               <p className="text-xs sm:text-sm text-muted-foreground mb-3">
                 Professional web vulnerability scanning for modern teams.
               </p>
@@ -788,7 +788,7 @@ export default function LandingPage() {
             </div>
           </div>
           <div className="border-t border-border/40 mt-6 sm:mt-8 pt-6 sm:pt-8 text-center text-xs sm:text-sm text-muted-foreground">
-            <p>© {new Date().getFullYear()} VulnRadar. All rights reserved. v{APP_VERSION}</p>
+            <p>© {new Date().getFullYear()} {APP_NAME}. All rights reserved. v{APP_VERSION}</p>
           </div>
         </div>
       </footer>

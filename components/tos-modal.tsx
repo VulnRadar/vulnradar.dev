@@ -3,6 +3,7 @@
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Shield, ExternalLink } from "lucide-react"
+import { APP_NAME } from "@/lib/constants"
 
 interface TosModalProps {
   onAccept: () => void
@@ -46,7 +47,7 @@ export function TosModal({ onAccept }: TosModalProps) {
             Terms of Service Agreement
           </h2>
           <p className="text-sm text-muted-foreground text-center leading-relaxed max-w-sm">
-            Before using VulnRadar, you must read and agree to the following terms.
+            Before using {APP_NAME}, you must read and agree to the following terms.
           </p>
         </div>
 
@@ -54,7 +55,7 @@ export function TosModal({ onAccept }: TosModalProps) {
         <div className="flex-1 overflow-y-auto px-6 py-4">
           <div className="rounded-xl border border-border bg-muted/30 p-4 mb-5">
             <p className="text-sm text-foreground/90 font-medium leading-relaxed">
-              VulnRadar is a security scanning tool intended{" "}
+              {APP_NAME} is a security scanning tool intended{" "}
               <strong>exclusively for authorized security testing, research, and educational purposes</strong>.
               Unauthorized use may violate federal and international cybercrime laws.
             </p>
@@ -103,7 +104,7 @@ export function TosModal({ onAccept }: TosModalProps) {
                 className="mt-1 h-4 w-4 rounded border-border text-primary accent-[hsl(var(--primary))] shrink-0"
               />
               <span className="text-sm text-foreground/80 leading-relaxed group-hover:text-foreground transition-colors">
-                I confirm that I am using VulnRadar for{" "}
+                I confirm that I am using {APP_NAME} for{" "}
                 <strong>legitimate security research, testing, or educational purposes only</strong>{" "}
                 and not for any malicious, illegal, or unauthorized activity.
               </span>
@@ -117,7 +118,7 @@ export function TosModal({ onAccept }: TosModalProps) {
                 className="mt-1 h-4 w-4 rounded border-border text-primary accent-[hsl(var(--primary))] shrink-0"
               />
               <span className="text-sm text-foreground/80 leading-relaxed group-hover:text-foreground transition-colors">
-                I acknowledge that VulnRadar and its operators are{" "}
+                I acknowledge that {APP_NAME} and its operators are{" "}
                 <strong>NOT responsible for any misuse, damages, or legal consequences</strong>{" "}
                 resulting from my use of this tool. I accept full responsibility for my actions.
               </span>
@@ -132,7 +133,7 @@ export function TosModal({ onAccept }: TosModalProps) {
             disabled={!allChecked || accepting}
             className="w-full h-11"
           >
-            {accepting ? "Processing..." : allChecked ? "I Agree, Continue to VulnRadar" : "Check all boxes to continue"}
+            {accepting ? "Processing..." : allChecked ? `I Agree, Continue to ${APP_NAME}` : "Check all boxes to continue"}
           </Button>
           <p className="text-xs text-muted-foreground text-center mt-3 leading-relaxed">
             By clicking &quot;I Agree&quot;, you are entering a legally binding agreement.

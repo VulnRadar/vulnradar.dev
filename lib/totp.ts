@@ -1,4 +1,5 @@
 import { createHmac, randomBytes } from "node:crypto"
+import { TOTP_ISSUER } from "./constants"
 
 // Generate a random base32 secret
 export function generateSecret(): string {
@@ -18,7 +19,7 @@ export function verifyTOTP(secret: string, token: string, timeStep = 30, window 
 }
 
 // Generate the otpauth:// URI for QR code generation
-export function generateOtpAuthUri(secret: string, email: string, issuer = "VulnRadar"): string {
+export function generateOtpAuthUri(secret: string, email: string, issuer = TOTP_ISSUER): string {
   return `otpauth://totp/${encodeURIComponent(issuer)}:${encodeURIComponent(email)}?secret=${secret}&issuer=${encodeURIComponent(issuer)}&algorithm=SHA1&digits=6&period=30`
 }
 

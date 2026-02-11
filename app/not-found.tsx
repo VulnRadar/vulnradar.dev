@@ -1,9 +1,14 @@
+"use client"
+
+import { useRouter } from "next/navigation"
 import Link from "next/link"
 import Image from "next/image"
 import { AlertCircle, Home, ArrowLeft } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { APP_NAME } from "@/lib/constants"
 
 export default function NotFound() {
+  const router = useRouter()
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-background px-4">
       <div className="w-full max-w-md flex flex-col items-center gap-8">
@@ -11,12 +16,12 @@ export default function NotFound() {
         <div className="flex items-center gap-2">
           <Image
             src="/favicon.svg"
-            alt="VulnRadar logo"
+            alt={`${APP_NAME} logo`}
             width={32}
             height={32}
             className="h-8 w-8"
           />
-          <span className="text-2xl font-bold text-foreground font-mono tracking-tight">VulnRadar</span>
+          <span className="text-2xl font-bold text-foreground font-mono tracking-tight">{APP_NAME}</span>
         </div>
 
         {/* 404 Icon and Message */}
@@ -55,10 +60,10 @@ export default function NotFound() {
             variant="outline"
             className="flex-1 bg-transparent"
           >
-            <Link href="javascript:history.back()" className="flex items-center justify-center gap-2">
+            <button onClick={() => router.back()} className="flex items-center justify-center gap-2">
               <ArrowLeft className="h-4 w-4" />
               Go Back
-            </Link>
+            </button>
           </Button>
         </div>
 
@@ -83,4 +88,3 @@ export default function NotFound() {
     </div>
   )
 }
-

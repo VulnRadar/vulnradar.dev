@@ -2,18 +2,24 @@ import { NextRequest, NextResponse } from "next/server"
 import { createSession } from "@/lib/auth"
 import { verifyTOTP } from "@/lib/totp"
 import pool from "@/lib/db"
+import { 
+  AUTH_2FA_PENDING_COOKIE, 
+  AUTH_2FA_PENDING_MAX_AGE,
+  DEVICE_TRUST_COOKIE_NAME,
+  DEVICE_TRUST_MAX_AGE,
+} from "@/lib/constants"
 
 // POST: Verify 2FA code during login
 export async function POST(request: NextRequest) {
   try {
-    const { userId, code, backupCode } = await request.json()
+    const { userId, code, backupCode, rememberDevice } = await request.json()
 
     if (!userId || (!code && !backupCode)) {
       return NextResponse.json({ error: "User ID and code required." }, { status: 400 })
     }
 
     // Verify the pending 2FA token
-    const pending = request.cookies.get("vulnradar_2fa_pending")?.value
+    const pending = request.cookies.get(AUTH_2FA_PENDING_COOKIE)?.value
     if (!pending || pending !== String(userId)) {
       return NextResponse.json({ error: "Invalid or expired 2FA session. Please log in again." }, { status: 401 })
     }
@@ -63,9 +69,24 @@ export async function POST(request: NextRequest) {
     const userAgent = request.headers.get("user-agent") || undefined
     await createSession(userId, ip, userAgent)
 
-    // Clear the pending cookie
+    // Create response
     const response = NextResponse.json({ success: true })
-    response.cookies.delete("vulnradar_2fa_pending")
+    
+    // Clear the pending cookie
+    response.cookies.delete(AUTH_2FA_PENDING_COOKIE)
+    
+    // If user wants to remember this device, set device trust cookie
+    if (rememberDevice === true) {
+      const deviceId = `${ip}-${userAgent}`.split("").reduce((a, b) => ((a << 5) - a) + b.charCodeAt(0), 0)
+      response.cookies.set(DEVICE_TRUST_COOKIE_NAME, String(deviceId), {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "lax",
+        path: "/",
+        maxAge: DEVICE_TRUST_MAX_AGE,
+      })
+    }
+    
     return response
   } catch (error) {
     console.error("2FA verify error:", error)

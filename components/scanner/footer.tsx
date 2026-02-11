@@ -3,7 +3,7 @@
 import Link from "next/link"
 import Image from "next/image"
 import { Heart } from "lucide-react"
-import { APP_VERSION } from "@/lib/version"
+import { APP_VERSION, APP_NAME, APP_URL } from "@/lib/constants"
 
 const LEGAL_LINKS = [
   { href: "/legal/terms", label: "Terms" },
@@ -25,13 +25,13 @@ export function Footer() {
             <div className="flex items-center gap-2">
               <Image
                 src="/favicon.svg"
-                alt="VulnRadar logo"
+                alt={`${APP_NAME} logo`}
                 width={16}
                 height={16}
                 className="h-4 w-4"
               />
               <span className="text-sm font-semibold text-foreground">
-                VulnRadar
+                {APP_NAME}
               </span>
               <span className="text-xs text-muted-foreground hidden sm:inline">
                 Open-source web vulnerability scanner
@@ -66,7 +66,9 @@ export function Footer() {
                 RejectModders
               </a>
               <span className="text-border">|</span>
-              <span>vulnradar.dev</span>
+              <a href={APP_URL} target="_blank" rel="noopener noreferrer" className="text-xs text-muted-foreground">
+                {APP_URL.replace(/^https?:\/\//, "")}
+              </a>
             </div>
           </div>
 
@@ -82,7 +84,7 @@ export function Footer() {
               </Link>
             ))}
             <span className="text-xs text-muted-foreground ml-auto hidden sm:inline">
-              {"\u00A9"} {new Date().getFullYear()} VulnRadar. For authorized security testing only.
+              {"\u00A9"} {new Date().getFullYear()} {APP_NAME}. For authorized security testing only.
             </span>
           </div>
         </div>

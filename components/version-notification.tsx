@@ -4,22 +4,37 @@ import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { X, Sparkles, ArrowRight } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { APP_VERSION, VERSION_COOKIE_NAME, VERSION_COOKIE_MAX_AGE } from "@/lib/version"
+import { VERSION_COOKIE_NAME, VERSION_COOKIE_MAX_AGE, APP_VERSION, APP_NAME } from "@/lib/constants"
 
 export function VersionNotification() {
   const [show, setShow] = useState(false)
+  const [isLoggedIn, setIsLoggedIn] = useState(false)
   const router = useRouter()
 
   useEffect(() => {
-    // Get the last seen version from cookies
-    const cookies = document.cookie.split("; ")
-    const versionCookie = cookies.find(c => c.startsWith(`${VERSION_COOKIE_NAME}=`))
-    const lastSeenVersion = versionCookie?.split("=")[1]
+    // Check if user is logged in by checking for session
+    const checkLogin = async () => {
+      try {
+        const response = await fetch("/api/auth/me")
+        const isAuthenticated = response.ok
+        setIsLoggedIn(isAuthenticated)
 
-    // If no cookie or version is different, show notification
-    if (!lastSeenVersion || lastSeenVersion !== APP_VERSION) {
-      setShow(true)
+        if (isAuthenticated) {
+          // Only show notification if user is logged in
+          const cookies = document.cookie.split("; ")
+          const versionCookie = cookies.find(c => c.startsWith(`${VERSION_COOKIE_NAME}=`))
+          const lastSeenVersion = versionCookie?.split("=")[1]
+
+          if (!lastSeenVersion || lastSeenVersion !== APP_VERSION) {
+            setShow(true)
+          }
+        }
+      } catch (error) {
+        console.error("Failed to check login status:", error)
+      }
     }
+
+    checkLogin()
   }, [])
 
   const handleDismiss = () => {
@@ -36,7 +51,7 @@ export function VersionNotification() {
     router.push("/changelog")
   }
 
-  if (!show) return null
+  if (!show || !isLoggedIn) return null
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-background/80 backdrop-blur-sm animate-in fade-in duration-200">
@@ -75,7 +90,7 @@ export function VersionNotification() {
 
             {/* Title */}
             <h2 className="text-xl font-bold text-foreground mb-3 text-balance">
-              VulnRadar Has Been Updated!
+              {APP_NAME} Has Been Updated!
             </h2>
 
             {/* Description */}
@@ -105,4 +120,3 @@ export function VersionNotification() {
     </div>
   )
 }
-

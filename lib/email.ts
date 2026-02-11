@@ -1,20 +1,5 @@
 import nodemailer from "nodemailer"
-
-const CONFIG = {
-  APP_NAME: "VulnRadar",
-  APP_URL: "https://vulnradar.dev",
-  LOGO_URL: "https://vulnradar.dev/favicon.png",
-  SUPPORT_EMAIL: "support@vulnradar.dev",
-  SMTP: {
-    HOST: process.env.SMTP_HOST,
-    PORT: Number(process.env.SMTP_PORT) || 587,
-    USER: process.env.SMTP_USER,
-    PASS: process.env.SMTP_PASS,
-    FROM: process.env.SMTP_FROM || process.env.SMTP_USER,
-  },
-} as const
-
-export const APP_URL = CONFIG.APP_URL
+import { APP_NAME, APP_URL, SUPPORT_EMAIL, LOGO_URL, SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, SMTP_FROM } from "@/lib/constants"
 
 const COLORS = {
   BG_DARK: "#0a0e13",
@@ -47,15 +32,12 @@ const COLORS = {
 } as const
 
 // Only create transporter if SMTP is configured
-const transporter = CONFIG.SMTP.HOST && CONFIG.SMTP.USER && CONFIG.SMTP.PASS
+const transporter = SMTP_HOST && SMTP_USER && SMTP_PASS
   ? nodemailer.createTransport({
-      host: CONFIG.SMTP.HOST,
-      port: CONFIG.SMTP.PORT,
+      host: SMTP_HOST,
+      port: SMTP_PORT,
       secure: false,
-      auth: {
-        user: CONFIG.SMTP.USER,
-        pass: CONFIG.SMTP.PASS,
-      },
+      auth: { user: SMTP_USER, pass: SMTP_PASS },
     })
   : null
 
@@ -88,7 +70,7 @@ function layout(content: string): string {
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>${CONFIG.APP_NAME}</title>
+  <title>${APP_NAME}</title>
 </head>
 <body style="margin: 0; padding: 0; background-color: ${COLORS.BG_DARK}; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; color: #e5e7eb;">
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color: ${COLORS.BG_DARK}; padding: 40px 20px;">
@@ -100,12 +82,12 @@ function layout(content: string): string {
               <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
                 <tr>
                   <td align="center" style="padding-bottom: 12px;">
-                    <img src="${CONFIG.LOGO_URL}" alt="${CONFIG.APP_NAME}" width="48" height="48" style="display: block; margin: 0 auto;" />
+                    <img src="${LOGO_URL}" alt="${APP_NAME}" width="48" height="48" style="display: block; margin: 0 auto;" />
                   </td>
                 </tr>
                 <tr>
                   <td align="center">
-                    <h1 style="margin: 0; font-size: 24px; font-weight: 700; color: ${COLORS.TEXT_PRIMARY}; letter-spacing: -0.3px;">${CONFIG.APP_NAME}</h1>
+                    <h1 style="margin: 0; font-size: 24px; font-weight: 700; color: ${COLORS.TEXT_PRIMARY}; letter-spacing: -0.3px;">${APP_NAME}</h1>
                   </td>
                 </tr>
               </table>
@@ -127,10 +109,10 @@ function layout(content: string): string {
                 <tr>
                   <td style="text-align: center;">
                     <p style="margin: 0 0 8px 0; font-size: 12px; color: ${COLORS.TEXT_MUTED}; line-height: 1.6;">
-                      <a href="${CONFIG.APP_URL}" style="color: ${COLORS.ACCENT_BLUE_LIGHT}; text-decoration: none;">vulnradar.dev</a>
+                      <a href="${APP_URL}" style="color: ${COLORS.ACCENT_BLUE_LIGHT}; text-decoration: none;">vulnradar.dev</a>
                     </p>
                     <p style="margin: 0; font-size: 11px; color: ${COLORS.TEXT_DARK}; line-height: 1.5;">
-                      ${CONFIG.APP_NAME} - Web Vulnerability Scanner<br />
+                      ${APP_NAME} - Web Vulnerability Scanner<br />
                       This is an automated message. Please do not reply directly.
                     </p>
                   </td>
@@ -169,7 +151,7 @@ function securityWarningBlock(): string {
     <div style="background-color: ${COLORS.BG_DANGER}; border-left: 3px solid ${COLORS.ACCENT_RED}; border-radius: 6px; padding: 14px 16px;">
       <p style="margin: 0 0 4px 0; font-size: 13px; color: ${COLORS.ACCENT_RED_LIGHT}; font-weight: 600;">Wasn't you?</p>
       <p style="margin: 0; font-size: 13px; color: ${COLORS.ACCENT_RED_PALE}; line-height: 1.6;">
-        If you did not make this change, your account may be compromised. Please reset your password immediately and contact support at ${CONFIG.SUPPORT_EMAIL}
+        If you did not make this change, your account may be compromised. Please reset your password immediately and contact support at ${SUPPORT_EMAIL}
       </p>
     </div>
   `
@@ -192,7 +174,7 @@ export async function sendEmail({ to, subject, text, html, replyTo, skipLayout }
     throw new Error("Email service not configured")
   }
 
-  const from = `"${CONFIG.APP_NAME}" <${CONFIG.SMTP.FROM}>`
+  const from = `"${APP_NAME}" <${SMTP_FROM}>`
   const finalHtml = skipLayout ? html : layout(html)
   await transporter.sendMail({ from, to, subject, text, html: finalHtml, replyTo })
 }
@@ -247,7 +229,7 @@ export function contactConfirmationEmail(input: { name: string; category: string
 
   return {
     subject: "We received your message",
-    text: `Hi ${input.name},\n\nThanks for contacting ${CONFIG.APP_NAME}. We received your ${input.category.toLowerCase()} and our team will review it shortly.\n\nIf you need to add more details, just reply to this email.\n\n- ${CONFIG.APP_NAME} Support`,
+    text: `Hi ${input.name},\n\nThanks for contacting ${APP_NAME}. We received your ${input.category.toLowerCase()} and our team will review it shortly.\n\nIf you need to add more details, just reply to this email.\n\n- ${APP_NAME} Support`,
     html: `
       <h1 style="margin: 0 0 8px 0; font-size: 20px; font-weight: 600; color: ${COLORS.TEXT_PRIMARY};">Message Received</h1>
       <p style="margin: 0 0 24px 0; font-size: 14px; color: ${COLORS.TEXT_SECONDARY}; line-height: 1.6;">Hi ${name}, thank you for reaching out.</p>
@@ -261,7 +243,7 @@ export function contactConfirmationEmail(input: { name: string; category: string
         <p style="margin: 0 0 4px 0; font-size: 13px; color: ${COLORS.ACCENT_BLUE_PALE}; font-weight: 600;">What happens next?</p>
         <p style="margin: 0; font-size: 13px; color: #cbd5e1; line-height: 1.6;">Our team will review your message and respond within 24-48 hours. If you need to add more context, reply to this email.</p>
       </div>
-      <p style="margin: 0; font-size: 13px; color: ${COLORS.TEXT_MUTED}; text-align: center;">Thank you for using ${CONFIG.APP_NAME}.</p>
+      <p style="margin: 0; font-size: 13px; color: ${COLORS.TEXT_MUTED}; text-align: center;">Thank you for using ${APP_NAME}.</p>
     `,
   }
 }
@@ -269,10 +251,10 @@ export function contactConfirmationEmail(input: { name: string; category: string
 export function emailVerificationEmail(name: string, verifyLink: string) {
   const safeName = escapeHtml(name)
   return {
-    subject: `Verify your email - ${CONFIG.APP_NAME}`,
-    text: `Welcome to ${CONFIG.APP_NAME}, ${name}!\n\nPlease verify your email address by clicking the link below:\n${verifyLink}\n\nThis link expires in 24 hours.\n\nIf you did not create an account, you can safely ignore this email.`,
+    subject: `Verify your email - ${APP_NAME}`,
+    text: `Welcome to ${APP_NAME}, ${name}!\n\nPlease verify your email address by clicking the link below:\n${verifyLink}\n\nThis link expires in 24 hours.\n\nIf you did not create an account, you can safely ignore this email.`,
     html: `
-      <h1 style="margin: 0 0 8px 0; font-size: 20px; font-weight: 600; color: ${COLORS.TEXT_PRIMARY};">Welcome to ${CONFIG.APP_NAME}!</h1>
+      <h1 style="margin: 0 0 8px 0; font-size: 20px; font-weight: 600; color: ${COLORS.TEXT_PRIMARY};">Welcome to ${APP_NAME}!</h1>
       <p style="margin: 0 0 24px 0; font-size: 14px; color: ${COLORS.TEXT_SECONDARY}; line-height: 1.6;">Hi ${safeName}, thanks for signing up. Please verify your email address to get started.</p>
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom: 24px;">
         <tr>
@@ -299,11 +281,11 @@ export function emailVerificationEmail(name: string, verifyLink: string) {
 
 export function passwordResetEmail(resetLink: string) {
   return {
-    subject: `Reset your ${CONFIG.APP_NAME} password`,
-    text: `You requested a password reset for your ${CONFIG.APP_NAME} account.\n\nClick here to reset your password:\n${resetLink}\n\nThis link expires in 1 hour.\n\nIf you did not request this, you can safely ignore this email.`,
+    subject: `Reset your ${APP_NAME} password`,
+    text: `You requested a password reset for your ${APP_NAME} account.\n\nClick here to reset your password:\n${resetLink}\n\nThis link expires in 1 hour.\n\nIf you did not request this, you can safely ignore this email.`,
     html: `
       <h1 style="margin: 0 0 8px 0; font-size: 20px; font-weight: 600; color: ${COLORS.TEXT_PRIMARY};">Reset Your Password</h1>
-      <p style="margin: 0 0 24px 0; font-size: 14px; color: ${COLORS.TEXT_SECONDARY}; line-height: 1.6;">We received a request to reset your ${CONFIG.APP_NAME} account password.</p>
+      <p style="margin: 0 0 24px 0; font-size: 14px; color: ${COLORS.TEXT_SECONDARY}; line-height: 1.6;">We received a request to reset your ${APP_NAME} account password.</p>
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom: 24px;">
         <tr>
           <td align="center">
@@ -329,11 +311,11 @@ export function passwordChangedEmail(hasTwoFactor: boolean, details: SecurityAle
     : "All active sessions have been logged out. You can now log in with your new password."
 
   return {
-    subject: `Password Changed - ${CONFIG.APP_NAME}`,
-    text: `Your ${CONFIG.APP_NAME} account password has been successfully reset.\n\n${securityInfo}\n\nIP Address: ${details.ipAddress}\nDevice: ${details.userAgent}\n\nIf you did not make this change, please contact support immediately at ${CONFIG.SUPPORT_EMAIL}\n\n- ${CONFIG.APP_NAME} Security`,
+    subject: `Password Changed - ${APP_NAME}`,
+    text: `Your ${APP_NAME} account password has been successfully reset.\n\n${securityInfo}\n\nIP Address: ${details.ipAddress}\nDevice: ${details.userAgent}\n\nIf you did not make this change, please contact support immediately at ${SUPPORT_EMAIL}\n\n- ${APP_NAME} Security`,
     html: `
       <h1 style="margin: 0 0 8px 0; font-size: 20px; font-weight: 600; color: ${COLORS.TEXT_PRIMARY};">Password Changed Successfully</h1>
-      <p style="margin: 0 0 24px 0; font-size: 14px; color: ${COLORS.TEXT_SECONDARY}; line-height: 1.6;">Your ${CONFIG.APP_NAME} account password has been reset.</p>
+      <p style="margin: 0 0 24px 0; font-size: 14px; color: ${COLORS.TEXT_SECONDARY}; line-height: 1.6;">Your ${APP_NAME} account password has been reset.</p>
       <div style="background-color: ${COLORS.BG_SECTION}; border-radius: 8px; padding: 16px; margin-bottom: 20px;">
         <p style="margin: 0 0 4px 0; font-size: 12px; color: ${COLORS.TEXT_MUTED};">Security Information</p>
         <p style="margin: 0; font-size: 14px; color: #e2e8f0; line-height: 1.6;">${securityInfo}</p>
@@ -346,8 +328,8 @@ export function passwordChangedEmail(hasTwoFactor: boolean, details: SecurityAle
 
 export function teamInviteEmail(teamName: string, inviteLink: string, invitedBy: string) {
   return {
-    subject: `You've been invited to join ${teamName} on ${CONFIG.APP_NAME}`,
-    text: `${invitedBy} has invited you to join the team "${teamName}" on ${CONFIG.APP_NAME}.\n\nClick here to accept the invitation:\n${inviteLink}\n\nThis invitation expires in 7 days.`,
+    subject: `You've been invited to join ${teamName} on ${APP_NAME}`,
+    text: `${invitedBy} has invited you to join the team "${teamName}" on ${APP_NAME}.\n\nClick here to accept the invitation:\n${inviteLink}\n\nThis invitation expires in 7 days.`,
     html: `
       <h1 style="margin: 0 0 8px 0; font-size: 20px; font-weight: 600; color: ${COLORS.TEXT_PRIMARY};">Team Invitation</h1>
       <p style="margin: 0 0 24px 0; font-size: 14px; color: ${COLORS.TEXT_SECONDARY}; line-height: 1.6;"><strong style="color: ${COLORS.TEXT_PRIMARY};">${invitedBy}</strong> has invited you to join their team.</p>
@@ -388,7 +370,7 @@ export function landingContactEmail(input: { email: string; message: string }) {
     text: `New Landing Page Inquiry\n\nEmail: ${input.email}\n\nMessage:\n${input.message}`,
     html: `
       <h1 style="margin: 0 0 8px 0; font-size: 20px; font-weight: 600; color: ${COLORS.TEXT_PRIMARY};">New Landing Page Inquiry</h1>
-      <p style="margin: 0 0 24px 0; font-size: 14px; color: ${COLORS.TEXT_SECONDARY}; line-height: 1.6;">Someone reached out via the ${CONFIG.APP_NAME} landing page.</p>
+      <p style="margin: 0 0 24px 0; font-size: 14px; color: ${COLORS.TEXT_SECONDARY}; line-height: 1.6;">Someone reached out via the ${APP_NAME} landing page.</p>
       <div style="background-color: ${COLORS.BG_SECTION}; border-radius: 8px; padding: 16px; margin-bottom: 16px;">
         <p style="margin: 0 0 12px 0; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: ${COLORS.TEXT_MUTED}; font-weight: 600;">Contact Info</p>
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="font-size: 14px; line-height: 1.8;">
@@ -414,7 +396,7 @@ export function landingContactConfirmationEmail(message: string) {
   const escapedMessage = escapeHtml(message).replace(/\n/g, "<br />")
 
   return {
-    subject: `We received your message - ${CONFIG.APP_NAME}`,
+    subject: `We received your message - ${APP_NAME}`,
     text: `Thanks for reaching out!\n\nWe've received your message and will get back to you within 24 hours.\n\nYour Message:\n${message}\n\nIn the meantime, feel free to explore our documentation or start scanning for free by creating an account.`,
     html: `
       <h1 style="margin: 0 0 8px 0; font-size: 20px; font-weight: 600; color: ${COLORS.TEXT_PRIMARY};">Message Received</h1>
@@ -424,7 +406,7 @@ export function landingContactConfirmationEmail(message: string) {
         <div style="font-size: 14px; color: #e2e8f0; line-height: 1.7;">${escapedMessage}</div>
       </div>
       <div style="background-color: ${COLORS.BG_INFO}; border-left: 3px solid ${COLORS.ACCENT_BLUE_LIGHT}; border-radius: 6px; padding: 14px 16px;">
-        <p style="margin: 0; font-size: 13px; color: #cbd5e1; line-height: 1.6;">In the meantime, feel free to explore our <a href="${CONFIG.APP_URL}/docs" style="color: ${COLORS.ACCENT_BLUE_PALE}; text-decoration: none;">documentation</a> or start scanning by <a href="${CONFIG.APP_URL}/signup" style="color: ${COLORS.ACCENT_BLUE_PALE}; text-decoration: none;">creating an account</a>.</p>
+        <p style="margin: 0; font-size: 13px; color: #cbd5e1; line-height: 1.6;">In the meantime, feel free to explore our <a href="${APP_URL}/docs" style="color: ${COLORS.ACCENT_BLUE_PALE}; text-decoration: none;">documentation</a> or start scanning by <a href="${APP_URL}/signup" style="color: ${COLORS.ACCENT_BLUE_PALE}; text-decoration: none;">creating an account</a>.</p>
       </div>
     `,
   }
@@ -432,11 +414,11 @@ export function landingContactConfirmationEmail(message: string) {
 
 export function profileNameChangedEmail(oldName: string, newName: string, details: SecurityAlertDetails) {
   return {
-    subject: `Profile Name Changed - ${CONFIG.APP_NAME}`,
-    text: `Your ${CONFIG.APP_NAME} profile name has been changed.\n\nPrevious Name: ${oldName}\nNew Name: ${newName}\n\nIP Address: ${details.ipAddress}\nDevice: ${details.userAgent}\n\nIf you did not make this change, please reset your password immediately.`,
+    subject: `Profile Name Changed - ${APP_NAME}`,
+    text: `Your ${APP_NAME} profile name has been changed.\n\nPrevious Name: ${oldName}\nNew Name: ${newName}\n\nIP Address: ${details.ipAddress}\nDevice: ${details.userAgent}\n\nIf you did not make this change, please reset your password immediately.`,
     html: `
       <h1 style="margin: 0 0 8px 0; font-size: 20px; font-weight: 600; color: ${COLORS.TEXT_PRIMARY};">Profile Name Changed</h1>
-      <p style="margin: 0 0 24px 0; font-size: 14px; color: ${COLORS.TEXT_SECONDARY}; line-height: 1.6;">Your ${CONFIG.APP_NAME} account name has been updated.</p>
+      <p style="margin: 0 0 24px 0; font-size: 14px; color: ${COLORS.TEXT_SECONDARY}; line-height: 1.6;">Your ${APP_NAME} account name has been updated.</p>
       <div style="background-color: ${COLORS.BG_SECTION}; border-radius: 8px; padding: 16px; margin-bottom: 16px;">
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="font-size: 14px; line-height: 1.8;">
           <tr><td style="padding: 4px 0; width: 120px; color: ${COLORS.TEXT_SECONDARY};">Previous Name</td><td style="padding: 4px 0; color: #f1f5f9;">${escapeHtml(oldName)}</td></tr>
@@ -451,11 +433,11 @@ export function profileNameChangedEmail(oldName: string, newName: string, detail
 
 export function profileEmailChangedEmail(oldEmail: string, newEmail: string, details: SecurityAlertDetails) {
   return {
-    subject: `Email Address Changed - ${CONFIG.APP_NAME}`,
-    text: `Your ${CONFIG.APP_NAME} account email has been changed.\n\nPrevious Email: ${oldEmail}\nNew Email: ${newEmail}\n\nIP Address: ${details.ipAddress}\nDevice: ${details.userAgent}\n\nIf you did not make this change, please contact support immediately.`,
+    subject: `Email Address Changed - ${APP_NAME}`,
+    text: `Your ${APP_NAME} account email has been changed.\n\nPrevious Email: ${oldEmail}\nNew Email: ${newEmail}\n\nIP Address: ${details.ipAddress}\nDevice: ${details.userAgent}\n\nIf you did not make this change, please contact support immediately.`,
     html: `
       <h1 style="margin: 0 0 8px 0; font-size: 20px; font-weight: 600; color: ${COLORS.TEXT_PRIMARY};">Email Address Changed</h1>
-      <p style="margin: 0 0 24px 0; font-size: 14px; color: ${COLORS.TEXT_SECONDARY}; line-height: 1.6;">Your ${CONFIG.APP_NAME} account email has been updated.</p>
+      <p style="margin: 0 0 24px 0; font-size: 14px; color: ${COLORS.TEXT_SECONDARY}; line-height: 1.6;">Your ${APP_NAME} account email has been updated.</p>
       <div style="background-color: ${COLORS.BG_SECTION}; border-radius: 8px; padding: 16px; margin-bottom: 16px;">
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="font-size: 14px; line-height: 1.8;">
           <tr><td style="padding: 4px 0; width: 120px; color: ${COLORS.TEXT_SECONDARY};">Previous Email</td><td style="padding: 4px 0; color: #f1f5f9;">${escapeHtml(oldEmail)}</td></tr>
@@ -470,11 +452,11 @@ export function profileEmailChangedEmail(oldEmail: string, newEmail: string, det
 
 export function profilePasswordChangedEmail(details: SecurityAlertDetails) {
   return {
-    subject: `Password Changed - ${CONFIG.APP_NAME}`,
-    text: `Your ${CONFIG.APP_NAME} account password has been changed.\n\nIP Address: ${details.ipAddress}\nDevice: ${details.userAgent}\n\nIf you did not make this change, please reset your password immediately.`,
+    subject: `Password Changed - ${APP_NAME}`,
+    text: `Your ${APP_NAME} account password has been changed.\n\nIP Address: ${details.ipAddress}\nDevice: ${details.userAgent}\n\nIf you did not make this change, please reset your password immediately.`,
     html: `
       <h1 style="margin: 0 0 8px 0; font-size: 20px; font-weight: 600; color: ${COLORS.TEXT_PRIMARY};">Password Changed</h1>
-      <p style="margin: 0 0 24px 0; font-size: 14px; color: ${COLORS.TEXT_SECONDARY}; line-height: 1.6;">Your ${CONFIG.APP_NAME} account password has been successfully updated.</p>
+      <p style="margin: 0 0 24px 0; font-size: 14px; color: ${COLORS.TEXT_SECONDARY}; line-height: 1.6;">Your ${APP_NAME} account password has been successfully updated.</p>
       <div style="background-color: ${COLORS.BG_INFO}; border-left: 3px solid ${COLORS.ACCENT_BLUE_LIGHT}; border-radius: 6px; padding: 14px 16px; margin-bottom: 20px;">
         <p style="margin: 0; font-size: 13px; color: #cbd5e1; line-height: 1.6;">For security, you may want to review your active sessions in your profile settings.</p>
       </div>
@@ -486,8 +468,8 @@ export function profilePasswordChangedEmail(details: SecurityAlertDetails) {
 
 export function twoFactorEnabledEmail(details: SecurityAlertDetails) {
   return {
-    subject: `Two-Factor Authentication Enabled - ${CONFIG.APP_NAME}`,
-    text: `Two-factor authentication has been enabled on your ${CONFIG.APP_NAME} account.\n\nYour account is now more secure. You will need to enter a code from your authenticator app when logging in.\n\nIP Address: ${details.ipAddress}\nDevice: ${details.userAgent}\n\nIf you did not enable 2FA, please contact support immediately.`,
+    subject: `Two-Factor Authentication Enabled - ${APP_NAME}`,
+    text: `Two-factor authentication has been enabled on your ${APP_NAME} account.\n\nYour account is now more secure. You will need to enter a code from your authenticator app when logging in.\n\nIP Address: ${details.ipAddress}\nDevice: ${details.userAgent}\n\nIf you did not enable 2FA, please contact support immediately.`,
     html: `
       <h1 style="margin: 0 0 8px 0; font-size: 20px; font-weight: 600; color: ${COLORS.TEXT_PRIMARY};">Two-Factor Authentication Enabled</h1>
       <p style="margin: 0 0 24px 0; font-size: 14px; color: ${COLORS.TEXT_SECONDARY}; line-height: 1.6;">Two-factor authentication has been enabled on your account.</p>
@@ -510,8 +492,8 @@ export function twoFactorEnabledEmail(details: SecurityAlertDetails) {
 
 export function twoFactorDisabledEmail(details: SecurityAlertDetails) {
   return {
-    subject: `Two-Factor Authentication Disabled - ${CONFIG.APP_NAME}`,
-    text: `Two-factor authentication has been disabled on your ${CONFIG.APP_NAME} account.\n\nYour account no longer requires a 2FA code to log in.\n\nIP Address: ${details.ipAddress}\nDevice: ${details.userAgent}\n\nIf you did not disable 2FA, please re-enable it and reset your password immediately.`,
+    subject: `Two-Factor Authentication Disabled - ${APP_NAME}`,
+    text: `Two-factor authentication has been disabled on your ${APP_NAME} account.\n\nYour account no longer requires a 2FA code to log in.\n\nIP Address: ${details.ipAddress}\nDevice: ${details.userAgent}\n\nIf you did not disable 2FA, please re-enable it and reset your password immediately.`,
     html: `
       <h1 style="margin: 0 0 8px 0; font-size: 20px; font-weight: 600; color: ${COLORS.TEXT_PRIMARY};">Two-Factor Authentication Disabled</h1>
       <p style="margin: 0 0 24px 0; font-size: 14px; color: ${COLORS.TEXT_SECONDARY}; line-height: 1.6;">Two-factor authentication has been removed from your account.</p>
@@ -527,8 +509,8 @@ export function twoFactorDisabledEmail(details: SecurityAlertDetails) {
 
 export function backupCodesRegeneratedEmail(details: SecurityAlertDetails) {
   return {
-    subject: `Backup Codes Regenerated - ${CONFIG.APP_NAME}`,
-    text: `Your ${CONFIG.APP_NAME} two-factor authentication backup codes have been regenerated.\n\nAll previous backup codes are now invalid. Please store your new codes securely.\n\nIP Address: ${details.ipAddress}\nDevice: ${details.userAgent}\n\nIf you did not regenerate your backup codes, please contact support immediately.`,
+    subject: `Backup Codes Regenerated - ${APP_NAME}`,
+    text: `Your ${APP_NAME} two-factor authentication backup codes have been regenerated.\n\nAll previous backup codes are now invalid. Please store your new codes securely.\n\nIP Address: ${details.ipAddress}\nDevice: ${details.userAgent}\n\nIf you did not regenerate your backup codes, please contact support immediately.`,
     html: `
       <h1 style="margin: 0 0 8px 0; font-size: 20px; font-weight: 600; color: ${COLORS.TEXT_PRIMARY};">Backup Codes Regenerated</h1>
       <p style="margin: 0 0 24px 0; font-size: 14px; color: ${COLORS.TEXT_SECONDARY}; line-height: 1.6;">Your two-factor authentication backup codes have been regenerated.</p>
@@ -546,8 +528,8 @@ export function backupCodesRegeneratedEmail(details: SecurityAlertDetails) {
 export function apiKeyCreatedEmail(keyName: string, keyPrefix: string, details: SecurityAlertDetails) {
   const safeName = escapeHtml(keyName)
   return {
-    subject: `API Key Created - ${CONFIG.APP_NAME}`,
-    text: `A new API key "${keyName}" has been created on your ${CONFIG.APP_NAME} account.\n\nKey Prefix: ${keyPrefix}...\n\nIP Address: ${details.ipAddress}\nDevice: ${details.userAgent}\n\nIf you did not create this API key, please revoke it immediately and contact support.`,
+    subject: `API Key Created - ${APP_NAME}`,
+    text: `A new API key "${keyName}" has been created on your ${APP_NAME} account.\n\nKey Prefix: ${keyPrefix}...\n\nIP Address: ${details.ipAddress}\nDevice: ${details.userAgent}\n\nIf you did not create this API key, please revoke it immediately and contact support.`,
     html: `
       <h1 style="margin: 0 0 8px 0; font-size: 20px; font-weight: 600; color: ${COLORS.TEXT_PRIMARY};">API Key Created</h1>
       <p style="margin: 0 0 24px 0; font-size: 14px; color: ${COLORS.TEXT_SECONDARY}; line-height: 1.6;">A new API key has been created on your account.</p>
@@ -566,8 +548,8 @@ export function apiKeyCreatedEmail(keyName: string, keyPrefix: string, details: 
 export function apiKeyDeletedEmail(keyName: string, details: SecurityAlertDetails) {
   const safeName = escapeHtml(keyName)
   return {
-    subject: `API Key Revoked - ${CONFIG.APP_NAME}`,
-    text: `The API key "${keyName}" has been revoked from your ${CONFIG.APP_NAME} account.\n\nThis key can no longer be used for API access.\n\nIP Address: ${details.ipAddress}\nDevice: ${details.userAgent}\n\nIf you did not revoke this API key, please contact support immediately.`,
+    subject: `API Key Revoked - ${APP_NAME}`,
+    text: `The API key "${keyName}" has been revoked from your ${APP_NAME} account.\n\nThis key can no longer be used for API access.\n\nIP Address: ${details.ipAddress}\nDevice: ${details.userAgent}\n\nIf you did not revoke this API key, please contact support immediately.`,
     html: `
       <h1 style="margin: 0 0 8px 0; font-size: 20px; font-weight: 600; color: ${COLORS.TEXT_PRIMARY};">API Key Revoked</h1>
       <p style="margin: 0 0 24px 0; font-size: 14px; color: ${COLORS.TEXT_SECONDARY}; line-height: 1.6;">An API key has been revoked from your account.</p>
@@ -588,8 +570,8 @@ export function webhookCreatedEmail(webhookName: string, webhookUrl: string, web
   const safeName = escapeHtml(webhookName)
   const safeType = escapeHtml(webhookType)
   return {
-    subject: `Webhook Created - ${CONFIG.APP_NAME}`,
-    text: `A new ${webhookType} webhook "${webhookName}" has been created on your ${CONFIG.APP_NAME} account.\n\nIP Address: ${details.ipAddress}\nDevice: ${details.userAgent}\n\nIf you did not create this webhook, please delete it immediately.`,
+    subject: `Webhook Created - ${APP_NAME}`,
+    text: `A new ${webhookType} webhook "${webhookName}" has been created on your ${APP_NAME} account.\n\nIP Address: ${details.ipAddress}\nDevice: ${details.userAgent}\n\nIf you did not create this webhook, please delete it immediately.`,
     html: `
       <h1 style="margin: 0 0 8px 0; font-size: 20px; font-weight: 600; color: ${COLORS.TEXT_PRIMARY};">Webhook Created</h1>
       <p style="margin: 0 0 24px 0; font-size: 14px; color: ${COLORS.TEXT_SECONDARY}; line-height: 1.6;">A new webhook has been added to your account.</p>
@@ -611,8 +593,8 @@ export function webhookCreatedEmail(webhookName: string, webhookUrl: string, web
 export function webhookDeletedEmail(webhookName: string, details: SecurityAlertDetails) {
   const safeName = escapeHtml(webhookName)
   return {
-    subject: `Webhook Deleted - ${CONFIG.APP_NAME}`,
-    text: `The webhook "${webhookName}" has been deleted from your ${CONFIG.APP_NAME} account.\n\nIP Address: ${details.ipAddress}\nDevice: ${details.userAgent}\n\nIf you did not delete this webhook, please contact support.`,
+    subject: `Webhook Deleted - ${APP_NAME}`,
+    text: `The webhook "${webhookName}" has been deleted from your ${APP_NAME} account.\n\nIP Address: ${details.ipAddress}\nDevice: ${details.userAgent}\n\nIf you did not delete this webhook, please contact support.`,
     html: `
       <h1 style="margin: 0 0 8px 0; font-size: 20px; font-weight: 600; color: ${COLORS.TEXT_PRIMARY};">Webhook Deleted</h1>
       <p style="margin: 0 0 24px 0; font-size: 14px; color: ${COLORS.TEXT_SECONDARY}; line-height: 1.6;">A webhook has been removed from your account.</p>
@@ -632,7 +614,7 @@ export function scheduleCreatedEmail(url: string, frequency: string, details: Se
   const safeUrl = escapeHtml(url)
   const safeFrequency = escapeHtml(frequency)
   return {
-    subject: `Scheduled Scan Created - ${CONFIG.APP_NAME}`,
+    subject: `Scheduled Scan Created - ${APP_NAME}`,
     text: `A new scheduled scan has been created for ${url} (${frequency}).\n\nIP Address: ${details.ipAddress}\nDevice: ${details.userAgent}\n\nIf you did not create this schedule, please delete it from your profile.`,
     html: `
       <h1 style="margin: 0 0 8px 0; font-size: 20px; font-weight: 600; color: ${COLORS.TEXT_PRIMARY};">Scheduled Scan Created</h1>
@@ -651,8 +633,8 @@ export function scheduleCreatedEmail(url: string, frequency: string, details: Se
 export function scheduleDeletedEmail(url: string, details: SecurityAlertDetails) {
   const safeUrl = escapeHtml(url)
   return {
-    subject: `Scheduled Scan Deleted - ${CONFIG.APP_NAME}`,
-    text: `The scheduled scan for ${url} has been deleted from your ${CONFIG.APP_NAME} account.\n\nIP Address: ${details.ipAddress}\nDevice: ${details.userAgent}`,
+    subject: `Scheduled Scan Deleted - ${APP_NAME}`,
+    text: `The scheduled scan for ${url} has been deleted from your ${APP_NAME} account.\n\nIP Address: ${details.ipAddress}\nDevice: ${details.userAgent}`,
     html: `
       <h1 style="margin: 0 0 8px 0; font-size: 20px; font-weight: 600; color: ${COLORS.TEXT_PRIMARY};">Scheduled Scan Deleted</h1>
       <p style="margin: 0 0 24px 0; font-size: 14px; color: ${COLORS.TEXT_SECONDARY}; line-height: 1.6;">A scheduled scan has been removed from your account.</p>
@@ -672,8 +654,8 @@ export function dataRequestCreatedEmail(requestType: string, details: SecurityAl
   const safeType = escapeHtml(requestType)
   const typeLabel = requestType === "export" ? "Data Export" : "Account Deletion"
   return {
-    subject: `${typeLabel} Request Submitted - ${CONFIG.APP_NAME}`,
-    text: `A ${typeLabel.toLowerCase()} request has been submitted for your ${CONFIG.APP_NAME} account.\n\nOur team will process your request within 30 days as required by privacy regulations.\n\nIP Address: ${details.ipAddress}\nDevice: ${details.userAgent}\n\nIf you did not make this request, please contact support immediately.`,
+    subject: `${typeLabel} Request Submitted - ${APP_NAME}`,
+    text: `A ${typeLabel.toLowerCase()} request has been submitted for your ${APP_NAME} account.\n\nOur team will process your request within 30 days as required by privacy regulations.\n\nIP Address: ${details.ipAddress}\nDevice: ${details.userAgent}\n\nIf you did not make this request, please contact support immediately.`,
     html: `
       <h1 style="margin: 0 0 8px 0; font-size: 20px; font-weight: 600; color: ${COLORS.TEXT_PRIMARY};">${typeLabel} Request Submitted</h1>
       <p style="margin: 0 0 24px 0; font-size: 14px; color: ${COLORS.TEXT_SECONDARY}; line-height: 1.6;">Your ${typeLabel.toLowerCase()} request has been received.</p>

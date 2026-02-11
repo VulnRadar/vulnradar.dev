@@ -5,7 +5,7 @@ import { Check, FileJson, FileText } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import type { ScanResult } from "@/lib/scanner/types"
 import { generatePdfReport } from "@/lib/pdf-report"
-import { APP_VERSION } from "@/lib/version"
+import { APP_VERSION, APP_SLUG, APP_NAME } from "@/lib/constants"
 
 
 interface ExportButtonProps {
@@ -24,7 +24,7 @@ export function ExportButton({ result }: ExportButtonProps) {
   function handleExportJson() {
     const exportData = {
       meta: {
-        tool: "VulnRadar",
+        tool: APP_NAME,
         version: APP_VERSION,
         exportedAt: new Date().toISOString(),
       },
@@ -50,7 +50,7 @@ export function ExportButton({ result }: ExportButtonProps) {
 
     const json = JSON.stringify(exportData, null, 2)
     const blob = new Blob([json], { type: "application/json" })
-    downloadBlob(blob, `vulnradar-${hostname}-${date}.json`)
+    downloadBlob(blob, `${APP_SLUG}-${hostname}-${date}.json`)
     setExportedJson(true)
     setTimeout(() => setExportedJson(false), 2000)
   }
@@ -58,7 +58,7 @@ export function ExportButton({ result }: ExportButtonProps) {
   function handleExportPdf() {
     const pdfBytes = generatePdfReport(result)
     const blob = new Blob([pdfBytes], { type: "application/pdf" })
-    downloadBlob(blob, `vulnradar-${hostname}-${date}.pdf`)
+    downloadBlob(blob, `${APP_SLUG}-${hostname}-${date}.pdf`)
     setExportedPdf(true)
     setTimeout(() => setExportedPdf(false), 2000)
   }

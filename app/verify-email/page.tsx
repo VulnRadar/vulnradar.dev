@@ -7,6 +7,7 @@ import Image from "next/image"
 import { Loader2, CheckCircle2, XCircle, Mail } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { APP_NAME } from "@/lib/constants"
 
 export default function VerifyEmailPage() {
   const router = useRouter()
@@ -109,7 +110,7 @@ export default function VerifyEmailPage() {
           <div className="flex justify-center mb-2">
             <Image
               src="/favicon.svg"
-              alt="VulnRadar"
+              alt={APP_NAME}
               width={48}
               height={48}
               className="rounded-lg"

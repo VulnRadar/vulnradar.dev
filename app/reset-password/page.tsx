@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Lock, CheckCircle2, AlertTriangle, Eye, EyeOff } from "lucide-react"
+import { APP_NAME } from "@/lib/constants"
 
 function ResetForm() {
   const searchParams = useSearchParams()
@@ -151,12 +152,12 @@ export default function ResetPasswordPage() {
         <div className="flex items-center justify-center gap-2 mb-8">
           <Image
             src="/favicon.svg"
-            alt="VulnRadar logo"
+            alt={`${APP_NAME} logo`}
             width={32}
             height={32}
             className="h-8 w-8"
           />
-          <span className="text-2xl font-bold text-foreground font-mono tracking-tight">VulnRadar</span>
+          <span className="text-2xl font-bold text-foreground font-mono tracking-tight">{APP_NAME}</span>
         </div>
         <Suspense fallback={null}>
           <ResetForm />

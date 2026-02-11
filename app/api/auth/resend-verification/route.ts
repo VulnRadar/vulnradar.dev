@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server"
 import pool from "@/lib/db"
-import { sendEmail, emailVerificationEmail, APP_URL } from "@/lib/email"
+import { sendEmail, emailVerificationEmail } from "@/lib/email"
 import { checkRateLimit, getClientIP, RATE_LIMITS } from "@/lib/rate-limit"
 import crypto from "crypto"
+import { APP_URL } from "@/lib/constants"
 
 export async function POST(request: NextRequest) {
   try {

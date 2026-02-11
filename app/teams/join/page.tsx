@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Users, Loader2, CheckCircle2, AlertTriangle } from "lucide-react"
 import Link from "next/link"
+import { APP_NAME } from "@/lib/constants"
 
 function JoinForm() {
   const searchParams = useSearchParams()
@@ -67,7 +68,7 @@ function JoinForm() {
         </div>
         <div className="text-center">
           <p className="text-sm font-medium text-foreground">Team Invitation</p>
-          <p className="text-xs text-muted-foreground mt-1">You have been invited to join a team on VulnRadar.</p>
+          <p className="text-xs text-muted-foreground mt-1">You have been invited to join a team on {APP_NAME}.</p>
         </div>
         {error && (
           <div className="flex items-center gap-2 text-sm text-destructive bg-destructive/10 border border-destructive/20 rounded-lg px-3 py-2 w-full max-w-xs">
@@ -92,12 +93,12 @@ export default function JoinTeamPage() {
         <div className="flex items-center justify-center gap-2 mb-8">
           <Image
             src="/favicon.svg"
-            alt="VulnRadar logo"
+            alt={`${APP_NAME} logo`}
             width={32}
             height={32}
             className="h-8 w-8"
           />
-          <span className="text-2xl font-bold text-foreground font-mono tracking-tight">VulnRadar</span>
+          <span className="text-2xl font-bold text-foreground font-mono tracking-tight">{APP_NAME}</span>
         </div>
         <Suspense fallback={null}>
           <JoinForm />
