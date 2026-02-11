@@ -81,7 +81,9 @@ const PUBLIC_PATHS = [
 ]
 
 export function middleware(request: NextRequest) {
-  const { pathname } = request.nextUrl
+  // Normalize pathname: remove trailing slash except for root '/'
+  const { pathname: rawPathname } = request.nextUrl
+  const pathname = rawPathname.endsWith("/") && rawPathname !== "/" ? rawPathname.slice(0, -1) : rawPathname
   const sessionCookie = request.cookies.get("vulnradar_session")
 
   // Check if path is public (exact match for "/" and "/landing", startsWith for others)
