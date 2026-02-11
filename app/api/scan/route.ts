@@ -5,6 +5,7 @@ import { validateApiKey, checkRateLimit, recordUsage } from "@/lib/api-keys"
 import { checkRateLimit as checkGlobalRL, RATE_LIMITS } from "@/lib/rate-limit"
 import pool from "@/lib/db"
 import type { ScanResult, Severity, Vulnerability } from "@/lib/scanner/types"
+import { APP_NAME, BEARER_PREFIX, SEVERITY_LEVELS } from "@/lib/constants"
 
 const SEVERITY_ORDER: Record<Severity, number> = {
   critical: 0,
@@ -31,7 +32,7 @@ export async function POST(request: NextRequest) {
     let isApiKeyAuth = false
     let authedUserId: number | null = null
 
-    if (authHeader?.startsWith("Bearer ")) {
+    if (authHeader?.startsWith(BEARER_PREFIX)) {
       const token = authHeader.slice(7)
       const keyData = await validateApiKey(token)
 
@@ -118,7 +119,7 @@ export async function POST(request: NextRequest) {
       response = await fetch(url, {
         method: "GET",
         headers: {
-          "User-Agent": "VulnRadar/1.0 (Security Scanner)",
+          "User-Agent": `${APP_NAME}/1.0 (Security Scanner)`,
         },
         redirect: "follow",
         signal: AbortSignal.timeout(15000),
@@ -158,11 +159,11 @@ export async function POST(request: NextRequest) {
     const duration = Date.now() - startTime
 
     const summary = {
-      critical: findings.filter((f) => f.severity === "critical").length,
-      high: findings.filter((f) => f.severity === "high").length,
-      medium: findings.filter((f) => f.severity === "medium").length,
-      low: findings.filter((f) => f.severity === "low").length,
-      info: findings.filter((f) => f.severity === "info").length,
+      critical: findings.filter((f) => f.severity === SEVERITY_LEVELS.CRITICAL).length,
+      high: findings.filter((f) => f.severity === SEVERITY_LEVELS.HIGH).length,
+      medium: findings.filter((f) => f.severity === SEVERITY_LEVELS.MEDIUM).length,
+      low: findings.filter((f) => f.severity === SEVERITY_LEVELS.LOW).length,
+      info: findings.filter((f) => f.severity === SEVERITY_LEVELS.INFO).length,
       total: findings.length,
     }
 
@@ -203,7 +204,7 @@ export async function POST(request: NextRequest) {
               const severityColor = summary.critical > 0 ? 0xef4444 : summary.high > 0 ? 0xf97316 : summary.medium > 0 ? 0xeab308 : 0x22c55e
               body = JSON.stringify({
                 embeds: [{
-                  title: "VulnRadar Scan Complete",
+                  title: `${APP_NAME} Scan Complete`,
                   description: `Scan finished for **${url}**`,
                   color: severityColor,
                   fields: [
@@ -215,7 +216,7 @@ export async function POST(request: NextRequest) {
                     { name: "Total Issues", value: String(summary.total), inline: true },
                     { name: "Duration", value: `${(duration / 1000).toFixed(1)}s`, inline: true },
                   ],
-                  footer: { text: "VulnRadar Security Scanner" },
+                  footer: { text: `${APP_NAME} Security Scanner` },
                   timestamp: result.scannedAt,
                 }],
               })
@@ -223,7 +224,7 @@ export async function POST(request: NextRequest) {
               // Slack Block Kit format
               body = JSON.stringify({
                 blocks: [
-                  { type: "header", text: { type: "plain_text", text: "VulnRadar Scan Complete" } },
+                  { type: "header", text: { type: "plain_text", text: `${APP_NAME} Scan Complete` } },
                   { type: "section", text: { type: "mrkdwn", text: `*URL:* ${url}` } },
                   { type: "section", fields: [
                     { type: "mrkdwn", text: `*Critical:* ${summary.critical}` },
@@ -243,7 +244,7 @@ export async function POST(request: NextRequest) {
 
             fetch(webhookUrl, {
               method: "POST",
-              headers: { "Content-Type": "application/json", "User-Agent": "VulnRadar-Webhook/1.0" },
+              headers: { "Content-Type": "application/json", "User-Agent": `${APP_NAME}-Webhook/1.0` },
               body,
               signal: AbortSignal.timeout(10000),
             }).catch(() => {})

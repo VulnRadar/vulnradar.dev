@@ -1,8 +1,11 @@
 import { NextRequest, NextResponse } from "next/server"
 import crypto from "crypto"
 import { getSession, verifyPassword } from "@/lib/auth"
-import { sendEmail, backupCodesRegeneratedEmail } from "@/lib/email"
+import { backupCodesRegeneratedEmail } from "@/lib/email"
+import { sendNotificationEmail } from "@/lib/notifications"
 import pool from "@/lib/db"
+import { ERROR_MESSAGES } from "@/lib/constants"
+import { getClientIp, getUserAgent } from "@/lib/request-utils"
 
 function generateBackupCodes(count = 8): string[] {
   const codes: string[] = []
@@ -16,7 +19,7 @@ function generateBackupCodes(count = 8): string[] {
 // GET: Get remaining backup code count
 export async function GET() {
   const session = await getSession()
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  if (!session) return NextResponse.json({ error: ERROR_MESSAGES.UNAUTHORIZED }, { status: 401 })
 
   const result = await pool.query("SELECT backup_codes, totp_enabled FROM users WHERE id = $1", [session.userId])
   const user = result.rows[0]
@@ -31,7 +34,7 @@ export async function GET() {
 // POST: Regenerate backup codes (requires password)
 export async function POST(request: NextRequest) {
   const session = await getSession()
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  if (!session) return NextResponse.json({ error: ERROR_MESSAGES.UNAUTHORIZED }, { status: 401 })
 
   const { password } = await request.json()
   if (!password) {
@@ -52,11 +55,16 @@ export async function POST(request: NextRequest) {
   await pool.query("UPDATE users SET backup_codes = $1 WHERE id = $2", [JSON.stringify(backupCodes), session.userId])
 
   // Send security notification email (don't await)
-  const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "Unknown"
-  const userAgent = request.headers.get("user-agent") || "Unknown"
+  const ip = await getClientIp() || "Unknown"
+  const userAgent = await getUserAgent() || "Unknown"
 
   const emailContent = backupCodesRegeneratedEmail({ ipAddress: ip, userAgent })
-  sendEmail({ to: session.email, ...emailContent }).catch(console.error)
+  sendNotificationEmail({
+    userId: session.userId,
+    userEmail: session.email,
+    type: "security",
+    emailContent,
+  }).catch((err) => console.error("Failed to send backup codes regenerated notification:", err))
 
   return NextResponse.json({ backupCodes })
 }

@@ -3,13 +3,14 @@ import { getSession } from "@/lib/auth"
 import pool from "@/lib/db"
 import { sendNotificationEmail } from "@/lib/notifications"
 import { dataRequestCreatedEmail } from "@/lib/email"
+import { ERROR_MESSAGES } from "@/lib/constants"
 
 const COOLDOWN_HOURS = 30
 
 export async function GET() {
   const session = await getSession()
   if (!session) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    return NextResponse.json({ error: ERROR_MESSAGES.UNAUTHORIZED }, { status: 401 })
   }
 
   // Get most recent data request
@@ -48,7 +49,7 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   const session = await getSession()
   if (!session) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    return NextResponse.json({ error: ERROR_MESSAGES.UNAUTHORIZED }, { status: 401 })
   }
 
   // Check cooldown

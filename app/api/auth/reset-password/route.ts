@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import pool from "@/lib/db"
 import { hashPassword } from "@/lib/auth"
-import { sendEmail, passwordChangedEmail } from "@/lib/email"
+import { passwordChangedEmail } from "@/lib/email"
 import { getClientIP } from "@/lib/rate-limit"
 
 export async function POST(request: NextRequest) {
@@ -65,12 +65,14 @@ export async function POST(request: NextRequest) {
       const emailTo = resetToken.email
 
       setImmediate(() => {
-        sendEmail({
-          to: emailTo,
-          subject: emailContent.subject,
-          text: emailContent.text,
-          html: emailContent.html,
-        }).catch((err) => {
+        // Use sendNotificationEmail so user prefs are respected
+        const { sendNotificationEmail } = require("@/lib/notifications")
+        sendNotificationEmail({
+          userId: resetToken.user_id,
+          userEmail: emailTo,
+          type: "security",
+          emailContent,
+        }).catch((err: any) => {
           console.error("Password change notification email failed:", err)
         })
       })

@@ -4,7 +4,7 @@ import pool from "@/lib/db"
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 import { ApiResponse, Validate, parseBody, withErrorHandling } from "@/lib/api-utils"
 import { getClientIp, getUserAgent } from "@/lib/request-utils"
-import { AUTH_2FA_PENDING_COOKIE, AUTH_2FA_PENDING_MAX_AGE } from "@/lib/constants"
+import { AUTH_2FA_PENDING_COOKIE, AUTH_2FA_PENDING_MAX_AGE, ERROR_MESSAGES } from "@/lib/constants"
 
 export const POST = withErrorHandling(async (request: Request) => {
   // Parse body
@@ -33,12 +33,12 @@ export const POST = withErrorHandling(async (request: Request) => {
 
   const user = await getUserByEmail(email)
   if (!user) {
-    return ApiResponse.unauthorized("Invalid email or password")
+    return ApiResponse.unauthorized(ERROR_MESSAGES.INVALID_CREDENTIALS)
   }
 
   const valid = verifyPassword(password, user.password_hash)
   if (!valid) {
-    return ApiResponse.unauthorized("Invalid email or password")
+    return ApiResponse.unauthorized(ERROR_MESSAGES.INVALID_CREDENTIALS)
   }
 
   // Check if account is disabled or email not verified

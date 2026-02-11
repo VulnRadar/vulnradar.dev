@@ -3,6 +3,7 @@ import { getSession } from "@/lib/auth"
 import pool from "@/lib/db"
 import { sendNotificationEmail } from "@/lib/notifications"
 import { webhookCreatedEmail, webhookDeletedEmail } from "@/lib/email"
+import { ERROR_MESSAGES } from "@/lib/constants"
 
 function detectWebhookType(url: string): string {
   if (/discord\.com\/api\/webhooks/i.test(url) || /discordapp\.com\/api\/webhooks/i.test(url)) return "discord"
@@ -12,7 +13,7 @@ function detectWebhookType(url: string): string {
 
 export async function GET() {
   const session = await getSession()
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  if (!session) return NextResponse.json({ error: ERROR_MESSAGES.UNAUTHORIZED }, { status: 401 })
 
   const result = await pool.query(
     "SELECT id, url, name, type, active, created_at FROM webhooks WHERE user_id = $1 ORDER BY created_at DESC",
@@ -23,7 +24,7 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   const session = await getSession()
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  if (!session) return NextResponse.json({ error: ERROR_MESSAGES.UNAUTHORIZED }, { status: 401 })
 
   const { url, name, type: userType } = await request.json()
   if (!url || typeof url !== "string") {
@@ -66,7 +67,7 @@ export async function POST(request: NextRequest) {
 
 export async function DELETE(request: NextRequest) {
   const session = await getSession()
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  if (!session) return NextResponse.json({ error: ERROR_MESSAGES.UNAUTHORIZED }, { status: 401 })
 
   const { id } = await request.json()
 

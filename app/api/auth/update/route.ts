@@ -1,12 +1,14 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getSession, hashPassword, verifyPassword } from "@/lib/auth"
-import { sendEmail, profileNameChangedEmail, profileEmailChangedEmail, profilePasswordChangedEmail } from "@/lib/email"
+import { profileNameChangedEmail, profileEmailChangedEmail, profilePasswordChangedEmail } from "@/lib/email"
+import { sendNotificationEmail } from "@/lib/notifications"
 import pool from "@/lib/db"
+import { ERROR_MESSAGES } from "@/lib/constants"
 
 export async function PATCH(request: NextRequest) {
   const session = await getSession()
   if (!session) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    return NextResponse.json({ error: ERROR_MESSAGES.UNAUTHORIZED }, { status: 401 })
   }
 
   try {
@@ -35,9 +37,14 @@ export async function PATCH(request: NextRequest) {
       if (trimmed !== currentName) {
         await pool.query("UPDATE users SET name = $1 WHERE id = $2", [trimmed, session.userId])
 
-        // Send security email (don't await to avoid blocking)
+        // Send security email via notifications helper so user preferences are respected
         const emailContent = profileNameChangedEmail(currentName || "Not set", trimmed, { ipAddress: ip, userAgent })
-        sendEmail({ to: currentEmail, ...emailContent }).catch(console.error)
+        sendNotificationEmail({
+          userId: session.userId,
+          userEmail: currentEmail,
+          type: "security",
+          emailContent,
+        }).catch((err) => console.error("Failed to send profile name change notification:", err))
       }
     }
 
@@ -60,10 +67,20 @@ export async function PATCH(request: NextRequest) {
 
         await pool.query("UPDATE users SET email = $1 WHERE id = $2", [trimmedEmail, session.userId])
 
-        // Send security email to BOTH old and new email addresses (don't await)
+        // Send security email to BOTH old and new email addresses via notifications helper
         const emailContent = profileEmailChangedEmail(currentEmail, trimmedEmail, { ipAddress: ip, userAgent })
-        sendEmail({ to: currentEmail, ...emailContent }).catch(console.error)
-        sendEmail({ to: trimmedEmail, ...emailContent }).catch(console.error)
+        sendNotificationEmail({
+          userId: session.userId,
+          userEmail: currentEmail,
+          type: "security",
+          emailContent,
+        }).catch((err) => console.error("Failed to send profile email change (old) notification:", err))
+        sendNotificationEmail({
+          userId: session.userId,
+          userEmail: trimmedEmail,
+          type: "security",
+          emailContent,
+        }).catch((err) => console.error("Failed to send profile email change (new) notification:", err))
       }
     }
 
@@ -100,9 +117,14 @@ export async function PATCH(request: NextRequest) {
       const newHash = hashPassword(newPassword)
       await pool.query("UPDATE users SET password_hash = $1 WHERE id = $2", [newHash, session.userId])
 
-      // Send security email (don't await)
+      // Send security email via notifications helper (respects user prefs)
       const emailContent = profilePasswordChangedEmail({ ipAddress: ip, userAgent })
-      sendEmail({ to: currentEmail, ...emailContent }).catch(console.error)
+      sendNotificationEmail({
+        userId: session.userId,
+        userEmail: currentEmail,
+        type: "security",
+        emailContent,
+      }).catch((err) => console.error("Failed to send password change notification:", err))
     }
 
     // Fetch updated user info

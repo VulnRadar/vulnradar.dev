@@ -1,16 +1,17 @@
-import { NextRequest, NextResponse } from "next/server"
+import { NextResponse } from "next/server"
 import { getSession } from "@/lib/auth"
 import { revokeApiKey, getUserApiKeys } from "@/lib/api-keys"
 import { sendNotificationEmail } from "@/lib/notifications"
 import { apiKeyDeletedEmail } from "@/lib/email"
+import { ERROR_MESSAGES } from "@/lib/constants"
+import { getClientIp, getUserAgent } from "@/lib/request-utils";
 
 export async function POST(
-  request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
   const session = await getSession()
   if (!session) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    return NextResponse.json({ error: ERROR_MESSAGES.UNAUTHORIZED }, { status: 401 })
   }
 
   const { id } = await params
@@ -30,8 +31,8 @@ export async function POST(
 
   // Send notification email
   if (keyToRevoke) {
-    const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "Unknown"
-    const userAgent = request.headers.get("user-agent") || "Unknown"
+    const ip = await getClientIp() || "Unknown"
+    const userAgent = await getUserAgent() || "Unknown"
     const emailContent = apiKeyDeletedEmail(keyToRevoke.name, { ipAddress: ip, userAgent })
 
     sendNotificationEmail({

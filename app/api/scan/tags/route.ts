@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getSession } from "@/lib/auth"
 import pool from "@/lib/db"
+import { ERROR_MESSAGES } from "@/lib/constants"
 
 // Get all tags for the user
 export async function GET() {
   const session = await getSession()
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  if (!session) return NextResponse.json({ error: ERROR_MESSAGES.UNAUTHORIZED }, { status: 401 })
 
   const result = await pool.query(
     "SELECT DISTINCT tag FROM scan_tags WHERE user_id = $1 ORDER BY tag",
@@ -17,7 +18,7 @@ export async function GET() {
 // Add/remove tag from a scan
 export async function POST(request: NextRequest) {
   const session = await getSession()
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  if (!session) return NextResponse.json({ error: ERROR_MESSAGES.UNAUTHORIZED }, { status: 401 })
 
   const { scanId, tag, action } = await request.json()
 

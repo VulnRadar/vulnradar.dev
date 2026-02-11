@@ -66,9 +66,12 @@ interface SendNotificationEmailParams {
 export async function sendNotificationEmail({ userId, userEmail, type, emailContent }: SendNotificationEmailParams): Promise<void> {
   const shouldSend = await shouldSendNotification(userId, type)
 
-  if (!shouldSend) {
-    console.log(`Notification email skipped for user ${userId} (type: ${type}) - disabled in preferences`)
-    return
+  // Debug log to help diagnose unexpected sends
+  try {
+    const prefs = await getNotificationPreferences(userId)
+    console.log(`[Notifications] user=${userId} type=${type} prefs=${JSON.stringify(prefs)} shouldSend=${shouldSend}`)
+  } catch (e) {
+    console.log(`[Notifications] user=${userId} type=${type} failed to read prefs:`, e)
   }
 
   await sendEmail({
@@ -78,4 +81,3 @@ export async function sendNotificationEmail({ userId, userEmail, type, emailCont
     html: emailContent.html,
   })
 }
-

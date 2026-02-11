@@ -75,7 +75,7 @@ export async function requireAuth() {
   if (userCheck.rows[0]?.disabled_at) {
     return {
       authorized: false,
-      error: ApiResponse.forbidden("Account suspended"),
+      error: ApiResponse.forbidden(ERROR_MESSAGES.ACCOUNT_DISABLED),
       session: null,
     }
   }

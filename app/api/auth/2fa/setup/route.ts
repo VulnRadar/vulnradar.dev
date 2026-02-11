@@ -2,8 +2,10 @@ import { NextRequest, NextResponse } from "next/server"
 import crypto from "crypto"
 import { getSession } from "@/lib/auth"
 import { generateSecret, verifyTOTP, generateOtpAuthUri } from "@/lib/totp"
-import { sendEmail, twoFactorEnabledEmail } from "@/lib/email"
+import { twoFactorEnabledEmail } from "@/lib/email"
+import { sendNotificationEmail } from "@/lib/notifications"
 import pool from "@/lib/db"
+import { ERROR_MESSAGES } from "@/lib/constants"
 
 function generateBackupCodes(count = 8): string[] {
   const codes: string[] = []
@@ -17,7 +19,7 @@ function generateBackupCodes(count = 8): string[] {
 // GET: Generate a new secret and return the URI for QR code
 export async function GET() {
   const session = await getSession()
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  if (!session) return NextResponse.json({ error: ERROR_MESSAGES.UNAUTHORIZED }, { status: 401 })
 
   const secret = generateSecret()
   const uri = generateOtpAuthUri(secret, session.email)
@@ -31,7 +33,7 @@ export async function GET() {
 // POST: Verify the code and enable 2FA
 export async function POST(request: NextRequest) {
   const session = await getSession()
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  if (!session) return NextResponse.json({ error: ERROR_MESSAGES.UNAUTHORIZED }, { status: 401 })
 
   const { code } = await request.json()
   if (!code || typeof code !== "string" || code.length !== 6) {
@@ -62,7 +64,12 @@ export async function POST(request: NextRequest) {
   const userAgent = request.headers.get("user-agent") || "Unknown"
 
   const emailContent = twoFactorEnabledEmail({ ipAddress: ip, userAgent })
-  sendEmail({ to: session.email, ...emailContent }).catch(console.error)
+  sendNotificationEmail({
+    userId: session.userId,
+    userEmail: session.email,
+    type: "security",
+    emailContent,
+  }).catch((err) => console.error("Failed to send 2FA enabled notification:", err))
 
   return NextResponse.json({ success: true, backupCodes })
 }

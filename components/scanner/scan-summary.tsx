@@ -11,6 +11,7 @@ import {
 } from "lucide-react"
 import type { ScanResult } from "@/lib/scanner/types"
 import { cn } from "@/lib/utils"
+import { SEVERITY_LEVELS } from "@/lib/constants"
 
 interface ScanSummaryProps {
   result: ScanResult
@@ -66,26 +67,26 @@ function getSafetyRating(summary: ScanResult["summary"], findings: ScanResult["f
   // ── Filter and Categorize Findings ──
 
   const criticalThreats = findings.filter((f) => {
-    if (f.severity !== "critical" && f.severity !== "high") return false
+    if (f.severity !== SEVERITY_LEVELS.CRITICAL && f.severity !== SEVERITY_LEVELS.HIGH) return false
     if (informationalOnly.some(pattern => f.title.includes(pattern))) return false
     return criticalExploitable.some(pattern => f.title.includes(pattern))
   })
 
   const activeVulns = findings.filter((f) => {
-    if (f.severity !== "high") return false
+    if (f.severity !== SEVERITY_LEVELS.HIGH) return false
     if (informationalOnly.some(pattern => f.title.includes(pattern))) return false
     return highActiveVulns.some(pattern => f.title.includes(pattern))
   })
 
   const configIssues = findings.filter((f) => {
-    if (f.severity !== "high" && f.severity !== "medium") return false
+    if (f.severity !== SEVERITY_LEVELS.HIGH && f.severity !== SEVERITY_LEVELS.MEDIUM) return false
     if (informationalOnly.some(pattern => f.title.includes(pattern))) return false
     return highConfigIssues.some(pattern => f.title.includes(pattern))
   })
 
   // Count medium issues that aren't already counted
   const otherMediumIssues = findings.filter((f) => {
-    if (f.severity !== "medium") return false
+    if (f.severity !== SEVERITY_LEVELS.MEDIUM) return false
     if (informationalOnly.some(pattern => f.title.includes(pattern))) return false
     if (highConfigIssues.some(pattern => f.title.includes(pattern))) return false
     return true
@@ -124,7 +125,7 @@ function getSafetyRating(summary: ScanResult["summary"], findings: ScanResult["f
 
 const severityCards = [
   {
-    key: "critical" as const,
+    key: SEVERITY_LEVELS.CRITICAL,
     label: "Critical",
     icon: ShieldX,
     color: "text-red-600 dark:text-red-400",
@@ -133,7 +134,7 @@ const severityCards = [
     accent: "bg-red-500",
   },
   {
-    key: "high" as const,
+    key: SEVERITY_LEVELS.HIGH,
     label: "High",
     icon: ShieldAlert,
     color: "text-orange-600 dark:text-orange-400",
@@ -142,7 +143,7 @@ const severityCards = [
     accent: "bg-orange-500",
   },
   {
-    key: "medium" as const,
+    key: SEVERITY_LEVELS.MEDIUM,
     label: "Medium",
     icon: TriangleAlert,
     color: "text-yellow-600 dark:text-yellow-400",
@@ -151,7 +152,7 @@ const severityCards = [
     accent: "bg-yellow-500",
   },
   {
-    key: "low" as const,
+    key: SEVERITY_LEVELS.LOW,
     label: "Low",
     icon: AlertTriangle,
     color: "text-blue-600 dark:text-blue-400",
@@ -160,7 +161,7 @@ const severityCards = [
     accent: "bg-blue-500",
   },
   {
-    key: "info" as const,
+    key: SEVERITY_LEVELS.INFO,
     label: "Info",
     icon: Info,
     color: "text-muted-foreground",

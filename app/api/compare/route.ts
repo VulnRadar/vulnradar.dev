@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getSession } from "@/lib/auth"
 import pool from "@/lib/db"
+import { ERROR_MESSAGES } from "@/lib/constants"
 
 export async function GET(request: NextRequest) {
   const session = await getSession()
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  if (!session) return NextResponse.json({ error: ERROR_MESSAGES.UNAUTHORIZED }, { status: 401 })
 
   const scanAId = request.nextUrl.searchParams.get("a")
   const scanBId = request.nextUrl.searchParams.get("b")

@@ -668,11 +668,11 @@ export default function LandingPage() {
             <p className="text-sm text-muted-foreground mb-4">Or reach us directly at:</p>
             <div className="flex flex-col sm:flex-row items-center justify-center gap-4 sm:gap-6">
               <a
-                href="mailto:support@vulnradar.dev"
+                href={`mailto:${SUPPORT_EMAIL}`}
                 className="flex items-center gap-2 text-primary hover:underline text-sm sm:text-base"
               >
                 <Mail className="h-4 w-4" />
-                support@vulnradar.dev
+                {SUPPORT_EMAIL}
               </a>
               <a
                 href="https://github.com/RejectModders"

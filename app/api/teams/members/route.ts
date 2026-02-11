@@ -2,11 +2,12 @@ import { NextResponse } from "next/server"
 import { getSession } from "@/lib/auth"
 import pool from "@/lib/db"
 import { sendEmail, teamInviteEmail } from "@/lib/email"
+import { ERROR_MESSAGES, TEAM_ROLES } from "@/lib/constants"
 
 // Get team members
 export async function GET(request: Request) {
   const session = await getSession()
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  if (!session) return NextResponse.json({ error: ERROR_MESSAGES.UNAUTHORIZED }, { status: 401 })
 
   const { searchParams } = new URL(request.url)
   const teamId = searchParams.get("teamId")
@@ -45,11 +46,11 @@ export async function GET(request: Request) {
 // Invite a member
 export async function POST(request: Request) {
   const session = await getSession()
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  if (!session) return NextResponse.json({ error: ERROR_MESSAGES.UNAUTHORIZED }, { status: 401 })
 
   const { teamId, email, role = "viewer" } = await request.json()
   if (!teamId || !email) return NextResponse.json({ error: "teamId and email required." }, { status: 400 })
-  if (!["admin", "viewer"].includes(role)) {
+  if (![TEAM_ROLES.ADMIN, TEAM_ROLES.VIEWER].includes(role)) {
     return NextResponse.json({ error: "Invalid role. Use 'admin' or 'viewer'." }, { status: 400 })
   }
 
@@ -117,7 +118,7 @@ export async function POST(request: Request) {
 // Remove a member
 export async function DELETE(request: Request) {
   const session = await getSession()
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  if (!session) return NextResponse.json({ error: ERROR_MESSAGES.UNAUTHORIZED }, { status: 401 })
 
   const { teamId, userId, inviteId } = await request.json()
 
@@ -145,7 +146,7 @@ export async function DELETE(request: Request) {
 
   if (userId === session.userId) {
     // Leaving the team (owners can't leave)
-    if (myRole.rows[0].role === "owner") {
+    if (myRole.rows[0].role === TEAM_ROLES.OWNER) {
       return NextResponse.json({ error: "Owners cannot leave. Transfer ownership or delete the team." }, { status: 400 })
     }
     await pool.query("DELETE FROM team_members WHERE team_id = $1 AND user_id = $2", [teamId, userId])
@@ -162,7 +163,7 @@ export async function DELETE(request: Request) {
     "SELECT role FROM team_members WHERE team_id = $1 AND user_id = $2",
     [teamId, userId],
   )
-  if (targetRole.rows.length > 0 && targetRole.rows[0].role === "owner") {
+  if (targetRole.rows.length > 0 && targetRole.rows[0].role === TEAM_ROLES.OWNER) {
     return NextResponse.json({ error: "Cannot remove the team owner." }, { status: 400 })
   }
 

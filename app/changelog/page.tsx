@@ -1,8 +1,21 @@
 import { Header } from "@/components/scanner/header"
 import { Footer } from "@/components/scanner/footer"
 import { Newspaper, Zap, Shield, Users, Tag, List, RefreshCw, Lock, Gauge, MessageSquare, Sparkles, Eye, ShieldCheck, Target, Brain, AlertTriangle, Search, Bell, Heart, Layout, Mail, CheckCircle, Trash2 } from "lucide-react"
+import { APP_NAME } from "@/lib/constants"
 
 const CHANGELOG = [
+  {
+    version: "1.3.1",
+    date: "February 11, 2026",
+    title: "Notification preference fixes & DB migration improvements",
+    highlights: true,
+    changes: [
+      { icon: Bell, label: "Respect user notification preferences", desc: "Security-related emails (profile name/email/password changes, 2FA enable/disable, backup codes, and password reset confirmations) now respect each user's 'Security Alerts' preference instead of always sending." },
+      { icon: Zap, label: "API key prefix length increased", desc: "Database migration increases api_keys.key_prefix to 64 characters to support longer prefixes and future-proof API keys." },
+      { icon: Search, label: "Notification debug logging", desc: "Added lightweight debug logs to help diagnose notification decisions and ensure emails are skipped when preferences are disabled." },
+      { icon: RefreshCw, label: "Migration SQL fixes", desc: "Fixed syntax issues in the DB migration SQL (removed stray diff markers) so automatic schema migrations run without syntax errors." },
+    ],
+  },
   {
     version: "1.3.0",
     date: "February 10, 2026",
@@ -80,7 +93,7 @@ const CHANGELOG = [
     highlights: false,
     changes: [
       { icon: Sparkles, label: "Consistent Social Cards", desc: "All pages now display unified OpenGraph metadata with consistent VulnRadar branding when shared on Discord, Twitter, or other social platforms." },
-      { icon: Eye, label: "Unified Page Titles", desc: "Browser tabs now show 'VulnRadar' consistently across all pages for cleaner branding and better recognition." },
+      { icon: Eye, label: "Unified Page Titles", desc: `Browser tabs now show ${APP_NAME} consistently across all pages for cleaner branding and better recognition.` },
       { icon: Shield, label: "Enhanced Security Headers", desc: "Improved Content Security Policy configuration to allow Cloudflare Turnstile while maintaining strong security protections." },
     ],
   },

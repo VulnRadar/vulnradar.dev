@@ -24,8 +24,8 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Header } from "@/components/scanner/header"
 import { Footer } from "@/components/scanner/footer"
+import { APP_URL } from "@/lib/constants";
 
-const BASE_URL = "https://vulnradar.dev"
 
 // ─── Code Block ────────────────────────────────────────────────
 function CodeBlock({
@@ -298,7 +298,7 @@ export default function DocsPage() {
             <CodeBlock
               language="bash"
               filename="Quick Start"
-              code={`curl -X POST ${BASE_URL}/api/scan \\
+              code={`curl -X POST ${APP_URL}/api/scan \\
   -H "Content-Type: application/json" \\
   -H "Authorization: Bearer YOUR_API_KEY" \\
   -d '{"url": "https://example.com"}'`}
@@ -398,7 +398,7 @@ Authorization: Bearer vr_live_a1b2c3d4e5f6...`}
                 POST
               </Badge>
               <code className="text-sm font-mono text-foreground font-semibold">
-                {BASE_URL}/api/scan
+                {APP_URL}/api/scan
               </code>
             </div>
 
@@ -667,7 +667,7 @@ Authorization: Bearer vr_live_a1b2c3d4e5f6...`}
 API_KEY="vr_live_your_api_key_here"
 TARGET_URL="https://example.com"
 
-response=$(curl -s -w "\\n%{http_code}" -X POST ${BASE_URL}/api/scan \\
+response=$(curl -s -w "\\n%{http_code}" -X POST ${APP_URL}/api/scan \\
   -H "Content-Type: application/json" \\
   -H "Authorization: Bearer $API_KEY" \\
   -d "{\\\"url\\\": \\\"$TARGET_URL\\\"}")
@@ -698,7 +698,7 @@ import json
 import sys
 
 API_KEY = "vr_live_your_api_key_here"
-BASE_URL = "${BASE_URL}"
+APP_URL = "${APP_URL}"
 
 
 def scan_url(target_url: str) -> dict | None:
@@ -711,7 +711,7 @@ def scan_url(target_url: str) -> dict | None:
         Scan results dict, or None if rate limited / error.
     """
     response = requests.post(
-        f"{BASE_URL}/api/scan",
+        f"{APP_URL}/api/scan",
         headers={
             "Content-Type": "application/json",
             "Authorization": f"Bearer {API_KEY}",
@@ -787,10 +787,10 @@ if __name__ == "__main__":
  */
 
 const API_KEY = "vr_live_your_api_key_here";
-const BASE_URL = "${BASE_URL}";
+const APP_URL = "${APP_URL}";
 
 async function scanUrl(targetUrl) {
-  const response = await fetch(\`\${BASE_URL}/api/scan\`, {
+  const response = await fetch(\`\${APP_URL}/api/scan\`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -867,7 +867,7 @@ import (
 
 const (
 	apiKey  = "vr_live_your_api_key_here"
-	baseURL = "${BASE_URL}"
+	baseURL = "${APP_URL}"
 )
 
 type ScanRequest struct {
@@ -965,10 +965,10 @@ require "json"
 require "uri"
 
 API_KEY  = "vr_live_your_api_key_here"
-BASE_URL = "${BASE_URL}"
+APP_URL = "${APP_URL}"
 
 def scan_url(target_url)
-  uri  = URI("#{BASE_URL}/api/scan")
+  uri  = URI("#{APP_URL}/api/scan")
   http = Net::HTTP.new(uri.host, uri.port)
   http.use_ssl = uri.scheme == "https"
 
@@ -1028,7 +1028,7 @@ puts "\\nReport saved to report.json"`}
  */
 
 $apiKey  = "vr_live_your_api_key_here";
-$baseUrl = "${BASE_URL}";
+$baseUrl = "${APP_URL}";
 
 function scanUrl(string $targetUrl): ?array {
     global $apiKey, $baseUrl;

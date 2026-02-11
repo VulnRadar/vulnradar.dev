@@ -5,16 +5,17 @@ import { ChevronRight, Filter, SortDesc } from "lucide-react"
 import { SeverityBadge } from "@/components/scanner/severity-badge"
 import type { Severity, Vulnerability } from "@/lib/scanner/types"
 import { cn } from "@/lib/utils"
+import { SEVERITY_LEVELS, SEVERITY_PRIORITY } from "@/lib/constants"
 
-const ALL_SEVERITIES: Severity[] = ["critical", "high", "medium", "low", "info"]
+const ALL_SEVERITIES: Severity[] = [
+  SEVERITY_LEVELS.CRITICAL,
+  SEVERITY_LEVELS.HIGH,
+  SEVERITY_LEVELS.MEDIUM,
+  SEVERITY_LEVELS.LOW,
+  SEVERITY_LEVELS.INFO
+] as Severity[]
 
-const SEVERITY_ORDER: Record<Severity, number> = {
-  critical: 0,
-  high: 1,
-  medium: 2,
-  low: 3,
-  info: 4,
-}
+const SEVERITY_ORDER: Record<Severity, number> = SEVERITY_PRIORITY
 
 interface ResultsListProps {
   findings: Vulnerability[]
