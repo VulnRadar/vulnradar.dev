@@ -1,12 +1,12 @@
-import { NextResponse } from "next/server"
 import { getSession } from "@/lib/auth"
 import pool from "@/lib/db"
+import { ApiResponse, withErrorHandling } from "@/lib/api-utils"
 import { ERROR_MESSAGES } from "@/lib/constants"
 
-export async function GET() {
+export const GET = withErrorHandling(async () => {
   const session = await getSession()
   if (!session) {
-    return NextResponse.json({ error: ERROR_MESSAGES.UNAUTHORIZED }, { status: 401 })
+    return ApiResponse.unauthorized(ERROR_MESSAGES.UNAUTHORIZED)
   }
 
   // Get 2FA and admin status
@@ -16,7 +16,7 @@ export async function GET() {
   )
   const user = result.rows[0]
 
-  return NextResponse.json({
+  return ApiResponse.success({
     userId: session.userId,
     email: session.email,
     name: session.name,
@@ -25,4 +25,4 @@ export async function GET() {
     isAdmin: user?.is_admin || false,
     onboardingCompleted: user?.onboarding_completed || false,
   })
-}
+})

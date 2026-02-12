@@ -28,17 +28,18 @@ import {
   Eye,
   ArrowLeft,
   Clock,
-  Globe,
-  FileText,
-  XCircle,
   AlertTriangle,
+  FileText,
+  History,
+  Shield,
+  FileDown,
+  XCircle,
   X,
   UserCog,
-  History,
-  Monitor,
-  ChevronDown,
+  Globe,
   ChevronUp,
-  Shield,
+  ChevronDown,
+  Monitor,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -241,7 +242,6 @@ export default function AdminPage() {
   const [expandedLog, setExpandedLog] = useState<number | null>(null)
   const [activeAdmins, setActiveAdmins] = useState<ActiveAdmin[]>([])
   const [adminsLoading, setAdminsLoading] = useState(false)
-
   const showToast = useCallback((message: string, type: "success" | "error") => {
     setToast({ message, type })
   }, [])
@@ -291,6 +291,18 @@ export default function AdminPage() {
   }
 
   useEffect(() => { fetchData() }, [])
+
+  useEffect(() => {
+    console.log("[v0] activeTab changed to:", activeTab)
+    if (activeTab === "audit") {
+      console.log("[v0] Calling fetchAudit")
+      fetchAudit()
+    }
+    if (activeTab === "admins") {
+      console.log("[v0] Calling fetchActiveAdmins")
+      fetchActiveAdmins()
+    }
+  }, [activeTab])
 
   async function handleAction(userId: number, action: string) {
     setActionLoading(`${userId}-${action}`)
@@ -370,7 +382,8 @@ export default function AdminPage() {
               <p className="text-xs text-muted-foreground">Manage users, monitor activity, and provide support.</p>
             </div>
           </div>
-          <Button variant="outline" size="sm" className="bg-transparent gap-1.5 self-start sm:self-auto" onClick={() => { fetchData(page); if (activeTab === "audit") fetchAudit(auditPage); if (activeTab === "admins") fetchActiveAdmins() }}>
+                <Button variant="outline" size="sm" className="bg-transparent gap-1.5 self-start sm:self-auto" onClick={() => { fetchData(page); if (activeTab === "audit") fetchAudit(auditPage); if (activeTab === "admins") fetchActiveAdmins(); }}>
+
             <RefreshCw className="h-3.5 w-3.5" />
             Refresh
           </Button>

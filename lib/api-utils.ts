@@ -134,6 +134,13 @@ export const Validate = {
     }
   },
 
+  pattern: (value: string, fieldName: string, regex: RegExp, errorMessage: string) => {
+    if (!regex.test(value)) {
+      return errorMessage
+    }
+    return null
+  },
+
   multiple: (errors: (string | null)[]): string | null => {
     const firstError = errors.find((e) => e !== null)
     return firstError || null

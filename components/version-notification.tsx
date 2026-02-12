@@ -1,17 +1,33 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { useRouter } from "next/navigation"
+import { useRouter, usePathname } from "next/navigation"
 import { X, Sparkles, ArrowRight } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { VERSION_COOKIE_NAME, VERSION_COOKIE_MAX_AGE, APP_VERSION, APP_NAME } from "@/lib/constants"
+import { PUBLIC_PATHS } from "@/lib/public-paths"
 
 export function VersionNotification() {
   const [show, setShow] = useState(false)
   const [isLoggedIn, setIsLoggedIn] = useState(false)
   const router = useRouter()
+  const pathname = usePathname()
+
+  // Check if current path is a public route
+  const isPublicRoute = PUBLIC_PATHS.some((p) => {
+    if (p === "/" || p === "/landing") {
+      return pathname === p
+    }
+    return pathname.startsWith(p)
+  })
 
   useEffect(() => {
+    // Don't check login or show notification on public routes
+    if (isPublicRoute) {
+      setIsLoggedIn(false)
+      return
+    }
+
     // Check if user is logged in by checking for session
     const checkLogin = async () => {
       try {
@@ -35,7 +51,7 @@ export function VersionNotification() {
     }
 
     checkLogin()
-  }, [])
+  }, [isPublicRoute])
 
   const handleDismiss = () => {
     // Set cookie with current version

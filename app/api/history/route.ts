@@ -1,12 +1,12 @@
-import { NextResponse } from "next/server"
 import { getSession } from "@/lib/auth"
 import pool from "@/lib/db"
-import { ERROR_MESSAGES } from "@/lib/constants"
+import { ApiResponse, withErrorHandling } from "@/lib/api-utils"
+import { ERROR_MESSAGES, SUCCESS_MESSAGES } from "@/lib/constants"
 
-export async function GET() {
+export const GET = withErrorHandling(async () => {
   const session = await getSession()
   if (!session) {
-    return NextResponse.json({ error: ERROR_MESSAGES.UNAUTHORIZED }, { status: 401 })
+    return ApiResponse.unauthorized(ERROR_MESSAGES.UNAUTHORIZED)
   }
 
   const result = await pool.query(
@@ -22,17 +22,17 @@ export async function GET() {
     [session.userId],
   )
 
-  return NextResponse.json({ scans: result.rows })
-}
+  return ApiResponse.success({ scans: result.rows })
+})
 
-export async function DELETE() {
+export const DELETE = withErrorHandling(async () => {
   const session = await getSession()
   if (!session) {
-    return NextResponse.json({ error: ERROR_MESSAGES.UNAUTHORIZED }, { status: 401 })
+    return ApiResponse.unauthorized(ERROR_MESSAGES.UNAUTHORIZED)
   }
 
   await pool.query("DELETE FROM scan_tags WHERE user_id = $1", [session.userId])
   await pool.query("DELETE FROM scan_history WHERE user_id = $1", [session.userId])
 
-  return NextResponse.json({ success: true })
-}
+  return ApiResponse.success({ message: SUCCESS_MESSAGES.DELETED })
+})

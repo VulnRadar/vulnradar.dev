@@ -30,6 +30,7 @@ export default function LoginPage() {
   const [verifying2FA, setVerifying2FA] = useState(false)
   const [useBackupCode, setUseBackupCode] = useState(false)
   const [backupCodeInput, setBackupCodeInput] = useState("")
+  const [rememberDevice, setRememberDevice] = useState(false)
 
   async function handleResendVerification() {
     setResendingVerification(true)
@@ -102,8 +103,8 @@ export default function LoginPage() {
 
     try {
       const body = useBackupCode
-        ? { userId: pendingUserId, backupCode: backupCodeInput }
-        : { userId: pendingUserId, code: totpCode }
+        ? { userId: pendingUserId, backupCode: backupCodeInput, rememberDevice }
+        : { userId: pendingUserId, code: totpCode, rememberDevice }
       const res = await fetch("/api/auth/2fa/verify", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -207,6 +208,19 @@ export default function LoginPage() {
               </div>
             )}
 
+            <div className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                id="remember-device"
+                checked={rememberDevice}
+                onChange={(e) => setRememberDevice(e.target.checked)}
+                className="h-4 w-4 rounded border-border bg-card cursor-pointer"
+              />
+              <label htmlFor="remember-device" className="text-sm text-muted-foreground cursor-pointer">
+                Trust this device for 30 days
+              </label>
+            </div>
+
             <Button
               type="submit"
               disabled={verifying2FA || (useBackupCode ? backupCodeInput.length < 8 : totpCode.length !== 6)}
@@ -229,6 +243,7 @@ export default function LoginPage() {
                   setUseBackupCode(!useBackupCode)
                   setBackupCodeInput("")
                   setTotpCode("")
+                  setRememberDevice(false)
                   setError("")
                 }}
                 className="text-sm text-muted-foreground hover:text-foreground transition-colors"

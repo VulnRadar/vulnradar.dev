@@ -80,7 +80,7 @@ export const ERROR_MESSAGES = {
   // Validation
   REQUIRED_FIELD: (field: string) => `${field} is required`,
   INVALID_EMAIL: "Invalid email address",
-  WEAK_PASSWORD: "Password must be at least 12 characters",
+  WEAK_PASSWORD: "Password must be at least 8 characters",
   PASSWORDS_NOT_MATCH: "Passwords do not match",
 
   // Rate limiting
@@ -122,7 +122,7 @@ export const PATTERNS = {
   EMAIL: /^[^\s@]+@[^\s@]+\.[^\s@]+$/,
   URL: /^https?:\/\/.+/i,
   DOMAIN: /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)*[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/i,
-  PASSWORD: /^.{12,}$/, // At least 12 characters
+  PASSWORD: /^.{8,}$/, // At least 8 characters
   BACKUP_CODE: /^[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}$/,
   TOTP_CODE: /^\d{6}$/,
 }

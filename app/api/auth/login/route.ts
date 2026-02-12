@@ -4,7 +4,7 @@ import pool from "@/lib/db"
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 import { ApiResponse, Validate, parseBody, withErrorHandling } from "@/lib/api-utils"
 import { getClientIp, getUserAgent } from "@/lib/request-utils"
-import { AUTH_2FA_PENDING_COOKIE, AUTH_2FA_PENDING_MAX_AGE, ERROR_MESSAGES } from "@/lib/constants"
+import { AUTH_2FA_PENDING_COOKIE, AUTH_2FA_PENDING_MAX_AGE, DEVICE_TRUST_COOKIE_NAME, ERROR_MESSAGES } from "@/lib/constants"
 
 export const POST = withErrorHandling(async (request: Request) => {
   // Parse body
@@ -53,18 +53,29 @@ export const POST = withErrorHandling(async (request: Request) => {
 
   // Check if email is verified
   if (!userInfo?.email_verified_at) {
-    const response = NextResponse.json(
-      { error: "Please verify your email before logging in.", unverified: true },
-      { status: 403 },
-    )
-    return response
+    return ApiResponse.forbidden("Please verify your email before logging in.", {
+      unverified: true,
+    })
   }
 
   // Check if 2FA is enabled
   const has2FA = userInfo?.totp_enabled === true
 
   if (has2FA) {
-    // Don't create session yet -- return pending state
+    // Check if device is trusted (skip 2FA for trusted devices)
+    const userAgent = await getUserAgent()
+    const deviceId = `${ip}-${userAgent}`.split("").reduce((a, b) => ((a << 5) - a) + b.charCodeAt(0), 0)
+    const deviceCookie = (request as any).cookies?.get?.(DEVICE_TRUST_COOKIE_NAME)?.value
+    
+    if (deviceCookie && deviceCookie === String(deviceId)) {
+      // Device is trusted - create session directly without 2FA
+      await createSession(user.id, ip, userAgent)
+      return ApiResponse.success({
+        user: { id: user.id, email: user.email, name: user.name },
+      })
+    }
+
+    // Device is not trusted - require 2FA
     const response = NextResponse.json({
       requires2FA: true,
       userId: user.id,

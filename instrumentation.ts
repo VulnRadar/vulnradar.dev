@@ -1,6 +1,19 @@
+/**
+ * Database initialization and schema management
+ * Runs on server startup to ensure all required tables exist
+ */
 export async function register() {
   if (process.env.NEXT_RUNTIME === "nodejs") {
     const { default: pool } = await import("./lib/db")
+    const { APP_NAME } = await import("./lib/constants")
+
+    // Check if DATABASE_URL is set
+    if (!process.env.DATABASE_URL) {
+      console.error(
+        `[${APP_NAME}] DATABASE_URL is not configured. Database initialization skipped. Please set DATABASE_URL in your environment variables.`,
+      )
+      return
+    }
 
     try {
       await pool.query(`
@@ -369,26 +382,27 @@ export async function register() {
         END $$;
       `)
 
-      console.log("[VulnRadar] Database schema verified / migrated successfully.")
+      console.log(`[${APP_NAME}] Database schema verified / migrated successfully.`)
 
-      // Cleanup: expired sessions, old api_usage (> 90 days), old revoked keys (> 30 days), old data requests (> 60 days)
+      // Run initial cleanup on startup
       try {
-        const cleanupResult = await pool.query(`
-          DELETE FROM sessions WHERE expires_at < NOW();
-          DELETE FROM api_usage WHERE used_at < NOW() - INTERVAL '90 days';
-          DELETE FROM api_keys WHERE revoked_at IS NOT NULL AND revoked_at < NOW() - INTERVAL '30 days';
-          DELETE FROM data_requests WHERE requested_at < NOW() - INTERVAL '60 days';
-          DELETE FROM scan_history WHERE scanned_at < NOW() - INTERVAL '90 days';
-          DELETE FROM rate_limits WHERE window_start < NOW() - INTERVAL '1 day';
-          DELETE FROM password_reset_tokens WHERE expires_at < NOW();
-          DELETE FROM team_invites WHERE expires_at < NOW() AND accepted_at IS NULL;
-        `)
-        console.log("[VulnRadar] Cleanup completed successfully.")
+        const { performDatabaseCleanup, formatCleanupStats } = await import("./lib/cleanup")
+        const stats = await performDatabaseCleanup()
+        console.log(`[${APP_NAME}] Initial cleanup completed: ${formatCleanupStats(stats)}`)
       } catch (cleanupError) {
-        console.error("[VulnRadar] Cleanup failed (non-fatal):", cleanupError)
+        console.error(`[${APP_NAME}] Initial cleanup failed (non-fatal):`, cleanupError)
+      }
+
+      // Schedule periodic cleanup every 24 hours
+      try {
+        const { schedulePeriodicCleanup } = await import("./lib/cleanup")
+        schedulePeriodicCleanup(5000) // Start after 5 seconds to avoid startup congestion
+        console.log(`[${APP_NAME}] Scheduled periodic database cleanup (every 24 hours).`)
+      } catch (scheduleError) {
+        console.error(`[${APP_NAME}] Failed to schedule periodic cleanup:`, scheduleError)
       }
     } catch (error) {
-      console.error("[VulnRadar] Database migration failed:", error)
+      console.error(`[${APP_NAME}] Database migration failed:`, error)
     } finally {
       await pool.end()
     }

@@ -59,7 +59,7 @@ export function Header() {
         {/* Desktop nav */}
         <nav className="hidden md:flex items-center gap-1">
           {NAV_LINKS.map(({ href, label, icon: Icon }) => {
-            const active = pathname === href
+            const active = href === "/docs" ? pathname.startsWith("/docs") : pathname === href
             return (
               <button
                 key={href}
@@ -122,7 +122,7 @@ export function Header() {
         <div className="md:hidden border-t border-border bg-card px-4 pb-3 pt-2">
           <nav className="flex flex-col gap-1">
             {NAV_LINKS.map(({ href, label, icon: Icon }) => {
-              const active = pathname === href
+              const active = href === "/docs" ? pathname.startsWith("/docs") : pathname === href
               return (
                 <button
                   key={href}

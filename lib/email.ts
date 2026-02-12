@@ -675,4 +675,110 @@ export function dataRequestCreatedEmail(requestType: string, details: SecurityAl
   }
 }
 
+// Security notification emails
+export function newLoginEmail(location: string, ipAddress: string, details: SecurityAlertDetails) {
+  return {
+    subject: `New login to your ${APP_NAME} account`,
+    text: `Your account was just accessed from:\n\nLocation: ${location}\nIP Address: ${ipAddress}\nDevice: ${details.userAgent}\n\nIf this wasn't you, please secure your account immediately by changing your password.`,
+    html: `
+      <h1 style="margin: 0 0 8px 0; font-size: 20px; font-weight: 600; color: ${COLORS.TEXT_PRIMARY};">New Login Detected</h1>
+      <p style="margin: 0 0 24px 0; font-size: 14px; color: ${COLORS.TEXT_SECONDARY}; line-height: 1.6;">Your ${APP_NAME} account was just accessed. Here are the details:</p>
+      <div style="background-color: ${COLORS.BG_SECTION}; border-radius: 8px; padding: 16px; margin-bottom: 20px;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="font-size: 14px;">
+          <tr><td style="padding: 8px 0; color: ${COLORS.TEXT_MUTED}; width: 120px;">Location</td><td style="padding: 8px 0; color: ${COLORS.TEXT_PRIMARY};">${escapeHtml(location)}</td></tr>
+          <tr><td style="padding: 8px 0; color: ${COLORS.TEXT_MUTED}; border-top: 1px solid ${COLORS.BORDER};">IP Address</td><td style="padding: 8px 0; color: ${COLORS.TEXT_PRIMARY}; border-top: 1px solid ${COLORS.BORDER}; font-family: monospace;">${escapeHtml(ipAddress)}</td></tr>
+          <tr><td style="padding: 8px 0; color: ${COLORS.TEXT_MUTED}; border-top: 1px solid ${COLORS.BORDER};">Device</td><td style="padding: 8px 0; color: ${COLORS.TEXT_PRIMARY}; border-top: 1px solid ${COLORS.BORDER};">${escapeHtml(details.userAgent)}</td></tr>
+        </table>
+      </div>
+      <div style="background-color: ${COLORS.BG_INFO}; border-left: 3px solid ${COLORS.ACCENT_BLUE_LIGHT}; border-radius: 6px; padding: 14px 16px; margin-bottom: 20px;">
+        <p style="margin: 0 0 4px 0; font-size: 13px; color: ${COLORS.ACCENT_BLUE_PALE}; font-weight: 600;">Recognize this login?</p>
+        <p style="margin: 0; font-size: 13px; color: #cbd5e1; line-height: 1.6;">If this was you, you can safely ignore this email. ${APP_NAME} sends this notification for your security.</p>
+      </div>
+      <div style="background-color: ${COLORS.BG_DANGER}; border-left: 3px solid ${COLORS.ACCENT_RED}; border-radius: 6px; padding: 14px 16px; margin-bottom: 20px;">
+        <p style="margin: 0 0 4px 0; font-size: 13px; color: ${COLORS.ACCENT_RED_LIGHT}; font-weight: 600;">Don't recognize this?</p>
+        <p style="margin: 0; font-size: 13px; color: #fecaca; line-height: 1.6;">Change your password immediately. If you suspect unauthorized access, contact our support team right away.</p>
+      </div>
+    `,
+  }
+}
+
+export function failedLoginAttemptsEmail(attempts: number, ipAddress: string, details: SecurityAlertDetails) {
+  return {
+    subject: `Failed login attempts on your ${APP_NAME} account`,
+    text: `We detected ${attempts} failed login attempts on your account.\n\nIP Address: ${ipAddress}\nDevice: ${details.userAgent}\n\nYour account has been temporarily protected. If this wasn't you, change your password immediately.`,
+    html: `
+      <h1 style="margin: 0 0 8px 0; font-size: 20px; font-weight: 600; color: ${COLORS.TEXT_PRIMARY};">Failed Login Attempts</h1>
+      <p style="margin: 0 0 24px 0; font-size: 14px; color: ${COLORS.TEXT_SECONDARY}; line-height: 1.6;">We detected multiple failed login attempts on your account.</p>
+      <div style="background-color: ${COLORS.BG_DANGER}; border-radius: 8px; padding: 16px; margin-bottom: 20px;">
+        <div style="display: flex; align-items: center; justify-content: space-between;">
+          <div>
+            <p style="margin: 0 0 4px 0; font-size: 12px; color: ${COLORS.ACCENT_RED_LIGHT}; text-transform: uppercase; font-weight: 600;">Failed Attempts</p>
+            <p style="margin: 0; font-size: 28px; color: ${COLORS.ACCENT_RED_PALE}; font-weight: 700;">${attempts}x</p>
+          </div>
+          <div style="text-align: right;">
+            <p style="margin: 0 0 4px 0; font-size: 12px; color: ${COLORS.ACCENT_RED_LIGHT}; text-transform: uppercase; font-weight: 600;">Status</p>
+            <p style="margin: 0; font-size: 14px; color: ${COLORS.ACCENT_RED_PALE}; font-weight: 600;">Protected</p>
+          </div>
+        </div>
+      </div>
+      <div style="background-color: ${COLORS.BG_SECTION}; border-radius: 8px; padding: 16px; margin-bottom: 20px;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="font-size: 14px;">
+          <tr><td style="padding: 8px 0; color: ${COLORS.TEXT_MUTED}; width: 120px;">IP Address</td><td style="padding: 8px 0; color: ${COLORS.TEXT_PRIMARY}; font-family: monospace;">${escapeHtml(ipAddress)}</td></tr>
+          <tr><td style="padding: 8px 0; color: ${COLORS.TEXT_MUTED}; border-top: 1px solid ${COLORS.BORDER};">Device</td><td style="padding: 8px 0; color: ${COLORS.TEXT_PRIMARY}; border-top: 1px solid ${COLORS.BORDER};">${escapeHtml(details.userAgent)}</td></tr>
+        </table>
+      </div>
+      <div style="background-color: ${COLORS.BG_WARNING}; border-left: 3px solid ${COLORS.ACCENT_YELLOW}; border-radius: 6px; padding: 14px 16px; margin-bottom: 20px;">
+        <p style="margin: 0 0 4px 0; font-size: 13px; color: ${COLORS.ACCENT_YELLOW_LIGHT}; font-weight: 600;">What to do</p>
+        <p style="margin: 0 0 8px 0; font-size: 13px; color: #fef3c7; line-height: 1.6;">If this was you, no action is needed. If you don't recognize these attempts, change your password and enable two-factor authentication immediately.</p>
+      </div>
+    `,
+  }
+}
+
+export function rateLimitedEmail(ipAddress: string, details: SecurityAlertDetails) {
+  return {
+    subject: `API Rate Limit - ${APP_NAME}`,
+    text: `Your ${APP_NAME} API key has been temporarily rate limited due to excessive requests.\n\nIP Address: ${ipAddress}\n\nYour account will resume normal operation shortly. If you believe this is an error, contact support.`,
+    html: `
+      <h1 style="margin: 0 0 8px 0; font-size: 20px; font-weight: 600; color: ${COLORS.TEXT_PRIMARY};">API Rate Limited</h1>
+      <p style="margin: 0 0 24px 0; font-size: 14px; color: ${COLORS.TEXT_SECONDARY}; line-height: 1.6;">Your API key has been temporarily rate limited due to exceeding the request limit.</p>
+      <div style="background-color: ${COLORS.BG_WARNING}; border-radius: 8px; padding: 16px; margin-bottom: 20px;">
+        <p style="margin: 0 0 4px 0; font-size: 12px; color: ${COLORS.ACCENT_YELLOW_LIGHT}; text-transform: uppercase; font-weight: 600;">Status</p>
+        <p style="margin: 0; font-size: 15px; color: ${COLORS.ACCENT_YELLOW_PALE}; font-weight: 500;">Rate Limited</p>
+      </div>
+      <div style="background-color: ${COLORS.BG_SECTION}; border-radius: 8px; padding: 16px; margin-bottom: 20px;">
+        <p style="margin: 0 0 8px 0; font-size: 12px; color: ${COLORS.TEXT_MUTED}; text-transform: uppercase; font-weight: 600;">Details</p>
+        <p style="margin: 0 0 4px 0; font-size: 14px; color: ${COLORS.TEXT_PRIMARY};">IP Address: <span style="font-family: monospace;">${escapeHtml(ipAddress)}</span></p>
+        <p style="margin: 0; font-size: 14px; color: ${COLORS.TEXT_PRIMARY};">Limit: 50 requests per 24 hours</p>
+      </div>
+      <div style="background-color: ${COLORS.BG_INFO}; border-left: 3px solid ${COLORS.ACCENT_BLUE_LIGHT}; border-radius: 6px; padding: 14px 16px; margin-bottom: 20px;">
+        <p style="margin: 0 0 4px 0; font-size: 13px; color: ${COLORS.ACCENT_BLUE_PALE}; font-weight: 600;">What happens next</p>
+        <p style="margin: 0; font-size: 13px; color: #cbd5e1; line-height: 1.6;">Your rate limit will reset after 24 hours. Review your API usage in your dashboard to optimize your requests.</p>
+      </div>
+    `,
+  }
+}
+
+export function apiKeyRotationEmail(keyName: string, newKeyCreatedAt: string, details: SecurityAlertDetails) {
+  return {
+    subject: `API Key Rotated - ${APP_NAME}`,
+    text: `An API key has been rotated on your ${APP_NAME} account.\n\nKey: ${keyName}\nCreated: ${newKeyCreatedAt}\n\nIf you did not perform this action, secure your account immediately.\n\nIP Address: ${details.ipAddress}`,
+    html: `
+      <h1 style="margin: 0 0 8px 0; font-size: 20px; font-weight: 600; color: ${COLORS.TEXT_PRIMARY};">API Key Rotated</h1>
+      <p style="margin: 0 0 24px 0; font-size: 14px; color: ${COLORS.TEXT_SECONDARY}; line-height: 1.6;">A new API key has been created for your account.</p>
+      <div style="background-color: ${COLORS.BG_SECTION}; border-radius: 8px; padding: 16px; margin-bottom: 20px;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="font-size: 14px;">
+          <tr><td style="padding: 8px 0; color: ${COLORS.TEXT_MUTED}; width: 120px;">Key Name</td><td style="padding: 8px 0; color: ${COLORS.TEXT_PRIMARY};">${escapeHtml(keyName)}</td></tr>
+          <tr><td style="padding: 8px 0; color: ${COLORS.TEXT_MUTED}; border-top: 1px solid ${COLORS.BORDER};">Created</td><td style="padding: 8px 0; color: ${COLORS.TEXT_PRIMARY}; border-top: 1px solid ${COLORS.BORDER};">${escapeHtml(newKeyCreatedAt)}</td></tr>
+          <tr><td style="padding: 8px 0; color: ${COLORS.TEXT_MUTED}; border-top: 1px solid ${COLORS.BORDER};">IP Address</td><td style="padding: 8px 0; color: ${COLORS.TEXT_PRIMARY}; border-top: 1px solid ${COLORS.BORDER}; font-family: monospace;">${escapeHtml(details.ipAddress)}</td></tr>
+        </table>
+      </div>
+      <div style="background-color: ${COLORS.BG_INFO}; border-left: 3px solid ${COLORS.ACCENT_BLUE_LIGHT}; border-radius: 6px; padding: 14px 16px; margin-bottom: 20px;">
+        <p style="margin: 0 0 4px 0; font-size: 13px; color: ${COLORS.ACCENT_BLUE_PALE}; font-weight: 600;">Is this you?</p>
+        <p style="margin: 0; font-size: 13px; color: #cbd5e1; line-height: 1.6;">If you authorized this key rotation, no action is needed. If not, contact our support team immediately.</p>
+      </div>
+    `,
+  }
+}
+
 

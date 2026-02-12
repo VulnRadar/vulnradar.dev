@@ -1,8 +1,6 @@
 "use client"
 
-import React from "react"
-
-import { useState, useEffect, useCallback } from "react"
+import React, { useState, useEffect, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import { cn } from "@/lib/utils"
 import {
@@ -66,16 +64,10 @@ interface User {
 }
 
 interface DataRequestInfo {
-  hasRequest: boolean
-  canRequest: boolean
+  hasData: boolean
+  canDownloadNew: boolean
   cooldownEndsAt?: string
-  request?: {
-    id: number
-    status: string
-    requestedAt: string
-    completedAt: string | null
-    hasData: boolean
-  }
+  lastDownloadAt?: string
 }
 
 type Tab = "account" | "api-keys" | "webhooks" | "schedules" | "notifications" | "data"
@@ -93,10 +85,21 @@ interface ScheduleItem {
   id: number
   url: string
   frequency: string
-  active: boolean
-  last_run_at: string | null
-  next_run_at: string | null
   created_at: string
+  last_run: string | null
+  next_run: string | null
+}
+
+interface NotificationPrefs {
+  email_api_keys: boolean
+  email_webhooks: boolean
+  email_schedules: boolean
+  email_data_requests: boolean
+  email_security: boolean
+  email_failed_login: boolean
+  email_new_login: boolean
+  email_rate_limit: boolean
+  email_api_key_rotation: boolean
 }
 
 export default function ProfilePage() {
@@ -165,19 +168,16 @@ export default function ProfilePage() {
   const [addingSchedule, setAddingSchedule] = useState(false)
 
   // Notification preferences state
-  interface NotificationPrefs {
-    email_api_keys: boolean
-    email_webhooks: boolean
-    email_schedules: boolean
-    email_data_requests: boolean
-    email_security: boolean
-  }
   const [notifPrefs, setNotifPrefs] = useState<NotificationPrefs>({
     email_api_keys: true,
     email_webhooks: true,
     email_schedules: true,
     email_data_requests: true,
     email_security: true,
+    email_failed_login: true,
+    email_new_login: true,
+    email_rate_limit: true,
+    email_api_key_rotation: true,
   })
   const [savingNotifPrefs, setSavingNotifPrefs] = useState(false)
 
@@ -219,6 +219,10 @@ export default function ProfilePage() {
           email_schedules: notifData.email_schedules ?? true,
           email_data_requests: notifData.email_data_requests ?? true,
           email_security: notifData.email_security ?? true,
+          email_failed_login: notifData.email_failed_login ?? true,
+          email_new_login: notifData.email_new_login ?? true,
+          email_rate_limit: notifData.email_rate_limit ?? true,
+          email_api_key_rotation: notifData.email_api_key_rotation ?? true,
         })
       }
     } catch {
@@ -397,9 +401,10 @@ export default function ProfilePage() {
       const res = await fetch("/api/data-request", { method: "POST" })
       const data = await res.json()
       if (!res.ok) {
-        setError(data.error || "Failed to request data.")
+        setError(data.error || "Failed to export data.")
         return
       }
+      // Download the data
       const blob = new Blob([JSON.stringify(data.data, null, 2)], { type: "application/json" })
       const url = URL.createObjectURL(blob)
       const a = document.createElement("a")
@@ -410,9 +415,9 @@ export default function ProfilePage() {
       document.body.removeChild(a)
       URL.revokeObjectURL(url)
       await fetchData()
-      setSuccess("Data exported successfully.")
+      setSuccess("Data export downloaded successfully.")
     } catch {
-      setError("Failed to request data export.")
+      setError("Failed to export data.")
     } finally {
       setRequestingData(false)
     }
@@ -420,13 +425,17 @@ export default function ProfilePage() {
 
   async function handleDownloadPreviousData() {
     try {
-      const dlRes = await fetch("/api/data-request/download")
+      const dlRes = await fetch("/api/data-request")
       if (!dlRes.ok) {
-        setError("Failed to download previous data.")
+        setError("Failed to download data.")
         return
       }
-      const data = await dlRes.json()
-      const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" })
+      const dlData = await dlRes.json()
+      if (!dlData.data) {
+        setError("No previous export data available.")
+        return
+      }
+      const blob = new Blob([typeof dlData.data === "string" ? dlData.data : JSON.stringify(dlData.data, null, 2)], { type: "application/json" })
       const url = URL.createObjectURL(blob)
       const a = document.createElement("a")
       a.href = url
@@ -435,6 +444,7 @@ export default function ProfilePage() {
       a.click()
       document.body.removeChild(a)
       URL.revokeObjectURL(url)
+      setSuccess("Previous export downloaded successfully.")
     } catch {
       setError("Failed to download previous export.")
     }
@@ -478,6 +488,10 @@ export default function ProfilePage() {
         email_schedules: data.email_schedules,
         email_data_requests: data.email_data_requests,
         email_security: data.email_security,
+        email_failed_login: data.email_failed_login,
+        email_new_login: data.email_new_login,
+        email_rate_limit: data.email_rate_limit,
+        email_api_key_rotation: data.email_api_key_rotation,
       })
       setSuccess("Notification preferences saved.")
     } catch {
@@ -502,8 +516,10 @@ export default function ProfilePage() {
   function getTimeRemaining(endDate: string) {
     const diff = new Date(endDate).getTime() - Date.now()
     if (diff <= 0) return null
-    const hours = Math.floor(diff / (1000 * 60 * 60))
+    const days = Math.floor(diff / (1000 * 60 * 60 * 24))
+    const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60))
     const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60))
+    if (days > 0) return `${days}d ${hours}h ${minutes}m`
     if (hours > 0) return `${hours}h ${minutes}m`
     return `${minutes}m`
   }
@@ -522,13 +538,13 @@ export default function ProfilePage() {
   const activeKeys = keys.filter((k) => !k.revoked_at)
   const revokedKeys = keys.filter((k) => k.revoked_at)
 
-  const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
-    { id: "account", label: "Account", icon: <UserCog className="h-4 w-4" /> },
-    { id: "api-keys", label: "API Keys", icon: <Key className="h-4 w-4" /> },
-    { id: "webhooks", label: "Webhooks", icon: <Webhook className="h-4 w-4" /> },
-    { id: "schedules", label: "Schedules", icon: <CalendarClock className="h-4 w-4" /> },
-    { id: "notifications", label: "Notifications", icon: <Bell className="h-4 w-4" /> },
-    { id: "data", label: "Data & Privacy", icon: <Shield className="h-4 w-4" /> },
+  const TABS = [
+    { id: "account" as Tab, label: "Account", icon: <UserCog className="h-4 w-4" /> },
+    { id: "api-keys" as Tab, label: "API Keys", icon: <Key className="h-4 w-4" /> },
+    { id: "webhooks" as Tab, label: "Webhooks", icon: <Webhook className="h-4 w-4" /> },
+    { id: "schedules" as Tab, label: "Schedules", icon: <CalendarClock className="h-4 w-4" /> },
+    { id: "notifications" as Tab, label: "Notifications", icon: <Bell className="h-4 w-4" /> },
+    { id: "data" as Tab, label: "Data & Privacy", icon: <Shield className="h-4 w-4" /> },
   ]
 
   return (
@@ -562,8 +578,7 @@ export default function ProfilePage() {
               onClick={() => setActiveTab(tab.id)}
               className={
                 cn(
-                  // Responsive: column on xs, row on sm+
-                  "flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2 px-4 py-2.5 rounded-md text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60",
+                  "flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-md text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 whitespace-nowrap flex-shrink-0",
                   activeTab === tab.id
                     ? "bg-card text-foreground shadow-sm"
                     : "text-muted-foreground hover:text-foreground"
@@ -968,7 +983,6 @@ export default function ProfilePage() {
                             }
                           }}
                         >
-                          <Shield className="mr-2 h-4 w-4" />
                           Enable 2FA
                         </Button>
                       </div>
@@ -1399,11 +1413,11 @@ export default function ProfilePage() {
                             <Badge variant="secondary" className="text-[10px] px-1.5 py-0 uppercase font-semibold">
                               {sch.frequency}
                             </Badge>
-                            {sch.next_run_at && (
-                              <span>Next: {new Date(sch.next_run_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}</span>
+                            {sch.next_run && (
+                              <span>Next: {new Date(sch.next_run).toLocaleDateString("en-US", { month: "short", day: "numeric" })}</span>
                             )}
-                            {sch.last_run_at && (
-                              <span>Last: {new Date(sch.last_run_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}</span>
+                            {sch.last_run && (
+                              <span>Last: {new Date(sch.last_run).toLocaleDateString("en-US", { month: "short", day: "numeric" })}</span>
                             )}
                           </div>
                         </div>
@@ -1537,6 +1551,81 @@ export default function ProfilePage() {
                   />
                 </div>
 
+                {/* Divider for security-specific notifications */}
+                <div className="my-2 border-t border-border" />
+                <div className="flex items-center gap-2 my-3">
+                  <AlertTriangle className="h-4 w-4 text-amber-500" />
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Advanced Security Alerts</p>
+                </div>
+
+                {/* Failed login attempts */}
+                <div className="flex items-center justify-between p-4 rounded-lg border border-border/60 bg-destructive/5">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2">
+                      <AlertTriangle className="h-4 w-4 text-destructive" />
+                      <p className="text-sm font-medium text-foreground">Failed Login Attempts</p>
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Get alerted when multiple failed login attempts are detected on your account.
+                    </p>
+                  </div>
+                  <Switch
+                    checked={notifPrefs.email_failed_login}
+                    onCheckedChange={(checked) => setNotifPrefs(prev => ({ ...prev, email_failed_login: checked }))}
+                  />
+                </div>
+
+                {/* New login from unusual location */}
+                <div className="flex items-center justify-between p-4 rounded-lg border border-border/60 bg-blue-500/5">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2">
+                      <Globe className="h-4 w-4 text-blue-500" />
+                      <p className="text-sm font-medium text-foreground">New Login Notifications</p>
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Receive an email notification whenever your account is accessed from a new location.
+                    </p>
+                  </div>
+                  <Switch
+                    checked={notifPrefs.email_new_login}
+                    onCheckedChange={(checked) => setNotifPrefs(prev => ({ ...prev, email_new_login: checked }))}
+                  />
+                </div>
+
+                {/* Rate limiting alerts */}
+                <div className="flex items-center justify-between p-4 rounded-lg border border-border/60 bg-orange-500/5">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2">
+                      <Clock className="h-4 w-4 text-orange-500" />
+                      <p className="text-sm font-medium text-foreground">Rate Limit Alerts</p>
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Get notified when your API key is rate limited due to excessive requests.
+                    </p>
+                  </div>
+                  <Switch
+                    checked={notifPrefs.email_rate_limit}
+                    onCheckedChange={(checked) => setNotifPrefs(prev => ({ ...prev, email_rate_limit: checked }))}
+                  />
+                </div>
+
+                {/* API key rotation */}
+                <div className="flex items-center justify-between p-4 rounded-lg border border-border/60 bg-green-500/5">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2">
+                      <KeyRound className="h-4 w-4 text-green-500" />
+                      <p className="text-sm font-medium text-foreground">API Key Rotations</p>
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Notifications when API keys are created or rotated on your account.
+                    </p>
+                  </div>
+                  <Switch
+                    checked={notifPrefs.email_api_key_rotation}
+                    onCheckedChange={(checked) => setNotifPrefs(prev => ({ ...prev, email_api_key_rotation: checked }))}
+                  />
+                </div>
+
                 {/* Save button */}
                 <div className="flex items-center justify-between pt-4 border-t border-border">
                   <p className="text-xs text-muted-foreground">
@@ -1581,6 +1670,37 @@ export default function ProfilePage() {
         {/* ===================== DATA & PRIVACY TAB ===================== */}
         {activeTab === "data" && (
           <div className="flex flex-col gap-6">
+            {/* Privacy & Data Protection */}
+            <Card className="bg-blue-500/5 border-blue-500/20">
+              <CardHeader>
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <Shield className="h-4 w-4 text-blue-500" />
+                  Privacy & Data Protection
+                </CardTitle>
+                <CardDescription>
+                  Your data is protected under GDPR and other privacy regulations. You have the right to request access to your data, request deletion, and manage your privacy settings.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="flex items-start gap-3 p-3 rounded-lg bg-card/50 border border-border">
+                    <Globe className="h-4 w-4 text-blue-500 shrink-0 mt-0.5" />
+                    <div>
+                      <p className="text-xs font-semibold text-foreground">GDPR Compliant</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">Full compliance with EU data protection regulations</p>
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-3 p-3 rounded-lg bg-card/50 border border-border">
+                    <Lock className="h-4 w-4 text-green-500 shrink-0 mt-0.5" />
+                    <div>
+                      <p className="text-xs font-semibold text-foreground">Encrypted Storage</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">Your data is encrypted at rest and in transit</p>
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
             {/* Data Export */}
             <Card>
               <CardHeader>
@@ -1589,57 +1709,107 @@ export default function ProfilePage() {
                   Data Export
                 </CardTitle>
                 <CardDescription>
-                  Download a full copy of your data including profile, API keys, scan history, and usage logs. One export every 30 hours.
+                  Download your complete account data anytime. Fresh exports available once every 30 days.
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="flex flex-col gap-4 p-4 rounded-lg border border-border bg-secondary/30">
-                  {/* Can request */}
-                  {(!dataReqInfo?.hasRequest || dataReqInfo?.canRequest) && (
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-sm font-medium text-foreground">Request Data Export</p>
-                        <p className="text-xs text-muted-foreground mt-0.5">Downloads a JSON file with all your account data.</p>
+                <div className="flex flex-col gap-4">
+                  {/* Download Fresh Data Section */}
+                  <div className="flex flex-col gap-4 p-4 rounded-lg border border-border bg-secondary/30">
+                    {/* Can download fresh data - no cooldown or cooldown expired */}
+                    {dataReqInfo?.canDownloadNew && (
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-sm font-medium text-foreground">Download Fresh Export</p>
+                          <p className="text-xs text-muted-foreground mt-0.5">
+                            {dataReqInfo?.lastDownloadAt 
+                              ? "Your 30-day cooldown has expired. Get a fresh export now." 
+                              : "Download your complete account data now."}
+                          </p>
+                        </div>
+                        <Button 
+                          onClick={handleRequestData} 
+                          disabled={requestingData}
+                          className="shrink-0"
+                        >
+                          <Download className="mr-2 h-4 w-4" />
+                          {requestingData ? "Downloading..." : "Download Now"}
+                        </Button>
                       </div>
-                      <Button onClick={handleRequestData} disabled={requestingData} className="shrink-0">
-                        <FileDown className="mr-2 h-4 w-4" />
-                        {requestingData ? "Generating..." : "Export Data"}
-                      </Button>
+                    )}
+
+                    {/* Cooldown active - can't get fresh data yet */}
+                    {!dataReqInfo?.canDownloadNew && dataReqInfo?.lastDownloadAt && (
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-sm font-medium text-foreground">Fresh Export Cooldown</p>
+                          <p className="text-xs text-muted-foreground mt-0.5">
+                            Next fresh export available in{" "}
+                            <span className="font-mono text-foreground font-semibold">
+                              {dataReqInfo.cooldownEndsAt ? getTimeRemaining(dataReqInfo.cooldownEndsAt) || "soon" : "soon"}
+                            </span>
+                          </p>
+                          <p className="text-xs text-muted-foreground mt-1">
+                            Last downloaded: {formatDate(dataReqInfo.lastDownloadAt)}
+                          </p>
+                        </div>
+                        <Button disabled className="shrink-0">
+                          <Clock className="mr-2 h-4 w-4" />
+                          On Cooldown
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Re-download Previous Export */}
+                  {dataReqInfo?.hasData && (
+                    <div className="flex flex-col gap-4 p-4 rounded-lg border border-border bg-muted/50">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-sm font-medium text-foreground">Previous Export Available</p>
+                          <p className="text-xs text-muted-foreground mt-0.5">
+                            Re-download your last export anytime. This data was last updated {dataReqInfo.lastDownloadAt ? formatDate(dataReqInfo.lastDownloadAt) : "recently"}.
+                          </p>
+                        </div>
+                        <Button 
+                          onClick={handleDownloadPreviousData}
+                          variant="outline"
+                          className="shrink-0"
+                        >
+                          <Download className="mr-2 h-4 w-4" />
+                          Re-download
+                        </Button>
+                      </div>
                     </div>
                   )}
 
-                  {/* Cooldown active */}
-                  {dataReqInfo?.hasRequest && !dataReqInfo?.canRequest && (
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-sm font-medium text-foreground">Export Cooldown Active</p>
-                        <p className="text-xs text-muted-foreground mt-0.5">
-                          You can request another export in{" "}
-                          <span className="font-mono text-foreground">
-                            {dataReqInfo.cooldownEndsAt ? getTimeRemaining(dataReqInfo.cooldownEndsAt) || "soon" : "soon"}
-                          </span>
-                        </p>
-                      </div>
-                      <Button disabled className="shrink-0">
-                        <Clock className="mr-2 h-4 w-4" />
-                        On Cooldown
-                      </Button>
+                  {/* How It Works Box */}
+                  <div className="flex gap-3 p-3 rounded-lg bg-muted/50 border border-border">
+                    <Download className="h-4 w-4 text-muted-foreground shrink-0 mt-0.5" />
+                    <div>
+                      <p className="text-xs font-semibold text-foreground">How It Works</p>
+                      <ul className="text-xs text-muted-foreground mt-1 space-y-1">
+                        <li>1. Click "Download Now" to get a fresh export</li>
+                        <li>2. Your data downloads as a JSON file</li>
+                        <li>3. Re-download anytime from "Previous Export"</li>
+                        <li>4. Request a new fresh export after 30 days</li>
+                      </ul>
                     </div>
-                  )}
+                  </div>
 
-                  {/* Download previous export */}
-                  {dataReqInfo?.hasRequest && dataReqInfo.request?.hasData && (
-                    <div className="flex items-center justify-between pt-3 border-t border-border">
-                      <div>
-                        <p className="text-sm text-foreground">Previous Export</p>
-                        <p className="text-xs text-muted-foreground mt-0.5">Requested on {formatDate(dataReqInfo.request.requestedAt)}</p>
-                      </div>
-                      <Button variant="outline" size="sm" onClick={handleDownloadPreviousData}>
-                        <Download className="mr-2 h-4 w-4" />
-                        Re-download
-                      </Button>
+                  {/* What's Included Box */}
+                  <div className="flex gap-3 p-3 rounded-lg bg-muted/50 border border-border">
+                    <Shield className="h-4 w-4 text-muted-foreground shrink-0 mt-0.5" />
+                    <div>
+                      <p className="text-xs font-semibold text-foreground">{"What's Included"}</p>
+                      <ul className="text-xs text-muted-foreground mt-1 space-y-1">
+                        <li>Your profile information</li>
+                        <li>All API keys and metadata</li>
+                        <li>Complete scan history and results</li>
+                        <li>API usage logs and statistics</li>
+                      </ul>
                     </div>
-                  )}
+                  </div>
                 </div>
               </CardContent>
             </Card>

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
+import { PUBLIC_PATHS } from "./lib/public-paths"
 
 const SECURITY_HEADERS: Record<string, string> = {
   "Content-Security-Policy": [
@@ -42,43 +43,6 @@ function applySecurityHeaders(response: NextResponse): NextResponse {
 
   return response
 }
-
-const PUBLIC_PATHS = [
-  // ─── Root & Landing ────────────────────────────────────────────
-  "/",
-  "/landing",
-  "/donate",
-
-  // ─── Authentication Pages ──────────────────────────────────────
-  "/login",
-  "/signup",
-  "/forgot-password",
-  "/reset-password",
-  "/verify-email",
-
-  // ─── Authentication API Routes ─────────────────────────────────
-  "/api/auth/login",
-  "/api/auth/signup",
-  "/api/auth/forgot-password",
-  "/api/auth/reset-password",
-  "/api/auth/accept-tos",
-  "/api/auth/2fa/verify",
-  "/api/auth/verify-email",
-  "/api/auth/resend-verification",
-
-  // ─── Legal Pages ───────────────────────────────────────────────
-  "/legal/terms",
-  "/legal/privacy",
-  "/legal/disclaimer",
-  "/legal/acceptable-use",
-
-  // ─── Shared Scan Reports ───────────────────────────────────────
-  "/shared",
-  "/api/shared",
-
-  // ─── Public API Endpoints ──────────────────────────────────────
-  "/api/landing-contact",
-]
 
 export function middleware(request: NextRequest) {
   // Normalize pathname: remove trailing slash except for root '/'
