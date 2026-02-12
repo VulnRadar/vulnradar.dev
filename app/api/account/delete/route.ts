@@ -1,12 +1,12 @@
-import { NextResponse } from "next/server"
 import { getSession, destroySession } from "@/lib/auth"
 import pool from "@/lib/db"
-import { ERROR_MESSAGES } from "@/lib/constants"
+import { ApiResponse, withErrorHandling } from "@/lib/api-utils"
+import { ERROR_MESSAGES, SUCCESS_MESSAGES } from "@/lib/constants"
 
-export async function POST() {
+export const POST = withErrorHandling(async () => {
   const session = await getSession()
   if (!session) {
-    return NextResponse.json({ error: ERROR_MESSAGES.UNAUTHORIZED }, { status: 401 })
+    return ApiResponse.unauthorized(ERROR_MESSAGES.UNAUTHORIZED)
   }
 
   // CASCADE in the DB schema will delete all related data:
@@ -16,5 +16,5 @@ export async function POST() {
   // Clear the session cookie
   await destroySession()
 
-  return NextResponse.json({ success: true })
-}
+  return ApiResponse.success({ message: "Account deleted successfully" })
+})

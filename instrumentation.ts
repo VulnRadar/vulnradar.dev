@@ -1,6 +1,11 @@
+/**
+ * Database initialization and schema management
+ * Runs on server startup to ensure all required tables exist
+ */
 export async function register() {
   if (process.env.NEXT_RUNTIME === "nodejs") {
     const { default: pool } = await import("./lib/db")
+    const { APP_NAME } = await import("./lib/constants")
 
     try {
       await pool.query(`
@@ -369,11 +374,11 @@ export async function register() {
         END $$;
       `)
 
-      console.log("[VulnRadar] Database schema verified / migrated successfully.")
+      console.log(`[${APP_NAME}] Database schema verified / migrated successfully.`)
 
       // Cleanup: expired sessions, old api_usage (> 90 days), old revoked keys (> 30 days), old data requests (> 60 days)
       try {
-        const cleanupResult = await pool.query(`
+        await pool.query(`
           DELETE FROM sessions WHERE expires_at < NOW();
           DELETE FROM api_usage WHERE used_at < NOW() - INTERVAL '90 days';
           DELETE FROM api_keys WHERE revoked_at IS NOT NULL AND revoked_at < NOW() - INTERVAL '30 days';
@@ -383,12 +388,12 @@ export async function register() {
           DELETE FROM password_reset_tokens WHERE expires_at < NOW();
           DELETE FROM team_invites WHERE expires_at < NOW() AND accepted_at IS NULL;
         `)
-        console.log("[VulnRadar] Cleanup completed successfully.")
+        console.log(`[${APP_NAME}] Cleanup completed successfully.`)
       } catch (cleanupError) {
-        console.error("[VulnRadar] Cleanup failed (non-fatal):", cleanupError)
+        console.error(`[${APP_NAME}] Cleanup failed (non-fatal):`, cleanupError)
       }
     } catch (error) {
-      console.error("[VulnRadar] Database migration failed:", error)
+      console.error(`[${APP_NAME}] Database migration failed:`, error)
     } finally {
       await pool.end()
     }
