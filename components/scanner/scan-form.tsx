@@ -18,7 +18,7 @@ const FEATURES = [
   "Cookie security",
   "CORS policy",
   "Mixed content",
-  "75+ checks total",
+  "100+ checks total",
 ]
 
 export function ScanForm({ onScan, status }: ScanFormProps) {
