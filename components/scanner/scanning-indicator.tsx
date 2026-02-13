@@ -47,7 +47,7 @@ export function ScanningIndicator() {
           </h2>
         </div>
         <p className="text-sm text-muted-foreground max-w-sm">
-          Running 75+ different vulnerability checks against the target. This usually takes a few seconds.
+          Running 100+ different vulnerability checks against the target. This usually takes a few seconds.
         </p>
       </div>
 
