@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { cn } from "@/lib/utils"
+import { PaginationControl, usePagination } from "@/components/ui/pagination-control"
 import {
   Users,
   Plus,
@@ -85,6 +86,7 @@ export default function TeamsPage() {
   const [viewingMember, setViewingMember] = useState<Member | null>(null)
   const [memberScans, setMemberScans] = useState<any[]>([])
   const [scansLoading, setScansLoading] = useState(false)
+  const [scanPage, setScanPage] = useState(1)
 
   const fetchTeams = useCallback(async () => {
     try {
@@ -92,7 +94,7 @@ export default function TeamsPage() {
       if (!res.ok) { router.push("/login"); return }
       const data = await res.json()
       setTeams(data.teams || [])
-    } catch {/* */} finally { setLoading(false) }
+    } catch {/* */ } finally { setLoading(false) }
   }, [router])
 
   useEffect(() => { fetchTeams() }, [fetchTeams])
@@ -111,7 +113,7 @@ export default function TeamsPage() {
         setNewName("")
         setShowCreate(false)
       }
-    } catch {/* */} finally { setCreating(false) }
+    } catch {/* */ } finally { setCreating(false) }
   }
 
   async function handleDelete(teamId: number) {
@@ -138,7 +140,7 @@ export default function TeamsPage() {
         setInvites(data.invites || [])
         setCurrentRole(data.currentRole || "viewer")
       }
-    } catch {/* */} finally { setMembersLoading(false) }
+    } catch {/* */ } finally { setMembersLoading(false) }
   }
 
   async function handleInvite() {
@@ -157,7 +159,7 @@ export default function TeamsPage() {
         setInviteEmail("")
         await openTeam(selectedTeam)
       }
-    } catch {/* */} finally { setInviting(false) }
+    } catch {/* */ } finally { setInviting(false) }
   }
 
   async function handleRemoveMember(userId: number) {
@@ -197,6 +199,7 @@ export default function TeamsPage() {
 
   async function handleViewMemberScans(member: Member) {
     setViewingMember(member)
+    setScanPage(1)
     setScansLoading(true)
     try {
       const res = await fetch(`/api/teams/member-scans?teamId=${selectedTeam?.id}&userId=${member.user_id}`)
@@ -218,6 +221,10 @@ export default function TeamsPage() {
       setTimeout(() => setCopied(false), 2000)
     }
   }
+
+  const SCANS_PAGE_SIZE = 5
+  const { totalPages: scanTotalPages, getPage: getScanPage } = usePagination(memberScans, SCANS_PAGE_SIZE)
+  const paginatedScans = getScanPage(scanPage)
 
   const canManage = currentRole === TEAM_ROLES.OWNER || currentRole === TEAM_ROLES.ADMIN
 
@@ -391,27 +398,41 @@ export default function TeamsPage() {
                       <p className="text-sm text-muted-foreground">No scans found</p>
                     </div>
                   ) : (
-                    <div className="flex flex-col gap-2 max-h-96 overflow-y-auto">
-                      {memberScans.map((scan: any) => (
-                        <div key={scan.id} className="flex items-center justify-between p-3 rounded-lg border border-border bg-background hover:bg-muted/50 transition-colors">
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium text-foreground truncate">{scan.url}</p>
-                            <p className="text-xs text-muted-foreground">
-                              {new Date(scan.scanned_at).toLocaleDateString()} • {scan.findings_count} issue{scan.findings_count !== 1 ? 's' : ''}
-                            </p>
+                    <>
+                      <div className="flex flex-col gap-2">
+                        {paginatedScans.map((scan: any) => (
+                          <div key={scan.id} className="flex items-center justify-between p-3 rounded-lg border border-border bg-background hover:bg-muted/50 transition-colors">
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-medium text-foreground truncate">{scan.url}</p>
+                              <p className="text-xs text-muted-foreground">
+                                {new Date(scan.scanned_at).toLocaleDateString()} • {scan.findings_count} issue{scan.findings_count !== 1 ? 's' : ''}
+                              </p>
+                            </div>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-8 px-3 gap-1.5"
+                              onClick={() => router.push(`/history?id=${scan.id}`)}
+                            >
+                              View
+                              <ChevronRight className="h-3 w-3" />
+                            </Button>
                           </div>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-8 px-3 gap-1.5"
-                            onClick={() => router.push(`/history?id=${scan.id}`)}
-                          >
-                            View
-                            <ChevronRight className="h-3 w-3" />
-                          </Button>
+                        ))}
+                      </div>
+                      {scanTotalPages > 1 && (
+                        <div className="pt-3">
+                          <PaginationControl
+                            currentPage={scanPage}
+                            totalPages={scanTotalPages}
+                            onPageChange={setScanPage}
+                          />
+                          <p className="text-xs text-muted-foreground text-center mt-2">
+                            {`Showing ${(scanPage - 1) * SCANS_PAGE_SIZE + 1}–${Math.min(scanPage * SCANS_PAGE_SIZE, memberScans.length)} of ${memberScans.length} scan${memberScans.length === 1 ? "" : "s"}`}
+                          </p>
                         </div>
-                      ))}
-                    </div>
+                      )}
+                    </>
                   )}
                 </CardContent>
               </Card>

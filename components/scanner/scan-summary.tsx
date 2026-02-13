@@ -20,106 +20,167 @@ interface ScanSummaryProps {
 type SafetyRating = "safe" | "caution" | "unsafe"
 
 function getSafetyRating(summary: ScanResult["summary"], findings: ScanResult["findings"]): SafetyRating {
-  // ── Categories of Vulnerability Severity ──
+  // ════════════════════════════════════════════════════════════════════════════
+  // SMART SAFETY RATING ENGINE
+  //
+  // Philosophy: A site is "unsafe" only when there is EVIDENCE of actively
+  // exploitable vulnerabilities. Missing best-practice headers (CSP, HSTS, etc.)
+  // are hardening *recommendations* -- they don't mean a site is dangerous to
+  // visit. Sites like Discord, Reddit, GitHub are safe even if they're missing
+  // a few headers.
+  //
+  // Three tiers of findings:
+  //   1. EXPLOITABLE  – Proves the site can be actively attacked right now
+  //   2. HARDENING     – Missing security headers or best practices (defensive)
+  //   3. INFORMATIONAL – Expected behavior, framework-specific, or trivial
+  // ════════════════════════════════════════════════════════════════════════════
 
-  // CRITICAL EXPLOITABLE THREATS (always unsafe)
-  const criticalExploitable = [
-    "Unencrypted HTTP",
+  // ── TIER 1: Actively Exploitable Vulnerabilities ──────────────────────────
+  // These indicate REAL danger to visitors. Finding even one = serious concern.
+  const exploitablePatterns = [
+    // Injection attacks (confirmed patterns in source)
     "SQL Injection",
     "Command Injection",
-    "Dangerous CORS",
-    "Credentials in URL",
-    "Exposed API Keys",
-    "Exposed Error Messages", // Only if showing stack traces
-  ]
-
-  // HIGH SEVERITY ACTIVE VULNERABILITIES (2+ = unsafe)
-  const highActiveVulns = [
     "XXE Vulnerability",
     "SSRF Vulnerability",
     "Path Traversal",
     "Insecure Deserialization",
+    // XSS / Code execution
+    "DOM-Based XSS",
     "Prototype Pollution",
-    "XSS Patterns",
-    "SQL Error",
-    "eval() Usage",
+    // Credential / token exposure
+    "Hardcoded API Keys",
+    "Authentication Tokens Exposed",
+    "Credentials in URL",
+    "JWT in URL",
+    // Active data interception
+    "Unencrypted HTTP",          // Entire site on HTTP = actively interceptable
+    "Mixed Content",             // HTTPS site loading HTTP resources
+    // Dangerous CORS that allows credential theft
+    "CORS Allows Any Origin with Credentials",
   ]
 
-  // HIGH SEVERITY CONFIGURATION ISSUES (less dangerous, need 3+ for unsafe)
-  const highConfigIssues = [
+  // ── TIER 2: Hardening Recommendations ─────────────────────────────────────
+  // Missing best practices. Important to fix, but don't mean the site is
+  // dangerous to *visit*. These are defensive layers, not active threats.
+  const hardeningPatterns = [
     "Missing HSTS",
-    "Missing CSP",
+    "Missing Content Security Policy",
+    "Missing X-Frame-Options",
+    "Missing X-Content-Type-Options",
+    "Missing Referrer Policy",
+    "Missing Permissions Policy",
+    "Clickjacking Protection",
+    "Missing Cross-Origin",
+    "Weak CSP",
     "Weak Crypto",
-    "Open Redirect",
-    "Clickjacking",
-    "Mixed Content",
+    "Cache-Control",
+    "X-XSS-Protection",
+    "DNS Prefetch",
+    "Missing security.txt",
+    "Report-Only",
+    "CSP Contains",
+    "Missing Subresource",
+    "Open Redirect",               // Potential, not confirmed exploit
+    "Insecure Form Submission",    // Missing HTTPS on form action
+    "Excessive Permissions",
+    "Cookie",                      // Cookie flag issues are hardening
+    "Autocomplete",
   ]
 
-  // INFORMATIONAL (never count toward unsafe)
-  const informationalOnly = [
+  // ── TIER 3: Always Informational (never count toward unsafe/caution) ──────
+  const alwaysInfoPatterns = [
     "Framework-Required",
     "Server Technology",
-    "DNS Prefetch",
-    "Cookie without HttpOnly", // Low risk
-    "Missing security.txt", // Informational only
+    "Server Header",
+    "CMS Detected",
+    "Robots.txt",
+    "Source Maps",
+    "HTML Comments",
+    "Inline JavaScript",           // Common and often benign
+    "Sensitive File",
+    "Outdated JavaScript",
+    "Directory Listing",
+    "Security.txt",
+    "OpenGraph",
+    "Meta Refresh",
+    "Base Tag",
+    "Form Target",
+    "Lazy Loading",
+    "HTML Lang",
+    "Viewport",
+    "document.write",
+    "Preconnect",
+    "Input.*maxlength",
   ]
 
-  // ── Filter and Categorize Findings ──
+  // ── Classify each finding ─────────────────────────────────────────────────
+  const matchesAny = (title: string, patterns: string[]) =>
+    patterns.some((p) => {
+      try { return new RegExp(p, "i").test(title) } catch { return title.toLowerCase().includes(p.toLowerCase()) }
+    })
 
-  const criticalThreats = findings.filter((f) => {
-    if (f.severity !== SEVERITY_LEVELS.CRITICAL && f.severity !== SEVERITY_LEVELS.HIGH) return false
-    if (informationalOnly.some(pattern => f.title.includes(pattern))) return false
-    return criticalExploitable.some(pattern => f.title.includes(pattern))
-  })
+  const exploitable: typeof findings = []
+  const hardening: typeof findings = []
 
-  const activeVulns = findings.filter((f) => {
-    if (f.severity !== SEVERITY_LEVELS.HIGH) return false
-    if (informationalOnly.some(pattern => f.title.includes(pattern))) return false
-    return highActiveVulns.some(pattern => f.title.includes(pattern))
-  })
+  for (const f of findings) {
+    // Skip info severity entirely -- never counts
+    if (f.severity === SEVERITY_LEVELS.INFO) continue
 
-  const configIssues = findings.filter((f) => {
-    if (f.severity !== SEVERITY_LEVELS.HIGH && f.severity !== SEVERITY_LEVELS.MEDIUM) return false
-    if (informationalOnly.some(pattern => f.title.includes(pattern))) return false
-    return highConfigIssues.some(pattern => f.title.includes(pattern))
-  })
+    // Skip anything that matches the always-informational patterns
+    if (matchesAny(f.title, alwaysInfoPatterns)) continue
 
-  // Count medium issues that aren't already counted
-  const otherMediumIssues = findings.filter((f) => {
-    if (f.severity !== SEVERITY_LEVELS.MEDIUM) return false
-    if (informationalOnly.some(pattern => f.title.includes(pattern))) return false
-    if (highConfigIssues.some(pattern => f.title.includes(pattern))) return false
-    return true
-  })
-
-  // ── Smart Safety Rating Logic ──
-
-  // ANY critical exploitable threat = UNSAFE
-  if (criticalThreats.length > 0) {
-    return "unsafe"
+    // Classify: is this an actual exploit or a hardening recommendation?
+    if (matchesAny(f.title, exploitablePatterns)) {
+      exploitable.push(f)
+    } else if (matchesAny(f.title, hardeningPatterns)) {
+      hardening.push(f)
+    } else {
+      // Unknown finding -- classify by severity
+      if (f.severity === SEVERITY_LEVELS.CRITICAL) {
+        exploitable.push(f)
+      } else if (f.severity === SEVERITY_LEVELS.HIGH) {
+        // HIGH severity unknowns could be either -- treat as hardening
+        // unless evidence looks like an active vulnerability
+        hardening.push(f)
+      }
+      // MEDIUM/LOW unknowns are just hardening
+    }
   }
 
-  // Multiple active high-severity vulnerabilities (2+) = UNSAFE
-  if (activeVulns.length >= 2) {
-    return "unsafe"
-  }
+  // ── Determine Safety Rating ───────────────────────────────────────────────
 
-  // Many configuration issues (3+) OR 1 active vuln + config issues = UNSAFE
-  if (configIssues.length >= 3 || (activeVulns.length === 1 && configIssues.length >= 2)) {
-    return "unsafe"
-  }
+  // ANY critical exploitable vulnerability = UNSAFE (this is a real threat)
+  const criticalExploits = exploitable.filter(
+    (f) => f.severity === SEVERITY_LEVELS.CRITICAL
+  )
+  if (criticalExploits.length > 0) return "unsafe"
 
-  // Single active vulnerability OR 1-2 config issues = CAUTION
-  if (activeVulns.length === 1 || configIssues.length >= 1) {
-    return "caution"
-  }
+  // Multiple HIGH exploitable vulnerabilities (2+) = UNSAFE
+  const highExploits = exploitable.filter(
+    (f) => f.severity === SEVERITY_LEVELS.HIGH
+  )
+  if (highExploits.length >= 2) return "unsafe"
 
-  // Multiple medium issues (4+) = CAUTION
-  if (otherMediumIssues.length >= 4) {
-    return "caution"
-  }
+  // Single HIGH exploitable vulnerability = CAUTION (could be false positive)
+  if (highExploits.length === 1) return "caution"
 
-  // Only Low/Info OR minimal medium issues = SAFE
+  // Medium exploitable findings (3+) = CAUTION
+  const mediumExploits = exploitable.filter(
+    (f) => f.severity === SEVERITY_LEVELS.MEDIUM
+  )
+  if (mediumExploits.length >= 3) return "caution"
+
+  // Hardening issues alone NEVER make a site "unsafe".
+  // Many hardening issues = CAUTION at most (recommendations, not threats).
+  const highHardening = hardening.filter(
+    (f) => f.severity === SEVERITY_LEVELS.HIGH || f.severity === SEVERITY_LEVELS.CRITICAL
+  )
+  if (highHardening.length >= 5) return "caution"
+
+  // Everything else = SAFE
+  // A site with only missing headers, low/info findings, or a few medium
+  // hardening items is still safe to visit.
   return "safe"
 }
 
@@ -178,8 +239,8 @@ export function ScanSummary({ result }: ScanSummaryProps) {
 
   const safetyConfig = {
     safe: {
-      label: "Safe to View",
-      description: "No critical security issues detected. This website appears safe to browse.",
+      label: "Safe to Visit",
+      description: "No exploitable vulnerabilities detected. This website is safe to browse. Any findings below are hardening recommendations.",
       icon: ShieldCheck,
       iconColor: "text-emerald-500",
       bg: "bg-emerald-500/10",
@@ -187,8 +248,8 @@ export function ScanSummary({ result }: ScanSummaryProps) {
       textColor: "text-emerald-600 dark:text-emerald-400",
     },
     caution: {
-      label: "View with Caution",
-      description: "Medium-severity issues detected. Exercise caution when browsing this website.",
+      label: "Visit with Caution",
+      description: "Potential security concerns detected that could affect your safety. Review the findings below before entering sensitive information.",
       icon: ShieldAlert,
       iconColor: "text-yellow-500",
       bg: "bg-yellow-500/10",
@@ -196,8 +257,8 @@ export function ScanSummary({ result }: ScanSummaryProps) {
       textColor: "text-yellow-600 dark:text-yellow-400",
     },
     unsafe: {
-      label: "Not Safe to View",
-      description: "Critical or high-severity vulnerabilities detected. Avoid using this website.",
+      label: "Unsafe - Active Threats Detected",
+      description: "Actively exploitable vulnerabilities were found. Avoid entering any personal or sensitive information on this website.",
       icon: ShieldX,
       iconColor: "text-red-500",
       bg: "bg-red-500/10",

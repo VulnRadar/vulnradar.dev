@@ -1,0 +1,812 @@
+{
+  "version": "1.4.0",
+  "description": "VulnRadar security check definitions. All check metadata lives here; detection logic lives in checks.ts.",
+  "checks": [
+    {
+      "id": "hsts-missing",
+      "type": "combined",
+      "title": "Missing HTTP Strict Transport Security (HSTS)",
+      "category": "headers",
+      "severity": "HIGH",
+      "description": "The server does not send the Strict-Transport-Security header, which tells browsers to only connect via HTTPS.",
+      "evidence": "Header 'Strict-Transport-Security' is not present in the response.",
+      "riskImpact": "Attackers could intercept traffic via man-in-the-middle attacks by downgrading the connection from HTTPS to HTTP.",
+      "explanation": "HSTS instructs browsers to only access the site over HTTPS for a specified duration. Without it, users who type the URL without 'https://' or follow an HTTP link are vulnerable to SSL-stripping attacks.",
+      "fixSteps": ["Add the Strict-Transport-Security header to all HTTPS responses.", "Set a max-age of at least 31536000 (1 year).", "Consider adding includeSubDomains and preload directives.", "Ensure your entire site works over HTTPS before enabling."],
+      "codeExamples": [{"label": "Next.js (next.config.mjs)", "language": "javascript", "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"}, {"label": "Nginx", "language": "nginx", "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"}]
+    },
+    {
+      "id": "csp-missing",
+      "type": "header-missing",
+      "targetHeader": "content-security-policy",
+      "title": "Missing Content Security Policy (CSP)",
+      "category": "headers",
+      "severity": "HIGH",
+      "description": "No Content-Security-Policy header was found. CSP helps prevent cross-site scripting (XSS) and data injection attacks.",
+      "evidence": "Header 'Content-Security-Policy' is not present in the response.",
+      "riskImpact": "Without CSP, the site is more vulnerable to XSS attacks because browsers have no policy to restrict which scripts and resources can execute.",
+      "explanation": "Content Security Policy is a defense-in-depth mechanism that restricts which resources the browser is allowed to load. By defining a strict policy, you prevent attackers from injecting malicious scripts.",
+      "fixSteps": ["Define a Content-Security-Policy header with restrictive defaults.", "Start with a report-only policy to identify issues.", "Use 'self' as the default-src and explicitly allow trusted origins.", "Avoid 'unsafe-inline' and 'unsafe-eval' where possible; use nonces or hashes instead."],
+      "codeExamples": [{"label": "Next.js", "language": "javascript", "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Content-Security-Policy', value: \"default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self';\" }],\n    }];\n  },\n};"}, {"label": "HTML Meta Tag", "language": "html", "code": "<meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'self'; script-src 'self';\">"}]
+    },
+    {
+      "id": "clickjack-missing",
+      "type": "combined",
+      "title": "Missing Clickjacking Protection",
+      "category": "headers",
+      "severity": "MEDIUM",
+      "description": "Neither X-Frame-Options nor CSP frame-ancestors directive is set, leaving the site vulnerable to clickjacking.",
+      "evidence": "Header 'X-Frame-Options' is not present and 'frame-ancestors' directive was not found in CSP.",
+      "riskImpact": "Attackers can embed your site in a hidden iframe and trick users into clicking on elements they don't intend to.",
+      "explanation": "Clickjacking is an attack where a malicious site embeds your site in a transparent iframe. Users think they're interacting with the visible page but are actually clicking on your site.",
+      "fixSteps": ["Add X-Frame-Options: DENY or SAMEORIGIN to your responses.", "Alternatively, use the CSP frame-ancestors directive for more granular control.", "DENY prevents all framing; SAMEORIGIN allows framing only from the same origin."],
+      "codeExamples": [{"label": "Next.js", "language": "javascript", "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'X-Frame-Options', value: 'DENY' }],\n    }];\n  },\n};"}, {"label": "Apache", "language": "apache", "code": "Header always set X-Frame-Options \"DENY\""}]
+    },
+    {
+      "id": "xcto-missing",
+      "type": "header-missing",
+      "targetHeader": "x-content-type-options",
+      "title": "Missing X-Content-Type-Options Header",
+      "category": "headers",
+      "severity": "MEDIUM",
+      "description": "The X-Content-Type-Options header is not set. This header prevents MIME-type sniffing.",
+      "evidence": "Header 'X-Content-Type-Options' is not present in the response.",
+      "riskImpact": "Browsers may interpret files as a different MIME type than declared, which can lead to XSS attacks.",
+      "explanation": "MIME sniffing is when browsers try to determine the content type by examining the content rather than trusting the Content-Type header. Setting X-Content-Type-Options to 'nosniff' prevents this.",
+      "fixSteps": ["Add the header X-Content-Type-Options: nosniff to all responses.", "Ensure all resources are served with the correct Content-Type header."],
+      "codeExamples": [{"label": "Next.js", "language": "javascript", "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'X-Content-Type-Options', value: 'nosniff' }],\n    }];\n  },\n};"}, {"label": "Nginx", "language": "nginx", "code": "add_header X-Content-Type-Options \"nosniff\" always;"}]
+    },
+    {
+      "id": "referrer-policy-missing",
+      "type": "header-missing",
+      "targetHeader": "referrer-policy",
+      "title": "Missing Referrer-Policy Header",
+      "category": "headers",
+      "severity": "LOW",
+      "description": "The Referrer-Policy header is not set. This controls how much referrer information is sent with requests.",
+      "evidence": "Header 'Referrer-Policy' is not present in the response.",
+      "riskImpact": "Sensitive information in URLs (tokens, IDs) may be leaked to third-party sites through the Referer header.",
+      "explanation": "By default, browsers send the full URL in the Referer header when navigating between pages. If your URLs contain sensitive data, this data leaks to any external site the user visits next.",
+      "fixSteps": ["Add Referrer-Policy: strict-origin-when-cross-origin (recommended).", "For maximum privacy, use no-referrer or same-origin.", "Avoid using unsafe-url which sends the full URL to all origins."],
+      "codeExamples": [{"label": "Next.js", "language": "javascript", "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' }],\n    }];\n  },\n};"}, {"label": "HTML Meta Tag", "language": "html", "code": "<meta name=\"referrer\" content=\"strict-origin-when-cross-origin\">"}]
+    },
+    {
+      "id": "permissions-policy-missing",
+      "type": "combined",
+      "title": "Missing Permissions-Policy Header",
+      "category": "headers",
+      "severity": "LOW",
+      "description": "The Permissions-Policy (formerly Feature-Policy) header is not set.",
+      "evidence": "Neither 'Permissions-Policy' nor 'Feature-Policy' headers are present in the response.",
+      "riskImpact": "Third-party scripts or iframes could access powerful browser APIs like camera, microphone, or geolocation.",
+      "explanation": "Permissions-Policy allows you to selectively enable or disable browser features for your page and any embedded iframes.",
+      "fixSteps": ["Add a Permissions-Policy header that disables features you don't use.", "Common features to restrict: camera, microphone, geolocation, payment, usb.", "Set features to () (empty) to disable, or self to allow only same-origin."],
+      "codeExamples": [{"label": "Next.js", "language": "javascript", "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Permissions-Policy', value: 'camera=(), microphone=(), geolocation=(), payment=()' }],\n    }];\n  },\n};"}, {"label": "Nginx", "language": "nginx", "code": "add_header Permissions-Policy \"camera=(), microphone=(), geolocation=(), payment=()\" always;"}]
+    },
+    {
+      "id": "server-header-disclosure",
+      "type": "combined",
+      "title": "Server Technology Information Disclosure",
+      "category": "information-disclosure",
+      "severity": "INFO",
+      "description": "The server reveals technology information through response headers.",
+      "evidence": "Server or X-Powered-By headers are present.",
+      "riskImpact": "Knowing the exact server software and version allows attackers to search for and exploit known vulnerabilities.",
+      "explanation": "HTTP response headers like Server and X-Powered-By reveal the technology stack. While not a vulnerability itself, it aids reconnaissance.",
+      "fixSteps": ["Remove or obscure the Server header.", "Remove the X-Powered-By header entirely.", "In Express.js, use helmet or app.disable('x-powered-by')."],
+      "codeExamples": [{"label": "Next.js", "language": "javascript", "code": "const nextConfig = { poweredByHeader: false };"}, {"label": "Nginx", "language": "nginx", "code": "server_tokens off;"}]
+    },
+    {
+      "id": "mixed-content",
+      "type": "combined",
+      "title": "Mixed Content Detected",
+      "category": "content",
+      "severity": "MEDIUM",
+      "description": "The HTTPS page loads resources over insecure HTTP connections.",
+      "evidence": "Found HTTP resource references on HTTPS page.",
+      "riskImpact": "Resources loaded over HTTP on an HTTPS page can be intercepted by attackers.",
+      "explanation": "Mixed content occurs when an HTTPS page includes resources fetched over HTTP. Browsers may block some types and warn about others.",
+      "fixSteps": ["Update all resource URLs to use HTTPS or protocol-relative URLs.", "Use the CSP directive upgrade-insecure-requests.", "Audit all external resource references."],
+      "codeExamples": [{"label": "CSP Auto-Upgrade", "language": "html", "code": "<meta http-equiv=\"Content-Security-Policy\" content=\"upgrade-insecure-requests\">"}]
+    },
+    {
+      "id": "open-redirect",
+      "type": "body-pattern",
+      "title": "Potential Open Redirect Parameters",
+      "category": "content",
+      "severity": "MEDIUM",
+      "description": "The page contains URL parameters or JavaScript patterns commonly associated with open redirect vulnerabilities.",
+      "evidence": "Found redirect-related patterns in page source.",
+      "riskImpact": "Open redirects can be used in phishing attacks by making malicious URLs appear to originate from your trusted domain.",
+      "explanation": "Open redirect vulnerabilities occur when a web application takes a user-supplied URL parameter and redirects to it without validation.",
+      "fixSteps": ["Validate all redirect URLs against an allowlist.", "Use relative URLs for redirects.", "Reject any redirect URL that points to an external domain.", "Implement server-side URL validation."],
+      "codeExamples": [{"label": "Validation", "language": "typescript", "code": "const ALLOWED = ['yourdomain.com'];\nconst url = new URL(redirect);\nif (!ALLOWED.includes(url.hostname)) throw new Error('Invalid');"}]
+    },
+    {
+      "id": "cookie-security",
+      "type": "combined",
+      "title": "Insecure Cookie Configuration",
+      "category": "cookies",
+      "severity": "MEDIUM",
+      "description": "One or more cookies are missing important security flags.",
+      "evidence": "Cookies missing HttpOnly, Secure, or SameSite flags.",
+      "riskImpact": "Cookies without proper security flags can be stolen via XSS attacks, sent over insecure connections, or exploited in CSRF attacks.",
+      "explanation": "Cookie security flags provide essential protection: HttpOnly prevents JavaScript access, Secure ensures HTTPS-only, SameSite prevents CSRF.",
+      "fixSteps": ["Add HttpOnly flag to all session and authentication cookies.", "Add Secure flag to ensure cookies are only sent over HTTPS.", "Add SameSite=Lax or SameSite=Strict."],
+      "codeExamples": [{"label": "Secure cookie", "language": "typescript", "code": "response.cookies.set('session', token, { httpOnly: true, secure: true, sameSite: 'lax' });"}]
+    },
+    {
+      "id": "deprecated-tls",
+      "type": "url-check",
+      "title": "Site Accessible Over Unencrypted HTTP",
+      "category": "ssl",
+      "severity": "HIGH",
+      "description": "The site was scanned over plain HTTP. All traffic is transmitted without encryption.",
+      "evidence": "URL scheme is HTTP.",
+      "riskImpact": "All data transmitted between the user and server can be intercepted, read, and modified by anyone on the network path.",
+      "explanation": "HTTP transmits data in plaintext, making it trivial for attackers to intercept credentials, session tokens, personal data.",
+      "fixSteps": ["Obtain and install an SSL/TLS certificate.", "Configure your server to redirect all HTTP traffic to HTTPS.", "Update all internal links to HTTPS.", "Enable HSTS."],
+      "codeExamples": [{"label": "HTTPS redirect", "language": "nginx", "code": "server { listen 80; return 301 https://domain.com$request_uri; }"}]
+    },
+    {
+      "id": "cors-wildcard",
+      "type": "combined",
+      "title": "Wildcard CORS Policy",
+      "category": "headers",
+      "severity": "MEDIUM",
+      "description": "The Access-Control-Allow-Origin header is set to '*', allowing any origin to make cross-origin requests.",
+      "evidence": "Access-Control-Allow-Origin: *",
+      "riskImpact": "Any website can make requests to your API, potentially stealing sensitive data.",
+      "explanation": "CORS controls which external domains can access your API. A wildcard '*' means any website can make requests.",
+      "fixSteps": ["Replace the wildcard with specific trusted origins.", "Validate the Origin header against an allowlist.", "Never combine * with Allow-Credentials: true."],
+      "codeExamples": [{"label": "Next.js CORS", "language": "typescript", "code": "const ALLOWED = ['https://yourdomain.com'];\nconst origin = request.headers.get('origin');\nif (ALLOWED.includes(origin)) {\n  headers['Access-Control-Allow-Origin'] = origin;\n}"}]
+    },
+    {
+      "id": "sri-missing",
+      "type": "body-pattern",
+      "title": "Missing Subresource Integrity (SRI)",
+      "category": "content",
+      "severity": "MEDIUM",
+      "description": "External scripts are loaded without Subresource Integrity hashes.",
+      "evidence": "Found external scripts without integrity attribute.",
+      "riskImpact": "If a CDN or third-party host is compromised, attackers could serve malicious scripts.",
+      "explanation": "SRI allows browsers to verify that files fetched from CDNs haven't been tampered with.",
+      "fixSteps": ["Generate SRI hashes for all external scripts and stylesheets.", "Add 'integrity' and 'crossorigin' attributes.", "Use tools like srihash.org to generate hashes."],
+      "codeExamples": [{"label": "HTML", "language": "html", "code": "<script src=\"https://cdn.example.com/lib.js\" integrity=\"sha384-...\" crossorigin=\"anonymous\"></script>"}]
+    },
+    {
+      "id": "form-action-http",
+      "type": "body-pattern",
+      "title": "Form Submitting Over HTTP",
+      "category": "content",
+      "severity": "HIGH",
+      "description": "One or more forms submit data over unencrypted HTTP.",
+      "evidence": "Found form(s) with HTTP action.",
+      "riskImpact": "Form data including passwords and personal information are transmitted in plaintext.",
+      "explanation": "When a form's action URL uses HTTP instead of HTTPS, all submitted data is sent in plaintext.",
+      "fixSteps": ["Update all form action URLs to use HTTPS.", "Use relative URLs for form actions.", "Add upgrade-insecure-requests CSP directive."],
+      "codeExamples": [{"label": "Fix", "language": "html", "code": "<!-- Bad -->\n<form action=\"http://example.com/submit\">\n<!-- Good -->\n<form action=\"/submit\">"}]
+    },
+    {
+      "id": "cache-control-missing",
+      "type": "combined",
+      "title": "Missing Cache-Control Headers",
+      "category": "headers",
+      "severity": "LOW",
+      "description": "No Cache-Control or Pragma headers are set. Sensitive responses may be cached.",
+      "evidence": "Neither 'Cache-Control' nor 'Pragma' headers are present.",
+      "riskImpact": "Sensitive data might be stored in browser caches or shared proxy caches.",
+      "explanation": "Cache-Control headers instruct browsers and CDNs on how to cache responses. For sensitive data, set no-store.",
+      "fixSteps": ["Set 'Cache-Control: no-store' for sensitive responses.", "Use proper cache headers for static assets.", "Add 'Pragma: no-cache' as a fallback."],
+      "codeExamples": [{"label": "Route Handler", "language": "typescript", "code": "return Response.json(data, {\n  headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate', 'Pragma': 'no-cache' },\n});"}]
+    },
+    {
+      "id": "xxss-protection-missing",
+      "type": "combined",
+      "title": "Missing X-XSS-Protection Header",
+      "category": "headers",
+      "severity": "LOW",
+      "description": "The X-XSS-Protection header is not set and no Content-Security-Policy is present.",
+      "evidence": "Header 'X-XSS-Protection' is not present and no CSP fallback exists.",
+      "riskImpact": "Older browsers that still support the XSS auditor won't have it activated.",
+      "explanation": "While the XSS auditor is deprecated in modern browsers, having protection headers is still recommended.",
+      "fixSteps": ["Implement a strong Content-Security-Policy (preferred approach).", "Set X-XSS-Protection: 0 (to avoid the buggy auditor).", "Focus on input validation and output encoding."],
+      "codeExamples": [{"label": "CSP preferred", "language": "text", "code": "Content-Security-Policy: default-src 'self'; script-src 'self'"}]
+    },
+    {
+      "id": "email-exposure",
+      "type": "body-pattern",
+      "title": "Email Address Exposure",
+      "category": "information-disclosure",
+      "severity": "INFO",
+      "description": "Email addresses were found in the page source.",
+      "evidence": "Found email addresses in page source.",
+      "riskImpact": "Exposed email addresses can be harvested by bots for spam or targeted phishing.",
+      "explanation": "Bots constantly crawl websites looking for email addresses in the HTML source.",
+      "fixSteps": ["Replace plaintext emails with contact forms.", "Use JavaScript to dynamically render email addresses.", "Encode email addresses using HTML entities.", "Consider Cloudflare email obfuscation."],
+      "codeExamples": [{"label": "React Obfuscation", "language": "tsx", "code": "function ObfuscatedEmail({ user, domain }: { user: string; domain: string }) {\n  return <button onClick={() => window.location.href = `mailto:${user}@${domain}`}>{user} [at] {domain}</button>;\n}"}]
+    },
+    {
+      "id": "directory-listing",
+      "type": "body-pattern",
+      "title": "Directory Listing Appears Enabled",
+      "category": "configuration",
+      "severity": "HIGH",
+      "description": "The response contains patterns indicating directory listing is enabled.",
+      "evidence": "Response contains directory listing indicators.",
+      "riskImpact": "Attackers can browse your server's file structure, discovering sensitive files.",
+      "explanation": "Directory listing allows anyone to see all files in a directory when no index file is present.",
+      "fixSteps": ["Disable directory listing in your web server configuration.", "Ensure every directory has an index file.", "Review exposed directories for sensitive files."],
+      "codeExamples": [{"label": "Nginx", "language": "nginx", "code": "autoindex off;"}, {"label": "Apache", "language": "apache", "code": "Options -Indexes"}]
+    },
+    {
+      "id": "sensitive-files",
+      "type": "body-pattern",
+      "title": "Sensitive File References Detected",
+      "category": "information-disclosure",
+      "severity": "MEDIUM",
+      "description": "The page references files commonly associated with sensitive configuration or development artifacts.",
+      "evidence": "References to sensitive files found.",
+      "riskImpact": "References to sensitive files may indicate they are accessible.",
+      "explanation": "Sensitive files like .env, .git/, and configuration files should never be referenced in public pages.",
+      "fixSteps": ["Remove all references to sensitive files from public HTML.", "Block access in your web server configuration.", "Ensure .env, .git, and other config files are in .gitignore."],
+      "codeExamples": [{"label": "Nginx", "language": "nginx", "code": "location ~ /\\. { deny all; return 404; }\nlocation ~ \\.(env|sql|bak|config|log)$ { deny all; return 404; }"}]
+    },
+    {
+      "id": "outdated-js-libs",
+      "type": "body-pattern",
+      "title": "Potentially Outdated JavaScript Libraries",
+      "category": "content",
+      "severity": "HIGH",
+      "description": "The page references JavaScript libraries with known security vulnerabilities.",
+      "evidence": "Detected outdated libraries with known CVEs.",
+      "riskImpact": "Outdated libraries contain publicly known vulnerabilities that attackers can exploit.",
+      "explanation": "Using outdated client-side libraries exposes your application to known attack vectors.",
+      "fixSteps": ["Update all JavaScript libraries to their latest stable versions.", "Use npm audit or Snyk to track vulnerabilities.", "Set up Dependabot or Renovate for automated updates.", "Remove unused libraries."],
+      "codeExamples": [{"label": "npm audit", "language": "bash", "code": "npm audit\nnpm audit fix\nnpm audit fix --force"}]
+    },
+    {
+      "id": "robots-txt-exposure",
+      "type": "body-pattern",
+      "title": "Sensitive Paths Exposed in Robots.txt",
+      "category": "information-disclosure",
+      "severity": "INFO",
+      "description": "The robots.txt file reveals potentially sensitive directory paths.",
+      "evidence": "Sensitive disallowed paths found in robots.txt.",
+      "riskImpact": "Robots.txt effectively creates a map of sensitive areas for attackers to probe.",
+      "explanation": "Robots.txt files are publicly accessible and listing sensitive paths tells attackers exactly where to look.",
+      "fixSteps": ["Remove sensitive paths from robots.txt.", "Ensure all sensitive endpoints require proper authentication.", "Use auth and authorization rather than path hiding."],
+      "codeExamples": [{"label": "Secure robots.txt", "language": "text", "code": "User-agent: *\nDisallow: /api/\nSitemap: https://yourdomain.com/sitemap.xml"}]
+    },
+    {
+      "id": "cms-fingerprinting",
+      "type": "combined",
+      "title": "CMS / Technology Fingerprinting",
+      "category": "information-disclosure",
+      "severity": "INFO",
+      "description": "The site exposes CMS or technology stack details that aid attacker reconnaissance.",
+      "evidence": "CMS or technology identifiers found.",
+      "riskImpact": "Knowing the CMS type and version allows attackers to search for specific exploits.",
+      "explanation": "CMS fingerprinting reveals the underlying technology, version, and sometimes plugin information.",
+      "fixSteps": ["Remove or obscure the generator meta tag.", "Hide version numbers from public-facing pages.", "Keep your CMS and all plugins updated.", "Remove default installation files."],
+      "codeExamples": [{"label": "WordPress", "language": "php", "code": "remove_action('wp_head', 'wp_generator');\nadd_filter('the_generator', '__return_empty_string');"}]
+    },
+    {
+      "id": "security-txt-missing",
+      "type": "body-pattern",
+      "title": "Missing security.txt File",
+      "category": "configuration",
+      "severity": "INFO",
+      "description": "No reference to a security.txt file was found.",
+      "evidence": "No reference to /.well-known/security.txt found.",
+      "riskImpact": "Security researchers may not know how to responsibly report vulnerabilities.",
+      "explanation": "The security.txt file (RFC 9116) provides a standardized way for security researchers to find contact information.",
+      "fixSteps": ["Create a /.well-known/security.txt file.", "Include Contact, Preferred-Languages, Expires fields.", "Sign the file with PGP if possible."],
+      "codeExamples": [{"label": "security.txt", "language": "text", "code": "Contact: mailto:security@yourdomain.com\nExpires: 2026-12-31T23:59:00.000Z\nPreferred-Languages: en"}]
+    },
+    {
+      "id": "dangerous-inline-js",
+      "type": "body-pattern",
+      "title": "Potentially Dangerous Inline JavaScript",
+      "category": "content",
+      "severity": "MEDIUM",
+      "description": "The page contains inline JavaScript with potentially dangerous patterns like eval(), document.write().",
+      "evidence": "Found inline script blocks with dangerous patterns.",
+      "riskImpact": "Dangerous JavaScript patterns can be exploited via XSS.",
+      "explanation": "Patterns like eval(), document.write(), and direct innerHTML assignment with user input are common XSS vectors.",
+      "fixSteps": ["Replace eval() with JSON.parse().", "Use textContent instead of innerHTML.", "Move inline scripts to external files.", "Use DOMPurify to sanitize HTML."],
+      "codeExamples": [{"label": "Safe alternatives", "language": "javascript", "code": "const data = JSON.parse(jsonString);\nelement.textContent = userInput;\nimport DOMPurify from 'dompurify';\nelement.innerHTML = DOMPurify.sanitize(htmlContent);"}]
+    },
+    {
+      "id": "cors-credentials-wildcard",
+      "type": "combined",
+      "title": "Dangerous CORS Configuration",
+      "category": "headers",
+      "severity": "CRITICAL",
+      "description": "The server allows credentials with a wildcard origin.",
+      "evidence": "Access-Control-Allow-Origin: * combined with Access-Control-Allow-Credentials: true",
+      "riskImpact": "Any website can make authenticated cross-origin requests to your API.",
+      "explanation": "When ACAO is * with credentials allowed, any website can make authenticated requests. This completely bypasses the Same-Origin Policy.",
+      "fixSteps": ["Never combine wildcard with Allow-Credentials: true.", "Explicitly list allowed origins.", "Validate the Origin header against an allowlist."],
+      "codeExamples": [{"label": "Secure CORS", "language": "typescript", "code": "const ALLOWED = ['https://yourdomain.com'];\nif (ALLOWED.includes(origin)) {\n  res.setHeader('Access-Control-Allow-Origin', origin);\n  res.setHeader('Access-Control-Allow-Credentials', 'true');\n}"}]
+    },
+    {
+      "id": "coop-missing",
+      "type": "header-missing",
+      "targetHeader": "cross-origin-opener-policy",
+      "title": "Missing Cross-Origin-Opener-Policy (COOP)",
+      "category": "headers",
+      "severity": "LOW",
+      "description": "The server does not set the Cross-Origin-Opener-Policy header.",
+      "evidence": "Header 'Cross-Origin-Opener-Policy' is not present.",
+      "riskImpact": "Without COOP, other origins that open your site retain a reference to your window object.",
+      "explanation": "COOP ensures your top-level document does not share a browsing context group with cross-origin documents.",
+      "fixSteps": ["Add 'Cross-Origin-Opener-Policy: same-origin'.", "Use 'same-origin-allow-popups' if you need cross-origin popups (OAuth).", "Test thoroughly as COOP can break third-party popup integrations."],
+      "codeExamples": [{"label": "Next.js", "language": "javascript", "code": "const nextConfig = { async headers() { return [{ source: '/(.*)', headers: [{ key: 'Cross-Origin-Opener-Policy', value: 'same-origin' }] }]; } };"}]
+    },
+    {
+      "id": "corp-missing",
+      "type": "header-missing",
+      "targetHeader": "cross-origin-resource-policy",
+      "title": "Missing Cross-Origin-Resource-Policy (CORP)",
+      "category": "headers",
+      "severity": "INFO",
+      "description": "No Cross-Origin-Resource-Policy header is set.",
+      "evidence": "Header 'Cross-Origin-Resource-Policy' is not present.",
+      "riskImpact": "Your resources can be embedded by any origin.",
+      "explanation": "CORP complements COOP and COEP to enable cross-origin isolation.",
+      "fixSteps": ["Add 'Cross-Origin-Resource-Policy: same-origin' for maximum protection.", "Use 'same-site' if resources need to be shared across subdomains.", "Use 'cross-origin' only for public CDN assets."],
+      "codeExamples": [{"label": "Next.js", "language": "javascript", "code": "const nextConfig = { async headers() { return [{ source: '/(.*)', headers: [{ key: 'Cross-Origin-Resource-Policy', value: 'same-origin' }] }]; } };"}]
+    },
+    {
+      "id": "reverse-tabnabbing", "type": "body-pattern", "title": "Reverse Tabnabbing Vulnerability", "category": "content", "severity": "MEDIUM", "description": "Links with target=\"_blank\" are missing rel=\"noopener\".", "evidence": "Anchor tags use target=\"_blank\" without rel=\"noopener\".", "riskImpact": "The opened page gains access to window.opener, allowing it to redirect your page to a phishing site.", "explanation": "When a link opens a new tab with target='_blank', the new page receives a reference to window.opener.", "fixSteps": ["Add rel=\"noopener noreferrer\" to all links with target=\"_blank\"."], "codeExamples": [{"label": "Safe link", "language": "html", "code": "<a href=\"https://example.com\" target=\"_blank\" rel=\"noopener noreferrer\">Visit</a>"}]
+    },
+    {
+      "id": "source-maps", "type": "body-pattern", "title": "JavaScript Source Maps Exposed", "category": "information-disclosure", "severity": "LOW", "description": "Source map references found in the page.", "evidence": "Detected sourceMappingURL directives or .js.map file references.", "riskImpact": "Source maps reveal original variable names, function logic, comments, and application structure.", "explanation": "Source maps are generated during the build process to aid debugging. In production, they expose your entire unminified source code.", "fixSteps": ["Disable source map generation in production builds.", "Upload source maps privately to your error tracking service.", "Configure your bundler to strip sourceMappingURL comments in production."], "codeExamples": [{"label": "Next.js", "language": "javascript", "code": "const nextConfig = { productionBrowserSourceMaps: false };"}]
+    },
+    {
+      "id": "sensitive-comments", "type": "body-pattern", "title": "Sensitive Information in HTML Comments", "category": "information-disclosure", "severity": "MEDIUM", "description": "HTML comments containing potentially sensitive information detected.", "evidence": "Detected comments with sensitive keywords.", "riskImpact": "HTML comments are visible to anyone viewing page source.", "explanation": "Developers often leave TODO notes, debug information, or temporary credentials in HTML comments.", "fixSteps": ["Remove all HTML comments containing sensitive information.", "Use a build process that strips comments.", "Move debug notes to internal documentation."], "codeExamples": [{"label": "HTML Minification", "language": "javascript", "code": "const htmlnano = require('htmlnano');\nhtmlnano.process(html, { removeComments: 'all' });"}]
+    },
+    {
+      "id": "hardcoded-secrets", "type": "body-pattern", "title": "Hardcoded API Keys or Secrets Detected", "category": "information-disclosure", "severity": "CRITICAL", "description": "Found potential API keys or secrets exposed in the page source.", "evidence": "Detected API key patterns in page source.", "riskImpact": "Exposed API keys allow attackers to access your third-party services.", "explanation": "Hardcoded secrets in HTML/JavaScript are accessible to anyone. Automated bots continuously scan the internet for exposed API keys.", "fixSteps": ["Immediately rotate all exposed keys.", "Move secrets to server-side environment variables.", "Use a secrets manager.", "Add pre-commit hooks like git-secrets."], "codeExamples": [{"label": "Server-side only", "language": "typescript", "code": "const apiKey = process.env.STRIPE_SECRET_KEY;\n// NEVER: const apiKey = 'sk_live_abc123...'"}]
+    },
+    {
+      "id": "private-ip-exposure", "type": "body-pattern", "title": "Internal/Private IP Addresses Exposed", "category": "information-disclosure", "severity": "LOW", "description": "Internal or private IP addresses found in the page source.", "evidence": "Detected private IP addresses.", "riskImpact": "Internal IP addresses reveal your network topology.", "explanation": "Private IP addresses and localhost references in public-facing pages leak information about your internal network structure.", "fixSteps": ["Remove hardcoded internal IP addresses.", "Use environment-specific configuration.", "Review reverse proxy configurations."], "codeExamples": [{"label": "Environment config", "language": "typescript", "code": "const API_URL = process.env.NODE_ENV === 'production'\n  ? 'https://api.yourdomain.com'\n  : 'http://localhost:3001';"}]
+    },
+    {
+      "id": "debug-indicators", "type": "combined", "title": "Debug Mode or Error Information Exposed", "category": "information-disclosure", "severity": "HIGH", "description": "Debug/error indicators that reveal internal application details detected.", "evidence": "Debug headers, stack traces, or error messages found.", "riskImpact": "Debug output exposes internal file paths, framework versions, database types, and application logic.", "explanation": "Debug mode and verbose error messages are invaluable during development but catastrophic in production.", "fixSteps": ["Disable debug mode in production.", "Configure custom error pages.", "Remove fingerprinting headers.", "Set up error monitoring (Sentry)."], "codeExamples": [{"label": "Express.js", "language": "javascript", "code": "app.disable('x-powered-by');\napp.use((err, req, res, next) => {\n  res.status(500).json({ error: process.env.NODE_ENV === 'production' ? 'Internal Server Error' : err.message });\n});"}, {"label": "Next.js", "language": "javascript", "code": "const nextConfig = { poweredByHeader: false };"}]
+    },
+    {
+      "id": "dom-xss-sinks", "type": "body-pattern", "title": "Potential DOM-Based XSS Sinks", "category": "content", "severity": "HIGH", "description": "Patterns where user-controlled input flows into dangerous DOM sinks detected.", "evidence": "Detected dangerous DOM sink patterns.", "riskImpact": "DOM-based XSS allows attackers to execute arbitrary JavaScript by crafting malicious URLs.", "explanation": "DOM XSS occurs when JavaScript takes data from an attacker-controllable source and passes it to a dangerous sink.", "fixSteps": ["Never assign URL parameters directly to innerHTML.", "Use textContent instead of innerHTML.", "Sanitize HTML input with DOMPurify.", "Use parameterized DOM APIs."], "codeExamples": [{"label": "Safe DOM", "language": "javascript", "code": "// UNSAFE:\nelement.innerHTML = location.hash.slice(1);\n// SAFE:\nelement.textContent = location.hash.slice(1);"}]
+    },
+    {
+      "id": "insecure-iframes", "type": "combined", "title": "Insecure Iframe Sources on HTTPS Page", "category": "content", "severity": "MEDIUM", "description": "Iframes loading content over HTTP on an HTTPS page.", "evidence": "Found iframes using http:// src on HTTPS page.", "riskImpact": "HTTP iframes on HTTPS pages create mixed content, allowing MITM attackers to modify iframe content.", "explanation": "Browsers display your page as secure but an HTTP iframe can be intercepted and modified by network attackers.", "fixSteps": ["Change all iframe src attributes to use HTTPS.", "Use CSP: frame-src https:.", "Consider using the sandbox attribute."], "codeExamples": [{"label": "CSP", "language": "text", "code": "Content-Security-Policy: frame-src https: 'self';"}]
+    },
+    {
+      "id": "token-exposure", "type": "body-pattern", "title": "Authentication Tokens Exposed in Page Source", "category": "information-disclosure", "severity": "HIGH", "description": "Tokens or session identifiers exposed in the HTML source.", "evidence": "JWT tokens, Bearer tokens, or session IDs found in page source.", "riskImpact": "Exposed tokens allow session hijacking.", "explanation": "Authentication tokens should never appear in HTML source. They can be captured by browser extensions, cached by CDNs, or logged by proxies.", "fixSteps": ["Store tokens in HTTP-only Secure cookies.", "If tokens must be passed to JavaScript, inject them via a secure API call.", "Never pass tokens in URL query parameters."], "codeExamples": [{"label": "Secure cookie", "language": "typescript", "code": "response.cookies.set('session', token, { httpOnly: true, secure: true, sameSite: 'lax', maxAge: 86400, path: '/' });"}]
+    },
+    {
+      "id": "autocomplete-sensitive", "type": "body-pattern", "title": "Missing Autocomplete Attributes on Sensitive Fields", "category": "content", "severity": "LOW", "description": "Sensitive input fields without proper autocomplete attributes.", "evidence": "Password or credit card fields missing autocomplete directives.", "riskImpact": "Browsers may cache sensitive form data on shared or compromised devices.", "explanation": "The autocomplete attribute tells browsers how to handle form autofill.", "fixSteps": ["Add autocomplete=\"new-password\" for registration fields.", "Add autocomplete=\"current-password\" for login fields.", "Add appropriate autocomplete values for payment fields."], "codeExamples": [{"label": "Proper autocomplete", "language": "html", "code": "<input type=\"password\" autocomplete=\"current-password\" />\n<input type=\"password\" autocomplete=\"new-password\" />"}]
+    },
+    {
+      "id": "csp-report-only", "type": "combined", "title": "CSP Report-Only Without Enforcement", "category": "headers", "severity": "MEDIUM", "description": "CSP-Report-Only is set but no enforcing CSP header exists.", "evidence": "Header 'Content-Security-Policy-Report-Only' present, but 'Content-Security-Policy' is absent.", "riskImpact": "The site is logging CSP violations but not actually blocking them.", "explanation": "CSP-Report-Only is meant for testing before deployment. Running it without an enforcing CSP means zero protection.", "fixSteps": ["Deploy an enforcing Content-Security-Policy header alongside report-only.", "Start with a restrictive policy and relax based on report-only findings."], "codeExamples": [{"label": "Both headers", "language": "text", "code": "Content-Security-Policy: default-src 'self'; script-src 'self'\nContent-Security-Policy-Report-Only: default-src 'self'; report-uri /csp-report"}]
+    },
+    {
+      "id": "form-target-blank", "type": "body-pattern", "title": "Forms Targeting New Windows", "category": "content", "severity": "LOW", "description": "Forms with target=\"_blank\" can be abused for phishing via reverse tabnabbing.", "evidence": "Form element(s) submit to a new window/tab.", "riskImpact": "Form submissions opening new windows can confuse users and be exploited.", "explanation": "Forms that open results in new tabs create the same reverse tabnabbing risk as anchor links.", "fixSteps": ["Remove target=\"_blank\" from forms unless necessary.", "Consider handling form submission via fetch instead."], "codeExamples": [{"label": "AJAX submission", "language": "javascript", "code": "form.addEventListener('submit', async (e) => {\n  e.preventDefault();\n  await fetch(form.action, { method: 'POST', body: new FormData(form) });\n});"}]
+    },
+    {
+      "id": "meta-refresh", "type": "body-pattern", "title": "Meta Refresh Redirect Detected", "category": "content", "severity": "LOW", "description": "Meta refresh redirects can be abused for open redirect attacks and phishing.", "evidence": "Meta http-equiv=\"refresh\" tag(s) with URL redirects.", "riskImpact": "Meta refresh redirects bypass standard navigation controls.", "explanation": "Meta refresh tags automatically redirect users after a delay. Unlike server-side redirects, they execute in the browser.", "fixSteps": ["Replace meta refresh with server-side 301/302 redirects.", "Never allow user-controlled input in meta refresh URLs."], "codeExamples": [{"label": "Server redirect", "language": "typescript", "code": "import { redirect } from 'next/navigation';\nredirect('/new-page');"}]
+    },
+    {
+      "id": "base-tag-insecure", "type": "body-pattern", "title": "Insecure Base Tag Detected", "category": "content", "severity": "HIGH", "description": "The page uses a <base> tag with an HTTP URL, making all relative URLs resolve insecurely.", "evidence": "Found <base> tag(s) pointing to insecure HTTP origin.", "riskImpact": "All relative links, scripts, images resolve against the insecure base URL.", "explanation": "The HTML <base> tag sets the base URL for all relative URLs in the document.", "fixSteps": ["Change the <base> tag to use HTTPS.", "Remove the <base> tag if not needed.", "Implement CSP base-uri directive."], "codeExamples": [{"label": "CSP restriction", "language": "text", "code": "Content-Security-Policy: base-uri 'self'"}]
+    },
+    {
+      "id": "excessive-permissions", "type": "combined", "title": "Overly Permissive Permissions-Policy", "category": "headers", "severity": "MEDIUM", "description": "The Permissions-Policy header grants wildcard (*) access to browser features.", "evidence": "Permissions-Policy contains wildcard (*) grants.", "riskImpact": "Wildcard permissions allow any embedded content to access sensitive browser features.", "explanation": "Using * as the allowlist defeats the purpose entirely.", "fixSteps": ["Replace * with 'self'.", "Explicitly list only the origins that need access.", "Disable features you don't use with empty allowlists."], "codeExamples": [{"label": "Restrictive policy", "language": "text", "code": "Permissions-Policy: camera=(), microphone=(), geolocation=(self)"}]
+    },
+    {
+      "id": "postmessage-no-origin", "type": "body-pattern", "title": "postMessage Listener Without Origin Validation", "category": "content", "severity": "HIGH", "description": "postMessage event listeners don't appear to validate the message origin.", "evidence": "Message listener(s) missing origin checks.", "riskImpact": "Any website can send messages to your page via postMessage.", "explanation": "If the receiving page doesn't verify event.origin, any malicious page can send crafted messages.", "fixSteps": ["Always check event.origin against a whitelist.", "Validate the structure and type of event.data.", "Use event.source to verify the sender."], "codeExamples": [{"label": "Safe listener", "language": "javascript", "code": "window.addEventListener('message', (event) => {\n  if (event.origin !== 'https://trusted-domain.com') return;\n  handleMessage(event.data);\n});"}]
+    },
+    {
+      "id": "sensitive-endpoints", "type": "body-pattern", "title": "Sensitive Endpoints Referenced in Page Source", "category": "information-disclosure", "severity": "LOW", "description": "References to potentially sensitive endpoints in the page source.", "evidence": "Detected sensitive endpoint references.", "riskImpact": "References to admin panels, debug endpoints help attackers map your attack surface.", "explanation": "Even if endpoints are protected, exposing their paths gives attackers specific targets.", "fixSteps": ["Remove references to internal/admin endpoints from client-side code.", "Use server-side rendering for admin navigation.", "Move API documentation behind authentication."], "codeExamples": [{"label": "Conditional render", "language": "tsx", "code": "{session?.isAdmin && <Link href=\"/admin\">Admin Panel</Link>}"}]
+    },
+    {
+      "id": "dangerous-html-attrs", "type": "body-pattern", "title": "Dangerous HTML Attributes Detected", "category": "content", "severity": "HIGH", "description": "Potentially dangerous HTML attributes like inline event handlers, javascript: URIs.", "evidence": "Found dangerous HTML attributes.", "riskImpact": "Inline event handlers and javascript: URIs are common XSS vectors.", "explanation": "Inline event handlers, javascript: protocol links, and data: URIs embedding HTML/JS are all classic XSS injection points.", "fixSteps": ["Remove all javascript: protocol links.", "Move inline event handlers to external JavaScript files.", "Implement CSP with 'unsafe-inline' disabled."], "codeExamples": [{"label": "Safe pattern", "language": "html", "code": "<!-- BAD -->\n<a href=\"javascript:void(0)\" onclick=\"doStuff()\">Click</a>\n<!-- GOOD -->\n<button type=\"button\" id=\"action-btn\">Click</button>"}]
+    },
+    {
+      "id": "insecure-form-submission", "type": "combined", "title": "Form Submits Data Over Insecure HTTP", "category": "content", "severity": "CRITICAL", "description": "An HTTPS page contains a form that submits data to an HTTP endpoint.", "evidence": "Found form posting to HTTP on HTTPS page.", "riskImpact": "User credentials and form inputs are transmitted in plaintext.", "explanation": "When a secure page sends form data to an insecure endpoint, all submitted data travels unencrypted.", "fixSteps": ["Change all form action URLs to use HTTPS.", "Use relative URLs so forms inherit the page protocol.", "Implement HSTS."], "codeExamples": [{"label": "Fix", "language": "html", "code": "<!-- BAD -->\n<form action=\"http://example.com/login\" method=\"POST\">\n<!-- GOOD -->\n<form action=\"/login\" method=\"POST\">"}]
+    },
+    {
+      "id": "no-clickjack-protection", "type": "combined", "title": "No Clickjacking Protection Detected", "category": "headers", "severity": "MEDIUM", "description": "No X-Frame-Options, no CSP frame-ancestors, and no JavaScript frame-busting detected.", "evidence": "Missing all clickjacking protections.", "riskImpact": "Attackers can embed this page in a transparent iframe and trick users.", "explanation": "Clickjacking overlays a legitimate page beneath a decoy.", "fixSteps": ["Add X-Frame-Options: DENY header.", "Add frame-ancestors 'self' to your CSP.", "Use both for maximum compatibility."], "codeExamples": [{"label": "Nginx", "language": "nginx", "code": "add_header X-Frame-Options \"DENY\" always;\nadd_header Content-Security-Policy \"frame-ancestors 'self';\" always;"}]
+    },
+    {
+      "id": "weak-csp-directives", "type": "combined", "title": "Content Security Policy Contains Weak Directives", "category": "headers", "severity": "HIGH", "description": "The CSP header contains weak directives that reduce its effectiveness.", "evidence": "Weak CSP directives detected.", "riskImpact": "Weak directives create exploitable gaps that allow attackers to bypass the policy.", "explanation": "A CSP is only as strong as its weakest directive.", "fixSteps": ["Replace 'unsafe-inline' with nonce-based or hash-based script loading.", "Remove 'unsafe-eval' and refactor code.", "Replace wildcard sources with explicit trusted domains.", "Remove data: from script-src."], "codeExamples": [{"label": "Strong CSP", "language": "text", "code": "Content-Security-Policy: default-src 'self'; script-src 'self' 'nonce-{random}'; style-src 'self' 'nonce-{random}'; img-src 'self' data:;"}]
+    },
+    {
+      "id": "csp-framework-required", "type": "combined", "title": "CSP Contains Framework-Required Directives", "category": "headers", "severity": "INFO", "description": "The CSP includes directives required by the frontend framework. This is expected for Next.js, React, Vue, or Angular applications.", "evidence": "Framework-required CSP directives detected.", "riskImpact": "Framework-required directives slightly reduce XSS protection, but are necessary for the framework to function.", "explanation": "Modern frameworks require 'unsafe-inline' and/or 'unsafe-eval' for their runtime features. While these weaken CSP, they're necessary trade-offs.", "fixSteps": ["Ensure all user input is properly sanitized.", "Keep framework and dependencies up to date.", "Use strict CSP for other directives.", "Consider strict-dynamic with nonces."], "codeExamples": [{"label": "Next.js CSP", "language": "javascript", "code": "const csp = [\n  \"default-src 'self'\",\n  \"script-src 'self' 'unsafe-inline' 'unsafe-eval'\",\n  \"style-src 'self' 'unsafe-inline'\",\n  \"frame-ancestors 'none'\",\n  \"base-uri 'self'\",\n].join('; ');"}]
+    },
+    {
+      "id": "unencrypted-connection", "type": "url-check", "title": "Site Served Over Unencrypted HTTP", "category": "ssl", "severity": "CRITICAL", "description": "The site is accessible over plain HTTP without TLS encryption.", "evidence": "URL scheme is HTTP.", "riskImpact": "All data including credentials are transmitted in plaintext.", "explanation": "HTTP transmits everything in cleartext. On any shared network, attackers can passively read all traffic.", "fixSteps": ["Obtain and install a TLS certificate.", "Configure HTTPS.", "Set up HTTP to HTTPS redirects.", "Enable HSTS."], "codeExamples": [{"label": "Nginx redirect", "language": "nginx", "code": "server { listen 80; server_name example.com; return 301 https://$server_name$request_uri; }"}]
+    },
+    {
+      "id": "cors-wildcard-credentials", "type": "combined", "title": "CORS Wildcard Origin with Credentials Allowed", "category": "headers", "severity": "CRITICAL", "description": "The server allows any origin (*) to make credentialed cross-origin requests.", "evidence": "Access-Control-Allow-Origin: * combined with Access-Control-Allow-Credentials: true", "riskImpact": "Any website can make authenticated requests to your API and read the responses.", "explanation": "While browsers should block this specific combination, it indicates a severe CORS misunderstanding.", "fixSteps": ["Never combine wildcard origin with credentials: true.", "Validate the Origin header against an explicit allowlist.", "Reflect the specific requesting origin only if trusted."], "codeExamples": [{"label": "Node.js / Express", "language": "javascript", "code": "const allowedOrigins = ['https://app.example.com'];\napp.use((req, res, next) => {\n  const origin = req.headers.origin;\n  if (allowedOrigins.includes(origin)) {\n    res.setHeader('Access-Control-Allow-Origin', origin);\n    res.setHeader('Access-Control-Allow-Credentials', 'true');\n  }\n  next();\n});"}]
+    },
+    {
+      "id": "html-comment-leaks", "type": "body-pattern", "title": "HTML Comments Contain Sensitive Keywords", "category": "information-disclosure", "severity": "MEDIUM", "description": "HTML comments containing sensitive keywords (passwords, API keys, TODO notes).", "evidence": "Sensitive keywords found in HTML comments.", "riskImpact": "HTML comments are visible to anyone who views page source.", "explanation": "Developers often leave comments referencing sensitive systems or credentials.", "fixSteps": ["Remove all comments containing sensitive information.", "Use a build step that strips HTML comments.", "Move developer notes to server-side files."], "codeExamples": [{"label": "Webpack", "language": "javascript", "code": "new TerserPlugin({ terserOptions: { output: { comments: false } }, extractComments: false })"}]
+    },
+    {
+      "id": "jwt-in-url", "type": "body-pattern", "title": "JWT Token Exposed in URL", "category": "information-disclosure", "severity": "CRITICAL", "description": "A JSON Web Token was found embedded in a URL within the page HTML.", "evidence": "Found JWT in URL parameter.", "riskImpact": "The token appears in browser history, proxy logs, server logs, and Referer headers.", "explanation": "JWTs in URLs persist in numerous locations, creating many avenues for token theft.", "fixSteps": ["Transmit tokens in HTTP headers (Authorization: Bearer) instead of URLs.", "Use HTTP-only secure cookies.", "Implement short-lived single-use tokens."], "codeExamples": [{"label": "Fetch with header", "language": "javascript", "code": "// BAD: Token in URL\nfetch('/api/data?token=eyJ...');\n// GOOD: Token in header\nfetch('/api/data', { headers: { 'Authorization': 'Bearer ' + token } });"}]
+    },
+    {
+      "id": "sensitive-meta-tags", "type": "body-pattern", "title": "Sensitive Information in Meta Tags", "category": "information-disclosure", "severity": "LOW", "description": "Meta tags that expose sensitive or unnecessary information.", "evidence": "Sensitive meta tags found.", "riskImpact": "Meta tag contents are visible in page source.", "explanation": "Generator tags reveal exact software versions with known CVEs. CSRF tokens in meta tags are accessible to any script.", "fixSteps": ["Remove generator meta tags in production.", "Move CSRF tokens to HTTP-only cookies.", "Never store API keys in meta tags."], "codeExamples": [{"label": "WordPress", "language": "php", "code": "remove_action('wp_head', 'wp_generator');"}]
+    },
+    {
+      "id": "storage-api-sensitive", "type": "body-pattern", "title": "Sensitive Data Stored in Browser Storage APIs", "category": "content", "severity": "HIGH", "description": "JavaScript stores sensitive values (tokens, secrets) in localStorage or sessionStorage.", "evidence": "Sensitive data in browser storage APIs.", "riskImpact": "Any XSS vulnerability allows attackers to steal all data from browser storage.", "explanation": "Web Storage APIs are fully accessible to JavaScript. If an attacker exploits any XSS, they can read all stored values.", "fixSteps": ["Move authentication tokens to HTTP-only, Secure, SameSite cookies.", "Never store passwords, API keys, or PII in browser storage.", "Implement CSP to reduce XSS risk."], "codeExamples": [{"label": "Secure cookie instead", "language": "javascript", "code": "// BAD: localStorage.setItem('token', jwt);\n// GOOD: Set via server Set-Cookie: session=abc; HttpOnly; Secure; SameSite=Strict"}]
+    },
+    {
+      "id": "cdn-no-sri", "type": "body-pattern", "title": "CDN Resources Loaded Without Subresource Integrity", "category": "content", "severity": "MEDIUM", "description": "Scripts loaded from CDNs lack integrity attributes.", "evidence": "CDN scripts without SRI.", "riskImpact": "A compromised CDN could serve malicious scripts to all your users.", "explanation": "SRI lets you provide a cryptographic hash of the expected file content. The browser verifies before executing.", "fixSteps": ["Add integrity and crossorigin attributes to all CDN resources.", "Consider self-hosting critical libraries as an alternative."], "codeExamples": [{"label": "SRI example", "language": "html", "code": "<script src=\"https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.min.js\" integrity=\"sha384-...\" crossorigin=\"anonymous\"></script>"}]
+    },
+    {
+      "id": "og-injection", "type": "body-pattern", "title": "Suspicious Content in Open Graph Tags", "category": "content", "severity": "MEDIUM", "description": "Open Graph meta tags contain suspicious content that could indicate injection.", "evidence": "Suspicious OG tag content found.", "riskImpact": "Malicious OG content can be exploited by link preview services.", "explanation": "Some preview renderers process OG values in ways that can be exploited.", "fixSteps": ["Sanitize all Open Graph tag content.", "Validate og:url and og:image point to your own domains.", "Never include user-controlled input in OG tags without encoding."], "codeExamples": [{"label": "Safe OG tags", "language": "html", "code": "<meta property=\"og:url\" content=\"https://example.com/page\" />\n<meta property=\"og:image\" content=\"https://example.com/image.jpg\" />"}]
+    },
+    {
+      "id": "sw-insecure", "type": "body-pattern", "title": "Service Worker Registered Over Insecure HTTP", "category": "content", "severity": "HIGH", "description": "A service worker is being registered from an HTTP URL.", "evidence": "Service worker URL uses http://.", "riskImpact": "A MITM attacker could replace the service worker with malicious code that persists.", "explanation": "Service workers intercept all network requests. A compromised one gives attackers persistent control.", "fixSteps": ["Serve the service worker file over HTTPS.", "Use relative URLs for registration."], "codeExamples": [{"label": "Safe registration", "language": "javascript", "code": "// BAD: navigator.serviceWorker.register('http://example.com/sw.js');\n// GOOD: navigator.serviceWorker.register('/sw.js');"}]
+    },
+    {
+      "id": "window-opener-abuse", "type": "body-pattern", "title": "Window.opener Access Detected", "category": "content", "severity": "MEDIUM", "description": "JavaScript accesses window.opener properties, exploitable for reverse tabnabbing.", "evidence": "Found window.opener access patterns.", "riskImpact": "Can redirect the parent tab to a phishing page without the user noticing.", "explanation": "When a page is opened via window.open() or target='_blank', it may have a reference to the opening window.", "fixSteps": ["Add rel='noopener noreferrer' to external links.", "Set window.opener = null at the top of pages.", "Use Cross-Origin-Opener-Policy: same-origin."], "codeExamples": [{"label": "Safe link", "language": "html", "code": "<a href=\"https://external.com\" target=\"_blank\" rel=\"noopener noreferrer\">External</a>"}]
+    },
+    {
+      "id": "websocket-insecure", "type": "body-pattern", "title": "Insecure WebSocket Connection (ws://)", "category": "content", "severity": "HIGH", "description": "WebSocket connections using unencrypted ws:// instead of wss://.", "evidence": "Insecure ws:// WebSocket connections detected.", "riskImpact": "Unencrypted WebSocket connections can be intercepted. WebSocket connections don't enforce same-origin policy.", "explanation": "ws:// transmits data in plaintext. WebSocket connections aren't bound by same-origin policy, making them vulnerable to cross-site hijacking.", "fixSteps": ["Use wss:// for all WebSocket connections.", "Validate the Origin header on the server.", "Implement CSRF token verification in the handshake."], "codeExamples": [{"label": "Secure WebSocket", "language": "javascript", "code": "// BAD: new WebSocket('ws://example.com/feed');\n// GOOD: new WebSocket('wss://example.com/feed');"}]
+    },
+    {
+      "id": "document-domain", "type": "body-pattern", "title": "Deprecated document.domain Usage Detected", "category": "content", "severity": "MEDIUM", "description": "The page sets document.domain, a deprecated practice that relaxes same-origin policy.", "evidence": "Found document.domain assignment.", "riskImpact": "Setting document.domain weakens same-origin isolation.", "explanation": "document.domain was historically used for cross-subdomain communication. Chrome has deprecated it. Use postMessage instead.", "fixSteps": ["Replace document.domain with postMessage().", "Use CORS headers for cross-origin API requests.", "Consider Channel Messaging API."], "codeExamples": [{"label": "Use postMessage", "language": "javascript", "code": "// BAD: document.domain = 'example.com';\n// GOOD:\nwindow.parent.postMessage({ type: 'data', payload: result }, 'https://parent.example.com');"}]
+    },
+    {
+      "id": "prototype-pollution", "type": "body-pattern", "title": "Potential Prototype Pollution Sinks Detected", "category": "content", "severity": "MEDIUM", "description": "Vulnerable library functions that could allow modification of Object.prototype.", "evidence": "Prototype pollution sink patterns detected.", "riskImpact": "Prototype pollution can lead to XSS, privilege escalation, or denial of service.", "explanation": "Vulnerable functions like Lodash merge/set or jQuery.extend with deep merging can be exploited via __proto__ keys.", "fixSteps": ["Update vulnerable libraries: Lodash to 4.17.12+, jQuery to 3.4.0+.", "Use Object.create(null) for dictionary objects.", "Sanitize user input to reject __proto__ and constructor keys.", "Use Map instead of plain objects for user-controlled data."], "codeExamples": [{"label": "Safe merge", "language": "javascript", "code": "function safeMerge(target, source) {\n  for (const key of Object.keys(source)) {\n    if (key === '__proto__' || key === 'constructor' || key === 'prototype') continue;\n    target[key] = source[key];\n  }\n}"}]
+    },
+    {
+      "id": "weak-crypto", "type": "body-pattern", "title": "Weak or Broken Cryptography Detected", "category": "content", "severity": "HIGH", "description": "Weak or broken cryptographic algorithms in client-side JavaScript.", "evidence": "Weak cryptography patterns detected.", "riskImpact": "Weak cryptography provides a false sense of security. MD5/SHA-1 can be forged, DES/RC4 broken, Math.random() is predictable.", "explanation": "Cryptographic algorithms become weak as computing power increases. MD5 collisions can be generated in seconds.", "fixSteps": ["Replace MD5/SHA-1 with SHA-256 or SHA-3.", "Replace DES/RC4 with AES-256-GCM.", "Use crypto.getRandomValues() instead of Math.random().", "Use the SubtleCrypto API."], "codeExamples": [{"label": "Web Crypto API", "language": "javascript", "code": "// BAD: Math.random().toString(36);\n// GOOD:\nconst array = new Uint8Array(32);\ncrypto.getRandomValues(array);\nconst token = Array.from(array, b => b.toString(16).padStart(2, '0')).join('');"}]
+    },
+    {
+      "id": "dns-prefetch-on", "type": "combined", "title": "DNS Prefetch Explicitly Enabled", "category": "headers", "severity": "LOW", "description": "X-DNS-Prefetch-Control is set to 'on', leaking which links exist on the page.", "evidence": "X-DNS-Prefetch-Control: on", "riskImpact": "DNS prefetching leaks which links exist to DNS servers and network observers.", "explanation": "DNS prefetching resolves domain names for all links before the user clicks them.", "fixSteps": ["Set X-DNS-Prefetch-Control: off for pages with sensitive links.", "Leave unset for public pages."], "codeExamples": [{"label": "Disable", "language": "text", "code": "X-DNS-Prefetch-Control: off"}]
+    },
+    {
+      "id": "password-no-paste", "type": "body-pattern", "title": "Password Fields Block Pasting", "category": "content", "severity": "LOW", "description": "Password fields have paste functionality disabled, discouraging password manager use.", "evidence": "Password field(s) with onpaste=\"return false\".", "riskImpact": "Users cannot paste from password managers, leading to weaker passwords.", "explanation": "Both NCSC (UK) and NIST guidelines explicitly recommend against disabling paste on password fields.", "fixSteps": ["Remove all onpaste event handlers from password fields.", "Allow paste on all form fields, especially password fields."], "codeExamples": [{"label": "Allow paste", "language": "html", "code": "<!-- BAD -->\n<input type=\"password\" onpaste=\"return false\">\n<!-- GOOD -->\n<input type=\"password\" autocomplete=\"current-password\">"}]
+    },
+    {
+      "id": "exposed-error-messages", "type": "body-pattern", "title": "Application Error Messages Exposed to Users", "category": "information-disclosure", "severity": "MEDIUM", "description": "Detailed error messages visible in the page HTML.", "evidence": "Error message patterns detected.", "riskImpact": "Detailed errors reveal file paths, database types, library versions.", "explanation": "Verbose error messages reveal the technology stack and internal structure.", "fixSteps": ["Configure production to display generic error pages.", "Log detailed errors server-side only.", "Implement custom error handlers."], "codeExamples": [{"label": "Next.js error handling", "language": "tsx", "code": "'use client'\nexport default function Error() {\n  return <div><h1>Something went wrong</h1><p>Please try again later.</p></div>;\n}"}]
+    },
+    {
+      "id": "sql-error-exposure", "type": "body-pattern", "title": "SQL Database Error Messages Exposed", "category": "information-disclosure", "severity": "HIGH", "description": "Database error messages visible in the page.", "evidence": "SQL error patterns in page content.", "riskImpact": "SQL errors reveal database type, version, schema details, and query structure.", "explanation": "Exposed SQL errors indicate the application may be vulnerable to SQL injection and is leaking infrastructure details.", "fixSteps": ["Implement proper error handling.", "Never display raw database errors to users.", "Use parameterized queries for all database operations."], "codeExamples": [{"label": "Parameterized query", "language": "typescript", "code": "// BAD: `SELECT * FROM users WHERE id = ${userId}`\n// GOOD:\nconst result = await db.query('SELECT * FROM users WHERE id = ?', [userId]);"}]
+    },
+    {
+      "id": "command-injection", "type": "body-pattern", "title": "Potential Command Injection Vectors", "category": "content", "severity": "HIGH", "description": "Code patterns that execute system commands, potentially vulnerable to command injection.", "evidence": "Command execution patterns detected.", "riskImpact": "Command injection allows attackers to execute arbitrary system commands.", "explanation": "Executing system commands with user-controlled input is extremely dangerous.", "fixSteps": ["Never pass user input to system command functions.", "Use language-native APIs instead of shell commands.", "Run with minimal privileges."], "codeExamples": [{"label": "Safe alternative", "language": "typescript", "code": "// BAD: exec(`rm ${userFile}`);\n// GOOD:\nimport { unlink } from 'fs/promises';\nawait unlink(sanitizedPath);"}]
+    },
+    {
+      "id": "xxe-vulnerability", "type": "body-pattern", "title": "XML External Entity (XXE) Declaration Detected", "category": "content", "severity": "HIGH", "description": "XML entity declarations using SYSTEM keyword that can enable XXE attacks.", "evidence": "XXE entity declaration patterns found.", "riskImpact": "XXE can lead to file disclosure, SSRF, denial of service, and sometimes remote code execution.", "explanation": "XML External Entity attacks exploit XML parsers that process external entities.", "fixSteps": ["Disable external entity processing in all XML parsers.", "Use JSON instead of XML when possible.", "Keep XML parsing libraries updated."], "codeExamples": [{"label": "Disable XXE (Node.js)", "language": "javascript", "code": "const doc = libxmljs.parseXml(xmlString, { noent: false, nonet: true });"}]
+    },
+    {
+      "id": "xxe-server-xml", "type": "body-pattern", "title": "Server-Side XML Parsing Detected", "category": "content", "severity": "MEDIUM", "description": "Server-side XML parsing library usage found. Ensure external entity processing is disabled.", "evidence": "Server-side XML parsing patterns.", "riskImpact": "If external entities are not disabled, XXE attacks can read local files or perform SSRF.", "explanation": "Server-side XML parsers can be vulnerable to XXE if not properly configured.", "fixSteps": ["Disable external entity processing.", "Validate that noent: false and nonet: true are set.", "Consider using JSON instead of XML."], "codeExamples": [{"label": "Safe xml2js config", "language": "javascript", "code": "const parser = new xml2js.Parser({ strict: true, normalize: true, xmlns: false });"}]
+    },
+    {
+      "id": "ssrf-vectors", "type": "body-pattern", "title": "Potential Server-Side Request Forgery (SSRF) Vectors", "category": "content", "severity": "HIGH", "description": "User-controlled input may be used in server-side HTTP requests.", "evidence": "Suspicious request patterns found.", "riskImpact": "SSRF allows attackers to access internal resources, cloud metadata services, or internal networks.", "explanation": "SSRF occurs when an application fetches a remote resource without validating the user-supplied URL.", "fixSteps": ["Validate URLs against an allowlist.", "Block requests to private IP ranges.", "Disable redirects or validate redirect destinations."], "codeExamples": [{"label": "SSRF prevention", "language": "typescript", "code": "const ALLOWED = ['api.example.com'];\nconst url = new URL(userUrl);\nif (!ALLOWED.includes(url.hostname)) throw new Error('Invalid URL');"}]
+    },
+    {
+      "id": "path-traversal", "type": "body-pattern", "title": "Potential Path Traversal Vulnerability", "category": "content", "severity": "HIGH", "description": "File operations with user-controlled paths that could allow directory traversal.", "evidence": "Suspicious file operation patterns.", "riskImpact": "Path traversal allows attackers to read arbitrary files on the server.", "explanation": "Path traversal occurs when user input is used to construct file paths without validation.", "fixSteps": ["Never use user input directly in file paths.", "Validate resolved path is within expected directory.", "Use an allowlist of permitted files.", "Reject input containing '..' or absolute paths."], "codeExamples": [{"label": "Safe path handling", "language": "typescript", "code": "import path from 'path';\nconst baseDir = '/var/app/uploads';\nconst safePath = path.resolve(baseDir, userInput);\nif (!safePath.startsWith(baseDir)) throw new Error('Invalid path');"}]
+    },
+    {
+      "id": "insecure-auth", "type": "combined", "title": "Insecure Authentication Mechanisms Detected", "category": "headers", "severity": "HIGH", "description": "Authentication security issues that could compromise user sessions.", "evidence": "Authentication security issues detected.", "riskImpact": "Weak authentication allows credential theft, session hijacking, or authentication bypass.", "explanation": "Secure authentication requires proper cookie flags, token handling in headers, and avoiding Basic authentication.", "fixSteps": ["Use secure session cookies with HttpOnly, Secure, SameSite=Strict.", "Never pass authentication tokens in URLs.", "Replace HTTP Basic Auth with token-based authentication."], "codeExamples": [{"label": "Secure cookie", "language": "typescript", "code": "response.headers.set('Set-Cookie', `sessionId=${token}; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=3600`);"}]
+    },
+    {
+      "id": "insecure-deserialization", "type": "body-pattern", "title": "Potential Insecure Deserialization", "category": "content", "severity": "HIGH", "description": "Deserialization operations on potentially untrusted data.", "evidence": "Deserialization patterns detected.", "riskImpact": "Insecure deserialization can allow remote code execution.", "explanation": "Deserializing untrusted data can instantiate arbitrary objects or execute code.", "fixSteps": ["Only deserialize data from trusted sources.", "Use safe formats like JSON.", "Implement integrity checks (signatures/HMACs).", "Use allowlists for deserializable classes."], "codeExamples": [{"label": "Safe JSON parsing", "language": "typescript", "code": "const schema = z.object({ id: z.number(), name: z.string() });\nconst data = schema.parse(JSON.parse(input));"}]
+    },
+    {
+      "id": "rate-limiting-missing", "type": "combined", "title": "No Rate Limiting Headers Detected", "category": "headers", "severity": "MEDIUM", "description": "Sensitive endpoints exist but no rate limiting headers are present.", "evidence": "No rate limiting headers found.", "riskImpact": "Without rate limiting, attackers can perform brute force, credential stuffing, and API abuse.", "explanation": "Rate limiting is essential for protecting authentication endpoints and APIs.", "fixSteps": ["Implement rate limiting on all authentication endpoints.", "Add rate limiting to public APIs.", "Return standard rate limit headers."], "codeExamples": [{"label": "Rate limiting", "language": "typescript", "code": "import rateLimit from 'express-rate-limit';\nconst limiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 100, standardHeaders: true });"}]
+    },
+    {
+      "id": "graphql-introspection", "type": "body-pattern", "title": "GraphQL Introspection Enabled in Production", "category": "information-disclosure", "severity": "MEDIUM", "description": "GraphQL introspection is enabled, exposing the entire API schema.", "evidence": "Found GraphQL introspection queries or GraphiQL interface.", "riskImpact": "Attackers can discover all queries, mutations, types, and fields.", "explanation": "Introspection is useful for development but should be disabled in production.", "fixSteps": ["Disable introspection in production.", "Use environment variables to conditionally enable.", "Implement authentication before allowing introspection.", "Consider persisted queries."], "codeExamples": [{"label": "Disable introspection", "language": "typescript", "code": "const server = new ApolloServer({ typeDefs, resolvers, introspection: process.env.NODE_ENV !== 'production' });"}]
+    },
+    {
+      "id": "csp-frame-ancestors-missing", "type": "combined", "title": "Missing CSP frame-ancestors Directive", "category": "headers", "severity": "MEDIUM", "description": "Neither CSP frame-ancestors nor X-Frame-Options header is present.", "evidence": "No frame-ancestors directive and no X-Frame-Options header.", "riskImpact": "Attackers can embed your site in an iframe for clickjacking.", "explanation": "CSP frame-ancestors or X-Frame-Options prevents your site from being framed.", "fixSteps": ["Add frame-ancestors 'none' or 'self' to your CSP.", "Or add X-Frame-Options: DENY.", "CSP frame-ancestors is preferred."], "codeExamples": [{"label": "CSP", "language": "text", "code": "Content-Security-Policy: frame-ancestors 'none';"}]
+    },
+    {
+      "id": "coep-missing",
+      "type": "header-missing",
+      "targetHeader": "cross-origin-embedder-policy",
+      "title": "Missing Cross-Origin-Embedder-Policy (COEP)",
+      "category": "headers",
+      "severity": "INFO",
+      "description": "No Cross-Origin-Embedder-Policy header is set. COEP is required alongside COOP for cross-origin isolation.",
+      "evidence": "Header 'Cross-Origin-Embedder-Policy' is not present.",
+      "riskImpact": "Without COEP, the site cannot achieve cross-origin isolation, leaving it potentially vulnerable to Spectre-class attacks.",
+      "explanation": "COEP requires all cross-origin resources to explicitly grant permission via CORS or CORP headers. Together with COOP, it enables cross-origin isolation.",
+      "fixSteps": ["Add 'Cross-Origin-Embedder-Policy: require-corp' for full isolation.", "Use 'credentialless' for a less restrictive alternative.", "Ensure all cross-origin resources have proper CORS/CORP headers first."],
+      "codeExamples": [{"label": "Next.js", "language": "javascript", "code": "const nextConfig = { async headers() { return [{ source: '/(.*)', headers: [{ key: 'Cross-Origin-Embedder-Policy', value: 'require-corp' }] }]; } };"}]
+    },
+    {
+      "id": "cors-origin-reflection",
+      "type": "combined",
+      "title": "CORS Origin Reflection with Credentials",
+      "category": "headers",
+      "severity": "HIGH",
+      "description": "The server reflects the Origin header in Access-Control-Allow-Origin with credentials allowed. This may indicate insecure origin validation.",
+      "evidence": "ACAO reflects a specific origin with Allow-Credentials: true.",
+      "riskImpact": "If the server blindly reflects any Origin, any website can make authenticated cross-origin requests.",
+      "explanation": "Some servers reflect the incoming Origin header without validating it against an allowlist. This effectively acts as a wildcard with credentials.",
+      "fixSteps": ["Validate the Origin header against a strict allowlist.", "Never blindly reflect the Origin.", "Log and monitor rejected CORS requests."],
+      "codeExamples": [{"label": "Validate origin", "language": "typescript", "code": "const ALLOWED = ['https://yourdomain.com'];\nconst origin = request.headers.get('origin');\nif (!ALLOWED.includes(origin)) return new Response(null, { status: 403 });"}]
+    },
+    {
+      "id": "clear-site-data-missing",
+      "type": "combined",
+      "title": "Logout Page Missing Clear-Site-Data Header",
+      "category": "headers",
+      "severity": "LOW",
+      "description": "A logout page was detected but it does not send the Clear-Site-Data header to clear cookies, storage, and cache.",
+      "evidence": "Logout page detected without Clear-Site-Data header.",
+      "riskImpact": "Without Clear-Site-Data, session artifacts may persist after logout on shared devices.",
+      "explanation": "The Clear-Site-Data header instructs the browser to clear cookies, storage, and cache. It should be sent on logout to ensure complete session termination.",
+      "fixSteps": ["Add 'Clear-Site-Data: \"cookies\", \"storage\", \"cache\"' to logout response headers.", "Ensure the header is only sent on logout, not every page."],
+      "codeExamples": [{"label": "Logout route", "language": "typescript", "code": "return new Response(null, {\n  status: 302,\n  headers: {\n    'Location': '/login',\n    'Clear-Site-Data': '\"cookies\", \"storage\", \"cache\"',\n  },\n});"}]
+    },
+    {
+      "id": "csp-unsafe-eval-non-framework",
+      "type": "combined",
+      "title": "CSP Contains unsafe-eval Outside Framework Context",
+      "category": "headers",
+      "severity": "HIGH",
+      "description": "The CSP includes 'unsafe-eval' but no frontend framework indicators were detected. This is a significant security weakness.",
+      "evidence": "CSP contains 'unsafe-eval' but no framework indicators detected.",
+      "riskImpact": "unsafe-eval allows eval(), Function(), and setTimeout with strings, enabling code injection via XSS.",
+      "explanation": "While frameworks like Next.js/Vue need unsafe-eval, a non-framework site should never need it.",
+      "fixSteps": ["Remove 'unsafe-eval' from your CSP.", "Refactor code to avoid eval() and new Function().", "Use strict CSP with nonces."],
+      "codeExamples": [{"label": "Strict CSP", "language": "text", "code": "Content-Security-Policy: default-src 'self'; script-src 'self' 'nonce-{random}'"}]
+    },
+    {
+      "id": "csp-form-action-missing",
+      "type": "combined",
+      "title": "CSP Missing form-action Directive",
+      "category": "headers",
+      "severity": "LOW",
+      "description": "The CSP header exists but does not contain a form-action directive to restrict form submission targets.",
+      "evidence": "CSP exists but no form-action directive.",
+      "riskImpact": "Forms can submit data to any URL, enabling form hijacking via injected <form> tags.",
+      "explanation": "Without form-action, an attacker who injects HTML can add a <form> that submits to their server, exfiltrating data.",
+      "fixSteps": ["Add 'form-action self' to your CSP.", "Explicitly list allowed form action targets."],
+      "codeExamples": [{"label": "CSP", "language": "text", "code": "Content-Security-Policy: ... form-action 'self';"}]
+    },
+    {
+      "id": "csp-base-uri-missing",
+      "type": "combined",
+      "title": "CSP Missing base-uri Directive",
+      "category": "headers",
+      "severity": "LOW",
+      "description": "The CSP header exists but does not contain a base-uri directive.",
+      "evidence": "CSP exists but no base-uri directive.",
+      "riskImpact": "An attacker who injects a <base> tag can redirect all relative URLs to their server.",
+      "explanation": "Without base-uri, injected <base> tags can hijack relative resource loading.",
+      "fixSteps": ["Add 'base-uri self' to your CSP."],
+      "codeExamples": [{"label": "CSP", "language": "text", "code": "Content-Security-Policy: ... base-uri 'self';"}]
+    },
+    {
+      "id": "csp-object-src-missing",
+      "type": "combined",
+      "title": "CSP Missing object-src Directive",
+      "category": "headers",
+      "severity": "LOW",
+      "description": "The CSP header exists but does not contain an object-src directive to block plugins.",
+      "evidence": "CSP exists but no object-src directive.",
+      "riskImpact": "Flash, Java applets, and other plugins can be loaded, which are known attack vectors.",
+      "explanation": "object-src controls the loading of plugins like Flash and Java. These should be blocked in modern websites.",
+      "fixSteps": ["Add 'object-src none' to your CSP.", "If default-src is 'none', object-src is implicitly blocked."],
+      "codeExamples": [{"label": "CSP", "language": "text", "code": "Content-Security-Policy: ... object-src 'none';"}]
+    },
+    {
+      "id": "sri-stylesheet-missing",
+      "type": "body-pattern",
+      "title": "External Stylesheets Missing SRI",
+      "category": "content",
+      "severity": "LOW",
+      "description": "External stylesheets are loaded without Subresource Integrity hashes.",
+      "evidence": "External stylesheet(s) without integrity attribute.",
+      "riskImpact": "A compromised CDN could serve malicious CSS that alters page appearance for phishing or exfiltrates data via CSS selectors.",
+      "explanation": "While less dangerous than script injection, malicious CSS can overlay fake login forms, hide content, or exfiltrate data via attribute selectors.",
+      "fixSteps": ["Add integrity attributes to all external stylesheet <link> tags.", "Use crossorigin='anonymous' alongside."],
+      "codeExamples": [{"label": "HTML", "language": "html", "code": "<link rel=\"stylesheet\" href=\"https://cdn.example.com/styles.css\" integrity=\"sha384-...\" crossorigin=\"anonymous\">"}]
+    },
+    {
+      "id": "iframe-sandbox-missing",
+      "type": "body-pattern",
+      "title": "Iframes Missing Sandbox Attribute",
+      "category": "content",
+      "severity": "LOW",
+      "description": "Multiple iframes found without the sandbox attribute, allowing embedded content full capabilities.",
+      "evidence": "Iframe(s) without sandbox attribute.",
+      "riskImpact": "Unsandboxed iframes have full access to browser features, forms, scripts, and popups.",
+      "explanation": "The sandbox attribute restricts what an iframe can do. Without it, embedded content has nearly the same capabilities as the parent page.",
+      "fixSteps": ["Add the sandbox attribute to all iframes.", "Only enable needed capabilities: allow-scripts, allow-same-origin, etc."],
+      "codeExamples": [{"label": "Sandboxed iframe", "language": "html", "code": "<iframe src=\"https://embed.example.com\" sandbox=\"allow-scripts allow-same-origin\" loading=\"lazy\"></iframe>"}]
+    },
+    {
+      "id": "password-input-no-name",
+      "type": "body-pattern",
+      "title": "Password Fields Missing Name/Autocomplete Attributes",
+      "category": "content",
+      "severity": "LOW",
+      "description": "Password input fields are missing name or autocomplete attributes, hindering password manager functionality.",
+      "evidence": "Password field(s) missing name or autocomplete attributes.",
+      "riskImpact": "Password managers may not correctly identify or fill these fields, discouraging their use.",
+      "explanation": "Password managers rely on input name and autocomplete attributes to correctly identify and autofill fields.",
+      "fixSteps": ["Add name and autocomplete attributes to all password fields.", "Use autocomplete='current-password' for login and 'new-password' for registration."],
+      "codeExamples": [{"label": "Proper password field", "language": "html", "code": "<input type=\"password\" name=\"password\" autocomplete=\"current-password\" />"}]
+    },
+    {
+      "id": "sensitive-form-no-csrf",
+      "type": "body-pattern",
+      "title": "POST Forms Without CSRF Tokens",
+      "category": "content",
+      "severity": "MEDIUM",
+      "description": "POST form(s) found without apparent CSRF token fields. Note: This check skips framework apps (Next.js, Nuxt) that handle CSRF differently.",
+      "evidence": "POST form(s) without CSRF token fields.",
+      "riskImpact": "Without CSRF tokens, attackers can trick users into submitting forms from malicious sites.",
+      "explanation": "CSRF attacks forge requests from authenticated users. CSRF tokens ensure form submissions originate from your site.",
+      "fixSteps": ["Add a hidden CSRF token field to all POST forms.", "Validate the token on the server for every form submission.", "Use the SameSite cookie attribute as additional protection."],
+      "codeExamples": [{"label": "CSRF token", "language": "html", "code": "<form method=\"POST\" action=\"/submit\">\n  <input type=\"hidden\" name=\"csrf_token\" value=\"{{token}}\" />\n</form>"}]
+    },
+    {
+      "id": "exposed-api-version",
+      "type": "combined",
+      "title": "API Version Information Exposed",
+      "category": "information-disclosure",
+      "severity": "INFO",
+      "description": "API version numbers or build identifiers are exposed in headers or page source.",
+      "evidence": "Version info exposed.",
+      "riskImpact": "Version numbers help attackers identify specific vulnerabilities for that version.",
+      "explanation": "Exposing exact version numbers aids attacker reconnaissance. Remove or obfuscate version info in production.",
+      "fixSteps": ["Remove version headers like X-API-Version.", "Don't include build IDs in client-facing code.", "Use generic version references if needed."],
+      "codeExamples": [{"label": "Remove headers", "language": "typescript", "code": "// Don't set version headers in production\nif (process.env.NODE_ENV !== 'production') {\n  response.headers.set('X-API-Version', version);\n}"}]
+    },
+    {
+      "id": "html-lang-missing",
+      "type": "body-pattern",
+      "title": "Missing HTML lang Attribute",
+      "category": "content",
+      "severity": "INFO",
+      "description": "The <html> tag does not include a lang attribute, impacting accessibility and SEO.",
+      "evidence": "The <html> tag does not include a lang attribute.",
+      "riskImpact": "Screen readers may not announce content in the correct language. Search engines may misidentify the page language.",
+      "explanation": "The lang attribute on <html> tells browsers and assistive technologies the primary language of the page.",
+      "fixSteps": ["Add lang attribute to the <html> tag: <html lang=\"en\">.", "Use appropriate BCP 47 language codes."],
+      "codeExamples": [{"label": "HTML", "language": "html", "code": "<html lang=\"en\">"}]
+    },
+    {
+      "id": "open-form-action",
+      "type": "body-pattern",
+      "title": "Forms Submitting to External Domains",
+      "category": "content",
+      "severity": "MEDIUM",
+      "description": "Form(s) found that submit data to external third-party domains (excluding known payment providers).",
+      "evidence": "Form(s) submitting to external domains.",
+      "riskImpact": "Form data may be sent to untrusted external servers.",
+      "explanation": "Forms with external action URLs send user data outside your domain. While legitimate for payment forms, unexpected external submissions may indicate compromise.",
+      "fixSteps": ["Review all external form actions for legitimacy.", "Use server-side proxying for third-party form submissions.", "Add CSP form-action to restrict allowed targets."],
+      "codeExamples": [{"label": "CSP form-action", "language": "text", "code": "Content-Security-Policy: form-action 'self' https://checkout.stripe.com;"}]
+    },
+    {
+      "id": "local-storage-sensitive",
+      "type": "body-pattern",
+      "title": "Sensitive Data in Browser Storage",
+      "category": "content",
+      "severity": "HIGH",
+      "description": "Sensitive data (tokens, passwords, API keys) being stored in localStorage or sessionStorage.",
+      "evidence": "Sensitive data stored in browser storage.",
+      "riskImpact": "Any XSS vulnerability allows complete theft of stored sensitive data.",
+      "explanation": "Browser storage APIs have no access controls. Any script on the page can read all stored values.",
+      "fixSteps": ["Move tokens to HTTP-only cookies.", "Never store passwords or API keys client-side."],
+      "codeExamples": [{"label": "Use cookies", "language": "typescript", "code": "// Instead of localStorage, use HTTP-only cookies\nresponse.cookies.set('session', token, { httpOnly: true, secure: true, sameSite: 'strict' });"}]
+    },
+    {
+      "id": "viewport-user-scalable-no",
+      "type": "body-pattern",
+      "title": "Viewport Prevents User Zoom",
+      "category": "content",
+      "severity": "INFO",
+      "description": "The viewport meta tag disables user scaling (user-scalable=no or maximum-scale=1), which is an accessibility issue.",
+      "evidence": "Viewport restricts zoom.",
+      "riskImpact": "Users with visual impairments cannot zoom the page, violating WCAG accessibility guidelines.",
+      "explanation": "Disabling zoom creates an accessibility barrier for users who need to enlarge content.",
+      "fixSteps": ["Remove user-scalable=no from viewport meta.", "Remove or increase maximum-scale.", "Allow natural pinch-to-zoom behavior."],
+      "codeExamples": [{"label": "Accessible viewport", "language": "html", "code": "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">"}]
+    },
+    {
+      "id": "exposed-stack-trace",
+      "type": "body-pattern",
+      "title": "Stack Trace Exposed in Page Source",
+      "category": "information-disclosure",
+      "severity": "HIGH",
+      "description": "A stack trace with file paths and line numbers was found in the page source.",
+      "evidence": "Stack trace with file paths and line numbers in page source.",
+      "riskImpact": "Stack traces reveal exact file paths, function names, and line numbers that attackers use to understand application internals.",
+      "explanation": "Stack traces should never be visible in production. They reveal the complete execution path and internal file structure.",
+      "fixSteps": ["Configure production error handling to suppress stack traces.", "Use error monitoring services (Sentry) for server-side tracking.", "Return generic error messages to clients."],
+      "codeExamples": [{"label": "Safe error response", "language": "typescript", "code": "catch (err) {\n  console.error(err); // Log server-side\n  return Response.json({ error: 'Internal server error' }, { status: 500 });\n}"}]
+    },
+    {
+      "id": "hardcoded-ip-addresses",
+      "type": "body-pattern",
+      "title": "Hardcoded IP Addresses in Page Source",
+      "category": "information-disclosure",
+      "severity": "LOW",
+      "description": "Multiple distinct IP addresses found hardcoded in page source (excluding localhost and common non-sensitive IPs).",
+      "evidence": "IP addresses found in page source.",
+      "riskImpact": "Hardcoded IPs reveal server infrastructure and network topology.",
+      "explanation": "IP addresses in client-facing code suggest hardcoded infrastructure references that should use DNS or environment variables.",
+      "fixSteps": ["Replace hardcoded IPs with domain names.", "Use environment variables for server addresses.", "Configure DNS properly."],
+      "codeExamples": [{"label": "Use DNS", "language": "typescript", "code": "const API = process.env.API_URL; // Not a hardcoded IP"}]
+    },
+    {
+      "id": "document-write-usage",
+      "type": "body-pattern",
+      "title": "document.write() Usage Detected",
+      "category": "content",
+      "severity": "LOW",
+      "description": "document.write()/document.writeln() usage found. These are deprecated and can be exploited for XSS.",
+      "evidence": "document.write()/document.writeln() usage.",
+      "riskImpact": "document.write() can be hijacked to inject malicious content if any input is attacker-controlled.",
+      "explanation": "document.write() is deprecated, blocks HTML parsing, and is a common XSS vector.",
+      "fixSteps": ["Replace document.write() with DOM APIs (createElement, appendChild).", "Use innerHTML with DOMPurify if HTML insertion is needed."],
+      "codeExamples": [{"label": "Safe alternative", "language": "javascript", "code": "// BAD: document.write('<p>' + text + '</p>');\n// GOOD:\nconst p = document.createElement('p');\np.textContent = text;\ndocument.body.appendChild(p);"}]
+    },
+    {
+      "id": "preconnect-third-party",
+      "type": "body-pattern",
+      "title": "Excessive Third-Party Domain Connections",
+      "category": "content",
+      "severity": "INFO",
+      "description": "The page connects to a large number of distinct third-party domains (10+), increasing attack surface.",
+      "evidence": "Connections to many third-party domains.",
+      "riskImpact": "Each third-party domain is a potential attack vector. If any is compromised, it can affect your users.",
+      "explanation": "Every external domain you load resources from expands your attack surface. A compromise of any CDN, analytics, or advertising domain can lead to script injection.",
+      "fixSteps": ["Audit all third-party connections and remove unnecessary ones.", "Self-host critical resources where possible.", "Use SRI for all external scripts.", "Implement a strict CSP to limit allowed domains."],
+      "codeExamples": [{"label": "CSP allowlist", "language": "text", "code": "Content-Security-Policy: script-src 'self' https://trusted-cdn.com;"}]
+    },
+    {
+      "id": "input-no-maxlength",
+      "type": "body-pattern",
+      "title": "Text Inputs Missing maxlength Attribute",
+      "category": "content",
+      "severity": "INFO",
+      "description": "Multiple text inputs and textareas found without maxlength, allowing unbounded input.",
+      "evidence": "Text input(s)/textarea(s) without maxlength.",
+      "riskImpact": "Unbounded input fields can be used for denial-of-service or buffer-based attacks on backend systems.",
+      "explanation": "Without maxlength, users (or attackers) can submit extremely long strings that may cause performance issues or exploit backend vulnerabilities.",
+      "fixSteps": ["Add maxlength attribute to all text inputs and textareas.", "Validate input length on the server side as well."],
+      "codeExamples": [{"label": "HTML", "language": "html", "code": "<input type=\"text\" maxlength=\"255\" />\n<textarea maxlength=\"5000\"></textarea>"}]
+    },
+    {
+      "id": "lazy-loading-missing",
+      "type": "body-pattern",
+      "title": "Images Missing Lazy Loading",
+      "category": "content",
+      "severity": "INFO",
+      "description": "Many images found without loading='lazy' attribute, impacting page load performance.",
+      "evidence": "Image(s) without loading='lazy' attribute.",
+      "riskImpact": "All images load immediately, increasing initial page load time and bandwidth usage.",
+      "explanation": "Native lazy loading defers offscreen images until the user scrolls near them, improving initial load performance.",
+      "fixSteps": ["Add loading='lazy' to images that are below the fold.", "Keep loading='eager' for above-the-fold images."],
+      "codeExamples": [{"label": "Lazy loading", "language": "html", "code": "<img src=\"image.jpg\" loading=\"lazy\" alt=\"Description\" />"}]
+    },
+    {
+      "id": "unsafe-target-blank",
+      "type": "body-pattern",
+      "title": "Links with target=\"_blank\" Missing rel=\"noopener\"",
+      "category": "content",
+      "severity": "LOW",
+      "description": "Multiple links with target=\"_blank\" are missing rel=\"noopener\", enabling reverse tabnabbing.",
+      "evidence": "Link(s) with target=\"_blank\" missing rel=\"noopener\".",
+      "riskImpact": "The opened page can redirect the original tab to a phishing page via window.opener.",
+      "explanation": "Modern browsers mitigate this by default, but explicit rel=\"noopener\" ensures safety across all browsers.",
+      "fixSteps": ["Add rel=\"noopener noreferrer\" to all external links with target=\"_blank\"."],
+      "codeExamples": [{"label": "Safe link", "language": "html", "code": "<a href=\"https://external.com\" target=\"_blank\" rel=\"noopener noreferrer\">Link</a>"}]
+    }
+  ]
+}

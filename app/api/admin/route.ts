@@ -28,9 +28,10 @@ export async function GET(request: NextRequest) {
 
   const { searchParams } = new URL(request.url)
   const page = Math.max(1, Number(searchParams.get("page") || 1))
-  const limit = 20
+  const limit = 5
   const offset = (page - 1) * limit
   const section = searchParams.get("section")
+  const search = searchParams.get("search")?.trim() || ""
 
   // Fetch user detail
   if (section === "user-detail") {
@@ -127,15 +128,27 @@ export async function GET(request: NextRequest) {
         (SELECT COUNT(*) FROM users WHERE created_at > NOW() - INTERVAL '7 days') as new_users_7d,
         (SELECT COUNT(*) FROM users WHERE disabled_at IS NOT NULL) as disabled_users
     `),
-    pool.query(`
-      SELECT u.id, u.email, u.name, u.is_admin, u.totp_enabled, u.tos_accepted_at, u.created_at, u.disabled_at,
-        (SELECT COUNT(*) FROM scan_history sh WHERE sh.user_id = u.id) as scan_count,
-        (SELECT COUNT(*) FROM api_keys ak WHERE ak.user_id = u.id AND ak.revoked_at IS NULL) as api_key_count
-      FROM users u
-      ORDER BY u.created_at DESC
-      LIMIT $1 OFFSET $2
-    `, [limit, offset]),
-    pool.query("SELECT COUNT(*) FROM users"),
+    search
+      ? pool.query(`
+          SELECT u.id, u.email, u.name, u.is_admin, u.totp_enabled, u.tos_accepted_at, u.created_at, u.disabled_at,
+            (SELECT COUNT(*) FROM scan_history sh WHERE sh.user_id = u.id) as scan_count,
+            (SELECT COUNT(*) FROM api_keys ak WHERE ak.user_id = u.id AND ak.revoked_at IS NULL) as api_key_count
+          FROM users u
+          WHERE u.email ILIKE $3 OR u.name ILIKE $3
+          ORDER BY u.created_at DESC
+          LIMIT $1 OFFSET $2
+        `, [limit, offset, `%${search}%`])
+      : pool.query(`
+          SELECT u.id, u.email, u.name, u.is_admin, u.totp_enabled, u.tos_accepted_at, u.created_at, u.disabled_at,
+            (SELECT COUNT(*) FROM scan_history sh WHERE sh.user_id = u.id) as scan_count,
+            (SELECT COUNT(*) FROM api_keys ak WHERE ak.user_id = u.id AND ak.revoked_at IS NULL) as api_key_count
+          FROM users u
+          ORDER BY u.created_at DESC
+          LIMIT $1 OFFSET $2
+        `, [limit, offset]),
+    search
+      ? pool.query("SELECT COUNT(*) FROM users WHERE email ILIKE $1 OR name ILIKE $1", [`%${search}%`])
+      : pool.query("SELECT COUNT(*) FROM users"),
   ])
 
   return NextResponse.json({

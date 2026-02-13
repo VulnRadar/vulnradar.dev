@@ -1,7 +1,7 @@
 "use client"
 
 import React from "react"
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useRef } from "react"
 import { useRouter } from "next/navigation"
 import {
   Users,
@@ -15,8 +15,7 @@ import {
   Crown,
   CrownIcon,
   Loader2,
-  ChevronLeft,
-  ChevronRight,
+
   Search,
   BarChart3,
   RefreshCw,
@@ -48,6 +47,7 @@ import { Badge } from "@/components/ui/badge"
 import { Header } from "@/components/scanner/header"
 import { Footer } from "@/components/scanner/footer"
 import { cn } from "@/lib/utils"
+import { PaginationControl } from "@/components/ui/pagination-control"
 
 interface AdminStats {
   total_users: string
@@ -242,15 +242,21 @@ export default function AdminPage() {
   const [expandedLog, setExpandedLog] = useState<number | null>(null)
   const [activeAdmins, setActiveAdmins] = useState<ActiveAdmin[]>([])
   const [adminsLoading, setAdminsLoading] = useState(false)
+  const [searchLoading, setSearchLoading] = useState(false)
+  const [auditPaging, setAuditPaging] = useState(false)
+  const searchInitRef = useRef(false)
   const showToast = useCallback((message: string, type: "success" | "error") => {
     setToast({ message, type })
   }, [])
 
-  async function fetchData(p = 1) {
-    setLoading(true)
+  async function fetchData(p = 1, search = searchQuery, isInitial = false) {
+    if (isInitial) setLoading(true)
+    else setSearchLoading(true)
     try {
-      const res = await fetch(`/api/admin?page=${p}`)
-      if (res.status === 403) { setForbidden(true); setLoading(false); return }
+      const params = new URLSearchParams({ page: String(p) })
+      if (search.trim()) params.set("search", search.trim())
+      const res = await fetch(`/api/admin?${params}`)
+      if (res.status === 403) { setForbidden(true); setLoading(false); setSearchLoading(false); return }
       const data = await res.json()
       setStats(data.stats)
       setUsers(data.users)
@@ -258,9 +264,11 @@ export default function AdminPage() {
       setTotalPages(data.totalPages)
     } catch { setForbidden(true) }
     setLoading(false)
+    setSearchLoading(false)
   }
 
   async function fetchAudit(p = 1) {
+    setAuditPaging(true)
     try {
       const res = await fetch(`/api/admin?section=audit&page=${p}`)
       const data = await res.json()
@@ -268,6 +276,7 @@ export default function AdminPage() {
       setAuditPage(data.page)
       setAuditTotalPages(data.totalPages)
     } catch { /* ignore */ }
+    setAuditPaging(false)
   }
 
   async function fetchActiveAdmins() {
@@ -290,18 +299,11 @@ export default function AdminPage() {
     setDetailLoading(false)
   }
 
-  useEffect(() => { fetchData() }, [])
+  useEffect(() => { fetchData(1, "", true) }, [])
 
   useEffect(() => {
-    console.log("[v0] activeTab changed to:", activeTab)
-    if (activeTab === "audit") {
-      console.log("[v0] Calling fetchAudit")
-      fetchAudit()
-    }
-    if (activeTab === "admins") {
-      console.log("[v0] Calling fetchActiveAdmins")
-      fetchActiveAdmins()
-    }
+    if (activeTab === "audit") fetchAudit()
+    if (activeTab === "admins") fetchActiveAdmins()
   }, [activeTab])
 
   async function handleAction(userId: number, action: string) {
@@ -339,12 +341,27 @@ export default function AdminPage() {
     setConfirmDialog(null)
   }
 
-  const filteredUsers = searchQuery
-    ? users.filter((u) =>
-        u.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (u.name && u.name.toLowerCase().includes(searchQuery.toLowerCase()))
-      )
-    : users
+  // Debounced server-side search - searches ALL users, not just current page
+  useEffect(() => {
+    // Skip the initial mount (fetchData already runs on mount)
+    if (!searchInitRef.current) { searchInitRef.current = true; return }
+    setSearchLoading(true)
+    const timeout = setTimeout(async () => {
+      try {
+        const params = new URLSearchParams({ page: "1" })
+        if (searchQuery.trim()) params.set("search", searchQuery.trim())
+        const res = await fetch(`/api/admin?${params}`)
+        if (res.ok) {
+          const data = await res.json()
+          setUsers(data.users)
+          setPage(data.page)
+          setTotalPages(data.totalPages)
+        }
+      } catch { /* ignore */ }
+      setSearchLoading(false)
+    }, 300)
+    return () => { clearTimeout(timeout); setSearchLoading(false) }
+  }, [searchQuery])
 
   // Forbidden screen
   if (forbidden) {
@@ -499,9 +516,9 @@ export default function AdminPage() {
                           <th className="px-5 py-2.5 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider text-right">Actions</th>
                         </tr>
                       </thead>
-                      <tbody>
-                        {filteredUsers.map((u) => (
-                          <tr key={u.id} className="border-b border-border last:border-0 hover:bg-muted/20 transition-colors group">
+  <tbody className={cn("transition-opacity duration-200", searchLoading && "opacity-40 pointer-events-none")}>
+  {users.map((u) => (
+  <tr key={u.id} className="border-b border-border last:border-0 hover:bg-muted/20 transition-colors group">
                             <td className="px-5 py-3">
                               <div className="flex items-center gap-3">
                                 <UserAvatar name={u.name} email={u.email} />
@@ -552,7 +569,7 @@ export default function AdminPage() {
                             </td>
                           </tr>
                         ))}
-                        {filteredUsers.length === 0 && (
+                        {users.length === 0 && (
                           <tr>
                             <td colSpan={6} className="px-5 py-12 text-center">
                               <Search className="h-6 w-6 text-muted-foreground/40 mx-auto mb-2" />
@@ -565,8 +582,8 @@ export default function AdminPage() {
                   </div>
 
                   {/* Mobile */}
-                  <div className="md:hidden flex flex-col">
-                    {filteredUsers.map((u) => (
+                  <div className={cn("md:hidden flex flex-col transition-opacity duration-200", searchLoading && "opacity-40 pointer-events-none")}>
+                    {users.map((u) => (
                       <button key={u.id} className="flex items-center gap-3 px-4 py-3.5 border-b border-border last:border-0 hover:bg-muted/20 text-left transition-colors w-full" onClick={() => fetchUserDetail(u.id)}>
                         <UserAvatar name={u.name} email={u.email} size="sm" />
                         <div className="flex-1 min-w-0">
@@ -586,12 +603,12 @@ export default function AdminPage() {
 
                   {/* Pagination */}
                   {totalPages > 1 && (
-                    <div className="flex items-center justify-between px-5 py-3 border-t border-border bg-muted/10">
-                      <span className="text-xs text-muted-foreground">Page {page} of {totalPages}</span>
-                      <div className="flex items-center gap-1">
-                        <Button variant="outline" size="icon" className="h-7 w-7 bg-transparent" disabled={page <= 1} onClick={() => fetchData(page - 1)}><ChevronLeft className="h-3.5 w-3.5" /></Button>
-                        <Button variant="outline" size="icon" className="h-7 w-7 bg-transparent" disabled={page >= totalPages} onClick={() => fetchData(page + 1)}><ChevronRight className="h-3.5 w-3.5" /></Button>
-                      </div>
+                    <div className="px-5 py-3 border-t border-border bg-muted/10">
+                      <PaginationControl
+                        currentPage={page}
+                        totalPages={totalPages}
+                        onPageChange={(p) => fetchData(p)}
+                      />
                     </div>
                   )}
                 </CardContent>
@@ -619,7 +636,7 @@ export default function AdminPage() {
                     </div>
                   ) : (
                     <>
-                      <div className="flex flex-col">
+                      <div className={cn("flex flex-col transition-opacity duration-200", auditPaging && "opacity-40 pointer-events-none")}>
                         {auditLogs.map((log, i) => {
                           const isExpanded = expandedLog === log.id
                           const adminDisplay = log.admin_name || log.admin_email.split("@")[0]
@@ -699,12 +716,12 @@ export default function AdminPage() {
                         })}
                       </div>
                       {auditTotalPages > 1 && (
-                        <div className="flex items-center justify-between px-5 py-3 border-t border-border bg-muted/10">
-                          <span className="text-xs text-muted-foreground">Page {auditPage} of {auditTotalPages}</span>
-                          <div className="flex items-center gap-1">
-                            <Button variant="outline" size="icon" className="h-7 w-7 bg-transparent" disabled={auditPage <= 1} onClick={() => fetchAudit(auditPage - 1)}><ChevronLeft className="h-3.5 w-3.5" /></Button>
-                            <Button variant="outline" size="icon" className="h-7 w-7 bg-transparent" disabled={auditPage >= auditTotalPages} onClick={() => fetchAudit(auditPage + 1)}><ChevronRight className="h-3.5 w-3.5" /></Button>
-                          </div>
+                        <div className="px-5 py-3 border-t border-border bg-muted/10">
+                          <PaginationControl
+                            currentPage={auditPage}
+                            totalPages={auditTotalPages}
+                            onPageChange={(p) => fetchAudit(p)}
+                          />
                         </div>
                       )}
                     </>

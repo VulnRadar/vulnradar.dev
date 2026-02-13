@@ -4,8 +4,8 @@
 
 // Application metadata
 export const APP_NAME = "VulnRadar"
-export const APP_DESCRIPTION = "Scan websites for 75+ security vulnerabilities. Get instant reports with severity ratings, actionable fix guidance, and team collaboration tools."
-export const APP_VERSION = "1.3.2"
+export const APP_DESCRIPTION = "Scan websites for 100+ security vulnerabilities. Get instant reports with severity ratings, actionable fix guidance, and team collaboration tools."
+export const APP_VERSION = "1.4.0"
 export const APP_URL = "https://vulnradar.dev"
 
 // Short slug used for filenames and slugs

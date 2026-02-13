@@ -5,10 +5,26 @@ import { APP_NAME } from "@/lib/constants"
 
 const CHANGELOG = [
   {
+    version: "1.4.0",
+    date: "February 13, 2026",
+    title: "100+ Security Checks, Smart Safety Engine & Pagination",
+    highlights: true,
+    changes: [
+      { icon: Brain, label: "100+ Security Checks", desc: "Completely refactored the scanner engine from a monolithic 3,500-line file into a clean data-driven architecture. All check metadata now lives in a JSON data file with a pure detection engine in TypeScript. Expanded from 75 to 100+ checks covering headers, SSL, content, cookies, configuration, and information disclosure." },
+      { icon: ShieldCheck, label: "Smart Safety Rating Engine", desc: "Rebuilt the safety rating from scratch with a three-tier classification system. Tier 1 (Exploitable) covers real threats like SQL injection, XSS, and exposed credentials. Tier 2 (Hardening) covers missing headers and best practices. Tier 3 (Informational) is excluded entirely. Sites like Discord and Reddit now correctly show as 'Safe' instead of being falsely flagged for missing optional headers." },
+      { icon: Target, label: "Framework-Aware Detection", desc: "The scanner now detects Next.js, Nuxt, and Angular and adjusts severity accordingly. CSP directives like unsafe-inline in style-src are marked as INFO on framework sites instead of HIGH, eliminating false positives. A dedicated framework-required CSP check explains which directives are expected for the detected framework." },
+      { icon: List, label: "Pagination Everywhere", desc: "Added pagination across the app using a reusable PaginationControl component. History page shows 10 scans per page, admin panel shows 5 users per page, and team scan history is paginated at 10 per page. All with smooth transitions instead of full-page reloads." },
+      { icon: Search, label: "Server-Side Admin Search", desc: "Admin user search now queries the database directly with ILIKE filtering across all users, not just the current page. Results update live with a 300ms debounce and smooth opacity transitions -- no page flicker." },
+      { icon: Shield, label: "Security Header Fixes", desc: "Fixed CSP trailing semicolon that caused Vercel to strip frame-ancestors directive. Verified X-Frame-Options and Content-Security-Policy headers are properly served in production using debug header analysis." },
+      { icon: Zap, label: "Centralized Constants System", desc: "All environment variables (database, SMTP, Turnstile, contact email) are now managed through a centralized constants file with proper validation, replacing scattered process.env calls throughout the codebase." },
+      { icon: RefreshCw, label: "Smooth Admin Pagination", desc: "Admin panel pagination and audit log paging no longer trigger full-page skeleton reloads. Only the table content dims briefly with a smooth opacity transition while new data loads in the background." },
+    ],
+  },
+  {
     version: "1.3.2",
     date: "February 11, 2026",
     title: "Bugfix: API key revoke route & minor stability improvements",
-    highlights: true,
+    highlights: false,
     changes: [
       { icon: Zap, label: "Fix: API key revoke route", desc: "Resolved a runtime TypeError when revoking API keys by ensuring dynamic route `params` are awaited per Next.js App Router guidance (prevents `Cannot destructure property 'id'` errors)." },
       { icon: Search, label: "Stability improvements", desc: "Small robustness fixes across API routes and improved logging for notification decisions." },
@@ -18,7 +34,7 @@ const CHANGELOG = [
     version: "1.3.1",
     date: "February 11, 2026",
     title: "Notification preference fixes & DB migration improvements",
-    highlights: true,
+    highlights: false,
     changes: [
       { icon: Bell, label: "Respect user notification preferences", desc: "Security-related emails (profile name/email/password changes, 2FA enable/disable, backup codes, and password reset confirmations) now respect each user's 'Security Alerts' preference instead of always sending." },
       { icon: Zap, label: "API key prefix length increased", desc: "Database migration increases api_keys.key_prefix to 64 characters to support longer prefixes and future-proof API keys." },
@@ -30,7 +46,7 @@ const CHANGELOG = [
     version: "1.3.0",
     date: "February 10, 2026",
     title: "Email Verification, Landing Page & Major UI Polish",
-    highlights: true,
+    highlights: false,
     changes: [
       { icon: Mail, label: "Email Verification Required", desc: "New users must verify their email address before logging in. A verification link is sent upon signup that expires in 24 hours." },
       { icon: CheckCircle, label: "Auto-Login on Verification", desc: "Clicking the email verification link automatically verifies your account and logs you in, redirecting straight to the dashboard." },

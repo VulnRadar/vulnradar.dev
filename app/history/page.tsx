@@ -29,6 +29,7 @@ import { ExportButton } from "@/components/scanner/export-button"
 import { ShareButton } from "@/components/scanner/share-button"
 import type { ScanResult, Vulnerability } from "@/lib/scanner/types"
 import { cn } from "@/lib/utils"
+import { PaginationControl, usePagination } from "@/components/ui/pagination-control"
 
 interface ScanRecord {
   id: number
@@ -86,6 +87,7 @@ function HistoryPageContent() {
   const [bulkUrls, setBulkUrls] = useState("")
   const [bulkLoading, setBulkLoading] = useState(false)
   const [bulkResult, setBulkResult] = useState<{ total: number; successful: number; failed: number } | null>(null)
+  const [currentPage, setCurrentPage] = useState(1)
 
   // Check for id parameter in URL and load that scan
   useEffect(() => {
@@ -142,7 +144,7 @@ function HistoryPageContent() {
 
   useEffect(() => {
     fetchHistory()
-    fetch("/api/scan/tags").then((r) => r.json()).then((d) => setAllTags(d.tags || [])).catch(() => {})
+    fetch("/api/scan/tags").then((r) => r.json()).then((d) => setAllTags(d.tags || [])).catch(() => { })
   }, [fetchHistory])
 
   async function handleAddTag(scanId: number, tag: string) {
@@ -256,6 +258,13 @@ function HistoryPageContent() {
     const matchesTag = !tagFilter || (s.tags && s.tags.includes(tagFilter))
     return matchesUrl && matchesTag
   })
+
+  // Reset to page 1 when filters change
+  useEffect(() => { setCurrentPage(1) }, [filter, tagFilter])
+
+  const PAGE_SIZE = 5
+  const { totalPages, getPage } = usePagination(filtered, PAGE_SIZE)
+  const paginatedScans = getPage(currentPage)
 
   return (
     <div className="min-h-screen flex flex-col bg-background">
@@ -470,7 +479,7 @@ function HistoryPageContent() {
 
             {/* Scan list */}
             <div className="flex flex-col gap-2">
-              {filtered.map((scan) => (
+              {paginatedScans.map((scan) => (
                 <div
                   key={scan.id}
                   role="button"
@@ -583,10 +592,21 @@ function HistoryPageContent() {
               ))}
             </div>
 
+            {/* Pagination */}
+            {filtered.length >= PAGE_SIZE && (
+              <PaginationControl
+                currentPage={currentPage}
+                totalPages={totalPages}
+                onPageChange={setCurrentPage}
+              />
+            )}
+
             {/* Summary */}
             {scans.length > 0 && (
               <p className="text-xs text-muted-foreground text-center">
-                Showing {filtered.length} of {scans.length} scan{scans.length === 1 ? "" : "s"}
+                {filtered.length >= PAGE_SIZE
+                  ? `Showing ${(currentPage - 1) * PAGE_SIZE + 1}–${Math.min(currentPage * PAGE_SIZE, filtered.length)} of ${filtered.length} scan${filtered.length === 1 ? "" : "s"}`
+                  : `Showing ${filtered.length} of ${scans.length} scan${scans.length === 1 ? "" : "s"}`}
               </p>
             )}
           </>
