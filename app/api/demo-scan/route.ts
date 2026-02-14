@@ -86,6 +86,12 @@ export async function POST(request: NextRequest) {
     const responseBody = await response.text()
     const headers = response.headers
 
+    // Capture response headers as a plain object for evidence
+    const capturedHeaders: Record<string, string> = {}
+    headers.forEach((value, key) => {
+      capturedHeaders[key] = value
+    })
+
     const findings: Vulnerability[] = []
     for (const check of allChecks) {
       try {
@@ -114,6 +120,7 @@ export async function POST(request: NextRequest) {
       duration,
       findings,
       summary,
+      responseHeaders: capturedHeaders,
     }
 
     // Update the cookie

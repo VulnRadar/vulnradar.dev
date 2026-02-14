@@ -138,6 +138,12 @@ export async function POST(request: NextRequest) {
     const responseBody = await response.text()
     const headers = response.headers
 
+    // Capture response headers as a plain object for evidence
+    const capturedHeaders: Record<string, string> = {}
+    headers.forEach((value, key) => {
+      capturedHeaders[key] = value
+    })
+
     // Run all checks
     const findings: Vulnerability[] = []
     for (const check of allChecks) {
@@ -173,6 +179,7 @@ export async function POST(request: NextRequest) {
       duration,
       findings,
       summary,
+      responseHeaders: capturedHeaders,
     }
 
     // Save to scan history

@@ -91,7 +91,9 @@ const detectors: Record<string, DetectFn> = {
   "mixed-content": (url, _headers, body) => {
     if (!url.startsWith("https://")) return null
     const httpRefs = body.match(/(?:src|href|action)=["']http:\/\/(?!localhost)[^"']+["']/gi) || []
-    return httpRefs.length > 0 ? `Found ${httpRefs.length} HTTP resource reference(s) on HTTPS page.` : null
+    if (httpRefs.length === 0) return null
+    const samples = httpRefs.slice(0, 3).map((r) => r.replace(/^(?:src|href|action)=["']/i, "").replace(/["']$/, ""))
+    return `Found ${httpRefs.length} HTTP resource(s) on HTTPS page:\n${samples.join("\n")}${httpRefs.length > 3 ? `\n...and ${httpRefs.length - 3} more` : ""}`
   },
 
   "open-redirect": (_url, _headers, body) => {
@@ -136,7 +138,12 @@ const detectors: Record<string, DetectFn> = {
   "sri-missing": (_url, _headers, body) => {
     const externalScripts = body.match(/<script[^>]+src=["']https?:\/\/[^"']+["'][^>]*>/gi) || []
     const noSRI = externalScripts.filter((t) => !t.toLowerCase().includes("integrity="))
-    return noSRI.length > 0 ? `Found ${noSRI.length} external script(s) without integrity attribute.` : null
+    if (noSRI.length === 0) return null
+    const samples = noSRI.slice(0, 3).map((t) => {
+      const srcMatch = t.match(/src=["'](https?:\/\/[^"']+)["']/i)
+      return srcMatch ? srcMatch[1] : t.slice(0, 80)
+    })
+    return `Found ${noSRI.length} external script(s) without integrity:\n${samples.join("\n")}${noSRI.length > 3 ? `\n...and ${noSRI.length - 3} more` : ""}`
   },
 
   "form-action-http": (url, _headers, body) => {
@@ -302,12 +309,14 @@ const detectors: Record<string, DetectFn> = {
     for (const comment of comments) {
       for (const p of sensitivePatterns) {
         if (p.test(comment)) {
-          found.push(comment.slice(0, 60).replace(/[\n\r]/g, " ").trim())
+          found.push(comment.slice(0, 80).replace(/[\n\r]/g, " ").trim())
           break
         }
       }
     }
-    return found.length > 0 ? `Found ${found.length} comment(s) with sensitive keywords.` : null
+    if (found.length === 0) return null
+    const samples = found.slice(0, 3)
+    return `Found ${found.length} comment(s) with sensitive keywords:\n${samples.join("\n")}${found.length > 3 ? `\n...and ${found.length - 3} more` : ""}`
   },
 
   "hardcoded-secrets": (_url, _headers, body) => {
@@ -323,9 +332,12 @@ const detectors: Record<string, DetectFn> = {
     const found: string[] = []
     for (const { name, pattern } of patterns) {
       const matches = body.match(pattern)
-      if (matches) found.push(`${name} (${matches.length} occurrence(s))`)
+      if (matches) {
+        const redacted = matches[0].slice(0, 8) + "****" + matches[0].slice(-4)
+        found.push(`${name}: ${redacted} (${matches.length} occurrence(s))`)
+      }
     }
-    return found.length > 0 ? `Potential secrets detected: ${found.join("; ")}` : null
+    return found.length > 0 ? `Potential secrets detected:\n${found.join("\n")}` : null
   },
 
   "private-ip-exposure": (_url, _headers, body) => {

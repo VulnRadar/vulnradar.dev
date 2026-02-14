@@ -38,6 +38,7 @@ export interface ScanResult {
     info: number
     total: number
   }
+  responseHeaders?: Record<string, string>
 }
 
 export type ScanStatus = "idle" | "scanning" | "done" | "failed"

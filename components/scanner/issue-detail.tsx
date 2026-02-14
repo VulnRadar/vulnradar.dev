@@ -126,11 +126,27 @@ export function IssueDetail({ issue, onBack }: IssueDetailProps) {
       </Section>
 
       {/* Evidence */}
-      <Section icon={FileWarning} iconColor="text-primary" title="Evidence">
+      <Section icon={FileWarning} iconColor="text-primary" title="Live Evidence">
         <div className="rounded-lg bg-muted/50 p-3 border border-border/50">
-          <p className="text-sm font-mono text-muted-foreground break-all leading-relaxed">
-            {issue.evidence}
-          </p>
+          <div className="flex items-center gap-1.5 mb-2">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+            <span className="text-[10px] font-medium text-emerald-600 dark:text-emerald-400 uppercase tracking-wider">
+              Detected from live scan
+            </span>
+          </div>
+          {issue.evidence.includes("\n") ? (
+            <ul className="flex flex-col gap-1">
+              {issue.evidence.split("\n").map((line, i) => (
+                <li key={i} className="text-sm font-mono text-muted-foreground break-all leading-relaxed">
+                  {line}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-sm font-mono text-muted-foreground break-all leading-relaxed">
+              {issue.evidence}
+            </p>
+          )}
         </div>
       </Section>
 
