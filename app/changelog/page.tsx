@@ -1,14 +1,25 @@
 import { Header } from "@/components/scanner/header"
 import { Footer } from "@/components/scanner/footer"
-import { Newspaper, Zap, Shield, Users, Tag, List, RefreshCw, Lock, Gauge, MessageSquare, Sparkles, Eye, ShieldCheck, Target, Brain, AlertTriangle, Search, Bell, Heart, Layout, Mail, CheckCircle, Trash2, Camera, Crown, UserCheck, Key } from "lucide-react"
+import { Newspaper, Zap, Shield, Users, Tag, List, RefreshCw, Lock, Gauge, MessageSquare, Sparkles, Eye, ShieldCheck, Target, Brain, AlertTriangle, Search, Bell, Heart, Layout, Mail, CheckCircle, Trash2, Camera, Crown, UserCheck, Key, BellRing, ChevronRight } from "lucide-react"
 import { APP_NAME, TOTAL_CHECKS_LABEL } from "@/lib/constants"
 
 const CHANGELOG = [
   {
+    version: "1.5.1",
+    date: "February 14, 2026",
+    title: "Notification Center & Admin Panel Pagination",
+    highlights: true,
+    changes: [
+      { icon: BellRing, label: "Unified Notification Center", desc: "Replaced scattered popup notifications with a single, unified Notification Center. All alerts (backup code warnings, version updates, Discord announcements) now appear in a stacked card UI with dot navigation and a 1/3 counter, showing the most important notifications first." },
+      { icon: List, label: "Audit Log & Staff Pagination", desc: "The admin panel's Audit Log and Staff tabs now paginate at 5 items per page with the same PaginationControl component used elsewhere. Audit log pagination is server-side for performance, while staff uses client-side pagination." },
+      { icon: ChevronRight, label: "Instant Admin Button", desc: "The Admin tab in the navbar no longer flickers on page navigation. The user's role is cached in sessionStorage so the button renders immediately without waiting for the API response." },
+    ],
+  },
+  {
     version: "1.5.0",
     date: "February 13, 2026",
     title: "Role-Based Staff System, Profile Pictures & Hashed Backup Codes",
-    highlights: true,
+    highlights: false,
     changes: [
       { icon: Crown, label: "Role-Based Access Control", desc: "Replaced the binary admin/user system with a full role hierarchy: Admin, Moderator, Support, and User. Each role has scoped permissions -- Support is view-only, Moderators can disable accounts and force logouts, and Admins have full control." },
       { icon: Shield, label: "Owner Account Protection", desc: "User ID 1 (the first registered account) is now fully protected at the API level. No other admin can modify, disable, or delete the owner account." },
