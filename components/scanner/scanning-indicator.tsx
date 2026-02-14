@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { Loader2, Shield } from "lucide-react"
+import { TOTAL_CHECKS_LABEL } from "@/lib/constants"
 
 const SCAN_STEPS = [
   "Connecting to target...",
@@ -47,7 +48,7 @@ export function ScanningIndicator() {
           </h2>
         </div>
         <p className="text-sm text-muted-foreground max-w-sm">
-          Running 100+ different vulnerability checks against the target. This usually takes a few seconds.
+          Running {TOTAL_CHECKS_LABEL} different vulnerability checks against the target. This usually takes a few seconds.
         </p>
       </div>
 

@@ -12,7 +12,7 @@ const LEGAL_LINKS = [
   { href: "/legal/acceptable-use", label: "Acceptable Use" },
   { href: "/changelog", label: "Changelog" },
   { href: "/contact", label: "Contact" },
-  { href: "/demo", label: "Self-Scan Demo" },
+
 ]
 
 export function Footer() {

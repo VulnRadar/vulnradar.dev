@@ -4,11 +4,13 @@ import { LogOut, User, Clock, Book, Menu, X, GitCompareArrows, ShieldAlert, User
 import { ThemeToggle } from "@/components/theme-toggle"
 import { Button } from "@/components/ui/button"
 import { useRouter, usePathname } from "next/navigation"
-import { useState } from "react"
+import { useState, useEffect, useRef } from "react"
 import useSWR from "swr"
 import { cn } from "@/lib/utils"
 import Image from "next/image"
 import { APP_NAME } from "@/lib/constants"
+
+const STAFF_ROLES = ["admin", "moderator", "support"]
 
 const NAV_LINKS = [
   { href: "/dashboard", label: "Scanner", icon: Radar },
@@ -19,15 +21,30 @@ const NAV_LINKS = [
   { href: "/profile", label: "Profile", icon: User },
 ]
 
+function getCachedRole(): string | null {
+  try { return sessionStorage.getItem("vr_user_role") } catch { return null }
+}
+
 export function Header() {
   const router = useRouter()
   const pathname = usePathname()
   const [mobileOpen, setMobileOpen] = useState(false)
+  const cachedRole = useRef(getCachedRole())
   const { data: me } = useSWR("/api/auth/me", (url: string) => fetch(url).then((r) => r.json()), {
     revalidateOnFocus: false,
     dedupingInterval: 60000,
   })
-  const isAdmin = me?.isAdmin === true
+
+  // Cache role in sessionStorage when loaded
+  useEffect(() => {
+    if (me?.role) {
+      try { sessionStorage.setItem("vr_user_role", me.role) } catch {}
+      cachedRole.current = me.role
+    }
+  }, [me?.role])
+
+  const effectiveRole = me?.role || cachedRole.current
+  const isStaff = STAFF_ROLES.includes(effectiveRole || "")
 
   async function handleLogout() {
     await fetch("/api/auth/logout", { method: "POST" })
@@ -76,7 +93,7 @@ export function Header() {
               </button>
             )
           })}
-          {isAdmin && (
+          {isStaff && (
             <button
               onClick={() => router.push("/admin")}
               className={cn(
@@ -142,7 +159,7 @@ export function Header() {
                 </button>
               )
             })}
-            {isAdmin && (
+            {isStaff && (
               <button
                 onClick={() => { router.push("/admin"); setMobileOpen(false) }}
                 className={cn(

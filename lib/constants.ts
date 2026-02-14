@@ -2,10 +2,13 @@
 // APP CONSTANTS - Centralized configuration for the entire application
 // ============================================================================
 
+// Checks count (used in descriptions and UI)
+export const TOTAL_CHECKS_LABEL = "100+"
+
 // Application metadata
 export const APP_NAME = "VulnRadar"
-export const APP_DESCRIPTION = "Scan websites for 100+ security vulnerabilities. Get instant reports with severity ratings, actionable fix guidance, and team collaboration tools."
-export const APP_VERSION = "1.4.0"
+export const APP_DESCRIPTION = `Scan websites for ${TOTAL_CHECKS_LABEL} security vulnerabilities. Get instant reports with severity ratings, actionable fix guidance, and team collaboration tools.`
+export const APP_VERSION = "1.5.0"
 export const APP_URL = "https://vulnradar.dev"
 
 // Short slug used for filenames and slugs
@@ -249,3 +252,36 @@ export const BEARER_PREFIX = "Bearer "
 
 // TOTP issuer
 export const TOTP_ISSUER = APP_NAME
+
+// ============================================================================
+// DEMO SCAN LIMITS
+// ============================================================================
+export const DEMO_SCAN_LIMIT = 5
+export const DEMO_SCAN_WINDOW = 60 * 15 // 15 minutes in seconds
+export const DEMO_SCAN_COOKIE_NAME = "vulnradar_demo_scans"
+
+// ============================================================================
+// STAFF / ADMIN ROLES
+// ============================================================================
+export const STAFF_ROLES = {
+  USER: "user",
+  SUPPORT: "support",
+  MODERATOR: "moderator",
+  ADMIN: "admin",
+} as const
+
+export type StaffRole = (typeof STAFF_ROLES)[keyof typeof STAFF_ROLES]
+
+export const STAFF_ROLE_HIERARCHY: Record<string, number> = {
+  user: 0,
+  support: 1,
+  moderator: 2,
+  admin: 3,
+}
+
+export const STAFF_ROLE_LABELS: Record<string, string> = {
+  user: "User",
+  support: "Support",
+  moderator: "Moderator",
+  admin: "Admin",
+}

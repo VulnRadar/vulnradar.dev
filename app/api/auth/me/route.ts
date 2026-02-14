@@ -9,12 +9,24 @@ export const GET = withErrorHandling(async () => {
     return ApiResponse.unauthorized(ERROR_MESSAGES.UNAUTHORIZED)
   }
 
-  // Get 2FA and admin status
+  // Get 2FA, role, onboarding status, and backup codes
   const result = await pool.query(
-    "SELECT totp_enabled, is_admin, onboarding_completed FROM users WHERE id = $1",
+    "SELECT totp_enabled, onboarding_completed, role, avatar_url, backup_codes FROM users WHERE id = $1",
     [session.userId],
   )
   const user = result.rows[0]
+
+  // Detect if backup codes are old plaintext format (not hashed)
+  // Hashed codes contain ":" separator from scrypt format, plaintext codes are like "XXXX-XXXX"
+  let backupCodesInvalid = false
+  if (user?.totp_enabled && user?.backup_codes) {
+    try {
+      const codes: string[] = JSON.parse(user.backup_codes)
+      if (codes.length > 0 && !codes[0].includes(":")) {
+        backupCodesInvalid = true
+      }
+    } catch {}
+  }
 
   return ApiResponse.success({
     userId: session.userId,
@@ -22,7 +34,10 @@ export const GET = withErrorHandling(async () => {
     name: session.name,
     tosAcceptedAt: session.tosAcceptedAt,
     totpEnabled: user?.totp_enabled || false,
-    isAdmin: user?.is_admin || false,
+    isAdmin: user?.role === "admin",
+    role: user?.role || "user",
+    avatarUrl: user?.avatar_url || null,
     onboardingCompleted: user?.onboarding_completed || false,
+    backupCodesInvalid,
   })
 })

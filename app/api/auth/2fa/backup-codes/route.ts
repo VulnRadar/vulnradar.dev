@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import crypto from "crypto"
-import { getSession, verifyPassword } from "@/lib/auth"
+import { getSession, verifyPassword, hashPassword } from "@/lib/auth"
 import { backupCodesRegeneratedEmail } from "@/lib/email"
 import { sendNotificationEmail } from "@/lib/notifications"
 import pool from "@/lib/db"
@@ -52,7 +52,8 @@ export async function POST(request: NextRequest) {
   }
 
   const backupCodes = generateBackupCodes(8)
-  await pool.query("UPDATE users SET backup_codes = $1 WHERE id = $2", [JSON.stringify(backupCodes), session.userId])
+  const hashedCodes = backupCodes.map((code) => hashPassword(code.replace(/-/g, "").toUpperCase()))
+  await pool.query("UPDATE users SET backup_codes = $1 WHERE id = $2", [JSON.stringify(hashedCodes), session.userId])
 
   // Send security notification email (don't await)
   const ip = await getClientIp() || "Unknown"

@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import { cn } from "@/lib/utils"
+import { ImageCropDialog } from "@/components/image-crop-dialog"
 import {
   Plus,
   Copy,
@@ -28,6 +29,7 @@ import {
   Globe,
   Loader2,
   Bell,
+  Camera,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
@@ -61,6 +63,7 @@ interface User {
   email: string
   name: string | null
   totpEnabled?: boolean
+  avatarUrl?: string | null
 }
 
 interface DataRequestInfo {
@@ -180,6 +183,78 @@ export default function ProfilePage() {
     email_api_key_rotation: true,
   })
   const [savingNotifPrefs, setSavingNotifPrefs] = useState(false)
+
+  // Avatar state
+  const [uploadingAvatar, setUploadingAvatar] = useState(false)
+  const [cropDialogOpen, setCropDialogOpen] = useState(false)
+  const [cropImageSrc, setCropImageSrc] = useState<string | null>(null)
+  const avatarInputRef = React.useRef<HTMLInputElement>(null)
+
+  function handleAvatarFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    if (!file.type.startsWith("image/")) {
+      setError("Please select an image file.")
+      return
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setError("Image must be under 5MB.")
+      return
+    }
+    setError(null)
+    const reader = new FileReader()
+    reader.onload = () => {
+      setCropImageSrc(reader.result as string)
+      setCropDialogOpen(true)
+    }
+    reader.readAsDataURL(file)
+    if (avatarInputRef.current) avatarInputRef.current.value = ""
+  }
+
+  async function handleCroppedAvatar(croppedDataUrl: string) {
+    setUploadingAvatar(true)
+    setError(null)
+    try {
+      const res = await fetch("/api/auth/update", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ avatarUrl: croppedDataUrl }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setError(data.error)
+      } else {
+        setUser((prev) => (prev ? { ...prev, avatarUrl: data.avatarUrl } : prev))
+        setSuccess("Profile picture updated.")
+        setCropDialogOpen(false)
+        setCropImageSrc(null)
+      }
+    } catch {
+      setError("Failed to upload profile picture.")
+    } finally {
+      setUploadingAvatar(false)
+    }
+  }
+
+  async function handleRemoveAvatar() {
+    setUploadingAvatar(true)
+    setError(null)
+    try {
+      const res = await fetch("/api/auth/update", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ avatarUrl: "" }),
+      })
+      if (res.ok) {
+        setUser((prev) => (prev ? { ...prev, avatarUrl: null } : prev))
+        setSuccess("Profile picture removed.")
+      }
+    } catch {
+      setError("Failed to remove profile picture.")
+    } finally {
+      setUploadingAvatar(false)
+    }
+  }
 
   const fetchData = useCallback(async () => {
     try {
@@ -571,14 +646,14 @@ export default function ProfilePage() {
         )}
 
         {/* Tab Navigation */}
-        <div className="flex items-center gap-1 p-1 rounded-lg bg-secondary/50 border border-border overflow-x-auto scrollbar-thin scrollbar-thumb-muted/40 scrollbar-track-transparent min-w-0">
+        <div className="flex items-center gap-1 p-1 rounded-lg bg-secondary/50 border border-border overflow-x-auto scrollbar-thin scrollbar-thumb-muted/40 scrollbar-track-transparent min-w-0 -mx-4 px-4 sm:mx-0 sm:px-1">
           {TABS.map((tab) => (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
               className={
                 cn(
-                  "flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-md text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 whitespace-nowrap flex-shrink-0",
+                  "flex items-center justify-center gap-1.5 px-2.5 sm:px-3 py-2 sm:py-2.5 rounded-md text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 whitespace-nowrap flex-shrink-0",
                   activeTab === tab.id
                     ? "bg-card text-foreground shadow-sm"
                     : "text-muted-foreground hover:text-foreground"
@@ -586,7 +661,7 @@ export default function ProfilePage() {
               }
             >
               {tab.icon}
-              <span className="text-xs sm:text-sm">{tab.label}</span>
+              <span className="hidden sm:inline text-sm">{tab.label}</span>
             </button>
           ))}
         </div>
@@ -598,15 +673,77 @@ export default function ProfilePage() {
             <Card>
               <CardHeader>
                 <CardTitle className="text-lg">Personal Information</CardTitle>
-                <CardDescription>Manage your name and email address.</CardDescription>
+                <CardDescription>Manage your profile picture, name, and email address.</CardDescription>
               </CardHeader>
               <CardContent className="flex flex-col gap-5">
+                {/* Profile Picture */}
+                <div className="flex flex-col gap-2">
+                  <Label className="text-sm font-medium text-muted-foreground">Profile Picture</Label>
+                  <div className="flex items-center gap-4">
+                    <div className="relative group">
+                      <div className="h-16 w-16 rounded-full border-2 border-border bg-secondary/40 flex items-center justify-center overflow-hidden">
+                        {user?.avatarUrl ? (
+                          <img src={user.avatarUrl} alt="Profile" className="h-full w-full object-cover" />
+                        ) : (
+                          <span className="text-xl font-bold text-muted-foreground">
+                            {user?.name?.charAt(0)?.toUpperCase() || user?.email?.charAt(0)?.toUpperCase() || "?"}
+                          </span>
+                        )}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => avatarInputRef.current?.click()}
+                        disabled={uploadingAvatar}
+                        className="absolute inset-0 flex items-center justify-center rounded-full bg-background/70 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+                      >
+                        {uploadingAvatar ? (
+                          <Loader2 className="h-5 w-5 animate-spin text-foreground" />
+                        ) : (
+                          <Camera className="h-5 w-5 text-foreground" />
+                        )}
+                      </button>
+                    </div>
+                    <div className="flex flex-col gap-1.5">
+                      <div className="flex gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="bg-transparent text-xs"
+                          onClick={() => avatarInputRef.current?.click()}
+                          disabled={uploadingAvatar}
+                        >
+                          {uploadingAvatar ? "Uploading..." : "Upload"}
+                        </Button>
+                        {user?.avatarUrl && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="text-xs text-destructive hover:text-destructive"
+                            onClick={handleRemoveAvatar}
+                            disabled={uploadingAvatar}
+                          >
+                            Remove
+                          </Button>
+                        )}
+                      </div>
+                      <p className="text-[11px] text-muted-foreground">JPG, PNG, or GIF. Max 5MB.</p>
+                    </div>
+                    <input
+                      ref={avatarInputRef}
+                      type="file"
+                      accept="image/*"
+                      onChange={handleAvatarFileSelect}
+                      className="hidden"
+                    />
+                  </div>
+                </div>
+
                 {/* Name field */}
                 <div className="flex flex-col gap-2">
                   <Label className="text-sm font-medium text-muted-foreground">Name</Label>
                   {!editingName ? (
-                    <div className="flex items-center justify-between p-3 rounded-lg border border-border bg-secondary/20">
-                      <span className="text-sm font-medium text-foreground">{user?.name || "---"}</span>
+                    <div className="flex items-center justify-between p-3 rounded-lg border border-border bg-secondary/20 gap-2">
+                      <span className="text-sm font-medium text-foreground truncate">{user?.name || "---"}</span>
                       <Button
                         variant="ghost"
                         size="sm"
@@ -614,7 +751,7 @@ export default function ProfilePage() {
                           setNameInput(user?.name || "")
                           setEditingName(true)
                         }}
-                        className="text-muted-foreground hover:text-foreground h-8"
+                        className="text-muted-foreground hover:text-foreground h-8 shrink-0"
                       >
                         <Pencil className="mr-1.5 h-3.5 w-3.5" />
                         Edit
@@ -643,10 +780,10 @@ export default function ProfilePage() {
                 <div className="flex flex-col gap-2">
                   <Label className="text-sm font-medium text-muted-foreground">Email</Label>
                   {!editingEmail ? (
-                    <div className="flex items-center justify-between p-3 rounded-lg border border-border bg-secondary/20">
-                      <div className="flex items-center gap-2">
-                        <Mail className="h-4 w-4 text-muted-foreground" />
-                        <span className="text-sm font-medium text-foreground">{user?.email}</span>
+                    <div className="flex items-center justify-between p-3 rounded-lg border border-border bg-secondary/20 gap-2">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <Mail className="h-4 w-4 text-muted-foreground shrink-0" />
+                        <span className="text-sm font-medium text-foreground truncate">{user?.email}</span>
                       </div>
                       <Button
                         variant="ghost"
@@ -655,7 +792,7 @@ export default function ProfilePage() {
                           setEmailInput(user?.email || "")
                           setEditingEmail(true)
                         }}
-                        className="text-muted-foreground hover:text-foreground h-8"
+                        className="text-muted-foreground hover:text-foreground h-8 shrink-0"
                       >
                         <Pencil className="mr-1.5 h-3.5 w-3.5" />
                         Edit
@@ -1150,11 +1287,11 @@ export default function ProfilePage() {
                     <h3 className="text-sm font-semibold text-foreground">Active Keys ({activeKeys.length}/3)</h3>
                     {activeKeys.map((key) => (
                       <div key={key.id} className="flex flex-col gap-3 p-4 rounded-lg border border-border bg-card">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            <Key className="h-4 w-4 text-muted-foreground" />
-                            <span className="font-medium text-sm text-foreground">{key.name}</span>
-                            <Badge variant="secondary" className="text-xs font-mono">{key.key_prefix}...</Badge>
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <Key className="h-4 w-4 text-muted-foreground shrink-0" />
+                            <span className="font-medium text-sm text-foreground truncate">{key.name}</span>
+                            <Badge variant="secondary" className="text-xs font-mono shrink-0">{key.key_prefix}...</Badge>
                           </div>
                           <Button
                             variant="ghost"
@@ -1174,9 +1311,9 @@ export default function ProfilePage() {
                           </div>
                           <Progress value={(key.usage_today / key.daily_limit) * 100} className="h-2" />
                         </div>
-                        <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                        <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-4 text-xs text-muted-foreground">
                           <span className="flex items-center gap-1">
-                            <Clock className="h-3 w-3" />
+                            <Clock className="h-3 w-3 shrink-0" />
                             Created {formatDate(key.created_at)}
                           </span>
                           {key.last_used_at && <span>Last used {formatDate(key.last_used_at)}</span>}
@@ -1200,13 +1337,13 @@ export default function ProfilePage() {
                   <div className="flex flex-col gap-3">
                     <h3 className="text-sm font-semibold text-muted-foreground">Revoked Keys ({revokedKeys.length})</h3>
                     {revokedKeys.map((key) => (
-                      <div key={key.id} className="flex items-center justify-between p-3 rounded-lg border border-border bg-secondary/20 opacity-60">
-                        <div className="flex items-center gap-2">
-                          <Key className="h-4 w-4 text-muted-foreground" />
-                          <span className="text-sm text-muted-foreground line-through">{key.name}</span>
-                          <Badge variant="outline" className="text-xs font-mono text-muted-foreground">{key.key_prefix}...</Badge>
+                      <div key={key.id} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 p-3 rounded-lg border border-border bg-secondary/20 opacity-60">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <Key className="h-4 w-4 text-muted-foreground shrink-0" />
+                          <span className="text-sm text-muted-foreground line-through truncate">{key.name}</span>
+                          <Badge variant="outline" className="text-xs font-mono text-muted-foreground shrink-0">{key.key_prefix}...</Badge>
                         </div>
-                        <span className="text-xs text-muted-foreground">Revoked {formatDate(key.revoked_at)}</span>
+                        <span className="text-xs text-muted-foreground shrink-0">Revoked {formatDate(key.revoked_at)}</span>
                       </div>
                     ))}
                   </div>
@@ -1865,6 +2002,14 @@ export default function ProfilePage() {
       </main>
 
       <Footer />
+
+      <ImageCropDialog
+        open={cropDialogOpen}
+        imageSrc={cropImageSrc}
+        onClose={() => { setCropDialogOpen(false); setCropImageSrc(null) }}
+        onCrop={handleCroppedAvatar}
+        saving={uploadingAvatar}
+      />
     </div>
   )
 }

@@ -24,6 +24,7 @@ export default function SharedScanPage() {
 
   const [result, setResult] = useState<ScanResult | null>(null)
   const [scannedBy, setScannedBy] = useState("")
+  const [scannedByAvatar, setScannedByAvatar] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [selectedIssue, setSelectedIssue] = useState<Vulnerability | null>(null)
@@ -40,6 +41,7 @@ export default function SharedScanPage() {
         const data = await res.json()
         setResult(data)
         setScannedBy(data.scannedBy || "")
+        setScannedByAvatar(data.scannedByAvatar || null)
       } catch {
         setError("Failed to load shared scan.")
       } finally {
@@ -104,7 +106,11 @@ export default function SharedScanPage() {
             {/* Shared by banner */}
             {scannedBy && (
               <div className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-border bg-muted/30 text-sm text-muted-foreground">
-                <User className="h-4 w-4 shrink-0" />
+                {scannedByAvatar ? (
+                  <img src={scannedByAvatar} alt={scannedBy} className="h-6 w-6 rounded-full object-cover shrink-0" />
+                ) : (
+                  <User className="h-4 w-4 shrink-0" />
+                )}
                 <span>
                   Shared by <span className="font-medium text-foreground">{scannedBy}</span>
                 </span>

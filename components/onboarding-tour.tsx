@@ -16,7 +16,7 @@ import {
   X,
   Sparkles,
 } from "lucide-react"
-import { APP_NAME } from "@/lib/constants"
+import { APP_NAME, TOTAL_CHECKS_LABEL } from "@/lib/constants"
 
 const STEPS = [
   {
@@ -28,7 +28,7 @@ const STEPS = [
   {
     icon: Shield,
     title: "Scan Any Website",
-    description: "Enter any URL on the Scanner page to run 100+ security checks instantly. You'll get a detailed report with severity ratings, explanations, and fix recommendations.",
+    description: `Enter any URL on the Scanner page to run ${TOTAL_CHECKS_LABEL} security checks instantly. You'll get a detailed report with severity ratings, explanations, and fix recommendations.`,
     color: "text-emerald-500",
   },
   {

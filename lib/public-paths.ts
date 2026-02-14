@@ -35,6 +35,14 @@ export const PUBLIC_PATHS = [
   "/shared",
   "/api/shared",
 
+  // ─── Public Demo ────────────────────────────────────────────────
+  "/demo",
+  "/api/demo-scan",
+
+  // ─── Public Staff Page ─────────────────────────────────────────
+  "/staff",
+  "/api/staff",
+
   // ─── Public API Endpoints ──────────────────────────────────────
   "/api/landing-contact",
 ]

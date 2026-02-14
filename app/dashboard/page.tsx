@@ -100,12 +100,12 @@ export default function DashboardPage() {
             {!selectedIssue ? (
               <>
                 {/* Action buttons at top */}
-                <div className="flex flex-wrap items-center justify-between gap-3 p-4 rounded-xl border border-border/40 bg-card/30 backdrop-blur-sm">
-                  <div className="flex-1 min-w-0">
+                <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center sm:justify-between gap-3 p-4 rounded-xl border border-border/40 bg-card/30 backdrop-blur-sm">
+                  <div className="min-w-0">
                     <p className="text-xs text-muted-foreground mb-1">Scanned URL</p>
                     <p className="text-sm font-medium text-foreground truncate">{result.url}</p>
                   </div>
-                  <div className="flex gap-2 flex-shrink-0 flex-wrap">
+                  <div className="flex flex-wrap gap-2">
                     <Button variant="outline" onClick={handleReset} size="sm" className="bg-transparent">
                       <RotateCcw className="mr-2 h-4 w-4" />
                       Scan Another URL

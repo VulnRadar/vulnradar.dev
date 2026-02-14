@@ -1,16 +1,34 @@
 import { Header } from "@/components/scanner/header"
 import { Footer } from "@/components/scanner/footer"
-import { Newspaper, Zap, Shield, Users, Tag, List, RefreshCw, Lock, Gauge, MessageSquare, Sparkles, Eye, ShieldCheck, Target, Brain, AlertTriangle, Search, Bell, Heart, Layout, Mail, CheckCircle, Trash2 } from "lucide-react"
-import { APP_NAME } from "@/lib/constants"
+import { Newspaper, Zap, Shield, Users, Tag, List, RefreshCw, Lock, Gauge, MessageSquare, Sparkles, Eye, ShieldCheck, Target, Brain, AlertTriangle, Search, Bell, Heart, Layout, Mail, CheckCircle, Trash2, Camera, Crown, UserCheck, Key } from "lucide-react"
+import { APP_NAME, TOTAL_CHECKS_LABEL } from "@/lib/constants"
 
 const CHANGELOG = [
   {
-    version: "1.4.0",
+    version: "1.5.0",
     date: "February 13, 2026",
-    title: "100+ Security Checks, Smart Safety Engine & Pagination",
+    title: "Role-Based Staff System, Profile Pictures & Hashed Backup Codes",
     highlights: true,
     changes: [
-      { icon: Brain, label: "100+ Security Checks", desc: "Completely refactored the scanner engine from a monolithic 3,500-line file into a clean data-driven architecture. All check metadata now lives in a JSON data file with a pure detection engine in TypeScript. Expanded from 75 to 100+ checks covering headers, SSL, content, cookies, configuration, and information disclosure." },
+      { icon: Crown, label: "Role-Based Access Control", desc: "Replaced the binary admin/user system with a full role hierarchy: Admin, Moderator, Support, and User. Each role has scoped permissions -- Support is view-only, Moderators can disable accounts and force logouts, and Admins have full control." },
+      { icon: Shield, label: "Owner Account Protection", desc: "User ID 1 (the first registered account) is now fully protected at the API level. No other admin can modify, disable, or delete the owner account." },
+      { icon: Camera, label: "Profile Picture Upload", desc: "Users can now upload a profile picture from their profile page. Includes a full image crop dialog with drag-to-reposition, zoom slider, and circular preview. Supports JPG, PNG, and GIF up to 5MB." },
+      { icon: Users, label: "Redesigned Staff Page", desc: "The public /staff page now groups team members by role (Administrators, Moderators, Support) with profile pictures, role badges, and a polished card layout." },
+      { icon: UserCheck, label: "Staff Navbar Access", desc: "Support and Moderator roles now see the Admin tab in the navigation bar, not just Admins. The admin button loads instantly on page changes using cached role data." },
+      { icon: Eye, label: "Avatars Everywhere", desc: "Profile pictures now appear across the admin panel (user list, user detail, audit logs, active staff) and on shared scan pages. Falls back to colored initials when no picture is set." },
+      { icon: Key, label: "Hashed Backup Codes", desc: "2FA backup codes are now hashed using scrypt (same as passwords) instead of stored in plaintext. Existing users with old codes see a warning dialog prompting them to regenerate immediately." },
+      { icon: AlertTriangle, label: "Backup Code Rotation Warning", desc: "Users with legacy plaintext backup codes are shown a prominent dialog on login explaining their codes are invalid and need to be regenerated from the profile page." },
+      { icon: Trash2, label: "Legacy Column Cleanup", desc: "Dropped the deprecated is_admin boolean column from the database. All role checks now use the role column exclusively." },
+      { icon: MessageSquare, label: "Discord Announcement", desc: "A dismissible notification banner announces the new Discord server to all users. Uses a cookie so it only appears once per user." },
+    ],
+  },
+  {
+    version: "1.4.0",
+    date: "February 13, 2026",
+    title: `${TOTAL_CHECKS_LABEL} Security Checks, Smart Safety Engine & Pagination`,
+    highlights: false,
+    changes: [
+      { icon: Brain, label: `${TOTAL_CHECKS_LABEL} Security Checks`, desc: `Completely refactored the scanner engine from a monolithic 3,500-line file into a clean data-driven architecture. All check metadata now lives in a JSON data file with a pure detection engine in TypeScript. Expanded from 75 to ${TOTAL_CHECKS_LABEL} checks covering headers, SSL, content, cookies, configuration, and information disclosure.` },
       { icon: ShieldCheck, label: "Smart Safety Rating Engine", desc: "Rebuilt the safety rating from scratch with a three-tier classification system. Tier 1 (Exploitable) covers real threats like SQL injection, XSS, and exposed credentials. Tier 2 (Hardening) covers missing headers and best practices. Tier 3 (Informational) is excluded entirely. Sites like Discord and Reddit now correctly show as 'Safe' instead of being falsely flagged for missing optional headers." },
       { icon: Target, label: "Framework-Aware Detection", desc: "The scanner now detects Next.js, Nuxt, and Angular and adjusts severity accordingly. CSP directives like unsafe-inline in style-src are marked as INFO on framework sites instead of HIGH, eliminating false positives. A dedicated framework-required CSP check explains which directives are expected for the detected framework." },
       { icon: List, label: "Pagination Everywhere", desc: "Added pagination across the app using a reusable PaginationControl component. History page shows 10 scans per page, admin panel shows 5 users per page, and team scan history is paginated at 10 per page. All with smooth transitions instead of full-page reloads." },

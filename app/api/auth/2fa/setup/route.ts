@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server"
 import crypto from "crypto"
-import { getSession } from "@/lib/auth"
+import { getSession, hashPassword } from "@/lib/auth"
 import { generateSecret, verifyTOTP, generateOtpAuthUri } from "@/lib/totp"
 import { twoFactorEnabledEmail } from "@/lib/email"
 import { sendNotificationEmail } from "@/lib/notifications"
@@ -57,11 +57,12 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     return ApiResponse.badRequest("Invalid code. Check your authenticator app and try again.")
   }
 
-  // Generate backup codes and enable 2FA
+  // Generate backup codes, hash them, and enable 2FA
   const backupCodes = generateBackupCodes(8)
+  const hashedCodes = backupCodes.map((code) => hashPassword(code.replace(/-/g, "").toUpperCase()))
   await pool.query(
     "UPDATE users SET totp_enabled = true, backup_codes = $1 WHERE id = $2",
-    [JSON.stringify(backupCodes), session.userId],
+    [JSON.stringify(hashedCodes), session.userId],
   )
 
   // Send security notification email (don't await)

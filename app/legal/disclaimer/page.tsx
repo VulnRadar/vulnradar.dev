@@ -1,3 +1,5 @@
+import { TOTAL_CHECKS_LABEL } from "@/lib/constants"
+
 export default function DisclaimerPage() {
   return (
     <article className="prose prose-sm dark:prose-invert max-w-none">
@@ -37,7 +39,7 @@ export default function DisclaimerPage() {
 
       <h2 className="text-lg font-semibold text-foreground mt-8">3. Accuracy of Results</h2>
       <p className="leading-relaxed text-foreground/90">
-        VulnRadar performs 100+ automated vulnerability checks based on publicly observable
+        VulnRadar performs {TOTAL_CHECKS_LABEL} automated vulnerability checks based on publicly observable
         information (HTTP headers, HTML content, SSL/TLS configuration, JavaScript analysis,
         and more). Results may include:
       </p>

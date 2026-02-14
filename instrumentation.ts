@@ -173,9 +173,19 @@ export async function register() {
         DO $$ BEGIN
           IF NOT EXISTS (
             SELECT 1 FROM information_schema.columns
-            WHERE table_name = 'users' AND column_name = 'is_admin'
+            WHERE table_name = 'users' AND column_name = 'role'
           ) THEN
-        ALTER TABLE users ADD COLUMN is_admin BOOLEAN NOT NULL DEFAULT false;
+        ALTER TABLE users ADD COLUMN role VARCHAR(20) NOT NULL DEFAULT 'user';
+        CREATE INDEX IF NOT EXISTS idx_users_role ON users(role);
+        END IF;
+        END $$;
+
+        DO $$ BEGIN
+          IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name = 'users' AND column_name = 'avatar_url'
+          ) THEN
+        ALTER TABLE users ADD COLUMN avatar_url TEXT;
         END IF;
         END $$;
 

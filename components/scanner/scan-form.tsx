@@ -5,6 +5,7 @@ import { useState } from "react"
 import { Shield, Loader2, Search, ArrowRight } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { TOTAL_CHECKS_LABEL } from "@/lib/constants"
 import type { ScanStatus } from "@/lib/scanner/types"
 
 interface ScanFormProps {
@@ -18,7 +19,7 @@ const FEATURES = [
   "Cookie security",
   "CORS policy",
   "Mixed content",
-  "100+ checks total",
+  `${TOTAL_CHECKS_LABEL} checks total`,
 ]
 
 export function ScanForm({ onScan, status }: ScanFormProps) {

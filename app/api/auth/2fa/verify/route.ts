@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { createSession } from "@/lib/auth"
+import { createSession, verifyPassword } from "@/lib/auth"
 import { verifyTOTP } from "@/lib/totp"
 import pool from "@/lib/db"
 import { ApiResponse, parseBody, Validate, withErrorHandling } from "@/lib/api-utils"
@@ -50,18 +50,22 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   let verified = false
 
   if (backupCode) {
-    // Verify backup code
-    const normalizedInput = backupCode.trim().toUpperCase().replace(/\s/g, "")
-    const storedCodes: string[] = user.backup_codes ? JSON.parse(user.backup_codes) : []
-    const matchIndex = storedCodes.findIndex(
-      (c: string) => c.replace(/-/g, "") === normalizedInput.replace(/-/g, ""),
-    )
+    // Verify backup code against hashed codes
+    const normalizedInput = backupCode.trim().toUpperCase().replace(/[\s-]/g, "")
+    const storedHashes: string[] = user.backup_codes ? JSON.parse(user.backup_codes) : []
+    const matchIndex = storedHashes.findIndex((hash: string) => {
+      try {
+        return verifyPassword(normalizedInput, hash)
+      } catch {
+        return false
+      }
+    })
     if (matchIndex >= 0) {
       verified = true
       // Consume the backup code (one-time use)
-      storedCodes.splice(matchIndex, 1)
+      storedHashes.splice(matchIndex, 1)
       await pool.query("UPDATE users SET backup_codes = $1 WHERE id = $2", [
-        JSON.stringify(storedCodes),
+        JSON.stringify(storedHashes),
         userId,
       ])
     }

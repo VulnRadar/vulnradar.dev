@@ -5,7 +5,7 @@ import Image from "next/image"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Zap, Users, Code, CheckCircle, Globe, BarChart3 } from "lucide-react"
-import { APP_NAME } from "@/lib/constants"
+import { APP_NAME, TOTAL_CHECKS_LABEL } from "@/lib/constants"
 
 export default function LandingPage() {
   return (
@@ -66,7 +66,7 @@ export default function LandingPage() {
           <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-12 sm:py-16">
             <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
               <div>
-                <div className="text-3xl sm:text-4xl font-bold text-primary mb-2">100+</div>
+                <div className="text-3xl sm:text-4xl font-bold text-primary mb-2">{TOTAL_CHECKS_LABEL}</div>
                 <p className="text-sm text-muted-foreground">Vulnerability Types</p>
               </div>
               <div>

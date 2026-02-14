@@ -3,14 +3,17 @@ import { randomBytes, scryptSync } from "node:crypto"
 import { getSession } from "@/lib/auth"
 import pool from "@/lib/db"
 import { getClientIP } from "@/lib/rate-limit"
-import { ERROR_MESSAGES } from "@/lib/constants"
+import { ERROR_MESSAGES, STAFF_ROLE_HIERARCHY } from "@/lib/constants"
 
-async function requireAdmin() {
+async function requireStaff() {
   const session = await getSession()
   if (!session) return null
-  const result = await pool.query("SELECT is_admin FROM users WHERE id = $1", [session.userId])
-  if (!result.rows[0]?.is_admin) return null
-  return session
+  const result = await pool.query("SELECT role FROM users WHERE id = $1", [session.userId])
+  const user = result.rows[0]
+  if (!user) return null
+  const role = user.role || "user"
+  if ((STAFF_ROLE_HIERARCHY[role] || 0) < (STAFF_ROLE_HIERARCHY.support || 1)) return null
+  return { ...session, role }
 }
 
 async function logAction(adminId: number, targetUserId: number | null, action: string, details?: string, ip?: string) {
@@ -23,7 +26,7 @@ async function logAction(adminId: number, targetUserId: number | null, action: s
 
 // GET: Admin dashboard stats + user list + audit log
 export async function GET(request: NextRequest) {
-  const session = await requireAdmin()
+  const session = await requireStaff()
   if (!session) return NextResponse.json({ error: ERROR_MESSAGES.FORBIDDEN }, { status: 403 })
 
   const { searchParams } = new URL(request.url)
@@ -40,7 +43,7 @@ export async function GET(request: NextRequest) {
 
     const [userRes, scansRes, keysRes, webhooksRes, schedulesRes, sessionsRes] = await Promise.all([
       pool.query(
-        `SELECT id, email, name, is_admin, totp_enabled, tos_accepted_at, created_at, disabled_at,
+        `SELECT id, email, name, role, avatar_url, totp_enabled, tos_accepted_at, created_at, disabled_at,
           (SELECT COUNT(*) FROM scan_history WHERE user_id = $1)::int as scan_count,
           (SELECT COUNT(*) FROM api_keys WHERE user_id = $1 AND revoked_at IS NULL)::int as api_key_count,
           (SELECT COUNT(*) FROM sessions WHERE user_id = $1 AND expires_at > NOW())::int as session_count,
@@ -78,8 +81,8 @@ export async function GET(request: NextRequest) {
     const auditRes = await pool.query(
       `SELECT al.id, al.action, al.details, al.created_at, al.ip_address,
         al.admin_id, al.target_user_id,
-        au.email as admin_email, au.name as admin_name,
-        tu.email as target_email, tu.name as target_name
+        au.email as admin_email, au.name as admin_name, au.avatar_url as admin_avatar_url,
+        tu.email as target_email, tu.name as target_name, tu.avatar_url as target_avatar_url
       FROM admin_audit_log al
       LEFT JOIN users au ON al.admin_id = au.id
       LEFT JOIN users tu ON al.target_user_id = tu.id
@@ -99,7 +102,7 @@ export async function GET(request: NextRequest) {
   // Active admins
   if (section === "active-admins") {
     const adminsRes = await pool.query(`
-      SELECT u.id, u.email, u.name, u.created_at, u.totp_enabled,
+      SELECT u.id, u.email, u.name, u.role, u.avatar_url, u.created_at, u.totp_enabled,
         (SELECT MAX(s.created_at) FROM sessions s WHERE s.user_id = u.id) as last_session_created,
         (SELECT COUNT(*) FROM sessions s WHERE s.user_id = u.id AND s.expires_at > NOW())::int as active_sessions,
         (SELECT MAX(al.created_at) FROM admin_audit_log al WHERE al.admin_id = u.id) as last_admin_action,
@@ -108,8 +111,10 @@ export async function GET(request: NextRequest) {
         (SELECT COUNT(*) FROM admin_audit_log al WHERE al.admin_id = u.id)::int as total_actions,
         (SELECT COUNT(*) FROM admin_audit_log al WHERE al.admin_id = u.id AND al.created_at > NOW() - INTERVAL '24 hours')::int as actions_24h
       FROM users u
-      WHERE u.is_admin = true
-      ORDER BY last_admin_action DESC NULLS LAST
+      WHERE u.role IN ('admin', 'moderator', 'support')
+      ORDER BY
+        CASE u.role WHEN 'admin' THEN 0 WHEN 'moderator' THEN 1 WHEN 'support' THEN 2 END,
+        last_admin_action DESC NULLS LAST
     `)
     return NextResponse.json({ admins: adminsRes.rows })
   }
@@ -130,7 +135,7 @@ export async function GET(request: NextRequest) {
     `),
     search
       ? pool.query(`
-          SELECT u.id, u.email, u.name, u.is_admin, u.totp_enabled, u.tos_accepted_at, u.created_at, u.disabled_at,
+          SELECT u.id, u.email, u.name, u.role, u.avatar_url, u.totp_enabled, u.tos_accepted_at, u.created_at, u.disabled_at,
             (SELECT COUNT(*) FROM scan_history sh WHERE sh.user_id = u.id) as scan_count,
             (SELECT COUNT(*) FROM api_keys ak WHERE ak.user_id = u.id AND ak.revoked_at IS NULL) as api_key_count
           FROM users u
@@ -139,7 +144,7 @@ export async function GET(request: NextRequest) {
           LIMIT $1 OFFSET $2
         `, [limit, offset, `%${search}%`])
       : pool.query(`
-          SELECT u.id, u.email, u.name, u.is_admin, u.totp_enabled, u.tos_accepted_at, u.created_at, u.disabled_at,
+          SELECT u.id, u.email, u.name, u.role, u.avatar_url, u.totp_enabled, u.tos_accepted_at, u.created_at, u.disabled_at,
             (SELECT COUNT(*) FROM scan_history sh WHERE sh.user_id = u.id) as scan_count,
             (SELECT COUNT(*) FROM api_keys ak WHERE ak.user_id = u.id AND ak.revoked_at IS NULL) as api_key_count
           FROM users u
@@ -157,61 +162,92 @@ export async function GET(request: NextRequest) {
     total: Number(totalResult.rows[0].count),
     page,
     totalPages: Math.ceil(Number(totalResult.rows[0].count) / limit),
+    callerRole: session.role,
   })
+}
+
+// Permission helpers per role
+// Admin: all actions
+// Moderator: disable/enable, revoke_sessions, revoke_api_keys
+// Support: view only (no PATCH actions)
+function canPerformAction(role: string, action: string): boolean {
+  const adminOnly = ["make_admin", "remove_admin", "set_role", "delete", "reset_password"]
+  const modActions = ["disable", "enable", "revoke_sessions", "revoke_api_keys"]
+  if (role === "admin") return true
+  if (role === "moderator") return modActions.includes(action)
+  return false // support = view only
 }
 
 // PATCH: Admin actions on users
 export async function PATCH(request: NextRequest) {
-  const session = await requireAdmin()
+  const session = await requireStaff()
   if (!session) return NextResponse.json({ error: ERROR_MESSAGES.FORBIDDEN }, { status: 403 })
 
   const ip = await getClientIP()
-  const { action, userId } = await request.json()
+  const { action, userId, role: newRole } = await request.json()
 
   if (!userId || !action) {
     return NextResponse.json({ error: "Missing action or userId" }, { status: 400 })
   }
 
+  // Check role-based permissions
+  if (!canPerformAction(session.role, action)) {
+    return NextResponse.json({ error: "You don't have permission to perform this action." }, { status: 403 })
+  }
+
+  // Protect the owner account (user ID 1) from any modifications
+  if (userId === 1 && session.userId !== 1) {
+    return NextResponse.json({ error: "This account is protected and cannot be modified." }, { status: 403 })
+  }
+
   // Prevent self-modification for dangerous actions
-  if (userId === session.userId && ["remove_admin", "delete", "disable", "reset_password"].includes(action)) {
+  if (userId === session.userId && ["remove_admin", "delete", "disable", "reset_password", "set_role"].includes(action)) {
     return NextResponse.json({ error: "Cannot perform this action on your own account." }, { status: 400 })
   }
 
   // Get target user for logging
-  const targetRes = await pool.query("SELECT email, totp_enabled FROM users WHERE id = $1", [userId])
+  const targetRes = await pool.query("SELECT email, totp_enabled, role FROM users WHERE id = $1", [userId])
   if (!targetRes.rows[0]) return NextResponse.json({ error: "User not found" }, { status: 404 })
   const targetUser = targetRes.rows[0]
 
+  // Moderators cannot act on admins or other moderators
+  if (session.role === "moderator" && (STAFF_ROLE_HIERARCHY[targetUser.role] || 0) >= (STAFF_ROLE_HIERARCHY.moderator || 2)) {
+    return NextResponse.json({ error: "You cannot perform actions on users with equal or higher roles." }, { status: 403 })
+  }
+
   switch (action) {
+    case "set_role": {
+      const validRoles = ["user", "support", "moderator", "admin"]
+      if (!newRole || !validRoles.includes(newRole)) {
+        return NextResponse.json({ error: "Invalid role" }, { status: 400 })
+      }
+      await pool.query("UPDATE users SET role = $1 WHERE id = $2", [newRole, userId])
+      await logAction(session.userId, userId, "set_role", `Changed role of ${targetUser.email} from ${targetUser.role} to ${newRole}`, ip)
+      return NextResponse.json({ success: true })
+    }
+
     case "make_admin":
-      await pool.query("UPDATE users SET is_admin = true WHERE id = $1", [userId])
+      await pool.query("UPDATE users SET role = 'admin' WHERE id = $1", [userId])
       await logAction(session.userId, userId, "make_admin", `Granted admin to ${targetUser.email}`, ip)
       return NextResponse.json({ success: true })
 
     case "remove_admin":
-      await pool.query("UPDATE users SET is_admin = false WHERE id = $1", [userId])
+      await pool.query("UPDATE users SET role = 'user' WHERE id = $1", [userId])
       await logAction(session.userId, userId, "remove_admin", `Removed admin from ${targetUser.email}`, ip)
       return NextResponse.json({ success: true })
 
     case "reset_password": {
-      // Cannot reset password for 2FA-enabled users
       if (targetUser.totp_enabled) {
         return NextResponse.json({
           error: "Cannot reset password for users with 2FA enabled. The user must disable 2FA first, or use their backup codes to regain access.",
         }, { status: 400 })
       }
-
-      // Generate a random temporary password
       const tempPassword = randomBytes(6).toString("base64url").slice(0, 12)
       const salt = randomBytes(16).toString("hex")
       const hash = scryptSync(tempPassword, salt, 64).toString("hex")
       const passwordHash = `${salt}:${hash}`
-
       await pool.query("UPDATE users SET password_hash = $1 WHERE id = $2", [passwordHash, userId])
-
-      // Invalidate all sessions so the user must re-login
       await pool.query("DELETE FROM sessions WHERE user_id = $1", [userId])
-
       await logAction(session.userId, userId, "reset_password", `Reset password for ${targetUser.email}`, ip)
       return NextResponse.json({ success: true, tempPassword })
     }
@@ -229,7 +265,6 @@ export async function PATCH(request: NextRequest) {
 
     case "disable": {
       await pool.query("UPDATE users SET disabled_at = NOW() WHERE id = $1", [userId])
-      // Also kill all sessions
       await pool.query("DELETE FROM sessions WHERE user_id = $1", [userId])
       await logAction(session.userId, userId, "disable_user", `Disabled account for ${targetUser.email}`, ip)
       return NextResponse.json({ success: true })

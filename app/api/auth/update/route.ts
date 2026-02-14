@@ -13,7 +13,7 @@ export async function PATCH(request: NextRequest) {
 
   try {
     const body = await request.json()
-    const { name, email, currentPassword, newPassword } = body
+    const { name, email, currentPassword, newPassword, avatarUrl } = body
 
     // Get IP and user agent for security emails
     const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "Unknown"
@@ -84,6 +84,19 @@ export async function PATCH(request: NextRequest) {
       }
     }
 
+    // Update avatar
+    if (typeof avatarUrl === "string") {
+      // Allow clearing avatar (empty string) or setting a data URL
+      if (avatarUrl && !avatarUrl.startsWith("data:image/")) {
+        return NextResponse.json({ error: "Invalid avatar format." }, { status: 400 })
+      }
+      // Limit to ~5MB base64 (base64 is ~33% larger than raw)
+      if (avatarUrl.length > 7_000_000) {
+        return NextResponse.json({ error: "Avatar is too large. Please use an image under 5MB." }, { status: 400 })
+      }
+      await pool.query("UPDATE users SET avatar_url = $1 WHERE id = $2", [avatarUrl || null, session.userId])
+    }
+
     // Update password
     if (newPassword) {
       if (!currentPassword) {
@@ -129,7 +142,7 @@ export async function PATCH(request: NextRequest) {
 
     // Fetch updated user info
     const updated = await pool.query(
-      "SELECT id, email, name FROM users WHERE id = $1",
+      "SELECT id, email, name, avatar_url FROM users WHERE id = $1",
       [session.userId],
     )
 
@@ -137,6 +150,7 @@ export async function PATCH(request: NextRequest) {
       userId: updated.rows[0].id,
       email: updated.rows[0].email,
       name: updated.rows[0].name,
+      avatarUrl: updated.rows[0].avatar_url || null,
       message: "Profile updated successfully.",
     })
   } catch {

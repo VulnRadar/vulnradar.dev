@@ -76,7 +76,7 @@ export function ExportButton({ result }: ExportButtonProps) {
 
   return (
     <div className="flex gap-2">
-      <Button variant="outline" onClick={handleExportJson} className="gap-2 bg-transparent">
+      <Button variant="outline" onClick={handleExportJson} size="sm" className="gap-2 bg-transparent">
         {exportedJson ? (
           <>
             <Check className="h-4 w-4" />
@@ -89,7 +89,7 @@ export function ExportButton({ result }: ExportButtonProps) {
           </>
         )}
       </Button>
-      <Button variant="outline" onClick={handleExportPdf} className="gap-2 bg-transparent">
+      <Button variant="outline" onClick={handleExportPdf} size="sm" className="gap-2 bg-transparent">
         {exportedPdf ? (
           <>
             <Check className="h-4 w-4" />

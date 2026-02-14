@@ -48,6 +48,7 @@ import { Header } from "@/components/scanner/header"
 import { Footer } from "@/components/scanner/footer"
 import { cn } from "@/lib/utils"
 import { PaginationControl } from "@/components/ui/pagination-control"
+import { STAFF_ROLE_LABELS, STAFF_ROLE_HIERARCHY } from "@/lib/constants"
 
 interface AdminStats {
   total_users: string
@@ -65,7 +66,8 @@ interface AdminUser {
   id: number
   email: string
   name: string | null
-  is_admin: boolean
+  role: string
+  avatar_url: string | null
   totp_enabled: boolean
   tos_accepted_at: string | null
   created_at: string
@@ -95,15 +97,18 @@ interface AuditEntry {
   admin_id: number
   admin_email: string
   admin_name: string | null
-  target_user_id: number | null
+  admin_avatar_url: string | null
   target_email: string | null
   target_name: string | null
+  target_avatar_url: string | null
 }
 
 interface ActiveAdmin {
   id: number
   email: string
   name: string | null
+  role: string
+  avatar_url: string | null
   created_at: string
   totp_enabled: boolean
   last_session_created: string | null
@@ -183,7 +188,7 @@ function StatCard({ label, value, icon: Icon, color, accent }: { label: string; 
 }
 
 // --- User avatar ---
-function UserAvatar({ name, email, size = "md" }: { name: string | null; email: string; size?: "sm" | "md" }) {
+function UserAvatar({ name, email, size = "md", avatarUrl }: { name: string | null; email: string; size?: "sm" | "md"; avatarUrl?: string | null }) {
   const initial = (name || email).charAt(0).toUpperCase()
   const colors = [
     "bg-primary/15 text-primary",
@@ -194,6 +199,11 @@ function UserAvatar({ name, email, size = "md" }: { name: string | null; email: 
   ]
   const colorIdx = email.split("").reduce((a, c) => a + c.charCodeAt(0), 0) % colors.length
   const sz = size === "sm" ? "h-7 w-7 text-[10px]" : "h-9 w-9 text-xs"
+  if (avatarUrl) {
+    return (
+      <img src={avatarUrl} alt={name || email} className={cn("rounded-full object-cover shrink-0", sz)} />
+    )
+  }
   return (
     <div className={cn("rounded-full flex items-center justify-center font-bold shrink-0", sz, colors[colorIdx])}>
       {initial}
@@ -204,6 +214,7 @@ function UserAvatar({ name, email, size = "md" }: { name: string | null; email: 
 // --- Action badge ---
 function ActionBadge({ action }: { action: string }) {
   const map: Record<string, { label: string; cls: string }> = {
+    set_role: { label: "Role Changed", cls: "bg-primary/10 text-primary border-primary/20" },
     make_admin: { label: "Promoted to Admin", cls: "bg-primary/10 text-primary border-primary/20" },
     remove_admin: { label: "Admin Removed", cls: "bg-muted text-muted-foreground border-border" },
     reset_password: { label: "Password Reset", cls: "bg-[hsl(var(--severity-medium))]/10 text-[hsl(var(--severity-medium))] border-[hsl(var(--severity-medium))]/20" },
@@ -243,6 +254,7 @@ export default function AdminPage() {
   const [activeAdmins, setActiveAdmins] = useState<ActiveAdmin[]>([])
   const [adminsLoading, setAdminsLoading] = useState(false)
   const [searchLoading, setSearchLoading] = useState(false)
+  const [callerRole, setCallerRole] = useState<string>("user")
   const [auditPaging, setAuditPaging] = useState(false)
   const searchInitRef = useRef(false)
   const showToast = useCallback((message: string, type: "success" | "error") => {
@@ -262,6 +274,7 @@ export default function AdminPage() {
       setUsers(data.users)
       setPage(data.page)
       setTotalPages(data.totalPages)
+      if (data.callerRole) setCallerRole(data.callerRole)
     } catch { setForbidden(true) }
     setLoading(false)
     setSearchLoading(false)
@@ -306,18 +319,19 @@ export default function AdminPage() {
     if (activeTab === "admins") fetchActiveAdmins()
   }, [activeTab])
 
-  async function handleAction(userId: number, action: string) {
+  async function handleAction(userId: number, action: string, extra?: Record<string, string>) {
     setActionLoading(`${userId}-${action}`)
     try {
       const res = await fetch("/api/admin", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId, action }),
+        body: JSON.stringify({ userId, action, ...extra }),
       })
       const data = await res.json()
       if (res.ok) {
         if (action === "reset_password" && data.tempPassword) setTempPassword(data.tempPassword)
         const labels: Record<string, string> = {
+          set_role: "User role updated.",
           make_admin: "User promoted to admin.",
           remove_admin: "Admin privileges removed.",
           reset_password: "Password has been reset.",
@@ -437,7 +451,7 @@ export default function AdminPage() {
               {([
                 { key: "users" as const, label: "Users", icon: Users },
                 { key: "audit" as const, label: "Audit Log", icon: History },
-                { key: "admins" as const, label: "Active Admins", icon: Shield },
+                  { key: "admins" as const, label: "Staff", icon: Shield },
               ]).map((tab) => (
                 <button
                   key={tab.key}
@@ -461,8 +475,13 @@ export default function AdminPage() {
                 detail={selectedUser}
                 detailLoading={detailLoading}
                 actionLoading={actionLoading}
+                callerRole={callerRole}
                 onClose={() => { setSelectedUser(null); setTempPassword(null) }}
-                onAction={(userId, action) => {
+                onAction={(userId, action, extra) => {
+                  if (action === "set_role" && extra?.role) {
+                    handleAction(userId, action, extra)
+                    return
+                  }
                   if (["delete", "disable", "reset_password", "revoke_sessions", "revoke_api_keys"].includes(action)) {
                     const messages: Record<string, { title: string; desc: string; label: string }> = {
                       delete: { title: "Delete User", desc: `This will permanently delete ${selectedUser.user.email} and all their data. This cannot be undone.`, label: "Delete User" },
@@ -521,7 +540,7 @@ export default function AdminPage() {
   <tr key={u.id} className="border-b border-border last:border-0 hover:bg-muted/20 transition-colors group">
                             <td className="px-5 py-3">
                               <div className="flex items-center gap-3">
-                                <UserAvatar name={u.name} email={u.email} />
+                                <UserAvatar name={u.name} email={u.email} avatarUrl={u.avatar_url} />
                                 <div className="min-w-0">
                                   <p className="text-sm font-medium text-foreground truncate">{u.name || "Unnamed"}</p>
                                   <p className="text-xs text-muted-foreground truncate">{u.email}</p>
@@ -537,9 +556,11 @@ export default function AdminPage() {
                             <td className="px-4 py-3">
                               <div className="flex items-center gap-1.5 flex-wrap">
                                 {u.disabled_at && <Badge className="bg-destructive/10 text-destructive border-destructive/20 text-[10px] px-1.5 font-medium">Disabled</Badge>}
-                                {u.is_admin && <Badge className="bg-primary/10 text-primary border-primary/20 text-[10px] px-1.5 font-medium">Admin</Badge>}
+                                {u.role === "admin" && <Badge className="bg-primary/10 text-primary border-primary/20 text-[10px] px-1.5 font-medium">Admin</Badge>}
+                                {u.role === "moderator" && <Badge className="bg-[hsl(var(--severity-medium))]/10 text-[hsl(var(--severity-medium))] border-[hsl(var(--severity-medium))]/20 text-[10px] px-1.5 font-medium">Moderator</Badge>}
+                                {u.role === "support" && <Badge className="bg-blue-500/10 text-blue-500 border-blue-500/20 text-[10px] px-1.5 font-medium">Support</Badge>}
                                 {u.totp_enabled && <Badge className="bg-emerald-500/10 text-emerald-500 border-emerald-500/20 text-[10px] px-1.5 font-medium">2FA</Badge>}
-                                {!u.disabled_at && !u.is_admin && !u.totp_enabled && (
+                                {!u.disabled_at && (!u.role || u.role === "user") && !u.totp_enabled && (
                                   <span className="text-xs text-muted-foreground">Active</span>
                                 )}
                               </div>
@@ -552,18 +573,19 @@ export default function AdminPage() {
                                 <Button variant="ghost" size="icon" className="h-8 w-8" title="View details" onClick={() => fetchUserDetail(u.id)}>
                                   <Eye className="h-4 w-4 text-muted-foreground" />
                                 </Button>
-                                <Button variant="ghost" size="icon" className="h-8 w-8" title={u.is_admin ? "Remove admin" : "Make admin"} onClick={() => handleAction(u.id, u.is_admin ? "remove_admin" : "make_admin")}>
-                                  {u.is_admin ? <CrownIcon className="h-4 w-4 text-primary" /> : <Crown className="h-4 w-4 text-muted-foreground" />}
-                                </Button>
-                                {u.disabled_at ? (
-                                  <Button variant="ghost" size="icon" className="h-8 w-8 text-emerald-500 hover:text-emerald-500 hover:bg-emerald-500/10" title="Re-enable" onClick={() => handleAction(u.id, "enable")}>
-                                    <CheckCircle2 className="h-4 w-4" />
-                                  </Button>
-                                ) : (
-                                  <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10" title="Disable"
-                                    onClick={() => setConfirmDialog({ title: "Disable Account", description: `Suspend ${u.email}? They will be logged out and unable to sign in.`, confirmLabel: "Disable", danger: true, action: () => handleAction(u.id, "disable") })}>
-                                    <Ban className="h-4 w-4" />
-                                  </Button>
+                                {(callerRole === "admin" || callerRole === "moderator") && (
+                                  <>
+                                    {u.disabled_at ? (
+                                      <Button variant="ghost" size="icon" className="h-8 w-8 text-emerald-500 hover:text-emerald-500 hover:bg-emerald-500/10" title="Re-enable" onClick={() => handleAction(u.id, "enable")}>
+                                        <CheckCircle2 className="h-4 w-4" />
+                                      </Button>
+                                    ) : (
+                                      <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10" title="Disable"
+                                        onClick={() => setConfirmDialog({ title: "Disable Account", description: `Suspend ${u.email}? They will be logged out and unable to sign in.`, confirmLabel: "Disable", danger: true, action: () => handleAction(u.id, "disable") })}>
+                                        <Ban className="h-4 w-4" />
+                                      </Button>
+                                    )}
+                                  </>
                                 )}
                               </div>
                             </td>
@@ -585,14 +607,16 @@ export default function AdminPage() {
                   <div className={cn("md:hidden flex flex-col transition-opacity duration-200", searchLoading && "opacity-40 pointer-events-none")}>
                     {users.map((u) => (
                       <button key={u.id} className="flex items-center gap-3 px-4 py-3.5 border-b border-border last:border-0 hover:bg-muted/20 text-left transition-colors w-full" onClick={() => fetchUserDetail(u.id)}>
-                        <UserAvatar name={u.name} email={u.email} size="sm" />
+                        <UserAvatar name={u.name} email={u.email} size="sm" avatarUrl={u.avatar_url} />
                         <div className="flex-1 min-w-0">
                           <p className="text-sm font-medium text-foreground truncate">{u.name || "Unnamed"}</p>
                           <p className="text-xs text-muted-foreground truncate">{u.email}</p>
                           <div className="flex items-center gap-1.5 mt-1 flex-wrap">
                             <span className="text-[10px] text-muted-foreground">{u.scan_count} scans</span>
                             {u.disabled_at && <Badge className="bg-destructive/10 text-destructive border-destructive/20 text-[10px] px-1.5">Disabled</Badge>}
-                            {u.is_admin && <Badge className="bg-primary/10 text-primary border-primary/20 text-[10px] px-1.5">Admin</Badge>}
+                            {u.role === "admin" && <Badge className="bg-primary/10 text-primary border-primary/20 text-[10px] px-1.5">Admin</Badge>}
+                            {u.role === "moderator" && <Badge className="bg-[hsl(var(--severity-medium))]/10 text-[hsl(var(--severity-medium))] border-[hsl(var(--severity-medium))]/20 text-[10px] px-1.5">Mod</Badge>}
+                            {u.role === "support" && <Badge className="bg-blue-500/10 text-blue-500 border-blue-500/20 text-[10px] px-1.5">Support</Badge>}
                             {u.totp_enabled && <Badge className="bg-emerald-500/10 text-emerald-500 border-emerald-500/20 text-[10px] px-1.5">2FA</Badge>}
                           </div>
                         </div>
@@ -648,7 +672,7 @@ export default function AdminPage() {
                                 onClick={() => setExpandedLog(isExpanded ? null : log.id)}
                               >
                                 <div className="flex flex-col items-center gap-1 pt-0.5">
-                                  <UserAvatar name={log.admin_name} email={log.admin_email} size="sm" />
+                                  <UserAvatar name={log.admin_name} email={log.admin_email} size="sm" avatarUrl={log.admin_avatar_url} />
                                 </div>
                                 <div className="flex-1 min-w-0">
                                   <div className="flex flex-col sm:flex-row sm:items-center gap-1.5 sm:gap-2">
@@ -735,13 +759,13 @@ export default function AdminPage() {
               <Card className="bg-card border-border overflow-hidden">
                 <CardHeader className="pb-0 pt-5 px-5">
                   <div className="flex items-center gap-2">
-                    <CardTitle className="text-base font-semibold">Active Administrators</CardTitle>
+                    <CardTitle className="text-base font-semibold">Staff Members</CardTitle>
                     <Badge variant="secondary" className="text-[10px] font-medium">{activeAdmins.length}</Badge>
                     <Button variant="outline" size="sm" className="ml-auto h-7 bg-transparent gap-1 text-xs" onClick={fetchActiveAdmins}>
                       <RefreshCw className={cn("h-3 w-3", adminsLoading && "animate-spin")} /> Refresh
                     </Button>
                   </div>
-                  <p className="text-xs text-muted-foreground mt-1">All users with admin privileges and their current activity status.</p>
+                  <p className="text-xs text-muted-foreground mt-1">All staff members (admins, moderators, support) and their current activity status.</p>
                 </CardHeader>
                 <CardContent className="p-0 mt-4">
                   {adminsLoading ? (
@@ -763,7 +787,7 @@ export default function AdminPage() {
                           <div key={admin.id} className={cn("flex items-start gap-4 px-5 py-4 transition-colors hover:bg-muted/20", i < activeAdmins.length - 1 && "border-b border-border")}>
                             {/* Avatar with online indicator */}
                             <div className="relative shrink-0">
-                              <UserAvatar name={admin.name} email={admin.email} />
+                              <UserAvatar name={admin.name} email={admin.email} avatarUrl={admin.avatar_url} />
                               <div className={cn(
                                 "absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-card",
                                 isOnline ? "bg-emerald-500" : "bg-muted-foreground/40"
@@ -774,6 +798,13 @@ export default function AdminPage() {
                               <div className="flex items-center gap-2 flex-wrap">
                                 <span className="text-sm font-semibold text-foreground">{displayName}</span>
                                 <Badge className={cn("text-[10px] px-1.5 font-medium",
+                                  admin.role === "admin" ? "bg-primary/10 text-primary border-primary/20"
+                                    : admin.role === "moderator" ? "bg-[hsl(var(--severity-medium))]/10 text-[hsl(var(--severity-medium))] border-[hsl(var(--severity-medium))]/20"
+                                    : "bg-blue-500/10 text-blue-500 border-blue-500/20"
+                                )}>
+                                  {STAFF_ROLE_LABELS[admin.role] || admin.role}
+                                </Badge>
+                                <Badge className={cn("text-[10px] px-1.5 font-medium",
                                   isOnline
                                     ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/20"
                                     : "bg-muted text-muted-foreground border-border"
@@ -781,7 +812,7 @@ export default function AdminPage() {
                                   {isOnline ? "Online" : "Offline"}
                                 </Badge>
                                 {admin.totp_enabled && (
-                                  <Badge className="bg-primary/10 text-primary border-primary/20 text-[10px] px-1.5 font-medium">2FA</Badge>
+                                  <Badge className="bg-emerald-500/10 text-emerald-500 border-emerald-500/20 text-[10px] px-1.5 font-medium">2FA</Badge>
                                 )}
                               </div>
                               <p className="text-xs text-muted-foreground mt-0.5">{admin.email}</p>
@@ -854,11 +885,11 @@ export default function AdminPage() {
 
 // --- User Detail Panel ---
 function UserDetailPanel({
-  detail, detailLoading, actionLoading, onClose, onAction, tempPassword, onClearTempPassword,
+  detail, detailLoading, actionLoading, onClose, onAction, tempPassword, onClearTempPassword, callerRole,
 }: {
   detail: UserDetail; detailLoading: boolean; actionLoading: string | null
-  onClose: () => void; onAction: (userId: number, action: string) => void
-  tempPassword: string | null; onClearTempPassword: () => void
+  onClose: () => void; onAction: (userId: number, action: string, extra?: Record<string, string>) => void
+  tempPassword: string | null; onClearTempPassword: () => void; callerRole: string
 }) {
   const u = detail.user
   const isLoading = (action: string) => actionLoading === `${u.id}-${action}`
@@ -873,11 +904,13 @@ function UserDetailPanel({
             <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0 -ml-1 -mt-0.5" onClick={onClose}>
               <ArrowLeft className="h-4 w-4" />
             </Button>
-            <UserAvatar name={u.name} email={u.email} />
+            <UserAvatar name={u.name} email={u.email} avatarUrl={u.avatar_url} />
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
                 <h2 className="text-lg font-bold text-foreground">{u.name || "Unnamed User"}</h2>
-                {u.is_admin && <Badge className="bg-primary/10 text-primary border-primary/20 text-[10px] font-medium">Admin</Badge>}
+                {u.role === "admin" && <Badge className="bg-primary/10 text-primary border-primary/20 text-[10px] font-medium">Admin</Badge>}
+                {u.role === "moderator" && <Badge className="bg-[hsl(var(--severity-medium))]/10 text-[hsl(var(--severity-medium))] border-[hsl(var(--severity-medium))]/20 text-[10px] font-medium">Moderator</Badge>}
+                {u.role === "support" && <Badge className="bg-blue-500/10 text-blue-500 border-blue-500/20 text-[10px] font-medium">Support</Badge>}
                 {u.disabled_at && <Badge className="bg-destructive/10 text-destructive border-destructive/20 text-[10px] font-medium">Disabled</Badge>}
               </div>
               <p className="text-sm text-muted-foreground mt-0.5">{u.email}</p>
@@ -951,68 +984,105 @@ function UserDetailPanel({
         </div>
       )}
 
+      {/* Role management - admin only */}
+      {!detailLoading && callerRole === "admin" && (
+        <Card className="bg-card border-border">
+          <CardHeader className="pb-0 pt-4 px-5">
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Role Management</p>
+          </CardHeader>
+          <CardContent className="p-5 pt-3">
+            <div className="flex flex-col gap-3">
+              <p className="text-xs text-muted-foreground">Current role: <span className="font-semibold text-foreground">{STAFF_ROLE_LABELS[u.role || "user"] || "User"}</span></p>
+              <div className="flex flex-wrap gap-2">
+                {(["user", "support", "moderator", "admin"] as const).map((role) => (
+                  <Button
+                    key={role}
+                    variant={(u.role || "user") === role ? "default" : "outline"}
+                    size="sm"
+                    disabled={(u.role || "user") === role || isLoading("set_role")}
+                    onClick={() => onAction(u.id, "set_role", { role })}
+                    className={cn(
+                      "text-xs",
+                      (u.role || "user") === role && "pointer-events-none"
+                    )}
+                  >
+                    {STAFF_ROLE_LABELS[role]}
+                  </Button>
+                ))}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Support actions */}
       {!detailLoading && (
         <Card className="bg-card border-border">
           <CardHeader className="pb-0 pt-4 px-5">
-            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Support Actions</p>
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+              {callerRole === "support" ? "Account Information" : "Support Actions"}
+            </p>
           </CardHeader>
           <CardContent className="p-5 pt-3">
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
-              <ActionCard
-                icon={KeyRound} label="Reset Password"
-                description={u.totp_enabled ? "Unavailable: user has 2FA enabled" : "Generate a temporary password"}
-                color="text-[hsl(var(--severity-medium))]" bg="bg-[hsl(var(--severity-medium))]/10"
-                disabled={u.totp_enabled} loading={isLoading("reset_password")}
-                onClick={() => onAction(u.id, "reset_password")}
-              />
-              <ActionCard
-                icon={LogOut} label="Force Logout"
-                description={`Revoke all ${u.session_count} active session(s)`}
-                color="text-primary" bg="bg-primary/10"
-                loading={isLoading("revoke_sessions")}
-                onClick={() => onAction(u.id, "revoke_sessions")}
-              />
-              <ActionCard
-                icon={Key} label="Revoke API Keys"
-                description="Invalidate all active API keys"
-                color="text-[hsl(var(--severity-medium))]" bg="bg-[hsl(var(--severity-medium))]/10"
-                loading={isLoading("revoke_api_keys")}
-                onClick={() => onAction(u.id, "revoke_api_keys")}
-              />
-              <ActionCard
-                icon={Crown} label={u.is_admin ? "Remove Admin" : "Grant Admin"}
-                description={u.is_admin ? "Revoke admin privileges" : "Promote to admin role"}
-                color="text-primary" bg="bg-primary/10"
-                onClick={() => onAction(u.id, u.is_admin ? "remove_admin" : "make_admin")}
-              />
-              <ActionCard
-                icon={u.disabled_at ? CheckCircle2 : Ban}
-                label={u.disabled_at ? "Re-enable Account" : "Disable Account"}
-                description={u.disabled_at ? "Allow the user to log in again" : "Suspend and force-logout"}
-                color={u.disabled_at ? "text-emerald-500" : "text-destructive"}
-                bg={u.disabled_at ? "bg-emerald-500/10" : "bg-destructive/10"}
-                variant={u.disabled_at ? "success" : "danger"}
-                onClick={() => onAction(u.id, u.disabled_at ? "enable" : "disable")}
-              />
-              <ActionCard
-                icon={Trash2} label="Delete Account"
-                description="Permanently remove user and all data"
-                color="text-destructive" bg="bg-destructive/10" variant="danger"
-                onClick={() => onAction(u.id, "delete")}
-              />
-            </div>
-
-            {u.totp_enabled && (
-              <div className="flex items-start gap-2.5 p-3.5 rounded-lg bg-[hsl(var(--severity-medium))]/5 border border-[hsl(var(--severity-medium))]/20 mt-3">
-                <AlertTriangle className="h-4 w-4 text-[hsl(var(--severity-medium))] shrink-0 mt-0.5" />
-                <div>
-                  <p className="text-xs font-medium text-foreground">Password reset is unavailable for this user</p>
-                  <p className="text-[11px] text-muted-foreground mt-0.5 leading-relaxed">
-                    This account has two-factor authentication enabled. For security, passwords cannot be reset by admins when 2FA is active. The user should use their backup codes to regain access, or disable 2FA first.
-                  </p>
+            {callerRole === "support" ? (
+              <p className="text-xs text-muted-foreground">You have view-only access. Contact an admin or moderator to perform actions on this user.</p>
+            ) : (
+              <>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+                  {callerRole === "admin" && (
+                    <ActionCard
+                      icon={KeyRound} label="Reset Password"
+                      description={u.totp_enabled ? "Unavailable: user has 2FA enabled" : "Generate a temporary password"}
+                      color="text-[hsl(var(--severity-medium))]" bg="bg-[hsl(var(--severity-medium))]/10"
+                      disabled={u.totp_enabled} loading={isLoading("reset_password")}
+                      onClick={() => onAction(u.id, "reset_password")}
+                    />
+                  )}
+                  <ActionCard
+                    icon={LogOut} label="Force Logout"
+                    description={`Revoke all ${u.session_count} active session(s)`}
+                    color="text-primary" bg="bg-primary/10"
+                    loading={isLoading("revoke_sessions")}
+                    onClick={() => onAction(u.id, "revoke_sessions")}
+                  />
+                  <ActionCard
+                    icon={Key} label="Revoke API Keys"
+                    description="Invalidate all active API keys"
+                    color="text-[hsl(var(--severity-medium))]" bg="bg-[hsl(var(--severity-medium))]/10"
+                    loading={isLoading("revoke_api_keys")}
+                    onClick={() => onAction(u.id, "revoke_api_keys")}
+                  />
+                  <ActionCard
+                    icon={u.disabled_at ? CheckCircle2 : Ban}
+                    label={u.disabled_at ? "Re-enable Account" : "Disable Account"}
+                    description={u.disabled_at ? "Allow the user to log in again" : "Suspend and force-logout"}
+                    color={u.disabled_at ? "text-emerald-500" : "text-destructive"}
+                    bg={u.disabled_at ? "bg-emerald-500/10" : "bg-destructive/10"}
+                    variant={u.disabled_at ? "success" : "danger"}
+                    onClick={() => onAction(u.id, u.disabled_at ? "enable" : "disable")}
+                  />
+                  {callerRole === "admin" && (
+                    <ActionCard
+                      icon={Trash2} label="Delete Account"
+                      description="Permanently remove user and all data"
+                      color="text-destructive" bg="bg-destructive/10" variant="danger"
+                      onClick={() => onAction(u.id, "delete")}
+                    />
+                  )}
                 </div>
-              </div>
+
+                {u.totp_enabled && callerRole === "admin" && (
+                  <div className="flex items-start gap-2.5 p-3.5 rounded-lg bg-[hsl(var(--severity-medium))]/5 border border-[hsl(var(--severity-medium))]/20 mt-3">
+                    <AlertTriangle className="h-4 w-4 text-[hsl(var(--severity-medium))] shrink-0 mt-0.5" />
+                    <div>
+                      <p className="text-xs font-medium text-foreground">Password reset is unavailable for this user</p>
+                      <p className="text-[11px] text-muted-foreground mt-0.5 leading-relaxed">
+                        This account has two-factor authentication enabled. For security, passwords cannot be reset by admins when 2FA is active. The user should use their backup codes to regain access, or disable 2FA first.
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </>
             )}
           </CardContent>
         </Card>
