@@ -321,20 +321,122 @@ const detectors: Record<string, DetectFn> = {
 
   "hardcoded-secrets": (_url, _headers, body) => {
     const patterns = [
-      { name: "AWS Key", pattern: /AKIA[0-9A-Z]{16}/g },
-      { name: "Stripe Secret", pattern: /sk_live_[0-9a-zA-Z]{24,}/g },
-      { name: "Stripe Publishable", pattern: /pk_live_[0-9a-zA-Z]{24,}/g },
+      // ── Cloud Providers ────────────────────────────────────────
+      { name: "AWS Access Key", pattern: /AKIA[0-9A-Z]{16}/g },
+      { name: "AWS MFA Serial", pattern: /arn:aws:iam::\d{12}:mfa\/\S+/g },
+      { name: "Azure Storage Key", pattern: /DefaultEndpointsProtocol=https;AccountName=[^;]+;AccountKey=[A-Za-z0-9+/=]{86,88}/g },
+      { name: "Azure Client Secret", pattern: /[a-zA-Z0-9~_.-]{34,}(?=.*(?:azure|microsoft|tenant))/gi },
+      { name: "GCP Service Account", pattern: /"type"\s*:\s*"service_account"/g },
       { name: "Google API Key", pattern: /AIzaSy[0-9A-Za-z_-]{33}/g },
+      { name: "Google OAuth ID", pattern: /\d{12}-[a-z0-9]{32}\.apps\.googleusercontent\.com/g },
+      { name: "Firebase Key", pattern: /AAAA[A-Za-z0-9_-]{7}:[A-Za-z0-9_-]{140}/g },
+
+      // ── Payment Providers ──────────────────────────────────────
+      { name: "Stripe Secret Key", pattern: /sk_live_[0-9a-zA-Z]{24,}/g },
+      { name: "Stripe Publishable Key", pattern: /pk_live_[0-9a-zA-Z]{24,}/g },
+      { name: "Stripe Restricted Key", pattern: /rk_live_[0-9a-zA-Z]{24,}/g },
+      { name: "Stripe Webhook Secret", pattern: /whsec_[0-9a-zA-Z]{24,}/g },
+      { name: "PayPal Client ID", pattern: /A[a-zA-Z0-9]{15,80}(?=.*paypal)/gi },
+      { name: "Square Access Token", pattern: /sq0atp-[0-9A-Za-z_-]{22}/g },
+      { name: "Square OAuth Secret", pattern: /sq0csp-[0-9A-Za-z_-]{43}/g },
+
+      // ── Version Control & CI ───────────────────────────────────
       { name: "GitHub Token", pattern: /gh[pousr]_[0-9A-Za-z]{36,}/g },
-      { name: "Slack Token", pattern: /xox[bpras]-[0-9]{10,}/g },
-      { name: "Generic Secret", pattern: /(?:api[_\-]?key|api[_\-]?secret|secret[_\-]?key|private[_\-]?key|auth[_\-]?token)\s*[:=]\s*["'][a-zA-Z0-9/+=]{20,}["']/gi },
+      { name: "GitHub OAuth", pattern: /gho_[0-9A-Za-z]{36,}/g },
+      { name: "GitLab Token", pattern: /glpat-[0-9A-Za-z_-]{20,}/g },
+      { name: "Bitbucket Token", pattern: /ATBB[0-9A-Za-z]{32,}/g },
+      { name: "CircleCI Token", pattern: /circle-token\s*[:=]\s*["']?[0-9a-f]{40}["']?/gi },
+      { name: "Travis CI Token", pattern: /travis-ci\.(?:com|org)\S*\s+["'][0-9A-Za-z]{20,}["']/g },
+
+      // ── Communication ──────────────────────────────────────────
+      { name: "Slack Token", pattern: /xox[bpras]-[0-9]{10,}-[0-9a-zA-Z-]+/g },
+      { name: "Slack Webhook", pattern: /hooks\.slack\.com\/services\/T[0-9A-Z]{8,}\/B[0-9A-Z]{8,}\/[0-9A-Za-z]{24}/g },
+      { name: "Discord Bot Token", pattern: /[MN][A-Za-z\d]{23,}\.[\w-]{6}\.[\w-]{27,}/g },
+      { name: "Discord Webhook", pattern: /discord(?:app)?\.com\/api\/webhooks\/\d{17,20}\/[\w-]{60,68}/g },
+      { name: "Twilio API Key", pattern: /SK[0-9a-fA-F]{32}/g },
+      { name: "Twilio Account SID", pattern: /AC[0-9a-fA-F]{32}/g },
+      { name: "Telegram Bot Token", pattern: /\d{8,10}:[A-Za-z0-9_-]{35}/g },
+
+      // ── Email Services ─────────────────────────────────────────
+      { name: "SendGrid Key", pattern: /SG\.[0-9A-Za-z_-]{22}\.[0-9A-Za-z_-]{43}/g },
+      { name: "Mailgun Key", pattern: /key-[0-9a-f]{32}/g },
+      { name: "Mailchimp Key", pattern: /[0-9a-f]{32}-us\d{1,2}/g },
+      { name: "Postmark Token", pattern: /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/g },
+
+      // ── Database & BaaS ────────────────────────────────────────
+      { name: "MongoDB URI", pattern: /mongodb(?:\+srv)?:\/\/[^\s"'<>]{10,}/g },
+      { name: "PostgreSQL URI", pattern: /postgres(?:ql)?:\/\/[^\s"'<>]{10,}/g },
+      { name: "MySQL URI", pattern: /mysql:\/\/[^\s"'<>]{10,}/g },
+      { name: "Redis URI", pattern: /redis(?:s)?:\/\/[^\s"'<>]{10,}/g },
+      { name: "Supabase Key", pattern: /eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9\.[A-Za-z0-9_-]{30,}\.[A-Za-z0-9_-]{20,}/g },
+      { name: "Firebase URL", pattern: /https:\/\/[a-z0-9-]+\.firebaseio\.com/g },
+
+      // ── Auth & Identity ────────────────────────────────────────
+      { name: "JWT Token", pattern: /eyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}/g },
+      { name: "Auth0 Secret", pattern: /[A-Za-z0-9_-]{64}(?=.*auth0)/gi },
+      { name: "OAuth Token", pattern: /ya29\.[0-9A-Za-z_-]{68,}/g },
+
+      // ── CDN & Infrastructure ───────────────────────────────────
+      { name: "Cloudflare API Key", pattern: /[0-9a-f]{37}(?=.*cloudflare)/gi },
+      { name: "Cloudflare Token", pattern: /[A-Za-z0-9_-]{40}(?=.*cloudflare)/gi },
+      { name: "Heroku API Key", pattern: /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?=.*heroku)/gi },
+      { name: "Vercel Token", pattern: /[A-Za-z0-9]{24}(?=.*vercel)/gi },
+      { name: "Netlify Token", pattern: /[0-9a-f]{40,}(?=.*netlify)/gi },
+
+      // ── AI & ML ────────────────────────────────────────────────
+      { name: "OpenAI Key", pattern: /sk-[A-Za-z0-9]{20,}T3BlbkFJ[A-Za-z0-9]{20,}/g },
+      { name: "OpenAI Project Key", pattern: /sk-proj-[A-Za-z0-9_-]{40,}/g },
+      { name: "Anthropic Key", pattern: /sk-ant-[A-Za-z0-9_-]{40,}/g },
+      { name: "HuggingFace Token", pattern: /hf_[A-Za-z0-9]{34,}/g },
+      { name: "Replicate Token", pattern: /r8_[A-Za-z0-9]{40}/g },
+      { name: "Cohere Key", pattern: /[A-Za-z0-9]{40}(?=.*cohere)/gi },
+
+      // ── Analytics & Monitoring ─────────────────────────────────
+      { name: "Datadog API Key", pattern: /[0-9a-f]{32}(?=.*datadog)/gi },
+      { name: "New Relic Key", pattern: /NRAK-[A-Z0-9]{27}/g },
+      { name: "Sentry DSN", pattern: /https:\/\/[0-9a-f]{32}@[a-z0-9.]+\.sentry\.io\/\d+/g },
+      { name: "Segment Write Key", pattern: /[A-Za-z0-9]{32}(?=.*segment)/gi },
+      { name: "Mixpanel Token", pattern: /[0-9a-f]{32}(?=.*mixpanel)/gi },
+      { name: "Amplitude Key", pattern: /[0-9a-f]{32}(?=.*amplitude)/gi },
+
+      // ── Maps & Location ────────────────────────────────────────
+      { name: "Mapbox Token", pattern: /pk\.eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/g },
+      { name: "Algolia API Key", pattern: /[0-9a-f]{32}(?=.*algolia)/gi },
+
+      // ── Social ─────────────────────────────────────────────────
+      { name: "Facebook Token", pattern: /EAA[0-9A-Za-z]{100,}/g },
+      { name: "Twitter Bearer", pattern: /AAAAAAAAAAAAAAAAAAA[A-Za-z0-9%]{30,}/g },
+      { name: "LinkedIn Secret", pattern: /[0-9A-Za-z]{16}(?=.*linkedin)/gi },
+
+      // ── Crypto & Keys ──────────────────────────────────────────
+      { name: "RSA Private Key", pattern: /-----BEGIN RSA PRIVATE KEY-----/g },
+      { name: "EC Private Key", pattern: /-----BEGIN EC PRIVATE KEY-----/g },
+      { name: "PGP Private Key", pattern: /-----BEGIN PGP PRIVATE KEY BLOCK-----/g },
+      { name: "SSH Private Key", pattern: /-----BEGIN (?:OPENSSH |DSA )?PRIVATE KEY-----/g },
+
+      // ── Generic Patterns (catch-all) ───────────────────────────
+      { name: "Generic API Key", pattern: /(?:api[_\-]?key|apikey|api[_\-]?secret|secret[_\-]?key|private[_\-]?key|auth[_\-]?token|access[_\-]?token|client[_\-]?secret|app[_\-]?secret|application[_\-]?key)\s*[:=]\s*["'][a-zA-Z0-9/+=_-]{16,}["']/gi },
+      { name: "Generic Bearer Token", pattern: /['"](Bearer\s+[A-Za-z0-9_\-.]{20,})['"]/g },
+      { name: "Password Assignment", pattern: /(?:password|passwd|pwd)\s*[:=]\s*["'][^"']{8,}["']/gi },
+      { name: "Connection String", pattern: /(?:connection[_\-]?string|dsn)\s*[:=]\s*["'][^"']{20,}["']/gi },
     ]
     const found: string[] = []
     for (const { name, pattern } of patterns) {
       const matches = body.match(pattern)
       if (matches) {
-        const redacted = matches[0].slice(0, 8) + "****" + matches[0].slice(-4)
-        found.push(`${name}: ${redacted} (${matches.length} occurrence(s))`)
+        // Deduplicate matches
+        const unique = [...new Set(matches)]
+        for (const match of unique.slice(0, 3)) {
+          const len = match.length
+          const redacted =
+            len <= 12
+              ? match.slice(0, 4) + "****"
+              : match.slice(0, 8) + "****" + match.slice(-4)
+          found.push(`${name}: ${redacted}`)
+        }
+        if (unique.length > 3) {
+          found.push(`  ...and ${unique.length - 3} more ${name} occurrence(s)`)
+        }
       }
     }
     return found.length > 0 ? `Potential secrets detected:\n${found.join("\n")}` : null
