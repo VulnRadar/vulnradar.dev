@@ -5,6 +5,8 @@ import { Copy, ExternalLink, Trash2, Loader2, Check } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import Link from "next/link"
+import { getSafetyRating } from "@/lib/scanner/safety-rating"
+import type { Vulnerability } from "@/lib/scanner/types"
 
 interface Share {
   id: number
@@ -12,6 +14,7 @@ interface Share {
   scannedAt: string
   token: string
   summary: { critical: number; high: number; medium: number; low: number; info: number }
+  findings: Vulnerability[]
   findingsCount: number
 }
 
@@ -75,17 +78,17 @@ export default function SharesPage() {
     }
   }
 
-  const getSeverityColor = (critical: number, high: number) => {
-    if (critical > 0) return "text-red-500"
-    if (high >= 2) return "text-orange-500"
-    if (high === 1) return "text-yellow-500"
-    return "text-green-500"
+  const getSeverityColor = (share: Share) => {
+    const rating = getSafetyRating(share.findings)
+    if (rating === "unsafe") return "text-red-500"
+    if (rating === "caution") return "text-yellow-500"
+    return "text-emerald-500"
   }
 
-  const getSeverityLabel = (critical: number, high: number) => {
-    if (critical > 0) return "Unsafe"
-    if (high >= 2) return "Unsafe"
-    if (high === 1) return "Caution"
+  const getSeverityLabel = (share: Share) => {
+    const rating = getSafetyRating(share.findings)
+    if (rating === "unsafe") return "Unsafe"
+    if (rating === "caution") return "Caution"
     return "Safe"
   }
 
@@ -121,8 +124,8 @@ export default function SharesPage() {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-2">
                       <h3 className="text-lg font-semibold text-foreground truncate">{share.url}</h3>
-                      <span className={`text-sm font-medium ${getSeverityColor(share.summary.critical, share.summary.high)}`}>
-                        {getSeverityLabel(share.summary.critical, share.summary.high)}
+                      <span className={`text-sm font-medium ${getSeverityColor(share)}`}>
+                        {getSeverityLabel(share)}
                       </span>
                     </div>
                     <div className="flex items-center gap-3 text-sm text-muted-foreground flex-wrap">
