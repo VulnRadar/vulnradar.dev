@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import pool from "@/lib/db"
+import { getSafetyRating } from "@/lib/scanner/safety-rating"
 
 export async function GET(
   request: NextRequest,
@@ -12,7 +13,7 @@ export async function GET(
   }
 
   const result = await pool.query(
-    `SELECT sh.url, sh.summary, sh.findings_count, sh.scanned_at
+    `SELECT sh.url, sh.findings, sh.findings_count, sh.scanned_at
      FROM scan_history sh
      WHERE sh.share_token = $1`,
     [token],
@@ -23,18 +24,8 @@ export async function GET(
   }
 
   const row = result.rows[0]
-  const summary = typeof row.summary === "string" ? JSON.parse(row.summary) : row.summary
-  const critical = summary?.critical || 0
-  const high = summary?.high || 0
-
-  let safetyRating: string
-  if (critical > 0 || high >= 2) {
-    safetyRating = "unsafe"
-  } else if (high === 1 || (summary?.medium || 0) >= 3) {
-    safetyRating = "caution"
-  } else {
-    safetyRating = "safe"
-  }
+  const findings = typeof row.findings === "string" ? JSON.parse(row.findings) : (row.findings || [])
+  const safetyRating = getSafetyRating(findings)
 
   const origin = request.nextUrl.origin
 

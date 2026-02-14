@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import pool from "@/lib/db"
+import { getSafetyRating } from "@/lib/scanner/safety-rating"
 
 function escapeXml(str: string): string {
   return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;")
@@ -18,7 +19,7 @@ export async function GET(
   }
 
   const result = await pool.query(
-    `SELECT sh.url, sh.summary, sh.findings_count, sh.scanned_at
+    `SELECT sh.url, sh.summary, sh.findings, sh.scanned_at
      FROM scan_history sh
      WHERE sh.share_token = $1`,
     [token],
@@ -31,23 +32,17 @@ export async function GET(
   }
 
   const row = result.rows[0]
-  const summary = typeof row.summary === "string" ? JSON.parse(row.summary) : row.summary
-  const critical = summary?.critical || 0
-  const high = summary?.high || 0
+  const findings = typeof row.findings === "string" ? JSON.parse(row.findings) : (row.findings || [])
 
-  let rating: string
-  let color: string
+  const safetyRating = getSafetyRating(findings)
 
-  if (critical > 0 || high >= 2) {
-    rating = "Unsafe"
-    color = "#ef4444"
-  } else if (high === 1 || (summary?.medium || 0) >= 3) {
-    rating = "Caution"
-    color = "#eab308"
-  } else {
-    rating = "Safe"
-    color = "#22c55e"
+  const ratingConfig = {
+    safe: { label: "Safe", color: "#22c55e" },
+    caution: { label: "Caution", color: "#eab308" },
+    unsafe: { label: "Unsafe", color: "#ef4444" },
   }
+
+  const { label: rating, color } = ratingConfig[safetyRating]
 
   const scanDate = new Date(row.scanned_at).toLocaleDateString("en-US", {
     month: "short",
