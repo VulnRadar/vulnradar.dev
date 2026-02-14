@@ -10,8 +10,6 @@ import {
   User,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { Header } from "@/components/scanner/header"
-import { Footer } from "@/components/scanner/footer"
 import { ScanSummary } from "@/components/scanner/scan-summary"
 import { ResultsList } from "@/components/scanner/results-list"
 import { IssueDetail } from "@/components/scanner/issue-detail"
@@ -55,7 +53,30 @@ export default function SharedScanPage() {
 
   return (
     <div className="min-h-screen flex flex-col bg-background">
-      <Header />
+      {/* Minimal public header */}
+      <header className="sticky top-0 z-50 h-14 flex items-center justify-between px-4 sm:px-6 border-b border-border bg-card/95 backdrop-blur-sm">
+        <div className="flex items-center gap-2">
+          <Image
+            src="/favicon.svg"
+            alt={`${APP_NAME} logo`}
+            width={20}
+            height={20}
+            className="h-5 w-5"
+          />
+          <span className="text-base font-semibold text-foreground tracking-tight">{APP_NAME}</span>
+          <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded-md font-medium">
+            Shared Report
+          </span>
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => router.push("/login")}
+          className="bg-transparent text-xs"
+        >
+          Sign In
+        </Button>
+      </header>
 
       <main className="flex-1 w-full max-w-5xl mx-auto px-4 py-6 sm:py-8 flex flex-col gap-6">
         {loading && (
@@ -123,7 +144,19 @@ export default function SharedScanPage() {
         )}
       </main>
 
-      <Footer />
+      {/* Minimal footer */}
+      <footer className="border-t border-border py-4 px-4 text-center">
+        <p className="text-xs text-muted-foreground">
+          {APP_NAME} - Security vulnerability scanner. {" "}
+          <button
+            onClick={() => router.push("/signup")}
+            className="text-primary hover:underline"
+          >
+            Create a free account
+          </button>
+          {" "}to run your own scans.
+        </p>
+      </footer>
     </div>
   )
 }

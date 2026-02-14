@@ -5,6 +5,8 @@ import { Copy, ExternalLink, Trash2, Loader2, Check } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import Link from "next/link"
+import { Header } from "@/components/scanner/header"
+import { Footer } from "@/components/scanner/footer"
 import { getSafetyRating } from "@/lib/scanner/safety-rating"
 import type { Vulnerability } from "@/lib/scanner/types"
 
@@ -101,8 +103,9 @@ export default function SharesPage() {
   }
 
   return (
-    <main className="min-h-screen bg-background">
-      <div className="container max-w-4xl mx-auto px-4 py-12">
+    <div className="min-h-screen flex flex-col bg-background">
+      <Header />
+      <main className="flex-1 w-full max-w-6xl mx-auto px-4 py-8">
         <div className="mb-8">
           <h1 className="text-4xl font-bold text-foreground mb-2">Shared Scans</h1>
           <p className="text-muted-foreground">Manage your active shared scan results. Revoke access anytime.</p>
@@ -186,7 +189,8 @@ export default function SharesPage() {
             ))}
           </div>
         )}
-      </div>
-    </main>
+      </main>
+      <Footer />
+    </div>
   )
 }
