@@ -5,7 +5,7 @@ import { X, MessageCircle, ArrowRight } from "lucide-react"
 import { Button } from "@/components/ui/button"
 
 const DISCORD_COOKIE = "vulnradar_discord_dismissed"
-const DISCORD_INVITE_URL = "https://discord.gg/vulnradar"
+const DISCORD_INVITE_URL = "https://discord.gg/HdKhq7B5S4"
 
 export function DiscordAnnouncement() {
   const [show, setShow] = useState(false)

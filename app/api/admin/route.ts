@@ -78,6 +78,8 @@ export async function GET(request: NextRequest) {
 
   // Fetch audit log
   if (section === "audit") {
+    const auditLimit = 5
+    const auditOffset = (page - 1) * auditLimit
     const auditRes = await pool.query(
       `SELECT al.id, al.action, al.details, al.created_at, al.ip_address,
         al.admin_id, al.target_user_id,
@@ -87,15 +89,15 @@ export async function GET(request: NextRequest) {
       LEFT JOIN users au ON al.admin_id = au.id
       LEFT JOIN users tu ON al.target_user_id = tu.id
       ORDER BY al.created_at DESC
-      LIMIT 50 OFFSET $1`,
-      [offset],
+      LIMIT $1 OFFSET $2`,
+      [auditLimit, auditOffset],
     )
     const totalRes = await pool.query("SELECT COUNT(*)::int as count FROM admin_audit_log")
     return NextResponse.json({
       logs: auditRes.rows,
       total: totalRes.rows[0].count,
       page,
-      totalPages: Math.ceil(totalRes.rows[0].count / 50),
+      totalPages: Math.ceil(totalRes.rows[0].count / auditLimit),
     })
   }
 
