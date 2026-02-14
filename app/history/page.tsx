@@ -27,6 +27,7 @@ import { ResultsList } from "@/components/scanner/results-list"
 import { IssueDetail } from "@/components/scanner/issue-detail"
 import { ExportButton } from "@/components/scanner/export-button"
 import { ShareButton } from "@/components/scanner/share-button"
+import { DeleteScanButton } from "@/components/scanner/delete-scan-button"
 import type { ScanResult, Vulnerability } from "@/lib/scanner/types"
 import { cn } from "@/lib/utils"
 import { PaginationControl, usePagination } from "@/components/ui/pagination-control"
@@ -78,6 +79,8 @@ function HistoryPageContent() {
   const [scanDetail, setScanDetail] = useState<ScanResult | null>(null)
   const [detailLoading, setDetailLoading] = useState(false)
   const [selectedIssue, setSelectedIssue] = useState<Vulnerability | null>(null)
+  const [scanOwnerId, setScanOwnerId] = useState<number | null>(null)
+  const [currentUserId, setCurrentUserId] = useState<number | null>(null)
   const [tagFilter, setTagFilter] = useState<string | null>(null)
   const [allTags, setAllTags] = useState<string[]>([])
   const [addingTagFor, setAddingTagFor] = useState<number | null>(null)
@@ -106,7 +109,6 @@ function HistoryPageContent() {
     try {
       const res = await fetch(`/api/history/${scanId}`)
       if (!res.ok) {
-        // If forbidden or not found, go back to history list
         setSelectedScanId(null)
         return
       }
@@ -117,7 +119,9 @@ function HistoryPageContent() {
         duration: data.duration,
         summary: data.summary,
         findings: data.findings,
+        responseHeaders: data.responseHeaders,
       })
+      setScanOwnerId(data.userId || null)
     } catch (err) {
       console.error("Failed to load scan:", err)
       setSelectedScanId(null)
@@ -145,6 +149,8 @@ function HistoryPageContent() {
   useEffect(() => {
     fetchHistory()
     fetch("/api/scan/tags").then((r) => r.json()).then((d) => setAllTags(d.tags || [])).catch(() => { })
+    // Get current user ID
+    fetch("/api/auth/me").then((r) => r.json()).then((d) => setCurrentUserId(d.userId || null)).catch(() => { })
   }, [fetchHistory])
 
   async function handleAddTag(scanId: number, tag: string) {
@@ -309,6 +315,15 @@ function HistoryPageContent() {
                         </Button>
                         <ExportButton result={scanDetail} />
                         <ShareButton scanId={selectedScanId!} />
+                        <DeleteScanButton 
+                          scanId={selectedScanId!} 
+                          isOwner={scanOwnerId === currentUserId}
+                          onDeleted={() => {
+                            setSelectedScanId(null)
+                            setScanDetail(null)
+                            fetchHistory()
+                          }}
+                        />
                       </div>
                     </div>
 

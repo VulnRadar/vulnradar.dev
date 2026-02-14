@@ -36,6 +36,7 @@ export async function GET(
       duration: scan.duration,
       summary: scan.summary,
       findings: scan.findings || [],
+      userId: scan.user_id,
     })
   }
 
@@ -49,13 +50,14 @@ export async function GET(
   )
 
   if (teamCheck.rows[0].team_count > 0) {
-    // They're on the same team, allow access
+    // They're on the same team, allow access but don't show delete option
     return NextResponse.json({
       url: scan.url,
       scannedAt: scan.scanned_at,
       duration: scan.duration,
       summary: scan.summary,
       findings: scan.findings || [],
+      userId: scan.user_id,
     })
   }
 
