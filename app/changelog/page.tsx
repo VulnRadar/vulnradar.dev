@@ -5,10 +5,22 @@ import { APP_NAME, TOTAL_CHECKS_LABEL } from "@/lib/constants"
 
 const CHANGELOG = [
   {
+    version: "1.5.3",
+    date: "February 14, 2026",
+    title: "Shared Scans Management, Scan Deletion & Safety Rating Fixes",
+    highlights: true,
+    changes: [
+      { icon: Share2, label: "Shared Scans Management Page", desc: "New Shares page displays all your active shared scan results with one-click copy, view, and revoke options. Manage permissions and track which scans are publicly accessible from a centralized dashboard." },
+      { icon: Trash2, label: "Individual Scan Deletion", desc: "Delete specific scans from history without deleting your entire history. Only the scan owner can see and use the delete button. Team members have read-only access to shared scans." },
+      { icon: ShieldCheck, label: "Smart Safety Rating Across All Pages", desc: "Fixed badge, shared, and shares management pages to use the intelligent safety rating engine. Sites with only hardening recommendations (missing headers) now correctly show as 'Safe' instead of 'Unsafe'." },
+      { icon: Eye, label: "Full Findings Data in List Views", desc: "Badge page and shares management now include full findings arrays when fetching scan lists, enabling accurate safety classification instead of relying on summary counts." },
+    ],
+  },
+  {
     version: "1.5.2",
     date: "February 14, 2026",
     title: "Public Badge Widget, Subdomain Discovery, Live Scan Evidence & Rate Limit Fixes",
-    highlights: true,
+    highlights: false,
     changes: [
       { icon: BadgeCheck, label: "Embeddable Security Badge", desc: "Site owners can now embed a 'Secured by VulnRadar' badge on their website. The badge dynamically renders as an SVG showing Safe/Caution/Unsafe status with the last scan date, linking back to the shared report. Grab the HTML or Markdown snippet from the new Badge page." },
       { icon: Globe, label: "Subdomain & Asset Discovery", desc: "After scanning a domain, VulnRadar now discovers subdomains via Certificate Transparency logs (crt.sh) and common prefix probing (www, api, admin, staging, dev, mail, etc.). Each discovered subdomain shows reachability status and can be scanned with one click." },
