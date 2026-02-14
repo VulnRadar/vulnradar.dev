@@ -152,6 +152,10 @@ export const RATE_LIMITS = {
     windowSeconds: RATE_LIMIT_API_WINDOW,
   },
   scan: {
+    maxAttempts: 100,
+    windowSeconds: RATE_LIMIT_API_WINDOW,
+  },
+  bulkScan: {
     maxAttempts: 10,
     windowSeconds: RATE_LIMIT_API_WINDOW,
   },
