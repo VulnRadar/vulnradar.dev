@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { cn } from "@/lib/utils"
 import { Radar, Shield, Loader2, AlertTriangle, CheckCircle } from "lucide-react"
+import { ResponseHeaders } from "@/components/scanner/response-headers"
 import { TOTAL_CHECKS_LABEL, DEMO_SCAN_LIMIT } from "@/lib/constants"
 import type { ScanResult, Vulnerability } from "@/lib/scanner/types"
 
@@ -163,6 +164,10 @@ export default function DemoPage() {
           </div>
 
           <ScanSummary result={result} />
+
+          {result.responseHeaders && (
+            <ResponseHeaders headers={result.responseHeaders} />
+          )}
 
           {selectedIssue ? (
             <IssueDetail issue={selectedIssue} onBack={() => setSelectedIssue(null)} />

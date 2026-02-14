@@ -9,6 +9,8 @@ import { ResultsList } from "@/components/scanner/results-list"
 import { IssueDetail } from "@/components/scanner/issue-detail"
 import { ExportButton } from "@/components/scanner/export-button"
 import { ShareButton } from "@/components/scanner/share-button"
+import { ResponseHeaders } from "@/components/scanner/response-headers"
+import { SubdomainDiscovery } from "@/components/scanner/subdomain-discovery"
 import { Dashboard } from "@/components/scanner/dashboard"
 import { Footer } from "@/components/scanner/footer"
 import { OnboardingTour } from "@/components/onboarding-tour"
@@ -117,6 +119,14 @@ export default function DashboardPage() {
 
                 {/* Scan summary */}
                 <ScanSummary result={result} />
+
+                {/* Response headers */}
+                {result.responseHeaders && (
+                  <ResponseHeaders headers={result.responseHeaders} />
+                )}
+
+                {/* Subdomain discovery */}
+                <SubdomainDiscovery url={result.url} onScanSubdomain={(subUrl) => handleScan(subUrl)} />
 
                 {/* Results list */}
                 <ResultsList findings={result.findings} onSelectIssue={setSelectedIssue} />
