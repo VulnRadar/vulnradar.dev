@@ -8,7 +8,7 @@ export const TOTAL_CHECKS_LABEL = "100+"
 // Application metadata
 export const APP_NAME = "VulnRadar"
 export const APP_DESCRIPTION = `Scan websites for ${TOTAL_CHECKS_LABEL} security vulnerabilities. Get instant reports with severity ratings, actionable fix guidance, and team collaboration tools.`
-export const APP_VERSION = "1.5.1"
+export const APP_VERSION = "1.5.2"
 export const APP_URL = "https://vulnradar.dev"
 
 // Short slug used for filenames and slugs

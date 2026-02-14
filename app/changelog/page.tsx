@@ -1,14 +1,29 @@
 import { Header } from "@/components/scanner/header"
 import { Footer } from "@/components/scanner/footer"
-import { Newspaper, Zap, Shield, Users, Tag, List, RefreshCw, Lock, Gauge, MessageSquare, Sparkles, Eye, ShieldCheck, Target, Brain, AlertTriangle, Search, Bell, Heart, Layout, Mail, CheckCircle, Trash2, Camera, Crown, UserCheck, Key, BellRing, ChevronRight } from "lucide-react"
+import { Newspaper, Zap, Shield, Users, Tag, List, RefreshCw, Lock, Gauge, MessageSquare, Sparkles, Eye, ShieldCheck, Target, Brain, AlertTriangle, Search, Bell, Heart, Layout, Mail, CheckCircle, Trash2, Camera, Crown, UserCheck, Key, BellRing, ChevronRight, BadgeCheck, Globe, Share2, Fingerprint, Smartphone } from "lucide-react"
 import { APP_NAME, TOTAL_CHECKS_LABEL } from "@/lib/constants"
 
 const CHANGELOG = [
   {
+    version: "1.5.2",
+    date: "February 14, 2026",
+    title: "Public Badge Widget, Subdomain Discovery & Live Scan Evidence",
+    highlights: true,
+    changes: [
+      { icon: BadgeCheck, label: "Embeddable Security Badge", desc: "Site owners can now embed a 'Secured by VulnRadar' badge on their website. The badge dynamically renders as an SVG showing Safe/Caution/Unsafe status with the last scan date, linking back to the shared report. Grab the HTML or Markdown snippet from the new Badge page." },
+      { icon: Globe, label: "Subdomain & Asset Discovery", desc: "After scanning a domain, VulnRadar now discovers subdomains via Certificate Transparency logs (crt.sh) and common prefix probing (www, api, admin, staging, dev, mail, etc.). Each discovered subdomain shows reachability status and can be scanned with one click." },
+      { icon: Fingerprint, label: "60+ Secret Detection Patterns", desc: "Massively expanded the hardcoded secrets detector from 7 to 60+ patterns. Now catches AWS, Azure, GCP, Stripe, PayPal, OpenAI, Anthropic, GitHub, GitLab, Slack, Discord, Twilio, SendGrid, MongoDB URIs, PostgreSQL URIs, JWT tokens, SSH/RSA/PGP private keys, and generic API key/password assignments. Each match shows a partially redacted value as proof." },
+      { icon: Eye, label: "Live Scan Evidence", desc: "All vulnerability findings now show actual content extracted from the live page instead of generic descriptions. Mixed-content violations list the real HTTP URLs found, SRI-missing checks show the exact script sources, and sensitive comments display the matched comment text." },
+      { icon: Shield, label: "Response Header Inspector", desc: "Scan results now include a collapsible Response Headers panel showing the raw HTTP headers returned by the target site, with badges highlighting which security headers are present or missing." },
+      { icon: Smartphone, label: "Mobile Share Button Fix", desc: "The Share button now works reliably on mobile. Uses the native Web Share API (share sheet) on supported devices, with a clipboard fallback using both the modern Clipboard API and legacy execCommand for maximum compatibility." },
+      { icon: Share2, label: "Badge Stats API", desc: "New public API endpoints serve badge SVGs and scan stats in JSON format, enabling third-party integrations and status monitoring dashboards." },
+    ],
+  },
+  {
     version: "1.5.1",
     date: "February 14, 2026",
     title: "Notification Center & Admin Panel Pagination",
-    highlights: true,
+    highlights: false,
     changes: [
       { icon: BellRing, label: "Unified Notification Center", desc: "Replaced scattered popup notifications with a single, unified Notification Center. All alerts (backup code warnings, version updates, Discord announcements) now appear in a stacked card UI with dot navigation and a 1/3 counter, showing the most important notifications first." },
       { icon: List, label: "Audit Log & Staff Pagination", desc: "The admin panel's Audit Log and Staff tabs now paginate at 5 items per page with the same PaginationControl component used elsewhere. Audit log pagination is server-side for performance, while staff uses client-side pagination." },

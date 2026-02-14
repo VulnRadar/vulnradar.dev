@@ -12,176 +12,10 @@ import {
 import type { ScanResult } from "@/lib/scanner/types"
 import { cn } from "@/lib/utils"
 import { SEVERITY_LEVELS } from "@/lib/constants"
+import { getSafetyRating } from "@/lib/scanner/safety-rating"
 
 interface ScanSummaryProps {
   result: ScanResult
-}
-
-type SafetyRating = "safe" | "caution" | "unsafe"
-
-function getSafetyRating(summary: ScanResult["summary"], findings: ScanResult["findings"]): SafetyRating {
-  // ════════════════════════════════════════════════════════════════════════════
-  // SMART SAFETY RATING ENGINE
-  //
-  // Philosophy: A site is "unsafe" only when there is EVIDENCE of actively
-  // exploitable vulnerabilities. Missing best-practice headers (CSP, HSTS, etc.)
-  // are hardening *recommendations* -- they don't mean a site is dangerous to
-  // visit. Sites like Discord, Reddit, GitHub are safe even if they're missing
-  // a few headers.
-  //
-  // Three tiers of findings:
-  //   1. EXPLOITABLE  – Proves the site can be actively attacked right now
-  //   2. HARDENING     – Missing security headers or best practices (defensive)
-  //   3. INFORMATIONAL – Expected behavior, framework-specific, or trivial
-  // ════════════════════════════════════════════════════════════════════════════
-
-  // ── TIER 1: Actively Exploitable Vulnerabilities ──────────────────────────
-  // These indicate REAL danger to visitors. Finding even one = serious concern.
-  const exploitablePatterns = [
-    // Injection attacks (confirmed patterns in source)
-    "SQL Injection",
-    "Command Injection",
-    "XXE Vulnerability",
-    "SSRF Vulnerability",
-    "Path Traversal",
-    "Insecure Deserialization",
-    // XSS / Code execution
-    "DOM-Based XSS",
-    "Prototype Pollution",
-    // Credential / token exposure
-    "Hardcoded API Keys",
-    "Authentication Tokens Exposed",
-    "Credentials in URL",
-    "JWT in URL",
-    // Active data interception
-    "Unencrypted HTTP",          // Entire site on HTTP = actively interceptable
-    "Mixed Content",             // HTTPS site loading HTTP resources
-    // Dangerous CORS that allows credential theft
-    "CORS Allows Any Origin with Credentials",
-  ]
-
-  // ── TIER 2: Hardening Recommendations ─────────────────────────────────────
-  // Missing best practices. Important to fix, but don't mean the site is
-  // dangerous to *visit*. These are defensive layers, not active threats.
-  const hardeningPatterns = [
-    "Missing HSTS",
-    "Missing Content Security Policy",
-    "Missing X-Frame-Options",
-    "Missing X-Content-Type-Options",
-    "Missing Referrer Policy",
-    "Missing Permissions Policy",
-    "Clickjacking Protection",
-    "Missing Cross-Origin",
-    "Weak CSP",
-    "Weak Crypto",
-    "Cache-Control",
-    "X-XSS-Protection",
-    "DNS Prefetch",
-    "Missing security.txt",
-    "Report-Only",
-    "CSP Contains",
-    "Missing Subresource",
-    "Open Redirect",               // Potential, not confirmed exploit
-    "Insecure Form Submission",    // Missing HTTPS on form action
-    "Excessive Permissions",
-    "Cookie",                      // Cookie flag issues are hardening
-    "Autocomplete",
-  ]
-
-  // ── TIER 3: Always Informational (never count toward unsafe/caution) ──────
-  const alwaysInfoPatterns = [
-    "Framework-Required",
-    "Server Technology",
-    "Server Header",
-    "CMS Detected",
-    "Robots.txt",
-    "Source Maps",
-    "HTML Comments",
-    "Inline JavaScript",           // Common and often benign
-    "Sensitive File",
-    "Outdated JavaScript",
-    "Directory Listing",
-    "Security.txt",
-    "OpenGraph",
-    "Meta Refresh",
-    "Base Tag",
-    "Form Target",
-    "Lazy Loading",
-    "HTML Lang",
-    "Viewport",
-    "document.write",
-    "Preconnect",
-    "Input.*maxlength",
-  ]
-
-  // ── Classify each finding ─────────────────────────────────────────────────
-  const matchesAny = (title: string, patterns: string[]) =>
-    patterns.some((p) => {
-      try { return new RegExp(p, "i").test(title) } catch { return title.toLowerCase().includes(p.toLowerCase()) }
-    })
-
-  const exploitable: typeof findings = []
-  const hardening: typeof findings = []
-
-  for (const f of findings) {
-    // Skip info severity entirely -- never counts
-    if (f.severity === SEVERITY_LEVELS.INFO) continue
-
-    // Skip anything that matches the always-informational patterns
-    if (matchesAny(f.title, alwaysInfoPatterns)) continue
-
-    // Classify: is this an actual exploit or a hardening recommendation?
-    if (matchesAny(f.title, exploitablePatterns)) {
-      exploitable.push(f)
-    } else if (matchesAny(f.title, hardeningPatterns)) {
-      hardening.push(f)
-    } else {
-      // Unknown finding -- classify by severity
-      if (f.severity === SEVERITY_LEVELS.CRITICAL) {
-        exploitable.push(f)
-      } else if (f.severity === SEVERITY_LEVELS.HIGH) {
-        // HIGH severity unknowns could be either -- treat as hardening
-        // unless evidence looks like an active vulnerability
-        hardening.push(f)
-      }
-      // MEDIUM/LOW unknowns are just hardening
-    }
-  }
-
-  // ── Determine Safety Rating ───────────────────────────────────────────────
-
-  // ANY critical exploitable vulnerability = UNSAFE (this is a real threat)
-  const criticalExploits = exploitable.filter(
-    (f) => f.severity === SEVERITY_LEVELS.CRITICAL
-  )
-  if (criticalExploits.length > 0) return "unsafe"
-
-  // Multiple HIGH exploitable vulnerabilities (2+) = UNSAFE
-  const highExploits = exploitable.filter(
-    (f) => f.severity === SEVERITY_LEVELS.HIGH
-  )
-  if (highExploits.length >= 2) return "unsafe"
-
-  // Single HIGH exploitable vulnerability = CAUTION (could be false positive)
-  if (highExploits.length === 1) return "caution"
-
-  // Medium exploitable findings (3+) = CAUTION
-  const mediumExploits = exploitable.filter(
-    (f) => f.severity === SEVERITY_LEVELS.MEDIUM
-  )
-  if (mediumExploits.length >= 3) return "caution"
-
-  // Hardening issues alone NEVER make a site "unsafe".
-  // Many hardening issues = CAUTION at most (recommendations, not threats).
-  const highHardening = hardening.filter(
-    (f) => f.severity === SEVERITY_LEVELS.HIGH || f.severity === SEVERITY_LEVELS.CRITICAL
-  )
-  if (highHardening.length >= 5) return "caution"
-
-  // Everything else = SAFE
-  // A site with only missing headers, low/info findings, or a few medium
-  // hardening items is still safe to visit.
-  return "safe"
 }
 
 const severityCards = [
@@ -235,7 +69,7 @@ const severityCards = [
 export function ScanSummary({ result }: ScanSummaryProps) {
   const hasIssues = result.summary.total > 0
   const scanDate = new Date(result.scannedAt)
-  const safetyRating = getSafetyRating(result.summary, result.findings)
+  const safetyRating = getSafetyRating(result.findings)
 
   const safetyConfig = {
     safe: {

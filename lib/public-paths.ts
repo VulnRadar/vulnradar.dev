@@ -45,4 +45,7 @@ export const PUBLIC_PATHS = [
 
   // ─── Public API Endpoints ──────────────────────────────────────
   "/api/landing-contact",
+
+  // ─── Public Badge Endpoints ────────────────────────────────────
+  "/api/badge",
 ]

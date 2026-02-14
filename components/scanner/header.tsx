@@ -1,6 +1,6 @@
 "use client"
 
-import { LogOut, User, Clock, Book, Menu, X, GitCompareArrows, ShieldAlert, Users, Radar } from "lucide-react"
+import { LogOut, User, Clock, Book, Menu, X, GitCompareArrows, ShieldAlert, Users, Radar, BadgeCheck } from "lucide-react"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { Button } from "@/components/ui/button"
 import { useRouter, usePathname } from "next/navigation"
@@ -17,6 +17,7 @@ const NAV_LINKS = [
   { href: "/history", label: "History", icon: Clock },
   { href: "/compare", label: "Compare", icon: GitCompareArrows },
   { href: "/teams", label: "Teams", icon: Users },
+  { href: "/badge", label: "Badge", icon: BadgeCheck },
   { href: "/docs", label: "Docs", icon: Book },
   { href: "/profile", label: "Profile", icon: User },
 ]
