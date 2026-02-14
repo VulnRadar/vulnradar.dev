@@ -6,11 +6,14 @@ import { Footer } from "@/components/scanner/footer"
 import { Button } from "@/components/ui/button"
 import { Copy, Check, Code2, Loader2, ExternalLink, Image as ImageIcon, ShieldCheck, AlertTriangle, Search } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { getSafetyRating } from "@/lib/scanner/safety-rating"
+import type { Vulnerability } from "@/lib/scanner/types"
 
 interface ScanEntry {
   id: number
   url: string
   share_token: string | null
+  findings: Vulnerability[]
   findings_count: number
   scanned_at: string
   summary?: { critical?: number; high?: number; medium?: number; low?: number; info?: number; total?: number }
@@ -102,21 +105,17 @@ export default function BadgePage() {
   })
 
   function getSeverityColor(scan: ScanEntry) {
-    const s = scan.summary
-    if (!s) return scan.findings_count === 0 ? "text-emerald-500" : "text-amber-500"
-    if ((s.critical ?? 0) > 0 || (s.high ?? 0) > 0) return "text-red-500"
-    if ((s.medium ?? 0) > 0) return "text-amber-500"
+    const rating = getSafetyRating(scan.findings || [])
+    if (rating === "unsafe") return "text-red-500"
+    if (rating === "caution") return "text-yellow-500"
     return "text-emerald-500"
   }
 
   function getSeverityLabel(scan: ScanEntry) {
-    const s = scan.summary
-    if (!s) return scan.findings_count === 0 ? "Clean" : `${scan.findings_count} issues`
-    if ((s.critical ?? 0) > 0) return `${s.critical} critical`
-    if ((s.high ?? 0) > 0) return `${s.high} high`
-    if ((s.medium ?? 0) > 0) return `${s.medium} medium`
-    if (scan.findings_count === 0) return "Clean"
-    return `${scan.findings_count} issues`
+    const rating = getSafetyRating(scan.findings || [])
+    if (rating === "unsafe") return "Unsafe"
+    if (rating === "caution") return "Caution"
+    return "Safe"
   }
 
   return (

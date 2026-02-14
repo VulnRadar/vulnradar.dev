@@ -32,6 +32,7 @@ export async function GET(_request: NextRequest) {
       scannedAt: row.scanned_at,
       token: row.share_token,
       summary,
+      findings,
       findingsCount: findings.length,
     }
   })

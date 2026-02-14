@@ -10,7 +10,7 @@ export async function GET() {
 
   // Return ALL scans, not just shared ones. Include share_token if it exists.
   const result = await pool.query(
-    `SELECT id, url, share_token, findings_count, scanned_at, summary
+    `SELECT id, url, share_token, findings_count, scanned_at, summary, findings
      FROM scan_history
      WHERE user_id = $1
      ORDER BY scanned_at DESC
@@ -18,5 +18,15 @@ export async function GET() {
     [session.userId],
   )
 
-  return NextResponse.json(result.rows)
+  const scans = result.rows.map((row) => ({
+    id: row.id,
+    url: row.url,
+    share_token: row.share_token,
+    findings_count: row.findings_count,
+    scanned_at: row.scanned_at,
+    summary: typeof row.summary === "string" ? JSON.parse(row.summary) : row.summary,
+    findings: typeof row.findings === "string" ? JSON.parse(row.findings) : (row.findings || []),
+  }))
+
+  return NextResponse.json(scans)
 }
