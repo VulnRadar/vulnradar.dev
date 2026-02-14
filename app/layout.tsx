@@ -3,9 +3,7 @@ import type { Metadata, Viewport } from 'next'
 import { Inter, JetBrains_Mono } from 'next/font/google'
 import { ThemeProvider } from '@/components/theme-provider'
 import { TosGate } from '@/components/tos-gate'
-import { VersionNotification } from '@/components/version-notification'
-import { DiscordAnnouncement } from '@/components/discord-announcement'
-import { BackupCodesWarning } from '@/components/backup-codes-warning'
+import { NotificationCenter } from '@/components/notification-center'
 import { APP_NAME, APP_DESCRIPTION, APP_URL, APP_VERSION, LOGO_URL } from '@/lib/constants'
 
 import './globals.css'
@@ -87,9 +85,7 @@ export default function RootLayout({
           <TosGate>
             {children}
           </TosGate>
-          <VersionNotification />
-          <DiscordAnnouncement />
-          <BackupCodesWarning />
+          <NotificationCenter />
         </ThemeProvider>
       </body>
     </html>
