@@ -7,7 +7,7 @@ const CHANGELOG = [
   {
     version: "1.5.2",
     date: "February 14, 2026",
-    title: "Public Badge Widget, Subdomain Discovery & Live Scan Evidence",
+    title: "Public Badge Widget, Subdomain Discovery, Live Scan Evidence & Rate Limit Fixes",
     highlights: true,
     changes: [
       { icon: BadgeCheck, label: "Embeddable Security Badge", desc: "Site owners can now embed a 'Secured by VulnRadar' badge on their website. The badge dynamically renders as an SVG showing Safe/Caution/Unsafe status with the last scan date, linking back to the shared report. Grab the HTML or Markdown snippet from the new Badge page." },
@@ -17,6 +17,8 @@ const CHANGELOG = [
       { icon: Shield, label: "Response Header Inspector", desc: "Scan results now include a collapsible Response Headers panel showing the raw HTTP headers returned by the target site, with badges highlighting which security headers are present or missing." },
       { icon: Smartphone, label: "Mobile Share Button Fix", desc: "The Share button now works reliably on mobile. Uses the native Web Share API (share sheet) on supported devices, with a clipboard fallback using both the modern Clipboard API and legacy execCommand for maximum compatibility." },
       { icon: Share2, label: "Badge Stats API", desc: "New public API endpoints serve badge SVGs and scan stats in JSON format, enabling third-party integrations and status monitoring dashboards." },
+      { icon: ShieldCheck, label: "Smart Safety Rating Engine", desc: "Badges now use the same intelligent safety classification as the shared reports. Sites with only missing headers (hardening recommendations) show as 'Safe', while only exploitable vulnerabilities count toward 'Unsafe'. Fixes false positives on major sites." },
+      { icon: Zap, label: "Generous Rate Limits", desc: "Increased scan rate limit from 10 per hour to 100 per 5 minutes. Bulk scanning now supports 20 scans per 5 minutes. Perfect for security researchers and automation testing." },
     ],
   },
   {

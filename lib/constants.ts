@@ -49,7 +49,7 @@ export const DEVICE_TRUST_DURATION = 60 * 60 * 24 * 30 // 30 days
 // Rate limiting
 export const RATE_LIMIT_LOGIN_ATTEMPTS = 5
 export const RATE_LIMIT_LOGIN_WINDOW = 60 * 15 // 15 minutes
-export const RATE_LIMIT_API_WINDOW = 60 * 60 // 1 hour
+export const RATE_LIMIT_API_WINDOW = 60 * 5 // 5 minutes (was 1 hour)
 export const RATE_LIMIT_SIGNUP_ATTEMPTS = 3
 export const RATE_LIMIT_SIGNUP_WINDOW = 60 * 60 // 1 hour
 
@@ -152,7 +152,11 @@ export const RATE_LIMITS = {
     windowSeconds: RATE_LIMIT_API_WINDOW,
   },
   scan: {
-    maxAttempts: 10,
+    maxAttempts: 100,
+    windowSeconds: RATE_LIMIT_API_WINDOW,
+  },
+  bulkScan: {
+    maxAttempts: 20,
     windowSeconds: RATE_LIMIT_API_WINDOW,
   },
 }
