@@ -21,7 +21,6 @@ import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { Footer } from "@/components/scanner/footer"
-import { getSafetyRating } from "@/lib/scanner/safety-rating"
 import { APP_NAME } from "@/lib/constants"
 import { cn } from "@/lib/utils"
 import {
@@ -56,14 +55,16 @@ interface StatusData {
   totalScans: number
 }
 
-function getRating(summary: ScanEntry["summary"]) {
-  return getSafetyRating(
-    summary.critical || 0,
-    summary.high || 0,
-    summary.medium || 0,
-    summary.low || 0,
-    summary.info || 0,
-  )
+function getRating(summary: ScanEntry["summary"]): "safe" | "caution" | "unsafe" {
+  const critical = summary.critical || 0
+  const high = summary.high || 0
+  const medium = summary.medium || 0
+
+  if (critical > 0) return "unsafe"
+  if (high >= 2) return "unsafe"
+  if (high === 1) return "caution"
+  if (medium >= 3) return "caution"
+  return "safe"
 }
 
 const ratingConfig = {
