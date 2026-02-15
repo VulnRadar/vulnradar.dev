@@ -8,6 +8,7 @@ import Link from "next/link"
 import { Header } from "@/components/scanner/header"
 import { Footer } from "@/components/scanner/footer"
 import { getSafetyRating } from "@/lib/scanner/safety-rating"
+import { PaginationControl, usePagination } from "@/components/ui/pagination-control"
 import type { Vulnerability } from "@/lib/scanner/types"
 
 interface Share {
@@ -25,6 +26,11 @@ export default function SharesPage() {
   const [loading, setLoading] = useState(true)
   const [revoking, setRevoking] = useState<number | null>(null)
   const [copied, setCopied] = useState<string | null>(null)
+  const [currentPage, setCurrentPage] = useState(1)
+
+  const PAGE_SIZE = 5
+  const { totalPages, getPage } = usePagination(shares, PAGE_SIZE)
+  const paginatedShares = getPage(currentPage)
 
   useEffect(() => {
     fetchShares()
@@ -52,7 +58,12 @@ export default function SharesPage() {
     try {
       const res = await fetch(`/api/history/${scanId}/share`, { method: "DELETE" })
       if (res.ok) {
-        setShares((prev) => prev.filter((s) => s.id !== scanId))
+        setShares((prev) => {
+          const updated = prev.filter((s) => s.id !== scanId)
+          const newTotalPages = Math.max(1, Math.ceil(updated.length / PAGE_SIZE))
+          if (currentPage > newTotalPages) setCurrentPage(newTotalPages)
+          return updated
+        })
       }
     } catch (err) {
       console.error("Failed to revoke share:", err)
@@ -121,7 +132,7 @@ export default function SharesPage() {
               </Card>
           ) : (
               <div className="space-y-4">
-                {shares.map((share) => (
+                {paginatedShares.map((share) => (
                     <Card key={share.id} className="p-4 sm:p-6 border border-border/50 hover:border-border transition-colors">
                       {/* Header - URL and Severity */}
                       <div className="mb-3">
@@ -193,6 +204,14 @@ export default function SharesPage() {
                       </div>
                     </Card>
                 ))}
+
+                {shares.length > PAGE_SIZE && (
+                  <PaginationControl
+                    currentPage={currentPage}
+                    totalPages={totalPages}
+                    onPageChange={setCurrentPage}
+                  />
+                )}
               </div>
           )}
         </main>

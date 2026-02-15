@@ -28,6 +28,8 @@ import { IssueDetail } from "@/components/scanner/issue-detail"
 import { ExportButton } from "@/components/scanner/export-button"
 import { ShareButton } from "@/components/scanner/share-button"
 import { DeleteScanButton } from "@/components/scanner/delete-scan-button"
+import { ResponseHeaders } from "@/components/scanner/response-headers"
+import { SubdomainDiscovery } from "@/components/scanner/subdomain-discovery"
 import type { ScanResult, Vulnerability } from "@/lib/scanner/types"
 import { cn } from "@/lib/utils"
 import { PaginationControl, usePagination } from "@/components/ui/pagination-control"
@@ -328,6 +330,14 @@ function HistoryPageContent() {
                     </div>
 
                     <ScanSummary result={scanDetail} />
+
+                    {/* Response headers */}
+                    {scanDetail.responseHeaders && Object.keys(scanDetail.responseHeaders).length > 0 && (
+                      <ResponseHeaders headers={scanDetail.responseHeaders} />
+                    )}
+
+                    {/* Subdomain discovery */}
+                    <SubdomainDiscovery url={scanDetail.url} />
 
                     {scanDetail.findings.length > 0 ? (
                       <ResultsList

@@ -49,8 +49,20 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Invalid URL" }, { status: 400 })
   }
 
-  // Strip www. to get the root domain
-  const rootDomain = domain.replace(/^www\./, "")
+  // Extract the actual root domain (e.g. test.example.com -> example.com)
+  // Strip www. first, then get the last two parts (or last three for co.uk style TLDs)
+  const stripped = domain.replace(/^www\./, "")
+  const parts = stripped.split(".")
+  const DOUBLE_TLDS = ["co.uk", "co.jp", "com.au", "com.br", "co.nz", "co.za", "org.uk", "net.au", "ac.uk", "gov.uk"]
+  const lastTwo = parts.slice(-2).join(".")
+  let rootDomain: string
+  if (DOUBLE_TLDS.includes(lastTwo) && parts.length >= 3) {
+    rootDomain = parts.slice(-3).join(".")
+  } else if (parts.length >= 2) {
+    rootDomain = parts.slice(-2).join(".")
+  } else {
+    rootDomain = stripped
+  }
 
   // Method 1: Certificate Transparency logs via crt.sh
   const ctSubdomains = await fetchCrtSh(rootDomain)

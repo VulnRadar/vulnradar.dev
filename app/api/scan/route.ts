@@ -188,9 +188,9 @@ export async function POST(request: NextRequest) {
       try {
         const source = isApiKeyAuth ? "api" : "web"
         const insertResult = await pool.query(
-          `INSERT INTO scan_history (user_id, url, summary, findings, findings_count, duration, scanned_at, source)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`,
-          [authedUserId, url, JSON.stringify(summary), JSON.stringify(findings), summary.total, duration, result.scannedAt, source],
+          `INSERT INTO scan_history (user_id, url, summary, findings, findings_count, duration, scanned_at, source, response_headers)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`,
+          [authedUserId, url, JSON.stringify(summary), JSON.stringify(findings), summary.total, duration, result.scannedAt, source, JSON.stringify(capturedHeaders)],
         )
         scanHistoryId = insertResult.rows[0]?.id || null
       } catch {
