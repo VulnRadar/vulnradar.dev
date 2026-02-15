@@ -10,6 +10,7 @@ import {
   User,
   RotateCcw,
 } from "lucide-react"
+import { ThemeToggle } from "@/components/theme-toggle"
 import { Button } from "@/components/ui/button"
 import { ScanSummary } from "@/components/scanner/scan-summary"
 import { ResultsList } from "@/components/scanner/results-list"
@@ -71,14 +72,17 @@ export default function SharedScanPage() {
             Shared Report
           </span>
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => router.push("/login")}
-          className="bg-transparent text-xs"
-        >
-          Sign In
-        </Button>
+        <div className="flex items-center gap-3">
+          <ThemeToggle />
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => router.push("/login")}
+            className="bg-transparent text-xs"
+          >
+            Sign In
+          </Button>
+        </div>
       </header>
 
       <main className="flex-1 w-full max-w-5xl mx-auto px-4 py-6 sm:py-8 flex flex-col gap-6">
