@@ -55,6 +55,14 @@ const nextConfig = {
             key: "Strict-Transport-Security",
             value: "max-age=63072000; includeSubDomains; preload",
           },
+          {
+            key: "Cross-Origin-Embedder-Policy",
+            value: "credentialless",
+          },
+          {
+            key: "Expect-CT",
+            value: "max-age=86400, enforce",
+          },
         ],
       },
     ]
