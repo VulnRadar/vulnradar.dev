@@ -31,8 +31,23 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Webhook URL is required" }, { status: 400 })
   }
 
-  try { new URL(url) } catch {
+  let parsedUrl: URL
+  try { parsedUrl = new URL(url) } catch {
     return NextResponse.json({ error: "Invalid URL" }, { status: 400 })
+  }
+
+  // Block internal/private network URLs (SSRF protection)
+  const blockedHosts = ["localhost", "127.0.0.1", "0.0.0.0", "[::1]", "169.254.169.254", "metadata.google.internal"]
+  const hostname = parsedUrl.hostname.toLowerCase()
+  if (
+    blockedHosts.includes(hostname) ||
+    hostname.endsWith(".local") ||
+    hostname.startsWith("10.") ||
+    hostname.startsWith("192.168.") ||
+    /^172\.(1[6-9]|2\d|3[01])\./.test(hostname) ||
+    parsedUrl.protocol !== "https:"
+  ) {
+    return NextResponse.json({ error: "Webhook URL must be a public HTTPS endpoint." }, { status: 400 })
   }
 
   // Max 5 webhooks per user

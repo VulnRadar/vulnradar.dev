@@ -12,15 +12,6 @@ export async function GET() {
   }
 
   try {
-    // Ensure the table has the columns we need
-    await pool.query(`
-      DO $$ BEGIN
-        ALTER TABLE data_requests ADD COLUMN IF NOT EXISTS data TEXT;
-        ALTER TABLE data_requests ADD COLUMN IF NOT EXISTS downloaded_at TIMESTAMPTZ;
-      EXCEPTION WHEN OTHERS THEN NULL;
-      END $$;
-    `)
-
     // Get most recent download
     const result = await pool.query(
       `SELECT data, downloaded_at FROM data_requests WHERE user_id = $1 AND downloaded_at IS NOT NULL ORDER BY downloaded_at DESC LIMIT 1`,
@@ -53,15 +44,6 @@ export async function POST(request: NextRequest) {
   if (!session) {
     return NextResponse.json({ error: ERROR_MESSAGES.UNAUTHORIZED }, { status: 401 })
   }
-
-  // Ensure columns exist
-  await pool.query(`
-    DO $$ BEGIN
-      ALTER TABLE data_requests ADD COLUMN IF NOT EXISTS data TEXT;
-      ALTER TABLE data_requests ADD COLUMN IF NOT EXISTS downloaded_at TIMESTAMPTZ;
-    EXCEPTION WHEN OTHERS THEN NULL;
-    END $$;
-  `)
 
   // Check if they can request new data (30-day cooldown)
   const lastExport = await pool.query(

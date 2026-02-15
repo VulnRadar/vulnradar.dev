@@ -3,12 +3,24 @@ import { getSession, hashPassword, verifyPassword } from "@/lib/auth"
 import { profileNameChangedEmail, profileEmailChangedEmail, profilePasswordChangedEmail } from "@/lib/email"
 import { sendNotificationEmail } from "@/lib/notifications"
 import pool from "@/lib/db"
+import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
+import { getClientIp } from "@/lib/request-utils"
 import { ERROR_MESSAGES } from "@/lib/constants"
 
 export async function PATCH(request: NextRequest) {
   const session = await getSession()
   if (!session) {
     return NextResponse.json({ error: ERROR_MESSAGES.UNAUTHORIZED }, { status: 401 })
+  }
+
+  // Rate limit profile updates to prevent password brute-force
+  const clientIp = await getClientIp()
+  const rl = await checkRateLimit({ key: `profile-update:${session.userId}:${clientIp}`, ...RATE_LIMITS.api })
+  if (!rl.allowed) {
+    return NextResponse.json(
+      { error: `Too many update attempts. Try again in ${Math.ceil(rl.retryAfterSeconds / 60)} minute(s).` },
+      { status: 429 },
+    )
   }
 
   try {
