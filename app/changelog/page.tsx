@@ -1,14 +1,33 @@
 import { Header } from "@/components/scanner/header"
 import { Footer } from "@/components/scanner/footer"
-import { Newspaper, Zap, Shield, Users, Tag, List, RefreshCw, Lock, Gauge, MessageSquare, Sparkles, Eye, ShieldCheck, Target, Brain, AlertTriangle, Search, Bell, Heart, Layout, Mail, CheckCircle, Trash2, Camera, Crown, UserCheck, Key, BellRing, ChevronRight, BadgeCheck, Globe, Share2, Fingerprint, Smartphone, FileText, ScanSearch, Filter, Sun, Radar, Network, ShieldOff, FileDown, FileSpreadsheet, Pencil, Activity, Link2, BarChart3 } from "lucide-react"
+import { Newspaper, Zap, Shield, Users, Tag, List, RefreshCw, Lock, Gauge, MessageSquare, Sparkles, Eye, ShieldCheck, Target, Brain, AlertTriangle, Search, Bell, Heart, Layout, Mail, CheckCircle, Trash2, Camera, Crown, UserCheck, Key, BellRing, ChevronRight, BadgeCheck, Globe, Share2, Fingerprint, Smartphone, FileText, ScanSearch, Filter, Sun, Radar, Network, ShieldOff, FileDown, FileSpreadsheet, Pencil, Activity, Link2, BarChart3, Bug, ShieldAlert, Database, ServerCrash, Columns3 } from "lucide-react"
 import { APP_NAME, TOTAL_CHECKS_LABEL } from "@/lib/constants"
 
 const CHANGELOG = [
   {
+    version: "1.6.2",
+    date: "February 15, 2026",
+    title: "Security Hardening, Crash Prevention & Scanner Accuracy Improvements",
+    highlights: true,
+    changes: [
+      { icon: ServerCrash, label: "Scan Crash Prevention", desc: "Fixed a critical issue where scanning certain websites would crash the entire server for all users. Response bodies are now streamed with a 2MB size limit instead of reading the full body into memory. Sync checks are capped at 1MB to prevent catastrophic regex backtracking, and async checks (DNS, TLS, live-fetch) are wrapped in a 20-second timeout." },
+      { icon: Shield, label: "Demo Scanner Hardened", desc: "Applied the same OOM and timeout protections to the demo scanner. Previously, unauthenticated users could crash the server by scanning a site with a massive response body through the demo page." },
+      { icon: Bug, label: "SQL Injection Fix in Schedules", desc: "Fixed a SQL injection vector in the scheduled scans API where the interval value was being string-interpolated into the query. Now uses parameterized make_interval() with integer days for safe query execution." },
+      { icon: ShieldAlert, label: "Webhook SSRF Protection", desc: "Webhook URLs are now validated against internal and private network addresses (localhost, 127.0.0.1, 169.254.x.x, 10.x, 192.168.x, .local) and must use HTTPS. Prevents server-side request forgery attacks through webhook creation." },
+      { icon: Lock, label: "Profile Update Rate Limiting", desc: "Added rate limiting to the profile update endpoint to prevent brute-force attacks against the current password verification field. Uses the same rate limit configuration as other API endpoints." },
+      { icon: Gauge, label: "Status API Rate Limiting", desc: "The public /status/[domain] API endpoint is now rate-limited to 30 requests per minute per IP address to prevent abuse and scraping." },
+      { icon: ShieldCheck, label: "New Security Headers", desc: "Added Cross-Origin-Embedder-Policy (credentialless) and Expect-CT (enforce, max-age 86400) response headers to the Next.js configuration for stronger browser-level isolation and certificate transparency enforcement." },
+      { icon: FileText, label: "security.txt Endpoint", desc: "Created a /.well-known/security.txt route serving a standards-compliant security disclosure file with Contact, Expires, Preferred-Languages, Canonical, and Policy fields." },
+      { icon: Radar, label: "Expanded DKIM Selectors", desc: "Expanded DKIM selector detection from 8 to 19 selectors. Now includes ProtonMail (protonmail, protonmail2, protonmail3), Zendesk, Mandrill, and other common email provider selectors for more accurate DKIM detection." },
+      { icon: Columns3, label: "Admin Mobile Grid Fix", desc: "Merged the two separate 5-card stat grids in the admin panel into a single 10-card responsive grid. On mobile (2 columns), all cards now fill evenly with no orphaned cards on their own row." },
+      { icon: Database, label: "Instrumentation Schema Sync", desc: "Fully synchronized the instrumentation file with the production database schema. Added missing migrations for device_trust table, response_headers JSONB column, notes TEXT column, and data/downloaded_at columns on data_requests. Removed redundant ALTER TABLE calls that ran on every data-request API call." },
+    ],
+  },
+  {
     version: "1.6.1",
     date: "February 15, 2026",
     title: "CSV Export, Scan Notes, Public Status Pages & Repository Migration",
-    highlights: true,
+    highlights: false,
     changes: [
       { icon: FileSpreadsheet, label: "CSV Export", desc: "One-click CSV export of all scan findings alongside the existing JSON and PDF options. Outputs properly escaped columns for Title, Severity, Category, Description, Evidence, Risk Impact, and Fix Steps -- ready for import into JIRA, Linear, or spreadsheets." },
       { icon: Pencil, label: "Scan Notes & Annotations", desc: "Add freeform notes to any scan result from the history detail view. Write reminders like 'Fixed CSP issue, re-scan next week' or 'Known false positive, ignore'. Notes are persisted to the database (max 2,000 characters) and only editable by the scan owner." },
