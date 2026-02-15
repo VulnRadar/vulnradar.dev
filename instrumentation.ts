@@ -392,6 +392,48 @@ export async function register() {
         END $$;
       `)
 
+      // Device trust table for 2FA device tracking
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS device_trust (
+          id SERIAL PRIMARY KEY,
+          user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          device_fingerprint VARCHAR(255) NOT NULL,
+          device_name VARCHAR(255),
+          ip_address VARCHAR(45),
+          user_agent TEXT,
+          last_used_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+          created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+          expires_at TIMESTAMP WITHOUT TIME ZONE NOT NULL,
+          UNIQUE(user_id, device_fingerprint)
+        );
+        CREATE INDEX IF NOT EXISTS idx_device_trust_user_id ON device_trust(user_id);
+        CREATE INDEX IF NOT EXISTS idx_device_trust_expires_at ON device_trust(expires_at);
+      `)
+
+      // Response headers tracking on scan_history
+      await pool.query(`
+        DO $$ BEGIN
+          IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name = 'scan_history' AND column_name = 'response_headers'
+          ) THEN
+            ALTER TABLE scan_history ADD COLUMN response_headers JSONB;
+          END IF;
+        END $$;
+      `)
+
+      // Scan notes for user annotations
+      await pool.query(`
+        DO $$ BEGIN
+          IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name = 'scan_history' AND column_name = 'notes'
+          ) THEN
+            ALTER TABLE scan_history ADD COLUMN notes TEXT;
+          END IF;
+        END $$;
+      `)
+
       console.log(`[${APP_NAME}] Database schema verified / migrated successfully.`)
 
       // Run initial cleanup on startup
