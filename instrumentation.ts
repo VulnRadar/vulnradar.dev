@@ -422,6 +422,18 @@ export async function register() {
         END $$;
       `)
 
+      // Add downloaded_at column to data_requests
+      await pool.query(`
+        DO $$ BEGIN
+          IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name = 'data_requests' AND column_name = 'downloaded_at'
+          ) THEN
+            ALTER TABLE data_requests ADD COLUMN downloaded_at TIMESTAMP WITH TIME ZONE;
+          END IF;
+        END $$;
+      `)
+
       // Scan notes for user annotations
       await pool.query(`
         DO $$ BEGIN

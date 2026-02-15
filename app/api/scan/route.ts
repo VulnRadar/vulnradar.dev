@@ -16,6 +16,8 @@ const SEVERITY_ORDER: Record<Severity, number> = {
   info: 4,
 }
 
+const MAX_BODY_SIZE = 2 * 1024 * 1024 // 2 MB max response body
+
 function isValidUrl(input: string): boolean {
   try {
     const url = new URL(input)
@@ -23,6 +25,45 @@ function isValidUrl(input: string): boolean {
   } catch {
     return false
   }
+}
+
+/**
+ * Safely read response body with a size limit to prevent OOM crashes.
+ * Reads in chunks and stops if the limit is exceeded.
+ */
+async function safeReadBody(response: Response, maxBytes: number): Promise<string> {
+  const reader = response.body?.getReader()
+  if (!reader) return ""
+
+  const decoder = new TextDecoder("utf-8", { fatal: false })
+  const chunks: string[] = []
+  let totalBytes = 0
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+
+      totalBytes += value.byteLength
+      if (totalBytes > maxBytes) {
+        // Decode the partial chunk up to the limit
+        const overshoot = totalBytes - maxBytes
+        const trimmed = value.slice(0, value.byteLength - overshoot)
+        if (trimmed.byteLength > 0) {
+          chunks.push(decoder.decode(trimmed, { stream: false }))
+        }
+        break
+      }
+
+      chunks.push(decoder.decode(value, { stream: true }))
+    }
+  } catch {
+    // Stream error -- return what we have so far
+  } finally {
+    try { reader.cancel() } catch { /* ignore */ }
+  }
+
+  return chunks.join("")
 }
 
 export async function POST(request: NextRequest) {
@@ -136,7 +177,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const responseBody = await response.text()
+    const responseBody = await safeReadBody(response, MAX_BODY_SIZE)
     const headers = response.headers
 
     // Capture response headers as a plain object for evidence
@@ -146,10 +187,12 @@ export async function POST(request: NextRequest) {
     })
 
     // Run synchronous checks + async checks (DNS, TLS, live-fetch) in parallel
+    // Limit body for sync checks to 1MB to prevent regex catastrophic backtracking
+    const bodyForChecks = responseBody.length > 1_000_000 ? responseBody.slice(0, 1_000_000) : responseBody
     const syncFindings: Vulnerability[] = []
     for (const check of allChecks) {
       try {
-        const result = check(url, headers, responseBody)
+        const result = check(url, headers, bodyForChecks)
         if (result) {
           syncFindings.push(result)
         }
@@ -160,7 +203,10 @@ export async function POST(request: NextRequest) {
 
     let asyncFindings: Vulnerability[] = []
     try {
-      asyncFindings = await runAsyncChecks(url)
+      // Wrap async checks in a 20s timeout so they don't hang the entire request
+      const asyncPromise = runAsyncChecks(url)
+      const timeoutPromise = new Promise<Vulnerability[]>((resolve) => setTimeout(() => resolve([]), 20000))
+      asyncFindings = await Promise.race([asyncPromise, timeoutPromise])
     } catch {
       // Non-fatal: don't fail the scan if async checks error
     }
