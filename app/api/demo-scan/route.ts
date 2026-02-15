@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { cookies } from "next/headers"
 import { allChecks } from "@/lib/scanner/checks"
+import { runAsyncChecks } from "@/lib/scanner/async-checks"
 import type { ScanResult, Severity, Vulnerability } from "@/lib/scanner/types"
 import { APP_NAME, DEMO_SCAN_LIMIT, DEMO_SCAN_WINDOW, DEMO_SCAN_COOKIE_NAME, SEVERITY_LEVELS } from "@/lib/constants"
 
@@ -92,16 +93,24 @@ export async function POST(request: NextRequest) {
       capturedHeaders[key] = value
     })
 
-    const findings: Vulnerability[] = []
+    const syncFindings: Vulnerability[] = []
     for (const check of allChecks) {
       try {
         const result = check(url, headers, responseBody)
-        if (result) findings.push(result)
+        if (result) syncFindings.push(result)
       } catch {
         // Skip failed checks
       }
     }
 
+    let asyncFindings: Vulnerability[] = []
+    try {
+      asyncFindings = await runAsyncChecks(url)
+    } catch {
+      // Non-fatal
+    }
+
+    const findings = [...syncFindings, ...asyncFindings]
     findings.sort((a, b) => SEVERITY_ORDER[a.severity] - SEVERITY_ORDER[b.severity])
 
     const duration = Date.now() - startTime

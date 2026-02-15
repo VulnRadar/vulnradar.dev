@@ -10,6 +10,7 @@ interface DiscoveredSubdomain {
   url: string
   reachable: boolean
   statusCode?: number
+  sources: string[]
 }
 
 interface DiscoveryResult {
@@ -17,11 +18,20 @@ interface DiscoveryResult {
   total: number
   reachable: number
   subdomains: DiscoveredSubdomain[]
+  sources?: Record<string, number>
 }
 
 interface SubdomainDiscoveryProps {
   url: string
   onScanSubdomain?: (url: string) => void
+}
+
+const SOURCE_COLORS: Record<string, string> = {
+  "crt.sh": "bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20",
+  hackertarget: "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20",
+  "subdomain.center": "bg-violet-500/10 text-violet-600 dark:text-violet-400 border-violet-500/20",
+  rapiddns: "bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 border-cyan-500/20",
+  "brute-force": "bg-muted text-muted-foreground border-border",
 }
 
 export function SubdomainDiscovery({ url, onScanSubdomain }: SubdomainDiscoveryProps) {
@@ -64,7 +74,7 @@ export function SubdomainDiscovery({ url, onScanSubdomain }: SubdomainDiscoveryP
             <div>
               <h3 className="text-sm font-semibold text-foreground">Subdomain Discovery</h3>
               <p className="text-xs text-muted-foreground">
-                Find related subdomains and assets for a broader attack surface analysis
+                Find related subdomains using CT logs, DNS datasets, and brute-force
               </p>
             </div>
           </div>
@@ -94,7 +104,7 @@ export function SubdomainDiscovery({ url, onScanSubdomain }: SubdomainDiscoveryP
           <div className="text-center">
             <p className="text-sm font-medium text-foreground">Discovering subdomains...</p>
             <p className="text-xs text-muted-foreground mt-1">
-              Checking certificate transparency logs and common prefixes
+              Querying crt.sh, HackerTarget, RapidDNS, subdomain.center, and 150+ common prefixes
             </p>
           </div>
         </div>
@@ -131,7 +141,7 @@ export function SubdomainDiscovery({ url, onScanSubdomain }: SubdomainDiscoveryP
       {expanded && (
         <div className="border-t border-border">
           {/* Stats bar */}
-          <div className="flex items-center gap-4 px-4 py-2 bg-muted/30 border-b border-border">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 px-4 py-2 bg-muted/30 border-b border-border">
             <span className="text-xs text-muted-foreground">
               Domain: <span className="font-medium text-foreground">{result.domain}</span>
             </span>
@@ -143,6 +153,27 @@ export function SubdomainDiscovery({ url, onScanSubdomain }: SubdomainDiscoveryP
             </span>
           </div>
 
+          {/* Source breakdown */}
+          {result.sources && (
+            <div className="flex flex-wrap items-center gap-2 px-4 py-2 border-b border-border">
+              <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">
+                Sources:
+              </span>
+              {Object.entries(result.sources).map(([source, count]) => (
+                <span
+                  key={source}
+                  className={cn(
+                    "inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium border",
+                    SOURCE_COLORS[source] || "bg-muted text-muted-foreground border-border",
+                  )}
+                >
+                  {source}
+                  <span className="opacity-60">{count}</span>
+                </span>
+              ))}
+            </div>
+          )}
+
           {/* Reachable subdomains */}
           {reachable.length > 0 && (
             <div className="px-4 py-3 border-b border-border">
@@ -151,39 +182,7 @@ export function SubdomainDiscovery({ url, onScanSubdomain }: SubdomainDiscoveryP
               </p>
               <div className="flex flex-col gap-1">
                 {reachable.map((sub) => (
-                  <div
-                    key={sub.subdomain}
-                    className="flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-muted/50 transition-colors group"
-                  >
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
-                    <span className="text-xs font-mono text-foreground flex-1 truncate">
-                      {sub.subdomain}
-                    </span>
-                    {sub.statusCode && (
-                      <span className="text-[10px] text-muted-foreground font-mono">
-                        {sub.statusCode}
-                      </span>
-                    )}
-                    <a
-                      href={sub.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-muted-foreground hover:text-primary opacity-0 group-hover:opacity-100 transition-opacity"
-                    >
-                      <ExternalLink className="h-3 w-3" />
-                    </a>
-                    {onScanSubdomain && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => onScanSubdomain(sub.url)}
-                        className="h-6 px-2 text-[10px] opacity-0 group-hover:opacity-100 transition-opacity gap-1"
-                      >
-                        <Radar className="h-3 w-3" />
-                        Scan
-                      </Button>
-                    )}
-                  </div>
+                  <SubdomainRow key={sub.subdomain} sub={sub} onScanSubdomain={onScanSubdomain} />
                 ))}
               </div>
             </div>
@@ -194,6 +193,62 @@ export function SubdomainDiscovery({ url, onScanSubdomain }: SubdomainDiscoveryP
             <UnreachableSection subdomains={unreachable} />
           )}
         </div>
+      )}
+    </div>
+  )
+}
+
+function SubdomainRow({
+  sub,
+  onScanSubdomain,
+}: {
+  sub: DiscoveredSubdomain
+  onScanSubdomain?: (url: string) => void
+}) {
+  return (
+    <div className="flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-muted/50 transition-colors group">
+      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
+      <span className="text-xs font-mono text-foreground truncate">
+        {sub.subdomain}
+      </span>
+      {/* Source tags */}
+      <div className="flex items-center gap-1 flex-shrink-0">
+        {sub.sources?.map((source) => (
+          <span
+            key={source}
+            className={cn(
+              "hidden sm:inline-flex px-1 py-px rounded text-[9px] font-medium border",
+              SOURCE_COLORS[source] || "bg-muted text-muted-foreground border-border",
+            )}
+          >
+            {source}
+          </span>
+        ))}
+      </div>
+      <span className="flex-1" />
+      {sub.statusCode && (
+        <span className="text-[10px] text-muted-foreground font-mono">
+          {sub.statusCode}
+        </span>
+      )}
+      <a
+        href={sub.url}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="text-muted-foreground hover:text-primary opacity-0 group-hover:opacity-100 transition-opacity"
+      >
+        <ExternalLink className="h-3 w-3" />
+      </a>
+      {onScanSubdomain && (
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => onScanSubdomain(sub.url)}
+          className="h-6 px-2 text-[10px] opacity-0 group-hover:opacity-100 transition-opacity gap-1"
+        >
+          <Radar className="h-3 w-3" />
+          Scan
+        </Button>
       )}
     </div>
   )
@@ -213,18 +268,30 @@ function UnreachableSection({ subdomains }: { subdomains: DiscoveredSubdomain[] 
         {subdomains.length} unreachable
       </button>
       {show && (
-        <div className="flex flex-wrap gap-1.5 mt-2">
+        <div className="flex flex-col gap-1 mt-2">
           {subdomains.map((sub) => (
-            <span
+            <div
               key={sub.subdomain}
-              className={cn(
-                "inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-mono",
-                "bg-muted/50 text-muted-foreground border border-border/50",
-              )}
+              className="flex items-center gap-2 px-2 py-1 rounded-md"
             >
               <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground/30 shrink-0" />
-              {sub.subdomain}
-            </span>
+              <span className="text-[11px] font-mono text-muted-foreground truncate">
+                {sub.subdomain}
+              </span>
+              <div className="flex items-center gap-1 flex-shrink-0">
+                {sub.sources?.map((source) => (
+                  <span
+                    key={source}
+                    className={cn(
+                      "hidden sm:inline-flex px-1 py-px rounded text-[9px] font-medium border opacity-60",
+                      SOURCE_COLORS[source] || "bg-muted text-muted-foreground border-border",
+                    )}
+                  >
+                    {source}
+                  </span>
+                ))}
+              </div>
+            </div>
           ))}
         </div>
       )}

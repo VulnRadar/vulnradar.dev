@@ -1,9 +1,9 @@
 "use client"
 
 import { useState, useMemo } from "react"
-import { ChevronRight, Filter, SortDesc } from "lucide-react"
+import { ChevronRight, Filter, SortDesc, Tag } from "lucide-react"
 import { SeverityBadge } from "@/components/scanner/severity-badge"
-import type { Severity, Vulnerability } from "@/lib/scanner/types"
+import type { Severity, Vulnerability, Category } from "@/lib/scanner/types"
 import { cn } from "@/lib/utils"
 import { SEVERITY_LEVELS, SEVERITY_PRIORITY } from "@/lib/constants"
 
@@ -17,6 +17,15 @@ const ALL_SEVERITIES: Severity[] = [
 
 const SEVERITY_ORDER: Record<Severity, number> = SEVERITY_PRIORITY
 
+const CATEGORY_COLORS: Record<string, string> = {
+  headers: "bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20",
+  ssl: "bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/20",
+  content: "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20",
+  cookies: "bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-500/20",
+  configuration: "bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 border-cyan-500/20",
+  "information-disclosure": "bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20",
+}
+
 interface ResultsListProps {
   findings: Vulnerability[]
   onSelectIssue: (issue: Vulnerability) => void
@@ -26,7 +35,15 @@ export function ResultsList({ findings, onSelectIssue }: ResultsListProps) {
   const [activeSeverities, setActiveSeverities] = useState<Set<Severity>>(
     new Set(ALL_SEVERITIES),
   )
+  const [activeCategory, setActiveCategory] = useState<Category | "all">("all")
   const [sortAsc, setSortAsc] = useState(false)
+
+  // Get unique categories from findings
+  const categories = useMemo(() => {
+    const cats = new Set<Category>()
+    for (const f of findings) cats.add(f.category)
+    return Array.from(cats)
+  }, [findings])
 
   function toggleSeverity(severity: Severity) {
     setActiveSeverities((prev) => {
@@ -41,14 +58,17 @@ export function ResultsList({ findings, onSelectIssue }: ResultsListProps) {
   }
 
   const filtered = useMemo(() => {
-    const result = findings.filter((f) => activeSeverities.has(f.severity))
+    let result = findings.filter((f) => activeSeverities.has(f.severity))
+    if (activeCategory !== "all") {
+      result = result.filter((f) => f.category === activeCategory)
+    }
     if (sortAsc) {
       return [...result].sort(
         (a, b) => SEVERITY_ORDER[b.severity] - SEVERITY_ORDER[a.severity],
       )
     }
     return result
-  }, [findings, activeSeverities, sortAsc])
+  }, [findings, activeSeverities, activeCategory, sortAsc])
 
   return (
     <div className="flex flex-col gap-4">
@@ -95,6 +115,51 @@ export function ResultsList({ findings, onSelectIssue }: ResultsListProps) {
           {sortAsc ? "Low to High" : "High to Low"}
         </button>
       </div>
+
+      {/* Category filter */}
+      {categories.length > 1 && (
+        <div className="flex flex-col sm:flex-row sm:items-center gap-3 rounded-xl border border-border bg-card p-3">
+          <div className="flex items-center gap-1.5 text-sm text-muted-foreground shrink-0">
+            <Tag className="h-3.5 w-3.5" />
+            <span className="font-medium text-xs uppercase tracking-wide">Category</span>
+          </div>
+          <div className="flex flex-wrap gap-1.5 flex-1">
+            <button
+              type="button"
+              onClick={() => setActiveCategory("all")}
+              className={cn(
+                "inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium transition-all",
+                activeCategory === "all"
+                  ? "bg-card text-foreground border-border shadow-sm"
+                  : "bg-transparent text-muted-foreground border-transparent opacity-40 hover:opacity-70",
+              )}
+            >
+              All
+              <span className="text-muted-foreground">{findings.length}</span>
+            </button>
+            {categories.map((cat) => {
+              const count = findings.filter((f) => f.category === cat).length
+              const colors = CATEGORY_COLORS[cat] || "bg-muted text-muted-foreground border-border"
+              return (
+                <button
+                  key={cat}
+                  type="button"
+                  onClick={() => setActiveCategory(activeCategory === cat ? "all" : cat)}
+                  className={cn(
+                    "inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium transition-all capitalize",
+                    activeCategory === cat
+                      ? cn(colors, "shadow-sm")
+                      : "bg-transparent text-muted-foreground border-transparent opacity-40 hover:opacity-70",
+                  )}
+                >
+                  {cat.replace("-", " ")}
+                  <span>{count}</span>
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Issue list */}
       <div className="flex flex-col gap-2">
