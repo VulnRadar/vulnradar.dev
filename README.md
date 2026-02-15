@@ -7,8 +7,8 @@ Professional web vulnerability scanner. Completely free, forever.
 ## Quick Links
 
 - **[Documentation](/docs)** - API reference, setup guide, and guides
-- **[GitHub](https://github.com/RejectModders/VulnRadar)** - Source code and contribution guidelines
-- **[Report a Bug](https://github.com/RejectModders/VulnRadar/issues)** - Help us improve
+- **[GitHub](https://github.com/VulnRadar/vulnradar.dev)** - Source code and contribution guidelines
+- **[Report a Bug](https://github.com/VulnRadar/vulnradar.dev/issues)** - Help us improve
 
 ## Features
 

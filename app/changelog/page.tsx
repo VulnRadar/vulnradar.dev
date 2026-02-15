@@ -1,14 +1,29 @@
 import { Header } from "@/components/scanner/header"
 import { Footer } from "@/components/scanner/footer"
-import { Newspaper, Zap, Shield, Users, Tag, List, RefreshCw, Lock, Gauge, MessageSquare, Sparkles, Eye, ShieldCheck, Target, Brain, AlertTriangle, Search, Bell, Heart, Layout, Mail, CheckCircle, Trash2, Camera, Crown, UserCheck, Key, BellRing, ChevronRight, BadgeCheck, Globe, Share2, Fingerprint, Smartphone, FileText, ScanSearch, Filter, Sun, Radar, Network, ShieldOff, FileDown } from "lucide-react"
+import { Newspaper, Zap, Shield, Users, Tag, List, RefreshCw, Lock, Gauge, MessageSquare, Sparkles, Eye, ShieldCheck, Target, Brain, AlertTriangle, Search, Bell, Heart, Layout, Mail, CheckCircle, Trash2, Camera, Crown, UserCheck, Key, BellRing, ChevronRight, BadgeCheck, Globe, Share2, Fingerprint, Smartphone, FileText, ScanSearch, Filter, Sun, Radar, Network, ShieldOff, FileDown, FileSpreadsheet, Pencil, Activity, Link2, BarChart3 } from "lucide-react"
 import { APP_NAME, TOTAL_CHECKS_LABEL } from "@/lib/constants"
 
 const CHANGELOG = [
   {
+    version: "1.6.1",
+    date: "February 15, 2026",
+    title: "CSV Export, Scan Notes, Public Status Pages & Repository Migration",
+    highlights: true,
+    changes: [
+      { icon: FileSpreadsheet, label: "CSV Export", desc: "One-click CSV export of all scan findings alongside the existing JSON and PDF options. Outputs properly escaped columns for Title, Severity, Category, Description, Evidence, Risk Impact, and Fix Steps -- ready for import into JIRA, Linear, or spreadsheets." },
+      { icon: Pencil, label: "Scan Notes & Annotations", desc: "Add freeform notes to any scan result from the history detail view. Write reminders like 'Fixed CSP issue, re-scan next week' or 'Known false positive, ignore'. Notes are persisted to the database (max 2,000 characters) and only editable by the scan owner." },
+      { icon: BarChart3, label: "Public Status Pages", desc: "New /status/[domain] pages show a domain's security health over time. Displays the current safety rating, a findings trend chart, severity breakdown bars, and a scan history table. Fully public, no authentication required -- link to it from your site as a trust signal." },
+      { icon: Tag, label: "Tag Input Fix", desc: "Fixed a bug where pressing Space while typing a tag in the history view would trigger browser-level key handlers and open unrelated panels. Key events are now properly contained within the tag input field." },
+      { icon: Activity, label: "Admin Shared Scans Card", desc: "Added a 10th stat card to the admin dashboard showing the count of scans with active share tokens. Both stat card rows are now an even 5-column grid layout." },
+      { icon: Bell, label: "Simplified Notification Preferences", desc: "Removed the Advanced Security Alerts section from profile notification preferences. The four toggles for Failed Login Attempts, New Login Notifications, Rate Limit Alerts, and API Key Rotations have been removed to streamline the settings." },
+      { icon: Link2, label: "Repository & Links Migration", desc: "Updated all GitHub references from RejectModders/VulnRadar to VulnRadar/vulnradar.dev across the footer, README, docs setup guide, and docs layout. Updated the Discord invite link across the notification center." },
+    ],
+  },
+  {
     version: "1.6.0",
     date: "February 15, 2026",
     title: "Advanced Scan Engine, DNS/TLS Checks, Subdomain Overhaul & PDF Branding",
-    highlights: true,
+    highlights: false,
     changes: [
       { icon: Radar, label: "DNS Security Checks", desc: "Scans now check for SPF, DMARC, DKIM, and DNSSEC records. Flags missing email spoofing protection, weak SPF policies (+all), DMARC set to 'none', and missing DNSSEC validation across 8 common DKIM selectors." },
       { icon: Lock, label: "TLS Certificate Analysis", desc: "New async TLS checks connect to the target and inspect the actual SSL certificate. Detects expired certs, certs expiring within 30 days, self-signed certificates, incomplete certificate chains, and weak TLS protocol versions (1.0/1.1)." },
