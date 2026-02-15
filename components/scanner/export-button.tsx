@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { Check, FileJson, FileText } from "lucide-react"
+import { Check, FileJson, FileText, FileSpreadsheet } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import type { ScanResult } from "@/lib/scanner/types"
 import { generatePdfReport } from "@/lib/pdf-report"
@@ -15,6 +15,7 @@ interface ExportButtonProps {
 export function ExportButton({ result }: ExportButtonProps) {
   const [exportedJson, setExportedJson] = useState(false)
   const [exportedPdf, setExportedPdf] = useState(false)
+  const [exportedCsv, setExportedCsv] = useState(false)
 
   const hostname = (() => {
     try { return new URL(result.url).hostname.replace(/\./g, "-") } catch { return "scan" }
@@ -63,6 +64,32 @@ export function ExportButton({ result }: ExportButtonProps) {
     setTimeout(() => setExportedPdf(false), 2000)
   }
 
+  function escapeCsv(value: string): string {
+    if (value.includes(",") || value.includes('"') || value.includes("\n")) {
+      return `"${value.replace(/"/g, '""')}"`
+    }
+    return value
+  }
+
+  function handleExportCsv() {
+    const headers = ["Title", "Severity", "Category", "Description", "Evidence", "Risk Impact", "Fix Steps"]
+    const rows = result.findings.map((f) => [
+      escapeCsv(f.title),
+      escapeCsv(f.severity.toUpperCase()),
+      escapeCsv(f.category),
+      escapeCsv(f.description),
+      escapeCsv(f.evidence),
+      escapeCsv(f.riskImpact),
+      escapeCsv(f.fixSteps.join(" | ")),
+    ])
+
+    const csv = [headers.join(","), ...rows.map((r) => r.join(","))].join("\n")
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" })
+    downloadBlob(blob, `${APP_SLUG}-${hostname}-${date}.csv`)
+    setExportedCsv(true)
+    setTimeout(() => setExportedCsv(false), 2000)
+  }
+
   function downloadBlob(blob: Blob, filename: string) {
     const url = URL.createObjectURL(blob)
     const a = document.createElement("a")
@@ -89,6 +116,19 @@ export function ExportButton({ result }: ExportButtonProps) {
           </>
         )}
       </Button>
+      <Button variant="outline" onClick={handleExportCsv} size="sm" className="gap-2 bg-transparent">
+        {exportedCsv ? (
+          <>
+            <Check className="h-4 w-4" />
+            Exported
+          </>
+        ) : (
+          <>
+            <FileSpreadsheet className="h-4 w-4" />
+            CSV
+          </>
+        )}
+      </Button>
       <Button variant="outline" onClick={handleExportPdf} size="sm" className="gap-2 bg-transparent">
         {exportedPdf ? (
           <>
@@ -98,7 +138,7 @@ export function ExportButton({ result }: ExportButtonProps) {
         ) : (
           <>
             <FileText className="h-4 w-4" />
-            Export PDF
+            PDF
           </>
         )}
       </Button>

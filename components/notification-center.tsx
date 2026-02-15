@@ -41,7 +41,7 @@ interface Notification {
 // ─── Cookie Helpers ──────────────────────────────────────────────
 
 const DISCORD_COOKIE = "vulnradar_discord_dismissed"
-const DISCORD_INVITE_URL = "https://discord.gg/are5EbWwUj"
+const DISCORD_INVITE_URL = "https://discord.gg/Y7R6hdGbNe"
 
 function getCookie(name: string): string | undefined {
   const cookies = document.cookie.split("; ")

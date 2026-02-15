@@ -17,6 +17,9 @@ import {
   X,
   List,
   RefreshCw,
+  MessageSquare,
+  Save,
+  Pencil,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -93,6 +96,9 @@ function HistoryPageContent() {
   const [bulkLoading, setBulkLoading] = useState(false)
   const [bulkResult, setBulkResult] = useState<{ total: number; successful: number; failed: number } | null>(null)
   const [currentPage, setCurrentPage] = useState(1)
+  const [scanNotes, setScanNotes] = useState("")
+  const [editingNotes, setEditingNotes] = useState(false)
+  const [savingNotes, setSavingNotes] = useState(false)
 
   // Check for id parameter in URL and load that scan
   useEffect(() => {
@@ -124,11 +130,32 @@ function HistoryPageContent() {
         responseHeaders: data.responseHeaders,
       })
       setScanOwnerId(data.userId || null)
+      setScanNotes(data.notes || "")
+      setEditingNotes(false)
     } catch (err) {
       console.error("Failed to load scan:", err)
       setSelectedScanId(null)
     } finally {
       setDetailLoading(false)
+    }
+  }
+
+  async function handleSaveNotes() {
+    if (!selectedScanId) return
+    setSavingNotes(true)
+    try {
+      const res = await fetch(`/api/history/${selectedScanId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ notes: scanNotes }),
+      })
+      if (res.ok) {
+        setEditingNotes(false)
+      }
+    } catch {
+      // silently fail
+    } finally {
+      setSavingNotes(false)
     }
   }
 
@@ -338,6 +365,65 @@ function HistoryPageContent() {
 
                     {/* Subdomain discovery */}
                     <SubdomainDiscovery url={scanDetail.url} />
+
+                    {/* Scan Notes */}
+                    {scanOwnerId === currentUserId && (
+                      <div className="rounded-xl border border-border/40 bg-card/30 backdrop-blur-sm p-4">
+                        <div className="flex items-center justify-between mb-3">
+                          <div className="flex items-center gap-2">
+                            <MessageSquare className="h-4 w-4 text-muted-foreground" />
+                            <h3 className="text-sm font-medium text-foreground">Notes</h3>
+                          </div>
+                          {!editingNotes ? (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => setEditingNotes(true)}
+                              className="h-7 text-xs gap-1.5 text-muted-foreground"
+                            >
+                              <Pencil className="h-3 w-3" />
+                              {scanNotes ? "Edit" : "Add Note"}
+                            </Button>
+                          ) : (
+                            <div className="flex gap-1.5">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => { setEditingNotes(false); setScanNotes(scanNotes) }}
+                                className="h-7 text-xs text-muted-foreground"
+                              >
+                                Cancel
+                              </Button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={handleSaveNotes}
+                                disabled={savingNotes}
+                                className="h-7 text-xs gap-1.5 bg-transparent"
+                              >
+                                {savingNotes ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
+                                Save
+                              </Button>
+                            </div>
+                          )}
+                        </div>
+                        {editingNotes ? (
+                          <textarea
+                            value={scanNotes}
+                            onChange={(e) => setScanNotes(e.target.value)}
+                            onKeyDown={(e) => e.stopPropagation()}
+                            onKeyUp={(e) => e.stopPropagation()}
+                            placeholder="Add notes about this scan... (e.g., 'Fixed CSP issue, re-scan next week' or 'Known false positive')"
+                            maxLength={2000}
+                            className="w-full min-h-[80px] rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring resize-y"
+                          />
+                        ) : scanNotes ? (
+                          <p className="text-sm text-muted-foreground whitespace-pre-wrap">{scanNotes}</p>
+                        ) : (
+                          <p className="text-xs text-muted-foreground/60 italic">No notes yet. Click &quot;Add Note&quot; to annotate this scan.</p>
+                        )}
+                      </div>
+                    )}
 
                     {scanDetail.findings.length > 0 ? (
                       <ResultsList
@@ -563,7 +649,14 @@ function HistoryPageContent() {
                             type="text"
                             value={newTag}
                             onChange={(e) => setNewTag(e.target.value)}
-                            onKeyDown={(e) => { if (e.key === "Enter") handleAddTag(scan.id, newTag); if (e.key === "Escape") { setAddingTagFor(null); setNewTag("") } }}
+                            onKeyDown={(e) => {
+                              e.stopPropagation()
+                              if (e.key === "Enter") { e.preventDefault(); handleAddTag(scan.id, newTag) }
+                              if (e.key === "Escape") { e.preventDefault(); setAddingTagFor(null); setNewTag("") }
+                              if (e.key === " ") { e.stopPropagation() }
+                            }}
+                            onKeyUp={(e) => e.stopPropagation()}
+                            onKeyPress={(e) => e.stopPropagation()}
                             placeholder="tag name"
                             className="w-20 text-[10px] px-1.5 py-0.5 rounded-full border border-primary/30 bg-background text-foreground focus:outline-none"
                             autoFocus

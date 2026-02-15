@@ -64,8 +64,8 @@ export default function SetupPage() {
         <Card className="p-6 border-border/40">
           <h3 className="font-semibold mb-4">Step 1: Clone the Repository</h3>
           <p className="text-sm text-muted-foreground mb-3">Clone VulnRadar from GitHub:</p>
-          <pre className="bg-secondary/50 p-4 rounded text-sm overflow-x-auto mb-4"><code>{`git clone https://github.com/RejectModders/VulnRadar.git
-cd VulnRadar`}</code></pre>
+          <pre className="bg-secondary/50 p-4 rounded text-sm overflow-x-auto mb-4"><code>{`git clone https://github.com/VulnRadar/vulnradar.dev.git
+cd vulnradar.dev`}</code></pre>
           <p className="text-xs text-muted-foreground">This creates a directory called "VulnRadar" with the latest code from the main branch.</p>
         </Card>
 
