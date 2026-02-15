@@ -1,14 +1,36 @@
 import { Header } from "@/components/scanner/header"
 import { Footer } from "@/components/scanner/footer"
-import { Newspaper, Zap, Shield, Users, Tag, List, RefreshCw, Lock, Gauge, MessageSquare, Sparkles, Eye, ShieldCheck, Target, Brain, AlertTriangle, Search, Bell, Heart, Layout, Mail, CheckCircle, Trash2, Camera, Crown, UserCheck, Key, BellRing, ChevronRight, BadgeCheck, Globe, Share2, Fingerprint, Smartphone } from "lucide-react"
+import { Newspaper, Zap, Shield, Users, Tag, List, RefreshCw, Lock, Gauge, MessageSquare, Sparkles, Eye, ShieldCheck, Target, Brain, AlertTriangle, Search, Bell, Heart, Layout, Mail, CheckCircle, Trash2, Camera, Crown, UserCheck, Key, BellRing, ChevronRight, BadgeCheck, Globe, Share2, Fingerprint, Smartphone, FileText, ScanSearch, Filter, Sun, Radar, Network, ShieldOff, FileDown } from "lucide-react"
 import { APP_NAME, TOTAL_CHECKS_LABEL } from "@/lib/constants"
 
 const CHANGELOG = [
   {
+    version: "1.6.0",
+    date: "February 15, 2026",
+    title: "Advanced Scan Engine, DNS/TLS Checks, Subdomain Overhaul & PDF Branding",
+    highlights: true,
+    changes: [
+      { icon: Radar, label: "DNS Security Checks", desc: "Scans now check for SPF, DMARC, DKIM, and DNSSEC records. Flags missing email spoofing protection, weak SPF policies (+all), DMARC set to 'none', and missing DNSSEC validation across 8 common DKIM selectors." },
+      { icon: Lock, label: "TLS Certificate Analysis", desc: "New async TLS checks connect to the target and inspect the actual SSL certificate. Detects expired certs, certs expiring within 30 days, self-signed certificates, incomplete certificate chains, and weak TLS protocol versions (1.0/1.1)." },
+      { icon: ScanSearch, label: "Live robots.txt & security.txt Fetch", desc: "Instead of just searching the page body, the scanner now actually fetches /robots.txt and /.well-known/security.txt from the domain. Analyzes robots.txt for 16 sensitive path patterns (admin, .env, .git, backups) and validates security.txt for proper Contact field and Expires date." },
+      { icon: ShieldOff, label: "11 New Advanced Header Checks", desc: "Added HSTS preload directive validation, CSP upgrade-insecure-requests, __Host-/__Secure- cookie prefix detection, COEP credentialless/require-corp, NEL (Network Error Logging), Expect-CT, Timing-Allow-Origin wildcard, deprecated Feature-Policy, CSP report-uri deprecation, and X-Content-Type-Options value validation. Total checks now 120+." },
+      { icon: Network, label: "Subdomain Discovery Overhaul", desc: "Expanded from ~35 to 150+ common subdomain prefixes. Added 3 new passive data sources (HackerTarget, subdomain.center, RapidDNS) running in parallel with crt.sh. DNS resolution checks filter dead entries before HTTP probing. Smart root domain extraction handles subdomains (test.example.com becomes example.com) and double TLDs (.co.uk)." },
+      { icon: Tag, label: "Subdomain Source Badges", desc: "Each discovered subdomain now shows color-coded source badges (crt.sh, hackertarget, rapiddns, subdomain.center, brute-force) with a summary bar showing how many results each source contributed." },
+      { icon: Filter, label: "Category Filter on Results", desc: "The results list now includes a category filter row with color-coded badges for headers, SSL, content, cookies, configuration, and information disclosure. Filter findings by category alongside the existing severity filter." },
+      { icon: FileText, label: "Multi-Page PDF Export", desc: "PDF export now generates unlimited pages instead of truncating at one. All findings with full fix steps, code examples, and explanations render across as many pages as needed with page numbers on every page." },
+      { icon: FileDown, label: "Branded PDF Cover Page", desc: "PDF reports now open with a professional VulnRadar-branded cover page showing the target URL, scan date/time, duration, total checks performed, safety rating with color coding, and a severity breakdown with visual bar indicators. Every page includes a branded header and footer." },
+      { icon: Sun, label: "Theme Toggle on Shared Pages", desc: "Public shared scan pages (/shared/[token]) now include a theme toggle in the header, allowing visitors to switch between dark and light mode." },
+      { icon: Eye, label: "Shared Page Redesign", desc: "The shared scan view has been fully redesigned to match the dashboard/history pattern with an action bar at the top, response headers panel, subdomain discovery, and consistent styling throughout." },
+      { icon: Sparkles, label: "Demo Page Parity", desc: "The demo scanner now runs the full async check suite (DNS, TLS, live-fetch) and displays response headers, subdomain discovery, and the redesigned action bar layout matching the authenticated experience." },
+      { icon: Share2, label: "Shares Pagination & Share Button Cleanup", desc: "The /shares page now paginates at 5 items per page. The share button no longer shows a revoke button after sharing -- it shows a clean 'Copy Link' button matching the shares page pattern." },
+      { icon: Shield, label: "Response Headers in History & Shared Views", desc: "Response headers are now persisted to the database during scans and displayed in history detail views and shared scan pages. Previously they were only shown on the live scan result." },
+    ],
+  },
+  {
     version: "1.5.3",
     date: "February 14, 2026",
     title: "Shared Scans Management, Scan Deletion & Safety Rating Fixes",
-    highlights: true,
+    highlights: false,
     changes: [
       { icon: Share2, label: "Shared Scans Management Page", desc: "New Shares page displays all your active shared scan results with one-click copy, view, and revoke options. Manage permissions and track which scans are publicly accessible from a centralized dashboard." },
       { icon: Trash2, label: "Individual Scan Deletion", desc: "Delete specific scans from history without deleting your entire history. Only the scan owner can see and use the delete button. Team members have read-only access to shared scans." },
