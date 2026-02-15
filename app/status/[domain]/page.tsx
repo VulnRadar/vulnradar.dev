@@ -68,7 +68,7 @@ function getRating(summary: ScanEntry["summary"]): "safe" | "caution" | "unsafe"
 }
 
 const ratingConfig = {
-  SAFE: {
+  safe: {
     label: "Safe",
     icon: ShieldCheck,
     color: "text-emerald-500",
@@ -76,7 +76,7 @@ const ratingConfig = {
     border: "border-emerald-500/20",
     fill: "#10b981",
   },
-  CAUTION: {
+  caution: {
     label: "Caution",
     icon: ShieldAlert,
     color: "text-amber-500",
@@ -84,7 +84,7 @@ const ratingConfig = {
     border: "border-amber-500/20",
     fill: "#f59e0b",
   },
-  UNSAFE: {
+  unsafe: {
     label: "Unsafe",
     icon: ShieldX,
     color: "text-red-500",
