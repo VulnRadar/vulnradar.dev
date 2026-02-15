@@ -99,10 +99,6 @@ interface NotificationPrefs {
   email_schedules: boolean
   email_data_requests: boolean
   email_security: boolean
-  email_failed_login: boolean
-  email_new_login: boolean
-  email_rate_limit: boolean
-  email_api_key_rotation: boolean
 }
 
 export default function ProfilePage() {
@@ -177,10 +173,6 @@ export default function ProfilePage() {
     email_schedules: true,
     email_data_requests: true,
     email_security: true,
-    email_failed_login: true,
-    email_new_login: true,
-    email_rate_limit: true,
-    email_api_key_rotation: true,
   })
   const [savingNotifPrefs, setSavingNotifPrefs] = useState(false)
 
@@ -294,10 +286,6 @@ export default function ProfilePage() {
           email_schedules: notifData.email_schedules ?? true,
           email_data_requests: notifData.email_data_requests ?? true,
           email_security: notifData.email_security ?? true,
-          email_failed_login: notifData.email_failed_login ?? true,
-          email_new_login: notifData.email_new_login ?? true,
-          email_rate_limit: notifData.email_rate_limit ?? true,
-          email_api_key_rotation: notifData.email_api_key_rotation ?? true,
         })
       }
     } catch {
@@ -563,10 +551,6 @@ export default function ProfilePage() {
         email_schedules: data.email_schedules,
         email_data_requests: data.email_data_requests,
         email_security: data.email_security,
-        email_failed_login: data.email_failed_login,
-        email_new_login: data.email_new_login,
-        email_rate_limit: data.email_rate_limit,
-        email_api_key_rotation: data.email_api_key_rotation,
       })
       setSuccess("Notification preferences saved.")
     } catch {
@@ -1685,81 +1669,6 @@ export default function ProfilePage() {
                   <Switch
                     checked={notifPrefs.email_data_requests}
                     onCheckedChange={(checked) => setNotifPrefs(prev => ({ ...prev, email_data_requests: checked }))}
-                  />
-                </div>
-
-                {/* Divider for security-specific notifications */}
-                <div className="my-2 border-t border-border" />
-                <div className="flex items-center gap-2 my-3">
-                  <AlertTriangle className="h-4 w-4 text-amber-500" />
-                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Advanced Security Alerts</p>
-                </div>
-
-                {/* Failed login attempts */}
-                <div className="flex items-center justify-between p-4 rounded-lg border border-border/60 bg-destructive/5">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2">
-                      <AlertTriangle className="h-4 w-4 text-destructive" />
-                      <p className="text-sm font-medium text-foreground">Failed Login Attempts</p>
-                    </div>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Get alerted when multiple failed login attempts are detected on your account.
-                    </p>
-                  </div>
-                  <Switch
-                    checked={notifPrefs.email_failed_login}
-                    onCheckedChange={(checked) => setNotifPrefs(prev => ({ ...prev, email_failed_login: checked }))}
-                  />
-                </div>
-
-                {/* New login from unusual location */}
-                <div className="flex items-center justify-between p-4 rounded-lg border border-border/60 bg-blue-500/5">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2">
-                      <Globe className="h-4 w-4 text-blue-500" />
-                      <p className="text-sm font-medium text-foreground">New Login Notifications</p>
-                    </div>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Receive an email notification whenever your account is accessed from a new location.
-                    </p>
-                  </div>
-                  <Switch
-                    checked={notifPrefs.email_new_login}
-                    onCheckedChange={(checked) => setNotifPrefs(prev => ({ ...prev, email_new_login: checked }))}
-                  />
-                </div>
-
-                {/* Rate limiting alerts */}
-                <div className="flex items-center justify-between p-4 rounded-lg border border-border/60 bg-orange-500/5">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2">
-                      <Clock className="h-4 w-4 text-orange-500" />
-                      <p className="text-sm font-medium text-foreground">Rate Limit Alerts</p>
-                    </div>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Get notified when your API key is rate limited due to excessive requests.
-                    </p>
-                  </div>
-                  <Switch
-                    checked={notifPrefs.email_rate_limit}
-                    onCheckedChange={(checked) => setNotifPrefs(prev => ({ ...prev, email_rate_limit: checked }))}
-                  />
-                </div>
-
-                {/* API key rotation */}
-                <div className="flex items-center justify-between p-4 rounded-lg border border-border/60 bg-green-500/5">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2">
-                      <KeyRound className="h-4 w-4 text-green-500" />
-                      <p className="text-sm font-medium text-foreground">API Key Rotations</p>
-                    </div>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Notifications when API keys are created or rotated on your account.
-                    </p>
-                  </div>
-                  <Switch
-                    checked={notifPrefs.email_api_key_rotation}
-                    onCheckedChange={(checked) => setNotifPrefs(prev => ({ ...prev, email_api_key_rotation: checked }))}
                   />
                 </div>
 
