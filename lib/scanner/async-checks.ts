@@ -392,8 +392,12 @@ async function checkLiveFetch(url: string): Promise<Vulnerability[]> {
   // Fetch robots.txt
   try {
     const robotsRes = await fetch(`${origin}/robots.txt`, {
-      signal: AbortSignal.timeout(5000),
-      headers: { "User-Agent": "VulnRadar/1.0 (Security Scanner)" },
+      signal: AbortSignal.timeout(8000),
+      redirect: "follow" as RequestRedirect,
+      headers: {
+        "User-Agent": "Mozilla/5.0 (compatible; VulnRadar/1.0; +https://vulnradar.dev)",
+        "Accept": "text/plain, text/*;q=0.9, */*;q=0.8",
+      },
     })
     if (robotsRes.ok) {
       const robotsBody = await robotsRes.text()
@@ -456,16 +460,18 @@ async function checkLiveFetch(url: string): Promise<Vulnerability[]> {
 
   // Fetch security.txt
   try {
-    let secTxtRes = await fetch(`${origin}/.well-known/security.txt`, {
-      signal: AbortSignal.timeout(5000),
-      headers: { "User-Agent": "VulnRadar/1.0 (Security Scanner)" },
-    })
+    const secFetchOpts = {
+      signal: AbortSignal.timeout(8000),
+      redirect: "follow" as RequestRedirect,
+      headers: {
+        "User-Agent": "Mozilla/5.0 (compatible; VulnRadar/1.0; +https://vulnradar.dev)",
+        "Accept": "text/plain, text/*;q=0.9, */*;q=0.8",
+      },
+    }
+    let secTxtRes = await fetch(`${origin}/.well-known/security.txt`, secFetchOpts)
     // Fall back to /security.txt
     if (!secTxtRes.ok) {
-      secTxtRes = await fetch(`${origin}/security.txt`, {
-        signal: AbortSignal.timeout(5000),
-        headers: { "User-Agent": "VulnRadar/1.0 (Security Scanner)" },
-      })
+      secTxtRes = await fetch(`${origin}/security.txt`, secFetchOpts)
     }
 
     if (secTxtRes.ok) {
