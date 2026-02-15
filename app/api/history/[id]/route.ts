@@ -16,7 +16,7 @@ export async function GET(
 
   // First, get the scan and its owner
   const scanResult = await pool.query(
-    `SELECT id, url, summary, findings, findings_count, duration, scanned_at, user_id, response_headers
+    `SELECT id, url, summary, findings, findings_count, duration, scanned_at, user_id, response_headers, notes
      FROM scan_history
      WHERE id = $1`,
     [id],
@@ -37,6 +37,7 @@ export async function GET(
       summary: scan.summary,
       findings: scan.findings || [],
       responseHeaders: scan.response_headers || undefined,
+      notes: scan.notes || "",
       userId: scan.user_id,
     })
   }
@@ -59,10 +60,41 @@ export async function GET(
       summary: scan.summary,
       findings: scan.findings || [],
       responseHeaders: scan.response_headers || undefined,
+      notes: scan.notes || "",
       userId: scan.user_id,
     })
   }
 
   // Not authorized to view this scan
   return NextResponse.json({ error: "Scan not found" }, { status: 404 })
+}
+
+export async function PATCH(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  const session = await getSession()
+  if (!session) {
+    return NextResponse.json({ error: ERROR_MESSAGES.UNAUTHORIZED }, { status: 401 })
+  }
+
+  const { id } = await params
+  const body = await request.json()
+  const { notes } = body
+
+  if (typeof notes !== "string") {
+    return NextResponse.json({ error: "Invalid notes" }, { status: 400 })
+  }
+
+  // Only allow the scan owner to update notes
+  const result = await pool.query(
+    `UPDATE scan_history SET notes = $1 WHERE id = $2 AND user_id = $3 RETURNING id, notes`,
+    [notes.slice(0, 2000), id, session.userId],
+  )
+
+  if (result.rows.length === 0) {
+    return NextResponse.json({ error: "Scan not found" }, { status: 404 })
+  }
+
+  return NextResponse.json({ notes: result.rows[0].notes })
 }
