@@ -422,6 +422,18 @@ export async function register() {
         END $$;
       `)
 
+      // Add data column to data_requests
+      await pool.query(`
+        DO $$ BEGIN
+          IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name = 'data_requests' AND column_name = 'data'
+          ) THEN
+            ALTER TABLE data_requests ADD COLUMN data TEXT;
+          END IF;
+        END $$;
+      `)
+
       // Add downloaded_at column to data_requests
       await pool.query(`
         DO $$ BEGIN

@@ -11,6 +11,12 @@ const FREQ_INTERVALS: Record<string, string> = {
   monthly: "30 days",
 }
 
+const FREQ_INTERVALS_DAYS: Record<string, number> = {
+  daily: 1,
+  weekly: 7,
+  monthly: 30,
+}
+
 export async function GET() {
   const session = await getSession()
   if (!session) return NextResponse.json({ error: ERROR_MESSAGES.UNAUTHORIZED }, { status: 401 })
@@ -36,7 +42,7 @@ export async function POST(request: NextRequest) {
   }
 
   const freq = frequency && FREQ_INTERVALS[frequency] ? frequency : "weekly"
-  const interval = FREQ_INTERVALS[freq]
+  const intervalDays = FREQ_INTERVALS_DAYS[freq]
 
   // Max 10 scheduled scans per user
   const countRes = await pool.query("SELECT COUNT(*)::int as count FROM scheduled_scans WHERE user_id = $1", [session.userId])
@@ -46,9 +52,9 @@ export async function POST(request: NextRequest) {
 
   const result = await pool.query(
     `INSERT INTO scheduled_scans (user_id, url, frequency, next_run_at)
-     VALUES ($1, $2, $3, NOW() + INTERVAL '${interval}')
+     VALUES ($1, $2, $3, NOW() + make_interval(days => $4))
      RETURNING id, url, frequency, active, last_run_at, next_run_at, created_at`,
-    [session.userId, url, freq],
+    [session.userId, url, freq, intervalDays],
   )
 
   // Send notification email

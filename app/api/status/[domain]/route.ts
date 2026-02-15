@@ -1,10 +1,18 @@
 import { NextRequest, NextResponse } from "next/server"
 import pool from "@/lib/db"
+import { checkRateLimit, getClientIP } from "@/lib/rate-limit"
 
 export async function GET(
   _request: NextRequest,
   { params }: { params: Promise<{ domain: string }> },
 ) {
+  // Rate limit: 30 requests per minute per IP
+  const ip = await getClientIP()
+  const rl = await checkRateLimit({ key: `status:${ip}`, maxRequests: 30, windowSeconds: 60 })
+  if (!rl.allowed) {
+    return NextResponse.json({ error: "Too many requests." }, { status: 429 })
+  }
+
   const { domain } = await params
   const decodedDomain = decodeURIComponent(domain).toLowerCase().trim()
 
