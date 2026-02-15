@@ -563,7 +563,14 @@ function HistoryPageContent() {
                             type="text"
                             value={newTag}
                             onChange={(e) => setNewTag(e.target.value)}
-                            onKeyDown={(e) => { if (e.key === "Enter") handleAddTag(scan.id, newTag); if (e.key === "Escape") { setAddingTagFor(null); setNewTag("") } }}
+                            onKeyDown={(e) => {
+                              e.stopPropagation()
+                              if (e.key === "Enter") { e.preventDefault(); handleAddTag(scan.id, newTag) }
+                              if (e.key === "Escape") { e.preventDefault(); setAddingTagFor(null); setNewTag("") }
+                              if (e.key === " ") { e.stopPropagation() }
+                            }}
+                            onKeyUp={(e) => e.stopPropagation()}
+                            onKeyPress={(e) => e.stopPropagation()}
                             placeholder="tag name"
                             className="w-20 text-[10px] px-1.5 py-0.5 rounded-full border border-primary/30 bg-background text-foreground focus:outline-none"
                             autoFocus
