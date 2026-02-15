@@ -9,6 +9,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { cn } from "@/lib/utils"
 import { Radar, Shield, Loader2, AlertTriangle, CheckCircle } from "lucide-react"
 import { ResponseHeaders } from "@/components/scanner/response-headers"
+import { SubdomainDiscovery } from "@/components/scanner/subdomain-discovery"
 import { TOTAL_CHECKS_LABEL, DEMO_SCAN_LIMIT } from "@/lib/constants"
 import type { ScanResult, Vulnerability } from "@/lib/scanner/types"
 
@@ -141,38 +142,48 @@ export default function DemoPage() {
       {/* Results */}
       {status === "done" && result && (
         <div className="flex flex-col gap-6">
-          {/* Success banner */}
-          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 p-4 rounded-xl bg-emerald-500/5 border border-emerald-500/10">
-            <CheckCircle className="h-5 w-5 text-emerald-500 shrink-0" />
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-foreground">Self-scan complete</p>
-              <p className="text-xs text-muted-foreground">
-                Scanned {result.url} in {(result.duration / 1000).toFixed(1)}s with {result.findings.length} finding(s)
-              </p>
-            </div>
-            <Button
-              variant="outline"
-              size="sm"
-              className="bg-transparent shrink-0 gap-1 w-full sm:w-auto"
-              onClick={() => {
-                setStatus("idle")
-                setResult(null)
-              }}
-            >
-              Scan Again
-            </Button>
-          </div>
-
-          <ScanSummary result={result} />
-
-          {result.responseHeaders && (
-            <ResponseHeaders headers={result.responseHeaders} />
-          )}
-
           {selectedIssue ? (
             <IssueDetail issue={selectedIssue} onBack={() => setSelectedIssue(null)} />
           ) : (
-            <ResultsList findings={result.findings} onSelectIssue={setSelectedIssue} />
+            <>
+              {/* Action bar at top -- matches dashboard/history pattern */}
+              <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center sm:justify-between gap-3 p-4 rounded-xl border border-border/40 bg-card/30 backdrop-blur-sm">
+                <div className="min-w-0">
+                  <p className="text-xs text-muted-foreground mb-1">Self-Scan Result</p>
+                  <p className="text-sm font-medium text-foreground truncate">
+                    {result.url} - {result.findings.length} finding(s) in {(result.duration / 1000).toFixed(1)}s
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="bg-transparent gap-1"
+                    onClick={() => {
+                      setStatus("idle")
+                      setResult(null)
+                    }}
+                  >
+                    <CheckCircle className="h-4 w-4" />
+                    Scan Again
+                  </Button>
+                </div>
+              </div>
+
+              {/* Scan summary */}
+              <ScanSummary result={result} />
+
+              {/* Response headers */}
+              {result.responseHeaders && Object.keys(result.responseHeaders).length > 0 && (
+                <ResponseHeaders headers={result.responseHeaders} />
+              )}
+
+              {/* Subdomain discovery */}
+              <SubdomainDiscovery url={result.url} />
+
+              {/* Results list */}
+              <ResultsList findings={result.findings} onSelectIssue={setSelectedIssue} />
+            </>
           )}
         </div>
       )}
