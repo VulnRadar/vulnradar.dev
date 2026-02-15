@@ -14,6 +14,7 @@ import { ScanSummary } from "@/components/scanner/scan-summary"
 import { ResultsList } from "@/components/scanner/results-list"
 import { IssueDetail } from "@/components/scanner/issue-detail"
 import { ExportButton } from "@/components/scanner/export-button"
+import { ResponseHeaders } from "@/components/scanner/response-headers"
 import { APP_NAME } from "@/lib/constants"
 import type { ScanResult, Vulnerability } from "@/lib/scanner/types"
 
@@ -132,6 +133,9 @@ export default function SharedScanPage() {
             ) : (
               <>
                 <ScanSummary result={result} />
+                {result.responseHeaders && Object.keys(result.responseHeaders).length > 0 && (
+                  <ResponseHeaders headers={result.responseHeaders} />
+                )}
                 {result.findings.length > 0 && (
                   <ResultsList findings={result.findings} onSelectIssue={setSelectedIssue} />
                 )}
