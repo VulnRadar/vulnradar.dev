@@ -16,7 +16,7 @@ export async function GET(
 
   // First, get the scan and its owner
   const scanResult = await pool.query(
-    `SELECT id, url, summary, findings, findings_count, duration, scanned_at, user_id
+    `SELECT id, url, summary, findings, findings_count, duration, scanned_at, user_id, response_headers
      FROM scan_history
      WHERE id = $1`,
     [id],
@@ -36,6 +36,7 @@ export async function GET(
       duration: scan.duration,
       summary: scan.summary,
       findings: scan.findings || [],
+      responseHeaders: scan.response_headers || undefined,
       userId: scan.user_id,
     })
   }
@@ -57,6 +58,7 @@ export async function GET(
       duration: scan.duration,
       summary: scan.summary,
       findings: scan.findings || [],
+      responseHeaders: scan.response_headers || undefined,
       userId: scan.user_id,
     })
   }
