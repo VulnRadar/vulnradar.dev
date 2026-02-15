@@ -151,7 +151,7 @@ async function checkDNSSecurity(domain: string): Promise<Vulnerability[]> {
     }
 
     // DKIM Check (check common selectors)
-    const selectors = ["default", "google", "selector1", "selector2", "k1", "s1", "dkim", "mail"]
+    const selectors = ["default", "google", "selector1", "selector2", "k1", "s1", "dkim", "mail", "protonmail", "protonmail2", "protonmail3", "mxvault", "cm", "mandrill", "smtp", "zendesk1", "zendesk2", "em1", "em2", "s2"]
     let dkimFound = false
     for (const sel of selectors) {
       try {
