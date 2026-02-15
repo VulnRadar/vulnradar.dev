@@ -1049,6 +1049,91 @@ const detectors: Record<string, DetectFn> = {
     const noOpener = links.filter((l) => !/rel=["'][^"']*noopener/i.test(l))
     return noOpener.length > 2 ? `Found ${noOpener.length} link(s) with target="_blank" missing rel="noopener".` : null
   },
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // ADVANCED CHECKS (additional hardening & best practices)
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  "hsts-no-preload": (_url, headers) => {
+    const hsts = h(headers, "strict-transport-security")
+    if (!hsts) return null // already caught by hsts-missing
+    if (hsts.includes("preload")) return null
+    const issues: string[] = []
+    if (!hsts.includes("preload")) issues.push("missing preload")
+    if (!hsts.includes("includeSubDomains")) issues.push("missing includeSubDomains")
+    const maxAgeMatch = hsts.match(/max-age=(\d+)/)
+    if (maxAgeMatch && parseInt(maxAgeMatch[1]) < 31536000) issues.push(`max-age too low (${maxAgeMatch[1]}, need 31536000+)`)
+    return issues.length > 0 ? `HSTS present but: ${issues.join(", ")}. Current: ${hsts}` : null
+  },
+
+  "csp-no-upgrade-insecure": (_url, headers) => {
+    const csp = h(headers, "content-security-policy")
+    if (!csp) return null // already caught by csp-missing
+    if (csp.includes("upgrade-insecure-requests")) return null
+    return "CSP does not include 'upgrade-insecure-requests' directive."
+  },
+
+  "cookie-no-secure-prefix": (_url, headers) => {
+    const setCookies: string[] = []
+    headers.forEach((value, key) => {
+      if (key.toLowerCase() === "set-cookie") setCookies.push(value)
+    })
+    if (setCookies.length === 0) return null
+    const sensitive = setCookies.filter((c) => {
+      const name = c.split("=")[0]?.trim().toLowerCase() || ""
+      return name.includes("session") || name.includes("token") || name.includes("auth") || name.includes("jwt")
+    })
+    const noPrefixed = sensitive.filter((c) => {
+      const name = c.split("=")[0]?.trim() || ""
+      return !name.startsWith("__Host-") && !name.startsWith("__Secure-")
+    })
+    return noPrefixed.length > 0 ? `${noPrefixed.length} sensitive cookie(s) lack __Host- or __Secure- prefix: ${noPrefixed.map((c) => c.split("=")[0]?.trim()).join(", ")}` : null
+  },
+
+  "coep-credentialless": (_url, headers) => {
+    const coep = h(headers, "cross-origin-embedder-policy")
+    if (!coep) return null // already caught by coep-missing
+    if (coep.includes("credentialless") || coep.includes("require-corp")) return null
+    return `COEP is set to '${coep}' which may not provide adequate isolation. Use 'credentialless' or 'require-corp'.`
+  },
+
+  "nel-missing": (_url, headers) => {
+    if (hasHeader(headers, "nel") || hasHeader(headers, "report-to")) return null
+    return "Neither NEL (Network Error Logging) nor Report-To headers are present."
+  },
+
+  "expect-ct-missing": (_url, headers) => {
+    if (hasHeader(headers, "expect-ct")) return null
+    // Don't flag if the site doesn't use HTTPS
+    return "Expect-CT header is not present. This header helps detect misissued certificates."
+  },
+
+  "timing-allow-origin-wide": (_url, headers) => {
+    const tao = h(headers, "timing-allow-origin")
+    if (!tao || tao !== "*") return null
+    return "Timing-Allow-Origin is set to '*', allowing any origin to read Resource Timing API data."
+  },
+
+  "feature-policy-deprecated": (_url, headers) => {
+    if (!hasHeader(headers, "feature-policy")) return null
+    if (hasHeader(headers, "permissions-policy")) return null
+    return "Feature-Policy header is set but not Permissions-Policy. Feature-Policy is deprecated; use Permissions-Policy instead."
+  },
+
+  "csp-report-uri-deprecated": (_url, headers) => {
+    const csp = h(headers, "content-security-policy")
+    if (!csp) return null
+    if (!csp.includes("report-uri")) return null
+    if (csp.includes("report-to")) return null
+    return "CSP uses deprecated 'report-uri' directive without modern 'report-to'."
+  },
+
+  "nosniff-incorrect": (_url, headers) => {
+    const xcto = h(headers, "x-content-type-options")
+    if (!xcto) return null // caught by xcto-missing
+    if (xcto.toLowerCase().trim() === "nosniff") return null
+    return `X-Content-Type-Options has unexpected value: '${xcto}'. Expected 'nosniff'.`
+  },
 }
 
 // ─�� Build CheckFn array from JSON + detectors ─────────────────────────────

@@ -3,7 +3,7 @@
 // ============================================================================
 
 // Checks count (used in descriptions and UI)
-export const TOTAL_CHECKS_LABEL = "100+"
+export const TOTAL_CHECKS_LABEL = "120+"
 
 // Application metadata
 export const APP_NAME = "VulnRadar"

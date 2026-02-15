@@ -8,10 +8,11 @@ import {
   ShieldCheck,
   ShieldX,
   TriangleAlert,
+  ScanSearch,
 } from "lucide-react"
 import type { ScanResult } from "@/lib/scanner/types"
 import { cn } from "@/lib/utils"
-import { SEVERITY_LEVELS } from "@/lib/constants"
+import { SEVERITY_LEVELS, TOTAL_CHECKS_LABEL } from "@/lib/constants"
 import { getSafetyRating } from "@/lib/scanner/safety-rating"
 
 interface ScanSummaryProps {
@@ -160,6 +161,10 @@ export function ScanSummary({ result }: ScanSummaryProps) {
               <span className="inline-flex items-center gap-1">
                 <Clock className="h-3 w-3" />
                 {(result.duration / 1000).toFixed(1)}s
+              </span>
+              <span className="inline-flex items-center gap-1">
+                <ScanSearch className="h-3 w-3" />
+                {TOTAL_CHECKS_LABEL} checks run
               </span>
               <span className="hidden sm:inline">
                 {scanDate.toLocaleDateString()} {scanDate.toLocaleTimeString()}
