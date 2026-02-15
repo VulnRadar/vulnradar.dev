@@ -133,7 +133,8 @@ export async function GET(request: NextRequest) {
         (SELECT COUNT(*) FROM users WHERE totp_enabled = true) as users_with_2fa,
         (SELECT COUNT(*) FROM scan_history WHERE scanned_at > NOW() - INTERVAL '24 hours') as scans_24h,
         (SELECT COUNT(*) FROM users WHERE created_at > NOW() - INTERVAL '7 days') as new_users_7d,
-        (SELECT COUNT(*) FROM users WHERE disabled_at IS NOT NULL) as disabled_users
+        (SELECT COUNT(*) FROM users WHERE disabled_at IS NOT NULL) as disabled_users,
+        (SELECT COUNT(*) FROM scan_history WHERE share_token IS NOT NULL) as shared_scans
     `),
     search
       ? pool.query(`
