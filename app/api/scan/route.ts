@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { allChecks } from "@/lib/scanner/checks"
+import { runAsyncChecks } from "@/lib/scanner/async-checks"
 import { getSession } from "@/lib/auth"
 import { validateApiKey, checkRateLimit, recordUsage } from "@/lib/api-keys"
 import { checkRateLimit as checkGlobalRL, RATE_LIMITS } from "@/lib/rate-limit"
@@ -144,18 +145,27 @@ export async function POST(request: NextRequest) {
       capturedHeaders[key] = value
     })
 
-    // Run all checks
-    const findings: Vulnerability[] = []
+    // Run synchronous checks + async checks (DNS, TLS, live-fetch) in parallel
+    const syncFindings: Vulnerability[] = []
     for (const check of allChecks) {
       try {
         const result = check(url, headers, responseBody)
         if (result) {
-          findings.push(result)
+          syncFindings.push(result)
         }
       } catch {
         // Skip failed checks silently
       }
     }
+
+    let asyncFindings: Vulnerability[] = []
+    try {
+      asyncFindings = await runAsyncChecks(url)
+    } catch {
+      // Non-fatal: don't fail the scan if async checks error
+    }
+
+    const findings = [...syncFindings, ...asyncFindings]
 
     // Sort findings by severity
     findings.sort(

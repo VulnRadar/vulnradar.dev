@@ -126,6 +126,8 @@ const detectors: Record<string, DetectFn> = {
     return issues.length > 0 ? issues.slice(0, 5).join("; ") : null
   },
 
+  // Checks if URL is HTTP (not HTTPS). For actual TLS cert checks
+  // (expiry, self-signed, weak protocol), see async-checks.ts
   "deprecated-tls": (url) => {
     return url.startsWith("http://") ? `URL uses HTTP: ${url}` : null
   },
@@ -249,10 +251,8 @@ const detectors: Record<string, DetectFn> = {
     return found.length > 0 ? `Technology fingerprints: ${found.join(", ")}` : null
   },
 
-  "security-txt-missing": (_url, _headers, body) => {
-    if (body.includes("/.well-known/security.txt") || body.includes("security.txt")) return null
-    return "No reference to /.well-known/security.txt found."
-  },
+  // security-txt-missing: now handled by async live-fetch check (async-checks.ts)
+  // which actually fetches /.well-known/security.txt instead of just searching body text
 
   "dangerous-inline-js": (_url, _headers, body) => {
     const scripts = body.match(/<script[^>]*>[\s\S]*?<\/script>/gi) || []
