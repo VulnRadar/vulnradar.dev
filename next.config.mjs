@@ -10,6 +10,18 @@ const nextConfig = {
   env: {
     NEXT_PUBLIC_TURNSTILE_SITE_KEY: process.env.TURNSTILE_SITE_KEY,
   },
+  async rewrites() {
+    return [
+      {
+        source: "/.well-known/security.txt",
+        destination: "/api/security-txt",
+      },
+      {
+        source: "/security.txt",
+        destination: "/api/security-txt",
+      },
+    ]
+  },
   async headers() {
     return [
       {
