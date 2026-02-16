@@ -104,7 +104,7 @@ export function SubdomainDiscovery({ url, onScanSubdomain }: SubdomainDiscoveryP
           <div className="text-center">
             <p className="text-sm font-medium text-foreground">Discovering subdomains...</p>
             <p className="text-xs text-muted-foreground mt-1">
-              Querying crt.sh, HackerTarget, RapidDNS, subdomain.center, and 150+ common prefixes
+              Querying crt.sh, HackerTarget, RapidDNS, subdomain.center, and 50+ common prefixes
             </p>
           </div>
         </div>
