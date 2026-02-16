@@ -366,64 +366,68 @@ function HistoryPageContent() {
                     {/* Subdomain discovery */}
                     <SubdomainDiscovery url={scanDetail.url} />
 
-                    {/* Scan Notes */}
-                    {scanOwnerId === currentUserId && (
-                      <div className="rounded-xl border border-border/40 bg-card/30 backdrop-blur-sm p-4">
-                        <div className="flex items-center justify-between mb-3">
-                          <div className="flex items-center gap-2">
-                            <MessageSquare className="h-4 w-4 text-muted-foreground" />
-                            <h3 className="text-sm font-medium text-foreground">Notes</h3>
-                          </div>
-                          {!editingNotes ? (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => setEditingNotes(true)}
-                              className="h-7 text-xs gap-1.5 text-muted-foreground"
-                            >
-                              <Pencil className="h-3 w-3" />
-                              {scanNotes ? "Edit" : "Add Note"}
-                            </Button>
-                          ) : (
-                            <div className="flex gap-1.5">
+                    {/* Scan Notes -- visible to everyone, editable only by owner */}
+                    <div className="rounded-xl border border-border/40 bg-card/30 backdrop-blur-sm p-4">
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center gap-2">
+                          <MessageSquare className="h-4 w-4 text-muted-foreground" />
+                          <h3 className="text-sm font-medium text-foreground">Notes</h3>
+                        </div>
+                        {scanOwnerId === currentUserId && (
+                          <>
+                            {!editingNotes ? (
                               <Button
                                 variant="ghost"
                                 size="sm"
-                                onClick={() => { setEditingNotes(false); setScanNotes(scanNotes) }}
-                                className="h-7 text-xs text-muted-foreground"
+                                onClick={() => setEditingNotes(true)}
+                                className="h-7 text-xs gap-1.5 text-muted-foreground"
                               >
-                                Cancel
+                                <Pencil className="h-3 w-3" />
+                                {scanNotes ? "Edit" : "Add Note"}
                               </Button>
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={handleSaveNotes}
-                                disabled={savingNotes}
-                                className="h-7 text-xs gap-1.5 bg-transparent"
-                              >
-                                {savingNotes ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
-                                Save
-                              </Button>
-                            </div>
-                          )}
-                        </div>
-                        {editingNotes ? (
-                          <textarea
-                            value={scanNotes}
-                            onChange={(e) => setScanNotes(e.target.value)}
-                            onKeyDown={(e) => e.stopPropagation()}
-                            onKeyUp={(e) => e.stopPropagation()}
-                            placeholder="Add notes about this scan... (e.g., 'Fixed CSP issue, re-scan next week' or 'Known false positive')"
-                            maxLength={2000}
-                            className="w-full min-h-[80px] rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring resize-y"
-                          />
-                        ) : scanNotes ? (
-                          <p className="text-sm text-muted-foreground whitespace-pre-wrap">{scanNotes}</p>
-                        ) : (
-                          <p className="text-xs text-muted-foreground/60 italic">No notes yet. Click &quot;Add Note&quot; to annotate this scan.</p>
+                            ) : (
+                              <div className="flex gap-1.5">
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => { setEditingNotes(false); setScanNotes(scanNotes) }}
+                                  className="h-7 text-xs text-muted-foreground"
+                                >
+                                  Cancel
+                                </Button>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={handleSaveNotes}
+                                  disabled={savingNotes}
+                                  className="h-7 text-xs gap-1.5 bg-transparent"
+                                >
+                                  {savingNotes ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
+                                  Save
+                                </Button>
+                              </div>
+                            )}
+                          </>
                         )}
                       </div>
-                    )}
+                      {editingNotes && scanOwnerId === currentUserId ? (
+                        <textarea
+                          value={scanNotes}
+                          onChange={(e) => setScanNotes(e.target.value)}
+                          onKeyDown={(e) => e.stopPropagation()}
+                          onKeyUp={(e) => e.stopPropagation()}
+                          placeholder="Add notes about this scan... (e.g., 'Fixed CSP issue, re-scan next week' or 'Known false positive')"
+                          maxLength={2000}
+                          className="w-full min-h-[80px] rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring resize-y"
+                        />
+                      ) : scanNotes ? (
+                        <p className="text-sm text-muted-foreground whitespace-pre-wrap">{scanNotes}</p>
+                      ) : (
+                        <p className="text-xs text-muted-foreground/60 italic">
+                          {scanOwnerId === currentUserId ? 'No notes yet. Click "Add Note" to annotate this scan.' : "No notes for this scan."}
+                        </p>
+                      )}
+                    </div>
 
                     {scanDetail.findings.length > 0 ? (
                       <ResultsList
