@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server"
+import crypto from "crypto"
 import { getSession } from "@/lib/auth"
 import pool from "@/lib/db"
 import { sendEmail, teamInviteEmail } from "@/lib/email"
@@ -84,7 +85,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "An invite is already pending for this email." }, { status: 400 })
   }
 
-  const token = require("crypto").randomBytes(32).toString("hex")
+  const token = crypto.randomBytes(32).toString("hex")
   const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) // 7 days
 
   await pool.query(

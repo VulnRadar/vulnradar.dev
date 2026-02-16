@@ -1,14 +1,26 @@
 import { Header } from "@/components/scanner/header"
 import { Footer } from "@/components/scanner/footer"
-import { Newspaper, Zap, Shield, Users, Tag, List, RefreshCw, Lock, Gauge, MessageSquare, Sparkles, Eye, ShieldCheck, Target, Brain, AlertTriangle, Search, Bell, Heart, Layout, Mail, CheckCircle, Trash2, Camera, Crown, UserCheck, Key, BellRing, ChevronRight, BadgeCheck, Globe, Share2, Fingerprint, Smartphone, FileText, ScanSearch, Filter, Sun, Radar, Network, ShieldOff, FileDown, FileSpreadsheet, Pencil, Activity, Link2, BarChart3, Bug, ShieldAlert, Database, ServerCrash, Columns3, Crosshair, FileSearch, Timer, Layers, GitMerge, Palette, ServerCog } from "lucide-react"
+import { Newspaper, Zap, Shield, Users, Tag, List, RefreshCw, Lock, Gauge, MessageSquare, Sparkles, Eye, ShieldCheck, Target, Brain, AlertTriangle, Search, Bell, Heart, Layout, Mail, CheckCircle, Trash2, Camera, Crown, UserCheck, Key, BellRing, ChevronRight, BadgeCheck, Globe, Share2, Fingerprint, Smartphone, FileText, ScanSearch, Filter, Sun, Radar, Network, ShieldOff, FileDown, FileSpreadsheet, Pencil, Activity, Link2, BarChart3, Bug, ShieldAlert, Database, ServerCrash, Columns3, Crosshair, FileSearch, Timer, Layers, GitMerge, Palette, ServerCog, Wrench } from "lucide-react"
 import { APP_NAME, TOTAL_CHECKS_LABEL } from "@/lib/constants"
 
 const CHANGELOG = [
   {
+    version: "1.6.6",
+    date: "February 16, 2026",
+    title: "Full API Audit & Bug Fixes",
+    highlights: true,
+    changes: [
+      { icon: Wrench, label: "Team Creation Fixed", desc: "Fixed a critical bug where creating a team would fail with a 500 error. The TEAM_ROLES.OWNER constant was embedded as literal text inside the SQL query instead of being passed as a parameterized value, causing Postgres to throw a column-not-found error." },
+      { icon: FileDown, label: "Data Export Download Fixed", desc: "The data export download endpoint was querying for a non-existent 'status' column (WHERE status = 'completed') instead of using the 'downloaded_at' column that the main export route actually sets. This caused the download route to always return 404 even after a successful export." },
+      { icon: Shield, label: "49 API Routes Audited", desc: "Reviewed all 49 API routes for correctness, security, and consistency. Verified parameterized queries across all database operations, confirmed rate limiting on all public-facing endpoints, validated auth checks on all protected routes, and ensured consistent error handling patterns." },
+      { icon: Bug, label: "Code Quality Cleanup", desc: "Replaced inline require('crypto') with a proper ES module import in the team members route. Removed leftover debug console.error('[v0]') statements from the data request route. Synced package.json version to match APP_VERSION constant." },
+    ],
+  },
+  {
     version: "1.6.5",
     date: "February 16, 2026",
     title: "Subdomain Discovery Restored & Status-Coded Results",
-    highlights: true,
+    highlights: false,
     changes: [
       { icon: Globe, label: "Brute-Force Restored with 150+ Prefixes", desc: "Re-added DNS brute-force subdomain discovery with 150+ common prefixes covering infrastructure (www, mail, smtp, ftp), environments (dev, staging, qa, sandbox), admin panels (admin, cpanel, portal), CDN/assets (cdn, static, media), services (blog, shop, docs, status), auth (sso, vpn, oauth), DevOps (git, jenkins, docker, k8s, registry), databases (db, mysql, redis, mongo), and business systems (crm, erp, billing, checkout). All 150+ DNS lookups run in a single parallel batch so total time is roughly the same as a single lookup." },
       { icon: Palette, label: "Status-Coded Subdomain Results", desc: "Subdomain dots and status codes are now color-coded by HTTP response: green for 2xx (active), blue for 3xx (redirect), amber for 4xx (forbidden/not found), and red for 5xx (server error). Previously all reachable subdomains showed a green dot regardless of status code, making it hard to distinguish healthy services from blocked or erroring endpoints." },
