@@ -3,63 +3,22 @@ import { getSession } from "@/lib/auth"
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 import dns from "dns/promises"
 
-// ~150 common subdomain prefixes
+// ~50 most common subdomain prefixes (passive sources handle the rest)
 const COMMON_SUBDOMAINS = [
   // Core infrastructure
-  "www", "mail", "smtp", "imap", "pop", "pop3", "mx", "email", "webmail",
-  "api", "app", "web", "ftp", "sftp", "ssh",
-  // Development & environments
-  "dev", "staging", "stage", "test", "testing", "qa", "uat", "sandbox",
-  "beta", "alpha", "demo", "preview", "canary", "pre-prod", "preprod",
-  "prod", "production", "live",
+  "www", "mail", "smtp", "mx", "email", "webmail", "api", "app", "web", "ftp",
+  // Environments
+  "dev", "staging", "test", "qa", "sandbox", "beta", "demo", "prod",
   // Admin & management
-  "admin", "administrator", "panel", "cpanel", "whm", "webmin", "manage",
-  "manager", "console", "portal", "dashboard", "backoffice", "cms",
-  // Cloud & CDN
-  "cdn", "assets", "static", "media", "images", "img", "files", "upload",
-  "downloads", "dl", "s3", "storage", "cache", "edge",
-  // Services & apps
-  "blog", "shop", "store", "forum", "community", "wiki", "docs",
-  "documentation", "help", "support", "kb", "faq", "status", "health",
-  "monitor", "monitoring", "metrics", "analytics",
-  // Auth & security
-  "auth", "login", "sso", "oauth", "id", "identity", "accounts", "account",
-  "secure", "vpn", "gateway", "proxy", "waf",
-  // Networking
-  "ns1", "ns2", "ns3", "ns4", "dns", "dns1", "dns2",
-  "m", "mobile", "wap",
-  // Collaboration & comms
-  "chat", "slack", "teams", "meet", "conference", "video", "voip",
-  "sip", "pbx", "call",
-  // DevOps & CI/CD
-  "git", "gitlab", "github", "bitbucket", "svn", "repo",
-  "jenkins", "ci", "cd", "build", "deploy", "release",
-  "docker", "k8s", "kubernetes", "registry", "harbor",
-  // Monitoring & logging
-  "grafana", "kibana", "elastic", "elasticsearch", "logstash",
-  "prometheus", "nagios", "zabbix", "splunk", "sentry", "newrelic",
-  "datadog", "pagerduty", "logs", "log",
-  // Databases
-  "db", "database", "mysql", "postgres", "postgresql", "mongo", "mongodb",
-  "redis", "memcached", "sql", "mssql", "oracle",
-  // Messaging & queues
-  "rabbitmq", "kafka", "mq", "queue", "amqp", "nats",
-  // Regional
-  "us", "eu", "ap", "us-east", "us-west", "eu-west",
-  // Misc services
-  "crm", "erp", "hr", "finance", "billing", "pay", "payment", "payments",
-  "checkout", "cart", "orders", "booking", "reserve",
-  "search", "solr", "sphinx",
-  "report", "reports", "reporting",
-  "internal", "intranet", "extranet", "corp", "corporate",
-  "news", "press", "events", "calendar",
-  "jobs", "careers", "talent",
-  "partners", "affiliate", "reseller", "vendor",
-  "feedback", "survey", "forms", "contact",
-  "remote", "workspace", "office",
-  "backup", "bak", "dr", "failover",
-  "www2", "www3", "web1", "web2", "app1", "app2",
-  "api2", "api-v2", "v2", "v1", "old", "new", "legacy",
+  "admin", "panel", "cpanel", "portal", "dashboard", "cms",
+  // CDN & assets
+  "cdn", "assets", "static", "media", "img", "files", "storage",
+  // Services
+  "blog", "shop", "store", "docs", "help", "support", "status",
+  // Auth & networking
+  "auth", "login", "sso", "vpn", "ns1", "ns2", "m",
+  // DevOps
+  "git", "ci", "registry",
 ]
 
 interface DiscoveredSubdomain {

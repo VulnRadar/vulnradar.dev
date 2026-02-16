@@ -13,7 +13,7 @@ const SEVERITY_ORDER: Record<Severity, number> = {
   info: 4,
 }
 
-const MAX_BODY_SIZE = 2 * 1024 * 1024 // 2 MB
+const MAX_BODY_SIZE = 1 * 1024 * 1024 // 1 MB
 
 function isValidUrl(input: string): boolean {
   try {
