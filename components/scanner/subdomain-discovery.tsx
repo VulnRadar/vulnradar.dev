@@ -31,7 +31,23 @@ const SOURCE_COLORS: Record<string, string> = {
   hackertarget: "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20",
   "subdomain.center": "bg-violet-500/10 text-violet-600 dark:text-violet-400 border-violet-500/20",
   rapiddns: "bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 border-cyan-500/20",
-  "brute-force": "bg-muted text-muted-foreground border-border",
+  "brute-force": "bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20",
+}
+
+function getStatusDotColor(statusCode?: number): string {
+  if (!statusCode) return "bg-muted-foreground/30"
+  if (statusCode >= 200 && statusCode < 300) return "bg-emerald-500"
+  if (statusCode >= 300 && statusCode < 400) return "bg-blue-500"
+  if (statusCode >= 400 && statusCode < 500) return "bg-amber-500"
+  return "bg-red-500" // 5xx
+}
+
+function getStatusTextColor(statusCode?: number): string {
+  if (!statusCode) return "text-muted-foreground"
+  if (statusCode >= 200 && statusCode < 300) return "text-emerald-600 dark:text-emerald-400"
+  if (statusCode >= 300 && statusCode < 400) return "text-blue-600 dark:text-blue-400"
+  if (statusCode >= 400 && statusCode < 500) return "text-amber-600 dark:text-amber-400"
+  return "text-red-600 dark:text-red-400"
 }
 
 export function SubdomainDiscovery({ url, onScanSubdomain }: SubdomainDiscoveryProps) {
@@ -74,7 +90,7 @@ export function SubdomainDiscovery({ url, onScanSubdomain }: SubdomainDiscoveryP
             <div>
               <h3 className="text-sm font-semibold text-foreground">Subdomain Discovery</h3>
               <p className="text-xs text-muted-foreground">
-                Find related subdomains using CT logs, DNS datasets, and brute-force
+                Find related subdomains using CT logs, passive DNS, and common prefix brute-force
               </p>
             </div>
           </div>
@@ -104,7 +120,7 @@ export function SubdomainDiscovery({ url, onScanSubdomain }: SubdomainDiscoveryP
           <div className="text-center">
             <p className="text-sm font-medium text-foreground">Discovering subdomains...</p>
             <p className="text-xs text-muted-foreground mt-1">
-              Querying crt.sh, HackerTarget, RapidDNS, subdomain.center, and 50+ common prefixes
+              Querying crt.sh, HackerTarget, RapidDNS, subdomain.center, and 30 common prefixes
             </p>
           </div>
         </div>
@@ -207,7 +223,7 @@ function SubdomainRow({
 }) {
   return (
     <div className="flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-muted/50 transition-colors group">
-      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
+      <span className={cn("w-1.5 h-1.5 rounded-full shrink-0", getStatusDotColor(sub.statusCode))} />
       <span className="text-xs font-mono text-foreground truncate">
         {sub.subdomain}
       </span>
@@ -227,7 +243,7 @@ function SubdomainRow({
       </div>
       <span className="flex-1" />
       {sub.statusCode && (
-        <span className="text-[10px] text-muted-foreground font-mono">
+        <span className={cn("text-[10px] font-mono", getStatusTextColor(sub.statusCode))}>
           {sub.statusCode}
         </span>
       )}

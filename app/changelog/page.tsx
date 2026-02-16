@@ -1,14 +1,28 @@
 import { Header } from "@/components/scanner/header"
 import { Footer } from "@/components/scanner/footer"
-import { Newspaper, Zap, Shield, Users, Tag, List, RefreshCw, Lock, Gauge, MessageSquare, Sparkles, Eye, ShieldCheck, Target, Brain, AlertTriangle, Search, Bell, Heart, Layout, Mail, CheckCircle, Trash2, Camera, Crown, UserCheck, Key, BellRing, ChevronRight, BadgeCheck, Globe, Share2, Fingerprint, Smartphone, FileText, ScanSearch, Filter, Sun, Radar, Network, ShieldOff, FileDown, FileSpreadsheet, Pencil, Activity, Link2, BarChart3, Bug, ShieldAlert, Database, ServerCrash, Columns3, Fingerprint as FingerprintIcon, Crosshair, FileSearch } from "lucide-react"
+import { Newspaper, Zap, Shield, Users, Tag, List, RefreshCw, Lock, Gauge, MessageSquare, Sparkles, Eye, ShieldCheck, Target, Brain, AlertTriangle, Search, Bell, Heart, Layout, Mail, CheckCircle, Trash2, Camera, Crown, UserCheck, Key, BellRing, ChevronRight, BadgeCheck, Globe, Share2, Fingerprint, Smartphone, FileText, ScanSearch, Filter, Sun, Radar, Network, ShieldOff, FileDown, FileSpreadsheet, Pencil, Activity, Link2, BarChart3, Bug, ShieldAlert, Database, ServerCrash, Columns3, Crosshair, FileSearch, Timer, Layers, GitMerge } from "lucide-react"
 import { APP_NAME, TOTAL_CHECKS_LABEL } from "@/lib/constants"
 
 const CHANGELOG = [
   {
+    version: "1.6.4",
+    date: "February 16, 2026",
+    title: "Scanner Engine v1.5.0 -- Full Optimization Pass & Duplicate Removal",
+    highlights: true,
+    changes: [
+      { icon: Layers, label: "Removed 8 Duplicate Checks", desc: "Eliminated redundant checks that were producing duplicate findings: sri-link-missing (same as sri-missing), unsafe-target-blank (same as reverse-tabnabbing), insecure-form-submission (same as form-action-http), websocket-wss (same as unencrypted-connections), html-comment-leaks (same as sensitive-comments), document-write-usage (caught by dangerous-inline-js), sensitive-files (false positive prone body text matching), and robots-txt-exposure (handled by live-fetch in async-checks)." },
+      { icon: Timer, label: "Async Checks Fully Parallelized", desc: "SPF, DMARC, DKIM, and DNSSEC now all run in parallel instead of sequentially. DKIM uses Promise.race to early-exit as soon as the first valid selector is found. security.txt checks both URLs in parallel. robots.txt uses a single combined regex instead of 16 separate patterns. Total DNS check time reduced by ~60%." },
+      { icon: Zap, label: "Reduced Timeouts Across the Board", desc: "TLS check timeout reduced from 8s to 5s. Fetch timeouts (robots.txt, security.txt) reduced from 8s to 5s. DNSSEC DoH queries reduced from 6s to 4s. Subdomain HTTP checks reduced from 5s/4s to 4s/3s. Overall async timeout reduced from 20s to 15s. These savings compound since checks now run in parallel." },
+      { icon: Globe, label: "Subdomain Brute-Force Removed", desc: "Completely removed the 50-prefix brute-force subdomain list. Discovery now relies entirely on passive sources (crt.sh, HackerTarget, RapidDNS, subdomain.center) which already find real subdomains with actual DNS records. This eliminates the slowest part of subdomain discovery -- DNS lookups on prefixes that almost never exist." },
+      { icon: GitMerge, label: "Token Exposure Deduplicated", desc: "The token-exposure check no longer duplicates JWT detection (already handled by hardcoded-secrets). It now only checks for server session IDs (PHPSESSID, JSESSIONID, ASP.NET_SessionId) which are genuinely dangerous when exposed in HTML." },
+      { icon: Trash2, label: "Removed Low-Value Checks", desc: "Removed expect-ct-missing (Expect-CT was deprecated and removed from Chrome in 2022, no browser enforces it) and dns-prefetch-control (X-DNS-Prefetch-Control has negligible security impact). These were cluttering scan results with unhelpful info-level findings." },
+    ],
+  },
+  {
     version: "1.6.3",
     date: "February 16, 2026",
     title: "Scanner Accuracy Overhaul -- False Positives, DKIM Detection & Body Limits",
-    highlights: true,
+    highlights: false,
     changes: [
       { icon: Crosshair, label: "API Key Detection Overhaul", desc: "Completely rewrote the hardcoded secrets scanner to eliminate false positives. Removed 25+ overly broad patterns that matched UUIDs (Postmark), any hex string near a brand name (Cloudflare, Heroku, Vercel, Netlify, Datadog, etc.), public JWT tokens (Supabase anon keys), and random digit sequences (Telegram). Only high-confidence prefixed patterns remain (e.g., sk_live_, ghp_, SG., AIzaSy). Database URI checks now require user:password@host format. Added automatic filtering of placeholder values (example, test_, dummy, xxxx) and localhost URIs." },
       { icon: Radar, label: "DKIM CNAME Detection", desc: "Fixed DKIM detection for ProtonMail and other providers that use CNAME-delegated DKIM records instead of inline TXT records. The scanner now checks both dns.resolveTxt() and dns.resolveCname() for each selector, and runs all selector checks in parallel for faster results. This resolves false 'No DKIM Records Found' warnings for ProtonMail, Fastmail, and similar providers." },

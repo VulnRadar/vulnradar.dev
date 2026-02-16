@@ -134,7 +134,7 @@ export async function POST(request: NextRequest) {
     let asyncFindings: Vulnerability[] = []
     try {
       const asyncPromise = runAsyncChecks(url)
-      const timeoutPromise = new Promise<Vulnerability[]>((resolve) => setTimeout(() => resolve([]), 20000))
+      const timeoutPromise = new Promise<Vulnerability[]>((resolve) => setTimeout(() => resolve([]), 15000))
       asyncFindings = await Promise.race([asyncPromise, timeoutPromise])
     } catch {
       // Non-fatal

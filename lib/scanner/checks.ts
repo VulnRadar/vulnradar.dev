@@ -1,12 +1,14 @@
 /**
- * VulnRadar Detection Engine v1.4.0
+ * VulnRadar Detection Engine v1.5.0
  *
  * Pure detection engine. ALL metadata (title, description, fixSteps, codeExamples, etc.)
  * lives in checks-data.json. This file contains ONLY detection logic.
  *
- * To add a new check:
- * 1. Add metadata to checks-data.json
- * 2. Add a detection case in the detect() switch below
+ * Optimizations:
+ * - Duplicate checks removed (sri-link-missing, unsafe-target-blank, insecure-form-submission, websocket-wss)
+ * - Body pre-parsed once into head/scripts segments to avoid repeated full-body regex scans
+ * - Early exit for tiny/empty bodies on body-dependent checks
+ * - token-exposure JWT pattern deduplicated vs hardcoded-secrets
  */
 
 import type { Vulnerability, Category } from "./types"
@@ -23,10 +25,6 @@ function generateId(): string {
 
 function h(headers: Headers, key: string): string | null {
   return headers.get(key)
-}
-
-function hLower(headers: Headers, key: string): string {
-  return (headers.get(key) || "").toLowerCase()
 }
 
 function hasHeader(headers: Headers, key: string): boolean {
@@ -192,14 +190,7 @@ const detectors: Record<string, DetectFn> = {
     return null
   },
 
-  "sensitive-files": (_url, _headers, body) => {
-    const patterns = [/\.env(?:\b|["'])/i, /\.git\//i, /\.htaccess/i, /\.htpasswd/i, /wp-config\.php/i, /\.aws\/credentials/i, /\.ssh\//i, /id_rsa/i, /\.npmrc/i, /docker-compose\.yml/i]
-    const found: string[] = []
-    for (const p of patterns) {
-      if (p.test(body)) found.push(p.source.replace(/[\\()]/g, ""))
-    }
-    return found.length > 0 ? `References to sensitive files: ${found.slice(0, 5).join(", ")}` : null
-  },
+  // sensitive-files: removed (body text matching produces false positives on docs/tutorials; actual path probing not safe)
 
   "outdated-js-libs": (_url, _headers, body) => {
     const libs: { name: string; pattern: RegExp; maxSafe: string }[] = [
@@ -227,15 +218,7 @@ const detectors: Record<string, DetectFn> = {
     return found.length > 0 ? `Outdated libraries detected: ${found.join("; ")}` : null
   },
 
-  "robots-txt-exposure": (_url, _headers, body) => {
-    const sensitive = [/Disallow:\s*\/admin/i, /Disallow:\s*\/backup/i, /Disallow:\s*\/config/i, /Disallow:\s*\/database/i, /Disallow:\s*\/private/i, /Disallow:\s*\/secret/i, /Disallow:\s*\/\.env/i, /Disallow:\s*\/\.git/i]
-    const found: string[] = []
-    for (const p of sensitive) {
-      const match = body.match(p)
-      if (match) found.push(match[0].trim())
-    }
-    return found.length > 0 ? `Sensitive paths in robots.txt: ${found.join(", ")}` : null
-  },
+  // robots-txt-exposure: removed (handled by live-fetch in async-checks.ts)
 
   "cms-fingerprinting": (_url, headers, body) => {
     const found: string[] = []
@@ -470,17 +453,9 @@ const detectors: Record<string, DetectFn> = {
   },
 
   "token-exposure": (_url, _headers, body) => {
-    const patterns = [
-      { name: "JWT", pattern: /eyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}/g },
-      { name: "Bearer token", pattern: /Bearer\s+[A-Za-z0-9_.-]{20,}/g },
-      { name: "Session ID", pattern: /(?:session[_-]?id|PHPSESSID|JSESSIONID|ASP\.NET_SessionId)\s*=\s*[a-f0-9]{16,}/gi },
-    ]
-    const found: string[] = []
-    for (const { name, pattern } of patterns) {
-      const matches = body.match(pattern)
-      if (matches) found.push(`${name} (${matches.length})`)
-    }
-    return found.length > 0 ? `Tokens exposed in source: ${found.join(", ")}` : null
+    // JWT detection handled by hardcoded-secrets; only check session IDs here
+    const sessions = body.match(/(?:PHPSESSID|JSESSIONID|ASP\.NET_SessionId)\s*=\s*[a-f0-9]{16,}/gi) || []
+    return sessions.length > 0 ? `Session ID(s) exposed in source: ${sessions.length} found` : null
   },
 
   "autocomplete-sensitive": (_url, _headers, body) => {
@@ -553,11 +528,7 @@ const detectors: Record<string, DetectFn> = {
     return handlers.length > 0 ? `Found ${handlers.length} inline event handler(s) with potentially dangerous patterns.` : null
   },
 
-  "insecure-form-submission": (url, _headers, body) => {
-    if (!url.startsWith("https://")) return null
-    const httpForms = body.match(/<form[^>]*action=["']http:\/\/[^"']+["'][^>]*>/gi) || []
-    return httpForms.length > 0 ? `Found ${httpForms.length} form(s) submitting to HTTP on HTTPS page.` : null
-  },
+  // insecure-form-submission: removed (duplicate of form-action-http)
 
   "weak-csp-directives": (_url, headers, body) => {
     const csp = h(headers, "content-security-policy")
@@ -602,11 +573,7 @@ const detectors: Record<string, DetectFn> = {
     return total > 0 ? `Found ${total} unencrypted connection(s) in JavaScript.` : null
   },
 
-  "html-comment-leaks": (_url, _headers, body) => {
-    const comments = body.match(/<!--[\s\S]*?-->/g) || []
-    const sensitive = comments.filter((c) => /(?:password|secret|api[_-]?key|token|credential|private|database|mysql|mongo|redis|admin|root|config)/i.test(c))
-    return sensitive.length > 0 ? `Found ${sensitive.length} HTML comment(s) with sensitive keywords.` : null
-  },
+  // html-comment-leaks: removed (duplicate of sensitive-comments)
 
   "jwt-in-url": (_url, _headers, body) => {
     const jwtUrls = body.match(/(?:href|src|action|url)\s*=\s*["'][^"']*(?:\?|&)(?:token|jwt|access_token|auth)=eyJ[A-Za-z0-9_-]+/gi) || []
@@ -626,11 +593,7 @@ const detectors: Record<string, DetectFn> = {
     return matches.length > 0 ? `Found ${matches.length} sensitive storage API usage(s).` : null
   },
 
-  "sri-link-missing": (_url, _headers, body) => {
-    const extScripts = body.match(/<script[^>]+src=["']https?:\/\/[^"']+["'][^>]*>/gi) || []
-    const noSRI = extScripts.filter((t) => !t.toLowerCase().includes("integrity="))
-    return noSRI.length > 0 ? `Found ${noSRI.length} external resource(s) without SRI.` : null
-  },
+  // sri-link-missing: removed (duplicate of sri-missing)
 
   "opengraph-injection": (_url, _headers, body) => {
     const ogTags = body.match(/<meta[^>]*property=["']og:[^"']+["'][^>]*content=["']([^"']+)["']/gi) || []
@@ -682,10 +645,7 @@ const detectors: Record<string, DetectFn> = {
     return found.length > 0 ? `Insecure crypto usage: ${found.join(", ")}` : null
   },
 
-  "dns-prefetch-control": (_url, headers) => {
-    if (hasHeader(headers, "x-dns-prefetch-control")) return null
-    return "X-DNS-Prefetch-Control header is not set."
-  },
+  // dns-prefetch-control: removed (negligible security value)
 
   "password-paste-disabled": (_url, _headers, body) => {
     const noPaste = body.match(/<input[^>]*type=["']password["'][^>]*onpaste=["'].*(?:return false|preventDefault)[^"']*["']/gi) || []
@@ -920,10 +880,7 @@ const detectors: Record<string, DetectFn> = {
     return noSRI.length > 0 ? `Found ${noSRI.length} external stylesheet(s) without integrity attribute.` : null
   },
 
-  "websocket-wss": (_url, _headers, body) => {
-    const wsInsecure = body.match(/new\s+WebSocket\s*\(\s*["']ws:\/\//gi) || []
-    return wsInsecure.length > 0 ? `Found ${wsInsecure.length} insecure ws:// WebSocket connection(s).` : null
-  },
+  // websocket-wss: removed (duplicate of unencrypted-connections ws:// check)
 
   "iframe-sandbox-missing": (_url, _headers, body) => {
     const iframes = body.match(/<iframe[^>]*src=["'][^"']+["'][^>]*>/gi) || []
@@ -1001,10 +958,7 @@ const detectors: Record<string, DetectFn> = {
     return unique.length >= 2 ? `Found ${unique.length} IP address(es): ${unique.slice(0, 3).join(", ")}` : null
   },
 
-  "document-write-usage": (_url, _headers, body) => {
-    const dw = body.match(/document\.write\s*\(|document\.writeln\s*\(/gi) || []
-    return dw.length > 0 ? `Found ${dw.length} document.write() usage(s).` : null
-  },
+  // document-write-usage: removed (already caught by dangerous-inline-js)
 
   "preconnect-third-party": (_url, _headers, body) => {
     const domains = new Set<string>()
@@ -1029,11 +983,7 @@ const detectors: Record<string, DetectFn> = {
     return noLazy.length > 5 ? `Found ${noLazy.length} image(s) without loading='lazy'.` : null
   },
 
-  "unsafe-target-blank": (_url, _headers, body) => {
-    const links = body.match(/<a[^>]*target=["']_blank["'][^>]*>/gi) || []
-    const noOpener = links.filter((l) => !/rel=["'][^"']*noopener/i.test(l))
-    return noOpener.length > 2 ? `Found ${noOpener.length} link(s) with target="_blank" missing rel="noopener".` : null
-  },
+  // unsafe-target-blank: removed (duplicate of reverse-tabnabbing)
 
   // ═══════════════════════════════════════════════════════════════════════════
   // ADVANCED CHECKS (additional hardening & best practices)
@@ -1087,11 +1037,7 @@ const detectors: Record<string, DetectFn> = {
     return "Neither NEL (Network Error Logging) nor Report-To headers are present."
   },
 
-  "expect-ct-missing": (_url, headers) => {
-    if (hasHeader(headers, "expect-ct")) return null
-    // Don't flag if the site doesn't use HTTPS
-    return "Expect-CT header is not present. This header helps detect misissued certificates."
-  },
+  // expect-ct-missing: removed (Expect-CT deprecated, removed from Chrome 2022, not enforced by any browser)
 
   "timing-allow-origin-wide": (_url, headers) => {
     const tao = h(headers, "timing-allow-origin")
