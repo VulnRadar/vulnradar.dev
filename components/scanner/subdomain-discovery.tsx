@@ -31,7 +31,7 @@ const SOURCE_COLORS: Record<string, string> = {
   hackertarget: "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20",
   "subdomain.center": "bg-violet-500/10 text-violet-600 dark:text-violet-400 border-violet-500/20",
   rapiddns: "bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 border-cyan-500/20",
-  "brute-force": "bg-muted text-muted-foreground border-border",
+
 }
 
 export function SubdomainDiscovery({ url, onScanSubdomain }: SubdomainDiscoveryProps) {
@@ -74,7 +74,7 @@ export function SubdomainDiscovery({ url, onScanSubdomain }: SubdomainDiscoveryP
             <div>
               <h3 className="text-sm font-semibold text-foreground">Subdomain Discovery</h3>
               <p className="text-xs text-muted-foreground">
-                Find related subdomains using CT logs, DNS datasets, and brute-force
+                Find related subdomains using CT logs and passive DNS datasets
               </p>
             </div>
           </div>
@@ -104,7 +104,7 @@ export function SubdomainDiscovery({ url, onScanSubdomain }: SubdomainDiscoveryP
           <div className="text-center">
             <p className="text-sm font-medium text-foreground">Discovering subdomains...</p>
             <p className="text-xs text-muted-foreground mt-1">
-              Querying crt.sh, HackerTarget, RapidDNS, subdomain.center, and 50+ common prefixes
+              Querying crt.sh, HackerTarget, RapidDNS, and subdomain.center
             </p>
           </div>
         </div>
