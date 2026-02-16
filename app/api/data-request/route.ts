@@ -34,7 +34,6 @@ export async function GET() {
       data: result.rows[0].data,
     })
   } catch (error) {
-    console.error("[v0] Failed to fetch data request info:", error)
     return NextResponse.json({ hasData: false, canDownloadNew: true, lastDownloadAt: null })
   }
 }
@@ -113,7 +112,6 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ success: true, data: exportData })
   } catch (error) {
-    console.error("[v0] Failed to export data:", error)
     return NextResponse.json({ error: "Failed to export data" }, { status: 500 })
   }
 }
