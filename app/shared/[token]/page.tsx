@@ -9,6 +9,7 @@ import {
   ExternalLink,
   User,
   RotateCcw,
+  MessageSquare,
 } from "lucide-react"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { Button } from "@/components/ui/button"
@@ -29,6 +30,7 @@ export default function SharedScanPage() {
   const [result, setResult] = useState<ScanResult | null>(null)
   const [scannedBy, setScannedBy] = useState("")
   const [scannedByAvatar, setScannedByAvatar] = useState<string | null>(null)
+  const [scanNotes, setScanNotes] = useState("")
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [selectedIssue, setSelectedIssue] = useState<Vulnerability | null>(null)
@@ -46,6 +48,7 @@ export default function SharedScanPage() {
         setResult(data)
         setScannedBy(data.scannedBy || "")
         setScannedByAvatar(data.scannedByAvatar || null)
+        setScanNotes(data.notes || "")
       } catch {
         setError("Failed to load shared scan.")
       } finally {
@@ -156,6 +159,17 @@ export default function SharedScanPage() {
 
                 {/* Subdomain discovery */}
                 <SubdomainDiscovery url={result.url} />
+
+                {/* Notes (read-only) */}
+                {scanNotes && (
+                  <div className="rounded-xl border border-border/40 bg-card/30 backdrop-blur-sm p-4">
+                    <div className="flex items-center gap-2 mb-3">
+                      <MessageSquare className="h-4 w-4 text-muted-foreground" />
+                      <h3 className="text-sm font-medium text-foreground">Notes</h3>
+                    </div>
+                    <p className="text-sm text-muted-foreground whitespace-pre-wrap">{scanNotes}</p>
+                  </div>
+                )}
 
                 {/* Results list */}
                 {result.findings.length > 0 ? (
