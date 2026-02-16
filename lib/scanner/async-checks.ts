@@ -150,21 +150,29 @@ async function checkDNSSecurity(domain: string): Promise<Vulnerability[]> {
       )
     }
 
-    // DKIM Check (check common selectors)
+    // DKIM Check -- check common selectors via TXT and CNAME records
     const selectors = ["default", "google", "selector1", "selector2", "k1", "s1", "dkim", "mail", "protonmail", "protonmail2", "protonmail3", "mxvault", "cm", "mandrill", "smtp", "zendesk1", "zendesk2", "em1", "em2", "s2"]
     let dkimFound = false
-    for (const sel of selectors) {
+    // Check all selectors in parallel for speed
+    const dkimChecks = selectors.map(async (sel) => {
+      const dkimHost = `${sel}._domainkey.${domain}`
+      // Try TXT record first (standard DKIM)
       try {
-        const dkimRecords = await dns.resolveTxt(`${sel}._domainkey.${domain}`)
+        const dkimRecords = await dns.resolveTxt(dkimHost)
         const dkimFlat = dkimRecords.map((r) => r.join(""))
-        if (dkimFlat.some((r) => r.includes("v=DKIM1") || r.includes("p="))) {
-          dkimFound = true
-          break
-        }
-      } catch {
-        // Selector not found, try next
-      }
-    }
+        if (dkimFlat.some((r) => r.includes("v=DKIM1") || r.includes("p="))) return true
+      } catch { /* not found via TXT */ }
+      // Try CNAME record (ProtonMail, some providers delegate DKIM via CNAME)
+      try {
+        const cnameRecords = await dns.resolveCname(dkimHost)
+        if (cnameRecords.length > 0) return true
+      } catch { /* not found via CNAME */ }
+      return false
+    })
+    try {
+      const results = await Promise.all(dkimChecks)
+      dkimFound = results.some((r) => r)
+    } catch { /* ignore */ }
     if (!dkimFound) {
       findings.push(
         makeVuln(

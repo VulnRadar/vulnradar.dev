@@ -1,14 +1,28 @@
 import { Header } from "@/components/scanner/header"
 import { Footer } from "@/components/scanner/footer"
-import { Newspaper, Zap, Shield, Users, Tag, List, RefreshCw, Lock, Gauge, MessageSquare, Sparkles, Eye, ShieldCheck, Target, Brain, AlertTriangle, Search, Bell, Heart, Layout, Mail, CheckCircle, Trash2, Camera, Crown, UserCheck, Key, BellRing, ChevronRight, BadgeCheck, Globe, Share2, Fingerprint, Smartphone, FileText, ScanSearch, Filter, Sun, Radar, Network, ShieldOff, FileDown, FileSpreadsheet, Pencil, Activity, Link2, BarChart3, Bug, ShieldAlert, Database, ServerCrash, Columns3 } from "lucide-react"
+import { Newspaper, Zap, Shield, Users, Tag, List, RefreshCw, Lock, Gauge, MessageSquare, Sparkles, Eye, ShieldCheck, Target, Brain, AlertTriangle, Search, Bell, Heart, Layout, Mail, CheckCircle, Trash2, Camera, Crown, UserCheck, Key, BellRing, ChevronRight, BadgeCheck, Globe, Share2, Fingerprint, Smartphone, FileText, ScanSearch, Filter, Sun, Radar, Network, ShieldOff, FileDown, FileSpreadsheet, Pencil, Activity, Link2, BarChart3, Bug, ShieldAlert, Database, ServerCrash, Columns3, Fingerprint as FingerprintIcon, Crosshair, FileSearch } from "lucide-react"
 import { APP_NAME, TOTAL_CHECKS_LABEL } from "@/lib/constants"
 
 const CHANGELOG = [
   {
+    version: "1.6.3",
+    date: "February 16, 2026",
+    title: "Scanner Accuracy Overhaul -- False Positives, DKIM Detection & Body Limits",
+    highlights: true,
+    changes: [
+      { icon: Crosshair, label: "API Key Detection Overhaul", desc: "Completely rewrote the hardcoded secrets scanner to eliminate false positives. Removed 25+ overly broad patterns that matched UUIDs (Postmark), any hex string near a brand name (Cloudflare, Heroku, Vercel, Netlify, Datadog, etc.), public JWT tokens (Supabase anon keys), and random digit sequences (Telegram). Only high-confidence prefixed patterns remain (e.g., sk_live_, ghp_, SG., AIzaSy). Database URI checks now require user:password@host format. Added automatic filtering of placeholder values (example, test_, dummy, xxxx) and localhost URIs." },
+      { icon: Radar, label: "DKIM CNAME Detection", desc: "Fixed DKIM detection for ProtonMail and other providers that use CNAME-delegated DKIM records instead of inline TXT records. The scanner now checks both dns.resolveTxt() and dns.resolveCname() for each selector, and runs all selector checks in parallel for faster results. This resolves false 'No DKIM Records Found' warnings for ProtonMail, Fastmail, and similar providers." },
+      { icon: FileSearch, label: "security.txt Fallback Fix", desc: "Fixed the security.txt scanner to properly fall back to /security.txt when /.well-known/security.txt returns a 200 response with non-security.txt content (e.g., an HTML page from Cloudflare or Next.js). Added a static /security.txt file in the public directory as a reliable fallback alongside the .well-known route." },
+      { icon: ServerCrash, label: "Body Size Limit Reduced to 1MB", desc: "Lowered the maximum response body size from 2MB to 1MB for both the main scanner and demo scanner. The previous 2MB limit was still causing crashes on certain heavy websites. All security-relevant HTML content (meta tags, forms, inline scripts, framework fingerprints) lives in the first 100-500KB of any page." },
+      { icon: Search, label: "Subdomain List Trimmed to 50", desc: "Reduced the brute-force subdomain wordlist from 150+ entries to the 50 most impactful prefixes (www, mail, api, admin, dev, staging, cdn, etc.). Passive sources (crt.sh, HackerTarget, RapidDNS, subdomain.center) handle extended discovery. Updated the UI loading text to reflect '50+ common prefixes'." },
+      { icon: FileText, label: "Doc Page Detection", desc: "Added automatic detection of documentation and example pages. The secrets scanner now skips pages that contain 'documentation', 'example', and 'api' together, preventing false positives on API docs that show example keys and configuration snippets." },
+    ],
+  },
+  {
     version: "1.6.2",
     date: "February 15, 2026",
     title: "Security Hardening, Crash Prevention & Scanner Accuracy Improvements",
-    highlights: true,
+    highlights: false,
     changes: [
       { icon: ServerCrash, label: "Scan Crash Prevention", desc: "Fixed a critical issue where scanning certain websites would crash the entire server for all users. Response bodies are now streamed with a 2MB size limit instead of reading the full body into memory. Sync checks are capped at 1MB to prevent catastrophic regex backtracking, and async checks (DNS, TLS, live-fetch) are wrapped in a 20-second timeout." },
       { icon: Shield, label: "Demo Scanner Hardened", desc: "Applied the same OOM and timeout protections to the demo scanner. Previously, unauthenticated users could crash the server by scanning a site with a massive response body through the demo page." },
