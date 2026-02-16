@@ -34,20 +34,27 @@ const SOURCE_COLORS: Record<string, string> = {
   "brute-force": "bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20",
 }
 
-function getStatusDotColor(statusCode?: number): string {
-  if (!statusCode) return "bg-muted-foreground/30"
-  if (statusCode >= 200 && statusCode < 300) return "bg-emerald-500"
-  if (statusCode >= 300 && statusCode < 400) return "bg-blue-500"
-  if (statusCode >= 400 && statusCode < 500) return "bg-amber-500"
-  return "bg-red-500" // 5xx
+// Tailwind safelist: bg-emerald-500 bg-blue-500 bg-amber-500 bg-red-500 text-emerald-600 text-blue-600 text-amber-600 text-red-600 dark:text-emerald-400 dark:text-blue-400 dark:text-amber-400 dark:text-red-400
+const STATUS_DOT: Record<string, string> = {
+  gray: "bg-muted-foreground/30",
+  green: "bg-emerald-500",
+  blue: "bg-blue-500",
+  amber: "bg-amber-500",
+  red: "bg-red-500",
 }
-
-function getStatusTextColor(statusCode?: number): string {
-  if (!statusCode) return "text-muted-foreground"
-  if (statusCode >= 200 && statusCode < 300) return "text-emerald-600 dark:text-emerald-400"
-  if (statusCode >= 300 && statusCode < 400) return "text-blue-600 dark:text-blue-400"
-  if (statusCode >= 400 && statusCode < 500) return "text-amber-600 dark:text-amber-400"
-  return "text-red-600 dark:text-red-400"
+const STATUS_TEXT: Record<string, string> = {
+  gray: "text-muted-foreground",
+  green: "text-emerald-600 dark:text-emerald-400",
+  blue: "text-blue-600 dark:text-blue-400",
+  amber: "text-amber-600 dark:text-amber-400",
+  red: "text-red-600 dark:text-red-400",
+}
+function statusBucket(code?: number): string {
+  if (!code) return "gray"
+  if (code >= 200 && code < 300) return "green"
+  if (code >= 300 && code < 400) return "blue"
+  if (code >= 400 && code < 500) return "amber"
+  return "red"
 }
 
 export function SubdomainDiscovery({ url, onScanSubdomain }: SubdomainDiscoveryProps) {
@@ -223,7 +230,7 @@ function SubdomainRow({
 }) {
   return (
     <div className="flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-muted/50 transition-colors group">
-      <span className={cn("w-1.5 h-1.5 rounded-full shrink-0", getStatusDotColor(sub.statusCode))} />
+      <span className={cn("w-1.5 h-1.5 rounded-full shrink-0", STATUS_DOT[statusBucket(sub.statusCode)])} />
       <span className="text-xs font-mono text-foreground truncate">
         {sub.subdomain}
       </span>
@@ -243,7 +250,7 @@ function SubdomainRow({
       </div>
       <span className="flex-1" />
       {sub.statusCode && (
-        <span className={cn("text-[10px] font-mono", getStatusTextColor(sub.statusCode))}>
+        <span className={cn("text-[10px] font-mono", STATUS_TEXT[statusBucket(sub.statusCode)])}>
           {sub.statusCode}
         </span>
       )}
