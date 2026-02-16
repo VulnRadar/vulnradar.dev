@@ -49,8 +49,8 @@ export async function POST(request: Request) {
     )
     const team = teamRes.rows[0]
     await client.query(
-      "INSERT INTO team_members (team_id, user_id, role) VALUES ($1, $2, TEAM_ROLES.OWNER)",
-      [team.id, session.userId],
+      "INSERT INTO team_members (team_id, user_id, role) VALUES ($1, $2, $3)",
+      [team.id, session.userId, TEAM_ROLES.OWNER],
     )
     await client.query("COMMIT")
     return NextResponse.json({ team: { ...team, role: TEAM_ROLES.OWNER, member_count: 1 } })
