@@ -3,6 +3,14 @@ import { getSession } from "@/lib/auth"
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 import dns from "dns/promises"
 
+// 30 highest-yield brute-force prefixes (DNS-only, no HTTP check until merged)
+const BRUTE_FORCE_PREFIXES = [
+  "www", "mail", "smtp", "webmail", "api", "app", "dev", "staging", "test",
+  "admin", "panel", "portal", "cdn", "static", "media", "blog", "shop",
+  "store", "docs", "help", "support", "status", "auth", "login", "vpn",
+  "ns1", "ns2", "m", "git", "ftp",
+]
+
 interface DiscoveredSubdomain {
   subdomain: string
   url: string
@@ -94,15 +102,21 @@ export async function POST(request: NextRequest) {
   addPassive(subdomainCenterResults, "subdomain.center")
   addPassive(rapidDnsResults, "rapiddns")
 
-  console.log("[v0] Subdomain discovery for:", rootDomain)
-  console.log("[v0] crt.sh:", ctResults.length, "results, sample:", ctResults.slice(0, 3))
-  console.log("[v0] hackertarget:", hackerTargetResults.length, "results, sample:", hackerTargetResults.slice(0, 3))
-  console.log("[v0] subdomain.center:", subdomainCenterResults.length, "results, sample:", subdomainCenterResults.slice(0, 3))
-  console.log("[v0] rapiddns:", rapidDnsResults.length, "results, sample:", rapidDnsResults.slice(0, 3))
-  console.log("[v0] Merged passive map size:", passiveMap.size)
+  // Brute-force DNS: check 30 common prefixes in parallel (fast, DNS-only)
+  const bruteResults = await batchDnsResolve(
+    BRUTE_FORCE_PREFIXES.map((p) => `${p}.${rootDomain}`),
+  )
+  for (const sub of bruteResults) {
+    if (!passiveMap.has(sub)) {
+      passiveMap.set(sub, ["brute-force"])
+    } else {
+      const existing = passiveMap.get(sub)!
+      if (!existing.includes("brute-force")) existing.push("brute-force")
+    }
+  }
 
-  // DNS resolution check -- filter dead entries before HTTP checks (cap at 100)
-  const passiveEntries = Array.from(passiveMap.entries()).slice(0, 100)
+  // DNS resolution check -- filter dead entries before HTTP checks (cap at 150)
+  const passiveEntries = Array.from(passiveMap.entries()).slice(0, 150)
   const dnsResolved = await batchDnsResolve(passiveEntries.map(([sub]) => sub))
 
   // Only HTTP-check subdomains with DNS records
@@ -140,6 +154,7 @@ export async function POST(request: NextRequest) {
       hackertarget: hackerTargetResults.length,
       "subdomain.center": subdomainCenterResults.length,
       rapiddns: rapidDnsResults.length,
+      "brute-force": bruteResults.size,
     },
   })
 }
