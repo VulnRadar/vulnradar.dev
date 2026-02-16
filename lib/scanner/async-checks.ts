@@ -194,28 +194,56 @@ async function checkDNSSecurity(domain: string): Promise<Vulnerability[]> {
     // DNS resolution failed entirely -- domain may not have TXT records
   }
 
-  // DNSSEC Check
+  // DNSSEC Check -- use Google DNS-over-HTTPS with DNSSEC validation
   try {
-    // Check for DNSKEY records which indicate DNSSEC is enabled
-    await dns.resolve(domain, "DNSKEY" as any)
-    // If we get here, DNSSEC records exist
+    let dnssecEnabled = false
+    // Method 1: Query Google DoH API which returns the AD (Authenticated Data) flag
+    try {
+      const dohRes = await fetch(
+        `https://dns.google/resolve?name=${encodeURIComponent(domain)}&type=A&do=1`,
+        { signal: AbortSignal.timeout(6000) },
+      )
+      if (dohRes.ok) {
+        const data = await dohRes.json()
+        // AD flag (bit 5) = DNSSEC validated by Google's resolver
+        if (data.AD === true) dnssecEnabled = true
+      }
+    } catch { /* DoH failed, try fallback */ }
+
+    // Method 2: Try Cloudflare DoH as fallback
+    if (!dnssecEnabled) {
+      try {
+        const cfRes = await fetch(
+          `https://cloudflare-dns.com/dns-query?name=${encodeURIComponent(domain)}&type=A&do=true`,
+          { signal: AbortSignal.timeout(6000), headers: { Accept: "application/dns-json" } },
+        )
+        if (cfRes.ok) {
+          const data = await cfRes.json()
+          if (data.AD === true) dnssecEnabled = true
+        }
+      } catch { /* fallback also failed */ }
+    }
+
+    if (!dnssecEnabled) {
+      findings.push(
+        makeVuln(
+          "DNSSEC Not Enabled",
+          "info",
+          "configuration",
+          "DNSSEC does not appear to be enabled for this domain.",
+          `DNSSEC validation (AD flag) not set for ${domain} via Google and Cloudflare DNS resolvers.`,
+          "Without DNSSEC, DNS responses can be spoofed (DNS cache poisoning), redirecting users to malicious servers.",
+          "DNSSEC adds cryptographic signatures to DNS records, allowing resolvers to verify that responses haven't been tampered with. It's typically configured through your domain registrar.",
+          [
+            "Enable DNSSEC through your domain registrar.",
+            "Most registrars (Cloudflare, Google Domains, Namecheap) support one-click DNSSEC activation.",
+            "Verify with: dig +dnssec yourdomain.com",
+          ],
+        ),
+      )
+    }
   } catch {
-    findings.push(
-      makeVuln(
-        "DNSSEC Not Enabled",
-        "info",
-        "configuration",
-        "DNSSEC does not appear to be enabled for this domain.",
-        `No DNSKEY records found for ${domain}.`,
-        "Without DNSSEC, DNS responses can be spoofed (DNS cache poisoning), redirecting users to malicious servers.",
-        "DNSSEC adds cryptographic signatures to DNS records, allowing resolvers to verify that responses haven't been tampered with. It's typically configured through your domain registrar.",
-        [
-          "Enable DNSSEC through your domain registrar.",
-          "Most registrars (Cloudflare, Google Domains, Namecheap) support one-click DNSSEC activation.",
-          "Verify with: dig +dnssec yourdomain.com",
-        ],
-      ),
-    )
+    // DNSSEC check failed entirely, skip
   }
 
   return findings
@@ -476,69 +504,24 @@ async function checkLiveFetch(url: string): Promise<Vulnerability[]> {
         "Accept": "text/plain, text/*;q=0.9, */*;q=0.8",
       },
     }
-    let secTxtRes = await fetch(`${origin}/.well-known/security.txt`, secFetchOpts)
-    let secBody = secTxtRes.ok ? await secTxtRes.text() : ""
-    // Fall back to /security.txt if first failed or returned non-security.txt content (e.g. HTML page)
-    if (!secTxtRes.ok || (!secBody.includes("Contact:") && !secBody.includes("contact:"))) {
-      secTxtRes = await fetch(`${origin}/security.txt`, secFetchOpts)
-      secBody = secTxtRes.ok ? await secTxtRes.text() : ""
+    // Try /.well-known/security.txt first, then /security.txt as fallback
+    let secTxtFound = false
+    const wellKnownRes = await fetch(`${origin}/.well-known/security.txt`, secFetchOpts)
+    if (wellKnownRes.ok) {
+      secTxtFound = true
+    } else {
+      const rootRes = await fetch(`${origin}/security.txt`, secFetchOpts)
+      if (rootRes.ok) secTxtFound = true
     }
 
-    if (secTxtRes.ok) {
-      // Validate it looks like a real security.txt
-      if (secBody.includes("Contact:") || secBody.includes("contact:")) {
-        // Check for expiry
-        const expiresMatch = secBody.match(/Expires:\s*(.+)/i)
-        if (expiresMatch) {
-          const expiryDate = new Date(expiresMatch[1].trim())
-          if (!isNaN(expiryDate.getTime()) && expiryDate < new Date()) {
-            findings.push(
-              makeVuln(
-                "Expired security.txt",
-                "low",
-                "configuration",
-                "The security.txt file has an expired Expires field.",
-                `Expires: ${expiresMatch[1].trim()} (expired)`,
-                "An expired security.txt may indicate it's no longer maintained, reducing trust from security researchers trying to report vulnerabilities.",
-                "RFC 9116 requires security.txt to include an Expires field. Keeping it current signals that the organization actively handles security reports.",
-                ["Update the Expires field in your security.txt to a future date."],
-              ),
-            )
-          }
-        }
-      } else {
-        // Response was OK but doesn't look like security.txt
-        findings.push(
-          makeVuln(
-            "Missing security.txt",
-            "info",
-            "configuration",
-            "No valid security.txt file was found at /.well-known/security.txt.",
-            `Fetched ${origin}/.well-known/security.txt but response does not contain Contact: field.`,
-            "Security researchers who find vulnerabilities may not know how to responsibly report them to your organization.",
-            "security.txt (RFC 9116) is a standard that helps security researchers find the right contact for responsible disclosure. It should be placed at /.well-known/security.txt.",
-            [
-              "Create a security.txt file at /.well-known/security.txt.",
-              "Include at minimum: Contact, Expires, and optionally Policy and Preferred-Languages.",
-            ],
-            [
-              {
-                label: "security.txt",
-                language: "text",
-                code: "Contact: mailto:security@yourdomain.com\nExpires: 2026-12-31T23:59:59z\nPreferred-Languages: en\nPolicy: https://yourdomain.com/security-policy",
-              },
-            ],
-          ),
-        )
-      }
-    } else {
+    if (!secTxtFound) {
       findings.push(
         makeVuln(
           "Missing security.txt",
           "info",
           "configuration",
           "No security.txt file was found at /.well-known/security.txt or /security.txt.",
-          `Attempted to fetch ${origin}/.well-known/security.txt and ${origin}/security.txt -- both returned non-200 status.`,
+          `Both ${origin}/.well-known/security.txt and ${origin}/security.txt returned non-200 status.`,
           "Security researchers who find vulnerabilities may not know how to responsibly report them to your organization.",
           "security.txt (RFC 9116) is a standard that helps security researchers find the right contact for responsible disclosure.",
           [
