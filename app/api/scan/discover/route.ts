@@ -3,24 +3,6 @@ import { getSession } from "@/lib/auth"
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 import dns from "dns/promises"
 
-// ~50 most common subdomain prefixes (passive sources handle the rest)
-const COMMON_SUBDOMAINS = [
-  // Core infrastructure
-  "www", "mail", "smtp", "mx", "email", "webmail", "api", "app", "web", "ftp",
-  // Environments
-  "dev", "staging", "test", "qa", "sandbox", "beta", "demo", "prod",
-  // Admin & management
-  "admin", "panel", "cpanel", "portal", "dashboard", "cms",
-  // CDN & assets
-  "cdn", "assets", "static", "media", "img", "files", "storage",
-  // Services
-  "blog", "shop", "store", "docs", "help", "support", "status",
-  // Auth & networking
-  "auth", "login", "sso", "vpn", "ns1", "ns2", "m",
-  // DevOps
-  "git", "ci", "registry",
-]
-
 interface DiscoveredSubdomain {
   subdomain: string
   url: string
@@ -81,7 +63,7 @@ export async function POST(request: NextRequest) {
 
   const rootDomain = extractRootDomain(domain)
 
-  // Run all data sources in parallel
+  // Run all passive data sources in parallel
   const [ctResults, hackerTargetResults, subdomainCenterResults, rapidDnsResults] =
     await Promise.all([
       fetchCrtSh(rootDomain),
@@ -97,7 +79,6 @@ export async function POST(request: NextRequest) {
     for (const s of subs) {
       const clean = s.toLowerCase().trim()
       if (!clean || !clean.endsWith(`.${rootDomain}`)) continue
-      // Filter out wildcards and invalid entries
       if (clean.includes("*") || clean.includes(" ") || clean.includes("@")) continue
       const existing = passiveMap.get(clean)
       if (existing) {
@@ -113,23 +94,21 @@ export async function POST(request: NextRequest) {
   addPassive(subdomainCenterResults, "subdomain.center")
   addPassive(rapidDnsResults, "rapiddns")
 
-  // DNS resolution check for passive subdomains (filter dead entries before HTTP checks)
-  const passiveEntries = Array.from(passiveMap.entries()).slice(0, 100) // cap at 100
+  // DNS resolution check -- filter dead entries before HTTP checks (cap at 100)
+  const passiveEntries = Array.from(passiveMap.entries()).slice(0, 100)
   const dnsResolved = await batchDnsResolve(passiveEntries.map(([sub]) => sub))
 
-  // Only HTTP-check subdomains that have DNS records
+  // Only HTTP-check subdomains with DNS records
   const passiveWithDns = passiveEntries.filter(([sub]) => dnsResolved.has(sub))
-
-  // Check reachability for DNS-resolved passive subdomains
-  const passiveReachability = await batchHttpCheck(
+  const reachability = await batchHttpCheck(
     passiveWithDns.map(([sub]) => sub),
-    20, // concurrency limit
+    25, // concurrency
   )
 
-  // Build passive results
-  const passiveResults: DiscoveredSubdomain[] = passiveEntries.map(([sub, sources]) => {
+  // Build results
+  const results: DiscoveredSubdomain[] = passiveEntries.map(([sub, sources]) => {
     const hasDns = dnsResolved.has(sub)
-    const httpResult = passiveReachability.get(sub)
+    const httpResult = reachability.get(sub)
     return {
       subdomain: sub,
       url: `https://${sub}`,
@@ -139,48 +118,7 @@ export async function POST(request: NextRequest) {
     }
   })
 
-  // Common prefix brute-force (also DNS-check first, then HTTP-check)
-  const commonSubdomains = COMMON_SUBDOMAINS.map((p) => `${p}.${rootDomain}`)
-    .filter((sub) => !passiveMap.has(sub)) // skip already found
-
-  const commonDnsResolved = await batchDnsResolve(commonSubdomains)
-  const commonWithDns = commonSubdomains.filter((sub) => commonDnsResolved.has(sub))
-  const commonReachability = await batchHttpCheck(commonWithDns, 30)
-
-  const commonResults: DiscoveredSubdomain[] = commonWithDns.map((sub) => {
-    const httpResult = commonReachability.get(sub)
-    return {
-      subdomain: sub,
-      url: `https://${sub}`,
-      reachable: !!httpResult?.reachable,
-      statusCode: httpResult?.statusCode,
-      sources: ["brute-force"],
-    }
-  })
-
-  // Merge & deduplicate
-  const allSubdomains = new Map<string, DiscoveredSubdomain>()
-
-  for (const sub of passiveResults) {
-    allSubdomains.set(sub.subdomain, sub)
-  }
-
-  for (const sub of commonResults) {
-    const existing = allSubdomains.get(sub.subdomain)
-    if (existing) {
-      if (!existing.sources.includes("brute-force")) {
-        existing.sources.push("brute-force")
-      }
-      if (sub.reachable && !existing.reachable) {
-        existing.reachable = true
-        existing.statusCode = sub.statusCode
-      }
-    } else {
-      allSubdomains.set(sub.subdomain, sub)
-    }
-  }
-
-  const results = Array.from(allSubdomains.values()).sort((a, b) => {
+  results.sort((a, b) => {
     if (a.reachable !== b.reachable) return a.reachable ? -1 : 1
     return a.subdomain.localeCompare(b.subdomain)
   })
@@ -195,7 +133,6 @@ export async function POST(request: NextRequest) {
       hackertarget: hackerTargetResults.length,
       "subdomain.center": subdomainCenterResults.length,
       rapiddns: rapidDnsResults.length,
-      "brute-force": commonResults.length,
     },
   })
 }
@@ -206,7 +143,7 @@ async function fetchCrtSh(domain: string): Promise<string[]> {
   try {
     const res = await fetch(
       `https://crt.sh/?q=%25.${encodeURIComponent(domain)}&output=json`,
-      { signal: AbortSignal.timeout(15000) },
+      { signal: AbortSignal.timeout(12000) },
     )
     if (!res.ok) return []
 
@@ -235,7 +172,7 @@ async function fetchHackerTarget(domain: string): Promise<string[]> {
   try {
     const res = await fetch(
       `https://api.hackertarget.com/hostsearch/?q=${encodeURIComponent(domain)}`,
-      { signal: AbortSignal.timeout(10000) },
+      { signal: AbortSignal.timeout(8000) },
     )
     if (!res.ok) return []
 
@@ -259,7 +196,7 @@ async function fetchSubdomainCenter(domain: string): Promise<string[]> {
   try {
     const res = await fetch(
       `https://api.subdomain.center/?domain=${encodeURIComponent(domain)}`,
-      { signal: AbortSignal.timeout(10000) },
+      { signal: AbortSignal.timeout(8000) },
     )
     if (!res.ok) return []
 
@@ -278,12 +215,11 @@ async function fetchRapidDns(domain: string): Promise<string[]> {
   try {
     const res = await fetch(
       `https://rapiddns.io/subdomain/${encodeURIComponent(domain)}?full=1`,
-      { signal: AbortSignal.timeout(10000) },
+      { signal: AbortSignal.timeout(8000) },
     )
     if (!res.ok) return []
 
     const html = await res.text()
-    // Parse subdomain entries from the HTML table
     const regex = new RegExp(`([a-z0-9._-]+\\.${domain.replace(/\./g, "\\.")})`, "gi")
     const matches = html.match(regex) || []
     const names = new Set<string>()
@@ -313,22 +249,17 @@ async function batchDnsResolve(subdomains: string[]): Promise<Set<string>> {
           const addresses = await dns.resolve4(sub)
           if (addresses.length > 0) return sub
         } catch {
-          // Try AAAA (IPv6) as fallback
           try {
             const addresses = await dns.resolve6(sub)
             if (addresses.length > 0) return sub
-          } catch {
-            // No DNS record
-          }
+          } catch { /* no DNS */ }
         }
         return null
       }),
     )
 
     for (const r of results) {
-      if (r.status === "fulfilled" && r.value) {
-        resolved.add(r.value)
-      }
+      if (r.status === "fulfilled" && r.value) resolved.add(r.value)
     }
   }
 
@@ -351,16 +282,15 @@ async function batchHttpCheck(
           const r = await fetch(`https://${sub}`, {
             method: "HEAD",
             redirect: "follow",
-            signal: AbortSignal.timeout(5000),
+            signal: AbortSignal.timeout(4000),
           })
           return { sub, reachable: true, statusCode: r.status }
         } catch {
-          // Try HTTP as fallback
           try {
             const r = await fetch(`http://${sub}`, {
               method: "HEAD",
               redirect: "follow",
-              signal: AbortSignal.timeout(4000),
+              signal: AbortSignal.timeout(3000),
             })
             return { sub, reachable: true, statusCode: r.status }
           } catch {
