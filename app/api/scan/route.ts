@@ -186,30 +186,25 @@ export async function POST(request: NextRequest) {
       capturedHeaders[key] = value
     })
 
-    // Run synchronous checks + async checks (DNS, TLS, live-fetch) in parallel
-    // Limit body for sync checks to 1MB to prevent regex catastrophic backtracking
+    // Start async checks immediately (DNS, TLS, live-fetch) while running sync checks
+    const asyncPromise = runAsyncChecks(url)
+    const asyncTimeout = new Promise<Vulnerability[]>((resolve) => setTimeout(() => resolve([]), 15000))
+
+    // Run synchronous body/header checks (cap body at 1MB for regex safety)
     const bodyForChecks = responseBody.length > 1_000_000 ? responseBody.slice(0, 1_000_000) : responseBody
     const syncFindings: Vulnerability[] = []
     for (const check of allChecks) {
       try {
         const result = check(url, headers, bodyForChecks)
-        if (result) {
-          syncFindings.push(result)
-        }
-      } catch {
-        // Skip failed checks silently
-      }
+        if (result) syncFindings.push(result)
+      } catch { /* skip */ }
     }
 
+    // Await async checks (already running in parallel with sync)
     let asyncFindings: Vulnerability[] = []
     try {
-      // Wrap async checks in a 20s timeout so they don't hang the entire request
-      const asyncPromise = runAsyncChecks(url)
-      const timeoutPromise = new Promise<Vulnerability[]>((resolve) => setTimeout(() => resolve([]), 20000))
-      asyncFindings = await Promise.race([asyncPromise, timeoutPromise])
-    } catch {
-      // Non-fatal: don't fail the scan if async checks error
-    }
+      asyncFindings = await Promise.race([asyncPromise, asyncTimeout])
+    } catch { /* non-fatal */ }
 
     const findings = [...syncFindings, ...asyncFindings]
 
