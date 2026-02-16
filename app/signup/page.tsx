@@ -1,9 +1,10 @@
 "use client"
 
 import React from "react"
-import { useState } from "react"
+import { useState, useEffect, useRef } from "react"
 import Link from "next/link"
 import Image from "next/image"
+import Script from "next/script"
 import { Loader2, Eye, EyeOff, Mail, CheckCircle2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -20,6 +21,28 @@ export default function SignupPage() {
   const [error, setError] = useState("")
   const [loading, setLoading] = useState(false)
   const [signupSuccess, setSignupSuccess] = useState(false)
+  const [turnstileToken, setTurnstileToken] = useState<string | null>(null)
+  const [scriptLoaded, setScriptLoaded] = useState(false)
+  const widgetRef = useRef<HTMLDivElement>(null)
+  const widgetIdRef = useRef<string | null>(null)
+
+  useEffect(() => {
+    if (!scriptLoaded || !widgetRef.current || widgetIdRef.current) return
+    const turnstile = (window as any).turnstile
+    if (!turnstile) return
+    try {
+      widgetIdRef.current = turnstile.render(widgetRef.current, {
+        sitekey: process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY,
+        theme: "dark",
+        callback: (token: string) => setTurnstileToken(token),
+      })
+    } catch {}
+    return () => {
+      if (widgetIdRef.current && turnstile) {
+        try { turnstile.remove(widgetIdRef.current); widgetIdRef.current = null } catch {}
+      }
+    }
+  }, [scriptLoaded])
 
   function getPasswordStrength(pw: string): { level: number; label: string; color: string } {
     if (!pw) return { level: 0, label: "", color: "" }
@@ -58,13 +81,18 @@ export default function SignupPage() {
       return
     }
 
+    if (!turnstileToken) {
+      setError("Please complete the captcha verification.")
+      return
+    }
+
     setLoading(true)
 
     try {
       const res = await fetch("/api/auth/signup", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password, name: name.trim() }),
+        body: JSON.stringify({ email, password, name: name.trim(), turnstileToken }),
       })
 
       const data = await res.json()
@@ -236,7 +264,9 @@ export default function SignupPage() {
             </div>
           )}
 
-          <Button type="submit" disabled={loading} className="h-10 w-full mt-2">
+          <div ref={widgetRef} className="flex justify-center" />
+
+          <Button type="submit" disabled={loading || !turnstileToken} className="h-10 w-full mt-2">
             {loading ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -256,6 +286,11 @@ export default function SignupPage() {
         </form>
         </CardContent>
       </Card>
+      <Script
+        src="https://challenges.cloudflare.com/turnstile/v0/api.js"
+        strategy="afterInteractive"
+        onLoad={() => setScriptLoaded(true)}
+      />
     </div>
   )
 }

@@ -9,9 +9,28 @@ import crypto from "crypto"
 import { APP_URL, ERROR_MESSAGES, SUCCESS_MESSAGES, EMAIL_VERIFICATION_TOKEN_LIFETIME, PATTERNS } from "@/lib/constants"
 
 export const POST = withErrorHandling(async (request: NextRequest) => {
-  const parsed = await parseBody<{ email: string; password: string; name: string }>(request)
+  const parsed = await parseBody<{ email: string; password: string; name: string; turnstileToken?: string }>(request)
   if (!parsed.success) return ApiResponse.badRequest(parsed.error)
-  const { email, password, name } = parsed.data
+  const { email, password, name, turnstileToken } = parsed.data
+
+  // Verify Turnstile captcha
+  if (!turnstileToken) {
+    return ApiResponse.badRequest("Captcha verification required.")
+  }
+  const ip = await getClientIp()
+  const turnstileRes = await fetch("https://challenges.cloudflare.com/turnstile/v0/siteverify", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      secret: process.env.TURNSTILE_SECRET_KEY,
+      response: turnstileToken,
+      remoteip: ip,
+    }),
+  })
+  const turnstileData = await turnstileRes.json()
+  if (!turnstileData.success) {
+    return ApiResponse.badRequest("Captcha verification failed. Please try again.")
+  }
 
   // Validate input using centralized validators
   const validationError = Validate.multiple([
@@ -24,8 +43,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   ])
   if (validationError) return ApiResponse.badRequest(validationError)
 
-  // Rate limit by IP
-  const ip = await getClientIp()
+  // Rate limit by IP (ip already resolved above for Turnstile)
   const rl = await checkRateLimit({ key: `signup:${ip}`, ...RATE_LIMITS.signup })
   if (!rl.allowed) {
     const minutes = Math.ceil(rl.retryAfterSeconds / 60)
