@@ -94,6 +94,13 @@ export async function POST(request: NextRequest) {
   addPassive(subdomainCenterResults, "subdomain.center")
   addPassive(rapidDnsResults, "rapiddns")
 
+  console.log("[v0] Subdomain discovery for:", rootDomain)
+  console.log("[v0] crt.sh:", ctResults.length, "results, sample:", ctResults.slice(0, 3))
+  console.log("[v0] hackertarget:", hackerTargetResults.length, "results, sample:", hackerTargetResults.slice(0, 3))
+  console.log("[v0] subdomain.center:", subdomainCenterResults.length, "results, sample:", subdomainCenterResults.slice(0, 3))
+  console.log("[v0] rapiddns:", rapidDnsResults.length, "results, sample:", rapidDnsResults.slice(0, 3))
+  console.log("[v0] Merged passive map size:", passiveMap.size)
+
   // DNS resolution check -- filter dead entries before HTTP checks (cap at 100)
   const passiveEntries = Array.from(passiveMap.entries()).slice(0, 100)
   const dnsResolved = await batchDnsResolve(passiveEntries.map(([sub]) => sub))
@@ -143,7 +150,10 @@ async function fetchCrtSh(domain: string): Promise<string[]> {
   try {
     const res = await fetch(
       `https://crt.sh/?q=%25.${encodeURIComponent(domain)}&output=json`,
-      { signal: AbortSignal.timeout(12000) },
+      {
+        signal: AbortSignal.timeout(15000),
+        headers: { "User-Agent": "Mozilla/5.0 (compatible; VulnRadar/1.0)", Accept: "application/json" },
+      },
     )
     if (!res.ok) return []
 
@@ -172,7 +182,10 @@ async function fetchHackerTarget(domain: string): Promise<string[]> {
   try {
     const res = await fetch(
       `https://api.hackertarget.com/hostsearch/?q=${encodeURIComponent(domain)}`,
-      { signal: AbortSignal.timeout(8000) },
+      {
+        signal: AbortSignal.timeout(10000),
+        headers: { "User-Agent": "Mozilla/5.0 (compatible; VulnRadar/1.0)" },
+      },
     )
     if (!res.ok) return []
 
@@ -196,7 +209,10 @@ async function fetchSubdomainCenter(domain: string): Promise<string[]> {
   try {
     const res = await fetch(
       `https://api.subdomain.center/?domain=${encodeURIComponent(domain)}`,
-      { signal: AbortSignal.timeout(8000) },
+      {
+        signal: AbortSignal.timeout(10000),
+        headers: { "User-Agent": "Mozilla/5.0 (compatible; VulnRadar/1.0)" },
+      },
     )
     if (!res.ok) return []
 
@@ -215,7 +231,10 @@ async function fetchRapidDns(domain: string): Promise<string[]> {
   try {
     const res = await fetch(
       `https://rapiddns.io/subdomain/${encodeURIComponent(domain)}?full=1`,
-      { signal: AbortSignal.timeout(8000) },
+      {
+        signal: AbortSignal.timeout(10000),
+        headers: { "User-Agent": "Mozilla/5.0 (compatible; VulnRadar/1.0)" },
+      },
     )
     if (!res.ok) return []
 
