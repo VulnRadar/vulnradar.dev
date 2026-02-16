@@ -469,13 +469,14 @@ async function checkLiveFetch(url: string): Promise<Vulnerability[]> {
       },
     }
     let secTxtRes = await fetch(`${origin}/.well-known/security.txt`, secFetchOpts)
-    // Fall back to /security.txt
-    if (!secTxtRes.ok) {
+    let secBody = secTxtRes.ok ? await secTxtRes.text() : ""
+    // Fall back to /security.txt if first failed or returned non-security.txt content (e.g. HTML page)
+    if (!secTxtRes.ok || (!secBody.includes("Contact:") && !secBody.includes("contact:"))) {
       secTxtRes = await fetch(`${origin}/security.txt`, secFetchOpts)
+      secBody = secTxtRes.ok ? await secTxtRes.text() : ""
     }
 
     if (secTxtRes.ok) {
-      const secBody = await secTxtRes.text()
       // Validate it looks like a real security.txt
       if (secBody.includes("Contact:") || secBody.includes("contact:")) {
         // Check for expiry
