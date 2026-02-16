@@ -5,10 +5,22 @@ import { APP_NAME, TOTAL_CHECKS_LABEL } from "@/lib/constants"
 
 const CHANGELOG = [
   {
+    version: "1.6.7",
+    date: "February 16, 2026",
+    title: "Scan Notes Visibility & Team Collaboration",
+    highlights: true,
+    changes: [
+      { icon: Eye, label: "Notes Visible to Team Members", desc: "Scan notes are now visible to all team members viewing a scan in the history page. Previously, the entire notes section was hidden unless you were the scan owner. Team members can now see notes to stay informed about scan context, known false positives, and remediation progress." },
+      { icon: Lock, label: "Owner-Only Edit Permissions", desc: "Only the original scan owner can add or edit notes. Team members see a read-only view with no edit/add buttons. The backend PATCH endpoint was already restricted to the owner via WHERE user_id, so this enforces the same rule on the frontend." },
+      { icon: Share2, label: "Notes on Shared Scans", desc: "Shared scan links now include notes in the API response and render them read-only on the shared scan page. Anyone with a share link can see the scan owner's notes, giving external reviewers full context about the scan findings." },
+      { icon: MessageSquare, label: "Empty State Messaging", desc: "Non-owners now see 'No notes for this scan.' instead of the owner-facing 'Click Add Note to annotate this scan.' prompt, making it clear that only the scan creator can add notes." },
+    ],
+  },
+  {
     version: "1.6.6",
     date: "February 16, 2026",
     title: "Full API Audit & Bug Fixes",
-    highlights: true,
+    highlights: false,
     changes: [
       { icon: Wrench, label: "Team Creation Fixed", desc: "Fixed a critical bug where creating a team would fail with a 500 error. The TEAM_ROLES.OWNER constant was embedded as literal text inside the SQL query instead of being passed as a parameterized value, causing Postgres to throw a column-not-found error." },
       { icon: FileDown, label: "Data Export Download Fixed", desc: "The data export download endpoint was querying for a non-existent 'status' column (WHERE status = 'completed') instead of using the 'downloaded_at' column that the main export route actually sets. This caused the download route to always return 404 even after a successful export." },
