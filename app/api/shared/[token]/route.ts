@@ -12,7 +12,7 @@ export async function GET(
   }
 
   const result = await pool.query(
-    `SELECT sh.url, sh.summary, sh.findings, sh.findings_count, sh.duration, sh.scanned_at, sh.response_headers, u.name as scanned_by, u.avatar_url as scanned_by_avatar
+    `SELECT sh.url, sh.summary, sh.findings, sh.findings_count, sh.duration, sh.scanned_at, sh.response_headers, sh.notes, u.name as scanned_by, u.avatar_url as scanned_by_avatar
      FROM scan_history sh
      JOIN users u ON sh.user_id = u.id
      WHERE sh.share_token = $1`,
@@ -32,6 +32,7 @@ export async function GET(
     summary: row.summary,
     findings: row.findings || [],
     responseHeaders: row.response_headers || undefined,
+    notes: row.notes || "",
     scannedBy: row.scanned_by || "Anonymous",
     scannedByAvatar: row.scanned_by_avatar || null,
   })
