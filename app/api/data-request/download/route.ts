@@ -11,8 +11,8 @@ export async function GET() {
 
   const result = await pool.query(
     `SELECT data FROM data_requests
-     WHERE user_id = $1 AND status = 'completed' AND data IS NOT NULL
-     ORDER BY requested_at DESC
+     WHERE user_id = $1 AND downloaded_at IS NOT NULL AND data IS NOT NULL
+     ORDER BY downloaded_at DESC
      LIMIT 1`,
     [session.userId],
   )
