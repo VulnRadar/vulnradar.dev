@@ -1,14 +1,25 @@
 import { Header } from "@/components/scanner/header"
 import { Footer } from "@/components/scanner/footer"
-import { Newspaper, Zap, Shield, Users, Tag, List, RefreshCw, Lock, Gauge, MessageSquare, Sparkles, Eye, ShieldCheck, Target, Brain, AlertTriangle, Search, Bell, Heart, Layout, Mail, CheckCircle, Trash2, Camera, Crown, UserCheck, Key, BellRing, ChevronRight, BadgeCheck, Globe, Share2, Fingerprint, Smartphone, FileText, ScanSearch, Filter, Sun, Radar, Network, ShieldOff, FileDown, FileSpreadsheet, Pencil, Activity, Link2, BarChart3, Bug, ShieldAlert, Database, ServerCrash, Columns3, Crosshair, FileSearch, Timer, Layers, GitMerge } from "lucide-react"
+import { Newspaper, Zap, Shield, Users, Tag, List, RefreshCw, Lock, Gauge, MessageSquare, Sparkles, Eye, ShieldCheck, Target, Brain, AlertTriangle, Search, Bell, Heart, Layout, Mail, CheckCircle, Trash2, Camera, Crown, UserCheck, Key, BellRing, ChevronRight, BadgeCheck, Globe, Share2, Fingerprint, Smartphone, FileText, ScanSearch, Filter, Sun, Radar, Network, ShieldOff, FileDown, FileSpreadsheet, Pencil, Activity, Link2, BarChart3, Bug, ShieldAlert, Database, ServerCrash, Columns3, Crosshair, FileSearch, Timer, Layers, GitMerge, Palette, ServerCog } from "lucide-react"
 import { APP_NAME, TOTAL_CHECKS_LABEL } from "@/lib/constants"
 
 const CHANGELOG = [
   {
+    version: "1.6.5",
+    date: "February 16, 2026",
+    title: "Subdomain Discovery Restored & Status-Coded Results",
+    highlights: true,
+    changes: [
+      { icon: Globe, label: "Brute-Force Restored with 150+ Prefixes", desc: "Re-added DNS brute-force subdomain discovery with 150+ common prefixes covering infrastructure (www, mail, smtp, ftp), environments (dev, staging, qa, sandbox), admin panels (admin, cpanel, portal), CDN/assets (cdn, static, media), services (blog, shop, docs, status), auth (sso, vpn, oauth), DevOps (git, jenkins, docker, k8s, registry), databases (db, mysql, redis, mongo), and business systems (crm, erp, billing, checkout). All 150+ DNS lookups run in a single parallel batch so total time is roughly the same as a single lookup." },
+      { icon: Palette, label: "Status-Coded Subdomain Results", desc: "Subdomain dots and status codes are now color-coded by HTTP response: green for 2xx (active), blue for 3xx (redirect), amber for 4xx (forbidden/not found), and red for 5xx (server error). Previously all reachable subdomains showed a green dot regardless of status code, making it hard to distinguish healthy services from blocked or erroring endpoints." },
+      { icon: ServerCog, label: "Passive Source Reliability", desc: "Added User-Agent headers and increased timeouts on all four passive sources (crt.sh 15s, HackerTarget 10s, subdomain.center 10s, RapidDNS 10s). Some sources were silently rejecting requests without a browser-like User-Agent, returning empty results." },
+    ],
+  },
+  {
     version: "1.6.4",
     date: "February 16, 2026",
     title: "Scanner Engine v1.5.0 -- Full Optimization Pass & Duplicate Removal",
-    highlights: true,
+    highlights: false,
     changes: [
       { icon: Layers, label: "Removed 8 Duplicate Checks", desc: "Eliminated redundant checks that were producing duplicate findings: sri-link-missing (same as sri-missing), unsafe-target-blank (same as reverse-tabnabbing), insecure-form-submission (same as form-action-http), websocket-wss (same as unencrypted-connections), html-comment-leaks (same as sensitive-comments), document-write-usage (caught by dangerous-inline-js), sensitive-files (false positive prone body text matching), and robots-txt-exposure (handled by live-fetch in async-checks)." },
       { icon: Timer, label: "Async Checks Fully Parallelized", desc: "SPF, DMARC, DKIM, and DNSSEC now all run in parallel instead of sequentially. DKIM uses Promise.race to early-exit as soon as the first valid selector is found. security.txt checks both URLs in parallel. robots.txt uses a single combined regex instead of 16 separate patterns. Total DNS check time reduced by ~60%." },
