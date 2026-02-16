@@ -3,12 +3,54 @@ import { getSession } from "@/lib/auth"
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 import dns from "dns/promises"
 
-// 30 highest-yield brute-force prefixes (DNS-only, no HTTP check until merged)
+// 150+ common subdomain prefixes -- all resolved via parallel DNS, no sequential overhead
 const BRUTE_FORCE_PREFIXES = [
-  "www", "mail", "smtp", "webmail", "api", "app", "dev", "staging", "test",
-  "admin", "panel", "portal", "cdn", "static", "media", "blog", "shop",
-  "store", "docs", "help", "support", "status", "auth", "login", "vpn",
-  "ns1", "ns2", "m", "git", "ftp",
+  // Core infrastructure
+  "www", "www2", "www3", "mail", "mail2", "smtp", "imap", "pop", "pop3", "mx", "email", "webmail",
+  "api", "api2", "api-v2", "app", "app2", "web", "web1", "web2", "ftp", "sftp", "ssh",
+  // Environments
+  "dev", "dev2", "staging", "stage", "test", "testing", "qa", "uat", "sandbox",
+  "beta", "alpha", "demo", "preview", "canary", "preprod", "prod", "live",
+  // Admin & management
+  "admin", "admin2", "administrator", "panel", "cpanel", "whm", "webmin", "manage",
+  "manager", "console", "portal", "dashboard", "backoffice", "cms",
+  // CDN & assets
+  "cdn", "cdn2", "assets", "static", "media", "images", "img", "files", "upload",
+  "downloads", "dl", "s3", "storage", "cache", "edge",
+  // Services
+  "blog", "shop", "store", "forum", "community", "wiki", "docs",
+  "documentation", "help", "support", "kb", "faq", "status", "health",
+  "monitor", "monitoring", "metrics", "analytics",
+  // Auth & security
+  "auth", "login", "sso", "oauth", "id", "identity", "accounts", "account",
+  "secure", "vpn", "gateway", "proxy", "waf",
+  // Networking
+  "ns1", "ns2", "ns3", "ns4", "dns", "dns1", "dns2", "m", "mobile",
+  // Collaboration
+  "chat", "slack", "meet", "conference", "video", "voip", "sip", "pbx",
+  // DevOps & CI/CD
+  "git", "gitlab", "github", "svn", "repo", "jenkins", "ci", "cd",
+  "build", "deploy", "release", "docker", "k8s", "registry",
+  // Monitoring & logging
+  "grafana", "kibana", "elastic", "prometheus", "nagios", "zabbix",
+  "sentry", "logs", "log",
+  // Databases
+  "db", "db2", "database", "mysql", "postgres", "mongo", "redis", "sql",
+  // Messaging
+  "rabbitmq", "kafka", "mq", "queue",
+  // Regional
+  "us", "eu", "ap",
+  // Business
+  "crm", "erp", "hr", "billing", "pay", "payment", "checkout",
+  "search", "report", "reports",
+  "internal", "intranet", "extranet", "corp",
+  "news", "press", "events", "calendar",
+  "jobs", "careers",
+  "partners", "affiliate",
+  "feedback", "forms", "contact",
+  "remote", "office", "workspace",
+  "backup", "bak", "dr",
+  "old", "new", "legacy", "v1", "v2",
 ]
 
 interface DiscoveredSubdomain {
