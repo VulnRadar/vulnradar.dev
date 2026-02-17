@@ -39,7 +39,12 @@ export function TosGate({ children }: { children: React.ReactNode }) {
   }, [shouldSkip, pathname])
 
   if (status === "loading") {
-    return null
+    return (
+        <>
+          {children}
+          <div className="fixed inset-0 z-50" aria-hidden />
+        </>
+    )
   }
 
   if (status === "pending" && !shouldSkip) {
