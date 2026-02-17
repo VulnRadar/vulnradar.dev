@@ -5,10 +5,21 @@ import { APP_NAME, TOTAL_CHECKS_LABEL } from "@/lib/constants"
 
 const CHANGELOG = [
   {
+    version: "1.6.8",
+    date: "February 16, 2026",
+    title: "Metadata & Social Preview Fixes",
+    highlights: true,
+    changes: [
+      { icon: Sparkles, label: "Page Metadata Fixed", desc: "Resolved an issue where page metadata (title, description, Open Graph and Twitter card tags) sometimes failed to render; social previews and browser titles now display correct content and consistent VulnRadar branding." },
+      { icon: Newspaper, label: "Consistent OG Images", desc: "Fixed generation and serving of Open Graph images so link previews show the branded VulnRadar image across Discord, Twitter, and other platforms." },
+      { icon: CheckCircle, label: "Canonical & Meta Tags", desc: "Canonical links and meta description are now consistent site-wide; metadata no longer mismatches between server and client renders." },
+    ],
+  },
+  {
     version: "1.6.7",
     date: "February 16, 2026",
     title: "Scan Notes Visibility & Team Collaboration",
-    highlights: true,
+    highlights: false,
     changes: [
       { icon: Eye, label: "Notes Visible to Team Members", desc: "Scan notes are now visible to all team members viewing a scan in the history page. Previously, the entire notes section was hidden unless you were the scan owner. Team members can now see notes to stay informed about scan context, known false positives, and remediation progress." },
       { icon: Lock, label: "Owner-Only Edit Permissions", desc: "Only the original scan owner can add or edit notes. Team members see a read-only view with no edit/add buttons. The backend PATCH endpoint was already restricted to the owner via WHERE user_id, so this enforces the same rule on the frontend." },
