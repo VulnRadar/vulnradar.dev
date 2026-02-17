@@ -6,7 +6,7 @@ Professional web vulnerability scanner. Completely free, forever.
 
 ## Quick Links
 
-- **[Documentation](/docs)** - API reference, setup guide, and guides
+- **[Documentation](https://vulnradar.dev/docs)** - API reference, setup guide, and guides
 - **[GitHub](https://github.com/VulnRadar/vulnradar.dev)** - Source code and contribution guidelines
 - **[Report a Bug](https://github.com/VulnRadar/vulnradar.dev/issues)** - Help us improve
 
@@ -23,9 +23,9 @@ Professional web vulnerability scanner. Completely free, forever.
 
 ## Getting Started
 
-1. **Sign up** at [vulnradar.app](/signup) - it's free
+1. **Sign up** at [vulnradar.dev](https://vulnradar.dev/signup) - it's free
 2. **Scan a URL** to see real-time vulnerability detection
-3. **View the docs** at [/docs](/docs) for API integration and advanced features
+3. **View the docs** at [/docs](https://vulnradar.dev/docs) for API integration and advanced features
 
 ## Tech Stack
 
