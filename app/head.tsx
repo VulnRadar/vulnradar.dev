@@ -2,7 +2,7 @@ import { APP_NAME, APP_DESCRIPTION, APP_URL } from '@/lib/constants'
 
 export default function Head() {
   const title = `${APP_NAME} - Web Vulnerability Scanner`
-  const image = `${APP_URL}/og-image-120.png`
+  const image = `${APP_URL}/og-image-120-revise.png`
 
   return (
     <>
