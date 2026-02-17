@@ -37,7 +37,7 @@ export const metadata: Metadata = {
     locale: 'en_US',
     images: [
       {
-        url: `${APP_URL}/og-image-120.png`,
+        url: `${APP_URL}/og-image-120-revise.png`,
         width: 1200,
         height: 630,
         alt: `${APP_NAME} - Web Vulnerability Scanner`,
@@ -49,7 +49,7 @@ export const metadata: Metadata = {
     title: `${APP_NAME} - Web Vulnerability Scanner`,
     description: APP_DESCRIPTION,
     site: '@' + APP_NAME,
-    images: [`${APP_URL}/og-image-120.png`],
+    images: [`${APP_URL}/og-image-120-revise.png`],
   },
   robots: {
     index: true,
