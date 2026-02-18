@@ -169,6 +169,11 @@ export default function DashboardPage() {
                 {/* Scan summary */}
                 <ScanSummary result={result} />
 
+                {/* Deep crawl -- other pages scanned */}
+                {crawlInfo && crawlInfo.pages.length > 1 && (
+                  <CrawlPagesInfo crawlInfo={crawlInfo} onSelectIssue={setSelectedIssue} />
+                )}
+
                 {/* Response headers */}
                 {result.responseHeaders && (
                   <ResponseHeaders headers={result.responseHeaders} />
@@ -236,11 +241,6 @@ export default function DashboardPage() {
 
                 {/* Results list */}
                 <ResultsList findings={result.findings} onSelectIssue={setSelectedIssue} />
-
-                {/* Deep crawl -- other pages scanned */}
-                {crawlInfo && crawlInfo.pages.length > 1 && (
-                  <CrawlPagesInfo crawlInfo={crawlInfo} onSelectIssue={setSelectedIssue} />
-                )}
               </>
             ) : (
               <IssueDetail issue={selectedIssue} onBack={() => setSelectedIssue(null)} />
@@ -269,6 +269,7 @@ interface CrawlInfo {
 }
 
 function CrawlPagesInfo({ crawlInfo, onSelectIssue }: { crawlInfo: CrawlInfo; onSelectIssue: (issue: Vulnerability) => void }) {
+  const [open, setOpen] = useState(false)
   const [expandedPage, setExpandedPage] = useState<string | null>(null)
   // Skip first page (already shown as main results)
   const otherPages = crawlInfo.pages.slice(1)
@@ -295,9 +296,13 @@ function CrawlPagesInfo({ crawlInfo, onSelectIssue }: { crawlInfo: CrawlInfo; on
 
   return (
     <div className="rounded-xl border border-border/40 bg-card/30 backdrop-blur-sm overflow-hidden">
-      {/* Header */}
-      <div className="flex items-center gap-3 px-4 py-3.5 border-b border-border/40 bg-muted/20">
-        <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-primary/10 border border-primary/20">
+      {/* Header -- clickable to expand/collapse */}
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        className="flex items-center gap-3 px-4 py-3.5 w-full text-left hover:bg-muted/30 transition-colors"
+      >
+        <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-primary/10 border border-primary/20 shrink-0">
           <Globe className="h-4 w-4 text-primary" />
         </div>
         <div className="flex-1 min-w-0">
@@ -306,10 +311,16 @@ function CrawlPagesInfo({ crawlInfo, onSelectIssue }: { crawlInfo: CrawlInfo; on
             {otherPages.length} additional {otherPages.length === 1 ? "page" : "pages"} discovered -- {totalOtherIssues} total issues
           </p>
         </div>
-      </div>
+        {open ? (
+          <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0" />
+        ) : (
+          <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
+        )}
+      </button>
 
-      {/* Page rows */}
-      <div className="divide-y divide-border/20">
+      {/* Page rows -- only shown when open */}
+      {open && (
+      <div className="divide-y divide-border/20 border-t border-border/40">
         {otherPages.map((page) => {
           const path = getPath(page.url)
           const isExpanded = expandedPage === page.url
@@ -371,6 +382,7 @@ function CrawlPagesInfo({ crawlInfo, onSelectIssue }: { crawlInfo: CrawlInfo; on
           )
         })}
       </div>
+      )}
     </div>
   )
 }
