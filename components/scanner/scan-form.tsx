@@ -62,9 +62,6 @@ export function ScanForm({ onScan, status }: ScanFormProps) {
     <div className="flex flex-col items-center gap-6 py-10 sm:py-16 px-4">
       {/* Hero text */}
       <div className="flex flex-col items-center gap-3 text-center max-w-xl">
-        <div className="flex items-center justify-center w-11 h-11 rounded-xl bg-primary/10 mb-1">
-          <Shield className="h-5 w-5 text-primary" />
-        </div>
         <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-foreground text-balance">
           Scan Your Website for Vulnerabilities
         </h1>
