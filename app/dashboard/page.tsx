@@ -16,7 +16,7 @@ import { Dashboard } from "@/components/scanner/dashboard"
 import { Footer } from "@/components/scanner/footer"
 import { OnboardingTour } from "@/components/onboarding-tour"
 import type { ScanResult, ScanStatus, Vulnerability } from "@/lib/scanner/types"
-import { AlertCircle, RotateCcw, MessageSquare, Pencil, Save, Loader2 as Loader2Icon, Globe, ChevronDown, ChevronRight } from "lucide-react"
+import { AlertCircle, RotateCcw, MessageSquare, Pencil, Save, Loader2 as Loader2Icon, Globe, ChevronDown, ChevronRight, ExternalLink } from "lucide-react"
 import { Button } from "@/components/ui/button"
 
 export default function DashboardPage() {
@@ -295,22 +295,20 @@ function CrawlPagesInfo({ crawlInfo, onSelectIssue }: { crawlInfo: CrawlInfo; on
   }
 
   return (
-    <div className="rounded-xl border border-border/40 bg-card/30 backdrop-blur-sm overflow-hidden">
-      {/* Header -- clickable to expand/collapse */}
+    <div className="rounded-xl border border-border bg-card overflow-hidden">
+      {/* Header -- matches subdomain discovery style */}
       <button
         type="button"
         onClick={() => setOpen(!open)}
-        className="flex items-center gap-3 px-4 py-3.5 w-full text-left hover:bg-muted/30 transition-colors"
+        className="flex items-center gap-2 w-full px-4 py-3 text-left hover:bg-muted/50 transition-colors"
       >
-        <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-primary/10 border border-primary/20 shrink-0">
-          <Globe className="h-4 w-4 text-primary" />
-        </div>
-        <div className="flex-1 min-w-0">
-          <h3 className="text-sm font-semibold text-foreground">Also Crawled</h3>
-          <p className="text-[10px] sm:text-xs text-muted-foreground">
-            {otherPages.length} additional {otherPages.length === 1 ? "page" : "pages"} discovered -- {totalOtherIssues} total issues
-          </p>
-        </div>
+        <Globe className="h-4 w-4 text-primary shrink-0" />
+        <span className="text-sm font-semibold text-foreground flex-1">
+          Also Crawled
+        </span>
+        <span className="text-xs text-muted-foreground">
+          {otherPages.length} {otherPages.length === 1 ? "page" : "pages"} / {totalOtherIssues} issues
+        </span>
         {open ? (
           <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0" />
         ) : (
@@ -318,70 +316,98 @@ function CrawlPagesInfo({ crawlInfo, onSelectIssue }: { crawlInfo: CrawlInfo; on
         )}
       </button>
 
-      {/* Page rows -- only shown when open */}
       {open && (
-      <div className="divide-y divide-border/20 border-t border-border/40">
-        {otherPages.map((page) => {
-          const path = getPath(page.url)
-          const isExpanded = expandedPage === page.url
+        <div className="border-t border-border">
+          {/* Stats bar */}
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 px-4 py-2 bg-muted/30 border-b border-border">
+            <span className="text-xs text-muted-foreground">
+              Pages: <span className="font-medium text-foreground">{otherPages.length}</span>
+            </span>
+            <span className="text-xs text-amber-600 dark:text-amber-400">
+              {totalOtherIssues} total issues
+            </span>
+            <span className="text-xs text-muted-foreground">
+              {otherPages.filter(p => p.findings_count === 0).length} clean
+            </span>
+          </div>
 
-          return (
-            <div key={page.url}>
-              <button
-                type="button"
-                onClick={() => setExpandedPage(isExpanded ? null : page.url)}
-                className="flex items-center gap-2.5 w-full px-4 py-2.5 text-left hover:bg-muted/40 transition-colors"
-              >
-                {isExpanded ? (
-                  <ChevronDown className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                ) : (
-                  <ChevronRight className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                )}
-                <span className="text-[10px] sm:text-xs font-mono text-foreground truncate flex-1">
-                  {path}
-                </span>
-                <span className={`text-[10px] sm:text-xs font-medium px-1.5 py-0.5 rounded border shrink-0 ${
-                  page.findings_count > 0
-                    ? "text-amber-500 bg-amber-500/10 border-amber-500/20"
-                    : "text-emerald-500 bg-emerald-500/10 border-emerald-500/20"
-                }`}>
-                  {page.findings_count} issues
-                </span>
-                <span className="text-[10px] text-muted-foreground shrink-0 hidden sm:inline tabular-nums">
-                  {(page.duration / 1000).toFixed(1)}s
-                </span>
-              </button>
+          {/* Page rows */}
+          <div className="px-4 py-3">
+            <div className="flex flex-col gap-1">
+              {otherPages.map((page) => {
+                const path = getPath(page.url)
+                const isExpanded = expandedPage === page.url
 
-              {isExpanded && (
-                <div className="bg-muted/10 px-4 py-2.5 border-t border-border/10">
-                  {page.findings.length === 0 ? (
-                    <p className="text-xs text-emerald-500/80 py-2 text-center">No issues found on this page.</p>
-                  ) : (
-                    <div className="flex flex-col gap-0.5">
-                      {page.findings.map((f) => (
-                        <button
-                          type="button"
-                          key={`${page.url}-${f.id}`}
-                          onClick={() => onSelectIssue(f)}
-                          className="flex items-center gap-2 px-2.5 py-2 rounded-lg hover:bg-muted/50 transition-colors text-left group"
-                        >
-                          <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${SEV_DOT[f.severity] || SEV_DOT.info}`} />
-                          <span className="text-[10px] sm:text-xs text-foreground truncate flex-1 group-hover:text-primary transition-colors">
-                            {f.title}
-                          </span>
-                          <span className={`text-[9px] sm:text-[10px] font-medium uppercase px-1.5 py-0.5 rounded border shrink-0 ${SEV_TEXT[f.severity] || SEV_TEXT.info}`}>
-                            {f.severity}
-                          </span>
-                        </button>
-                      ))}
+                return (
+                  <div key={page.url}>
+                    <div className="flex items-center gap-1.5 sm:gap-2 px-1.5 sm:px-2 py-1.5 rounded-md hover:bg-muted/50 transition-colors group">
+                      <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${page.findings_count > 0 ? "bg-amber-500" : "bg-emerald-500"}`} />
+                      <button
+                        type="button"
+                        onClick={() => setExpandedPage(isExpanded ? null : page.url)}
+                        className="text-[10px] sm:text-xs font-mono text-foreground truncate flex-1 text-left hover:text-primary transition-colors"
+                      >
+                        {path}
+                      </button>
+                      <span className={`text-[10px] font-mono shrink-0 ${page.findings_count > 0 ? "text-amber-500" : "text-emerald-500"}`}>
+                        {page.findings_count}
+                      </span>
+                      <span className="text-[10px] text-muted-foreground shrink-0 hidden sm:inline tabular-nums">
+                        {(page.duration / 1000).toFixed(1)}s
+                      </span>
+                      <a
+                        href={page.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-muted-foreground hover:text-primary transition-opacity shrink-0"
+                      >
+                        <ExternalLink className="h-3 w-3" />
+                      </a>
+                      {isExpanded ? (
+                        <ChevronDown className="h-3 w-3 text-muted-foreground shrink-0 cursor-pointer" onClick={() => setExpandedPage(null)} />
+                      ) : (
+                        <ChevronRight className="h-3 w-3 text-muted-foreground shrink-0 cursor-pointer" onClick={() => setExpandedPage(page.url)} />
+                      )}
                     </div>
-                  )}
-                </div>
-              )}
+
+                    {isExpanded && (
+                      <div className="ml-4 pl-2 border-l-2 border-border/40 mt-1 mb-2">
+                        {page.findings.length === 0 ? (
+                          <p className="text-[10px] text-emerald-500/80 py-1.5 italic">No issues found.</p>
+                        ) : (
+                          <div className="flex flex-col gap-0.5">
+                            {page.findings.map((f) => (
+                              <button
+                                type="button"
+                                key={`${page.url}-${f.id}`}
+                                onClick={() => onSelectIssue(f)}
+                                className="flex items-center gap-2 px-1.5 py-1 rounded-md hover:bg-muted/50 transition-colors text-left"
+                              >
+                                <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${SEV_DOT[f.severity] || SEV_DOT.info}`} />
+                                <span className="text-[10px] sm:text-xs text-foreground truncate flex-1">
+                                  {f.title}
+                                </span>
+                                <span className={`text-[9px] sm:text-[10px] font-medium uppercase shrink-0 ${
+                                  f.severity === "critical" ? "text-red-500" :
+                                  f.severity === "high" ? "text-orange-500" :
+                                  f.severity === "medium" ? "text-amber-500" :
+                                  f.severity === "low" ? "text-blue-500" :
+                                  "text-muted-foreground"
+                                }`}>
+                                  {f.severity}
+                                </span>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
             </div>
-          )
-        })}
-      </div>
+          </div>
+        </div>
       )}
     </div>
   )
