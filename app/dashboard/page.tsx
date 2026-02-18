@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useCallback, useEffect } from "react"
+import { useState, useCallback, useEffect, Suspense } from "react"
 import { useSearchParams } from "next/navigation"
 import { Header } from "@/components/scanner/header"
 import { ScanForm, type ScanMode } from "@/components/scanner/scan-form"
@@ -22,6 +22,25 @@ import { AlertCircle, RotateCcw, MessageSquare, Pencil, Save, Loader2 as Loader2
 import { Button } from "@/components/ui/button"
 
 export default function DashboardPage() {
+  return (
+    <Suspense fallback={<DashboardLoading />}>
+      <DashboardContent />
+    </Suspense>
+  )
+}
+
+function DashboardLoading() {
+  return (
+    <div className="flex items-center justify-center min-h-screen">
+      <div className="flex flex-col items-center gap-3">
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+        <p className="text-sm text-muted-foreground">Loading dashboard...</p>
+      </div>
+    </div>
+  )
+}
+
+function DashboardContent() {
   const searchParams = useSearchParams()
   const [status, setStatus] = useState<ScanStatus>("idle")
   const [result, setResult] = useState<ScanResult | null>(null)
