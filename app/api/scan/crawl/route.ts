@@ -202,23 +202,32 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Crawl rate limit reached. Please wait before scanning again." }, { status: 429 })
   }
 
-  const { url } = await request.json()
+  const body = await request.json()
+  const url: string = body.url
+  const selectedUrls: string[] | undefined = body.urls
+
   if (!url || typeof url !== "string") {
     return NextResponse.json({ error: "URL is required" }, { status: 400 })
   }
 
-  try {
-    new URL(url)
-  } catch {
+  try { new URL(url) } catch {
     return NextResponse.json({ error: "Invalid URL" }, { status: 400 })
   }
 
   const startTime = Date.now()
 
-  // Phase 1: Discover internal links
-  const pages = await discoverInternalLinks(url)
+  // Use pre-selected URLs if provided, otherwise discover them
+  let pages: string[]
+  if (selectedUrls && Array.isArray(selectedUrls) && selectedUrls.length > 0) {
+    // Validate all URLs
+    pages = selectedUrls.filter(u => {
+      try { new URL(u); return true } catch { return false }
+    }).slice(0, MAX_PAGES)
+  } else {
+    pages = await discoverInternalLinks(url)
+  }
 
-  // Phase 2: Scan each page
+  // Scan each page
   const pageResults: Array<{
     url: string
     findings: Vulnerability[]

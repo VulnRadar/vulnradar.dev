@@ -12,6 +12,7 @@ import { ExportButton } from "@/components/scanner/export-button"
 import { ShareButton } from "@/components/scanner/share-button"
 import { ResponseHeaders } from "@/components/scanner/response-headers"
 import { SubdomainDiscovery } from "@/components/scanner/subdomain-discovery"
+import { CrawlUrlSelector } from "@/components/scanner/crawl-url-selector"
 import { Dashboard } from "@/components/scanner/dashboard"
 import { Footer } from "@/components/scanner/footer"
 import { OnboardingTour } from "@/components/onboarding-tour"
@@ -30,6 +31,10 @@ export default function DashboardPage() {
   const [editingNotes, setEditingNotes] = useState(false)
   const [savingNotes, setSavingNotes] = useState(false)
   const [crawlInfo, setCrawlInfo] = useState<CrawlInfo | null>(null)
+  const [crawlDiscoveryUrls, setCrawlDiscoveryUrls] = useState<string[]>([])
+  const [crawlDiscovering, setCrawlDiscovering] = useState(false)
+  const [showCrawlSelector, setShowCrawlSelector] = useState(false)
+  const [pendingCrawlUrl, setPendingCrawlUrl] = useState("")
 
   async function handleSaveNotes() {
     if (!scanHistoryId) return
@@ -46,6 +51,33 @@ export default function DashboardPage() {
   }
 
   const handleScan = useCallback(async (url: string, mode: ScanMode = "quick") => {
+    // Deep crawl: first discover URLs, then show selector
+    if (mode === "deep") {
+      setPendingCrawlUrl(url)
+      setShowCrawlSelector(true)
+      setCrawlDiscovering(true)
+      setCrawlDiscoveryUrls([url]) // always include the entry URL
+
+      try {
+        const res = await fetch("/api/scan/crawl/discover", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ url }),
+        })
+        const data = await res.json()
+        if (res.ok && data.urls) {
+          setCrawlDiscoveryUrls(data.urls)
+        }
+      } catch { /* keep the entry URL at minimum */ }
+      setCrawlDiscovering(false)
+      return
+    }
+
+    // Quick scan (or crawl with pre-selected URLs)
+    runScan(url)
+  }, [])
+
+  const runScan = useCallback(async (url: string, crawlUrls?: string[]) => {
     setStatus("scanning")
     setResult(null)
     setScanHistoryId(null)
@@ -55,13 +87,15 @@ export default function DashboardPage() {
     setEditingNotes(false)
     setCrawlInfo(null)
 
-    const endpoint = mode === "deep" ? "/api/scan/crawl" : "/api/scan"
+    const isCrawl = !!crawlUrls
+    const endpoint = isCrawl ? "/api/scan/crawl" : "/api/scan"
+    const payload = isCrawl ? { url, urls: crawlUrls } : { url }
 
     try {
       const response = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url }),
+        body: JSON.stringify(payload),
       })
 
       const data = await response.json()
@@ -93,6 +127,19 @@ export default function DashboardPage() {
     }
   }, [])
 
+  function handleCrawlConfirm(selectedUrls: string[]) {
+    setShowCrawlSelector(false)
+    setCrawlDiscoveryUrls([])
+    runScan(pendingCrawlUrl, selectedUrls)
+  }
+
+  function handleCrawlCancel() {
+    setShowCrawlSelector(false)
+    setCrawlDiscoveryUrls([])
+    setPendingCrawlUrl("")
+    setCrawlDiscovering(false)
+  }
+
   // Auto-scan if ?scan= param is present (e.g. from subdomain scan button on other pages)
   useEffect(() => {
     const scanUrl = searchParams.get("scan")
@@ -111,6 +158,10 @@ export default function DashboardPage() {
     setScanNotes("")
     setEditingNotes(false)
     setCrawlInfo(null)
+    setShowCrawlSelector(false)
+    setCrawlDiscoveryUrls([])
+    setPendingCrawlUrl("")
+    setCrawlDiscovering(false)
   }
 
   return (
@@ -250,6 +301,16 @@ export default function DashboardPage() {
       </main>
 
       <Footer />
+
+      {/* Crawl URL selector modal */}
+      {showCrawlSelector && (
+        <CrawlUrlSelector
+          urls={crawlDiscoveryUrls}
+          isLoading={crawlDiscovering}
+          onConfirm={handleCrawlConfirm}
+          onCancel={handleCrawlCancel}
+        />
+      )}
     </div>
   )
 }
