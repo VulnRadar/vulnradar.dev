@@ -228,26 +228,32 @@ export async function POST(request: NextRequest) {
 
   // Use first page's response headers as the main headers
   const mainHeaders = pageResults[0]?.responseHeaders || {}
+  const scannedAt = new Date().toISOString()
+
+  // Save EACH page as its own history entry (like bulk scan)
+  const pageHistoryIds: Record<string, number> = {}
+  for (const pr of pageResults) {
+    try {
+      const insertResult = await pool.query(
+        `INSERT INTO scan_history (user_id, url, summary, findings, findings_count, duration, scanned_at, source, response_headers)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`,
+        [session.userId, pr.url, JSON.stringify(pr.summary), JSON.stringify(pr.findings), pr.summary.total, pr.duration, scannedAt, "deep-crawl", JSON.stringify(pr.responseHeaders)],
+      )
+      pageHistoryIds[pr.url] = insertResult.rows[0]?.id
+    } catch { /* non-fatal */ }
+  }
+
+  // The "main" scan history ID is the first page (the root URL)
+  const scanHistoryId = pageHistoryIds[pages[0]] || null
 
   const scanResult: ScanResult = {
     url,
-    scannedAt: new Date().toISOString(),
+    scannedAt,
     duration: totalDuration,
     findings: allFindings,
     summary: mergedSummary,
     responseHeaders: mainHeaders,
   }
-
-  // Save to history
-  let scanHistoryId: number | null = null
-  try {
-    const insertResult = await pool.query(
-      `INSERT INTO scan_history (user_id, url, summary, findings, findings_count, duration, scanned_at, source, response_headers)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`,
-      [session.userId, url, JSON.stringify(mergedSummary), JSON.stringify(allFindings), mergedSummary.total, totalDuration, scanResult.scannedAt, "web", JSON.stringify(mainHeaders)],
-    )
-    scanHistoryId = insertResult.rows[0]?.id || null
-  } catch { /* non-fatal */ }
 
   return NextResponse.json({
     ...scanResult,
@@ -257,6 +263,7 @@ export async function POST(request: NextRequest) {
       pagesScanned: pageResults.length,
       pages: pageResults.map((p) => ({
         url: p.url,
+        scanHistoryId: pageHistoryIds[p.url] || null,
         findings: p.findings,
         findings_count: p.summary.total,
         summary: p.summary,

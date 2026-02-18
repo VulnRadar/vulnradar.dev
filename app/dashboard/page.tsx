@@ -1,6 +1,7 @@
 "use client"
 
-import { useState, useCallback } from "react"
+import { useState, useCallback, useEffect } from "react"
+import { useSearchParams } from "next/navigation"
 import { Header } from "@/components/scanner/header"
 import { ScanForm, type ScanMode } from "@/components/scanner/scan-form"
 import { ScanningIndicator } from "@/components/scanner/scanning-indicator"
@@ -19,6 +20,7 @@ import { AlertCircle, RotateCcw, MessageSquare, Pencil, Save, Loader2 as Loader2
 import { Button } from "@/components/ui/button"
 
 export default function DashboardPage() {
+  const searchParams = useSearchParams()
   const [status, setStatus] = useState<ScanStatus>("idle")
   const [result, setResult] = useState<ScanResult | null>(null)
   const [scanHistoryId, setScanHistoryId] = useState<number | null>(null)
@@ -79,6 +81,15 @@ export default function DashboardPage() {
       setStatus("failed")
     }
   }, [])
+
+  // Auto-scan if ?scan= param is present (e.g. from subdomain scan button on other pages)
+  useEffect(() => {
+    const scanUrl = searchParams.get("scan")
+    if (scanUrl && status === "idle") {
+      handleScan(scanUrl)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams])
 
   function handleReset() {
     setStatus("idle")
