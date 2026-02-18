@@ -261,8 +261,7 @@ export const TOTP_ISSUER = APP_NAME
 // DEMO SCAN LIMITS
 // ============================================================================
 export const DEMO_SCAN_LIMIT = 5
-export const DEMO_SCAN_WINDOW = 60 * 15 // 15 minutes in seconds
-export const DEMO_SCAN_COOKIE_NAME = "vulnradar_demo_scans"
+export const DEMO_SCAN_WINDOW = 60 * 60 * 12 // 12 hours in seconds
 
 // ============================================================================
 // STAFF / ADMIN ROLES
