@@ -5,6 +5,23 @@ import { APP_NAME, TOTAL_CHECKS_LABEL } from "@/lib/constants"
 
 const CHANGELOG = [
   {
+    version: "1.7.0",
+    date: "February 18, 2026",
+    title: "Deep Crawl URL Selector, IP Rate-Limited Demo & Auto Scan Notes",
+    highlights: true,
+    changes: [
+      { icon: Network, label: "Deep Crawl URL Selector", desc: "Deep Crawl now discovers pages first, then shows a selection modal where you pick exactly which pages to scan. Toggle individual URLs on/off, search/filter the list, or use Select All/Deselect All. No more scanning pages you don't care about." },
+      { icon: Filter, label: "Smart Crawl URL Filtering", desc: "The crawler now filters out asset files (.css, .js, .woff, .json, etc.), internal framework paths (/_next/, /static/, /api/), and garbage URLs with encoded characters or regex-like patterns. Only real, human-navigable pages are discovered." },
+      { icon: Globe, label: "Same-Domain Redirect Handling", desc: "Sites that redirect (e.g. disutils.com to disutils.com/en/home) are now followed correctly. The crawler checks registered domains instead of strict origins, so language-prefixed redirects and www variants are all crawled properly." },
+      { icon: Layers, label: "Crawl Results Separated by Page", desc: "Deep Crawl results now show findings for the URL you entered as the main view. Other crawled pages appear in a collapsible 'Also Crawled' section below the summary, each expandable to view their individual findings." },
+      { icon: Shield, label: "IP-Based Demo Rate Limiting", desc: "The demo scanner now rate-limits by IP address via the database instead of cookies. 5 scans per 12 hours per IP. No more bypassing limits by clearing cookies." },
+      { icon: FileText, label: "Auto Scan Notes", desc: "Every scan automatically gets a default note with the VulnRadar version and Detection Engine version (e.g. 'VulnRadar v1.7.0 (Detection Engine v1.5.0)'). Notes are saved to the DB immediately and appear on shared scans." },
+      { icon: Link2, label: "Full URL Display in History", desc: "History and Compare pages now show the full URL path (e.g. example.com/docs/api) instead of just the hostname. Compare is restricted to scans from the same domain." },
+      { icon: Lock, label: "Demo Subdomain Auth Message", desc: "The Subdomain Discovery button on the demo page now shows a friendly 'Log in to use this feature' message instead of a generic error when unauthenticated users try to use it." },
+      { icon: Wrench, label: "Code Cleanup", desc: "Removed all em-dash (--) patterns from comments and user-visible text across 14 files. Replaced with colons, commas, and parentheses for cleaner copy." },
+    ],
+  },
+  {
     version: "1.6.8",
     date: "February 16, 2026",
     title: "Metadata & Social Preview Fixes",
