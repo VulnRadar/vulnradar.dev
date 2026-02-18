@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import { useRouter } from "next/navigation"
 import { Globe, Loader2, Search, ExternalLink, ChevronDown, ChevronRight, Radar } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
@@ -58,6 +59,7 @@ function statusBucket(code?: number): string {
 }
 
 export function SubdomainDiscovery({ url, onScanSubdomain }: SubdomainDiscoveryProps) {
+  const router = useRouter()
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState<DiscoveryResult | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -74,7 +76,11 @@ export function SubdomainDiscovery({ url, onScanSubdomain }: SubdomainDiscoveryP
       })
       const data = await res.json()
       if (!res.ok) {
-        setError(data.error || "Discovery failed")
+        if (res.status === 401) {
+          setError("You need to be logged in to use Subdomain Discovery. Create a free account to unlock this feature.")
+        } else {
+          setError(data.error || "Discovery failed")
+        }
       } else {
         setResult(data)
         setExpanded(true)
@@ -205,7 +211,7 @@ export function SubdomainDiscovery({ url, onScanSubdomain }: SubdomainDiscoveryP
               </p>
               <div className="flex flex-col gap-1">
                 {reachable.map((sub) => (
-                  <SubdomainRow key={sub.subdomain} sub={sub} onScanSubdomain={onScanSubdomain} />
+                  <SubdomainRow key={sub.subdomain} sub={sub} onScanSubdomain={onScanSubdomain} router={router} />
                 ))}
               </div>
             </div>
@@ -224,14 +230,24 @@ export function SubdomainDiscovery({ url, onScanSubdomain }: SubdomainDiscoveryP
 function SubdomainRow({
   sub,
   onScanSubdomain,
+  router,
 }: {
   sub: DiscoveredSubdomain
   onScanSubdomain?: (url: string) => void
+  router: ReturnType<typeof useRouter>
 }) {
+  function handleScanClick() {
+    if (onScanSubdomain) {
+      onScanSubdomain(sub.url)
+    } else {
+      router.push(`/dashboard?scan=${encodeURIComponent(sub.url)}`)
+    }
+  }
+
   return (
-    <div className="flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-muted/50 transition-colors group">
+    <div className="flex items-center gap-1.5 sm:gap-2 px-1.5 sm:px-2 py-1.5 rounded-md hover:bg-muted/50 transition-colors group">
       <span className={cn("w-1.5 h-1.5 rounded-full shrink-0", STATUS_DOT[statusBucket(sub.statusCode)])} />
-      <span className="text-xs font-mono text-foreground truncate">
+      <span className="text-[10px] sm:text-xs font-mono text-foreground truncate max-w-[140px] sm:max-w-none">
         {sub.subdomain}
       </span>
       {/* Source tags */}
@@ -258,21 +274,19 @@ function SubdomainRow({
         href={sub.url}
         target="_blank"
         rel="noopener noreferrer"
-        className="text-muted-foreground hover:text-primary opacity-0 group-hover:opacity-100 transition-opacity"
+        className="text-muted-foreground hover:text-primary transition-opacity shrink-0"
       >
         <ExternalLink className="h-3 w-3" />
       </a>
-      {onScanSubdomain && (
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => onScanSubdomain(sub.url)}
-          className="h-6 px-2 text-[10px] opacity-0 group-hover:opacity-100 transition-opacity gap-1"
-        >
-          <Radar className="h-3 w-3" />
-          Scan
-        </Button>
-      )}
+      <Button
+        variant="ghost"
+        size="sm"
+        onClick={handleScanClick}
+        className="h-6 px-2 text-[10px] gap-1 shrink-0"
+      >
+        <Radar className="h-3 w-3" />
+        Scan
+      </Button>
     </div>
   )
 }
@@ -298,7 +312,7 @@ function UnreachableSection({ subdomains }: { subdomains: DiscoveredSubdomain[] 
               className="flex items-center gap-2 px-2 py-1 rounded-md"
             >
               <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground/30 shrink-0" />
-              <span className="text-[11px] font-mono text-muted-foreground truncate">
+              <span className="text-[10px] sm:text-[11px] font-mono text-muted-foreground truncate max-w-[160px] sm:max-w-none">
                 {sub.subdomain}
               </span>
               <div className="flex items-center gap-1 flex-shrink-0">

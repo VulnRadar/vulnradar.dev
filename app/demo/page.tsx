@@ -18,7 +18,7 @@ export default function DemoPage() {
   const [result, setResult] = useState<ScanResult | null>(null)
   const [selectedIssue, setSelectedIssue] = useState<Vulnerability | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [scansUsed, setScansUsed] = useState(0)
+  const [scansRemaining, setScansRemaining] = useState<number | null>(null)
 
   async function handleSelfScan() {
     setStatus("scanning")
@@ -34,22 +34,23 @@ export default function DemoPage() {
         body: JSON.stringify({ url: siteUrl }),
       })
 
+      const data = await res.json()
+
       if (!res.ok) {
-        const data = await res.json()
-        throw new Error(data.error || "Scan failed")
+        setError(data.error || "Scan failed")
+        if (typeof data.remaining === "number") setScansRemaining(data.remaining)
+        setStatus("error")
+        return
       }
 
-      const data = await res.json()
       setResult(data)
-      setScansUsed((prev) => prev + 1)
+      if (typeof data.remaining === "number") setScansRemaining(data.remaining)
       setStatus("done")
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Something went wrong")
+    } catch {
+      setError("Something went wrong")
       setStatus("error")
     }
   }
-
-  const scansRemaining = DEMO_SCAN_LIMIT - scansUsed
 
   return (
     <>
@@ -66,9 +67,9 @@ export default function DemoPage() {
           See VulnRadar in action by running a full vulnerability scan against this very site.
           This demonstrates the {TOTAL_CHECKS_LABEL} security checks in real-time.
         </p>
-        {scansUsed > 0 && (
+        {scansRemaining !== null && (
           <p className="text-xs text-muted-foreground mt-2">
-            {scansRemaining} of {DEMO_SCAN_LIMIT} demo scans remaining
+            {scansRemaining} of {DEMO_SCAN_LIMIT} free scans remaining (resets every 12 hours)
           </p>
         )}
       </div>
@@ -146,7 +147,7 @@ export default function DemoPage() {
             <IssueDetail issue={selectedIssue} onBack={() => setSelectedIssue(null)} />
           ) : (
             <>
-              {/* Action bar at top -- matches dashboard/history pattern */}
+              {/* Action bar at top */}
               <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center sm:justify-between gap-3 p-4 rounded-xl border border-border/40 bg-card/30 backdrop-blur-sm">
                 <div className="min-w-0">
                   <p className="text-xs text-muted-foreground mb-1">Self-Scan Result</p>

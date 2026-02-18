@@ -280,12 +280,18 @@ function HistoryPageContent() {
     })
   }
 
-  function getHostname(url: string) {
+  function displayUrl(url: string) {
     try {
-      return new URL(url).hostname
+      const u = new URL(url)
+      const path = u.pathname === "/" ? "" : u.pathname + u.search
+      return u.hostname + path
     } catch {
       return url
     }
+  }
+
+  function getDomain(url: string) {
+    try { return new URL(url).hostname } catch { return url }
   }
 
   const filtered = scans.filter((s) => {
@@ -366,7 +372,7 @@ function HistoryPageContent() {
                     {/* Subdomain discovery */}
                     <SubdomainDiscovery url={scanDetail.url} />
 
-                    {/* Scan Notes -- visible to everyone, editable only by owner */}
+                    {/* Scan Notes (visible to everyone, editable only by owner) */}
                     <div className="rounded-xl border border-border/40 bg-card/30 backdrop-blur-sm p-4">
                       <div className="flex items-center justify-between mb-3">
                         <div className="flex items-center gap-2">
@@ -610,7 +616,7 @@ function HistoryPageContent() {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
                       <span className="text-sm font-medium text-foreground truncate">
-                        {getHostname(scan.url)}
+                        {displayUrl(scan.url)}
                       </span>
                       <span
                         className={cn(

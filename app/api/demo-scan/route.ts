@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from "next/server"
-import { cookies } from "next/headers"
 import { allChecks } from "@/lib/scanner/checks"
 import { runAsyncChecks } from "@/lib/scanner/async-checks"
 import type { ScanResult, Severity, Vulnerability } from "@/lib/scanner/types"
-import { APP_NAME, DEMO_SCAN_LIMIT, DEMO_SCAN_WINDOW, DEMO_SCAN_COOKIE_NAME, SEVERITY_LEVELS } from "@/lib/constants"
+import { APP_NAME, DEMO_SCAN_LIMIT, DEMO_SCAN_WINDOW, SEVERITY_LEVELS } from "@/lib/constants"
+import { checkRateLimit } from "@/lib/rate-limit"
+import { getClientIp } from "@/lib/request-utils"
 
 const SEVERITY_ORDER: Record<Severity, number> = {
   critical: 0,
@@ -51,33 +52,23 @@ async function safeReadBody(response: Response, maxBytes: number): Promise<strin
 
 export async function POST(request: NextRequest) {
   try {
-    // Cookie-based rate limiting
-    const cookieStore = await cookies()
-    const demoCookie = cookieStore.get(DEMO_SCAN_COOKIE_NAME)
+    // IP-based rate limiting via database
+    const ip = await getClientIp()
+    const rateLimitKey = `demo_scan:${ip}`
+    const rateCheck = await checkRateLimit({
+      key: rateLimitKey,
+      maxAttempts: DEMO_SCAN_LIMIT,
+      windowSeconds: DEMO_SCAN_WINDOW,
+    })
 
-    let scanCount = 0
-    let windowStart = Date.now()
-
-    if (demoCookie) {
-      try {
-        const data = JSON.parse(demoCookie.value)
-        const elapsed = (Date.now() - data.windowStart) / 1000
-        if (elapsed < DEMO_SCAN_WINDOW) {
-          scanCount = data.count
-          windowStart = data.windowStart
-        }
-        // If window expired, reset
-      } catch {
-        // Invalid cookie, reset
-      }
-    }
-
-    if (scanCount >= DEMO_SCAN_LIMIT) {
-      const elapsed = (Date.now() - windowStart) / 1000
-      const remaining = Math.ceil(DEMO_SCAN_WINDOW - elapsed)
-      const minutes = Math.ceil(remaining / 60)
+    if (!rateCheck.allowed) {
+      const hours = Math.ceil(rateCheck.retryAfterSeconds / 3600)
       return NextResponse.json(
-        { error: `Demo limit reached (${DEMO_SCAN_LIMIT} scans per 15 minutes). Try again in ~${minutes} minute${minutes !== 1 ? "s" : ""}.` },
+        {
+          error: `Demo limit reached (${DEMO_SCAN_LIMIT} scans per 12 hours). Try again in ~${hours} hour${hours !== 1 ? "s" : ""}, or create a free account for unlimited scans.`,
+          remaining: 0,
+          limit: DEMO_SCAN_LIMIT,
+        },
         { status: 429 },
       )
     }
@@ -162,19 +153,11 @@ export async function POST(request: NextRequest) {
       responseHeaders: capturedHeaders,
     }
 
-    // Update the cookie
-    const newCount = scanCount + 1
-    const cookieValue = JSON.stringify({ count: newCount, windowStart })
-    const res = NextResponse.json(result)
-    res.cookies.set(DEMO_SCAN_COOKIE_NAME, cookieValue, {
-      maxAge: DEMO_SCAN_WINDOW,
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "strict",
-      path: "/",
+    return NextResponse.json({
+      ...result,
+      remaining: rateCheck.remaining,
+      limit: DEMO_SCAN_LIMIT,
     })
-
-    return res
   } catch {
     return NextResponse.json({ error: "An unexpected error occurred." }, { status: 500 })
   }

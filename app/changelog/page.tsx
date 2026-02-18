@@ -5,6 +5,23 @@ import { APP_NAME, TOTAL_CHECKS_LABEL } from "@/lib/constants"
 
 const CHANGELOG = [
   {
+    version: "1.7.0",
+    date: "February 18, 2026",
+    title: "Deep Crawl URL Selector, IP Rate-Limited Demo & Auto Scan Notes",
+    highlights: true,
+    changes: [
+      { icon: Network, label: "Deep Crawl URL Selector", desc: "Deep Crawl now discovers pages first, then shows a selection modal where you pick exactly which pages to scan. Toggle individual URLs on/off, search/filter the list, or use Select All/Deselect All. No more scanning pages you don't care about." },
+      { icon: Filter, label: "Smart Crawl URL Filtering", desc: "The crawler now filters out asset files (.css, .js, .woff, .json, etc.), internal framework paths (/_next/, /static/, /api/), and garbage URLs with encoded characters or regex-like patterns. Only real, human-navigable pages are discovered." },
+      { icon: Globe, label: "Same-Domain Redirect Handling", desc: "Sites that redirect (e.g. disutils.com to disutils.com/en/home) are now followed correctly. The crawler checks registered domains instead of strict origins, so language-prefixed redirects and www variants are all crawled properly." },
+      { icon: Layers, label: "Crawl Results Separated by Page", desc: "Deep Crawl results now show findings for the URL you entered as the main view. Other crawled pages appear in a collapsible 'Also Crawled' section below the summary, each expandable to view their individual findings." },
+      { icon: Shield, label: "IP-Based Demo Rate Limiting", desc: "The demo scanner now rate-limits by IP address via the database instead of cookies. 5 scans per 12 hours per IP. No more bypassing limits by clearing cookies." },
+      { icon: FileText, label: "Auto Scan Notes", desc: "Every scan automatically gets a default note with the VulnRadar version and Detection Engine version (e.g. 'VulnRadar v1.7.0 (Detection Engine v1.5.0)'). Notes are saved to the DB immediately and appear on shared scans." },
+      { icon: Link2, label: "Full URL Display in History", desc: "History and Compare pages now show the full URL path (e.g. example.com/docs/api) instead of just the hostname. Compare is restricted to scans from the same domain." },
+      { icon: Lock, label: "Demo Subdomain Auth Message", desc: "The Subdomain Discovery button on the demo page now shows a friendly 'Log in to use this feature' message instead of a generic error when unauthenticated users try to use it." },
+      { icon: Wrench, label: "Code Cleanup", desc: "Removed all em-dash (--) patterns from comments and user-visible text across 14 files. Replaced with colons, commas, and parentheses for cleaner copy." },
+    ],
+  },
+  {
     version: "1.6.8",
     date: "February 16, 2026",
     title: "Metadata & Social Preview Fixes",
@@ -53,13 +70,13 @@ const CHANGELOG = [
   {
     version: "1.6.4",
     date: "February 16, 2026",
-    title: "Scanner Engine v1.5.0 -- Full Optimization Pass & Duplicate Removal",
+    title: "Scanner Engine v1.5.0: Full Optimization Pass & Duplicate Removal",
     highlights: false,
     changes: [
       { icon: Layers, label: "Removed 8 Duplicate Checks", desc: "Eliminated redundant checks that were producing duplicate findings: sri-link-missing (same as sri-missing), unsafe-target-blank (same as reverse-tabnabbing), insecure-form-submission (same as form-action-http), websocket-wss (same as unencrypted-connections), html-comment-leaks (same as sensitive-comments), document-write-usage (caught by dangerous-inline-js), sensitive-files (false positive prone body text matching), and robots-txt-exposure (handled by live-fetch in async-checks)." },
       { icon: Timer, label: "Async Checks Fully Parallelized", desc: "SPF, DMARC, DKIM, and DNSSEC now all run in parallel instead of sequentially. DKIM uses Promise.race to early-exit as soon as the first valid selector is found. security.txt checks both URLs in parallel. robots.txt uses a single combined regex instead of 16 separate patterns. Total DNS check time reduced by ~60%." },
       { icon: Zap, label: "Reduced Timeouts Across the Board", desc: "TLS check timeout reduced from 8s to 5s. Fetch timeouts (robots.txt, security.txt) reduced from 8s to 5s. DNSSEC DoH queries reduced from 6s to 4s. Subdomain HTTP checks reduced from 5s/4s to 4s/3s. Overall async timeout reduced from 20s to 15s. These savings compound since checks now run in parallel." },
-      { icon: Globe, label: "Subdomain Brute-Force Removed", desc: "Completely removed the 50-prefix brute-force subdomain list. Discovery now relies entirely on passive sources (crt.sh, HackerTarget, RapidDNS, subdomain.center) which already find real subdomains with actual DNS records. This eliminates the slowest part of subdomain discovery -- DNS lookups on prefixes that almost never exist." },
+      { icon: Globe, label: "Subdomain Brute-Force Removed", desc: "Completely removed the 50-prefix brute-force subdomain list. Discovery now relies entirely on passive sources (crt.sh, HackerTarget, RapidDNS, subdomain.center) which already find real subdomains with actual DNS records. This eliminates the slowest part of subdomain discovery: DNS lookups on prefixes that almost never exist." },
       { icon: GitMerge, label: "Token Exposure Deduplicated", desc: "The token-exposure check no longer duplicates JWT detection (already handled by hardcoded-secrets). It now only checks for server session IDs (PHPSESSID, JSESSIONID, ASP.NET_SessionId) which are genuinely dangerous when exposed in HTML." },
       { icon: Trash2, label: "Removed Low-Value Checks", desc: "Removed expect-ct-missing (Expect-CT was deprecated and removed from Chrome in 2022, no browser enforces it) and dns-prefetch-control (X-DNS-Prefetch-Control has negligible security impact). These were cluttering scan results with unhelpful info-level findings." },
     ],
@@ -67,7 +84,7 @@ const CHANGELOG = [
   {
     version: "1.6.3",
     date: "February 16, 2026",
-    title: "Scanner Accuracy Overhaul -- False Positives, DKIM Detection & Body Limits",
+    title: "Scanner Accuracy Overhaul: False Positives, DKIM Detection & Body Limits",
     highlights: false,
     changes: [
       { icon: Crosshair, label: "API Key Detection Overhaul", desc: "Completely rewrote the hardcoded secrets scanner to eliminate false positives. Removed 25+ overly broad patterns that matched UUIDs (Postmark), any hex string near a brand name (Cloudflare, Heroku, Vercel, Netlify, Datadog, etc.), public JWT tokens (Supabase anon keys), and random digit sequences (Telegram). Only high-confidence prefixed patterns remain (e.g., sk_live_, ghp_, SG., AIzaSy). Database URI checks now require user:password@host format. Added automatic filtering of placeholder values (example, test_, dummy, xxxx) and localhost URIs." },
@@ -104,9 +121,9 @@ const CHANGELOG = [
     title: "CSV Export, Scan Notes, Public Status Pages & Repository Migration",
     highlights: false,
     changes: [
-      { icon: FileSpreadsheet, label: "CSV Export", desc: "One-click CSV export of all scan findings alongside the existing JSON and PDF options. Outputs properly escaped columns for Title, Severity, Category, Description, Evidence, Risk Impact, and Fix Steps -- ready for import into JIRA, Linear, or spreadsheets." },
+      { icon: FileSpreadsheet, label: "CSV Export", desc: "One-click CSV export of all scan findings alongside the existing JSON and PDF options. Outputs properly escaped columns for Title, Severity, Category, Description, Evidence, Risk Impact, and Fix Steps, ready for import into JIRA, Linear, or spreadsheets." },
       { icon: Pencil, label: "Scan Notes & Annotations", desc: "Add freeform notes to any scan result from the history detail view. Write reminders like 'Fixed CSP issue, re-scan next week' or 'Known false positive, ignore'. Notes are persisted to the database (max 2,000 characters) and only editable by the scan owner." },
-      { icon: BarChart3, label: "Public Status Pages", desc: "New /status/[domain] pages show a domain's security health over time. Displays the current safety rating, a findings trend chart, severity breakdown bars, and a scan history table. Fully public, no authentication required -- link to it from your site as a trust signal." },
+      { icon: BarChart3, label: "Public Status Pages", desc: "New /status/[domain] pages show a domain's security health over time. Displays the current safety rating, a findings trend chart, severity breakdown bars, and a scan history table. Fully public, no authentication required. Link to it from your site as a trust signal." },
       { icon: Tag, label: "Tag Input Fix", desc: "Fixed a bug where pressing Space while typing a tag in the history view would trigger browser-level key handlers and open unrelated panels. Key events are now properly contained within the tag input field." },
       { icon: Activity, label: "Admin Shared Scans Card", desc: "Added a 10th stat card to the admin dashboard showing the count of scans with active share tokens. Both stat card rows are now an even 5-column grid layout." },
       { icon: Bell, label: "Simplified Notification Preferences", desc: "Removed the Advanced Security Alerts section from profile notification preferences. The four toggles for Failed Login Attempts, New Login Notifications, Rate Limit Alerts, and API Key Rotations have been removed to streamline the settings." },
@@ -131,7 +148,7 @@ const CHANGELOG = [
       { icon: Sun, label: "Theme Toggle on Shared Pages", desc: "Public shared scan pages (/shared/[token]) now include a theme toggle in the header, allowing visitors to switch between dark and light mode." },
       { icon: Eye, label: "Shared Page Redesign", desc: "The shared scan view has been fully redesigned to match the dashboard/history pattern with an action bar at the top, response headers panel, subdomain discovery, and consistent styling throughout." },
       { icon: Sparkles, label: "Demo Page Parity", desc: "The demo scanner now runs the full async check suite (DNS, TLS, live-fetch) and displays response headers, subdomain discovery, and the redesigned action bar layout matching the authenticated experience." },
-      { icon: Share2, label: "Shares Pagination & Share Button Cleanup", desc: "The /shares page now paginates at 5 items per page. The share button no longer shows a revoke button after sharing -- it shows a clean 'Copy Link' button matching the shares page pattern." },
+      { icon: Share2, label: "Shares Pagination & Share Button Cleanup", desc: "The /shares page now paginates at 5 items per page. The share button no longer shows a revoke button after sharing. It shows a clean 'Copy Link' button matching the shares page pattern." },
       { icon: Shield, label: "Response Headers in History & Shared Views", desc: "Response headers are now persisted to the database during scans and displayed in history detail views and shared scan pages. Previously they were only shown on the live scan result." },
     ],
   },
@@ -181,7 +198,7 @@ const CHANGELOG = [
     title: "Role-Based Staff System, Profile Pictures & Hashed Backup Codes",
     highlights: false,
     changes: [
-      { icon: Crown, label: "Role-Based Access Control", desc: "Replaced the binary admin/user system with a full role hierarchy: Admin, Moderator, Support, and User. Each role has scoped permissions -- Support is view-only, Moderators can disable accounts and force logouts, and Admins have full control." },
+      { icon: Crown, label: "Role-Based Access Control", desc: "Replaced the binary admin/user system with a full role hierarchy: Admin, Moderator, Support, and User. Each role has scoped permissions: Support is view-only, Moderators can disable accounts and force logouts, and Admins have full control." },
       { icon: Shield, label: "Owner Account Protection", desc: "User ID 1 (the first registered account) is now fully protected at the API level. No other admin can modify, disable, or delete the owner account." },
       { icon: Camera, label: "Profile Picture Upload", desc: "Users can now upload a profile picture from their profile page. Includes a full image crop dialog with drag-to-reposition, zoom slider, and circular preview. Supports JPG, PNG, and GIF up to 5MB." },
       { icon: Users, label: "Redesigned Staff Page", desc: "The public /staff page now groups team members by role (Administrators, Moderators, Support) with profile pictures, role badges, and a polished card layout." },
@@ -203,7 +220,7 @@ const CHANGELOG = [
       { icon: ShieldCheck, label: "Smart Safety Rating Engine", desc: "Rebuilt the safety rating from scratch with a three-tier classification system. Tier 1 (Exploitable) covers real threats like SQL injection, XSS, and exposed credentials. Tier 2 (Hardening) covers missing headers and best practices. Tier 3 (Informational) is excluded entirely. Sites like Discord and Reddit now correctly show as 'Safe' instead of being falsely flagged for missing optional headers." },
       { icon: Target, label: "Framework-Aware Detection", desc: "The scanner now detects Next.js, Nuxt, and Angular and adjusts severity accordingly. CSP directives like unsafe-inline in style-src are marked as INFO on framework sites instead of HIGH, eliminating false positives. A dedicated framework-required CSP check explains which directives are expected for the detected framework." },
       { icon: List, label: "Pagination Everywhere", desc: "Added pagination across the app using a reusable PaginationControl component. History page shows 10 scans per page, admin panel shows 5 users per page, and team scan history is paginated at 10 per page. All with smooth transitions instead of full-page reloads." },
-      { icon: Search, label: "Server-Side Admin Search", desc: "Admin user search now queries the database directly with ILIKE filtering across all users, not just the current page. Results update live with a 300ms debounce and smooth opacity transitions -- no page flicker." },
+      { icon: Search, label: "Server-Side Admin Search", desc: "Admin user search now queries the database directly with ILIKE filtering across all users, not just the current page. Results update live with a 300ms debounce and smooth opacity transitions. No page flicker." },
       { icon: Shield, label: "Security Header Fixes", desc: "Fixed CSP trailing semicolon that caused Vercel to strip frame-ancestors directive. Verified X-Frame-Options and Content-Security-Policy headers are properly served in production using debug header analysis." },
       { icon: Zap, label: "Centralized Constants System", desc: "All environment variables (database, SMTP, Turnstile, contact email) are now managed through a centralized constants file with proper validation, replacing scattered process.env calls throughout the codebase." },
       { icon: RefreshCw, label: "Smooth Admin Pagination", desc: "Admin panel pagination and audit log paging no longer trigger full-page skeleton reloads. Only the table content dims briefly with a smooth opacity transition while new data loads in the background." },
@@ -345,7 +362,7 @@ const CHANGELOG = [
       { icon: Users, label: "Teams & Organizations", desc: "Create teams, invite members with role-based access (owner/admin/viewer), and collaborate on security scans." },
       { icon: Gauge, label: "API Keys & Rate Limiting", desc: "Generate API keys for programmatic scanning with built-in rate limiting to prevent abuse." },
       { icon: MessageSquare, label: "Contact & Support", desc: "Dedicated support page for reporting issues, requesting features, or getting help." },
-      { icon: Eye, label: "Self-Scan Demo", desc: "Try VulnRadar on itself with a one-click demo scan to see the scanner in action -- no account required." },
+      { icon: Eye, label: "Self-Scan Demo", desc: "Try VulnRadar on itself with a one-click demo scan to see the scanner in action, no account required." },
       { icon: Sparkles, label: "Onboarding Tour", desc: "Interactive walkthrough for first-time users covering all key features." },
       { icon: Newspaper, label: "Documentation", desc: "Full API documentation, usage guides, legal pages, and this changelog." },
     ],

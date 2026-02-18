@@ -147,7 +147,7 @@ async function checkDMARC(domain: string): Promise<Vulnerability[]> {
 async function checkDKIM(domain: string): Promise<Vulnerability[]> {
   const selectors = ["default", "google", "selector1", "selector2", "k1", "s1", "dkim", "mail", "protonmail", "protonmail2", "protonmail3", "mxvault", "cm", "mandrill", "smtp", "zendesk1", "zendesk2", "em1", "em2", "s2"]
 
-  // Race all selectors -- resolve as soon as ANY one is found
+  // Race all selectors: resolve as soon as ANY one is found
   const found = await new Promise<boolean>((resolve) => {
     let pending = selectors.length
     let resolved = false
@@ -238,7 +238,7 @@ async function checkDNSSEC(domain: string): Promise<Vulnerability[]> {
   return []
 }
 
-// ── DNS Security (orchestrator -- runs all sub-checks in parallel) ───────────
+// ── DNS Security (orchestrator: runs all sub-checks in parallel) ───────────
 
 async function checkDNSSecurity(domain: string): Promise<Vulnerability[]> {
   const results = await Promise.allSettled([
@@ -416,7 +416,7 @@ async function checkRobotsTxt(origin: string): Promise<Vulnerability[]> {
           "medium",
           "information-disclosure",
           "The robots.txt file reveals sensitive directory paths that attackers can use for reconnaissance.",
-          `Fetched ${origin}/robots.txt -- found ${found.length} sensitive path(s):\n${found.slice(0, 8).join("\n")}${found.length > 8 ? `\n...and ${found.length - 8} more` : ""}`,
+          `Fetched ${origin}/robots.txt, found ${found.length} sensitive path(s):\n${found.slice(0, 8).join("\n")}${found.length > 8 ? `\n...and ${found.length - 8} more` : ""}`,
           "Attackers use robots.txt as a roadmap to find admin panels, configuration files, and other sensitive resources.",
           "robots.txt is publicly readable by design. Security should not depend on hiding URLs.",
           [

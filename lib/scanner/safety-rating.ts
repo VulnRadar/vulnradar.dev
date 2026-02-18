@@ -5,7 +5,7 @@ import { SEVERITY_LEVELS } from "@/lib/constants"
 //
 // Philosophy: A site is "unsafe" only when there is EVIDENCE of actively
 // exploitable vulnerabilities. Missing best-practice headers (CSP, HSTS, etc.)
-// are hardening *recommendations* -- they don't mean a site is dangerous to
+// are hardening *recommendations*. They don't mean a site is dangerous to
 // visit. Sites like Discord, Reddit, GitHub are safe even if they're missing
 // a few headers.
 //

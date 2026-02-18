@@ -91,7 +91,7 @@ export const POST = withErrorHandling(async (request: Request) => {
     return response
   }
 
-  // No 2FA -- create session directly
+  // No 2FA: create session directly
   const ua = await getUserAgent()
   await createSession(user.id, ip, ua)
 
