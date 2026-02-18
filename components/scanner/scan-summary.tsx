@@ -175,14 +175,14 @@ export function ScanSummary({ result }: ScanSummaryProps) {
       </div>
 
       {/* Severity cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+      <div className="grid grid-cols-3 sm:grid-cols-5 gap-1.5 sm:gap-2">
         {severityCards.map(({ key, label, icon: Icon, color, bg, border, accent }) => {
           const count = result.summary[key]
           return (
             <div
               key={key}
               className={cn(
-                "relative flex items-center gap-3 rounded-xl border p-3 sm:flex-col sm:items-center sm:gap-1.5 sm:p-3 overflow-hidden",
+                "relative flex items-center gap-2 rounded-lg sm:rounded-xl border p-2 sm:p-3 sm:flex-col sm:items-center sm:gap-1.5 overflow-hidden",
                 bg,
                 border,
               )}
@@ -191,11 +191,11 @@ export function ScanSummary({ result }: ScanSummaryProps) {
                 <div className={cn("absolute top-0 left-0 w-1 h-full sm:w-full sm:h-1", accent)} />
               )}
               <Icon className={cn("h-4 w-4 shrink-0", color)} />
-              <div className="flex items-baseline gap-2 sm:flex-col sm:items-center sm:gap-0">
-                <span className="text-lg font-bold text-foreground leading-none">
+              <div className="flex items-baseline gap-1.5 sm:flex-col sm:items-center sm:gap-0">
+                <span className="text-base sm:text-lg font-bold text-foreground leading-none">
                   {count}
                 </span>
-                <span className={cn("text-xs font-medium", color)}>{label}</span>
+                <span className={cn("text-[10px] sm:text-xs font-medium", color)}>{label}</span>
               </div>
             </div>
           )

@@ -173,16 +173,16 @@ export function ResultsList({ findings, onSelectIssue }: ResultsListProps) {
               key={issue.id}
               type="button"
               onClick={() => onSelectIssue(issue)}
-              className="group flex items-start sm:items-center gap-3 rounded-xl border border-border bg-card p-4 text-left transition-all hover:bg-muted/50 hover:border-primary/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:scale-[0.99]"
+              className="group flex items-start sm:items-center gap-2 sm:gap-3 rounded-xl border border-border bg-card p-3 sm:p-4 text-left transition-all hover:bg-muted/50 hover:border-primary/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:scale-[0.99]"
             >
               <div className="shrink-0 mt-0.5 sm:mt-0">
                 <SeverityBadge severity={issue.severity} />
               </div>
-              <div className="flex flex-col gap-1 min-w-0 flex-1">
-                <span className="text-sm font-medium text-foreground leading-snug">
+              <div className="flex flex-col gap-0.5 sm:gap-1 min-w-0 flex-1">
+                <span className="text-xs sm:text-sm font-medium text-foreground leading-snug truncate">
                   {issue.title}
                 </span>
-                <span className="text-xs text-muted-foreground leading-relaxed line-clamp-2 sm:line-clamp-1">
+                <span className="text-[10px] sm:text-xs text-muted-foreground leading-relaxed line-clamp-2 sm:line-clamp-1">
                   {issue.description}
                 </span>
               </div>
