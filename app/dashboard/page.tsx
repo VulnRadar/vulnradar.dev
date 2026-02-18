@@ -169,7 +169,7 @@ export default function DashboardPage() {
                 {/* Scan summary */}
                 <ScanSummary result={result} />
 
-                {/* Deep crawl -- other pages scanned */}
+                {/* Deep crawl: other pages scanned */}
                 {crawlInfo && crawlInfo.pages.length > 1 && (
                   <CrawlPagesInfo crawlInfo={crawlInfo} onSelectIssue={setSelectedIssue} />
                 )}
@@ -296,7 +296,7 @@ function CrawlPagesInfo({ crawlInfo, onSelectIssue }: { crawlInfo: CrawlInfo; on
 
   return (
     <div className="rounded-xl border border-border bg-card overflow-hidden">
-      {/* Header -- matches subdomain discovery style */}
+      {/* Header (matches subdomain discovery style) */}
       <button
         type="button"
         onClick={() => setOpen(!open)}

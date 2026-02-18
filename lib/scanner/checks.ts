@@ -372,7 +372,7 @@ const detectors: Record<string, DetectFn> = {
       { name: "PGP Private Key", pattern: /-----BEGIN PGP PRIVATE KEY BLOCK-----/g },
       { name: "SSH Private Key", pattern: /-----BEGIN (?:OPENSSH |DSA )?PRIVATE KEY-----/g },
 
-      // ── Generic (strict context -- must be in assignment with quotes) ──
+      // ── Generic (strict context: must be in assignment with quotes) ──
       { name: "Generic Secret", pattern: /(?:api_secret|secret_key|private_key|client_secret|app_secret)\s*[:=]\s*["'][a-zA-Z0-9/+=_-]{20,}["']/gi },
       { name: "Connection String", pattern: /(?:connection_string|database_url|dsn)\s*[:=]\s*["'][^"']{20,}["']/gi },
     ]

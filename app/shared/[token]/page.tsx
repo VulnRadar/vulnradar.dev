@@ -117,7 +117,7 @@ export default function SharedScanPage() {
               <IssueDetail issue={selectedIssue} onBack={() => setSelectedIssue(null)} />
             ) : (
               <>
-                {/* Action bar at top -- matches dashboard/history pattern */}
+                {/* Action bar at top */}
                 <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center sm:justify-between gap-3 p-4 rounded-xl border border-border/40 bg-card/30 backdrop-blur-sm">
                   <div className="min-w-0">
                     <div className="flex items-center gap-2 mb-1">

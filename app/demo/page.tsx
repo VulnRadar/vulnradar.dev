@@ -146,7 +146,7 @@ export default function DemoPage() {
             <IssueDetail issue={selectedIssue} onBack={() => setSelectedIssue(null)} />
           ) : (
             <>
-              {/* Action bar at top -- matches dashboard/history pattern */}
+              {/* Action bar at top */}
               <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center sm:justify-between gap-3 p-4 rounded-xl border border-border/40 bg-card/30 backdrop-blur-sm">
                 <div className="min-w-0">
                   <p className="text-xs text-muted-foreground mb-1">Self-Scan Result</p>

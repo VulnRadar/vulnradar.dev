@@ -372,7 +372,7 @@ function HistoryPageContent() {
                     {/* Subdomain discovery */}
                     <SubdomainDiscovery url={scanDetail.url} />
 
-                    {/* Scan Notes -- visible to everyone, editable only by owner */}
+                    {/* Scan Notes (visible to everyone, editable only by owner) */}
                     <div className="rounded-xl border border-border/40 bg-card/30 backdrop-blur-sm p-4">
                       <div className="flex items-center justify-between mb-3">
                         <div className="flex items-center gap-2">

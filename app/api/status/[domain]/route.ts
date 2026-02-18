@@ -21,7 +21,7 @@ export async function GET(
     return NextResponse.json({ error: "Invalid domain" }, { status: 400 })
   }
 
-  // Get the most recent shared scans for this domain (public data only -- must have share_token)
+  // Get the most recent shared scans for this domain (public data only, must have share_token)
   // This ensures only scans the user chose to make public are visible
   const result = await pool.query(
     `SELECT 
