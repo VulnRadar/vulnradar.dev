@@ -72,8 +72,19 @@ async function discoverInternalLinks(startUrl: string): Promise<string[]> {
         signal: AbortSignal.timeout(CRAWL_TIMEOUT),
       })
 
-      // If redirected to a different origin, skip
-      if (new URL(res.url).origin !== origin) continue
+      // Allow redirects within the same registered domain (e.g. disutils.com -> disutils.com/en/home)
+      // but skip if redirected to a different domain entirely
+      const redirectedUrl = new URL(res.url)
+      const baseDomain = new URL(origin).hostname.split(".").slice(-2).join(".")
+      const redirectDomain = redirectedUrl.hostname.split(".").slice(-2).join(".")
+      if (redirectDomain !== baseDomain) continue
+
+      // If redirected to a same-domain URL we haven't seen, add it to found
+      const redirectNormalized = redirectedUrl.origin + redirectedUrl.pathname + redirectedUrl.search
+      if (!visited.has(redirectNormalized)) {
+        visited.add(redirectNormalized)
+        if (!found.includes(redirectNormalized)) found.push(redirectNormalized)
+      }
 
       const contentType = res.headers.get("content-type") || ""
       if (!contentType.includes("text/html")) continue
@@ -97,8 +108,9 @@ async function discoverInternalLinks(startUrl: string): Promise<string[]> {
           continue
         }
 
-        // Must be same origin
-        if (resolved.origin !== origin) continue
+        // Must be same registered domain (allows www. and same-domain paths)
+        const linkDomain = resolved.hostname.split(".").slice(-2).join(".")
+        if (linkDomain !== baseDomain) continue
 
         // Skip asset/internal paths
         const fullPath = resolved.pathname + resolved.search
