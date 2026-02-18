@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Globe, Loader2, CheckSquare, Square, X, Search, ArrowRight } from "lucide-react"
 import { Button } from "@/components/ui/button"
 
@@ -28,7 +28,11 @@ export function CrawlUrlSelector({ urls, isLoading, onConfirm, onCancel }: Crawl
   const [selected, setSelected] = useState<Set<string>>(new Set(urls))
   const [filter, setFilter] = useState("")
 
-  // Keep selection in sync as URLs arrive
+  // Select all URLs by default as they arrive from discovery
+  useEffect(() => {
+    setSelected(new Set(urls))
+  }, [urls])
+
   const allSelected = selected.size === urls.length && urls.length > 0
   const noneSelected = selected.size === 0
 
@@ -84,15 +88,16 @@ export function CrawlUrlSelector({ urls, isLoading, onConfirm, onCancel }: Crawl
         </div>
 
         {/* Loading state */}
-        {isLoading && urls.length === 0 && (
+        {isLoading && (
           <div className="flex flex-col items-center gap-3 py-12">
             <Loader2 className="h-6 w-6 animate-spin text-primary" />
-            <p className="text-sm text-muted-foreground">Crawling for pages...</p>
+            <p className="text-sm text-muted-foreground">Discovering pages...</p>
+            <p className="text-[10px] text-muted-foreground/60">{urls.length} found so far</p>
           </div>
         )}
 
-        {/* URL list */}
-        {urls.length > 0 && (
+        {/* URL list (only shown after loading finishes) */}
+        {!isLoading && urls.length > 0 && (
           <>
             {/* Toolbar */}
             <div className="flex items-center gap-2 px-4 py-2.5 border-b border-border/50 bg-muted/20">
