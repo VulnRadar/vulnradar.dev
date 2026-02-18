@@ -47,7 +47,20 @@ async function discoverInternalLinks(startUrl: string): Promise<string[]> {
   const queue = [startUrl]
   const found: string[] = [startUrl]
 
-  const skipExtensions = /\.(png|jpg|jpeg|gif|svg|webp|ico|css|js|woff2?|ttf|eot|pdf|zip|mp4|mp3|wav)$/i
+  const skipExtensions = /\.(png|jpg|jpeg|gif|svg|webp|ico|css|js|mjs|cjs|woff2?|ttf|eot|otf|pdf|zip|tar|gz|mp4|mp3|wav|ogg|webm|avif|map|xml|rss|atom|json|wasm|txt)$/i
+  const skipPathSegments = /(\/_next\/|\/static\/|\/assets\/|\/api\/|\/favicon|\/robots\.txt|\/sitemap|\/manifest|\/sw\.js|\/workbox)/i
+
+  function isCleanUrl(href: string): boolean {
+    // Skip anything with encoded brackets, regex-like patterns, or non-printable chars
+    if (/[%\[\]{}|\\^`<>]/.test(href) && /%5[bBdD]|%5[eE]|%7[bBdD]|%3[eE]|%3[cC]/.test(href)) return false
+    // Skip data URIs
+    if (href.startsWith("data:")) return false
+    // Skip fragments-only and empty
+    if (!href || href === "#" || href.startsWith("#")) return false
+    // Skip non-HTTP
+    if (href.startsWith("mailto:") || href.startsWith("tel:") || href.startsWith("javascript:")) return false
+    return true
+  }
 
   while (queue.length > 0 && found.length < MAX_PAGES) {
     const url = queue.shift()!
@@ -67,14 +80,13 @@ async function discoverInternalLinks(startUrl: string): Promise<string[]> {
 
       const body = await safeReadBody(res, MAX_BODY_SIZE)
 
-      // Extract href values from <a> tags
-      const hrefRegex = /href=["']([^"'#]+?)["']/gi
+      // Extract href values from <a> tags only (not link/script/img tags)
+      const anchorRegex = /<a\s[^>]*href=["']([^"'#]+?)["']/gi
       let match: RegExpExecArray | null
-      while ((match = hrefRegex.exec(body)) !== null) {
-        let href = match[1].trim()
+      while ((match = anchorRegex.exec(body)) !== null) {
+        const href = match[1].trim()
 
-        // Skip non-HTTP links
-        if (href.startsWith("mailto:") || href.startsWith("tel:") || href.startsWith("javascript:")) continue
+        if (!isCleanUrl(href)) continue
         if (skipExtensions.test(href)) continue
 
         // Resolve relative URLs
@@ -87,6 +99,11 @@ async function discoverInternalLinks(startUrl: string): Promise<string[]> {
 
         // Must be same origin
         if (resolved.origin !== origin) continue
+
+        // Skip asset/internal paths
+        const fullPath = resolved.pathname + resolved.search
+        if (skipPathSegments.test(fullPath)) continue
+        if (skipExtensions.test(resolved.pathname)) continue
 
         // Normalize: remove hash, keep pathname + search
         const normalized = resolved.origin + resolved.pathname + resolved.search

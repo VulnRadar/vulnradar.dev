@@ -72,9 +72,20 @@ export default function DashboardPage() {
         return
       }
 
-      setResult(data)
+      // For deep crawl: show only the main URL's findings in the result view
+      if (data.crawl && data.crawl.pages?.length > 0) {
+        const mainPage = data.crawl.pages[0]
+        setResult({
+          ...data,
+          findings: mainPage.findings,
+          summary: mainPage.summary,
+          duration: mainPage.duration,
+        })
+        setCrawlInfo(data.crawl)
+      } else {
+        setResult(data)
+      }
       setScanHistoryId(data.scanHistoryId || null)
-      if (data.crawl) setCrawlInfo(data.crawl)
       setStatus("done")
     } catch {
       setError("Failed to connect to the scanner. Please check your connection and try again.")
@@ -155,11 +166,6 @@ export default function DashboardPage() {
                   </div>
                 </div>
 
-                {/* Deep crawl pages info */}
-                {crawlInfo && (
-                  <CrawlPagesInfo crawlInfo={crawlInfo} onSelectIssue={setSelectedIssue} />
-                )}
-
                 {/* Scan summary */}
                 <ScanSummary result={result} />
 
@@ -230,6 +236,11 @@ export default function DashboardPage() {
 
                 {/* Results list */}
                 <ResultsList findings={result.findings} onSelectIssue={setSelectedIssue} />
+
+                {/* Deep crawl -- other pages scanned */}
+                {crawlInfo && crawlInfo.pages.length > 1 && (
+                  <CrawlPagesInfo crawlInfo={crawlInfo} onSelectIssue={setSelectedIssue} />
+                )}
               </>
             ) : (
               <IssueDetail issue={selectedIssue} onBack={() => setSelectedIssue(null)} />
@@ -259,22 +270,47 @@ interface CrawlInfo {
 
 function CrawlPagesInfo({ crawlInfo, onSelectIssue }: { crawlInfo: CrawlInfo; onSelectIssue: (issue: Vulnerability) => void }) {
   const [expandedPage, setExpandedPage] = useState<string | null>(null)
+  // Skip first page (already shown as main results)
+  const otherPages = crawlInfo.pages.slice(1)
+  const totalOtherIssues = otherPages.reduce((sum, p) => sum + p.findings_count, 0)
 
   function getPath(u: string) {
     try { return new URL(u).pathname + new URL(u).search || "/" } catch { return u }
   }
 
+  const SEV_DOT: Record<string, string> = {
+    critical: "bg-red-500",
+    high: "bg-orange-500",
+    medium: "bg-amber-500",
+    low: "bg-blue-500",
+    info: "bg-muted-foreground/50",
+  }
+  const SEV_TEXT: Record<string, string> = {
+    critical: "text-red-500 bg-red-500/10 border-red-500/20",
+    high: "text-orange-500 bg-orange-500/10 border-orange-500/20",
+    medium: "text-amber-500 bg-amber-500/10 border-amber-500/20",
+    low: "text-blue-500 bg-blue-500/10 border-blue-500/20",
+    info: "text-muted-foreground bg-muted border-border",
+  }
+
   return (
     <div className="rounded-xl border border-border/40 bg-card/30 backdrop-blur-sm overflow-hidden">
-      <div className="flex items-center gap-2 px-4 py-3 border-b border-border/40">
-        <Globe className="h-4 w-4 text-primary shrink-0" />
-        <span className="text-sm font-medium text-foreground flex-1">
-          Deep Crawl -- {crawlInfo.pagesScanned} pages scanned
-        </span>
+      {/* Header */}
+      <div className="flex items-center gap-3 px-4 py-3.5 border-b border-border/40 bg-muted/20">
+        <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-primary/10 border border-primary/20">
+          <Globe className="h-4 w-4 text-primary" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <h3 className="text-sm font-semibold text-foreground">Also Crawled</h3>
+          <p className="text-[10px] sm:text-xs text-muted-foreground">
+            {otherPages.length} additional {otherPages.length === 1 ? "page" : "pages"} discovered -- {totalOtherIssues} total issues
+          </p>
+        </div>
       </div>
 
-      <div className="divide-y divide-border/30">
-        {crawlInfo.pages.map((page) => {
+      {/* Page rows */}
+      <div className="divide-y divide-border/20">
+        {otherPages.map((page) => {
           const path = getPath(page.url)
           const isExpanded = expandedPage === page.url
 
@@ -283,55 +319,46 @@ function CrawlPagesInfo({ crawlInfo, onSelectIssue }: { crawlInfo: CrawlInfo; on
               <button
                 type="button"
                 onClick={() => setExpandedPage(isExpanded ? null : page.url)}
-                className="flex items-center gap-2 w-full px-4 py-2.5 text-left hover:bg-muted/50 transition-colors"
+                className="flex items-center gap-2.5 w-full px-4 py-2.5 text-left hover:bg-muted/40 transition-colors"
               >
-                <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${page.findings_count > 0 ? "bg-amber-500" : "bg-emerald-500"}`} />
-                <span className="text-[10px] sm:text-xs font-mono text-foreground truncate flex-1 max-w-[180px] sm:max-w-none">
-                  {path}
-                </span>
-                <span className={`text-[10px] sm:text-xs font-medium shrink-0 ${page.findings_count > 0 ? "text-amber-500" : "text-emerald-500"}`}>
-                  {page.findings_count} issues
-                </span>
-                <span className="text-[10px] text-muted-foreground shrink-0 hidden sm:inline">
-                  {(page.duration / 1000).toFixed(1)}s
-                </span>
                 {isExpanded ? (
                   <ChevronDown className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
                 ) : (
                   <ChevronRight className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
                 )}
+                <span className="text-[10px] sm:text-xs font-mono text-foreground truncate flex-1">
+                  {path}
+                </span>
+                <span className={`text-[10px] sm:text-xs font-medium px-1.5 py-0.5 rounded border shrink-0 ${
+                  page.findings_count > 0
+                    ? "text-amber-500 bg-amber-500/10 border-amber-500/20"
+                    : "text-emerald-500 bg-emerald-500/10 border-emerald-500/20"
+                }`}>
+                  {page.findings_count} issues
+                </span>
+                <span className="text-[10px] text-muted-foreground shrink-0 hidden sm:inline tabular-nums">
+                  {(page.duration / 1000).toFixed(1)}s
+                </span>
               </button>
 
               {isExpanded && (
-                <div className="bg-muted/20 px-4 py-2 border-t border-border/20">
+                <div className="bg-muted/10 px-4 py-2.5 border-t border-border/10">
                   {page.findings.length === 0 ? (
-                    <p className="text-xs text-muted-foreground py-2 text-center italic">No issues found on this page.</p>
+                    <p className="text-xs text-emerald-500/80 py-2 text-center">No issues found on this page.</p>
                   ) : (
-                    <div className="flex flex-col gap-1">
+                    <div className="flex flex-col gap-0.5">
                       {page.findings.map((f) => (
                         <button
                           type="button"
                           key={`${page.url}-${f.id}`}
                           onClick={() => onSelectIssue(f)}
-                          className="flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-muted/50 transition-colors text-left"
+                          className="flex items-center gap-2 px-2.5 py-2 rounded-lg hover:bg-muted/50 transition-colors text-left group"
                         >
-                          <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${
-                            f.severity === "critical" ? "bg-red-500" :
-                            f.severity === "high" ? "bg-orange-500" :
-                            f.severity === "medium" ? "bg-amber-500" :
-                            f.severity === "low" ? "bg-blue-500" :
-                            "bg-muted-foreground/50"
-                          }`} />
-                          <span className="text-[10px] sm:text-xs text-foreground truncate flex-1">
+                          <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${SEV_DOT[f.severity] || SEV_DOT.info}`} />
+                          <span className="text-[10px] sm:text-xs text-foreground truncate flex-1 group-hover:text-primary transition-colors">
                             {f.title}
                           </span>
-                          <span className={`text-[9px] sm:text-[10px] font-medium uppercase shrink-0 ${
-                            f.severity === "critical" ? "text-red-500" :
-                            f.severity === "high" ? "text-orange-500" :
-                            f.severity === "medium" ? "text-amber-500" :
-                            f.severity === "low" ? "text-blue-500" :
-                            "text-muted-foreground"
-                          }`}>
+                          <span className={`text-[9px] sm:text-[10px] font-medium uppercase px-1.5 py-0.5 rounded border shrink-0 ${SEV_TEXT[f.severity] || SEV_TEXT.info}`}>
                             {f.severity}
                           </span>
                         </button>
