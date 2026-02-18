@@ -280,12 +280,18 @@ function HistoryPageContent() {
     })
   }
 
-  function getHostname(url: string) {
+  function displayUrl(url: string) {
     try {
-      return new URL(url).hostname
+      const u = new URL(url)
+      const path = u.pathname === "/" ? "" : u.pathname + u.search
+      return u.hostname + path
     } catch {
       return url
     }
+  }
+
+  function getDomain(url: string) {
+    try { return new URL(url).hostname } catch { return url }
   }
 
   const filtered = scans.filter((s) => {
@@ -610,7 +616,7 @@ function HistoryPageContent() {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
                       <span className="text-sm font-medium text-foreground truncate">
-                        {getHostname(scan.url)}
+                        {displayUrl(scan.url)}
                       </span>
                       <span
                         className={cn(
