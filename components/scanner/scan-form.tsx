@@ -2,14 +2,17 @@
 
 import React from "react"
 import { useState } from "react"
-import { Shield, Loader2, Search, ArrowRight } from "lucide-react"
+import { Shield, Loader2, Search, ArrowRight, Zap, Globe } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { TOTAL_CHECKS_LABEL } from "@/lib/constants"
+import { cn } from "@/lib/utils"
 import type { ScanStatus } from "@/lib/scanner/types"
 
+export type ScanMode = "quick" | "deep"
+
 interface ScanFormProps {
-  onScan: (url: string) => void
+  onScan: (url: string, mode?: ScanMode) => void
   status: ScanStatus
 }
 
@@ -25,6 +28,7 @@ const FEATURES = [
 export function ScanForm({ onScan, status }: ScanFormProps) {
   const [url, setUrl] = useState("")
   const [error, setError] = useState("")
+  const [mode, setMode] = useState<ScanMode>("quick")
 
   function validate(input: string): boolean {
     if (!input.trim()) {
@@ -48,7 +52,7 @@ export function ScanForm({ onScan, status }: ScanFormProps) {
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (validate(url)) {
-      onScan(url)
+      onScan(url, mode)
     }
   }
 
@@ -81,6 +85,41 @@ export function ScanForm({ onScan, status }: ScanFormProps) {
           </span>
         ))}
       </div>
+
+      {/* Scan mode toggle */}
+      <div className="flex items-center gap-1.5 p-1 rounded-lg bg-muted/50 border border-border">
+        <button
+          type="button"
+          onClick={() => setMode("quick")}
+          className={cn(
+            "flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all",
+            mode === "quick"
+              ? "bg-background text-foreground shadow-sm border border-border"
+              : "text-muted-foreground hover:text-foreground",
+          )}
+        >
+          <Zap className="h-3 w-3" />
+          Quick Scan
+        </button>
+        <button
+          type="button"
+          onClick={() => setMode("deep")}
+          className={cn(
+            "flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all",
+            mode === "deep"
+              ? "bg-background text-foreground shadow-sm border border-border"
+              : "text-muted-foreground hover:text-foreground",
+          )}
+        >
+          <Globe className="h-3 w-3" />
+          Deep Crawl
+        </button>
+      </div>
+      <p className="text-[10px] text-muted-foreground text-center -mt-2">
+        {mode === "quick"
+          ? "Scans the single URL you enter for vulnerabilities."
+          : "Crawls the site to find internal pages, then scans each one."}
+      </p>
 
       {/* Form */}
       <form

@@ -3,7 +3,7 @@ import { APP_NAME, APP_URL, TOTAL_CHECKS_LABEL } from "./constants"
 import { SEVERITY_LEVELS } from "@/lib/constants"
 import { getSafetyRating } from "./scanner/safety-rating"
 
-// Lightweight multi-page PDF generation using raw PDF syntax -- no external deps
+// Lightweight multi-page PDF generation using raw PDF syntax (no external deps)
 export function generatePdfReport(result: ScanResult): Uint8Array {
   const pageWidth = 595.28 // A4 width in points
   const pageHeight = 841.89
@@ -126,7 +126,7 @@ export function generatePdfReport(result: ScanResult): Uint8Array {
 
   addSpacer(40)
 
-  // Logo area -- text-based brand mark
+  // Logo area: text-based brand mark
   addText(APP_NAME.toUpperCase(), 28, true, BRAND_COLOR)
   addSpacer(2)
   addText("Security Vulnerability Report", 14, false, TEXT_SECONDARY)
@@ -171,7 +171,7 @@ export function generatePdfReport(result: ScanResult): Uint8Array {
   addLine()
   addSpacer(16)
 
-  // Safety Rating -- prominent
+  // Safety Rating: prominent
   const rating = getSafetyRating(result.findings)
   const ratingConfig = {
     safe: { label: "SAFE TO VIEW", color: [0.1, 0.65, 0.3] as [number, number, number], desc: "No critical or actively exploitable vulnerabilities were detected." },
@@ -240,7 +240,7 @@ export function generatePdfReport(result: ScanResult): Uint8Array {
     for (let i = 0; i < result.findings.length; i++) {
       const f = result.findings[i]
 
-      // Check if we need a new page -- estimate header + description minimum
+      // Check if we need a new page: estimate header + description minimum
       ensureSpace(90)
 
       // If we just started a new page, add the header
@@ -308,7 +308,7 @@ export function generatePdfReport(result: ScanResult): Uint8Array {
     addText("All security checks passed successfully. The target appears to be well-configured.", 10, false, TEXT_SECONDARY)
   }
 
-  // Final page -- summary footer
+  // Final page: summary footer
   addSpacer(16)
   addColorLine(BRAND_COLOR, 0.5)
   addSpacer(8)
