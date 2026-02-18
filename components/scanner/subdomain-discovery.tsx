@@ -76,7 +76,11 @@ export function SubdomainDiscovery({ url, onScanSubdomain }: SubdomainDiscoveryP
       })
       const data = await res.json()
       if (!res.ok) {
-        setError(data.error || "Discovery failed")
+        if (res.status === 401) {
+          setError("You need to be logged in to use Subdomain Discovery. Create a free account to unlock this feature.")
+        } else {
+          setError(data.error || "Discovery failed")
+        }
       } else {
         setResult(data)
         setExpanded(true)
