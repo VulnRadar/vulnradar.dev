@@ -79,11 +79,15 @@ async function discoverInternalLinks(startUrl: string): Promise<string[]> {
       const redirectDomain = redirectedUrl.hostname.split(".").slice(-2).join(".")
       if (redirectDomain !== baseDomain) continue
 
-      // If redirected to a same-domain URL we haven't seen, add it to found
+      // Use the actual (post-redirect) URL as the base for resolving relative links
+      const actualUrl = res.url
+
+      // If redirected to a same-domain URL we haven't seen, add it and queue it
       const redirectNormalized = redirectedUrl.origin + redirectedUrl.pathname + redirectedUrl.search
       if (!visited.has(redirectNormalized)) {
         visited.add(redirectNormalized)
         if (!found.includes(redirectNormalized)) found.push(redirectNormalized)
+        queue.push(redirectNormalized)
       }
 
       const contentType = res.headers.get("content-type") || ""
@@ -100,10 +104,10 @@ async function discoverInternalLinks(startUrl: string): Promise<string[]> {
         if (!isCleanUrl(href)) continue
         if (skipExtensions.test(href)) continue
 
-        // Resolve relative URLs
+        // Resolve relative URLs against the actual (post-redirect) URL
         let resolved: URL
         try {
-          resolved = new URL(href, url)
+          resolved = new URL(href, actualUrl)
         } catch {
           continue
         }
