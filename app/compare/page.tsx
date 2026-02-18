@@ -78,7 +78,17 @@ export default function ComparePage() {
     setLoading(false)
   }, [selectedA, selectedB])
 
-  function getHostname(url: string) {
+  function displayUrl(url: string) {
+    try {
+      const u = new URL(url)
+      const path = u.pathname === "/" ? "" : u.pathname + u.search
+      return u.hostname + path
+    } catch {
+      return url
+    }
+  }
+
+  function getDomain(url: string) {
     try { return new URL(url).hostname } catch { return url }
   }
 
@@ -118,7 +128,7 @@ export default function ComparePage() {
                     {scans.map((scan) => (
                       <button
                         key={scan.id}
-                        onClick={() => setSelectedA(scan.id)}
+                        onClick={() => { setSelectedA(scan.id); if (selectedB && getDomain(scan.url) !== getDomain(scans.find(s => s.id === selectedB)?.url || "")) setSelectedB(null) }}
                         disabled={scan.id === selectedB}
                         className={cn(
                           "flex items-center gap-2 px-3 py-2 rounded-lg text-left text-xs transition-colors",
@@ -130,7 +140,7 @@ export default function ComparePage() {
                         )}
                       >
                         <Globe className="h-3 w-3 shrink-0 text-muted-foreground" />
-                        <span className="truncate flex-1">{getHostname(scan.url)}</span>
+                        <span className="truncate flex-1">{displayUrl(scan.url)}</span>
                         <span className="text-[10px] text-muted-foreground shrink-0">
                           {new Date(scan.scanned_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
                         </span>
@@ -144,10 +154,17 @@ export default function ComparePage() {
               </CardContent>
             </Card>
 
-            {/* Scan B */}
+            {/* Scan B -- filtered to same domain as A */}
             <Card className="bg-card border-border">
               <CardHeader className="pb-2 pt-4 px-4">
-                <CardTitle className="text-sm font-semibold text-muted-foreground">Newer Scan (After)</CardTitle>
+                <CardTitle className="text-sm font-semibold text-muted-foreground">
+                  Newer Scan (After)
+                  {selectedA && (
+                    <span className="font-normal text-xs text-muted-foreground/60 ml-1.5">
+                      -- showing {getDomain(scans.find(s => s.id === selectedA)?.url || "")} only
+                    </span>
+                  )}
+                </CardTitle>
               </CardHeader>
               <CardContent className="px-4 pb-4">
                 {loadingScans ? (
@@ -156,30 +173,37 @@ export default function ComparePage() {
                   </div>
                 ) : (
                   <div className="flex flex-col gap-1 max-h-48 overflow-y-auto">
-                    {scans.map((scan) => (
-                      <button
-                        key={scan.id}
-                        onClick={() => setSelectedB(scan.id)}
-                        disabled={scan.id === selectedA}
-                        className={cn(
-                          "flex items-center gap-2 px-3 py-2 rounded-lg text-left text-xs transition-colors",
-                          selectedB === scan.id
-                            ? "bg-primary/10 text-primary border border-primary/20"
-                            : scan.id === selectedA
-                              ? "opacity-30 cursor-not-allowed"
-                              : "hover:bg-muted text-foreground",
-                        )}
-                      >
-                        <Globe className="h-3 w-3 shrink-0 text-muted-foreground" />
-                        <span className="truncate flex-1">{getHostname(scan.url)}</span>
-                        <span className="text-[10px] text-muted-foreground shrink-0">
-                          {new Date(scan.scanned_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
-                        </span>
-                      </button>
-                    ))}
-                    {scans.length === 0 && (
-                      <p className="text-sm text-muted-foreground text-center py-4">No scans yet</p>
-                    )}
+                    {(() => {
+                      const selectedADomain = selectedA ? getDomain(scans.find(s => s.id === selectedA)?.url || "") : null
+                      const filteredScans = selectedADomain
+                        ? scans.filter(s => getDomain(s.url) === selectedADomain)
+                        : scans
+                      return filteredScans.length === 0 ? (
+                        <p className="text-sm text-muted-foreground text-center py-4">
+                          {selectedA ? "No other scans for this domain" : "Select a scan on the left first"}
+                        </p>
+                      ) : filteredScans.map((scan) => (
+                        <button
+                          key={scan.id}
+                          onClick={() => setSelectedB(scan.id)}
+                          disabled={scan.id === selectedA}
+                          className={cn(
+                            "flex items-center gap-2 px-3 py-2 rounded-lg text-left text-xs transition-colors",
+                            selectedB === scan.id
+                              ? "bg-primary/10 text-primary border border-primary/20"
+                              : scan.id === selectedA
+                                ? "opacity-30 cursor-not-allowed"
+                                : "hover:bg-muted text-foreground",
+                          )}
+                        >
+                          <Globe className="h-3 w-3 shrink-0 text-muted-foreground" />
+                          <span className="truncate flex-1">{displayUrl(scan.url)}</span>
+                          <span className="text-[10px] text-muted-foreground shrink-0">
+                            {new Date(scan.scanned_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                          </span>
+                        </button>
+                      ))
+                    })()}
                   </div>
                 )}
               </CardContent>
@@ -207,14 +231,14 @@ export default function ComparePage() {
                   <div className="flex flex-col sm:flex-row items-center gap-4 justify-center">
                     <div className="text-center">
                       <p className="text-xs text-muted-foreground">Before</p>
-                      <p className="text-sm font-medium text-foreground">{getHostname(diffResult.scanA.url)}</p>
+                      <p className="text-sm font-medium text-foreground truncate max-w-[200px]">{displayUrl(diffResult.scanA.url)}</p>
                       <p className="text-xs text-muted-foreground">{formatDate(diffResult.scanA.scanned_at)}</p>
                       <p className="text-lg font-bold text-foreground">{diffResult.scanA.findings_count} issues</p>
                     </div>
                     <ArrowRight className="h-5 w-5 text-muted-foreground hidden sm:block" />
                     <div className="text-center">
                       <p className="text-xs text-muted-foreground">After</p>
-                      <p className="text-sm font-medium text-foreground">{getHostname(diffResult.scanB.url)}</p>
+                      <p className="text-sm font-medium text-foreground truncate max-w-[200px]">{displayUrl(diffResult.scanB.url)}</p>
                       <p className="text-xs text-muted-foreground">{formatDate(diffResult.scanB.scanned_at)}</p>
                       <p className="text-lg font-bold text-foreground">{diffResult.scanB.findings_count} issues</p>
                     </div>
