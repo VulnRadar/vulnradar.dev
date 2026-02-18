@@ -27,7 +27,7 @@ export default function DashboardPage() {
   const [scanNotes, setScanNotes] = useState("")
   const [editingNotes, setEditingNotes] = useState(false)
   const [savingNotes, setSavingNotes] = useState(false)
-  const [crawlInfo, setCrawlInfo] = useState<{ pagesDiscovered: number; pagesScanned: number; pages: { url: string; findings_count: number; duration: number }[] } | null>(null)
+  const [crawlInfo, setCrawlInfo] = useState<CrawlInfo | null>(null)
 
   async function handleSaveNotes() {
     if (!scanHistoryId) return
@@ -146,7 +146,7 @@ export default function DashboardPage() {
 
                 {/* Deep crawl pages info */}
                 {crawlInfo && (
-                  <CrawlPagesInfo crawlInfo={crawlInfo} />
+                  <CrawlPagesInfo crawlInfo={crawlInfo} onSelectIssue={setSelectedIssue} />
                 )}
 
                 {/* Scan summary */}
@@ -232,55 +232,107 @@ export default function DashboardPage() {
   )
 }
 
-function CrawlPagesInfo({ crawlInfo }: { crawlInfo: { pagesDiscovered: number; pagesScanned: number; pages: { url: string; findings_count: number; duration: number }[] } }) {
-  const [expanded, setExpanded] = useState(false)
+interface CrawlPageData {
+  url: string
+  findings: Vulnerability[]
+  findings_count: number
+  summary: Record<string, number>
+  duration: number
+}
+
+interface CrawlInfo {
+  pagesDiscovered: number
+  pagesScanned: number
+  pages: CrawlPageData[]
+}
+
+function CrawlPagesInfo({ crawlInfo, onSelectIssue }: { crawlInfo: CrawlInfo; onSelectIssue: (issue: Vulnerability) => void }) {
+  const [expandedPage, setExpandedPage] = useState<string | null>(null)
+
+  function getPath(u: string) {
+    try { return new URL(u).pathname + new URL(u).search || "/" } catch { return u }
+  }
 
   return (
     <div className="rounded-xl border border-border/40 bg-card/30 backdrop-blur-sm overflow-hidden">
-      <button
-        type="button"
-        onClick={() => setExpanded(!expanded)}
-        className="flex items-center gap-2 w-full px-4 py-3 text-left hover:bg-muted/50 transition-colors"
-      >
+      <div className="flex items-center gap-2 px-4 py-3 border-b border-border/40">
         <Globe className="h-4 w-4 text-primary shrink-0" />
         <span className="text-sm font-medium text-foreground flex-1">
-          Deep Crawl Results
+          Deep Crawl -- {crawlInfo.pagesScanned} pages scanned
         </span>
-        <span className="text-xs text-muted-foreground">
-          {crawlInfo.pagesScanned} pages scanned
-        </span>
-        {expanded ? (
-          <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0" />
-        ) : (
-          <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
-        )}
-      </button>
+      </div>
 
-      {expanded && (
-        <div className="border-t border-border px-4 py-3">
-          <div className="flex flex-col gap-1.5">
-            {crawlInfo.pages.map((page) => {
-              function getPath(u: string) {
-                try { return new URL(u).pathname + new URL(u).search } catch { return u }
-              }
-              return (
-                <div key={page.url} className="flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-muted/50 transition-colors">
-                  <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${page.findings_count > 0 ? "bg-orange-500" : "bg-emerald-500"}`} />
-                  <span className="text-[10px] sm:text-xs font-mono text-foreground truncate flex-1 max-w-[200px] sm:max-w-none">
-                    {getPath(page.url)}
-                  </span>
-                  <span className={`text-[10px] sm:text-xs font-medium shrink-0 ${page.findings_count > 0 ? "text-orange-500" : "text-emerald-500"}`}>
-                    {page.findings_count} issues
-                  </span>
-                  <span className="text-[10px] text-muted-foreground shrink-0">
-                    {(page.duration / 1000).toFixed(1)}s
-                  </span>
+      <div className="divide-y divide-border/30">
+        {crawlInfo.pages.map((page) => {
+          const path = getPath(page.url)
+          const isExpanded = expandedPage === page.url
+
+          return (
+            <div key={page.url}>
+              <button
+                type="button"
+                onClick={() => setExpandedPage(isExpanded ? null : page.url)}
+                className="flex items-center gap-2 w-full px-4 py-2.5 text-left hover:bg-muted/50 transition-colors"
+              >
+                <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${page.findings_count > 0 ? "bg-amber-500" : "bg-emerald-500"}`} />
+                <span className="text-[10px] sm:text-xs font-mono text-foreground truncate flex-1 max-w-[180px] sm:max-w-none">
+                  {path}
+                </span>
+                <span className={`text-[10px] sm:text-xs font-medium shrink-0 ${page.findings_count > 0 ? "text-amber-500" : "text-emerald-500"}`}>
+                  {page.findings_count} issues
+                </span>
+                <span className="text-[10px] text-muted-foreground shrink-0 hidden sm:inline">
+                  {(page.duration / 1000).toFixed(1)}s
+                </span>
+                {isExpanded ? (
+                  <ChevronDown className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                ) : (
+                  <ChevronRight className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                )}
+              </button>
+
+              {isExpanded && (
+                <div className="bg-muted/20 px-4 py-2 border-t border-border/20">
+                  {page.findings.length === 0 ? (
+                    <p className="text-xs text-muted-foreground py-2 text-center italic">No issues found on this page.</p>
+                  ) : (
+                    <div className="flex flex-col gap-1">
+                      {page.findings.map((f) => (
+                        <button
+                          type="button"
+                          key={`${page.url}-${f.id}`}
+                          onClick={() => onSelectIssue(f)}
+                          className="flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-muted/50 transition-colors text-left"
+                        >
+                          <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+                            f.severity === "critical" ? "bg-red-500" :
+                            f.severity === "high" ? "bg-orange-500" :
+                            f.severity === "medium" ? "bg-amber-500" :
+                            f.severity === "low" ? "bg-blue-500" :
+                            "bg-muted-foreground/50"
+                          }`} />
+                          <span className="text-[10px] sm:text-xs text-foreground truncate flex-1">
+                            {f.title}
+                          </span>
+                          <span className={`text-[9px] sm:text-[10px] font-medium uppercase shrink-0 ${
+                            f.severity === "critical" ? "text-red-500" :
+                            f.severity === "high" ? "text-orange-500" :
+                            f.severity === "medium" ? "text-amber-500" :
+                            f.severity === "low" ? "text-blue-500" :
+                            "text-muted-foreground"
+                          }`}>
+                            {f.severity}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
-              )
-            })}
-          </div>
-        </div>
-      )}
+              )}
+            </div>
+          )
+        })}
+      </div>
     </div>
   )
 }

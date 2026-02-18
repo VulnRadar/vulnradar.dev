@@ -255,7 +255,13 @@ export async function POST(request: NextRequest) {
     crawl: {
       pagesDiscovered: pages.length,
       pagesScanned: pageResults.length,
-      pages: pageResults.map((p) => ({ url: p.url, findings_count: p.summary.total, duration: p.duration })),
+      pages: pageResults.map((p) => ({
+        url: p.url,
+        findings: p.findings,
+        findings_count: p.summary.total,
+        summary: p.summary,
+        duration: p.duration,
+      })),
     },
   })
 }
