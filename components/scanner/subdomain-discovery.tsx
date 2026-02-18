@@ -229,9 +229,9 @@ function SubdomainRow({
   onScanSubdomain?: (url: string) => void
 }) {
   return (
-    <div className="flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-muted/50 transition-colors group">
+    <div className="flex items-center gap-1.5 sm:gap-2 px-1.5 sm:px-2 py-1.5 rounded-md hover:bg-muted/50 transition-colors group">
       <span className={cn("w-1.5 h-1.5 rounded-full shrink-0", STATUS_DOT[statusBucket(sub.statusCode)])} />
-      <span className="text-xs font-mono text-foreground truncate">
+      <span className="text-[10px] sm:text-xs font-mono text-foreground truncate max-w-[140px] sm:max-w-none">
         {sub.subdomain}
       </span>
       {/* Source tags */}
@@ -258,7 +258,7 @@ function SubdomainRow({
         href={sub.url}
         target="_blank"
         rel="noopener noreferrer"
-        className="text-muted-foreground hover:text-primary opacity-0 group-hover:opacity-100 transition-opacity"
+        className="text-muted-foreground hover:text-primary sm:opacity-0 sm:group-hover:opacity-100 transition-opacity shrink-0"
       >
         <ExternalLink className="h-3 w-3" />
       </a>
@@ -267,7 +267,7 @@ function SubdomainRow({
           variant="ghost"
           size="sm"
           onClick={() => onScanSubdomain(sub.url)}
-          className="h-6 px-2 text-[10px] opacity-0 group-hover:opacity-100 transition-opacity gap-1"
+          className="h-6 px-2 text-[10px] sm:opacity-0 sm:group-hover:opacity-100 transition-opacity gap-1 shrink-0"
         >
           <Radar className="h-3 w-3" />
           Scan
@@ -298,7 +298,7 @@ function UnreachableSection({ subdomains }: { subdomains: DiscoveredSubdomain[] 
               className="flex items-center gap-2 px-2 py-1 rounded-md"
             >
               <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground/30 shrink-0" />
-              <span className="text-[11px] font-mono text-muted-foreground truncate">
+              <span className="text-[10px] sm:text-[11px] font-mono text-muted-foreground truncate max-w-[160px] sm:max-w-none">
                 {sub.subdomain}
               </span>
               <div className="flex items-center gap-1 flex-shrink-0">
