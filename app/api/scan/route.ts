@@ -58,7 +58,7 @@ async function safeReadBody(response: Response, maxBytes: number): Promise<strin
       chunks.push(decoder.decode(value, { stream: true }))
     }
   } catch {
-    // Stream error -- return what we have so far
+    // Stream error: return what we have so far
   } finally {
     try { reader.cancel() } catch { /* ignore */ }
   }

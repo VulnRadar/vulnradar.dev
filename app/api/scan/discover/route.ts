@@ -3,7 +3,7 @@ import { getSession } from "@/lib/auth"
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 import dns from "dns/promises"
 
-// 150+ common subdomain prefixes -- all resolved via parallel DNS, no sequential overhead
+// 150+ common subdomain prefixes, all resolved via parallel DNS (no sequential overhead)
 const BRUTE_FORCE_PREFIXES = [
   // Core infrastructure
   "www", "www2", "www3", "mail", "mail2", "smtp", "imap", "pop", "pop3", "mx", "email", "webmail",
@@ -157,7 +157,7 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  // DNS resolution check -- filter dead entries before HTTP checks (cap at 150)
+  // DNS resolution check: filter dead entries before HTTP checks (cap at 150)
   const passiveEntries = Array.from(passiveMap.entries()).slice(0, 150)
   const dnsResolved = await batchDnsResolve(passiveEntries.map(([sub]) => sub))
 

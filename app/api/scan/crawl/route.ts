@@ -127,7 +127,7 @@ async function discoverInternalLinks(startUrl: string): Promise<string[]> {
         }
       }
     } catch {
-      // Timeout or network error -- skip this page
+      // Timeout or network error: skip this page
     }
   }
 

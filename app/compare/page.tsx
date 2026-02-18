@@ -154,14 +154,14 @@ export default function ComparePage() {
               </CardContent>
             </Card>
 
-            {/* Scan B -- filtered to same domain as A */}
+            {/* Scan B: filtered to same domain as A */}
             <Card className="bg-card border-border">
               <CardHeader className="pb-2 pt-4 px-4">
                 <CardTitle className="text-sm font-semibold text-muted-foreground">
                   Newer Scan (After)
                   {selectedA && (
                     <span className="font-normal text-xs text-muted-foreground/60 ml-1.5">
-                      -- showing {getDomain(scans.find(s => s.id === selectedA)?.url || "")} only
+                      (showing {getDomain(scans.find(s => s.id === selectedA)?.url || "")} only)
                     </span>
                   )}
                 </CardTitle>
