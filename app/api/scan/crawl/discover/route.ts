@@ -77,10 +77,15 @@ export async function POST(request: NextRequest) {
       const redirectDomain = redirectedUrl.hostname.split(".").slice(-2).join(".")
       if (redirectDomain !== baseDomain) continue
 
+      // Use the actual (post-redirect) URL as base for resolving relative links
+      const actualUrl = res.url
+
+      // If redirected, add and queue the real URL
       const redirectNormalized = redirectedUrl.origin + redirectedUrl.pathname + redirectedUrl.search
       if (!visited.has(redirectNormalized)) {
         visited.add(redirectNormalized)
         if (!found.includes(redirectNormalized)) found.push(redirectNormalized)
+        queue.push(redirectNormalized)
       }
 
       const contentType = res.headers.get("content-type") || ""
@@ -96,7 +101,7 @@ export async function POST(request: NextRequest) {
         if (skipExtensions.test(href)) continue
 
         let resolved: URL
-        try { resolved = new URL(href, currentUrl) } catch { continue }
+        try { resolved = new URL(href, actualUrl) } catch { continue }
 
         const linkDomain = resolved.hostname.split(".").slice(-2).join(".")
         if (linkDomain !== baseDomain) continue
