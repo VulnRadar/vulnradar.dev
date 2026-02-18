@@ -17,6 +17,7 @@ import { Dashboard } from "@/components/scanner/dashboard"
 import { Footer } from "@/components/scanner/footer"
 import { OnboardingTour } from "@/components/onboarding-tour"
 import type { ScanResult, ScanStatus, Vulnerability } from "@/lib/scanner/types"
+import { DEFAULT_SCAN_NOTE } from "@/lib/constants"
 import { AlertCircle, RotateCcw, MessageSquare, Pencil, Save, Loader2 as Loader2Icon, Globe, ChevronDown, ChevronRight, ExternalLink } from "lucide-react"
 import { Button } from "@/components/ui/button"
 
@@ -119,8 +120,19 @@ export default function DashboardPage() {
       } else {
         setResult(data)
       }
-      setScanHistoryId(data.scanHistoryId || null)
+      const historyId = data.scanHistoryId || null
+      setScanHistoryId(historyId)
+      setScanNotes(DEFAULT_SCAN_NOTE)
       setStatus("done")
+
+      // Auto-save default note to DB
+      if (historyId) {
+        fetch(`/api/history/${historyId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ notes: DEFAULT_SCAN_NOTE }),
+        }).catch(() => {})
+      }
     } catch {
       setError("Failed to connect to the scanner. Please check your connection and try again.")
       setStatus("failed")
