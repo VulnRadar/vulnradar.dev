@@ -258,7 +258,7 @@ function SubdomainRow({
         href={sub.url}
         target="_blank"
         rel="noopener noreferrer"
-        className="text-muted-foreground hover:text-primary sm:opacity-0 sm:group-hover:opacity-100 transition-opacity shrink-0"
+        className="text-muted-foreground hover:text-primary transition-opacity shrink-0"
       >
         <ExternalLink className="h-3 w-3" />
       </a>
@@ -267,7 +267,7 @@ function SubdomainRow({
           variant="ghost"
           size="sm"
           onClick={() => onScanSubdomain(sub.url)}
-          className="h-6 px-2 text-[10px] sm:opacity-0 sm:group-hover:opacity-100 transition-opacity gap-1 shrink-0"
+          className="h-6 px-2 text-[10px] transition-opacity gap-1 shrink-0"
         >
           <Radar className="h-3 w-3" />
           Scan
