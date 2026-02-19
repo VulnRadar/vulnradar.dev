@@ -7,6 +7,7 @@ const CATEGORY_LABELS: Record<string, string> = {
   feature: "Feature Request",
   security: "Security Issue",
   help: "General Help",
+  staff_application: "Staff Application",
 }
 
 function asTrimmedString(value: unknown): string | null {

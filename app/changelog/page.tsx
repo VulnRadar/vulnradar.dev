@@ -5,16 +5,29 @@ import { APP_NAME, TOTAL_CHECKS_LABEL } from "@/lib/constants"
 
 const CHANGELOG = [
   {
+    version: "1.7.3",
+    date: "February 19, 2026",
+    title: "Unified Footer, Contact Upgrades & Error Pages",
+    highlights: true,
+    changes: [
+      { icon: Globe, label: "Version Check via GitHub Releases", desc: "The startup version check and /api/version endpoint now use the GitHub Releases API instead of fetching raw package.json. Console output now shows a direct link to the specific release tag when an update is available." },
+      { icon: Layout, label: "Unified Footer Across All Pages", desc: "Replaced all inline footers (landing page, docs layout, etc.) with a shared Footer component featuring a 5-column grid layout with Product, Resources, Legal sections, a donate button, and social links." },
+      { icon: Mail, label: "Contact Email Auto-Fill", desc: "The contact page now auto-fills and locks the email field for logged-in users. Name is also auto-filled but remains editable." },
+      { icon: Users, label: "Staff Application via Contact Form", desc: "Added an 'Apply for Staff' category to the contact form with Support and Moderator roles. Includes a role dropdown, required Discord username, availability field, and a volunteer notice explaining positions are unpaid and voluntary." },
+      { icon: ServerCrash, label: "Error Pages", desc: "Added proper error pages: a client-side error boundary (500) with retry and support links, and a global-error fallback for fatal layout crashes with inline styles." },
+    ],
+  },
+  {
     version: "1.7.2",
     date: "February 19, 2026",
     title: "Self-Hosted Schema & Stability Fixes",
-    highlights: true,
+    highlights: false,
     changes: [
       { icon: Database, label: "Scan History Save Fix", desc: "Fixed scans not saving to history. The INSERT query referenced a non-existent 'scan_notes' column instead of the correct 'notes' column, causing every save to silently fail. Affected the quick scan, deep crawl, and bulk scan routes." },
       { icon: Bug, label: "Bulk Scan Notes", desc: "Bulk scan results now include the default scan note (version + engine info) in the database, matching the behavior of quick scan and deep crawl." },
       { icon: Wrench, label: "Silent Catch Logging", desc: "Added console.error logging to previously silent catch blocks in the scan, crawl, and bulk routes. DB failures during history saves are now logged to the server console instead of being swallowed." },
-      { icon: Shield, label: "Notification Preferences Cleanup", desc: "Removed 4 phantom notification preference columns (email_failed_login, email_new_login, email_rate_limit, email_api_key_rotation) that were referenced in API code but never existed in the schema. The notifications route, lib, signup INSERT, and instrumentation.ts are now all in sync with the original 5 preference columns." },
-      { icon: FileSearch, label: "Docs Column Name Fixes", desc: "Fixed documentation examples referencing non-existent columns: 'username' corrected to 'name' in the setup verification SQL, version numbers updated to 1.7.2 across all docs." },
+      { icon: Shield, label: "Notification Preferences Cleanup", desc: "Removed phantom notification preference columns that were referenced in API code but never existed in the schema. All notification routes, lib, and schema are now in sync." },
+      { icon: FileSearch, label: "Docs Column Name Fixes", desc: "Fixed documentation examples referencing non-existent columns: 'username' corrected to 'name' in the setup verification SQL, version numbers updated across all docs." },
     ],
   },
   {
