@@ -61,7 +61,7 @@ export async function POST(request: NextRequest) {
     return true
   }
 
-  const baseDomain = new URL(origin).hostname.split(".").slice(-2).join(".")
+  const entryHostname = new URL(origin).hostname
 
   while (queue.length > 0 && found.length < MAX_PAGES) {
     const currentUrl = queue.shift()!
@@ -73,19 +73,18 @@ export async function POST(request: NextRequest) {
         signal: AbortSignal.timeout(CRAWL_TIMEOUT),
       })
 
+      // Only allow redirects that stay on the exact same hostname
       const redirectedUrl = new URL(res.url)
-      const redirectDomain = redirectedUrl.hostname.split(".").slice(-2).join(".")
-      if (redirectDomain !== baseDomain) continue
+      if (redirectedUrl.hostname !== entryHostname) continue
 
       // Use the actual (post-redirect) URL as base for resolving relative links
       const actualUrl = res.url
 
-      // If redirected, add and queue the real URL
+      // If redirected to a different path on the same host, track it
       const redirectNormalized = redirectedUrl.origin + redirectedUrl.pathname + redirectedUrl.search
       if (!visited.has(redirectNormalized)) {
         visited.add(redirectNormalized)
         if (!found.includes(redirectNormalized)) found.push(redirectNormalized)
-        queue.push(redirectNormalized)
       }
 
       const contentType = res.headers.get("content-type") || ""
@@ -103,8 +102,8 @@ export async function POST(request: NextRequest) {
         let resolved: URL
         try { resolved = new URL(href, actualUrl) } catch { continue }
 
-        const linkDomain = resolved.hostname.split(".").slice(-2).join(".")
-        if (linkDomain !== baseDomain) continue
+        // Must be exact same hostname (no subdomains)
+        if (resolved.hostname !== entryHostname) continue
 
         const fullPath = resolved.pathname + resolved.search
         if (skipPathSegments.test(fullPath)) continue
