@@ -78,9 +78,10 @@ function loadEnv() {
 function ask(question) {
   return new Promise((resolve) => {
     const rl = readline.createInterface({ input: process.stdin, output: process.stdout })
-    rl.question(`${c.yellow}?${c.reset} ${question} ${c.dim}(y/n)${c.reset} `, (answer) => {
+    rl.question(`${c.yellow}?${c.reset} ${question} ${c.dim}(y/N)${c.reset} `, (answer) => {
       rl.close()
-      resolve(answer.trim().toLowerCase() === "y" || answer.trim().toLowerCase() === "yes")
+      const val = answer.trim().toLowerCase()
+      resolve(val === "y" || val === "yes")
     })
   })
 }
@@ -285,27 +286,10 @@ async function main() {
 
   // ── Handle missing tables ─────────────────────────────────────────────────
   if (missingTables.length > 0) {
-    warn(`${missingTables.length} table(s) are missing. Run the app once to auto-create them via instrumentation.ts,`)
-    warn(`or run: ${c.cyan}node scripts/migrate.mjs --apply${c.reset}`)
     log("")
-
-    if (process.argv.includes("--apply")) {
-      const shouldCreate = await ask(`Create ${missingTables.length} missing table(s)? This will run the full schema from instrumentation.ts.`)
-      if (shouldCreate) {
-        info("Running full schema migration from instrumentation.ts...")
-        try {
-          // Just import and run the register function
-          const instrModule = await import("../instrumentation.ts")
-          if (instrModule.register) {
-            // We can't easily call register() since it checks NEXT_RUNTIME
-            // Instead, tell user to start the app
-            warn("Missing tables will be created automatically when you start the app (npm run dev).")
-          }
-        } catch {
-          warn("Could not auto-run migrations. Start the app with 'npm run dev' to create missing tables.")
-        }
-      }
-    }
+    warn(`${missingTables.length} table(s) are missing from the database.`)
+    log(`${c.dim}These will be created automatically when you start the app (npm run dev).${c.reset}`)
+    log(`${c.dim}If you'd like to create them now, start the app once and they will be set up via instrumentation.ts.${c.reset}`)
   }
 
   // ── Handle missing columns ────────────────────────────────────────────────
