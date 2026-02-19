@@ -325,10 +325,29 @@ export async function register() {
           email_schedules BOOLEAN NOT NULL DEFAULT true,
           email_data_requests BOOLEAN NOT NULL DEFAULT true,
           email_security BOOLEAN NOT NULL DEFAULT true,
+          email_failed_login BOOLEAN NOT NULL DEFAULT true,
+          email_new_login BOOLEAN NOT NULL DEFAULT true,
+          email_rate_limit BOOLEAN NOT NULL DEFAULT true,
+          email_api_key_rotation BOOLEAN NOT NULL DEFAULT true,
           created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
           updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
         );
         CREATE INDEX IF NOT EXISTS idx_notif_prefs_user_id ON notification_preferences(user_id);
+      `)
+
+      // Add new notification preference columns for existing installations
+      await pool.query(`
+        DO $$ BEGIN
+          IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name = 'notification_preferences' AND column_name = 'email_failed_login'
+          ) THEN
+            ALTER TABLE notification_preferences ADD COLUMN email_failed_login BOOLEAN NOT NULL DEFAULT true;
+            ALTER TABLE notification_preferences ADD COLUMN email_new_login BOOLEAN NOT NULL DEFAULT true;
+            ALTER TABLE notification_preferences ADD COLUMN email_rate_limit BOOLEAN NOT NULL DEFAULT true;
+            ALTER TABLE notification_preferences ADD COLUMN email_api_key_rotation BOOLEAN NOT NULL DEFAULT true;
+          END IF;
+        END $$;
       `)
 
       // Rate limiting
