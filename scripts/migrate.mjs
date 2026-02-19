@@ -92,36 +92,98 @@ function parseExpectedSchema() {
 
   const tables = {}
 
-  // Match CREATE TABLE statements
-  // Use a custom parser instead of regex to handle nested parens like DEFAULT NOW()
-  const createTablePattern = /CREATE\s+TABLE\s+IF\s+NOT\s+EXISTS\s+(\w+)\s*\(/gi
-  let match
-  while ((match = createTablePattern.exec(content)) !== null) {
-    const tableName = match[1]
-    const startIdx = match.index + match[0].length
+  // Simple line-by-line state machine parser
+  // This avoids all regex/paren issues with SQL inside template literals
+  const SQL_TYPES = /^(SERIAL|BIGSERIAL|INTEGER|INT|SMALLINT|VARCHAR|TEXT|BOOLEAN|BOOL|TIMESTAMP|TIMESTAMPTZ|JSONB|JSON|BIGINT|UUID|REAL|FLOAT|DOUBLE|NUMERIC|DECIMAL|DATE|TIME|BYTEA|INET|CIDR|MACADDR)\b/i
+  const SKIP_KEYWORDS = /^(UNIQUE|PRIMARY\s+KEY|FOREIGN\s+KEY|CHECK|CONSTRAINT)/i
 
-    // Walk forward from the opening paren, counting nesting depth
-    let depth = 1
-    let endIdx = startIdx
-    for (let i = startIdx; i < content.length && depth > 0; i++) {
-      if (content[i] === "(") depth++
-      if (content[i] === ")") depth--
-      endIdx = i
+  let currentTable = null
+  const lines = content.split("\n")
+
+  for (const rawLine of lines) {
+    const line = rawLine.trim()
+
+    // Detect CREATE TABLE
+    const tableMatch = line.match(/CREATE\s+TABLE\s+IF\s+NOT\s+EXISTS\s+(\w+)/i)
+    if (tableMatch) {
+      currentTable = tableMatch[1]
+      if (!tables[currentTable]) tables[currentTable] = new Set()
+
+      // Handle case where column defs are on the SAME line after the opening paren
+      const afterParen = line.split("(").slice(1).join("(").trim()
+      if (afterParen) {
+        const colToken = afterParen.replace(/,\s*$/, "").trim()
+        const parts = colToken.split(/\s+/)
+        if (parts.length >= 2 && SQL_TYPES.test(parts[1])) {
+          tables[currentTable].add(parts[0].replace(/"/g, "").toLowerCase())
+        }
+      }
+      continue
     }
+
+    // Detect end of CREATE TABLE block
+    if (currentTable && /^\);?\s*$/.test(line)) {
+      currentTable = null
+      continue
+    }
+
+    // Inside a CREATE TABLE block: parse column definitions
+    if (currentTable) {
+      // Clean up: remove trailing commas, semicolons, closing parens
+      const cleaned = line.replace(/,\s*$/, "").replace(/\)\s*;?\s*$/, "").trim()
+      if (!cleaned) continue
+      // Skip SQL constraints and comments
+      if (SKIP_KEYWORDS.test(cleaned)) continue
+      if (cleaned.startsWith("--")) continue
+
+      // Extract: column_name TYPE ...
+      const parts = cleaned.split(/\s+/)
+      if (parts.length >= 2) {
+        const colName = parts[0].replace(/"/g, "")
+        const colType = parts[1]
+        // Must look like a valid column name (letters/underscores) followed by a SQL type
+        if (/^\w+$/.test(colName) && SQL_TYPES.test(colType)) {
+          tables[currentTable].add(colName.toLowerCase())
+        }
+      }
+    }
+
+    // Detect ALTER TABLE ... ADD COLUMN
+    const alterMatch = line.match(/ALTER\s+TABLE\s+(\w+)\s+ADD\s+COLUMN\s+(?:IF\s+NOT\s+EXISTS\s+)?("?\w+"?)\s+/i)
+    if (alterMatch) {
+      const tbl = alterMatch[1]
+      const col = alterMatch[2].replace(/"/g, "").toLowerCase()
+      if (!tables[tbl]) tables[tbl] = new Set()
+      tables[tbl].add(col)
+    }
+  }
     const body = content.substring(startIdx, endIdx)
 
     if (!tables[tableName]) tables[tableName] = new Set()
 
+    // DEBUG: show what we parsed for users table
+    if (tableName === "users") {
+      console.log(`\n[DEBUG] Table: ${tableName}`)
+      console.log(`[DEBUG] Body length: ${body.length}`)
+      console.log(`[DEBUG] Body:\n${body}\n[/DEBUG]\n`)
+    }
+
     // Extract column definitions (skip constraints like UNIQUE, PRIMARY KEY, etc.)
     for (const line of body.split(/\n/)) {
-      const trimmed = line.replace(/,\s*$/, "").trim()
+      // Strip leading whitespace and template literal noise (> prefix from SQL in template strings)
+      const trimmed = line.replace(/^\s*>?\s*/, "").replace(/,\s*$/, "").trim()
       if (!trimmed) continue
-      // Skip constraints, comments, and closing parens
-      if (/^(UNIQUE|PRIMARY\s+KEY|FOREIGN\s+KEY|CHECK|CONSTRAINT|CREATE|--|\))/i.test(trimmed)) continue
+      // Skip constraints, comments, closing parens, and backtick/template ends
+      if (/^(UNIQUE|PRIMARY\s+KEY|FOREIGN\s+KEY|CHECK|CONSTRAINT|CREATE|--|\)|`|;|\$)/i.test(trimmed)) continue
       // Get column name: first word followed by a SQL type keyword
       const colMatch = trimmed.match(/^"?(\w+)"?\s+(SERIAL|BIGSERIAL|INTEGER|INT|SMALLINT|VARCHAR|TEXT|BOOLEAN|BOOL|TIMESTAMP|TIMESTAMPTZ|JSONB|JSON|BIGINT|UUID|REAL|FLOAT|DOUBLE|NUMERIC|DECIMAL|DATE|TIME|BYTEA|INET|CIDR|MACADDR)/i)
       if (colMatch) {
         tables[tableName].add(colMatch[1].toLowerCase())
+        if (tableName === "users") {
+          console.log(`[DEBUG] Matched column: ${colMatch[1]} (type: ${colMatch[2]})`)
+        }
+      } else if (tableName === "users" && trimmed.length > 0) {
+        console.log(`[DEBUG] SKIPPED line: "${trimmed}"`)
       }
     }
   }
