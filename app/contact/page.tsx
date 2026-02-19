@@ -282,6 +282,10 @@ export default function ContactPage() {
                     </div>
                     {category === "staff_application" ? (
                       <>
+                        <div className="rounded-lg border border-yellow-500/30 bg-yellow-500/5 px-4 py-3 text-sm text-yellow-200/90 leading-relaxed">
+                          <p className="font-medium text-yellow-400 mb-1">Volunteer Position</p>
+                          <p>Staff roles at VulnRadar are completely voluntary and unpaid. You are not obligated to work any set hours and can step down at any time. By applying, you acknowledge this is a community contribution, not employment.</p>
+                        </div>
                         <div className="flex flex-col gap-1.5">
                           <label htmlFor="contact-role" className="text-sm font-medium text-foreground">Role</label>
                           <select
@@ -299,8 +303,8 @@ export default function ContactPage() {
                         </div>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                           <div className="flex flex-col gap-1.5">
-                            <label htmlFor="contact-discord" className="text-sm font-medium text-foreground">Discord Username <span className="text-muted-foreground font-normal">(optional)</span></label>
-                            <Input id="contact-discord" value={discord} onChange={(e) => setDiscord(e.target.value)} placeholder="username" />
+                            <label htmlFor="contact-discord" className="text-sm font-medium text-foreground">Discord Username</label>
+                            <Input id="contact-discord" value={discord} onChange={(e) => setDiscord(e.target.value)} placeholder="username" required />
                           </div>
                           <div className="flex flex-col gap-1.5">
                             <label htmlFor="contact-availability" className="text-sm font-medium text-foreground">Availability</label>
