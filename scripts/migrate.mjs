@@ -78,9 +78,10 @@ function loadEnv() {
 function ask(question) {
   return new Promise((resolve) => {
     const rl = readline.createInterface({ input: process.stdin, output: process.stdout })
-    rl.question(`${c.yellow}?${c.reset} ${question} ${c.dim}(y/n)${c.reset} `, (answer) => {
+    rl.question(`${c.yellow}?${c.reset} ${question} ${c.dim}(y/N)${c.reset} `, (answer) => {
       rl.close()
-      resolve(answer.trim().toLowerCase() === "y" || answer.trim().toLowerCase() === "yes")
+      const val = answer.trim().toLowerCase()
+      resolve(val === "y" || val === "yes")
     })
   })
 }
@@ -268,7 +269,7 @@ async function main() {
   if (unknownTables.length > 0) {
     log("")
     for (const t of unknownTables) {
-      log(`  ${c.dim}UNKNOWN${c.reset}        ${t} ${c.dim}(not in instrumentation.ts, probably fine)${c.reset}`)
+      log(`  ${c.yellow}EXTRA TABLE${c.reset}    ${c.bold}${t}${c.reset} ${c.dim}(${actual[t].length} columns, not in expected schema)${c.reset}`)
     }
   }
 
@@ -277,7 +278,7 @@ async function main() {
   log("")
 
   // Summary
-  if (missingTables.length === 0 && missingColumns.length === 0 && extraColumns.length === 0) {
+  if (missingTables.length === 0 && missingColumns.length === 0 && extraColumns.length === 0 && unknownTables.length === 0) {
     success("Your database schema is fully up to date! Nothing to do.")
     await pool.end()
     return
@@ -285,27 +286,10 @@ async function main() {
 
   // ── Handle missing tables ─────────────────────────────────────────────────
   if (missingTables.length > 0) {
-    warn(`${missingTables.length} table(s) are missing. Run the app once to auto-create them via instrumentation.ts,`)
-    warn(`or run: ${c.cyan}node scripts/migrate.mjs --apply${c.reset}`)
     log("")
-
-    if (process.argv.includes("--apply")) {
-      const shouldCreate = await ask(`Create ${missingTables.length} missing table(s)? This will run the full schema from instrumentation.ts.`)
-      if (shouldCreate) {
-        info("Running full schema migration from instrumentation.ts...")
-        try {
-          // Just import and run the register function
-          const instrModule = await import("../instrumentation.ts")
-          if (instrModule.register) {
-            // We can't easily call register() since it checks NEXT_RUNTIME
-            // Instead, tell user to start the app
-            warn("Missing tables will be created automatically when you start the app (npm run dev).")
-          }
-        } catch {
-          warn("Could not auto-run migrations. Start the app with 'npm run dev' to create missing tables.")
-        }
-      }
-    }
+    warn(`${missingTables.length} table(s) are missing from the database.`)
+    log(`${c.dim}These will be created automatically when you start the app (npm run dev).${c.reset}`)
+    log(`${c.dim}If you'd like to create them now, start the app once and they will be set up via instrumentation.ts.${c.reset}`)
   }
 
   // ── Handle missing columns ────────────────────────────────────────────────
@@ -378,6 +362,54 @@ async function main() {
           }
         } else {
           info(`Skipped ${table}.${column}`)
+        }
+      }
+    }
+  }
+
+  // ── Handle unknown/extra tables ───────────────────────────────────────────
+  if (unknownTables.length > 0) {
+    log("")
+    log(`${c.yellow}${unknownTables.length} table(s) found in the database that are not part of the VulnRadar schema.${c.reset}`)
+    log(`${c.dim}These may be from custom modifications, plugins, or a shared database.${c.reset}`)
+    log("")
+    log(`${c.cyan}NOTE:${c.reset} We recommend using a dedicated database for VulnRadar rather than sharing`)
+    log(`      it with other applications. This helps avoid conflicts during migrations`)
+    log(`      and ensures schema updates can be applied cleanly.`)
+    log("")
+    log(`${c.red}${c.bold}WARNING: Dropping tables permanently deletes ALL data in those tables!${c.reset}`)
+    log("")
+
+    const shouldReview = await ask("Review and selectively drop extra tables?")
+    if (shouldReview) {
+      for (const table of unknownTables) {
+        log("")
+        log(`  Table: ${c.bold}${table}${c.reset}  ${c.dim}(${actual[table].length} columns)${c.reset}`)
+
+        // Show row count
+        try {
+          const countRes = await pool.query(`SELECT COUNT(*) as total FROM "${table}"`)
+          log(`  ${c.dim}Rows: ${countRes.rows[0].total}${c.reset}`)
+        } catch {
+          log(`  ${c.dim}(could not check row count)${c.reset}`)
+        }
+
+        const shouldDrop = await ask(`Drop table ${c.bold}${table}${c.reset}? THIS CANNOT BE UNDONE.`)
+        if (shouldDrop) {
+          // Double confirm for tables
+          const reallyDrop = await ask(`Are you ABSOLUTELY sure? Type y again to confirm dropping ${c.bold}${table}${c.reset}.`)
+          if (reallyDrop) {
+            try {
+              await pool.query(`DROP TABLE "${table}" CASCADE`)
+              success(`Dropped table ${table}`)
+            } catch (err) {
+              error(`Failed to drop table ${table}: ${err.message}`)
+            }
+          } else {
+            info(`Skipped ${table}`)
+          }
+        } else {
+          info(`Skipped ${table}`)
         }
       }
     }
