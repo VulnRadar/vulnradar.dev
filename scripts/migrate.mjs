@@ -93,20 +93,30 @@ function parseExpectedSchema() {
   const tables = {}
 
   // Match CREATE TABLE statements
-  const createTableRegex = /CREATE\s+TABLE\s+IF\s+NOT\s+EXISTS\s+(\w+)\s*\(([\s\S]*?)\);/gi
+  // Use a custom parser instead of regex to handle nested parens like DEFAULT NOW()
+  const createTablePattern = /CREATE\s+TABLE\s+IF\s+NOT\s+EXISTS\s+(\w+)\s*\(/gi
   let match
-  while ((match = createTableRegex.exec(content)) !== null) {
+  while ((match = createTablePattern.exec(content)) !== null) {
     const tableName = match[1]
-    const body = match[2]
+    const startIdx = match.index + match[0].length
+
+    // Walk forward from the opening paren, counting nesting depth
+    let depth = 1
+    let endIdx = startIdx
+    for (let i = startIdx; i < content.length && depth > 0; i++) {
+      if (content[i] === "(") depth++
+      if (content[i] === ")") depth--
+      endIdx = i
+    }
+    const body = content.substring(startIdx, endIdx)
 
     if (!tables[tableName]) tables[tableName] = new Set()
 
     // Extract column definitions (skip constraints like UNIQUE, PRIMARY KEY, etc.)
-    // Split by newlines first, then clean up
     for (const line of body.split(/\n/)) {
       const trimmed = line.replace(/,\s*$/, "").trim()
       if (!trimmed) continue
-      // Skip constraints and comments
+      // Skip constraints, comments, and closing parens
       if (/^(UNIQUE|PRIMARY\s+KEY|FOREIGN\s+KEY|CHECK|CONSTRAINT|CREATE|--|\))/i.test(trimmed)) continue
       // Get column name: first word followed by a SQL type keyword
       const colMatch = trimmed.match(/^"?(\w+)"?\s+(SERIAL|BIGSERIAL|INTEGER|INT|SMALLINT|VARCHAR|TEXT|BOOLEAN|BOOL|TIMESTAMP|TIMESTAMPTZ|JSONB|JSON|BIGINT|UUID|REAL|FLOAT|DOUBLE|NUMERIC|DECIMAL|DATE|TIME|BYTEA|INET|CIDR|MACADDR)/i)
