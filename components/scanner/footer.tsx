@@ -46,6 +46,7 @@ export function Footer() {
           <div>
             <h3 className="font-semibold text-sm mb-4 text-foreground">Resources</h3>
             <ul className="space-y-2.5 text-sm text-muted-foreground">
+              <li><Link href="/contact" className="hover:text-foreground transition-colors">Contact</Link></li>
               <li><Link href="/docs" className="hover:text-foreground transition-colors">Documentation</Link></li>
               <li><Link href="/docs/api" className="hover:text-foreground transition-colors">API Reference</Link></li>
               <li><Link href="/docs/setup" className="hover:text-foreground transition-colors">Setup Guide</Link></li>
@@ -53,16 +54,14 @@ export function Footer() {
             </ul>
           </div>
 
-          {/* Legal & Support */}
+          {/* Legal */}
           <div>
-            <h3 className="font-semibold text-sm mb-4 text-foreground">Legal & Support</h3>
+            <h3 className="font-semibold text-sm mb-4 text-foreground">Legal</h3>
             <ul className="space-y-2.5 text-sm text-muted-foreground">
               <li><Link href="/legal/privacy" className="hover:text-foreground transition-colors">Privacy Policy</Link></li>
               <li><Link href="/legal/terms" className="hover:text-foreground transition-colors">Terms of Service</Link></li>
               <li><Link href="/legal/disclaimer" className="hover:text-foreground transition-colors">Disclaimer</Link></li>
               <li><Link href="/legal/acceptable-use" className="hover:text-foreground transition-colors">Acceptable Use</Link></li>
-              <li><Link href="/contact" className="hover:text-foreground transition-colors">Contact</Link></li>
-              <li><Link href="/contact/apply" className="hover:text-foreground transition-colors">Apply for Staff</Link></li>
             </ul>
           </div>
         </div>
