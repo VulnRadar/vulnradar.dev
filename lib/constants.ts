@@ -12,6 +12,8 @@ export const ENGINE_VERSION = "1.5.0"
 export const DEFAULT_SCAN_NOTE = `${APP_NAME} v${APP_VERSION} (Detection Engine v${ENGINE_VERSION})`
 export const APP_DESCRIPTION = `Scan websites for ${TOTAL_CHECKS_LABEL} security vulnerabilities. Get instant reports with severity ratings, actionable fix guidance, and team collaboration tools.`
 export const APP_URL = "https://vulnradar.dev"
+export const APP_REPO = "VulnRadar/vulnradar.dev"
+export const VERSION_CHECK_URL = `https://raw.githubusercontent.com/${APP_REPO}/main/package.json`
 
 // Short slug used for filenames and slugs
 export const APP_SLUG = "vulnradar"
