@@ -5,6 +5,19 @@ import { APP_NAME, TOTAL_CHECKS_LABEL } from "@/lib/constants"
 
 const CHANGELOG = [
   {
+    version: "1.7.2",
+    date: "February 19, 2026",
+    title: "Self-Hosted Schema & Stability Fixes",
+    highlights: false,
+    changes: [
+      { icon: Database, label: "Scan History Save Fix", desc: "Fixed scans not saving to history. The INSERT query referenced a non-existent 'scan_notes' column instead of the correct 'notes' column, causing every save to silently fail. Affected the quick scan, deep crawl, and bulk scan routes." },
+      { icon: Bug, label: "Bulk Scan Notes", desc: "Bulk scan results now include the default scan note (version + engine info) in the database, matching the behavior of quick scan and deep crawl." },
+      { icon: Wrench, label: "Silent Catch Logging", desc: "Added console.error logging to previously silent catch blocks in the scan, crawl, and bulk routes. DB failures during history saves are now logged to the server console instead of being swallowed." },
+      { icon: Shield, label: "Notification Preferences Cleanup", desc: "Removed 4 phantom notification preference columns (email_failed_login, email_new_login, email_rate_limit, email_api_key_rotation) that were referenced in API code but never existed in the schema. The notifications route, lib, signup INSERT, and instrumentation.ts are now all in sync with the original 5 preference columns." },
+      { icon: FileSearch, label: "Docs Column Name Fixes", desc: "Fixed documentation examples referencing non-existent columns: 'username' corrected to 'name' in the setup verification SQL, version numbers updated to 1.7.2 across all docs." },
+    ],
+  },
+  {
     version: "1.7.1",
     date: "February 19, 2026",
     title: "Migration Tool Improvements & Documentation Overhaul",

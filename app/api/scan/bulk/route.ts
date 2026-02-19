@@ -92,13 +92,16 @@ async function runSingleScan(url: string, userId: number) {
   // Save to history
   let scanHistoryId: number | null = null
   try {
+    const { DEFAULT_SCAN_NOTE } = await import("@/lib/constants")
     const insertResult = await pool.query(
-      `INSERT INTO scan_history (user_id, url, summary, findings, findings_count, duration, scanned_at, source, response_headers)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`,
-      [userId, url, JSON.stringify(summary), JSON.stringify(findings), summary.total, duration, new Date().toISOString(), "web", JSON.stringify(capturedHeaders)],
+      `INSERT INTO scan_history (user_id, url, summary, findings, findings_count, duration, scanned_at, source, response_headers, notes)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id`,
+      [userId, url, JSON.stringify(summary), JSON.stringify(findings), summary.total, duration, new Date().toISOString(), "web", JSON.stringify(capturedHeaders), DEFAULT_SCAN_NOTE],
     )
     scanHistoryId = insertResult.rows[0]?.id || null
-  } catch { /* non-fatal */ }
+  } catch (err) {
+    console.error("[VulnRadar] Failed to save bulk scan history:", err instanceof Error ? err.message : err)
+  }
 
   return { url, success: true, scanHistoryId, summary, findings_count: summary.total, duration }
 }
