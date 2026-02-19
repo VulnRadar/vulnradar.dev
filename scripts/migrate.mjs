@@ -345,6 +345,193 @@ async function main() {
     }
   }
 
+  // ── Phase 2.5: Auto-detect potential table renames by column similarity ──
+  // If a MISSING table and an EXTRA table share 70%+ of columns, they're
+  // likely the same table that was renamed (or the user renamed it manually).
+  const missingTableNames = Object.keys(expected).filter((t) => !actual[t])
+  const extraTableNames = Object.keys(actual).filter((t) => !expected[t])
+
+  if (missingTableNames.length > 0 && extraTableNames.length > 0) {
+    const potentialRenames = []
+
+    for (const missingTable of missingTableNames) {
+      const expectedCols = new Set(expected[missingTable])
+      let bestMatch = null
+      let bestScore = 0
+
+      for (const extraTable of extraTableNames) {
+        const actualCols = new Set(actual[extraTable])
+        // Calculate Jaccard similarity: intersection / union
+        const intersection = [...expectedCols].filter((c) => actualCols.has(c)).length
+        const union = new Set([...expectedCols, ...actualCols]).size
+        const score = union > 0 ? intersection / union : 0
+
+        if (score > bestScore) {
+          bestScore = score
+          bestMatch = extraTable
+        }
+      }
+
+      // 70% column overlap threshold
+      if (bestMatch && bestScore >= 0.7) {
+        potentialRenames.push({
+          extraTable: bestMatch,
+          expectedTable: missingTable,
+          score: bestScore,
+        })
+      }
+    }
+
+    if (potentialRenames.length > 0) {
+      log("")
+      log(`${c.bold}═══════════════════════════════════════════${c.reset}`)
+      log(`${c.bold}  Possible Table Renames Detected${c.reset}`)
+      log(`${c.bold}═══════════════════════════════════════════${c.reset}`)
+      log("")
+      log(`${c.magenta}The following extra tables have very similar columns to missing tables.${c.reset}`)
+      log(`${c.magenta}They may be the same table under a different name.${c.reset}`)
+      log("")
+
+      for (const { extraTable, expectedTable, score } of potentialRenames) {
+        const pct = Math.round(score * 100)
+        log(`  ${c.magenta}POSSIBLE RENAME${c.reset}  ${c.bold}${extraTable}${c.reset} ${c.dim}->${c.reset} ${c.bold}${expectedTable}${c.reset} ${c.dim}(${pct}% column match)${c.reset}`)
+
+        // Show column comparison
+        const expectedCols = expected[expectedTable]
+        const actualCols = actual[extraTable]
+        const shared = expectedCols.filter((col) => actualCols.includes(col))
+        const onlyInExpected = expectedCols.filter((col) => !actualCols.includes(col))
+        const onlyInActual = actualCols.filter((col) => !expectedCols.includes(col))
+
+        if (shared.length > 0) log(`          ${c.green}shared:${c.reset}  ${shared.join(", ")}`)
+        if (onlyInExpected.length > 0) log(`          ${c.red}new:${c.reset}     ${onlyInExpected.join(", ")}`)
+        if (onlyInActual.length > 0) log(`          ${c.yellow}old:${c.reset}     ${onlyInActual.join(", ")}`)
+
+        try {
+          const countRes = await pool.query(`SELECT COUNT(*) as total FROM "${extraTable}"`)
+          log(`          ${c.dim}(${countRes.rows[0].total} rows, data will be preserved)${c.reset}`)
+        } catch { /* ignore */ }
+        log("")
+
+        const shouldRename = await askReview(`Rename table ${c.bold}${extraTable}${c.reset} to ${c.bold}${expectedTable}${c.reset}?`)
+        if (shouldRename) {
+          try {
+            await pool.query(`ALTER TABLE "${extraTable}" RENAME TO "${expectedTable}"`)
+            success(`Renamed table ${extraTable} -> ${expectedTable}`)
+            actual[expectedTable] = actual[extraTable]
+            delete actual[extraTable]
+          } catch (err) {
+            error(`Failed to rename: ${err.message}`)
+          }
+        } else {
+          info(`Skipped renaming ${extraTable}`)
+        }
+      }
+    }
+  }
+
+  // ── Phase 2.6: Auto-detect potential column renames by table context ─────
+  // For tables that exist in both, if there's a MISSING column and an EXTRA
+  // column with the same data type, suggest renaming.
+  for (const [table, expectedCols] of Object.entries(expected)) {
+    if (!actual[table]) continue
+    const actualCols = actual[table]
+    const missing = expectedCols.filter((col) => !actualCols.includes(col))
+    const extra = actualCols.filter((col) => !expectedCols.includes(col))
+
+    if (missing.length === 0 || extra.length === 0) continue
+    // Already handled by explicit COLUMN_RENAMES above
+    const explicitRenames = COLUMN_RENAMES[table] || {}
+    const alreadyHandled = new Set([...Object.keys(explicitRenames), ...Object.values(explicitRenames)])
+    const unhandledMissing = missing.filter((c) => !alreadyHandled.has(c))
+    const unhandledExtra = extra.filter((c) => !alreadyHandled.has(c))
+
+    if (unhandledMissing.length === 0 || unhandledExtra.length === 0) continue
+
+    // Check data types to find likely renames
+    for (const missingCol of unhandledMissing) {
+      // Get the expected type from instrumentation.ts
+      const filePath = resolve(ROOT, "instrumentation.ts")
+      const content = readFileSync(filePath, "utf-8")
+
+      // Try to find the column definition to get its type
+      const colRegex = new RegExp(`\\b${missingCol}\\b\\s+(\\w+)`, "i")
+      // Search within the table's CREATE block
+      let expectedType = null
+      let inTable = false
+      for (const line of content.split("\n")) {
+        if (line.match(new RegExp(`CREATE\\s+TABLE.*\\b${table}\\b`, "i"))) inTable = true
+        if (inTable && /^\s*\);/.test(line)) { inTable = false; continue }
+        if (inTable) {
+          const m = line.trim().match(new RegExp(`^"?${missingCol}"?\\s+(\\w+)`, "i"))
+          if (m) { expectedType = m[1].toUpperCase(); break }
+        }
+      }
+
+      if (!expectedType) continue
+
+      // Check each extra column's actual type in the DB
+      for (const extraCol of unhandledExtra) {
+        try {
+          const typeRes = await pool.query(
+            `SELECT data_type FROM information_schema.columns WHERE table_schema = 'public' AND table_name = $1 AND column_name = $2`,
+            [table, extraCol]
+          )
+          if (typeRes.rows.length === 0) continue
+          const actualType = typeRes.rows[0].data_type.toUpperCase()
+
+          // Map PostgreSQL types to match instrumentation types
+          const typeMap = {
+            "CHARACTER VARYING": "VARCHAR",
+            "TIMESTAMP WITH TIME ZONE": "TIMESTAMP",
+            "TIMESTAMP WITHOUT TIME ZONE": "TIMESTAMP",
+            "BOOLEAN": "BOOLEAN",
+            "TEXT": "TEXT",
+            "INTEGER": "INTEGER",
+            "BIGINT": "BIGINT",
+            "JSONB": "JSONB",
+            "JSON": "JSON",
+            "SMALLINT": "SMALLINT",
+            "REAL": "REAL",
+            "DOUBLE PRECISION": "DOUBLE",
+            "UUID": "UUID",
+            "BYTEA": "BYTEA",
+            "DATE": "DATE",
+            "TIME WITHOUT TIME ZONE": "TIME",
+          }
+          const normalizedActual = typeMap[actualType] || actualType
+
+          if (normalizedActual === expectedType || actualType.startsWith(expectedType)) {
+            log("")
+            log(`  ${c.magenta}POSSIBLE COLUMN RENAME${c.reset}  ${c.bold}${table}.${extraCol}${c.reset} ${c.dim}->${c.reset} ${c.bold}${table}.${missingCol}${c.reset} ${c.dim}(same type: ${expectedType})${c.reset}`)
+
+            try {
+              const countRes = await pool.query(
+                `SELECT COUNT("${extraCol}") as non_null FROM "${table}" WHERE "${extraCol}" IS NOT NULL`
+              )
+              log(`          ${c.dim}(${countRes.rows[0].non_null} non-null values, data will be preserved)${c.reset}`)
+            } catch { /* ignore */ }
+
+            const shouldRename = await askReview(`Rename column ${c.bold}${table}.${extraCol}${c.reset} to ${c.bold}${missingCol}${c.reset}?`)
+            if (shouldRename) {
+              try {
+                await pool.query(`ALTER TABLE "${table}" RENAME COLUMN "${extraCol}" TO "${missingCol}"`)
+                success(`Renamed ${table}.${extraCol} -> ${table}.${missingCol}`)
+                const idx = actual[table].indexOf(extraCol)
+                if (idx !== -1) actual[table][idx] = missingCol
+              } catch (err) {
+                error(`Failed to rename: ${err.message}`)
+              }
+            } else {
+              info(`Skipped renaming ${table}.${extraCol}`)
+            }
+            break // Only suggest one match per missing column
+          }
+        } catch { /* ignore type check errors */ }
+      }
+    }
+  }
+
   // ── Phase 3: Schema comparison (after renames applied) ──────────────────
   log("")
   log(`${c.bold}═══════════════════════════════════════════${c.reset}`)
