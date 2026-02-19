@@ -282,10 +282,6 @@ export default function ContactPage() {
                     </div>
                     {category === "staff_application" ? (
                       <>
-                        <div className="rounded-lg border border-yellow-500/30 bg-yellow-500/5 px-4 py-3 text-sm text-yellow-200/90 leading-relaxed">
-                          <p className="font-medium text-yellow-400 mb-1">Volunteer Position</p>
-                          <p>Staff roles at VulnRadar are completely voluntary and unpaid. You are not obligated to work any set hours and can step down at any time. By applying, you acknowledge this is a community contribution, not employment.</p>
-                        </div>
                         <div className="flex flex-col gap-1.5">
                           <label htmlFor="contact-role" className="text-sm font-medium text-foreground">Role</label>
                           <select
@@ -334,6 +330,12 @@ export default function ContactPage() {
                       <div className="flex items-start gap-2 text-xs text-amber-600 dark:text-amber-400 bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2">
                         <Shield className="h-4 w-4 shrink-0 mt-0.5" />
                         <span>Security reports are handled with priority. We aim to acknowledge within 24 hours and will keep you updated on the resolution.</span>
+                      </div>
+                    )}
+                    {category === "staff_application" && (
+                      <div className="flex items-start gap-2 text-xs text-yellow-600 dark:text-yellow-400 bg-yellow-500/10 border border-yellow-500/20 rounded-lg px-3 py-2">
+                        <Users className="h-4 w-4 shrink-0 mt-0.5" />
+                        <span>Staff roles are completely voluntary and unpaid. You are not obligated to work any set hours and can step down at any time. By submitting, you acknowledge this is a community contribution, not employment.</span>
                       </div>
                     )}
 
