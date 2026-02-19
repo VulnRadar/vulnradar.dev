@@ -12,6 +12,7 @@ interface VersionInfo {
   latest: string | null
   status: VersionStatus
   message: string
+  release_url: string
 }
 
 export function VersionCheck() {
@@ -106,9 +107,9 @@ export function VersionCheck() {
                   <RefreshCw className="h-3 w-3 mr-1.5" />
                   Re-check
                 </Button>
-                {info.status === "behind" && info.latest && (
+                {info.status === "behind" && info.latest && info.release_url && (
                   <a
-                    href="https://github.com/VulnRadar/vulnradar.dev/releases"
+                    href={info.release_url}
                     target="_blank"
                     rel="noopener noreferrer"
                   >

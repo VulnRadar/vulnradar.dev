@@ -5,15 +5,20 @@
 export async function register() {
   if (process.env.NEXT_RUNTIME === "nodejs") {
     const { default: pool } = await import("./lib/db")
-    const { APP_NAME, APP_VERSION, ENGINE_VERSION, VERSION_CHECK_URL } = await import("./lib/constants")
+    const { APP_NAME, APP_VERSION, ENGINE_VERSION, VERSION_CHECK_URL, RELEASES_URL } = await import("./lib/constants")
 
     // ── Startup version check (logs to server console) ───────────
     console.log(`\x1b[36m[${APP_NAME}]\x1b[0m Starting ${APP_NAME} v${APP_VERSION} (Detection Engine v${ENGINE_VERSION})`)
     try {
-      const vRes = await fetch(VERSION_CHECK_URL, { signal: AbortSignal.timeout(5000) })
+      const vRes = await fetch(VERSION_CHECK_URL, {
+        signal: AbortSignal.timeout(5000),
+        headers: { "Accept": "application/vnd.github+json" },
+      })
       if (vRes.ok) {
-        const vData = await vRes.json()
-        const latest = vData.version as string
+        const release = await vRes.json()
+        const tagName = (release.tag_name as string) || ""
+        const latest = tagName.replace(/^v/, "")
+        const releaseUrl = (release.html_url as string) || `${RELEASES_URL}/tag/${tagName}`
         const cur = APP_VERSION.split(".").map(Number)
         const lat = latest.split(".").map(Number)
 
@@ -27,7 +32,7 @@ export async function register() {
           console.log(`\x1b[32m[${APP_NAME}]\x1b[0m You're running the latest version (v${APP_VERSION}).`)
         } else if (status === "behind") {
           console.log(`\x1b[33m[${APP_NAME}]\x1b[0m Update available! You're on v${APP_VERSION}, latest is v${latest}.`)
-          console.log(`\x1b[33m[${APP_NAME}]\x1b[0m Visit https://github.com/VulnRadar/vulnradar.dev/releases for details.`)
+          console.log(`\x1b[33m[${APP_NAME}]\x1b[0m ${releaseUrl}`)
         } else {
           const msgs = [
             "Whoa, you're running a version from the future! Can you tell us if we ever fix that one CSS bug?",

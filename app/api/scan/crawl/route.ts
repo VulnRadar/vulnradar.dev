@@ -274,12 +274,14 @@ export async function POST(request: NextRequest) {
   for (const pr of pageResults) {
     try {
       const insertResult = await pool.query(
-        `INSERT INTO scan_history (user_id, url, summary, findings, findings_count, duration, scanned_at, source, response_headers, scan_notes)
+        `INSERT INTO scan_history (user_id, url, summary, findings, findings_count, duration, scanned_at, source, response_headers, notes)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id`,
         [session.userId, pr.url, JSON.stringify(pr.summary), JSON.stringify(pr.findings), pr.summary.total, pr.duration, scannedAt, "deep-crawl", JSON.stringify(pr.responseHeaders), DEFAULT_SCAN_NOTE],
       )
       pageHistoryIds[pr.url] = insertResult.rows[0]?.id
-    } catch { /* non-fatal */ }
+    } catch (err) {
+      console.error("[VulnRadar] Failed to save crawl history:", err instanceof Error ? err.message : err)
+    }
   }
 
   // The "main" scan history ID is the first page (the root URL)

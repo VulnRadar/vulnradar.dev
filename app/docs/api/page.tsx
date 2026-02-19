@@ -154,7 +154,7 @@ print(response.json())`
   },
   "responseHeaders": { ... },
   "scanHistoryId": 12345,
-  "scan_notes": "VulnRadar v1.7.0 (Detection Engine v1.5.0)"
+  "notes": "VulnRadar v1.7.2 (Detection Engine v1.5.0)"
 }`}</code></pre>
             </div>
 
@@ -218,7 +218,7 @@ print(response.json())`
       "duration": 1234,
       "scanned_at": "2026-02-18T15:30:00.000Z",
       "source": "api",
-      "scan_notes": "VulnRadar v1.7.0 (Detection Engine v1.5.0)",
+      "notes": "VulnRadar v1.7.2 (Detection Engine v1.5.0)",
       "tags": []
     }
   ]
@@ -280,7 +280,7 @@ print(response.json())`
     }
   ],
   "responseHeaders": { ... },
-  "scan_notes": "VulnRadar v1.7.0 (Detection Engine v1.5.0)"
+  "notes": "VulnRadar v1.7.2 (Detection Engine v1.5.0)"
 }`}</code></pre>
             </div>
 
