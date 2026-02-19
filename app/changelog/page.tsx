@@ -8,7 +8,7 @@ const CHANGELOG = [
     version: "1.7.2",
     date: "February 19, 2026",
     title: "Self-Hosted Schema & Stability Fixes",
-    highlights: false,
+    highlights: true,
     changes: [
       { icon: Database, label: "Scan History Save Fix", desc: "Fixed scans not saving to history. The INSERT query referenced a non-existent 'scan_notes' column instead of the correct 'notes' column, causing every save to silently fail. Affected the quick scan, deep crawl, and bulk scan routes." },
       { icon: Bug, label: "Bulk Scan Notes", desc: "Bulk scan results now include the default scan note (version + engine info) in the database, matching the behavior of quick scan and deep crawl." },
@@ -21,7 +21,7 @@ const CHANGELOG = [
     version: "1.7.1",
     date: "February 19, 2026",
     title: "Migration Tool Improvements & Documentation Overhaul",
-    highlights: true,
+    highlights: false,
     changes: [
       { icon: GitMerge, label: "Table & Column Rename Detection", desc: "The migration tool now detects renamed tables and columns between versions. When an old name exists in the DB but the new name is expected, it offers to rename it in-place (preserving all data). Rename mappings are defined at the top of migrate.mjs for easy maintenance." },
       { icon: Database, label: "Smarter Migration Prompts", desc: "Review prompts (non-destructive) now default to Yes (Y/n), while destructive actions (dropping columns/tables) still default to No (y/N). Every action requires explicit confirmation, and table drops require double confirmation." },
@@ -36,7 +36,7 @@ const CHANGELOG = [
     version: "1.7.0",
     date: "February 18, 2026",
     title: "Deep Crawl URL Selector, IP Rate-Limited Demo & Auto Scan Notes",
-    highlights: true,
+    highlights: false,
     changes: [
       { icon: Network, label: "Deep Crawl URL Selector", desc: "Deep Crawl now discovers pages first, then shows a selection modal where you pick exactly which pages to scan. Toggle individual URLs on/off, search/filter the list, or use Select All/Deselect All. No more scanning pages you don't care about." },
       { icon: Filter, label: "Smart Crawl URL Filtering", desc: "The crawler now filters out asset files (.css, .js, .woff, .json, etc.), internal framework paths (/_next/, /static/, /api/), and garbage URLs with encoded characters or regex-like patterns. Only real, human-navigable pages are discovered." },
@@ -53,7 +53,7 @@ const CHANGELOG = [
     version: "1.6.8",
     date: "February 16, 2026",
     title: "Metadata & Social Preview Fixes",
-    highlights: true,
+    highlights: false,
     changes: [
       { icon: Sparkles, label: "Page Metadata Fixed", desc: "Resolved an issue where page metadata (title, description, Open Graph and Twitter card tags) sometimes failed to render; social previews and browser titles now display correct content and consistent VulnRadar branding." },
       { icon: Newspaper, label: "Consistent OG Images", desc: "Fixed generation and serving of Open Graph images so link previews show the branded VulnRadar image across Discord, Twitter, and other platforms." },
