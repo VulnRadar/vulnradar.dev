@@ -62,10 +62,8 @@ export default function ContactPage() {
     async function fetchUser() {
       try {
         const res = await fetch("/api/auth/me")
-        console.log("[v0] /api/auth/me response status:", res.status)
         if (res.ok) {
           const data = await res.json()
-          console.log("[v0] /api/auth/me data:", data)
           if (data?.email) {
             setEmail(data.email)
             setEmailLocked(true)
@@ -74,9 +72,7 @@ export default function ContactPage() {
             setName(data.name)
           }
         }
-      } catch (err) {
-        console.log("[v0] /api/auth/me fetch failed:", err)
-      }
+      } catch { /* not logged in */ }
     }
     fetchUser()
   }, [])
@@ -297,7 +293,7 @@ export default function ContactPage() {
                           >
                             <option value="">Select a role...</option>
                             {STAFF_ROLES.map((r) => (
-                              <option key={r.id} value={r.id}>{r.label} -- {r.desc}</option>
+                              <option key={r.id} value={r.id}>{r.label} - {r.desc}</option>
                             ))}
                           </select>
                         </div>
