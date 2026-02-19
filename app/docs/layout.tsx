@@ -40,6 +40,8 @@ const navItems = [
       { href: "#verification", label: "Verification Steps" },
       { href: "#troubleshooting", label: "Troubleshooting" },
       { href: "#deployment", label: "Deployment Options" },
+      { href: "#migration", label: "Migration Tool" },
+      { href: "#version", label: "Version Checking" },
     ]
   },
 ]

@@ -3,7 +3,7 @@
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import Link from "next/link"
-import { BookOpen, Zap, Code2 } from "lucide-react"
+import { BookOpen, Zap, Code2, Terminal } from "lucide-react"
 
 export default function DocsPage() {
   return (
@@ -47,9 +47,9 @@ export default function DocsPage() {
           <h3 className="text-xl font-bold">Quick Start</h3>
         </div>
         <ol className="space-y-3 text-muted-foreground">
-          <li><span className="font-semibold text-foreground">1. Create an Account</span> - Sign up at vulnradar.app to get started</li>
+          <li><span className="font-semibold text-foreground">1. Create an Account</span> - Sign up at vulnradar.dev to get started</li>
           <li><span className="font-semibold text-foreground">2. Generate API Key</span> - Go to your profile and create an API key</li>
-          <li><span className="font-semibold text-foreground">3. Make Your First Scan</span> - Use the API or web UI to scan a website</li>
+          <li><span className="font-semibold text-foreground">3. Make Your First Scan</span> - Use the API or web UI to scan a website (Quick or Deep Crawl)</li>
           <li><span className="font-semibold text-foreground">4. Explore Results</span> - View detailed vulnerability reports with remediation steps</li>
         </ol>
       </Card>
