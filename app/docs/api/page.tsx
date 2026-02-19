@@ -4,7 +4,7 @@ import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import Link from "next/link"
 import { AlertTriangle, CheckCircle } from "lucide-react"
-import { APP_URL, APP_NAME } from "@/lib/constants"
+import { APP_URL, APP_NAME, APP_VERSION, ENGINE_VERSION } from "@/lib/constants"
 import { useState } from "react"
 import { cn } from "@/lib/utils"
 
@@ -154,7 +154,7 @@ print(response.json())`
   },
   "responseHeaders": { ... },
   "scanHistoryId": 12345,
-  "notes": "VulnRadar v1.7.3 (Detection Engine v1.5.0)"
+  "notes": "${APP_NAME} v${APP_VERSION} (Detection Engine v${ENGINE_VERSION})"
 }`}</code></pre>
             </div>
 
@@ -218,7 +218,7 @@ print(response.json())`
       "duration": 1234,
       "scanned_at": "2026-02-18T15:30:00.000Z",
       "source": "api",
-      "notes": "VulnRadar v1.7.3 (Detection Engine v1.5.0)",
+      "notes": "${APP_NAME} v${APP_VERSION} (Detection Engine v${ENGINE_VERSION})",
       "tags": []
     }
   ]
@@ -280,7 +280,7 @@ print(response.json())`
     }
   ],
   "responseHeaders": { ... },
-  "notes": "VulnRadar v1.7.3 (Detection Engine v1.5.0)"
+  "notes": "${APP_NAME} v${APP_VERSION} (Detection Engine v${ENGINE_VERSION})"
 }`}</code></pre>
             </div>
 
