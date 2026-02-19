@@ -2,7 +2,7 @@
 
 import { Card } from "@/components/ui/card"
 import { AlertTriangle, CheckCircle, Info } from "lucide-react"
-import { APP_NAME } from "@/lib/constants"
+import { APP_NAME, APP_URL } from "@/lib/constants"
 
 export default function SetupPage() {
   return (
