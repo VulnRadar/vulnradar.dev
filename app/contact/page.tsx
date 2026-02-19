@@ -31,6 +31,12 @@ const CATEGORIES = [
   { id: "feature", label: "Feature Request", icon: Lightbulb, desc: "Suggest a new feature or improvement" },
   { id: "security", label: "Security Issue", icon: Shield, desc: "Report a security vulnerability" },
   { id: "help", label: "General Help", icon: HelpCircle, desc: "Need help using VulnRadar" },
+  { id: "staff_application", label: "Apply for Staff", icon: Users, desc: "Join the VulnRadar team" },
+]
+
+const STAFF_ROLES = [
+  { id: "support", label: "Support", desc: "Help users with technical issues and questions" },
+  { id: "moderator", label: "Moderator", desc: "Enforce policies and maintain community standards" },
 ]
 
 export default function ContactPage() {
@@ -40,6 +46,9 @@ export default function ContactPage() {
   const [emailLocked, setEmailLocked] = useState(false)
   const [subject, setSubject] = useState("")
   const [message, setMessage] = useState("")
+  const [staffRole, setStaffRole] = useState("")
+  const [discord, setDiscord] = useState("")
+  const [availability, setAvailability] = useState("")
   const [submitted, setSubmitted] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -105,6 +114,11 @@ export default function ContactPage() {
       return
     }
 
+    if (category === "staff_application" && !staffRole) {
+      setError("Please select a role you're applying for.")
+      return
+    }
+
     if (!turnstileToken) {
       setError("Please complete the captcha verification.")
       return
@@ -113,6 +127,21 @@ export default function ContactPage() {
     setIsSubmitting(true)
     setError(null)
 
+    const isStaff = category === "staff_application"
+    const finalSubject = isStaff
+      ? `Staff Application: ${STAFF_ROLES.find((r) => r.id === staffRole)?.label}`
+      : subject
+    const finalMessage = isStaff
+      ? [
+          `Role: ${STAFF_ROLES.find((r) => r.id === staffRole)?.label}`,
+          `Discord: ${discord || "Not provided"}`,
+          `Availability: ${availability || "Not provided"}`,
+          "",
+          "--- Details ---",
+          message,
+        ].join("\n")
+      : message
+
     try {
       const res = await fetch("/api/contact", {
         method: "POST",
@@ -120,8 +149,8 @@ export default function ContactPage() {
         body: JSON.stringify({
           name,
           email,
-          subject,
-          message,
+          subject: finalSubject,
+          message: finalMessage,
           category,
           turnstileToken,
         }),
@@ -173,6 +202,9 @@ export default function ContactPage() {
                   setCategory(null);
                   setSubject("");
                   setMessage("");
+                  setStaffRole("");
+                  setDiscord("");
+                  setAvailability("");
                   if (!emailLocked) { setName(""); setEmail(""); }
                   setError(null);
                   setTurnstileToken(null);
@@ -186,12 +218,11 @@ export default function ContactPage() {
         ) : (
           <div className="flex flex-col gap-6">
             {/* Quick links */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               {[
                 { icon: BookOpen, label: "Documentation", href: "/docs", desc: "Guides & API reference" },
                 { icon: FileText, label: "Changelog", href: "/changelog", desc: "Latest updates" },
                 { icon: Mail, label: "Email Us", href: `mailto:${SUPPORT_EMAIL}`, desc: SUPPORT_EMAIL },
-                { icon: Users, label: "Apply for Staff", href: "/contact/apply", desc: "Join the team" },
               ].map((link) => (
                 <Link key={link.label} href={link.href} className="flex items-center gap-3 p-3 rounded-xl border border-border bg-card hover:bg-muted/50 hover:border-primary/20 transition-all">
                   <div className="flex items-center justify-center w-9 h-9 rounded-lg bg-primary/10 shrink-0">
@@ -208,7 +239,7 @@ export default function ContactPage() {
             {/* Category selection */}
             <div>
               <p className="text-sm font-medium text-foreground mb-3">What can we help you with?</p>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
                 {CATEGORIES.map((cat) => (
                   <button
                     key={cat.id}
@@ -249,12 +280,42 @@ export default function ContactPage() {
                         {emailLocked && <p className="text-[11px] text-muted-foreground">Auto-filled from your account</p>}
                       </div>
                     </div>
+                    {category === "staff_application" ? (
+                      <>
+                        <div className="flex flex-col gap-1.5">
+                          <label htmlFor="contact-role" className="text-sm font-medium text-foreground">Role</label>
+                          <select
+                            id="contact-role"
+                            value={staffRole}
+                            onChange={(e) => setStaffRole(e.target.value)}
+                            required
+                            className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
+                          >
+                            <option value="">Select a role...</option>
+                            {STAFF_ROLES.map((r) => (
+                              <option key={r.id} value={r.id}>{r.label} -- {r.desc}</option>
+                            ))}
+                          </select>
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                          <div className="flex flex-col gap-1.5">
+                            <label htmlFor="contact-discord" className="text-sm font-medium text-foreground">Discord Username <span className="text-muted-foreground font-normal">(optional)</span></label>
+                            <Input id="contact-discord" value={discord} onChange={(e) => setDiscord(e.target.value)} placeholder="username" />
+                          </div>
+                          <div className="flex flex-col gap-1.5">
+                            <label htmlFor="contact-availability" className="text-sm font-medium text-foreground">Availability</label>
+                            <Input id="contact-availability" value={availability} onChange={(e) => setAvailability(e.target.value)} placeholder="e.g. 10 hrs/week, evenings" required />
+                          </div>
+                        </div>
+                      </>
+                    ) : (
+                      <div className="flex flex-col gap-1.5">
+                        <label htmlFor="contact-subject" className="text-sm font-medium text-foreground">Subject</label>
+                        <Input id="contact-subject" value={subject} onChange={(e) => setSubject(e.target.value)} placeholder="Brief summary of your message" required />
+                      </div>
+                    )}
                     <div className="flex flex-col gap-1.5">
-                      <label htmlFor="contact-subject" className="text-sm font-medium text-foreground">Subject</label>
-                      <Input id="contact-subject" value={subject} onChange={(e) => setSubject(e.target.value)} placeholder="Brief summary of your message" required />
-                    </div>
-                    <div className="flex flex-col gap-1.5">
-                      <label htmlFor="contact-message" className="text-sm font-medium text-foreground">Message</label>
+                      <label htmlFor="contact-message" className="text-sm font-medium text-foreground">{category === "staff_application" ? "Why do you want to join? (Experience, motivation, etc.)" : "Message"}</label>
                       <textarea
                         id="contact-message"
                         value={message}

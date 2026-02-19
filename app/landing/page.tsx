@@ -5,6 +5,7 @@ import Image from "next/image"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Zap, Users, Code, CheckCircle, Globe, BarChart3 } from "lucide-react"
+import { Footer } from "@/components/scanner/footer"
 import { APP_NAME, TOTAL_CHECKS_LABEL } from "@/lib/constants"
 
 export default function LandingPage() {
@@ -229,35 +230,7 @@ export default function LandingPage() {
         </section>
       </main>
 
-      {/* Footer */}
-      <footer className="border-t border-border bg-card/50">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-          <div className="grid md:grid-cols-4 gap-8 mb-8">
-            <div>
-              <h3 className="font-semibold mb-4">Product</h3>
-              <ul className="space-y-2 text-sm text-muted-foreground">
-                <li><Link href="/login" className="hover:text-foreground transition-colors">Features</Link></li>
-                <li><Link href="/login" className="hover:text-foreground transition-colors">API</Link></li>
-                <li><Link href="/login" className="hover:text-foreground transition-colors">Documentation</Link></li>
-              </ul>
-            </div>
-            <div>
-              <h3 className="font-semibold mb-4">Legal</h3>
-              <ul className="space-y-2 text-sm text-muted-foreground">
-                <li><Link href="/legal/terms" className="hover:text-foreground transition-colors">Terms</Link></li>
-                <li><Link href="/legal/privacy" className="hover:text-foreground transition-colors">Privacy</Link></li>
-              </ul>
-            </div>
-            <div className="md:col-span-2">
-              <h3 className="font-semibold mb-4">{APP_NAME}</h3>
-              <p className="text-sm text-muted-foreground">Professional vulnerability scanning for web applications. Completely free, forever.</p>
-            </div>
-          </div>
-          <div className="border-t border-border pt-8 flex flex-col sm:flex-row justify-between items-center text-sm text-muted-foreground">
-              <p>&copy; {new Date().getFullYear()} {APP_NAME}. All rights reserved.</p>
-          </div>
-        </div>
-      </footer>
+      <Footer />
     </div>
   )
 }
