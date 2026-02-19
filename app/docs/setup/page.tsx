@@ -441,11 +441,11 @@ docker run -p 3000:3000 \\
         <Card className="p-6 border-border/40">
           <h3 className="font-semibold mb-4">Automatic Startup Check</h3>
           <p className="text-sm text-muted-foreground mb-3">When the server starts, it logs the running version and checks GitHub for the latest release:</p>
-          <pre className="bg-secondary/50 p-4 rounded text-xs overflow-x-auto mb-4"><code>{`[VulnRadar] Starting VulnRadar v1.7.2 (Detection Engine v1.5.0)
-[VulnRadar] You're running the latest version (v1.7.2).`}</code></pre>
+          <pre className="bg-secondary/50 p-4 rounded text-xs overflow-x-auto mb-4"><code>{`[VulnRadar] Starting VulnRadar v1.7.3 (Detection Engine v1.5.0)
+[VulnRadar] You're running the latest version (v1.7.3).`}</code></pre>
           <p className="text-sm text-muted-foreground mb-3">If an update is available:</p>
           <pre className="bg-secondary/50 p-4 rounded text-xs overflow-x-auto"><code>{`[VulnRadar] Starting VulnRadar v1.6.8 (Detection Engine v1.5.0)
-[VulnRadar] Update available! You're on v1.6.8, latest is v1.7.2.
+[VulnRadar] Update available! You're on v1.6.8, latest is v1.7.3.
 [VulnRadar] Visit https://github.com/VulnRadar/vulnradar.dev/releases for details.`}</code></pre>
         </Card>
 
