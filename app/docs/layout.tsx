@@ -3,8 +3,9 @@
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { cn } from "@/lib/utils"
-import { BookOpen, Zap, Github, Mail } from "lucide-react"
+import { BookOpen, Zap } from "lucide-react"
 import { Header } from "@/components/scanner/header"
+import { Footer } from "@/components/scanner/footer"
 import { APP_NAME } from "@/lib/constants"
 import { useState } from "react"
 
@@ -111,52 +112,7 @@ export default function DocsLayout({ children }: { children: React.ReactNode }) 
         </div>
       </div>
 
-      {/* Footer */}
-      <footer className="border-t border-border bg-card/50 mt-12">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-          <div className="grid md:grid-cols-4 gap-8 mb-8">
-            <div>
-              <h3 className="font-semibold mb-4">{APP_NAME}</h3>
-              <p className="text-sm text-muted-foreground">Professional web vulnerability scanning. Completely free, forever.</p>
-            </div>
-            <div>
-              <h3 className="font-semibold mb-4">Product</h3>
-              <ul className="space-y-2 text-sm text-muted-foreground">
-                <li><Link href="/dashboard" className="hover:text-foreground transition-colors">Scanner</Link></li>
-                <li><Link href="/history" className="hover:text-foreground transition-colors">History</Link></li>
-                <li><Link href="/compare" className="hover:text-foreground transition-colors">Compare</Link></li>
-              </ul>
-            </div>
-            <div>
-              <h3 className="font-semibold mb-4">Resources</h3>
-              <ul className="space-y-2 text-sm text-muted-foreground">
-                <li><Link href="/docs" className="hover:text-foreground transition-colors">Documentation</Link></li>
-                <li><Link href="/docs/api" className="hover:text-foreground transition-colors">API Reference</Link></li>
-                <li><Link href="/docs/setup" className="hover:text-foreground transition-colors">Setup Guide</Link></li>
-              </ul>
-            </div>
-            <div>
-              <h3 className="font-semibold mb-4">Legal</h3>
-              <ul className="space-y-2 text-sm text-muted-foreground">
-                <li><Link href="/legal/privacy" className="hover:text-foreground transition-colors">Privacy</Link></li>
-                <li><Link href="/legal/terms" className="hover:text-foreground transition-colors">Terms</Link></li>
-                <li><Link href="/contact" className="hover:text-foreground transition-colors">Support</Link></li>
-              </ul>
-            </div>
-          </div>
-          <div className="border-t border-border pt-8 flex flex-col sm:flex-row items-center justify-between gap-4">
-            <p className="text-sm text-muted-foreground">© {new Date().getFullYear()} {APP_NAME}. All rights reserved.</p>
-            <div className="flex items-center gap-4">
-              <a href="https://github.com/VulnRadar/vulnradar.dev" target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-foreground transition-colors" aria-label="GitHub">
-                <Github className="h-5 w-5" />
-              </a>
-              <a href="mailto:support@vulnradar.com" className="text-muted-foreground hover:text-foreground transition-colors" aria-label="Email">
-                <Mail className="h-5 w-5" />
-              </a>
-            </div>
-          </div>
-        </div>
-      </footer>
+      <Footer />
     </div>
   )
 }
