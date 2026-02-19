@@ -157,45 +157,6 @@ function parseExpectedSchema() {
       tables[tbl].add(col)
     }
   }
-    const body = content.substring(startIdx, endIdx)
-
-    if (!tables[tableName]) tables[tableName] = new Set()
-
-    // DEBUG: show what we parsed for users table
-    if (tableName === "users") {
-      console.log(`\n[DEBUG] Table: ${tableName}`)
-      console.log(`[DEBUG] Body length: ${body.length}`)
-      console.log(`[DEBUG] Body:\n${body}\n[/DEBUG]\n`)
-    }
-
-    // Extract column definitions (skip constraints like UNIQUE, PRIMARY KEY, etc.)
-    for (const line of body.split(/\n/)) {
-      // Strip leading whitespace and template literal noise (> prefix from SQL in template strings)
-      const trimmed = line.replace(/^\s*>?\s*/, "").replace(/,\s*$/, "").trim()
-      if (!trimmed) continue
-      // Skip constraints, comments, closing parens, and backtick/template ends
-      if (/^(UNIQUE|PRIMARY\s+KEY|FOREIGN\s+KEY|CHECK|CONSTRAINT|CREATE|--|\)|`|;|\$)/i.test(trimmed)) continue
-      // Get column name: first word followed by a SQL type keyword
-      const colMatch = trimmed.match(/^"?(\w+)"?\s+(SERIAL|BIGSERIAL|INTEGER|INT|SMALLINT|VARCHAR|TEXT|BOOLEAN|BOOL|TIMESTAMP|TIMESTAMPTZ|JSONB|JSON|BIGINT|UUID|REAL|FLOAT|DOUBLE|NUMERIC|DECIMAL|DATE|TIME|BYTEA|INET|CIDR|MACADDR)/i)
-      if (colMatch) {
-        tables[tableName].add(colMatch[1].toLowerCase())
-        if (tableName === "users") {
-          console.log(`[DEBUG] Matched column: ${colMatch[1]} (type: ${colMatch[2]})`)
-        }
-      } else if (tableName === "users" && trimmed.length > 0) {
-        console.log(`[DEBUG] SKIPPED line: "${trimmed}"`)
-      }
-    }
-  }
-
-  // Match ALTER TABLE ... ADD COLUMN statements
-  const alterRegex = /ALTER\s+TABLE\s+(\w+)\s+ADD\s+COLUMN\s+(?:IF\s+NOT\s+EXISTS\s+)?("?\w+"?)\s+/gi
-  while ((match = alterRegex.exec(content)) !== null) {
-    const tableName = match[1]
-    const colName = match[2].replace(/"/g, "").toLowerCase()
-    if (!tables[tableName]) tables[tableName] = new Set()
-    tables[tableName].add(colName)
-  }
 
   // Convert Sets to arrays
   const result = {}
