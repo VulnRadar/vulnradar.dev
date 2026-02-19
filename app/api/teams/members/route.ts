@@ -3,7 +3,7 @@ import crypto from "crypto"
 import { getSession } from "@/lib/auth"
 import pool from "@/lib/db"
 import { sendEmail, teamInviteEmail } from "@/lib/email"
-import { ERROR_MESSAGES, TEAM_ROLES } from "@/lib/constants"
+import { ERROR_MESSAGES, TEAM_ROLES, APP_URL } from "@/lib/constants"
 
 // Get team members
 export async function GET(request: Request) {
@@ -101,8 +101,7 @@ export async function POST(request: Request) {
   if (teamInfo.rows.length > 0 && inviterInfo.rows.length > 0) {
     const teamName = teamInfo.rows[0].name
     const invitedBy = inviterInfo.rows[0].name
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "https://vulnradar.dev"
-    const inviteLink = `${baseUrl}/teams/join?token=${token}`
+    const inviteLink = `${APP_URL}/teams/join?token=${token}`
     const emailPayload = teamInviteEmail(teamName, inviteLink, invitedBy)
 
     // Send email in background

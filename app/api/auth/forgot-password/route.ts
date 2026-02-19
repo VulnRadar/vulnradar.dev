@@ -2,7 +2,7 @@ import { NextRequest } from "next/server"
 import pool from "@/lib/db"
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 import { getClientIp } from "@/lib/request-utils"
-import { PASSWORD_RESET_TOKEN_LIFETIME, ERROR_MESSAGES } from "@/lib/constants"
+import { PASSWORD_RESET_TOKEN_LIFETIME, ERROR_MESSAGES, APP_URL } from "@/lib/constants"
 import crypto from "crypto"
 import { sendEmail, passwordResetEmail } from "@/lib/email"
 import { ApiResponse, parseBody, withErrorHandling, Validate } from "@/lib/api-utils"
@@ -50,8 +50,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   )
 
   // Send reset email via SMTP in the background
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "https://vulnradar.dev"
-  const resetLink = `${baseUrl}/reset-password?token=${token}`
+  const resetLink = `${APP_URL}/reset-password?token=${token}`
   const emailPayload = passwordResetEmail(resetLink)
 
   queueMicrotask(() => {
