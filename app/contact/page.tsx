@@ -20,6 +20,7 @@ import {
   Mail,
   FileText,
   BookOpen,
+  Users,
 } from "lucide-react"
 import Link from "next/link"
 import { cn } from "@/lib/utils"
@@ -36,6 +37,7 @@ export default function ContactPage() {
   const [category, setCategory] = useState<string | null>(null)
   const [name, setName] = useState("")
   const [email, setEmail] = useState("")
+  const [emailLocked, setEmailLocked] = useState(false)
   const [subject, setSubject] = useState("")
   const [message, setMessage] = useState("")
   const [submitted, setSubmitted] = useState(false)
@@ -45,6 +47,26 @@ export default function ContactPage() {
   const [scriptLoaded, setScriptLoaded] = useState(false)
   const widgetRef = useRef<HTMLDivElement>(null)
   const widgetIdRef = useRef<string | null>(null)
+
+  // Auto-fill email from logged-in user
+  useEffect(() => {
+    async function fetchUser() {
+      try {
+        const res = await fetch("/api/auth/me")
+        if (res.ok) {
+          const data = await res.json()
+          if (data?.email) {
+            setEmail(data.email)
+            setEmailLocked(true)
+          }
+          if (data?.name) {
+            setName(data.name)
+          }
+        }
+      } catch { /* not logged in, ignore */ }
+    }
+    fetchUser()
+  }, [])
 
   // Render Turnstile widget after script loads and category is selected
   useEffect(() => {
@@ -151,8 +173,7 @@ export default function ContactPage() {
                   setCategory(null);
                   setSubject("");
                   setMessage("");
-                  setName("");
-                  setEmail("");
+                  if (!emailLocked) { setName(""); setEmail(""); }
                   setError(null);
                   setTurnstileToken(null);
                 }}>
@@ -165,11 +186,12 @@ export default function ContactPage() {
         ) : (
           <div className="flex flex-col gap-6">
             {/* Quick links */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
               {[
                 { icon: BookOpen, label: "Documentation", href: "/docs", desc: "Guides & API reference" },
                 { icon: FileText, label: "Changelog", href: "/changelog", desc: "Latest updates" },
                 { icon: Mail, label: "Email Us", href: `mailto:${SUPPORT_EMAIL}`, desc: SUPPORT_EMAIL },
+                { icon: Users, label: "Apply for Staff", href: "/contact/apply", desc: "Join the team" },
               ].map((link) => (
                 <Link key={link.label} href={link.href} className="flex items-center gap-3 p-3 rounded-xl border border-border bg-card hover:bg-muted/50 hover:border-primary/20 transition-all">
                   <div className="flex items-center justify-center w-9 h-9 rounded-lg bg-primary/10 shrink-0">
@@ -223,7 +245,8 @@ export default function ContactPage() {
                       </div>
                       <div className="flex flex-col gap-1.5">
                         <label htmlFor="contact-email" className="text-sm font-medium text-foreground">Email</label>
-                        <Input id="contact-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" required />
+                        <Input id="contact-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" required readOnly={emailLocked} className={emailLocked ? "opacity-60 cursor-not-allowed" : ""} />
+                        {emailLocked && <p className="text-[11px] text-muted-foreground">Auto-filled from your account</p>}
                       </div>
                     </div>
                     <div className="flex flex-col gap-1.5">
