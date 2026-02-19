@@ -72,22 +72,19 @@ async function discoverInternalLinks(startUrl: string): Promise<string[]> {
         signal: AbortSignal.timeout(CRAWL_TIMEOUT),
       })
 
-      // Allow redirects within the same registered domain (e.g. disutils.com -> disutils.com/en/home)
-      // but skip if redirected to a different domain entirely
+      // Only allow redirects that stay on the exact same hostname
       const redirectedUrl = new URL(res.url)
-      const baseDomain = new URL(origin).hostname.split(".").slice(-2).join(".")
-      const redirectDomain = redirectedUrl.hostname.split(".").slice(-2).join(".")
-      if (redirectDomain !== baseDomain) continue
+      const entryHostname = new URL(origin).hostname
+      if (redirectedUrl.hostname !== entryHostname) continue
 
       // Use the actual (post-redirect) URL as the base for resolving relative links
       const actualUrl = res.url
 
-      // If redirected to a same-domain URL we haven't seen, add it and queue it
+      // If redirected to a different path on the same host, track it (but avoid duplicating "/")
       const redirectNormalized = redirectedUrl.origin + redirectedUrl.pathname + redirectedUrl.search
       if (!visited.has(redirectNormalized)) {
         visited.add(redirectNormalized)
         if (!found.includes(redirectNormalized)) found.push(redirectNormalized)
-        queue.push(redirectNormalized)
       }
 
       const contentType = res.headers.get("content-type") || ""
@@ -112,9 +109,8 @@ async function discoverInternalLinks(startUrl: string): Promise<string[]> {
           continue
         }
 
-        // Must be same registered domain (allows www. and same-domain paths)
-        const linkDomain = resolved.hostname.split(".").slice(-2).join(".")
-        if (linkDomain !== baseDomain) continue
+        // Must be exact same hostname (no subdomains)
+        if (resolved.hostname !== entryHostname) continue
 
         // Skip asset/internal paths
         const fullPath = resolved.pathname + resolved.search
