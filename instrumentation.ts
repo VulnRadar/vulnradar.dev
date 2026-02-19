@@ -5,7 +5,45 @@
 export async function register() {
   if (process.env.NEXT_RUNTIME === "nodejs") {
     const { default: pool } = await import("./lib/db")
-    const { APP_NAME } = await import("./lib/constants")
+    const { APP_NAME, APP_VERSION, ENGINE_VERSION, VERSION_CHECK_URL } = await import("./lib/constants")
+
+    // ── Startup version check (logs to server console) ───────────
+    console.log(`\x1b[36m[${APP_NAME}]\x1b[0m Starting ${APP_NAME} v${APP_VERSION} (Detection Engine v${ENGINE_VERSION})`)
+    try {
+      const vRes = await fetch(VERSION_CHECK_URL, { signal: AbortSignal.timeout(5000) })
+      if (vRes.ok) {
+        const vData = await vRes.json()
+        const latest = vData.version as string
+        const cur = APP_VERSION.split(".").map(Number)
+        const lat = latest.split(".").map(Number)
+
+        let status: "current" | "behind" | "ahead" = "current"
+        for (let i = 0; i < 3; i++) {
+          if ((cur[i] || 0) > (lat[i] || 0)) { status = "ahead"; break }
+          if ((cur[i] || 0) < (lat[i] || 0)) { status = "behind"; break }
+        }
+
+        if (status === "current") {
+          console.log(`\x1b[32m[${APP_NAME}]\x1b[0m You're running the latest version (v${APP_VERSION}).`)
+        } else if (status === "behind") {
+          console.log(`\x1b[33m[${APP_NAME}]\x1b[0m Update available! You're on v${APP_VERSION}, latest is v${latest}.`)
+          console.log(`\x1b[33m[${APP_NAME}]\x1b[0m Visit https://github.com/VulnRadar/vulnradar.dev/releases for details.`)
+        } else {
+          const msgs = [
+            "Whoa, you're running a version from the future! Can you tell us if we ever fix that one CSS bug?",
+            "Nice try, time traveler. What's the stock market doing in your timeline?",
+            "You're ahead of us... literally. Did the robots take over yet?",
+            "Running unreleased code? You absolute legend.",
+            "You're living in the future and we're still fixing merge conflicts.",
+            "Hold up, this version doesn't exist yet. Are you a wizard?",
+          ]
+          console.log(`\x1b[35m[${APP_NAME}]\x1b[0m Running v${APP_VERSION}, but latest release is v${latest}.`)
+          console.log(`\x1b[35m[${APP_NAME}]\x1b[0m ${msgs[Math.floor(Math.random() * msgs.length)]}`)
+        }
+      }
+    } catch {
+      console.log(`\x1b[90m[${APP_NAME}]\x1b[0m Could not check for updates. Running v${APP_VERSION}.`)
+    }
 
     // Check if DATABASE_URL is set
     if (!process.env.DATABASE_URL) {
