@@ -6,7 +6,7 @@ import { validateApiKey, checkRateLimit, recordUsage } from "@/lib/api-keys"
 import { checkRateLimit as checkGlobalRL, RATE_LIMITS } from "@/lib/rate-limit"
 import pool from "@/lib/db"
 import type { ScanResult, Severity, Vulnerability } from "@/lib/scanner/types"
-import { APP_NAME, BEARER_PREFIX, SEVERITY_LEVELS } from "@/lib/constants"
+import { APP_NAME, BEARER_PREFIX, SEVERITY_LEVELS, DEFAULT_SCAN_NOTE } from "@/lib/constants"
 
 const SEVERITY_ORDER: Record<Severity, number> = {
   critical: 0,
@@ -238,11 +238,11 @@ export async function POST(request: NextRequest) {
     if (authedUserId) {
       try {
         const source = isApiKeyAuth ? "api" : "web"
-        const insertResult = await pool.query(
-          `INSERT INTO scan_history (user_id, url, summary, findings, findings_count, duration, scanned_at, source, response_headers)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`,
-          [authedUserId, url, JSON.stringify(summary), JSON.stringify(findings), summary.total, duration, result.scannedAt, source, JSON.stringify(capturedHeaders)],
-        )
+  const insertResult = await pool.query(
+  `INSERT INTO scan_history (user_id, url, summary, findings, findings_count, duration, scanned_at, source, response_headers, scan_notes)
+  VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id`,
+  [authedUserId, url, JSON.stringify(summary), JSON.stringify(findings), summary.total, duration, result.scannedAt, source, JSON.stringify(capturedHeaders), DEFAULT_SCAN_NOTE],
+  )
         scanHistoryId = insertResult.rows[0]?.id || null
       } catch {
         // Non-fatal: don't fail the scan if history save fails
