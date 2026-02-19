@@ -29,10 +29,6 @@ export const PUT = withErrorHandling(async (request: NextRequest) => {
     email_schedules: boolean
     email_data_requests: boolean
     email_security: boolean
-    email_failed_login: boolean
-    email_new_login: boolean
-    email_rate_limit: boolean
-    email_api_key_rotation: boolean
   }>(request)
   if (!parsed.success) return ApiResponse.badRequest(parsed.error)
   const { 
@@ -40,11 +36,7 @@ export const PUT = withErrorHandling(async (request: NextRequest) => {
     email_webhooks, 
     email_schedules, 
     email_data_requests, 
-    email_security,
-    email_failed_login,
-    email_new_login,
-    email_rate_limit,
-    email_api_key_rotation
+    email_security
   } = parsed.data
 
   // Validate all fields are booleans
@@ -53,11 +45,7 @@ export const PUT = withErrorHandling(async (request: NextRequest) => {
     email_webhooks, 
     email_schedules, 
     email_data_requests, 
-    email_security,
-    email_failed_login,
-    email_new_login,
-    email_rate_limit,
-    email_api_key_rotation
+    email_security
   }
   for (const [key, value] of Object.entries(fields)) {
     if (typeof value !== "boolean") {
@@ -67,21 +55,17 @@ export const PUT = withErrorHandling(async (request: NextRequest) => {
 
   // Upsert preferences
   const result = await pool.query(
-    `INSERT INTO notification_preferences (user_id, email_api_keys, email_webhooks, email_schedules, email_data_requests, email_security, email_failed_login, email_new_login, email_rate_limit, email_api_key_rotation, updated_at)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())
+    `INSERT INTO notification_preferences (user_id, email_api_keys, email_webhooks, email_schedules, email_data_requests, email_security, updated_at)
+     VALUES ($1, $2, $3, $4, $5, $6, NOW())
      ON CONFLICT (user_id) DO UPDATE SET
        email_api_keys = $2,
        email_webhooks = $3,
        email_schedules = $4,
        email_data_requests = $5,
        email_security = $6,
-       email_failed_login = $7,
-       email_new_login = $8,
-       email_rate_limit = $9,
-       email_api_key_rotation = $10,
        updated_at = NOW()
-     RETURNING email_api_keys, email_webhooks, email_schedules, email_data_requests, email_security, email_failed_login, email_new_login, email_rate_limit, email_api_key_rotation`,
-    [session.userId, email_api_keys, email_webhooks, email_schedules, email_data_requests, email_security, email_failed_login, email_new_login, email_rate_limit, email_api_key_rotation]
+     RETURNING email_api_keys, email_webhooks, email_schedules, email_data_requests, email_security`,
+    [session.userId, email_api_keys, email_webhooks, email_schedules, email_data_requests, email_security]
   )
 
   return ApiResponse.success(result.rows[0], 200)
