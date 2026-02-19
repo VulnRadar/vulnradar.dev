@@ -62,8 +62,10 @@ export default function ContactPage() {
     async function fetchUser() {
       try {
         const res = await fetch("/api/auth/me")
+        console.log("[v0] /api/auth/me response status:", res.status)
         if (res.ok) {
           const data = await res.json()
+          console.log("[v0] /api/auth/me data:", data)
           if (data?.email) {
             setEmail(data.email)
             setEmailLocked(true)
@@ -72,7 +74,9 @@ export default function ContactPage() {
             setName(data.name)
           }
         }
-      } catch { /* not logged in, ignore */ }
+      } catch (err) {
+        console.log("[v0] /api/auth/me fetch failed:", err)
+      }
     }
     fetchUser()
   }, [])
