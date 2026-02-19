@@ -102,13 +102,14 @@ function parseExpectedSchema() {
     if (!tables[tableName]) tables[tableName] = new Set()
 
     // Extract column definitions (skip constraints like UNIQUE, PRIMARY KEY, etc.)
-    for (const line of body.split(",")) {
-      const trimmed = line.trim()
+    // Split by newlines first, then clean up
+    for (const line of body.split(/\n/)) {
+      const trimmed = line.replace(/,\s*$/, "").trim()
       if (!trimmed) continue
-      // Skip constraints
-      if (/^(UNIQUE|PRIMARY\s+KEY|FOREIGN\s+KEY|CHECK|CONSTRAINT|CREATE|--)/i.test(trimmed)) continue
-      // Get column name (first word)
-      const colMatch = trimmed.match(/^"?(\w+)"?\s+(SERIAL|INTEGER|VARCHAR|TEXT|BOOLEAN|TIMESTAMP|JSONB|BIGINT)/i)
+      // Skip constraints and comments
+      if (/^(UNIQUE|PRIMARY\s+KEY|FOREIGN\s+KEY|CHECK|CONSTRAINT|CREATE|--|\))/i.test(trimmed)) continue
+      // Get column name: first word followed by a SQL type keyword
+      const colMatch = trimmed.match(/^"?(\w+)"?\s+(SERIAL|BIGSERIAL|INTEGER|INT|SMALLINT|VARCHAR|TEXT|BOOLEAN|BOOL|TIMESTAMP|TIMESTAMPTZ|JSONB|JSON|BIGINT|UUID|REAL|FLOAT|DOUBLE|NUMERIC|DECIMAL|DATE|TIME|BYTEA|INET|CIDR|MACADDR)/i)
       if (colMatch) {
         tables[tableName].add(colMatch[1].toLowerCase())
       }
