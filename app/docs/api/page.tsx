@@ -133,7 +133,7 @@ print(response.json())`
               <h4 className="font-semibold text-sm mb-2">Response (200 OK)</h4>
               <pre className="bg-secondary/30 p-4 rounded-lg overflow-x-auto text-sm"><code>{`{
   "url": "https://example.com",
-  "scannedAt": "2024-02-12T15:30:00.000Z",
+  "scannedAt": "2026-02-18T15:30:00.000Z",
   "duration": 1234,
   "findings": [
     {
@@ -152,7 +152,9 @@ print(response.json())`
     "info": 1,
     "total": 7
   },
-  "scanHistoryId": 12345
+  "responseHeaders": { ... },
+  "scanHistoryId": 12345,
+  "scan_notes": "VulnRadar v1.7.0 (Detection Engine v1.5.0)"
 }`}</code></pre>
             </div>
 
@@ -214,8 +216,9 @@ print(response.json())`
       },
       "findings_count": 7,
       "duration": 1234,
-      "scanned_at": "2024-02-12T15:30:00.000Z",
+      "scanned_at": "2026-02-18T15:30:00.000Z",
       "source": "api",
+      "scan_notes": "VulnRadar v1.7.0 (Detection Engine v1.5.0)",
       "tags": []
     }
   ]
@@ -257,7 +260,7 @@ print(response.json())`
               <h4 className="font-semibold text-sm mb-2">Response (200 OK)</h4>
               <pre className="bg-secondary/30 p-4 rounded-lg overflow-x-auto text-sm"><code>{`{
   "url": "https://example.com",
-  "scannedAt": "2024-02-12T15:30:00.000Z",
+  "scannedAt": "2026-02-18T15:30:00.000Z",
   "duration": 1234,
   "summary": {
     "critical": 0,
@@ -275,7 +278,9 @@ print(response.json())`
       "description": "The X-Content-Type-Options header prevents browsers from MIME-type sniffing",
       "remediation": "Set X-Content-Type-Options: nosniff in response headers"
     }
-  ]
+  ],
+  "responseHeaders": { ... },
+  "scan_notes": "VulnRadar v1.7.0 (Detection Engine v1.5.0)"
 }`}</code></pre>
             </div>
 
@@ -291,6 +296,134 @@ print(response.json())`
                   <span className="text-muted-foreground">Scan not found or user does not have access</span>
                 </div>
               </div>
+            </div>
+          </div>
+        </Card>
+        {/* Deep Crawl */}
+        <Card className="p-6 border-border/40">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <Badge className="bg-green-600/20 text-green-700 hover:bg-green-600/20">POST</Badge>
+              <code className="text-primary font-mono">/scan/crawl</code>
+            </div>
+            <span className="text-xs text-muted-foreground">Deep Crawl Scan</span>
+          </div>
+          <p className="text-muted-foreground mb-4">Crawl an entire website and scan multiple pages for vulnerabilities. Discovers internal links and scans each page individually. You can optionally pass a pre-selected list of URLs to scan.</p>
+          
+          <div className="space-y-4">
+            <div>
+              <h4 className="font-semibold text-sm mb-2">Request Body</h4>
+              <pre className="bg-secondary/30 p-4 rounded-lg overflow-x-auto text-sm"><code>{`{
+  "url": "https://example.com",   // (required) Entry URL to crawl from
+  "urls": [                        // (optional) Pre-selected URLs to scan
+    "https://example.com",
+    "https://example.com/about",
+    "https://example.com/contact"
+  ]
+}`}</code></pre>
+              <p className="text-xs text-muted-foreground mt-2">If <code className="bg-secondary px-1 rounded">urls</code> is omitted, the crawler will discover internal links automatically (max 20 pages).</p>
+            </div>
+
+            <div>
+              <h4 className="font-semibold text-sm mb-2">Response (200 OK)</h4>
+              <pre className="bg-secondary/30 p-4 rounded-lg overflow-x-auto text-sm"><code>{`{
+  "url": "https://example.com",
+  "scannedAt": "2026-02-18T15:30:00.000Z",
+  "duration": 8500,
+  "findings": [...],
+  "summary": { "critical": 0, "high": 2, "medium": 5, "low": 3, "info": 2, "total": 12 },
+  "crawl": {
+    "totalPages": 5,
+    "pages": [
+      {
+        "url": "https://example.com",
+        "findings": [...],
+        "summary": { ... },
+        "duration": 1200,
+        "responseHeaders": { ... }
+      }
+    ]
+  },
+  "scanHistoryId": 12346
+}`}</code></pre>
+            </div>
+
+            <div>
+              <h4 className="font-semibold text-sm mb-2">Error Responses</h4>
+              <div className="space-y-2 text-xs">
+                <div className="flex gap-2">
+                  <Badge variant="outline" className="flex-shrink-0">400</Badge>
+                  <span className="text-muted-foreground">Missing or invalid URL parameter</span>
+                </div>
+                <div className="flex gap-2">
+                  <Badge variant="outline" className="flex-shrink-0">401</Badge>
+                  <span className="text-muted-foreground">Unauthorized (requires authentication)</span>
+                </div>
+                <div className="flex gap-2">
+                  <Badge variant="outline" className="flex-shrink-0">429</Badge>
+                  <span className="text-muted-foreground">Rate limit exceeded</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </Card>
+
+        {/* Crawl Discover */}
+        <Card className="p-6 border-border/40">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <Badge className="bg-green-600/20 text-green-700 hover:bg-green-600/20">POST</Badge>
+              <code className="text-primary font-mono">/scan/crawl/discover</code>
+            </div>
+            <span className="text-xs text-muted-foreground">Discover Crawlable URLs</span>
+          </div>
+          <p className="text-muted-foreground mb-4">Discover all internal pages on a website without scanning them. Useful for letting users select which pages to scan before running a deep crawl.</p>
+          
+          <div className="space-y-4">
+            <div>
+              <h4 className="font-semibold text-sm mb-2">Request Body</h4>
+              <pre className="bg-secondary/30 p-4 rounded-lg overflow-x-auto text-sm"><code>{`{
+  "url": "https://example.com"  // (required) Entry URL to discover pages from
+}`}</code></pre>
+            </div>
+
+            <div>
+              <h4 className="font-semibold text-sm mb-2">Response (200 OK)</h4>
+              <pre className="bg-secondary/30 p-4 rounded-lg overflow-x-auto text-sm"><code>{`{
+  "urls": [
+    "https://example.com",
+    "https://example.com/about",
+    "https://example.com/contact",
+    "https://example.com/blog"
+  ],
+  "total": 4
+}`}</code></pre>
+            </div>
+          </div>
+        </Card>
+
+        {/* Version Check */}
+        <Card className="p-6 border-border/40">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <Badge className="bg-blue-600/20 text-blue-700 hover:bg-blue-600/20">GET</Badge>
+              <code className="text-primary font-mono">/version</code>
+            </div>
+            <span className="text-xs text-muted-foreground">Version Check</span>
+          </div>
+          <p className="text-muted-foreground mb-4">Check if the running instance is up to date by comparing the installed version against the latest release on GitHub. Useful for self-hosted deployments.</p>
+          
+          <div className="space-y-4">
+            <div>
+              <h4 className="font-semibold text-sm mb-2">Response (200 OK)</h4>
+              <pre className="bg-secondary/30 p-4 rounded-lg overflow-x-auto text-sm"><code>{`{
+  "current": "1.7.0",
+  "latest": "1.7.0",
+  "engine": "1.5.0",
+  "status": "up-to-date",
+  "message": "You're running the latest version."
+}`}</code></pre>
+              <p className="text-xs text-muted-foreground mt-2">Status can be <code className="bg-secondary px-1 rounded">up-to-date</code>, <code className="bg-secondary px-1 rounded">behind</code>, or <code className="bg-secondary px-1 rounded">ahead</code>. No authentication required.</p>
             </div>
           </div>
         </Card>
@@ -395,7 +528,7 @@ print(response.json())`
               <h4 className="font-semibold text-sm mb-2">Rate Limit Headers</h4>
               <pre className="bg-secondary/30 p-3 rounded-lg overflow-x-auto text-xs"><code>{`X-RateLimit-Limit: 50
 X-RateLimit-Remaining: 49
-X-RateLimit-Reset: 2024-02-13T15:30:00Z
+X-RateLimit-Reset: 2026-02-19T15:30:00Z
 Retry-After: 86400`}</code></pre>
             </div>
 
@@ -407,7 +540,7 @@ Retry-After: 86400`}</code></pre>
   "limit": 50,
   "used": 50,
   "remaining": 0,
-  "resets_at": "2024-02-13T15:30:00Z"
+  "resets_at": "2026-02-19T15:30:00Z"
 }`}</code></pre>
             </div>
 

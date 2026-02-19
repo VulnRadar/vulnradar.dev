@@ -119,12 +119,17 @@ GRANT ALL PRIVILEGES ON DATABASE vulnradar TO vulnradar_user;
         </Card>
 
         <Card className="p-6 border-border/40">
-          <h3 className="font-semibold mb-4">Step 3: Run Migrations</h3>
-          <p className="text-sm text-muted-foreground mb-3">After setting environment variables (next section), run migrations:</p>
-          <pre className="bg-secondary/50 p-4 rounded text-sm overflow-x-auto"><code>{`npm run db:migrate
-# or
-pnpm db:migrate`}</code></pre>
-          <p className="text-xs text-muted-foreground mt-2">This creates all necessary tables and indexes in your database.</p>
+          <h3 className="font-semibold mb-4">Step 3: Auto-Schema Setup</h3>
+          <p className="text-sm text-muted-foreground mb-3">{APP_NAME} automatically creates all required tables and indexes when the application starts for the first time. Simply start the dev server:</p>
+          <pre className="bg-secondary/50 p-4 rounded text-sm overflow-x-auto"><code>{`npm run dev`}</code></pre>
+          <p className="text-xs text-muted-foreground mt-2">The <code className="bg-secondary px-1 rounded text-xs">instrumentation.ts</code> file handles all schema creation on startup. No separate migration command is needed for initial setup.</p>
+        </Card>
+
+        <Card className="p-6 border-border/40">
+          <h3 className="font-semibold mb-4">Step 4: Run Migration Check (Optional)</h3>
+          <p className="text-sm text-muted-foreground mb-3">After the app has started at least once, you can verify your database schema matches the expected schema:</p>
+          <pre className="bg-secondary/50 p-4 rounded text-sm overflow-x-auto"><code>{`npm run migrate`}</code></pre>
+          <p className="text-xs text-muted-foreground mt-2">This interactive tool compares your database against the expected schema defined in <code className="bg-secondary px-1 rounded text-xs">instrumentation.ts</code>. It will report missing tables, missing columns, and extra columns or tables. You can selectively add missing columns or drop extra ones with confirmation prompts. All destructive actions default to No and require explicit <code className="bg-secondary px-1 rounded text-xs">y</code> confirmation.</p>
         </Card>
       </section>
 
@@ -255,7 +260,7 @@ pnpm dev -- -p 3001`}</code></pre>
             <h3 className="font-semibold mb-2">3. Check Database Connection</h3>
             <p className="text-sm text-muted-foreground">Verify user data was created in the database:</p>
             <pre className="bg-secondary/50 p-2 rounded text-xs mt-2 overflow-x-auto"><code>{`psql -U vulnradar_user -d vulnradar -h localhost
-SELECT * FROM "User";
+SELECT id, email, username FROM users LIMIT 5;
 \\q`}</code></pre>
           </div>
 
@@ -364,8 +369,11 @@ npm start`}</code></pre>
           <p className="text-sm text-muted-foreground mb-3">Deploy using Docker containers:</p>
           <pre className="bg-secondary/50 p-3 rounded text-sm overflow-x-auto"><code>{`docker build -t vulnradar .
 docker run -p 3000:3000 \\
-  -e DATABASE_URL="postgresql://..." \\
-  -e NEXTAUTH_SECRET="..." \\
+  -e DATABASE_URL="postgresql://vulnradar:yourpassword@localhost:5432/vulnradar" \\
+  -e SMTP_HOST="smtp.example.com" \\
+  -e SMTP_PORT="587" \\
+  -e SMTP_USER="noreply@yourdomain.com" \\
+  -e SMTP_PASS="your-smtp-password" \\
   vulnradar`}</code></pre>
         </Card>
 
@@ -373,12 +381,84 @@ docker run -p 3000:3000 \\
           <h3 className="font-semibold mb-4">Self-Hosted (Linux/Ubuntu)</h3>
           <p className="text-sm text-muted-foreground mb-3">Deploy to your own server:</p>
           <ol className="list-decimal list-inside space-y-2 text-sm text-muted-foreground">
-            <li>Provision a server with Node.js and PostgreSQL</li>
+            <li>Provision a server with Node.js 18.17+ and PostgreSQL 14+</li>
             <li>Clone the repository on the server</li>
-            <li>Configure environment variables</li>
-            <li>Run migrations</li>
+            <li>Install dependencies with <code className="bg-secondary px-1 rounded text-xs">npm install</code></li>
+            <li>Configure environment variables in <code className="bg-secondary px-1 rounded text-xs">.env.local</code></li>
+            <li>Start the app once to auto-create the database schema</li>
+            <li>Run <code className="bg-secondary px-1 rounded text-xs">npm run migrate</code> to verify schema</li>
+            <li>Build for production with <code className="bg-secondary px-1 rounded text-xs">npm run build && npm start</code></li>
             <li>Use PM2 or systemd to manage the process</li>
           </ol>
+          <p className="text-xs text-muted-foreground mt-3">On startup, the server console logs the current version and checks for updates automatically. The admin panel also shows a version check card if a newer version is available on GitHub.</p>
+        </Card>
+      </section>
+
+      {/* Migration Tool */}
+      <section id="migration" className="space-y-4">
+        <h2 className="text-2xl font-bold">Migration Tool</h2>
+        <p className="text-muted-foreground">The built-in migration tool helps keep your database schema in sync when updating {APP_NAME} to a new version.</p>
+
+        <Card className="p-6 border-border/40">
+          <h3 className="font-semibold mb-4">Running Migrations</h3>
+          <p className="text-sm text-muted-foreground mb-3">After pulling a new version, run the migration check:</p>
+          <pre className="bg-secondary/50 p-4 rounded text-sm overflow-x-auto mb-4"><code>{`npm run migrate`}</code></pre>
+          <p className="text-sm text-muted-foreground mb-3">The tool will:</p>
+          <ol className="list-decimal list-inside space-y-2 text-sm text-muted-foreground mb-4">
+            <li>Parse the expected schema from <code className="bg-secondary px-1 rounded text-xs">instrumentation.ts</code></li>
+            <li>Query your actual database tables and columns</li>
+            <li>Show a comparison with color-coded status (OK, MISSING, EXTRA)</li>
+            <li>Offer to add missing columns interactively</li>
+            <li>Offer to drop extra columns or tables with double confirmation</li>
+          </ol>
+          <pre className="bg-secondary/50 p-4 rounded text-xs overflow-x-auto mb-4"><code>{`# Example output:
+  OK             users (8 columns)
+  MISSING COL    scan_history.new_column
+  EXTRA COL      scan_history.old_column (127 rows have data)
+  EXTRA TABLE    custom_table (3 columns)`}</code></pre>
+
+          <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 p-4 flex gap-3 mt-4">
+            <AlertTriangle className="h-5 w-5 text-amber-600 flex-shrink-0 mt-0.5" />
+            <div className="text-xs text-muted-foreground">
+              <p><strong>Important:</strong> All destructive actions (dropping columns or tables) default to No and require you to explicitly type <code className="bg-secondary px-1 rounded">y</code>. The tool will warn you about data loss before any deletion.</p>
+            </div>
+          </div>
+
+          <div className="rounded-lg border border-blue-500/20 bg-blue-500/5 p-4 flex gap-3 mt-4">
+            <Info className="h-5 w-5 text-blue-600 flex-shrink-0 mt-0.5" />
+            <div className="text-xs text-muted-foreground">
+              <p><strong>Recommendation:</strong> We recommend using a dedicated database for {APP_NAME} rather than sharing it with other applications. This ensures migrations can be applied cleanly without conflicting with other schemas.</p>
+            </div>
+          </div>
+        </Card>
+      </section>
+
+      {/* Version Checking */}
+      <section id="version" className="space-y-4">
+        <h2 className="text-2xl font-bold">Version Checking</h2>
+        <p className="text-muted-foreground">{APP_NAME} includes automatic version checking for self-hosted instances.</p>
+
+        <Card className="p-6 border-border/40">
+          <h3 className="font-semibold mb-4">Automatic Startup Check</h3>
+          <p className="text-sm text-muted-foreground mb-3">When the server starts, it logs the running version and checks GitHub for the latest release:</p>
+          <pre className="bg-secondary/50 p-4 rounded text-xs overflow-x-auto mb-4"><code>{`[VulnRadar] Starting VulnRadar v1.7.0 (Detection Engine v1.5.0)
+[VulnRadar] You're running the latest version (v1.7.0).`}</code></pre>
+          <p className="text-sm text-muted-foreground mb-3">If an update is available:</p>
+          <pre className="bg-secondary/50 p-4 rounded text-xs overflow-x-auto"><code>{`[VulnRadar] Starting VulnRadar v1.6.8 (Detection Engine v1.5.0)
+[VulnRadar] Update available! You're on v1.6.8, latest is v1.7.0.
+[VulnRadar] Visit https://github.com/VulnRadar/vulnradar.dev/releases for details.`}</code></pre>
+        </Card>
+
+        <Card className="p-6 border-border/40">
+          <h3 className="font-semibold mb-4">Admin Panel Version Check</h3>
+          <p className="text-sm text-muted-foreground mb-3">The admin panel (<code className="bg-secondary px-1 rounded text-xs">/admin</code>) includes a version check card that shows the installed vs. latest version with a link to release notes when an update is available.</p>
+        </Card>
+
+        <Card className="p-6 border-border/40">
+          <h3 className="font-semibold mb-4">API Version Endpoint</h3>
+          <p className="text-sm text-muted-foreground mb-3">You can also check the version programmatically:</p>
+          <pre className="bg-secondary/50 p-4 rounded text-sm overflow-x-auto"><code>{`curl ${APP_URL}/api/version`}</code></pre>
+          <p className="text-xs text-muted-foreground mt-2">Returns the current version, latest version, engine version, and update status. See <a href="/docs/api#endpoints" className="text-primary hover:underline">API Reference</a> for full response format.</p>
         </Card>
       </section>
 
@@ -386,7 +466,7 @@ docker run -p 3000:3000 \\
         <CheckCircle className="h-5 w-5 text-green-600 flex-shrink-0 mt-0.5" />
         <div>
           <h3 className="font-semibold text-foreground mb-1">Setup Complete!</h3>
-          <p className="text-sm text-muted-foreground">You're ready to start using VulnRadar. Next, check out the <a href="/docs/api" className="text-primary hover:underline">API Reference</a> to learn how to integrate the scanner into your workflow.</p>
+          <p className="text-sm text-muted-foreground">You're ready to start using {APP_NAME}. Next, check out the <a href="/docs/api" className="text-primary hover:underline">API Reference</a> to learn how to integrate the scanner into your workflow.</p>
         </div>
       </div>
     </div>
