@@ -5,6 +5,21 @@ import { APP_NAME, TOTAL_CHECKS_LABEL } from "@/lib/constants"
 
 const CHANGELOG = [
   {
+    version: "1.7.1",
+    date: "February 19, 2026",
+    title: "Migration Tool Improvements & Documentation Overhaul",
+    highlights: true,
+    changes: [
+      { icon: GitMerge, label: "Table & Column Rename Detection", desc: "The migration tool now detects renamed tables and columns between versions. When an old name exists in the DB but the new name is expected, it offers to rename it in-place (preserving all data). Rename mappings are defined at the top of migrate.mjs for easy maintenance." },
+      { icon: Database, label: "Smarter Migration Prompts", desc: "Review prompts (non-destructive) now default to Yes (Y/n), while destructive actions (dropping columns/tables) still default to No (y/N). Every action requires explicit confirmation, and table drops require double confirmation." },
+      { icon: Bug, label: "Migration Parser Rewrite", desc: "Completely rewrote the schema parser from a fragile regex approach to a line-by-line state machine. Correctly handles DEFAULT NOW(), REFERENCES, nested parentheses, and all SQL types. No more false 'extra column' reports for created_at." },
+      { icon: FileSearch, label: "Extra Table Detection", desc: "Tables in the database that aren't part of the VulnRadar schema are now flagged as EXTRA TABLE with row counts, and can be selectively dropped. Includes a recommendation to use a dedicated database." },
+      { icon: Wrench, label: "Documentation Overhaul", desc: "Fully updated the Setup and API docs: added Deep Crawl, Crawl Discover, and Version Check endpoints. Setup docs now cover auto-schema via instrumentation.ts, the migration tool, version checking, correct env vars, and accurate table names." },
+      { icon: ServerCog, label: "Startup Version Check", desc: "Self-hosted instances now log the running version and check GitHub for updates on every server startup. Shows colored messages: green if current, yellow with release link if behind, and a fun message if somehow ahead." },
+      { icon: Shield, label: "Exact Hostname Crawl Fix", desc: "Fixed the crawler following links to subdomains (e.g. r.agg.moe when scanning agg.moe). Now uses exact hostname matching instead of registered domain matching." },
+    ],
+  },
+  {
     version: "1.7.0",
     date: "February 18, 2026",
     title: "Deep Crawl URL Selector, IP Rate-Limited Demo & Auto Scan Notes",

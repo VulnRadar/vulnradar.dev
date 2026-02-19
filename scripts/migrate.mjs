@@ -6,6 +6,11 @@
  * Connects to your database, reads the expected schema from instrumentation.ts,
  * compares it against the actual DB, and offers to fix differences.
  *
+ * Features:
+ *   - Detects missing/extra tables and columns
+ *   - Detects renamed tables and columns (via rename mappings below)
+ *   - Interactive prompts with safe defaults (review = Y, destructive = N)
+ *
  * Usage:
  *   node scripts/migrate.mjs
  *
@@ -21,6 +26,26 @@ import * as readline from "readline"
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const ROOT = resolve(__dirname, "..")
 
+// ── Rename Mappings ─────────────────────────────────────────────────────────
+// When a table or column is renamed between versions, add an entry here.
+// The migration tool will detect the old name in the DB and offer to rename it.
+//
+// Format:
+//   TABLE_RENAMES: { "old_table_name": "new_table_name" }
+//   COLUMN_RENAMES: { "table_name": { "old_column_name": "new_column_name" } }
+//
+// Example:
+//   TABLE_RENAMES: { "user": "users", "scan_result": "scan_history" }
+//   COLUMN_RENAMES: { "sessions": { "ip_address": "ipaddress" } }
+
+const TABLE_RENAMES = {
+  // "old_name": "new_name",
+}
+
+const COLUMN_RENAMES = {
+  // "table_name": { "old_col": "new_col" },
+}
+
 // ── Colors for terminal output ──────────────────────────────────────────────
 const c = {
   reset: "\x1b[0m",
@@ -30,6 +55,7 @@ const c = {
   green: "\x1b[32m",
   yellow: "\x1b[33m",
   cyan: "\x1b[36m",
+  magenta: "\x1b[35m",
   white: "\x1b[37m",
   bgRed: "\x1b[41m",
   bgGreen: "\x1b[42m",
@@ -63,7 +89,6 @@ function loadEnv() {
       if (eq === -1) continue
       const key = trimmed.slice(0, eq).trim()
       let val = trimmed.slice(eq + 1).trim()
-      // Remove surrounding quotes
       if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
         val = val.slice(1, -1)
       }
@@ -74,11 +99,24 @@ function loadEnv() {
   }
 }
 
-// ── Prompt user for yes/no ──────────────────────────────────────────────────
-function ask(question) {
+// ── Prompt helpers ──────────────────────────────────────────────────────────
+// askReview: defaults to YES (pressing Enter = yes) - used for non-destructive review prompts
+function askReview(question) {
   return new Promise((resolve) => {
     const rl = readline.createInterface({ input: process.stdin, output: process.stdout })
-    rl.question(`${c.yellow}?${c.reset} ${question} ${c.dim}(y/N)${c.reset} `, (answer) => {
+    rl.question(`${c.yellow}?${c.reset} ${question} ${c.dim}(Y/n)${c.reset} `, (answer) => {
+      rl.close()
+      const val = answer.trim().toLowerCase()
+      resolve(val === "" || val === "y" || val === "yes")
+    })
+  })
+}
+
+// askDanger: defaults to NO (pressing Enter = no) - used for destructive actions
+function askDanger(question) {
+  return new Promise((resolve) => {
+    const rl = readline.createInterface({ input: process.stdin, output: process.stdout })
+    rl.question(`${c.red}?${c.reset} ${question} ${c.dim}(y/N)${c.reset} `, (answer) => {
       rl.close()
       const val = answer.trim().toLowerCase()
       resolve(val === "y" || val === "yes")
@@ -92,9 +130,6 @@ function parseExpectedSchema() {
   const content = readFileSync(filePath, "utf-8")
 
   const tables = {}
-
-  // Simple line-by-line state machine parser
-  // This avoids all regex/paren issues with SQL inside template literals
   const SQL_TYPES = /^(SERIAL|BIGSERIAL|INTEGER|INT|SMALLINT|VARCHAR|TEXT|BOOLEAN|BOOL|TIMESTAMP|TIMESTAMPTZ|JSONB|JSON|BIGINT|UUID|REAL|FLOAT|DOUBLE|NUMERIC|DECIMAL|DATE|TIME|BYTEA|INET|CIDR|MACADDR)\b/i
   const SKIP_KEYWORDS = /^(UNIQUE|PRIMARY\s+KEY|FOREIGN\s+KEY|CHECK|CONSTRAINT)/i
 
@@ -104,13 +139,11 @@ function parseExpectedSchema() {
   for (const rawLine of lines) {
     const line = rawLine.trim()
 
-    // Detect CREATE TABLE
     const tableMatch = line.match(/CREATE\s+TABLE\s+IF\s+NOT\s+EXISTS\s+(\w+)/i)
     if (tableMatch) {
       currentTable = tableMatch[1]
       if (!tables[currentTable]) tables[currentTable] = new Set()
 
-      // Handle case where column defs are on the SAME line after the opening paren
       const afterParen = line.split("(").slice(1).join("(").trim()
       if (afterParen) {
         const colToken = afterParen.replace(/,\s*$/, "").trim()
@@ -122,34 +155,27 @@ function parseExpectedSchema() {
       continue
     }
 
-    // Detect end of CREATE TABLE block
     if (currentTable && /^\);?\s*$/.test(line)) {
       currentTable = null
       continue
     }
 
-    // Inside a CREATE TABLE block: parse column definitions
     if (currentTable) {
-      // Clean up: remove trailing commas, semicolons, closing parens
       const cleaned = line.replace(/,\s*$/, "").replace(/\)\s*;?\s*$/, "").trim()
       if (!cleaned) continue
-      // Skip SQL constraints and comments
       if (SKIP_KEYWORDS.test(cleaned)) continue
       if (cleaned.startsWith("--")) continue
 
-      // Extract: column_name TYPE ...
       const parts = cleaned.split(/\s+/)
       if (parts.length >= 2) {
         const colName = parts[0].replace(/"/g, "")
         const colType = parts[1]
-        // Must look like a valid column name (letters/underscores) followed by a SQL type
         if (/^\w+$/.test(colName) && SQL_TYPES.test(colType)) {
           tables[currentTable].add(colName.toLowerCase())
         }
       }
     }
 
-    // Detect ALTER TABLE ... ADD COLUMN
     const alterMatch = line.match(/ALTER\s+TABLE\s+(\w+)\s+ADD\s+COLUMN\s+(?:IF\s+NOT\s+EXISTS\s+)?("?\w+"?)\s+/i)
     if (alterMatch) {
       const tbl = alterMatch[1]
@@ -159,7 +185,6 @@ function parseExpectedSchema() {
     }
   }
 
-  // Convert Sets to arrays
   const result = {}
   for (const [table, cols] of Object.entries(tables)) {
     result[table] = [...cols].sort()
@@ -227,6 +252,100 @@ async function main() {
   const actual = await getActualSchema(pool)
   success(`Found ${Object.keys(actual).length} tables in database.`)
 
+  // ── Phase 1: Detect and apply table renames ─────────────────────────────
+  const tableRenamesApplied = []
+  const pendingTableRenames = []
+  for (const [oldName, newName] of Object.entries(TABLE_RENAMES)) {
+    if (actual[oldName] && !actual[newName] && expected[newName]) {
+      pendingTableRenames.push({ oldName, newName })
+    }
+  }
+
+  if (pendingTableRenames.length > 0) {
+    log("")
+    log(`${c.bold}═══════════════════════════════════════════${c.reset}`)
+    log(`${c.bold}  Table Renames Detected${c.reset}`)
+    log(`${c.bold}═══════════════════════════════════════════${c.reset}`)
+    log("")
+    log(`${c.magenta}Found ${pendingTableRenames.length} table(s) that appear to have been renamed in a newer version.${c.reset}`)
+    log("")
+
+    for (const { oldName, newName } of pendingTableRenames) {
+      log(`  ${c.magenta}RENAME${c.reset}  ${c.bold}${oldName}${c.reset} ${c.dim}->${c.reset} ${c.bold}${newName}${c.reset}`)
+
+      try {
+        const countRes = await pool.query(`SELECT COUNT(*) as total FROM "${oldName}"`)
+        log(`          ${c.dim}(${countRes.rows[0].total} rows, data will be preserved)${c.reset}`)
+      } catch { /* ignore */ }
+
+      const shouldRename = await askReview(`Rename table ${c.bold}${oldName}${c.reset} to ${c.bold}${newName}${c.reset}?`)
+      if (shouldRename) {
+        try {
+          await pool.query(`ALTER TABLE "${oldName}" RENAME TO "${newName}"`)
+          success(`Renamed table ${oldName} -> ${newName}`)
+          tableRenamesApplied.push({ oldName, newName })
+          // Update the actual schema in memory
+          actual[newName] = actual[oldName]
+          delete actual[oldName]
+        } catch (err) {
+          error(`Failed to rename ${oldName} -> ${newName}: ${err.message}`)
+        }
+      } else {
+        info(`Skipped renaming ${oldName}`)
+      }
+    }
+  }
+
+  // ── Phase 2: Detect and apply column renames ────────────────────────────
+  const pendingColRenames = []
+  for (const [table, renames] of Object.entries(COLUMN_RENAMES)) {
+    const actualTable = actual[table]
+    if (!actualTable) continue
+    const expectedCols = expected[table]
+    if (!expectedCols) continue
+
+    for (const [oldCol, newCol] of Object.entries(renames)) {
+      if (actualTable.includes(oldCol) && !actualTable.includes(newCol) && expectedCols.includes(newCol)) {
+        pendingColRenames.push({ table, oldCol, newCol })
+      }
+    }
+  }
+
+  if (pendingColRenames.length > 0) {
+    log("")
+    log(`${c.bold}═══════════════════════════════════════════${c.reset}`)
+    log(`${c.bold}  Column Renames Detected${c.reset}`)
+    log(`${c.bold}═══════════════════════════════════════════${c.reset}`)
+    log("")
+    log(`${c.magenta}Found ${pendingColRenames.length} column(s) that appear to have been renamed in a newer version.${c.reset}`)
+    log("")
+
+    for (const { table, oldCol, newCol } of pendingColRenames) {
+      log(`  ${c.magenta}RENAME${c.reset}  ${c.bold}${table}.${oldCol}${c.reset} ${c.dim}->${c.reset} ${c.bold}${table}.${newCol}${c.reset}`)
+
+      try {
+        const countRes = await pool.query(`SELECT COUNT("${oldCol}") as non_null FROM "${table}" WHERE "${oldCol}" IS NOT NULL`)
+        log(`          ${c.dim}(${countRes.rows[0].non_null} non-null values, data will be preserved)${c.reset}`)
+      } catch { /* ignore */ }
+
+      const shouldRename = await askReview(`Rename column ${c.bold}${table}.${oldCol}${c.reset} to ${c.bold}${newCol}${c.reset}?`)
+      if (shouldRename) {
+        try {
+          await pool.query(`ALTER TABLE "${table}" RENAME COLUMN "${oldCol}" TO "${newCol}"`)
+          success(`Renamed ${table}.${oldCol} -> ${table}.${newCol}`)
+          // Update actual schema in memory
+          const idx = actual[table].indexOf(oldCol)
+          if (idx !== -1) actual[table][idx] = newCol
+        } catch (err) {
+          error(`Failed to rename ${table}.${oldCol}: ${err.message}`)
+        }
+      } else {
+        info(`Skipped renaming ${table}.${oldCol}`)
+      }
+    }
+  }
+
+  // ── Phase 3: Schema comparison (after renames applied) ──────────────────
   log("")
   log(`${c.bold}═══════════════════════════════════════════${c.reset}`)
   log(`${c.bold}  Schema Comparison${c.reset}`)
@@ -234,10 +353,9 @@ async function main() {
   log("")
 
   const missingTables = []
-  const missingColumns = [] // { table, column }
-  const extraColumns = []   // { table, column }
+  const missingColumns = []
+  const extraColumns = []
 
-  // Check for missing tables and columns
   for (const [table, expectedCols] of Object.entries(expected)) {
     if (!actual[table]) {
       missingTables.push(table)
@@ -264,7 +382,6 @@ async function main() {
     }
   }
 
-  // Check for tables in DB that aren't in instrumentation.ts
   const unknownTables = Object.keys(actual).filter((t) => !expected[t])
   if (unknownTables.length > 0) {
     log("")
@@ -277,7 +394,6 @@ async function main() {
   log(`${c.bold}═══════════════════════════════════════════${c.reset}`)
   log("")
 
-  // Summary
   if (missingTables.length === 0 && missingColumns.length === 0 && extraColumns.length === 0 && unknownTables.length === 0) {
     success("Your database schema is fully up to date! Nothing to do.")
     await pool.end()
@@ -294,18 +410,17 @@ async function main() {
 
   // ── Handle missing columns ────────────────────────────────────────────────
   if (missingColumns.length > 0) {
+    log("")
     log(`${c.yellow}${missingColumns.length} column(s) are missing from existing tables.${c.reset}`)
-    log(`${c.dim}These will be added automatically when you start the app, or you can apply now.${c.reset}`)
+    log(`${c.dim}These will be added automatically when you start the app, or you can add them now.${c.reset}`)
     log("")
 
-    const shouldAdd = await ask(`Add ${missingColumns.length} missing column(s) now?`)
-    if (shouldAdd) {
+    const shouldReview = await askReview(`Review and add ${missingColumns.length} missing column(s)?`)
+    if (shouldReview) {
       for (const { table, column } of missingColumns) {
-        // Try to find the column definition from instrumentation.ts
         const filePath = resolve(ROOT, "instrumentation.ts")
         const content = readFileSync(filePath, "utf-8")
 
-        // Find the ALTER TABLE or CREATE TABLE with this column
         const alterRegex = new RegExp(
           `ALTER\\s+TABLE\\s+${table}\\s+ADD\\s+COLUMN\\s+(?:IF\\s+NOT\\s+EXISTS\\s+)?${column}\\s+([^;]+)`,
           "i"
@@ -313,12 +428,16 @@ async function main() {
         const alterMatch = content.match(alterRegex)
 
         if (alterMatch) {
-          const colDef = alterMatch[0]
-          try {
-            await pool.query(`ALTER TABLE ${table} ADD COLUMN IF NOT EXISTS ${column} ${alterMatch[1].split(";")[0].trim()}`)
-            success(`Added ${table}.${column}`)
-          } catch (err) {
-            error(`Failed to add ${table}.${column}: ${err.message}`)
+          const shouldAdd = await askDanger(`Add column ${c.bold}${table}.${column}${c.reset}?`)
+          if (shouldAdd) {
+            try {
+              await pool.query(`ALTER TABLE ${table} ADD COLUMN IF NOT EXISTS ${column} ${alterMatch[1].split(";")[0].trim()}`)
+              success(`Added ${table}.${column}`)
+            } catch (err) {
+              error(`Failed to add ${table}.${column}: ${err.message}`)
+            }
+          } else {
+            info(`Skipped ${table}.${column}`)
           }
         } else {
           warn(`Could not find column definition for ${table}.${column}. Start the app to auto-migrate.`)
@@ -335,16 +454,15 @@ async function main() {
     log(`${c.red}${c.bold}WARNING: Dropping columns permanently deletes data in those columns!${c.reset}`)
     log("")
 
-    const shouldReview = await ask("Review and selectively drop extra columns?")
+    const shouldReview = await askReview("Review extra columns?")
     if (shouldReview) {
       for (const { table, column } of extraColumns) {
         log("")
         log(`  Table: ${c.bold}${table}${c.reset}  Column: ${c.bold}${column}${c.reset}`)
 
-        // Check if there's data in this column
         try {
           const countRes = await pool.query(
-            `SELECT COUNT(*) as total, COUNT(${column}) as non_null FROM ${table}`
+            `SELECT COUNT(*) as total, COUNT("${column}") as non_null FROM "${table}"`
           )
           const { total, non_null } = countRes.rows[0]
           log(`  ${c.dim}Rows: ${total}, Non-null values: ${non_null}${c.reset}`)
@@ -352,10 +470,10 @@ async function main() {
           log(`  ${c.dim}(could not check data)${c.reset}`)
         }
 
-        const shouldDrop = await ask(`Drop column ${c.bold}${table}.${column}${c.reset}? THIS CANNOT BE UNDONE.`)
+        const shouldDrop = await askDanger(`Drop column ${c.bold}${table}.${column}${c.reset}? THIS CANNOT BE UNDONE.`)
         if (shouldDrop) {
           try {
-            await pool.query(`ALTER TABLE ${table} DROP COLUMN ${column}`)
+            await pool.query(`ALTER TABLE "${table}" DROP COLUMN "${column}"`)
             success(`Dropped ${table}.${column}`)
           } catch (err) {
             error(`Failed to drop ${table}.${column}: ${err.message}`)
@@ -380,13 +498,12 @@ async function main() {
     log(`${c.red}${c.bold}WARNING: Dropping tables permanently deletes ALL data in those tables!${c.reset}`)
     log("")
 
-    const shouldReview = await ask("Review and selectively drop extra tables?")
+    const shouldReview = await askReview("Review extra tables?")
     if (shouldReview) {
       for (const table of unknownTables) {
         log("")
         log(`  Table: ${c.bold}${table}${c.reset}  ${c.dim}(${actual[table].length} columns)${c.reset}`)
 
-        // Show row count
         try {
           const countRes = await pool.query(`SELECT COUNT(*) as total FROM "${table}"`)
           log(`  ${c.dim}Rows: ${countRes.rows[0].total}${c.reset}`)
@@ -394,10 +511,9 @@ async function main() {
           log(`  ${c.dim}(could not check row count)${c.reset}`)
         }
 
-        const shouldDrop = await ask(`Drop table ${c.bold}${table}${c.reset}? THIS CANNOT BE UNDONE.`)
+        const shouldDrop = await askDanger(`Drop table ${c.bold}${table}${c.reset}? THIS CANNOT BE UNDONE.`)
         if (shouldDrop) {
-          // Double confirm for tables
-          const reallyDrop = await ask(`Are you ABSOLUTELY sure? Type y again to confirm dropping ${c.bold}${table}${c.reset}.`)
+          const reallyDrop = await askDanger(`Are you ABSOLUTELY sure? Type y again to confirm dropping ${c.bold}${table}${c.reset}.`)
           if (reallyDrop) {
             try {
               await pool.query(`DROP TABLE "${table}" CASCADE`)
