@@ -1,4 +1,5 @@
 /** @type {import('next').NextConfig} */
+// cache-bust: force rebuild after dependency fix
 
 const nextConfig = {
   output: "standalone",
