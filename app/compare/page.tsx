@@ -17,7 +17,7 @@ import {
   Globe,
   AlertTriangle,
   CheckCircle,
-} from "lucide-react"
+} from "@/lib/icons"
 
 interface ScanOption {
   id: number

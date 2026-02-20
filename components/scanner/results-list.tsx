@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useMemo } from "react"
-import { ChevronRight, Filter, SortDesc, Tag } from "lucide-react"
+import { ChevronRight, Filter, SortDesc, Tag } from "@/lib/icons"
 import { SeverityBadge } from "@/components/scanner/severity-badge"
 import type { Severity, Vulnerability, Category } from "@/lib/scanner/types"
 import { cn } from "@/lib/utils"

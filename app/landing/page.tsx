@@ -4,7 +4,7 @@ import Link from "next/link"
 import Image from "next/image"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
-import { Zap, Users, Code, CheckCircle, Globe, BarChart3 } from "lucide-react"
+import { Zap, Users, Code, CheckCircle, Globe, BarChart3 } from "@/lib/icons"
 import { Footer } from "@/components/scanner/footer"
 import { APP_NAME, TOTAL_CHECKS_LABEL } from "@/lib/constants"
 

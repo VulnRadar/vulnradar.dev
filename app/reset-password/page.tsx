@@ -9,7 +9,7 @@ import Image from "next/image"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Lock, CheckCircle2, AlertTriangle, Eye, EyeOff } from "lucide-react"
+import { Lock, CheckCircle2, AlertTriangle, Eye, EyeOff } from "@/lib/icons"
 import { APP_NAME } from "@/lib/constants"
 
 function ResetForm() {

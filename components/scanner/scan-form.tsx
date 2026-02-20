@@ -2,7 +2,7 @@
 
 import React from "react"
 import { useState } from "react"
-import { Shield, Loader2, Search, ArrowRight, Zap, Globe } from "lucide-react"
+import { Shield, Loader2, Search, ArrowRight, Zap, Globe } from "@/lib/icons"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { TOTAL_CHECKS_LABEL } from "@/lib/constants"

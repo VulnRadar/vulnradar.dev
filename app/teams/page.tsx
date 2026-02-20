@@ -26,7 +26,7 @@ import {
   LogOut,
   ChevronRight,
   ArrowLeft,
-} from "lucide-react"
+} from "@/lib/icons"
 
 interface Team {
   id: number

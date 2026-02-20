@@ -3,7 +3,7 @@
 import { useEffect } from "react"
 import Link from "next/link"
 import Image from "next/image"
-import { AlertTriangle, Home, RotateCcw } from "lucide-react"
+import { AlertTriangle, Home, RotateCcw } from "@/lib/icons"
 import { Button } from "@/components/ui/button"
 import { APP_NAME } from "@/lib/constants"
 

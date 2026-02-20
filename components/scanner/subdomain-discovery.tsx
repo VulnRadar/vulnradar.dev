@@ -2,7 +2,7 @@
 
 import { useState } from "react"
 import { useRouter } from "next/navigation"
-import { Globe, Loader2, Search, ExternalLink, ChevronDown, ChevronRight, Radar } from "lucide-react"
+import { Globe, Loader2, Search, ExternalLink, ChevronDown, ChevronRight, Radar } from "@/lib/icons"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 

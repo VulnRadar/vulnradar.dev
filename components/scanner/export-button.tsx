@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { Check, FileJson, FileText, FileSpreadsheet } from "lucide-react"
+import { Check, FileJson, FileText, FileSpreadsheet } from "@/lib/icons"
 import { Button } from "@/components/ui/button"
 import type { ScanResult } from "@/lib/scanner/types"
 import { generatePdfReport } from "@/lib/pdf-report"

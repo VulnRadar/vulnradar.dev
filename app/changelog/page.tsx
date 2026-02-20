@@ -1,6 +1,6 @@
 import { Header } from "@/components/scanner/header"
 import { Footer } from "@/components/scanner/footer"
-import { Newspaper, Zap, Shield, Users, Tag, List, RefreshCw, Lock, Gauge, MessageSquare, Sparkles, Eye, ShieldCheck, Target, Brain, AlertTriangle, Search, Bell, Heart, Layout, Mail, CheckCircle, Trash2, Camera, Crown, UserCheck, Key, BellRing, ChevronRight, BadgeCheck, Globe, Share2, Fingerprint, Smartphone, FileText, ScanSearch, Filter, Sun, Radar, Network, ShieldOff, FileDown, FileSpreadsheet, Pencil, Activity, Link2, BarChart3, Bug, ShieldAlert, Database, ServerCrash, Columns3, Crosshair, FileSearch, Timer, Layers, GitMerge, Palette, ServerCog, Wrench } from "lucide-react"
+import { Newspaper, Zap, Shield, Users, Tag, List, RefreshCw, Lock, Gauge, MessageSquare, Sparkles, Eye, ShieldCheck, Target, Brain, AlertTriangle, Search, Bell, Heart, Layout, Mail, CheckCircle, Trash2, Camera, Crown, UserCheck, Key, BellRing, ChevronRight, BadgeCheck, Globe, Share2, Fingerprint, Smartphone, FileText, ScanSearch, Filter, Sun, Radar, Network, ShieldOff, FileDown, FileSpreadsheet, Pencil, Activity, Link2, BarChart3, Bug, ShieldAlert, Database, ServerCrash, Columns3, Crosshair, FileSearch, Timer, Layers, GitMerge, Palette, ServerCog, Wrench } from "@/lib/icons"
 import { APP_NAME, TOTAL_CHECKS_LABEL } from "@/lib/constants"
 
 const CHANGELOG = [

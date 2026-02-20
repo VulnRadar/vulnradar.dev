@@ -4,9 +4,6 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
-overrides:
-  lucide-react: 0.460.0
-
 importers:
 
   .:
@@ -125,9 +122,6 @@ importers:
       jspdf-autotable:
         specifier: ^3.8.4
         version: 3.8.4(jspdf@2.5.2)
-      lucide-react:
-        specifier: 0.460.0
-        version: 0.460.0(react@19.2.4)
       next:
         specifier: 15.3.3
         version: 15.3.3(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
@@ -1628,11 +1622,6 @@ packages:
   loose-envify@1.4.0:
     resolution: {integrity: sha512-lyuxPGr/Wfhrlem2CL/UcnUc1zcqKAImBDzukY7Y5F/yQiNdko6+fRLevlw1HgMySw7f611UIY408EtxRSoK3Q==}
     hasBin: true
-
-  lucide-react@0.460.0:
-    resolution: {integrity: sha512-BVtq/DykVeIvRTJvRAgCsOwaGL8Un3Bxh8MbDxMhEWlZay3T4IpEKDEpwt5KZ0KJMHzgm6jrltxlT5eXOWXDHg==}
-    peerDependencies:
-      react: ^16.5.1 || ^17.0.0 || ^18.0.0 || ^19.0.0-rc
 
   merge2@1.4.1:
     resolution: {integrity: sha512-8q7VEgMJW4J8tcfVPy8g09NcQwZdbwFEqhe/WZkoIzjn/3TGDwtOCYtXGxA3O8tPzpczCCDgv+P2P5y00ZJOOg==}
@@ -3462,10 +3451,6 @@ snapshots:
   loose-envify@1.4.0:
     dependencies:
       js-tokens: 4.0.0
-
-  lucide-react@0.460.0(react@19.2.4):
-    dependencies:
-      react: 19.2.4
 
   merge2@1.4.1: {}
 

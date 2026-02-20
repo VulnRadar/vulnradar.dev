@@ -2,7 +2,7 @@
 
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
-import { Shield, ExternalLink } from "lucide-react"
+import { Shield, ExternalLink } from "@/lib/icons"
 import { APP_NAME } from "@/lib/constants"
 
 interface TosModalProps {

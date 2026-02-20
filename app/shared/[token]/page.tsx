@@ -10,7 +10,7 @@ import {
   User,
   RotateCcw,
   MessageSquare,
-} from "lucide-react"
+} from "@/lib/icons"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { Button } from "@/components/ui/button"
 import { ScanSummary } from "@/components/scanner/scan-summary"

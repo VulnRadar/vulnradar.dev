@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { Copy, ExternalLink, Trash2, Loader2, Check } from "lucide-react"
+import { Copy, ExternalLink, Trash2, Loader2, Check } from "@/lib/icons"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import Link from "next/link"

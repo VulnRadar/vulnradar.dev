@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { useRouter, usePathname } from "next/navigation"
-import { X, Sparkles, ArrowRight } from "lucide-react"
+import { X, Sparkles, ArrowRight } from "@/lib/icons"
 import { Button } from "@/components/ui/button"
 import { VERSION_COOKIE_NAME, VERSION_COOKIE_MAX_AGE, APP_VERSION, APP_NAME } from "@/lib/constants"
 import { PUBLIC_PATHS } from "@/lib/public-paths"

@@ -30,7 +30,7 @@ import {
   Loader2,
   Bell,
   Camera,
-} from "lucide-react"
+} from "@/lib/icons"
 import { Button } from "@/components/ui/button"
 import {
   Card,

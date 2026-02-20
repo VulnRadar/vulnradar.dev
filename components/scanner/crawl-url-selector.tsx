@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Globe, Loader2, CheckSquare, Square, X, Search, ArrowRight } from "lucide-react"
+import { Globe, Loader2, CheckSquare, Square, X, Search, ArrowRight } from "@/lib/icons"
 import { Button } from "@/components/ui/button"
 
 interface CrawlUrlSelectorProps {

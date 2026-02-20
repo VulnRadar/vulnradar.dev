@@ -3,7 +3,7 @@
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import Link from "next/link"
-import { AlertTriangle, CheckCircle } from "lucide-react"
+import { AlertTriangle, CheckCircle } from "@/lib/icons"
 import { APP_URL, APP_NAME, APP_VERSION, ENGINE_VERSION } from "@/lib/constants"
 import { useState } from "react"
 import { cn } from "@/lib/utils"

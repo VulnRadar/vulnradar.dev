@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { ChevronDown, ChevronRight, Server, ShieldCheck, ShieldX } from "lucide-react"
+import { ChevronDown, ChevronRight, Server, ShieldCheck, ShieldX } from "@/lib/icons"
 import { cn } from "@/lib/utils"
 
 interface ResponseHeadersProps {

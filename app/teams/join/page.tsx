@@ -5,7 +5,7 @@ import { useSearchParams, useRouter } from "next/navigation"
 import Image from "next/image"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
-import { Users, Loader2, CheckCircle2, AlertTriangle } from "lucide-react"
+import { Users, Loader2, CheckCircle2, AlertTriangle } from "@/lib/icons"
 import Link from "next/link"
 import { APP_NAME } from "@/lib/constants"
 

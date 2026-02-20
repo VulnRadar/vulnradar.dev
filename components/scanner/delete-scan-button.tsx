@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { Trash2, Loader2, AlertCircle } from "lucide-react"
+import { Trash2, Loader2, AlertCircle } from "@/lib/icons"
 import { Button } from "@/components/ui/button"
 
 interface DeleteScanButtonProps {

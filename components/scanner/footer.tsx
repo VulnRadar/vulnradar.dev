@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import Image from "next/image"
-import { Heart, Mail, Github } from "lucide-react"
+import { Heart, Mail, Github } from "@/lib/icons"
 import { APP_VERSION, APP_NAME, APP_URL, SUPPORT_EMAIL } from "@/lib/constants"
 import { Button } from "@/components/ui/button"
 

@@ -12,7 +12,7 @@ import {
   Copy,
   Check,
   ShieldAlert,
-} from "lucide-react"
+} from "@/lib/icons"
 import { Button } from "@/components/ui/button"
 import { SeverityBadge } from "@/components/scanner/severity-badge"
 import type { Vulnerability } from "@/lib/scanner/types"

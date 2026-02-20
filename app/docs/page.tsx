@@ -3,7 +3,7 @@
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import Link from "next/link"
-import { BookOpen, Zap, Code2, Terminal } from "lucide-react"
+import { BookOpen, Zap, Code2, Terminal } from "@/lib/icons"
 
 export default function DocsPage() {
   return (

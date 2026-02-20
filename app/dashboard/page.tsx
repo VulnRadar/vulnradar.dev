@@ -18,7 +18,7 @@ import { Footer } from "@/components/scanner/footer"
 import { OnboardingTour } from "@/components/onboarding-tour"
 import type { ScanResult, ScanStatus, Vulnerability } from "@/lib/scanner/types"
 import { DEFAULT_SCAN_NOTE } from "@/lib/constants"
-import { AlertCircle, RotateCcw, MessageSquare, Pencil, Save, Loader2 as Loader2Icon, Globe, ChevronDown, ChevronRight, ExternalLink } from "lucide-react"
+import { AlertCircle, RotateCcw, MessageSquare, Pencil, Save, Loader2 as Loader2Icon, Globe, ChevronDown, ChevronRight, ExternalLink } from "@/lib/icons"
 import { Button } from "@/components/ui/button"
 
 export default function DashboardPage() {

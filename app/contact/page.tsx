@@ -21,7 +21,7 @@ import {
   FileText,
   BookOpen,
   Users,
-} from "lucide-react"
+} from "@/lib/icons"
 import Link from "next/link"
 import { cn } from "@/lib/utils"
 import { SUPPORT_EMAIL } from "@/lib/constants"

@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import Image from "next/image"
-import { AlertCircle, Home, ArrowLeft } from "lucide-react"
+import { AlertCircle, Home, ArrowLeft } from "@/lib/icons"
 import { Button } from "@/components/ui/button"
 import { APP_NAME } from "@/lib/constants"
 

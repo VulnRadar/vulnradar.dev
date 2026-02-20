@@ -1,7 +1,7 @@
 "use client"
 
 import { Card } from "@/components/ui/card"
-import { AlertTriangle, CheckCircle, Info } from "lucide-react"
+import { AlertTriangle, CheckCircle, Info } from "@/lib/icons"
 import { APP_NAME, APP_URL, APP_VERSION, ENGINE_VERSION } from "@/lib/constants"
 
 export default function SetupPage() {

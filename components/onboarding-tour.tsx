@@ -15,7 +15,7 @@ import {
   ChevronLeft,
   X,
   Sparkles,
-} from "lucide-react"
+} from "@/lib/icons"
 import { APP_NAME, TOTAL_CHECKS_LABEL } from "@/lib/constants"
 
 const STEPS = [

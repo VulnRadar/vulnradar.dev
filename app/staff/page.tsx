@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { Shield, ShieldCheck, Headset, Users } from "lucide-react"
+import { Shield, ShieldCheck, Headset, Users } from "@/lib/icons"
 import { cn } from "@/lib/utils"
 import { APP_NAME, STAFF_ROLE_LABELS } from "@/lib/constants"
 

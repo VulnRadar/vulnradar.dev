@@ -12,7 +12,7 @@ import {
   ExternalLink,
   Terminal,
   Monitor,
-} from "lucide-react"
+} from "@/lib/icons"
 import {
   Card,
   CardContent,

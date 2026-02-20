@@ -9,7 +9,7 @@ import {
   ShieldX,
   TriangleAlert,
   ScanSearch,
-} from "lucide-react"
+} from "@/lib/icons"
 import type { ScanResult } from "@/lib/scanner/types"
 import { cn } from "@/lib/utils"
 import { SEVERITY_LEVELS, TOTAL_CHECKS_LABEL } from "@/lib/constants"

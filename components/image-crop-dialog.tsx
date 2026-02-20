@@ -11,7 +11,7 @@ import {
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Slider } from "@/components/ui/slider"
-import { ZoomIn, ZoomOut, RotateCcw, Loader2 } from "lucide-react"
+import { ZoomIn, ZoomOut, RotateCcw, Loader2 } from "@/lib/icons"
 
 interface ImageCropDialogProps {
   open: boolean

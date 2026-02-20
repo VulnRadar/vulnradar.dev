@@ -2,7 +2,7 @@
 
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
-import { RefreshCw, CheckCircle2, AlertTriangle, Sparkles, HelpCircle } from "lucide-react"
+import { RefreshCw, CheckCircle2, AlertTriangle, Sparkles, HelpCircle } from "@/lib/icons"
 
 type VersionStatus = "up-to-date" | "behind" | "ahead" | "unknown"
 

@@ -8,7 +8,7 @@ import Image from "next/image"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { ArrowLeft, Mail, CheckCircle2, AlertTriangle } from "lucide-react"
+import { ArrowLeft, Mail, CheckCircle2, AlertTriangle } from "@/lib/icons"
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState("")

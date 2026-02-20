@@ -1,6 +1,6 @@
 "use client"
 
-import { LogOut, User, Clock, Book, Menu, X, GitCompareArrows, ShieldAlert, Users, Radar, BadgeCheck, Link2 } from "lucide-react"
+import { LogOut, User, Clock, Book, Menu, X, GitCompareArrows, ShieldAlert, Users, Radar, BadgeCheck, Link2 } from "@/lib/icons"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { Button } from "@/components/ui/button"
 import { useRouter, usePathname } from "next/navigation"

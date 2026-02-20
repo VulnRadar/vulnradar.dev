@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { Loader2, Shield } from "lucide-react"
+import { Loader2, Shield } from "@/lib/icons"
 import { TOTAL_CHECKS_LABEL } from "@/lib/constants"
 
 const SCAN_STEPS = [

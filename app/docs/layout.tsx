@@ -3,7 +3,7 @@
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { cn } from "@/lib/utils"
-import { BookOpen, Zap } from "lucide-react"
+import { BookOpen, Zap } from "@/lib/icons"
 import { Header } from "@/components/scanner/header"
 import { Footer } from "@/components/scanner/footer"
 import { APP_NAME } from "@/lib/constants"
