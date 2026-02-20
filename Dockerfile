@@ -15,7 +15,11 @@ RUN pnpm install --frozen-lockfile
 # Copy source code
 COPY . .
 
-# Build Next.js app
+# Set production env for build
+ENV NODE_ENV=production
+ENV NEXT_TELEMETRY_DISABLED=1
+
+# Build Next.js app (standalone output)
 RUN pnpm build
 
 # Production stage
@@ -23,25 +27,27 @@ FROM node:20-alpine
 
 WORKDIR /app
 
-# Install pnpm
-RUN npm install -g pnpm
+# Don't run as root
+RUN addgroup --system --gid 1001 nodejs && \
+    adduser --system --uid 1001 nextjs
 
-# Copy package files
-COPY package.json pnpm-lock.yaml ./
-
-# Install production dependencies only
-RUN pnpm install --frozen-lockfile --prod
-
-# Copy built app from builder
-COPY --from=builder /app/.next ./.next
+# Copy necessary files from builder
 COPY --from=builder /app/public ./public
-COPY scripts/ ./scripts/
+COPY --from=builder /app/.next/standalone ./
+COPY --from=builder /app/.next/static ./.next/static
+
+# Set ownership
+RUN chown -R nextjs:nodejs /app
+
+USER nextjs
 
 # Expose port
 EXPOSE 3000
 
-# Set NODE_ENV
 ENV NODE_ENV=production
+ENV NEXT_TELEMETRY_DISABLED=1
+ENV PORT=3000
+ENV HOSTNAME="0.0.0.0"
 
-# Run migrations on startup, then start the app
-CMD ["sh", "-c", "pnpm migrate && pnpm start"]
+# Start the app (schema auto-creates via instrumentation.ts on startup)
+CMD ["node", "server.js"]
