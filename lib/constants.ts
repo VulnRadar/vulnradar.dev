@@ -3,12 +3,12 @@
 // ============================================================================
 
 // Checks count (used in descriptions and UI)
-export const TOTAL_CHECKS_LABEL = "120+"
+export const TOTAL_CHECKS_LABEL = "175+"
 
 // Application metadata
 export const APP_NAME = "VulnRadar"
-export const APP_VERSION = "1.7.4"
-export const ENGINE_VERSION = "1.5.0"
+export const APP_VERSION = "1.8.0"
+export const ENGINE_VERSION = "2.0.0"
 export const DEFAULT_SCAN_NOTE = `${APP_NAME} v${APP_VERSION} (Detection Engine v${ENGINE_VERSION})`
 export const APP_DESCRIPTION = `Scan websites for ${TOTAL_CHECKS_LABEL} security vulnerabilities. Get instant reports with severity ratings, actionable fix guidance, and team collaboration tools.`
 export const APP_URL = "https://vulnradar.dev"
