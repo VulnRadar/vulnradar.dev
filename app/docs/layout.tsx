@@ -41,6 +41,7 @@ const navItems = [
       { href: "#verification", label: "Verification Steps" },
       { href: "#troubleshooting", label: "Troubleshooting" },
       { href: "#deployment", label: "Deployment Options" },
+      { href: "#docker", label: "Docker Setup" },
       { href: "#migration", label: "Migration Tool" },
       { href: "#version", label: "Version Checking" },
     ]
