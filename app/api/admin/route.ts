@@ -220,7 +220,7 @@ export async function PATCH(request: NextRequest) {
 
   switch (action) {
     case "set_role": {
-      const validRoles = ["user", "support", "moderator", "admin"]
+      const validRoles = ["user", "beta_tester", "support", "moderator", "admin"]
       if (!newRole || !validRoles.includes(newRole)) {
         return NextResponse.json({ error: "Invalid role" }, { status: 400 })
       }

@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { Shield, ShieldCheck, Headset, Users } from "lucide-react"
+import { Shield, ShieldCheck, Headset, Users, FlaskConical } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { APP_NAME, STAFF_ROLE_LABELS } from "@/lib/constants"
 
@@ -33,6 +33,13 @@ const ROLE_CONFIG: Record<string, { icon: typeof Shield; color: string; bg: stri
     border: "border-blue-500/20",
     glow: "shadow-blue-500/5",
   },
+  beta_tester: {
+    icon: FlaskConical,
+    color: "text-emerald-400",
+    bg: "bg-emerald-500/10",
+    border: "border-emerald-500/20",
+    glow: "shadow-emerald-500/5",
+  },
 }
 
 function getInitials(name: string) {
@@ -60,6 +67,7 @@ export default function StaffPage() {
     admin: staff.filter((s) => s.role === "admin"),
     moderator: staff.filter((s) => s.role === "moderator"),
     support: staff.filter((s) => s.role === "support"),
+    beta_tester: staff.filter((s) => s.role === "beta_tester"),
   }
 
   return (
@@ -98,7 +106,7 @@ export default function StaffPage() {
       {/* Staff sections by role */}
       {!loading && staff.length > 0 && (
         <div className="flex flex-col gap-10">
-          {(["admin", "moderator", "support"] as const).map((roleKey) => {
+          {(["admin", "moderator", "support", "beta_tester"] as const).map((roleKey) => {
             const members = grouped[roleKey]
             if (members.length === 0) return null
             const config = ROLE_CONFIG[roleKey]
@@ -113,14 +121,16 @@ export default function StaffPage() {
                   </div>
                   <div>
                     <h2 className="text-sm font-semibold text-foreground">
-                      {roleKey === "admin" ? "Administrators" : roleKey === "moderator" ? "Moderators" : "Support Team"}
+                      {roleKey === "admin" ? "Administrators" : roleKey === "moderator" ? "Moderators" : roleKey === "beta_tester" ? "Beta Testers" : "Support Team"}
                     </h2>
                     <p className="text-[11px] text-muted-foreground">
                       {roleKey === "admin"
                         ? "Full platform access and management"
                         : roleKey === "moderator"
                           ? "User moderation and enforcement"
-                          : "Help and customer assistance"}
+                          : roleKey === "beta_tester"
+                            ? "Early access and feature testing"
+                            : "Help and customer assistance"}
                     </p>
                   </div>
                   <span className={cn("ml-auto text-xs font-medium px-2 py-0.5 rounded-full", config.bg, config.color)}>

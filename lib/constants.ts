@@ -273,6 +273,7 @@ export const DEMO_SCAN_WINDOW = 60 * 60 * 12 // 12 hours in seconds
 // ============================================================================
 export const STAFF_ROLES = {
   USER: "user",
+  BETA_TESTER: "beta_tester",
   SUPPORT: "support",
   MODERATOR: "moderator",
   ADMIN: "admin",
@@ -282,6 +283,7 @@ export type StaffRole = (typeof STAFF_ROLES)[keyof typeof STAFF_ROLES]
 
 export const STAFF_ROLE_HIERARCHY: Record<string, number> = {
   user: 0,
+  beta_tester: 0,
   support: 1,
   moderator: 2,
   admin: 3,
@@ -289,6 +291,7 @@ export const STAFF_ROLE_HIERARCHY: Record<string, number> = {
 
 export const STAFF_ROLE_LABELS: Record<string, string> = {
   user: "User",
+  beta_tester: "Beta Tester",
   support: "Support",
   moderator: "Moderator",
   admin: "Admin",
