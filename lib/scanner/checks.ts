@@ -1107,6 +1107,20 @@ function buildCheck(def: CheckDef): CheckFn | null {
 }
 
 // Load all checks from JSON and wire up detection
-export const allChecks: CheckFn[] = (checksData as { checks: CheckDef[] }).checks
+const allCheckDefs = (checksData as { checks: CheckDef[] }).checks
+export const allChecks: CheckFn[] = allCheckDefs
   .map(buildCheck)
   .filter((fn): fn is CheckFn => fn !== null)
+
+/**
+ * Return only checks whose category matches one of the given categories.
+ * If categories is undefined/null, returns all checks.
+ */
+export function getFilteredChecks(categories?: string[] | null): CheckFn[] {
+  if (!categories || categories.length === 0) return allChecks
+  const allowed = new Set(categories)
+  return allCheckDefs
+    .filter((def) => allowed.has(def.category))
+    .map(buildCheck)
+    .filter((fn): fn is CheckFn => fn !== null)
+}

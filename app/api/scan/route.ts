@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { allChecks } from "@/lib/scanner/checks"
+import { allChecks, getFilteredChecks } from "@/lib/scanner/checks"
 import { runAsyncChecks } from "@/lib/scanner/async-checks"
 import { getSession } from "@/lib/auth"
 import { validateApiKey, checkRateLimit, recordUsage } from "@/lib/api-keys"
@@ -137,7 +137,8 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { url } = body
+    const { url, scanners } = body
+    const selectedScanners: string[] | null = Array.isArray(scanners) && scanners.length > 0 ? scanners : null
 
     if (!url || typeof url !== "string") {
       return NextResponse.json(
@@ -187,13 +188,14 @@ export async function POST(request: NextRequest) {
     })
 
     // Start async checks immediately (DNS, TLS, live-fetch) while running sync checks
-    const asyncPromise = runAsyncChecks(url)
+    const asyncPromise = runAsyncChecks(url, selectedScanners)
     const asyncTimeout = new Promise<Vulnerability[]>((resolve) => setTimeout(() => resolve([]), 15000))
 
     // Run synchronous body/header checks (cap body at 1MB for regex safety)
+    const checks = selectedScanners ? getFilteredChecks(selectedScanners) : allChecks
     const bodyForChecks = responseBody.length > 1_000_000 ? responseBody.slice(0, 1_000_000) : responseBody
     const syncFindings: Vulnerability[] = []
-    for (const check of allChecks) {
+    for (const check of checks) {
       try {
         const result = check(url, headers, bodyForChecks)
         if (result) syncFindings.push(result)

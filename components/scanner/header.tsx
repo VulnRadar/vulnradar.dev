@@ -5,7 +5,7 @@ import { ThemeToggle } from "@/components/theme-toggle"
 import { Button } from "@/components/ui/button"
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet"
 import { useRouter, usePathname } from "next/navigation"
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect } from "react"
 import useSWR from "swr"
 import { cn } from "@/lib/utils"
 import Image from "next/image"
@@ -32,7 +32,7 @@ export function Header() {
   const router = useRouter()
   const pathname = usePathname()
   const [mobileOpen, setMobileOpen] = useState(false)
-  const cachedRole = useRef(getCachedRole())
+  const [cachedRole, setCachedRole] = useState(getCachedRole)
   const { data: me } = useSWR("/api/auth/me", (url: string) => fetch(url).then((r) => r.json()), {
     revalidateOnFocus: false,
     dedupingInterval: 60000,
@@ -42,11 +42,11 @@ export function Header() {
   useEffect(() => {
     if (me?.role) {
       try { sessionStorage.setItem("vr_user_role", me.role) } catch {}
-      cachedRole.current = me.role
+      setCachedRole(me.role)
     }
   }, [me?.role])
 
-  const effectiveRole = me?.role || cachedRole.current
+  const effectiveRole = me?.role || cachedRole
   const isStaff = STAFF_ROLES.includes(effectiveRole || "")
 
   async function handleLogout() {

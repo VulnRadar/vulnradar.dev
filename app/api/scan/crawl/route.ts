@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getSession } from "@/lib/auth"
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
-import { allChecks } from "@/lib/scanner/checks"
+import { allChecks, getFilteredChecks } from "@/lib/scanner/checks"
 import { runAsyncChecks } from "@/lib/scanner/async-checks"
 import pool from "@/lib/db"
 import { APP_NAME, SEVERITY_LEVELS } from "@/lib/constants"
@@ -134,7 +134,7 @@ async function discoverInternalLinks(startUrl: string): Promise<string[]> {
   return found
 }
 
-async function scanSingleUrl(url: string): Promise<{
+async function scanSingleUrl(url: string, scanners?: string[] | null): Promise<{
   url: string
   findings: Vulnerability[]
   summary: Record<string, number>
@@ -160,9 +160,10 @@ async function scanSingleUrl(url: string): Promise<{
   const capturedHeaders: Record<string, string> = {}
   headers.forEach((v, k) => { capturedHeaders[k] = v })
 
+  const checks = scanners ? getFilteredChecks(scanners) : allChecks
   const bodyForChecks = responseBody.length > 1_000_000 ? responseBody.slice(0, 1_000_000) : responseBody
   const syncFindings: Vulnerability[] = []
-  for (const check of allChecks) {
+  for (const check of checks) {
     try {
       const r = check(url, headers, bodyForChecks)
       if (r) syncFindings.push(r)
@@ -172,7 +173,7 @@ async function scanSingleUrl(url: string): Promise<{
   let asyncFindings: Vulnerability[] = []
   try {
     asyncFindings = await Promise.race([
-      runAsyncChecks(url),
+      runAsyncChecks(url, scanners),
       new Promise<Vulnerability[]>((resolve) => setTimeout(() => resolve([]), 15000)),
     ])
   } catch { /* non-fatal */ }
@@ -205,6 +206,7 @@ export async function POST(request: NextRequest) {
   const body = await request.json()
   const url: string = body.url
   const selectedUrls: string[] | undefined = body.urls
+  const scanners: string[] | null = Array.isArray(body.scanners) && body.scanners.length > 0 ? body.scanners : null
 
   if (!url || typeof url !== "string") {
     return NextResponse.json({ error: "URL is required" }, { status: 400 })
@@ -237,7 +239,7 @@ export async function POST(request: NextRequest) {
   }> = []
 
   for (const pageUrl of pages) {
-    const result = await scanSingleUrl(pageUrl)
+    const result = await scanSingleUrl(pageUrl, scanners)
     pageResults.push(result)
   }
 
