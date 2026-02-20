@@ -346,7 +346,7 @@ function HistoryPageContent() {
                       <div className="flex flex-wrap gap-2">
                         <Button variant="outline" onClick={handleBackToList} size="sm" className="bg-transparent">
                           <ArrowLeft className="mr-2 h-4 w-4" />
-                          Back to History
+                          <span className="hidden sm:inline">Back to History</span>
                         </Button>
                         <ExportButton result={scanDetail} />
                         <ShareButton scanId={selectedScanId!} />
@@ -491,7 +491,7 @@ function HistoryPageContent() {
                   className="text-destructive hover:text-destructive shrink-0 bg-transparent self-start sm:self-auto"
                 >
                   <Trash2 className="mr-2 h-3.5 w-3.5" />
-                  {clearing ? "Clearing..." : "Clear All"}
+                  <span className="hidden sm:inline">{clearing ? "Clearing..." : "Clear All"}</span>
                 </Button>
               )}
             </div>

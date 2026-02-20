@@ -111,7 +111,7 @@ export function ShareButton({ scanId }: ShareButtonProps) {
     return (
       <Button variant="outline" onClick={handleShare} size="sm" className="gap-2 bg-transparent">
         <Share2 className="h-4 w-4" />
-        Share
+        <span className="hidden sm:inline">Share</span>
       </Button>
     )
   }
@@ -120,7 +120,7 @@ export function ShareButton({ scanId }: ShareButtonProps) {
     return (
       <Button variant="outline" disabled size="sm" className="gap-2 bg-transparent">
         <Loader2 className="h-4 w-4 animate-spin" />
-        Sharing...
+        <span className="hidden sm:inline">Sharing...</span>
       </Button>
     )
   }
@@ -135,12 +135,12 @@ export function ShareButton({ scanId }: ShareButtonProps) {
       {state === "copied" ? (
         <>
           <Check className="h-4 w-4 text-emerald-500" />
-          Link Copied
+          <span className="hidden sm:inline">Link Copied</span>
         </>
       ) : (
         <>
           <Link2 className="h-4 w-4" />
-          Copy Link
+          <span className="hidden sm:inline">Copy Link</span>
         </>
       )}
     </Button>

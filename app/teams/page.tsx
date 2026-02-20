@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { cn } from "@/lib/utils"
 import { PaginationControl, usePagination } from "@/components/ui/pagination-control"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import {
   Users,
   Plus,
@@ -26,6 +27,7 @@ import {
   LogOut,
   ChevronRight,
   ArrowLeft,
+  Pencil,
 } from "lucide-react"
 
 interface Team {
@@ -42,6 +44,7 @@ interface Member {
   joined_at: string
   name: string
   email: string
+  avatar_url?: string
 }
 
 interface Invite {
@@ -73,6 +76,11 @@ export default function TeamsPage() {
   const [invites, setInvites] = useState<Invite[]>([])
   const [currentRole, setCurrentRole] = useState("")
   const [membersLoading, setMembersLoading] = useState(false)
+
+  // Edit team name
+  const [editingName, setEditingName] = useState(false)
+  const [nameInput, setNameInput] = useState("")
+  const [savingName, setSavingName] = useState(false)
 
   // Invite
   const [showInvite, setShowInvite] = useState(false)
@@ -197,6 +205,28 @@ export default function TeamsPage() {
     }
   }
 
+  async function handleRename() {
+    if (!selectedTeam || !nameInput.trim() || nameInput.trim() === selectedTeam.name) {
+      setEditingName(false)
+      return
+    }
+    setSavingName(true)
+    try {
+      const res = await fetch("/api/teams", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ teamId: selectedTeam.id, name: nameInput.trim() }),
+      })
+      if (res.ok) {
+        setSelectedTeam({ ...selectedTeam, name: nameInput.trim() })
+        await fetchTeams()
+      }
+    } catch {/* */} finally {
+      setSavingName(false)
+      setEditingName(false)
+    }
+  }
+
   async function handleViewMemberScans(member: Member) {
     setViewingMember(member)
     setScanPage(1)
@@ -246,30 +276,78 @@ export default function TeamsPage() {
 
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div className="flex items-center gap-3">
-                <div className="flex items-center justify-center w-10 h-10 rounded-lg bg-primary/10">
+                <div className="flex items-center justify-center w-10 h-10 rounded-lg bg-primary/10 shrink-0">
                   <Users className="h-5 w-5 text-primary" />
                 </div>
-                <div>
-                  <h2 className="text-lg font-bold text-foreground">{selectedTeam.name}</h2>
+                <div className="min-w-0">
+                  {editingName ? (
+                    <div className="flex items-center gap-2">
+                      <Input
+                        value={nameInput}
+                        onChange={(e) => setNameInput(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === "Enter") handleRename(); if (e.key === "Escape") setEditingName(false) }}
+                        className="h-8 text-sm font-bold w-40 sm:w-56"
+                        autoFocus
+                        maxLength={50}
+                      />
+                      <Button size="sm" className="h-8 w-8 p-0" onClick={handleRename} disabled={savingName}>
+                        {savingName ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+                      </Button>
+                      <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => setEditingName(false)}>
+                        <X className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-1.5">
+                      <h2 className="text-lg font-bold text-foreground truncate">{selectedTeam.name}</h2>
+                      {canManage && (
+                        <button
+                          type="button"
+                          onClick={() => { setNameInput(selectedTeam.name); setEditingName(true) }}
+                          className="text-muted-foreground hover:text-foreground transition-colors p-1 rounded-md hover:bg-muted shrink-0"
+                          aria-label="Edit team name"
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  )}
                   <p className="text-xs text-muted-foreground">{members.length} member{members.length !== 1 && "s"} | Your role: {currentRole}</p>
                 </div>
               </div>
-              <div className="flex items-center gap-2 self-start sm:self-auto">
-                {canManage && (
-                  <Button variant="outline" size="sm" className="bg-transparent gap-1.5" onClick={() => { setShowInvite(!showInvite); setInviteToken(null) }}>
-                    <UserPlus className="h-3.5 w-3.5" />Invite
-                  </Button>
-                )}
-                {currentRole === TEAM_ROLES.OWNER ? (
-                  <Button variant="outline" size="sm" className="bg-transparent text-destructive hover:text-destructive gap-1.5" onClick={() => handleDelete(selectedTeam.id)}>
-                    <Trash2 className="h-3.5 w-3.5" />Delete Team
-                  </Button>
-                ) : (
-                  <Button variant="outline" size="sm" className="bg-transparent text-destructive hover:text-destructive gap-1.5" onClick={handleLeave}>
-                    <LogOut className="h-3.5 w-3.5" />Leave
-                  </Button>
-                )}
-              </div>
+              <TooltipProvider>
+                <div className="flex items-center gap-2 self-start sm:self-auto">
+                  {canManage && (
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button variant="outline" size="sm" className="bg-transparent gap-1.5" onClick={() => { setShowInvite(!showInvite); setInviteToken(null) }}>
+                          <UserPlus className="h-3.5 w-3.5" /><span className="hidden sm:inline">Invite</span>
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent className="sm:hidden">Invite</TooltipContent>
+                    </Tooltip>
+                  )}
+                  {currentRole === TEAM_ROLES.OWNER ? (
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button variant="outline" size="sm" className="bg-transparent text-destructive hover:text-destructive gap-1.5" onClick={() => handleDelete(selectedTeam.id)}>
+                          <Trash2 className="h-3.5 w-3.5" /><span className="hidden sm:inline">Delete Team</span>
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent className="sm:hidden">Delete Team</TooltipContent>
+                    </Tooltip>
+                  ) : (
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button variant="outline" size="sm" className="bg-transparent text-destructive hover:text-destructive gap-1.5" onClick={handleLeave}>
+                          <LogOut className="h-3.5 w-3.5" /><span className="hidden sm:inline">Leave</span>
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent className="sm:hidden">Leave</TooltipContent>
+                    </Tooltip>
+                  )}
+                </div>
+              </TooltipProvider>
             </div>
 
             {/* Invite form */}
@@ -317,24 +395,34 @@ export default function TeamsPage() {
               </div>
             ) : (
               <div className="flex flex-col gap-2">
+                <TooltipProvider>
                 {members.map((m) => {
                   const Icon = ROLE_ICONS[m.role] || Eye
                   return (
                     <div key={m.user_id} className="flex items-center gap-3 p-3 rounded-xl border border-border bg-card">
-                      <div className="flex items-center justify-center w-9 h-9 rounded-full bg-muted">
-                        <span className="text-sm font-medium text-foreground">{(m.name || m.email)[0].toUpperCase()}</span>
-                      </div>
+                      {m.avatar_url ? (
+                        <img src={m.avatar_url} alt="" className="w-9 h-9 rounded-full object-cover shrink-0" />
+                      ) : (
+                        <div className="flex items-center justify-center w-9 h-9 rounded-full bg-muted shrink-0">
+                          <span className="text-sm font-medium text-foreground">{(m.name || m.email)[0].toUpperCase()}</span>
+                        </div>
+                      )}
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-medium text-foreground truncate">{m.name || "Unnamed"}</p>
                         <p className="text-xs text-muted-foreground truncate">{m.email}</p>
                       </div>
-                      <Button variant="ghost" size="sm" className="h-8 px-2 text-muted-foreground hover:text-foreground gap-1" onClick={() => handleViewMemberScans(m)}>
-                        <Eye className="h-3.5 w-3.5" />
-                        <span className="text-xs">View Scans</span>
-                        <ChevronRight className="h-3 w-3" />
-                      </Button>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button variant="ghost" size="sm" className="h-8 px-2 text-muted-foreground hover:text-foreground gap-1" onClick={() => handleViewMemberScans(m)}>
+                            <Eye className="h-3.5 w-3.5" />
+                            <span className="hidden sm:inline text-xs">View Scans</span>
+                            <ChevronRight className="h-3 w-3 hidden sm:block" />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent className="sm:hidden">View Scans</TooltipContent>
+                      </Tooltip>
                       <span className={cn("inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full border", ROLE_COLORS[m.role])}>
-                        <Icon className="h-3 w-3" />{m.role}
+                        <Icon className="h-3 w-3" /><span className="hidden sm:inline">{m.role}</span>
                       </span>
                       {canManage && m.role !== TEAM_ROLES.OWNER && (
                         <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive" onClick={() => handleRemoveMember(m.user_id)}>
@@ -344,6 +432,7 @@ export default function TeamsPage() {
                     </div>
                   )
                 })}
+                </TooltipProvider>
 
                 {/* Pending invites */}
                 {invites.length > 0 && (
@@ -449,7 +538,7 @@ export default function TeamsPage() {
                 <p className="text-sm text-muted-foreground">Collaborate with team members on security scans.</p>
               </div>
               <Button size="sm" className="shrink-0 gap-1.5 self-start sm:self-auto" onClick={() => setShowCreate(!showCreate)}>
-                <Plus className="h-3.5 w-3.5" />New Team
+                <Plus className="h-3.5 w-3.5" /><span className="hidden sm:inline">New Team</span>
               </Button>
             </div>
 

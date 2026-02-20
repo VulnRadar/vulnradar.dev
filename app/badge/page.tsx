@@ -300,12 +300,12 @@ function SnippetBlock({
           {copied ? (
             <>
               <Check className="h-3 w-3 text-emerald-500" />
-              Copied
+              <span className="hidden sm:inline">Copied</span>
             </>
           ) : (
             <>
               <Copy className="h-3 w-3" />
-              Copy
+              <span className="hidden sm:inline">Copy</span>
             </>
           )}
         </Button>

@@ -222,7 +222,7 @@ function DashboardContent() {
             </div>
             <Button variant="outline" onClick={handleReset} className="bg-transparent">
               <RotateCcw className="mr-2 h-4 w-4" />
-              Try Again
+              <span className="hidden sm:inline">Try Again</span>
             </Button>
           </div>
         )}
@@ -241,7 +241,7 @@ function DashboardContent() {
                   <div className="flex flex-wrap gap-2">
                     <Button variant="outline" onClick={handleReset} size="sm" className="bg-transparent">
                       <RotateCcw className="mr-2 h-4 w-4" />
-                      Scan Another URL
+                      <span className="hidden sm:inline">Scan Another URL</span>
                     </Button>
                     <ExportButton result={result} />
                     {scanHistoryId && <ShareButton scanId={scanHistoryId} />}
