@@ -1010,7 +1010,7 @@ function UserDetailPanel({
             <div className="flex flex-col gap-3">
               <p className="text-xs text-muted-foreground">Current role: <span className="font-semibold text-foreground">{STAFF_ROLE_LABELS[u.role || "user"] || "User"}</span></p>
               <div className="flex flex-wrap gap-2">
-                {(["user", "support", "moderator", "admin"] as const).map((role) => (
+                {(["user", "beta_tester", "support", "moderator", "admin"] as const).map((role) => (
                   <Button
                     key={role}
                     variant={(u.role || "user") === role ? "default" : "outline"}

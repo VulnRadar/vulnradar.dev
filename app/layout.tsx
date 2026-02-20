@@ -4,7 +4,7 @@ import { Inter, JetBrains_Mono } from 'next/font/google'
 import Script from 'next/script'
 import { ThemeProvider } from '@/components/theme-provider'
 import { TosGate } from '@/components/tos-gate'
-import { NotificationCenter } from '@/components/notification-center'
+import { BackupCodesModal } from '@/components/notification-center'
 import { APP_NAME, APP_DESCRIPTION, APP_URL, APP_VERSION, LOGO_URL } from '@/lib/constants'
 
 import './globals.css'
@@ -86,7 +86,7 @@ export default function RootLayout({
           <TosGate>
             {children}
           </TosGate>
-          <NotificationCenter />
+          <BackupCodesModal />
         </ThemeProvider>
         <Script id="tawk-to" strategy="lazyOnload">
           {`var Tawk_API=Tawk_API||{}, Tawk_LoadStart=new Date();

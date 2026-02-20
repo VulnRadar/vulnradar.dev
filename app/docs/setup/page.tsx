@@ -421,6 +421,22 @@ docker compose up -d --build`}</code></pre>
           <p className="text-xs text-muted-foreground">A dummy <code className="bg-secondary px-1 rounded text-xs">DATABASE_URL</code> is used during the Docker build step so Next.js can compile without a live database. The real connection string is injected at runtime by Docker Compose.</p>
         </Card>
 
+        <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-4 flex gap-3">
+          <AlertTriangle className="h-5 w-5 text-destructive flex-shrink-0 mt-0.5" />
+          <div>
+            <h3 className="font-semibold text-foreground mb-1 text-sm">HTTPS &amp; Domain Required</h3>
+            <p className="text-xs text-muted-foreground mb-2">
+              {APP_NAME} <strong className="text-foreground">will not work correctly</strong> over plain HTTP or without a proper domain. CSS, assets, authentication cookies, and security headers all depend on HTTPS to function.
+            </p>
+            <ul className="text-xs text-muted-foreground space-y-1 list-disc list-inside">
+              <li>Set up a reverse proxy (Caddy, nginx, or Traefik) that terminates TLS/SSL</li>
+              <li>Point a domain (e.g. <code className="bg-secondary px-1 rounded">yourdomain.com</code>) to your server</li>
+              <li>Set <code className="bg-secondary px-1 rounded">NEXT_PUBLIC_APP_URL</code> to your full <code className="bg-secondary px-1 rounded">https://</code> URL</li>
+              <li>Until this is done, expect broken styles, missing assets, and failed logins</li>
+            </ul>
+          </div>
+        </div>
+
         <Card className="p-6 border-border/40">
           <h3 className="font-semibold mb-4">Docker Compose Configuration</h3>
           <p className="text-sm text-muted-foreground mb-3">The included <code className="bg-secondary px-1 rounded text-xs">docker-compose.yml</code> sets up two services:</p>

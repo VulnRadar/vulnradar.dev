@@ -1,8 +1,8 @@
 "use client"
 
-import React from "react"
+import React, { Suspense } from "react"
 import { useState } from "react"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import Link from "next/link"
 import Image from "next/image"
 import { Loader2, Eye, EyeOff, Mail } from "lucide-react"
@@ -13,7 +13,17 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { APP_NAME } from "@/lib/constants"
 
 export default function LoginPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-background" />}>
+      <LoginForm />
+    </Suspense>
+  )
+}
+
+function LoginForm() {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const redirectTo = searchParams.get("redirect") || "/dashboard"
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [showPassword, setShowPassword] = useState(false)
@@ -88,7 +98,7 @@ export default function LoginPage() {
         return
       }
 
-      router.push("/dashboard")
+      router.push(redirectTo)
       router.refresh()
     } catch {
       setError("Something went wrong. Please try again.")
@@ -119,7 +129,7 @@ export default function LoginPage() {
         return
       }
 
-      router.push("/dashboard")
+      router.push(redirectTo)
       router.refresh()
     } catch {
       setError("Something went wrong. Please try again.")
