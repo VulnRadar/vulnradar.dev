@@ -4,8 +4,8 @@ import pool from "@/lib/db"
 export async function GET() {
   try {
     const result = await pool.query(
-      `SELECT name, role, avatar_url FROM users WHERE role IN ('admin', 'moderator', 'support') ORDER BY
-        CASE role WHEN 'admin' THEN 0 WHEN 'moderator' THEN 1 WHEN 'support' THEN 2 END,
+      `SELECT name, role, avatar_url FROM users WHERE role IN ('admin', 'moderator', 'support', 'beta_tester') ORDER BY
+        CASE role WHEN 'admin' THEN 0 WHEN 'moderator' THEN 1 WHEN 'support' THEN 2 WHEN 'beta_tester' THEN 3 END,
         created_at ASC`,
     )
 

@@ -481,7 +481,7 @@ async function checkLiveFetch(url: string): Promise<Vulnerability[]> {
 
 // ── Main runner ──────────────────────────────────────────────────────────────
 
-export async function runAsyncChecks(url: string): Promise<Vulnerability[]> {
+export async function runAsyncChecks(url: string, categories?: string[] | null): Promise<Vulnerability[]> {
   let hostname: string
   let isHTTPS: boolean
   try {
@@ -492,13 +492,30 @@ export async function runAsyncChecks(url: string): Promise<Vulnerability[]> {
     return []
   }
 
-  // Run all async checks in parallel
-  const results = await Promise.allSettled([
-    checkDNSSecurity(hostname),
-    isHTTPS ? checkTLSCert(hostname) : Promise.resolve([]),
-    checkLiveFetch(url),
-  ])
+  const allowed = categories ? new Set(categories) : null
+  const runAll = !allowed
 
+  // Build tasks based on selected categories
+  const tasks: Promise<Vulnerability[]>[] = []
+
+  // DNS checks map to "dns" category (SPF, DMARC, DKIM, DNSSEC)
+  if (runAll || allowed!.has("dns")) {
+    tasks.push(checkDNSSecurity(hostname))
+  }
+
+  // TLS checks map to "ssl" category
+  if ((runAll || allowed!.has("ssl")) && isHTTPS) {
+    tasks.push(checkTLSCert(hostname))
+  }
+
+  // Live fetch checks (robots.txt → configuration/information-disclosure, security.txt → configuration)
+  if (runAll || allowed!.has("configuration") || allowed!.has("information-disclosure")) {
+    tasks.push(checkLiveFetch(url))
+  }
+
+  if (tasks.length === 0) return []
+
+  const results = await Promise.allSettled(tasks)
   const findings: Vulnerability[] = []
   for (const r of results) {
     if (r.status === "fulfilled") findings.push(...r.value)

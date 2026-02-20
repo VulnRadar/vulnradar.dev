@@ -2,17 +2,32 @@
 
 import React from "react"
 import { useState } from "react"
-import { Shield, Loader2, Search, ArrowRight, Zap, Globe } from "lucide-react"
+import { Shield, Loader2, Search, ArrowRight, Zap, Globe, SlidersHorizontal, Check, Lock, Cookie, FileCode, Eye, Settings, Mail } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { TOTAL_CHECKS_LABEL } from "@/lib/constants"
 import { cn } from "@/lib/utils"
 import type { ScanStatus } from "@/lib/scanner/types"
 
 export type ScanMode = "quick" | "deep"
 
+export const SCANNER_CATEGORIES = [
+  { id: "headers", label: "Security Headers", icon: Shield, description: "HSTS, CSP, X-Frame-Options, Referrer-Policy, Permissions-Policy" },
+  { id: "ssl", label: "SSL / TLS", icon: Lock, description: "Certificate validity, protocol version, chain verification" },
+  { id: "cookies", label: "Cookie Security", icon: Cookie, description: "Secure, HttpOnly, SameSite flags" },
+  { id: "content", label: "Content Analysis", icon: FileCode, description: "Mixed content, DOM XSS sinks, iframes, reverse tabnabbing" },
+  { id: "information-disclosure", label: "Info Disclosure", icon: Eye, description: "Server headers, source maps, secrets, private IPs, debug info" },
+  { id: "configuration", label: "Configuration", icon: Settings, description: "robots.txt, security.txt, open redirects" },
+  { id: "dns", label: "DNS & Email", icon: Mail, description: "SPF, DMARC, DKIM, DNSSEC records" },
+] as const
+
+export type ScannerCategoryId = (typeof SCANNER_CATEGORIES)[number]["id"]
+
+const ALL_CATEGORY_IDS = SCANNER_CATEGORIES.map((c) => c.id)
+
 interface ScanFormProps {
-  onScan: (url: string, mode?: ScanMode) => void
+  onScan: (url: string, mode?: ScanMode, scanners?: string[]) => void
   status: ScanStatus
 }
 
@@ -29,6 +44,25 @@ export function ScanForm({ onScan, status }: ScanFormProps) {
   const [url, setUrl] = useState("")
   const [error, setError] = useState("")
   const [mode, setMode] = useState<ScanMode>("quick")
+  const [selectedScanners, setSelectedScanners] = useState<Set<string>>(new Set(ALL_CATEGORY_IDS))
+  const [selectorOpen, setSelectorOpen] = useState(false)
+
+  const allSelected = selectedScanners.size === ALL_CATEGORY_IDS.length
+  const noneSelected = selectedScanners.size === 0
+
+  function toggleScanner(id: string) {
+    setSelectedScanners((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  function toggleAll() {
+    if (allSelected) setSelectedScanners(new Set())
+    else setSelectedScanners(new Set(ALL_CATEGORY_IDS))
+  }
 
   function validate(input: string): boolean {
     if (!input.trim()) {
@@ -45,6 +79,10 @@ export function ScanForm({ onScan, status }: ScanFormProps) {
       setError("Please enter a valid URL (e.g., https://example.com)")
       return false
     }
+    if (noneSelected) {
+      setError("Select at least one scanner category")
+      return false
+    }
     setError("")
     return true
   }
@@ -52,7 +90,8 @@ export function ScanForm({ onScan, status }: ScanFormProps) {
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (validate(url)) {
-      onScan(url, mode)
+      const scanners = allSelected ? undefined : Array.from(selectedScanners)
+      onScan(url, mode, scanners)
     }
   }
 
@@ -141,23 +180,95 @@ export function ScanForm({ onScan, status }: ScanFormProps) {
               aria-describedby={error ? "url-error" : undefined}
             />
           </div>
-          <Button
-            type="submit"
-            disabled={isScanning}
-            className="h-11 px-6 font-medium shrink-0"
-          >
-            {isScanning ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Scanning
-              </>
-            ) : (
-              <>
-                Scan
-                <ArrowRight className="ml-2 h-4 w-4" />
-              </>
-            )}
-          </Button>
+          <div className="flex gap-2">
+            <Button
+              type="submit"
+              disabled={isScanning || noneSelected}
+              className="h-11 px-6 font-medium shrink-0 flex-1 sm:flex-none"
+            >
+              {isScanning ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Scanning
+                </>
+              ) : (
+                <>
+                  Scan
+                  <ArrowRight className="ml-2 h-4 w-4" />
+                </>
+              )}
+            </Button>
+            <Popover open={selectorOpen} onOpenChange={setSelectorOpen}>
+              <PopoverTrigger asChild>
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={isScanning}
+                  className={cn(
+                    "h-11 px-3 bg-transparent shrink-0",
+                    !allSelected && "border-primary/50 text-primary",
+                  )}
+                  aria-label="Select scanners"
+                >
+                  <SlidersHorizontal className="h-4 w-4" />
+                  <span className="hidden sm:inline ml-2 text-xs">
+                    {allSelected ? "All Scanners" : `${selectedScanners.size}/${ALL_CATEGORY_IDS.length}`}
+                  </span>
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent align="end" className="w-80 p-0">
+                <div className="px-3 py-2.5 border-b border-border flex items-center justify-between">
+                  <span className="text-sm font-medium text-foreground">Select Scanners</span>
+                  <button
+                    type="button"
+                    onClick={toggleAll}
+                    className="text-xs text-primary hover:underline"
+                  >
+                    {allSelected ? "Deselect All" : "Select All"}
+                  </button>
+                </div>
+                <div className="p-1.5 max-h-72 overflow-y-auto">
+                  {SCANNER_CATEGORIES.map(({ id, label, icon: Icon, description }) => {
+                    const checked = selectedScanners.has(id)
+                    return (
+                      <button
+                        key={id}
+                        type="button"
+                        onClick={() => toggleScanner(id)}
+                        className={cn(
+                          "w-full flex items-start gap-2.5 px-2.5 py-2 rounded-md text-left transition-colors",
+                          checked
+                            ? "bg-primary/5 hover:bg-primary/10"
+                            : "hover:bg-muted",
+                        )}
+                      >
+                        <div className={cn(
+                          "flex items-center justify-center w-5 h-5 rounded border mt-0.5 shrink-0 transition-colors",
+                          checked
+                            ? "bg-primary border-primary text-primary-foreground"
+                            : "border-border",
+                        )}>
+                          {checked && <Check className="h-3 w-3" />}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-1.5">
+                            <Icon className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                            <span className="text-sm font-medium text-foreground">{label}</span>
+                          </div>
+                          <p className="text-[11px] text-muted-foreground leading-snug mt-0.5">{description}</p>
+                        </div>
+                      </button>
+                    )
+                  })}
+                </div>
+                <div className="px-3 py-2 border-t border-border">
+                  <p className="text-[10px] text-muted-foreground text-center">
+                    {selectedScanners.size} of {ALL_CATEGORY_IDS.length} scanner categories selected
+                  </p>
+                </div>
+              </PopoverContent>
+            </Popover>
+          </div>
         </div>
         {error && (
           <p id="url-error" className="text-sm text-destructive" role="alert">

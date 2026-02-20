@@ -82,6 +82,11 @@ export function middleware(request: NextRequest) {
   // Protect everything else - redirect to login if no session
   if (!sessionCookie) {
     const loginUrl = new URL("/login", request.url)
+    // Preserve the original destination so we can redirect back after login
+    const intended = pathname + request.nextUrl.search
+    if (intended && intended !== "/dashboard") {
+      loginUrl.searchParams.set("redirect", intended)
+    }
     return applySecurityHeaders(NextResponse.redirect(loginUrl))
   }
 

@@ -24,7 +24,7 @@ export async function GET(request: Request) {
   }
 
   const members = await pool.query(
-    `SELECT tm.user_id, tm.role, tm.joined_at, u.name, u.email, u.avatar_url
+    `SELECT tm.user_id, tm.role, tm.joined_at, u.name, u.email, u.avatar_url, u.role as staff_role
      FROM team_members tm JOIN users u ON u.id = tm.user_id
      WHERE tm.team_id = $1 ORDER BY tm.role, u.name`,
     [teamId],
