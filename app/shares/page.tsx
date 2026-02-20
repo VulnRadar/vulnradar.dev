@@ -157,22 +157,22 @@ export default function SharesPage() {
                       </div>
 
                       {/* Buttons - Stack on mobile, horizontal on desktop */}
-                      <div className="flex flex-col sm:flex-row gap-2">
+                      <div className="flex gap-2">
                         <Button
                             variant="outline"
                             size="sm"
                             onClick={() => copyShareLink(share.token)}
-                            className="gap-2 flex-1 sm:flex-none"
+                            className="gap-2"
                         >
                           {copied === share.token ? (
                               <>
                                 <Check className="h-4 w-4 text-green-500" />
-                                <span>Copied</span>
+                                <span className="hidden sm:inline">Copied</span>
                               </>
                           ) : (
                               <>
                                 <Copy className="h-4 w-4" />
-                                <span>Copy Link</span>
+                                <span className="hidden sm:inline">Copy Link</span>
                               </>
                           )}
                         </Button>
@@ -180,11 +180,10 @@ export default function SharesPage() {
                             href={`/shared/${share.token}`}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="flex-1 sm:flex-none"
                         >
-                          <Button variant="outline" size="sm" className="gap-2 w-full sm:w-auto">
+                          <Button variant="outline" size="sm" className="gap-2">
                             <ExternalLink className="h-4 w-4" />
-                            <span>View</span>
+                            <span className="hidden sm:inline">View</span>
                           </Button>
                         </a>
                         <Button
@@ -192,14 +191,14 @@ export default function SharesPage() {
                             size="sm"
                             onClick={() => revokeShare(share.id)}
                             disabled={revoking === share.id}
-                            className="gap-2 flex-1 sm:flex-none"
+                            className="gap-2"
                         >
                           {revoking === share.id ? (
                               <Loader2 className="h-4 w-4 animate-spin" />
                           ) : (
                               <Trash2 className="h-4 w-4" />
                           )}
-                          <span>Revoke</span>
+                          <span className="hidden sm:inline">Revoke</span>
                         </Button>
                       </div>
                     </Card>

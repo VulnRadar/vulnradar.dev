@@ -62,6 +62,29 @@ export async function POST(request: Request) {
   }
 }
 
+// Rename a team
+export async function PATCH(request: Request) {
+  const session = await getSession()
+  if (!session) return NextResponse.json({ error: ERROR_MESSAGES.UNAUTHORIZED }, { status: 401 })
+
+  const { teamId, name } = await request.json()
+  if (!teamId || !name || typeof name !== "string" || name.trim().length < 2 || name.trim().length > 50) {
+    return NextResponse.json({ error: "Team name must be 2-50 characters." }, { status: 400 })
+  }
+
+  // Only owner/admin can rename
+  const memberRes = await pool.query(
+    "SELECT role FROM team_members WHERE team_id = $1 AND user_id = $2",
+    [teamId, session.userId],
+  )
+  if (memberRes.rows.length === 0 || memberRes.rows[0].role === TEAM_ROLES.VIEWER) {
+    return NextResponse.json({ error: "Only owners/admins can rename teams." }, { status: 403 })
+  }
+
+  await pool.query("UPDATE teams SET name = $1 WHERE id = $2", [name.trim(), teamId])
+  return NextResponse.json({ success: true, name: name.trim() })
+}
+
 // Delete a team
 export async function DELETE(request: Request) {
   const session = await getSession()
