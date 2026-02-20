@@ -413,11 +413,12 @@ cd vulnradar.dev
 
 # Copy and edit the example env file
 cp .env.example .env
-# Edit .env with your SMTP, Turnstile, and other settings
+# Edit .env with your SMTP, Turnstile, DB credentials, and other settings
 
-# Start PostgreSQL + VulnRadar
-docker compose up -d`}</code></pre>
-          <p className="text-xs text-muted-foreground">The app will be available at <code className="bg-secondary px-1 rounded">http://localhost:3000</code>. The database schema is created automatically on first startup.</p>
+# Build and start PostgreSQL + VulnRadar
+docker compose up -d --build`}</code></pre>
+          <p className="text-xs text-muted-foreground mb-2">The app will be available at <code className="bg-secondary px-1 rounded">http://localhost:3000</code>. The database schema is created automatically on first startup via <code className="bg-secondary px-1 rounded text-xs">instrumentation.ts</code>.</p>
+          <p className="text-xs text-muted-foreground">A dummy <code className="bg-secondary px-1 rounded text-xs">DATABASE_URL</code> is used during the Docker build step so Next.js can compile without a live database. The real connection string is injected at runtime by Docker Compose.</p>
         </Card>
 
         <Card className="p-6 border-border/40">
@@ -436,7 +437,11 @@ docker compose up -d`}</code></pre>
 POSTGRES_USER=vulnradar
 POSTGRES_PASSWORD=vulnradar
 APP_PORT=3000
-DB_PORT=5432`}</code></pre>
+DB_PORT=5432
+NEXT_PUBLIC_APP_URL=http://localhost:3000
+
+# Optional: SMTP, Turnstile, etc. are passed through
+# See .env.example for the full list`}</code></pre>
         </Card>
 
         <Card className="p-6 border-border/40">
