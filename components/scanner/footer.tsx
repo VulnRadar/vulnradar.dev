@@ -78,7 +78,7 @@ export function Footer() {
             <a href={`mailto:${SUPPORT_EMAIL}`} className="text-muted-foreground hover:text-foreground transition-colors" aria-label="Email">
               <Mail className="h-5 w-5" />
             </a>
-            <a href={APP_URL} target="_blank" rel="noopener noreferrer" className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
+            <a href={APP_URL} target="_blank" rel="noopener noreferrer" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
               {APP_URL.replace(/^https?:\/\//, "")}
             </a>
           </div>
