@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { Copy, ExternalLink, Trash2, Loader2, Check } from "lucide-react"
+import { Copy, ExternalLink, Trash2, Loader2, Check, Share2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import Link from "next/link"
@@ -116,10 +116,16 @@ export default function SharesPage() {
   return (
       <div className="min-h-screen flex flex-col bg-background">
         <Header />
-        <main className="flex-1 w-full max-w-6xl mx-auto px-4 py-6 sm:py-8">
-          <div className="mb-6 sm:mb-8">
-            <h1 className="text-3xl sm:text-4xl font-bold text-foreground mb-1 sm:mb-2">Shared Scans</h1>
-            <p className="text-sm sm:text-base text-muted-foreground">Manage your active shared scan results. Revoke access anytime.</p>
+        <main className="flex-1 w-full max-w-5xl mx-auto px-4 py-8">
+          <div className="flex flex-col gap-6">
+          <div className="flex items-center gap-3 mb-2">
+            <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-primary/10">
+              <Share2 className="h-5 w-5 text-primary" />
+            </div>
+            <div>
+              <h1 className="text-xl font-bold text-foreground">Shared Scans</h1>
+              <p className="text-sm text-muted-foreground">Manage your active shared scan results. Revoke access anytime.</p>
+            </div>
           </div>
 
           {shares.length === 0 ? (
@@ -213,6 +219,7 @@ export default function SharesPage() {
                 )}
               </div>
           )}
+          </div>
         </main>
         <Footer />
       </div>
