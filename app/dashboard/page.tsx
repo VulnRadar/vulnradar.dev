@@ -70,7 +70,10 @@ function DashboardContent() {
     setSavingNotes(false)
   }
 
-  const handleScan = useCallback(async (url: string, mode: ScanMode = "quick") => {
+  const [pendingScanners, setPendingScanners] = useState<string[] | undefined>(undefined)
+
+  const handleScan = useCallback(async (url: string, mode: ScanMode = "quick", scanners?: string[]) => {
+    setPendingScanners(scanners)
     // Deep crawl: first discover URLs, then show selector
     if (mode === "deep") {
       setPendingCrawlUrl(url)
@@ -94,10 +97,10 @@ function DashboardContent() {
     }
 
     // Quick scan (or crawl with pre-selected URLs)
-    runScan(url)
+    runScan(url, undefined, scanners)
   }, [])
 
-  const runScan = useCallback(async (url: string, crawlUrls?: string[]) => {
+  const runScan = useCallback(async (url: string, crawlUrls?: string[], scanners?: string[]) => {
     setStatus("scanning")
     setResult(null)
     setScanHistoryId(null)
@@ -109,7 +112,9 @@ function DashboardContent() {
 
     const isCrawl = !!crawlUrls
     const endpoint = isCrawl ? "/api/scan/crawl" : "/api/scan"
-    const payload = isCrawl ? { url, urls: crawlUrls } : { url }
+    const payload = isCrawl
+      ? { url, urls: crawlUrls, ...(scanners ? { scanners } : {}) }
+      : { url, ...(scanners ? { scanners } : {}) }
 
     try {
       const response = await fetch(endpoint, {
@@ -161,7 +166,7 @@ function DashboardContent() {
   function handleCrawlConfirm(selectedUrls: string[]) {
     setShowCrawlSelector(false)
     setCrawlDiscoveryUrls([])
-    runScan(pendingCrawlUrl, selectedUrls)
+    runScan(pendingCrawlUrl, selectedUrls, pendingScanners)
   }
 
   function handleCrawlCancel() {
