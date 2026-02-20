@@ -90,6 +90,23 @@ export default function RootLayout({
         </ThemeProvider>
         <Script id="tawk-to" strategy="lazyOnload">
           {`var Tawk_API=Tawk_API||{}, Tawk_LoadStart=new Date();
+Tawk_API.onLoad = function(){
+  if(window.innerWidth < 640){
+    Tawk_API.setProperty('fontSize', 14);
+    var el = document.querySelector('iframe[title="chat widget"]');
+    if(el){
+      el.style.minWidth = '80px';
+      el.style.minHeight = '80px';
+    }
+  }
+};
+Tawk_API.customStyle = {
+  visibility: {
+    desktop: { position: 'br', xOffset: 20, yOffset: 20 },
+    mobile: { position: 'br', xOffset: 10, yOffset: 10 },
+  },
+  zIndex: 999
+};
 (function(){
 var s1=document.createElement("script"),s0=document.getElementsByTagName("script")[0];
 s1.async=true;

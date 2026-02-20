@@ -1,8 +1,9 @@
 "use client"
 
-import { LogOut, User, Clock, Book, Menu, X, GitCompareArrows, ShieldAlert, Users, Radar, BadgeCheck, Link2 } from "lucide-react"
+import { LogOut, User, Clock, Book, Menu, GitCompareArrows, ShieldAlert, Users, Radar, BadgeCheck, Link2 } from "lucide-react"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { Button } from "@/components/ui/button"
+import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet"
 import { useRouter, usePathname } from "next/navigation"
 import { useState, useEffect, useRef } from "react"
 import useSWR from "swr"
@@ -127,64 +128,66 @@ export function Header() {
             <Button
                 variant="ghost"
                 size="icon"
-                onClick={() => setMobileOpen(!mobileOpen)}
+                onClick={() => setMobileOpen(true)}
                 aria-label="Toggle menu"
                 className="md:hidden text-muted-foreground hover:text-foreground h-8 w-8"
             >
-              {mobileOpen ? <X className="h-4 w-4" /> : <Menu className="h-4 w-4" />}
+              <Menu className="h-4 w-4" />
             </Button>
           </div>
         </div>
 
-        {/* Mobile dropdown */}
-        {mobileOpen && (
-            <div className="md:hidden border-t border-border bg-card px-4 pb-3 pt-2">
-              <nav className="flex flex-col gap-1">
-                {NAV_LINKS.map(({ href, label, icon: Icon }) => {
-                  const active = href === "/docs" ? pathname.startsWith("/docs") : pathname === href
-                  return (
-                      <button
-                          key={href}
-                          onClick={() => {
-                            router.push(href)
-                            setMobileOpen(false)
-                          }}
-                          className={cn(
-                              "flex items-center gap-2 px-3 py-2.5 rounded-md text-sm font-medium transition-colors",
-                              active
-                                  ? "bg-primary/10 text-primary"
-                                  : "text-muted-foreground hover:text-foreground hover:bg-muted",
-                          )}
-                      >
-                        <Icon className="h-4 w-4" />
-                        {label}
-                      </button>
-                  )
-                })}
-                {isStaff && (
+        {/* Mobile overlay menu */}
+        <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
+          <SheetContent side="right" className="w-64 bg-card p-0">
+            <SheetTitle className="sr-only">Navigation menu</SheetTitle>
+            <nav className="flex flex-col gap-1 px-3 pt-12 pb-4">
+              {NAV_LINKS.map(({ href, label, icon: Icon }) => {
+                const active = href === "/docs" ? pathname.startsWith("/docs") : pathname === href
+                return (
                     <button
-                        onClick={() => { router.push("/admin"); setMobileOpen(false) }}
+                        key={href}
+                        onClick={() => {
+                          router.push(href)
+                          setMobileOpen(false)
+                        }}
                         className={cn(
-                            "flex items-center gap-2 px-3 py-2.5 rounded-md text-sm font-medium transition-colors",
-                            pathname === "/admin"
-                                ? "bg-destructive/10 text-destructive"
-                                : "text-destructive/70 hover:text-destructive hover:bg-destructive/10",
+                            "flex items-center gap-2.5 px-3 py-2.5 rounded-md text-sm font-medium transition-colors",
+                            active
+                                ? "bg-primary/10 text-primary"
+                                : "text-muted-foreground hover:text-foreground hover:bg-muted",
                         )}
                     >
-                      <ShieldAlert className="h-4 w-4" />
-                      Admin
+                      <Icon className="h-4 w-4" />
+                      {label}
                     </button>
-                )}
-                <button
-                    onClick={handleLogout}
-                    className="flex items-center gap-2 px-3 py-2.5 rounded-md text-sm font-medium text-destructive hover:bg-destructive/10 transition-colors mt-1"
-                >
-                  <LogOut className="h-4 w-4" />
-                  Log out
-                </button>
-              </nav>
-            </div>
-        )}
+                )
+              })}
+              {isStaff && (
+                  <button
+                      onClick={() => { router.push("/admin"); setMobileOpen(false) }}
+                      className={cn(
+                          "flex items-center gap-2.5 px-3 py-2.5 rounded-md text-sm font-medium transition-colors",
+                          pathname === "/admin"
+                              ? "bg-destructive/10 text-destructive"
+                              : "text-destructive/70 hover:text-destructive hover:bg-destructive/10",
+                      )}
+                  >
+                    <ShieldAlert className="h-4 w-4" />
+                    Admin
+                  </button>
+              )}
+              <div className="my-2 border-t border-border" />
+              <button
+                  onClick={handleLogout}
+                  className="flex items-center gap-2.5 px-3 py-2.5 rounded-md text-sm font-medium text-destructive hover:bg-destructive/10 transition-colors"
+              >
+                <LogOut className="h-4 w-4" />
+                Log out
+              </button>
+            </nav>
+          </SheetContent>
+        </Sheet>
       </header>
   )
 }

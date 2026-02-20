@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { Trash2, Loader2, AlertCircle } from "lucide-react"
+import { Trash2, Loader2, AlertCircle, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 
 interface DeleteScanButtonProps {
@@ -36,7 +36,7 @@ export function DeleteScanButton({ scanId, onDeleted, isOwner }: DeleteScanButto
     return (
       <Button variant="outline" disabled size="sm" className="gap-2 bg-transparent text-muted-foreground">
         <Trash2 className="h-4 w-4" />
-        Deleted
+        <span className="hidden sm:inline">Deleted</span>
       </Button>
     )
   }
@@ -54,12 +54,12 @@ export function DeleteScanButton({ scanId, onDeleted, isOwner }: DeleteScanButto
           {state === "deleting" ? (
             <>
               <Loader2 className="h-4 w-4 animate-spin" />
-              Deleting...
+              <span className="hidden sm:inline">Deleting...</span>
             </>
           ) : (
             <>
               <AlertCircle className="h-4 w-4" />
-              Confirm Delete
+              <span className="hidden sm:inline">Confirm</span>
             </>
           )}
         </Button>
@@ -70,7 +70,10 @@ export function DeleteScanButton({ scanId, onDeleted, isOwner }: DeleteScanButto
           disabled={state === "deleting"}
           className="bg-transparent"
         >
-          Cancel
+          <span className="hidden sm:inline">Cancel</span>
+          <span className="sm:hidden">
+            <X className="h-4 w-4" />
+          </span>
         </Button>
       </div>
     )
@@ -84,7 +87,7 @@ export function DeleteScanButton({ scanId, onDeleted, isOwner }: DeleteScanButto
       className="gap-2 bg-transparent text-destructive hover:text-destructive hover:bg-destructive/10"
     >
       <Trash2 className="h-4 w-4" />
-      Delete Scan
+      <span className="hidden sm:inline">Delete Scan</span>
     </Button>
   )
 }
