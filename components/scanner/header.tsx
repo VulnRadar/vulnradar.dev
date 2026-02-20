@@ -10,6 +10,7 @@ import useSWR from "swr"
 import { cn } from "@/lib/utils"
 import Image from "next/image"
 import { APP_NAME } from "@/lib/constants"
+import { NotificationBell } from "@/components/notification-center"
 
 const STAFF_ROLES = ["admin", "moderator", "support"]
 
@@ -114,6 +115,7 @@ export function Header() {
 
           {/* Right side */}
           <div className="flex items-center gap-1">
+            <NotificationBell />
             <ThemeToggle />
             <Button
                 variant="ghost"
