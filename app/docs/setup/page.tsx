@@ -366,15 +366,7 @@ npm start`}</code></pre>
 
         <Card className="p-6 border-border/40">
           <h3 className="font-semibold mb-4">Docker</h3>
-          <p className="text-sm text-muted-foreground mb-3">Deploy using Docker containers:</p>
-          <pre className="bg-secondary/50 p-3 rounded text-sm overflow-x-auto"><code>{`docker build -t vulnradar .
-docker run -p 3000:3000 \\
-  -e DATABASE_URL="postgresql://vulnradar:yourpassword@localhost:5432/vulnradar" \\
-  -e SMTP_HOST="smtp.example.com" \\
-  -e SMTP_PORT="587" \\
-  -e SMTP_USER="noreply@yourdomain.com" \\
-  -e SMTP_PASS="your-smtp-password" \\
-  vulnradar`}</code></pre>
+          <p className="text-sm text-muted-foreground">Deploy using Docker and Docker Compose. See the <a href="#docker" className="text-primary hover:underline">Docker Setup</a> section below for a full walkthrough.</p>
         </Card>
 
         <Card className="p-6 border-border/40">
@@ -392,6 +384,113 @@ docker run -p 3000:3000 \\
           </ol>
           <p className="text-xs text-muted-foreground mt-3">On startup, the server console logs the current version and checks for updates automatically. The admin panel also shows a version check card if a newer version is available on GitHub.</p>
         </Card>
+      </section>
+
+      {/* Docker Setup */}
+      <section id="docker" className="space-y-4">
+        <h2 className="text-2xl font-bold">Docker Setup</h2>
+        <p className="text-muted-foreground">Run {APP_NAME} using Docker and Docker Compose. This is the easiest way to get everything running with a single command.</p>
+
+        <Card className="p-6 border-border/40">
+          <h3 className="font-semibold mb-4">Prerequisites</h3>
+          <div className="space-y-2">
+            <div className="flex items-start gap-3">
+              <CheckCircle className="h-5 w-5 text-primary flex-shrink-0 mt-0.5" />
+              <div>
+                <p className="text-sm text-muted-foreground"><strong className="text-foreground">Docker</strong> and <strong className="text-foreground">Docker Compose</strong> installed on your system</p>
+                <pre className="bg-secondary/50 p-2 rounded text-xs mt-2 overflow-x-auto"><code>{`docker --version
+docker compose version`}</code></pre>
+              </div>
+            </div>
+          </div>
+        </Card>
+
+        <Card className="p-6 border-border/40">
+          <h3 className="font-semibold mb-4">Quick Start</h3>
+          <p className="text-sm text-muted-foreground mb-3">Clone the repo, configure your environment, and start everything with one command:</p>
+          <pre className="bg-secondary/50 p-4 rounded text-sm overflow-x-auto mb-4"><code>{`git clone https://github.com/VulnRadar/vulnradar.dev.git
+cd vulnradar.dev
+
+# Copy and edit the example env file
+cp .env.example .env
+# Edit .env with your SMTP, Turnstile, and other settings
+
+# Start PostgreSQL + VulnRadar
+docker compose up -d`}</code></pre>
+          <p className="text-xs text-muted-foreground">The app will be available at <code className="bg-secondary px-1 rounded">http://localhost:3000</code>. The database schema is created automatically on first startup.</p>
+        </Card>
+
+        <Card className="p-6 border-border/40">
+          <h3 className="font-semibold mb-4">Docker Compose Configuration</h3>
+          <p className="text-sm text-muted-foreground mb-3">The included <code className="bg-secondary px-1 rounded text-xs">docker-compose.yml</code> sets up two services:</p>
+          <div className="space-y-3 text-sm text-muted-foreground mb-4">
+            <div>
+              <strong className="text-foreground">postgres</strong> - PostgreSQL 16 database with persistent storage via Docker volumes. Health-checked so the app waits for the DB to be ready before starting.
+            </div>
+            <div>
+              <strong className="text-foreground">app</strong> - The {APP_NAME} Next.js application. Builds from the Dockerfile, connects to PostgreSQL, and exposes port 3000.
+            </div>
+          </div>
+          <p className="text-sm text-muted-foreground mb-3">Default credentials (override in <code className="bg-secondary px-1 rounded text-xs">.env</code>):</p>
+          <pre className="bg-secondary/50 p-4 rounded text-xs overflow-x-auto"><code>{`POSTGRES_DB=vulnradar
+POSTGRES_USER=vulnradar
+POSTGRES_PASSWORD=vulnradar
+APP_PORT=3000
+DB_PORT=5432`}</code></pre>
+        </Card>
+
+        <Card className="p-6 border-border/40">
+          <h3 className="font-semibold mb-4">Common Commands</h3>
+          <pre className="bg-secondary/50 p-4 rounded text-sm overflow-x-auto"><code>{`# Start all services in background
+docker compose up -d
+
+# View live logs
+docker compose logs -f app
+
+# Stop all services
+docker compose down
+
+# Stop and delete database volume (full reset)
+docker compose down -v
+
+# Rebuild after pulling new changes
+docker compose build --no-cache
+docker compose up -d`}</code></pre>
+        </Card>
+
+        <Card className="p-6 border-border/40">
+          <h3 className="font-semibold mb-4">Custom Ports</h3>
+          <p className="text-sm text-muted-foreground mb-3">If ports 3000 or 5432 are already in use, set different ones in your <code className="bg-secondary px-1 rounded text-xs">.env</code>:</p>
+          <pre className="bg-secondary/50 p-4 rounded text-sm overflow-x-auto"><code>{`APP_PORT=8080
+DB_PORT=5433`}</code></pre>
+        </Card>
+
+        <Card className="p-6 border-border/40">
+          <h3 className="font-semibold mb-4">Standalone Docker (Without Compose)</h3>
+          <p className="text-sm text-muted-foreground mb-3">If you already have a PostgreSQL server, you can build and run just the app container:</p>
+          <pre className="bg-secondary/50 p-4 rounded text-sm overflow-x-auto"><code>{`docker build -t vulnradar .
+
+docker run -d \\
+  --name vulnradar \\
+  -p 3000:3000 \\
+  -e DATABASE_URL="postgresql://user:pass@your-db-host:5432/vulnradar" \\
+  -e NEXT_PUBLIC_APP_URL="https://yourdomain.com" \\
+  vulnradar`}</code></pre>
+        </Card>
+
+        <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 p-4 flex gap-3">
+          <AlertTriangle className="h-5 w-5 text-amber-600 flex-shrink-0 mt-0.5" />
+          <div>
+            <h3 className="font-semibold text-foreground mb-1 text-sm">Production Recommendations</h3>
+            <ul className="text-xs text-muted-foreground space-y-1 list-disc list-inside">
+              <li>Use a managed database (AWS RDS, Supabase, etc.) instead of the Docker Compose PostgreSQL for production</li>
+              <li>Set strong, unique passwords for all database credentials</li>
+              <li>Place behind a reverse proxy (nginx, Traefik, Caddy) for HTTPS</li>
+              <li>Update <code className="bg-secondary px-1 rounded">NEXT_PUBLIC_APP_URL</code> to your actual domain</li>
+              <li>Back up your Docker volumes regularly</li>
+            </ul>
+          </div>
+        </div>
       </section>
 
       {/* Migration Tool */}

@@ -1,0 +1,9 @@
+node_modules
+.next
+.git
+.env*.local
+.DS_Store
+*.md
+.gitignore
+.prettierrc*
+.eslintrc*
