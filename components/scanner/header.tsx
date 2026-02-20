@@ -6,11 +6,11 @@ import { Button } from "@/components/ui/button"
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet"
 import { useRouter, usePathname } from "next/navigation"
 import { useState, useEffect } from "react"
+import useSWR from "swr"
 import { cn } from "@/lib/utils"
 import Image from "next/image"
 import { APP_NAME } from "@/lib/constants"
 import { NotificationBell } from "@/components/notification-center"
-import { useAuth } from "@/components/auth-provider"
 
 const STAFF_ROLES = ["admin", "moderator", "support"]
 
@@ -25,14 +25,30 @@ const NAV_LINKS = [
   { href: "/profile", label: "Profile", icon: User },
 ]
 
+function getCachedRole(): string | null {
+  try { return sessionStorage.getItem("vr_user_role") } catch { return null }
+}
+
 export function Header() {
   const router = useRouter()
   const pathname = usePathname()
   const [mobileOpen, setMobileOpen] = useState(false)
-  const { me } = useAuth()
+  const [cachedRole, setCachedRole] = useState(getCachedRole)
+  const { data: me } = useSWR("/api/auth/me", (url: string) => fetch(url).then((r) => r.json()), {
+    revalidateOnFocus: false,
+    dedupingInterval: 60000,
+  })
 
-  const cachedRole = me?.role || null
-  const isStaff = STAFF_ROLES.includes(cachedRole || "")
+  // Cache role in sessionStorage when loaded
+  useEffect(() => {
+    if (me?.role) {
+      try { sessionStorage.setItem("vr_user_role", me.role) } catch {}
+      setCachedRole(me.role)
+    }
+  }, [me?.role])
+
+  const effectiveRole = me?.role || cachedRole
+  const isStaff = STAFF_ROLES.includes(effectiveRole || "")
 
   async function handleLogout() {
     await fetch("/api/auth/logout", { method: "POST" })

@@ -4,7 +4,6 @@ import { Inter, JetBrains_Mono } from 'next/font/google'
 import Script from 'next/script'
 import { ThemeProvider } from '@/components/theme-provider'
 import { TosGate } from '@/components/tos-gate'
-import { AuthProvider } from '@/components/auth-provider'
 import { BackupCodesModal } from '@/components/notification-center'
 import { APP_NAME, APP_DESCRIPTION, APP_URL, APP_VERSION, LOGO_URL } from '@/lib/constants'
 
@@ -84,11 +83,9 @@ export default function RootLayout({
           enableSystem
           disableTransitionOnChange
         >
-          <AuthProvider>
-            <TosGate>
-              {children}
-            </TosGate>
-          </AuthProvider>
+          <TosGate>
+            {children}
+          </TosGate>
           <BackupCodesModal />
         </ThemeProvider>
         <Script id="tawk-to" strategy="lazyOnload">
