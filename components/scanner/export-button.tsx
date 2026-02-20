@@ -107,12 +107,12 @@ export function ExportButton({ result }: ExportButtonProps) {
         {exportedJson ? (
           <>
             <Check className="h-4 w-4" />
-            Exported
+            <span className="hidden sm:inline">Exported</span>
           </>
         ) : (
           <>
             <FileJson className="h-4 w-4" />
-            Export JSON
+            <span className="hidden sm:inline">JSON</span>
           </>
         )}
       </Button>
@@ -120,12 +120,12 @@ export function ExportButton({ result }: ExportButtonProps) {
         {exportedCsv ? (
           <>
             <Check className="h-4 w-4" />
-            Exported
+            <span className="hidden sm:inline">Exported</span>
           </>
         ) : (
           <>
             <FileSpreadsheet className="h-4 w-4" />
-            CSV
+            <span className="hidden sm:inline">CSV</span>
           </>
         )}
       </Button>
@@ -133,12 +133,12 @@ export function ExportButton({ result }: ExportButtonProps) {
         {exportedPdf ? (
           <>
             <Check className="h-4 w-4" />
-            Exported
+            <span className="hidden sm:inline">Exported</span>
           </>
         ) : (
           <>
             <FileText className="h-4 w-4" />
-            PDF
+            <span className="hidden sm:inline">PDF</span>
           </>
         )}
       </Button>
