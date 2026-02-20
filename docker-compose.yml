@@ -31,8 +31,19 @@ services:
     environment:
       NODE_ENV: production
       DATABASE_URL: postgresql://${POSTGRES_USER:-vulnradar}:${POSTGRES_PASSWORD:-vulnradar}@postgres:5432/${POSTGRES_DB:-vulnradar}
+      DATABASE_SSL: "false"
       NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-http://localhost:3000}
-      # Add other env vars as needed
+      # SMTP (optional, for emails)
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
+      SMTP_FROM: ${SMTP_FROM:-}
+      # Contact form
+      CONTACT_EMAIL: ${CONTACT_EMAIL:-}
+      # Turnstile CAPTCHA (optional)
+      TURNSTILE_SITE_KEY: ${TURNSTILE_SITE_KEY:-}
+      TURNSTILE_SECRET_KEY: ${TURNSTILE_SECRET_KEY:-}
     ports:
       - "${APP_PORT:-3000}:3000"
     depends_on:
