@@ -5,7 +5,19 @@ import { APP_NAME, TOTAL_CHECKS_LABEL } from "@/lib/constants"
 
 const CHANGELOG = [
   {
-    version: "1.7.4",
+    version: "1.8.0",
+    date: "February 20, 2026",
+    title: "55+ New Security Checks, Notification Bell & Scanner Selector",
+    highlights: true,
+    changes: [
+      { icon: Radar, label: "55+ New Security Checks", desc: "Added comprehensive security checks for header leaks (X-Powered-By, X-Runtime, X-Debug, Via, X-Backend-Server), advanced CSP analysis, CORS policy validation, referrer policy analysis, error page detection (SQL, PHP, ASP.NET, Django, Laravel), secrets exposure (JWT, private keys, .env files, .git), and content security (iframes, SRI, eval usage). Total checks now 175+." },
+      { icon: Bell, label: "Notification Bell in Header", desc: "Replaced full-screen notification modal with a compact bell icon in the header. Shows dismissible notifications for version updates and Discord invites with a badge count. Backup codes modal remains separate and always interrupts as a full-screen overlay for security." },
+      { icon: Filter, label: "Scanner Category Selector", desc: "Added 'Select Scanners' button next to Scan button allowing users to choose which security scanner categories to run (Headers, SSL/TLS, Cookies, Content, Info Disclosure, Configuration, DNS). Provides more control over scan scope and performance." },
+      { icon: Zap, label: "Performance Improvements", desc: "Fixed admin tab and notification bell from loading on every page navigation. Moved auth and notification state to app-level SWR with extended deduping interval, eliminating redundant API calls and freeze on page transitions." },
+      { icon: Bug, label: "Shared Page Auth Check", desc: "/shared/[token] now checks if user is logged in via /api/auth/me. Logged-in users see the full Header + Footer. Guest users see a minimal header with Sign In button." },
+      { icon: Shield, label: "Engine Version 2.0.0", desc: "Detection engine bumped to v2.0.0 reflecting the significant expansion of security checks and improved categorization." },
+    ],
+  },
     date: "February 19, 2026",
     title: "Docker Production Ready, Mobile UX Overhaul & Error Pages",
     highlights: true,
