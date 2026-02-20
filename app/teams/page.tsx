@@ -1,5 +1,5 @@
 "use client"
-import { TEAM_ROLES } from "@/lib/constants"
+import { TEAM_ROLES, STAFF_ROLE_LABELS } from "@/lib/constants"
 
 import { useState, useEffect, useCallback } from "react"
 import { useRouter } from "next/navigation"
@@ -45,6 +45,14 @@ interface Member {
   name: string
   email: string
   avatar_url?: string
+  staff_role?: string
+}
+
+const STAFF_BADGE_COLORS: Record<string, string> = {
+  admin: "bg-red-500/10 text-red-400 border-red-500/20",
+  moderator: "bg-amber-500/10 text-amber-400 border-amber-500/20",
+  support: "bg-blue-500/10 text-blue-400 border-blue-500/20",
+  beta_tester: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
 }
 
 interface Invite {
@@ -408,7 +416,14 @@ export default function TeamsPage() {
                         </div>
                       )}
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-foreground truncate">{m.name || "Unnamed"}</p>
+                        <div className="flex items-center gap-1.5">
+                          <p className="text-sm font-medium text-foreground truncate">{m.name || "Unnamed"}</p>
+                          {m.staff_role && m.staff_role !== "user" && STAFF_BADGE_COLORS[m.staff_role] && (
+                            <span className={cn("inline-flex items-center px-1.5 py-0.5 rounded-full text-[9px] font-semibold uppercase tracking-wider border shrink-0", STAFF_BADGE_COLORS[m.staff_role])}>
+                              {STAFF_ROLE_LABELS[m.staff_role] || m.staff_role}
+                            </span>
+                          )}
+                        </div>
                         <p className="text-xs text-muted-foreground truncate">{m.email}</p>
                       </div>
                       <Tooltip>

@@ -19,7 +19,7 @@ import { IssueDetail } from "@/components/scanner/issue-detail"
 import { ExportButton } from "@/components/scanner/export-button"
 import { ResponseHeaders } from "@/components/scanner/response-headers"
 import { SubdomainDiscovery } from "@/components/scanner/subdomain-discovery"
-import { APP_NAME } from "@/lib/constants"
+import { APP_NAME, STAFF_ROLE_LABELS } from "@/lib/constants"
 import type { ScanResult, Vulnerability } from "@/lib/scanner/types"
 
 export default function SharedScanPage() {
@@ -30,6 +30,7 @@ export default function SharedScanPage() {
   const [result, setResult] = useState<ScanResult | null>(null)
   const [scannedBy, setScannedBy] = useState("")
   const [scannedByAvatar, setScannedByAvatar] = useState<string | null>(null)
+  const [scannedByRole, setScannedByRole] = useState<string>("user")
   const [scanNotes, setScanNotes] = useState("")
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -48,6 +49,7 @@ export default function SharedScanPage() {
         setResult(data)
         setScannedBy(data.scannedBy || "")
         setScannedByAvatar(data.scannedByAvatar || null)
+        setScannedByRole(data.scannedByRole || "user")
         setScanNotes(data.notes || "")
       } catch {
         setError("Failed to load shared scan.")
@@ -131,6 +133,16 @@ export default function SharedScanPage() {
                           <span>
                             Shared by <span className="font-medium text-foreground">{scannedBy}</span>
                           </span>
+                          {scannedByRole && scannedByRole !== "user" && (
+                            <span className={`inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wider ${
+                              scannedByRole === "admin" ? "bg-red-500/10 text-red-400 border border-red-500/20" :
+                              scannedByRole === "moderator" ? "bg-amber-500/10 text-amber-400 border border-amber-500/20" :
+                              scannedByRole === "beta_tester" ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20" :
+                              "bg-blue-500/10 text-blue-400 border border-blue-500/20"
+                            }`}>
+                              {STAFF_ROLE_LABELS[scannedByRole] || scannedByRole}
+                            </span>
+                          )}
                         </div>
                       )}
                     </div>
