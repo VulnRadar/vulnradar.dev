@@ -1,5 +1,5 @@
 /**
- * VulnRadar Detection Engine v1.5.0
+ * VulnRadar Detection Engine v2.0.0
  *
  * Pure detection engine. ALL metadata (title, description, fixSteps, codeExamples, etc.)
  * lives in checks-data.json. This file contains ONLY detection logic.
@@ -1064,6 +1064,496 @@ const detectors: Record<string, DetectFn> = {
     if (!xcto) return null // caught by xcto-missing
     if (xcto.toLowerCase().trim() === "nosniff") return null
     return `X-Content-Type-Options has unexpected value: '${xcto}'. Expected 'nosniff'.`
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // NEW CHECKS v2.0
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  "nel-header-missing": (_url, headers) => {
+    if (hasHeader(headers, "nel")) return null
+    return "NEL (Network Error Logging) header not present."
+  },
+
+  "report-to-header-missing": (_url, headers) => {
+    if (hasHeader(headers, "report-to")) return null
+    return "Report-To header not present."
+  },
+
+  "timing-allow-wildcard": (_url, headers) => {
+    const v = h(headers, "timing-allow-origin")
+    if (!v || v.trim() !== "*") return null
+    return "Timing-Allow-Origin is set to wildcard (*)."
+  },
+
+  "x-powered-by-exposed": (_url, headers) => {
+    if (!hasHeader(headers, "x-powered-by")) return null
+    return `X-Powered-By header exposes: '${h(headers, "x-powered-by")}'.`
+  },
+
+  "x-aspnet-version-exposed": (_url, headers) => {
+    if (!hasHeader(headers, "x-aspnet-version")) return null
+    return `X-AspNet-Version exposed: '${h(headers, "x-aspnet-version")}'.`
+  },
+
+  "x-aspnetmvc-version-exposed": (_url, headers) => {
+    if (!hasHeader(headers, "x-aspnetmvc-version")) return null
+    return `X-AspNetMvc-Version exposed: '${h(headers, "x-aspnetmvc-version")}'.`
+  },
+
+  "via-header-exposed": (_url, headers) => {
+    if (!hasHeader(headers, "via")) return null
+    return `Via header reveals proxy chain: '${h(headers, "via")}'.`
+  },
+
+  "x-runtime-exposed": (_url, headers) => {
+    if (!hasHeader(headers, "x-runtime")) return null
+    return `X-Runtime header exposes request processing time: ${h(headers, "x-runtime")}ms.`
+  },
+
+  "x-request-id-exposed": (_url, headers) => {
+    if (!hasHeader(headers, "x-request-id")) return null
+    return "X-Request-Id header is exposed to clients."
+  },
+
+  "x-backend-server-exposed": (_url, headers) => {
+    for (const name of ["x-backend-server", "x-served-by", "x-server", "x-host"]) {
+      if (hasHeader(headers, name)) return `Header '${name}' exposes backend server info: '${h(headers, name)}'.`
+    }
+    return null
+  },
+
+  "age-header-reveals-cdn": (_url, headers) => {
+    if (!hasHeader(headers, "age")) return null
+    const age = parseInt(h(headers, "age") || "0", 10)
+    if (age < 1) return null
+    return `Age header (${age}s) reveals CDN caching behavior.`
+  },
+
+  "x-debug-header-exposed": (_url, headers) => {
+    for (const name of ["x-debug", "x-debug-token", "x-debug-token-link", "x-debug-info"]) {
+      if (hasHeader(headers, name)) return `Debug header '${name}' found in production response.`
+    }
+    return null
+  },
+
+  "cache-control-public-sensitive": (_url, headers, body) => {
+    const cc = h(headers, "cache-control")
+    if (!cc || !cc.includes("public")) return null
+    const hasForm = /<form[^>]*method\s*=\s*["']?post/i.test(body)
+    const hasPasswd = /<input[^>]*type\s*=\s*["']?password/i.test(body)
+    if (!hasForm && !hasPasswd) return null
+    return "Cache-Control: public set on page containing sensitive forms."
+  },
+
+  "access-control-expose-broad": (_url, headers) => {
+    const v = h(headers, "access-control-expose-headers")
+    if (!v) return null
+    const exposed = v.split(",").map(s => s.trim().toLowerCase())
+    if (exposed.length < 5) return null
+    return `Access-Control-Expose-Headers exposes ${exposed.length} headers: ${exposed.join(", ")}.`
+  },
+
+  "access-control-max-age-long": (_url, headers) => {
+    const v = h(headers, "access-control-max-age")
+    if (!v) return null
+    const seconds = parseInt(v, 10)
+    if (isNaN(seconds) || seconds < 86400) return null
+    return `Access-Control-Max-Age set to ${seconds}s (${Math.round(seconds/3600)}h). Preflight results cached excessively.`
+  },
+
+  "set-cookie-samesite-none-no-secure": (_url, headers) => {
+    const cookies = headers.getSetCookie?.() || []
+    for (const c of cookies) {
+      const lower = c.toLowerCase()
+      if (lower.includes("samesite=none") && !lower.includes("secure")) {
+        return `Cookie has SameSite=None without Secure flag: ${c.split("=")[0]}.`
+      }
+    }
+    return null
+  },
+
+  "cookie-max-age-excessive": (_url, headers) => {
+    const cookies = headers.getSetCookie?.() || []
+    for (const c of cookies) {
+      const m = c.match(/max-age\s*=\s*(\d+)/i)
+      if (m) {
+        const secs = parseInt(m[1], 10)
+        if (secs > 31536000) return `Cookie '${c.split("=")[0]}' has max-age of ${Math.round(secs/86400)} days.`
+      }
+    }
+    return null
+  },
+
+  "cookie-path-broad": (_url, headers) => {
+    const cookies = headers.getSetCookie?.() || []
+    let count = 0
+    for (const c of cookies) {
+      if (c.toLowerCase().includes("path=/") && !c.toLowerCase().includes("path=/;")) count++
+    }
+    return null
+  },
+
+  "etag-inode-leak": (_url, headers) => {
+    const etag = h(headers, "etag")
+    if (!etag) return null
+    if (/^"?[0-9a-f]+-[0-9a-f]+-[0-9a-f]+"?$/i.test(etag)) {
+      return `ETag '${etag}' uses inode-size-timestamp format, leaking filesystem info.`
+    }
+    return null
+  },
+
+  "csp-unsafe-inline-script": (_url, headers) => {
+    const csp = h(headers, "content-security-policy")
+    if (!csp) return null
+    const scriptSrc = csp.match(/script-src[^;]*/i)?.[0] || ""
+    if (!scriptSrc.includes("'unsafe-inline'")) return null
+    if (scriptSrc.includes("'nonce-") || scriptSrc.includes("'sha256-")) return null
+    return "CSP script-src allows 'unsafe-inline' without nonce/hash, negating XSS protection."
+  },
+
+  "csp-unsafe-eval-detected": (_url, headers) => {
+    const csp = h(headers, "content-security-policy")
+    if (!csp) return null
+    if (!csp.includes("'unsafe-eval'")) return null
+    return "CSP allows 'unsafe-eval', permitting eval(), Function(), and setTimeout with strings."
+  },
+
+  "csp-wildcard-source": (_url, headers) => {
+    const csp = h(headers, "content-security-policy")
+    if (!csp) return null
+    const parts = csp.split(";").map(s => s.trim())
+    for (const p of parts) {
+      if (p.match(/-src\s.*\*/) && !p.includes("img-src") && !p.includes("media-src")) {
+        return `CSP uses wildcard source: '${p}'.`
+      }
+    }
+    return null
+  },
+
+  "csp-data-uri-allowed": (_url, headers) => {
+    const csp = h(headers, "content-security-policy")
+    if (!csp) return null
+    const scriptSrc = csp.match(/script-src[^;]*/i)?.[0] || ""
+    if (!scriptSrc.includes("data:")) return null
+    return "CSP script-src allows data: URIs, enabling XSS via data:text/html payloads."
+  },
+
+  "csp-no-default-src": (_url, headers) => {
+    const csp = h(headers, "content-security-policy")
+    if (!csp) return null
+    if (csp.includes("default-src")) return null
+    return "CSP has no default-src fallback directive. Undeclared resource types are unrestricted."
+  },
+
+  "cors-null-origin-allowed": (_url, headers) => {
+    const acao = h(headers, "access-control-allow-origin")
+    if (!acao || acao.trim() !== "null") return null
+    return "Access-Control-Allow-Origin allows 'null' origin, exploitable via sandboxed iframes."
+  },
+
+  "referrer-policy-unsafe": (_url, headers) => {
+    const rp = h(headers, "referrer-policy")
+    if (!rp) return null
+    if (["unsafe-url", "no-referrer-when-downgrade"].includes(rp.toLowerCase().trim())) {
+      return `Referrer-Policy '${rp}' leaks full URL including paths and query parameters.`
+    }
+    return null
+  },
+
+  "x-xss-protection-disabled": (_url, headers) => {
+    const v = h(headers, "x-xss-protection")
+    if (!v) return null
+    if (v.trim() === "0") {
+      return "X-XSS-Protection explicitly disabled (set to 0). While this header is deprecated, value 0 in older browsers disables built-in XSS filtering."
+    }
+    return null
+  },
+
+  "server-version-detailed": (_url, headers) => {
+    const sv = h(headers, "server")
+    if (!sv) return null
+    if (/\d+\.\d+/.test(sv)) {
+      return `Server header reveals detailed version: '${sv}'.`
+    }
+    return null
+  },
+
+  "aws-metadata-reference": (_url, _headers, body) => {
+    if (body.includes("169.254.169.254")) {
+      return "AWS metadata endpoint IP (169.254.169.254) found in page source."
+    }
+    return null
+  },
+
+  "git-directory-exposed": (_url, _headers, body) => {
+    if (/\/?\.git\/(HEAD|config|objects|refs)/i.test(body)) {
+      return ".git directory paths detected in page source."
+    }
+    return null
+  },
+
+  "env-file-reference": (_url, _headers, body) => {
+    if (/['"\/]\.env(\.(local|production|development|test))?\b/.test(body)) {
+      return ".env file reference found in page source."
+    }
+    return null
+  },
+
+  "backup-file-reference": (_url, _headers, body) => {
+    if (/\.(bak|old|orig|save|swp|tmp|backup)\b/i.test(body)) {
+      return "Backup file extension references (.bak, .old, .orig, etc.) detected."
+    }
+    return null
+  },
+
+  "phpinfo-exposed": (_url, _headers, body) => {
+    if (/<title>phpinfo\(\)/i.test(body) || /phpinfo\.php/i.test(body)) {
+      return "phpinfo() page or reference detected. This exposes complete server configuration."
+    }
+    return null
+  },
+
+  "wp-login-exposed": (_url, _headers, body) => {
+    if (/wp-login\.php|wp-admin\//i.test(body) && /<meta[^>]*generator[^>]*wordpress/i.test(body)) {
+      return "WordPress admin/login page paths exposed with WordPress generator tag."
+    }
+    return null
+  },
+
+  "graphql-endpoint-exposed": (_url, _headers, body) => {
+    if (/["']\/graphi?ql["']|__schema\s*\{|introspectionQuery/i.test(body)) {
+      return "GraphQL endpoint or introspection references found in page source."
+    }
+    return null
+  },
+
+  "swagger-docs-exposed": (_url, _headers, body) => {
+    if (/swagger-ui|\/api-docs|openapi\.json|\/swagger\.json/i.test(body)) {
+      return "Swagger/OpenAPI documentation endpoints referenced in page source."
+    }
+    return null
+  },
+
+  "sql-error-in-page": (_url, _headers, body) => {
+    const patterns = [
+      /SQL syntax.*MySQL/i,
+      /ORA-\d{5}/,
+      /Microsoft SQL.*Driver/i,
+      /PostgreSQL.*ERROR/i,
+      /pg_query\(\)/i,
+      /sqlite3?\.OperationalError/i,
+      /SQLSTATE\[/,
+    ]
+    for (const p of patterns) {
+      if (p.test(body)) return `SQL error message detected: matches pattern ${p.source}.`
+    }
+    return null
+  },
+
+  "php-error-in-page": (_url, _headers, body) => {
+    if (/PHP (Fatal|Parse|Warning|Notice) error/i.test(body) || /on line \d+ in \/[^\s]+\.php/i.test(body)) {
+      return "PHP error/warning message found in page output."
+    }
+    return null
+  },
+
+  "asp-error-in-page": (_url, _headers, body) => {
+    if (/Server Error in .* Application/i.test(body) || /ASP\.NET.*Unhandled Exception/i.test(body)) {
+      return "ASP.NET error page detected in response."
+    }
+    return null
+  },
+
+  "django-debug-page": (_url, _headers, body) => {
+    if (/Django Version:|Traceback.*most recent call/i.test(body) && /settings\.py|INSTALLED_APPS/i.test(body)) {
+      return "Django debug page detected with framework details exposed."
+    }
+    return null
+  },
+
+  "laravel-debug-page": (_url, _headers, body) => {
+    if (/Whoops.*Laravel|Illuminate\\.*Exception/i.test(body)) {
+      return "Laravel debug page (Whoops) detected with framework details."
+    }
+    return null
+  },
+
+  "spring-boot-actuator": (_url, _headers, body) => {
+    if (/\/actuator\/(health|env|info|beans|mappings)/i.test(body)) {
+      return "Spring Boot Actuator endpoints found in page source."
+    }
+    return null
+  },
+
+  "websocket-unencrypted": (_url, _headers, body) => {
+    if (/new\s+WebSocket\s*\(\s*["']ws:\/\//i.test(body)) {
+      return "Unencrypted WebSocket (ws://) connection detected. Use wss:// instead."
+    }
+    return null
+  },
+
+  "mixed-content-form-action": (url, _headers, body) => {
+    if (!url.startsWith("https://")) return null
+    if (/<form[^>]*action\s*=\s*["']http:\/\//i.test(body)) {
+      return "HTTPS page contains form submitting to HTTP endpoint."
+    }
+    return null
+  },
+
+  "iframe-no-sandbox": (_url, _headers, body) => {
+    const iframes = body.match(/<iframe[^>]*>/gi) || []
+    let unsandboxed = 0
+    for (const f of iframes) {
+      if (!f.includes("sandbox")) unsandboxed++
+    }
+    if (unsandboxed < 1) return null
+    return `${unsandboxed} iframe(s) found without sandbox attribute.`
+  },
+
+  "external-script-no-sri": (_url, _headers, body) => {
+    const scripts = body.match(/<script[^>]*src\s*=\s*["'][^"']*["'][^>]*>/gi) || []
+    let missing = 0
+    for (const s of scripts) {
+      if (/src\s*=\s*["']https?:\/\//i.test(s) && !s.includes("integrity")) missing++
+    }
+    if (missing < 1) return null
+    return `${missing} external script(s) loaded without Subresource Integrity (SRI) hash.`
+  },
+
+  "inline-event-handlers": (_url, _headers, body) => {
+    const handlers = body.match(/\son(click|error|load|mouseover|focus|blur|submit|change|input)\s*=\s*["']/gi)
+    if (!handlers || handlers.length < 3) return null
+    return `${handlers.length} inline event handler attributes found (onclick, onerror, etc.).`
+  },
+
+  "eval-in-scripts": (_url, _headers, body) => {
+    const scripts = body.match(/<script[^>]*>[\s\S]*?<\/script>/gi) || []
+    for (const s of scripts) {
+      if (/\beval\s*\(/.test(s) && !s.includes("JSON.parse")) {
+        return "eval() usage detected in inline scripts."
+      }
+    }
+    return null
+  },
+
+  "document-domain-usage": (_url, _headers, body) => {
+    if (/document\.domain\s*=/.test(body)) {
+      return "document.domain assignment found. This deprecated practice relaxes same-origin policy."
+    }
+    return null
+  },
+
+  "postmessage-star-origin": (_url, _headers, body) => {
+    if (/\.postMessage\s*\([^)]*,\s*["']\*["']\s*\)/.test(body)) {
+      return "postMessage() called with wildcard (*) origin, sending data to any origin."
+    }
+    return null
+  },
+
+  "jwt-in-html": (_url, _headers, body) => {
+    if (/eyJ[A-Za-z0-9_-]{20,}\.eyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}/.test(body)) {
+      return "JWT token found embedded in HTML page source."
+    }
+    return null
+  },
+
+  "private-key-in-source": (_url, _headers, body) => {
+    if (/-----BEGIN (RSA |EC |DSA )?PRIVATE KEY-----/.test(body)) {
+      return "Private key material found in page source!"
+    }
+    return null
+  },
+
+  "base64-credentials": (_url, _headers, body) => {
+    const matches = body.match(/[Bb]asic\s+[A-Za-z0-9+/]{20,}={0,2}/g)
+    if (!matches) return null
+    return `Basic authentication credentials (Base64) found in page source: ${matches.length} occurrence(s).`
+  },
+
+  "connection-string-exposed": (_url, _headers, body) => {
+    if (/(?:mongodb|mysql|postgres|redis):\/\/[^"'\s<]+@[^"'\s<]+/i.test(body)) {
+      return "Database connection string with credentials found in page source."
+    }
+    return null
+  },
+
+  "s3-bucket-exposed": (_url, _headers, body) => {
+    if (/[a-z0-9.-]+\.s3[.-](?:us|eu|ap|sa|ca|me|af)-[a-z]+-\d\.amazonaws\.com/i.test(body) ||
+        /s3:\/\/[a-z0-9.-]+/i.test(body)) {
+      return "AWS S3 bucket reference found in page source."
+    }
+    return null
+  },
+
+  "firebase-config-exposed": (_url, _headers, body) => {
+    if (/firebaseConfig\s*=\s*\{/.test(body) && /apiKey/.test(body) && /authDomain/.test(body)) {
+      return "Firebase configuration object with API key found in page source."
+    }
+    return null
+  },
+
+  "sourcemap-reference": (_url, _headers, body) => {
+    if (/\/\/[#@]\s*sourceMappingURL\s*=\s*\S+\.map/i.test(body)) {
+      return "JavaScript source map URL reference found. Source maps expose original source code."
+    }
+    return null
+  },
+
+  "open-redirect-params": (_url, _headers, body) => {
+    const matches = body.match(/[?&](redirect|return|next|url|goto|destination|continue|redir|returnTo)\s*=\s*https?%3A/gi)
+    if (!matches) return null
+    return `Potential open redirect parameter(s) found: ${matches.length} occurrence(s).`
+  },
+
+  "clickjacking-frameable": (_url, headers) => {
+    const xfo = h(headers, "x-frame-options")
+    const csp = h(headers, "content-security-policy")
+    if (xfo) return null
+    if (csp && csp.includes("frame-ancestors")) return null
+    return "No framing protection detected (no X-Frame-Options, no CSP frame-ancestors)."
+  },
+
+  "sri-link-stylesheet-missing": (_url, _headers, body) => {
+    const links = body.match(/<link[^>]*rel\s*=\s*["']stylesheet["'][^>]*>/gi) || []
+    let missing = 0
+    for (const l of links) {
+      if (/href\s*=\s*["']https?:\/\//i.test(l) && !l.includes("integrity")) missing++
+    }
+    if (missing < 1) return null
+    return `${missing} external stylesheet(s) loaded without SRI integrity hash.`
+  },
+
+  "autocomplete-sensitive-fields": (_url, _headers, body) => {
+    const inputs = body.match(/<input[^>]*type\s*=\s*["']?(password|email|tel|number)[^>]*>/gi) || []
+    let missing = 0
+    for (const i of inputs) {
+      if (!i.includes("autocomplete")) missing++
+    }
+    if (missing < 2) return null
+    return `${missing} sensitive input field(s) missing autocomplete attribute.`
+  },
+
+  "form-method-get-sensitive": (_url, _headers, body) => {
+    const forms = body.match(/<form[^>]*>/gi) || []
+    for (const f of forms) {
+      if (/method\s*=\s*["']?get/i.test(f) || !f.includes("method")) {
+        const after = body.substring(body.indexOf(f), body.indexOf(f) + 500)
+        if (/type\s*=\s*["']?password/i.test(after)) {
+          return "Form with password field uses GET method, exposing credentials in URL."
+        }
+      }
+    }
+    return null
+  },
+
+  "meta-referrer-unsafe": (_url, _headers, body) => {
+    const meta = body.match(/<meta[^>]*name\s*=\s*["']referrer["'][^>]*content\s*=\s*["']([^"']*)["'][^>]*>/i)
+    if (!meta) return null
+    if (["unsafe-url", "no-referrer-when-downgrade"].includes(meta[1].toLowerCase())) {
+      return `Meta referrer tag set to '${meta[1]}', leaking full URL as referrer.`
+    }
+    return null
   },
 }
 
