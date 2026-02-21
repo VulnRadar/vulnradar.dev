@@ -83,16 +83,52 @@ export function Dashboard() {
   }, [])
 
   if (loading) {
+    const statLabels = ["Total Scans", "Unique Sites", "API Scans", "Web Scans"]
+    const statIcons = [BarChart3, Globe, Terminal, Monitor]
     return (
       <div className="flex flex-col gap-4 pt-8">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          {[...Array(4)].map((_, i) => (
-            <div key={i} className="h-24 rounded-xl bg-card border border-border animate-pulse" />
-          ))}
+          {statLabels.map((label, i) => {
+            const Icon = statIcons[i]
+            return (
+              <Card key={i} className="bg-card border-border">
+                <CardContent className="pt-4 pb-4 px-4">
+                  <div className="flex items-center gap-3">
+                    <div className="flex items-center justify-center w-9 h-9 rounded-lg bg-primary/10">
+                      <Icon className="h-4 w-4 text-primary/40" />
+                    </div>
+                    <div>
+                      <div className="h-7 w-10 rounded bg-muted animate-pulse" />
+                      <p className="text-xs text-muted-foreground mt-1">{label}</p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            )
+          })}
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          {[...Array(4)].map((_, i) => (
-            <div key={i} className="h-48 rounded-xl bg-card border border-border animate-pulse" />
+          {([
+            { title: "Severity Breakdown", icon: Shield, color: "text-primary" },
+            { title: "Scan Activity", icon: TrendingUp, color: "text-primary" },
+            { title: "Top Issues", icon: AlertTriangle, color: "text-[hsl(var(--severity-high))]" },
+            { title: "Recent Scans", icon: Clock, color: "text-primary" },
+          ] as const).map(({ title, icon: CardIcon, color }, i) => (
+            <Card key={i} className="bg-card border-border">
+              <CardHeader className="pb-3 pt-4 px-4">
+                <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                  <CardIcon className={cn("h-4 w-4", color)} />
+                  {title}
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="px-4 pb-4">
+                <div className="flex flex-col gap-2.5">
+                  {[...Array(i === 1 ? 1 : i === 0 ? 5 : 4)].map((_, j) => (
+                    <div key={j} className={cn("rounded bg-muted animate-pulse", i === 1 ? "h-24" : "h-4")} style={{ width: i === 1 ? "100%" : `${85 - j * 10}%` }} />
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
           ))}
         </div>
       </div>

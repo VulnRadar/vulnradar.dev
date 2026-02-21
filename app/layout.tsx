@@ -5,6 +5,7 @@ import Script from 'next/script'
 import { ThemeProvider } from '@/components/theme-provider'
 import { TosGate } from '@/components/tos-gate'
 import { BackupCodesModal } from '@/components/notification-center'
+import { AuthProvider } from '@/components/auth-provider'
 import { APP_NAME, APP_DESCRIPTION, APP_URL, APP_VERSION, LOGO_URL } from '@/lib/constants'
 
 import './globals.css'
@@ -76,6 +77,9 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className="dark" suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: `try{var d=localStorage.getItem("vr_auth_cache");if(d){var p=JSON.parse(d),s=document.createElement("style");s.id="vr-auth-css";var r="";if(p&&p.userId){r+=".vr-auth-only{visibility:visible!important;pointer-events:auto!important}"}if(p&&p.role&&["admin","moderator","support"].includes(p.role)){r+=".vr-staff-only{display:flex!important}"}if(r){s.textContent=r;document.head.appendChild(s)}}}catch(e){}` }} />
+      </head>
       <body className="font-sans antialiased" suppressHydrationWarning>
         <ThemeProvider
           attribute="class"
@@ -83,10 +87,12 @@ export default function RootLayout({
           enableSystem
           disableTransitionOnChange
         >
-          <TosGate>
-            {children}
-          </TosGate>
-          <BackupCodesModal />
+          <AuthProvider>
+            <TosGate>
+              {children}
+            </TosGate>
+            <BackupCodesModal />
+          </AuthProvider>
         </ThemeProvider>
         <Script id="tawk-to" strategy="lazyOnload">
           {`var Tawk_API=Tawk_API||{}, Tawk_LoadStart=new Date();

@@ -2,7 +2,6 @@
 
 import { useEffect, useState, useCallback, useMemo, useRef } from "react"
 import { useRouter, usePathname } from "next/navigation"
-import useSWR from "swr"
 import {
   X,
   Sparkles,
@@ -21,6 +20,7 @@ import {
   APP_NAME,
 } from "@/lib/constants"
 import { PUBLIC_PATHS } from "@/lib/public-paths"
+import { useAuth } from "@/components/auth-provider"
 
 // ─── Cookie Helpers ──────────────────────────────────────────────
 
@@ -44,17 +44,12 @@ export function BackupCodesModal() {
   const pathname = usePathname()
   const [dismissed, setDismissed] = useState(false)
   const [closing, setClosing] = useState(false)
+  const { me } = useAuth()
 
   const isPublicRoute = PUBLIC_PATHS.some((p) => {
     if (p === "/" || p === "/landing") return pathname === p
     return pathname.startsWith(p)
   })
-
-  const { data: me } = useSWR(
-    isPublicRoute ? null : "/api/auth/me",
-    (url: string) => fetch(url).then((r) => r.json()),
-    { revalidateOnFocus: false, dedupingInterval: 60000 },
-  )
 
   const show = !isPublicRoute && me?.userId && me?.backupCodesInvalid && !dismissed
 
@@ -136,33 +131,30 @@ interface NotifItem {
 
 // ─── Notification Bell (header dropdown) ─────────────────────────
 
+function initVersionDismissed(): boolean {
+  if (typeof document === "undefined") return true
+  const v = getCookie(VERSION_COOKIE_NAME)
+  return !!v && v === APP_VERSION
+}
+
+function initDiscordDismissed(): boolean {
+  if (typeof document === "undefined") return true
+  return !!getCookie(DISCORD_COOKIE)
+}
+
 export function NotificationBell() {
   const router = useRouter()
   const pathname = usePathname()
   const [open, setOpen] = useState(false)
+  const [versionDismissed, setVersionDismissed] = useState(initVersionDismissed)
+  const [discordDismissed, setDiscordDismissed] = useState(initDiscordDismissed)
   const ref = useRef<HTMLDivElement>(null)
-
-  const [versionDismissed, setVersionDismissed] = useState(true)
-  const [discordDismissed, setDiscordDismissed] = useState(true)
+  const { me } = useAuth()
 
   const isPublicRoute = PUBLIC_PATHS.some((p) => {
     if (p === "/" || p === "/landing") return pathname === p
     return pathname.startsWith(p)
   })
-
-  const { data: me } = useSWR(
-    isPublicRoute ? null : "/api/auth/me",
-    (url: string) => fetch(url).then((r) => r.json()),
-    { revalidateOnFocus: false, dedupingInterval: 60000 },
-  )
-
-  useEffect(() => {
-    if (!me?.userId) return
-    const lastSeenVersion = getCookie(VERSION_COOKIE_NAME)
-    if (!lastSeenVersion || lastSeenVersion !== APP_VERSION) setVersionDismissed(false)
-    const discordSeen = getCookie(DISCORD_COOKIE)
-    if (!discordSeen) setDiscordDismissed(false)
-  }, [me?.userId])
 
   // Close on outside click
   useEffect(() => {
@@ -225,10 +217,8 @@ export function NotificationBell() {
 
   const count = notifications.length
 
-  if (!me?.userId || isPublicRoute) return null
-
   return (
-    <div ref={ref} className="relative">
+    <div ref={ref} className={cn("relative vr-auth-only", isPublicRoute && "!invisible !pointer-events-none")}>
       <Button
         variant="ghost"
         size="icon"
@@ -245,7 +235,7 @@ export function NotificationBell() {
       </Button>
 
       {open && (
-        <div className="absolute right-0 top-full mt-2 w-80 rounded-xl border border-border bg-card shadow-xl z-50 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-150">
+        <div className="fixed right-3 left-3 sm:left-auto sm:absolute sm:right-0 sm:w-80 top-14 sm:top-full sm:mt-2 rounded-xl border border-border bg-card shadow-xl z-50 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-150">
           {/* Header */}
           <div className="flex items-center justify-between px-4 py-3 border-b border-border">
             <span className="text-sm font-semibold text-foreground">Notifications</span>

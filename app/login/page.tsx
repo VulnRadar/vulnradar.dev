@@ -35,12 +35,16 @@ function LoginForm() {
 
   // 2FA state
   const [needs2FA, setNeeds2FA] = useState(false)
+  const [twoFactorMethod, setTwoFactorMethod] = useState<string | null>(null)
   const [pendingUserId, setPendingUserId] = useState<number | null>(null)
   const [totpCode, setTotpCode] = useState("")
   const [verifying2FA, setVerifying2FA] = useState(false)
   const [useBackupCode, setUseBackupCode] = useState(false)
   const [backupCodeInput, setBackupCodeInput] = useState("")
   const [rememberDevice, setRememberDevice] = useState(false)
+  const [emailCodeSent, setEmailCodeSent] = useState(false)
+  const [resendingCode, setResendingCode] = useState(false)
+  const [maskedEmail, setMaskedEmail] = useState("")
 
   async function handleResendVerification() {
     setResendingVerification(true)
@@ -94,6 +98,12 @@ function LoginForm() {
       if (data.requires2FA) {
         setNeeds2FA(true)
         setPendingUserId(data.userId)
+        setTwoFactorMethod(data.twoFactorMethod || "app")
+        // Email code is sent server-side by the login route
+        if (data.twoFactorMethod === "email") {
+          setEmailCodeSent(true)
+          if (data.maskedEmail) setMaskedEmail(data.maskedEmail)
+        }
         setLoading(false)
         return
       }
@@ -153,14 +163,18 @@ function LoginForm() {
           </div>
           <CardTitle className="text-xl font-bold tracking-tight">
             {needs2FA
-              ? useBackupCode ? "Use a Backup Code" : "Two-Factor Authentication"
+              ? useBackupCode ? "Use a Backup Code"
+              : twoFactorMethod === "email" ? "Check Your Email"
+              : "Two-Factor Authentication"
               : "Welcome back"}
           </CardTitle>
           <CardDescription>
             {needs2FA
               ? useBackupCode
                 ? "Enter one of your 8-character backup codes"
-                : "Enter the 6-digit code from your authenticator app"
+                : twoFactorMethod === "email"
+                  ? `We sent a 6-digit code to ${maskedEmail || "your email address"}`
+                  : "Enter the 6-digit code from your authenticator app"
               : `Sign in to your ${APP_NAME} account`}
           </CardDescription>
         </CardHeader>
@@ -247,19 +261,51 @@ function LoginForm() {
             </Button>
 
             <div className="flex flex-col items-center gap-2">
-              <button
-                type="button"
-                onClick={() => {
-                  setUseBackupCode(!useBackupCode)
-                  setBackupCodeInput("")
-                  setTotpCode("")
-                  setRememberDevice(false)
-                  setError("")
-                }}
-                className="text-sm text-muted-foreground hover:text-foreground transition-colors"
-              >
-                {useBackupCode ? "Use Authenticator App" : "Use Backup Code"}
-              </button>
+              {twoFactorMethod === "email" ? (
+                <button
+                  type="button"
+                  disabled={resendingCode}
+                  onClick={async () => {
+                    setResendingCode(true)
+                    setError("")
+                    try {
+                      const res = await fetch("/api/auth/2fa/email-send", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                      })
+                      const data = await res.json()
+                      if (res.ok) {
+                        setEmailCodeSent(true)
+                        setTotpCode("")
+                        if (data.maskedEmail) setMaskedEmail(data.maskedEmail)
+                      } else {
+                        setError(data.error || "Failed to resend code.")
+                      }
+                    } catch {
+                      setError("Failed to resend code.")
+                    } finally {
+                      setResendingCode(false)
+                    }
+                  }}
+                  className="text-sm text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
+                >
+                  {resendingCode ? "Sending..." : "Resend code"}
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setUseBackupCode(!useBackupCode)
+                    setBackupCodeInput("")
+                    setTotpCode("")
+                    setRememberDevice(false)
+                    setError("")
+                  }}
+                  className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  {useBackupCode ? "Use Authenticator App" : "Use Backup Code"}
+                </button>
+              )}
             </div>
           </form>
         ) : (

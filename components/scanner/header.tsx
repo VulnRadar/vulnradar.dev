@@ -5,12 +5,12 @@ import { ThemeToggle } from "@/components/theme-toggle"
 import { Button } from "@/components/ui/button"
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet"
 import { useRouter, usePathname } from "next/navigation"
-import { useState, useEffect } from "react"
-import useSWR from "swr"
+import { useState } from "react"
 import { cn } from "@/lib/utils"
 import Image from "next/image"
 import { APP_NAME } from "@/lib/constants"
 import { NotificationBell } from "@/components/notification-center"
+import { useAuth, clearAuthCache } from "@/components/auth-provider"
 
 const STAFF_ROLES = ["admin", "moderator", "support"]
 
@@ -25,32 +25,16 @@ const NAV_LINKS = [
   { href: "/profile", label: "Profile", icon: User },
 ]
 
-function getCachedRole(): string | null {
-  try { return sessionStorage.getItem("vr_user_role") } catch { return null }
-}
-
 export function Header() {
   const router = useRouter()
   const pathname = usePathname()
   const [mobileOpen, setMobileOpen] = useState(false)
-  const [cachedRole, setCachedRole] = useState(getCachedRole)
-  const { data: me } = useSWR("/api/auth/me", (url: string) => fetch(url).then((r) => r.json()), {
-    revalidateOnFocus: false,
-    dedupingInterval: 60000,
-  })
+  const { me } = useAuth()
 
-  // Cache role in sessionStorage when loaded
-  useEffect(() => {
-    if (me?.role) {
-      try { sessionStorage.setItem("vr_user_role", me.role) } catch {}
-      setCachedRole(me.role)
-    }
-  }, [me?.role])
-
-  const effectiveRole = me?.role || cachedRole
-  const isStaff = STAFF_ROLES.includes(effectiveRole || "")
+  const isStaff = STAFF_ROLES.includes(me?.role || "")
 
   async function handleLogout() {
+    clearAuthCache()
     await fetch("/api/auth/logout", { method: "POST" })
     router.push("/login")
     router.refresh()
@@ -97,20 +81,18 @@ export function Header() {
                   </button>
               )
             })}
-            {isStaff && (
-                <button
-                    onClick={() => router.push("/admin")}
-                    className={cn(
-                        "flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors",
-                        pathname === "/admin"
-                            ? "bg-destructive/10 text-destructive"
-                            : "text-destructive/70 hover:text-destructive hover:bg-destructive/10",
-                    )}
-                >
-                  <ShieldAlert className="h-4 w-4" />
-                  Admin
-                </button>
-            )}
+            <button
+                onClick={() => router.push("/admin")}
+                className={cn(
+                    "vr-staff-only items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors",
+                    pathname === "/admin"
+                        ? "bg-destructive/10 text-destructive"
+                        : "text-destructive/70 hover:text-destructive hover:bg-destructive/10",
+                )}
+            >
+              <ShieldAlert className="h-4 w-4" />
+              Admin
+            </button>
           </nav>
 
           {/* Right side */}
@@ -165,20 +147,18 @@ export function Header() {
                     </button>
                 )
               })}
-              {isStaff && (
-                  <button
-                      onClick={() => { router.push("/admin"); setMobileOpen(false) }}
-                      className={cn(
-                          "flex items-center gap-2.5 px-3 py-2.5 rounded-md text-sm font-medium transition-colors",
-                          pathname === "/admin"
-                              ? "bg-destructive/10 text-destructive"
-                              : "text-destructive/70 hover:text-destructive hover:bg-destructive/10",
-                      )}
-                  >
-                    <ShieldAlert className="h-4 w-4" />
-                    Admin
-                  </button>
-              )}
+              <button
+                  onClick={() => { router.push("/admin"); setMobileOpen(false) }}
+                  className={cn(
+                      "vr-staff-only items-center gap-2.5 px-3 py-2.5 rounded-md text-sm font-medium transition-colors",
+                      pathname === "/admin"
+                          ? "bg-destructive/10 text-destructive"
+                          : "text-destructive/70 hover:text-destructive hover:bg-destructive/10",
+                  )}
+              >
+                <ShieldAlert className="h-4 w-4" />
+                Admin
+              </button>
               <div className="my-2 border-t border-border" />
               <button
                   onClick={handleLogout}
