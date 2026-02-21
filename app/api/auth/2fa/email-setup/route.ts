@@ -47,17 +47,15 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     userAgent: ua || "Unknown",
   })
 
-  // Await the email send so errors surface properly
-  try {
-    await sendNotificationEmail({
+  // Send notification in background - don't block the response
+  setImmediate(() => {
+    sendNotificationEmail({
       userId: session.userId,
       userEmail: rows[0].email,
       type: "two_factor_changes",
       emailContent,
-    })
-  } catch (err) {
-    console.error("Failed to send email 2FA enabled notification:", err)
-  }
+    }).catch((err) => console.error("Failed to send email 2FA enabled notification:", err))
+  })
 
   return ApiResponse.success({ success: true })
 })
@@ -102,16 +100,15 @@ export const DELETE = withErrorHandling(async (request: NextRequest) => {
     userAgent: ua || "Unknown",
   })
 
-  try {
-    await sendNotificationEmail({
+  // Send notification in background - don't block the response
+  setImmediate(() => {
+    sendNotificationEmail({
       userId: session.userId,
       userEmail: rows[0].email,
       type: "two_factor_changes",
       emailContent,
-    })
-  } catch (err) {
-    console.error("Failed to send email 2FA disabled notification:", err)
-  }
+    }).catch((err) => console.error("Failed to send email 2FA disabled notification:", err))
+  })
 
   return ApiResponse.success({ success: true })
 })

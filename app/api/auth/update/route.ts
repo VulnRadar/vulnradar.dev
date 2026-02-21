@@ -49,18 +49,16 @@ export async function PATCH(request: NextRequest) {
       if (trimmed !== currentName) {
         await pool.query("UPDATE users SET name = $1 WHERE id = $2", [trimmed, session.userId])
 
-        // Send account changes notification email via notifications helper so user preferences are respected
+        // Send account changes notification (non-blocking)
         const emailContent = profileNameChangedEmail(currentName || "Not set", trimmed, { ipAddress: ip, userAgent })
-        try {
-          await sendNotificationEmail({
+        setImmediate(() => {
+          sendNotificationEmail({
             userId: session.userId,
             userEmail: currentEmail,
             type: "account_changes",
             emailContent,
-          })
-        } catch (err) {
-          console.error("Failed to send profile name change notification:", err)
-        }
+          }).catch((err) => console.error("Failed to send profile name change notification:", err))
+        })
       }
     }
 
@@ -83,28 +81,22 @@ export async function PATCH(request: NextRequest) {
 
         await pool.query("UPDATE users SET email = $1 WHERE id = $2", [trimmedEmail, session.userId])
 
-        // Send account changes email to BOTH old and new email addresses via notifications helper
+        // Send account changes email to BOTH old and new email addresses (non-blocking)
         const emailContent = profileEmailChangedEmail(currentEmail, trimmedEmail, { ipAddress: ip, userAgent })
-        try {
-          await sendNotificationEmail({
+        setImmediate(() => {
+          sendNotificationEmail({
             userId: session.userId,
             userEmail: currentEmail,
             type: "account_changes",
             emailContent,
-          })
-        } catch (err) {
-          console.error("Failed to send profile email change (old) notification:", err)
-        }
-        try {
-          await sendNotificationEmail({
+          }).catch((err) => console.error("Failed to send profile email change (old) notification:", err))
+          sendNotificationEmail({
             userId: session.userId,
             userEmail: trimmedEmail,
             type: "account_changes",
             emailContent,
-          })
-        } catch (err) {
-          console.error("Failed to send profile email change (new) notification:", err)
-        }
+          }).catch((err) => console.error("Failed to send profile email change (new) notification:", err))
+        })
       }
     }
 
@@ -154,18 +146,16 @@ export async function PATCH(request: NextRequest) {
       const newHash = hashPassword(newPassword)
       await pool.query("UPDATE users SET password_hash = $1 WHERE id = $2", [newHash, session.userId])
 
-      // Send password change notification (respects user prefs)
+      // Send password change notification (non-blocking, respects user prefs)
       const emailContent = profilePasswordChangedEmail({ ipAddress: ip, userAgent })
-      try {
-        await sendNotificationEmail({
+      setImmediate(() => {
+        sendNotificationEmail({
           userId: session.userId,
           userEmail: currentEmail,
           type: "password_changes",
           emailContent,
-        })
-      } catch (err) {
-        console.error("[v0] Failed to send password change notification:", err)
-      }
+        }).catch((err) => console.error("Failed to send password change notification:", err))
+      })
     }
 
     // Fetch updated user info
