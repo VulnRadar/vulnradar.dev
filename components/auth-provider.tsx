@@ -1,6 +1,6 @@
 "use client"
 
-import { createContext, useContext, ReactNode, useEffect, useState } from "react"
+import { createContext, useContext, ReactNode, useEffect, useSyncExternalStore } from "react"
 import useSWR from "swr"
 
 interface AuthContextType {
@@ -10,59 +10,72 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
-function getInitialAuthData() {
+// ── Synchronous localStorage cache ──────────────────────────────
+// This lets us read the cached auth data on the very first client
+// render, completely avoiding the flash.
+
+let memoryCache: any = null
+
+function readCache(): any {
+  if (memoryCache) return memoryCache
   if (typeof window === "undefined") return null
   try {
-    const cached = localStorage.getItem("vr_auth_cache")
-    const timestamp = localStorage.getItem("vr_auth_timestamp")
-    
-    if (cached && timestamp) {
-      const age = Date.now() - parseInt(timestamp, 10)
-      // Use cache if less than 1 hour old
-      if (age < 3600000) {
-        return JSON.parse(cached)
-      }
+    const raw = localStorage.getItem("vr_auth_cache")
+    if (raw) {
+      memoryCache = JSON.parse(raw)
+      return memoryCache
     }
-    return null
-  } catch {
-    return null
-  }
+  } catch {}
+  return null
+}
+
+function subscribe(cb: () => void) {
+  window.addEventListener("vr-auth-update", cb)
+  return () => window.removeEventListener("vr-auth-update", cb)
+}
+
+function getSnapshot() {
+  return memoryCache ?? readCache()
+}
+
+function getServerSnapshot() {
+  return null
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [initialData] = useState(() => getInitialAuthData())
+  // Synchronously read cached auth on first client render
+  const cached = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot)
 
-  // Only fetch if we don't have cached data or it's stale
-  const shouldFetch = !initialData
-
-  const { data: me } = useSWR(
-    shouldFetch ? "/api/auth/me" : null,
+  const { data: fetched } = useSWR(
+    "/api/auth/me",
     (url: string) => fetch(url).then((r) => r.json()),
     {
-      fallbackData: initialData,
+      fallbackData: cached,
       revalidateOnFocus: false,
       revalidateOnReconnect: false,
-      dedupingInterval: 3600000, // 1 hour
-      focusThrottleInterval: 3600000,
+      dedupingInterval: 300000,
+      focusThrottleInterval: 300000,
       keepPreviousData: true,
       shouldRetryOnError: false,
       errorRetryCount: 0,
-      errorRetryInterval: 0,
     }
   )
 
-  // Cache auth data in localStorage whenever it updates
+  const me = fetched ?? cached
+
+  // Persist to localStorage + memory whenever auth data changes
   useEffect(() => {
     if (me) {
+      memoryCache = me
       try {
         localStorage.setItem("vr_auth_cache", JSON.stringify(me))
-        localStorage.setItem("vr_auth_timestamp", Date.now().toString())
       } catch {}
+      window.dispatchEvent(new Event("vr-auth-update"))
     }
   }, [me])
 
   return (
-    <AuthContext.Provider value={{ me, isLoading: false }}>
+    <AuthContext.Provider value={{ me, isLoading: !me }}>
       {children}
     </AuthContext.Provider>
   )
@@ -74,4 +87,13 @@ export function useAuth() {
     throw new Error("useAuth must be used within AuthProvider")
   }
   return context
+}
+
+// Call on logout to clear cache
+export function clearAuthCache() {
+  memoryCache = null
+  try {
+    localStorage.removeItem("vr_auth_cache")
+  } catch {}
+  window.dispatchEvent(new Event("vr-auth-update"))
 }
