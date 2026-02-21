@@ -1,76 +1,108 @@
-import { NextResponse } from "next/server"
-import { cookies } from "next/headers"
-import { Pool } from "@neondatabase/serverless"
-import bcrypt from "bcryptjs"
-import jwt from "jsonwebtoken"
-
-const pool = new Pool({ connectionString: process.env.DATABASE_URL })
-
-function getUserFromToken(): { userId: number } | null {
-  try {
-    const token = cookies().get("session")?.value
-    if (!token) return null
-    return jwt.verify(token, process.env.JWT_SECRET || "dev-secret") as { userId: number }
-  } catch {
-    return null
-  }
-}
+import { NextRequest } from "next/server"
+import { getSession, verifyPassword } from "@/lib/auth"
+import { email2FAEnabledEmail, email2FADisabledEmail } from "@/lib/email"
+import { sendNotificationEmail } from "@/lib/notifications"
+import pool from "@/lib/db"
+import { ApiResponse, parseBody, withErrorHandling } from "@/lib/api-utils"
+import { ERROR_MESSAGES } from "@/lib/constants"
+import { getClientIp, getUserAgent } from "@/lib/request-utils"
 
 // POST - Enable email 2FA
-export async function POST(request: Request) {
-  try {
-    const user = getUserFromToken()
-    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+export const POST = withErrorHandling(async (request: NextRequest) => {
+  const session = await getSession()
+  if (!session) return ApiResponse.unauthorized(ERROR_MESSAGES.UNAUTHORIZED)
 
-    const { password } = await request.json()
-    if (!password) return NextResponse.json({ error: "Password is required." }, { status: 400 })
+  const parsed = await parseBody<{ password: string }>(request)
+  if (!parsed.success) return ApiResponse.badRequest(parsed.error)
+  const { password } = parsed.data
 
-    // Verify password
-    const { rows } = await pool.query("SELECT password_hash, totp_enabled, two_factor_method FROM users WHERE id = $1", [user.userId])
-    if (rows.length === 0) return NextResponse.json({ error: "User not found." }, { status: 404 })
+  if (!password) return ApiResponse.badRequest("Password is required.")
 
-    const valid = await bcrypt.compare(password, rows[0].password_hash)
-    if (!valid) return NextResponse.json({ error: "Incorrect password." }, { status: 403 })
+  // Get user and verify password
+  const { rows } = await pool.query(
+    "SELECT password_hash, totp_enabled, two_factor_method, email FROM users WHERE id = $1",
+    [session.userId],
+  )
+  if (rows.length === 0) return ApiResponse.notFound("User not found.")
 
-    // Check if app 2FA is enabled
-    if (rows[0].totp_enabled && rows[0].two_factor_method === "app") {
-      return NextResponse.json({ error: "Disable authenticator app 2FA first." }, { status: 400 })
-    }
+  const valid = verifyPassword(password, rows[0].password_hash)
+  if (!valid) return ApiResponse.forbidden("Incorrect password.")
 
-    // Enable email 2FA
-    await pool.query("UPDATE users SET totp_enabled = true, two_factor_method = 'email' WHERE id = $1", [user.userId])
-
-    return NextResponse.json({ success: true })
-  } catch (error) {
-    console.error("Email 2FA enable error:", error)
-    return NextResponse.json({ error: "Internal server error." }, { status: 500 })
+  // Cannot enable if app 2FA is already active
+  if (rows[0].totp_enabled && rows[0].two_factor_method === "app") {
+    return ApiResponse.badRequest("Disable authenticator app 2FA first.")
   }
-}
+
+  // Enable email 2FA
+  await pool.query(
+    "UPDATE users SET totp_enabled = true, two_factor_method = 'email' WHERE id = $1",
+    [session.userId],
+  )
+
+  // Send notification email
+  const ip = await getClientIp()
+  const ua = await getUserAgent()
+  const emailContent = email2FAEnabledEmail({
+    ipAddress: ip,
+    userAgent: ua,
+    timestamp: new Date().toISOString(),
+  })
+  sendNotificationEmail({
+    userId: session.userId,
+    userEmail: rows[0].email,
+    type: "two_factor_changes",
+    emailContent,
+  }).catch((err) => console.error("Failed to send email 2FA enabled notification:", err))
+
+  return ApiResponse.success({ success: true })
+})
 
 // DELETE - Disable email 2FA
-export async function DELETE(request: Request) {
-  try {
-    const user = getUserFromToken()
-    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+export const DELETE = withErrorHandling(async (request: NextRequest) => {
+  const session = await getSession()
+  if (!session) return ApiResponse.unauthorized(ERROR_MESSAGES.UNAUTHORIZED)
 
-    const { password } = await request.json()
-    if (!password) return NextResponse.json({ error: "Password is required." }, { status: 400 })
+  const parsed = await parseBody<{ password: string }>(request)
+  if (!parsed.success) return ApiResponse.badRequest(parsed.error)
+  const { password } = parsed.data
 
-    const { rows } = await pool.query("SELECT password_hash, two_factor_method FROM users WHERE id = $1", [user.userId])
-    if (rows.length === 0) return NextResponse.json({ error: "User not found." }, { status: 404 })
+  if (!password) return ApiResponse.badRequest("Password is required.")
 
-    const valid = await bcrypt.compare(password, rows[0].password_hash)
-    if (!valid) return NextResponse.json({ error: "Incorrect password." }, { status: 403 })
+  const { rows } = await pool.query(
+    "SELECT password_hash, two_factor_method, email FROM users WHERE id = $1",
+    [session.userId],
+  )
+  if (rows.length === 0) return ApiResponse.notFound("User not found.")
 
-    if (rows[0].two_factor_method !== "email") {
-      return NextResponse.json({ error: "Email 2FA is not enabled." }, { status: 400 })
-    }
+  const valid = verifyPassword(password, rows[0].password_hash)
+  if (!valid) return ApiResponse.forbidden("Incorrect password.")
 
-    await pool.query("UPDATE users SET totp_enabled = false, two_factor_method = NULL WHERE id = $1", [user.userId])
-
-    return NextResponse.json({ success: true })
-  } catch (error) {
-    console.error("Email 2FA disable error:", error)
-    return NextResponse.json({ error: "Internal server error." }, { status: 500 })
+  if (rows[0].two_factor_method !== "email") {
+    return ApiResponse.badRequest("Email 2FA is not enabled.")
   }
-}
+
+  await pool.query(
+    "UPDATE users SET totp_enabled = false, two_factor_method = NULL WHERE id = $1",
+    [session.userId],
+  )
+
+  // Clean up any pending email codes
+  await pool.query("DELETE FROM email_2fa_codes WHERE user_id = $1", [session.userId])
+
+  // Send notification email
+  const ip = await getClientIp()
+  const ua = await getUserAgent()
+  const emailContent = email2FADisabledEmail({
+    ipAddress: ip,
+    userAgent: ua,
+    timestamp: new Date().toISOString(),
+  })
+  sendNotificationEmail({
+    userId: session.userId,
+    userEmail: rows[0].email,
+    type: "two_factor_changes",
+    emailContent,
+  }).catch((err) => console.error("Failed to send email 2FA disabled notification:", err))
+
+  return ApiResponse.success({ success: true })
+})
