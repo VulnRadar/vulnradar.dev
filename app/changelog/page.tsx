@@ -5,6 +5,20 @@ import { APP_NAME, TOTAL_CHECKS_LABEL } from "@/lib/constants"
 
 const CHANGELOG = [
   {
+    version: "1.8.0",
+    date: "February 20, 2026",
+    title: "55+ New Security Checks, Notification Bell & Performance Overhaul",
+    highlights: true,
+    changes: [
+      { icon: Radar, label: "55+ New Security Checks (175+ Total)", desc: "Expanded detection engine to 175+ checks including: header information leaks (X-Powered-By, X-Runtime, X-Debug, Via, X-Backend-Server, ETag inode leaks), advanced CSP analysis (unsafe-inline without nonce, unsafe-eval, wildcard sources, data: URIs), CORS policy validation (null origin, excessive header exposure, preflight caching), referrer policy analysis, server error detection (SQL, PHP, ASP.NET, Django, Laravel), secrets exposure (JWT tokens, private keys, connection strings, .env files, .git directories), and content security (missing iframe sandbox, unencrypted WebSocket, mixed-content forms, inline event handlers)." },
+      { icon: Bell, label: "Notification Bell in Header", desc: "Replaced full-screen notification modal with a compact bell icon in the header showing unread count. Notifications (version updates, Discord invites) appear in a dismissible dropdown. Backup codes modal remains separate and always interrupts as a full-screen overlay for security-critical updates." },
+      { icon: Filter, label: "Scanner Category Selector", desc: "Added 'Select Scanners' button next to Scan button to choose which security categories to run: Security Headers, SSL/TLS, Cookie Security, Content Analysis, Info Disclosure, Configuration, and DNS & Email. Reduces scan time and allows targeted security assessments." },
+      { icon: Zap, label: "Major Performance Improvements", desc: "Fixed admin tab and notification bell from triggering API calls on every page navigation. Moved /api/auth/me to app-level SWR with 5-minute deduping via new AuthProvider context, eliminating duplicate requests and page load freeze. Header now renders instantly with cached auth state." },
+      { icon: Bug, label: "Fixed /shared Page Auth Detection", desc: "Shared scan links now detect if the viewer is logged in. Authenticated users see the full Header with navigation and the standard Footer. Guests see a minimal header with Sign In button." },
+      { icon: ShieldAlert, label: "Engine Version 2.0.0", desc: "Detection engine bumped to v2.0.0 reflecting the massive expansion of security checks, improved categorization, and scanner selector feature." },
+    ],
+  },
+  {
     version: "1.7.4",
     date: "February 19, 2026",
     title: "Docker Production Ready, Mobile UX Overhaul & Error Pages",

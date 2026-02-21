@@ -2,7 +2,6 @@
 
 import { useEffect, useState, useCallback, useMemo, useRef } from "react"
 import { useRouter, usePathname } from "next/navigation"
-import useSWR from "swr"
 import {
   X,
   Sparkles,
@@ -21,6 +20,7 @@ import {
   APP_NAME,
 } from "@/lib/constants"
 import { PUBLIC_PATHS } from "@/lib/public-paths"
+import { useAuth } from "@/components/auth-provider"
 
 // ─── Cookie Helpers ──────────────────────────────────────────────
 
@@ -44,17 +44,12 @@ export function BackupCodesModal() {
   const pathname = usePathname()
   const [dismissed, setDismissed] = useState(false)
   const [closing, setClosing] = useState(false)
+  const { me } = useAuth()
 
   const isPublicRoute = PUBLIC_PATHS.some((p) => {
     if (p === "/" || p === "/landing") return pathname === p
     return pathname.startsWith(p)
   })
-
-  const { data: me } = useSWR(
-    isPublicRoute ? null : "/api/auth/me",
-    (url: string) => fetch(url).then((r) => r.json()),
-    { revalidateOnFocus: false, dedupingInterval: 60000 },
-  )
 
   const show = !isPublicRoute && me?.userId && me?.backupCodesInvalid && !dismissed
 
@@ -140,29 +135,15 @@ export function NotificationBell() {
   const router = useRouter()
   const pathname = usePathname()
   const [open, setOpen] = useState(false)
-  const ref = useRef<HTMLDivElement>(null)
-
   const [versionDismissed, setVersionDismissed] = useState(true)
   const [discordDismissed, setDiscordDismissed] = useState(true)
+  const ref = useRef<HTMLDivElement>(null)
+  const { me } = useAuth()
 
   const isPublicRoute = PUBLIC_PATHS.some((p) => {
     if (p === "/" || p === "/landing") return pathname === p
     return pathname.startsWith(p)
   })
-
-  const { data: me } = useSWR(
-    isPublicRoute ? null : "/api/auth/me",
-    (url: string) => fetch(url).then((r) => r.json()),
-    { revalidateOnFocus: false, dedupingInterval: 60000 },
-  )
-
-  useEffect(() => {
-    if (!me?.userId) return
-    const lastSeenVersion = getCookie(VERSION_COOKIE_NAME)
-    if (!lastSeenVersion || lastSeenVersion !== APP_VERSION) setVersionDismissed(false)
-    const discordSeen = getCookie(DISCORD_COOKIE)
-    if (!discordSeen) setDiscordDismissed(false)
-  }, [me?.userId])
 
   // Close on outside click
   useEffect(() => {
@@ -172,6 +153,15 @@ export function NotificationBell() {
     if (open) document.addEventListener("mousedown", handle)
     return () => document.removeEventListener("mousedown", handle)
   }, [open])
+
+  // Check notification dismissal state
+  useEffect(() => {
+    if (!me?.userId) return
+    const lastSeenVersion = getCookie(VERSION_COOKIE_NAME)
+    if (!lastSeenVersion || lastSeenVersion !== APP_VERSION) setVersionDismissed(false)
+    const discordSeen = getCookie(DISCORD_COOKIE)
+    if (!discordSeen) setDiscordDismissed(false)
+  }, [me?.userId])
 
   const dismissVersion = useCallback(() => {
     setCookie(VERSION_COOKIE_NAME, APP_VERSION, VERSION_COOKIE_MAX_AGE)
