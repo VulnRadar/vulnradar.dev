@@ -29,7 +29,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
 
   // Disable 2FA and clear backup codes
   await pool.query(
-    "UPDATE users SET totp_enabled = false, totp_secret = NULL, backup_codes = NULL WHERE id = $1",
+    "UPDATE users SET totp_enabled = false, two_factor_method = NULL, totp_secret = NULL, backup_codes = NULL WHERE id = $1",
     [session.userId],
   )
 

@@ -11,7 +11,7 @@ export const GET = withErrorHandling(async () => {
 
   // Get 2FA, role, onboarding status, and backup codes
   const result = await pool.query(
-    "SELECT totp_enabled, onboarding_completed, role, avatar_url, backup_codes FROM users WHERE id = $1",
+    "SELECT totp_enabled, two_factor_method, onboarding_completed, role, avatar_url, backup_codes FROM users WHERE id = $1",
     [session.userId],
   )
   const user = result.rows[0]
@@ -34,6 +34,7 @@ export const GET = withErrorHandling(async () => {
     name: session.name,
     tosAcceptedAt: session.tosAcceptedAt,
     totpEnabled: user?.totp_enabled || false,
+    twoFactorMethod: user?.two_factor_method || null,
     isAdmin: user?.role === "admin",
     role: user?.role || "user",
     avatarUrl: user?.avatar_url || null,

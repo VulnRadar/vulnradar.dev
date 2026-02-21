@@ -37,20 +37,21 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     return ApiResponse.unauthorized(ERROR_MESSAGES.INVALID_2FA_SESSION)
   }
 
-  // Get user's TOTP secret and backup codes
+  // Get user's TOTP secret, backup codes, and 2FA method
   const result = await pool.query(
-    "SELECT totp_secret, totp_enabled, backup_codes FROM users WHERE id = $1",
+    "SELECT totp_secret, totp_enabled, backup_codes, two_factor_method FROM users WHERE id = $1",
     [userId],
   )
   const user = result.rows[0]
-  if (!user || !user.totp_enabled || !user.totp_secret) {
+  if (!user || !user.totp_enabled) {
     return ApiResponse.badRequest("2FA is not enabled for this account.")
   }
 
+  const method = user.two_factor_method || "app"
   let verified = false
 
-  if (backupCode) {
-    // Verify backup code against hashed codes
+  if (backupCode && method === "app") {
+    // Verify backup code against hashed codes (only for app-based 2FA)
     const normalizedInput = backupCode.trim().toUpperCase().replace(/[\s-]/g, "")
     const storedHashes: string[] = user.backup_codes ? JSON.parse(user.backup_codes) : []
     const matchIndex = storedHashes.findIndex((hash: string) => {
@@ -70,7 +71,6 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
       ])
     }
   } else if (code) {
-    // Verify TOTP code
     const codeError = Validate.multiple([
       Validate.required(code, "Code"),
       Validate.string(code, "Code", 6, 6),
@@ -78,7 +78,24 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     ])
     if (codeError) return ApiResponse.badRequest(codeError)
 
-    verified = verifyTOTP(user.totp_secret, code)
+    if (method === "email") {
+      // Verify email 2FA code
+      const codeResult = await pool.query(
+        "SELECT id FROM email_2fa_codes WHERE user_id = $1 AND code_hash = encode(sha256($2::bytea), 'hex') AND expires_at > NOW()",
+        [userId, code],
+      )
+      if (codeResult.rows.length > 0) {
+        verified = true
+        // Delete used code
+        await pool.query("DELETE FROM email_2fa_codes WHERE user_id = $1", [userId])
+      }
+    } else {
+      // Verify TOTP code (app-based)
+      if (!user.totp_secret) {
+        return ApiResponse.badRequest("2FA is not configured properly.")
+      }
+      verified = verifyTOTP(user.totp_secret, code)
+    }
   }
 
   if (!verified) {

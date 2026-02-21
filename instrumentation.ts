@@ -320,20 +320,58 @@ export async function register() {
         CREATE INDEX IF NOT EXISTS idx_evt_user_id ON email_verification_tokens(user_id);
       `)
 
-      // Notification preferences
+      // Notification preferences (19 categories)
       await pool.query(`
         CREATE TABLE IF NOT EXISTS notification_preferences (
           id SERIAL PRIMARY KEY,
           user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE UNIQUE,
-          email_api_keys BOOLEAN NOT NULL DEFAULT true,
-          email_webhooks BOOLEAN NOT NULL DEFAULT true,
-          email_schedules BOOLEAN NOT NULL DEFAULT true,
-          email_data_requests BOOLEAN NOT NULL DEFAULT true,
           email_security BOOLEAN NOT NULL DEFAULT true,
+          email_login_alerts BOOLEAN NOT NULL DEFAULT true,
+          email_password_changes BOOLEAN NOT NULL DEFAULT true,
+          email_two_factor_changes BOOLEAN NOT NULL DEFAULT true,
+          email_session_alerts BOOLEAN NOT NULL DEFAULT true,
+          email_scan_complete BOOLEAN NOT NULL DEFAULT true,
+          email_scan_failures BOOLEAN NOT NULL DEFAULT true,
+          email_severity_alerts BOOLEAN NOT NULL DEFAULT true,
+          email_schedules BOOLEAN NOT NULL DEFAULT true,
+          email_api_keys BOOLEAN NOT NULL DEFAULT true,
+          email_api_usage_alerts BOOLEAN NOT NULL DEFAULT true,
+          email_webhooks BOOLEAN NOT NULL DEFAULT true,
+          email_webhook_failures BOOLEAN NOT NULL DEFAULT true,
+          email_data_requests BOOLEAN NOT NULL DEFAULT true,
+          email_account_changes BOOLEAN NOT NULL DEFAULT true,
+          email_billing_alerts BOOLEAN NOT NULL DEFAULT true,
+          email_team_invites BOOLEAN NOT NULL DEFAULT true,
+          email_product_updates BOOLEAN NOT NULL DEFAULT true,
+          email_tips_guides BOOLEAN NOT NULL DEFAULT true,
           created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
           updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
         );
         CREATE INDEX IF NOT EXISTS idx_notif_prefs_user_id ON notification_preferences(user_id);
+      `)
+
+      // Email 2FA codes
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS email_2fa_codes (
+          id SERIAL PRIMARY KEY,
+          user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          code_hash VARCHAR(255) NOT NULL,
+          expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
+          created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+        );
+        CREATE INDEX IF NOT EXISTS idx_email_2fa_user ON email_2fa_codes(user_id);
+      `)
+
+      // two_factor_method column on users
+      await pool.query(`
+        DO $$ BEGIN
+          IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name = 'users' AND column_name = 'two_factor_method'
+          ) THEN
+            ALTER TABLE users ADD COLUMN two_factor_method VARCHAR(10);
+          END IF;
+        END $$;
       `)
 
       // Rate limiting

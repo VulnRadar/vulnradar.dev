@@ -43,7 +43,7 @@ export const POST = withErrorHandling(async (request: Request) => {
 
   // Check if account is disabled or email not verified
   const userInfoResult = await pool.query(
-    "SELECT totp_enabled, disabled_at, email_verified_at FROM users WHERE id = $1",
+    "SELECT totp_enabled, two_factor_method, disabled_at, email_verified_at FROM users WHERE id = $1",
     [user.id],
   )
   const userInfo = userInfoResult.rows[0]
@@ -60,6 +60,7 @@ export const POST = withErrorHandling(async (request: Request) => {
 
   // Check if 2FA is enabled
   const has2FA = userInfo?.totp_enabled === true
+  const twoFactorMethod = userInfo?.two_factor_method || "app"
 
   if (has2FA) {
     // Check if device is trusted (skip 2FA for trusted devices)
@@ -79,6 +80,7 @@ export const POST = withErrorHandling(async (request: Request) => {
     const response = NextResponse.json({
       requires2FA: true,
       userId: user.id,
+      twoFactorMethod: twoFactorMethod,
     })
     // Set a short-lived cookie to validate the 2FA verification request
     response.cookies.set(AUTH_2FA_PENDING_COOKIE, String(user.id), {
