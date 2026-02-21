@@ -51,12 +51,16 @@ export async function PATCH(request: NextRequest) {
 
         // Send account changes notification email via notifications helper so user preferences are respected
         const emailContent = profileNameChangedEmail(currentName || "Not set", trimmed, { ipAddress: ip, userAgent })
-        sendNotificationEmail({
-          userId: session.userId,
-          userEmail: currentEmail,
-          type: "account_changes",
-          emailContent,
-        }).catch((err) => console.error("Failed to send profile name change notification:", err))
+        try {
+          await sendNotificationEmail({
+            userId: session.userId,
+            userEmail: currentEmail,
+            type: "account_changes",
+            emailContent,
+          })
+        } catch (err) {
+          console.error("Failed to send profile name change notification:", err)
+        }
       }
     }
 
@@ -81,18 +85,26 @@ export async function PATCH(request: NextRequest) {
 
         // Send account changes email to BOTH old and new email addresses via notifications helper
         const emailContent = profileEmailChangedEmail(currentEmail, trimmedEmail, { ipAddress: ip, userAgent })
-        sendNotificationEmail({
-          userId: session.userId,
-          userEmail: currentEmail,
-          type: "account_changes",
-          emailContent,
-        }).catch((err) => console.error("Failed to send profile email change (old) notification:", err))
-        sendNotificationEmail({
-          userId: session.userId,
-          userEmail: trimmedEmail,
-          type: "account_changes",
-          emailContent,
-        }).catch((err) => console.error("Failed to send profile email change (new) notification:", err))
+        try {
+          await sendNotificationEmail({
+            userId: session.userId,
+            userEmail: currentEmail,
+            type: "account_changes",
+            emailContent,
+          })
+        } catch (err) {
+          console.error("Failed to send profile email change (old) notification:", err)
+        }
+        try {
+          await sendNotificationEmail({
+            userId: session.userId,
+            userEmail: trimmedEmail,
+            type: "account_changes",
+            emailContent,
+          })
+        } catch (err) {
+          console.error("Failed to send profile email change (new) notification:", err)
+        }
       }
     }
 
