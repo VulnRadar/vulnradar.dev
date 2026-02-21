@@ -320,7 +320,7 @@ export async function register() {
         CREATE INDEX IF NOT EXISTS idx_evt_user_id ON email_verification_tokens(user_id);
       `)
 
-      // Notification preferences (19 categories)
+      // Notification preferences (18 categories)
       await pool.query(`
         CREATE TABLE IF NOT EXISTS notification_preferences (
           id SERIAL PRIMARY KEY,
@@ -340,7 +340,6 @@ export async function register() {
           email_webhook_failures BOOLEAN NOT NULL DEFAULT true,
           email_data_requests BOOLEAN NOT NULL DEFAULT true,
           email_account_changes BOOLEAN NOT NULL DEFAULT true,
-          email_billing_alerts BOOLEAN NOT NULL DEFAULT true,
           email_team_invites BOOLEAN NOT NULL DEFAULT true,
           email_product_updates BOOLEAN NOT NULL DEFAULT true,
           email_tips_guides BOOLEAN NOT NULL DEFAULT true,

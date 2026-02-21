@@ -122,7 +122,6 @@ interface NotificationPrefs {
   email_webhook_failures: boolean
   email_data_requests: boolean
   email_account_changes: boolean
-  email_billing_alerts: boolean
   email_team_invites: boolean
   email_product_updates: boolean
   email_tips_guides: boolean
@@ -215,7 +214,6 @@ export default function ProfilePage() {
     email_webhook_failures: true,
     email_data_requests: true,
     email_account_changes: true,
-    email_billing_alerts: true,
     email_team_invites: true,
     email_product_updates: true,
     email_tips_guides: true,
@@ -1700,7 +1698,6 @@ export default function ProfilePage() {
                 {([
                   { key: "email_data_requests" as const, icon: Download, label: "Data Export Updates", desc: "Notifications when your data export is ready for download." },
                   { key: "email_account_changes" as const, icon: UserCog, label: "Account Changes", desc: "Alerts about profile updates, email changes, and account modifications." },
-                  { key: "email_billing_alerts" as const, icon: CreditCard, label: "Billing Alerts", desc: "Payment reminders, invoice notifications, and billing changes." },
                   { key: "email_team_invites" as const, icon: Users, label: "Team Invites", desc: "Notifications when you're invited to join a team or workspace." },
                 ] as const).map(({ key, icon: Icon, label, desc }) => (
                   <div key={key} className="flex items-center justify-between p-3 rounded-lg border border-border bg-secondary/30">

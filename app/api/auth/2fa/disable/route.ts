@@ -33,7 +33,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     [session.userId],
   )
 
-  // Send security notification email (don't await)
+  // Send 2FA change notification email (don't await)
   const ip = await getClientIp()
   const userAgent = await getUserAgent()
 
@@ -41,7 +41,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   sendNotificationEmail({
     userId: session.userId,
     userEmail: session.email,
-    type: "security",
+    type: "two_factor_changes",
     emailContent,
   }).catch((err) => console.error("[Email Error] Failed to send 2FA disabled notification:", err))
 

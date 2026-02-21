@@ -55,7 +55,7 @@ export async function POST(request: NextRequest) {
   const hashedCodes = backupCodes.map((code) => hashPassword(code.replace(/-/g, "").toUpperCase()))
   await pool.query("UPDATE users SET backup_codes = $1 WHERE id = $2", [JSON.stringify(hashedCodes), session.userId])
 
-  // Send security notification email (don't await)
+  // Send 2FA change notification email (don't await)
   const ip = await getClientIp() || "Unknown"
   const userAgent = await getUserAgent() || "Unknown"
 
@@ -63,7 +63,7 @@ export async function POST(request: NextRequest) {
   sendNotificationEmail({
     userId: session.userId,
     userEmail: session.email,
-    type: "security",
+    type: "two_factor_changes",
     emailContent,
   }).catch((err) => console.error("Failed to send backup codes regenerated notification:", err))
 
