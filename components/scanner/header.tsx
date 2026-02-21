@@ -94,6 +94,9 @@ export function Header() {
                   Admin
                 </button>
             )}
+            {!isStaff && (
+                <div className="h-8 w-16" />
+            )}
           </nav>
 
           {/* Right side */}

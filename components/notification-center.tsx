@@ -215,7 +215,9 @@ export function NotificationBell() {
 
   const count = notifications.length
 
-  if (!me?.userId || isPublicRoute) return null
+  // Always render space to prevent layout shift
+  if (isPublicRoute) return <div className="h-8 w-8" />
+  if (!me?.userId) return <div className="h-8 w-8" />
 
   return (
     <div ref={ref} className="relative">
