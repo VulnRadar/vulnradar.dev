@@ -61,11 +61,11 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   const backupCodes = generateBackupCodes(8)
   const hashedCodes = backupCodes.map((code) => hashPassword(code.replace(/-/g, "").toUpperCase()))
   await pool.query(
-    "UPDATE users SET totp_enabled = true, backup_codes = $1 WHERE id = $2",
+    "UPDATE users SET totp_enabled = true, two_factor_method = 'app', backup_codes = $1 WHERE id = $2",
     [JSON.stringify(hashedCodes), session.userId],
   )
 
-  // Send security notification email (don't await)
+  // Send 2FA change notification email (don't await)
   const ip = await getClientIp()
   const userAgent = await getUserAgent()
 
@@ -73,7 +73,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   sendNotificationEmail({
     userId: session.userId,
     userEmail: session.email,
-    type: "security",
+    type: "two_factor_changes",
     emailContent,
   }).catch((err) => console.error("[Email Error] Failed to send 2FA enabled notification:", err))
 

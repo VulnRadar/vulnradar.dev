@@ -781,4 +781,48 @@ export function apiKeyRotationEmail(keyName: string, newKeyCreatedAt: string, de
   }
 }
 
+export function email2FACodeEmail(code: string) {
+  return {
+    subject: `${code} - Your ${APP_NAME} Login Code`,
+    text: `Your ${APP_NAME} verification code is: ${code}\n\nThis code expires in 10 minutes.\n\nIf you did not request this code, someone may be trying to access your account. Please secure your account immediately.`,
+    html: `
+      <h1 style="margin: 0 0 8px 0; font-size: 20px; font-weight: 600; color: ${COLORS.TEXT_PRIMARY};">Your Login Code</h1>
+      <p style="margin: 0 0 24px 0; font-size: 14px; color: ${COLORS.TEXT_SECONDARY}; line-height: 1.6;">Enter this code to complete your sign-in.</p>
+      <div style="background-color: ${COLORS.BG_SECTION}; border-radius: 8px; padding: 24px; margin-bottom: 20px; text-align: center;">
+        <p style="margin: 0 0 8px 0; font-size: 12px; color: ${COLORS.TEXT_MUTED}; text-transform: uppercase; font-weight: 600; letter-spacing: 0.5px;">Verification Code</p>
+        <p style="margin: 0; font-size: 36px; font-weight: 700; letter-spacing: 8px; color: ${COLORS.ACCENT_BLUE_LIGHT}; font-family: monospace;">${escapeHtml(code)}</p>
+      </div>
+      <div style="background-color: ${COLORS.BG_WARNING}; border-left: 3px solid ${COLORS.ACCENT_YELLOW}; border-radius: 6px; padding: 14px 16px; margin-bottom: 20px;">
+        <p style="margin: 0 0 4px 0; font-size: 13px; color: ${COLORS.ACCENT_YELLOW_LIGHT}; font-weight: 600;">Expires in 10 minutes</p>
+        <p style="margin: 0; font-size: 13px; color: ${COLORS.ACCENT_YELLOW_PALE}; line-height: 1.6;">Do not share this code with anyone. ${APP_NAME} will never ask you for this code outside of the login page.</p>
+      </div>
+      ${securityWarningBlock()}
+    `,
+  }
+}
 
+export function email2FAEnabledEmail(details: SecurityAlertDetails) {
+  return {
+    subject: `Email 2FA Enabled - ${APP_NAME}`,
+    text: `Email-based two-factor authentication has been enabled on your ${APP_NAME} account.\n\nYou will receive a verification code via email each time you log in.\n\nIP Address: ${details.ipAddress}`,
+    html: `
+      <h1 style="margin: 0 0 8px 0; font-size: 20px; font-weight: 600; color: ${COLORS.TEXT_PRIMARY};">Email 2FA Enabled</h1>
+      <p style="margin: 0 0 24px 0; font-size: 14px; color: ${COLORS.TEXT_SECONDARY}; line-height: 1.6;">Email-based two-factor authentication is now active on your account. You will receive a verification code via email each time you sign in.</p>
+      ${securityDetailsBlock(details)}
+      ${securityWarningBlock()}
+    `,
+  }
+}
+
+export function email2FADisabledEmail(details: SecurityAlertDetails) {
+  return {
+    subject: `Email 2FA Disabled - ${APP_NAME}`,
+    text: `Email-based two-factor authentication has been disabled on your ${APP_NAME} account.\n\nIP Address: ${details.ipAddress}`,
+    html: `
+      <h1 style="margin: 0 0 8px 0; font-size: 20px; font-weight: 600; color: ${COLORS.TEXT_PRIMARY};">Email 2FA Disabled</h1>
+      <p style="margin: 0 0 24px 0; font-size: 14px; color: ${COLORS.TEXT_SECONDARY}; line-height: 1.6;">Email-based two-factor authentication has been removed from your account. Your account is now less secure.</p>
+      ${securityDetailsBlock(details)}
+      ${securityWarningBlock()}
+    `,
+  }
+}

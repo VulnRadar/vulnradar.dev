@@ -8,6 +8,18 @@
   }
 }
 
+/* Pre-hydration visibility: hide staff/auth elements by default.
+   The blocking <script> in layout.tsx injects a <style> tag that
+   overrides these to visible BEFORE React hydrates, so there is
+   no flash. React cannot strip an injected <style> tag. */
+.vr-staff-only {
+  display: none !important;
+}
+.vr-auth-only {
+  visibility: hidden;
+  pointer-events: none;
+}
+
 @layer base {
   :root {
     --background: 220 20% 97%;
@@ -74,6 +86,29 @@
     --severity-low: 210 90% 56%;
     --severity-info: 215 15% 55%;
   }
+}
+
+/* Custom scrollbar — thin, matches both themes */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: hsl(var(--border)) transparent;
+}
+*::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+*::-webkit-scrollbar-thumb {
+  background-color: hsl(var(--border));
+  border-radius: 9999px;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background-color: hsl(var(--muted-foreground) / 0.5);
+}
+*::-webkit-scrollbar-corner {
+  background: transparent;
 }
 
 @layer base {

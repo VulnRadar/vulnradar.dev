@@ -30,6 +30,17 @@ import {
   Loader2,
   Bell,
   Camera,
+  LogIn,
+  Fingerprint,
+  MonitorSmartphone,
+  Scan,
+  XCircle,
+  Gauge,
+  Zap,
+  Users,
+  Lightbulb,
+  Megaphone,
+  Smartphone,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
@@ -63,6 +74,7 @@ interface User {
   email: string
   name: string | null
   totpEnabled?: boolean
+  twoFactorMethod?: string | null
   avatarUrl?: string | null
 }
 
@@ -94,11 +106,25 @@ interface ScheduleItem {
 }
 
 interface NotificationPrefs {
-  email_api_keys: boolean
-  email_webhooks: boolean
-  email_schedules: boolean
-  email_data_requests: boolean
   email_security: boolean
+  email_new_login: boolean
+  email_password_change: boolean
+  email_2fa_change: boolean
+  email_session_revoked: boolean
+  email_scan_complete: boolean
+  email_critical_findings: boolean
+  email_regression_alert: boolean
+  email_schedules: boolean
+  email_api_keys: boolean
+  email_api_limit_warning: boolean
+  email_webhooks: boolean
+  email_webhook_failure: boolean
+  email_data_requests: boolean
+  email_account_deletion: boolean
+  email_team_invite: boolean
+  email_team_changes: boolean
+  email_product_updates: boolean
+  email_tips_guides: boolean
 }
 
 export default function ProfilePage() {
@@ -166,13 +192,32 @@ export default function ProfilePage() {
   const [scheduleFreq, setScheduleFreq] = useState("weekly")
   const [addingSchedule, setAddingSchedule] = useState(false)
 
+  // Email 2FA state
+  const [twoFactorMethod, setTwoFactorMethod] = useState<string | null>(null)
+  const [email2FAPassword, setEmail2FAPassword] = useState("")
+  const [togglingEmail2FA, setTogglingEmail2FA] = useState(false)
+
   // Notification preferences state
   const [notifPrefs, setNotifPrefs] = useState<NotificationPrefs>({
-    email_api_keys: true,
-    email_webhooks: true,
-    email_schedules: true,
-    email_data_requests: true,
     email_security: true,
+    email_new_login: true,
+    email_password_change: true,
+    email_2fa_change: true,
+    email_session_revoked: true,
+    email_scan_complete: true,
+    email_critical_findings: true,
+    email_regression_alert: true,
+    email_schedules: true,
+    email_api_keys: true,
+    email_api_limit_warning: true,
+    email_webhooks: true,
+    email_webhook_failure: true,
+    email_data_requests: true,
+    email_account_deletion: true,
+    email_team_invite: true,
+    email_team_changes: true,
+    email_product_updates: true,
+    email_tips_guides: false,
   })
   const [savingNotifPrefs, setSavingNotifPrefs] = useState(false)
 
@@ -272,7 +317,8 @@ export default function ProfilePage() {
       const notifData = notifRes.ok ? await notifRes.json() : null
       setUser(userData)
       setTotpEnabled(userData.totpEnabled || false)
-      if (userData.totpEnabled) {
+      setTwoFactorMethod(userData.twoFactorMethod || null)
+      if (userData.totpEnabled && userData.twoFactorMethod === "app") {
         fetch("/api/auth/2fa/backup-codes").then(r => r.json()).then(d => setBackupCodesRemaining(d.remaining || 0)).catch(() => {})
       }
       setKeys(keysData.keys || [])
@@ -280,12 +326,12 @@ export default function ProfilePage() {
       setWebhooks(Array.isArray(webhooksData) ? webhooksData : [])
       setSchedules(Array.isArray(schedulesData) ? schedulesData : [])
       if (notifData) {
-        setNotifPrefs({
-          email_api_keys: notifData.email_api_keys ?? true,
-          email_webhooks: notifData.email_webhooks ?? true,
-          email_schedules: notifData.email_schedules ?? true,
-          email_data_requests: notifData.email_data_requests ?? true,
-          email_security: notifData.email_security ?? true,
+        setNotifPrefs((prev) => {
+          const updated = { ...prev }
+          for (const key of Object.keys(prev) as (keyof NotificationPrefs)[]) {
+            if (key in notifData) updated[key] = notifData[key] ?? true
+          }
+          return updated
         })
       }
     } catch {
@@ -545,13 +591,13 @@ export default function ProfilePage() {
         setError(data.error || "Failed to save notification preferences.")
         return
       }
-      setNotifPrefs({
-        email_api_keys: data.email_api_keys,
-        email_webhooks: data.email_webhooks,
-        email_schedules: data.email_schedules,
-        email_data_requests: data.email_data_requests,
-        email_security: data.email_security,
-      })
+    setNotifPrefs((prev) => {
+      const updated = { ...prev }
+      for (const key of Object.keys(prev) as (keyof NotificationPrefs)[]) {
+        if (key in data) updated[key] = data[key]
+      }
+      return updated
+    })
       setSuccess("Notification preferences saved.")
     } catch {
       setError("Failed to save notification preferences.")
@@ -585,11 +631,15 @@ export default function ProfilePage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="flex flex-col items-center gap-3">
-          <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-          <p className="text-sm text-muted-foreground">Loading profile...</p>
-        </div>
+      <div className="min-h-screen bg-background flex flex-col">
+        <Header />
+        <main className="flex-1 flex items-center justify-center">
+          <div className="flex flex-col items-center gap-3">
+            <Loader2 className="h-6 w-6 animate-spin text-primary" />
+            <p className="text-sm text-muted-foreground">Loading profile...</p>
+          </div>
+        </main>
+        <Footer />
       </div>
     )
   }
@@ -890,309 +940,278 @@ export default function ProfilePage() {
                     </CardTitle>
                     <CardDescription>
                       {totpEnabled
-                        ? "2FA is currently enabled on your account."
+                        ? `2FA is active via ${twoFactorMethod === "email" ? "email" : "authenticator app"}.`
                         : "Add an extra layer of security to your account."}
                     </CardDescription>
                   </div>
                   {totpEnabled ? (
-                    <Badge className="bg-emerald-500/10 text-emerald-500 border-emerald-500/20">Enabled</Badge>
+                    <Badge className="bg-emerald-500/10 text-emerald-500 border-emerald-500/20">
+                      {twoFactorMethod === "email" ? "Email" : "App"} Enabled
+                    </Badge>
                   ) : (
                     <Badge variant="secondary">Disabled</Badge>
                   )}
                 </div>
               </CardHeader>
               <CardContent className="flex flex-col gap-4">
-                {totpEnabled ? (
-                  <>
-                    {/* Backup codes display (shown after enabling or regenerating) */}
-                    {backupCodes.length > 0 && (
-                      <div className="flex flex-col gap-3 p-4 rounded-lg bg-amber-500/5 border border-amber-500/20">
-                        <div className="flex items-center gap-2">
-                          <KeyRound className="h-4 w-4 text-amber-500" />
-                          <p className="text-sm font-semibold text-foreground">Save Your Backup Codes</p>
-                        </div>
-                        <p className="text-xs text-muted-foreground leading-relaxed">
-                          These codes can be used to sign in if you lose access to your authenticator app. Each code can only be used once. Store them securely, as you will not be able to see them again.
-                        </p>
-                        <div className="grid grid-cols-2 gap-2 p-3 bg-card border border-border rounded-lg font-mono text-sm">
-                          {backupCodes.map((code, i) => (
-                            <span key={i} className="text-foreground select-all text-center py-0.5">{code}</span>
-                          ))}
-                        </div>
-                        <div className="flex gap-2">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="bg-transparent"
-                            onClick={() => {
-                              navigator.clipboard.writeText(backupCodes.join("\n"))
-                              setSuccess("Backup codes copied to clipboard.")
-                            }}
-                          >
-                            <Copy className="mr-1.5 h-3.5 w-3.5" />
-                            Copy All
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="bg-transparent"
-                            onClick={() => {
-                              const blob = new Blob([`VulnRadar 2FA Backup Codes\n${"=".repeat(30)}\n\n${backupCodes.join("\n")}\n\nEach code can only be used once.\nStore these codes securely.`], { type: "text/plain" })
-                              const url = URL.createObjectURL(blob)
-                              const a = document.createElement("a")
-                              a.href = url
-                              a.download = "vulnradar-backup-codes.txt"
-                              a.click()
-                              URL.revokeObjectURL(url)
-                            }}
-                          >
-                            <Download className="mr-1.5 h-3.5 w-3.5" />
-                            Download
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => setBackupCodes([])}
-                            className="ml-auto text-muted-foreground"
-                          >
-                            I've saved them
-                          </Button>
-                        </div>
+                {/* ===== AUTHENTICATOR APP 2FA ===== */}
+                <div className="rounded-lg border border-border p-4 flex flex-col gap-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="flex items-center justify-center h-9 w-9 rounded-lg bg-primary/10 border border-primary/20">
+                        <Smartphone className="h-4 w-4 text-primary" />
                       </div>
+                      <div>
+                        <p className="text-sm font-semibold text-foreground">Authenticator App</p>
+                        <p className="text-xs text-muted-foreground">Use Google Authenticator, Authy, or similar apps.</p>
+                      </div>
+                    </div>
+                    {twoFactorMethod === "app" && totpEnabled && (
+                      <Badge className="bg-emerald-500/10 text-emerald-500 border-emerald-500/20 shrink-0">Active</Badge>
                     )}
+                  </div>
 
-                    {/* Backup code status */}
-                    {backupCodes.length === 0 && (
-                      <div className="flex items-center gap-3 p-3 rounded-lg bg-secondary/30 border border-border">
-                        <KeyRound className="h-4 w-4 text-muted-foreground shrink-0" />
-                        <div className="flex-1">
-                          <p className="text-sm text-foreground font-medium">Backup Codes</p>
-                          <p className="text-xs text-muted-foreground">
-                            {backupCodesRemaining} of 8 codes remaining.
-                            {backupCodesRemaining <= 2 && backupCodesRemaining > 0 && " Consider regenerating soon."}
-                            {backupCodesRemaining === 0 && " Regenerate to get new codes."}
+                  {/* App 2FA is currently enabled */}
+                  {totpEnabled && twoFactorMethod === "app" && (
+                    <>
+                      {/* Backup codes display */}
+                      {backupCodes.length > 0 && (
+                        <div className="flex flex-col gap-3 p-4 rounded-lg bg-amber-500/5 border border-amber-500/20">
+                          <div className="flex items-center gap-2">
+                            <KeyRound className="h-4 w-4 text-amber-500" />
+                            <p className="text-sm font-semibold text-foreground">Save Your Backup Codes</p>
+                          </div>
+                          <p className="text-xs text-muted-foreground leading-relaxed">
+                            These codes can be used to sign in if you lose access to your authenticator app. Each code can only be used once.
                           </p>
+                          <div className="grid grid-cols-2 gap-2 p-3 bg-card border border-border rounded-lg font-mono text-sm">
+                            {backupCodes.map((code, i) => (
+                              <span key={i} className="text-foreground select-all text-center py-0.5">{code}</span>
+                            ))}
+                          </div>
+                          <div className="flex gap-2">
+                            <Button variant="outline" size="sm" className="bg-transparent" onClick={() => { navigator.clipboard.writeText(backupCodes.join("\n")); setSuccess("Backup codes copied.") }}>
+                              <Copy className="mr-1.5 h-3.5 w-3.5" />Copy All
+                            </Button>
+                            <Button variant="outline" size="sm" className="bg-transparent" onClick={() => {
+                              const blob = new Blob([`VulnRadar 2FA Backup Codes\n${"=".repeat(30)}\n\n${backupCodes.join("\n")}\n\nEach code can only be used once.`], { type: "text/plain" })
+                              const url = URL.createObjectURL(blob); const a = document.createElement("a"); a.href = url; a.download = "vulnradar-backup-codes.txt"; a.click(); URL.revokeObjectURL(url)
+                            }}>
+                              <Download className="mr-1.5 h-3.5 w-3.5" />Download
+                            </Button>
+                            <Button variant="ghost" size="sm" onClick={() => setBackupCodes([])} className="ml-auto text-muted-foreground">{"I've saved them"}</Button>
+                          </div>
                         </div>
-                        {!showRegenerateBackup && (
-                          <Button variant="outline" size="sm" className="bg-transparent shrink-0" onClick={() => setShowRegenerateBackup(true)}>
-                            Regenerate
-                          </Button>
-                        )}
-                      </div>
-                    )}
+                      )}
 
-                    {/* Regenerate backup codes form */}
-                    {showRegenerateBackup && backupCodes.length === 0 && (
-                      <div className="flex flex-col gap-3 p-4 rounded-lg bg-muted/50 border border-border">
-                        <p className="text-sm text-foreground font-medium">Enter your password to regenerate backup codes</p>
-                        <p className="text-xs text-muted-foreground">This will invalidate all existing backup codes.</p>
-                        <Input
-                          type="password"
-                          placeholder="Current password"
-                          value={regenPassword}
-                          onChange={(e) => setRegenPassword(e.target.value)}
-                          className="bg-card h-10"
-                        />
-                        <div className="flex items-center gap-2">
-                          <Button
-                            disabled={!regenPassword}
-                            onClick={async () => {
-                              try {
-                                const res = await fetch("/api/auth/2fa/backup-codes", {
-                                  method: "POST",
-                                  headers: { "Content-Type": "application/json" },
-                                  body: JSON.stringify({ password: regenPassword }),
-                                })
-                                const data = await res.json()
-                                if (res.ok) {
-                                  setBackupCodes(data.backupCodes)
-                                  setBackupCodesRemaining(data.backupCodes.length)
-                                  setShowRegenerateBackup(false)
-                                  setRegenPassword("")
-                                  setSuccess("New backup codes generated. Save them now.")
-                                } else {
-                                  setError(data.error || "Failed to regenerate codes.")
-                                }
-                              } catch {
-                                setError("Failed to regenerate codes.")
-                              }
-                            }}
-                          >
-                            Regenerate Codes
-                          </Button>
-                          <Button variant="ghost" onClick={() => { setShowRegenerateBackup(false); setRegenPassword("") }}>
-                            Cancel
-                          </Button>
+                      {/* Backup code status */}
+                      {backupCodes.length === 0 && (
+                        <div className="flex items-center gap-3 p-3 rounded-lg bg-secondary/30 border border-border">
+                          <KeyRound className="h-4 w-4 text-muted-foreground shrink-0" />
+                          <div className="flex-1">
+                            <p className="text-sm text-foreground font-medium">Backup Codes</p>
+                            <p className="text-xs text-muted-foreground">
+                              {backupCodesRemaining} of 8 codes remaining.
+                              {backupCodesRemaining <= 2 && backupCodesRemaining > 0 && " Consider regenerating soon."}
+                              {backupCodesRemaining === 0 && " Regenerate to get new codes."}
+                            </p>
+                          </div>
+                          {!showRegenerateBackup && (
+                            <Button variant="outline" size="sm" className="bg-transparent shrink-0" onClick={() => setShowRegenerateBackup(true)}>Regenerate</Button>
+                          )}
                         </div>
-                      </div>
-                    )}
+                      )}
 
-                    {!showDisable2FA ? (
-                      <Button
-                        variant="outline"
-                        className="self-start text-destructive border-destructive/30 hover:bg-destructive/10"
-                        onClick={() => setShowDisable2FA(true)}
-                      >
-                        Disable 2FA
-                      </Button>
-                    ) : (
-                      <div className="flex flex-col gap-3 p-4 rounded-lg bg-destructive/5 border border-destructive/20">
-                        <p className="text-sm text-foreground font-medium">Enter your password to disable 2FA</p>
-                        <Input
-                          type="password"
-                          placeholder="Current password"
-                          value={disablePassword}
-                          onChange={(e) => setDisablePassword(e.target.value)}
-                          className="bg-card h-10"
-                        />
-                        <div className="flex items-center gap-2">
-                          <Button
-                            variant="destructive"
-                            disabled={!disablePassword}
-                            onClick={async () => {
+                      {/* Regenerate backup codes form */}
+                      {showRegenerateBackup && backupCodes.length === 0 && (
+                        <div className="flex flex-col gap-3 p-4 rounded-lg bg-muted/50 border border-border">
+                          <p className="text-sm text-foreground font-medium">Enter your password to regenerate backup codes</p>
+                          <p className="text-xs text-muted-foreground">This will invalidate all existing backup codes.</p>
+                          <Input type="password" placeholder="Current password" value={regenPassword} onChange={(e) => setRegenPassword(e.target.value)} className="bg-card h-10" />
+                          <div className="flex items-center gap-2">
+                            <Button disabled={!regenPassword} onClick={async () => {
                               try {
-                                const res = await fetch("/api/auth/2fa/disable", {
-                                  method: "POST",
-                                  headers: { "Content-Type": "application/json" },
-                                  body: JSON.stringify({ password: disablePassword }),
-                                })
+                                const res = await fetch("/api/auth/2fa/backup-codes", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ password: regenPassword }) })
                                 const data = await res.json()
-                                if (res.ok) {
-                                  setTotpEnabled(false)
-                                  setShowDisable2FA(false)
-                                  setDisablePassword("")
-                                  setSuccess("Two-factor authentication has been disabled.")
-                                } else {
-                                  setError(data.error || "Failed to disable 2FA.")
-                                }
-                              } catch {
-                                setError("Failed to disable 2FA.")
-                              }
-                            }}
-                          >
-                            Confirm Disable
-                          </Button>
-                          <Button variant="ghost" onClick={() => { setShowDisable2FA(false); setDisablePassword("") }}>
-                            Cancel
-                          </Button>
+                                if (res.ok) { setBackupCodes(data.backupCodes); setBackupCodesRemaining(data.backupCodes.length); setShowRegenerateBackup(false); setRegenPassword(""); setSuccess("New backup codes generated.") }
+                                else setError(data.error || "Failed to regenerate codes.")
+                              } catch { setError("Failed to regenerate codes.") }
+                            }}>Regenerate Codes</Button>
+                            <Button variant="ghost" onClick={() => { setShowRegenerateBackup(false); setRegenPassword("") }}>Cancel</Button>
+                          </div>
                         </div>
-                      </div>
-                    )}
-                  </>
-                ) : (
-                  <>
-                    {!setting2FA ? (
-                      <div className="flex flex-col gap-3">
-                        <p className="text-sm text-muted-foreground leading-relaxed">
-                          When enabled, you will be required to enter a 6-digit code from your authenticator app (Google Authenticator, Authy, etc.) each time you sign in.
-                        </p>
+                      )}
+
+                      {/* Disable app 2FA */}
+                      {!showDisable2FA ? (
+                        <Button variant="outline" className="self-start text-destructive border-destructive/30 hover:bg-destructive/10" onClick={() => setShowDisable2FA(true)}>
+                          Disable Authenticator App
+                        </Button>
+                      ) : (
+                        <div className="flex flex-col gap-3 p-4 rounded-lg bg-destructive/5 border border-destructive/20">
+                          <p className="text-sm text-foreground font-medium">Enter your password to disable authenticator app 2FA</p>
+                          <Input type="password" placeholder="Current password" value={disablePassword} onChange={(e) => setDisablePassword(e.target.value)} className="bg-card h-10" />
+                          <div className="flex items-center gap-2">
+                            <Button variant="destructive" disabled={!disablePassword} onClick={async () => {
+                              try {
+                                const res = await fetch("/api/auth/2fa/disable", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ password: disablePassword }) })
+                                const data = await res.json()
+                                if (res.ok) { setTotpEnabled(false); setTwoFactorMethod(null); setShowDisable2FA(false); setDisablePassword(""); setSuccess("Authenticator app 2FA has been disabled.") }
+                                else setError(data.error || "Failed to disable 2FA.")
+                              } catch { setError("Failed to disable 2FA.") }
+                            }}>Confirm Disable</Button>
+                            <Button variant="ghost" onClick={() => { setShowDisable2FA(false); setDisablePassword("") }}>Cancel</Button>
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  )}
+
+                  {/* Setup app 2FA (when not enabled or email is active) */}
+                  {(!totpEnabled || twoFactorMethod === "email") && (
+                    <>
+                      {!setting2FA ? (
                         <Button
                           className="self-start"
+                          disabled={twoFactorMethod === "email" && totpEnabled}
                           onClick={async () => {
                             try {
                               const res = await fetch("/api/auth/2fa/setup")
                               const data = await res.json()
-                              if (res.ok) {
-                                setTotpUri(data.uri)
-                                setTotpSecret(data.secret)
-                                setSetting2FA(true)
-                              } else {
-                                setError(data.error || "Failed to start 2FA setup.")
-                              }
-                            } catch {
-                              setError("Failed to start 2FA setup.")
-                            }
+                              if (res.ok) { setTotpUri(data.uri); setTotpSecret(data.secret); setSetting2FA(true) }
+                              else setError(data.error || "Failed to start 2FA setup.")
+                            } catch { setError("Failed to start 2FA setup.") }
                           }}
                         >
-                          Enable 2FA
+                          {twoFactorMethod === "email" && totpEnabled ? "Disable email 2FA first" : "Enable Authenticator App"}
                         </Button>
-                      </div>
-                    ) : (
-                      <div className="flex flex-col gap-4">
-                        <div className="flex flex-col gap-3 p-4 rounded-lg bg-muted/50 border border-border">
-                          <p className="text-sm font-medium text-foreground">
-                            1. Scan this QR code with your authenticator app:
-                          </p>
-                          <div className="flex justify-center p-4 bg-background rounded-lg border border-border">
-                            {/* QR code using Google Charts API */}
-                            <img
-                              src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(totpUri)}`}
-                              alt="2FA QR Code"
-                              className="w-[200px] h-[200px]"
-                              crossOrigin="anonymous"
-                            />
+                      ) : (
+                        <div className="flex flex-col gap-4">
+                          <div className="flex flex-col gap-3 p-4 rounded-lg bg-muted/50 border border-border">
+                            <p className="text-sm font-medium text-foreground">1. Scan this QR code with your authenticator app:</p>
+                            <div className="flex justify-center p-4 bg-background rounded-lg border border-border">
+                              <img src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(totpUri)}`} alt="2FA QR Code" className="w-[200px] h-[200px]" crossOrigin="anonymous" />
+                            </div>
+                            <p className="text-sm text-muted-foreground">Or enter this secret manually:</p>
+                            <code className="text-xs bg-card border border-border px-3 py-2 rounded font-mono text-primary break-all select-all">{totpSecret}</code>
                           </div>
-                          <p className="text-sm text-muted-foreground">
-                            Or enter this secret manually:
-                          </p>
-                          <code className="text-xs bg-card border border-border px-3 py-2 rounded font-mono text-primary break-all select-all">
-                            {totpSecret}
-                          </code>
-                        </div>
-
-                        <div className="flex flex-col gap-3 p-4 rounded-lg bg-muted/50 border border-border">
-                          <p className="text-sm font-medium text-foreground">
-                            2. Enter the 6-digit code to verify:
-                          </p>
-                          <div className="flex gap-2">
-                            <Input
-                              type="text"
-                              inputMode="numeric"
-                              pattern="[0-9]{6}"
-                              maxLength={6}
-                              placeholder="000000"
-                              value={totpVerifyCode}
-                              onChange={(e) => setTotpVerifyCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
-                              className="bg-card h-10 text-center text-lg tracking-[0.3em] font-mono max-w-[180px]"
-                            />
-                            <Button
-                              disabled={totpVerifyCode.length !== 6}
-                              onClick={async () => {
+                          <div className="flex flex-col gap-3 p-4 rounded-lg bg-muted/50 border border-border">
+                            <p className="text-sm font-medium text-foreground">2. Enter the 6-digit code to verify:</p>
+                            <div className="flex gap-2">
+                              <Input type="text" inputMode="numeric" pattern="[0-9]{6}" maxLength={6} placeholder="000000" value={totpVerifyCode} onChange={(e) => setTotpVerifyCode(e.target.value.replace(/\D/g, "").slice(0, 6))} className="bg-card h-10 text-center text-lg tracking-[0.3em] font-mono max-w-[180px]" />
+                              <Button disabled={totpVerifyCode.length !== 6} onClick={async () => {
                                 try {
-                                  const res = await fetch("/api/auth/2fa/setup", {
-                                    method: "POST",
-                                    headers: { "Content-Type": "application/json" },
-                                    body: JSON.stringify({ code: totpVerifyCode }),
-                                  })
+                                  const res = await fetch("/api/auth/2fa/setup", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ code: totpVerifyCode }) })
                                   const data = await res.json()
-                                  if (res.ok) {
-                                    setTotpEnabled(true)
-                                    setSetting2FA(false)
-                                    setTotpUri("")
-                                    setTotpSecret("")
-                                    setTotpVerifyCode("")
-                                    setBackupCodes(data.backupCodes || [])
-                                    setBackupCodesRemaining(data.backupCodes?.length || 0)
-                                    setSuccess("Two-factor authentication is now enabled! Save your backup codes below.")
-                                  } else {
-                                    setError(data.error || "Verification failed.")
-                                  }
-                                } catch {
-                                  setError("Failed to verify code.")
-                                }
+                                  if (res.ok) { setTotpEnabled(true); setTwoFactorMethod("app"); setSetting2FA(false); setTotpUri(""); setTotpSecret(""); setTotpVerifyCode(""); setBackupCodes(data.backupCodes || []); setBackupCodesRemaining(data.backupCodes?.length || 0); setSuccess("Authenticator app 2FA is now enabled! Save your backup codes.") }
+                                  else setError(data.error || "Verification failed.")
+                                } catch { setError("Failed to verify code.") }
+                              }}>Verify & Enable</Button>
+                            </div>
+                          </div>
+                          <Button variant="ghost" className="self-start text-muted-foreground" onClick={() => { setSetting2FA(false); setTotpUri(""); setTotpSecret(""); setTotpVerifyCode("") }}>Cancel Setup</Button>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+
+                {/* ===== EMAIL 2FA ===== */}
+                <div className="rounded-lg border border-border p-4 flex flex-col gap-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="flex items-center justify-center h-9 w-9 rounded-lg bg-primary/10 border border-primary/20">
+                        <Mail className="h-4 w-4 text-primary" />
+                      </div>
+                      <div>
+                        <p className="text-sm font-semibold text-foreground">Email Verification</p>
+                        <p className="text-xs text-muted-foreground">Receive a 6-digit code via email each time you sign in.</p>
+                      </div>
+                    </div>
+                    {twoFactorMethod === "email" && totpEnabled && (
+                      <Badge className="bg-emerald-500/10 text-emerald-500 border-emerald-500/20 shrink-0">Active</Badge>
+                    )}
+                  </div>
+
+                  {/* Email 2FA is enabled */}
+                  {totpEnabled && twoFactorMethod === "email" && (
+                    <>
+                      <div className="flex items-center gap-2 p-3 rounded-lg bg-emerald-500/5 border border-emerald-500/20">
+                        <Check className="h-4 w-4 text-emerald-500" />
+                        <p className="text-sm text-foreground">A verification code will be sent to your email on each login.</p>
+                      </div>
+                      {!showDisable2FA ? (
+                        <Button variant="outline" className="self-start text-destructive border-destructive/30 hover:bg-destructive/10" onClick={() => setShowDisable2FA(true)}>
+                          Disable Email 2FA
+                        </Button>
+                      ) : (
+                        <div className="flex flex-col gap-3 p-4 rounded-lg bg-destructive/5 border border-destructive/20">
+                          <p className="text-sm text-foreground font-medium">Enter your password to disable email 2FA</p>
+                          <Input type="password" placeholder="Current password" value={disablePassword} onChange={(e) => setDisablePassword(e.target.value)} className="bg-card h-10" />
+                          <div className="flex items-center gap-2">
+                            <Button variant="destructive" disabled={!disablePassword} onClick={async () => {
+                              try {
+                                const res = await fetch("/api/auth/2fa/email-setup", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ password: disablePassword }) })
+                                const data = await res.json()
+                                if (res.ok) { setTotpEnabled(false); setTwoFactorMethod(null); setShowDisable2FA(false); setDisablePassword(""); setSuccess("Email 2FA has been disabled.") }
+                                else setError(data.error || "Failed to disable email 2FA.")
+                              } catch { setError("Failed to disable email 2FA.") }
+                            }}>Confirm Disable</Button>
+                            <Button variant="ghost" onClick={() => { setShowDisable2FA(false); setDisablePassword("") }}>Cancel</Button>
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  )}
+
+                  {/* Enable email 2FA (when not enabled or app is active) */}
+                  {(!totpEnabled || twoFactorMethod === "app") && (
+                    <div className="flex flex-col gap-3">
+                      {!email2FAPassword ? (
+                        <Button
+                          className="self-start"
+                          variant="outline"
+                          disabled={twoFactorMethod === "app" && totpEnabled}
+                          onClick={() => {
+                            if (twoFactorMethod === "app" && totpEnabled) return
+                            setEmail2FAPassword(" ")
+                          }}
+                        >
+                          {twoFactorMethod === "app" && totpEnabled ? "Disable app 2FA first" : "Enable Email 2FA"}
+                        </Button>
+                      ) : (
+                        <div className="flex flex-col gap-3 p-4 rounded-lg bg-muted/50 border border-border">
+                          <p className="text-sm text-foreground font-medium">Enter your password to enable email 2FA</p>
+                          <p className="text-xs text-muted-foreground">A 6-digit code will be sent to your email every time you log in.</p>
+                          <Input
+                            type="password"
+                            placeholder="Current password"
+                            value={email2FAPassword.trim() === "" ? "" : email2FAPassword}
+                            onChange={(e) => setEmail2FAPassword(e.target.value)}
+                            className="bg-card h-10"
+                          />
+                          <div className="flex items-center gap-2">
+                            <Button
+                              disabled={!email2FAPassword.trim() || togglingEmail2FA}
+                              onClick={async () => {
+                                setTogglingEmail2FA(true)
+                                try {
+                                  const res = await fetch("/api/auth/2fa/email-setup", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ password: email2FAPassword.trim() }) })
+                                  const data = await res.json()
+                                  if (res.ok) { setTotpEnabled(true); setTwoFactorMethod("email"); setEmail2FAPassword(""); setSuccess("Email 2FA is now enabled.") }
+                                  else setError(data.error || "Failed to enable email 2FA.")
+                                } catch { setError("Failed to enable email 2FA.") } finally { setTogglingEmail2FA(false) }
                               }}
                             >
-                              Verify & Enable
+                              {togglingEmail2FA ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Enabling...</> : "Enable Email 2FA"}
                             </Button>
+                            <Button variant="ghost" onClick={() => setEmail2FAPassword("")}>Cancel</Button>
                           </div>
                         </div>
-
-                        <Button
-                          variant="ghost"
-                          className="self-start text-muted-foreground"
-                          onClick={() => {
-                            setSetting2FA(false)
-                            setTotpUri("")
-                            setTotpSecret("")
-                            setTotpVerifyCode("")
-                          }}
-                        >
-                          Cancel Setup
-                        </Button>
-                      </div>
-                    )}
-                  </>
-                )}
+                      )}
+                    </div>
+                  )}
+                </div>
               </CardContent>
             </Card>
           </div>
@@ -1575,119 +1594,166 @@ export default function ProfilePage() {
         {/* ===================== NOTIFICATIONS TAB ===================== */}
         {activeTab === "notifications" && (
           <div className="flex flex-col gap-6">
+            {/* --- SECURITY --- */}
             <Card>
-              <CardHeader>
-                <CardTitle className="text-lg flex items-center gap-2">
-                  <Bell className="h-4 w-4 text-primary" />
-                  Email Notifications
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <Shield className="h-4 w-4 text-primary" />
+                  Security
                 </CardTitle>
-                <CardDescription>
-                  Choose which email notifications you&apos;d like to receive. These settings apply to automated emails only.
-                </CardDescription>
+                <CardDescription>Critical alerts for account access and authentication events.</CardDescription>
               </CardHeader>
-              <CardContent className="flex flex-col gap-4">
-                {/* Security notifications - always recommended */}
-                <div className="flex items-center justify-between p-4 rounded-lg border border-border bg-secondary/30">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2">
-                      <Shield className="h-4 w-4 text-primary" />
-                      <p className="text-sm font-medium text-foreground">Security Alerts</p>
-                      <Badge variant="secondary" className="text-[10px] px-1.5 py-0 uppercase font-semibold">Recommended</Badge>
+              <CardContent className="flex flex-col gap-2">
+                {([
+                  { key: "email_security" as const, icon: Shield, label: "Security Alerts", desc: "Unusual activity, account compromise warnings, and critical security events.", badge: "Recommended" },
+                  { key: "email_new_login" as const, icon: LogIn, label: "Login Alerts", desc: "Notifications when someone signs into your account from a new device or location." },
+                  { key: "email_password_change" as const, icon: Lock, label: "Password Changes", desc: "Alerts when your password is changed or a reset is requested." },
+                  { key: "email_2fa_change" as const, icon: Fingerprint, label: "2FA Changes", desc: "Notifications when two-factor authentication is enabled, disabled, or modified." },
+                  { key: "email_session_revoked" as const, icon: MonitorSmartphone, label: "Session Alerts", desc: "Alerts about active sessions and session revocations." },
+                ] as const).map(({ key, icon: Icon, label, desc, badge }) => (
+                  <div key={key} className="flex items-center justify-between p-3 rounded-lg border border-border bg-secondary/30">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2">
+                        <Icon className="h-3.5 w-3.5 text-muted-foreground" />
+                        <p className="text-sm font-medium text-foreground">{label}</p>
+                        {badge && <Badge variant="secondary" className="text-[10px] px-1.5 py-0 uppercase font-semibold">{badge}</Badge>}
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-0.5 ml-5.5">{desc}</p>
                     </div>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Get notified about password changes, new logins, 2FA changes, and other security events.
-                    </p>
+                    <Switch checked={notifPrefs[key]} onCheckedChange={(checked) => setNotifPrefs(prev => ({ ...prev, [key]: checked }))} />
                   </div>
-                  <Switch
-                    checked={notifPrefs.email_security}
-                    onCheckedChange={(checked) => setNotifPrefs(prev => ({ ...prev, email_security: checked }))}
-                  />
-                </div>
+                ))}
+              </CardContent>
+            </Card>
 
-                {/* API Keys notifications */}
-                <div className="flex items-center justify-between p-4 rounded-lg border border-border bg-secondary/30">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2">
-                      <Key className="h-4 w-4 text-muted-foreground" />
-                      <p className="text-sm font-medium text-foreground">API Key Activity</p>
+            {/* --- SCANNING --- */}
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <Scan className="h-4 w-4 text-primary" />
+                  Scanning
+                </CardTitle>
+                <CardDescription>Notifications about scan results, failures, and scheduled scans.</CardDescription>
+              </CardHeader>
+              <CardContent className="flex flex-col gap-2">
+                {([
+                  { key: "email_scan_complete" as const, icon: Check, label: "Scan Complete", desc: "Get notified when a scan finishes with a summary of findings." },
+                  { key: "email_critical_findings" as const, icon: XCircle, label: "Critical Findings", desc: "Alerts when critical or high-severity vulnerabilities are discovered in your scans." },
+                  { key: "email_regression_alert" as const, icon: AlertTriangle, label: "Regression Alerts", desc: "Notifications when previously resolved issues reappear in subsequent scans." },
+                  { key: "email_schedules" as const, icon: CalendarClock, label: "Scheduled Scan Reports", desc: "Email summaries when scheduled scans complete, including severity breakdowns." },
+                ] as const).map(({ key, icon: Icon, label, desc }) => (
+                  <div key={key} className="flex items-center justify-between p-3 rounded-lg border border-border bg-secondary/30">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2">
+                        <Icon className="h-3.5 w-3.5 text-muted-foreground" />
+                        <p className="text-sm font-medium text-foreground">{label}</p>
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-0.5 ml-5.5">{desc}</p>
                     </div>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Notifications when API keys are created, revoked, or near their usage limits.
-                    </p>
+                    <Switch checked={notifPrefs[key]} onCheckedChange={(checked) => setNotifPrefs(prev => ({ ...prev, [key]: checked }))} />
                   </div>
-                  <Switch
-                    checked={notifPrefs.email_api_keys}
-                    onCheckedChange={(checked) => setNotifPrefs(prev => ({ ...prev, email_api_keys: checked }))}
-                  />
-                </div>
+                ))}
+              </CardContent>
+            </Card>
 
-                {/* Webhooks notifications */}
-                <div className="flex items-center justify-between p-4 rounded-lg border border-border bg-secondary/30">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2">
-                      <Webhook className="h-4 w-4 text-muted-foreground" />
-                      <p className="text-sm font-medium text-foreground">Webhook Events</p>
+            {/* --- API & INTEGRATIONS --- */}
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <Zap className="h-4 w-4 text-primary" />
+                  {"API & Integrations"}
+                </CardTitle>
+                <CardDescription>Notifications about API keys, usage limits, and webhook events.</CardDescription>
+              </CardHeader>
+              <CardContent className="flex flex-col gap-2">
+                {([
+                  { key: "email_api_keys" as const, icon: Key, label: "API Key Activity", desc: "Alerts when API keys are created, revoked, or approaching expiration." },
+                  { key: "email_api_limit_warning" as const, icon: Gauge, label: "API Limit Warnings", desc: "Warnings when your API usage nears rate limits or daily quotas." },
+                  { key: "email_webhooks" as const, icon: Webhook, label: "Webhook Events", desc: "Notifications when webhooks are created, modified, or disabled." },
+                  { key: "email_webhook_failure" as const, icon: XCircle, label: "Webhook Failures", desc: "Alerts when webhook deliveries fail repeatedly." },
+                ] as const).map(({ key, icon: Icon, label, desc }) => (
+                  <div key={key} className="flex items-center justify-between p-3 rounded-lg border border-border bg-secondary/30">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2">
+                        <Icon className="h-3.5 w-3.5 text-muted-foreground" />
+                        <p className="text-sm font-medium text-foreground">{label}</p>
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-0.5 ml-5.5">{desc}</p>
                     </div>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Get notified when webhooks fail to deliver or are automatically disabled.
-                    </p>
+                    <Switch checked={notifPrefs[key]} onCheckedChange={(checked) => setNotifPrefs(prev => ({ ...prev, [key]: checked }))} />
                   </div>
-                  <Switch
-                    checked={notifPrefs.email_webhooks}
-                    onCheckedChange={(checked) => setNotifPrefs(prev => ({ ...prev, email_webhooks: checked }))}
-                  />
-                </div>
+                ))}
+              </CardContent>
+            </Card>
 
-                {/* Schedules notifications */}
-                <div className="flex items-center justify-between p-4 rounded-lg border border-border bg-secondary/30">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2">
-                      <CalendarClock className="h-4 w-4 text-muted-foreground" />
-                      <p className="text-sm font-medium text-foreground">Scheduled Scan Reports</p>
+            {/* --- ACCOUNT --- */}
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <UserCog className="h-4 w-4 text-primary" />
+                  Account
+                </CardTitle>
+                <CardDescription>Notifications about your account, data exports, and team activity.</CardDescription>
+              </CardHeader>
+              <CardContent className="flex flex-col gap-2">
+                {([
+                  { key: "email_data_requests" as const, icon: Download, label: "Data Export Updates", desc: "Notifications when your data export is ready for download." },
+                  { key: "email_account_deletion" as const, icon: UserCog, label: "Account Deletion", desc: "Confirmations and alerts when account deletion is requested or processed." },
+                  { key: "email_team_invite" as const, icon: Users, label: "Team Invites", desc: "Notifications when you're invited to join a team or workspace." },
+                  { key: "email_team_changes" as const, icon: Users, label: "Team Changes", desc: "Alerts about team membership changes, role updates, and team activity." },
+                ] as const).map(({ key, icon: Icon, label, desc }) => (
+                  <div key={key} className="flex items-center justify-between p-3 rounded-lg border border-border bg-secondary/30">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2">
+                        <Icon className="h-3.5 w-3.5 text-muted-foreground" />
+                        <p className="text-sm font-medium text-foreground">{label}</p>
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-0.5 ml-5.5">{desc}</p>
                     </div>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Receive email summaries when scheduled scans complete, including severity breakdowns.
-                    </p>
+                    <Switch checked={notifPrefs[key]} onCheckedChange={(checked) => setNotifPrefs(prev => ({ ...prev, [key]: checked }))} />
                   </div>
-                  <Switch
-                    checked={notifPrefs.email_schedules}
-                    onCheckedChange={(checked) => setNotifPrefs(prev => ({ ...prev, email_schedules: checked }))}
-                  />
-                </div>
+                ))}
+              </CardContent>
+            </Card>
 
-                {/* Data request notifications */}
-                <div className="flex items-center justify-between p-4 rounded-lg border border-border bg-secondary/30">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2">
-                      <Download className="h-4 w-4 text-muted-foreground" />
-                      <p className="text-sm font-medium text-foreground">Data Export Updates</p>
+            {/* --- PRODUCT --- */}
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <Megaphone className="h-4 w-4 text-primary" />
+                  Product
+                </CardTitle>
+                <CardDescription>Stay up to date with new features, tips, and platform updates.</CardDescription>
+              </CardHeader>
+              <CardContent className="flex flex-col gap-2">
+                {([
+                  { key: "email_product_updates" as const, icon: Megaphone, label: "Product Updates", desc: "Major feature announcements, release notes, and platform improvements." },
+                  { key: "email_tips_guides" as const, icon: Lightbulb, label: "Tips & Guides", desc: "Helpful tips, best practices, and security guides to get the most out of VulnRadar." },
+                ] as const).map(({ key, icon: Icon, label, desc }) => (
+                  <div key={key} className="flex items-center justify-between p-3 rounded-lg border border-border bg-secondary/30">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2">
+                        <Icon className="h-3.5 w-3.5 text-muted-foreground" />
+                        <p className="text-sm font-medium text-foreground">{label}</p>
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-0.5 ml-5.5">{desc}</p>
                     </div>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Notifications when your data export is ready for download.
-                    </p>
+                    <Switch checked={notifPrefs[key]} onCheckedChange={(checked) => setNotifPrefs(prev => ({ ...prev, [key]: checked }))} />
                   </div>
-                  <Switch
-                    checked={notifPrefs.email_data_requests}
-                    onCheckedChange={(checked) => setNotifPrefs(prev => ({ ...prev, email_data_requests: checked }))}
-                  />
-                </div>
+                ))}
+              </CardContent>
+            </Card>
 
-                {/* Save button */}
-                <div className="flex items-center justify-between pt-4 border-t border-border">
-                  <p className="text-xs text-muted-foreground">
-                    Changes are saved when you click the button.
-                  </p>
+            {/* Save button card */}
+            <Card>
+              <CardContent className="pt-6">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs text-muted-foreground">Changes are saved when you click the button.</p>
                   <Button onClick={handleSaveNotifPrefs} disabled={savingNotifPrefs}>
                     {savingNotifPrefs ? (
-                      <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Saving...
-                      </>
+                      <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Saving...</>
                     ) : (
-                      <>
-                        <Save className="mr-2 h-4 w-4" />
-                        Save Preferences
-                      </>
+                      <><Save className="mr-2 h-4 w-4" />Save Preferences</>
                     )}
                   </Button>
                 </div>

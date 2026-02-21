@@ -29,11 +29,11 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
 
   // Disable 2FA and clear backup codes
   await pool.query(
-    "UPDATE users SET totp_enabled = false, totp_secret = NULL, backup_codes = NULL WHERE id = $1",
+    "UPDATE users SET totp_enabled = false, two_factor_method = NULL, totp_secret = NULL, backup_codes = NULL WHERE id = $1",
     [session.userId],
   )
 
-  // Send security notification email (don't await)
+  // Send 2FA change notification email (don't await)
   const ip = await getClientIp()
   const userAgent = await getUserAgent()
 
@@ -41,7 +41,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   sendNotificationEmail({
     userId: session.userId,
     userEmail: session.email,
-    type: "security",
+    type: "two_factor_changes",
     emailContent,
   }).catch((err) => console.error("[Email Error] Failed to send 2FA disabled notification:", err))
 

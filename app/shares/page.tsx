@@ -107,8 +107,15 @@ export default function SharesPage() {
 
   if (loading) {
     return (
-        <div className="flex items-center justify-center min-h-screen">
-          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        <div className="min-h-screen flex flex-col bg-background">
+          <Header />
+          <main className="flex-1 flex items-center justify-center">
+            <div className="flex flex-col items-center gap-3">
+              <Loader2 className="h-6 w-6 animate-spin text-primary" />
+              <p className="text-sm text-muted-foreground">Loading shares...</p>
+            </div>
+          </main>
+          <Footer />
         </div>
     )
   }
