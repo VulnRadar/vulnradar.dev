@@ -559,16 +559,16 @@ export default function AdminPage() {
                               <span className="text-sm font-medium text-foreground">{u.api_key_count}</span>
                             </td>
                             <td className="px-4 py-3">
-                              <div className="flex items-center gap-1.5 flex-wrap">
-                                {u.disabled_at && <Badge className="bg-destructive/10 text-destructive border-destructive/20 text-[10px] px-1.5 font-medium">Disabled</Badge>}
-                                {u.role === "admin" && <Badge className="bg-primary/10 text-primary border-primary/20 text-[10px] px-1.5 font-medium">Admin</Badge>}
-                                {u.role === "moderator" && <Badge className="bg-[hsl(var(--severity-medium))]/10 text-[hsl(var(--severity-medium))] border-[hsl(var(--severity-medium))]/20 text-[10px] px-1.5 font-medium">Moderator</Badge>}
-                                {u.role === "support" && <Badge className="bg-blue-500/10 text-blue-500 border-blue-500/20 text-[10px] px-1.5 font-medium">Support</Badge>}
-                                {u.totp_enabled && <Badge className="bg-emerald-500/10 text-emerald-500 border-emerald-500/20 text-[10px] px-1.5 font-medium">2FA</Badge>}
-                                {!u.disabled_at && (!u.role || u.role === "user") && !u.totp_enabled && (
-                                  <span className="text-xs text-muted-foreground">Active</span>
-                                )}
-                              </div>
+                              {(() => {
+                                const badges: React.ReactNode[] = []
+                                if (u.disabled_at) badges.push(<Badge key="disabled" className="bg-destructive/10 text-destructive border-destructive/20 text-[10px] px-1.5 font-medium">Disabled</Badge>)
+                                if (u.role === "admin") badges.push(<Badge key="admin" className="bg-primary/10 text-primary border-primary/20 text-[10px] px-1.5 font-medium">Admin</Badge>)
+                                if (u.role === "moderator") badges.push(<Badge key="mod" className="bg-[hsl(var(--severity-medium))]/10 text-[hsl(var(--severity-medium))] border-[hsl(var(--severity-medium))]/20 text-[10px] px-1.5 font-medium">Moderator</Badge>)
+                                if (u.role === "support") badges.push(<Badge key="support" className="bg-blue-500/10 text-blue-500 border-blue-500/20 text-[10px] px-1.5 font-medium">Support</Badge>)
+                                if (u.totp_enabled) badges.push(<Badge key="2fa" className="bg-emerald-500/10 text-emerald-500 border-emerald-500/20 text-[10px] px-1.5 font-medium">2FA</Badge>)
+                                if (badges.length === 0) return <span className="text-xs text-muted-foreground">Active</span>
+                                return <div className="flex items-center gap-1.5 flex-wrap">{badges}</div>
+                              })()}
                             </td>
                             <td className="px-4 py-3 text-xs text-muted-foreground whitespace-nowrap">
                               {new Date(u.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
