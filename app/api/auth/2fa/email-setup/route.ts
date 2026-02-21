@@ -39,20 +39,25 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     [session.userId],
   )
 
-  // Send notification email
+  // Send notification email about 2FA being enabled
   const ip = await getClientIp()
   const ua = await getUserAgent()
   const emailContent = email2FAEnabledEmail({
-    ipAddress: ip,
-    userAgent: ua,
-    timestamp: new Date().toISOString(),
+    ipAddress: ip || "Unknown",
+    userAgent: ua || "Unknown",
   })
-  sendNotificationEmail({
-    userId: session.userId,
-    userEmail: rows[0].email,
-    type: "two_factor_changes",
-    emailContent,
-  }).catch((err) => console.error("Failed to send email 2FA enabled notification:", err))
+
+  // Await the email send so errors surface properly
+  try {
+    await sendNotificationEmail({
+      userId: session.userId,
+      userEmail: rows[0].email,
+      type: "two_factor_changes",
+      emailContent,
+    })
+  } catch (err) {
+    console.error("Failed to send email 2FA enabled notification:", err)
+  }
 
   return ApiResponse.success({ success: true })
 })
@@ -89,20 +94,24 @@ export const DELETE = withErrorHandling(async (request: NextRequest) => {
   // Clean up any pending email codes
   await pool.query("DELETE FROM email_2fa_codes WHERE user_id = $1", [session.userId])
 
-  // Send notification email
+  // Send notification email about 2FA being disabled
   const ip = await getClientIp()
   const ua = await getUserAgent()
   const emailContent = email2FADisabledEmail({
-    ipAddress: ip,
-    userAgent: ua,
-    timestamp: new Date().toISOString(),
+    ipAddress: ip || "Unknown",
+    userAgent: ua || "Unknown",
   })
-  sendNotificationEmail({
-    userId: session.userId,
-    userEmail: rows[0].email,
-    type: "two_factor_changes",
-    emailContent,
-  }).catch((err) => console.error("Failed to send email 2FA disabled notification:", err))
+
+  try {
+    await sendNotificationEmail({
+      userId: session.userId,
+      userEmail: rows[0].email,
+      type: "two_factor_changes",
+      emailContent,
+    })
+  } catch (err) {
+    console.error("Failed to send email 2FA disabled notification:", err)
+  }
 
   return ApiResponse.success({ success: true })
 })
