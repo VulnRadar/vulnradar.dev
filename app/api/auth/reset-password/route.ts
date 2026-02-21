@@ -70,7 +70,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
       sendNotificationEmail({
         userId: resetToken.user_id,
         userEmail: resetToken.email,
-        type: "security",
+        type: "password_changes",
         emailContent,
       }).catch((err) => {
         console.error("[Email Error] Password change notification failed:", err)

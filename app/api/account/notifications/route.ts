@@ -25,7 +25,6 @@ const ALL_PREF_COLUMNS = [
   // Account
   "email_data_requests",
   "email_account_changes",
-  "email_billing_alerts",
   "email_team_invites",
   // Product
   "email_product_updates",

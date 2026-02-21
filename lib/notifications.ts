@@ -17,7 +17,6 @@ export type NotificationType =
   | "webhook_failures"
   | "data_requests"
   | "account_changes"
-  | "billing_alerts"
   | "team_invites"
   | "product_updates"
   | "tips_guides"
@@ -38,7 +37,6 @@ const ALL_COLUMNS = [
   "email_webhook_failures",
   "email_data_requests",
   "email_account_changes",
-  "email_billing_alerts",
   "email_team_invites",
   "email_product_updates",
   "email_tips_guides",
@@ -60,7 +58,6 @@ export interface NotificationPreferences {
   email_webhook_failures: boolean
   email_data_requests: boolean
   email_account_changes: boolean
-  email_billing_alerts: boolean
   email_team_invites: boolean
   email_product_updates: boolean
   email_tips_guides: boolean
@@ -86,7 +83,6 @@ const TYPE_TO_COLUMN: Record<NotificationType, keyof NotificationPreferences> = 
   webhook_failures: "email_webhook_failures",
   data_requests: "email_data_requests",
   account_changes: "email_account_changes",
-  billing_alerts: "email_billing_alerts",
   team_invites: "email_team_invites",
   product_updates: "email_product_updates",
   tips_guides: "email_tips_guides",
