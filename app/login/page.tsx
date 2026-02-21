@@ -97,6 +97,18 @@ function LoginForm() {
       if (data.requires2FA) {
         setNeeds2FA(true)
         setPendingUserId(data.userId)
+        setTwoFactorMethod(data.twoFactorMethod || "app")
+        // Auto-send email code if email 2FA
+        if (data.twoFactorMethod === "email") {
+          try {
+            await fetch("/api/auth/2fa/email-send", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ userId: data.userId }),
+            })
+            setEmailCodeSent(true)
+          } catch { /* will show resend button */ }
+        }
         setLoading(false)
         return
       }
@@ -156,14 +168,18 @@ function LoginForm() {
           </div>
           <CardTitle className="text-xl font-bold tracking-tight">
             {needs2FA
-              ? useBackupCode ? "Use a Backup Code" : "Two-Factor Authentication"
+              ? useBackupCode ? "Use a Backup Code"
+              : twoFactorMethod === "email" ? "Check Your Email"
+              : "Two-Factor Authentication"
               : "Welcome back"}
           </CardTitle>
           <CardDescription>
             {needs2FA
               ? useBackupCode
                 ? "Enter one of your 8-character backup codes"
-                : "Enter the 6-digit code from your authenticator app"
+                : twoFactorMethod === "email"
+                  ? "We sent a 6-digit code to your email address"
+                  : "Enter the 6-digit code from your authenticator app"
               : `Sign in to your ${APP_NAME} account`}
           </CardDescription>
         </CardHeader>
@@ -250,19 +266,45 @@ function LoginForm() {
             </Button>
 
             <div className="flex flex-col items-center gap-2">
-              <button
-                type="button"
-                onClick={() => {
-                  setUseBackupCode(!useBackupCode)
-                  setBackupCodeInput("")
-                  setTotpCode("")
-                  setRememberDevice(false)
-                  setError("")
-                }}
-                className="text-sm text-muted-foreground hover:text-foreground transition-colors"
-              >
-                {useBackupCode ? "Use Authenticator App" : "Use Backup Code"}
-              </button>
+              {twoFactorMethod === "email" ? (
+                <button
+                  type="button"
+                  disabled={resendingCode}
+                  onClick={async () => {
+                    setResendingCode(true)
+                    try {
+                      await fetch("/api/auth/2fa/email-send", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ userId: pendingUserId }),
+                      })
+                      setEmailCodeSent(true)
+                      setError("")
+                    } catch {
+                      setError("Failed to resend code.")
+                    } finally {
+                      setResendingCode(false)
+                    }
+                  }}
+                  className="text-sm text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
+                >
+                  {resendingCode ? "Sending..." : "Resend code"}
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setUseBackupCode(!useBackupCode)
+                    setBackupCodeInput("")
+                    setTotpCode("")
+                    setRememberDevice(false)
+                    setError("")
+                  }}
+                  className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  {useBackupCode ? "Use Authenticator App" : "Use Backup Code"}
+                </button>
+              )}
             </div>
           </form>
         ) : (
