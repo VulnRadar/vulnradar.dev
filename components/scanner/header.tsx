@@ -84,14 +84,11 @@ export function Header() {
             <button
                 onClick={() => router.push("/admin")}
                 className={cn(
-                    "flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors",
-                    isStaff ? "" : "invisible pointer-events-none",
+                    "vr-staff-only items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors",
                     pathname === "/admin"
                         ? "bg-destructive/10 text-destructive"
                         : "text-destructive/70 hover:text-destructive hover:bg-destructive/10",
                 )}
-                tabIndex={isStaff ? 0 : -1}
-                aria-hidden={!isStaff}
             >
               <ShieldAlert className="h-4 w-4" />
               Admin
@@ -153,8 +150,7 @@ export function Header() {
               <button
                   onClick={() => { router.push("/admin"); setMobileOpen(false) }}
                   className={cn(
-                      "flex items-center gap-2.5 px-3 py-2.5 rounded-md text-sm font-medium transition-colors",
-                      isStaff ? "" : "hidden",
+                      "vr-staff-only items-center gap-2.5 px-3 py-2.5 rounded-md text-sm font-medium transition-colors",
                       pathname === "/admin"
                           ? "bg-destructive/10 text-destructive"
                           : "text-destructive/70 hover:text-destructive hover:bg-destructive/10",

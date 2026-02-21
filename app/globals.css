@@ -8,6 +8,24 @@
   }
 }
 
+/* Pre-hydration visibility: hide staff/auth elements by default,
+   show them instantly via data attributes set by blocking script */
+.vr-staff-only {
+  display: none !important;
+}
+html[data-vr-staff="1"] .vr-staff-only {
+  display: flex !important;
+}
+
+.vr-auth-only {
+  visibility: hidden;
+  pointer-events: none;
+}
+html[data-vr-authed="1"] .vr-auth-only {
+  visibility: visible;
+  pointer-events: auto;
+}
+
 @layer base {
   :root {
     --background: 220 20% 97%;
