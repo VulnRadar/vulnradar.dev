@@ -6,6 +6,7 @@ import { ThemeProvider } from '@/components/theme-provider'
 import { TosGate } from '@/components/tos-gate'
 import { BackupCodesModal } from '@/components/notification-center'
 import { AuthProvider } from '@/components/auth-provider'
+import { LayoutClient } from '@/components/layout-client'
 import { APP_NAME, APP_DESCRIPTION, APP_URL, APP_VERSION, LOGO_URL } from '@/lib/constants'
 
 import './globals.css'
@@ -85,9 +86,11 @@ export default function RootLayout({
           disableTransitionOnChange
         >
           <AuthProvider>
-            <TosGate>
-              {children}
-            </TosGate>
+            <LayoutClient>
+              <TosGate>
+                {children}
+              </TosGate>
+            </LayoutClient>
             <BackupCodesModal />
           </AuthProvider>
         </ThemeProvider>
