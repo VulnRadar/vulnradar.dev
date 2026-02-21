@@ -225,6 +225,7 @@ export default function ProfilePage() {
   const [uploadingAvatar, setUploadingAvatar] = useState(false)
   const [cropDialogOpen, setCropDialogOpen] = useState(false)
   const [cropImageSrc, setCropImageSrc] = useState<string | null>(null)
+  const [isGifUpload, setIsGifUpload] = useState(false)
   const avatarInputRef = React.useRef<HTMLInputElement>(null)
 
   function handleAvatarFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
@@ -234,17 +235,26 @@ export default function ProfilePage() {
       setError("Please select an image file.")
       return
     }
-    if (file.size > 5 * 1024 * 1024) {
-      setError("Image must be under 5MB.")
+    if (file.size > 10 * 1024 * 1024) {
+      setError("Image must be under 10MB.")
       return
     }
     setError(null)
-    const reader = new FileReader()
-    reader.onload = () => {
-      setCropImageSrc(reader.result as string)
-      setCropDialogOpen(true)
+    const isGif = file.type === "image/gif"
+    setIsGifUpload(isGif)
+    if (isGif) {
+      // Skip crop dialog for GIFs to preserve animation
+      const reader = new FileReader()
+      reader.onload = () => handleCroppedAvatar(reader.result as string)
+      reader.readAsDataURL(file)
+    } else {
+      const reader = new FileReader()
+      reader.onload = () => {
+        setCropImageSrc(reader.result as string)
+        setCropDialogOpen(true)
+      }
+      reader.readAsDataURL(file)
     }
-    reader.readAsDataURL(file)
     if (avatarInputRef.current) avatarInputRef.current.value = ""
   }
 
