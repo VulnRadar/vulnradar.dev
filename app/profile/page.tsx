@@ -37,7 +37,6 @@ import {
   XCircle,
   Gauge,
   Zap,
-  CreditCard,
   Users,
   Lightbulb,
   Megaphone,
@@ -1692,7 +1691,7 @@ export default function ProfilePage() {
                   <UserCog className="h-4 w-4 text-primary" />
                   Account
                 </CardTitle>
-                <CardDescription>Notifications about your account, billing, and team activity.</CardDescription>
+                <CardDescription>Notifications about your account, data exports, and team activity.</CardDescription>
               </CardHeader>
               <CardContent className="flex flex-col gap-2">
                 {([
