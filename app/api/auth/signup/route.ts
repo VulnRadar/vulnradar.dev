@@ -75,10 +75,16 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     [user.id, token, expiresAt]
   )
 
-  // Create default notification preferences for the user
+  // Create default notification preferences (all enabled) for the new user
   await pool.query(
-    `INSERT INTO notification_preferences (user_id, email_api_keys, email_webhooks, email_schedules, email_data_requests, email_security)
-     VALUES ($1, true, true, true, true, true)
+    `INSERT INTO notification_preferences (
+       user_id,
+       email_security, email_login_alerts, email_password_changes, email_two_factor_changes, email_session_alerts,
+       email_scan_complete, email_scan_failures, email_severity_alerts, email_schedules,
+       email_api_keys, email_api_usage_alerts, email_webhooks, email_webhook_failures,
+       email_data_requests, email_account_changes, email_billing_alerts, email_team_invites,
+       email_product_updates, email_tips_guides
+     ) VALUES ($1, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true)
      ON CONFLICT (user_id) DO NOTHING`,
     [user.id]
   )

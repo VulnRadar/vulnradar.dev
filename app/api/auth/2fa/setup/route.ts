@@ -61,7 +61,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   const backupCodes = generateBackupCodes(8)
   const hashedCodes = backupCodes.map((code) => hashPassword(code.replace(/-/g, "").toUpperCase()))
   await pool.query(
-    "UPDATE users SET totp_enabled = true, backup_codes = $1 WHERE id = $2",
+    "UPDATE users SET totp_enabled = true, two_factor_method = 'app', backup_codes = $1 WHERE id = $2",
     [JSON.stringify(hashedCodes), session.userId],
   )
 

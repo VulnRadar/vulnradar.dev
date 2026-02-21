@@ -35,12 +35,15 @@ function LoginForm() {
 
   // 2FA state
   const [needs2FA, setNeeds2FA] = useState(false)
+  const [twoFactorMethod, setTwoFactorMethod] = useState<string | null>(null)
   const [pendingUserId, setPendingUserId] = useState<number | null>(null)
   const [totpCode, setTotpCode] = useState("")
   const [verifying2FA, setVerifying2FA] = useState(false)
   const [useBackupCode, setUseBackupCode] = useState(false)
   const [backupCodeInput, setBackupCodeInput] = useState("")
   const [rememberDevice, setRememberDevice] = useState(false)
+  const [emailCodeSent, setEmailCodeSent] = useState(false)
+  const [resendingCode, setResendingCode] = useState(false)
 
   async function handleResendVerification() {
     setResendingVerification(true)
