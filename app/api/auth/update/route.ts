@@ -144,12 +144,16 @@ export async function PATCH(request: NextRequest) {
 
       // Send password change notification (respects user prefs)
       const emailContent = profilePasswordChangedEmail({ ipAddress: ip, userAgent })
-      sendNotificationEmail({
-        userId: session.userId,
-        userEmail: currentEmail,
-        type: "password_changes",
-        emailContent,
-      }).catch((err) => console.error("Failed to send password change notification:", err))
+      try {
+        await sendNotificationEmail({
+          userId: session.userId,
+          userEmail: currentEmail,
+          type: "password_changes",
+          emailContent,
+        })
+      } catch (err) {
+        console.error("[v0] Failed to send password change notification:", err)
+      }
     }
 
     // Fetch updated user info

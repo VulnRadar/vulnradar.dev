@@ -116,12 +116,18 @@ interface SendNotificationEmailParams {
 
 export async function sendNotificationEmail({ userId, userEmail, type, emailContent }: SendNotificationEmailParams): Promise<void> {
   const shouldSend = await shouldSendNotification(userId, type)
-  if (!shouldSend) return
+  console.log("[v0] Notification check - userId:", userId, "type:", type, "shouldSend:", shouldSend)
+  if (!shouldSend) {
+    console.log("[v0] Notification preference disabled, skipping email send")
+    return
+  }
 
+  console.log("[v0] Sending notification email to:", userEmail)
   await sendEmail({
     to: userEmail,
     subject: emailContent.subject,
     text: emailContent.text,
     html: emailContent.html,
   })
+  console.log("[v0] Notification email sent successfully")
 }

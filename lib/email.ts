@@ -160,10 +160,13 @@ function securityWarningBlock(): string {
 export async function sendEmail({ to, subject, text, html, replyTo, skipLayout }: SendEmailOptions) {
   // Check if SMTP is configured
   if (!transporter) {
-    console.warn("SMTP not configured. Email not sent:")
+    console.warn("[v0] SMTP not configured. Email not sent:")
     console.warn(`  To: ${to}`)
     console.warn(`  Subject: ${subject}`)
     console.warn(`  Text: ${text.substring(0, 200)}...`)
+    console.warn("  SMTP_HOST:", process.env.SMTP_HOST ? "configured" : "NOT SET")
+    console.warn("  SMTP_USER:", process.env.SMTP_USER ? "configured" : "NOT SET")
+    console.warn("  SMTP_PASS:", process.env.SMTP_PASS ? "configured" : "NOT SET")
 
     // In development, just log and return successfully
     if (process.env.NODE_ENV !== "production") {
@@ -171,12 +174,14 @@ export async function sendEmail({ to, subject, text, html, replyTo, skipLayout }
       return
     }
 
-    throw new Error("Email service not configured")
+    throw new Error("Email service not configured. Please set SMTP_HOST, SMTP_USER, and SMTP_PASS environment variables.")
   }
 
+  console.log("[v0] Sending email via SMTP to:", to)
   const from = `"${APP_NAME}" <${SMTP_FROM}>`
   const finalHtml = skipLayout ? html : layout(html)
   await transporter.sendMail({ from, to, subject, text, html: finalHtml, replyTo })
+  console.log("[v0] Email sent successfully to:", to)
 }
 
 export function contactEmail(input: { name: string; email: string; subject: string; message: string; category: string }) {
