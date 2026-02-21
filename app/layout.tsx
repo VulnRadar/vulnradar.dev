@@ -88,8 +88,8 @@ export default function RootLayout({
             <TosGate>
               {children}
             </TosGate>
+            <BackupCodesModal />
           </AuthProvider>
-          <BackupCodesModal />
         </ThemeProvider>
         <Script id="tawk-to" strategy="lazyOnload">
           {`var Tawk_API=Tawk_API||{}, Tawk_LoadStart=new Date();
