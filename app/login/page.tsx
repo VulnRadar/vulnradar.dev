@@ -44,6 +44,7 @@ function LoginForm() {
   const [rememberDevice, setRememberDevice] = useState(false)
   const [emailCodeSent, setEmailCodeSent] = useState(false)
   const [resendingCode, setResendingCode] = useState(false)
+  const [maskedEmail, setMaskedEmail] = useState("")
 
   async function handleResendVerification() {
     setResendingVerification(true)
@@ -98,16 +99,10 @@ function LoginForm() {
         setNeeds2FA(true)
         setPendingUserId(data.userId)
         setTwoFactorMethod(data.twoFactorMethod || "app")
-        // Auto-send email code if email 2FA
+        // Email code is sent server-side by the login route
         if (data.twoFactorMethod === "email") {
-          try {
-            await fetch("/api/auth/2fa/email-send", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ userId: data.userId }),
-            })
-            setEmailCodeSent(true)
-          } catch { /* will show resend button */ }
+          setEmailCodeSent(true)
+          if (data.maskedEmail) setMaskedEmail(data.maskedEmail)
         }
         setLoading(false)
         return
@@ -178,7 +173,7 @@ function LoginForm() {
               ? useBackupCode
                 ? "Enter one of your 8-character backup codes"
                 : twoFactorMethod === "email"
-                  ? "We sent a 6-digit code to your email address"
+                  ? `We sent a 6-digit code to ${maskedEmail || "your email address"}`
                   : "Enter the 6-digit code from your authenticator app"
               : `Sign in to your ${APP_NAME} account`}
           </CardDescription>
@@ -272,14 +267,20 @@ function LoginForm() {
                   disabled={resendingCode}
                   onClick={async () => {
                     setResendingCode(true)
+                    setError("")
                     try {
-                      await fetch("/api/auth/2fa/email-send", {
+                      const res = await fetch("/api/auth/2fa/email-send", {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ userId: pendingUserId }),
                       })
-                      setEmailCodeSent(true)
-                      setError("")
+                      const data = await res.json()
+                      if (res.ok) {
+                        setEmailCodeSent(true)
+                        setTotpCode("")
+                        if (data.maskedEmail) setMaskedEmail(data.maskedEmail)
+                      } else {
+                        setError(data.error || "Failed to resend code.")
+                      }
                     } catch {
                       setError("Failed to resend code.")
                     } finally {

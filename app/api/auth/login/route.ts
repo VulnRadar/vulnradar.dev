@@ -1,10 +1,12 @@
 import { NextResponse } from "next/server"
+import { randomInt } from "node:crypto"
 import { getUserByEmail, verifyPassword, createSession } from "@/lib/auth"
 import pool from "@/lib/db"
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 import { ApiResponse, Validate, parseBody, withErrorHandling } from "@/lib/api-utils"
 import { getClientIp, getUserAgent } from "@/lib/request-utils"
 import { AUTH_2FA_PENDING_COOKIE, AUTH_2FA_PENDING_MAX_AGE, DEVICE_TRUST_COOKIE_NAME, ERROR_MESSAGES } from "@/lib/constants"
+import { email2FACodeEmail, sendEmail } from "@/lib/email"
 
 export const POST = withErrorHandling(async (request: Request) => {
   // Parse body
@@ -76,11 +78,37 @@ export const POST = withErrorHandling(async (request: Request) => {
       })
     }
 
+    // If email 2FA, generate and send the code server-side immediately
+    let maskedEmail: string | undefined
+    if (twoFactorMethod === "email") {
+      // Delete old codes
+      await pool.query("DELETE FROM email_2fa_codes WHERE user_id = $1", [user.id])
+      // Generate 6-digit code
+      const code = randomInt(100000, 999999).toString()
+      // Store hashed code with 10 min expiry
+      await pool.query(
+        "INSERT INTO email_2fa_codes (user_id, code_hash, expires_at) VALUES ($1, encode(sha256($2::bytea), 'hex'), NOW() + INTERVAL '10 minutes')",
+        [user.id, code],
+      )
+      // Send the email
+      const emailContent = email2FACodeEmail(code)
+      await sendEmail({
+        to: user.email,
+        subject: emailContent.subject,
+        text: emailContent.text,
+        html: emailContent.html,
+      })
+      // Mask email for UI
+      const parts = user.email.split("@")
+      maskedEmail = parts[0].substring(0, 2) + "***@" + parts[1]
+    }
+
     // Device is not trusted - require 2FA
     const response = NextResponse.json({
       requires2FA: true,
       userId: user.id,
       twoFactorMethod: twoFactorMethod,
+      maskedEmail,
     })
     // Set a short-lived cookie to validate the 2FA verification request
     response.cookies.set(AUTH_2FA_PENDING_COOKIE, String(user.id), {
