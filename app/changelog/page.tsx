@@ -6,10 +6,13 @@ import { APP_NAME, TOTAL_CHECKS_LABEL } from "@/lib/constants"
 const CHANGELOG = [
   {
     version: "1.8.0",
-    date: "February 20, 2026",
-    title: "55+ New Security Checks, Notification Bell & Performance Overhaul",
+    date: "February 21, 2026",
+    title: "Email 2FA, Expanded Notifications & 55+ New Security Checks",
     highlights: true,
     changes: [
+      { icon: Mail, label: "Email-Based Two-Factor Authentication", desc: "New 2FA method that sends a 6-digit verification code to your email on every login. Enable it from the Security tab in your profile. Choose between Authenticator App or Email 2FA (one at a time). Codes expire after 10 minutes with rate limiting to prevent abuse." },
+      { icon: BellRing, label: "18 Granular Notification Preferences", desc: "Notification settings expanded from 5 toggles to 18, organized into 5 categories: Security (login alerts, password changes, 2FA changes, session alerts), Scanning (scan complete, failures, severity alerts, schedules), API & Integrations (API keys, usage alerts, webhooks, webhook failures), Account (data exports, account changes, team invites), and Product (updates, tips & guides). Each notification type can be individually toggled." },
+      { icon: Target, label: "Accurate Notification Routing", desc: "All email notifications now route through the correct preference type. Password change emails respect the password_changes toggle, 2FA emails respect two_factor_changes, account updates respect account_changes. Previously all security-adjacent emails used a single generic security type." },
       { icon: Radar, label: "55+ New Security Checks (175+ Total)", desc: "Expanded detection engine to 175+ checks including: header information leaks (X-Powered-By, X-Runtime, X-Debug, Via, X-Backend-Server, ETag inode leaks), advanced CSP analysis (unsafe-inline without nonce, unsafe-eval, wildcard sources, data: URIs), CORS policy validation (null origin, excessive header exposure, preflight caching), referrer policy analysis, server error detection (SQL, PHP, ASP.NET, Django, Laravel), secrets exposure (JWT tokens, private keys, connection strings, .env files, .git directories), and content security (missing iframe sandbox, unencrypted WebSocket, mixed-content forms, inline event handlers)." },
       { icon: Bell, label: "Notification Bell in Header", desc: "Replaced full-screen notification modal with a compact bell icon in the header showing unread count. Notifications (version updates, Discord invites) appear in a dismissible dropdown. Backup codes modal remains separate and always interrupts as a full-screen overlay for security-critical updates." },
       { icon: Filter, label: "Scanner Category Selector", desc: "Added 'Select Scanners' button next to Scan button to choose which security categories to run: Security Headers, SSL/TLS, Cookie Security, Content Analysis, Info Disclosure, Configuration, and DNS & Email. Reduces scan time and allows targeted security assessments." },
@@ -22,7 +25,7 @@ const CHANGELOG = [
     version: "1.7.4",
     date: "February 19, 2026",
     title: "Docker Production Ready, Mobile UX Overhaul & Error Pages",
-    highlights: true,
+    highlights: false,
     changes: [
       { icon: Container, label: "Docker Production Ready", desc: "Fixed Dockerfile with a dummy DATABASE_URL during build so Next.js compiles without a live database. Real credentials are injected at runtime via Docker Compose. Updated docker-compose.yml to pass through all env vars (SMTP, Turnstile, contact email). Added Docker Compose overrides to .env.example." },
       { icon: Menu, label: "Mobile Menu Overlay", desc: "Replaced the push-down mobile navigation dropdown with a Sheet overlay that slides in from the right. No longer pushes page content down when opened." },
