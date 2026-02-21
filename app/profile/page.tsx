@@ -235,8 +235,8 @@ export default function ProfilePage() {
       setError("Please select an image file.")
       return
     }
-    if (file.size > 5 * 1024 * 1024) {
-      setError("Image must be under 5MB.")
+    if (file.size > 10 * 1024 * 1024) {
+      setError("Image must be under 10MB.")
       return
     }
     setError(null)
