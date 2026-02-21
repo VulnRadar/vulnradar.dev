@@ -10,7 +10,7 @@ import { cn } from "@/lib/utils"
 import Image from "next/image"
 import { APP_NAME } from "@/lib/constants"
 import { NotificationBell } from "@/components/notification-center"
-import { useAuth } from "@/components/auth-provider"
+import { useAuth, clearAuthCache } from "@/components/auth-provider"
 
 const STAFF_ROLES = ["admin", "moderator", "support"]
 
@@ -34,6 +34,7 @@ export function Header() {
   const isStaff = STAFF_ROLES.includes(me?.role || "")
 
   async function handleLogout() {
+    clearAuthCache()
     await fetch("/api/auth/logout", { method: "POST" })
     router.push("/login")
     router.refresh()
@@ -80,23 +81,21 @@ export function Header() {
                   </button>
               )
             })}
-            {isStaff && (
-                <button
-                    onClick={() => router.push("/admin")}
-                    className={cn(
-                        "flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors",
-                        pathname === "/admin"
-                            ? "bg-destructive/10 text-destructive"
-                            : "text-destructive/70 hover:text-destructive hover:bg-destructive/10",
-                    )}
-                >
-                  <ShieldAlert className="h-4 w-4" />
-                  Admin
-                </button>
-            )}
-            {!isStaff && (
-                <div className="h-8 w-16" />
-            )}
+            <button
+                onClick={() => router.push("/admin")}
+                className={cn(
+                    "flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors",
+                    isStaff ? "" : "invisible pointer-events-none",
+                    pathname === "/admin"
+                        ? "bg-destructive/10 text-destructive"
+                        : "text-destructive/70 hover:text-destructive hover:bg-destructive/10",
+                )}
+                tabIndex={isStaff ? 0 : -1}
+                aria-hidden={!isStaff}
+            >
+              <ShieldAlert className="h-4 w-4" />
+              Admin
+            </button>
           </nav>
 
           {/* Right side */}
@@ -151,20 +150,19 @@ export function Header() {
                     </button>
                 )
               })}
-              {isStaff && (
-                  <button
-                      onClick={() => { router.push("/admin"); setMobileOpen(false) }}
-                      className={cn(
-                          "flex items-center gap-2.5 px-3 py-2.5 rounded-md text-sm font-medium transition-colors",
-                          pathname === "/admin"
-                              ? "bg-destructive/10 text-destructive"
-                              : "text-destructive/70 hover:text-destructive hover:bg-destructive/10",
-                      )}
-                  >
-                    <ShieldAlert className="h-4 w-4" />
-                    Admin
-                  </button>
-              )}
+              <button
+                  onClick={() => { router.push("/admin"); setMobileOpen(false) }}
+                  className={cn(
+                      "flex items-center gap-2.5 px-3 py-2.5 rounded-md text-sm font-medium transition-colors",
+                      isStaff ? "" : "hidden",
+                      pathname === "/admin"
+                          ? "bg-destructive/10 text-destructive"
+                          : "text-destructive/70 hover:text-destructive hover:bg-destructive/10",
+                  )}
+              >
+                <ShieldAlert className="h-4 w-4" />
+                Admin
+              </button>
               <div className="my-2 border-t border-border" />
               <button
                   onClick={handleLogout}
