@@ -8,22 +8,16 @@
   }
 }
 
-/* Pre-hydration visibility: hide staff/auth elements by default,
-   show them instantly via data attributes set by blocking script */
+/* Pre-hydration visibility: hide staff/auth elements by default.
+   The blocking <script> in layout.tsx injects a <style> tag that
+   overrides these to visible BEFORE React hydrates, so there is
+   no flash. React cannot strip an injected <style> tag. */
 .vr-staff-only {
   display: none !important;
 }
-html[data-vr-staff="1"] .vr-staff-only {
-  display: flex !important;
-}
-
 .vr-auth-only {
   visibility: hidden;
   pointer-events: none;
-}
-html[data-vr-authed="1"] .vr-auth-only {
-  visibility: visible;
-  pointer-events: auto;
 }
 
 @layer base {
