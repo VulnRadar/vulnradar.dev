@@ -107,21 +107,22 @@ interface ScheduleItem {
 
 interface NotificationPrefs {
   email_security: boolean
-  email_login_alerts: boolean
-  email_password_changes: boolean
-  email_two_factor_changes: boolean
-  email_session_alerts: boolean
+  email_new_login: boolean
+  email_password_change: boolean
+  email_2fa_change: boolean
+  email_session_revoked: boolean
   email_scan_complete: boolean
-  email_scan_failures: boolean
-  email_severity_alerts: boolean
+  email_critical_findings: boolean
+  email_regression_alert: boolean
   email_schedules: boolean
   email_api_keys: boolean
-  email_api_usage_alerts: boolean
+  email_api_limit_warning: boolean
   email_webhooks: boolean
-  email_webhook_failures: boolean
+  email_webhook_failure: boolean
   email_data_requests: boolean
-  email_account_changes: boolean
-  email_team_invites: boolean
+  email_account_deletion: boolean
+  email_team_invite: boolean
+  email_team_changes: boolean
   email_product_updates: boolean
   email_tips_guides: boolean
 }
@@ -199,23 +200,24 @@ export default function ProfilePage() {
   // Notification preferences state
   const [notifPrefs, setNotifPrefs] = useState<NotificationPrefs>({
     email_security: true,
-    email_login_alerts: true,
-    email_password_changes: true,
-    email_two_factor_changes: true,
-    email_session_alerts: true,
+    email_new_login: true,
+    email_password_change: true,
+    email_2fa_change: true,
+    email_session_revoked: true,
     email_scan_complete: true,
-    email_scan_failures: true,
-    email_severity_alerts: true,
+    email_critical_findings: true,
+    email_regression_alert: true,
     email_schedules: true,
     email_api_keys: true,
-    email_api_usage_alerts: true,
+    email_api_limit_warning: true,
     email_webhooks: true,
-    email_webhook_failures: true,
+    email_webhook_failure: true,
     email_data_requests: true,
-    email_account_changes: true,
-    email_team_invites: true,
+    email_account_deletion: true,
+    email_team_invite: true,
+    email_team_changes: true,
     email_product_updates: true,
-    email_tips_guides: true,
+    email_tips_guides: false,
   })
   const [savingNotifPrefs, setSavingNotifPrefs] = useState(false)
 
@@ -1604,10 +1606,10 @@ export default function ProfilePage() {
               <CardContent className="flex flex-col gap-2">
                 {([
                   { key: "email_security" as const, icon: Shield, label: "Security Alerts", desc: "Unusual activity, account compromise warnings, and critical security events.", badge: "Recommended" },
-                  { key: "email_login_alerts" as const, icon: LogIn, label: "Login Alerts", desc: "Notifications when someone signs into your account from a new device or location." },
-                  { key: "email_password_changes" as const, icon: Lock, label: "Password Changes", desc: "Alerts when your password is changed or a reset is requested." },
-                  { key: "email_two_factor_changes" as const, icon: Fingerprint, label: "2FA Changes", desc: "Notifications when two-factor authentication is enabled, disabled, or modified." },
-                  { key: "email_session_alerts" as const, icon: MonitorSmartphone, label: "Session Alerts", desc: "Alerts about active sessions and session revocations." },
+                  { key: "email_new_login" as const, icon: LogIn, label: "Login Alerts", desc: "Notifications when someone signs into your account from a new device or location." },
+                  { key: "email_password_change" as const, icon: Lock, label: "Password Changes", desc: "Alerts when your password is changed or a reset is requested." },
+                  { key: "email_2fa_change" as const, icon: Fingerprint, label: "2FA Changes", desc: "Notifications when two-factor authentication is enabled, disabled, or modified." },
+                  { key: "email_session_revoked" as const, icon: MonitorSmartphone, label: "Session Alerts", desc: "Alerts about active sessions and session revocations." },
                 ] as const).map(({ key, icon: Icon, label, desc, badge }) => (
                   <div key={key} className="flex items-center justify-between p-3 rounded-lg border border-border bg-secondary/30">
                     <div className="flex-1">
@@ -1636,8 +1638,8 @@ export default function ProfilePage() {
               <CardContent className="flex flex-col gap-2">
                 {([
                   { key: "email_scan_complete" as const, icon: Check, label: "Scan Complete", desc: "Get notified when a scan finishes with a summary of findings." },
-                  { key: "email_scan_failures" as const, icon: XCircle, label: "Scan Failures", desc: "Alerts when scans fail due to errors, timeouts, or unreachable targets." },
-                  { key: "email_severity_alerts" as const, icon: AlertTriangle, label: "High Severity Alerts", desc: "Immediate notifications when critical or high-severity vulnerabilities are found." },
+                  { key: "email_critical_findings" as const, icon: XCircle, label: "Critical Findings", desc: "Alerts when critical or high-severity vulnerabilities are discovered in your scans." },
+                  { key: "email_regression_alert" as const, icon: AlertTriangle, label: "Regression Alerts", desc: "Notifications when previously resolved issues reappear in subsequent scans." },
                   { key: "email_schedules" as const, icon: CalendarClock, label: "Scheduled Scan Reports", desc: "Email summaries when scheduled scans complete, including severity breakdowns." },
                 ] as const).map(({ key, icon: Icon, label, desc }) => (
                   <div key={key} className="flex items-center justify-between p-3 rounded-lg border border-border bg-secondary/30">
@@ -1666,9 +1668,9 @@ export default function ProfilePage() {
               <CardContent className="flex flex-col gap-2">
                 {([
                   { key: "email_api_keys" as const, icon: Key, label: "API Key Activity", desc: "Alerts when API keys are created, revoked, or approaching expiration." },
-                  { key: "email_api_usage_alerts" as const, icon: Gauge, label: "API Usage Alerts", desc: "Warnings when your API usage nears rate limits or daily quotas." },
+                  { key: "email_api_limit_warning" as const, icon: Gauge, label: "API Limit Warnings", desc: "Warnings when your API usage nears rate limits or daily quotas." },
                   { key: "email_webhooks" as const, icon: Webhook, label: "Webhook Events", desc: "Notifications when webhooks are created, modified, or disabled." },
-                  { key: "email_webhook_failures" as const, icon: XCircle, label: "Webhook Failures", desc: "Alerts when webhook deliveries fail repeatedly." },
+                  { key: "email_webhook_failure" as const, icon: XCircle, label: "Webhook Failures", desc: "Alerts when webhook deliveries fail repeatedly." },
                 ] as const).map(({ key, icon: Icon, label, desc }) => (
                   <div key={key} className="flex items-center justify-between p-3 rounded-lg border border-border bg-secondary/30">
                     <div className="flex-1">
@@ -1696,8 +1698,9 @@ export default function ProfilePage() {
               <CardContent className="flex flex-col gap-2">
                 {([
                   { key: "email_data_requests" as const, icon: Download, label: "Data Export Updates", desc: "Notifications when your data export is ready for download." },
-                  { key: "email_account_changes" as const, icon: UserCog, label: "Account Changes", desc: "Alerts about profile updates, email changes, and account modifications." },
-                  { key: "email_team_invites" as const, icon: Users, label: "Team Invites", desc: "Notifications when you're invited to join a team or workspace." },
+                  { key: "email_account_deletion" as const, icon: UserCog, label: "Account Deletion", desc: "Confirmations and alerts when account deletion is requested or processed." },
+                  { key: "email_team_invite" as const, icon: Users, label: "Team Invites", desc: "Notifications when you're invited to join a team or workspace." },
+                  { key: "email_team_changes" as const, icon: Users, label: "Team Changes", desc: "Alerts about team membership changes, role updates, and team activity." },
                 ] as const).map(({ key, icon: Icon, label, desc }) => (
                   <div key={key} className="flex items-center justify-between p-3 rounded-lg border border-border bg-secondary/30">
                     <div className="flex-1">

@@ -8,24 +8,25 @@ import { getNotificationPreferences } from "@/lib/notifications"
 const ALL_PREF_COLUMNS = [
   // Security
   "email_security",
-  "email_login_alerts",
-  "email_password_changes",
-  "email_two_factor_changes",
-  "email_session_alerts",
+  "email_new_login",
+  "email_password_change",
+  "email_2fa_change",
+  "email_session_revoked",
   // Scanning
   "email_scan_complete",
-  "email_scan_failures",
-  "email_severity_alerts",
+  "email_critical_findings",
+  "email_regression_alert",
   "email_schedules",
   // API & Integrations
   "email_api_keys",
-  "email_api_usage_alerts",
+  "email_api_limit_warning",
   "email_webhooks",
-  "email_webhook_failures",
+  "email_webhook_failure",
   // Account
   "email_data_requests",
-  "email_account_changes",
-  "email_team_invites",
+  "email_account_deletion",
+  "email_team_invite",
+  "email_team_changes",
   // Product
   "email_product_updates",
   "email_tips_guides",
