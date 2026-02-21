@@ -131,12 +131,23 @@ interface NotifItem {
 
 // ─── Notification Bell (header dropdown) ─────────────────────────
 
+function initVersionDismissed(): boolean {
+  if (typeof document === "undefined") return true
+  const v = getCookie(VERSION_COOKIE_NAME)
+  return !!v && v === APP_VERSION
+}
+
+function initDiscordDismissed(): boolean {
+  if (typeof document === "undefined") return true
+  return !!getCookie(DISCORD_COOKIE)
+}
+
 export function NotificationBell() {
   const router = useRouter()
   const pathname = usePathname()
   const [open, setOpen] = useState(false)
-  const [versionDismissed, setVersionDismissed] = useState(true)
-  const [discordDismissed, setDiscordDismissed] = useState(true)
+  const [versionDismissed, setVersionDismissed] = useState(initVersionDismissed)
+  const [discordDismissed, setDiscordDismissed] = useState(initDiscordDismissed)
   const ref = useRef<HTMLDivElement>(null)
   const { me } = useAuth()
 
@@ -153,15 +164,6 @@ export function NotificationBell() {
     if (open) document.addEventListener("mousedown", handle)
     return () => document.removeEventListener("mousedown", handle)
   }, [open])
-
-  // Check notification dismissal state
-  useEffect(() => {
-    if (!me?.userId) return
-    const lastSeenVersion = getCookie(VERSION_COOKIE_NAME)
-    if (!lastSeenVersion || lastSeenVersion !== APP_VERSION) setVersionDismissed(false)
-    const discordSeen = getCookie(DISCORD_COOKIE)
-    if (!discordSeen) setDiscordDismissed(false)
-  }, [me?.userId])
 
   const dismissVersion = useCallback(() => {
     setCookie(VERSION_COOKIE_NAME, APP_VERSION, VERSION_COOKIE_MAX_AGE)

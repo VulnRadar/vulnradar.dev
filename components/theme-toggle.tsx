@@ -2,22 +2,14 @@
 
 import { Moon, Sun } from "lucide-react"
 import { useTheme } from "next-themes"
-import { useEffect, useState } from "react"
 import { cn } from "@/lib/utils"
 
 export function ThemeToggle() {
   const { setTheme, resolvedTheme } = useTheme()
-  const [mounted, setMounted] = useState(false)
 
-  useEffect(() => setMounted(true), [])
-
-  if (!mounted) {
-    return (
-      <div className="h-8 w-16 rounded-full bg-muted animate-pulse" />
-    )
-  }
-
-  const isDark = resolvedTheme === "dark"
+  // Default to dark to match the html class="dark" set on the server,
+  // so SSR and first paint always agree - no flash.
+  const isDark = (resolvedTheme ?? "dark") === "dark"
 
   return (
     <button
