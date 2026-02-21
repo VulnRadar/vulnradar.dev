@@ -9,20 +9,25 @@ import { getClientIp, getUserAgent } from "@/lib/request-utils"
 
 // POST - Enable email 2FA
 export const POST = withErrorHandling(async (request: NextRequest) => {
+  console.log("[v0] email-setup POST handler entered")
   const session = await getSession()
+  console.log("[v0] session:", session ? session.userId : "null")
   if (!session) return ApiResponse.unauthorized(ERROR_MESSAGES.UNAUTHORIZED)
 
   const parsed = await parseBody<{ password: string }>(request)
+  console.log("[v0] parsed:", parsed.success, parsed.success ? "has data" : parsed.error)
   if (!parsed.success) return ApiResponse.badRequest(parsed.error)
   const { password } = parsed.data
 
   if (!password) return ApiResponse.badRequest("Password is required.")
 
   // Get user and verify password
+  console.log("[v0] querying user", session.userId)
   const { rows } = await pool.query(
     "SELECT password_hash, totp_enabled, two_factor_method, email FROM users WHERE id = $1",
     [session.userId],
   )
+  console.log("[v0] user found:", rows.length)
   if (rows.length === 0) return ApiResponse.notFound("User not found.")
 
   const valid = verifyPassword(password, rows[0].password_hash)
