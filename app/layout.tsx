@@ -77,6 +77,9 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className="dark" suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: `try{var d=localStorage.getItem("vr_auth_cache");if(d){var p=JSON.parse(d);if(p&&p.role&&["admin","moderator","support"].includes(p.role)){document.documentElement.setAttribute("data-vr-staff","1")}if(p&&p.userId){document.documentElement.setAttribute("data-vr-authed","1")}}}catch(e){}` }} />
+      </head>
       <body className="font-sans antialiased" suppressHydrationWarning>
         <ThemeProvider
           attribute="class"

@@ -214,17 +214,15 @@ export function NotificationBell() {
   }, [versionDismissed, discordDismissed, dismissVersion, dismissDiscord, router])
 
   const count = notifications.length
-  const hidden = isPublicRoute || !me?.userId
 
   return (
-    <div ref={ref} className={cn("relative", hidden && "invisible pointer-events-none")}>
+    <div ref={ref} className={cn("relative vr-auth-only", isPublicRoute && "!invisible !pointer-events-none")}>
       <Button
         variant="ghost"
         size="icon"
         onClick={() => setOpen(!open)}
         aria-label={`Notifications${count > 0 ? ` (${count} unread)` : ""}`}
         className="relative text-muted-foreground hover:text-foreground h-8 w-8"
-        tabIndex={hidden ? -1 : 0}
       >
         <Bell className="h-4 w-4" />
         {count > 0 && (
