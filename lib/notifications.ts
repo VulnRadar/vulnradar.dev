@@ -93,14 +93,21 @@ export async function getNotificationPreferences(userId: number): Promise<Notifi
     `SELECT ${ALL_COLUMNS.join(", ")} FROM notification_preferences WHERE user_id = $1`,
     [userId],
   )
-  if (result.rows.length === 0) return DEFAULT_PREFERENCES
+  console.log("[v0] getNotificationPreferences - userId:", userId, "found rows:", result.rows.length)
+  if (result.rows.length === 0) {
+    console.log("[v0] No preferences found, using defaults")
+    return DEFAULT_PREFERENCES
+  }
+  console.log("[v0] Preferences found:", result.rows[0])
   return result.rows[0]
 }
 
 export async function shouldSendNotification(userId: number, type: NotificationType): Promise<boolean> {
   const prefs = await getNotificationPreferences(userId)
   const column = TYPE_TO_COLUMN[type]
-  return column ? prefs[column] : true
+  const shouldSend = column ? prefs[column] : true
+  console.log("[v0] shouldSendNotification - type:", type, "column:", column, "value:", shouldSend)
+  return shouldSend
 }
 
 interface SendNotificationEmailParams {
