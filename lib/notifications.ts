@@ -34,8 +34,9 @@ const ALL_COLUMNS = [
   "email_api_limit_warning",
   "email_webhooks",
   "email_webhook_failure",
+  "email_schedules",
   "email_data_requests",
-  "email_account_changes",
+  "email_account_deletion",
   "email_team_invite",
   "email_team_changes",
   "email_product_updates",
@@ -55,8 +56,9 @@ export interface NotificationPreferences {
   email_api_limit_warning: boolean
   email_webhooks: boolean
   email_webhook_failure: boolean
+  email_schedules: boolean
   email_data_requests: boolean
-  email_account_changes: boolean
+  email_account_deletion: boolean
   email_team_invite: boolean
   email_team_changes: boolean
   email_product_updates: boolean
@@ -76,13 +78,13 @@ const TYPE_TO_COLUMN: Record<NotificationType, keyof NotificationPreferences> = 
   scan_complete: "email_scan_complete",
   scan_failures: "email_critical_findings",
   severity_alerts: "email_regression_alert",
-  schedules: "email_scan_complete",
+  schedules: "email_schedules",
   api_keys: "email_api_keys",
   api_usage_alerts: "email_api_limit_warning",
   webhooks: "email_webhooks",
   webhook_failures: "email_webhook_failure",
   data_requests: "email_data_requests",
-  account_changes: "email_account_changes",
+  account_changes: "email_account_deletion",
   team_invites: "email_team_invite",
   product_updates: "email_product_updates",
   tips_guides: "email_tips_guides",
