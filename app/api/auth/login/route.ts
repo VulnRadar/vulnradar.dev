@@ -78,7 +78,7 @@ export const POST = withErrorHandling(async (request: Request) => {
       })
     }
 
-    // If email 2FA, generate and send the code server-side immediately
+    // If email 2FA, generate code and queue the email send (non-blocking)
     let maskedEmail: string | undefined
     if (twoFactorMethod === "email") {
       // Delete old codes
@@ -90,17 +90,19 @@ export const POST = withErrorHandling(async (request: Request) => {
         "INSERT INTO email_2fa_codes (user_id, code_hash, expires_at) VALUES ($1, encode(sha256($2::bytea), 'hex'), NOW() + INTERVAL '10 minutes')",
         [user.id, code],
       )
-      // Send the email
-      const emailContent = email2FACodeEmail(code)
-      await sendEmail({
-        to: user.email,
-        subject: emailContent.subject,
-        text: emailContent.text,
-        html: emailContent.html,
-      })
       // Mask email for UI
       const parts = user.email.split("@")
       maskedEmail = parts[0].substring(0, 2) + "***@" + parts[1]
+      // Send email in background - don't block the login response
+      const emailContent = email2FACodeEmail(code)
+      setImmediate(() => {
+        sendEmail({
+          to: user.email,
+          subject: emailContent.subject,
+          text: emailContent.text,
+          html: emailContent.html,
+        }).catch((err) => console.error("Failed to send 2FA email code:", err))
+      })
     }
 
     // Device is not trusted - require 2FA
