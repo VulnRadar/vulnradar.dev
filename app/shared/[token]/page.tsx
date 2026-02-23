@@ -1,9 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { useParams, useRouter } from "next/navigation"
-import Image from "next/image"
-import useSWR from "swr"
+import { useParams } from "next/navigation"
 import {
   Loader2,
   AlertCircle,
@@ -12,24 +10,18 @@ import {
   RotateCcw,
   MessageSquare,
 } from "lucide-react"
-import { ThemeToggle } from "@/components/theme-toggle"
-import { Button } from "@/components/ui/button"
-import { Header } from "@/components/scanner/header"
-import { Footer } from "@/components/scanner/footer"
+import { PublicPageShell } from "@/components/public-page-shell"
 import { ScanSummary } from "@/components/scanner/scan-summary"
 import { ResultsList } from "@/components/scanner/results-list"
 import { IssueDetail } from "@/components/scanner/issue-detail"
 import { ExportButton } from "@/components/scanner/export-button"
 import { ResponseHeaders } from "@/components/scanner/response-headers"
 import { SubdomainDiscovery } from "@/components/scanner/subdomain-discovery"
-import { APP_NAME, STAFF_ROLE_LABELS } from "@/lib/constants"
+import { STAFF_ROLE_LABELS } from "@/lib/constants"
 import type { ScanResult, Vulnerability } from "@/lib/scanner/types"
-
-const fetcher = (url: string) => fetch(url).then((r) => r.ok ? r.json() : null)
 
 export default function SharedScanPage() {
   const params = useParams()
-  const router = useRouter()
   const token = params.token as string
 
   const [result, setResult] = useState<ScanResult | null>(null)
@@ -40,8 +32,6 @@ export default function SharedScanPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [selectedIssue, setSelectedIssue] = useState<Vulnerability | null>(null)
-  const { data: me } = useSWR("/api/auth/me", fetcher, { revalidateOnFocus: false })
-  const isLoggedIn = !!me?.name
 
   useEffect(() => {
     async function load() {
@@ -68,39 +58,8 @@ export default function SharedScanPage() {
   }, [token])
 
   return (
-    <div className="min-h-screen flex flex-col bg-background">
-      {isLoggedIn ? (
-        <Header />
-      ) : (
-        <header className="sticky top-0 z-50 h-14 flex items-center justify-between px-4 sm:px-6 border-b border-border bg-card/95 backdrop-blur-sm">
-          <div className="flex items-center gap-2">
-            <Image
-              src="/favicon.svg"
-              alt={`${APP_NAME} logo`}
-              width={20}
-              height={20}
-              className="h-5 w-5"
-            />
-            <span className="text-base font-semibold text-foreground tracking-tight">{APP_NAME}</span>
-            <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded-md font-medium">
-              Shared Report
-            </span>
-          </div>
-          <div className="flex items-center gap-3">
-            <ThemeToggle />
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => router.push("/login")}
-              className="bg-transparent text-xs"
-            >
-              Sign In
-            </Button>
-          </div>
-        </header>
-      )}
-
-      <main className="flex-1 w-full max-w-5xl mx-auto px-4 py-6 sm:py-8 flex flex-col gap-6">
+    <PublicPageShell badge="Shared Report" maxWidth="max-w-5xl" padding="py-6 sm:py-8">
+      <div className="flex flex-col gap-6">
         {loading && (
           <div className="flex flex-col items-center gap-3 py-20">
             <Loader2 className="h-6 w-6 animate-spin text-primary" />
@@ -211,9 +170,7 @@ export default function SharedScanPage() {
             )}
           </div>
         )}
-      </main>
-
-      <Footer />
-    </div>
+      </div>
+    </PublicPageShell>
   )
 }
