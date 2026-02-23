@@ -12,7 +12,7 @@ Professional web vulnerability scanner. Completely free, forever.
 
 ## Features
 
-- 100+ automated security checks with minimal false positives
+- 175+ automated security checks with minimal false positives
 - Real-time scanning with detailed reports
 - Export to PDF or JSON
 - Scheduled scans and webhooks
