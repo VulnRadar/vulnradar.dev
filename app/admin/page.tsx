@@ -457,7 +457,7 @@ export default function AdminPage() {
               {([
                 { key: "users" as const, label: "Users", icon: Users },
                 { key: "audit" as const, label: "Audit Log", icon: History },
-                  { key: "admins" as const, label: "Staff", icon: Shield },
+                { key: "admins" as const, label: "Staff", icon: Shield },
               ]).map((tab) => (
                 <button
                   key={tab.key}
@@ -541,9 +541,9 @@ export default function AdminPage() {
                           <th className="px-5 py-2.5 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider text-right">Actions</th>
                         </tr>
                       </thead>
-  <tbody className={cn("transition-opacity duration-200", searchLoading && "opacity-40 pointer-events-none")}>
-  {users.map((u) => (
-  <tr key={u.id} className="border-b border-border last:border-0 hover:bg-muted/20 transition-colors group">
+                      <tbody className={cn("transition-opacity duration-200", searchLoading && "opacity-40 pointer-events-none")}>
+                        {users.map((u) => (
+                          <tr key={u.id} className="border-b border-border last:border-0 hover:bg-muted/20 transition-colors group">
                             <td className="px-5 py-3">
                               <div className="flex items-center gap-3">
                                 <UserAvatar name={u.name} email={u.email} avatarUrl={u.avatar_url} />
@@ -786,89 +786,89 @@ export default function AdminPage() {
                     </div>
                   ) : (
                     <>
-                    <div className="flex flex-col">
-                      {pagedStaff.map((admin, i) => {
-                        const isOnline = admin.active_sessions > 0
-                        const displayName = admin.name || admin.email.split("@")[0]
-                        return (
-                          <div key={admin.id} className={cn("flex items-start gap-4 px-5 py-4 transition-colors hover:bg-muted/20", i < pagedStaff.length - 1 && "border-b border-border")}>
-                            {/* Avatar with online indicator */}
-                            <div className="relative shrink-0">
-                              <UserAvatar name={admin.name} email={admin.email} avatarUrl={admin.avatar_url} />
-                              <div className={cn(
-                                "absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-card",
-                                isOnline ? "bg-emerald-500" : "bg-muted-foreground/40"
-                              )} />
-                            </div>
-
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-2 flex-wrap">
-                                <span className="text-sm font-semibold text-foreground">{displayName}</span>
-                                <Badge className={cn("text-[10px] px-1.5 font-medium", ROLE_BADGE_STYLES[admin.role] || ROLE_BADGE_STYLES.user)}>
-                                  {STAFF_ROLE_LABELS[admin.role] || admin.role}
-                                </Badge>
-                                <Badge className={cn("text-[10px] px-1.5 font-medium",
-                                  isOnline
-                                    ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/20"
-                                    : "bg-muted text-muted-foreground border-border"
-                                )}>
-                                  {isOnline ? "Online" : "Offline"}
-                                </Badge>
-                                {admin.totp_enabled && (
-                                  <Badge className="bg-emerald-500/10 text-emerald-500 border-emerald-500/20 text-[10px] px-1.5 font-medium">2FA</Badge>
-                                )}
-                              </div>
-                              <p className="text-xs text-muted-foreground mt-0.5">{admin.email}</p>
-
-                              {/* Activity stats row */}
-                              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-2.5">
-                                <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
-                                  <Monitor className="h-3 w-3" />
-                                  {admin.active_sessions} active session{admin.active_sessions !== 1 ? "s" : ""}
-                                </span>
-                                <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
-                                  <Activity className="h-3 w-3" />
-                                  {admin.total_actions} total action{admin.total_actions !== 1 ? "s" : ""}
-                                  {admin.actions_24h > 0 && <span className="text-primary font-medium">({admin.actions_24h} today)</span>}
-                                </span>
-                                {admin.last_ip && (
-                                  <span className="flex items-center gap-1 text-[11px] text-muted-foreground font-mono">
-                                    <Globe className="h-3 w-3" />
-                                    {admin.last_ip}
-                                  </span>
-                                )}
+                      <div className="flex flex-col">
+                        {pagedStaff.map((admin, i) => {
+                          const isOnline = admin.active_sessions > 0
+                          const displayName = admin.name || admin.email.split("@")[0]
+                          return (
+                            <div key={admin.id} className={cn("flex items-start gap-4 px-5 py-4 transition-colors hover:bg-muted/20", i < pagedStaff.length - 1 && "border-b border-border")}>
+                              {/* Avatar with online indicator */}
+                              <div className="relative shrink-0">
+                                <UserAvatar name={admin.name} email={admin.email} avatarUrl={admin.avatar_url} />
+                                <div className={cn(
+                                  "absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-card",
+                                  isOnline ? "bg-emerald-500" : "bg-muted-foreground/40"
+                                )} />
                               </div>
 
-                              {/* Last action */}
-                              {admin.last_admin_action && (
-                                <div className="mt-2 text-[11px] text-muted-foreground">
-                                  Last action: <ActionBadge action={admin.last_action_type || ""} />
-                                  <span className="ml-1.5">
-                                    {new Date(admin.last_admin_action).toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
-                                  </span>
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className="text-sm font-semibold text-foreground">{displayName}</span>
+                                  <Badge className={cn("text-[10px] px-1.5 font-medium", ROLE_BADGE_STYLES[admin.role] || ROLE_BADGE_STYLES.user)}>
+                                    {STAFF_ROLE_LABELS[admin.role] || admin.role}
+                                  </Badge>
+                                  <Badge className={cn("text-[10px] px-1.5 font-medium",
+                                    isOnline
+                                      ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/20"
+                                      : "bg-muted text-muted-foreground border-border"
+                                  )}>
+                                    {isOnline ? "Online" : "Offline"}
+                                  </Badge>
+                                  {admin.totp_enabled && (
+                                    <Badge className="bg-emerald-500/10 text-emerald-500 border-emerald-500/20 text-[10px] px-1.5 font-medium">2FA</Badge>
+                                  )}
                                 </div>
-                              )}
-                            </div>
+                                <p className="text-xs text-muted-foreground mt-0.5">{admin.email}</p>
 
-                            <div className="text-right shrink-0">
-                              <p className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold">Admin since</p>
-                              <p className="text-xs text-foreground mt-0.5">
-                                {new Date(admin.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
-                              </p>
+                                {/* Activity stats row */}
+                                <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-2.5">
+                                  <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
+                                    <Monitor className="h-3 w-3" />
+                                    {admin.active_sessions} active session{admin.active_sessions !== 1 ? "s" : ""}
+                                  </span>
+                                  <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
+                                    <Activity className="h-3 w-3" />
+                                    {admin.total_actions} total action{admin.total_actions !== 1 ? "s" : ""}
+                                    {admin.actions_24h > 0 && <span className="text-primary font-medium">({admin.actions_24h} today)</span>}
+                                  </span>
+                                  {admin.last_ip && (
+                                    <span className="flex items-center gap-1 text-[11px] text-muted-foreground font-mono">
+                                      <Globe className="h-3 w-3" />
+                                      {admin.last_ip}
+                                    </span>
+                                  )}
+                                </div>
+
+                                {/* Last action */}
+                                {admin.last_admin_action && (
+                                  <div className="mt-2 text-[11px] text-muted-foreground">
+                                    Last action: <ActionBadge action={admin.last_action_type || ""} />
+                                    <span className="ml-1.5">
+                                      {new Date(admin.last_admin_action).toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
+                                    </span>
+                                  </div>
+                                )}
+                              </div>
+
+                              <div className="text-right shrink-0">
+                                <p className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold">Admin since</p>
+                                <p className="text-xs text-foreground mt-0.5">
+                                  {new Date(admin.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                                </p>
+                              </div>
                             </div>
-                          </div>
                       })}
-                    </div>
-                    {staffPagination.totalPages > 1 && (
-                      <div className="px-5 py-3 border-t border-border bg-muted/10">
-                        <PaginationControl
-                          currentPage={staffPage}
-                          totalPages={staffPagination.totalPages}
-                          onPageChange={(p) => setStaffPage(p)}
-                        />
                       </div>
-                    )}
-                  </>
+                      {staffPagination.totalPages > 1 && (
+                        <div className="px-5 py-3 border-t border-border bg-muted/10">
+                          <PaginationControl
+                            currentPage={staffPage}
+                            totalPages={staffPagination.totalPages}
+                            onPageChange={(p) => setStaffPage(p)}
+                          />
+                        </div>
+                      )}
+                    </>
                   )}
                 </CardContent>
               </Card>
@@ -1032,9 +1032,9 @@ function UserDetailPanel({
         <Card className="bg-card border-border">
           <CardHeader className="pb-0 pt-4 px-5">
             <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                {callerRole === STAFF_ROLES.SUPPORT ? "Account Information" : "Support Actions"}
-              </h3>
-              {callerRole === STAFF_ROLES.SUPPORT ? (
+              {callerRole === STAFF_ROLES.SUPPORT ? "Account Information" : "Support Actions"}
+            </p>
+            {callerRole === STAFF_ROLES.SUPPORT ? (
               <p className="text-xs text-muted-foreground">You have view-only access. Contact an admin or moderator to perform actions on this user.</p>
             ) : (
               <>
