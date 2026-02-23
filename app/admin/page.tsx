@@ -856,7 +856,6 @@ export default function AdminPage() {
                               </p>
                             </div>
                           </div>
-                        )
                       })}
                     </div>
                     {staffPagination.totalPages > 1 && (
