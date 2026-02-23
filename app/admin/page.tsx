@@ -48,7 +48,7 @@ import { Header } from "@/components/scanner/header"
 import { Footer } from "@/components/scanner/footer"
 import { cn } from "@/lib/utils"
 import { PaginationControl, usePagination } from "@/components/ui/pagination-control"
-import { STAFF_ROLE_LABELS, STAFF_ROLE_HIERARCHY } from "@/lib/constants"
+import { STAFF_ROLES, STAFF_ROLE_LABELS, STAFF_ROLE_HIERARCHY, ROLE_BADGE_STYLES } from "@/lib/constants"
 import { VersionCheck } from "@/components/version-check"
 
 interface AdminStats {
@@ -559,17 +559,16 @@ export default function AdminPage() {
                               <span className="text-sm font-medium text-foreground">{u.api_key_count}</span>
                             </td>
                             <td className="px-4 py-3">
-                              <div className="flex items-center gap-1.5 flex-wrap">
-                                {u.disabled_at && <Badge className="bg-destructive/10 text-destructive border-destructive/20 text-[10px] px-1.5 font-medium">Disabled</Badge>}
-                                {u.role === "admin" && <Badge className="bg-primary/10 text-primary border-primary/20 text-[10px] px-1.5 font-medium">Admin</Badge>}
-                                {u.role === "moderator" && <Badge className="bg-[hsl(var(--severity-medium))]/10 text-[hsl(var(--severity-medium))] border-[hsl(var(--severity-medium))]/20 text-[10px] px-1.5 font-medium">Moderator</Badge>}
-                                {u.role === "support" && <Badge className="bg-blue-500/10 text-blue-500 border-blue-500/20 text-[10px] px-1.5 font-medium">Support</Badge>}
-                                {u.role === "beta_tester" && <Badge className="bg-emerald-500/10 text-emerald-400 border-emerald-500/20 text-[10px] px-1.5 font-medium">Beta Tester</Badge>}
-                                {u.totp_enabled && <Badge className="bg-emerald-500/10 text-emerald-500 border-emerald-500/20 text-[10px] px-1.5 font-medium">2FA</Badge>}
-                                {!u.disabled_at && (!u.role || u.role === "user") && !u.totp_enabled && (
-                                  <span className="text-xs text-muted-foreground">Active</span>
-                                )}
-                              </div>
+                              {(() => {
+                                const badges: React.ReactNode[] = []
+                                if (u.disabled_at) badges.push(<Badge key="disabled" className="bg-destructive/10 text-destructive border-destructive/20 text-[10px] px-1.5 font-medium">Disabled</Badge>)
+                                if (u.role && u.role !== STAFF_ROLES.USER && ROLE_BADGE_STYLES[u.role]) {
+                                  badges.push(<Badge key="role" className={cn(ROLE_BADGE_STYLES[u.role], "text-[10px] px-1.5 font-medium")}>{STAFF_ROLE_LABELS[u.role] || u.role}</Badge>)
+                                }
+                                if (u.totp_enabled) badges.push(<Badge key="2fa" className="bg-emerald-500/10 text-emerald-500 border-emerald-500/20 text-[10px] px-1.5 font-medium">2FA</Badge>)
+                                if (badges.length === 0) return <span className="text-xs text-muted-foreground">Active</span>
+                                return <div className="flex items-center gap-1.5 flex-wrap">{badges}</div>
+                              })()}
                             </td>
                             <td className="px-4 py-3 text-xs text-muted-foreground whitespace-nowrap">
                               {new Date(u.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
@@ -579,7 +578,7 @@ export default function AdminPage() {
                                 <Button variant="ghost" size="icon" className="h-8 w-8" title="View details" onClick={() => fetchUserDetail(u.id)}>
                                   <Eye className="h-4 w-4 text-muted-foreground" />
                                 </Button>
-                                {(callerRole === "admin" || callerRole === "moderator") && (
+                                {(callerRole === STAFF_ROLES.ADMIN || callerRole === STAFF_ROLES.MODERATOR) && (
                                   <>
                                     {u.disabled_at ? (
                                       <Button variant="ghost" size="icon" className="h-8 w-8 text-emerald-500 hover:text-emerald-500 hover:bg-emerald-500/10" title="Re-enable" onClick={() => handleAction(u.id, "enable")}>
@@ -620,9 +619,9 @@ export default function AdminPage() {
                           <div className="flex items-center gap-1.5 mt-1 flex-wrap">
                             <span className="text-[10px] text-muted-foreground">{u.scan_count} scans</span>
                             {u.disabled_at && <Badge className="bg-destructive/10 text-destructive border-destructive/20 text-[10px] px-1.5">Disabled</Badge>}
-                            {u.role === "admin" && <Badge className="bg-primary/10 text-primary border-primary/20 text-[10px] px-1.5">Admin</Badge>}
-                            {u.role === "moderator" && <Badge className="bg-[hsl(var(--severity-medium))]/10 text-[hsl(var(--severity-medium))] border-[hsl(var(--severity-medium))]/20 text-[10px] px-1.5">Mod</Badge>}
-                            {u.role === "support" && <Badge className="bg-blue-500/10 text-blue-500 border-blue-500/20 text-[10px] px-1.5">Support</Badge>}
+                            {u.role && u.role !== STAFF_ROLES.USER && ROLE_BADGE_STYLES[u.role] && (
+                              <Badge className={cn(ROLE_BADGE_STYLES[u.role], "text-[10px] px-1.5")}>{STAFF_ROLE_LABELS[u.role] || u.role}</Badge>
+                            )}
                             {u.totp_enabled && <Badge className="bg-emerald-500/10 text-emerald-500 border-emerald-500/20 text-[10px] px-1.5">2FA</Badge>}
                           </div>
                         </div>
@@ -804,11 +803,7 @@ export default function AdminPage() {
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center gap-2 flex-wrap">
                                 <span className="text-sm font-semibold text-foreground">{displayName}</span>
-                                <Badge className={cn("text-[10px] px-1.5 font-medium",
-                                  admin.role === "admin" ? "bg-primary/10 text-primary border-primary/20"
-                                    : admin.role === "moderator" ? "bg-[hsl(var(--severity-medium))]/10 text-[hsl(var(--severity-medium))] border-[hsl(var(--severity-medium))]/20"
-                                    : "bg-blue-500/10 text-blue-500 border-blue-500/20"
-                                )}>
+                                <Badge className={cn("text-[10px] px-1.5 font-medium", ROLE_BADGE_STYLES[admin.role] || ROLE_BADGE_STYLES.user)}>
                                   {STAFF_ROLE_LABELS[admin.role] || admin.role}
                                 </Badge>
                                 <Badge className={cn("text-[10px] px-1.5 font-medium",
@@ -925,9 +920,9 @@ function UserDetailPanel({
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
                 <h2 className="text-lg font-bold text-foreground">{u.name || "Unnamed User"}</h2>
-                {u.role === "admin" && <Badge className="bg-primary/10 text-primary border-primary/20 text-[10px] font-medium">Admin</Badge>}
-                {u.role === "moderator" && <Badge className="bg-[hsl(var(--severity-medium))]/10 text-[hsl(var(--severity-medium))] border-[hsl(var(--severity-medium))]/20 text-[10px] font-medium">Moderator</Badge>}
-                {u.role === "support" && <Badge className="bg-blue-500/10 text-blue-500 border-blue-500/20 text-[10px] font-medium">Support</Badge>}
+                {u.role && u.role !== STAFF_ROLES.USER && ROLE_BADGE_STYLES[u.role] && (
+                  <Badge className={cn(ROLE_BADGE_STYLES[u.role], "text-[10px] font-medium")}>{STAFF_ROLE_LABELS[u.role] || u.role}</Badge>
+                )}
                 {u.disabled_at && <Badge className="bg-destructive/10 text-destructive border-destructive/20 text-[10px] font-medium">Disabled</Badge>}
               </div>
               <p className="text-sm text-muted-foreground mt-0.5">{u.email}</p>
@@ -1002,7 +997,7 @@ function UserDetailPanel({
       )}
 
       {/* Role management - admin only */}
-      {!detailLoading && callerRole === "admin" && (
+      {!detailLoading && callerRole === STAFF_ROLES.ADMIN && (
         <Card className="bg-card border-border">
           <CardHeader className="pb-0 pt-4 px-5">
             <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Role Management</p>
@@ -1037,16 +1032,14 @@ function UserDetailPanel({
         <Card className="bg-card border-border">
           <CardHeader className="pb-0 pt-4 px-5">
             <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-              {callerRole === "support" ? "Account Information" : "Support Actions"}
-            </p>
-          </CardHeader>
-          <CardContent className="p-5 pt-3">
-            {callerRole === "support" ? (
+                {callerRole === STAFF_ROLES.SUPPORT ? "Account Information" : "Support Actions"}
+              </h3>
+              {callerRole === STAFF_ROLES.SUPPORT ? (
               <p className="text-xs text-muted-foreground">You have view-only access. Contact an admin or moderator to perform actions on this user.</p>
             ) : (
               <>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
-                  {callerRole === "admin" && (
+                  {callerRole === STAFF_ROLES.ADMIN && (
                     <ActionCard
                       icon={KeyRound} label="Reset Password"
                       description={u.totp_enabled ? "Unavailable: user has 2FA enabled" : "Generate a temporary password"}
@@ -1078,7 +1071,7 @@ function UserDetailPanel({
                     variant={u.disabled_at ? "success" : "danger"}
                     onClick={() => onAction(u.id, u.disabled_at ? "enable" : "disable")}
                   />
-                  {callerRole === "admin" && (
+                  {callerRole === STAFF_ROLES.ADMIN && (
                     <ActionCard
                       icon={Trash2} label="Delete Account"
                       description="Permanently remove user and all data"
@@ -1088,7 +1081,7 @@ function UserDetailPanel({
                   )}
                 </div>
 
-                {u.totp_enabled && callerRole === "admin" && (
+                {u.totp_enabled && callerRole === STAFF_ROLES.ADMIN && (
                   <div className="flex items-start gap-2.5 p-3.5 rounded-lg bg-[hsl(var(--severity-medium))]/5 border border-[hsl(var(--severity-medium))]/20 mt-3">
                     <AlertTriangle className="h-4 w-4 text-[hsl(var(--severity-medium))] shrink-0 mt-0.5" />
                     <div>

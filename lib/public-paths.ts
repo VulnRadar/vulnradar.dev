@@ -1,50 +1,52 @@
+import { ROUTES, API } from "./constants"
+
 /**
  * Public paths that don't require authentication
  * Used by middleware and client-side components to determine route access
  */
 export const PUBLIC_PATHS = [
   // ─── Root & Landing ────────────────────────────────────────────
-  "/",
-  "/landing",
-  "/donate",
+  ROUTES.HOME,
+  ROUTES.LANDING,
+  ROUTES.DONATE,
 
   // ─── Authentication Pages ──────────────────────────────────────
-  "/login",
-  "/signup",
-  "/forgot-password",
-  "/reset-password",
-  "/verify-email",
+  ROUTES.LOGIN,
+  ROUTES.SIGNUP,
+  ROUTES.FORGOT_PASSWORD,
+  ROUTES.RESET_PASSWORD,
+  ROUTES.VERIFY_EMAIL,
 
   // ─── Authentication API Routes ─────────────────────────────────
-  "/api/auth/login",
-  "/api/auth/signup",
-  "/api/auth/forgot-password",
-  "/api/auth/reset-password",
-  "/api/auth/accept-tos",
-  "/api/auth/2fa/verify",
-  "/api/auth/verify-email",
-  "/api/auth/resend-verification",
+  API.AUTH.LOGIN,
+  API.AUTH.SIGNUP,
+  API.AUTH.FORGOT_PASSWORD,
+  API.AUTH.RESET_PASSWORD,
+  API.AUTH.ACCEPT_TOS,
+  API.AUTH.TWO_FA.VERIFY,
+  API.AUTH.VERIFY_EMAIL,
+  API.AUTH.RESEND_VERIFICATION,
 
   // ─── Legal Pages ───────────────────────────────────────────────
-  "/legal/terms",
-  "/legal/privacy",
-  "/legal/disclaimer",
-  "/legal/acceptable-use",
+  ROUTES.LEGAL_TERMS,
+  ROUTES.LEGAL_PRIVACY,
+  ROUTES.LEGAL_DISCLAIMER,
+  ROUTES.LEGAL_ACCEPTABLE_USE,
 
   // ─── Shared Scan Reports ───────────────────────────────────────
   "/shared",
   "/api/shared",
 
   // ─── Public Demo ────────────────────────────────────────────────
-  "/demo",
-  "/api/demo-scan",
+  ROUTES.DEMO,
+  API.DEMO_SCAN,
 
   // ─── Public Staff Page ─────────────────────────────────────────
-  "/staff",
-  "/api/staff",
+  ROUTES.STAFF,
+  API.STAFF,
 
   // ─── Public API Endpoints ──────────────────────────────────────
-  "/api/landing-contact",
+  API.LANDING_CONTACT,
 
   // ─── Public Badge Endpoints ────────────────────────────────────
   "/api/badge",

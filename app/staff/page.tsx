@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react"
 import { Shield, ShieldCheck, Headset, Users, FlaskConical } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { APP_NAME, STAFF_ROLE_LABELS } from "@/lib/constants"
+import { APP_NAME, STAFF_ROLES, STAFF_ROLE_LABELS } from "@/lib/constants"
 
 interface StaffMember {
   name: string
@@ -64,10 +64,10 @@ export default function StaffPage() {
   }, [])
 
   const grouped = {
-    admin: staff.filter((s) => s.role === "admin"),
-    moderator: staff.filter((s) => s.role === "moderator"),
-    support: staff.filter((s) => s.role === "support"),
-    beta_tester: staff.filter((s) => s.role === "beta_tester"),
+    [STAFF_ROLES.ADMIN]: staff.filter((s) => s.role === STAFF_ROLES.ADMIN),
+    [STAFF_ROLES.MODERATOR]: staff.filter((s) => s.role === STAFF_ROLES.MODERATOR),
+    [STAFF_ROLES.SUPPORT]: staff.filter((s) => s.role === STAFF_ROLES.SUPPORT),
+    [STAFF_ROLES.BETA_TESTER]: staff.filter((s) => s.role === STAFF_ROLES.BETA_TESTER),
   }
 
   return (
@@ -106,11 +106,24 @@ export default function StaffPage() {
       {/* Staff sections by role */}
       {!loading && staff.length > 0 && (
         <div className="flex flex-col gap-10">
-          {(["admin", "moderator", "support", "beta_tester"] as const).map((roleKey) => {
+          {([STAFF_ROLES.ADMIN, STAFF_ROLES.MODERATOR, STAFF_ROLES.SUPPORT, STAFF_ROLES.BETA_TESTER] as const).map((roleKey) => {
             const members = grouped[roleKey]
             if (members.length === 0) return null
             const config = ROLE_CONFIG[roleKey]
             const RoleIcon = config.icon
+
+            const SECTION_TITLES: Record<string, string> = {
+              [STAFF_ROLES.ADMIN]: "Administrators",
+              [STAFF_ROLES.MODERATOR]: "Moderators",
+              [STAFF_ROLES.SUPPORT]: "Support Team",
+              [STAFF_ROLES.BETA_TESTER]: "Beta Testers",
+            }
+            const SECTION_DESCS: Record<string, string> = {
+              [STAFF_ROLES.ADMIN]: "Full platform access and management",
+              [STAFF_ROLES.MODERATOR]: "User moderation and enforcement",
+              [STAFF_ROLES.SUPPORT]: "Help and customer assistance",
+              [STAFF_ROLES.BETA_TESTER]: "Early access and feature testing",
+            }
 
             return (
               <section key={roleKey}>
@@ -121,16 +134,10 @@ export default function StaffPage() {
                   </div>
                   <div>
                     <h2 className="text-sm font-semibold text-foreground">
-                      {roleKey === "admin" ? "Administrators" : roleKey === "moderator" ? "Moderators" : roleKey === "beta_tester" ? "Beta Testers" : "Support Team"}
+                      {SECTION_TITLES[roleKey] || STAFF_ROLE_LABELS[roleKey] || roleKey}
                     </h2>
                     <p className="text-[11px] text-muted-foreground">
-                      {roleKey === "admin"
-                        ? "Full platform access and management"
-                        : roleKey === "moderator"
-                          ? "User moderation and enforcement"
-                          : roleKey === "beta_tester"
-                            ? "Early access and feature testing"
-                            : "Help and customer assistance"}
+                      {SECTION_DESCS[roleKey] || ""}
                     </p>
                   </div>
                   <span className={cn("ml-auto text-xs font-medium px-2 py-0.5 rounded-full", config.bg, config.color)}>
