@@ -2,7 +2,7 @@
 
 Professional web vulnerability scanner. Completely free, forever.
 
-**100+ security checks** for SQL injection, XSS, CSRF, authentication issues, and more. Scan any public URL in seconds.
+**175+ security checks** for SQL injection, XSS, CSRF, authentication issues, and more. Scan any public URL in seconds.
 
 ## Quick Links
 
