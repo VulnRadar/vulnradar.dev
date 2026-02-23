@@ -2,14 +2,11 @@ import React from "react"
 import type { Metadata, Viewport } from 'next'
 import { Inter, JetBrains_Mono } from 'next/font/google'
 import Script from 'next/script'
-import dynamic from 'next/dynamic'
 import { ThemeProvider } from '@/components/theme-provider'
 import { TosGate } from '@/components/tos-gate'
 import { BackupCodesModal } from '@/components/notification-center'
 import { AuthProvider } from '@/components/auth-provider'
 import { APP_NAME, APP_DESCRIPTION, APP_URL, APP_VERSION, LOGO_URL, STAFF_ROLES } from '@/lib/constants'
-
-const VersionNotification = dynamic(() => import('@/components/version-notification').then(m => ({ default: m.VersionNotification })))
 
 import './globals.css'
 
@@ -94,7 +91,6 @@ export default function RootLayout({
             <TosGate>
               {children}
             </TosGate>
-            <VersionNotification />
             <BackupCodesModal />
           </AuthProvider>
         </ThemeProvider>
