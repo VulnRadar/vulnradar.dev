@@ -33,4 +33,4 @@ Built with Next.js 15, React 19, TypeScript, Tailwind CSS, PostgreSQL, and more.
 
 ## License
 
-MIT License - See LICENSE file for details
+GPL License - See LICENSE file for details
