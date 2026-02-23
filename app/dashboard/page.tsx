@@ -2,20 +2,23 @@
 
 import { useState, useCallback, useEffect, Suspense } from "react"
 import { useSearchParams } from "next/navigation"
+import dynamic from "next/dynamic"
 import { Header } from "@/components/scanner/header"
 import { ScanForm, type ScanMode } from "@/components/scanner/scan-form"
 import { ScanningIndicator } from "@/components/scanner/scanning-indicator"
 import { ScanSummary } from "@/components/scanner/scan-summary"
 import { ResultsList } from "@/components/scanner/results-list"
-import { IssueDetail } from "@/components/scanner/issue-detail"
-import { ExportButton } from "@/components/scanner/export-button"
-import { ShareButton } from "@/components/scanner/share-button"
-import { ResponseHeaders } from "@/components/scanner/response-headers"
-import { SubdomainDiscovery } from "@/components/scanner/subdomain-discovery"
-import { CrawlUrlSelector } from "@/components/scanner/crawl-url-selector"
 import { Dashboard } from "@/components/scanner/dashboard"
 import { Footer } from "@/components/scanner/footer"
-import { OnboardingTour } from "@/components/onboarding-tour"
+
+// Lazy-loaded: only shown after scan results or user interaction
+const IssueDetail = dynamic(() => import("@/components/scanner/issue-detail").then(m => ({ default: m.IssueDetail })))
+const ExportButton = dynamic(() => import("@/components/scanner/export-button").then(m => ({ default: m.ExportButton })))
+const ShareButton = dynamic(() => import("@/components/scanner/share-button").then(m => ({ default: m.ShareButton })))
+const ResponseHeaders = dynamic(() => import("@/components/scanner/response-headers").then(m => ({ default: m.ResponseHeaders })))
+const SubdomainDiscovery = dynamic(() => import("@/components/scanner/subdomain-discovery").then(m => ({ default: m.SubdomainDiscovery })))
+const CrawlUrlSelector = dynamic(() => import("@/components/scanner/crawl-url-selector").then(m => ({ default: m.CrawlUrlSelector })))
+const OnboardingTour = dynamic(() => import("@/components/onboarding-tour").then(m => ({ default: m.OnboardingTour })), { ssr: false })
 import type { ScanResult, ScanStatus, Vulnerability } from "@/lib/scanner/types"
 import { DEFAULT_SCAN_NOTE } from "@/lib/constants"
 import { AlertCircle, RotateCcw, MessageSquare, Pencil, Save, Loader2 as Loader2Icon, Globe, ChevronDown, ChevronRight, ExternalLink } from "lucide-react"

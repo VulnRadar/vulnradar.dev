@@ -4,7 +4,7 @@ import { useEffect, useState } from "react"
 import { useRouter, usePathname } from "next/navigation"
 import { X, Sparkles, ArrowRight } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { VERSION_COOKIE_NAME, VERSION_COOKIE_MAX_AGE, APP_VERSION, APP_NAME } from "@/lib/constants"
+import { VERSION_COOKIE_NAME, VERSION_COOKIE_MAX_AGE, APP_VERSION, APP_NAME, ROUTES, API } from "@/lib/constants"
 import { PUBLIC_PATHS } from "@/lib/public-paths"
 
 export function VersionNotification() {
@@ -15,7 +15,7 @@ export function VersionNotification() {
 
   // Check if current path is a public route
   const isPublicRoute = PUBLIC_PATHS.some((p) => {
-    if (p === "/" || p === "/landing") {
+    if (p === ROUTES.HOME || p === ROUTES.LANDING) {
       return pathname === p
     }
     return pathname.startsWith(p)
@@ -31,7 +31,7 @@ export function VersionNotification() {
     // Check if user is logged in by checking for session
     const checkLogin = async () => {
       try {
-        const response = await fetch("/api/auth/me")
+        const response = await fetch(API.AUTH.ME)
         const isAuthenticated = response.ok
         setIsLoggedIn(isAuthenticated)
 
@@ -64,7 +64,7 @@ export function VersionNotification() {
     document.cookie = `${VERSION_COOKIE_NAME}=${APP_VERSION}; path=/; max-age=${VERSION_COOKIE_MAX_AGE}; SameSite=Lax`
     // Dismiss popup immediately
     setShow(false)
-    router.push("/changelog")
+    router.push(ROUTES.CHANGELOG)
   }
 
   if (!show || !isLoggedIn) return null

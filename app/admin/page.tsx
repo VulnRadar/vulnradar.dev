@@ -203,7 +203,7 @@ function UserAvatar({ name, email, size = "md", avatarUrl }: { name: string | nu
   const sz = size === "sm" ? "h-7 w-7 text-[10px]" : "h-9 w-9 text-xs"
   if (avatarUrl) {
     return (
-      <img src={avatarUrl} alt={name || email} className={cn("rounded-full object-cover shrink-0", sz)} />
+      <img src={avatarUrl} alt={name || email} loading="lazy" className={cn("rounded-full object-cover shrink-0", sz)} />
     )
   }
   return (

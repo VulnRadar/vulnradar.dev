@@ -10,7 +10,7 @@ export function Footer() {
   return (
     <footer className="border-t border-border bg-card/50 mt-auto">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-        <div className="grid md:grid-cols-5 gap-8 mb-8">
+        <nav aria-label="Footer navigation" className="grid md:grid-cols-5 gap-8 mb-8">
           {/* Brand */}
           <div className="md:col-span-2">
             <div className="flex items-center gap-2 mb-3">
@@ -64,7 +64,7 @@ export function Footer() {
               <li><Link href={ROUTES.LEGAL_ACCEPTABLE_USE} className="hover:text-foreground transition-colors">Acceptable Use</Link></li>
             </ul>
           </div>
-        </div>
+        </nav>
 
         {/* Bottom bar */}
         <div className="border-t border-border pt-8 flex flex-col sm:flex-row items-center justify-between gap-4">
