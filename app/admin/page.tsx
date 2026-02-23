@@ -418,10 +418,9 @@ export default function AdminPage() {
             </div>
           </div>
                 <Button variant="outline" size="sm" className="bg-transparent gap-1.5 self-start sm:self-auto" onClick={() => { fetchData(page); if (activeTab === "audit") fetchAudit(auditPage); if (activeTab === "admins") fetchActiveAdmins(); }}>
-
-            <RefreshCw className="h-3.5 w-3.5" />
-            Refresh
-          </Button>
+                  <RefreshCw className="h-3.5 w-3.5" />
+                  Refresh
+                </Button>
         </div>
 
         {loading ? (
