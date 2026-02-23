@@ -5,10 +5,20 @@ import { APP_NAME, TOTAL_CHECKS_LABEL } from "@/lib/constants"
 
 const CHANGELOG = [
   {
+    version: "1.9.1",
+    date: "February 23, 2026",
+    title: "ToS Modal & Header Fixes",
+    highlights: true,
+    changes: [
+      { icon: FileText, label: "ToS modal wording", desc: "ToS modal now clearly notifies users that bypassing the acceptance screen does not waive their legal obligations. Ensures the notice displays reliably across guest and authenticated flows." },
+      { icon: Layout, label: "Centralized Route & API Constants", desc: "Updated `header.tsx` to fix rendering/auth-state flicker and ensure correct navigation is shown for guests and signed-in users." },
+    ],
+  },
+  {
     version: "1.9.0",
     date: "February 23, 2026",
     title: "Auth-Aware Public Pages, Codebase Refactor & Performance",
-    highlights: true,
+    highlights: false,
     changes: [
       { icon: Shield, label: "Auth-Aware Public Pages", desc: "Demo, Staff, Legal, and Shared pages now detect whether the viewer is logged in. Authenticated users see the full Header with navigation and Footer. Guests see a minimal branded header with a Sign In button and compact legal footer. All four layouts share a single reusable PublicPageShell component." },
       { icon: Layout, label: "Centralized Route & API Constants", desc: "Added ROUTES (25 routes), API (30+ endpoints), ROLE_BADGE_STYLES, and STAFF_ROLES constants to lib/constants.ts. High-traffic shared components (Header, Footer, middleware, AuthProvider, public-page-shell, public-paths) now reference constants instead of hardcoded strings." },
