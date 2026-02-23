@@ -2,7 +2,7 @@
 
 Professional web vulnerability scanner. Completely free, forever.
 
-**100+ security checks** for SQL injection, XSS, CSRF, authentication issues, and more. Scan any public URL in seconds.
+**175+ security checks** for SQL injection, XSS, CSRF, authentication issues, and more. Scan any public URL in seconds.
 
 ## Quick Links
 
@@ -12,7 +12,7 @@ Professional web vulnerability scanner. Completely free, forever.
 
 ## Features
 
-- 100+ automated security checks with minimal false positives
+- 175+ automated security checks with minimal false positives
 - Real-time scanning with detailed reports
 - Export to PDF or JSON
 - Scheduled scans and webhooks
@@ -33,4 +33,4 @@ Built with Next.js 15, React 19, TypeScript, Tailwind CSS, PostgreSQL, and more.
 
 ## License
 
-MIT License - See LICENSE file for details
+GPL License - See LICENSE file for details
