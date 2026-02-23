@@ -340,8 +340,8 @@ export default function ContactPage() {
                     )}
 
                     {error && (
-                      <div className="text-sm text-red-500 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">
-                        {error}
+                      <div className="rounded-lg border border-destructive/20 bg-destructive/5 px-3 py-2.5">
+                        <p className="text-sm text-destructive" role="alert">{error}</p>
                       </div>
                     )}
 

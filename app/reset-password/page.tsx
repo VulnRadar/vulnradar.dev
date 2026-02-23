@@ -1,15 +1,14 @@
 "use client"
 
-import React from "react"
-
-import { useState, Suspense } from "react"
+import React, { useState, Suspense } from "react"
 import { useSearchParams } from "next/navigation"
 import Link from "next/link"
 import Image from "next/image"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Lock, CheckCircle2, AlertTriangle, Eye, EyeOff } from "lucide-react"
+import { CheckCircle2, AlertTriangle, Eye, EyeOff, Loader2 } from "lucide-react"
 import { APP_NAME } from "@/lib/constants"
 
 function ResetForm() {
@@ -21,6 +20,24 @@ function ResetForm() {
   const [loading, setLoading] = useState(false)
   const [success, setSuccess] = useState(false)
   const [error, setError] = useState("")
+
+  function getPasswordStrength(pw: string): { level: number; label: string; color: string } {
+    if (!pw) return { level: 0, label: "", color: "" }
+    let score = 0
+    if (pw.length >= 8) score++
+    if (pw.length >= 12) score++
+    if (/[a-z]/.test(pw) && /[A-Z]/.test(pw)) score++
+    if (/\d/.test(pw)) score++
+    if (/[^a-zA-Z0-9]/.test(pw)) score++
+
+    if (score <= 1) return { level: 1, label: "Weak", color: "bg-[hsl(var(--severity-critical))]" }
+    if (score <= 2) return { level: 2, label: "Fair", color: "bg-[hsl(var(--severity-high))]" }
+    if (score <= 3) return { level: 3, label: "Medium", color: "bg-[hsl(var(--severity-medium))]" }
+    if (score <= 4) return { level: 4, label: "Strong", color: "bg-primary" }
+    return { level: 5, label: "Very Strong", color: "bg-emerald-500" }
+  }
+
+  const strength = getPasswordStrength(password)
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -46,12 +63,24 @@ function ResetForm() {
 
   if (!token) {
     return (
-      <Card className="bg-card border-border">
-        <CardContent className="py-12 flex flex-col items-center gap-3">
-          <AlertTriangle className="h-8 w-8 text-amber-500" />
-          <p className="text-sm font-medium text-foreground">Invalid Reset Link</p>
-          <p className="text-xs text-muted-foreground text-center">This link is invalid or missing a token. Please request a new reset link.</p>
-          <Link href="/forgot-password"><Button variant="outline" size="sm" className="bg-transparent mt-2">Request New Link</Button></Link>
+      <Card className="w-full max-w-sm bg-card border-border">
+        <CardHeader className="text-center space-y-2 pb-6 pt-8">
+          <div className="flex items-center justify-center gap-2 mb-4">
+            <Image src="/favicon.svg" alt={`${APP_NAME} logo`} width={32} height={32} className="h-8 w-8" />
+            <span className="text-2xl font-bold text-foreground font-mono tracking-tight">{APP_NAME}</span>
+          </div>
+          <div className="flex justify-center mb-2">
+            <div className="p-3 bg-amber-500/10 rounded-full">
+              <AlertTriangle className="h-6 w-6 text-amber-500" />
+            </div>
+          </div>
+          <CardTitle className="text-xl font-bold tracking-tight">Invalid Reset Link</CardTitle>
+          <CardDescription>This link is invalid or missing a token. Please request a new reset link.</CardDescription>
+        </CardHeader>
+        <CardContent className="pb-8 flex flex-col items-center">
+          <Button asChild variant="outline" size="sm" className="bg-transparent">
+            <Link href="/forgot-password">Request New Link</Link>
+          </Button>
         </CardContent>
       </Card>
     )
@@ -59,31 +88,44 @@ function ResetForm() {
 
   if (success) {
     return (
-      <Card className="bg-card border-border">
-        <CardContent className="py-12 flex flex-col items-center gap-3">
-          <div className="h-12 w-12 rounded-full bg-emerald-500/10 flex items-center justify-center">
-            <CheckCircle2 className="h-6 w-6 text-emerald-500" />
+      <Card className="w-full max-w-sm bg-card border-border">
+        <CardHeader className="text-center space-y-2 pb-6 pt-8">
+          <div className="flex items-center justify-center gap-2 mb-4">
+            <Image src="/favicon.svg" alt={`${APP_NAME} logo`} width={32} height={32} className="h-8 w-8" />
+            <span className="text-2xl font-bold text-foreground font-mono tracking-tight">{APP_NAME}</span>
           </div>
-          <p className="text-sm font-medium text-foreground">Password Reset Complete</p>
-          <p className="text-xs text-muted-foreground text-center">Your password has been changed. All existing sessions have been logged out.</p>
-          <Link href="/login"><Button size="sm" className="mt-2">Go to Login</Button></Link>
+          <div className="flex justify-center mb-2">
+            <div className="p-3 bg-emerald-500/10 rounded-full">
+              <CheckCircle2 className="h-6 w-6 text-emerald-500" />
+            </div>
+          </div>
+          <CardTitle className="text-xl font-bold tracking-tight">Password Reset Complete</CardTitle>
+          <CardDescription>Your password has been changed. All existing sessions have been logged out.</CardDescription>
+        </CardHeader>
+        <CardContent className="pb-8 flex flex-col items-center">
+          <Button asChild size="sm">
+            <Link href="/login">Go to Login</Link>
+          </Button>
         </CardContent>
       </Card>
     )
   }
 
   return (
-    <Card className="bg-card border-border">
-      <CardHeader className="text-center pb-2">
-        <CardTitle className="text-xl font-bold">Set New Password</CardTitle>
+    <Card className="w-full max-w-sm bg-card border-border">
+      <CardHeader className="text-center space-y-2 pb-6 pt-8">
+        <div className="flex items-center justify-center gap-2 mb-4">
+          <Image src="/favicon.svg" alt={`${APP_NAME} logo`} width={32} height={32} className="h-8 w-8" />
+          <span className="text-2xl font-bold text-foreground font-mono tracking-tight">{APP_NAME}</span>
+        </div>
+        <CardTitle className="text-xl font-bold tracking-tight">Set New Password</CardTitle>
         <CardDescription>Choose a strong, unique password for your account.</CardDescription>
       </CardHeader>
-      <CardContent>
+      <CardContent className="pb-8">
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-          <div className="flex flex-col gap-1.5">
-            <label htmlFor="password" className="text-sm font-medium text-foreground">New Password</label>
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="password">New Password</Label>
             <div className="relative">
-              <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
                 id="password"
                 type={showPass ? "text" : "password"}
@@ -92,52 +134,67 @@ function ResetForm() {
                 onChange={(e) => setPassword(e.target.value)}
                 required
                 minLength={8}
-                className="pl-10 pr-10"
+                className="h-10 pr-10"
               />
-              <button type="button" onClick={() => setShowPass(!showPass)} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+              <button
+                type="button"
+                onClick={() => setShowPass(!showPass)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+              >
                 {showPass ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
               </button>
             </div>
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <label htmlFor="confirm" className="text-sm font-medium text-foreground">Confirm Password</label>
-            <div className="relative">
-              <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                id="confirm"
-                type={showPass ? "text" : "password"}
-                placeholder="Re-enter your password"
-                value={confirm}
-                onChange={(e) => setConfirm(e.target.value)}
-                required
-                className="pl-10"
-              />
-            </div>
+            {/* Password strength indicator - matching signup page */}
+            {password && (
+              <div className="space-y-1.5 mt-1">
+                <div className="flex gap-1 h-1">
+                  {[1, 2, 3, 4, 5].map((level) => (
+                    <div
+                      key={level}
+                      className={`h-full flex-1 rounded-full transition-colors duration-200 ${
+                        strength.level >= level ? strength.color : "bg-muted"
+                      }`}
+                    />
+                  ))}
+                </div>
+                <p className="text-xs text-muted-foreground text-right">
+                  Strength: <span className="font-medium text-foreground">{strength.label}</span>
+                </p>
+              </div>
+            )}
           </div>
 
-          {/* Password strength hints */}
-          <div className="flex flex-wrap gap-1.5">
-            {[
-              { test: password.length >= 8, label: "8+ chars" },
-              { test: /[A-Z]/.test(password), label: "Uppercase" },
-              { test: /[0-9]/.test(password), label: "Number" },
-              { test: /[^A-Za-z0-9]/.test(password), label: "Special char" },
-            ].map((rule) => (
-              <span key={rule.label} className={`text-[10px] px-2 py-0.5 rounded-full border ${rule.test ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/20" : "bg-muted text-muted-foreground border-border"}`}>
-                {rule.label}
-              </span>
-            ))}
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="confirm">Confirm Password</Label>
+            <Input
+              id="confirm"
+              type={showPass ? "text" : "password"}
+              placeholder="Re-enter your password"
+              value={confirm}
+              onChange={(e) => setConfirm(e.target.value)}
+              required
+              className="h-10"
+            />
           </div>
 
           {error && (
-            <div className="flex items-center gap-2 text-sm text-destructive bg-destructive/10 border border-destructive/20 rounded-lg px-3 py-2">
-              <AlertTriangle className="h-4 w-4 shrink-0" />
-              {error}
+            <div className="rounded-lg border border-destructive/20 bg-destructive/5 px-3 py-2.5">
+              <p className="text-sm text-destructive flex items-center gap-2" role="alert">
+                <AlertTriangle className="h-4 w-4 shrink-0" />
+                {error}
+              </p>
             </div>
           )}
 
-          <Button type="submit" disabled={loading || !password || !confirm} className="w-full">
-            {loading ? "Resetting..." : "Reset Password"}
+          <Button type="submit" disabled={loading || !password || !confirm} className="h-10 w-full mt-2">
+            {loading ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Resetting...
+              </>
+            ) : (
+              "Reset Password"
+            )}
           </Button>
         </form>
       </CardContent>
@@ -147,22 +204,10 @@ function ResetForm() {
 
 export default function ResetPasswordPage() {
   return (
-    <div className="min-h-screen bg-background flex flex-col items-center justify-center px-4">
-      <div className="w-full max-w-md">
-        <div className="flex items-center justify-center gap-2 mb-8">
-          <Image
-            src="/favicon.svg"
-            alt={`${APP_NAME} logo`}
-            width={32}
-            height={32}
-            className="h-8 w-8"
-          />
-          <span className="text-2xl font-bold text-foreground font-mono tracking-tight">{APP_NAME}</span>
-        </div>
-        <Suspense fallback={null}>
-          <ResetForm />
-        </Suspense>
-      </div>
+    <div className="min-h-screen flex items-center justify-center bg-background px-4">
+      <Suspense fallback={null}>
+        <ResetForm />
+      </Suspense>
     </div>
   )
 }

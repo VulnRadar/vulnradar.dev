@@ -2,7 +2,7 @@
 
 import React from "react"
 import Image from "next/image"
-import { useRouter } from "next/navigation"
+import Link from "next/link"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { Button } from "@/components/ui/button"
 import { Header } from "@/components/scanner/header"
@@ -26,7 +26,6 @@ export function PublicPageShell({
   maxWidth = "max-w-5xl",
   padding = "py-8",
 }: PublicPageShellProps) {
-  const router = useRouter()
   const { me } = useAuth()
   const isLoggedIn = !!me?.name
 
@@ -37,8 +36,8 @@ export function PublicPageShell({
       ) : (
         <header className="sticky top-0 z-50 h-14 flex items-center justify-between px-4 sm:px-6 border-b border-border bg-card/95 backdrop-blur-sm">
           <div className="flex items-center gap-2">
-            <button
-              onClick={() => router.push("/")}
+            <Link
+              href="/"
               className="flex items-center gap-2 hover:opacity-80 transition-opacity"
             >
               <Image
@@ -51,7 +50,7 @@ export function PublicPageShell({
               <span className="text-base font-semibold text-foreground tracking-tight">
                 {APP_NAME}
               </span>
-            </button>
+            </Link>
             {badge && (
               <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded-md font-medium">
                 {badge}
@@ -60,13 +59,8 @@ export function PublicPageShell({
           </div>
           <div className="flex items-center gap-3">
             <ThemeToggle />
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => router.push("/login")}
-              className="bg-transparent text-xs"
-            >
-              Sign In
+            <Button asChild variant="outline" size="sm" className="bg-transparent text-xs">
+              <Link href="/login">Sign In</Link>
             </Button>
           </div>
         </header>
@@ -80,27 +74,23 @@ export function PublicPageShell({
         <Footer />
       ) : (
         <footer className="border-t border-border bg-card/50">
-          <div className="max-w-4xl mx-auto px-4 py-4 flex flex-wrap items-center justify-center gap-4 text-xs text-muted-foreground">
-            <button
-              onClick={() => router.push("/legal/terms")}
-              className="hover:text-foreground transition-colors"
-            >
-              Terms of Service
-            </button>
-            <span className="text-border">|</span>
-            <button
-              onClick={() => router.push("/legal/privacy")}
-              className="hover:text-foreground transition-colors"
-            >
-              Privacy Policy
-            </button>
-            <span className="text-border">|</span>
-            <button
-              onClick={() => router.push("/legal/disclaimer")}
-              className="hover:text-foreground transition-colors"
-            >
-              Disclaimer
-            </button>
+          <div className="max-w-4xl mx-auto px-4 py-4 flex flex-col items-center gap-2">
+            <div className="flex flex-wrap items-center justify-center gap-4 text-xs text-muted-foreground">
+              <Link href="/legal/terms" className="hover:text-foreground transition-colors">
+                Terms of Service
+              </Link>
+              <span className="text-border">|</span>
+              <Link href="/legal/privacy" className="hover:text-foreground transition-colors">
+                Privacy Policy
+              </Link>
+              <span className="text-border">|</span>
+              <Link href="/legal/disclaimer" className="hover:text-foreground transition-colors">
+                Disclaimer
+              </Link>
+            </div>
+            <p className="text-[11px] text-muted-foreground">
+              {"\u00A9"} {new Date().getFullYear()} {APP_NAME}
+            </p>
           </div>
         </footer>
       )}

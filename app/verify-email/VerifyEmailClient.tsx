@@ -107,16 +107,17 @@ export default function VerifyEmailClient() {
     <div className="min-h-screen flex items-center justify-center bg-background px-4">
       <Card className="w-full max-w-sm bg-card border-border">
         <CardHeader className="text-center space-y-2 pb-6 pt-8">
-          <div className="flex justify-center mb-2">
+          <div className="flex items-center justify-center gap-2 mb-4">
             <Image
               src="/favicon.svg"
-              alt={APP_NAME}
-              width={48}
-              height={48}
-              className="rounded-lg"
+              alt={`${APP_NAME} logo`}
+              width={32}
+              height={32}
+              className="h-8 w-8"
             />
+            <span className="text-2xl font-bold text-foreground font-mono tracking-tight">{APP_NAME}</span>
           </div>
-          <CardTitle className="text-xl font-semibold text-foreground">
+          <CardTitle className="text-xl font-bold tracking-tight">
             Email Verification
           </CardTitle>
           <CardDescription className="text-muted-foreground text-sm">
@@ -131,12 +132,16 @@ export default function VerifyEmailClient() {
         <CardContent className="space-y-6 pb-8">
           <div className="flex flex-col items-center space-y-4">
             {status === "loading" && (
-              <Loader2 className="h-12 w-12 text-primary animate-spin" />
+              <div className="p-3 bg-primary/10 rounded-full">
+                <Loader2 className="h-8 w-8 text-primary animate-spin" />
+              </div>
             )}
 
             {status === "success" && (
               <>
-                <CheckCircle2 className="h-12 w-12 text-green-500" />
+                <div className="p-3 bg-emerald-500/10 rounded-full">
+                  <CheckCircle2 className="h-8 w-8 text-emerald-500" />
+                </div>
                 <p className="text-center text-sm text-muted-foreground">{message}</p>
                 <p className="text-center text-xs text-muted-foreground">Redirecting to dashboard...</p>
               </>
@@ -144,7 +149,9 @@ export default function VerifyEmailClient() {
 
             {status === "already-verified" && (
               <>
-                <CheckCircle2 className="h-12 w-12 text-blue-500" />
+                <div className="p-3 bg-primary/10 rounded-full">
+                  <CheckCircle2 className="h-8 w-8 text-primary" />
+                </div>
                 <p className="text-center text-sm text-muted-foreground">{message}</p>
                 <Button asChild className="w-full mt-4">
                   <Link href="/login">Go to Login</Link>
@@ -154,7 +161,9 @@ export default function VerifyEmailClient() {
 
             {status === "error" && (
               <>
-                <XCircle className="h-12 w-12 text-red-500" />
+                <div className="p-3 bg-destructive/10 rounded-full">
+                  <XCircle className="h-8 w-8 text-destructive" />
+                </div>
                 <p className="text-center text-sm text-muted-foreground">{message}</p>
                 <Button asChild variant="outline" className="w-full mt-4">
                   <Link href="/login">Back to Login</Link>
@@ -164,7 +173,9 @@ export default function VerifyEmailClient() {
 
             {status === "expired" && (
               <>
-                <Mail className="h-12 w-12 text-yellow-500" />
+                <div className="p-3 bg-amber-500/10 rounded-full">
+                  <Mail className="h-8 w-8 text-amber-500" />
+                </div>
                 <p className="text-center text-sm text-muted-foreground">{message}</p>
 
                 {!resendSuccess ? (
@@ -196,8 +207,8 @@ export default function VerifyEmailClient() {
                   </div>
                 ) : (
                   <div className="text-center space-y-2">
-                    <CheckCircle2 className="h-8 w-8 text-green-500 mx-auto" />
-                    <p className="text-sm text-green-500">Verification email sent!</p>
+                    <CheckCircle2 className="h-8 w-8 text-emerald-500 mx-auto" />
+                    <p className="text-sm text-emerald-500">Verification email sent!</p>
                     <p className="text-xs text-muted-foreground">Check your inbox for the new link.</p>
                   </div>
                 )}
