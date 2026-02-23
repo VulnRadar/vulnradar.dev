@@ -359,9 +359,8 @@ export default function AdminPage() {
     setConfirmDialog(null)
   }
 
-  // Debounced server-side search - searches ALL users, not just current page
+  // Debounced server-side search
   useEffect(() => {
-    // Skip the initial mount (fetchData already runs on mount)
     if (!searchInitRef.current) {
       searchInitRef.current = true
       return
@@ -857,7 +856,8 @@ export default function AdminPage() {
                                 </p>
                               </div>
                             </div>
-                      })}
+                          )
+                        })}
                       </div>
                       {staffPagination.totalPages > 1 && (
                         <div className="px-5 py-3 border-t border-border bg-muted/10">
@@ -1034,6 +1034,8 @@ function UserDetailPanel({
             <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
               {callerRole === STAFF_ROLES.SUPPORT ? "Account Information" : "Support Actions"}
             </p>
+          </CardHeader>
+          <CardContent className="p-5 pt-3">
             {callerRole === STAFF_ROLES.SUPPORT ? (
               <p className="text-xs text-muted-foreground">You have view-only access. Contact an admin or moderator to perform actions on this user.</p>
             ) : (
