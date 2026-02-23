@@ -3,7 +3,7 @@ import { randomBytes, scryptSync } from "node:crypto"
 import { getSession } from "@/lib/auth"
 import pool from "@/lib/db"
 import { getClientIP } from "@/lib/rate-limit"
-import { ERROR_MESSAGES, STAFF_ROLE_HIERARCHY } from "@/lib/constants"
+import { ERROR_MESSAGES, STAFF_ROLES, STAFF_ROLE_HIERARCHY } from "@/lib/constants"
 
 async function requireStaff() {
   const session = await getSession()
@@ -176,8 +176,8 @@ export async function GET(request: NextRequest) {
 function canPerformAction(role: string, action: string): boolean {
   const adminOnly = ["make_admin", "remove_admin", "set_role", "delete", "reset_password"]
   const modActions = ["disable", "enable", "revoke_sessions", "revoke_api_keys"]
-  if (role === "admin") return true
-  if (role === "moderator") return modActions.includes(action)
+  if (role === STAFF_ROLES.ADMIN) return true
+  if (role === STAFF_ROLES.MODERATOR) return modActions.includes(action)
   return false // support = view only
 }
 
@@ -214,13 +214,13 @@ export async function PATCH(request: NextRequest) {
   const targetUser = targetRes.rows[0]
 
   // Moderators cannot act on admins or other moderators
-  if (session.role === "moderator" && (STAFF_ROLE_HIERARCHY[targetUser.role] || 0) >= (STAFF_ROLE_HIERARCHY.moderator || 2)) {
+  if (session.role === STAFF_ROLES.MODERATOR && (STAFF_ROLE_HIERARCHY[targetUser.role] || 0) >= (STAFF_ROLE_HIERARCHY[STAFF_ROLES.MODERATOR] || 2)) {
     return NextResponse.json({ error: "You cannot perform actions on users with equal or higher roles." }, { status: 403 })
   }
 
   switch (action) {
     case "set_role": {
-      const validRoles = ["user", "beta_tester", "support", "moderator", "admin"]
+      const validRoles = Object.values(STAFF_ROLES)
       if (!newRole || !validRoles.includes(newRole)) {
         return NextResponse.json({ error: "Invalid role" }, { status: 400 })
       }

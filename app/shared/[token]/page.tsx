@@ -17,7 +17,7 @@ import { IssueDetail } from "@/components/scanner/issue-detail"
 import { ExportButton } from "@/components/scanner/export-button"
 import { ResponseHeaders } from "@/components/scanner/response-headers"
 import { SubdomainDiscovery } from "@/components/scanner/subdomain-discovery"
-import { STAFF_ROLE_LABELS } from "@/lib/constants"
+import { STAFF_ROLES, STAFF_ROLE_LABELS, ROLE_BADGE_STYLES } from "@/lib/constants"
 import type { ScanResult, Vulnerability } from "@/lib/scanner/types"
 
 export default function SharedScanPage() {
@@ -102,13 +102,8 @@ export default function SharedScanPage() {
                           <span>
                             Shared by <span className="font-medium text-foreground">{scannedBy}</span>
                           </span>
-                          {scannedByRole && scannedByRole !== "user" && (
-                            <span className={`inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wider ${
-                              scannedByRole === "admin" ? "bg-red-500/10 text-red-400 border border-red-500/20" :
-                              scannedByRole === "moderator" ? "bg-amber-500/10 text-amber-400 border border-amber-500/20" :
-                              scannedByRole === "beta_tester" ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20" :
-                              "bg-blue-500/10 text-blue-400 border border-blue-500/20"
-                            }`}>
+                          {scannedByRole && scannedByRole !== STAFF_ROLES.USER && ROLE_BADGE_STYLES[scannedByRole] && (
+                            <span className={`inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wider border ${ROLE_BADGE_STYLES[scannedByRole]}`}>
                               {STAFF_ROLE_LABELS[scannedByRole] || scannedByRole}
                             </span>
                           )}

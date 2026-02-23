@@ -3,7 +3,7 @@
 import Link from "next/link"
 import Image from "next/image"
 import { Heart, Mail, Github } from "lucide-react"
-import { APP_VERSION, APP_NAME, APP_URL, SUPPORT_EMAIL } from "@/lib/constants"
+import { APP_VERSION, APP_NAME, APP_URL, APP_REPO, SUPPORT_EMAIL, ROUTES } from "@/lib/constants"
 import { Button } from "@/components/ui/button"
 
 export function Footer() {
@@ -23,7 +23,7 @@ export function Footer() {
             <p className="text-sm text-muted-foreground leading-relaxed mb-4">
               Professional web vulnerability scanning. Open-source, free forever.
             </p>
-            <Link href="/donate">
+            <Link href={ROUTES.DONATE}>
               <Button variant="outline" size="sm" className="gap-1.5 text-yellow-500 border-yellow-500/30 hover:bg-yellow-500/10 hover:text-yellow-400">
                 <Heart className="h-3.5 w-3.5" />
                 Support the Project
@@ -35,10 +35,10 @@ export function Footer() {
           <div>
             <h3 className="font-semibold text-sm mb-4 text-foreground">Product</h3>
             <ul className="space-y-2.5 text-sm text-muted-foreground">
-              <li><Link href="/dashboard" className="hover:text-foreground transition-colors">Scanner</Link></li>
-              <li><Link href="/history" className="hover:text-foreground transition-colors">History</Link></li>
-              <li><Link href="/compare" className="hover:text-foreground transition-colors">Compare</Link></li>
-              <li><Link href="/badge" className="hover:text-foreground transition-colors">Badges</Link></li>
+              <li><Link href={ROUTES.DASHBOARD} className="hover:text-foreground transition-colors">Scanner</Link></li>
+              <li><Link href={ROUTES.HISTORY} className="hover:text-foreground transition-colors">History</Link></li>
+              <li><Link href={ROUTES.COMPARE} className="hover:text-foreground transition-colors">Compare</Link></li>
+              <li><Link href={ROUTES.BADGE} className="hover:text-foreground transition-colors">Badges</Link></li>
             </ul>
           </div>
 
@@ -46,11 +46,11 @@ export function Footer() {
           <div>
             <h3 className="font-semibold text-sm mb-4 text-foreground">Resources</h3>
             <ul className="space-y-2.5 text-sm text-muted-foreground">
-              <li><Link href="/contact" className="hover:text-foreground transition-colors">Contact</Link></li>
-              <li><Link href="/docs" className="hover:text-foreground transition-colors">Documentation</Link></li>
-              <li><Link href="/docs/api" className="hover:text-foreground transition-colors">API Reference</Link></li>
-              <li><Link href="/docs/setup" className="hover:text-foreground transition-colors">Setup Guide</Link></li>
-              <li><Link href="/changelog" className="hover:text-foreground transition-colors">Changelog</Link></li>
+              <li><Link href={ROUTES.CONTACT} className="hover:text-foreground transition-colors">Contact</Link></li>
+              <li><Link href={ROUTES.DOCS} className="hover:text-foreground transition-colors">Documentation</Link></li>
+              <li><Link href={ROUTES.DOCS_API} className="hover:text-foreground transition-colors">API Reference</Link></li>
+              <li><Link href={ROUTES.DOCS_SETUP} className="hover:text-foreground transition-colors">Setup Guide</Link></li>
+              <li><Link href={ROUTES.CHANGELOG} className="hover:text-foreground transition-colors">Changelog</Link></li>
             </ul>
           </div>
 
@@ -58,10 +58,10 @@ export function Footer() {
           <div>
             <h3 className="font-semibold text-sm mb-4 text-foreground">Legal</h3>
             <ul className="space-y-2.5 text-sm text-muted-foreground">
-              <li><Link href="/legal/privacy" className="hover:text-foreground transition-colors">Privacy Policy</Link></li>
-              <li><Link href="/legal/terms" className="hover:text-foreground transition-colors">Terms of Service</Link></li>
-              <li><Link href="/legal/disclaimer" className="hover:text-foreground transition-colors">Disclaimer</Link></li>
-              <li><Link href="/legal/acceptable-use" className="hover:text-foreground transition-colors">Acceptable Use</Link></li>
+              <li><Link href={ROUTES.LEGAL_PRIVACY} className="hover:text-foreground transition-colors">Privacy Policy</Link></li>
+              <li><Link href={ROUTES.LEGAL_TERMS} className="hover:text-foreground transition-colors">Terms of Service</Link></li>
+              <li><Link href={ROUTES.LEGAL_DISCLAIMER} className="hover:text-foreground transition-colors">Disclaimer</Link></li>
+              <li><Link href={ROUTES.LEGAL_ACCEPTABLE_USE} className="hover:text-foreground transition-colors">Acceptable Use</Link></li>
             </ul>
           </div>
         </div>
@@ -72,7 +72,7 @@ export function Footer() {
             {"\u00A9"} {new Date().getFullYear()} {APP_NAME}. For authorized security testing only.
           </p>
           <div className="flex items-center gap-4">
-            <a href="https://github.com/VulnRadar/vulnradar.dev" target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-foreground transition-colors" aria-label="GitHub">
+            <a href={`https://github.com/${APP_REPO}`} target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-foreground transition-colors" aria-label="GitHub">
               <Github className="h-5 w-5" />
             </a>
             <a href={`mailto:${SUPPORT_EMAIL}`} className="text-muted-foreground hover:text-foreground transition-colors" aria-label="Email">
