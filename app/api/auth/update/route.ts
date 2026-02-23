@@ -106,9 +106,9 @@ export async function PATCH(request: NextRequest) {
       if (avatarUrl && !avatarUrl.startsWith("data:image/")) {
         return NextResponse.json({ error: "Invalid avatar format." }, { status: 400 })
       }
-      // Limit to ~5MB base64 (base64 is ~33% larger than raw)
+      // Limit to ~10MB base64 (base64 is ~33% larger than raw)
       if (avatarUrl.length > 7_000_000) {
-        return NextResponse.json({ error: "Avatar is too large. Please use an image under 5MB." }, { status: 400 })
+        return NextResponse.json({ error: "Avatar is too large. Please use an image under 10MB." }, { status: 400 })
       }
       await pool.query("UPDATE users SET avatar_url = $1 WHERE id = $2", [avatarUrl || null, session.userId])
     }
