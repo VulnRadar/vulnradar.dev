@@ -2,11 +2,14 @@ import React from "react"
 import type { Metadata, Viewport } from 'next'
 import { Inter, JetBrains_Mono } from 'next/font/google'
 import Script from 'next/script'
+import dynamic from 'next/dynamic'
 import { ThemeProvider } from '@/components/theme-provider'
 import { TosGate } from '@/components/tos-gate'
 import { BackupCodesModal } from '@/components/notification-center'
 import { AuthProvider } from '@/components/auth-provider'
-import { APP_NAME, APP_DESCRIPTION, APP_URL, APP_VERSION, LOGO_URL } from '@/lib/constants'
+import { APP_NAME, APP_DESCRIPTION, APP_URL, APP_VERSION, LOGO_URL, STAFF_ROLES } from '@/lib/constants'
+
+const VersionNotification = dynamic(() => import('@/components/version-notification').then(m => ({ default: m.VersionNotification })), { ssr: false })
 
 import './globals.css'
 
@@ -78,7 +81,7 @@ export default function RootLayout({
   return (
     <html lang="en" className="dark" suppressHydrationWarning>
       <head>
-        <script dangerouslySetInnerHTML={{ __html: `try{var d=localStorage.getItem("vr_auth_cache");if(d){var p=JSON.parse(d),s=document.createElement("style");s.id="vr-auth-css";var r="";if(p&&p.userId){r+=".vr-auth-only{visibility:visible!important;pointer-events:auto!important}"}if(p&&p.role&&["admin","moderator","support"].includes(p.role)){r+=".vr-staff-only{display:flex!important}"}if(r){s.textContent=r;document.head.appendChild(s)}}}catch(e){}` }} />
+        <script dangerouslySetInnerHTML={{ __html: `try{var d=localStorage.getItem("vr_auth_cache");if(d){var p=JSON.parse(d),s=document.createElement("style");s.id="vr-auth-css";var r="";if(p&&p.userId){r+=".vr-auth-only{visibility:visible!important;pointer-events:auto!important}"}if(p&&p.role&&${JSON.stringify([STAFF_ROLES.ADMIN, STAFF_ROLES.MODERATOR, STAFF_ROLES.SUPPORT])}.includes(p.role)){r+=".vr-staff-only{display:flex!important}"}if(r){s.textContent=r;document.head.appendChild(s)}}}catch(e){}` }} />
       </head>
       <body className="font-sans antialiased" suppressHydrationWarning>
         <ThemeProvider
@@ -91,6 +94,7 @@ export default function RootLayout({
             <TosGate>
               {children}
             </TosGate>
+            <VersionNotification />
             <BackupCodesModal />
           </AuthProvider>
         </ThemeProvider>

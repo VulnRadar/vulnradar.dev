@@ -1,5 +1,5 @@
 "use client"
-import { TEAM_ROLES, STAFF_ROLE_LABELS } from "@/lib/constants"
+import { TEAM_ROLES, STAFF_ROLE_LABELS, ROLE_BADGE_STYLES, STAFF_ROLES } from "@/lib/constants"
 
 import { useState, useEffect, useCallback } from "react"
 import { useRouter } from "next/navigation"
@@ -48,12 +48,6 @@ interface Member {
   staff_role?: string
 }
 
-const STAFF_BADGE_COLORS: Record<string, string> = {
-  admin: "bg-red-500/10 text-red-400 border-red-500/20",
-  moderator: "bg-amber-500/10 text-amber-400 border-amber-500/20",
-  support: "bg-blue-500/10 text-blue-400 border-blue-500/20",
-  beta_tester: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
-}
 
 interface Invite {
   id: number
@@ -298,10 +292,10 @@ export default function TeamsPage() {
                         autoFocus
                         maxLength={50}
                       />
-                      <Button size="sm" className="h-8 w-8 p-0" onClick={handleRename} disabled={savingName}>
+                      <Button size="sm" className="h-8 w-8 p-0" onClick={handleRename} disabled={savingName} aria-label="Save team name">
                         {savingName ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
                       </Button>
-                      <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => setEditingName(false)}>
+                      <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => setEditingName(false)} aria-label="Cancel editing">
                         <X className="h-3.5 w-3.5" />
                       </Button>
                     </div>
@@ -409,7 +403,7 @@ export default function TeamsPage() {
                   return (
                     <div key={m.user_id} className="flex items-center gap-3 p-3 rounded-xl border border-border bg-card">
                       {m.avatar_url ? (
-                        <img src={m.avatar_url} alt="" className="w-9 h-9 rounded-full object-cover shrink-0" />
+                        <img src={m.avatar_url} alt="" loading="lazy" className="w-9 h-9 rounded-full object-cover shrink-0" />
                       ) : (
                         <div className="flex items-center justify-center w-9 h-9 rounded-full bg-muted shrink-0">
                           <span className="text-sm font-medium text-foreground">{(m.name || m.email)[0].toUpperCase()}</span>
@@ -418,8 +412,8 @@ export default function TeamsPage() {
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-1.5">
                           <p className="text-sm font-medium text-foreground truncate">{m.name || "Unnamed"}</p>
-                          {m.staff_role && m.staff_role !== "user" && STAFF_BADGE_COLORS[m.staff_role] && (
-                            <span className={cn("inline-flex items-center px-1.5 py-0.5 rounded-full text-[9px] font-semibold uppercase tracking-wider border shrink-0", STAFF_BADGE_COLORS[m.staff_role])}>
+                          {m.staff_role && m.staff_role !== STAFF_ROLES.USER && ROLE_BADGE_STYLES[m.staff_role] && (
+                            <span className={cn("inline-flex items-center px-1.5 py-0.5 rounded-full text-[9px] font-semibold uppercase tracking-wider border shrink-0", ROLE_BADGE_STYLES[m.staff_role])}>
                               {STAFF_ROLE_LABELS[m.staff_role] || m.staff_role}
                             </span>
                           )}
@@ -440,7 +434,7 @@ export default function TeamsPage() {
                         <Icon className="h-3 w-3" /><span className="hidden sm:inline">{m.role}</span>
                       </span>
                       {canManage && m.role !== TEAM_ROLES.OWNER && (
-                        <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive" onClick={() => handleRemoveMember(m.user_id)}>
+                        <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive" onClick={() => handleRemoveMember(m.user_id)} aria-label={`Remove ${m.name || m.email}`}>
                           <X className="h-3.5 w-3.5" />
                         </Button>
                       )}
@@ -486,7 +480,7 @@ export default function TeamsPage() {
                       <Eye className="h-4 w-4 text-primary" />
                       {viewingMember.name || viewingMember.email}'s Scan History
                     </CardTitle>
-                    <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => setViewingMember(null)}>
+                    <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => setViewingMember(null)} aria-label="Close scan history">
                       <X className="h-4 w-4" />
                     </Button>
                   </div>

@@ -168,7 +168,7 @@ export default function StaffPage() {
                           )}
                         >
                           {member.avatarUrl ? (
-                            <img src={member.avatarUrl} alt={member.name} className="h-full w-full object-cover" />
+                            <img src={member.avatarUrl} alt={member.name} loading="lazy" className="h-full w-full object-cover" />
                           ) : (
                             <span className={cn("text-sm font-bold", config.color)}>
                               {initials}

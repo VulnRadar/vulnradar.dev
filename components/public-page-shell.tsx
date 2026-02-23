@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button"
 import { Header } from "@/components/scanner/header"
 import { Footer } from "@/components/scanner/footer"
 import { useAuth } from "@/components/auth-provider"
-import { APP_NAME } from "@/lib/constants"
+import { APP_NAME, ROUTES } from "@/lib/constants"
 
 interface PublicPageShellProps {
   children: React.ReactNode
@@ -60,7 +60,7 @@ export function PublicPageShell({
           <div className="flex items-center gap-3">
             <ThemeToggle />
             <Button asChild variant="outline" size="sm" className="bg-transparent text-xs">
-              <Link href="/login">Sign In</Link>
+              <Link href={ROUTES.LOGIN}>Sign In</Link>
             </Button>
           </div>
         </header>
@@ -76,15 +76,15 @@ export function PublicPageShell({
         <footer className="border-t border-border bg-card/50">
           <div className="max-w-4xl mx-auto px-4 py-4 flex flex-col items-center gap-2">
             <div className="flex flex-wrap items-center justify-center gap-4 text-xs text-muted-foreground">
-              <Link href="/legal/terms" className="hover:text-foreground transition-colors">
+              <Link href={ROUTES.LEGAL_TERMS} className="hover:text-foreground transition-colors">
                 Terms of Service
               </Link>
               <span className="text-border">|</span>
-              <Link href="/legal/privacy" className="hover:text-foreground transition-colors">
+              <Link href={ROUTES.LEGAL_PRIVACY} className="hover:text-foreground transition-colors">
                 Privacy Policy
               </Link>
               <span className="text-border">|</span>
-              <Link href="/legal/disclaimer" className="hover:text-foreground transition-colors">
+              <Link href={ROUTES.LEGAL_DISCLAIMER} className="hover:text-foreground transition-colors">
                 Disclaimer
               </Link>
             </div>
