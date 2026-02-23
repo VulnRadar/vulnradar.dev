@@ -2,6 +2,7 @@
 
 import { createContext, useContext, ReactNode, useEffect } from "react"
 import useSWR from "swr"
+import { API, STAFF_ROLES } from "@/lib/constants"
 
 interface AuthContextType {
   me: any
@@ -13,7 +14,7 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined)
 const fetcher = (url: string) => fetch(url).then((r) => r.json())
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const { data: me, isLoading } = useSWR("/api/auth/me", fetcher, {
+  const { data: me, isLoading } = useSWR(API.AUTH.ME, fetcher, {
     revalidateOnFocus: false,
     revalidateOnReconnect: false,
     dedupingInterval: 300000,
@@ -29,7 +30,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch {}
 
     // Update the injected style tag to match live auth state
-    const isStaff = ["admin", "moderator", "support"].includes(me.role)
+    const isStaff = [STAFF_ROLES.ADMIN, STAFF_ROLES.MODERATOR, STAFF_ROLES.SUPPORT].includes(me.role)
     let css = ""
     if (me.userId) css += ".vr-auth-only{visibility:visible!important;pointer-events:auto!important}"
     if (isStaff) css += ".vr-staff-only{display:flex!important}"
