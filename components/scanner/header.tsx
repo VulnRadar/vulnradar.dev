@@ -8,21 +8,21 @@ import { useRouter, usePathname } from "next/navigation"
 import { useState } from "react"
 import { cn } from "@/lib/utils"
 import Image from "next/image"
-import { APP_NAME } from "@/lib/constants"
+import { APP_NAME, ROUTES, API, STAFF_ROLES } from "@/lib/constants"
 import { NotificationBell } from "@/components/notification-center"
 import { useAuth, clearAuthCache } from "@/components/auth-provider"
 
-const STAFF_ROLES = ["admin", "moderator", "support"]
+const VISIBLE_STAFF_ROLES = [STAFF_ROLES.ADMIN, STAFF_ROLES.MODERATOR, STAFF_ROLES.SUPPORT]
 
 const NAV_LINKS = [
-  { href: "/dashboard", label: "Scanner", icon: Radar },
-  { href: "/history", label: "History", icon: Clock },
-  { href: "/compare", label: "Compare", icon: GitCompareArrows },
-  { href: "/shares", label: "Shared", icon: Link2 },
-  { href: "/teams", label: "Teams", icon: Users },
-  { href: "/badge", label: "Badge", icon: BadgeCheck },
-  { href: "/docs", label: "Docs", icon: Book },
-  { href: "/profile", label: "Profile", icon: User },
+  { href: ROUTES.DASHBOARD, label: "Scanner", icon: Radar },
+  { href: ROUTES.HISTORY, label: "History", icon: Clock },
+  { href: ROUTES.COMPARE, label: "Compare", icon: GitCompareArrows },
+  { href: ROUTES.SHARES, label: "Shared", icon: Link2 },
+  { href: ROUTES.TEAMS, label: "Teams", icon: Users },
+  { href: ROUTES.BADGE, label: "Badge", icon: BadgeCheck },
+  { href: ROUTES.DOCS, label: "Docs", icon: Book },
+  { href: ROUTES.PROFILE, label: "Profile", icon: User },
 ]
 
 export function Header() {
@@ -31,12 +31,12 @@ export function Header() {
   const [mobileOpen, setMobileOpen] = useState(false)
   const { me } = useAuth()
 
-  const isStaff = STAFF_ROLES.includes(me?.role || "")
+  const isStaff = VISIBLE_STAFF_ROLES.includes(me?.role || "")
 
   async function handleLogout() {
     clearAuthCache()
-    await fetch("/api/auth/logout", { method: "POST" })
-    router.push("/login")
+    await fetch(API.AUTH.LOGOUT, { method: "POST" })
+    router.push(ROUTES.LOGIN)
     router.refresh()
   }
 
@@ -45,7 +45,7 @@ export function Header() {
         <div className="max-w-6xl mx-auto flex items-center justify-between px-4 h-14">
           {/* Logo */}
           <button
-              onClick={() => router.push("/dashboard")}
+              onClick={() => router.push(ROUTES.DASHBOARD)}
               className="flex items-center gap-2 hover:opacity-80 transition-opacity shrink-0"
               aria-label="Go to scanner"
           >
@@ -64,7 +64,7 @@ export function Header() {
           {/* Desktop nav */}
           <nav className="hidden md:flex items-center gap-0.5">
             {NAV_LINKS.map(({ href, label, icon: Icon }) => {
-              const active = href === "/docs" ? pathname.startsWith("/docs") : pathname === href
+              const active = href === ROUTES.DOCS ? pathname.startsWith(ROUTES.DOCS) : pathname === href
               return (
                   <button
                       key={href}
@@ -82,10 +82,10 @@ export function Header() {
               )
             })}
             <button
-                onClick={() => router.push("/admin")}
+                onClick={() => router.push(ROUTES.ADMIN)}
                 className={cn(
                     "vr-staff-only items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors",
-                    pathname === "/admin"
+                    pathname === ROUTES.ADMIN
                         ? "bg-destructive/10 text-destructive"
                         : "text-destructive/70 hover:text-destructive hover:bg-destructive/10",
                 )}
@@ -127,7 +127,7 @@ export function Header() {
             <SheetTitle className="sr-only">Navigation menu</SheetTitle>
             <nav className="flex flex-col gap-1 px-3 pt-12 pb-4">
               {NAV_LINKS.map(({ href, label, icon: Icon }) => {
-                const active = href === "/docs" ? pathname.startsWith("/docs") : pathname === href
+                const active = href === ROUTES.DOCS ? pathname.startsWith(ROUTES.DOCS) : pathname === href
                 return (
                     <button
                         key={href}
@@ -148,10 +148,10 @@ export function Header() {
                 )
               })}
               <button
-                  onClick={() => { router.push("/admin"); setMobileOpen(false) }}
+                  onClick={() => { router.push(ROUTES.ADMIN); setMobileOpen(false) }}
                   className={cn(
                       "vr-staff-only items-center gap-2.5 px-3 py-2.5 rounded-md text-sm font-medium transition-colors",
-                      pathname === "/admin"
+                      pathname === ROUTES.ADMIN
                           ? "bg-destructive/10 text-destructive"
                           : "text-destructive/70 hover:text-destructive hover:bg-destructive/10",
                   )}

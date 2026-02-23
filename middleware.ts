@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { PUBLIC_PATHS } from "./lib/public-paths"
+import { AUTH_SESSION_COOKIE_NAME, ROUTES } from "./lib/constants"
 
 const SECURITY_HEADERS: Record<string, string> = {
   "Content-Security-Policy": [
@@ -51,11 +52,11 @@ export function middleware(request: NextRequest) {
   // Normalize pathname: remove trailing slash except for root '/'
   const { pathname: rawPathname } = request.nextUrl
   const pathname = rawPathname.endsWith("/") && rawPathname !== "/" ? rawPathname.slice(0, -1) : rawPathname
-  const sessionCookie = request.cookies.get("vulnradar_session")
+  const sessionCookie = request.cookies.get(AUTH_SESSION_COOKIE_NAME)
 
   // Check if path is public (exact match for "/" and "/landing", startsWith for others)
   const isPublicPath = PUBLIC_PATHS.some((p) => {
-    if (p === "/" || p === "/landing") {
+    if (p === ROUTES.HOME || p === ROUTES.LANDING) {
       return pathname === p
     }
     return pathname.startsWith(p)
@@ -64,12 +65,12 @@ export function middleware(request: NextRequest) {
   // Allow public paths
   if (isPublicPath) {
     // If logged in and trying to access login/signup, redirect to dashboard
-    if (sessionCookie && (pathname === "/login" || pathname === "/signup")) {
-      return applySecurityHeaders(NextResponse.redirect(new URL("/dashboard", request.url)))
+    if (sessionCookie && (pathname === ROUTES.LOGIN || pathname === ROUTES.SIGNUP)) {
+      return applySecurityHeaders(NextResponse.redirect(new URL(ROUTES.DASHBOARD, request.url)))
     }
     // If not logged in and on root, redirect to landing
-    if (!sessionCookie && pathname === "/") {
-      return applySecurityHeaders(NextResponse.redirect(new URL("/landing", request.url)))
+    if (!sessionCookie && pathname === ROUTES.HOME) {
+      return applySecurityHeaders(NextResponse.redirect(new URL(ROUTES.LANDING, request.url)))
     }
     return applySecurityHeaders(NextResponse.next())
   }
@@ -81,10 +82,10 @@ export function middleware(request: NextRequest) {
 
   // Protect everything else - redirect to login if no session
   if (!sessionCookie) {
-    const loginUrl = new URL("/login", request.url)
+    const loginUrl = new URL(ROUTES.LOGIN, request.url)
     // Preserve the original destination so we can redirect back after login
     const intended = pathname + request.nextUrl.search
-    if (intended && intended !== "/dashboard") {
+    if (intended && intended !== ROUTES.DASHBOARD) {
       loginUrl.searchParams.set("redirect", intended)
     }
     return applySecurityHeaders(NextResponse.redirect(loginUrl))

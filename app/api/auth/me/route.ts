@@ -1,7 +1,7 @@
 import { getSession } from "@/lib/auth"
 import pool from "@/lib/db"
 import { ApiResponse, withErrorHandling } from "@/lib/api-utils"
-import { ERROR_MESSAGES } from "@/lib/constants"
+import { ERROR_MESSAGES, STAFF_ROLES } from "@/lib/constants"
 
 export const GET = withErrorHandling(async () => {
   const session = await getSession()
@@ -35,8 +35,8 @@ export const GET = withErrorHandling(async () => {
     tosAcceptedAt: session.tosAcceptedAt,
     totpEnabled: user?.totp_enabled || false,
     twoFactorMethod: user?.two_factor_method || null,
-    isAdmin: user?.role === "admin",
-    role: user?.role || "user",
+    isAdmin: user?.role === STAFF_ROLES.ADMIN,
+    role: user?.role || STAFF_ROLES.USER,
     avatarUrl: user?.avatar_url || null,
     onboardingCompleted: user?.onboarding_completed || false,
     backupCodesInvalid,

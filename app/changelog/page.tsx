@@ -5,10 +5,27 @@ import { APP_NAME, TOTAL_CHECKS_LABEL } from "@/lib/constants"
 
 const CHANGELOG = [
   {
+    version: "1.9.0",
+    date: "February 23, 2026",
+    title: "Auth-Aware Public Pages, Codebase Refactor & Performance",
+    highlights: true,
+    changes: [
+      { icon: Shield, label: "Auth-Aware Public Pages", desc: "Demo, Staff, Legal, and Shared pages now detect whether the viewer is logged in. Authenticated users see the full Header with navigation and Footer. Guests see a minimal branded header with a Sign In button and compact legal footer. All four layouts share a single reusable PublicPageShell component." },
+      { icon: Layout, label: "Centralized Route & API Constants", desc: "Added ROUTES (25 routes), API (30+ endpoints), ROLE_BADGE_STYLES, and STAFF_ROLES constants to lib/constants.ts. High-traffic shared components (Header, Footer, middleware, AuthProvider, public-page-shell, public-paths) now reference constants instead of hardcoded strings." },
+      { icon: Wrench, label: "Role Badge Deduplication", desc: "Consolidated 4 separate copies of role badge styling logic in the admin page into a single ROLE_BADGE_STYLES map. Staff, Shared, and Teams pages also use the centralized badge map, ensuring consistent colors for Admin, Moderator, Support, and Beta Tester badges across the entire app." },
+      { icon: Zap, label: "Dynamic Imports for Heavy Components", desc: "Added next/dynamic lazy loading for 7 below-the-fold components on the Dashboard (IssueDetail, ExportButton, ShareButton, ResponseHeaders, SubdomainDiscovery, CrawlUrlSelector, OnboardingTour) and ImageCropDialog on the Profile page. Reduces initial JavaScript bundle size." },
+      { icon: Lock, label: "Auth Flow UI Standardization", desc: "Forgot Password and Reset Password pages redesigned to match the Login/Signup card pattern: max-w-sm card, logo + app name header, consistent error alerts using semantic destructive tokens, and password strength indicator on reset. All auth pages now use APP_NAME instead of hardcoded strings." },
+      { icon: Globe, label: "Landing Page Refresh", desc: "Fixed favicon reference (png to svg), added Demo CTA in hero and navigation, alternated section backgrounds for visual rhythm, added text-balance/text-pretty to headings, and updated stats section with accurate product information." },
+      { icon: Trash2, label: "Dead Code Removal", desc: "Removed the unused VersionNotification component (superseded by the Notification Center bell). Removed duplicate STAFF_BADGE_COLORS constant from Teams page in favor of centralized ROLE_BADGE_STYLES." },
+      { icon: Eye, label: "Accessibility Improvements", desc: "Added aria-labels to all icon-only buttons in Teams page (save, cancel, remove member, close panel). Wrapped Footer link grid in a nav landmark with aria-label. Added loading='lazy' to avatar images in Admin, Staff, and Teams pages." },
+      { icon: Link2, label: "Semantic Navigation in PublicPageShell", desc: "Replaced all button + router.push() patterns with proper next/link Link components in the public page shell for better SEO, accessibility, and browser navigation behavior. Added copyright line to guest footer." },
+    ],
+  },
+  {
     version: "1.8.0",
     date: "February 21, 2026",
     title: "Email 2FA, Expanded Notifications & 55+ New Security Checks",
-    highlights: true,
+    highlights: false,
     changes: [
       { icon: Mail, label: "Email-Based Two-Factor Authentication", desc: "New 2FA method that sends a 6-digit verification code to your email on every login. Enable it from the Security tab in your profile. Choose between Authenticator App or Email 2FA (one at a time). Codes expire after 10 minutes with rate limiting to prevent abuse." },
       { icon: BellRing, label: "18 Granular Notification Preferences", desc: "Notification settings expanded from 5 toggles to 18, organized into 5 categories: Security (login alerts, password changes, 2FA changes, session alerts), Scanning (scan complete, failures, severity alerts, schedules), API & Integrations (API keys, usage alerts, webhooks, webhook failures), Account (data exports, account changes, team invites), and Product (updates, tips & guides). Each notification type can be individually toggled." },

@@ -7,7 +7,7 @@ export const TOTAL_CHECKS_LABEL = "175+"
 
 // Application metadata
 export const APP_NAME = "VulnRadar"
-export const APP_VERSION = "1.8.0"
+export const APP_VERSION = "1.9.0"
 export const ENGINE_VERSION = "2.0.0"
 export const DEFAULT_SCAN_NOTE = `${APP_NAME} v${APP_VERSION} (Detection Engine v${ENGINE_VERSION})`
 export const APP_DESCRIPTION = `Scan websites for ${TOTAL_CHECKS_LABEL} security vulnerabilities. Get instant reports with severity ratings, actionable fix guidance, and team collaboration tools.`
@@ -296,3 +296,102 @@ export const STAFF_ROLE_LABELS: Record<string, string> = {
   moderator: "Moderator",
   admin: "Admin",
 }
+
+// ============================================================================
+// ROLE BADGE STYLES (used across admin, shared, staff pages)
+// ============================================================================
+
+export const ROLE_BADGE_STYLES: Record<string, string> = {
+  admin: "bg-primary/10 text-primary border-primary/20",
+  moderator: "bg-[hsl(var(--severity-medium))]/10 text-[hsl(var(--severity-medium))] border-[hsl(var(--severity-medium))]/20",
+  support: "bg-blue-500/10 text-blue-500 border-blue-500/20",
+  beta_tester: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
+  user: "bg-muted text-muted-foreground border-border",
+}
+
+// ============================================================================
+// APPLICATION ROUTES
+// ============================================================================
+
+export const ROUTES = {
+  HOME: "/",
+  LOGIN: "/login",
+  SIGNUP: "/signup",
+  FORGOT_PASSWORD: "/forgot-password",
+  RESET_PASSWORD: "/reset-password",
+  VERIFY_EMAIL: "/verify-email",
+  DASHBOARD: "/dashboard",
+  HISTORY: "/history",
+  COMPARE: "/compare",
+  BADGE: "/badge",
+  SHARES: "/shares",
+  PROFILE: "/profile",
+  ADMIN: "/admin",
+  TEAMS: "/teams",
+  TEAMS_JOIN: "/teams/join",
+  CONTACT: "/contact",
+  CHANGELOG: "/changelog",
+  DEMO: "/demo",
+  STAFF: "/staff",
+  DONATE: "/donate",
+  DOCS: "/docs",
+  DOCS_API: "/docs/api",
+  DOCS_SETUP: "/docs/setup",
+  LANDING: "/landing",
+  LEGAL_TERMS: "/legal/terms",
+  LEGAL_PRIVACY: "/legal/privacy",
+  LEGAL_DISCLAIMER: "/legal/disclaimer",
+  LEGAL_ACCEPTABLE_USE: "/legal/acceptable-use",
+} as const
+
+// ============================================================================
+// API ENDPOINTS
+// ============================================================================
+
+export const API = {
+  AUTH: {
+    ME: "/api/auth/me",
+    LOGIN: "/api/auth/login",
+    SIGNUP: "/api/auth/signup",
+    LOGOUT: "/api/auth/logout",
+    UPDATE: "/api/auth/update",
+    FORGOT_PASSWORD: "/api/auth/forgot-password",
+    RESET_PASSWORD: "/api/auth/reset-password",
+    VERIFY_EMAIL: "/api/auth/verify-email",
+    RESEND_VERIFICATION: "/api/auth/resend-verification",
+    ACCEPT_TOS: "/api/auth/accept-tos",
+    ONBOARDING: "/api/auth/onboarding",
+    TWO_FA: {
+      SETUP: "/api/auth/2fa/setup",
+      VERIFY: "/api/auth/2fa/verify",
+      DISABLE: "/api/auth/2fa/disable",
+      EMAIL_SETUP: "/api/auth/2fa/email-setup",
+      EMAIL_SEND: "/api/auth/2fa/email-send",
+      BACKUP_CODES: "/api/auth/2fa/backup-codes",
+    },
+  },
+  SCAN: "/api/scan",
+  SCAN_BULK: "/api/scan/bulk",
+  SCAN_TAGS: "/api/scan/tags",
+  SCAN_DISCOVER: "/api/scan/discover",
+  SCAN_CRAWL_DISCOVER: "/api/scan/crawl/discover",
+  DEMO_SCAN: "/api/demo-scan",
+  HISTORY: "/api/history",
+  DASHBOARD: "/api/dashboard",
+  SHARES: "/api/shares",
+  KEYS: "/api/keys",
+  WEBHOOKS: "/api/webhooks",
+  SCHEDULES: "/api/schedules",
+  TEAMS: "/api/teams",
+  TEAMS_MEMBERS: "/api/teams/members",
+  TEAMS_ACCEPT_INVITE: "/api/teams/accept-invite",
+  CONTACT: "/api/contact",
+  LANDING_CONTACT: "/api/landing-contact",
+  ADMIN: "/api/admin",
+  STAFF: "/api/staff",
+  VERSION: "/api/version",
+  BADGE_SCANS: "/api/badge/scans",
+  DATA_REQUEST: "/api/data-request",
+  ACCOUNT_DELETE: "/api/account/delete",
+  ACCOUNT_NOTIFICATIONS: "/api/account/notifications",
+} as const
