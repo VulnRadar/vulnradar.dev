@@ -362,7 +362,10 @@ export default function AdminPage() {
   // Debounced server-side search - searches ALL users, not just current page
   useEffect(() => {
     // Skip the initial mount (fetchData already runs on mount)
-    if (!searchInitRef.current) { searchInitRef.current = true; return }
+    if (!searchInitRef.current) {
+      searchInitRef.current = true
+      return
+    }
     setSearchLoading(true)
     const timeout = setTimeout(async () => {
       try {
