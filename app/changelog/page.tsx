@@ -27,7 +27,7 @@ const CHANGELOG = [
       { icon: FileText, label: "ToS modal wording", desc: "ToS modal now clearly notifies users that bypassing the acceptance screen does not waive their legal obligations. Ensures the notice displays reliably across guest and authenticated flows." },
       { icon: Layout, label: "Centralized Route & API Constants", desc: "Updated `header.tsx` to fix rendering/auth-state flicker and ensure correct navigation is shown for guests and signed-in users." },
     ],
-  }
+  },
   {
     version: "1.9.0",
     date: "February 23, 2026",
