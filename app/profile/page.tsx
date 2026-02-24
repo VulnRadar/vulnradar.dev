@@ -772,7 +772,7 @@ export default function ProfilePage() {
                           </Button>
                         )}
                       </div>
-                      <p className="text-[11px] text-muted-foreground">JPG, PNG, or GIF. Max 5MB.</p>
+                      <p className="text-[11px] text-muted-foreground">JPG, PNG, or GIF. Max 10MB.</p>
                     </div>
                     <input
                       ref={avatarInputRef}

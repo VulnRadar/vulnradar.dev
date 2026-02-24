@@ -15,11 +15,6 @@ const nextConfig = {
       sizeLimit: "10mb",
     },
   },
-  api: {
-    bodyParser: {
-      sizeLimit: "10mb",
-    },
-  },
   env: {
     NEXT_PUBLIC_TURNSTILE_SITE_KEY: process.env.TURNSTILE_SITE_KEY,
   },
