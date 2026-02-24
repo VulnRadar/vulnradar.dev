@@ -135,10 +135,10 @@ function ResetForm() {
                 <div className="flex gap-1 h-1">
                   {[
                     { level: 0, color: "bg-red-600" },
-                    { level: 1, color: "bg-red-500" },
-                    { level: 2, color: "bg-yellow-500" },
-                    { level: 3, color: "bg-blue-500" },
-                    { level: 4, color: "bg-green-600" },
+                    { level: 1, color: "bg-orange-600" },
+                    { level: 2, color: "bg-amber-500" },
+                    { level: 3, color: "bg-lime-500" },
+                    { level: 4, color: "bg-emerald-600" },
                   ].map((bar, idx) => (
                     <div
                       key={idx}
