@@ -133,7 +133,7 @@ function ResetForm() {
             {password && (
               <div className="space-y-1.5 mt-1">
                 <div className="flex gap-1 h-1">
-                  {[1, 2, 3, 4].map((level) => (
+                  {[1, 2, 3, 4, 5].map((level) => (
                     <div
                       key={level}
                       className={`h-full flex-1 rounded-full transition-colors duration-200 ${
