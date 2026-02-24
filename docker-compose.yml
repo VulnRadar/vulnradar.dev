@@ -1,4 +1,12 @@
-version: "3.8"
+# VulnRadar Production Docker Compose
+# Uses pre-built image from GHCR. For development (build from source), see docker-compose.dev.yml
+#
+# Quick start:
+#   1. Copy .env.example to .env and fill in values
+#   2. docker compose up -d
+#
+# Generate an API key encryption key:
+#   node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 
 services:
   # PostgreSQL Database
@@ -8,31 +16,39 @@ services:
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-vulnradar}
       POSTGRES_USER: ${POSTGRES_USER:-vulnradar}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-vulnradar}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
     volumes:
       - postgres_data:/var/lib/postgresql/data
-    ports:
-      - "${DB_PORT:-5432}:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-vulnradar}"]
       interval: 10s
       timeout: 5s
       retries: 5
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "1.0"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     networks:
       - vulnradar-network
 
   # VulnRadar Application
   app:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: ghcr.io/vulnradar/vulnradar:latest
     container_name: vulnradar-app
     environment:
       NODE_ENV: production
-      DATABASE_URL: postgresql://${POSTGRES_USER:-vulnradar}:${POSTGRES_PASSWORD:-vulnradar}@postgres:5432/${POSTGRES_DB:-vulnradar}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-vulnradar}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-vulnradar}
       DATABASE_SSL: "false"
       NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-http://localhost:3000}
+      # API key encryption (required for secure API key storage)
+      API_KEY_ENCRYPTION_KEY: ${API_KEY_ENCRYPTION_KEY:-}
       # SMTP (optional, for emails)
       SMTP_HOST: ${SMTP_HOST:-}
       SMTP_PORT: ${SMTP_PORT:-587}
@@ -49,7 +65,23 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/api/version"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: "2.0"
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "5"
     networks:
       - vulnradar-network
 

@@ -406,19 +406,36 @@ docker compose version`}</code></pre>
         </Card>
 
         <Card className="p-6 border-border/40">
-          <h3 className="font-semibold mb-4">Quick Start</h3>
-          <p className="text-sm text-muted-foreground mb-3">Clone the repo, configure your environment, and start everything with one command:</p>
+          <h3 className="font-semibold mb-4">Quick Start (Production)</h3>
+          <p className="text-sm text-muted-foreground mb-3">Pull the pre-built image from GHCR and start everything in one command. No build step required.</p>
+          <pre className="bg-secondary/50 p-4 rounded text-sm overflow-x-auto mb-4"><code>{`# Download the compose file
+curl -O https://raw.githubusercontent.com/VulnRadar/vulnradar.dev/main/docker-compose.yml
+
+# Create your environment file
+cat > .env << 'EOF'
+POSTGRES_PASSWORD=change-me-to-a-strong-password
+NEXT_PUBLIC_APP_URL=https://yourdomain.com
+API_KEY_ENCRYPTION_KEY=$(node -e "console.log(require('crypto').randomBytes(32).toString('hex'))")
+# Optional: SMTP, Turnstile, etc.
+EOF
+
+# Pull and start PostgreSQL + VulnRadar
+docker compose up -d`}</code></pre>
+          <p className="text-xs text-muted-foreground mb-2">The app will be available at <code className="bg-secondary px-1 rounded">http://localhost:3000</code>. The database schema is created automatically on first startup.</p>
+          <p className="text-xs text-muted-foreground">The production compose file uses the pre-built image <code className="bg-secondary px-1 rounded text-xs">ghcr.io/vulnradar/vulnradar:latest</code> -- no local build needed.</p>
+        </Card>
+
+        <Card className="p-6 border-border/40">
+          <h3 className="font-semibold mb-4">Development (Build from Source)</h3>
+          <p className="text-sm text-muted-foreground mb-3">To build locally from source instead of using the pre-built image, use the dev override:</p>
           <pre className="bg-secondary/50 p-4 rounded text-sm overflow-x-auto mb-4"><code>{`git clone https://github.com/VulnRadar/vulnradar.dev.git
 cd vulnradar.dev
-
-# Copy and edit the example env file
 cp .env.example .env
-# Edit .env with your SMTP, Turnstile, DB credentials, and other settings
+# Edit .env with your credentials
 
-# Build and start PostgreSQL + VulnRadar
-docker compose up -d --build`}</code></pre>
-          <p className="text-xs text-muted-foreground mb-2">The app will be available at <code className="bg-secondary px-1 rounded">http://localhost:3000</code>. The database schema is created automatically on first startup via <code className="bg-secondary px-1 rounded text-xs">instrumentation.ts</code>.</p>
-          <p className="text-xs text-muted-foreground">A dummy <code className="bg-secondary px-1 rounded text-xs">DATABASE_URL</code> is used during the Docker build step so Next.js can compile without a live database. The real connection string is injected at runtime by Docker Compose.</p>
+# Build from source and start
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build -d`}</code></pre>
+          <p className="text-xs text-muted-foreground">The dev compose override replaces the GHCR image with a local Dockerfile build and exposes the database port for direct access.</p>
         </Card>
 
         <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-4 flex gap-3">
@@ -445,18 +462,23 @@ docker compose up -d --build`}</code></pre>
               <strong className="text-foreground">postgres</strong> - PostgreSQL 16 database with persistent storage via Docker volumes. Health-checked so the app waits for the DB to be ready before starting.
             </div>
             <div>
-              <strong className="text-foreground">app</strong> - The {APP_NAME} Next.js application. Builds from the Dockerfile, connects to PostgreSQL, and exposes port 3000.
+              <strong className="text-foreground">app</strong> - The {APP_NAME} Next.js application. Uses the pre-built GHCR image, connects to PostgreSQL, includes health checks, resource limits, and log rotation.
             </div>
           </div>
-          <p className="text-sm text-muted-foreground mb-3">Default credentials (override in <code className="bg-secondary px-1 rounded text-xs">.env</code>):</p>
-          <pre className="bg-secondary/50 p-4 rounded text-xs overflow-x-auto"><code>{`POSTGRES_DB=vulnradar
-POSTGRES_USER=vulnradar
-POSTGRES_PASSWORD=vulnradar
-APP_PORT=3000
-DB_PORT=5432
-NEXT_PUBLIC_APP_URL=http://localhost:3000
+          <p className="text-sm text-muted-foreground mb-3">Required and optional environment variables:</p>
+          <pre className="bg-secondary/50 p-4 rounded text-xs overflow-x-auto"><code>{`# Required
+POSTGRES_PASSWORD=change-me-to-a-strong-password
+NEXT_PUBLIC_APP_URL=https://yourdomain.com
 
-# Optional: SMTP, Turnstile, etc. are passed through
+# Recommended
+API_KEY_ENCRYPTION_KEY=<64-char-hex>  # AES-256 key for API key encryption
+
+# Optional
+POSTGRES_DB=vulnradar           # default: vulnradar
+POSTGRES_USER=vulnradar         # default: vulnradar
+APP_PORT=3000                   # default: 3000
+SMTP_HOST=...                   # For email notifications
+TURNSTILE_SITE_KEY=...          # For CAPTCHA
 # See .env.example for the full list`}</code></pre>
         </Card>
 
@@ -474,8 +496,8 @@ docker compose down
 # Stop and delete database volume (full reset)
 docker compose down -v
 
-# Rebuild after pulling new changes
-docker compose build --no-cache
+# Pull latest image and restart
+docker compose pull
 docker compose up -d`}</code></pre>
         </Card>
 
@@ -488,15 +510,16 @@ DB_PORT=5433`}</code></pre>
 
         <Card className="p-6 border-border/40">
           <h3 className="font-semibold mb-4">Standalone Docker (Without Compose)</h3>
-          <p className="text-sm text-muted-foreground mb-3">If you already have a PostgreSQL server, you can build and run just the app container:</p>
-          <pre className="bg-secondary/50 p-4 rounded text-sm overflow-x-auto"><code>{`docker build -t vulnradar .
-
-docker run -d \\
+          <p className="text-sm text-muted-foreground mb-3">If you already have a PostgreSQL server, you can run just the app container using the pre-built image:</p>
+          <pre className="bg-secondary/50 p-4 rounded text-sm overflow-x-auto"><code>{`docker run -d \\
   --name vulnradar \\
   -p 3000:3000 \\
   -e DATABASE_URL="postgresql://user:pass@your-db-host:5432/vulnradar" \\
   -e NEXT_PUBLIC_APP_URL="https://yourdomain.com" \\
-  vulnradar`}</code></pre>
+  -e API_KEY_ENCRYPTION_KEY="your-64-char-hex-key" \\
+  --restart unless-stopped \\
+  --memory 1g \\
+  ghcr.io/vulnradar/vulnradar:latest`}</code></pre>
         </Card>
 
         <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 p-4 flex gap-3">

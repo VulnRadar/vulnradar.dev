@@ -1,0 +1,21 @@
+# VulnRadar Development Docker Compose Override
+# Builds from source instead of using the pre-built image.
+#
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
+#
+# This overrides the app service to build from the local Dockerfile
+# instead of pulling the pre-built image from GHCR.
+
+services:
+  postgres:
+    ports:
+      - "${DB_PORT:-5432}:5432"
+
+  app:
+    image: vulnradar-dev
+    build:
+      context: .
+      dockerfile: Dockerfile
+    volumes:
+      - ./public:/app/public

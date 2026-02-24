@@ -1,6 +1,7 @@
 import { randomBytes, createHash } from "node:crypto"
 import pool from "./db"
 import { API_KEY_PREFIX, DEFAULT_API_KEY_DAILY_LIMIT } from "./constants"
+import { encryptApiKey, isEncryptionConfigured } from "./crypto"
 
 const DAILY_LIMIT = DEFAULT_API_KEY_DAILY_LIMIT
 
@@ -11,20 +12,23 @@ export async function generateApiKey(userId: number, name: string = "Default") {
     const prefix = raw.slice(0, API_KEY_PREFIX.length + 8) // show prefix + some chars
     const keyHash = hashKey(raw)
 
+    // AES-256-GCM encrypt the key for secure storage (if encryption key is configured)
+    const keyEncrypted = isEncryptionConfigured() ? encryptApiKey(raw) : null
+
     const result = await pool.query(
-        `INSERT INTO api_keys (user_id, key_hash, key_prefix, name, daily_limit)
-         VALUES ($1, $2, $3, $4, $5)
+        `INSERT INTO api_keys (user_id, key_hash, key_prefix, name, daily_limit, key_encrypted)
+         VALUES ($1, $2, $3, $4, $5, $6)
              RETURNING id, key_prefix, name, daily_limit, created_at`,
-        [userId, keyHash, prefix, name, DAILY_LIMIT],
+        [userId, keyHash, prefix, name, DAILY_LIMIT, keyEncrypted],
     )
 
     return {
         ...result.rows[0],
-        raw_key: raw, // Only returned on creation, never stored
+        raw_key: raw, // Only returned on creation, never stored in plaintext
     }
 }
 
-// Hash the API key for storage
+// Hash the API key for fast lookup (SHA-256)
 function hashKey(key: string): string {
     return createHash("sha256").update(key).digest("hex")
 }

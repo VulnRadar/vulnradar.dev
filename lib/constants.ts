@@ -7,7 +7,7 @@ export const TOTAL_CHECKS_LABEL = "175+"
 
 // Application metadata
 export const APP_NAME = "VulnRadar"
-export const APP_VERSION = "1.9.1"
+export const APP_VERSION = "1.9.2"
 export const ENGINE_VERSION = "2.0.0"
 export const DEFAULT_SCAN_NOTE = `${APP_NAME} v${APP_VERSION} (Detection Engine v${ENGINE_VERSION})`
 export const APP_DESCRIPTION = `Scan websites for ${TOTAL_CHECKS_LABEL} security vulnerabilities. Get instant reports with severity ratings, actionable fix guidance, and team collaboration tools.`
@@ -342,6 +342,7 @@ export const ROUTES = {
   LEGAL_PRIVACY: "/legal/privacy",
   LEGAL_DISCLAIMER: "/legal/disclaimer",
   LEGAL_ACCEPTABLE_USE: "/legal/acceptable-use",
+  GDPR_REQUEST: "/legal/privacy#gdpr",
 } as const
 
 // ============================================================================

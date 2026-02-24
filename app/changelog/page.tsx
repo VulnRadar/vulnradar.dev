@@ -5,6 +5,17 @@ import { APP_NAME, TOTAL_CHECKS_LABEL } from "@/lib/constants"
 
 const CHANGELOG = [
   {
+    version: "1.9.2",
+    date: "February 24, 2026",
+    title: "Security Hardening, GDPR Compliance & Docker Production Overhaul",
+    highlights: true,
+    changes: [
+      { icon: Lock, label: "Stricter Password Strength Calculator", desc: "Overhauled the password strength scoring system. Added a common password dictionary (120+ passwords), sequential character detection (abc, 123), and repeated character penalties. 'Password' is no longer rated as 'Fair'. Extracted into a shared lib/password-strength.ts used by both signup and reset-password pages." },
+      { icon: Key, label: "AES-256-GCM API Key Encryption", desc: "API keys are now encrypted at rest using AES-256-GCM authenticated encryption in addition to the existing SHA-256 hash lookup. A new API_KEY_ENCRYPTION_KEY environment variable (32-byte hex) enables application-level encryption for secure key storage and admin recovery. The hash is kept for O(1) validation performance." },
+      { icon: Globe, label: "Expanded Fix Examples for 8 Security Checks", desc: "Every major header security check (HSTS, CSP, X-Frame-Options, X-Content-Type-Options, Referrer-Policy, Permissions-Policy, Server Disclosure, CORS) now includes fix examples for Nginx, Apache, Caddy, Express (Node.js), Deno (Hono), and Bun (Elysia) in addition to Next.js." },
+      { icon: Container, label: "Docker Production Overhaul", desc: "docker-compose.yml now uses the pre-built ghcr.io/vulnradar/vulnradar:latest image by default -- no local build required. Added health checks, resource limits, log rotation, and restart policies. A separate docker-compose.dev.yml override enables build-from-source for development. Updated setup docs accordingly." },
+      { icon: ShieldCheck, label: "GDPR Compliance & Data Request Links", desc: "Added a dedicated GDPR section (Article 15-17 rights) to the Privacy Policy with a direct link to profile data export. 'GDPR / Data Request' link added to both the main footer and the guest footer on public pages. Users in the EU can now easily find how to exercise their data rights." },
+      { icon: FileText, label: "Privacy Policy Updates", desc: "Privacy policy now explicitly references GDPR Articles 15-17, explains how to exercise data rights both in-app and via email, and includes a 30-day response commitment for data requests." },
     version: "1.9.1",
     date: "February 23, 2026",
     title: "ToS Modal & Header Fixes",

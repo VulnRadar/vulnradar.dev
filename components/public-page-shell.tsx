@@ -87,6 +87,10 @@ export function PublicPageShell({
               <Link href={ROUTES.LEGAL_DISCLAIMER} className="hover:text-foreground transition-colors">
                 Disclaimer
               </Link>
+              <span className="text-border">|</span>
+              <Link href={ROUTES.GDPR_REQUEST} className="hover:text-foreground transition-colors">
+                GDPR / Data Request
+              </Link>
             </div>
             <p className="text-[11px] text-muted-foreground">
               {"\u00A9"} {new Date().getFullYear()} {APP_NAME}
