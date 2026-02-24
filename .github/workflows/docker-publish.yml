@@ -6,7 +6,7 @@ on:
       - "v*"
 
 jobs:
-  build:
+  build-and-push:
     runs-on: ubuntu-latest
 
     permissions:
@@ -14,27 +14,33 @@ jobs:
       packages: write
 
     steps:
-      - name: Checkout code
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Log in to GHCR
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract version
+      - name: Extract version from tag
         id: vars
-        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
+        run: echo "VERSION=${GITHUB_REF_NAME}" >> $GITHUB_ENV
 
-      - name: Build Docker image
+      - name: Convert owner to lowercase
+        run: echo "OWNER_LC=${GITHUB_REPOSITORY_OWNER,,}" >> $GITHUB_ENV
+
+      - name: Build and Push Docker Image
         run: |
+          IMAGE=ghcr.io/${OWNER_LC}/vulnradar
+
           docker build \
-            -t ghcr.io/${{ github.repository_owner }}/vulnradar:${{ env.VERSION }} \
-            -t ghcr.io/${{ github.repository_owner }}/vulnradar:latest .
+            -t $IMAGE:${VERSION} \
+            -t $IMAGE:latest .
 
-      - name: Push image
-        run: |
-          docker push ghcr.io/${{ github.repository_owner }}/vulnradar:${{ env.VERSION }}
-          docker push ghcr.io/${{ github.repository_owner }}/vulnradar:latest
+          docker push $IMAGE:${VERSION}
+          docker push $IMAGE:latest
