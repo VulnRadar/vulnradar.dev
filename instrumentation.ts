@@ -103,6 +103,7 @@ export async function register() {
           id SERIAL PRIMARY KEY,
           user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
           key_hash VARCHAR(255) NOT NULL UNIQUE,
+          key_encrypted TEXT,
           key_prefix VARCHAR(64) NOT NULL,
           name VARCHAR(100) NOT NULL DEFAULT 'Default',
           daily_limit INTEGER NOT NULL DEFAULT 50,
@@ -353,12 +354,6 @@ export async function register() {
         );
         CREATE INDEX IF NOT EXISTS idx_team_invites_token ON team_invites(token);
         CREATE INDEX IF NOT EXISTS idx_team_invites_email ON team_invites(email);
-      `)
-
-      // ── Migrations ──────────────────────────────────────────────
-      // Add AES-256-GCM encrypted key column for secure API key storage
-      await pool.query(`
-        ALTER TABLE api_keys ADD COLUMN IF NOT EXISTS key_encrypted TEXT;
       `)
 
       console.log(`[${APP_NAME}] Database schema verified successfully.`)
