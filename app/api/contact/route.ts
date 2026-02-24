@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { checkRateLimit, getClientIP, RATE_LIMITS } from "@/lib/rate-limit"
 import { contactConfirmationEmail, contactEmail, sendEmail } from "@/lib/email"
+import { TURNSTILE_ENABLED } from "@/lib/constants"
 
 const CATEGORY_LABELS: Record<string, string> = {
   bug: "Bug Report",
@@ -24,8 +25,8 @@ export async function POST(request: NextRequest) {
     const rl = await checkRateLimit({ key: `contact:${ip}`, ...RATE_LIMITS.api })
     if (!rl.allowed) {
       return NextResponse.json(
-        { error: `Too many contact requests. Please try again in ${Math.ceil(rl.retryAfterSeconds / 60)} minute(s).` },
-        { status: 429 },
+          { error: `Too many contact requests. Please try again in ${Math.ceil(rl.retryAfterSeconds / 60)} minute(s).` },
+          { status: 429 },
       )
     }
 
@@ -37,24 +38,26 @@ export async function POST(request: NextRequest) {
     const category = asTrimmedString(body?.category)
     const turnstileToken = asTrimmedString(body?.turnstileToken)
 
-    if (!turnstileToken) {
-      return NextResponse.json({ error: "Captcha verification required." }, { status: 400 })
-    }
+    // Verify Turnstile token only if enabled
+    if (TURNSTILE_ENABLED) {
+      if (!turnstileToken) {
+        return NextResponse.json({ error: "Captcha verification required." }, { status: 400 })
+      }
 
-    // Verify Turnstile token
-    const turnstileRes = await fetch("https://challenges.cloudflare.com/turnstile/v0/siteverify", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        secret: process.env.TURNSTILE_SECRET_KEY,
-        response: turnstileToken,
-        remoteip: ip,
-      }),
-    })
+      const turnstileRes = await fetch("https://challenges.cloudflare.com/turnstile/v0/siteverify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          secret: process.env.TURNSTILE_SECRET_KEY,
+          response: turnstileToken,
+          remoteip: ip,
+        }),
+      })
 
-    const turnstileData = await turnstileRes.json()
-    if (!turnstileData.success) {
-      return NextResponse.json({ error: "Captcha verification failed. Please try again." }, { status: 400 })
+      const turnstileData = await turnstileRes.json()
+      if (!turnstileData.success) {
+        return NextResponse.json({ error: "Captcha verification failed. Please try again." }, { status: 400 })
+      }
     }
 
     if (!name || !email || !subject || !message || !category) {

@@ -6,30 +6,33 @@ import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 import { getClientIp } from "@/lib/request-utils"
 import pool from "@/lib/db"
 import crypto from "crypto"
-import { APP_URL, ERROR_MESSAGES, SUCCESS_MESSAGES, EMAIL_VERIFICATION_TOKEN_LIFETIME, PATTERNS } from "@/lib/constants"
+import { APP_URL, ERROR_MESSAGES, SUCCESS_MESSAGES, EMAIL_VERIFICATION_TOKEN_LIFETIME, PATTERNS, TURNSTILE_ENABLED } from "@/lib/constants"
 
 export const POST = withErrorHandling(async (request: NextRequest) => {
   const parsed = await parseBody<{ email: string; password: string; name: string; turnstileToken?: string }>(request)
   if (!parsed.success) return ApiResponse.badRequest(parsed.error)
   const { email, password, name, turnstileToken } = parsed.data
 
-  // Verify Turnstile captcha
-  if (!turnstileToken) {
-    return ApiResponse.badRequest("Captcha verification required.")
-  }
   const ip = await getClientIp()
-  const turnstileRes = await fetch("https://challenges.cloudflare.com/turnstile/v0/siteverify", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      secret: process.env.TURNSTILE_SECRET_KEY,
-      response: turnstileToken,
-      remoteip: ip,
-    }),
-  })
-  const turnstileData = await turnstileRes.json()
-  if (!turnstileData.success) {
-    return ApiResponse.badRequest("Captcha verification failed. Please try again.")
+
+  // Verify Turnstile captcha only if enabled
+  if (TURNSTILE_ENABLED) {
+    if (!turnstileToken) {
+      return ApiResponse.badRequest("Captcha verification required.")
+    }
+    const turnstileRes = await fetch("https://challenges.cloudflare.com/turnstile/v0/siteverify", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        secret: process.env.TURNSTILE_SECRET_KEY,
+        response: turnstileToken,
+        remoteip: ip,
+      }),
+    })
+    const turnstileData = await turnstileRes.json()
+    if (!turnstileData.success) {
+      return ApiResponse.badRequest("Captcha verification failed. Please try again.")
+    }
   }
 
   // Validate input using centralized validators
@@ -48,8 +51,8 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   if (!rl.allowed) {
     const minutes = Math.ceil(rl.retryAfterSeconds / 60)
     return ApiResponse.tooManyRequests(
-      ERROR_MESSAGES.TOO_MANY_ATTEMPTS("signup attempts", minutes),
-      rl.retryAfterSeconds,
+        ERROR_MESSAGES.TOO_MANY_ATTEMPTS("signup attempts", minutes),
+        rl.retryAfterSeconds,
     )
   }
 
@@ -71,22 +74,22 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
 
   // Store token
   await pool.query(
-    "INSERT INTO email_verification_tokens (user_id, token_hash, expires_at) VALUES ($1, $2, $3)",
-    [user.id, token, expiresAt]
+      "INSERT INTO email_verification_tokens (user_id, token_hash, expires_at) VALUES ($1, $2, $3)",
+      [user.id, token, expiresAt]
   )
 
   // Create default notification preferences (all enabled except tips_guides) for the new user
   await pool.query(
-    `INSERT INTO notification_preferences (
-       user_id,
-       email_security, email_new_login, email_password_change, email_2fa_change, email_session_revoked,
-       email_scan_complete, email_critical_findings, email_regression_alert, email_schedules,
-       email_api_keys, email_api_limit_warning, email_webhooks, email_webhook_failure,
-       email_data_requests, email_account_deletion, email_team_invite, email_team_changes,
-       email_product_updates, email_tips_guides
-     ) VALUES ($1, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, false)
-     ON CONFLICT (user_id) DO NOTHING`,
-    [user.id]
+      `INSERT INTO notification_preferences (
+        user_id,
+        email_security, email_new_login, email_password_change, email_2fa_change, email_session_revoked,
+        email_scan_complete, email_critical_findings, email_regression_alert, email_schedules,
+        email_api_keys, email_api_limit_warning, email_webhooks, email_webhook_failure,
+        email_data_requests, email_account_deletion, email_team_invite, email_team_changes,
+        email_product_updates, email_tips_guides
+      ) VALUES ($1, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, false)
+         ON CONFLICT (user_id) DO NOTHING`,
+      [user.id]
   )
 
   // Send verification email in background (don't block the response)
