@@ -16,6 +16,13 @@ const CHANGELOG = [
       { icon: Container, label: "Docker Production Overhaul", desc: "docker-compose.yml now uses the pre-built ghcr.io/vulnradar/vulnradar:latest image by default -- no local build required. Added health checks, resource limits, log rotation, and restart policies. A separate docker-compose.dev.yml override enables build-from-source for development. Updated setup docs accordingly." },
       { icon: ShieldCheck, label: "GDPR Compliance & Data Request Links", desc: "Added a dedicated GDPR section (Article 15-17 rights) to the Privacy Policy with a direct link to profile data export. 'GDPR / Data Request' link added to both the main footer and the guest footer on public pages. Users in the EU can now easily find how to exercise their data rights." },
       { icon: FileText, label: "Privacy Policy Updates", desc: "Privacy policy now explicitly references GDPR Articles 15-17, explains how to exercise data rights both in-app and via email, and includes a 30-day response commitment for data requests." },
+    version: "1.9.1",
+    date: "February 23, 2026",
+    title: "ToS Modal & Header Fixes",
+    highlights: true,
+    changes: [
+      { icon: FileText, label: "ToS modal wording", desc: "ToS modal now clearly notifies users that bypassing the acceptance screen does not waive their legal obligations. Ensures the notice displays reliably across guest and authenticated flows." },
+      { icon: Layout, label: "Centralized Route & API Constants", desc: "Updated `header.tsx` to fix rendering/auth-state flicker and ensure correct navigation is shown for guests and signed-in users." },
     ],
   },
   {
@@ -303,7 +310,7 @@ const CHANGELOG = [
     changes: [
       { icon: Crown, label: "Role-Based Access Control", desc: "Replaced the binary admin/user system with a full role hierarchy: Admin, Moderator, Support, and User. Each role has scoped permissions: Support is view-only, Moderators can disable accounts and force logouts, and Admins have full control." },
       { icon: Shield, label: "Owner Account Protection", desc: "User ID 1 (the first registered account) is now fully protected at the API level. No other admin can modify, disable, or delete the owner account." },
-      { icon: Camera, label: "Profile Picture Upload", desc: "Users can now upload a profile picture from their profile page. Includes a full image crop dialog with drag-to-reposition, zoom slider, and circular preview. Supports JPG, PNG, and GIF up to 5MB." },
+      { icon: Camera, label: "Profile Picture Upload", desc: "Users can now upload a profile picture from their profile page. Includes a full image crop dialog with drag-to-reposition, zoom slider, and circular preview. Supports JPG, PNG, and GIF up to 10MB." },
       { icon: Users, label: "Redesigned Staff Page", desc: "The public /staff page now groups team members by role (Administrators, Moderators, Support) with profile pictures, role badges, and a polished card layout." },
       { icon: UserCheck, label: "Staff Navbar Access", desc: "Support and Moderator roles now see the Admin tab in the navigation bar, not just Admins. The admin button loads instantly on page changes using cached role data." },
       { icon: Eye, label: "Avatars Everywhere", desc: "Profile pictures now appear across the admin panel (user list, user detail, audit logs, active staff) and on shared scan pages. Falls back to colored initials when no picture is set." },

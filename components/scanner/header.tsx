@@ -68,7 +68,7 @@ export function Header() {
               return (
                   <button
                       key={href}
-                      onClick={() => router.push(href)}
+                      onClick={(e) => {e.ctrlKey ? window.open(href, "_blank") : router.push(href)}}
                       className={cn(
                           "flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors",
                           active
