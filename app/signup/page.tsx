@@ -208,11 +208,17 @@ export default function SignupPage() {
             {password && (
               <div className="space-y-1.5 mt-1">
                 <div className="flex gap-1 h-1">
-                  {[1, 2, 3, 4].map((level) => (
+                  {[
+                    { level: 0, color: "bg-red-600" },
+                    { level: 1, color: "bg-orange-600" },
+                    { level: 2, color: "bg-amber-500" },
+                    { level: 3, color: "bg-lime-500" },
+                    { level: 4, color: "bg-emerald-600" },
+                  ].map((bar, idx) => (
                     <div
-                      key={level}
+                      key={idx}
                       className={`h-full flex-1 rounded-full transition-colors duration-200 ${
-                        strength.level >= level ? strength.color : "bg-muted"
+                        strength.level >= bar.level ? bar.color : "bg-muted"
                       }`}
                     />
                   ))}
