@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { APP_NAME } from "@/lib/constants"
+import { getPasswordStrength } from "@/lib/password-strength"
 
 export default function SignupPage() {
   const [name, setName] = useState("")
@@ -43,22 +44,6 @@ export default function SignupPage() {
       }
     }
   }, [scriptLoaded])
-
-  function getPasswordStrength(pw: string): { level: number; label: string; color: string } {
-    if (!pw) return { level: 0, label: "", color: "" }
-    let score = 0
-    if (pw.length >= 8) score++
-    if (pw.length >= 12) score++
-    if (/[a-z]/.test(pw) && /[A-Z]/.test(pw)) score++
-    if (/\d/.test(pw)) score++
-    if (/[^a-zA-Z0-9]/.test(pw)) score++
-
-    if (score <= 1) return { level: 1, label: "Weak", color: "bg-[hsl(var(--severity-critical))]" }
-    if (score <= 2) return { level: 2, label: "Fair", color: "bg-[hsl(var(--severity-high))]" }
-    if (score <= 3) return { level: 3, label: "Medium", color: "bg-[hsl(var(--severity-medium))]" }
-    if (score <= 4) return { level: 4, label: "Strong", color: "bg-primary" }
-    return { level: 5, label: "Very Strong", color: "bg-emerald-500" }
-  }
 
   const strength = getPasswordStrength(password)
 
@@ -223,7 +208,7 @@ export default function SignupPage() {
             {password && (
               <div className="space-y-1.5 mt-1">
                 <div className="flex gap-1 h-1">
-                  {[1, 2, 3, 4, 5].map((level) => (
+                  {[1, 2, 3, 4].map((level) => (
                     <div
                       key={level}
                       className={`h-full flex-1 rounded-full transition-colors duration-200 ${
