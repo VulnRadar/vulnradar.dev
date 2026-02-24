@@ -355,6 +355,12 @@ export async function register() {
         CREATE INDEX IF NOT EXISTS idx_team_invites_email ON team_invites(email);
       `)
 
+      // ── Migrations ──────────────────────────────────────────────
+      // Add AES-256-GCM encrypted key column for secure API key storage
+      await pool.query(`
+        ALTER TABLE api_keys ADD COLUMN IF NOT EXISTS key_encrypted TEXT;
+      `)
+
       console.log(`[${APP_NAME}] Database schema verified successfully.`)
 
       // Run initial cleanup on startup

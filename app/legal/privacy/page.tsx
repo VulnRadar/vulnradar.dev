@@ -81,13 +81,34 @@ export default function PrivacyPage() {
         collect personal information from minors.
       </p>
 
-      <h2 className="text-lg font-semibold text-foreground mt-8">8. Changes to This Policy</h2>
+      <h2 id="gdpr" className="text-lg font-semibold text-foreground mt-8">8. Your Rights Under GDPR</h2>
+      <p className="leading-relaxed text-foreground/90">
+        If you are located in the European Economic Area (EEA), you have certain data protection rights
+        under the General Data Protection Regulation (GDPR). We are committed to helping you exercise these rights:
+      </p>
+      <ul className="list-disc pl-6 space-y-2 text-foreground/90 mt-3">
+        <li><strong className="text-foreground">Right of Access (Article 15)</strong> - You can request a copy of all personal data we hold about you.</li>
+        <li><strong className="text-foreground">Right to Rectification (Article 16)</strong> - You can request that we correct any inaccurate personal data.</li>
+        <li><strong className="text-foreground">Right to Erasure (Article 17)</strong> - You can request that we delete your personal data ("right to be forgotten").</li>
+        <li><strong className="text-foreground">Right to Restriction of Processing (Article 18)</strong> - You can request that we restrict the processing of your data.</li>
+        <li><strong className="text-foreground">Right to Data Portability (Article 20)</strong> - You can request your data in a structured, machine-readable format.</li>
+        <li><strong className="text-foreground">Right to Object (Article 21)</strong> - You can object to the processing of your personal data.</li>
+      </ul>
+      <p className="leading-relaxed text-foreground/90 mt-3">
+        <strong className="text-foreground">How to exercise your rights:</strong> If you have an account, you can export or delete your data directly from
+        your <a href="/profile#data" className="text-primary hover:underline">Profile settings</a>. If you do not have an account or need further assistance,
+        email us at{" "}
+        <a href="mailto:legal@vulnradar.dev" className="text-primary hover:underline">legal@vulnradar.dev</a> with your request.
+        We will respond within 30 days.
+      </p>
+
+      <h2 className="text-lg font-semibold text-foreground mt-8">9. Changes to This Policy</h2>
       <p className="leading-relaxed text-foreground/90">
         We may update this Privacy Policy at any time. Continued use of the Service after changes
         constitutes acceptance of the revised policy.
       </p>
 
-      <h2 className="text-lg font-semibold text-foreground mt-8">9. Contact</h2>
+      <h2 className="text-lg font-semibold text-foreground mt-8">10. Contact</h2>
       <p className="leading-relaxed text-foreground/90">
         For privacy-related inquiries, please contact us at{" "}
         <a href="mailto:legal@vulnradar.dev" className="text-primary hover:underline">
