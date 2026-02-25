@@ -52,22 +52,35 @@ export function AdminVersionNotifier() {
   const { me } = useAuth()
 
   useEffect(() => {
+    // Wait for auth to be ready
+    if (!me) return
+
     // Only run once per session
     if (sessionStorage.getItem("versionNotifierRan")) return
-    sessionStorage.setItem("versionNotifierRan", "1")
 
     async function checkVersion() {
       try {
+        console.log("[v0] Version notifier running for user:", me?.userId)
         const res = await fetch("/api/version")
-        if (!res.ok) return
+        if (!res.ok) {
+          console.log("[v0] Version API returned:", res.status)
+          return
+        }
 
         const data: VersionData = await res.json()
+        console.log("[v0] Version check result:", data)
+
         const isAdmin = me?.role && STAFF_ROLES.includes(me.role)
+        console.log("[v0] Is admin:", isAdmin, "Role:", me?.role)
+
         const changelogSeen = getCookie("changelogSeen")
+        console.log("[v0] Changelog seen:", changelogSeen, "Current:", data.current)
 
         // Case 1: Ahead of latest
         if (data.status === "ahead") {
+          console.log("[v0] Status: AHEAD")
           if (isAdmin) {
+            console.log("[v0] Dispatching admin ahead notification")
             dispatchNotification(
               "version-ahead",
               "Running Ahead of Latest",
@@ -75,12 +88,15 @@ export function AdminVersionNotifier() {
               "warning"
             )
           }
+          sessionStorage.setItem("versionNotifierRan", "1")
           return
         }
 
         // Case 2: Behind latest
         if (data.status === "behind") {
+          console.log("[v0] Status: BEHIND")
           if (isAdmin) {
+            console.log("[v0] Dispatching admin behind notification")
             dispatchNotification(
               "version-behind",
               "🚨 Update Available",
@@ -93,6 +109,7 @@ export function AdminVersionNotifier() {
 
           // Show changelog if not seen this version
           if (changelogSeen !== data.current) {
+            console.log("[v0] Dispatching changelog notification for version:", data.current)
             dispatchNotification(
               "changelog-new",
               `What's New in ${data.current}`,
@@ -103,12 +120,15 @@ export function AdminVersionNotifier() {
             )
             setCookie("changelogSeen", data.current)
           }
+          sessionStorage.setItem("versionNotifierRan", "1")
           return
         }
 
         // Case 3: On current version
         if (data.status === "current") {
+          console.log("[v0] Status: CURRENT")
           if (changelogSeen !== data.current) {
+            console.log("[v0] Dispatching changelog notification for current version")
             dispatchNotification(
               "changelog-new",
               `What's New in ${data.current}`,
@@ -119,6 +139,7 @@ export function AdminVersionNotifier() {
             )
             setCookie("changelogSeen", data.current)
           }
+          sessionStorage.setItem("versionNotifierRan", "1")
         }
       } catch (err) {
         console.error("[v0] Version check failed:", err)
@@ -126,7 +147,7 @@ export function AdminVersionNotifier() {
     }
 
     checkVersion()
-  }, [me])
+  }, [me?.userId]) // Only depend on userId, not the entire me object
 
   return null
 }
