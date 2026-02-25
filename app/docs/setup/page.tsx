@@ -16,7 +16,7 @@ export default function SetupPage() {
       <section id="prerequisites" className="space-y-4">
         <h2 className="text-2xl font-bold">Prerequisites</h2>
         <p className="text-muted-foreground">Before you begin, ensure you have the following installed on your system:</p>
-        
+
         <Card className="p-6 border-border/40 space-y-3">
           <div className="flex items-start gap-3">
             <CheckCircle className="h-5 w-5 text-primary flex-shrink-0 mt-0.5" />
@@ -366,7 +366,7 @@ npm start`}</code></pre>
 
         <Card className="p-6 border-border/40">
           <h3 className="font-semibold mb-4">Docker</h3>
-          <p className="text-sm text-muted-foreground">Deploy using Docker and Docker Compose. See the <a href="#docker" className="text-primary hover:underline">Docker Setup</a> section below for a full walkthrough.</p>
+          <p className="text-sm text-muted-foreground">Deploy using Docker and Docker Compose. See the <a href="#docker" className="text-primary hover:underline">Docker Deployment</a> section below for a complete walkthrough.</p>
         </Card>
 
         <Card className="p-6 border-border/40">
@@ -386,150 +386,245 @@ npm start`}</code></pre>
         </Card>
       </section>
 
-      {/* Docker Setup */}
+      {/* Docker Setup - REWRITTEN */}
       <section id="docker" className="space-y-4">
-        <h2 className="text-2xl font-bold">Docker Setup</h2>
-        <p className="text-muted-foreground">Run {APP_NAME} using Docker and Docker Compose. This is the easiest way to get everything running with a single command.</p>
+        <h2 className="text-2xl font-bold">Docker Deployment</h2>
+        <p className="text-muted-foreground">Deploy {APP_NAME} using Docker in 5 minutes. No cloning, no build step—just pull the pre-built image and go.</p>
 
-        <Card className="p-6 border-border/40">
-          <h3 className="font-semibold mb-4">Prerequisites</h3>
-          <div className="space-y-2">
-            <div className="flex items-start gap-3">
-              <CheckCircle className="h-5 w-5 text-primary flex-shrink-0 mt-0.5" />
-              <div>
-                <p className="text-sm text-muted-foreground"><strong className="text-foreground">Docker</strong> and <strong className="text-foreground">Docker Compose</strong> installed on your system</p>
-                <pre className="bg-secondary/50 p-2 rounded text-xs mt-2 overflow-x-auto"><code>{`docker --version
+        <div className="rounded-lg border border-green-500/20 bg-green-500/5 p-4 flex gap-3">
+          <CheckCircle className="h-5 w-5 text-green-600 flex-shrink-0 mt-0.5" />
+          <div>
+            <h3 className="font-semibold text-foreground mb-1 text-sm">Prerequisites</h3>
+            <p className="text-xs text-muted-foreground">Docker and Docker Compose installed. Verify with:</p>
+            <pre className="bg-secondary/50 p-2 rounded text-xs mt-2 overflow-x-auto"><code>{`docker --version
 docker compose version`}</code></pre>
-              </div>
-            </div>
           </div>
-        </Card>
+        </div>
 
-        <Card className="p-6 border-border/40">
-          <h3 className="font-semibold mb-4">Quick Start (Production)</h3>
-          <p className="text-sm text-muted-foreground mb-3">Pull the pre-built image from GHCR and start everything in one command. No build step required.</p>
-          <pre className="bg-secondary/50 p-4 rounded text-sm overflow-x-auto mb-4"><code>{`# Download the compose file
-curl -O https://raw.githubusercontent.com/VulnRadar/vulnradar.dev/main/docker-compose.yml
+        {/* Step-by-step deployment */}
+        <div className="space-y-3">
+          <Card className="p-6 border-border/40">
+            <h3 className="font-semibold mb-4">Step 1: Create Project Directory</h3>
+            <pre className="bg-secondary/50 p-4 rounded text-sm overflow-x-auto"><code>{`mkdir -p ~/vulnradar
+cd ~/vulnradar`}</code></pre>
+          </Card>
 
-# Create your environment file
-cat > .env << 'EOF'
-POSTGRES_PASSWORD=change-me-to-a-strong-password
+          <Card className="p-6 border-border/40">
+            <h3 className="font-semibold mb-4">Step 2: Download docker-compose.yml</h3>
+            <pre className="bg-secondary/50 p-4 rounded text-sm overflow-x-auto mb-3"><code>{`curl -O https://raw.githubusercontent.com/VulnRadar/vulnradar.dev/main/docker-compose.yml`}</code></pre>
+            <p className="text-xs text-muted-foreground">Verify it downloaded:</p>
+            <pre className="bg-secondary/50 p-2 rounded text-xs mt-2 overflow-x-auto"><code>ls</code></pre>
+            <p className="text-xs text-muted-foreground mt-2">You should see <code className="bg-secondary px-1 rounded">docker-compose.yml</code> in the current directory.</p>
+          </Card>
+
+          <Card className="p-6 border-border/40">
+            <h3 className="font-semibold mb-4">Step 3: Create .env File</h3>
+            <p className="text-sm text-muted-foreground mb-3">Create a <code className="bg-secondary px-1 rounded text-xs">.env</code> file with required environment variables:</p>
+            <pre className="bg-secondary/50 p-4 rounded text-sm overflow-x-auto mb-4"><code>{`nano .env`}</code></pre>
+
+            <p className="text-sm text-muted-foreground mb-3">Paste the minimum required configuration:</p>
+            <pre className="bg-secondary/50 p-4 rounded text-sm overflow-x-auto mb-4"><code>{`# Database
+POSTGRES_PASSWORD=your-secure-db-password
+
+# Application
 NEXT_PUBLIC_APP_URL=https://yourdomain.com
-API_KEY_ENCRYPTION_KEY=$(node -e "console.log(require('crypto').randomBytes(32).toString('hex'))")
-NEXT_PUBLIC_TURNSTILE_SITE_KEY=your-turnstile-key
-TURNSTILE_SECRET_KEY=your-turnstile-secret
+API_KEY_ENCRYPTION_KEY=your-generated-key-here
+
+# Email (optional but recommended)
 SMTP_HOST=smtp.protonmail.ch
 SMTP_PORT=587
 SMTP_USER=noreply@yourdomain.com
 SMTP_PASS=your-app-password
 SMTP_FROM=noreply@yourdomain.com
-EOF
 
-# Pull and start PostgreSQL + VulnRadar
-docker compose up -d`}</code></pre>
-          <p className="text-xs text-muted-foreground mb-2">The app will be available at <code className="bg-secondary px-1 rounded">https://yourdomain.com</code> once you set up your reverse proxy. The database schema is created automatically on first startup.</p>
-          <p className="text-xs text-muted-foreground">The production compose file uses the pre-built image <code className="bg-secondary px-1 rounded text-xs">ghcr.io/vulnradar/vulnradar:latest</code>. For source builds, clone the repo and run <code className="bg-secondary px-1 rounded text-xs">docker build</code> locally.</p>
-        </Card>
+# CAPTCHA (optional)
+NEXT_PUBLIC_TURNSTILE_SITE_KEY=your-turnstile-key
+TURNSTILE_SECRET_KEY=your-turnstile-secret`}</code></pre>
+
+            <p className="text-sm text-muted-foreground mb-3">Generate a secure encryption key (copy the output and paste into .env):</p>
+            <pre className="bg-secondary/50 p-4 rounded text-sm overflow-x-auto"><code>{`node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`}</code></pre>
+
+            <p className="text-xs text-muted-foreground mt-3">Save and exit nano with <code className="bg-secondary px-1 rounded">Ctrl+O</code>, <code className="bg-secondary px-1 rounded">Enter</code>, <code className="bg-secondary px-1 rounded">Ctrl+X</code></p>
+          </Card>
+
+          <Card className="p-6 border-border/40">
+            <h3 className="font-semibold mb-4">Step 4: Pull Latest Images</h3>
+            <pre className="bg-secondary/50 p-4 rounded text-sm overflow-x-auto"><code>{`docker compose pull`}</code></pre>
+            <p className="text-xs text-muted-foreground mt-3">This downloads the latest pre-built images for PostgreSQL and {APP_NAME}.</p>
+          </Card>
+
+          <Card className="p-6 border-border/40">
+            <h3 className="font-semibold mb-4">Step 5: Start the Application</h3>
+            <pre className="bg-secondary/50 p-4 rounded text-sm overflow-x-auto mb-4"><code>{`docker compose up -d`}</code></pre>
+            <p className="text-xs text-muted-foreground mb-3">The <code className="bg-secondary px-1 rounded">-d</code> flag runs in the background. This starts both PostgreSQL and the {APP_NAME} app.</p>
+
+            <p className="text-sm text-muted-foreground mb-3">Verify containers are running:</p>
+            <pre className="bg-secondary/50 p-2 rounded text-xs overflow-x-auto"><code>{`docker ps`}</code></pre>
+            <p className="text-xs text-muted-foreground mt-2">You should see two containers: <code className="bg-secondary px-1 rounded">vulnradar-db</code> and <code className="bg-secondary px-1 rounded">vulnradar-app</code></p>
+          </Card>
+
+          <Card className="p-6 border-border/40">
+            <h3 className="font-semibold mb-4">Step 6: Verify Everything Works</h3>
+            <p className="text-sm text-muted-foreground mb-3">Check the application logs:</p>
+            <pre className="bg-secondary/50 p-2 rounded text-xs overflow-x-auto mb-4"><code>{`docker logs -f vulnradar-app`}</code></pre>
+            <p className="text-xs text-muted-foreground mb-3">Wait for the message: <code className="bg-secondary px-1 rounded text-xs">ready - started server on</code></p>
+
+            <p className="text-sm text-muted-foreground mb-3">Then access your application at:</p>
+            <pre className="bg-secondary/50 p-2 rounded text-xs overflow-x-auto"><code>https://yourdomain.com</code></pre>
+
+            <p className="text-xs text-muted-foreground mt-3">Exit logs with <code className="bg-secondary px-1 rounded">Ctrl+C</code></p>
+          </Card>
+        </div>
 
         <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-4 flex gap-3">
           <AlertTriangle className="h-5 w-5 text-destructive flex-shrink-0 mt-0.5" />
           <div>
-            <h3 className="font-semibold text-foreground mb-1 text-sm">HTTPS &amp; Domain Required</h3>
+            <h3 className="font-semibold text-foreground mb-1 text-sm">HTTPS Required</h3>
             <p className="text-xs text-muted-foreground mb-2">
-              {APP_NAME} <strong className="text-foreground">will not work correctly</strong> over plain HTTP or without a proper domain. CSS, assets, authentication cookies, and security headers all depend on HTTPS to function.
+              {APP_NAME} <strong>requires HTTPS and a proper domain</strong>. CSS, authentication, and security headers all depend on it.
             </p>
             <ul className="text-xs text-muted-foreground space-y-1 list-disc list-inside">
-              <li>Set up a reverse proxy (Caddy, nginx, or Traefik) that terminates TLS/SSL</li>
-              <li>Point a domain (e.g. <code className="bg-secondary px-1 rounded">yourdomain.com</code>) to your server</li>
-              <li>Set <code className="bg-secondary px-1 rounded">NEXT_PUBLIC_APP_URL</code> to your full <code className="bg-secondary px-1 rounded">https://</code> URL</li>
-              <li>Until this is done, expect broken styles, missing assets, and failed logins</li>
+              <li>Set up a reverse proxy (nginx, Traefik, or Caddy) for HTTPS/TLS termination</li>
+              <li>Point your domain to your server</li>
+              <li>Set <code className="bg-secondary px-1 rounded">NEXT_PUBLIC_APP_URL=https://yourdomain.com</code> in .env</li>
             </ul>
           </div>
         </div>
 
+        {/* Common operations */}
         <Card className="p-6 border-border/40">
-          <h3 className="font-semibold mb-4">Docker Compose Configuration</h3>
-          <p className="text-sm text-muted-foreground mb-3">The included <code className="bg-secondary px-1 rounded text-xs">docker-compose.yml</code> sets up two services:</p>
-          <div className="space-y-3 text-sm text-muted-foreground mb-4">
+          <h3 className="font-semibold mb-4">Common Operations</h3>
+
+          <div className="space-y-4">
             <div>
-              <strong className="text-foreground">postgres</strong> - PostgreSQL 16 database with persistent storage via Docker volumes. Health-checked so the app waits for the DB to be ready before starting.
+              <h4 className="font-semibold text-sm mb-2">View Live Logs</h4>
+              <pre className="bg-secondary/50 p-2 rounded text-xs overflow-x-auto"><code>docker logs -f vulnradar-app</code></pre>
             </div>
+
             <div>
-              <strong className="text-foreground">app</strong> - The {APP_NAME} Next.js application. Uses the pre-built GHCR image, connects to PostgreSQL, includes health checks, resource limits, and log rotation.
+              <h4 className="font-semibold text-sm mb-2">Stop All Containers</h4>
+              <pre className="bg-secondary/50 p-2 rounded text-xs overflow-x-auto"><code>docker compose down</code></pre>
+            </div>
+
+            <div>
+              <h4 className="font-semibold text-sm mb-2">Full Reset (Delete Everything Including Database)</h4>
+              <pre className="bg-secondary/50 p-2 rounded text-xs overflow-x-auto"><code>docker compose down -v</code></pre>
+            </div>
+
+            <div>
+              <h4 className="font-semibold text-sm mb-2">Update to Latest Version</h4>
+              <pre className="bg-secondary/50 p-2 rounded text-xs overflow-x-auto mb-2"><code>{`docker compose pull
+docker compose up -d`}</code></pre>
+              <p className="text-xs text-muted-foreground">This pulls the latest image and restarts the app. Database schema updates automatically on startup.</p>
+            </div>
+
+            <div>
+              <h4 className="font-semibold text-sm mb-2">Restart Application</h4>
+              <pre className="bg-secondary/50 p-2 rounded text-xs overflow-x-auto"><code>docker compose restart vulnradar-app</code></pre>
+            </div>
+
+            <div>
+              <h4 className="font-semibold text-sm mb-2">Check Container Health</h4>
+              <pre className="bg-secondary/50 p-2 rounded text-xs overflow-x-auto"><code>docker ps --format "table {{.Names }}\t{{.Status }}"</code></pre>
             </div>
           </div>
-          <p className="text-sm text-muted-foreground mb-3">Required and optional environment variables:</p>
-          <pre className="bg-secondary/50 p-4 rounded text-xs overflow-x-auto"><code>{`# Required
-POSTGRES_PASSWORD=change-me-to-a-strong-password
-NEXT_PUBLIC_APP_URL=https://yourdomain.com
-
-# Recommended
-API_KEY_ENCRYPTION_KEY=<64-char-hex>  # AES-256 key for API key encryption
-
-# Optional
-POSTGRES_DB=vulnradar           # default: vulnradar
-POSTGRES_USER=vulnradar         # default: vulnradar
-APP_PORT=3000                   # default: 3000
-SMTP_HOST=...                   # For email notifications
-TURNSTILE_SITE_KEY=...          # For CAPTCHA
-# See .env.example for the full list`}</code></pre>
         </Card>
 
+        {/* Troubleshooting */}
         <Card className="p-6 border-border/40">
-          <h3 className="font-semibold mb-4">Common Commands</h3>
-          <pre className="bg-secondary/50 p-4 rounded text-sm overflow-x-auto"><code>{`# Start all services in background
-docker compose up -d
+          <h3 className="font-semibold mb-4">Troubleshooting</h3>
 
-# View live logs
-docker compose logs -f app
+          <div className="space-y-4">
+            <div>
+              <div className="flex items-center gap-2 mb-2">
+                <AlertTriangle className="h-4 w-4 text-amber-600" />
+                <h4 className="font-semibold text-sm">App won't start or keeps restarting</h4>
+              </div>
+              <pre className="bg-secondary/50 p-2 rounded text-xs overflow-x-auto mb-2"><code>docker logs vulnradar-app</code></pre>
+              <p className="text-xs text-muted-foreground">Check the logs for error messages. Common issues:</p>
+              <ul className="text-xs text-muted-foreground space-y-1 list-disc list-inside mt-1">
+                <li>Missing or incorrect environment variables in .env</li>
+                <li>Database not ready yet (wait 10-15 seconds and check again)</li>
+                <li>Port 3000 already in use on host</li>
+              </ul>
+            </div>
 
-# Stop all services
-docker compose down
+            <div>
+              <div className="flex items-center gap-2 mb-2">
+                <AlertTriangle className="h-4 w-4 text-amber-600" />
+                <h4 className="font-semibold text-sm">Database connection errors</h4>
+              </div>
+              <p className="text-xs text-muted-foreground mb-2">Wait for PostgreSQL to fully initialize (usually 10-15 seconds after <code className="bg-secondary px-1 rounded">docker compose up -d</code>):</p>
+              <pre className="bg-secondary/50 p-2 rounded text-xs overflow-x-auto mb-2"><code>docker logs vulnradar-db</code></pre>
+              <p className="text-xs text-muted-foreground">Look for <code className="bg-secondary px-1 rounded text-xs">database system is ready to accept connections</code></p>
+            </div>
 
-# Stop and delete database volume (full reset)
-docker compose down -v
+            <div>
+              <div className="flex items-center gap-2 mb-2">
+                <AlertTriangle className="h-4 w-4 text-amber-600" />
+                <h4 className="font-semibold text-sm">Can't access app after startup</h4>
+              </div>
+              <p className="text-xs text-muted-foreground mb-2">Verify containers are healthy:</p>
+              <pre className="bg-secondary/50 p-2 rounded text-xs overflow-x-auto"><code>docker compose ps</code></pre>
+              <p className="text-xs text-muted-foreground mt-2">If status shows unhealthy, check both logs:</p>
+              <pre className="bg-secondary/50 p-2 rounded text-xs overflow-x-auto mt-1"><code>{`docker logs vulnradar-app
+docker logs vulnradar-db`}</code></pre>
+            </div>
 
-# Pull latest image and restart
-docker compose pull
-docker compose up -d`}</code></pre>
+            <div>
+              <div className="flex items-center gap-2 mb-2">
+                <AlertTriangle className="h-4 w-4 text-amber-600" />
+                <h4 className="font-semibold text-sm">HTTPS/SSL certificate issues</h4>
+              </div>
+              <p className="text-xs text-muted-foreground">Make sure your reverse proxy (nginx, Traefik, Caddy) is properly configured for TLS termination before the traffic reaches the app container.</p>
+            </div>
+          </div>
         </Card>
 
+        {/* Advanced: Use existing database */}
         <Card className="p-6 border-border/40">
-          <h3 className="font-semibold mb-4">Custom Ports</h3>
-          <p className="text-sm text-muted-foreground mb-3">If ports 3000 or 5432 are already in use, set different ones in your <code className="bg-secondary px-1 rounded text-xs">.env</code>:</p>
-          <pre className="bg-secondary/50 p-4 rounded text-sm overflow-x-auto"><code>{`APP_PORT=8080
-DB_PORT=5433`}</code></pre>
-        </Card>
-
-        <Card className="p-6 border-border/40">
-          <h3 className="font-semibold mb-4">Standalone Docker (Without Compose)</h3>
-          <p className="text-sm text-muted-foreground mb-3">If you already have a PostgreSQL server, you can run just the app container using the pre-built image:</p>
-          <pre className="bg-secondary/50 p-4 rounded text-sm overflow-x-auto"><code>{`docker run -d \\
+          <h3 className="font-semibold mb-4">Advanced: Use Existing PostgreSQL</h3>
+          <p className="text-sm text-muted-foreground mb-3">If you already have a PostgreSQL server, run just the app container:</p>
+          <pre className="bg-secondary/50 p-4 rounded text-sm overflow-x-auto mb-4"><code>{`docker run -d \\
   --name vulnradar \\
   -p 3000:3000 \\
-  -e DATABASE_URL="postgresql://user:pass@your-db-host:5432/vulnradar" \\
+  -e DATABASE_URL="postgresql://user:password@your-db-host:5432/vulnradar" \\
   -e NEXT_PUBLIC_APP_URL="https://yourdomain.com" \\
   -e API_KEY_ENCRYPTION_KEY="your-64-char-hex-key" \\
-  -e NEXT_PUBLIC_TURNSTILE_SITE_KEY="your-turnstile-key" \\
-  -e TURNSTILE_SECRET_KEY="your-turnstile-secret" \\
   --restart unless-stopped \\
-  --memory 1g \\
   ghcr.io/vulnradar/vulnradar:latest`}</code></pre>
+          <p className="text-xs text-muted-foreground">Replace the DATABASE_URL with your actual connection string and encryption key.</p>
         </Card>
 
-        <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 p-4 flex gap-3">
-          <AlertTriangle className="h-5 w-5 text-amber-600 flex-shrink-0 mt-0.5" />
-          <div>
-            <h3 className="font-semibold text-foreground mb-1 text-sm">Production Recommendations</h3>
-            <ul className="text-xs text-muted-foreground space-y-1 list-disc list-inside">
-              <li>Use a managed database (AWS RDS, Supabase, etc.) instead of the Docker Compose PostgreSQL for production</li>
-              <li>Set strong, unique passwords for all database credentials</li>
-              <li>Place behind a reverse proxy (nginx, Traefik, Caddy) for HTTPS</li>
-              <li>Update <code className="bg-secondary px-1 rounded">NEXT_PUBLIC_APP_URL</code> to your actual domain</li>
-              <li>Back up your Docker volumes regularly</li>
-            </ul>
-          </div>
-        </div>
+        {/* Environment variables reference */}
+        <Card className="p-6 border-border/40">
+          <h3 className="font-semibold mb-4">Full Environment Variables Reference</h3>
+          <pre className="bg-secondary/50 p-4 rounded text-xs overflow-x-auto"><code>{`# Database (required for docker-compose)
+POSTGRES_PASSWORD=strong-password
+POSTGRES_DB=vulnradar              # default: vulnradar
+POSTGRES_USER=vulnradar            # default: vulnradar
+
+# Application (required)
+NEXT_PUBLIC_APP_URL=https://yourdomain.com
+API_KEY_ENCRYPTION_KEY=64-char-hex-key
+
+# Port (optional)
+APP_PORT=3000                      # default: 3000
+
+# Email (optional but recommended)
+SMTP_HOST=smtp.protonmail.ch
+SMTP_PORT=587
+SMTP_USER=noreply@yourdomain.com
+SMTP_PASS=app-password
+SMTP_FROM=noreply@yourdomain.com
+
+# Contact Form (optional)
+CONTACT_EMAIL=support@yourdomain.com
+
+# CAPTCHA - Cloudflare Turnstile (optional)
+NEXT_PUBLIC_TURNSTILE_SITE_KEY=your-key
+TURNSTILE_SECRET_KEY=your-secret`}</code></pre>
+        </Card>
       </section>
 
       {/* Migration Tool */}
