@@ -202,7 +202,7 @@ TURNSTILE_SECRET_KEY=your-turnstile-secret-key`}</code></pre>
           <div>
             <h3 className="font-semibold text-foreground mb-1 text-sm">Environment File Security</h3>
             <p className="text-xs text-muted-foreground">Never commit <code className="bg-secondary px-1 rounded">.env.local</code> to version control. It contains sensitive credentials. Add it to <code className="bg-secondary px-1 rounded">.gitignore</code>:</p>
-            <pre className="bg-secondary/50 p-2 rounded text-xs mt-2"><code>echo ".env.local" >> .gitignore</code></pre>
+            <pre className="bg-secondary/50 p-2 rounded text-xs mt-2"><code>{'echo ".env.local" >> .gitignore'}</code></pre>
           </div>
         </div>
       </section>
@@ -526,7 +526,7 @@ TURNSTILE_SECRET_KEY=your-turnstile-secret`}</code></pre>
 
             <div>
               <h4 className="font-semibold text-sm mb-2">Check Container Health</h4>
-              <pre className="bg-secondary/50 p-2 rounded text-xs overflow-x-auto"><code>docker ps --format "table {{.Names }}\t{{.Status }}"</code></pre>
+              <pre className="bg-secondary/50 p-2 rounded text-xs overflow-x-auto"><code>{'docker ps --format "table {{.Names }}\t{{.Status }}"'}</code></pre>
             </div>
           </div>
         </Card>
