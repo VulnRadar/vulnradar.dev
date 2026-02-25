@@ -416,26 +416,19 @@ cat > .env << 'EOF'
 POSTGRES_PASSWORD=change-me-to-a-strong-password
 NEXT_PUBLIC_APP_URL=https://yourdomain.com
 API_KEY_ENCRYPTION_KEY=$(node -e "console.log(require('crypto').randomBytes(32).toString('hex'))")
-# Optional: SMTP, Turnstile, etc.
+NEXT_PUBLIC_TURNSTILE_SITE_KEY=your-turnstile-key
+TURNSTILE_SECRET_KEY=your-turnstile-secret
+SMTP_HOST=smtp.protonmail.ch
+SMTP_PORT=587
+SMTP_USER=noreply@yourdomain.com
+SMTP_PASS=your-app-password
+SMTP_FROM=noreply@yourdomain.com
 EOF
 
 # Pull and start PostgreSQL + VulnRadar
 docker compose up -d`}</code></pre>
-          <p className="text-xs text-muted-foreground mb-2">The app will be available at <code className="bg-secondary px-1 rounded">http://localhost:3000</code>. The database schema is created automatically on first startup.</p>
-          <p className="text-xs text-muted-foreground">The production compose file uses the pre-built image <code className="bg-secondary px-1 rounded text-xs">ghcr.io/vulnradar/vulnradar:latest</code> -- no local build needed.</p>
-        </Card>
-
-        <Card className="p-6 border-border/40">
-          <h3 className="font-semibold mb-4">Development (Build from Source)</h3>
-          <p className="text-sm text-muted-foreground mb-3">To build locally from source instead of using the pre-built image, use the dev override:</p>
-          <pre className="bg-secondary/50 p-4 rounded text-sm overflow-x-auto mb-4"><code>{`git clone https://github.com/VulnRadar/vulnradar.dev.git
-cd vulnradar.dev
-cp .env.example .env
-# Edit .env with your credentials
-
-# Build from source and start
-docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build -d`}</code></pre>
-          <p className="text-xs text-muted-foreground">The dev compose override replaces the GHCR image with a local Dockerfile build and exposes the database port for direct access.</p>
+          <p className="text-xs text-muted-foreground mb-2">The app will be available at <code className="bg-secondary px-1 rounded">https://yourdomain.com</code> once you set up your reverse proxy. The database schema is created automatically on first startup.</p>
+          <p className="text-xs text-muted-foreground">The production compose file uses the pre-built image <code className="bg-secondary px-1 rounded text-xs">ghcr.io/vulnradar/vulnradar:latest</code>. For source builds, clone the repo and run <code className="bg-secondary px-1 rounded text-xs">docker build</code> locally.</p>
         </Card>
 
         <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-4 flex gap-3">
@@ -517,6 +510,8 @@ DB_PORT=5433`}</code></pre>
   -e DATABASE_URL="postgresql://user:pass@your-db-host:5432/vulnradar" \\
   -e NEXT_PUBLIC_APP_URL="https://yourdomain.com" \\
   -e API_KEY_ENCRYPTION_KEY="your-64-char-hex-key" \\
+  -e NEXT_PUBLIC_TURNSTILE_SITE_KEY="your-turnstile-key" \\
+  -e TURNSTILE_SECRET_KEY="your-turnstile-secret" \\
   --restart unless-stopped \\
   --memory 1g \\
   ghcr.io/vulnradar/vulnradar:latest`}</code></pre>
