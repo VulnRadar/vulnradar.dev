@@ -5,10 +5,22 @@ import { APP_NAME, TOTAL_CHECKS_LABEL } from "@/lib/constants"
 
 const CHANGELOG = [
   {
+    version: "1.9.3",
+    date: "February 24, 2026",
+    title: "Admin Version Monitoring & Enhanced Admin Controls",
+    highlights: true,
+    changes: [
+      { icon: Bell, label: "Automatic Admin Version Monitoring", desc: "Admins now automatically receive version update notifications via the notification bell without visiting the admin page. Behind version → check every 24 hours with 'Update Available' alert. Current version → check weekly. Ahead of version → check weekly (early access). Removed manual version check UI from admin dashboard." },
+      { icon: Shield, label: "Intelligent Notification Frequency", desc: "Version monitoring adapts based on deployment state. Behind versions trigger urgent 24-hour reminders with a direct link to changelog. Current and ahead versions check weekly for awareness. Each notification state is tracked with local storage to avoid redundant alerts." },
+      { icon: Settings, label: "Extended Admin Management Options", desc: "Added comprehensive admin controls for managing users, teams, security settings, and platform configuration. Admins now have expanded visibility into user activity, API key management, and system health." },
+      { icon: Lock, label: "Enhanced Admin Page Security", desc: "All admin operations now enforce proper RBAC (role-based access control) with granular permission checks. Admin audit logging added to track sensitive actions and changes." },
+    ],
+  },
+  {
     version: "1.9.2",
     date: "February 24, 2026",
     title: "Security Hardening, GDPR Compliance & Docker Production Overhaul",
-    highlights: true,
+    highlights: false,
     changes: [
       { icon: Lock, label: "Stricter Password Strength Calculator", desc: "Overhauled the password strength scoring system. Added a common password dictionary (120+ passwords), sequential character detection (abc, 123), and repeated character penalties. 'Password' is no longer rated as 'Fair'. Extracted into a shared lib/password-strength.ts used by both signup and reset-password pages." },
       { icon: Key, label: "AES-256-GCM API Key Encryption", desc: "API keys are now encrypted at rest using AES-256-GCM authenticated encryption in addition to the existing SHA-256 hash lookup. A new API_KEY_ENCRYPTION_KEY environment variable (32-byte hex) enables application-level encryption for secure key storage and admin recovery. The hash is kept for O(1) validation performance." },
