@@ -48,7 +48,6 @@ import { Footer } from "@/components/scanner/footer"
 import { cn } from "@/lib/utils"
 import { PaginationControl, usePagination } from "@/components/ui/pagination-control"
 import { STAFF_ROLES, STAFF_ROLE_LABELS, STAFF_ROLE_HIERARCHY, ROLE_BADGE_STYLES } from "@/lib/constants"
-import { VersionCheck } from "@/components/version-check"
 
 interface AdminStats {
   total_users: string
@@ -447,9 +446,6 @@ export default function AdminPage() {
                 <StatCard label="Disabled" value={stats.disabled_users} icon={Ban} color="text-destructive" accent="bg-destructive" />
               </div>
             )}
-
-            {/* Version check */}
-            <VersionCheck />
 
             {/* Tab navigation */}
             <div className="flex items-center gap-1 border-b border-border">
