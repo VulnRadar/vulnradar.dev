@@ -160,8 +160,9 @@ export function NotificationBell() {
   const [versionDismissed, setVersionDismissed] = useState(initVersionDismissed)
   const [discordDismissed, setDiscordDismissed] = useState(initDiscordDismissed)
   const [customNotifs, setCustomNotifs] = useState<CustomNotification[]>([])
+  const [hydrated, setHydrated] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
-  const { me } = useAuth()
+  useAuth() // ensure auth hook runs for side-effects (if any), but avoid unused variable
 
   const isPublicRoute = PUBLIC_PATHS.some((p) => {
     if (p === "/" || p === "/landing") return pathname === p
@@ -189,6 +190,11 @@ export function NotificationBell() {
 
     window.addEventListener("app:notification", handleCustomNotif)
     return () => window.removeEventListener("app:notification", handleCustomNotif)
+  }, [])
+
+  // Mark component as hydrated after client mount to avoid SSR/CSR mismatches
+  useEffect(() => {
+    setHydrated(true)
   }, [])
 
   // Close on outside click
@@ -292,11 +298,11 @@ export function NotificationBell() {
         variant="ghost"
         size="icon"
         onClick={() => setOpen(!open)}
-        aria-label={`Notifications${count > 0 ? ` (${count} unread)` : ""}`}
+        aria-label={hydrated ? `Notifications${count > 0 ? ` (${count} unread)` : ""}` : "Notifications"}
         className="relative text-muted-foreground hover:text-foreground h-8 w-8"
       >
         <Bell className="h-4 w-4" />
-        {count > 0 && (
+        {hydrated && count > 0 && (
           <span className="absolute -top-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-primary-foreground">
             {count}
           </span>
