@@ -129,6 +129,17 @@ interface NotifItem {
   onDismiss: () => void
 }
 
+interface CustomNotification {
+  id: string
+  title: string
+  message: string
+  type: "warning" | "info" | "success" | "error"
+  actionLabel?: string
+  actionUrl?: string
+  autoClose?: boolean
+  autoCloseDelay?: number
+}
+
 // ─── Notification Bell (header dropdown) ─────────────────────────
 
 function initVersionDismissed(): boolean {
@@ -148,6 +159,7 @@ export function NotificationBell() {
   const [open, setOpen] = useState(false)
   const [versionDismissed, setVersionDismissed] = useState(initVersionDismissed)
   const [discordDismissed, setDiscordDismissed] = useState(initDiscordDismissed)
+  const [customNotifs, setCustomNotifs] = useState<CustomNotification[]>([])
   const ref = useRef<HTMLDivElement>(null)
   const { me } = useAuth()
 
@@ -155,6 +167,29 @@ export function NotificationBell() {
     if (p === "/" || p === "/landing") return pathname === p
     return pathname.startsWith(p)
   })
+
+  // Listen for custom notifications from AdminVersionNotifier
+  useEffect(() => {
+    function handleCustomNotif(e: Event) {
+      const evt = e as CustomEvent<CustomNotification>
+      if (evt.detail) {
+        setCustomNotifs((prev) => {
+          const filtered = prev.filter((n) => n.id !== evt.detail.id)
+          return [...filtered, evt.detail]
+        })
+
+        // Auto-close if specified
+        if (evt.detail.autoClose) {
+          setTimeout(() => {
+            setCustomNotifs((prev) => prev.filter((n) => n.id !== evt.detail.id))
+          }, evt.detail.autoCloseDelay || 5000)
+        }
+      }
+    }
+
+    window.addEventListener("app:notification", handleCustomNotif)
+    return () => window.removeEventListener("app:notification", handleCustomNotif)
+  }, [])
 
   // Close on outside click
   useEffect(() => {
@@ -177,6 +212,40 @@ export function NotificationBell() {
 
   const notifications = useMemo<NotifItem[]>(() => {
     const list: NotifItem[] = []
+
+    // Add custom notifications (from AdminVersionNotifier, etc)
+    customNotifs.forEach((cn) => {
+      let icon = <Sparkles className="h-4 w-4" />
+      let iconBg = "bg-primary/10 text-primary"
+
+      if (cn.type === "warning") {
+        icon = <AlertTriangle className="h-4 w-4" />
+        iconBg = "bg-destructive/10 text-destructive"
+      } else if (cn.type === "info") {
+        icon = <MessageCircle className="h-4 w-4" />
+        iconBg = "bg-blue-500/10 text-blue-500"
+      } else if (cn.type === "success") {
+        icon = <Sparkles className="h-4 w-4" />
+        iconBg = "bg-emerald-500/10 text-emerald-500"
+      }
+
+      list.push({
+        id: cn.id,
+        icon,
+        iconBg,
+        title: cn.title,
+        description: cn.message,
+        action: {
+          label: cn.actionLabel || "View",
+          onClick: () => {
+            if (cn.actionUrl) window.open(cn.actionUrl, "_blank", "noopener,noreferrer")
+          },
+        },
+        onDismiss: () => {
+          setCustomNotifs((prev) => prev.filter((n) => n.id !== cn.id))
+        },
+      })
+    })
 
     if (!versionDismissed) {
       list.push({
@@ -213,7 +282,7 @@ export function NotificationBell() {
     }
 
     return list
-  }, [versionDismissed, discordDismissed, dismissVersion, dismissDiscord, router])
+  }, [versionDismissed, discordDismissed, dismissVersion, dismissDiscord, router, customNotifs])
 
   const count = notifications.length
 
