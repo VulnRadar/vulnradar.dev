@@ -64,8 +64,8 @@ export default function SetupPage() {
         <Card className="p-6 border-border/40">
           <h3 className="font-semibold mb-4">Step 1: Clone the Repository</h3>
           <p className="text-sm text-muted-foreground mb-3">Clone VulnRadar from GitHub:</p>
-          <pre className="bg-secondary/50 p-4 rounded text-sm overflow-x-auto mb-4"><code>{`git clone https://github.com/VulnRadar/vulnradar.dev.git
-cd vulnradar.dev`}</code></pre>
+          <pre className="bg-secondary/50 p-4 rounded text-sm overflow-x-auto mb-4"><code>git clone https://github.com/VulnRadar/vulnradar.dev.git
+            cd vulnradar.dev</code></pre>
           <p className="text-xs text-muted-foreground">This creates a directory called "VulnRadar" with the latest code from the main branch.</p>
         </Card>
 
@@ -81,9 +81,9 @@ cd vulnradar.dev`}</code></pre>
         <Card className="p-6 border-border/40">
           <h3 className="font-semibold mb-4">Step 3: Verify Installation</h3>
           <p className="text-sm text-muted-foreground mb-3">Check that all dependencies are installed correctly:</p>
-          <pre className="bg-secondary/50 p-4 rounded text-sm overflow-x-auto"><code>{`npm list --depth=0
-# or
-pnpm list --depth=0`}</code></pre>
+          <pre className="bg-secondary/50 p-4 rounded text-sm overflow-x-auto"><code>npm list --depth=0
+            # or
+            pnpm list --depth=0</code></pre>
         </Card>
       </section>
 
@@ -95,40 +95,40 @@ pnpm list --depth=0`}</code></pre>
         <Card className="p-6 border-border/40">
           <h3 className="font-semibold mb-4">Step 1: Create Database and User</h3>
           <p className="text-sm text-muted-foreground mb-3">Connect to PostgreSQL and create a new database:</p>
-          <pre className="bg-secondary/50 p-4 rounded text-sm overflow-x-auto mb-4"><code>{`psql -U postgres
+          <pre className="bg-secondary/50 p-4 rounded text-sm overflow-x-auto mb-4"><code>psql -U postgres
 
-# Inside psql:
-CREATE DATABASE vulnradar;
-CREATE USER vulnradar_user WITH PASSWORD 'strong_password_here';
-ALTER ROLE vulnradar_user SET client_encoding TO 'utf8';
-ALTER ROLE vulnradar_user SET default_transaction_isolation TO 'read committed';
-ALTER ROLE vulnradar_user SET default_transaction_deferrable TO on;
-ALTER ROLE vulnradar_user SET default_transaction_deferrable TO off;
-GRANT ALL PRIVILEGES ON DATABASE vulnradar TO vulnradar_user;
-\\q`}</code></pre>
+            # Inside psql:
+            CREATE DATABASE vulnradar;
+            CREATE USER vulnradar_user WITH PASSWORD 'strong_password_here';
+            ALTER ROLE vulnradar_user SET client_encoding TO 'utf8';
+            ALTER ROLE vulnradar_user SET default_transaction_isolation TO 'read committed';
+            ALTER ROLE vulnradar_user SET default_transaction_deferrable TO on;
+            ALTER ROLE vulnradar_user SET default_transaction_deferrable TO off;
+            GRANT ALL PRIVILEGES ON DATABASE vulnradar TO vulnradar_user;
+            \q</code></pre>
           <p className="text-xs text-muted-foreground">Replace 'strong_password_here' with a secure password of at least 12 characters.</p>
         </Card>
 
         <Card className="p-6 border-border/40">
           <h3 className="font-semibold mb-4">Step 2: Test Database Connection</h3>
           <p className="text-sm text-muted-foreground mb-3">Verify the connection with your credentials:</p>
-          <pre className="bg-secondary/50 p-4 rounded text-sm overflow-x-auto"><code>{`psql -U vulnradar_user -d vulnradar -h localhost
-# Type your password when prompted
-\\dt  # Lists all tables
-\\q  # Exit psql`}</code></pre>
+          <pre className="bg-secondary/50 p-4 rounded text-sm overflow-x-auto"><code>psql -U vulnradar_user -d vulnradar -h localhost
+            # Type your password when prompted
+            \dt  # Lists all tables
+            \q  # Exit psql</code></pre>
         </Card>
 
         <Card className="p-6 border-border/40">
           <h3 className="font-semibold mb-4">Step 3: Auto-Schema Setup</h3>
           <p className="text-sm text-muted-foreground mb-3">{APP_NAME} automatically creates all required tables and indexes when the application starts for the first time. Simply start the dev server:</p>
-          <pre className="bg-secondary/50 p-4 rounded text-sm overflow-x-auto"><code>{`npm run dev`}</code></pre>
+          <pre className="bg-secondary/50 p-4 rounded text-sm overflow-x-auto"><code>npm run dev</code></pre>
           <p className="text-xs text-muted-foreground mt-2">The <code className="bg-secondary px-1 rounded text-xs">instrumentation.ts</code> file handles all schema creation on startup. No separate migration command is needed for initial setup.</p>
         </Card>
 
         <Card className="p-6 border-border/40">
           <h3 className="font-semibold mb-4">Step 4: Run Migration Check (Optional)</h3>
           <p className="text-sm text-muted-foreground mb-3">After the app has started at least once, you can verify your database schema matches the expected schema:</p>
-          <pre className="bg-secondary/50 p-4 rounded text-sm overflow-x-auto"><code>{`npm run migrate`}</code></pre>
+          <pre className="bg-secondary/50 p-4 rounded text-sm overflow-x-auto"><code>npm run migrate</code></pre>
           <p className="text-xs text-muted-foreground mt-2">This interactive tool compares your database against the expected schema defined in <code className="bg-secondary px-1 rounded text-xs">instrumentation.ts</code>. It will report missing tables, missing columns, and extra columns or tables. You can selectively add missing columns or drop extra ones with confirmation prompts. All destructive actions default to No and require explicit <code className="bg-secondary px-1 rounded text-xs">y</code> confirmation.</p>
         </Card>
       </section>
@@ -213,28 +213,28 @@ TURNSTILE_SECRET_KEY=your-turnstile-secret-key`}</code></pre>
         <Card className="p-6 border-border/40">
           <h3 className="font-semibold mb-4">Development Server</h3>
           <p className="text-sm text-muted-foreground mb-3">Start the development server with hot reload:</p>
-          <pre className="bg-secondary/50 p-4 rounded text-sm overflow-x-auto mb-3"><code>{`npm run dev
-# or
-pnpm dev`}</code></pre>
+          <pre className="bg-secondary/50 p-4 rounded text-sm overflow-x-auto mb-3"><code>npm run dev
+            # or
+            pnpm dev</code></pre>
           <p className="text-xs text-muted-foreground">The application will be available at <a href="http://localhost:3000" className="text-primary hover:underline">http://localhost:3000</a>. Changes to files will automatically reload the browser.</p>
         </Card>
 
         <Card className="p-6 border-border/40">
           <h3 className="font-semibold mb-4">Production Build</h3>
           <p className="text-sm text-muted-foreground mb-3">Build and run for production:</p>
-          <pre className="bg-secondary/50 p-4 rounded text-sm overflow-x-auto"><code>{`npm run build
-npm start
-# or
-pnpm build
-pnpm start`}</code></pre>
+          <pre className="bg-secondary/50 p-4 rounded text-sm overflow-x-auto"><code>npm run build
+            npm start
+            # or
+            pnpm build
+            pnpm start</code></pre>
         </Card>
 
         <Card className="p-6 border-border/40">
           <h3 className="font-semibold mb-4">Run on Different Port</h3>
           <p className="text-sm text-muted-foreground mb-3">If port 3000 is already in use:</p>
-          <pre className="bg-secondary/50 p-4 rounded text-sm overflow-x-auto"><code>{`npm run dev -- -p 3001
-# or
-pnpm dev -- -p 3001`}</code></pre>
+          <pre className="bg-secondary/50 p-4 rounded text-sm overflow-x-auto"><code>npm run dev -- -p 3001
+            # or
+            pnpm dev -- -p 3001</code></pre>
         </Card>
       </section>
 
@@ -259,9 +259,9 @@ pnpm dev -- -p 3001`}</code></pre>
           <div>
             <h3 className="font-semibold mb-2">3. Check Database Connection</h3>
             <p className="text-sm text-muted-foreground">Verify user data was created in the database:</p>
-            <pre className="bg-secondary/50 p-2 rounded text-xs mt-2 overflow-x-auto"><code>{`psql -U vulnradar_user -d vulnradar -h localhost
-SELECT id, email, name FROM users LIMIT 5;
-\\q`}</code></pre>
+            <pre className="bg-secondary/50 p-2 rounded text-xs mt-2 overflow-x-auto"><code>psql -U vulnradar_user -d vulnradar -h localhost
+              SELECT id, email, name FROM users LIMIT 5;
+              \q</code></pre>
           </div>
 
           <div>
@@ -396,8 +396,8 @@ npm start`}</code></pre>
           <div>
             <h3 className="font-semibold text-foreground mb-1 text-sm">Prerequisites</h3>
             <p className="text-xs text-muted-foreground">Docker and Docker Compose installed. Verify with:</p>
-            <pre className="bg-secondary/50 p-2 rounded text-xs mt-2 overflow-x-auto"><code>{`docker --version
-docker compose version`}</code></pre>
+            <pre className="bg-secondary/50 p-2 rounded text-xs mt-2 overflow-x-auto"><code>docker --version
+              docker compose version</code></pre>
           </div>
         </div>
 
@@ -405,13 +405,13 @@ docker compose version`}</code></pre>
         <div className="space-y-3">
           <Card className="p-6 border-border/40">
             <h3 className="font-semibold mb-4">Step 1: Create Project Directory</h3>
-            <pre className="bg-secondary/50 p-4 rounded text-sm overflow-x-auto"><code>{`mkdir -p ~/vulnradar
-cd ~/vulnradar`}</code></pre>
+            <pre className="bg-secondary/50 p-4 rounded text-sm overflow-x-auto"><code>mkdir -p ~/vulnradar
+              cd ~/vulnradar</code></pre>
           </Card>
 
           <Card className="p-6 border-border/40">
             <h3 className="font-semibold mb-4">Step 2: Download docker-compose.yml</h3>
-            <pre className="bg-secondary/50 p-4 rounded text-sm overflow-x-auto mb-3"><code>{`curl -O https://raw.githubusercontent.com/VulnRadar/vulnradar.dev/main/docker-compose.yml`}</code></pre>
+            <pre className="bg-secondary/50 p-4 rounded text-sm overflow-x-auto mb-3"><code>curl -O https://raw.githubusercontent.com/VulnRadar/vulnradar.dev/main/docker-compose.yml</code></pre>
             <p className="text-xs text-muted-foreground">Verify it downloaded:</p>
             <pre className="bg-secondary/50 p-2 rounded text-xs mt-2 overflow-x-auto"><code>ls</code></pre>
             <p className="text-xs text-muted-foreground mt-2">You should see <code className="bg-secondary px-1 rounded">docker-compose.yml</code> in the current directory.</p>
@@ -420,7 +420,7 @@ cd ~/vulnradar`}</code></pre>
           <Card className="p-6 border-border/40">
             <h3 className="font-semibold mb-4">Step 3: Create .env File</h3>
             <p className="text-sm text-muted-foreground mb-3">Create a <code className="bg-secondary px-1 rounded text-xs">.env</code> file with required environment variables:</p>
-            <pre className="bg-secondary/50 p-4 rounded text-sm overflow-x-auto mb-4"><code>{`nano .env`}</code></pre>
+            <pre className="bg-secondary/50 p-4 rounded text-sm overflow-x-auto mb-4"><code>nano .env</code></pre>
 
             <p className="text-sm text-muted-foreground mb-3">Paste the minimum required configuration:</p>
             <pre className="bg-secondary/50 p-4 rounded text-sm overflow-x-auto mb-4"><code>{`# Database
@@ -442,31 +442,31 @@ NEXT_PUBLIC_TURNSTILE_SITE_KEY=your-turnstile-key
 TURNSTILE_SECRET_KEY=your-turnstile-secret`}</code></pre>
 
             <p className="text-sm text-muted-foreground mb-3">Generate a secure encryption key (copy the output and paste into .env):</p>
-            <pre className="bg-secondary/50 p-4 rounded text-sm overflow-x-auto"><code>{`node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`}</code></pre>
+            <pre className="bg-secondary/50 p-4 rounded text-sm overflow-x-auto"><code>node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"</code></pre>
 
             <p className="text-xs text-muted-foreground mt-3">Save and exit nano with <code className="bg-secondary px-1 rounded">Ctrl+O</code>, <code className="bg-secondary px-1 rounded">Enter</code>, <code className="bg-secondary px-1 rounded">Ctrl+X</code></p>
           </Card>
 
           <Card className="p-6 border-border/40">
             <h3 className="font-semibold mb-4">Step 4: Pull Latest Images</h3>
-            <pre className="bg-secondary/50 p-4 rounded text-sm overflow-x-auto"><code>{`docker compose pull`}</code></pre>
+            <pre className="bg-secondary/50 p-4 rounded text-sm overflow-x-auto"><code>docker compose pull</code></pre>
             <p className="text-xs text-muted-foreground mt-3">This downloads the latest pre-built images for PostgreSQL and {APP_NAME}.</p>
           </Card>
 
           <Card className="p-6 border-border/40">
             <h3 className="font-semibold mb-4">Step 5: Start the Application</h3>
-            <pre className="bg-secondary/50 p-4 rounded text-sm overflow-x-auto mb-4"><code>{`docker compose up -d`}</code></pre>
+            <pre className="bg-secondary/50 p-4 rounded text-sm overflow-x-auto mb-4"><code>docker compose up -d</code></pre>
             <p className="text-xs text-muted-foreground mb-3">The <code className="bg-secondary px-1 rounded">-d</code> flag runs in the background. This starts both PostgreSQL and the {APP_NAME} app.</p>
 
             <p className="text-sm text-muted-foreground mb-3">Verify containers are running:</p>
-            <pre className="bg-secondary/50 p-2 rounded text-xs overflow-x-auto"><code>{`docker ps`}</code></pre>
+            <pre className="bg-secondary/50 p-2 rounded text-xs overflow-x-auto"><code>docker ps</code></pre>
             <p className="text-xs text-muted-foreground mt-2">You should see two containers: <code className="bg-secondary px-1 rounded">vulnradar-db</code> and <code className="bg-secondary px-1 rounded">vulnradar-app</code></p>
           </Card>
 
           <Card className="p-6 border-border/40">
             <h3 className="font-semibold mb-4">Step 6: Verify Everything Works</h3>
             <p className="text-sm text-muted-foreground mb-3">Check the application logs:</p>
-            <pre className="bg-secondary/50 p-2 rounded text-xs overflow-x-auto mb-4"><code>{`docker logs -f vulnradar-app`}</code></pre>
+            <pre className="bg-secondary/50 p-2 rounded text-xs overflow-x-auto mb-4"><code>docker logs -f vulnradar-app</code></pre>
             <p className="text-xs text-muted-foreground mb-3">Wait for the message: <code className="bg-secondary px-1 rounded text-xs">ready - started server on</code></p>
 
             <p className="text-sm text-muted-foreground mb-3">Then access your application at:</p>
@@ -513,8 +513,8 @@ TURNSTILE_SECRET_KEY=your-turnstile-secret`}</code></pre>
 
             <div>
               <h4 className="font-semibold text-sm mb-2">Update to Latest Version</h4>
-              <pre className="bg-secondary/50 p-2 rounded text-xs overflow-x-auto mb-2"><code>{`docker compose pull
-docker compose up -d`}</code></pre>
+              <pre className="bg-secondary/50 p-2 rounded text-xs overflow-x-auto mb-2"><code>docker compose pull
+                docker compose up -d</code></pre>
               <p className="text-xs text-muted-foreground">This pulls the latest image and restarts the app. Database schema updates automatically on startup.</p>
             </div>
 
@@ -567,8 +567,8 @@ docker compose up -d`}</code></pre>
               <p className="text-xs text-muted-foreground mb-2">Verify containers are healthy:</p>
               <pre className="bg-secondary/50 p-2 rounded text-xs overflow-x-auto"><code>docker compose ps</code></pre>
               <p className="text-xs text-muted-foreground mt-2">If status shows unhealthy, check both logs:</p>
-              <pre className="bg-secondary/50 p-2 rounded text-xs overflow-x-auto mt-1"><code>{`docker logs vulnradar-app
-docker logs vulnradar-db`}</code></pre>
+              <pre className="bg-secondary/50 p-2 rounded text-xs overflow-x-auto mt-1"><code>docker logs vulnradar-app
+                docker logs vulnradar-db</code></pre>
             </div>
 
             <div>
@@ -635,7 +635,7 @@ TURNSTILE_SECRET_KEY=your-secret`}</code></pre>
         <Card className="p-6 border-border/40">
           <h3 className="font-semibold mb-4">Running Migrations</h3>
           <p className="text-sm text-muted-foreground mb-3">After pulling a new version, run the migration check:</p>
-          <pre className="bg-secondary/50 p-4 rounded text-sm overflow-x-auto mb-4"><code>{`npm run migrate`}</code></pre>
+          <pre className="bg-secondary/50 p-4 rounded text-sm overflow-x-auto mb-4"><code>npm run migrate</code></pre>
           <p className="text-sm text-muted-foreground mb-3">The tool will:</p>
           <ol className="list-decimal list-inside space-y-2 text-sm text-muted-foreground mb-4">
             <li>Parse the expected schema from <code className="bg-secondary px-1 rounded text-xs">instrumentation.ts</code></li>
@@ -690,7 +690,7 @@ TURNSTILE_SECRET_KEY=your-secret`}</code></pre>
         <Card className="p-6 border-border/40">
           <h3 className="font-semibold mb-4">API Version Endpoint</h3>
           <p className="text-sm text-muted-foreground mb-3">You can also check the version programmatically:</p>
-          <pre className="bg-secondary/50 p-4 rounded text-sm overflow-x-auto"><code>{`curl ${APP_URL}/api/version`}</code></pre>
+          <pre className="bg-secondary/50 p-4 rounded text-sm overflow-x-auto"><code>curl {APP_URL}/api/version</code></pre>
           <p className="text-xs text-muted-foreground mt-2">Returns the current version, latest version, engine version, and update status. See <a href="/docs/api#endpoints" className="text-primary hover:underline">API Reference</a> for full response format.</p>
         </Card>
       </section>
