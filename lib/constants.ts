@@ -263,6 +263,12 @@ export const BEARER_PREFIX = "Bearer "
 export const TOTP_ISSUER = APP_NAME
 
 // ============================================================================
+// TURNSTILE / CAPTCHA CONFIG
+// ============================================================================
+
+export const TURNSTILE_ENABLED = !!process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY
+
+// ============================================================================
 // DEMO SCAN LIMITS
 // ============================================================================
 export const DEMO_SCAN_LIMIT = 5
