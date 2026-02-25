@@ -1,5 +1,6 @@
 "use client"
 
+import React from "react"
 import { Card } from "@/components/ui/card"
 import { AlertTriangle, CheckCircle, Info } from "lucide-react"
 import { APP_NAME, APP_URL, APP_VERSION, ENGINE_VERSION } from "@/lib/constants"
