@@ -70,8 +70,8 @@ export function AdminVersionNotifier() {
         const data: VersionData = await res.json()
         console.log("[v0] Version check result:", data)
 
-        const isAdmin = me?.role && STAFF_ROLES.includes(me.role)
-        console.log("[v0] Is admin:", isAdmin, "Role:", me?.role)
+        const isAdmin = me?.role === STAFF_ROLES.ADMIN
+        console.log("[v0] Is admin:", isAdmin, "Role:", me?.role, "ADMIN const:", STAFF_ROLES.ADMIN)
 
         const changelogSeen = getCookie("changelogSeen")
         console.log("[v0] Changelog seen:", changelogSeen, "Current:", data.current)
