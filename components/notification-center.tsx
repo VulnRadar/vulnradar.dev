@@ -25,6 +25,7 @@ import { useAuth } from "@/components/auth-provider"
 // ─── Cookie Helpers ──────────────────────────────────────────────
 
 const DISCORD_COOKIE = "vulnradar_discord_dismissed"
+const GIVEAWAY_COOKIE = "vulnradar_giveaway_dismissed"
 const DISCORD_INVITE_URL = "https://discord.gg/Y7R6hdGbNe"
 
 function getCookie(name: string): string | undefined {
@@ -153,12 +154,18 @@ function initDiscordDismissed(): boolean {
   return !!getCookie(DISCORD_COOKIE)
 }
 
+function initGiveawayDismissed(): boolean {
+  if (typeof document === "undefined") return true
+  return !!getCookie(GIVEAWAY_COOKIE)
+}
+
 export function NotificationBell() {
   const router = useRouter()
   const pathname = usePathname()
   const [open, setOpen] = useState(false)
   const [versionDismissed, setVersionDismissed] = useState(initVersionDismissed)
   const [discordDismissed, setDiscordDismissed] = useState(initDiscordDismissed)
+  const [giveawayDismissed, setGiveawayDismissed] = useState(initGiveawayDismissed)
   const [customNotifs, setCustomNotifs] = useState<CustomNotification[]>([])
   const [hydrated, setHydrated] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
@@ -214,6 +221,11 @@ export function NotificationBell() {
   const dismissDiscord = useCallback(() => {
     setCookie(DISCORD_COOKIE, "1", 60 * 60 * 24 * 30)
     setDiscordDismissed(true)
+  }, [])
+
+  const dismissGiveaway = useCallback(() => {
+    setCookie(GIVEAWAY_COOKIE, "1", 14)
+    setGiveawayDismissed(true)
   }, [])
 
   const notifications = useMemo<NotifItem[]>(() => {
@@ -287,8 +299,23 @@ export function NotificationBell() {
       })
     }
 
+    if (!giveawayDismissed) {
+      list.push({
+        id: "giveaway",
+        icon: <Sparkles className="h-4 w-4" />,
+        iconBg: "bg-amber-500/10 text-amber-500",
+        title: "🎁 Giveaway Happening Now!",
+        description: "We're giving away 3 months FREE of VulnRadar Elite Supporter tier! Join our Discord server to enter.",
+        action: {
+          label: "Enter Giveaway",
+          onClick: () => { dismissGiveaway(); setOpen(false); window.open(DISCORD_INVITE_URL, "_blank", "noopener,noreferrer") },
+        },
+        onDismiss: dismissGiveaway,
+      })
+    }
+
     return list
-  }, [versionDismissed, discordDismissed, dismissVersion, dismissDiscord, router, customNotifs])
+  }, [versionDismissed, discordDismissed, giveawayDismissed, dismissVersion, dismissDiscord, dismissGiveaway, router, customNotifs])
 
   const count = notifications.length
 
