@@ -27,8 +27,7 @@ import { useAuth } from "@/components/auth-provider"
 const DISCORD_COOKIE = "vulnradar_discord_dismissed"
 const GIVEAWAY_COOKIE = "vulnradar_giveaway_shown"
 const GIVEAWAY_START_DATE = new Date("2026-02-26") // Giveaway starts Feb 26
-const GIVEAWAY_DAYS = 12 // Show for 12 days max
-const GIVEAWAY_END_DATE = new Date(GIVEAWAY_START_DATE.getTime() + GIVEAWAY_DAYS * 24 * 60 * 60 * 1000)
+const GIVEAWAY_END_DATE = new Date("2026-03-12") // Giveaway ends Mar 12 (14 days)
 const DISCORD_INVITE_URL = "https://discord.gg/Y7R6hdGbNe"
 
 function getCookie(name: string): string | undefined {
