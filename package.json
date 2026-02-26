@@ -1,6 +1,6 @@
 {
   "name": "vulnradar",
-  "version": "1.9.3",
+  "version": "1.9.4",
   "description": "Professional open-source web vulnerability scanner",
   "private": true,
   "scripts": {
