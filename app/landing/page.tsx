@@ -22,7 +22,7 @@ export default function LandingPage() {
               height={20}
               className="h-5 w-5"
             />
-            <span className="font-bold text-base font-mono tracking-tight">{APP_NAME}</span>
+            <span className="font-bold text-base tracking-tight">{APP_NAME}</span>
           </Link>
           <div className="flex items-center gap-3">
             <Link href="/demo">
