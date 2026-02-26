@@ -25,7 +25,10 @@ import { useAuth } from "@/components/auth-provider"
 // ─── Cookie Helpers ──────────────────────────────────────────────
 
 const DISCORD_COOKIE = "vulnradar_discord_dismissed"
-const GIVEAWAY_COOKIE = "vulnradar_giveaway_dismissed"
+const GIVEAWAY_COOKIE = "vulnradar_giveaway_shown"
+const GIVEAWAY_START_DATE = new Date("2026-02-26") // Giveaway starts Feb 26
+const GIVEAWAY_DAYS = 12 // Show for 12 days max
+const GIVEAWAY_END_DATE = new Date(GIVEAWAY_START_DATE.getTime() + GIVEAWAY_DAYS * 24 * 60 * 60 * 1000)
 const DISCORD_INVITE_URL = "https://discord.gg/Y7R6hdGbNe"
 
 function getCookie(name: string): string | undefined {
@@ -156,6 +159,9 @@ function initDiscordDismissed(): boolean {
 
 function initGiveawayDismissed(): boolean {
   if (typeof document === "undefined") return true
+  // Hide if giveaway period has ended
+  if (new Date() > GIVEAWAY_END_DATE) return true
+  // Otherwise check if shown in last 24 hours
   return !!getCookie(GIVEAWAY_COOKIE)
 }
 
@@ -224,7 +230,7 @@ export function NotificationBell() {
   }, [])
 
   const dismissGiveaway = useCallback(() => {
-    setCookie(GIVEAWAY_COOKIE, "1", 14)
+    setCookie(GIVEAWAY_COOKIE, "1", 1) // 24 hours
     setGiveawayDismissed(true)
   }, [])
 
