@@ -224,7 +224,7 @@ export function NotificationBell() {
   }, [])
 
   const dismissGiveaway = useCallback(() => {
-    setCookie(GIVEAWAY_COOKIE, "1", 60 * 60 * 24 * 14)
+    setCookie(GIVEAWAY_COOKIE, "1", 14)
     setGiveawayDismissed(true)
   }, [])
 
