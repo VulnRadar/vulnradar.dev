@@ -19,6 +19,13 @@ function getCookie(name: string): string | null {
   return null
 }
 
+function setCookie(name: string, value: string, days: number = 1): void {
+  if (typeof document === "undefined") return
+  const expires = new Date()
+  expires.setTime(expires.getTime() + days * 24 * 60 * 60 * 1000)
+  document.cookie = `${name}=${value};expires=${expires.toUTCString()};path=/;SameSite=Lax`
+}
+
 function dispatchNotification(
   id: string,
   title: string,
@@ -48,32 +55,32 @@ export function AdminVersionNotifier() {
     // Wait for auth to be ready
     if (!me) return
 
-    // Only run once per session
-    if (sessionStorage.getItem("versionNotifierRan")) return
+    // Only run once per 24 hours (checked via cookie)
+    if (getCookie("versionNotifierShown")) return
 
     async function checkVersion() {
       try {
-        console.log("Version notifier running for user:", me?.userId)
+        console.log("[v0] Version notifier running for user:", me?.userId)
         const res = await fetch("/api/version")
         if (!res.ok) {
-          console.log("Version API returned:", res.status)
+          console.log("[v0] Version API returned:", res.status)
           return
         }
 
         const data: VersionData = await res.json()
-        console.log("Version check result:", data)
+        console.log("[v0] Version check result:", data)
 
         const isAdmin = me?.role === STAFF_ROLES.ADMIN
-        console.log("Is admin:", isAdmin, "Role:", me?.role, "ADMIN const:", STAFF_ROLES.ADMIN)
+        console.log("[v0] Is admin:", isAdmin, "Role:", me?.role)
 
         const changelogSeen = getCookie("changelogSeen")
-        console.log("Changelog seen:", changelogSeen, "Current:", data.current)
+        console.log("[v0] Changelog seen:", changelogSeen, "Current:", data.current)
 
         // Case 1: Ahead of latest
         if (data.status === "ahead") {
-          console.log("Status: AHEAD")
+          console.log("[v0] Status: AHEAD")
           if (isAdmin) {
-            console.log("Dispatching admin ahead notification")
+            console.log("[v0] Dispatching admin ahead notification")
             dispatchNotification(
               "version-ahead",
               "Running Ahead of Latest",
@@ -81,15 +88,15 @@ export function AdminVersionNotifier() {
               "warning"
             )
           }
-          sessionStorage.setItem("versionNotifierRan", "1")
+          setCookie("versionNotifierShown", "1", 1) // 24 hours
           return
         }
 
         // Case 2: Behind latest
         if (data.status === "behind") {
-          console.log("Status: BEHIND")
+          console.log("[v0] Status: BEHIND")
           if (isAdmin) {
-            console.log("Dispatching admin behind notification")
+            console.log("[v0] Dispatching admin behind notification")
             dispatchNotification(
               "version-behind",
               "Update Available",
@@ -99,16 +106,16 @@ export function AdminVersionNotifier() {
               data.release_url || "/changelog"
             )
           }
-          sessionStorage.setItem("versionNotifierRan", "1")
+          setCookie("versionNotifierShown", "1", 1) // 24 hours
           return
         }
       } catch (err) {
-        console.error("Version check failed:", err)
+        console.error("[v0] Version check failed:", err)
       }
     }
 
     checkVersion()
-  }, [me?.userId]) // Only depend on userId, not the entire me object
+  }, [me?.userId])
 
   return null
 }
