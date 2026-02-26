@@ -60,27 +60,20 @@ export function AdminVersionNotifier() {
 
     async function checkVersion() {
       try {
-        console.log("[v0] Version notifier running for user:", me?.userId)
         const res = await fetch("/api/version")
         if (!res.ok) {
-          console.log("[v0] Version API returned:", res.status)
           return
         }
 
         const data: VersionData = await res.json()
-        console.log("[v0] Version check result:", data)
 
         const isAdmin = me?.role === STAFF_ROLES.ADMIN
-        console.log("[v0] Is admin:", isAdmin, "Role:", me?.role)
 
         const changelogSeen = getCookie("changelogSeen")
-        console.log("[v0] Changelog seen:", changelogSeen, "Current:", data.current)
 
         // Case 1: Ahead of latest
         if (data.status === "ahead") {
-          console.log("[v0] Status: AHEAD")
           if (isAdmin) {
-            console.log("[v0] Dispatching admin ahead notification")
             dispatchNotification(
               "version-ahead",
               "Running Ahead of Latest",
@@ -94,9 +87,7 @@ export function AdminVersionNotifier() {
 
         // Case 2: Behind latest
         if (data.status === "behind") {
-          console.log("[v0] Status: BEHIND")
           if (isAdmin) {
-            console.log("[v0] Dispatching admin behind notification")
             dispatchNotification(
               "version-behind",
               "Update Available",
@@ -110,7 +101,7 @@ export function AdminVersionNotifier() {
           return
         }
       } catch (err) {
-        console.error("[v0] Version check failed:", err)
+        // Silently fail
       }
     }
 
