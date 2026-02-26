@@ -70,10 +70,22 @@ import { APP_NAME, TOTAL_CHECKS_LABEL } from "@/lib/constants"
 
 const CHANGELOG = [
   {
+    version: "1.9.4",
+    date: "February 26, 2026",
+    title: "UI Consistency, Docker Turnstile Fix & Discord Giveaway",
+    highlights: true,
+    changes: [
+      { icon: Palette, label: "Unified Landing & Dashboard Fonts", desc: "Fixed landing page header font inconsistency. Landing page header now uses the same sans-serif font as the dashboard, ensuring consistent typography across all pages and improving visual cohesion." },
+      { icon: Container, label: "Docker Turnstile CAPTCHA Support", desc: "Fixed Docker environment variable injection for client-side Turnstile configuration. Docker now builds from source with build-time argument passing (NEXT_PUBLIC_TURNSTILE_SITE_KEY) instead of relying on pre-built GHCR image. Ensures CAPTCHA keys are available at build time and properly injected into the application." },
+      { icon: Heart, label: "Discord Giveaway Notification", desc: "Added prominent giveaway notification for 3 months FREE VulnRadar Elite Supporter tier. Notification displays in the bell icon for all users, dismisses for 14 days, and links directly to the Discord server entry point. Part of community engagement and supporter tier launch promotion." },
+      { icon: BellRing, label: "Giveaway & Notification Improvements", desc: "Notification system now supports custom giveaway notifications with amber/gold styling. All notifications (giveaway, version, changelog) use version-aware cookies with 24-hour expiration for version checks and 14-day expiration for giveaways." },
+    ],
+  },
+  {
     version: "1.9.3",
     date: "February 24, 2026",
     title: "Admin Version Monitoring & Enhanced Admin Controls",
-    highlights: true,
+    highlights: false,
     changes: [
       { icon: Bell, label: "Automatic Admin Version Monitoring", desc: "Admins now automatically receive version update notifications via the notification bell without visiting the admin page. Behind version → check every 24 hours with 'Update Available' alert. Current version → check weekly. Ahead of version → check weekly (early access). Removed manual version check UI from admin dashboard." },
       { icon: Shield, label: "Intelligent Notification Frequency", desc: "Version monitoring adapts based on deployment state. Behind versions trigger urgent 24-hour reminders with a direct link to changelog. Current and ahead versions check weekly for awareness. Each notification state is tracked with local storage to avoid redundant alerts." },
