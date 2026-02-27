@@ -424,23 +424,44 @@ npm start`}</code></pre>
             <pre className="bg-secondary/50 p-4 rounded text-sm overflow-x-auto mb-4"><code>nano .env</code></pre>
 
             <p className="text-sm text-muted-foreground mb-3">Paste the minimum required configuration:</p>
-            <pre className="bg-secondary/50 p-4 rounded text-sm overflow-x-auto mb-4"><code>{`# Database
-POSTGRES_PASSWORD=your-secure-db-password
+            <pre className="bg-secondary/50 p-4 rounded text-sm overflow-x-auto mb-4">
+              <code>{`# ─────────────────────────────────────────────────────────────────────────
+# DATABASE (Server-side - Required)
+# ─────────────────────────────────────────────────────────────────────────
+# Format: postgresql://[user]:[password]@[host]:[port]/[database]
+DATABASE_URL=postgresql://vulnradar:ru0V1aB9hdT7nv21JSp4@172.93.108.199:25565/postgres
+DATABASE_SSL=false
 
-# Application
-NEXT_PUBLIC_APP_URL=https://yourdomain.com
-API_KEY_ENCRYPTION_KEY=your-generated-key-here
+# ─────────────────────────────────────────────────────────────────────────
+# APPLICATION (Client-side - NEXT_PUBLIC_* - Required)
+# ─────────────────────────────────────────────────────────────────────────
+NEXT_PUBLIC_APP_URL=https://vulnradar.dev
 
-# Email (optional but recommended)
+# ─────────────────────────────────────────────────────────────────────────
+# API KEY ENCRYPTION (Server-side - Required)
+# ─────────────────────────────────────────────────────────────────────────
+API_KEY_ENCRYPTION_KEY=324ee019208e7199156f232280b34cf443023834599a8e0c60e6a3c32c52a22e
+
+# ─────────────────────────────────────────────────────────────────────────
+# TURNSTILE CAPTCHA (Optional - Client & Server-side)
+# ─────────────────────────────────────────────────────────────────────────
+NEXT_PUBLIC_TURNSTILE_SITE_KEY=0x4AAAAAACZz042velkuYjoX
+TURNSTILE_SECRET_KEY=0x4AAAAAACZz08P0GEz_40XUFRFNtjHopq0
+
+# ─────────────────────────────────────────────────────────────────────────
+# SMTP EMAIL CONFIGURATION (Server-side - Optional)
+# ─────────────────────────────────────────────────────────────────────────
 SMTP_HOST=smtp.protonmail.ch
 SMTP_PORT=587
-SMTP_USER=noreply@yourdomain.com
-SMTP_PASS=your-app-password
-SMTP_FROM=noreply@yourdomain.com
+SMTP_USER=noreply@vulnradar.dev
+SMTP_PASS=LY8QTMH4CSTQAM1M
+SMTP_FROM=noreply@vulnradar.dev
 
-# CAPTCHA (optional)
-NEXT_PUBLIC_TURNSTILE_SITE_KEY=your-turnstile-key
-TURNSTILE_SECRET_KEY=your-turnstile-secret`}</code></pre>
+# ─────────────────────────────────────────────────────────────────────────
+# CONTACT & SUPPORT (Server-side - Optional)
+# ─────────────────────────────────────────────────────────────────────────
+CONTACT_EMAIL=support@vulnradar.dev`}</code>
+            </pre>
 
             <p className="text-sm text-muted-foreground mb-3">Generate a secure encryption key (copy the output and paste into .env):</p>
             <pre className="bg-secondary/50 p-4 rounded text-sm overflow-x-auto"><code>node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"</code></pre>
