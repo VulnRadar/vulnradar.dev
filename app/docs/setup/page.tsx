@@ -471,28 +471,35 @@ cd ~/vulnradar`}</CopyCodeBlock>
 # DATABASE (Server-side - Required)
 # ─────────────────────────────────────────────────────────────────────────
 # Format: postgresql://[user]:[password]@[host]:[port]/[database]
-DATABASE_URL=postgresql://vulnradar:your-secure-password@postgres:5432/vulnradar
+DATABASE_URL=postgresql://vulnradar:your-strong-password@postgres:5432/vulnradar
 DATABASE_SSL=false
 
 # ─────────────────────────────────────────────────────────────────────────
 # APPLICATION (Client-side - NEXT_PUBLIC_* - Required)
 # ─────────────────────────────────────────────────────────────────────────
+# Public URL where your app is accessible. Used in emails, redirects, and client-side code.
 NEXT_PUBLIC_APP_URL=https://yourdomain.com
 
 # ─────────────────────────────────────────────────────────────────────────
-# API KEY ENCRYPTION (Server-side - Required)
+# API KEY ENCRYPTION (Server-side - Required for enhanced security)
 # ─────────────────────────────────────────────────────────────────────────
-API_KEY_ENCRYPTION_KEY=324ee019208e7199156f232280b34cf443023834599a8e0c60e6a3c32c52a22e
+# 32-byte hex string for AES-256 encryption of stored API keys.
+# Generate with: node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+API_KEY_ENCRYPTION_KEY=your-64-character-hex-key
 
 # ─────────────────────────────────────────────────────────────────────────
 # TURNSTILE CAPTCHA (Optional - Client & Server-side)
 # ─────────────────────────────────────────────────────────────────────────
-NEXT_PUBLIC_TURNSTILE_SITE_KEY=0x4AAAAAACZz042velkuYjoX
-TURNSTILE_SECRET_KEY=0x4AAAAAACZz08P0GEz_40XUFRFNtjHopq0
+# Get keys from: https://dash.cloudflare.com/
+# Client-side key (exposed to browser - NEXT_PUBLIC_ prefix)
+NEXT_PUBLIC_TURNSTILE_SITE_KEY=your-turnstile-site-key
+# Server-side secret key (kept private - used for token verification)
+TURNSTILE_SECRET_KEY=your-turnstile-secret-key
 
 # ─────────────────────────────────────────────────────────────────────────
 # SMTP EMAIL CONFIGURATION (Server-side - Optional)
 # ─────────────────────────────────────────────────────────────────────────
+# Used for sending transactional emails (password resets, notifications, etc.)
 SMTP_HOST=smtp.protonmail.ch
 SMTP_PORT=587
 SMTP_USER=noreply@yourdomain.com
@@ -502,32 +509,50 @@ SMTP_FROM=noreply@yourdomain.com
 # ─────────────────────────────────────────────────────────────────────────
 # CONTACT & SUPPORT (Server-side - Optional)
 # ─────────────────────────────────────────────────────────────────────────
-CONTACT_EMAIL=support@yourdomain.com`}>{`# ─────────────────────────────────────────────────────────────────────────
+# Email addresses for contact form submissions and support inquiries
+CONTACT_EMAIL=support@yourdomain.com
+
+# ═══════════════════════════════════════════════════════════════════════
+# DOCKER-ONLY VARIABLES (Only for docker-compose.yml)
+# These are NOT needed for direct deployments or Vercel
+# ═══════════════════════════════════════════════════════════════════════
+POSTGRES_DB=vulnradar
+POSTGRES_USER=vulnradar
+POSTGRES_PASSWORD=your-strong-password-here
+APP_PORT=3000
+DB_PORT=5432`}>{`# ─────────────────────────────────────────────────────────────────────────
 # DATABASE (Server-side - Required)
 # ─────────────────────────────────────────────────────────────────────────
 # Format: postgresql://[user]:[password]@[host]:[port]/[database]
-DATABASE_URL=postgresql://vulnradar:your-secure-password@postgres:5432/vulnradar
+DATABASE_URL=postgresql://vulnradar:your-strong-password@postgres:5432/vulnradar
 DATABASE_SSL=false
 
 # ─────────────────────────────────────────────────────────────────────────
 # APPLICATION (Client-side - NEXT_PUBLIC_* - Required)
 # ─────────────────────────────────────────────────────────────────────────
+# Public URL where your app is accessible. Used in emails, redirects, and client-side code.
 NEXT_PUBLIC_APP_URL=https://yourdomain.com
 
 # ─────────────────────────────────────────────────────────────────────────
-# API KEY ENCRYPTION (Server-side - Required)
+# API KEY ENCRYPTION (Server-side - Required for enhanced security)
 # ─────────────────────────────────────────────────────────────────────────
-API_KEY_ENCRYPTION_KEY=324ee019208e7199156f232280b34cf443023834599a8e0c60e6a3c32c52a22e
+# 32-byte hex string for AES-256 encryption of stored API keys.
+# Generate with: node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+API_KEY_ENCRYPTION_KEY=your-64-character-hex-key
 
 # ─────────────────────────────────────────────────────────────────────────
 # TURNSTILE CAPTCHA (Optional - Client & Server-side)
 # ─────────────────────────────────────────────────────────────────────────
-NEXT_PUBLIC_TURNSTILE_SITE_KEY=0x4AAAAAACZz042velkuYjoX
-TURNSTILE_SECRET_KEY=0x4AAAAAACZz08P0GEz_40XUFRFNtjHopq0
+# Get keys from: https://dash.cloudflare.com/
+# Client-side key (exposed to browser - NEXT_PUBLIC_ prefix)
+NEXT_PUBLIC_TURNSTILE_SITE_KEY=your-turnstile-site-key
+# Server-side secret key (kept private - used for token verification)
+TURNSTILE_SECRET_KEY=your-turnstile-secret-key
 
 # ─────────────────────────────────────────────────────────────────────────
 # SMTP EMAIL CONFIGURATION (Server-side - Optional)
 # ─────────────────────────────────────────────────────────────────────────
+# Used for sending transactional emails (password resets, notifications, etc.)
 SMTP_HOST=smtp.protonmail.ch
 SMTP_PORT=587
 SMTP_USER=noreply@yourdomain.com
@@ -537,7 +562,19 @@ SMTP_FROM=noreply@yourdomain.com
 # ─────────────────────────────────────────────────────────────────────────
 # CONTACT & SUPPORT (Server-side - Optional)
 # ─────────────────────────────────────────────────────────────────────────
-CONTACT_EMAIL=support@yourdomain.com`}</CopyCodeBlock>
+# Email addresses for contact form submissions and support inquiries
+CONTACT_EMAIL=support@yourdomain.com
+
+# ═══════════════════════════════════════════════════════════════════════
+# DOCKER-ONLY VARIABLES (Only for docker-compose.yml)
+# These are NOT needed for direct deployments or Vercel
+# ═══════════════════════════════════════════════════════════════════════
+POSTGRES_DB=vulnradar
+POSTGRES_USER=vulnradar
+POSTGRES_PASSWORD=your-strong-password-here
+APP_PORT=3000
+DB_PORT=5432`}</CopyCodeBlock>
+
 
             <p className="text-sm text-muted-foreground mb-3">Generate a secure encryption key (copy the output and paste into .env):</p>
             <CopyCodeBlock code={`node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`}>{`node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`}</CopyCodeBlock>
