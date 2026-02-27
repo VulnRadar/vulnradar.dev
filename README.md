@@ -4,6 +4,10 @@ Professional web vulnerability scanner. Completely free, forever.
 
 **175+ security checks** for SQL injection, XSS, CSRF, authentication issues, and more. Scan any public URL in seconds.
 
+<a href="https://vulnradar.dev/shared/b98cc65262f3ff2cb49e459f9a2a17c6bd8c831475ff81ac7a728a45a6dd2cc2" target="_blank" rel="noopener noreferrer">
+  <img src="https://vulnradar.dev/api/badge/b98cc65262f3ff2cb49e459f9a2a17c6bd8c831475ff81ac7a728a45a6dd2cc2" alt="Secured by VulnRadar" />
+</a>
+
 ## Quick Links
 
 - **[Documentation](https://vulnradar.dev/docs)** - API reference, setup guide, and guides
