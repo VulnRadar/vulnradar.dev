@@ -5,6 +5,10 @@ WORKDIR /app
 
 RUN npm install -g pnpm
 
+# Accept build arguments for client-side env vars
+ARG NEXT_PUBLIC_APP_URL
+ARG NEXT_PUBLIC_TURNSTILE_SITE_KEY
+
 # Install dependencies first (better layer caching)
 COPY package.json pnpm-lock.yaml ./
 RUN pnpm install --frozen-lockfile
@@ -15,6 +19,8 @@ COPY . .
 # Set production env for build
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
+ENV NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL}
+ENV NEXT_PUBLIC_TURNSTILE_SITE_KEY=${NEXT_PUBLIC_TURNSTILE_SITE_KEY}
 
 # Provide a dummy DATABASE_URL so Next.js can build without a live DB.
 # The real value is injected at runtime via docker-compose or docker run.
