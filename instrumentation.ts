@@ -375,10 +375,22 @@ export async function register() {
       } catch (scheduleError) {
         console.error(`[${APP_NAME}] Failed to schedule periodic cleanup:`, scheduleError)
       }
+
+      // Set up graceful shutdown to close pool on process termination
+      const gracefulShutdown = async () => {
+        try {
+          await pool.end()
+          console.log(`[${APP_NAME}] Database pool closed on shutdown.`)
+        } catch (err) {
+          console.error(`[${APP_NAME}] Error closing database pool:`, err)
+        }
+      }
+      process.on("SIGTERM", gracefulShutdown)
+      process.on("SIGINT", gracefulShutdown)
     } catch (error) {
       console.error(`[${APP_NAME}] Database migration failed:`, error)
-    } finally {
-      await pool.end()
     }
+    // Do NOT call pool.end() here - the pool must stay open for the application's lifetime
+    // The pool will be closed when the application shuts down via graceful shutdown handlers
   }
 }
