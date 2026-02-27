@@ -72,13 +72,13 @@ const CHANGELOG = [
   {
     version: "1.9.4",
     date: "February 26, 2026",
-    title: "UI Consistency, Docker Turnstile Fix & Discord Giveaway",
+    title: "UI Consistency, Docker Build-Time Env Vars & Discord Giveaway",
     highlights: true,
     changes: [
-      { icon: Palette, label: "Unified Landing & Dashboard Fonts", desc: "Fixed landing page header font inconsistency. Landing page header now uses the same sans-serif font as the dashboard, ensuring consistent typography across all pages and improving visual cohesion." },
-      { icon: Container, label: "Docker Turnstile CAPTCHA Support", desc: "Fixed Docker environment variable injection for client-side Turnstile configuration. Docker now builds from source with build-time argument passing (NEXT_PUBLIC_TURNSTILE_SITE_KEY) instead of relying on pre-built GHCR image. Ensures CAPTCHA keys are available at build time and properly injected into the application." },
-      { icon: Heart, label: "Discord Giveaway Notification", desc: "Added prominent giveaway notification for 3 months FREE VulnRadar Elite Supporter tier. Notification displays in the bell icon for all users, dismisses for 14 days, and links directly to the Discord server entry point. Part of community engagement and supporter tier launch promotion." },
-      { icon: BellRing, label: "Giveaway & Notification Improvements", desc: "Notification system now supports custom giveaway notifications with amber/gold styling. All notifications (giveaway, version, changelog) use version-aware cookies with 24-hour expiration for version checks and 14-day expiration for giveaways." },
+      { icon: Palette, label: "Unified Landing & Dashboard Fonts", desc: "Fixed landing page header font inconsistency. Landing page header now uses the same sans-serif font (font-sans) as the dashboard, ensuring consistent typography across all pages." },
+      { icon: Container, label: "Docker Build-Time Environment Variable Support", desc: "Fixed Docker CAPTCHA integration by implementing proper build-time argument passing. Dockerfile now accepts ARG directives for NEXT_PUBLIC_APP_URL and NEXT_PUBLIC_TURNSTILE_SITE_KEY. These are converted to ENV during build so Next.js embeds them into the client bundle. docker-compose.yml passes .env values as build arguments. Turnstile keys are now properly available in Docker containers." },
+      { icon: Heart, label: "Discord Giveaway Notification", desc: "Added prominent giveaway notification for 3 months FREE VulnRadar Elite Supporter tier. Notification displays in the bell icon for all users, refreshes every 24 hours, and ends automatically on March 12. Direct link to Discord server for contest entry." },
+      { icon: BellRing, label: "Notification System & Cookie Management", desc: "Enhanced notification system with version-aware cookies. Version checks (behind/ahead) use 24-hour cookies, giveaway notifications show every 24 hours but only during the contest window, and changelog notifications are version-specific. All notifications tracked via secure cookies." },
     ],
   },
   {
