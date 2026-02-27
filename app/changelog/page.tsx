@@ -70,10 +70,22 @@ import { APP_NAME, TOTAL_CHECKS_LABEL } from "@/lib/constants"
 
 const CHANGELOG = [
   {
+    version: "1.9.5",
+    date: "February 26, 2026",
+    title: "Enhanced API Key Security with Encryption-First Storage",
+    highlights: true,
+    changes: [
+      { icon: Key, label: "Encryption-First API Key Storage", desc: "Implemented encryption-first storage strategy for API keys. When API_KEY_ENCRYPTION_KEY is configured, keys are now stored ONLY encrypted (no hash). Only the encrypted key is persisted in the database. Provides maximum security for sensitive API credentials in production environments." },
+      { icon: Lock, label: "Hash-Based Fallback Storage", desc: "When API_KEY_ENCRYPTION_KEY is not configured, keys fall back to SHA-256 hash-only storage for O(1) lookup performance. This maintains backward compatibility while providing instant key validation without full key recovery." },
+      { icon: ShieldCheck, label: "Conditional Lookup Logic", desc: "API key validation automatically adapts based on encryption configuration. If encrypted, lookups use AES-256-GCM encrypted matching. If hash-only, uses SHA-256 lookups. Seamlessly handles both storage modes without user intervention." },
+      { icon: Database, label: "No Breaking Changes", desc: "Existing hash-based deployments continue to work without modification. New deployments can enable encryption by setting API_KEY_ENCRYPTION_KEY. Mix-and-match storage modes across keys for gradual migration if needed." },
+    ],
+  },
+  {
     version: "1.9.4",
     date: "February 26, 2026",
     title: "UI Consistency, Docker Build-Time Env Vars & Discord Giveaway",
-    highlights: true,
+    highlights: false,
     changes: [
       { icon: Palette, label: "Unified Landing & Dashboard Fonts", desc: "Fixed landing page header font inconsistency. Landing page header now uses the same sans-serif font (font-sans) as the dashboard, ensuring consistent typography across all pages." },
       { icon: Container, label: "Docker Build-Time Environment Variable Support", desc: "Fixed Docker CAPTCHA integration by implementing proper build-time argument passing. Dockerfile now accepts ARG directives for NEXT_PUBLIC_APP_URL and NEXT_PUBLIC_TURNSTILE_SITE_KEY. These are converted to ENV during build so Next.js embeds them into the client bundle. docker-compose.yml passes .env values as build arguments. Turnstile keys are now properly available in Docker containers." },
