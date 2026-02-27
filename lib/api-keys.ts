@@ -10,10 +10,17 @@ export async function generateApiKey(userId: number, name: string = "Default") {
     // Generate a random key: vr_live_<32 hex chars>
     const raw = `${API_KEY_PREFIX}${randomBytes(24).toString("hex")}`
     const prefix = raw.slice(0, API_KEY_PREFIX.length + 8) // show prefix + some chars
-    const keyHash = hashKey(raw)
 
-    // AES-256-GCM encrypt the key for secure storage (if encryption key is configured)
-    const keyEncrypted = isEncryptionConfigured() ? encryptApiKey(raw) : null
+    let keyHash: string | null = null
+    let keyEncrypted: string | null = null
+
+    if (isEncryptionConfigured()) {
+        // If encryption key is available, ONLY store encrypted key (no hash)
+        keyEncrypted = encryptApiKey(raw)
+    } else {
+        // If no encryption key, fall back to hash-only storage for lookup
+        keyHash = hashKey(raw)
+    }
 
     const result = await pool.query(
         `INSERT INTO api_keys (user_id, key_hash, key_prefix, name, daily_limit, key_encrypted)
@@ -35,31 +42,54 @@ function hashKey(key: string): string {
 
 // Validate an API key and return the user/key info, or null
 export async function validateApiKey(key: string) {
-    const keyHash = hashKey(key)
+    if (isEncryptionConfigured()) {
+        // If encryption is configured, search by encrypted key
+        const keyEncrypted = encryptApiKey(key)
+        const result = await pool.query(
+            `SELECT ak.id as key_id, ak.user_id, ak.name, ak.daily_limit, ak.revoked_at,
+                    u.email, u.name as user_name
+             FROM api_keys ak
+                      JOIN users u ON ak.user_id = u.id
+             WHERE ak.key_encrypted = $1`,
+            [keyEncrypted],
+        )
 
-    const result = await pool.query(
-        `SELECT ak.id as key_id, ak.user_id, ak.name, ak.daily_limit, ak.revoked_at,
-                u.email, u.name as user_name
-         FROM api_keys ak
-                  JOIN users u ON ak.user_id = u.id
-         WHERE ak.key_hash = $1`,
-        [keyHash],
-    )
+        if (result.rows.length === 0) return null
+        const row = result.rows[0]
+        if (row.revoked_at) return null
 
-    if (result.rows.length === 0) return null
+        return {
+            keyId: row.key_id,
+            userId: row.user_id,
+            email: row.email,
+            userName: row.user_name,
+            keyName: row.name,
+            dailyLimit: row.daily_limit,
+        }
+    } else {
+        // Fallback: hash-based lookup if encryption is not configured
+        const keyHash = hashKey(key)
+        const result = await pool.query(
+            `SELECT ak.id as key_id, ak.user_id, ak.name, ak.daily_limit, ak.revoked_at,
+                    u.email, u.name as user_name
+             FROM api_keys ak
+                      JOIN users u ON ak.user_id = u.id
+             WHERE ak.key_hash = $1`,
+            [keyHash],
+        )
 
-    const row = result.rows[0]
+        if (result.rows.length === 0) return null
+        const row = result.rows[0]
+        if (row.revoked_at) return null
 
-    // Check if revoked
-    if (row.revoked_at) return null
-
-    return {
-        keyId: row.key_id,
-        userId: row.user_id,
-        email: row.email,
-        userName: row.user_name,
-        keyName: row.name,
-        dailyLimit: row.daily_limit,
+        return {
+            keyId: row.key_id,
+            userId: row.user_id,
+            email: row.email,
+            userName: row.user_name,
+            keyName: row.name,
+            dailyLimit: row.daily_limit,
+        }
     }
 }
 
