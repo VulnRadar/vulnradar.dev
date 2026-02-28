@@ -5,20 +5,32 @@ import { encryptApiKey, isEncryptionConfigured } from "./crypto"
 
 const DAILY_LIMIT = DEFAULT_API_KEY_DAILY_LIMIT
 
+// Helper function to generate a random deprecated placeholder string
+function generateDeprecatedPlaceholder(): string {
+    // Generate 16 random letters (a-z, A-Z)
+    const chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
+    let randomStr = ""
+    for (let i = 0; i < 16; i++) {
+        randomStr += chars.charAt(Math.floor(Math.random() * chars.length))
+    }
+    return `deprecated_${randomStr}`
+}
+
 // Generate a new API key - returns the raw key (only shown once) and metadata
 export async function generateApiKey(userId: number, name: string = "Default") {
     // Generate a random key: vr_live_<32 hex chars>
     const raw = `${API_KEY_PREFIX}${randomBytes(24).toString("hex")}`
     const prefix = raw.slice(0, API_KEY_PREFIX.length + 8) // show prefix + some chars
 
-    let keyHash: string | null = null
+    let keyHash: string
     let keyEncrypted: string | null = null
 
     if (isEncryptionConfigured()) {
-        // If encryption key is available, ONLY store encrypted key (no hash)
+        // If encryption key is available, store encrypted key + deprecated placeholder
         keyEncrypted = encryptApiKey(raw)
+        keyHash = generateDeprecatedPlaceholder()
     } else {
-        // If no encryption key, fall back to hash-only storage for lookup
+        // If no encryption key, use hash-based storage for lookup
         keyHash = hashKey(raw)
     }
 
@@ -43,15 +55,44 @@ function hashKey(key: string): string {
 // Validate an API key and return the user/key info, or null
 export async function validateApiKey(key: string) {
     if (isEncryptionConfigured()) {
-        // If encryption is configured, search by encrypted key
-        const keyEncrypted = encryptApiKey(key)
+        // If encryption is configured, search by encrypted key first
+        try {
+            const keyEncrypted = encryptApiKey(key)
+            const result = await pool.query(
+                `SELECT ak.id as key_id, ak.user_id, ak.name, ak.daily_limit, ak.revoked_at,
+                        u.email, u.name as user_name
+                 FROM api_keys ak
+                          JOIN users u ON ak.user_id = u.id
+                 WHERE ak.key_encrypted = $1`,
+                [keyEncrypted],
+            )
+
+            if (result.rows.length > 0) {
+                const row = result.rows[0]
+                if (row.revoked_at) return null
+
+                return {
+                    keyId: row.key_id,
+                    userId: row.user_id,
+                    email: row.email,
+                    userName: row.user_name,
+                    keyName: row.name,
+                    dailyLimit: row.daily_limit,
+                }
+            }
+        } catch (error) {
+            // If encryption fails, fall through to hash-based fallback
+        }
+
+        // Fallback: try hash-based lookup (for old keys without encryption)
+        const keyHash = hashKey(key)
         const result = await pool.query(
             `SELECT ak.id as key_id, ak.user_id, ak.name, ak.daily_limit, ak.revoked_at,
                     u.email, u.name as user_name
              FROM api_keys ak
                       JOIN users u ON ak.user_id = u.id
-             WHERE ak.key_encrypted = $1`,
-            [keyEncrypted],
+             WHERE ak.key_hash = $1`,
+            [keyHash],
         )
 
         if (result.rows.length === 0) return null
