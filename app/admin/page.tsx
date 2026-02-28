@@ -47,7 +47,7 @@ import { Header } from "@/components/scanner/header"
 import { Footer } from "@/components/scanner/footer"
 import { cn } from "@/lib/utils"
 import { PaginationControl, usePagination } from "@/components/ui/pagination-control"
-import { STAFF_ROLES, STAFF_ROLE_LABELS, STAFF_ROLE_HIERARCHY, ROLE_BADGE_STYLES } from "@/lib/constants"
+import { STAFF_ROLES, STAFF_ROLE_LABELS, STAFF_ROLE_HIERARCHY, ROLE_BADGE_STYLES, SUBSCRIPTION_PLANS, PERMISSIONS } from "@/lib/constants"
 
 interface AdminStats {
   total_users: string
@@ -74,6 +74,8 @@ interface AdminUser {
   disabled_at: string | null
   scan_count: string
   api_key_count: string
+  subscription_plan: string
+  subscription_tier: number
 }
 
 interface UserDetail {
@@ -81,6 +83,7 @@ interface UserDetail {
     session_count: number
     has_backup_codes: boolean
   }
+  permissions: string[]
   recentScans: { id: number; url: string; findings_count: number; source: string; scanned_at: string }[]
   apiKeys: { id: number; key_prefix: string; name: string; daily_limit: number; created_at: string; last_used_at: string | null; revoked_at: string | null }[]
   webhooks: { id: number; name: string; url: string; type: string; active: boolean }[]

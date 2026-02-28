@@ -67,6 +67,8 @@ export async function register() {
           password_hash VARCHAR(255) NOT NULL,
           name VARCHAR(255),
           role VARCHAR(20) NOT NULL DEFAULT 'user',
+          subscription_plan VARCHAR(20) NOT NULL DEFAULT 'FREE',
+          subscription_tier INTEGER NOT NULL DEFAULT 0,
           avatar_url TEXT,
           tos_accepted_at TIMESTAMP WITH TIME ZONE,
           email_verified_at TIMESTAMP WITH TIME ZONE,
@@ -81,6 +83,19 @@ export async function register() {
         );
         CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
         CREATE INDEX IF NOT EXISTS idx_users_role ON users(role);
+        CREATE INDEX IF NOT EXISTS idx_users_subscription_plan ON users(subscription_plan);
+      `)
+
+      // ── User Permissions ──────────────────────────────────────────
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS user_permissions (
+          id SERIAL PRIMARY KEY,
+          user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          permission_name VARCHAR(50) NOT NULL,
+          created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+          UNIQUE(user_id, permission_name)
+        );
+        CREATE INDEX IF NOT EXISTS idx_user_permissions_user_id ON user_permissions(user_id);
       `)
 
       // ── Sessions ──────────────────────────────────────────────────
