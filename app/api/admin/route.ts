@@ -3,7 +3,7 @@ import { randomBytes, scryptSync } from "node:crypto"
 import { getSession } from "@/lib/auth"
 import pool from "@/lib/db"
 import { getClientIP } from "@/lib/rate-limit"
-import { ERROR_MESSAGES, STAFF_ROLES, STAFF_ROLE_HIERARCHY } from "@/lib/constants"
+import { ERROR_MESSAGES, STAFF_ROLES, STAFF_ROLE_HIERARCHY, PERMISSIONS } from "@/lib/constants"
 
 async function requireStaff() {
   const session = await getSession()
@@ -41,9 +41,9 @@ export async function GET(request: NextRequest) {
     const userId = searchParams.get("userId")
     if (!userId) return NextResponse.json({ error: "userId required" }, { status: 400 })
 
-    const [userRes, scansRes, keysRes, webhooksRes, schedulesRes, sessionsRes] = await Promise.all([
+    const [userRes, scansRes, keysRes, webhooksRes, schedulesRes, sessionsRes, permissionsRes] = await Promise.all([
       pool.query(
-        `SELECT id, email, name, role, avatar_url, totp_enabled, tos_accepted_at, created_at, disabled_at,
+        `SELECT id, email, name, role, avatar_url, totp_enabled, tos_accepted_at, created_at, disabled_at, subscription_plan, subscription_tier,
           (SELECT COUNT(*) FROM scan_history WHERE user_id = $1)::int as scan_count,
           (SELECT COUNT(*) FROM api_keys WHERE user_id = $1 AND revoked_at IS NULL)::int as api_key_count,
           (SELECT COUNT(*) FROM sessions WHERE user_id = $1 AND expires_at > NOW())::int as session_count,
@@ -62,6 +62,7 @@ export async function GET(request: NextRequest) {
       pool.query("SELECT id, name, url, type, active FROM webhooks WHERE user_id = $1", [userId]),
       pool.query("SELECT id, url, frequency, active, last_run_at, next_run_at FROM scheduled_scans WHERE user_id = $1", [userId]),
       pool.query("SELECT id, created_at, expires_at, ip_address, user_agent FROM sessions WHERE user_id = $1 AND expires_at > NOW() ORDER BY created_at DESC", [userId]),
+      pool.query("SELECT permission_name FROM user_permissions WHERE user_id = $1", [userId]),
     ])
 
     if (!userRes.rows[0]) return NextResponse.json({ error: "User not found" }, { status: 404 })
@@ -73,6 +74,7 @@ export async function GET(request: NextRequest) {
       webhooks: webhooksRes.rows,
       schedules: schedulesRes.rows,
       activeSessions: sessionsRes.rows,
+      permissions: permissionsRes.rows.map((r: any) => r.permission_name),
     })
   }
 
@@ -283,6 +285,42 @@ export async function PATCH(request: NextRequest) {
       await pool.query("DELETE FROM users WHERE id = $1", [userId])
       await logAction(session.userId, userId, "delete_user", `Deleted account ${targetUser.email}`, ip)
       return NextResponse.json({ success: true })
+
+    case "add_permission": {
+      const permission = body?.extra?.permission
+      const validPerms = Object.values(PERMISSIONS)
+      if (!permission || !validPerms.includes(permission)) {
+        return NextResponse.json({ error: "Invalid permission" }, { status: 400 })
+      }
+      try {
+        await pool.query(
+          "INSERT INTO user_permissions (user_id, permission_name) VALUES ($1, $2)",
+          [userId, permission],
+        )
+        await logAction(session.userId, userId, "add_permission", `Added permission ${permission} to ${targetUser.email}`, ip)
+        return NextResponse.json({ success: true })
+      } catch (error: any) {
+        if (error.code === "23505") {
+          // Unique constraint violation - permission already exists
+          return NextResponse.json({ error: "Permission already granted" }, { status: 400 })
+        }
+        throw error
+      }
+    }
+
+    case "remove_permission": {
+      const permission = body?.extra?.permission
+      const validPerms = Object.values(PERMISSIONS)
+      if (!permission || !validPerms.includes(permission)) {
+        return NextResponse.json({ error: "Invalid permission" }, { status: 400 })
+      }
+      await pool.query(
+        "DELETE FROM user_permissions WHERE user_id = $1 AND permission_name = $2",
+        [userId, permission],
+      )
+      await logAction(session.userId, userId, "remove_permission", `Removed permission ${permission} from ${targetUser.email}`, ip)
+      return NextResponse.json({ success: true })
+    }
 
     default:
       return NextResponse.json({ error: "Unknown action" }, { status: 400 })
