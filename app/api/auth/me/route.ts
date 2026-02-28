@@ -9,12 +9,20 @@ export const GET = withErrorHandling(async () => {
     return ApiResponse.unauthorized(ERROR_MESSAGES.UNAUTHORIZED)
   }
 
-  // Get 2FA, role, onboarding status, and backup codes
-  const result = await pool.query(
-    "SELECT totp_enabled, two_factor_method, onboarding_completed, role, avatar_url, backup_codes FROM users WHERE id = $1",
+  // Get user data including subscription plan and permissions
+  const userResult = await pool.query(
+    `SELECT totp_enabled, two_factor_method, onboarding_completed, role, avatar_url, backup_codes, subscription_plan, subscription_tier 
+     FROM users WHERE id = $1`,
     [session.userId],
   )
-  const user = result.rows[0]
+  const user = userResult.rows[0]
+
+  // Get user permissions
+  const permissionsResult = await pool.query(
+    `SELECT permission_name FROM user_permissions WHERE user_id = $1`,
+    [session.userId],
+  )
+  const permissions = permissionsResult.rows.map((row: any) => row.permission_name)
 
   // Detect if backup codes are old plaintext format (not hashed)
   // Hashed codes contain ":" separator from scrypt format, plaintext codes are like "XXXX-XXXX"
@@ -37,6 +45,9 @@ export const GET = withErrorHandling(async () => {
     twoFactorMethod: user?.two_factor_method || null,
     isAdmin: user?.role === STAFF_ROLES.ADMIN,
     role: user?.role || STAFF_ROLES.USER,
+    subscriptionPlan: user?.subscription_plan || "FREE",
+    subscriptionTier: user?.subscription_tier ?? 0,
+    permissions: permissions,
     avatarUrl: user?.avatar_url || null,
     onboardingCompleted: user?.onboarding_completed || false,
     backupCodesInvalid,
