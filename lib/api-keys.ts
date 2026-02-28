@@ -1,19 +1,14 @@
 import { randomBytes, createHash } from "node:crypto"
 import pool from "./db"
 import { API_KEY_PREFIX, DEFAULT_API_KEY_DAILY_LIMIT } from "./constants"
-import { encryptApiKey, isEncryptionConfigured } from "./crypto"
+import { encryptApiKey, decryptApiKey, isEncryptionConfigured } from "./crypto"
 
 const DAILY_LIMIT = DEFAULT_API_KEY_DAILY_LIMIT
 
 // Helper function to generate a random deprecated placeholder string
 function generateDeprecatedPlaceholder(): string {
-    // Generate 32 random letters (a-z, A-Z)
-    const chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
-    let randomStr = ""
-    for (let i = 0; i < 32; i++) {
-        randomStr += chars.charAt(Math.floor(Math.random() * chars.length))
-    }
-    return `deprecated_${randomStr}`
+    // Generate 64 random bytes as hex (fully random, no predictable pattern)
+    return `deprecated_${randomBytes(48).toString("hex")}`
 }
 
 // Generate a new API key - returns the raw key (only shown once) and metadata
@@ -55,38 +50,40 @@ function hashKey(key: string): string {
 // Validate an API key and return the user/key info, or null
 export async function validateApiKey(key: string) {
     if (isEncryptionConfigured()) {
-        // If encryption is configured, search by encrypted key first
-        try {
-            const keyEncrypted = encryptApiKey(key)
-            const result = await pool.query(
-                `SELECT ak.id as key_id, ak.user_id, ak.name, ak.daily_limit, ak.revoked_at,
-                        u.email, u.name as user_name
-                 FROM api_keys ak
-                          JOIN users u ON ak.user_id = u.id
-                 WHERE ak.key_encrypted = $1`,
-                [keyEncrypted],
-            )
+        // If encryption is configured, fetch all encrypted keys and decrypt to compare
+        const result = await pool.query(
+            `SELECT ak.id as key_id, ak.user_id, ak.name, ak.daily_limit, ak.revoked_at, ak.key_encrypted,
+                    u.email, u.name as user_name
+             FROM api_keys ak
+                      JOIN users u ON ak.user_id = u.id
+             WHERE ak.key_encrypted IS NOT NULL`,
+        )
 
-            if (result.rows.length > 0) {
-                const row = result.rows[0]
-                if (row.revoked_at) return null
+        // Try to find a matching key by decryption
+        for (const row of result.rows) {
+            try {
+                const decryptedKey = decryptApiKey(row.key_encrypted)
+                if (decryptedKey === key) {
+                    if (row.revoked_at) return null
 
-                return {
-                    keyId: row.key_id,
-                    userId: row.user_id,
-                    email: row.email,
-                    userName: row.user_name,
-                    keyName: row.name,
-                    dailyLimit: row.daily_limit,
+                    return {
+                        keyId: row.key_id,
+                        userId: row.user_id,
+                        email: row.email,
+                        userName: row.user_name,
+                        keyName: row.name,
+                        dailyLimit: row.daily_limit,
+                    }
                 }
+            } catch (error) {
+                // Decryption failed for this key, try next one
+                continue
             }
-        } catch (error) {
-            // If encryption fails, fall through to hash-based fallback
         }
 
         // Fallback: try hash-based lookup (for old keys without encryption)
         const keyHash = hashKey(key)
-        const result = await pool.query(
+        const hashResult = await pool.query(
             `SELECT ak.id as key_id, ak.user_id, ak.name, ak.daily_limit, ak.revoked_at,
                     u.email, u.name as user_name
              FROM api_keys ak
@@ -95,8 +92,8 @@ export async function validateApiKey(key: string) {
             [keyHash],
         )
 
-        if (result.rows.length === 0) return null
-        const row = result.rows[0]
+        if (hashResult.rows.length === 0) return null
+        const row = hashResult.rows[0]
         if (row.revoked_at) return null
 
         return {
