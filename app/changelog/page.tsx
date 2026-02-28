@@ -72,13 +72,14 @@ const CHANGELOG = [
   {
     version: "1.9.4-patch.1",
     date: "February 28, 2026",
-    title: "API Key Encryption Enhancement",
+    title: "API Key Encryption Fix, Stronger Key Entropy & Validation Overhaul",
     highlights: false,
     changes: [
-      { icon: Lock, label: "Dual-Method API Key Storage", desc: "Implemented dual-method API key storage supporting both encrypted and hashed keys. When API_KEY_ENCRYPTION_KEY environment variable is configured, keys are stored encrypted with a deprecated placeholder in key_hash. Without the env variable, keys use traditional hash-based storage." },
-      { icon: Key, label: "Intelligent Fallback Validation", desc: "Enhanced API key validation with intelligent fallback between encryption and hash methods. All API endpoints automatically support both encryption methods without requiring code changes." },
-      { icon: Shield, label: "Backward Compatible", desc: "Fully backward compatible with existing API keys and installations. No database migrations required and zero breaking changes to any API endpoints." },
-      { icon: Zap, label: "Placeholder Deprecated Strings", desc: "Encrypted keys now store placeholder strings formatted as 'deprecated_' + 16 random letters in the key_hash column, serving as a marker with no cryptographic purpose." },
+      { icon: Lock, label: "Fixed Encrypted Key Validation", desc: "Fixed a critical bug where API keys stored with AES-256-GCM encryption could not be validated. The previous implementation incorrectly attempted to compare re-encrypted ciphertexts, which always differ due to random IVs. Validation now decrypts stored keys and compares plaintext values, with automatic fallback to hash-based lookup for legacy keys." },
+      { icon: Key, label: "Increased API Key Entropy", desc: "API key generation upgraded from 24 random bytes (48 hex characters) to 32 random bytes (64 hex characters), significantly increasing key entropy and resistance to brute-force attacks." },
+      { icon: Shield, label: "Longer Deprecated Placeholders", desc: "Deprecated placeholder strings in key_hash column upgraded from 16 random letters to 48 random bytes (96 hex characters). Placeholders are now generated using cryptographically secure randomBytes instead of Math.random(), and are fully random hex strings." },
+      { icon: Fingerprint, label: "Decrypt-and-Compare Validation", desc: "API key validation when encryption is configured now iterates all stored encrypted keys, decrypts each one, and compares against the provided key. Gracefully handles decryption failures per-key and falls back to hash-based lookup for backward compatibility with pre-encryption keys." },
+      { icon: Zap, label: "Zero Breaking Changes", desc: "Fully backward compatible with existing API keys and installations. No database migrations required. Endpoints that accept API keys (/api/scan, etc.) work seamlessly with both encrypted and hash-stored keys without any client-side changes." },
     ],
   },
   {
