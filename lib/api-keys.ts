@@ -7,13 +7,8 @@ const DAILY_LIMIT = DEFAULT_API_KEY_DAILY_LIMIT
 
 // Helper function to generate a random deprecated placeholder string
 function generateDeprecatedPlaceholder(): string {
-    // Generate 32 random letters (a-z, A-Z)
-    const chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
-    let randomStr = ""
-    for (let i = 0; i < 32; i++) {
-        randomStr += chars.charAt(Math.floor(Math.random() * chars.length))
-    }
-    return `deprecated_${randomStr}`
+    // Generate 64 random bytes as hex (fully random, no predictable pattern)
+    return `deprecated_${randomBytes(48).toString("hex")}`
 }
 
 // Generate a new API key - returns the raw key (only shown once) and metadata
