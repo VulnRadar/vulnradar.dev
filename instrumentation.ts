@@ -98,6 +98,18 @@ export async function register() {
         CREATE INDEX IF NOT EXISTS idx_user_permissions_user_id ON user_permissions(user_id);
       `)
 
+      // ── User Roles (Beta Tester, Supporter, Epic Supporter) ────────
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS user_roles (
+          id SERIAL PRIMARY KEY,
+          user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          role_name VARCHAR(50) NOT NULL,
+          created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+          UNIQUE(user_id, role_name)
+        );
+        CREATE INDEX IF NOT EXISTS idx_user_roles_user_id ON user_roles(user_id);
+      `)
+
       // ── Sessions ──────────────────────────────────────────────────
       await pool.query(`
         CREATE TABLE IF NOT EXISTS sessions (

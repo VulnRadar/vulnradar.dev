@@ -21,6 +21,18 @@ CREATE TABLE IF NOT EXISTS user_permissions (
 -- Create index for permission queries
 CREATE INDEX IF NOT EXISTS idx_user_permissions_user_id ON user_permissions(user_id);
 
+-- Create user_roles table for multi-select roles (separate from system role)
+CREATE TABLE IF NOT EXISTS user_roles (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  role_name VARCHAR(50) NOT NULL,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  UNIQUE(user_id, role_name)
+);
+
+-- Create index for user_roles queries
+CREATE INDEX IF NOT EXISTS idx_user_roles_user_id ON user_roles(user_id);
+
 -- Set default subscription plan for existing users (already set in ADD COLUMN default)
 UPDATE users SET subscription_plan = 'FREE' WHERE subscription_plan IS NULL;
 UPDATE users SET subscription_tier = 0 WHERE subscription_tier IS NULL;
