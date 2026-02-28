@@ -73,7 +73,7 @@ const CHANGELOG = [
     version: "1.9.4-patch.1",
     date: "February 28, 2026",
     title: "API Key Encryption Fix, Stronger Key Entropy & Validation Overhaul",
-    highlights: false,
+    highlights: true,
     changes: [
       { icon: Lock, label: "Fixed Encrypted Key Validation", desc: "Fixed a critical bug where API keys stored with AES-256-GCM encryption could not be validated. The previous implementation incorrectly attempted to compare re-encrypted ciphertexts, which always differ due to random IVs. Validation now decrypts stored keys and compares plaintext values, with automatic fallback to hash-based lookup for legacy keys." },
       { icon: Key, label: "Increased API Key Entropy", desc: "API key generation upgraded from 24 random bytes (48 hex characters) to 32 random bytes (64 hex characters), significantly increasing key entropy and resistance to brute-force attacks." },
@@ -86,7 +86,7 @@ const CHANGELOG = [
     version: "1.9.4",
     date: "February 26, 2026",
     title: "UI Consistency, Docker Build-Time Vars, Discord Giveaway & Encryption-First API Keys",
-    highlights: true,
+    highlights: false,
     changes: [
       { icon: Palette, label: "Unified Landing & Dashboard Fonts", desc: "Fixed landing page header font inconsistency. Landing page header now uses the same sans-serif font (font-sans) as the dashboard, ensuring consistent typography across all pages." },
       { icon: Container, label: "Docker Build-Time Environment Variable Support", desc: "Fixed Docker CAPTCHA integration by implementing proper build-time argument passing. Dockerfile now accepts ARG directives for NEXT_PUBLIC_APP_URL and NEXT_PUBLIC_TURNSTILE_SITE_KEY. These are converted to ENV during build so Next.js embeds them into the client bundle. Turnstile keys are now properly available in Docker containers." },
