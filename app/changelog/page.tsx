@@ -70,6 +70,18 @@ import { APP_NAME, TOTAL_CHECKS_LABEL } from "@/lib/constants"
 
 const CHANGELOG = [
   {
+    version: "1.9.4-patch.1",
+    date: "February 28, 2026",
+    title: "API Key Encryption Enhancement",
+    highlights: false,
+    changes: [
+      { icon: Lock, label: "Dual-Method API Key Storage", desc: "Implemented dual-method API key storage supporting both encrypted and hashed keys. When API_KEY_ENCRYPTION_KEY environment variable is configured, keys are stored encrypted with a deprecated placeholder in key_hash. Without the env variable, keys use traditional hash-based storage." },
+      { icon: Key, label: "Intelligent Fallback Validation", desc: "Enhanced API key validation with intelligent fallback between encryption and hash methods. All API endpoints automatically support both encryption methods without requiring code changes." },
+      { icon: Shield, label: "Backward Compatible", desc: "Fully backward compatible with existing API keys and installations. No database migrations required and zero breaking changes to any API endpoints." },
+      { icon: Zap, label: "Placeholder Deprecated Strings", desc: "Encrypted keys now store placeholder strings formatted as 'deprecated_' + 16 random letters in the key_hash column, serving as a marker with no cryptographic purpose." },
+    ],
+  },
+  {
     version: "1.9.4",
     date: "February 26, 2026",
     title: "UI Consistency, Docker Build-Time Vars, Discord Giveaway & Encryption-First API Keys",
