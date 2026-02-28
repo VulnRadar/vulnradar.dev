@@ -275,68 +275,7 @@ export const DEMO_SCAN_LIMIT = 5
 export const DEMO_SCAN_WINDOW = 60 * 60 * 12 // 12 hours in seconds
 
 // ============================================================================
-// SUBSCRIPTION PLANS AND PERMISSIONS
-// ============================================================================
-
-export const SUBSCRIPTION_PLANS = {
-  FREE: "FREE",
-  PRO: "PRO",
-  ELITE: "ELITE",
-} as const
-
-export const SUBSCRIPTION_TIERS = {
-  FREE: 0,
-  PRO: 1,
-  ELITE: 2,
-} as const
-
-export type SubscriptionPlan = (typeof SUBSCRIPTION_PLANS)[keyof typeof SUBSCRIPTION_PLANS]
-export type SubscriptionTier = (typeof SUBSCRIPTION_TIERS)[keyof typeof SUBSCRIPTION_TIERS]
-
-export const SUBSCRIPTION_PLAN_DETAILS: Record<SubscriptionPlan, { price: number; label: string; features: string[] }> = {
-  FREE: {
-    price: 0,
-    label: "Free",
-    features: ["Basic scanning", "5 scans per day", "Web interface"],
-  },
-  PRO: {
-    price: 5,
-    label: "Pro",
-    features: ["50 scans per day", "API access", "Scheduled scans", "Webhooks", "Priority support"],
-  },
-  ELITE: {
-    price: 10,
-    label: "Elite",
-    features: ["Unlimited scans", "Advanced API", "Team collaboration", "Custom integrations", "24/7 support"],
-  },
-}
-
-export const PERMISSIONS = {
-  ADMIN: "Admin",
-  SUPPORTER: "Supporter",
-  MODERATOR: "Moderator",
-} as const
-
-export type Permission = (typeof PERMISSIONS)[keyof typeof PERMISSIONS]
-
-// ============================================================================
-// USER-ASSIGNABLE ROLES (separate from system roles)
-// ============================================================================
-
-export const USER_ROLES = {
-  BETA_TESTER: "beta_tester",
-  SUPPORTER: "supporter",
-  EPIC_SUPPORTER: "epic_supporter",
-} as const
-
-export type UserRole = (typeof USER_ROLES)[keyof typeof USER_ROLES]
-
-export const USER_ROLE_LABELS: Record<UserRole, string> = {
-  beta_tester: "Beta Tester",
-  supporter: "Supporter",
-  epic_supporter: "Epic Supporter",
-}
-
+// STAFF / ADMIN ROLES
 // ============================================================================
 export const STAFF_ROLES = {
   USER: "user",
