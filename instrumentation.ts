@@ -102,7 +102,7 @@ export async function register() {
         CREATE TABLE IF NOT EXISTS api_keys (
           id SERIAL PRIMARY KEY,
           user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-          key_hash VARCHAR(255) NOT NULL UNIQUE,
+          key_hash VARCHAR(255),
           key_encrypted TEXT,
           key_prefix VARCHAR(64) NOT NULL,
           name VARCHAR(100) NOT NULL DEFAULT 'Default',
