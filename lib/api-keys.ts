@@ -7,10 +7,10 @@ const DAILY_LIMIT = DEFAULT_API_KEY_DAILY_LIMIT
 
 // Helper function to generate a random deprecated placeholder string
 function generateDeprecatedPlaceholder(): string {
-    // Generate 16 random letters (a-z, A-Z)
+    // Generate 32 random letters (a-z, A-Z)
     const chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
     let randomStr = ""
-    for (let i = 0; i < 16; i++) {
+    for (let i = 0; i < 32; i++) {
         randomStr += chars.charAt(Math.floor(Math.random() * chars.length))
     }
     return `deprecated_${randomStr}`
@@ -18,25 +18,20 @@ function generateDeprecatedPlaceholder(): string {
 
 // Generate a new API key - returns the raw key (only shown once) and metadata
 export async function generateApiKey(userId: number, name: string = "Default") {
-    // Generate a random key: vr_live_<32 hex chars>
-    const raw = `${API_KEY_PREFIX}${randomBytes(24).toString("hex")}`
+    // Generate a random key: vr_live_<64 hex chars>
+    const raw = `${API_KEY_PREFIX}${randomBytes(32).toString("hex")}`
     const prefix = raw.slice(0, API_KEY_PREFIX.length + 8) // show prefix + some chars
 
     let keyHash: string
     let keyEncrypted: string | null = null
 
-    console.log("[v0] Generating API key - isEncryptionConfigured:", isEncryptionConfigured())
-    console.log("[v0] API_KEY_ENCRYPTION_KEY:", process.env.API_KEY_ENCRYPTION_KEY ? "SET" : "NOT SET")
-
     if (isEncryptionConfigured()) {
         // If encryption key is available, store encrypted key + deprecated placeholder
         keyEncrypted = encryptApiKey(raw)
         keyHash = generateDeprecatedPlaceholder()
-        console.log("[v0] Using encryption - keyEncrypted length:", keyEncrypted.length, "keyHash:", keyHash)
     } else {
         // If no encryption key, use hash-based storage for lookup
         keyHash = hashKey(raw)
-        console.log("[v0] Using hash-based storage - keyHash:", keyHash)
     }
 
     const result = await pool.query(
