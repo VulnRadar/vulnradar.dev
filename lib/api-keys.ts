@@ -25,13 +25,18 @@ export async function generateApiKey(userId: number, name: string = "Default") {
     let keyHash: string
     let keyEncrypted: string | null = null
 
+    console.log("[v0] Generating API key - isEncryptionConfigured:", isEncryptionConfigured())
+    console.log("[v0] API_KEY_ENCRYPTION_KEY:", process.env.API_KEY_ENCRYPTION_KEY ? "SET" : "NOT SET")
+
     if (isEncryptionConfigured()) {
         // If encryption key is available, store encrypted key + deprecated placeholder
         keyEncrypted = encryptApiKey(raw)
         keyHash = generateDeprecatedPlaceholder()
+        console.log("[v0] Using encryption - keyEncrypted length:", keyEncrypted.length, "keyHash:", keyHash)
     } else {
         // If no encryption key, use hash-based storage for lookup
         keyHash = hashKey(raw)
+        console.log("[v0] Using hash-based storage - keyHash:", keyHash)
     }
 
     const result = await pool.query(
