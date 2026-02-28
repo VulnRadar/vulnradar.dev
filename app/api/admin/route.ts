@@ -41,7 +41,7 @@ export async function GET(request: NextRequest) {
     const userId = searchParams.get("userId")
     if (!userId) return NextResponse.json({ error: "userId required" }, { status: 400 })
 
-    const [userRes, scansRes, keysRes, webhooksRes, schedulesRes, sessionsRes, permissionsRes] = await Promise.all([
+    const [userRes, scansRes, keysRes, webhooksRes, schedulesRes, sessionsRes, permissionsRes, userRolesRes] = await Promise.all([
       pool.query(
         `SELECT id, email, name, role, avatar_url, totp_enabled, tos_accepted_at, created_at, disabled_at, subscription_plan, subscription_tier,
           (SELECT COUNT(*) FROM scan_history WHERE user_id = $1)::int as scan_count,
@@ -63,6 +63,7 @@ export async function GET(request: NextRequest) {
       pool.query("SELECT id, url, frequency, active, last_run_at, next_run_at FROM scheduled_scans WHERE user_id = $1", [userId]),
       pool.query("SELECT id, created_at, expires_at, ip_address, user_agent FROM sessions WHERE user_id = $1 AND expires_at > NOW() ORDER BY created_at DESC", [userId]),
       pool.query("SELECT permission_name FROM user_permissions WHERE user_id = $1", [userId]),
+      pool.query("SELECT role_name FROM user_roles WHERE user_id = $1 ORDER BY created_at", [userId]),
     ])
 
     if (!userRes.rows[0]) return NextResponse.json({ error: "User not found" }, { status: 404 })
@@ -75,6 +76,7 @@ export async function GET(request: NextRequest) {
       schedules: schedulesRes.rows,
       activeSessions: sessionsRes.rows,
       permissions: permissionsRes.rows.map((r: any) => r.permission_name),
+      userRoles: userRolesRes.rows.map((r: any) => r.role_name),
     })
   }
 
@@ -319,6 +321,41 @@ export async function PATCH(request: NextRequest) {
         [userId, permission],
       )
       await logAction(session.userId, userId, "remove_permission", `Removed permission ${permission} from ${targetUser.email}`, ip)
+      return NextResponse.json({ success: true })
+    }
+
+    case "add_user_role": {
+      const role = body?.extra?.role
+      const validRoles = Object.values(USER_ROLES)
+      if (!role || !validRoles.includes(role)) {
+        return NextResponse.json({ error: "Invalid role" }, { status: 400 })
+      }
+      try {
+        await pool.query(
+          "INSERT INTO user_roles (user_id, role_name) VALUES ($1, $2)",
+          [userId, role],
+        )
+        await logAction(session.userId, userId, "add_user_role", `Added role ${role} to ${targetUser.email}`, ip)
+        return NextResponse.json({ success: true })
+      } catch (error: any) {
+        if (error.code === "23505") {
+          return NextResponse.json({ error: "Role already assigned" }, { status: 400 })
+        }
+        throw error
+      }
+    }
+
+    case "remove_user_role": {
+      const role = body?.extra?.role
+      const validRoles = Object.values(USER_ROLES)
+      if (!role || !validRoles.includes(role)) {
+        return NextResponse.json({ error: "Invalid role" }, { status: 400 })
+      }
+      await pool.query(
+        "DELETE FROM user_roles WHERE user_id = $1 AND role_name = $2",
+        [userId, role],
+      )
+      await logAction(session.userId, userId, "remove_user_role", `Removed role ${role} from ${targetUser.email}`, ip)
       return NextResponse.json({ success: true })
     }
 

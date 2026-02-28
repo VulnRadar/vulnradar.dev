@@ -320,6 +320,24 @@ export const PERMISSIONS = {
 export type Permission = (typeof PERMISSIONS)[keyof typeof PERMISSIONS]
 
 // ============================================================================
+// USER-ASSIGNABLE ROLES (separate from system roles)
+// ============================================================================
+
+export const USER_ROLES = {
+  BETA_TESTER: "beta_tester",
+  SUPPORTER: "supporter",
+  EPIC_SUPPORTER: "epic_supporter",
+} as const
+
+export type UserRole = (typeof USER_ROLES)[keyof typeof USER_ROLES]
+
+export const USER_ROLE_LABELS: Record<UserRole, string> = {
+  beta_tester: "Beta Tester",
+  supporter: "Supporter",
+  epic_supporter: "Epic Supporter",
+}
+
+// ============================================================================
 export const STAFF_ROLES = {
   USER: "user",
   BETA_TESTER: "beta_tester",

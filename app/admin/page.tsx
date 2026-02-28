@@ -47,7 +47,7 @@ import { Header } from "@/components/scanner/header"
 import { Footer } from "@/components/scanner/footer"
 import { cn } from "@/lib/utils"
 import { PaginationControl, usePagination } from "@/components/ui/pagination-control"
-import { STAFF_ROLES, STAFF_ROLE_LABELS, STAFF_ROLE_HIERARCHY, ROLE_BADGE_STYLES, SUBSCRIPTION_PLANS, PERMISSIONS } from "@/lib/constants"
+import { STAFF_ROLES, STAFF_ROLE_LABELS, STAFF_ROLE_HIERARCHY, ROLE_BADGE_STYLES, SUBSCRIPTION_PLANS, PERMISSIONS, USER_ROLES, USER_ROLE_LABELS } from "@/lib/constants"
 
 interface AdminStats {
   total_users: string
@@ -84,6 +84,7 @@ interface UserDetail {
     has_backup_codes: boolean
   }
   permissions: string[]
+  userRoles: string[]
   recentScans: { id: number; url: string; findings_count: number; source: string; scanned_at: string }[]
   apiKeys: { id: number; key_prefix: string; name: string; daily_limit: number; created_at: string; last_used_at: string | null; revoked_at: string | null }[]
   webhooks: { id: number; name: string; url: string; type: string; active: boolean }[]
@@ -348,6 +349,8 @@ export default function AdminPage() {
           delete: "User deleted.",
           add_permission: "Permission granted.",
           remove_permission: "Permission revoked.",
+          add_user_role: "Role assigned.",
+          remove_user_role: "Role removed.",
         }
         showToast(labels[action] || "Action completed.", "success")
         await fetchData(page)
@@ -1005,23 +1008,39 @@ function UserDetailPanel({
           </CardHeader>
           <CardContent className="p-5 pt-3">
             <div className="flex flex-col gap-3">
-              <p className="text-xs text-muted-foreground">Current role: <span className="font-semibold text-foreground">{STAFF_ROLE_LABELS[u.role || "user"] || "User"}</span></p>
-              <div className="flex flex-wrap gap-2">
-                {(["user", "beta_tester", "support", "moderator", "admin"] as const).map((role) => (
-                  <Button
-                    key={role}
-                    variant={(u.role || "user") === role ? "default" : "outline"}
-                    size="sm"
-                    disabled={(u.role || "user") === role || isLoading("set_role")}
-                    onClick={() => onAction(u.id, "set_role", { role })}
-                    className={cn(
-                      "text-xs",
-                      (u.role || "user") === role && "pointer-events-none"
-                    )}
+              <p className="text-xs text-muted-foreground">Current system role: <span className="font-semibold text-foreground">{STAFF_ROLE_LABELS[u.role || "user"] || "User"}</span></p>
+              <div className="flex flex-col gap-3">
+                <p className="text-xs text-muted-foreground">Assigned user roles:</p>
+                {detail.userRoles && detail.userRoles.length > 0 ? (
+                  <div className="flex flex-wrap gap-2">
+                    {detail.userRoles.map((role: string) => (
+                      <Badge key={role} variant="outline" className="text-xs font-medium cursor-pointer hover:bg-destructive/10 hover:border-destructive/50 transition-colors" onClick={() => onAction(u.id, "remove_user_role", { role })}>
+                        {USER_ROLE_LABELS[role as keyof typeof USER_ROLE_LABELS]} ✕
+                      </Badge>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-xs text-muted-foreground italic">No roles assigned</p>
+                )}
+                <div className="relative">
+                  <select 
+                    onChange={(e) => {
+                      const role = e.target.value
+                      if (role && !detail.userRoles?.includes(role)) {
+                        onAction(u.id, "add_user_role", { role })
+                      }
+                      e.target.value = ""
+                    }}
+                    className="w-full px-3 py-2 text-xs bg-muted border border-border rounded-md text-foreground focus:outline-none focus:ring-2 focus:ring-primary cursor-pointer"
                   >
-                    {STAFF_ROLE_LABELS[role]}
-                  </Button>
-                ))}
+                    <option value="">+ Add role...</option>
+                    {Object.entries(USER_ROLE_LABELS).map(([key, label]) => (
+                      !detail.userRoles?.includes(key) && (
+                        <option key={key} value={key}>{label}</option>
+                      )
+                    ))}
+                  </select>
+                </div>
               </div>
             </div>
           </CardContent>
@@ -1036,35 +1055,28 @@ function UserDetailPanel({
           </CardHeader>
           <CardContent className="p-5 pt-3">
             <div className="flex flex-col gap-3">
-              {detail.permissions && detail.permissions.length > 0 ? (
-                <>
-                  <p className="text-xs text-muted-foreground">Active permissions:</p>
-                  <div className="flex flex-wrap gap-2">
-                    {detail.permissions.map((perm) => (
-                      <Badge key={perm} variant="outline" className="text-xs font-medium cursor-pointer hover:bg-destructive/10 hover:border-destructive/50 transition-colors" onClick={() => onAction(u.id, "remove_permission", { permission: perm })}>
-                        {perm} ✕
-                      </Badge>
-                    ))}
-                  </div>
-                </>
-              ) : (
-                <p className="text-xs text-muted-foreground">No permissions assigned</p>
-              )}
-              <div className="flex flex-wrap gap-2 pt-2 border-t border-border">
-                {(Object.values(PERMISSIONS) as string[]).map((perm) => (
-                  !detail.permissions?.includes(perm) && (
-                    <Button
-                      key={perm}
-                      variant="outline"
-                      size="sm"
-                      disabled={isLoading("add_permission")}
-                      onClick={() => onAction(u.id, "add_permission", { permission: perm })}
-                      className="text-xs"
-                    >
-                      + {perm}
-                    </Button>
-                  )
-                ))}
+              <p className="text-xs text-muted-foreground">Select a single permission (or none):</p>
+              <div className="relative">
+                <select 
+                  value={detail.permissions?.[0] || ""}
+                  onChange={(e) => {
+                    const newPerm = e.target.value
+                    const oldPerm = detail.permissions?.[0]
+                    
+                    if (oldPerm && oldPerm !== newPerm) {
+                      onAction(u.id, "remove_permission", { permission: oldPerm })
+                    }
+                    if (newPerm && newPerm !== oldPerm) {
+                      onAction(u.id, "add_permission", { permission: newPerm })
+                    }
+                  }}
+                  className="w-full px-3 py-2 text-xs bg-muted border border-border rounded-md text-foreground focus:outline-none focus:ring-2 focus:ring-primary cursor-pointer"
+                >
+                  <option value="">None</option>
+                  {Object.values(PERMISSIONS).map((perm) => (
+                    <option key={perm} value={perm}>{perm}</option>
+                  ))}
+                </select>
               </div>
             </div>
           </CardContent>
