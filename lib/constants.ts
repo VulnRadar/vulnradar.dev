@@ -315,7 +315,6 @@ export const PERMISSIONS = {
   ADMIN: "Admin",
   SUPPORTER: "Supporter",
   MODERATOR: "Moderator",
-  BETA_TESTER: "BetaTester",
 } as const
 
 export type Permission = (typeof PERMISSIONS)[keyof typeof PERMISSIONS]

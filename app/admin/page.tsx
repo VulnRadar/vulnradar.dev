@@ -346,6 +346,8 @@ export default function AdminPage() {
           disable: "Account disabled.",
           enable: "Account re-enabled.",
           delete: "User deleted.",
+          add_permission: "Permission granted.",
+          remove_permission: "Permission revoked.",
         }
         showToast(labels[action] || "Action completed.", "success")
         await fetchData(page)
@@ -1019,6 +1021,49 @@ function UserDetailPanel({
                   >
                     {STAFF_ROLE_LABELS[role]}
                   </Button>
+                ))}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Permissions management - admin only */}
+      {!detailLoading && callerRole === STAFF_ROLES.ADMIN && (
+        <Card className="bg-card border-border">
+          <CardHeader className="pb-0 pt-4 px-5">
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Permissions</p>
+          </CardHeader>
+          <CardContent className="p-5 pt-3">
+            <div className="flex flex-col gap-3">
+              {detail.permissions && detail.permissions.length > 0 ? (
+                <>
+                  <p className="text-xs text-muted-foreground">Active permissions:</p>
+                  <div className="flex flex-wrap gap-2">
+                    {detail.permissions.map((perm) => (
+                      <Badge key={perm} variant="outline" className="text-xs font-medium cursor-pointer hover:bg-destructive/10 hover:border-destructive/50 transition-colors" onClick={() => onAction(u.id, "remove_permission", { permission: perm })}>
+                        {perm} ✕
+                      </Badge>
+                    ))}
+                  </div>
+                </>
+              ) : (
+                <p className="text-xs text-muted-foreground">No permissions assigned</p>
+              )}
+              <div className="flex flex-wrap gap-2 pt-2 border-t border-border">
+                {(Object.values(PERMISSIONS) as string[]).map((perm) => (
+                  !detail.permissions?.includes(perm) && (
+                    <Button
+                      key={perm}
+                      variant="outline"
+                      size="sm"
+                      disabled={isLoading("add_permission")}
+                      onClick={() => onAction(u.id, "add_permission", { permission: perm })}
+                      className="text-xs"
+                    >
+                      + {perm}
+                    </Button>
+                  )
                 ))}
               </div>
             </div>
