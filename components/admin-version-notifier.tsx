@@ -2,7 +2,7 @@
 
 import { useEffect } from "react"
 import { useAuth } from "@/components/auth-provider"
-import { STAFF_ROLES } from "@/lib/constants"
+import { STAFF_ROLES } from "@/lib/client-constants"
 
 interface VersionData {
   current: string
