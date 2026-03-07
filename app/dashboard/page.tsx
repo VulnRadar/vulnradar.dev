@@ -67,7 +67,7 @@ function DashboardContent() {
     if (!scanHistoryId) return
     setSavingNotes(true)
     try {
-      await fetch(`/api/history/${scanHistoryId}`, {
+      await fetch(`/api/v1/history/${scanHistoryId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ notes: scanNotes }),
@@ -89,7 +89,7 @@ function DashboardContent() {
       setCrawlDiscoveryUrls([url]) // always include the entry URL
 
       try {
-        const res = await fetch("/api/scan/crawl/discover", {
+        const res = await fetch("/api/v1/scan/crawl/discover", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ url }),
@@ -118,7 +118,7 @@ function DashboardContent() {
     setCrawlInfo(null)
 
     const isCrawl = !!crawlUrls
-    const endpoint = isCrawl ? "/api/scan/crawl" : "/api/scan"
+    const endpoint = isCrawl ? "/api/v1/scan/crawl" : "/api/v1/scan"
     const payload = isCrawl
       ? { url, urls: crawlUrls, ...(scanners ? { scanners } : {}) }
       : { url, ...(scanners ? { scanners } : {}) }
@@ -158,7 +158,7 @@ function DashboardContent() {
 
       // Auto-save default note to DB
       if (historyId) {
-        fetch(`/api/history/${historyId}`, {
+        fetch(`/api/v1/history/${historyId}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ notes: DEFAULT_SCAN_NOTE }),

@@ -35,7 +35,7 @@ export const PUBLIC_PATHS = [
 
   // ─── Shared Scan Reports ───────────────────────────────────────
   "/shared",
-  "/api/shared",
+  "/api/v1/shared",
 
   // ─── Public Demo ────────────────────────────────────────────────
   ROUTES.DEMO,
@@ -49,5 +49,8 @@ export const PUBLIC_PATHS = [
   API.LANDING_CONTACT,
 
   // ─── Public Badge Endpoints ────────────────────────────────────
-  "/api/badge",
+  "/api/v1/badge",
+
+  // ─── Public Finding Types Endpoint ─────────────────────────────
+  API.FINDING_TYPES,
 ]

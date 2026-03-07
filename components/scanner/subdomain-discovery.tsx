@@ -69,7 +69,7 @@ export function SubdomainDiscovery({ url, onScanSubdomain }: SubdomainDiscoveryP
     setLoading(true)
     setError(null)
     try {
-      const res = await fetch("/api/scan/discover", {
+      const res = await fetch("/api/v1/scan/discover", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ url }),

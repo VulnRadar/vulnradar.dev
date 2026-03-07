@@ -3,7 +3,7 @@
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { cn } from "@/lib/utils"
-import { BookOpen, Zap } from "lucide-react"
+import { BookOpen, Zap, Code2 } from "lucide-react"
 import { Header } from "@/components/scanner/header"
 import { Footer } from "@/components/scanner/footer"
 import { APP_NAME } from "@/lib/constants"
@@ -46,16 +46,30 @@ const navItems = [
       { href: "#version", label: "Version Checking" },
     ]
   },
+  { 
+    href: "/docs/developers", 
+    label: "Developers", 
+    icon: Code2,
+    hasDropdown: true,
+    dropdownItems: [
+      { href: "#overview", label: "Overview" },
+      { href: "#finding-types", label: "Finding Types API" },
+      { href: "#building-sdks", label: "Building SDKs" },
+      { href: "#official-sdks", label: "Official SDKs" },
+      { href: "#community", label: "Community SDKs" },
+    ]
+  },
 ]
 
 export default function DocsLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const [openDropdown, setOpenDropdown] = useState<string | null>(null)
   
-  // Auto-open dropdown for API and Setup pages on desktop
+  // Auto-open dropdown for API, Setup, and Developers pages on desktop
   const isApiPage = pathname.startsWith("/docs/api")
   const isSetupPage = pathname.startsWith("/docs/setup")
-  const shouldShowDropdown = isApiPage ? "/docs/api" : isSetupPage ? "/docs/setup" : null
+  const isDevPage = pathname.startsWith("/docs/developers")
+  const shouldShowDropdown = isApiPage ? "/docs/api" : isSetupPage ? "/docs/setup" : isDevPage ? "/docs/developers" : null
 
   return (
     <div className="min-h-screen flex flex-col bg-background">
@@ -68,7 +82,7 @@ export default function DocsLayout({ children }: { children: React.ReactNode }) 
             <nav className="space-y-1 sticky top-24">
               {navItems.map((item) => {
                 const Icon = item.icon
-                const isActive = pathname === item.href || (item.href === "/docs/api" && pathname.startsWith("/docs/api")) || (item.href === "/docs/setup" && pathname.startsWith("/docs/setup"))
+                const isActive = pathname === item.href || (item.href === "/docs/api" && pathname.startsWith("/docs/api")) || (item.href === "/docs/setup" && pathname.startsWith("/docs/setup")) || (item.href === "/docs/developers" && pathname.startsWith("/docs/developers"))
                 // Auto-open dropdown on desktop for API and Setup pages, can't close
                 const isAutoOpenedDropdown = shouldShowDropdown === item.href
                 const isDropdownOpen = isAutoOpenedDropdown ? true : openDropdown === item.href

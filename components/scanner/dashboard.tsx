@@ -64,7 +64,7 @@ export function Dashboard() {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    fetch("/api/dashboard")
+    fetch("/api/v1/dashboard")
       .then((r) => {
         if (!r.ok) {
           if (r.status === 401 || r.status === 403) {

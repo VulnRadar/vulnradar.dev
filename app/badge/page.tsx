@@ -28,7 +28,7 @@ export default function BadgePage() {
   const [searchQuery, setSearchQuery] = useState("")
 
   useEffect(() => {
-    fetch("/api/badge/scans")
+    fetch("/api/v1/badge/scans")
       .then((r) => r.json())
       .then((data) => {
         if (Array.isArray(data)) {
@@ -49,7 +49,7 @@ export default function BadgePage() {
     setGenerating(true)
     setSelected(scan)
     try {
-      const res = await fetch(`/api/history/${scan.id}/share`, { method: "POST" })
+      const res = await fetch(`/api/v1/history/${scan.id}/share`, { method: "POST" })
       const data = await res.json()
       if (res.ok && data.token) {
         const updated = { ...scan, share_token: data.token }
@@ -86,7 +86,7 @@ export default function BadgePage() {
 
   const origin = typeof window !== "undefined" ? window.location.origin : ""
   const token = selected?.share_token
-  const badgeUrl = token ? `${origin}/api/badge/${token}` : ""
+  const badgeUrl = token ? `${origin}/api/v1/badge/${token}` : ""
   const shareUrl = token ? `${origin}/shared/${token}` : ""
   const htmlSnippet = token
     ? `<a href="${shareUrl}" target="_blank" rel="noopener noreferrer">\n  <img src="${badgeUrl}" alt="Secured by VulnRadar" />\n</a>`

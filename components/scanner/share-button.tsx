@@ -63,7 +63,7 @@ export function ShareButton({ scanId }: ShareButtonProps) {
   async function handleShare() {
     setState("loading")
     try {
-      const res = await fetch(`/api/history/${scanId}/share`, { method: "POST" })
+      const res = await fetch(`/api/v1/history/${scanId}/share`, { method: "POST" })
       const data = await res.json()
       if (res.ok && data.token) {
         const url = `${window.location.origin}/shared/${data.token}`
