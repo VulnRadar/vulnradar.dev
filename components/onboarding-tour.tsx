@@ -74,7 +74,7 @@ export function OnboardingTour() {
   const [step, setStep] = useState(0)
 
   useEffect(() => {
-    fetch("/api/auth/me")
+    fetch("/api/v1/auth/me")
       .then((r) => r.json())
       .then((d) => {
         if (d.userId && !d.onboardingCompleted) {
@@ -86,7 +86,7 @@ export function OnboardingTour() {
 
   async function handleComplete() {
     setShow(false)
-    await fetch("/api/auth/onboarding", { method: "POST" })
+    await fetch("/api/v1/auth/onboarding", { method: "POST" })
   }
 
   function handleSkip() {

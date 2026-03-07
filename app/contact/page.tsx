@@ -61,7 +61,7 @@ export default function ContactPage() {
   useEffect(() => {
     async function fetchUser() {
       try {
-        const res = await fetch("/api/auth/me")
+        const res = await fetch("/api/v1/auth/me")
         if (res.ok) {
           const data = await res.json()
           if (data?.email) {
@@ -143,7 +143,7 @@ export default function ContactPage() {
         : message
 
     try {
-      const res = await fetch("/api/contact", {
+      const res = await fetch("/api/v1/contact", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
