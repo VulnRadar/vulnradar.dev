@@ -70,10 +70,23 @@ import { APP_NAME, TOTAL_CHECKS_LABEL } from "@/lib/constants"
 
 const CHANGELOG = [
   {
+    version: "1.9.5",
+    date: "March 7, 2026",
+    title: "API v1 Versioning, Developer SDK Support & Finding Types Endpoint",
+    highlights: true,
+    changes: [
+      { icon: Zap, label: "API v1 Versioning", desc: "All API endpoints have been migrated to /api/v1/ for proper versioning. This prepares the codebase for v2.0 which will introduce breaking changes. The version and security-txt endpoints remain unversioned at /api/version and /api/security-txt respectively." },
+      { icon: FileText, label: "New Finding Types Endpoint", desc: "Added GET /api/v1/finding-types endpoint that returns all 110+ security check definitions including id, type, title, category, and severity. This enables SDK developers to programmatically access check metadata for building integrations." },
+      { icon: Key, label: "Developer Documentation", desc: "New 'Developers' section in the docs for SDK and package developers. Documents the finding-types endpoint, SDK development guidelines, and links to the official Python SDK (vulnradar-py) currently in development." },
+      { icon: Globe, label: "Updated API Documentation", desc: "API docs now reflect the /api/v1/ base URL for all authenticated endpoints. Code examples (curl, JavaScript, Python) updated with correct versioned paths. Version endpoint documented as unversioned." },
+      { icon: Shield, label: "Scanner Engine v2.0.0", desc: "checks-data.json version bumped to 2.0.0 to align with the scanner engine version. All check definitions and scanner components now share the same version number." },
+    ],
+  },
+  {
     version: "1.9.4-patch.1",
     date: "February 28, 2026",
     title: "API Key Encryption Fix, Stronger Key Entropy & Validation Overhaul",
-    highlights: true,
+    highlights: false,
     changes: [
       { icon: Lock, label: "Fixed Encrypted Key Validation", desc: "Fixed a critical bug where API keys stored with AES-256-GCM encryption could not be validated. The previous implementation incorrectly attempted to compare re-encrypted ciphertexts, which always differ due to random IVs. Validation now decrypts stored keys and compares plaintext values, with automatic fallback to hash-based lookup for legacy keys." },
       { icon: Key, label: "Increased API Key Entropy", desc: "API key generation upgraded from 24 random bytes (48 hex characters) to 32 random bytes (64 hex characters), significantly increasing key entropy and resistance to brute-force attacks." },

@@ -76,7 +76,7 @@ export function middleware(request: NextRequest) {
   }
 
   // Allow API scan requests with Bearer tokens (API key auth handled in route)
-  if (pathname === "/api/scan" && request.headers.get("authorization")?.startsWith("Bearer ")) {
+  if (pathname === "/api/v1/scan" && request.headers.get("authorization")?.startsWith("Bearer ")) {
     return applySecurityHeaders(NextResponse.next())
   }
 

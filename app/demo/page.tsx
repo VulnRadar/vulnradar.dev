@@ -28,7 +28,7 @@ export default function DemoPage() {
 
     try {
       const siteUrl = window.location.origin
-      const res = await fetch("/api/demo-scan", {
+      const res = await fetch("/api/v1/demo-scan", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ url: siteUrl }),
