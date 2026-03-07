@@ -1,12 +1,28 @@
 // ============================================================================
-// Configuration Loader (Server-Only Utility)
+// Configuration Loader (Works in both Server and Client)
 // ============================================================================
 // Loads config from config.yaml with validation and fallback to defaults.
-// This file uses Node.js fs APIs and is only imported by server-side code.
+// On the server, reads from filesystem. In the browser, uses defaults only.
 // ============================================================================
 
-import { readFileSync, existsSync } from "fs"
-import { join } from "path"
+// Conditional imports - only use fs/path on server
+let readFileSync: ((path: string, encoding: string) => string) | null = null
+let existsSync: ((path: string) => boolean) | null = null
+let join: ((...paths: string[]) => string) | null = null
+
+if (typeof window === "undefined") {
+  // Server-side only
+  try {
+    const fs = require("fs")
+    const path = require("path")
+    readFileSync = fs.readFileSync
+    existsSync = fs.existsSync
+    join = path.join
+  } catch (e) {
+    // Fallback if requires fail
+  }
+}
+
 import { VulnRadarConfig, DEFAULT_CONFIG } from "./types/config"
 
 // YAML parser - simple implementation for our config structure
@@ -137,6 +153,12 @@ let _configLoadError: string | null = null
  */
 export function loadConfig(): VulnRadarConfig {
   if (_config) return _config
+  
+  // If running in browser (no fs access), use defaults immediately
+  if (!readFileSync || !existsSync || !join) {
+    _config = DEFAULT_CONFIG
+    return _config
+  }
   
   try {
     // Try multiple possible paths for config.yaml
