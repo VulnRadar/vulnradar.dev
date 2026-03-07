@@ -22,7 +22,7 @@ export default function ForgotPasswordPage() {
     setLoading(true)
     setError("")
     try {
-      const res = await fetch("/api/auth/forgot-password", {
+      const res = await fetch("/api/v1/auth/forgot-password", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: email.trim().toLowerCase() }),

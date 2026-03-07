@@ -90,7 +90,7 @@ export function TosModal({ onAccept }: TosModalProps) {
     if (!allChecked) return
     setAccepting(true)
     try {
-      const res = await fetch("/api/auth/accept-tos", { method: "POST" })
+      const res = await fetch("/api/v1/auth/accept-tos", { method: "POST" })
       if (res.ok) onAccept()
     } catch {
       // retry on next attempt

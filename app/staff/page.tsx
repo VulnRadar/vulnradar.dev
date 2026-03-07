@@ -56,7 +56,7 @@ export default function StaffPage() {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    fetch("/api/staff")
+    fetch("/api/v1/staff")
       .then((r) => r.json())
       .then((d) => setStaff(d.staff || []))
       .catch(() => {})

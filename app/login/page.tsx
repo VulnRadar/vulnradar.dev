@@ -50,7 +50,7 @@ function LoginForm() {
     setResendingVerification(true)
     setResendSuccess(false)
     try {
-      const res = await fetch("/api/auth/resend-verification", {
+      const res = await fetch("/api/v1/auth/resend-verification", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email }),
@@ -77,7 +77,7 @@ function LoginForm() {
     setLoading(true)
 
     try {
-      const res = await fetch("/api/auth/login", {
+      const res = await fetch("/api/v1/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password }),
@@ -125,7 +125,7 @@ function LoginForm() {
       const body = useBackupCode
         ? { userId: pendingUserId, backupCode: backupCodeInput, rememberDevice }
         : { userId: pendingUserId, code: totpCode, rememberDevice }
-      const res = await fetch("/api/auth/2fa/verify", {
+      const res = await fetch("/api/v1/auth/2fa/verify", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
@@ -269,7 +269,7 @@ function LoginForm() {
                     setResendingCode(true)
                     setError("")
                     try {
-                      const res = await fetch("/api/auth/2fa/email-send", {
+                      const res = await fetch("/api/v1/auth/2fa/email-send", {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
                       })

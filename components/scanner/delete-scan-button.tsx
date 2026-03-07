@@ -20,7 +20,7 @@ export function DeleteScanButton({ scanId, onDeleted, isOwner }: DeleteScanButto
   async function handleDelete() {
     setState("deleting")
     try {
-      const res = await fetch(`/api/history/${scanId}/delete`, { method: "DELETE" })
+      const res = await fetch(`/api/v1/history/${scanId}/delete`, { method: "DELETE" })
       if (res.ok) {
         setState("deleted")
         setTimeout(() => onDeleted(), 500)

@@ -39,7 +39,7 @@ export default function SharesPage() {
   async function fetchShares() {
     setLoading(true)
     try {
-      const res = await fetch("/api/shares")
+      const res = await fetch("/api/v1/shares")
       if (res.ok) {
         const data = await res.json()
         setShares(data.shares || [])
@@ -56,7 +56,7 @@ export default function SharesPage() {
 
     setRevoking(scanId)
     try {
-      const res = await fetch(`/api/history/${scanId}/share`, { method: "DELETE" })
+      const res = await fetch(`/api/v1/history/${scanId}/share`, { method: "DELETE" })
       if (res.ok) {
         setShares((prev) => {
           const updated = prev.filter((s) => s.id !== scanId)

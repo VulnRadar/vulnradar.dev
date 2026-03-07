@@ -22,7 +22,7 @@ export function TosGate({ children }: { children: React.ReactNode }) {
 
     async function check() {
       try {
-        const res = await fetch("/api/auth/me")
+        const res = await fetch("/api/v1/auth/me")
         if (!res.ok) {
           // Not logged in - let middleware handle redirect
           setStatus("skip")

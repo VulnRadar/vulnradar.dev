@@ -36,7 +36,7 @@ export default function SharedScanPage() {
   useEffect(() => {
     async function load() {
       try {
-        const res = await fetch(`/api/shared/${token}`)
+        const res = await fetch(`/api/v1/shared/${token}`)
         if (!res.ok) {
           const data = await res.json()
           setError(data.error || "This shared scan could not be found.")
