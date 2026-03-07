@@ -1,11 +1,9 @@
 // ============================================================================
 // APP CONSTANTS - Centralized configuration for the entire application
 // ============================================================================
-// This file now reads from config.yaml via the config system (server-only).
+// This file reads from config.yaml via the config system.
 // Self-hosters: Modify config.yaml to customize your deployment.
 // ============================================================================
-
-"use server"
 
 import { getConfig } from "./config"
 
