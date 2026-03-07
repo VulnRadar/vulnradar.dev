@@ -1,10 +1,8 @@
-"use server"
-
 // ============================================================================
-// Configuration Loader (Server-Only)
+// Configuration Loader (Server-Only Utility)
 // ============================================================================
 // Loads config from config.yaml with validation and fallback to defaults.
-// This file runs ONLY on the server - it cannot be imported on the client.
+// This file uses Node.js fs APIs and is only imported by server-side code.
 // ============================================================================
 
 import { readFileSync, existsSync } from "fs"
