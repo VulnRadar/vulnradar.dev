@@ -396,7 +396,7 @@ export const API = {
   LANDING_CONTACT: "/api/v1/landing-contact",
   ADMIN: "/api/v1/admin",
   STAFF: "/api/v1/staff",
-  VERSION: "/api/v1/version",
+  VERSION: "/api/version",
   BADGE_SCANS: "/api/v1/badge/scans",
   DATA_REQUEST: "/api/v1/data-request",
   ACCOUNT_DELETE: "/api/v1/account/delete",
