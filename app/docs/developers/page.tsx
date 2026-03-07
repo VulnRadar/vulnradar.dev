@@ -333,4 +333,3 @@ print(result.findings)`}</code></pre>
     </div>
   )
 }
-</code>
