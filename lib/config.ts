@@ -1,8 +1,10 @@
+"use server"
+
 // ============================================================================
-// Configuration Loader
+// Configuration Loader (Server-Only)
 // ============================================================================
 // Loads config from config.yaml with validation and fallback to defaults.
-// This ensures the app works even if config.yaml is missing or invalid.
+// This file runs ONLY on the server - it cannot be imported on the client.
 // ============================================================================
 
 import { readFileSync, existsSync } from "fs"
