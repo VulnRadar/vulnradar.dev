@@ -1,4 +1,4 @@
-import { ROUTES, API } from "./constants"
+import { ROUTES, API, API_V2 } from "./constants"
 
 /**
  * Public paths that don't require authentication
@@ -17,7 +17,7 @@ export const PUBLIC_PATHS = [
   ROUTES.RESET_PASSWORD,
   ROUTES.VERIFY_EMAIL,
 
-  // ─── Authentication API Routes ─────────────────────────────────
+  // ─── Authentication API Routes (v1) ────────────────────────────
   API.AUTH.LOGIN,
   API.AUTH.SIGNUP,
   API.AUTH.FORGOT_PASSWORD,
@@ -26,6 +26,16 @@ export const PUBLIC_PATHS = [
   API.AUTH.TWO_FA.VERIFY,
   API.AUTH.VERIFY_EMAIL,
   API.AUTH.RESEND_VERIFICATION,
+
+  // ─── Authentication API Routes (v2) ────────────────────────────
+  API_V2.AUTH.LOGIN,
+  API_V2.AUTH.SIGNUP,
+  API_V2.AUTH.FORGOT_PASSWORD,
+  API_V2.AUTH.RESET_PASSWORD,
+  API_V2.AUTH.ACCEPT_TOS,
+  API_V2.AUTH.TWO_FA.VERIFY,
+  API_V2.AUTH.VERIFY_EMAIL,
+  API_V2.AUTH.RESEND_VERIFICATION,
 
   // ─── Legal Pages ───────────────────────────────────────────────
   ROUTES.LEGAL_TERMS,
@@ -36,21 +46,27 @@ export const PUBLIC_PATHS = [
   // ─── Shared Scan Reports ───────────────────────────────────────
   "/shared",
   "/api/v1/shared",
+  "/api/v2/shared",
 
-  // ─── Public Demo ────────────────────────────────────────────────
+  // ─── Public Demo (v1 & v2) ─────────────────────────────────────
   ROUTES.DEMO,
   API.DEMO_SCAN,
+  API_V2.DEMO_SCAN,
 
-  // ─── Public Staff Page ─────────────────────────────────────────
+  // ─── Public Staff Page (v1 & v2) ───────────────────────────────
   ROUTES.STAFF,
   API.STAFF,
+  API_V2.STAFF,
 
-  // ─── Public API Endpoints ──────────────────────────────────────
+  // ─── Public API Endpoints (v1 & v2) ────────────────────────────
   API.LANDING_CONTACT,
+  API_V2.LANDING_CONTACT,
 
-  // ─── Public Badge Endpoints ────────────────────────────────────
+  // ─── Public Badge Endpoints (v1 & v2) ──────────────────────────
   "/api/v1/badge",
+  "/api/v2/badge",
 
-  // ─── Public Finding Types Endpoint ─────────────────────────────
+  // ─── Public Finding Types Endpoint (v1 & v2) ───────────────────
   API.FINDING_TYPES,
+  API_V2.FINDING_TYPES,
 ]

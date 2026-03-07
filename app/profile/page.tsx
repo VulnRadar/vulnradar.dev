@@ -4,6 +4,7 @@ import React, { useState, useEffect, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import dynamic from "next/dynamic"
 import { cn } from "@/lib/utils"
+import { APP_NAME } from "@/lib/constants"
 
 const ImageCropDialog = dynamic(() => import("@/components/image-crop-dialog").then(m => ({ default: m.ImageCropDialog })), { ssr: false })
 import {
@@ -1006,7 +1007,7 @@ export default function ProfilePage() {
                               <Copy className="mr-1.5 h-3.5 w-3.5" />Copy All
                             </Button>
                             <Button variant="outline" size="sm" className="bg-transparent" onClick={() => {
-                              const blob = new Blob([`VulnRadar 2FA Backup Codes\n${"=".repeat(30)}\n\n${backupCodes.join("\n")}\n\nEach code can only be used once.`], { type: "text/plain" })
+                              const blob = new Blob([`${APP_NAME} 2FA Backup Codes\n${"=".repeat(30)}\n\n${backupCodes.join("\n")}\n\nEach code can only be used once.`], { type: "text/plain" })
                               const url = URL.createObjectURL(blob); const a = document.createElement("a"); a.href = url; a.download = "vulnradar-backup-codes.txt"; a.click(); URL.revokeObjectURL(url)
                             }}>
                               <Download className="mr-1.5 h-3.5 w-3.5" />Download
@@ -1343,7 +1344,7 @@ export default function ProfilePage() {
                   <div className="flex flex-col items-center gap-3 py-8 text-center">
                     <Key className="h-10 w-10 text-muted-foreground/50" />
                     <p className="text-sm font-medium text-foreground">No API keys yet</p>
-                    <p className="text-xs text-muted-foreground">Generate a key above to start using the VulnRadar API.</p>
+                    <p className="text-xs text-muted-foreground">Generate a key above to start using the {APP_NAME} API.</p>
                   </div>
                 )}
 
@@ -1740,7 +1741,7 @@ export default function ProfilePage() {
               <CardContent className="flex flex-col gap-2">
                 {([
                   { key: "email_product_updates" as const, icon: Megaphone, label: "Product Updates", desc: "Major feature announcements, release notes, and platform improvements." },
-                  { key: "email_tips_guides" as const, icon: Lightbulb, label: "Tips & Guides", desc: "Helpful tips, best practices, and security guides to get the most out of VulnRadar." },
+                  { key: "email_tips_guides" as const, icon: Lightbulb, label: "Tips & Guides", desc: `Helpful tips, best practices, and security guides to get the most out of ${APP_NAME}.` },
                 ] as const).map(({ key, icon: Icon, label, desc }) => (
                   <div key={key} className="flex items-center justify-between p-3 rounded-lg border border-border bg-secondary/30">
                     <div className="flex-1">

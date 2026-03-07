@@ -4,7 +4,7 @@ import React from "react"
 import { Card } from "@/components/ui/card"
 import { CopyCodeBlock } from "@/components/copy-code-block"
 import { AlertTriangle, CheckCircle, Info } from "lucide-react"
-import { APP_NAME, APP_URL, APP_VERSION, ENGINE_VERSION } from "@/lib/constants"
+import { APP_NAME, APP_URL, APP_VERSION, ENGINE_VERSION, APP_REPO, APP_SLUG } from "@/lib/constants"
 
 export default function SetupPage() {
   return (
@@ -65,11 +65,11 @@ export default function SetupPage() {
 
         <Card className="p-6 border-border/40">
           <h3 className="font-semibold mb-4">Step 1: Clone the Repository</h3>
-          <p className="text-sm text-muted-foreground mb-3">Clone VulnRadar from GitHub:</p>
-          <CopyCodeBlock code={`git clone https://github.com/VulnRadar/vulnradar.dev.git
-cd vulnradar.dev`}>{`git clone https://github.com/VulnRadar/vulnradar.dev.git
-cd vulnradar.dev`}</CopyCodeBlock>
-          <p className="text-xs text-muted-foreground">This creates a directory called "VulnRadar" with the latest code from the main branch.</p>
+          <p className="text-sm text-muted-foreground mb-3">Clone {APP_NAME} from GitHub:</p>
+          <CopyCodeBlock code={`git clone https://github.com/${APP_REPO}.git
+cd ${APP_SLUG}.dev`}>{`git clone https://github.com/${APP_REPO}.git
+cd ${APP_SLUG}.dev`}</CopyCodeBlock>
+          <p className="text-xs text-muted-foreground">This creates a directory called &quot;{APP_NAME}&quot; with the latest code from the main branch.</p>
         </Card>
 
         <Card className="p-6 border-border/40">
@@ -95,7 +95,7 @@ pnpm list --depth=0`}</CopyCodeBlock>
       {/* Database Setup */}
       <section id="database" className="space-y-4">
         <h2 className="text-2xl font-bold">Database Setup</h2>
-        <p className="text-muted-foreground">Configure PostgreSQL for VulnRadar:</p>
+        <p className="text-muted-foreground">Configure PostgreSQL for {APP_NAME}:</p>
 
         <Card className="p-6 border-border/40">
           <h3 className="font-semibold mb-4">Step 1: Create Database and User</h3>
@@ -154,7 +154,7 @@ GRANT ALL PRIVILEGES ON DATABASE vulnradar TO vulnradar_user;
       {/* Environment Configuration */}
       <section id="environment" className="space-y-4">
         <h2 className="text-2xl font-bold">Environment Configuration</h2>
-        <p className="text-muted-foreground">Configure environment variables for your VulnRadar installation:</p>
+        <p className="text-muted-foreground">Configure environment variables for your {APP_NAME} installation:</p>
 
         <Card className="p-6 border-border/40">
           <h3 className="font-semibold mb-4">Create .env.local File</h3>
@@ -267,13 +267,13 @@ pnpm dev -- -p 3001`}</CopyCodeBlock>
       {/* Verification */}
       <section id="verification" className="space-y-4">
         <h2 className="text-2xl font-bold">Verification Steps</h2>
-        <p className="text-muted-foreground">Verify that VulnRadar is running correctly:</p>
+        <p className="text-muted-foreground">Verify that {APP_NAME} is running correctly:</p>
 
         <Card className="p-6 border-border/40 space-y-4">
           <div>
             <h3 className="font-semibold mb-2">1. Access the Application</h3>
             <p className="text-sm text-muted-foreground">Open your browser and navigate to <a href="http://localhost:3000" className="text-primary hover:underline">http://localhost:3000</a></p>
-            <p className="text-xs text-muted-foreground mt-2">You should see the VulnRadar landing page with login and signup options.</p>
+            <p className="text-xs text-muted-foreground mt-2">You should see the {APP_NAME} landing page with login and signup options.</p>
           </div>
 
           <div>
@@ -396,7 +396,7 @@ npm start`}</code></pre>
 
         <Card className="p-6 border-border/40">
           <h3 className="font-semibold mb-4">Vercel (Recommended)</h3>
-          <p className="text-sm text-muted-foreground mb-3">VulnRadar is optimized for Vercel deployment:</p>
+          <p className="text-sm text-muted-foreground mb-3">{APP_NAME} is optimized for Vercel deployment:</p>
           <ol className="list-decimal list-inside space-y-2 text-sm text-muted-foreground">
             <li>Push your code to GitHub</li>
             <li>Connect your repository to Vercel</li>
@@ -455,7 +455,7 @@ cd ~/vulnradar`}</CopyCodeBlock>
 
           <Card className="p-6 border-border/40">
             <h3 className="font-semibold mb-4">Step 2: Download docker-compose.yml</h3>
-            <CopyCodeBlock code="curl -O https://raw.githubusercontent.com/VulnRadar/vulnradar.dev/main/docker-compose.yml">curl -O https://raw.githubusercontent.com/VulnRadar/vulnradar.dev/main/docker-compose.yml</CopyCodeBlock>
+            <CopyCodeBlock code={`curl -O https://raw.githubusercontent.com/${APP_REPO}/main/docker-compose.yml`}>{`curl -O https://raw.githubusercontent.com/${APP_REPO}/main/docker-compose.yml`}</CopyCodeBlock>
             <p className="text-xs text-muted-foreground">Verify it downloaded:</p>
             <CopyCodeBlock code="ls">ls</CopyCodeBlock>
             <p className="text-xs text-muted-foreground mt-2">You should see <code className="bg-secondary px-1 rounded">docker-compose.yml</code> in the current directory.</p>
@@ -526,7 +526,7 @@ NEXT_PUBLIC_APP_URL=https://yourdomain.com
 
 # ─────────────────────────────────────────────────────────────────────────
 # API KEY ENCRYPTION (Server-side - Required for enhanced security)
-# ─────────────────────────────────────────────────────────────────────────
+# ──────────────────────────────��──────────────────────────────────────────
 # 32-byte hex string for AES-256 encryption of stored API keys.
 # Generate with: node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 API_KEY_ENCRYPTION_KEY=your-64-character-hex-key
@@ -791,7 +791,7 @@ TURNSTILE_SECRET_KEY=your-secret`}</code></pre>
           <p className="text-sm text-muted-foreground mb-3">If an update is available:</p>
           <pre className="bg-secondary/50 p-4 rounded text-xs overflow-x-auto"><code>{`[${APP_NAME}] Starting ${APP_NAME} v1.6.8 (Detection Engine v${ENGINE_VERSION})
 [${APP_NAME}] Update available! You're on v1.6.8, latest is v${APP_VERSION}.
-[${APP_NAME}] https://github.com/VulnRadar/vulnradar.dev/releases/tag/v${APP_VERSION}`}</code></pre>
+[${APP_NAME}] https://github.com/${APP_REPO}/releases/tag/v${APP_VERSION}`}</code></pre>
         </Card>
 
         <Card className="p-6 border-border/40">
