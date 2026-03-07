@@ -14,17 +14,17 @@ export default function APIDocsPage() {
   const codeExamples = {
     curl: (endpoint: string, method: string = "GET", data?: string) => {
       if (method === "POST" && data) {
-        return `curl -X POST "${APP_URL}/api${endpoint}" \\
+        return `curl -X POST "${APP_URL}/api/v1${endpoint}" \\
   -H "Authorization: Bearer YOUR_API_KEY_HERE" \\
   -H "Content-Type: application/json" \\
   -d '${data}'`
       }
-      return `curl -X ${method} "${APP_URL}/api${endpoint}" \\
+      return `curl -X ${method} "${APP_URL}/api/v1${endpoint}" \\
   -H "Authorization: Bearer YOUR_API_KEY_HERE"`
     },
     javascript: (endpoint: string, method: string = "GET", data?: string) => {
       if (method === "POST" && data) {
-        return `const response = await fetch('${APP_URL}/api${endpoint}', {
+        return `const response = await fetch('${APP_URL}/api/v1${endpoint}', {
   method: '${method}',
   headers: {
     'Authorization': 'Bearer YOUR_API_KEY_HERE',
@@ -35,7 +35,7 @@ export default function APIDocsPage() {
 const data = await response.json();
 console.log(data);`
       }
-      return `const response = await fetch('${APP_URL}/api${endpoint}', {
+      return `const response = await fetch('${APP_URL}/api/v1${endpoint}', {
   method: '${method}',
   headers: {
     'Authorization': 'Bearer YOUR_API_KEY_HERE',
@@ -54,7 +54,7 @@ headers = {
 }
 
 payload = ${data}
-response = requests.${method.toLowerCase()}('${APP_URL}/api${endpoint}', 
+response = requests.${method.toLowerCase()}('${APP_URL}/api/v1${endpoint}', 
   headers=headers, json=payload)
 print(response.json())`
       }
@@ -64,7 +64,7 @@ headers = {
     'Authorization': 'Bearer YOUR_API_KEY_HERE',
 }
 
-response = requests.${method.toLowerCase()}('${APP_URL}/api${endpoint}', 
+response = requests.${method.toLowerCase()}('${APP_URL}/api/v1${endpoint}', 
   headers=headers)
 print(response.json())`
     }
@@ -108,7 +108,7 @@ print(response.json())`
       {/* Endpoints */}
       <section id="endpoints" className="space-y-4">
         <h2 className="text-2xl font-bold">Endpoints</h2>
-        <p className="text-muted-foreground">Base URL: <code className="bg-secondary px-2 py-1 rounded text-sm">{APP_URL}/api</code></p>
+        <p className="text-muted-foreground">Base URL: <code className="bg-secondary px-2 py-1 rounded text-sm">{APP_URL}/api/v1</code></p>
 
         {/* Create Scan */}
         <Card className="p-6 border-border/40">
@@ -407,11 +407,11 @@ print(response.json())`
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2">
               <Badge className="bg-blue-600/20 text-blue-700 hover:bg-blue-600/20">GET</Badge>
-              <code className="text-primary font-mono">/version</code>
+              <code className="text-primary font-mono">/api/version</code>
             </div>
             <span className="text-xs text-muted-foreground">Version Check</span>
           </div>
-          <p className="text-muted-foreground mb-4">Check if the running instance is up to date by comparing the installed version against the latest release on GitHub. Useful for self-hosted deployments.</p>
+          <p className="text-muted-foreground mb-4">Check if the running instance is up to date by comparing the installed version against the latest release on GitHub. Useful for self-hosted deployments. <span className="text-xs">(Note: This endpoint is not versioned - use <code className="bg-secondary px-1 rounded">/api/version</code> directly)</span></p>
           
           <div className="space-y-4">
             <div>
