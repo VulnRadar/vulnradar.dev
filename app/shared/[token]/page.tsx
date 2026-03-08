@@ -9,6 +9,7 @@ import {
   User,
   RotateCcw,
   MessageSquare,
+  Tag,
 } from "lucide-react"
 import { PublicPageShell } from "@/components/public-page-shell"
 import { ScanSummary } from "@/components/scanner/scan-summary"
@@ -28,6 +29,7 @@ export default function SharedScanPage() {
   const [scannedBy, setScannedBy] = useState("")
   const [scannedByAvatar, setScannedByAvatar] = useState<string | null>(null)
   const [scannedByRole, setScannedByRole] = useState<string>("user")
+  const [scannedByBadges, setScannedByBadges] = useState<{ id: number; name: string; display_name: string; icon: string | null; color: string | null; priority: number }[]>([])
   const [scanNotes, setScanNotes] = useState("")
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -47,6 +49,7 @@ export default function SharedScanPage() {
         setScannedBy(data.scannedBy || "")
         setScannedByAvatar(data.scannedByAvatar || null)
         setScannedByRole(data.scannedByRole || "user")
+        setScannedByBadges(data.scannedByBadges || [])
         setScanNotes(data.notes || "")
       } catch {
         setError("Failed to load shared scan.")
@@ -107,6 +110,22 @@ export default function SharedScanPage() {
                               {STAFF_ROLE_LABELS[scannedByRole] || scannedByRole}
                             </span>
                           )}
+                          {scannedByBadges.length > 0 && scannedByBadges.slice(0, 3).map((badge) => (
+                            <span
+                              key={badge.id}
+                              className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-medium"
+                              style={{
+                                backgroundColor: `${badge.color}15`,
+                                borderWidth: 1,
+                                borderColor: `${badge.color}40`,
+                                color: badge.color || undefined,
+                              }}
+                              title={badge.display_name}
+                            >
+                              <Tag className="h-2.5 w-2.5" />
+                              {badge.display_name}
+                            </span>
+                          ))}
                         </div>
                       )}
                     </div>
