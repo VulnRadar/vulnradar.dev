@@ -18,13 +18,22 @@ const SEVERITY_ORDER: Record<Severity, number> = {
 
 const MAX_BODY_SIZE = 1 * 1024 * 1024 // 1 MB max response body
 
+const SUPPORTED_PROTOCOLS = ["http:", "https:", "ws:", "wss:", "ftp:", "ftps:"]
+
 function isValidUrl(input: string): boolean {
   try {
     const url = new URL(input)
-    return url.protocol === "http:" || url.protocol === "https:"
+    return SUPPORTED_PROTOCOLS.includes(url.protocol)
   } catch {
     return false
   }
+}
+
+function getProtocolType(url: string): "http" | "websocket" | "ftp" {
+  const parsed = new URL(url)
+  if (parsed.protocol === "ws:" || parsed.protocol === "wss:") return "websocket"
+  if (parsed.protocol === "ftp:" || parsed.protocol === "ftps:") return "ftp"
+  return "http"
 }
 
 /**
@@ -149,37 +158,101 @@ export async function POST(request: NextRequest) {
 
     if (!isValidUrl(url)) {
       return NextResponse.json(
-        { error: "Invalid URL. Must start with http:// or https://" },
+        { error: "Invalid URL. Supported protocols: http://, https://, ws://, wss://, ftp://, ftps://" },
         { status: 400 }
       )
     }
 
+    const protocolType = getProtocolType(url)
+
     const startTime = Date.now()
 
-    // Fetch the target URL
-    let response: Response
-    try {
-      response = await fetch(url, {
-        method: "GET",
-        headers: {
-          "User-Agent": `${APP_NAME}/1.0 (Security Scanner)`,
-        },
-        redirect: "follow",
-        signal: AbortSignal.timeout(15000),
-      })
-    } catch (fetchError) {
-      const message =
-        fetchError instanceof Error ? fetchError.message : "Unknown error"
-      return NextResponse.json(
-        {
-          error: `Could not reach the target URL: ${message}. The site may be down, blocking automated requests, or not publicly accessible.`,
-        },
-        { status: 422 }
-      )
-    }
+    let response: Response | null = null
+    let responseBody = ""
+    let headers = new Headers()
+    let protocolSpecificFindings: Vulnerability[] = []
 
-    const responseBody = await safeReadBody(response, MAX_BODY_SIZE)
-    const headers = response.headers
+    // Handle different protocol types
+    if (protocolType === "websocket") {
+      // For WebSocket URLs, convert to HTTP(S) for initial check
+      const httpUrl = url.replace(/^wss?:\/\//, (m) => m.startsWith("wss") ? "https://" : "http://")
+      try {
+        response = await fetch(httpUrl, {
+          method: "GET",
+          headers: { "User-Agent": `${APP_NAME}/1.0 (Security Scanner)` },
+          redirect: "follow",
+          signal: AbortSignal.timeout(15000),
+        })
+        responseBody = await safeReadBody(response, MAX_BODY_SIZE)
+        headers = response.headers
+      } catch {
+        // WebSocket endpoint may not respond to HTTP - that's ok
+      }
+
+      // Add WebSocket-specific findings
+      const isSecure = url.startsWith("wss://")
+      if (!isSecure) {
+        protocolSpecificFindings.push({
+          id: `vuln-ws-insecure-${Date.now()}`,
+          title: "Insecure WebSocket Connection",
+          description: "WebSocket connection uses ws:// instead of wss://, data is transmitted unencrypted.",
+          severity: "high",
+          category: "ssl",
+          evidence: `Protocol: ${url.split("://")[0]}://`,
+          riskImpact: "Data transmitted over WebSocket can be intercepted by attackers.",
+          fixSteps: ["Use wss:// for secure WebSocket connections."],
+        })
+      }
+    } else if (protocolType === "ftp") {
+      // For FTP URLs, we can only do limited checks
+      const isSecure = url.startsWith("ftps://")
+      if (!isSecure) {
+        protocolSpecificFindings.push({
+          id: `vuln-ftp-insecure-${Date.now()}`,
+          title: "Insecure FTP Connection",
+          description: "FTP connection uses ftp:// instead of ftps://, credentials and data are transmitted unencrypted.",
+          severity: "critical",
+          category: "ssl",
+          evidence: `Protocol: ${url.split("://")[0]}://`,
+          riskImpact: "FTP credentials and transferred files can be intercepted.",
+          fixSteps: ["Use ftps:// or SFTP for secure file transfers."],
+        })
+      }
+      // Can't fetch FTP URLs directly with fetch API
+      protocolSpecificFindings.push({
+        id: `vuln-ftp-limited-${Date.now()}`,
+        title: "Limited FTP Scan",
+        description: "FTP protocol scanning is limited to protocol-level security checks.",
+        severity: "info",
+        category: "configuration",
+        evidence: "FTP endpoints cannot be fully scanned via HTTP.",
+        riskImpact: "Some security checks may not be available for FTP endpoints.",
+        fixSteps: [],
+      })
+    } else {
+      // Standard HTTP/HTTPS fetch
+      try {
+        response = await fetch(url, {
+          method: "GET",
+          headers: {
+            "User-Agent": `${APP_NAME}/1.0 (Security Scanner)`,
+          },
+          redirect: "follow",
+          signal: AbortSignal.timeout(15000),
+        })
+        responseBody = await safeReadBody(response, MAX_BODY_SIZE)
+        headers = response.headers
+      } catch (fetchError) {
+        const message =
+          fetchError instanceof Error ? fetchError.message : "Unknown error"
+        return NextResponse.json(
+          {
+            error: `Could not reach the target URL: ${message}. The site may be down, blocking automated requests, or not publicly accessible.`,
+          },
+          { status: 422 }
+        )
+      }
+    }
 
     // Capture response headers as a plain object for evidence
     const capturedHeaders: Record<string, string> = {}
@@ -208,7 +281,7 @@ export async function POST(request: NextRequest) {
       asyncFindings = await Promise.race([asyncPromise, asyncTimeout])
     } catch { /* non-fatal */ }
 
-    const findings = [...syncFindings, ...asyncFindings]
+    const findings = [...protocolSpecificFindings, ...syncFindings, ...asyncFindings]
 
     // Sort findings by severity
     findings.sort(

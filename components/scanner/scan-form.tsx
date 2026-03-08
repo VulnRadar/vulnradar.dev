@@ -2,13 +2,30 @@
 
 import React from "react"
 import { useState } from "react"
-import { Shield, Loader2, Search, ArrowRight, Zap, Globe, SlidersHorizontal, Check, Lock, Cookie, FileCode, Eye, Settings, Mail } from "lucide-react"
+import { Shield, Loader2, Search, ArrowRight, Zap, Globe, SlidersHorizontal, Check, Lock, Cookie, FileCode, Eye, Settings, Mail, ChevronDown } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { TOTAL_CHECKS_LABEL } from "@/lib/constants"
 import { cn } from "@/lib/utils"
 import type { ScanStatus } from "@/lib/scanner/types"
+
+// Protocol definitions with their applicable scanner categories
+export const SCAN_PROTOCOLS = [
+  { value: "https://", label: "HTTPS", description: "Secure HTTP (recommended)", categories: ["headers", "ssl", "cookies", "content", "information-disclosure", "configuration", "dns"] },
+  { value: "http://", label: "HTTP", description: "Unencrypted HTTP", categories: ["headers", "cookies", "content", "information-disclosure", "configuration", "dns"] },
+  { value: "wss://", label: "WSS", description: "Secure WebSocket", categories: ["ssl", "headers"] },
+  { value: "ws://", label: "WS", description: "WebSocket", categories: ["headers"] },
+  { value: "ftp://", label: "FTP", description: "File Transfer Protocol", categories: ["configuration"] },
+  { value: "ftps://", label: "FTPS", description: "Secure FTP", categories: ["ssl", "configuration"] },
+] as const
+
+export type ScanProtocol = (typeof SCAN_PROTOCOLS)[number]["value"]
+
+export function isHttpProtocol(protocol: ScanProtocol): boolean {
+  return protocol === "https://" || protocol === "http://"
+}
 
 export type ScanMode = "quick" | "deep"
 
@@ -27,7 +44,7 @@ export type ScannerCategoryId = (typeof SCANNER_CATEGORIES)[number]["id"]
 const ALL_CATEGORY_IDS = SCANNER_CATEGORIES.map((c) => c.id)
 
 interface ScanFormProps {
-  onScan: (url: string, mode?: ScanMode, scanners?: string[]) => void
+  onScan: (url: string, mode?: ScanMode, scanners?: string[], protocol?: ScanProtocol) => void
   status: ScanStatus
 }
 
@@ -44,8 +61,13 @@ export function ScanForm({ onScan, status }: ScanFormProps) {
   const [url, setUrl] = useState("")
   const [error, setError] = useState("")
   const [mode, setMode] = useState<ScanMode>("quick")
+  const [protocol, setProtocol] = useState<ScanProtocol>("https://")
   const [selectedScanners, setSelectedScanners] = useState<Set<string>>(new Set(ALL_CATEGORY_IDS))
   const [selectorOpen, setSelectorOpen] = useState(false)
+
+  // Get available categories for current protocol
+  const protocolConfig = SCAN_PROTOCOLS.find(p => p.value === protocol)
+  const availableCategories = protocolConfig?.categories || []
 
   const allSelected = selectedScanners.size === ALL_CATEGORY_IDS.length
   const noneSelected = selectedScanners.size === 0
@@ -66,32 +88,45 @@ export function ScanForm({ onScan, status }: ScanFormProps) {
 
   function validate(input: string): boolean {
     if (!input.trim()) {
-      setError("Please enter a URL")
+      setError("Please enter a domain or URL")
       return false
     }
-    try {
-      const parsed = new URL(input)
-      if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-        setError("URL must start with http:// or https://")
-        return false
-      }
-    } catch {
-      setError("Please enter a valid URL (e.g., https://example.com)")
+    // Strip any existing protocol for validation
+    const cleaned = input.replace(/^(?:https?|wss?|ftps?):\/\//i, "").trim()
+    if (!cleaned) {
+      setError("Please enter a valid domain")
       return false
     }
-    if (noneSelected) {
-      setError("Select at least one scanner category")
+    // Basic domain validation
+    const domainRegex = /^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?)*(\.[a-zA-Z]{2,})?(:\d+)?(\/.*)?$/
+    if (!domainRegex.test(cleaned)) {
+      setError("Please enter a valid domain (e.g., example.com)")
+      return false
+    }
+    // Check if any selected scanners are available for this protocol
+    const validScanners = Array.from(selectedScanners).filter(s => availableCategories.includes(s))
+    if (validScanners.length === 0) {
+      setError(`No selected scanners available for ${protocol.replace("://", "").toUpperCase()} protocol`)
       return false
     }
     setError("")
     return true
   }
 
+  // Build full URL with selected protocol
+  function buildFullUrl(input: string): string {
+    const cleaned = input.replace(/^(?:https?|wss?|ftps?):\/\//i, "").trim()
+    return protocol + cleaned
+  }
+
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (validate(url)) {
-      const scanners = allSelected ? undefined : Array.from(selectedScanners)
-      onScan(url, mode, scanners)
+      const fullUrl = buildFullUrl(url)
+      // Filter scanners to only those available for this protocol
+      const validScanners = Array.from(selectedScanners).filter(s => availableCategories.includes(s))
+      const scanners = validScanners.length === availableCategories.length ? undefined : validScanners
+      onScan(fullUrl, mode, scanners, protocol)
     }
   }
 
@@ -139,13 +174,16 @@ export function ScanForm({ onScan, status }: ScanFormProps) {
         </button>
         <button
           type="button"
-          onClick={() => setMode("deep")}
+          onClick={() => isHttpProtocol(protocol) && setMode("deep")}
+          disabled={!isHttpProtocol(protocol)}
           className={cn(
             "flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all",
+            !isHttpProtocol(protocol) && "opacity-50 cursor-not-allowed",
             mode === "deep"
               ? "bg-background text-foreground shadow-sm border border-border"
               : "text-muted-foreground hover:text-foreground",
           )}
+          title={!isHttpProtocol(protocol) ? "Deep crawl only available for HTTP/HTTPS" : undefined}
         >
           <Globe className="h-3 w-3" />
           Deep Crawl
@@ -153,7 +191,7 @@ export function ScanForm({ onScan, status }: ScanFormProps) {
       </div>
       <p className="text-[10px] text-muted-foreground text-center -mt-2">
         {mode === "quick"
-          ? "Scans the single URL you enter for vulnerabilities."
+          ? `Scans the single ${protocol.replace("://", "").toUpperCase()} endpoint for vulnerabilities.`
           : "Crawls the site to find internal pages, then scans each one."}
       </p>
 
@@ -163,22 +201,70 @@ export function ScanForm({ onScan, status }: ScanFormProps) {
         className="flex flex-col gap-3 w-full max-w-lg"
       >
         <div className="flex flex-col sm:flex-row gap-2">
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              type="url"
-              placeholder="https://example.com"
-              value={url}
-              onChange={(e) => {
-                setUrl(e.target.value)
-                if (error) setError("")
-              }}
-              disabled={isScanning}
-              className="pl-9 h-11 bg-card border-border text-foreground placeholder:text-muted-foreground"
-              aria-label="Website URL to scan"
-              aria-invalid={!!error}
-              aria-describedby={error ? "url-error" : undefined}
-            />
+          <div className="relative flex-1 flex">
+            {/* Protocol dropdown */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  type="button"
+                  disabled={isScanning}
+                  className={cn(
+                    "flex items-center gap-1 px-3 h-11 rounded-l-md border border-r-0 border-border bg-muted/50 text-xs font-mono font-medium text-muted-foreground hover:bg-muted transition-colors shrink-0",
+                    isScanning && "opacity-50 cursor-not-allowed"
+                  )}
+                >
+                  {protocol.replace("://", "")}
+                  <ChevronDown className="h-3 w-3" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="w-48">
+                {SCAN_PROTOCOLS.map((p) => (
+                  <DropdownMenuItem
+                    key={p.value}
+                    onClick={() => {
+                      setProtocol(p.value)
+                      // Reset scanners to available ones for new protocol
+                      const protoCfg = SCAN_PROTOCOLS.find(pr => pr.value === p.value)
+                      if (protoCfg) {
+                        setSelectedScanners(new Set(protoCfg.categories.filter(c => ALL_CATEGORY_IDS.includes(c))))
+                      }
+                      // Reset to quick scan for non-HTTP protocols
+                      if (p.value !== "https://" && p.value !== "http://") {
+                        setMode("quick")
+                      }
+                    }}
+                    className={cn(
+                      "flex flex-col items-start gap-0.5",
+                      protocol === p.value && "bg-primary/10"
+                    )}
+                  >
+                    <span className="font-mono font-medium">{p.value}</span>
+                    <span className="text-[10px] text-muted-foreground">{p.description}</span>
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+
+            {/* URL input */}
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                type="text"
+                placeholder="example.com"
+                value={url}
+                onChange={(e) => {
+                  // Strip protocol if pasted
+                  const val = e.target.value.replace(/^(?:https?|wss?|ftps?):\/\//i, "")
+                  setUrl(val)
+                  if (error) setError("")
+                }}
+                disabled={isScanning}
+                className="pl-9 h-11 rounded-l-none bg-card border-border text-foreground placeholder:text-muted-foreground"
+                aria-label="Domain or URL to scan"
+                aria-invalid={!!error}
+                aria-describedby={error ? "url-error" : undefined}
+              />
+            </div>
           </div>
           <div className="flex gap-2">
             <Button
@@ -218,7 +304,12 @@ export function ScanForm({ onScan, status }: ScanFormProps) {
               </PopoverTrigger>
               <PopoverContent align="end" className="w-80 p-0">
                 <div className="px-3 py-2.5 border-b border-border flex items-center justify-between">
-                  <span className="text-sm font-medium text-foreground">Select Scanners</span>
+                  <div className="flex flex-col">
+                    <span className="text-sm font-medium text-foreground">Select Scanners</span>
+                    <span className="text-[10px] text-muted-foreground">
+                      {availableCategories.length} available for {protocol.replace("://", "").toUpperCase()}
+                    </span>
+                  </div>
                   <button
                     type="button"
                     onClick={toggleAll}
@@ -230,30 +321,38 @@ export function ScanForm({ onScan, status }: ScanFormProps) {
                 <div className="p-1.5 max-h-72 overflow-y-auto">
                   {SCANNER_CATEGORIES.map(({ id, label, icon: Icon, description }) => {
                     const checked = selectedScanners.has(id)
+                    const isAvailable = availableCategories.includes(id)
                     return (
                       <button
                         key={id}
                         type="button"
-                        onClick={() => toggleScanner(id)}
+                        onClick={() => isAvailable && toggleScanner(id)}
+                        disabled={!isAvailable}
                         className={cn(
                           "w-full flex items-start gap-2.5 px-2.5 py-2 rounded-md text-left transition-colors",
-                          checked
+                          !isAvailable && "opacity-40 cursor-not-allowed",
+                          isAvailable && checked
                             ? "bg-primary/5 hover:bg-primary/10"
-                            : "hover:bg-muted",
+                            : isAvailable && "hover:bg-muted",
                         )}
                       >
                         <div className={cn(
                           "flex items-center justify-center w-5 h-5 rounded border mt-0.5 shrink-0 transition-colors",
-                          checked
+                          checked && isAvailable
                             ? "bg-primary border-primary text-primary-foreground"
                             : "border-border",
                         )}>
-                          {checked && <Check className="h-3 w-3" />}
+                          {checked && isAvailable && <Check className="h-3 w-3" />}
                         </div>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-1.5">
                             <Icon className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
                             <span className="text-sm font-medium text-foreground">{label}</span>
+                            {!isAvailable && (
+                              <span className="text-[9px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
+                                N/A for {protocol.replace("://", "").toUpperCase()}
+                              </span>
+                            )}
                           </div>
                           <p className="text-[11px] text-muted-foreground leading-snug mt-0.5">{description}</p>
                         </div>
@@ -263,7 +362,7 @@ export function ScanForm({ onScan, status }: ScanFormProps) {
                 </div>
                 <div className="px-3 py-2 border-t border-border">
                   <p className="text-[10px] text-muted-foreground text-center">
-                    {selectedScanners.size} of {ALL_CATEGORY_IDS.length} scanner categories selected
+                    {Array.from(selectedScanners).filter(s => availableCategories.includes(s)).length} of {availableCategories.length} available scanners selected
                   </p>
                 </div>
               </PopoverContent>
