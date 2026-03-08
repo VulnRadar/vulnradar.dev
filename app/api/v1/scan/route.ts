@@ -7,6 +7,7 @@ import { checkRateLimit as checkGlobalRL, RATE_LIMITS } from "@/lib/rate-limit"
 import pool from "@/lib/db"
 import type { ScanResult, Severity, Vulnerability } from "@/lib/scanner/types"
 import { APP_NAME, BEARER_PREFIX, SEVERITY_LEVELS, DEFAULT_SCAN_NOTE } from "@/lib/constants"
+import { addDeprecationHeaders } from "@/lib/api-deprecation"
 
 const SEVERITY_ORDER: Record<Severity, number> = {
   critical: 0,
@@ -320,20 +321,23 @@ export async function POST(request: NextRequest) {
     if (isApiKeyAuth && apiKeyId) {
       await recordUsage(apiKeyId)
       const rateLimit = await checkRateLimit(apiKeyId, 50)
-      return NextResponse.json(responseData, {
+      const response = NextResponse.json(responseData, {
         headers: {
           "X-RateLimit-Limit": String(rateLimit.limit),
           "X-RateLimit-Remaining": String(rateLimit.remaining),
           "X-RateLimit-Reset": rateLimit.resetsAt,
         },
       })
+      return addDeprecationHeaders(response, "/api/v1/scan")
     }
 
-    return NextResponse.json(responseData)
+    const response = NextResponse.json(responseData)
+    return addDeprecationHeaders(response, "/api/v1/scan")
   } catch {
-    return NextResponse.json(
+    const response = NextResponse.json(
       { error: "An unexpected error occurred during the scan." },
       { status: 500 }
     )
+    return addDeprecationHeaders(response, "/api/v1/scan")
   }
 }
