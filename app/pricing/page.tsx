@@ -1,98 +1,117 @@
 "use client"
 
 import { useState } from "react"
-import { Check, X, Zap, Shield, Radar, ArrowRight, Sparkles } from "lucide-react"
+import { Check, X, Zap, Shield, Radar, ArrowRight, Sparkles, Crown, Rocket, Star, Heart } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
 import { APP_NAME, ROUTES } from "@/lib/constants"
 import Link from "next/link"
+import Image from "next/image"
 import { useAuth } from "@/components/auth-provider"
+import { Header } from "@/components/scanner/header"
+import { StripeCheckout } from "@/components/stripe-checkout"
 
 const PLANS = [
   {
     id: "free",
+    stripeId: null,
     name: "Free",
     description: "Full-featured security scanning for everyone",
     price: 0,
     interval: "forever",
     scansPerDay: 50,
     popular: false,
+    icon: Shield,
+    color: "text-muted-foreground",
     features: [
-      { text: "50 scans per day", included: true },
-      { text: "Full vulnerability detection", included: true },
-      { text: "Security headers analysis", included: true },
-      { text: "SSL/TLS certificate checks", included: true },
-      { text: "API access", included: true },
-      { text: "PDF reports", included: true },
-      { text: "Scheduled scans", included: true },
-      { text: "Scan history (30 days)", included: true },
-      { text: "Community support", included: true },
-      { text: "Early access features", included: false },
+      { text: "50 scans per day", included: true, highlight: false },
+      { text: "Full vulnerability detection", included: true, highlight: false },
+      { text: "Security headers analysis", included: true, highlight: false },
+      { text: "SSL/TLS certificate checks", included: true, highlight: false },
+      { text: "API access", included: true, highlight: false },
+      { text: "PDF reports", included: true, highlight: false },
+      { text: "Scheduled scans", included: true, highlight: false },
+      { text: "30-day scan history", included: true, highlight: false },
+      { text: "Community support", included: true, highlight: false },
+      { text: "Early access features", included: false, highlight: false },
+      { text: "Supporter badge", included: false, highlight: false },
     ],
   },
   {
     id: "core_supporter",
+    stripeId: "core_supporter",
     name: "Core Supporter",
-    description: "Support development + get more scans",
+    description: "Double your scans + support VulnRadar development",
     price: 5,
     interval: "month",
     scansPerDay: 100,
     popular: false,
+    icon: Heart,
+    color: "text-rose-500",
     features: [
-      { text: "100 scans per day", included: true },
-      { text: "Full vulnerability detection", included: true },
-      { text: "Security headers analysis", included: true },
-      { text: "SSL/TLS certificate checks", included: true },
-      { text: "API access (2,000 req/day)", included: true },
-      { text: "PDF reports", included: true },
-      { text: "Scheduled scans", included: true },
-      { text: "Scan history (90 days)", included: true },
-      { text: "Email support", included: true },
-      { text: "Early access features", included: true },
+      { text: "100 scans per day", included: true, highlight: true },
+      { text: "Full vulnerability detection", included: true, highlight: false },
+      { text: "Security headers analysis", included: true, highlight: false },
+      { text: "SSL/TLS certificate checks", included: true, highlight: false },
+      { text: "API access (2,000 req/day)", included: true, highlight: false },
+      { text: "PDF reports", included: true, highlight: false },
+      { text: "Scheduled scans", included: true, highlight: false },
+      { text: "90-day scan history", included: true, highlight: true },
+      { text: "Email support", included: true, highlight: true },
+      { text: "Early access features", included: true, highlight: true },
+      { text: "Supporter badge", included: true, highlight: true },
     ],
   },
   {
     id: "pro_supporter",
+    stripeId: "pro_supporter",
     name: "Pro Supporter",
-    description: "For power users who need more capacity",
+    description: "For power users who scan frequently",
     price: 10,
     interval: "month",
     scansPerDay: 150,
     popular: true,
+    icon: Rocket,
+    color: "text-primary",
     features: [
-      { text: "150 scans per day", included: true },
-      { text: "Full vulnerability detection", included: true },
-      { text: "Security headers analysis", included: true },
-      { text: "SSL/TLS certificate checks", included: true },
-      { text: "API access (5,000 req/day)", included: true },
-      { text: "PDF reports", included: true },
-      { text: "Scheduled scans", included: true },
-      { text: "Scan history (unlimited)", included: true },
-      { text: "Priority support", included: true },
-      { text: "Early access features", included: true },
+      { text: "150 scans per day", included: true, highlight: true },
+      { text: "Full vulnerability detection", included: true, highlight: false },
+      { text: "Security headers analysis", included: true, highlight: false },
+      { text: "SSL/TLS certificate checks", included: true, highlight: false },
+      { text: "API access (5,000 req/day)", included: true, highlight: true },
+      { text: "PDF reports", included: true, highlight: false },
+      { text: "Scheduled scans", included: true, highlight: false },
+      { text: "Unlimited scan history", included: true, highlight: true },
+      { text: "Priority support", included: true, highlight: true },
+      { text: "Early access features", included: true, highlight: false },
+      { text: "Pro supporter badge", included: true, highlight: true },
     ],
   },
   {
     id: "elite_supporter",
+    stripeId: "elite_supporter",
     name: "Elite Supporter",
-    description: "Maximum capacity for teams and organizations",
+    description: "Maximum power for teams & organizations",
     price: 20,
     interval: "month",
     scansPerDay: 500,
     popular: false,
+    icon: Crown,
+    color: "text-amber-500",
     features: [
-      { text: "500 scans per day", included: true },
-      { text: "Full vulnerability detection", included: true },
-      { text: "Security headers analysis", included: true },
-      { text: "SSL/TLS certificate checks", included: true },
-      { text: "API access (unlimited)", included: true },
-      { text: "PDF & CSV reports", included: true },
-      { text: "Scheduled scans", included: true },
-      { text: "Scan history (unlimited)", included: true },
-      { text: "Dedicated support", included: true },
-      { text: "Early access + beta features", included: true },
+      { text: "500 scans per day", included: true, highlight: true },
+      { text: "Full vulnerability detection", included: true, highlight: false },
+      { text: "Security headers analysis", included: true, highlight: false },
+      { text: "SSL/TLS certificate checks", included: true, highlight: false },
+      { text: "Unlimited API access", included: true, highlight: true },
+      { text: "PDF & CSV reports", included: true, highlight: true },
+      { text: "Scheduled scans", included: true, highlight: false },
+      { text: "Unlimited scan history", included: true, highlight: false },
+      { text: "Dedicated support", included: true, highlight: true },
+      { text: "Early access + beta features", included: true, highlight: true },
+      { text: "Elite supporter badge", included: true, highlight: true },
     ],
   },
 ]
@@ -100,31 +119,55 @@ const PLANS = [
 export default function PricingPage() {
   const { me } = useAuth()
   const [billing, setBilling] = useState<"monthly" | "yearly">("monthly")
+  const [checkoutPlan, setCheckoutPlan] = useState<string | null>(null)
 
   const currentPlan = me?.plan || "free"
 
+  // Get the Stripe product ID based on plan and billing
+  const getStripeProductId = (planId: string) => {
+    return `${planId}_${billing === "yearly" ? "yearly" : "monthly"}`
+  }
+
   return (
     <div className="min-h-screen bg-background">
-      {/* Header */}
-      <div className="border-b border-border bg-card/50">
-        <div className="container mx-auto px-4 py-6">
-          <div className="flex items-center justify-between">
-            <Link href={ROUTES.HOME} className="flex items-center gap-2">
-              <Radar className="h-6 w-6 text-primary" />
+      {/* Use the proper header - shows logged in state */}
+      {me ? (
+        <Header />
+      ) : (
+        <div className="border-b border-border bg-card/80 backdrop-blur-lg">
+          <div className="max-w-6xl mx-auto flex items-center justify-between px-4 h-14">
+            <Link href={ROUTES.HOME} className="flex items-center gap-2 hover:opacity-80 transition-opacity">
+              <Image src="/favicon.svg" alt={`${APP_NAME} logo`} width={28} height={28} className="h-7 w-7" />
               <span className="font-semibold text-lg">{APP_NAME}</span>
             </Link>
-            {me ? (
-              <Link href={ROUTES.PROFILE}>
-                <Button variant="outline" size="sm">Back to Profile</Button>
-              </Link>
-            ) : (
+            <div className="flex items-center gap-3">
               <Link href={ROUTES.LOGIN}>
-                <Button variant="outline" size="sm">Sign In</Button>
+                <Button variant="ghost" size="sm">Sign In</Button>
               </Link>
-            )}
+              <Link href={ROUTES.SIGNUP}>
+                <Button size="sm">Get Started</Button>
+              </Link>
+            </div>
           </div>
         </div>
-      </div>
+      )}
+
+      {/* Stripe Checkout Modal */}
+      {checkoutPlan && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          <div className="bg-card border border-border rounded-xl shadow-2xl w-full max-w-lg mx-4 overflow-hidden">
+            <div className="flex items-center justify-between p-4 border-b border-border">
+              <h3 className="font-semibold">Complete your subscription</h3>
+              <Button variant="ghost" size="sm" onClick={() => setCheckoutPlan(null)}>
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+            <div className="p-4">
+              <StripeCheckout productId={checkoutPlan} />
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Hero */}
       <div className="container mx-auto px-4 py-16 text-center">
@@ -183,7 +226,10 @@ export default function PricingPage() {
                   </div>
                 )}
                 <CardHeader className="pb-4">
-                  <CardTitle className="text-xl">{plan.name}</CardTitle>
+                  <div className="flex items-center gap-2 mb-2">
+                    <plan.icon className={cn("h-5 w-5", plan.color)} />
+                    <CardTitle className="text-xl">{plan.name}</CardTitle>
+                  </div>
                   <CardDescription className="text-sm min-h-[40px]">{plan.description}</CardDescription>
                 </CardHeader>
                 <CardContent className="flex-1">
@@ -213,11 +259,14 @@ export default function PricingPage() {
                     {plan.features.map((feature, i) => (
                       <li key={i} className="flex items-start gap-2 text-sm">
                         {feature.included ? (
-                          <Check className="h-4 w-4 text-emerald-500 shrink-0 mt-0.5" />
+                          <Check className={cn("h-4 w-4 shrink-0 mt-0.5", feature.highlight ? "text-primary" : "text-emerald-500")} />
                         ) : (
                           <X className="h-4 w-4 text-muted-foreground/50 shrink-0 mt-0.5" />
                         )}
-                        <span className={cn(!feature.included && "text-muted-foreground/50")}>
+                        <span className={cn(
+                          !feature.included && "text-muted-foreground/50",
+                          feature.highlight && feature.included && "font-medium"
+                        )}>
                           {feature.text}
                         </span>
                       </li>
@@ -232,18 +281,29 @@ export default function PricingPage() {
                   ) : plan.price === 0 ? (
                     <Link href={me ? ROUTES.DASHBOARD : ROUTES.SIGNUP} className="w-full">
                       <Button variant="outline" className="w-full">
-                        {me ? "Go to Scanner" : "Get Started"}
+                        {me ? "Go to Scanner" : "Get Started Free"}
                         <ArrowRight className="h-4 w-4 ml-2" />
                       </Button>
                     </Link>
-                  ) : (
+                  ) : me ? (
                     <Button
                       className={cn("w-full", plan.popular && "bg-primary hover:bg-primary/90")}
                       variant={plan.popular ? "default" : "outline"}
+                      onClick={() => setCheckoutPlan(getStripeProductId(plan.stripeId!))}
                     >
-                      {me ? "Upgrade" : "Get Started"}
+                      Upgrade Now
                       <ArrowRight className="h-4 w-4 ml-2" />
                     </Button>
+                  ) : (
+                    <Link href={ROUTES.SIGNUP} className="w-full">
+                      <Button
+                        className={cn("w-full", plan.popular && "bg-primary hover:bg-primary/90")}
+                        variant={plan.popular ? "default" : "outline"}
+                      >
+                        Get Started
+                        <ArrowRight className="h-4 w-4 ml-2" />
+                      </Button>
+                    </Link>
                   )}
                 </CardFooter>
               </Card>
