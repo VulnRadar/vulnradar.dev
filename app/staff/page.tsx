@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react"
 import { Shield, ShieldCheck, Headset, Users, FlaskConical } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { APP_NAME, STAFF_ROLES, STAFF_ROLE_LABELS } from "@/lib/constants"
+import { APP_NAME, STAFF_ROLES, STAFF_ROLE_LABELS, API } from "@/lib/constants"
 
 interface StaffMember {
   name: string
@@ -56,7 +56,7 @@ export default function StaffPage() {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    fetch("/api/v1/staff")
+    fetch(API.STAFF)
       .then((r) => r.json())
       .then((d) => setStaff(d.staff || []))
       .catch(() => {})

@@ -10,7 +10,7 @@ import { cn } from "@/lib/utils"
 import { Radar, Shield, Loader2, AlertTriangle, CheckCircle } from "lucide-react"
 import { ResponseHeaders } from "@/components/scanner/response-headers"
 import { SubdomainDiscovery } from "@/components/scanner/subdomain-discovery"
-import { TOTAL_CHECKS_LABEL, DEMO_SCAN_LIMIT } from "@/lib/constants"
+import { TOTAL_CHECKS_LABEL, DEMO_SCAN_LIMIT, API } from "@/lib/constants"
 import type { ScanResult, Vulnerability } from "@/lib/scanner/types"
 
 export default function DemoPage() {
@@ -28,7 +28,7 @@ export default function DemoPage() {
 
     try {
       const siteUrl = window.location.origin
-      const res = await fetch("/api/v1/demo-scan", {
+      const res = await fetch(API.DEMO_SCAN, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ url: siteUrl }),
