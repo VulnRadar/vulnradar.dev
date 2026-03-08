@@ -196,14 +196,17 @@ async function migrate() {
     let userId
     if (existingUser.rows.length > 0) {
       userId = existingUser.rows[0].id
-      // Update password
-      await client.query("UPDATE users SET password_hash = $1, updated_at = NOW() WHERE id = $2", [hashedPassword, userId])
+      // Update password AND role column
+      await client.query(
+        "UPDATE users SET password_hash = $1, role = 'admin', updated_at = NOW() WHERE id = $2",
+        [hashedPassword, userId]
+      )
       console.log(`[v2-migration] ✓ Updated existing beta user (ID: ${userId})`)
     } else {
-      // Create new beta user
+      // Create new beta user with admin role column
       const result = await client.query(
-        `INSERT INTO users (email, password_hash, name, email_verified_at, tos_accepted_at, onboarding_completed, created_at)
-         VALUES ($1, $2, $3, NOW(), NOW(), true, NOW())
+        `INSERT INTO users (email, password_hash, name, role, email_verified_at, tos_accepted_at, onboarding_completed, created_at)
+         VALUES ($1, $2, $3, 'admin', NOW(), NOW(), true, NOW())
          RETURNING id`,
         [betaEmail, hashedPassword, "Beta Tester"]
       )
@@ -215,7 +218,7 @@ async function migrate() {
     const adminRole = await client.query("SELECT id FROM roles WHERE name = $1", ["admin"])
     if (adminRole.rows.length > 0) {
       const adminRoleId = adminRole.rows[0].id
-      
+
       // Assign admin role to beta user
       await client.query(
         `INSERT INTO user_roles (user_id, role_id)
@@ -231,6 +234,14 @@ async function migrate() {
          ON CONFLICT (user_id) DO UPDATE SET tag_role_id = EXCLUDED.tag_role_id`,
         [userId, adminRoleId]
       )
+
+      // Explicitly grant ALL permissions directly to admin role (in case any are missing)
+      await client.query(`
+        INSERT INTO role_permissions (role_id, permission_id)
+        SELECT $1, id FROM permissions
+        ON CONFLICT DO NOTHING
+      `, [adminRoleId])
+      console.log(`[v2-migration] ✓ Granted all permissions to admin role`)
     }
 
     // Create subscription record for beta user (elite plan)
