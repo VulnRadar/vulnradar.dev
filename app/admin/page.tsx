@@ -1401,17 +1401,21 @@ function UserDetailPanel({
                   {allBadges.length > 0 ? (
                     <div className="flex flex-wrap gap-1.5">
                       {allBadges.map((badge) => (
-                        <button
+                        <div
                           key={badge.id}
-                          onClick={() => onAction(u.id, "delete_badge", { badgeId: String(badge.id) })}
-                          className="group flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-xs font-medium transition-all hover:border-destructive/40 hover:bg-destructive/10"
+                          className="group flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-xs font-medium transition-all"
                           style={{ borderColor: `${badge.color}40`, backgroundColor: `${badge.color}15`, color: badge.color || undefined }}
-                          title={`Delete "${badge.display_name}" badge permanently`}
                         >
                           <Tag className="h-3 w-3 shrink-0" />
-                          {badge.display_name}
-                          <Trash2 className="h-3 w-3 ml-0.5 opacity-0 group-hover:opacity-100 text-destructive transition-opacity" />
-                        </button>
+                          <span>{badge.display_name}</span>
+                          <button
+                            onClick={() => onAction(u.id, "delete_badge", { badgeId: String(badge.id) })}
+                            className="w-0 overflow-hidden group-hover:w-4 transition-all duration-200 flex-shrink-0 flex items-center justify-center hover:scale-110"
+                            title={`Delete "${badge.display_name}" permanently`}
+                          >
+                            <Trash2 className="h-3 w-3 text-destructive" />
+                          </button>
+                        </div>
                       ))}
                     </div>
                   ) : (
