@@ -41,7 +41,7 @@ export async function GET(request: NextRequest) {
     const userId = searchParams.get("userId")
     if (!userId) return NextResponse.json({ error: "userId required" }, { status: 400 })
 
-    const [userRes, scansRes, keysRes, webhooksRes, schedulesRes, sessionsRes] = await Promise.all([
+    const [userRes, scansRes, keysRes, webhooksRes, schedulesRes, sessionsRes, badgesRes] = await Promise.all([
       pool.query(
         `SELECT id, email, name, role, avatar_url, totp_enabled, tos_accepted_at, created_at, disabled_at,
           (SELECT COUNT(*) FROM scan_history WHERE user_id = $1)::int as scan_count,
@@ -62,6 +62,12 @@ export async function GET(request: NextRequest) {
       pool.query("SELECT id, name, url, type, active FROM webhooks WHERE user_id = $1", [userId]),
       pool.query("SELECT id, url, frequency, active, last_run_at, next_run_at FROM scheduled_scans WHERE user_id = $1", [userId]),
       pool.query("SELECT id, created_at, expires_at, ip_address, user_agent FROM sessions WHERE user_id = $1 AND expires_at > NOW() ORDER BY created_at DESC", [userId]),
+      pool.query(
+        `SELECT b.id, b.name, b.display_name, b.description, b.icon, b.color, b.priority, b.is_limited, ub.awarded_at
+         FROM user_badges ub JOIN badges b ON ub.badge_id = b.id
+         WHERE ub.user_id = $1 ORDER BY b.priority DESC`,
+        [userId]
+      ),
     ])
 
     if (!userRes.rows[0]) return NextResponse.json({ error: "User not found" }, { status: 404 })
@@ -73,6 +79,7 @@ export async function GET(request: NextRequest) {
       webhooks: webhooksRes.rows,
       schedules: schedulesRes.rows,
       activeSessions: sessionsRes.rows,
+      badges: badgesRes.rows,
     })
   }
 
@@ -99,6 +106,12 @@ export async function GET(request: NextRequest) {
       page,
       totalPages: Math.ceil(totalRes.rows[0].count / auditLimit),
     })
+  }
+
+  // All badges list
+  if (section === "badges") {
+    const badgesRes = await pool.query("SELECT * FROM badges ORDER BY priority DESC, name ASC")
+    return NextResponse.json({ badges: badgesRes.rows })
   }
 
   // Active admins
@@ -174,7 +187,7 @@ export async function GET(request: NextRequest) {
 // Moderator: disable/enable, revoke_sessions, revoke_api_keys
 // Support: view only (no PATCH actions)
 function canPerformAction(role: string, action: string): boolean {
-  const adminOnly = ["make_admin", "remove_admin", "set_role", "delete", "reset_password"]
+  const adminOnly = ["make_admin", "remove_admin", "set_role", "delete", "reset_password", "award_badge", "revoke_badge", "create_badge"]
   const modActions = ["disable", "enable", "revoke_sessions", "revoke_api_keys"]
   if (role === STAFF_ROLES.ADMIN) return true
   if (role === STAFF_ROLES.MODERATOR) return modActions.includes(action)
@@ -187,7 +200,7 @@ export async function PATCH(request: NextRequest) {
   if (!session) return NextResponse.json({ error: ERROR_MESSAGES.FORBIDDEN }, { status: 403 })
 
   const ip = await getClientIP()
-  const { action, userId, role: newRole } = await request.json()
+  const { action, userId, role: newRole, badgeId, name: badgeName, displayName, color: badgeColor } = await request.json()
 
   if (!userId || !action) {
     return NextResponse.json({ error: "Missing action or userId" }, { status: 400 })
@@ -283,6 +296,41 @@ export async function PATCH(request: NextRequest) {
       await pool.query("DELETE FROM users WHERE id = $1", [userId])
       await logAction(session.userId, userId, "delete_user", `Deleted account ${targetUser.email}`, ip)
       return NextResponse.json({ success: true })
+
+    case "award_badge": {
+      if (!badgeId) return NextResponse.json({ error: "badgeId required" }, { status: 400 })
+      await pool.query(
+        "INSERT INTO user_badges (user_id, badge_id, awarded_by) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING",
+        [userId, badgeId, session.userId]
+      )
+      const badge = await pool.query("SELECT display_name FROM badges WHERE id = $1", [badgeId])
+      await logAction(session.userId, userId, "award_badge", `Awarded badge "${badge.rows[0]?.display_name}" to ${targetUser.email}`, ip)
+      return NextResponse.json({ success: true })
+    }
+
+    case "revoke_badge": {
+      if (!badgeId) return NextResponse.json({ error: "badgeId required" }, { status: 400 })
+      const badge = await pool.query("SELECT display_name FROM badges WHERE id = $1", [badgeId])
+      await pool.query("DELETE FROM user_badges WHERE user_id = $1 AND badge_id = $2", [userId, badgeId])
+      await logAction(session.userId, userId, "revoke_badge", `Revoked badge "${badge.rows[0]?.display_name}" from ${targetUser.email}`, ip)
+      return NextResponse.json({ success: true })
+    }
+
+    case "create_badge": {
+      if (!badgeName || !displayName) return NextResponse.json({ error: "name and displayName required" }, { status: 400 })
+      const slug = badgeName.toLowerCase().replace(/\s+/g, "_").replace(/[^a-z0-9_]/g, "")
+      const newBadge = await pool.query(
+        "INSERT INTO badges (name, display_name, color) VALUES ($1, $2, $3) ON CONFLICT (name) DO UPDATE SET display_name = $2, color = $3 RETURNING id",
+        [slug, displayName, badgeColor || "#6366f1"]
+      )
+      const newBadgeId = newBadge.rows[0].id
+      await pool.query(
+        "INSERT INTO user_badges (user_id, badge_id, awarded_by) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING",
+        [userId, newBadgeId, session.userId]
+      )
+      await logAction(session.userId, userId, "create_badge", `Created and awarded badge "${displayName}" to ${targetUser.email}`, ip)
+      return NextResponse.json({ success: true })
+    }
 
     default:
       return NextResponse.json({ error: "Unknown action" }, { status: 400 })
