@@ -62,7 +62,7 @@ import {
   getAvailableActions, 
   STAFF_PERMISSIONS,
   type AdminAction 
-} from "@/lib/permissions"
+} from "@/lib/permissions-client"
 
 interface AdminStats {
   total_users: string
