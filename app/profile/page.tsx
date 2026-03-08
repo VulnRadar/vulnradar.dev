@@ -44,6 +44,8 @@ import {
   Lightbulb,
   Megaphone,
   Smartphone,
+  Award,
+  Tag,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
@@ -72,6 +74,17 @@ interface ApiKey {
   usage_today: number
 }
 
+interface UserBadge {
+  id: number
+  name: string
+  display_name: string
+  description: string | null
+  icon: string | null
+  color: string | null
+  priority: number
+  awarded_at: string
+}
+
 interface User {
   userId: number
   email: string
@@ -79,6 +92,8 @@ interface User {
   totpEnabled?: boolean
   twoFactorMethod?: string | null
   avatarUrl?: string | null
+  role?: string
+  badges?: UserBadge[]
 }
 
 interface DataRequestInfo {
@@ -784,6 +799,33 @@ export default function ProfilePage() {
                     />
                   </div>
                 </div>
+
+                {/* Badges section */}
+                {user?.badges && user.badges.length > 0 && (
+                  <div className="flex flex-col gap-2">
+                    <Label className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                      <Award className="h-4 w-4" /> Badges
+                    </Label>
+                    <div className="flex flex-wrap gap-2 p-3 rounded-lg border border-border bg-secondary/20">
+                      {user.badges.map((badge) => (
+                        <div
+                          key={badge.id}
+                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium"
+                          style={{
+                            backgroundColor: `${badge.color}15`,
+                            borderWidth: 1,
+                            borderColor: `${badge.color}40`,
+                            color: badge.color || undefined,
+                          }}
+                          title={badge.description || undefined}
+                        >
+                          <Tag className="h-3 w-3" />
+                          {badge.display_name}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 {/* Name field */}
                 <div className="flex flex-col gap-2">

@@ -43,12 +43,15 @@ export async function GET(request: NextRequest) {
 
     const [userRes, scansRes, keysRes, webhooksRes, schedulesRes, sessionsRes, badgesRes] = await Promise.all([
       pool.query(
-        `SELECT id, email, name, role, avatar_url, totp_enabled, tos_accepted_at, created_at, disabled_at,
+        `SELECT u.id, u.email, u.name, u.role, u.avatar_url, u.totp_enabled, u.tos_accepted_at, u.created_at, u.disabled_at,
           (SELECT COUNT(*) FROM scan_history WHERE user_id = $1)::int as scan_count,
           (SELECT COUNT(*) FROM api_keys WHERE user_id = $1 AND revoked_at IS NULL)::int as api_key_count,
           (SELECT COUNT(*) FROM sessions WHERE user_id = $1 AND expires_at > NOW())::int as session_count,
-          (backup_codes IS NOT NULL AND backup_codes != '[]') as has_backup_codes
-        FROM users WHERE id = $1`,
+          (u.backup_codes IS NOT NULL AND u.backup_codes != '[]') as has_backup_codes,
+          COALESCE(s.plan, 'free') as plan
+        FROM users u
+        LEFT JOIN subscriptions s ON u.id = s.user_id
+        WHERE u.id = $1`,
         [userId],
       ),
       pool.query(
@@ -200,7 +203,7 @@ export async function PATCH(request: NextRequest) {
   if (!session) return NextResponse.json({ error: ERROR_MESSAGES.FORBIDDEN }, { status: 403 })
 
   const ip = await getClientIP()
-  const { action, userId, role: newRole, badgeId, name: badgeName, displayName, color: badgeColor } = await request.json()
+  const { action, userId, role: newRole, badgeId, name: badgeName, displayName, color: badgeColor, name, email, plan } = await request.json()
 
   if (!userId || !action) {
     return NextResponse.json({ error: "Missing action or userId" }, { status: 400 })
@@ -329,6 +332,44 @@ export async function PATCH(request: NextRequest) {
         [userId, newBadgeId, session.userId]
       )
       await logAction(session.userId, userId, "create_badge", `Created and awarded badge "${displayName}" to ${targetUser.email}`, ip)
+      return NextResponse.json({ success: true })
+    }
+
+    case "update_name": {
+      if (!name || typeof name !== "string") return NextResponse.json({ error: "name required" }, { status: 400 })
+      const safeName = name.trim().slice(0, 100)
+      const oldName = await pool.query("SELECT name FROM users WHERE id = $1", [userId])
+      await pool.query("UPDATE users SET name = $1, updated_at = NOW() WHERE id = $2", [safeName, userId])
+      await logAction(session.userId, userId, "update_name", `Changed name for ${targetUser.email} from "${oldName.rows[0]?.name || ''}" to "${safeName}"`, ip)
+      return NextResponse.json({ success: true })
+    }
+
+    case "update_email": {
+      if (!email || typeof email !== "string") return NextResponse.json({ error: "email required" }, { status: 400 })
+      const safeEmail = email.trim().toLowerCase().slice(0, 255)
+      // Validate email format
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+      if (!emailRegex.test(safeEmail)) return NextResponse.json({ error: "Invalid email format" }, { status: 400 })
+      // Check if email is already in use
+      const existing = await pool.query("SELECT id FROM users WHERE email = $1 AND id != $2", [safeEmail, userId])
+      if (existing.rows.length > 0) return NextResponse.json({ error: "Email already in use by another account" }, { status: 400 })
+      const oldEmail = targetUser.email
+      await pool.query("UPDATE users SET email = $1, updated_at = NOW() WHERE id = $2", [safeEmail, userId])
+      await logAction(session.userId, userId, "update_email", `Changed email from "${oldEmail}" to "${safeEmail}"`, ip)
+      return NextResponse.json({ success: true })
+    }
+
+    case "update_plan": {
+      if (!plan || !["free", "starter", "pro", "elite"].includes(plan)) {
+        return NextResponse.json({ error: "Invalid plan" }, { status: 400 })
+      }
+      // Update subscription or create if not exists
+      await pool.query(`
+        INSERT INTO subscriptions (user_id, plan, status, created_at, updated_at)
+        VALUES ($1, $2, 'active', NOW(), NOW())
+        ON CONFLICT (user_id) DO UPDATE SET plan = $2, updated_at = NOW()
+      `, [userId, plan])
+      await logAction(session.userId, userId, "update_plan", `Changed subscription plan for ${targetUser.email} to "${plan}"`, ip)
       return NextResponse.json({ success: true })
     }
 

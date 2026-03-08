@@ -607,50 +607,334 @@ async function main() {
         const sourcePool = new Pool({ connectionString: sourceDbUrl })
         
         try {
-          // Migrate users
+          // ============================================================================
+          // SMART SCHEMA DETECTION
+          // Detects old table structures and maps them to the new v2 schema
+          // ============================================================================
+          
+          // Check what tables exist in source database
+          const tablesResult = await sourcePool.query(`
+            SELECT table_name FROM information_schema.tables 
+            WHERE table_schema = 'public' AND table_type = 'BASE TABLE'
+          `)
+          const existingTables = new Set(tablesResult.rows.map(r => r.table_name))
+          log(`Detected ${existingTables.size} tables in source database`, "info")
+
+          // Check columns of users table to understand schema version
+          const userColumnsResult = await sourcePool.query(`
+            SELECT column_name FROM information_schema.columns 
+            WHERE table_name = 'users' AND table_schema = 'public'
+          `)
+          const userColumns = new Set(userColumnsResult.rows.map(r => r.column_name))
+
+          // ============================================================================
+          // MIGRATE USERS
+          // ============================================================================
+          log("Migrating users...", "info")
           const users = await sourcePool.query("SELECT * FROM users")
+          
           for (const user of users.rows) {
+            // Smart role migration: if old schema has different role values, map them
+            let migratedRole = user.role || 'user'
+            
+            // Map old role values to new ones
+            const roleMapping = {
+              'super_admin': 'admin',
+              'administrator': 'admin',
+              'mod': 'moderator',
+              'helper': 'support',
+              'beta': 'user',        // beta_tester is now a badge, not a role
+              'beta_tester': 'user', // beta_tester is now a badge, not a role
+              'premium': 'user',     // premium is handled by subscription
+              'vip': 'user',         // vip is handled by subscription
+            }
+            if (roleMapping[migratedRole]) {
+              log(`  Mapping role '${migratedRole}' -> '${roleMapping[migratedRole]}' for ${user.email}`, "info")
+              migratedRole = roleMapping[migratedRole]
+            }
+
             await newPool.query(`
               INSERT INTO users (id, email, password_hash, name, role, avatar_url, tos_accepted_at, 
                 email_verified_at, disabled_at, onboarding_completed, totp_secret, totp_enabled, 
                 two_factor_method, backup_codes, created_at, updated_at)
               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
               ON CONFLICT (id) DO NOTHING
-            `, [user.id, user.email, user.password_hash, user.name, user.role, user.avatar_url,
-                user.tos_accepted_at, user.email_verified_at, user.disabled_at, user.onboarding_completed,
-                user.totp_secret, user.totp_enabled, user.two_factor_method, user.backup_codes,
+            `, [user.id, user.email, user.password_hash, user.name, migratedRole, user.avatar_url,
+                user.tos_accepted_at, user.email_verified_at, user.disabled_at, user.onboarding_completed || false,
+                user.totp_secret, user.totp_enabled || false, user.two_factor_method, user.backup_codes,
                 user.created_at, user.updated_at])
+            
+            // Auto-award beta_tester badge if old role was beta/beta_tester
+            if (['beta', 'beta_tester'].includes(user.role)) {
+              const betaBadge = await newPool.query("SELECT id FROM badges WHERE name = 'beta_tester'")
+              if (betaBadge.rows.length > 0) {
+                await newPool.query(`
+                  INSERT INTO user_badges (user_id, badge_id) VALUES ($1, $2)
+                  ON CONFLICT DO NOTHING
+                `, [user.id, betaBadge.rows[0].id])
+                log(`  Awarded beta_tester badge to ${user.email} (migrated from role)`, "info")
+              }
+            }
           }
           log(`Migrated ${users.rows.length} users`, "success")
 
-          // Migrate scan_history
-          const scans = await sourcePool.query("SELECT * FROM scan_history")
-          for (const scan of scans.rows) {
-            await newPool.query(`
-              INSERT INTO scan_history (id, user_id, url, result, created_at, shared_token, shared_at, source, tags, notes)
-              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-              ON CONFLICT (id) DO NOTHING
-            `, [scan.id, scan.user_id, scan.url, scan.result, scan.created_at, scan.shared_token,
-                scan.shared_at, scan.source, scan.tags, scan.notes])
+          // ============================================================================
+          // MIGRATE LEGACY ROLES TABLE (if exists)
+          // Maps old user_roles assignments to user.role or badges
+          // ============================================================================
+          if (existingTables.has('user_roles') && existingTables.has('roles')) {
+            log("Detected legacy roles table - migrating role assignments...", "info")
+            
+            const oldRoles = await sourcePool.query(`
+              SELECT ur.user_id, r.name as role_name, u.email
+              FROM user_roles ur
+              JOIN roles r ON ur.role_id = r.id
+              JOIN users u ON ur.user_id = u.id
+            `)
+            
+            for (const oldRole of oldRoles.rows) {
+              // Map to staff role or badge
+              const roleToBadgeMapping = {
+                'early_supporter': 'early_supporter',
+                'founder': 'founder',
+                'contributor': 'contributor',
+                'beta_tester': 'beta_tester',
+                'sponsor': 'sponsor',
+                'verified': 'verified',
+                'bug_hunter': 'bug_hunter',
+                'security_researcher': 'security_researcher',
+              }
+              
+              const roleToStaffMapping = {
+                'admin': 'admin',
+                'administrator': 'admin',
+                'moderator': 'moderator',
+                'mod': 'moderator',
+                'support': 'support',
+                'helper': 'support',
+              }
+              
+              // If it's a staff role, update the user.role
+              if (roleToStaffMapping[oldRole.role_name]) {
+                const newStaffRole = roleToStaffMapping[oldRole.role_name]
+                await newPool.query(`
+                  UPDATE users SET role = $1 WHERE id = $2 AND (role IS NULL OR role = 'user')
+                `, [newStaffRole, oldRole.user_id])
+                log(`  Migrated staff role '${oldRole.role_name}' -> '${newStaffRole}' for ${oldRole.email}`, "info")
+              }
+              
+              // If it's a badge-like role, award the badge
+              if (roleToBadgeMapping[oldRole.role_name]) {
+                const badge = await newPool.query("SELECT id FROM badges WHERE name = $1", [roleToBadgeMapping[oldRole.role_name]])
+                if (badge.rows.length > 0) {
+                  await newPool.query(`
+                    INSERT INTO user_badges (user_id, badge_id) VALUES ($1, $2)
+                    ON CONFLICT DO NOTHING
+                  `, [oldRole.user_id, badge.rows[0].id])
+                  log(`  Migrated role '${oldRole.role_name}' -> badge for ${oldRole.email}`, "info")
+                }
+              }
+            }
+            log(`Processed ${oldRoles.rows.length} legacy role assignments`, "success")
           }
-          log(`Migrated ${scans.rows.length} scan records`, "success")
 
-          // Migrate api_keys
-          const apiKeys = await sourcePool.query("SELECT * FROM api_keys")
-          for (const key of apiKeys.rows) {
-            await newPool.query(`
-              INSERT INTO api_keys (id, user_id, key_hash, key_encrypted, key_prefix, name, daily_limit, created_at, last_used_at, revoked_at)
-              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-              ON CONFLICT (id) DO NOTHING
-            `, [key.id, key.user_id, key.key_hash, key.key_encrypted, key.key_prefix, key.name,
-                key.daily_limit, key.created_at, key.last_used_at, key.revoked_at])
+          // ============================================================================
+          // MIGRATE SUBSCRIPTIONS / PREMIUM STATUS
+          // ============================================================================
+          if (existingTables.has('subscriptions')) {
+            log("Migrating subscriptions...", "info")
+            const subs = await sourcePool.query("SELECT * FROM subscriptions")
+            for (const sub of subs.rows) {
+              await newPool.query(`
+                INSERT INTO subscriptions (user_id, plan, status, stripe_customer_id, stripe_subscription_id, 
+                  current_period_start, current_period_end, cancel_at_period_end, created_at, updated_at)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+                ON CONFLICT (user_id) DO UPDATE SET plan = $2, status = $3, updated_at = NOW()
+              `, [sub.user_id, sub.plan || 'free', sub.status || 'active', sub.stripe_customer_id, 
+                  sub.stripe_subscription_id, sub.current_period_start, sub.current_period_end, 
+                  sub.cancel_at_period_end || false, sub.created_at, sub.updated_at])
+            }
+            log(`Migrated ${subs.rows.length} subscriptions`, "success")
+          } else if (userColumns.has('plan') || userColumns.has('subscription_plan')) {
+            // Old schema had plan on users table
+            log("Detected legacy plan column - migrating to subscriptions...", "info")
+            const planCol = userColumns.has('plan') ? 'plan' : 'subscription_plan'
+            const usersWithPlan = await sourcePool.query(`SELECT id, ${planCol} as plan FROM users WHERE ${planCol} IS NOT NULL`)
+            for (const u of usersWithPlan.rows) {
+              if (u.plan && u.plan !== 'free') {
+                await newPool.query(`
+                  INSERT INTO subscriptions (user_id, plan, status) VALUES ($1, $2, 'active')
+                  ON CONFLICT (user_id) DO UPDATE SET plan = $2
+                `, [u.id, u.plan])
+              }
+            }
+            log(`Migrated ${usersWithPlan.rows.length} user plans to subscriptions`, "success")
           }
-          log(`Migrated ${apiKeys.rows.length} API keys`, "success")
 
-          // Reset sequences
-          await newPool.query("SELECT setval('users_id_seq', (SELECT COALESCE(MAX(id), 0) + 1 FROM users))")
-          await newPool.query("SELECT setval('scan_history_id_seq', (SELECT COALESCE(MAX(id), 0) + 1 FROM scan_history))")
-          await newPool.query("SELECT setval('api_keys_id_seq', (SELECT COALESCE(MAX(id), 0) + 1 FROM api_keys))")
+          // ============================================================================
+          // MIGRATE SCAN HISTORY
+          // ============================================================================
+          if (existingTables.has('scan_history')) {
+            log("Migrating scan history...", "info")
+            
+            // Check scan_history columns to handle different schema versions
+            const scanColumnsResult = await sourcePool.query(`
+              SELECT column_name FROM information_schema.columns 
+              WHERE table_name = 'scan_history' AND table_schema = 'public'
+            `)
+            const scanColumns = new Set(scanColumnsResult.rows.map(r => r.column_name))
+            
+            const scans = await sourcePool.query("SELECT * FROM scan_history")
+            for (const scan of scans.rows) {
+              // Handle column name differences between versions
+              const shareToken = scan.share_token || scan.shared_token || null
+              const summary = scan.summary || (scan.result?.summary) || null
+              const findings = scan.findings || (scan.result?.findings) || []
+              const findingsCount = scan.findings_count || (Array.isArray(findings) ? findings.length : 0)
+              const duration = scan.duration || (scan.result?.duration) || null
+              const responseHeaders = scan.response_headers || (scan.result?.responseHeaders) || null
+              
+              await newPool.query(`
+                INSERT INTO scan_history (id, user_id, url, summary, findings, findings_count, duration, 
+                  response_headers, scanned_at, share_token, source, notes, tags, created_at)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+                ON CONFLICT (id) DO NOTHING
+              `, [scan.id, scan.user_id, scan.url, summary, JSON.stringify(findings), findingsCount,
+                  duration, responseHeaders ? JSON.stringify(responseHeaders) : null,
+                  scan.scanned_at || scan.created_at, shareToken, scan.source || 'web',
+                  scan.notes, scan.tags, scan.created_at])
+            }
+            log(`Migrated ${scans.rows.length} scan records`, "success")
+          }
+
+          // ============================================================================
+          // MIGRATE API KEYS
+          // ============================================================================
+          if (existingTables.has('api_keys')) {
+            log("Migrating API keys...", "info")
+            const apiKeys = await sourcePool.query("SELECT * FROM api_keys")
+            for (const key of apiKeys.rows) {
+              await newPool.query(`
+                INSERT INTO api_keys (id, user_id, key_hash, key_encrypted, key_prefix, name, daily_limit, created_at, last_used_at, revoked_at)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+                ON CONFLICT (id) DO NOTHING
+              `, [key.id, key.user_id, key.key_hash, key.key_encrypted, key.key_prefix, key.name,
+                  key.daily_limit || 1000, key.created_at, key.last_used_at, key.revoked_at])
+            }
+            log(`Migrated ${apiKeys.rows.length} API keys`, "success")
+          }
+
+          // ============================================================================
+          // MIGRATE WEBHOOKS
+          // ============================================================================
+          if (existingTables.has('webhooks')) {
+            log("Migrating webhooks...", "info")
+            const webhooks = await sourcePool.query("SELECT * FROM webhooks")
+            for (const wh of webhooks.rows) {
+              await newPool.query(`
+                INSERT INTO webhooks (id, user_id, url, name, type, secret, active, created_at)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                ON CONFLICT (id) DO NOTHING
+              `, [wh.id, wh.user_id, wh.url, wh.name, wh.type || 'scan_complete', 
+                  wh.secret, wh.active !== false, wh.created_at])
+            }
+            log(`Migrated ${webhooks.rows.length} webhooks`, "success")
+          }
+
+          // ============================================================================
+          // MIGRATE SCHEDULED SCANS
+          // ============================================================================
+          if (existingTables.has('scheduled_scans')) {
+            log("Migrating scheduled scans...", "info")
+            const schedules = await sourcePool.query("SELECT * FROM scheduled_scans")
+            for (const sched of schedules.rows) {
+              await newPool.query(`
+                INSERT INTO scheduled_scans (id, user_id, url, frequency, active, last_run_at, next_run_at, created_at)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                ON CONFLICT (id) DO NOTHING
+              `, [sched.id, sched.user_id, sched.url, sched.frequency || 'daily', 
+                  sched.active !== false, sched.last_run_at, sched.next_run_at, sched.created_at])
+            }
+            log(`Migrated ${schedules.rows.length} scheduled scans`, "success")
+          }
+
+          // ============================================================================
+          // MIGRATE USER BADGES (if already exists in source)
+          // ============================================================================
+          if (existingTables.has('user_badges') && existingTables.has('badges')) {
+            log("Migrating existing badges...", "info")
+            const existingBadges = await sourcePool.query("SELECT * FROM user_badges")
+            for (const ub of existingBadges.rows) {
+              // Get badge name from source
+              const srcBadge = await sourcePool.query("SELECT name FROM badges WHERE id = $1", [ub.badge_id])
+              if (srcBadge.rows.length > 0) {
+                const newBadge = await newPool.query("SELECT id FROM badges WHERE name = $1", [srcBadge.rows[0].name])
+                if (newBadge.rows.length > 0) {
+                  await newPool.query(`
+                    INSERT INTO user_badges (user_id, badge_id, awarded_at, awarded_by)
+                    VALUES ($1, $2, $3, $4)
+                    ON CONFLICT DO NOTHING
+                  `, [ub.user_id, newBadge.rows[0].id, ub.awarded_at || new Date(), ub.awarded_by])
+                }
+              }
+            }
+            log(`Migrated ${existingBadges.rows.length} badge assignments`, "success")
+          }
+
+          // ============================================================================
+          // MIGRATE SESSIONS (optional - can be skipped as users will need to re-login)
+          // ============================================================================
+          const migrateSessions = await prompt("Migrate active sessions? (users will stay logged in) [y/N]: ")
+          if (migrateSessions.toLowerCase() === "y" && existingTables.has('sessions')) {
+            log("Migrating sessions...", "info")
+            const sessions = await sourcePool.query("SELECT * FROM sessions WHERE expires_at > NOW()")
+            for (const sess of sessions.rows) {
+              await newPool.query(`
+                INSERT INTO sessions (id, user_id, created_at, expires_at, ip_address, user_agent)
+                VALUES ($1, $2, $3, $4, $5, $6)
+                ON CONFLICT (id) DO NOTHING
+              `, [sess.id, sess.user_id, sess.created_at, sess.expires_at, sess.ip_address, sess.user_agent])
+            }
+            log(`Migrated ${sessions.rows.length} active sessions`, "success")
+          }
+
+          // ============================================================================
+          // MIGRATE AUDIT LOG (if exists)
+          // ============================================================================
+          if (existingTables.has('admin_audit_log')) {
+            log("Migrating audit log...", "info")
+            const auditLogs = await sourcePool.query("SELECT * FROM admin_audit_log")
+            for (const entry of auditLogs.rows) {
+              await newPool.query(`
+                INSERT INTO admin_audit_log (id, admin_id, target_user_id, action, details, ip_address, created_at)
+                VALUES ($1, $2, $3, $4, $5, $6, $7)
+                ON CONFLICT (id) DO NOTHING
+              `, [entry.id, entry.admin_id, entry.target_user_id, entry.action, entry.details, entry.ip_address, entry.created_at])
+            }
+            log(`Migrated ${auditLogs.rows.length} audit log entries`, "success")
+          }
+
+          // ============================================================================
+          // RESET SEQUENCES
+          // ============================================================================
+          log("Resetting sequence counters...", "info")
+          const sequences = [
+            { seq: 'users_id_seq', table: 'users' },
+            { seq: 'scan_history_id_seq', table: 'scan_history' },
+            { seq: 'api_keys_id_seq', table: 'api_keys' },
+            { seq: 'webhooks_id_seq', table: 'webhooks' },
+            { seq: 'scheduled_scans_id_seq', table: 'scheduled_scans' },
+            { seq: 'badges_id_seq', table: 'badges' },
+            { seq: 'roles_id_seq', table: 'roles' },
+            { seq: 'permissions_id_seq', table: 'permissions' },
+            { seq: 'subscriptions_id_seq', table: 'subscriptions' },
+            { seq: 'admin_audit_log_id_seq', table: 'admin_audit_log' },
+          ]
+          for (const s of sequences) {
+            try {
+              await newPool.query(`SELECT setval('${s.seq}', (SELECT COALESCE(MAX(id), 0) + 1 FROM ${s.table}))`)
+            } catch { /* sequence may not exist */ }
+          }
           log("Reset sequence counters", "success")
 
         } catch (migErr) {

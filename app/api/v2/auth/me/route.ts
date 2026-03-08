@@ -9,12 +9,21 @@ export const GET = withErrorHandling(async () => {
     return ApiResponse.unauthorized(ERROR_MESSAGES.UNAUTHORIZED)
   }
 
-  // Get 2FA, role, onboarding status, and backup codes
-  const result = await pool.query(
-    "SELECT totp_enabled, two_factor_method, onboarding_completed, role, avatar_url, backup_codes FROM users WHERE id = $1",
-    [session.userId],
-  )
-  const user = result.rows[0]
+  // Get 2FA, role, onboarding status, backup codes, and badges
+  const [userResult, badgesResult] = await Promise.all([
+    pool.query(
+      "SELECT totp_enabled, two_factor_method, onboarding_completed, role, avatar_url, backup_codes FROM users WHERE id = $1",
+      [session.userId],
+    ),
+    pool.query(
+      `SELECT b.id, b.name, b.display_name, b.description, b.icon, b.color, b.priority, ub.awarded_at
+       FROM user_badges ub JOIN badges b ON ub.badge_id = b.id
+       WHERE ub.user_id = $1 ORDER BY b.priority DESC`,
+      [session.userId]
+    )
+  ])
+  const user = userResult.rows[0]
+  const badges = badgesResult.rows
 
   // Detect if backup codes are old plaintext format (not hashed)
   // Hashed codes contain ":" separator from scrypt format, plaintext codes are like "XXXX-XXXX"
@@ -40,5 +49,6 @@ export const GET = withErrorHandling(async () => {
     avatarUrl: user?.avatar_url || null,
     onboardingCompleted: user?.onboarding_completed || false,
     backupCodesInvalid,
+    badges,
   })
 })

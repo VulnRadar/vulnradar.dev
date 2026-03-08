@@ -12,7 +12,7 @@ export async function GET(
   }
 
   const result = await pool.query(
-    `SELECT sh.url, sh.summary, sh.findings, sh.findings_count, sh.duration, sh.scanned_at, sh.response_headers, sh.notes, u.name as scanned_by, u.avatar_url as scanned_by_avatar, u.role as scanned_by_role
+    `SELECT sh.url, sh.summary, sh.findings, sh.findings_count, sh.duration, sh.scanned_at, sh.response_headers, sh.notes, sh.user_id, u.name as scanned_by, u.avatar_url as scanned_by_avatar, u.role as scanned_by_role
      FROM scan_history sh
      JOIN users u ON sh.user_id = u.id
      WHERE sh.share_token = $1`,
@@ -25,6 +25,14 @@ export async function GET(
 
   const row = result.rows[0]
 
+  // Get user badges
+  const badgesResult = await pool.query(
+    `SELECT b.id, b.name, b.display_name, b.icon, b.color, b.priority
+     FROM user_badges ub JOIN badges b ON ub.badge_id = b.id
+     WHERE ub.user_id = $1 ORDER BY b.priority DESC`,
+    [row.user_id]
+  )
+
   return NextResponse.json({
     url: row.url,
     scannedAt: row.scanned_at,
@@ -36,5 +44,6 @@ export async function GET(
     scannedBy: row.scanned_by || "Anonymous",
     scannedByAvatar: row.scanned_by_avatar || null,
     scannedByRole: row.scanned_by_role || "user",
+    scannedByBadges: badgesResult.rows,
   })
 }

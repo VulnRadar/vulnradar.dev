@@ -41,6 +41,11 @@ import {
   Award,
   Plus,
   Tag,
+  Pencil,
+  Mail,
+  User,
+  CreditCard,
+  Save,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -69,14 +74,15 @@ interface AdminUser {
   id: number
   email: string
   name: string | null
-  role: string
+  role: string | null
   avatar_url: string | null
   totp_enabled: boolean
   tos_accepted_at: string | null
   created_at: string
   disabled_at: string | null
-  scan_count: string
-  api_key_count: string
+  scan_count: number
+  api_key_count: number
+  plan?: string
 }
 
 interface BadgeDef {
@@ -376,8 +382,12 @@ export default function AdminPage() {
           award_badge: "Badge awarded.",
           revoke_badge: "Badge removed.",
           create_badge: "Badge created.",
+          update_name: "Name updated.",
+          update_email: "Email updated.",
+          update_plan: "Plan updated.",
         }
         if (action === "create_badge") { fetchAllBadges() }
+        if (["update_name", "update_email", "update_plan"].includes(action)) { fetchUserDetail(userId) }
         showToast(labels[action] || "Action completed.", "success")
         await fetchData(page)
         if (selectedUser && selectedUser.user.id === userId) {
@@ -515,7 +525,7 @@ export default function AdminPage() {
                 onRefreshBadges={fetchAllBadges}
                 onClose={() => { setSelectedUser(null); setTempPassword(null) }}
                 onAction={(userId, action, extra) => {
-                  if (["set_role", "award_badge", "revoke_badge", "create_badge"].includes(action)) {
+                  if (["set_role", "award_badge", "revoke_badge", "create_badge", "update_name", "update_email", "update_plan"].includes(action)) {
                     handleAction(userId, action, extra)
                     return
                   }
@@ -947,6 +957,13 @@ function UserDetailPanel({
   const awardedIds = new Set(detail.badges.map((b) => b.id))
   const unawardedBadges = allBadges.filter((b) => !awardedIds.has(b.id))
 
+  // Edit account state
+  const [editMode, setEditMode] = useState<"name" | "email" | "plan" | null>(null)
+  const [editName, setEditName] = useState(u.name || "")
+  const [editEmail, setEditEmail] = useState(u.email)
+  const [editPlan, setEditPlan] = useState(u.plan || "free")
+  const [confirmEmail, setConfirmEmail] = useState("")
+
   return (
     <div className="flex flex-col gap-4">
       {/* Back + header card */}
@@ -1018,6 +1035,162 @@ function UserDetailPanel({
           )}
         </CardContent>
       </Card>
+
+      {/* Account Management - admin/mod can edit */}
+      {!detailLoading && callerRole !== STAFF_ROLES.SUPPORT && (
+        <Card className="bg-card border-border">
+          <CardHeader className="pb-0 pt-4 px-5">
+            <div className="flex items-center gap-2">
+              <UserCog className="h-4 w-4 text-muted-foreground" />
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Account Management</p>
+            </div>
+          </CardHeader>
+          <CardContent className="p-5 pt-3">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              {/* Edit Name */}
+              <div className="flex flex-col gap-2 p-3 rounded-lg bg-muted/20 border border-border">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <User className="h-3.5 w-3.5 text-muted-foreground" />
+                    <span className="text-[11px] text-muted-foreground font-medium">Display Name</span>
+                  </div>
+                  {editMode !== "name" && (
+                    <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => { setEditMode("name"); setEditName(u.name || "") }}>
+                      <Pencil className="h-3 w-3" />
+                    </Button>
+                  )}
+                </div>
+                {editMode === "name" ? (
+                  <div className="flex flex-col gap-2">
+                    <Input
+                      value={editName}
+                      onChange={(e) => setEditName(e.target.value)}
+                      placeholder="Enter name"
+                      className="h-8 text-xs"
+                    />
+                    <div className="flex gap-1.5">
+                      <Button size="sm" className="h-7 text-xs flex-1 gap-1" disabled={!editName.trim() || isLoading("update_name")} onClick={() => onAction(u.id, "update_name", { name: editName.trim() })}>
+                        {isLoading("update_name") ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />} Save
+                      </Button>
+                      <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => setEditMode(null)}>Cancel</Button>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-sm font-medium text-foreground truncate">{u.name || "Not set"}</p>
+                )}
+              </div>
+
+              {/* Edit Email - admin only */}
+              {callerRole === STAFF_ROLES.ADMIN && (
+                <div className="flex flex-col gap-2 p-3 rounded-lg bg-muted/20 border border-border">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Mail className="h-3.5 w-3.5 text-muted-foreground" />
+                      <span className="text-[11px] text-muted-foreground font-medium">Email Address</span>
+                    </div>
+                    {editMode !== "email" && (
+                      <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => { setEditMode("email"); setEditEmail(u.email); setConfirmEmail("") }}>
+                        <Pencil className="h-3 w-3" />
+                      </Button>
+                    )}
+                  </div>
+                  {editMode === "email" ? (
+                    <div className="flex flex-col gap-2">
+                      <Input
+                        type="email"
+                        value={editEmail}
+                        onChange={(e) => setEditEmail(e.target.value)}
+                        placeholder="New email"
+                        className="h-8 text-xs"
+                      />
+                      <Input
+                        type="email"
+                        value={confirmEmail}
+                        onChange={(e) => setConfirmEmail(e.target.value)}
+                        placeholder="Confirm email"
+                        className="h-8 text-xs"
+                      />
+                      <div className="flex gap-1.5">
+                        <Button
+                          size="sm"
+                          className="h-7 text-xs flex-1 gap-1"
+                          disabled={!editEmail.trim() || editEmail !== confirmEmail || editEmail === u.email || isLoading("update_email")}
+                          onClick={() => onAction(u.id, "update_email", { email: editEmail.trim() })}
+                        >
+                          {isLoading("update_email") ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />} Save
+                        </Button>
+                        <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => setEditMode(null)}>Cancel</Button>
+                      </div>
+                      {editEmail !== confirmEmail && confirmEmail && (
+                        <p className="text-[10px] text-destructive">Emails do not match</p>
+                      )}
+                    </div>
+                  ) : (
+                    <p className="text-sm font-medium text-foreground truncate">{u.email}</p>
+                  )}
+                </div>
+              )}
+
+              {/* Edit Plan - admin only */}
+              {callerRole === STAFF_ROLES.ADMIN && (
+                <div className="flex flex-col gap-2 p-3 rounded-lg bg-muted/20 border border-border">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <CreditCard className="h-3.5 w-3.5 text-muted-foreground" />
+                      <span className="text-[11px] text-muted-foreground font-medium">Subscription Plan</span>
+                    </div>
+                    {editMode !== "plan" && (
+                      <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => { setEditMode("plan"); setEditPlan(u.plan || "free") }}>
+                        <Pencil className="h-3 w-3" />
+                      </Button>
+                    )}
+                  </div>
+                  {editMode === "plan" ? (
+                    <div className="flex flex-col gap-2">
+                      <select
+                        value={editPlan}
+                        onChange={(e) => setEditPlan(e.target.value)}
+                        className="h-8 text-xs rounded-md border border-border bg-background px-2"
+                      >
+                        <option value="free">Free</option>
+                        <option value="starter">Starter</option>
+                        <option value="pro">Pro</option>
+                        <option value="elite">Elite</option>
+                      </select>
+                      <div className="flex gap-1.5">
+                        <Button size="sm" className="h-7 text-xs flex-1 gap-1" disabled={editPlan === (u.plan || "free") || isLoading("update_plan")} onClick={() => onAction(u.id, "update_plan", { plan: editPlan })}>
+                          {isLoading("update_plan") ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />} Save
+                        </Button>
+                        <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => setEditMode(null)}>Cancel</Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2">
+                      <Badge className={cn(
+                        "text-[10px]",
+                        u.plan === "elite" ? "bg-primary/10 text-primary border-primary/20" :
+                        u.plan === "pro" ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/20" :
+                        u.plan === "starter" ? "bg-[hsl(var(--severity-medium))]/10 text-[hsl(var(--severity-medium))] border-[hsl(var(--severity-medium))]/20" :
+                        "bg-muted/50 text-muted-foreground border-border"
+                      )}>
+                        {(u.plan || "free").charAt(0).toUpperCase() + (u.plan || "free").slice(1)}
+                      </Badge>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Safety note */}
+            <div className="flex items-start gap-2 mt-3 p-2.5 rounded-lg bg-muted/20 border border-border">
+              <AlertTriangle className="h-3.5 w-3.5 text-muted-foreground shrink-0 mt-0.5" />
+              <p className="text-[10px] text-muted-foreground leading-relaxed">
+                Changes are logged in the audit log. Email changes require confirmation input to prevent accidents. Plan changes take effect immediately.
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Temp password result */}
       {tempPassword && (
