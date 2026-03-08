@@ -179,6 +179,16 @@ pagination:
   default_page: 1
 
 # ----------------------------------------------------------------------------
+# Beta Mode Configuration
+# ----------------------------------------------------------------------------
+beta:
+  # Enable beta mode - shows beta banner, creates beta testing account
+  enabled: true
+  
+  # Banner message to show when beta mode is enabled
+  banner_message: "You are using VulnRadar v2.0 BETA - Some features may be unstable. Please report issues."
+
+# ----------------------------------------------------------------------------
 # Feature Flags
 # ----------------------------------------------------------------------------
 features:

@@ -97,6 +97,11 @@ export interface PaginationConfig {
   default_page: number
 }
 
+export interface BetaConfig {
+  enabled: boolean
+  banner_message: string
+}
+
 export interface FeaturesConfig {
   demo_mode: boolean
   teams: boolean
@@ -119,6 +124,7 @@ export interface VulnRadarConfig {
   demo: DemoConfig
   database: DatabaseConfig
   pagination: PaginationConfig
+  beta: BetaConfig
   features: FeaturesConfig
 }
 
@@ -205,6 +211,10 @@ export const DEFAULT_CONFIG: VulnRadarConfig = {
     default_page_size: 20,
     max_page_size: 100,
     default_page: 1,
+  },
+  beta: {
+    enabled: true,
+    banner_message: "You are using VulnRadar v2.0 BETA - Some features may be unstable. Please report issues.",
   },
   features: {
     demo_mode: true,
