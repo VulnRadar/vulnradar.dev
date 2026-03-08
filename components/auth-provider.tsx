@@ -11,7 +11,7 @@ import {
   getStaffPermissions,
   STAFF_PERMISSIONS,
   type StaffPermission 
-} from "@/lib/permissions"
+} from "@/lib/permissions-client"
 
 interface AuthContextType {
   me: any
