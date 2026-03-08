@@ -14,7 +14,7 @@ const pool = new Pool({
 function hashPassword(password) {
   const salt = randomBytes(16)
   const hash = scryptSync(password, salt, 64)
-  return `${salt.toString("hex")}.${hash.toString("hex")}`
+  return Buffer.concat([salt, hash]).toString("hex")
 }
 
 async function migrate() {
@@ -196,13 +196,13 @@ async function migrate() {
     if (existingUser.rows.length > 0) {
       userId = existingUser.rows[0].id
       // Update password
-      await client.query("UPDATE users SET password = $1 WHERE id = $2", [hashedPassword, userId])
+      await client.query("UPDATE users SET password_hash = $1, updated_at = NOW() WHERE id = $2", [hashedPassword, userId])
       console.log(`[v2-migration] ✓ Updated existing beta user (ID: ${userId})`)
     } else {
       // Create new beta user
       const result = await client.query(
-        `INSERT INTO users (email, password, name, verified, beta_tester, created_at)
-         VALUES ($1, $2, $3, true, true, NOW())
+        `INSERT INTO users (email, password_hash, name, email_verified_at, tos_accepted_at, onboarding_completed, created_at)
+         VALUES ($1, $2, $3, NOW(), NOW(), true, NOW())
          RETURNING id`,
         [betaEmail, hashedPassword, "Beta Tester"]
       )
@@ -210,26 +210,32 @@ async function migrate() {
       console.log(`[v2-migration] ✓ Created beta user (ID: ${userId})`)
     }
 
-    // Assign admin role to beta user
+    // Get admin role
     const adminRole = await client.query("SELECT id FROM roles WHERE name = $1", ["admin"])
     if (adminRole.rows.length > 0) {
+      const adminRoleId = adminRole.rows[0].id
+      
+      // Assign admin role to beta user
       await client.query(
-        `INSERT INTO user_roles (user_id, role_id) VALUES ($1, $2)
+        `INSERT INTO user_roles (user_id, role_id)
+         VALUES ($1, $2)
          ON CONFLICT DO NOTHING`,
-        [userId, adminRole.rows[0].id]
+        [userId, adminRoleId]
+      )
+
+      // Assign admin permission tag
+      await client.query(
+        `INSERT INTO user_permission_tags (user_id, tag_role_id)
+         VALUES ($1, $2)
+         ON CONFLICT (user_id) DO UPDATE SET tag_role_id = EXCLUDED.tag_role_id`,
+        [userId, adminRoleId]
       )
     }
 
-    // Assign admin permission tag
+    // Create subscription record for beta user (elite plan)
     await client.query(
-      `INSERT INTO user_permission_tags (user_id, tag_role_id) VALUES ($1, $2)
-       ON CONFLICT (user_id) DO UPDATE SET tag_role_id = EXCLUDED.tag_role_id`,
-      [userId, adminRole.rows[0].id]
-    )
-
-    // Create subscription record for beta user
-    await client.query(
-      `INSERT INTO subscriptions (user_id, plan, status) VALUES ($1, $2, $3)
+      `INSERT INTO subscriptions (user_id, plan, status, created_at, updated_at)
+       VALUES ($1, $2, $3, NOW(), NOW())
        ON CONFLICT (user_id) DO NOTHING`,
       [userId, "elite", "active"]
     )
