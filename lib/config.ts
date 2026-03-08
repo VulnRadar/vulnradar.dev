@@ -5,21 +5,28 @@
 // On the server, reads from filesystem. In the browser, uses defaults only.
 // ============================================================================
 
-// Conditional imports - only use fs/path on server
+// Check if we're in a Node.js environment (not browser, not Edge Runtime)
+const isNodeRuntime = typeof window === "undefined" && 
+                      typeof process !== "undefined" && 
+                      process.versions?.node &&
+                      typeof globalThis.EdgeRuntime === "undefined"
+
+// Conditional imports - only use fs/path on Node.js server
 let readFileSync: ((path: string, encoding: string) => string) | null = null
 let existsSync: ((path: string) => boolean) | null = null
 let join: ((...paths: string[]) => string) | null = null
+let cwd: (() => string) | null = null
 
-if (typeof window === "undefined") {
-  // Server-side only
+if (isNodeRuntime) {
   try {
     const fs = require("fs")
     const path = require("path")
     readFileSync = fs.readFileSync
     existsSync = fs.existsSync
     join = path.join
+    cwd = process.cwd
   } catch (e) {
-    // Fallback if requires fail
+    // Fallback if requires fail (Edge Runtime, etc.)
   }
 }
 
@@ -154,19 +161,18 @@ let _configLoadError: string | null = null
 export function loadConfig(): VulnRadarConfig {
   if (_config) return _config
   
-  // If running in browser (no fs access), use defaults immediately
-  if (!readFileSync || !existsSync || !join) {
+  // If running in browser or Edge Runtime (no fs access), use defaults immediately
+  if (!readFileSync || !existsSync || !join || !cwd) {
     _config = DEFAULT_CONFIG
     return _config
   }
   
   try {
     // Try multiple possible paths for config.yaml
+    const currentDir = cwd()
     const possiblePaths = [
-      join(process.cwd(), "config.yaml"),
-      join(process.cwd(), "config.yml"),
-      join(__dirname, "..", "config.yaml"),
-      join(__dirname, "..", "config.yml"),
+      join(currentDir, "config.yaml"),
+      join(currentDir, "config.yml"),
     ]
     
     let configPath: string | null = null
