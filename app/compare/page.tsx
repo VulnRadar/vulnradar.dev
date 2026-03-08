@@ -18,6 +18,7 @@ import {
   AlertTriangle,
   CheckCircle,
 } from "lucide-react"
+import { API } from "@/lib/constants"
 
 interface ScanOption {
   id: number
@@ -56,7 +57,7 @@ export default function ComparePage() {
   const [loadingScans, setLoadingScans] = useState(true)
 
   useEffect(() => {
-    fetch("/api/v1/history")
+    fetch(API.HISTORY)
       .then((r) => r.json())
       .then((d) => {
         const list = Array.isArray(d) ? d : Array.isArray(d?.scans) ? d.scans : []
@@ -71,7 +72,7 @@ export default function ComparePage() {
     setLoading(true)
     setDiffResult(null)
     try {
-      const res = await fetch(`/api/v1/compare?a=${selectedA}&b=${selectedB}`)
+      const res = await fetch(`${API.COMPARE}?a=${selectedA}&b=${selectedB}`)
       const data = await res.json()
       if (res.ok) setDiffResult(data)
     } catch { /* ignore */ }

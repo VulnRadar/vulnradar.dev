@@ -24,7 +24,7 @@ import {
 } from "lucide-react"
 import Link from "next/link"
 import { cn } from "@/lib/utils"
-import { SUPPORT_EMAIL, TURNSTILE_ENABLED } from "@/lib/constants"
+import { SUPPORT_EMAIL, TURNSTILE_ENABLED, API } from "@/lib/constants"
 
 const CATEGORIES = [
   { id: "bug", label: "Bug Report", icon: Bug, desc: "Something is broken or not working as expected" },
@@ -61,7 +61,7 @@ export default function ContactPage() {
   useEffect(() => {
     async function fetchUser() {
       try {
-        const res = await fetch("/api/v1/auth/me")
+        const res = await fetch(API.AUTH.ME)
         if (res.ok) {
           const data = await res.json()
           if (data?.email) {
@@ -143,7 +143,7 @@ export default function ContactPage() {
         : message
 
     try {
-      const res = await fetch("/api/v1/contact", {
+      const res = await fetch(API.CONTACT, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

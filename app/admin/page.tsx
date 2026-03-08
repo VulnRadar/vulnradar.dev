@@ -47,7 +47,7 @@ import { Header } from "@/components/scanner/header"
 import { Footer } from "@/components/scanner/footer"
 import { cn } from "@/lib/utils"
 import { PaginationControl, usePagination } from "@/components/ui/pagination-control"
-import { STAFF_ROLES, STAFF_ROLE_LABELS, STAFF_ROLE_HIERARCHY, ROLE_BADGE_STYLES } from "@/lib/constants"
+import { STAFF_ROLES, STAFF_ROLE_LABELS, STAFF_ROLE_HIERARCHY, ROLE_BADGE_STYLES, API } from "@/lib/constants"
 
 interface AdminStats {
   total_users: string
@@ -270,7 +270,7 @@ export default function AdminPage() {
     try {
       const params = new URLSearchParams({ page: String(p) })
       if (search.trim()) params.set("search", search.trim())
-      const res = await fetch(`/api/v1/admin?${params}`)
+      const res = await fetch(`API.ADMIN?${params}`)
       if (res.status === 403) { setForbidden(true); setLoading(false); setSearchLoading(false); return }
       const data = await res.json()
       setStats(data.stats)
@@ -286,7 +286,7 @@ export default function AdminPage() {
   async function fetchAudit(p = 1) {
     setAuditPaging(true)
     try {
-      const res = await fetch(`/api/v1/admin?section=audit&page=${p}`)
+      const res = await fetch(`API.ADMIN?section=audit&page=${p}`)
       const data = await res.json()
       setAuditLogs(data.logs)
       setAuditPage(data.page)
@@ -298,7 +298,7 @@ export default function AdminPage() {
   async function fetchActiveAdmins() {
     setAdminsLoading(true)
     try {
-      const res = await fetch("/api/v1/admin?section=active-admins")
+      const res = await fetch("API.ADMIN?section=active-admins")
       const data = await res.json()
       setActiveAdmins(data.admins || [])
     } catch { /* ignore */ }
@@ -308,7 +308,7 @@ export default function AdminPage() {
   async function fetchUserDetail(userId: number) {
     setDetailLoading(true)
     try {
-      const res = await fetch(`/api/v1/admin?section=user-detail&userId=${userId}`)
+      const res = await fetch(`API.ADMIN?section=user-detail&userId=${userId}`)
       const data = await res.json()
       setSelectedUser(data)
     } catch { showToast("Failed to load user details.", "error") }
@@ -325,7 +325,7 @@ export default function AdminPage() {
   async function handleAction(userId: number, action: string, extra?: Record<string, string>) {
     setActionLoading(`${userId}-${action}`)
     try {
-      const res = await fetch("/api/v1/admin", {
+      const res = await fetch("API.ADMIN", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ userId, action, ...extra }),
@@ -369,7 +369,7 @@ export default function AdminPage() {
       try {
         const params = new URLSearchParams({ page: "1" })
         if (searchQuery.trim()) params.set("search", searchQuery.trim())
-        const res = await fetch(`/api/v1/admin?${params}`)
+        const res = await fetch(`API.ADMIN?${params}`)
         if (res.ok) {
           const data = await res.json()
           setUsers(data.users)
