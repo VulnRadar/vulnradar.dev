@@ -7,6 +7,9 @@ import { checkRateLimit as checkGlobalRL, RATE_LIMITS } from "@/lib/rate-limit"
 import pool from "@/lib/db"
 import type { ScanResult, Severity, Vulnerability } from "@/lib/scanner/types"
 import { APP_NAME, BEARER_PREFIX, SEVERITY_LEVELS, DEFAULT_SCAN_NOTE } from "@/lib/constants"
+import { getProtocolFromUrl, getProtocolFindings, type SupportedProtocol } from "@/lib/scanner/protocols"
+import { runWebSocketChecks } from "@/lib/scanner/protocols/websocket"
+import { runFtpChecks } from "@/lib/scanner/protocols/ftp"
 
 const SEVERITY_ORDER: Record<Severity, number> = {
   critical: 0,
@@ -30,9 +33,9 @@ function isValidUrl(input: string): boolean {
 }
 
 function getProtocolType(url: string): "http" | "websocket" | "ftp" {
-  const parsed = new URL(url)
-  if (parsed.protocol === "ws:" || parsed.protocol === "wss:") return "websocket"
-  if (parsed.protocol === "ftp:" || parsed.protocol === "ftps:") return "ftp"
+  const protocol = getProtocolFromUrl(url)
+  if (protocol === "ws" || protocol === "wss") return "websocket"
+  if (protocol === "ftp" || protocol === "ftps") return "ftp"
   return "http"
 }
 
@@ -172,6 +175,9 @@ export async function POST(request: NextRequest) {
     let headers = new Headers()
     let protocolSpecificFindings: Vulnerability[] = []
 
+    // Get protocol-specific findings first
+    protocolSpecificFindings = getProtocolFindings(url)
+
     // Handle different protocol types
     if (protocolType === "websocket") {
       // For WebSocket URLs, convert to HTTP(S) for initial check
@@ -189,46 +195,11 @@ export async function POST(request: NextRequest) {
         // WebSocket endpoint may not respond to HTTP - that's ok
       }
 
-      // Add WebSocket-specific findings
-      const isSecure = url.startsWith("wss://")
-      if (!isSecure) {
-        protocolSpecificFindings.push({
-          id: `vuln-ws-insecure-${Date.now()}`,
-          title: "Insecure WebSocket Connection",
-          description: "WebSocket connection uses ws:// instead of wss://, data is transmitted unencrypted.",
-          severity: "high",
-          category: "ssl",
-          evidence: `Protocol: ${url.split("://")[0]}://`,
-          riskImpact: "Data transmitted over WebSocket can be intercepted by attackers.",
-          fixSteps: ["Use wss:// for secure WebSocket connections."],
-        })
-      }
+      // Add WebSocket-specific security checks
+      protocolSpecificFindings.push(...runWebSocketChecks(url, headers))
     } else if (protocolType === "ftp") {
-      // For FTP URLs, we can only do limited checks
-      const isSecure = url.startsWith("ftps://")
-      if (!isSecure) {
-        protocolSpecificFindings.push({
-          id: `vuln-ftp-insecure-${Date.now()}`,
-          title: "Insecure FTP Connection",
-          description: "FTP connection uses ftp:// instead of ftps://, credentials and data are transmitted unencrypted.",
-          severity: "critical",
-          category: "ssl",
-          evidence: `Protocol: ${url.split("://")[0]}://`,
-          riskImpact: "FTP credentials and transferred files can be intercepted.",
-          fixSteps: ["Use ftps:// or SFTP for secure file transfers."],
-        })
-      }
-      // Can't fetch FTP URLs directly with fetch API
-      protocolSpecificFindings.push({
-        id: `vuln-ftp-limited-${Date.now()}`,
-        title: "Limited FTP Scan",
-        description: "FTP protocol scanning is limited to protocol-level security checks.",
-        severity: "info",
-        category: "configuration",
-        evidence: "FTP endpoints cannot be fully scanned via HTTP.",
-        riskImpact: "Some security checks may not be available for FTP endpoints.",
-        fixSteps: [],
-      })
+      // FTP protocol checks - limited to protocol-level security
+      protocolSpecificFindings.push(...runFtpChecks(url))
     } else {
       // Standard HTTP/HTTPS fetch
       try {
