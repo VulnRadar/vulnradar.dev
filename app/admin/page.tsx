@@ -398,7 +398,7 @@ export default function AdminPage() {
           update_plan: "Plan updated.",
           reset_2fa: "Two-factor authentication reset.",
           delete_scans: "All scans deleted.",
-          export_data: "Data export started.",
+
           grant_premium: "Premium access granted.",
           revoke_premium: "Premium access revoked.",
           clear_rate_limits: "Rate limits cleared.",
@@ -543,7 +543,7 @@ export default function AdminPage() {
                 onClose={() => { setSelectedUser(null); setTempPassword(null) }}
                 onAction={(userId, action, extra) => {
                   // Actions that don't need confirmation
-                  if (["set_role", "award_badge", "revoke_badge", "create_badge", "delete_badge", "update_name", "update_email", "update_plan", "enable", "grant_premium", "clear_rate_limits", "export_data"].includes(action)) {
+                  if (["set_role", "award_badge", "revoke_badge", "create_badge", "delete_badge", "update_name", "update_email", "update_plan", "enable", "grant_premium", "clear_rate_limits"].includes(action)) {
                     handleAction(userId, action, extra)
                     return
                   }
@@ -1357,15 +1357,38 @@ function UserDetailPanel({
                     onChange={(e) => setNewBadgeDisplay(e.target.value)}
                     className="h-8 text-xs"
                   />
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-col gap-1.5">
                     <label className="text-[11px] text-muted-foreground">Color:</label>
-                    <input
-                      type="color"
-                      value={newBadgeColor}
-                      onChange={(e) => setNewBadgeColor(e.target.value)}
-                      className="h-7 w-12 rounded cursor-pointer border border-border bg-transparent"
-                    />
-                    <span className="text-[11px] font-mono text-muted-foreground">{newBadgeColor}</span>
+                    <div className="flex flex-wrap gap-1.5">
+                      {[
+                        { color: "#ef4444", name: "Red" },
+                        { color: "#f97316", name: "Orange" },
+                        { color: "#eab308", name: "Yellow" },
+                        { color: "#22c55e", name: "Green" },
+                        { color: "#10b981", name: "Emerald" },
+                        { color: "#14b8a6", name: "Teal" },
+                        { color: "#06b6d4", name: "Cyan" },
+                        { color: "#3b82f6", name: "Blue" },
+                        { color: "#6366f1", name: "Indigo" },
+                        { color: "#8b5cf6", name: "Violet" },
+                        { color: "#a855f7", name: "Purple" },
+                        { color: "#ec4899", name: "Pink" },
+                        { color: "#f43f5e", name: "Rose" },
+                        { color: "#64748b", name: "Slate" },
+                      ].map((c) => (
+                        <button
+                          key={c.color}
+                          type="button"
+                          onClick={() => setNewBadgeColor(c.color)}
+                          className={cn(
+                            "w-6 h-6 rounded-full transition-all border-2",
+                            newBadgeColor === c.color ? "border-foreground scale-110" : "border-transparent hover:scale-105"
+                          )}
+                          style={{ backgroundColor: c.color }}
+                          title={c.name}
+                        />
+                      ))}
+                    </div>
                   </div>
                   <div className="flex items-center gap-2 mt-1">
                     <Button
@@ -1510,16 +1533,6 @@ function UserDetailPanel({
                       onClick={() => onAction(u.id, "delete_scans")}
                     />
                   )}
-                  {hasStaffPermission(callerRole, STAFF_PERMISSIONS.EXPORT_SCAN_DATA) && (
-                    <ActionCard
-                      icon={Download} label="Export Data"
-                      description="Download all user data as JSON"
-                      color="text-emerald-500" bg="bg-emerald-500/10"
-                      loading={isLoading("export_data")}
-                      onClick={() => onAction(u.id, "export_data")}
-                    />
-                  )}
-
                   {/* Account Status */}
                   <ActionCard
                     icon={u.disabled_at ? CheckCircle2 : Ban}

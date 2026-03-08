@@ -411,6 +411,7 @@ export const API = {
       EMAIL_SEND: `/api/${API_VERSION}/auth/2fa/email-send`,
       BACKUP_CODES: `/api/${API_VERSION}/auth/2fa/backup-codes`,
     },
+    SESSIONS: `/api/${API_VERSION}/auth/sessions`,
   },
   SCAN: `/api/${API_VERSION}/scan`,
   SCAN_BULK: `/api/${API_VERSION}/scan/bulk`,

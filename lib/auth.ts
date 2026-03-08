@@ -127,3 +127,8 @@ export async function getUserByEmail(email: string) {
 export async function cleanupExpiredSessions(): Promise<void> {
   await pool.query("DELETE FROM sessions WHERE expires_at < NOW()")
 }
+
+// Delete all sessions for a user (force logout all devices)
+export async function deleteAllSessions(userId: number): Promise<void> {
+  await pool.query("DELETE FROM sessions WHERE user_id = $1", [userId])
+}
