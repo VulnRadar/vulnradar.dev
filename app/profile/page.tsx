@@ -46,6 +46,7 @@ import {
   Smartphone,
   Award,
   Tag,
+  LogOut,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
@@ -214,6 +215,9 @@ export default function ProfilePage() {
   const [twoFactorMethod, setTwoFactorMethod] = useState<string | null>(null)
   const [email2FAPassword, setEmail2FAPassword] = useState("")
   const [togglingEmail2FA, setTogglingEmail2FA] = useState(false)
+  
+  // Force logout state
+  const [forceLoggingOut, setForceLoggingOut] = useState(false)
 
   // Notification preferences state
   const [notifPrefs, setNotifPrefs] = useState<NotificationPrefs>({
@@ -557,6 +561,28 @@ export default function ProfilePage() {
       setError("Failed to export data.")
     } finally {
       setRequestingData(false)
+    }
+  }
+
+  async function handleForceLogout() {
+    setForceLoggingOut(true)
+    setError(null)
+    try {
+      const res = await fetch(API.AUTH.SESSIONS, { method: "DELETE" })
+      if (!res.ok) {
+        const data = await res.json()
+        setError(data.error || "Failed to log out of all devices.")
+        return
+      }
+      setSuccess("Logged out of all devices. Redirecting...")
+      // Give time to see success message, then logout
+      setTimeout(() => {
+        router.push("/login?reason=forced_logout")
+      }, 1500)
+    } catch {
+      setError("Failed to log out of all devices.")
+    } finally {
+      setForceLoggingOut(false)
     }
   }
 
@@ -1266,6 +1292,43 @@ export default function ProfilePage() {
                       )}
                     </div>
                   )}
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Active Sessions / Force Logout */}
+            <Card className="bg-card border-border">
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle className="text-lg flex items-center gap-2">
+                      <MonitorSmartphone className="h-4 w-4 text-muted-foreground" />
+                      Active Sessions
+                    </CardTitle>
+                    <CardDescription>
+                      Log out of all devices and browsers at once.
+                    </CardDescription>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <div className="flex flex-col gap-4">
+                  <p className="text-sm text-muted-foreground">
+                    If you suspect unauthorized access to your account or want to sign out everywhere, 
+                    use the button below. This will invalidate all active sessions including this one.
+                  </p>
+                  <Button
+                    variant="outline"
+                    className="self-start text-destructive border-destructive/30 hover:bg-destructive/10"
+                    onClick={handleForceLogout}
+                    disabled={forceLoggingOut}
+                  >
+                    {forceLoggingOut ? (
+                      <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Logging out...</>
+                    ) : (
+                      <><LogOut className="mr-2 h-4 w-4" />Log Out All Devices</>
+                    )}
+                  </Button>
                 </div>
               </CardContent>
             </Card>
