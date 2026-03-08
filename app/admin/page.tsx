@@ -1650,10 +1650,9 @@ function UserDetailPanel({
                     )}
                   </div>
                 </div>
-              </div>
 
                 {u.totp_enabled && hasStaffPermission(callerRole, STAFF_PERMISSIONS.RESET_USER_2FA) && (
-                  <div className="flex items-start gap-2.5 p-3.5 rounded-lg bg-[hsl(var(--severity-medium))]/5 border border-[hsl(var(--severity-medium))]/20 mt-3">
+                  <div className="flex items-start gap-2.5 p-3.5 rounded-lg bg-[hsl(var(--severity-medium))]/5 border border-[hsl(var(--severity-medium))]/20">
                     <AlertTriangle className="h-4 w-4 text-[hsl(var(--severity-medium))] shrink-0 mt-0.5" />
                     <div>
                       <p className="text-xs font-medium text-foreground">Password reset is unavailable for this user</p>
@@ -1663,7 +1662,7 @@ function UserDetailPanel({
                     </div>
                   </div>
                 )}
-              </>
+              </div>
             )}
           </CardContent>
         </Card>
