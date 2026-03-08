@@ -38,6 +38,9 @@ import {
   ChevronUp,
   ChevronDown,
   Monitor,
+  Award,
+  Plus,
+  Tag,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -76,6 +79,21 @@ interface AdminUser {
   api_key_count: string
 }
 
+interface BadgeDef {
+  id: number
+  name: string
+  display_name: string
+  description: string | null
+  icon: string | null
+  color: string | null
+  priority: number
+  is_limited: boolean
+}
+
+interface UserBadge extends BadgeDef {
+  awarded_at: string
+}
+
 interface UserDetail {
   user: AdminUser & {
     session_count: number
@@ -86,6 +104,7 @@ interface UserDetail {
   webhooks: { id: number; name: string; url: string; type: string; active: boolean }[]
   schedules: { id: number; url: string; frequency: string; active: boolean; last_run_at: string | null; next_run_at: string | null }[]
   activeSessions: { id: string; created_at: string; expires_at: string; ip_address: string | null; user_agent: string | null }[]
+  badges: UserBadge[]
 }
 
 interface AuditEntry {
@@ -257,6 +276,7 @@ export default function AdminPage() {
   const [searchLoading, setSearchLoading] = useState(false)
   const [callerRole, setCallerRole] = useState<string>("user")
   const [auditPaging, setAuditPaging] = useState(false)
+  const [allBadges, setAllBadges] = useState<BadgeDef[]>([])
   const searchInitRef = useRef(false)
   const staffPagination = usePagination(activeAdmins, 5)
   const pagedStaff = staffPagination.getPage(staffPage)
@@ -315,7 +335,17 @@ export default function AdminPage() {
     setDetailLoading(false)
   }
 
-  useEffect(() => { fetchData(1, "", true) }, [])
+  async function fetchAllBadges() {
+    try {
+      const res = await fetch(`${API.ADMIN}?section=badges`)
+      if (res.ok) {
+        const data = await res.json()
+        setAllBadges(data.badges || [])
+      }
+    } catch { /* ignore */ }
+  }
+
+  useEffect(() => { fetchData(1, "", true); fetchAllBadges() }, [])
 
   useEffect(() => {
     if (activeTab === "audit") fetchAudit()
@@ -343,7 +373,11 @@ export default function AdminPage() {
           disable: "Account disabled.",
           enable: "Account re-enabled.",
           delete: "User deleted.",
+          award_badge: "Badge awarded.",
+          revoke_badge: "Badge removed.",
+          create_badge: "Badge created.",
         }
+        if (action === "create_badge") { fetchAllBadges() }
         showToast(labels[action] || "Action completed.", "success")
         await fetchData(page)
         if (selectedUser && selectedUser.user.id === userId) {
@@ -477,9 +511,11 @@ export default function AdminPage() {
                 detailLoading={detailLoading}
                 actionLoading={actionLoading}
                 callerRole={callerRole}
+                allBadges={allBadges}
+                onRefreshBadges={fetchAllBadges}
                 onClose={() => { setSelectedUser(null); setTempPassword(null) }}
                 onAction={(userId, action, extra) => {
-                  if (action === "set_role" && extra?.role) {
+                  if (["set_role", "award_badge", "revoke_badge", "create_badge"].includes(action)) {
                     handleAction(userId, action, extra)
                     return
                   }
@@ -893,14 +929,23 @@ export default function AdminPage() {
 
 // --- User Detail Panel ---
 function UserDetailPanel({
-  detail, detailLoading, actionLoading, onClose, onAction, tempPassword, onClearTempPassword, callerRole,
+  detail, detailLoading, actionLoading, onClose, onAction, tempPassword, onClearTempPassword, callerRole, allBadges, onRefreshBadges,
 }: {
   detail: UserDetail; detailLoading: boolean; actionLoading: string | null
   onClose: () => void; onAction: (userId: number, action: string, extra?: Record<string, string>) => void
   tempPassword: string | null; onClearTempPassword: () => void; callerRole: string
+  allBadges: BadgeDef[]; onRefreshBadges: () => void
 }) {
   const u = detail.user
   const isLoading = (action: string) => actionLoading === `${u.id}-${action}`
+  const [showBadgePicker, setShowBadgePicker] = useState(false)
+  const [newBadgeName, setNewBadgeName] = useState("")
+  const [newBadgeDisplay, setNewBadgeDisplay] = useState("")
+  const [newBadgeColor, setNewBadgeColor] = useState("#6366f1")
+  const [showCreateBadge, setShowCreateBadge] = useState(false)
+
+  const awardedIds = new Set(detail.badges.map((b) => b.id))
+  const unawardedBadges = allBadges.filter((b) => !awardedIds.has(b.id))
 
   return (
     <div className="flex flex-col gap-4">
@@ -992,35 +1037,184 @@ function UserDetailPanel({
         </div>
       )}
 
-      {/* Role management - admin only */}
+      {/* Role + Badge management - admin only */}
       {!detailLoading && callerRole === STAFF_ROLES.ADMIN && (
-        <Card className="bg-card border-border">
-          <CardHeader className="pb-0 pt-4 px-5">
-            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Role Management</p>
-          </CardHeader>
-          <CardContent className="p-5 pt-3">
-            <div className="flex flex-col gap-3">
-              <p className="text-xs text-muted-foreground">Current role: <span className="font-semibold text-foreground">{STAFF_ROLE_LABELS[u.role || "user"] || "User"}</span></p>
-              <div className="flex flex-wrap gap-2">
-                {(["user", "beta_tester", "support", "moderator", "admin"] as const).map((role) => (
-                  <Button
-                    key={role}
-                    variant={(u.role || "user") === role ? "default" : "outline"}
-                    size="sm"
-                    disabled={(u.role || "user") === role || isLoading("set_role")}
-                    onClick={() => onAction(u.id, "set_role", { role })}
-                    className={cn(
-                      "text-xs",
-                      (u.role || "user") === role && "pointer-events-none"
-                    )}
-                  >
-                    {STAFF_ROLE_LABELS[role]}
-                  </Button>
-                ))}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+
+          {/* Staff Role - single select */}
+          <Card className="bg-card border-border">
+            <CardHeader className="pb-0 pt-4 px-5">
+              <div className="flex items-center gap-2">
+                <Shield className="h-4 w-4 text-muted-foreground" />
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Staff Role</p>
               </div>
-            </div>
-          </CardContent>
-        </Card>
+              <p className="text-[11px] text-muted-foreground mt-1">Select one permission level for this user.</p>
+            </CardHeader>
+            <CardContent className="p-5 pt-3">
+              <div className="flex flex-col gap-2">
+                {(["user", "support", "moderator", "admin"] as const).map((role) => {
+                  const active = (u.role || "user") === role
+                  const roleColors: Record<string, string> = {
+                    user: "border-border hover:border-primary/40",
+                    support: "border-emerald-500/30 hover:border-emerald-500/60",
+                    moderator: "border-[hsl(var(--severity-medium))]/30 hover:border-[hsl(var(--severity-medium))]/60",
+                    admin: "border-primary/30 hover:border-primary/60",
+                  }
+                  const activeColors: Record<string, string> = {
+                    user: "bg-muted/50 border-border",
+                    support: "bg-emerald-500/10 border-emerald-500/50",
+                    moderator: "bg-[hsl(var(--severity-medium))]/10 border-[hsl(var(--severity-medium))]/50",
+                    admin: "bg-primary/10 border-primary/50",
+                  }
+                  return (
+                    <button
+                      key={role}
+                      disabled={active || isLoading("set_role")}
+                      onClick={() => onAction(u.id, "set_role", { role })}
+                      className={cn(
+                        "flex items-center justify-between px-4 py-2.5 rounded-lg border text-sm font-medium transition-all text-left",
+                        active ? activeColors[role] : `bg-transparent ${roleColors[role]} text-muted-foreground`,
+                        active && "cursor-default",
+                        !active && "hover:text-foreground cursor-pointer"
+                      )}
+                    >
+                      <span>{STAFF_ROLE_LABELS[role] || role}</span>
+                      {active && <CheckCircle2 className="h-4 w-4 text-primary shrink-0" />}
+                      {isLoading("set_role") && !active && <Loader2 className="h-3.5 w-3.5 animate-spin shrink-0" />}
+                    </button>
+                  )
+                })}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Badges - multi select */}
+          <Card className="bg-card border-border">
+            <CardHeader className="pb-0 pt-4 px-5">
+              <div className="flex items-center gap-2">
+                <Award className="h-4 w-4 text-muted-foreground" />
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Badges</p>
+                <span className="ml-auto text-[10px] text-muted-foreground">{detail.badges.length} awarded</span>
+              </div>
+              <p className="text-[11px] text-muted-foreground mt-1">Cosmetic badges shown on the user's profile.</p>
+            </CardHeader>
+            <CardContent className="p-5 pt-3 flex flex-col gap-3">
+              {/* Awarded badges */}
+              {detail.badges.length > 0 ? (
+                <div className="flex flex-wrap gap-1.5">
+                  {detail.badges.map((badge) => (
+                    <div
+                      key={badge.id}
+                      className="group flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-xs font-medium transition-all"
+                      style={{ borderColor: `${badge.color}40`, backgroundColor: `${badge.color}15`, color: badge.color || undefined }}
+                    >
+                      <Tag className="h-3 w-3 shrink-0" />
+                      {badge.display_name}
+                      <button
+                        className="ml-0.5 opacity-0 group-hover:opacity-100 transition-opacity hover:scale-110"
+                        onClick={() => onAction(u.id, "revoke_badge", { badgeId: String(badge.id) })}
+                        title="Remove badge"
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground">No badges awarded yet.</p>
+              )}
+
+              {/* Award badge picker */}
+              {showBadgePicker && unawardedBadges.length > 0 && (
+                <div className="flex flex-col gap-1.5 p-3 rounded-lg bg-muted/20 border border-border">
+                  <p className="text-[11px] text-muted-foreground font-medium">Select badges to award:</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {unawardedBadges.map((badge) => (
+                      <button
+                        key={badge.id}
+                        onClick={() => { onAction(u.id, "award_badge", { badgeId: String(badge.id) }); setShowBadgePicker(false) }}
+                        className="flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-xs font-medium transition-all hover:scale-105"
+                        style={{ borderColor: `${badge.color}40`, backgroundColor: `${badge.color}15`, color: badge.color || undefined }}
+                      >
+                        <Tag className="h-3 w-3 shrink-0" />
+                        {badge.display_name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Create custom badge */}
+              {showCreateBadge && (
+                <div className="flex flex-col gap-2 p-3 rounded-lg bg-muted/20 border border-border">
+                  <p className="text-[11px] text-muted-foreground font-medium">Create new badge:</p>
+                  <Input
+                    placeholder="Badge name (e.g. power_user)"
+                    value={newBadgeName}
+                    onChange={(e) => setNewBadgeName(e.target.value.toLowerCase().replace(/\s+/g, "_"))}
+                    className="h-8 text-xs"
+                  />
+                  <Input
+                    placeholder="Display name (e.g. Power User)"
+                    value={newBadgeDisplay}
+                    onChange={(e) => setNewBadgeDisplay(e.target.value)}
+                    className="h-8 text-xs"
+                  />
+                  <div className="flex items-center gap-2">
+                    <label className="text-[11px] text-muted-foreground">Color:</label>
+                    <input
+                      type="color"
+                      value={newBadgeColor}
+                      onChange={(e) => setNewBadgeColor(e.target.value)}
+                      className="h-7 w-12 rounded cursor-pointer border border-border bg-transparent"
+                    />
+                    <span className="text-[11px] font-mono text-muted-foreground">{newBadgeColor}</span>
+                  </div>
+                  <div className="flex items-center gap-2 mt-1">
+                    <Button
+                      size="sm"
+                      className="h-7 text-xs flex-1"
+                      disabled={!newBadgeName.trim() || !newBadgeDisplay.trim()}
+                      onClick={() => {
+                        onAction(u.id, "create_badge", {
+                          name: newBadgeName.trim(),
+                          displayName: newBadgeDisplay.trim(),
+                          color: newBadgeColor,
+                        })
+                        setShowCreateBadge(false)
+                        setNewBadgeName("")
+                        setNewBadgeDisplay("")
+                        setNewBadgeColor("#6366f1")
+                      }}
+                    >
+                      Create &amp; Award
+                    </Button>
+                    <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setShowCreateBadge(false)}>Cancel</Button>
+                  </div>
+                </div>
+              )}
+
+              {/* Action buttons */}
+              {!showBadgePicker && !showCreateBadge && (
+                <div className="flex items-center gap-2 mt-1">
+                  {unawardedBadges.length > 0 && (
+                    <Button size="sm" variant="outline" className="h-7 text-xs gap-1 bg-transparent flex-1" onClick={() => setShowBadgePicker(true)}>
+                      <Award className="h-3.5 w-3.5" /> Award Badge
+                    </Button>
+                  )}
+                  <Button size="sm" variant="outline" className="h-7 text-xs gap-1 bg-transparent flex-1" onClick={() => setShowCreateBadge(true)}>
+                    <Plus className="h-3.5 w-3.5" /> New Badge
+                  </Button>
+                </div>
+              )}
+              {(showBadgePicker || showCreateBadge) && (
+                <Button size="sm" variant="ghost" className="h-7 text-xs self-start" onClick={() => { setShowBadgePicker(false); setShowCreateBadge(false) }}>
+                  Cancel
+                </Button>
+              )}
+            </CardContent>
+          </Card>
+        </div>
       )}
 
       {/* Support actions */}
