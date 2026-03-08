@@ -356,6 +356,33 @@ export async function register() {
         CREATE INDEX IF NOT EXISTS idx_team_invites_email ON team_invites(email);
       `)
 
+      // ── User Badges (v2.0) - Cosmetic badges like "Beta Tester", "Early Supporter"
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS badges (
+          id SERIAL PRIMARY KEY,
+          name VARCHAR(50) NOT NULL UNIQUE,
+          display_name VARCHAR(100) NOT NULL,
+          description TEXT,
+          icon VARCHAR(50),
+          color VARCHAR(20),
+          priority INTEGER NOT NULL DEFAULT 0,
+          is_limited BOOLEAN NOT NULL DEFAULT false,
+          created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+        );
+        CREATE INDEX IF NOT EXISTS idx_badges_name ON badges(name);
+        CREATE INDEX IF NOT EXISTS idx_badges_priority ON badges(priority);
+
+        CREATE TABLE IF NOT EXISTS user_badges (
+          user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          badge_id INTEGER NOT NULL REFERENCES badges(id) ON DELETE CASCADE,
+          awarded_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+          awarded_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+          PRIMARY KEY (user_id, badge_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_user_badges_user ON user_badges(user_id);
+        CREATE INDEX IF NOT EXISTS idx_user_badges_badge ON user_badges(badge_id);
+      `)
+
       // ── Subscriptions & Billing (v2.0) ────────────────────────────
       await pool.query(`
         CREATE TABLE IF NOT EXISTS subscriptions (
@@ -537,8 +564,25 @@ export async function register() {
         `)
 
         console.log(`[${APP_NAME}] Default roles and permissions seeded.`)
+
+        // Insert default badges if they don't exist
+        await pool.query(`
+          INSERT INTO badges (name, display_name, description, icon, color, priority, is_limited)
+          VALUES 
+            ('beta_tester', 'Beta Tester', 'Early beta program participant', 'flask', '#10b981', 10, true),
+            ('early_supporter', 'Early Supporter', 'Supported the project early on', 'heart', '#ec4899', 9, true),
+            ('founder', 'Founder', 'Original founding member', 'crown', '#f59e0b', 20, true),
+            ('contributor', 'Contributor', 'Open source contributor', 'code', '#8b5cf6', 8, false),
+            ('bug_hunter', 'Bug Hunter', 'Found and reported bugs', 'bug', '#ef4444', 7, false),
+            ('verified', 'Verified', 'Verified account', 'badge-check', '#3b82f6', 5, false),
+            ('premium', 'Premium', 'Premium subscription member', 'star', '#fbbf24', 6, false),
+            ('staff', 'Staff', 'VulnRadar team member', 'shield', '#6366f1', 15, true)
+          ON CONFLICT (name) DO NOTHING;
+        `)
+
+        console.log(`[${APP_NAME}] Default badges seeded.`)
       } catch (seedError) {
-        console.error(`[${APP_NAME}] Failed to seed roles/permissions (non-fatal):`, seedError)
+        console.error(`[${APP_NAME}] Failed to seed roles/permissions/badges (non-fatal):`, seedError)
       }
 
       // Run initial cleanup on startup

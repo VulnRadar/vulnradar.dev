@@ -172,6 +172,50 @@ async function migrate() {
     `)
     console.log("[v2-migration] ✓ Created billing_history table")
 
+    // Create badges table (cosmetic badges like "Beta Tester", "Early Supporter")
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS badges (
+        id SERIAL PRIMARY KEY,
+        name VARCHAR(50) NOT NULL UNIQUE,
+        display_name VARCHAR(100) NOT NULL,
+        description TEXT,
+        icon VARCHAR(50),
+        color VARCHAR(20),
+        priority INTEGER NOT NULL DEFAULT 0,
+        is_limited BOOLEAN NOT NULL DEFAULT false,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_badges_name ON badges(name);
+      CREATE INDEX IF NOT EXISTS idx_badges_priority ON badges(priority);
+
+      CREATE TABLE IF NOT EXISTS user_badges (
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        badge_id INTEGER NOT NULL REFERENCES badges(id) ON DELETE CASCADE,
+        awarded_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+        awarded_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        PRIMARY KEY (user_id, badge_id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_user_badges_user ON user_badges(user_id);
+      CREATE INDEX IF NOT EXISTS idx_user_badges_badge ON user_badges(badge_id);
+    `)
+    console.log("[v2-migration] ✓ Created badges tables")
+
+    // Seed default badges
+    await client.query(`
+      INSERT INTO badges (name, display_name, description, icon, color, priority, is_limited)
+      VALUES 
+        ('beta_tester', 'Beta Tester', 'Early beta program participant', 'flask', '#10b981', 10, true),
+        ('early_supporter', 'Early Supporter', 'Supported the project early on', 'heart', '#ec4899', 9, true),
+        ('founder', 'Founder', 'Original founding member', 'crown', '#f59e0b', 20, true),
+        ('contributor', 'Contributor', 'Open source contributor', 'code', '#8b5cf6', 8, false),
+        ('bug_hunter', 'Bug Hunter', 'Found and reported bugs', 'bug', '#ef4444', 7, false),
+        ('verified', 'Verified', 'Verified account', 'badge-check', '#3b82f6', 5, false),
+        ('premium', 'Premium', 'Premium subscription member', 'star', '#fbbf24', 6, false),
+        ('staff', 'Staff', 'VulnRadar team member', 'shield', '#6366f1', 15, true)
+      ON CONFLICT (name) DO NOTHING;
+    `)
+    console.log("[v2-migration] ✓ Seeded default badges")
+
     // Seed default roles
     await client.query(`
       INSERT INTO roles (name, display_name, description, color, priority, is_system)
@@ -252,7 +296,24 @@ async function migrate() {
       [userId, "elite", "active"]
     )
 
-    console.log("[v2-migration] ✓ Assigned admin role and elite subscription to beta user")
+    // Award beta_tester and staff badges to beta user
+    const betaBadge = await client.query("SELECT id FROM badges WHERE name = 'beta_tester'")
+    const staffBadge = await client.query("SELECT id FROM badges WHERE name = 'staff'")
+    
+    if (betaBadge.rows.length > 0) {
+      await client.query(
+        `INSERT INTO user_badges (user_id, badge_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
+        [userId, betaBadge.rows[0].id]
+      )
+    }
+    if (staffBadge.rows.length > 0) {
+      await client.query(
+        `INSERT INTO user_badges (user_id, badge_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
+        [userId, staffBadge.rows[0].id]
+      )
+    }
+
+    console.log("[v2-migration] ✓ Assigned admin role, elite subscription, and badges to beta user")
     console.log("")
     console.log("================================")
     console.log("✓ V2 Migration Complete!")
