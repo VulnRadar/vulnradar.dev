@@ -48,6 +48,70 @@ export const ROLE_BADGE_STYLES: Record<string, string> = {
 }
 
 // ============================================================================
+// API VERSION - Change this to switch all API calls between versions
+// ============================================================================
+
+export const API_VERSION = "v2"
+
+// ============================================================================
+// API ENDPOINTS (dynamically versioned)
+// ============================================================================
+
+export const API = {
+  AUTH: {
+    ME: `/api/${API_VERSION}/auth/me`,
+    LOGIN: `/api/${API_VERSION}/auth/login`,
+    SIGNUP: `/api/${API_VERSION}/auth/signup`,
+    LOGOUT: `/api/${API_VERSION}/auth/logout`,
+    UPDATE: `/api/${API_VERSION}/auth/update`,
+    FORGOT_PASSWORD: `/api/${API_VERSION}/auth/forgot-password`,
+    RESET_PASSWORD: `/api/${API_VERSION}/auth/reset-password`,
+    VERIFY_EMAIL: `/api/${API_VERSION}/auth/verify-email`,
+    RESEND_VERIFICATION: `/api/${API_VERSION}/auth/resend-verification`,
+    ACCEPT_TOS: `/api/${API_VERSION}/auth/accept-tos`,
+    ONBOARDING: `/api/${API_VERSION}/auth/onboarding`,
+    TWO_FA: {
+      SETUP: `/api/${API_VERSION}/auth/2fa/setup`,
+      VERIFY: `/api/${API_VERSION}/auth/2fa/verify`,
+      DISABLE: `/api/${API_VERSION}/auth/2fa/disable`,
+      EMAIL_SETUP: `/api/${API_VERSION}/auth/2fa/email-setup`,
+      EMAIL_SEND: `/api/${API_VERSION}/auth/2fa/email-send`,
+      BACKUP_CODES: `/api/${API_VERSION}/auth/2fa/backup-codes`,
+    },
+  },
+  SCAN: `/api/${API_VERSION}/scan`,
+  SCAN_BULK: `/api/${API_VERSION}/scan/bulk`,
+  SCAN_TAGS: `/api/${API_VERSION}/scan/tags`,
+  SCAN_DISCOVER: `/api/${API_VERSION}/scan/discover`,
+  SCAN_CRAWL: `/api/${API_VERSION}/scan/crawl`,
+  SCAN_CRAWL_DISCOVER: `/api/${API_VERSION}/scan/crawl/discover`,
+  DEMO_SCAN: `/api/${API_VERSION}/demo-scan`,
+  HISTORY: `/api/${API_VERSION}/history`,
+  DASHBOARD: `/api/${API_VERSION}/dashboard`,
+  SHARES: `/api/${API_VERSION}/shares`,
+  SHARED: `/api/${API_VERSION}/shared`,
+  KEYS: `/api/${API_VERSION}/keys`,
+  WEBHOOKS: `/api/${API_VERSION}/webhooks`,
+  SCHEDULES: `/api/${API_VERSION}/schedules`,
+  TEAMS: `/api/${API_VERSION}/teams`,
+  TEAMS_MEMBERS: `/api/${API_VERSION}/teams/members`,
+  TEAMS_MEMBER_SCANS: `/api/${API_VERSION}/teams/member-scans`,
+  TEAMS_ACCEPT_INVITE: `/api/${API_VERSION}/teams/accept-invite`,
+  CONTACT: `/api/${API_VERSION}/contact`,
+  LANDING_CONTACT: `/api/${API_VERSION}/landing-contact`,
+  ADMIN: `/api/${API_VERSION}/admin`,
+  STAFF: `/api/${API_VERSION}/staff`,
+  BADGE: `/api/${API_VERSION}/badge`,
+  BADGE_SCANS: `/api/${API_VERSION}/badge/scans`,
+  DATA_REQUEST: `/api/${API_VERSION}/data-request`,
+  DATA_REQUEST_DOWNLOAD: `/api/${API_VERSION}/data-request/download`,
+  ACCOUNT_DELETE: `/api/${API_VERSION}/account/delete`,
+  ACCOUNT_NOTIFICATIONS: `/api/${API_VERSION}/account/notifications`,
+  FINDING_TYPES: `/api/${API_VERSION}/finding-types`,
+  COMPARE: `/api/${API_VERSION}/compare`,
+} as const
+
+// ============================================================================
 // APPLICATION ROUTES
 // ============================================================================
 

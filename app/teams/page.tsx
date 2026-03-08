@@ -1,5 +1,5 @@
 "use client"
-import { TEAM_ROLES, STAFF_ROLE_LABELS, ROLE_BADGE_STYLES, STAFF_ROLES } from "@/lib/constants"
+import { TEAM_ROLES, STAFF_ROLE_LABELS, ROLE_BADGE_STYLES, STAFF_ROLES, API } from "@/lib/constants"
 
 import { useState, useEffect, useCallback } from "react"
 import { useRouter } from "next/navigation"
@@ -100,7 +100,7 @@ export default function TeamsPage() {
 
   const fetchTeams = useCallback(async () => {
     try {
-      const res = await fetch("/api/v1/teams")
+      const res = await fetch(API.TEAMS)
       if (!res.ok) { router.push("/login"); return }
       const data = await res.json()
       setTeams(data.teams || [])
@@ -113,7 +113,7 @@ export default function TeamsPage() {
     if (!newName.trim()) return
     setCreating(true)
     try {
-      const res = await fetch("/api/v1/teams", {
+      const res = await fetch(API.TEAMS, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: newName.trim() }),
@@ -128,7 +128,7 @@ export default function TeamsPage() {
 
   async function handleDelete(teamId: number) {
     if (!confirm("Delete this team? All members will lose access.")) return
-    await fetch("/api/v1/teams", {
+    await fetch(API.TEAMS, {
       method: "DELETE",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ teamId }),
@@ -143,7 +143,7 @@ export default function TeamsPage() {
     setShowInvite(false)
     setInviteToken(null)
     try {
-      const res = await fetch(`/api/v1/teams/members?teamId=${team.id}`)
+      const res = await fetch(`${API.TEAMS_MEMBERS}?teamId=${team.id}`)
       if (res.ok) {
         const data = await res.json()
         setMembers(data.members || [])
@@ -158,7 +158,7 @@ export default function TeamsPage() {
     setInviting(true)
     setInviteToken(null)
     try {
-      const res = await fetch("/api/v1/teams/members", {
+      const res = await fetch(API.TEAMS_MEMBERS, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ teamId: selectedTeam.id, email: inviteEmail.trim(), role: inviteRole }),
@@ -175,7 +175,7 @@ export default function TeamsPage() {
   async function handleRemoveMember(userId: number) {
     if (!selectedTeam) return
     if (!confirm("Remove this member from the team?")) return
-    await fetch("/api/v1/teams/members", {
+    await fetch(API.TEAMS_MEMBERS, {
       method: "DELETE",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ teamId: selectedTeam.id, userId }),
@@ -185,7 +185,7 @@ export default function TeamsPage() {
 
   async function handleCancelInvite(inviteId: number) {
     if (!selectedTeam) return
-    await fetch("/api/v1/teams/members", {
+    await fetch(API.TEAMS_MEMBERS, {
       method: "DELETE",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ teamId: selectedTeam.id, inviteId }),
@@ -196,7 +196,7 @@ export default function TeamsPage() {
   async function handleLeave() {
     if (!selectedTeam) return
     if (!confirm("Leave this team?")) return
-    const res = await fetch("/api/v1/teams/members", {
+    const res = await fetch(API.TEAMS_MEMBERS, {
       method: "DELETE",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ teamId: selectedTeam.id, userId: "self" }),
@@ -214,7 +214,7 @@ export default function TeamsPage() {
     }
     setSavingName(true)
     try {
-      const res = await fetch("/api/v1/teams", {
+      const res = await fetch(API.TEAMS, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ teamId: selectedTeam.id, name: nameInput.trim() }),
@@ -234,7 +234,7 @@ export default function TeamsPage() {
     setScanPage(1)
     setScansLoading(true)
     try {
-      const res = await fetch(`/api/v1/teams/member-scans?teamId=${selectedTeam?.id}&userId=${member.user_id}`)
+      const res = await fetch(`${API.TEAMS_MEMBER_SCANS}?teamId=${selectedTeam?.id}&userId=${member.user_id}`)
       if (res.ok) {
         const data = await res.json()
         setMemberScans(data.scans || [])

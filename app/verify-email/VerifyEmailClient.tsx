@@ -8,6 +8,7 @@ import { Loader2, CheckCircle2, XCircle, Mail } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { APP_NAME } from "@/lib/constants"
+import { API } from "@/lib/client-constants"
 
 export default function VerifyEmailClient() {
   const router = useRouter()
@@ -34,7 +35,7 @@ export default function VerifyEmailClient() {
 
     async function verify() {
       try {
-        const res = await fetch("/api/v1/auth/verify-email", {
+        const res = await fetch(API.AUTH.VERIFY_EMAIL, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ token }),
@@ -83,7 +84,7 @@ export default function VerifyEmailClient() {
     setResendSuccess(false)
 
     try {
-      const res = await fetch("/api/v1/auth/resend-verification", {
+      const res = await fetch(API.AUTH.RESEND_VERIFICATION, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: resendEmail }),

@@ -21,6 +21,7 @@ const CrawlUrlSelector = dynamic(() => import("@/components/scanner/crawl-url-se
 const OnboardingTour = dynamic(() => import("@/components/onboarding-tour").then(m => ({ default: m.OnboardingTour })), { ssr: false })
 import type { ScanResult, ScanStatus, Vulnerability } from "@/lib/scanner/types"
 import { DEFAULT_SCAN_NOTE } from "@/lib/constants"
+import { API } from "@/lib/client-constants"
 import { AlertCircle, RotateCcw, MessageSquare, Pencil, Save, Loader2 as Loader2Icon, Globe, ChevronDown, ChevronRight, ExternalLink } from "lucide-react"
 import { Button } from "@/components/ui/button"
 
@@ -67,7 +68,7 @@ function DashboardContent() {
     if (!scanHistoryId) return
     setSavingNotes(true)
     try {
-      await fetch(`/api/v1/history/${scanHistoryId}`, {
+      await fetch(`${API.HISTORY}/${scanHistoryId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ notes: scanNotes }),
@@ -89,7 +90,7 @@ function DashboardContent() {
       setCrawlDiscoveryUrls([url]) // always include the entry URL
 
       try {
-        const res = await fetch("/api/v1/scan/crawl/discover", {
+        const res = await fetch(API.SCAN_CRAWL_DISCOVER, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ url }),
@@ -118,7 +119,7 @@ function DashboardContent() {
     setCrawlInfo(null)
 
     const isCrawl = !!crawlUrls
-    const endpoint = isCrawl ? "/api/v1/scan/crawl" : "/api/v1/scan"
+    const endpoint = isCrawl ? API.SCAN_CRAWL : API.SCAN
     const payload = isCrawl
       ? { url, urls: crawlUrls, ...(scanners ? { scanners } : {}) }
       : { url, ...(scanners ? { scanners } : {}) }
@@ -158,7 +159,7 @@ function DashboardContent() {
 
       // Auto-save default note to DB
       if (historyId) {
-        fetch(`/api/v1/history/${historyId}`, {
+        fetch(`${API.HISTORY}/${historyId}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ notes: DEFAULT_SCAN_NOTE }),

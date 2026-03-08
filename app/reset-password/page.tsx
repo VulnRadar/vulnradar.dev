@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { CheckCircle2, AlertTriangle, Eye, EyeOff, Loader2 } from "lucide-react"
 import { APP_NAME } from "@/lib/constants"
+import { API } from "@/lib/client-constants"
 import { getPasswordStrength } from "@/lib/password-strength"
 
 function ResetForm() {
@@ -31,7 +32,7 @@ function ResetForm() {
     if (password.length < 8) { setError("Password must be at least 8 characters."); return }
     setLoading(true)
     try {
-      const res = await fetch("/api/v1/auth/reset-password", {
+      const res = await fetch(API.AUTH.RESET_PASSWORD, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ token, password }),

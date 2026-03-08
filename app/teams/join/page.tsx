@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Users, Loader2, CheckCircle2, AlertTriangle } from "lucide-react"
 import Link from "next/link"
-import { APP_NAME } from "@/lib/constants"
+import { APP_NAME, API } from "@/lib/constants"
 
 function JoinForm() {
   const searchParams = useSearchParams()
@@ -21,7 +21,7 @@ function JoinForm() {
     setLoading(true)
     setError("")
     try {
-      const res = await fetch("/api/v1/teams/accept-invite", {
+      const res = await fetch(API.TEAMS_ACCEPT_INVITE, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ token }),

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation"
 import { Globe, Loader2, Search, ExternalLink, ChevronDown, ChevronRight, Radar } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
+import { API } from "@/lib/constants"
 
 interface DiscoveredSubdomain {
   subdomain: string
@@ -69,7 +70,7 @@ export function SubdomainDiscovery({ url, onScanSubdomain }: SubdomainDiscoveryP
     setLoading(true)
     setError(null)
     try {
-      const res = await fetch("/api/v1/scan/discover", {
+      const res = await fetch(API.SCAN_DISCOVER, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ url }),

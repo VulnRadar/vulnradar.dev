@@ -3,6 +3,7 @@
 import { useState } from "react"
 import { Trash2, Loader2, AlertCircle, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { API } from "@/lib/constants"
 
 interface DeleteScanButtonProps {
   scanId: number
@@ -20,7 +21,7 @@ export function DeleteScanButton({ scanId, onDeleted, isOwner }: DeleteScanButto
   async function handleDelete() {
     setState("deleting")
     try {
-      const res = await fetch(`/api/v1/history/${scanId}/delete`, { method: "DELETE" })
+      const res = await fetch(`${API.HISTORY}/${scanId}/delete`, { method: "DELETE" })
       if (res.ok) {
         setState("deleted")
         setTimeout(() => onDeleted(), 500)

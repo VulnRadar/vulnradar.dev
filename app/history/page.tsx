@@ -1,5 +1,5 @@
 "use client"
-import { SEVERITY_LEVELS } from "@/lib/constants"
+import { SEVERITY_LEVELS, API } from "@/lib/constants"
 
 import { useState, useEffect, useCallback, Suspense } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
@@ -115,7 +115,7 @@ function HistoryPageContent() {
   async function loadScanDetail(scanId: number) {
     setDetailLoading(true)
     try {
-      const res = await fetch(`/api/v1/history/${scanId}`)
+      const res = await fetch(`${API.HISTORY}/${scanId}`)
       if (!res.ok) {
         setSelectedScanId(null)
         return
@@ -144,7 +144,7 @@ function HistoryPageContent() {
     if (!selectedScanId) return
     setSavingNotes(true)
     try {
-      const res = await fetch(`/api/v1/history/${selectedScanId}`, {
+      const res = await fetch(`${API.HISTORY}/${selectedScanId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ notes: scanNotes }),
@@ -161,7 +161,7 @@ function HistoryPageContent() {
 
   const fetchHistory = useCallback(async () => {
     try {
-      const res = await fetch("/api/v1/history")
+      const res = await fetch(API.HISTORY)
       if (!res.ok) {
         router.push("/login")
         return
@@ -177,14 +177,14 @@ function HistoryPageContent() {
 
   useEffect(() => {
     fetchHistory()
-    fetch("/api/v1/scan/tags").then((r) => r.json()).then((d) => setAllTags(d.tags || [])).catch(() => { })
+    fetch(API.SCAN_TAGS).then((r) => r.json()).then((d) => setAllTags(d.tags || [])).catch(() => { })
     // Get current user ID
-    fetch("/api/v1/auth/me").then((r) => r.json()).then((d) => setCurrentUserId(d.userId || null)).catch(() => { })
+    fetch(API.AUTH.ME).then((r) => r.json()).then((d) => setCurrentUserId(d.userId || null)).catch(() => { })
   }, [fetchHistory])
 
   async function handleAddTag(scanId: number, tag: string) {
     if (!tag.trim()) return
-    const res = await fetch("/api/v1/scan/tags", {
+    const res = await fetch(API.SCAN_TAGS, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ scanId, tag: tag.trim() }),
@@ -199,7 +199,7 @@ function HistoryPageContent() {
   }
 
   async function handleRemoveTag(scanId: number, tag: string) {
-    const res = await fetch("/api/v1/scan/tags", {
+    const res = await fetch(API.SCAN_TAGS, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ scanId, tag, action: "remove" }),
@@ -213,7 +213,7 @@ function HistoryPageContent() {
   async function handleRescan(scan: ScanRecord) {
     setRescanning(scan.id)
     try {
-      const res = await fetch("/api/v1/scan", {
+      const res = await fetch(API.SCAN, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ url: scan.url }),
@@ -231,7 +231,7 @@ function HistoryPageContent() {
     setBulkLoading(true)
     setBulkResult(null)
     try {
-      const res = await fetch("/api/v1/scan/bulk", {
+      const res = await fetch(API.SCAN_BULK, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ urls }),
@@ -261,7 +261,7 @@ function HistoryPageContent() {
     if (!confirm("Are you sure you want to clear all scan history? This cannot be undone.")) return
     setClearing(true)
     try {
-      await fetch("/api/v1/history", { method: "DELETE" })
+      await fetch(API.HISTORY, { method: "DELETE" })
       setScans([])
     } catch {
       // silently fail

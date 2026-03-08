@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { ArrowLeft, Mail, CheckCircle2, AlertTriangle, Loader2 } from "lucide-react"
 import { APP_NAME } from "@/lib/constants"
+import { API } from "@/lib/client-constants"
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState("")
@@ -22,7 +23,7 @@ export default function ForgotPasswordPage() {
     setLoading(true)
     setError("")
     try {
-      const res = await fetch("/api/v1/auth/forgot-password", {
+      const res = await fetch(API.AUTH.FORGOT_PASSWORD, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: email.trim().toLowerCase() }),

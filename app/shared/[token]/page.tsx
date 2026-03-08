@@ -17,7 +17,7 @@ import { IssueDetail } from "@/components/scanner/issue-detail"
 import { ExportButton } from "@/components/scanner/export-button"
 import { ResponseHeaders } from "@/components/scanner/response-headers"
 import { SubdomainDiscovery } from "@/components/scanner/subdomain-discovery"
-import { STAFF_ROLES, STAFF_ROLE_LABELS, ROLE_BADGE_STYLES } from "@/lib/constants"
+import { STAFF_ROLES, STAFF_ROLE_LABELS, ROLE_BADGE_STYLES, API } from "@/lib/constants"
 import type { ScanResult, Vulnerability } from "@/lib/scanner/types"
 
 export default function SharedScanPage() {
@@ -36,7 +36,7 @@ export default function SharedScanPage() {
   useEffect(() => {
     async function load() {
       try {
-        const res = await fetch(`/api/v1/shared/${token}`)
+        const res = await fetch(`${API.SHARED}/${token}`)
         if (!res.ok) {
           const data = await res.json()
           setError(data.error || "This shared scan could not be found.")

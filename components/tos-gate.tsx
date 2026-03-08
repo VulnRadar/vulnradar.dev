@@ -5,6 +5,7 @@ import React from "react"
 import { useEffect, useState } from "react"
 import { usePathname } from "next/navigation"
 import { TosModal } from "@/components/tos-modal"
+import { API } from "@/lib/constants"
 
 const SKIP_TOS_PATHS = ["/login", "/signup", "/legal"]
 
@@ -22,7 +23,7 @@ export function TosGate({ children }: { children: React.ReactNode }) {
 
     async function check() {
       try {
-        const res = await fetch("/api/v1/auth/me")
+        const res = await fetch(API.AUTH.ME)
         if (!res.ok) {
           // Not logged in - let middleware handle redirect
           setStatus("skip")
