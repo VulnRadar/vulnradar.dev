@@ -80,10 +80,11 @@ function DashboardContent() {
 
   const [pendingScanners, setPendingScanners] = useState<string[] | undefined>(undefined)
 
-  const handleScan = useCallback(async (url: string, mode: ScanMode = "quick", scanners?: string[]) => {
+  const handleScan = useCallback(async (url: string, mode: ScanMode = "quick", scanners?: string[], protocol?: string) => {
     setPendingScanners(scanners)
     // Deep crawl: first discover URLs, then show selector
-    if (mode === "deep") {
+    // Note: Deep crawl only works for HTTP/HTTPS protocols
+    if (mode === "deep" && (!protocol || protocol.startsWith("http"))) {
       setPendingCrawlUrl(url)
       setShowCrawlSelector(true)
       setCrawlDiscovering(true)
