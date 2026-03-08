@@ -1343,7 +1343,7 @@ function UserDetailPanel({
 
               {/* Create custom badge */}
               {showCreateBadge && (
-                <div className="flex flex-col gap-2 p-3 rounded-lg bg-muted/20 border border-border">
+                <div className="flex flex-col gap-2.5 p-3 rounded-lg bg-muted/20 border border-border">
                   <p className="text-[11px] text-muted-foreground font-medium">Create new badge:</p>
                   <Input
                     placeholder="Badge name (e.g. power_user)"
@@ -1357,8 +1357,22 @@ function UserDetailPanel({
                     onChange={(e) => setNewBadgeDisplay(e.target.value)}
                     className="h-8 text-xs"
                   />
-                  <div className="flex flex-col gap-1.5">
-                    <label className="text-[11px] text-muted-foreground">Color:</label>
+                  {/* Color picker */}
+                  <div className="flex flex-col gap-2">
+                    <div className="flex items-center justify-between">
+                      <label className="text-[11px] text-muted-foreground">Color:</label>
+                      {/* Preview */}
+                      {(newBadgeName || newBadgeDisplay) && (
+                        <div
+                          className="flex items-center gap-1 px-2 py-0.5 rounded-full border text-[10px] font-medium"
+                          style={{ borderColor: `${newBadgeColor}40`, backgroundColor: `${newBadgeColor}15`, color: newBadgeColor }}
+                        >
+                          <Tag className="h-2.5 w-2.5 shrink-0" />
+                          {newBadgeDisplay || newBadgeName}
+                        </div>
+                      )}
+                    </div>
+                    {/* Preset swatches */}
                     <div className="flex flex-wrap gap-1.5">
                       {[
                         { color: "#ef4444", name: "Red" },
@@ -1389,6 +1403,35 @@ function UserDetailPanel({
                         />
                       ))}
                     </div>
+                    {/* Custom hex input */}
+                    <div className="flex items-center gap-2">
+                      <div
+                        className="w-6 h-6 rounded-full border-2 border-border shrink-0"
+                        style={{ backgroundColor: newBadgeColor }}
+                      />
+                      <input
+                        type="color"
+                        value={newBadgeColor}
+                        onChange={(e) => setNewBadgeColor(e.target.value)}
+                        className="w-6 h-6 rounded cursor-pointer opacity-0 absolute"
+                        id="badge-color-native"
+                      />
+                      <Input
+                        value={newBadgeColor}
+                        onChange={(e) => {
+                          const v = e.target.value
+                          setNewBadgeColor(v.startsWith("#") ? v : `#${v}`)
+                        }}
+                        placeholder="#6366f1"
+                        className="h-7 text-xs font-mono w-28"
+                        maxLength={7}
+                      />
+                      <label htmlFor="badge-color-native" className="cursor-pointer">
+                        <Button size="sm" variant="outline" className="h-7 text-xs pointer-events-none" asChild>
+                          <span>Pick</span>
+                        </Button>
+                      </label>
+                    </div>
                   </div>
                   <div className="flex items-center gap-2 mt-1">
                     <Button
@@ -1409,7 +1452,12 @@ function UserDetailPanel({
                     >
                       Create &amp; Award
                     </Button>
-                    <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setShowCreateBadge(false)}>Cancel</Button>
+                    <Button
+                      size="sm" variant="ghost" className="h-7 text-xs"
+                      onClick={() => { setShowCreateBadge(false); setNewBadgeName(""); setNewBadgeDisplay(""); setNewBadgeColor("#6366f1") }}
+                    >
+                      Cancel
+                    </Button>
                   </div>
                 </div>
               )}
@@ -1465,8 +1513,8 @@ function UserDetailPanel({
                   )}
                 </div>
               )}
-              {(showBadgePicker || showCreateBadge || showManageBadges) && (
-                <Button size="sm" variant="ghost" className="h-7 text-xs self-start" onClick={() => { setShowBadgePicker(false); setShowCreateBadge(false); setShowManageBadges(false) }}>
+              {(showBadgePicker || showManageBadges) && (
+                <Button size="sm" variant="ghost" className="h-7 text-xs self-start" onClick={() => { setShowBadgePicker(false); setShowManageBadges(false) }}>
                   Cancel
                 </Button>
               )}
