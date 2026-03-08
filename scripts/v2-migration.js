@@ -11,10 +11,11 @@ const pool = new Pool({
 })
 
 // Password hashing function (same as in lib/auth.ts)
+// Format: salt:hash (both hex strings separated by colon)
 function hashPassword(password) {
-  const salt = randomBytes(16)
-  const hash = scryptSync(password, salt, 64)
-  return Buffer.concat([salt, hash]).toString("hex")
+  const salt = randomBytes(16).toString("hex")
+  const hash = scryptSync(password, salt, 64).toString("hex")
+  return `${salt}:${hash}`
 }
 
 async function migrate() {
