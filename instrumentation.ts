@@ -356,7 +356,190 @@ export async function register() {
         CREATE INDEX IF NOT EXISTS idx_team_invites_email ON team_invites(email);
       `)
 
+      // ── Subscriptions & Billing (v2.0) ────────────────────────────
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS subscriptions (
+          id SERIAL PRIMARY KEY,
+          user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE UNIQUE,
+          stripe_customer_id VARCHAR(255) UNIQUE,
+          stripe_subscription_id VARCHAR(255) UNIQUE,
+          plan VARCHAR(50) NOT NULL DEFAULT 'free',
+          status VARCHAR(50) NOT NULL DEFAULT 'active',
+          current_period_start TIMESTAMP WITH TIME ZONE,
+          current_period_end TIMESTAMP WITH TIME ZONE,
+          cancel_at_period_end BOOLEAN NOT NULL DEFAULT false,
+          created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+          updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+        );
+        CREATE INDEX IF NOT EXISTS idx_subscriptions_user_id ON subscriptions(user_id);
+        CREATE INDEX IF NOT EXISTS idx_subscriptions_stripe_customer ON subscriptions(stripe_customer_id);
+        CREATE INDEX IF NOT EXISTS idx_subscriptions_plan ON subscriptions(plan);
+      `)
+
+      // ── Daily Request Limits (v2.0) ───────────────────────────────
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS daily_request_limits (
+          id SERIAL PRIMARY KEY,
+          user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          date DATE NOT NULL DEFAULT CURRENT_DATE,
+          request_count INTEGER NOT NULL DEFAULT 0,
+          UNIQUE(user_id, date)
+        );
+        CREATE INDEX IF NOT EXISTS idx_daily_limits_user_date ON daily_request_limits(user_id, date);
+      `)
+
+      // ── Roles & Permissions (v2.0) ────────────────────────────────
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS roles (
+          id SERIAL PRIMARY KEY,
+          name VARCHAR(50) NOT NULL UNIQUE,
+          display_name VARCHAR(100) NOT NULL,
+          description TEXT,
+          color VARCHAR(20),
+          priority INTEGER NOT NULL DEFAULT 0,
+          is_system BOOLEAN NOT NULL DEFAULT false,
+          created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+        );
+        CREATE INDEX IF NOT EXISTS idx_roles_name ON roles(name);
+        CREATE INDEX IF NOT EXISTS idx_roles_priority ON roles(priority);
+
+        CREATE TABLE IF NOT EXISTS permissions (
+          id SERIAL PRIMARY KEY,
+          name VARCHAR(100) NOT NULL UNIQUE,
+          display_name VARCHAR(150) NOT NULL,
+          description TEXT,
+          category VARCHAR(50),
+          created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+        );
+        CREATE INDEX IF NOT EXISTS idx_permissions_name ON permissions(name);
+        CREATE INDEX IF NOT EXISTS idx_permissions_category ON permissions(category);
+
+        CREATE TABLE IF NOT EXISTS role_permissions (
+          role_id INTEGER NOT NULL REFERENCES roles(id) ON DELETE CASCADE,
+          permission_id INTEGER NOT NULL REFERENCES permissions(id) ON DELETE CASCADE,
+          PRIMARY KEY (role_id, permission_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_role_permissions_role ON role_permissions(role_id);
+
+        CREATE TABLE IF NOT EXISTS user_roles (
+          user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          role_id INTEGER NOT NULL REFERENCES roles(id) ON DELETE CASCADE,
+          assigned_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+          assigned_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+          PRIMARY KEY (user_id, role_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_user_roles_user ON user_roles(user_id);
+        CREATE INDEX IF NOT EXISTS idx_user_roles_role ON user_roles(role_id);
+
+        CREATE TABLE IF NOT EXISTS user_permission_tags (
+          id SERIAL PRIMARY KEY,
+          user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE UNIQUE,
+          tag_role_id INTEGER NOT NULL REFERENCES roles(id) ON DELETE CASCADE,
+          assigned_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+        );
+        CREATE INDEX IF NOT EXISTS idx_user_permission_tags_user ON user_permission_tags(user_id);
+      `)
+
+      // ── Beta Mode (v2.0) ──────────────────────────────────────────
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS beta_features (
+          id SERIAL PRIMARY KEY,
+          name VARCHAR(100) NOT NULL UNIQUE,
+          description TEXT,
+          enabled BOOLEAN NOT NULL DEFAULT false,
+          rollout_percentage INTEGER NOT NULL DEFAULT 0,
+          created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+        );
+        CREATE INDEX IF NOT EXISTS idx_beta_features_name ON beta_features(name);
+
+        CREATE TABLE IF NOT EXISTS user_beta_access (
+          user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          feature_id INTEGER NOT NULL REFERENCES beta_features(id) ON DELETE CASCADE,
+          granted_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+          granted_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+          PRIMARY KEY (user_id, feature_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_user_beta_user ON user_beta_access(user_id);
+      `)
+
+      // ── Billing History (v2.0) ────────────────────────────────────
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS billing_history (
+          id SERIAL PRIMARY KEY,
+          user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          stripe_invoice_id VARCHAR(255) UNIQUE,
+          amount_cents INTEGER NOT NULL,
+          currency VARCHAR(10) NOT NULL DEFAULT 'usd',
+          status VARCHAR(50) NOT NULL,
+          description TEXT,
+          invoice_pdf_url TEXT,
+          created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+        );
+        CREATE INDEX IF NOT EXISTS idx_billing_history_user ON billing_history(user_id);
+        CREATE INDEX IF NOT EXISTS idx_billing_history_created ON billing_history(created_at);
+      `)
+
       console.log(`[${APP_NAME}] Database schema verified successfully.`)
+
+      // ── Seed Default Roles & Permissions ──────────────────────────
+      try {
+        // Insert default roles if they don't exist
+        await pool.query(`
+          INSERT INTO roles (name, display_name, description, color, priority, is_system)
+          VALUES 
+            ('user', 'User', 'Standard user with basic access', NULL, 0, true),
+            ('beta_tester', 'Beta Tester', 'Access to beta features and early releases', '#10b981', 1, true),
+            ('support', 'Support', 'Customer support team member', '#3b82f6', 2, true),
+            ('moderator', 'Moderator', 'Content and user moderation access', '#f59e0b', 3, true),
+            ('admin', 'Admin', 'Full administrative access', '#ef4444', 4, true)
+          ON CONFLICT (name) DO NOTHING;
+        `)
+
+        // Insert default permissions if they don't exist
+        await pool.query(`
+          INSERT INTO permissions (name, display_name, description, category)
+          VALUES 
+            ('scan.create', 'Create Scans', 'Ability to run security scans', 'scanning'),
+            ('scan.view', 'View Scans', 'Ability to view scan results', 'scanning'),
+            ('scan.delete', 'Delete Scans', 'Ability to delete scan history', 'scanning'),
+            ('scan.bulk', 'Bulk Scanning', 'Ability to run bulk scans', 'scanning'),
+            ('api.access', 'API Access', 'Ability to use the API', 'api'),
+            ('api.keys.create', 'Create API Keys', 'Ability to create API keys', 'api'),
+            ('webhook.manage', 'Manage Webhooks', 'Ability to create and manage webhooks', 'integrations'),
+            ('schedule.manage', 'Manage Schedules', 'Ability to create scheduled scans', 'integrations'),
+            ('team.create', 'Create Teams', 'Ability to create teams', 'teams'),
+            ('team.manage', 'Manage Teams', 'Ability to manage team members', 'teams'),
+            ('admin.users.view', 'View Users', 'View all users in admin panel', 'admin'),
+            ('admin.users.edit', 'Edit Users', 'Edit user details and roles', 'admin'),
+            ('admin.users.delete', 'Delete Users', 'Delete user accounts', 'admin'),
+            ('admin.scans.view', 'View All Scans', 'View all scans across users', 'admin'),
+            ('admin.audit.view', 'View Audit Log', 'View admin audit log', 'admin'),
+            ('admin.settings', 'System Settings', 'Access to system settings', 'admin'),
+            ('beta.access', 'Beta Access', 'Access to beta features', 'beta')
+          ON CONFLICT (name) DO NOTHING;
+        `)
+
+        // Assign permissions to roles
+        await pool.query(`
+          WITH role_perms AS (
+            SELECT r.id as role_id, p.id as permission_id
+            FROM roles r, permissions p
+            WHERE 
+              (r.name = 'user' AND p.name IN ('scan.create', 'scan.view', 'scan.delete', 'api.access', 'api.keys.create'))
+              OR (r.name = 'beta_tester' AND p.name IN ('scan.create', 'scan.view', 'scan.delete', 'scan.bulk', 'api.access', 'api.keys.create', 'webhook.manage', 'schedule.manage', 'beta.access'))
+              OR (r.name = 'support' AND p.name IN ('scan.create', 'scan.view', 'api.access', 'admin.users.view', 'admin.scans.view'))
+              OR (r.name = 'moderator' AND p.name IN ('scan.create', 'scan.view', 'scan.delete', 'scan.bulk', 'api.access', 'api.keys.create', 'admin.users.view', 'admin.users.edit', 'admin.scans.view', 'admin.audit.view'))
+              OR (r.name = 'admin' AND p.name IS NOT NULL)
+          )
+          INSERT INTO role_permissions (role_id, permission_id)
+          SELECT role_id, permission_id FROM role_perms
+          ON CONFLICT (role_id, permission_id) DO NOTHING;
+        `)
+
+        console.log(`[${APP_NAME}] Default roles and permissions seeded.`)
+      } catch (seedError) {
+        console.error(`[${APP_NAME}] Failed to seed roles/permissions (non-fatal):`, seedError)
+      }
 
       // Run initial cleanup on startup
       try {
