@@ -1,12 +1,27 @@
 "use client"
 
-import { createContext, useContext, ReactNode, useEffect } from "react"
+import { createContext, useContext, ReactNode, useEffect, useMemo } from "react"
 import useSWR from "swr"
 import { API, STAFF_ROLES } from "@/lib/constants"
+import { 
+  isStaffRole, 
+  hasStaffPermission, 
+  canAccessAdmin, 
+  canAccessStaffPage,
+  getStaffPermissions,
+  STAFF_PERMISSIONS,
+  type StaffPermission 
+} from "@/lib/permissions"
 
 interface AuthContextType {
   me: any
   isLoading: boolean
+  // Permission helpers
+  isStaff: boolean
+  canAccessAdmin: boolean
+  canAccessStaffPage: boolean
+  hasPermission: (permission: StaffPermission) => boolean
+  permissions: StaffPermission[]
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
@@ -21,6 +36,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     keepPreviousData: true,
   })
 
+  // Compute permissions based on role
+  const userRole = me?.role || null
+  const authHelpers = useMemo(() => ({
+    isStaff: isStaffRole(userRole),
+    canAccessAdmin: canAccessAdmin(userRole),
+    canAccessStaffPage: canAccessStaffPage(userRole),
+    hasPermission: (permission: StaffPermission) => hasStaffPermission(userRole, permission),
+    permissions: getStaffPermissions(userRole),
+  }), [userRole])
+
   // Keep localStorage + injected <style> in sync so the blocking
   // script in layout.tsx shows the right elements before React loads.
   useEffect(() => {
@@ -30,10 +55,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch {}
 
     // Update the injected style tag to match live auth state
-    const isStaff = [STAFF_ROLES.ADMIN, STAFF_ROLES.MODERATOR, STAFF_ROLES.SUPPORT].includes(me.role)
+    const userIsStaff = isStaffRole(me.role)
     let css = ""
     if (me.userId) css += ".vr-auth-only{visibility:visible!important;pointer-events:auto!important}"
-    if (isStaff) css += ".vr-staff-only{display:flex!important}"
+    if (userIsStaff) css += ".vr-staff-only{display:flex!important}"
 
     let el = document.getElementById("vr-auth-css")
     if (!el) {
@@ -45,7 +70,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [me])
 
   return (
-    <AuthContext.Provider value={{ me, isLoading }}>
+    <AuthContext.Provider value={{ me, isLoading, ...authHelpers }}>
       {children}
     </AuthContext.Provider>
   )

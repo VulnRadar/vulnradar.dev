@@ -56,6 +56,13 @@ import { Footer } from "@/components/scanner/footer"
 import { cn } from "@/lib/utils"
 import { PaginationControl, usePagination } from "@/components/ui/pagination-control"
 import { STAFF_ROLES, STAFF_ROLE_LABELS, STAFF_ROLE_HIERARCHY, ROLE_BADGE_STYLES, API } from "@/lib/constants"
+import { 
+  hasStaffPermission, 
+  canManageRole, 
+  getAvailableActions, 
+  STAFF_PERMISSIONS,
+  type AdminAction 
+} from "@/lib/permissions"
 
 interface AdminStats {
   total_users: string
@@ -620,7 +627,7 @@ export default function AdminPage() {
                                 <Button variant="ghost" size="icon" className="h-8 w-8" title="View details" onClick={() => fetchUserDetail(u.id)}>
                                   <Eye className="h-4 w-4 text-muted-foreground" />
                                 </Button>
-                                {(callerRole === STAFF_ROLES.ADMIN || callerRole === STAFF_ROLES.MODERATOR) && (
+                                {hasStaffPermission(callerRole, STAFF_PERMISSIONS.VIEW_AUDIT_LOG) && (
                                   <>
                                     {u.disabled_at ? (
                                       <Button variant="ghost" size="icon" className="h-8 w-8 text-emerald-500 hover:text-emerald-500 hover:bg-emerald-500/10" title="Re-enable" onClick={() => handleAction(u.id, "enable")}>
@@ -1037,7 +1044,7 @@ function UserDetailPanel({
       </Card>
 
       {/* Account Management - admin/mod can edit */}
-      {!detailLoading && callerRole !== STAFF_ROLES.SUPPORT && (
+      {!detailLoading && hasStaffPermission(callerRole, STAFF_PERMISSIONS.DISABLE_USER) && (
         <Card className="bg-card border-border">
           <CardHeader className="pb-0 pt-4 px-5">
             <div className="flex items-center gap-2">
@@ -1081,7 +1088,7 @@ function UserDetailPanel({
               </div>
 
               {/* Edit Email - admin only */}
-              {callerRole === STAFF_ROLES.ADMIN && (
+              {hasStaffPermission(callerRole, STAFF_PERMISSIONS.EDIT_USER_ROLE) && (
                 <div className="flex flex-col gap-2 p-3 rounded-lg bg-muted/20 border border-border">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
@@ -1132,7 +1139,7 @@ function UserDetailPanel({
               )}
 
               {/* Edit Plan - admin only */}
-              {callerRole === STAFF_ROLES.ADMIN && (
+              {hasStaffPermission(callerRole, STAFF_PERMISSIONS.EDIT_USER_ROLE) && (
                 <div className="flex flex-col gap-2 p-3 rounded-lg bg-muted/20 border border-border">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
@@ -1211,7 +1218,7 @@ function UserDetailPanel({
       )}
 
       {/* Role + Badge management - admin only */}
-      {!detailLoading && callerRole === STAFF_ROLES.ADMIN && (
+      {!detailLoading && hasStaffPermission(callerRole, STAFF_PERMISSIONS.DELETE_USER) && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
 
           {/* Staff Role - single select */}
@@ -1395,16 +1402,16 @@ function UserDetailPanel({
         <Card className="bg-card border-border">
           <CardHeader className="pb-0 pt-4 px-5">
             <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-              {callerRole === STAFF_ROLES.SUPPORT ? "Account Information" : "Support Actions"}
+              {!hasStaffPermission(callerRole, STAFF_PERMISSIONS.DISABLE_USER) ? "Account Information" : "Support Actions"}
             </p>
           </CardHeader>
           <CardContent className="p-5 pt-3">
-            {callerRole === STAFF_ROLES.SUPPORT ? (
+            {!hasStaffPermission(callerRole, STAFF_PERMISSIONS.DISABLE_USER) ? (
               <p className="text-xs text-muted-foreground">You have view-only access. Contact an admin or moderator to perform actions on this user.</p>
             ) : (
               <>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
-                  {callerRole === STAFF_ROLES.ADMIN && (
+                  {hasStaffPermission(callerRole, STAFF_PERMISSIONS.EDIT_USER_ROLE) && (
                     <ActionCard
                       icon={KeyRound} label="Reset Password"
                       description={u.totp_enabled ? "Unavailable: user has 2FA enabled" : "Generate a temporary password"}
@@ -1436,7 +1443,7 @@ function UserDetailPanel({
                     variant={u.disabled_at ? "success" : "danger"}
                     onClick={() => onAction(u.id, u.disabled_at ? "enable" : "disable")}
                   />
-                  {callerRole === STAFF_ROLES.ADMIN && (
+                  {hasStaffPermission(callerRole, STAFF_PERMISSIONS.EDIT_USER_ROLE) && (
                     <ActionCard
                       icon={Trash2} label="Delete Account"
                       description="Permanently remove user and all data"
@@ -1446,7 +1453,7 @@ function UserDetailPanel({
                   )}
                 </div>
 
-                {u.totp_enabled && callerRole === STAFF_ROLES.ADMIN && (
+                {u.totp_enabled && hasStaffPermission(callerRole, STAFF_PERMISSIONS.RESET_USER_2FA) && (
                   <div className="flex items-start gap-2.5 p-3.5 rounded-lg bg-[hsl(var(--severity-medium))]/5 border border-[hsl(var(--severity-medium))]/20 mt-3">
                     <AlertTriangle className="h-4 w-4 text-[hsl(var(--severity-medium))] shrink-0 mt-0.5" />
                     <div>

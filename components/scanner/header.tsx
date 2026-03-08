@@ -8,11 +8,9 @@ import { useRouter, usePathname } from "next/navigation"
 import { useState } from "react"
 import { cn } from "@/lib/utils"
 import Image from "next/image"
-import { APP_NAME, ROUTES, API, STAFF_ROLES } from "@/lib/constants"
+import { APP_NAME, ROUTES, API } from "@/lib/constants"
 import { NotificationBell } from "@/components/notification-center"
 import { useAuth, clearAuthCache } from "@/components/auth-provider"
-
-const VISIBLE_STAFF_ROLES = [STAFF_ROLES.ADMIN, STAFF_ROLES.MODERATOR, STAFF_ROLES.SUPPORT]
 
 const NAV_LINKS = [
   { href: ROUTES.DASHBOARD, label: "Scanner", icon: Radar },
@@ -29,9 +27,7 @@ export function Header() {
   const router = useRouter()
   const pathname = usePathname()
   const [mobileOpen, setMobileOpen] = useState(false)
-  const { me } = useAuth()
-
-  const isStaff = VISIBLE_STAFF_ROLES.includes(me?.role || "")
+  const { me, isStaff } = useAuth()
 
   async function handleLogout() {
     clearAuthCache()

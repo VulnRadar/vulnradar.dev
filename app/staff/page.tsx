@@ -3,7 +3,11 @@
 import { useEffect, useState } from "react"
 import { Shield, ShieldCheck, Headset, Users, FlaskConical } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { APP_NAME, STAFF_ROLES, STAFF_ROLE_LABELS, API } from "@/lib/constants"
+import { APP_NAME, STAFF_ROLES, STAFF_ROLE_LABELS, API, STAFF_ROLE_HIERARCHY } from "@/lib/constants"
+import { isStaffRole } from "@/lib/permissions"
+
+// Staff roles that should appear on the staff page (excluding regular users and badge-only roles)
+const DISPLAY_STAFF_ROLES = [STAFF_ROLES.ADMIN, STAFF_ROLES.MODERATOR, STAFF_ROLES.SUPPORT] as const
 
 interface StaffMember {
   name: string
@@ -11,6 +15,7 @@ interface StaffMember {
   avatarUrl: string | null
 }
 
+// Role display configuration - only for actual staff roles (not badges)
 const ROLE_CONFIG: Record<string, { icon: typeof Shield; color: string; bg: string; border: string; glow: string }> = {
   admin: {
     icon: ShieldCheck,
@@ -33,13 +38,7 @@ const ROLE_CONFIG: Record<string, { icon: typeof Shield; color: string; bg: stri
     border: "border-blue-500/20",
     glow: "shadow-blue-500/5",
   },
-  beta_tester: {
-    icon: FlaskConical,
-    color: "text-emerald-400",
-    bg: "bg-emerald-500/10",
-    border: "border-emerald-500/20",
-    glow: "shadow-emerald-500/5",
-  },
+  // Note: beta_tester is now a badge, not a staff role shown on staff page
 }
 
 function getInitials(name: string) {
@@ -63,11 +62,12 @@ export default function StaffPage() {
       .finally(() => setLoading(false))
   }, [])
 
+  // Only group actual staff roles (admin, moderator, support)
+  // beta_tester is a badge now, not shown on staff page
   const grouped = {
     [STAFF_ROLES.ADMIN]: staff.filter((s) => s.role === STAFF_ROLES.ADMIN),
     [STAFF_ROLES.MODERATOR]: staff.filter((s) => s.role === STAFF_ROLES.MODERATOR),
     [STAFF_ROLES.SUPPORT]: staff.filter((s) => s.role === STAFF_ROLES.SUPPORT),
-    [STAFF_ROLES.BETA_TESTER]: staff.filter((s) => s.role === STAFF_ROLES.BETA_TESTER),
   }
 
   return (
