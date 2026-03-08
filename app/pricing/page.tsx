@@ -154,15 +154,21 @@ export default function PricingPage() {
 
       {/* Stripe Checkout Modal */}
       {checkoutPlan && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-          <div className="bg-card border border-border rounded-xl shadow-2xl w-full max-w-lg mx-4 overflow-hidden">
-            <div className="flex items-center justify-between p-4 border-b border-border">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 overflow-y-auto">
+          {/* Backdrop - click to close */}
+          <div 
+            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+            onClick={() => setCheckoutPlan(null)}
+          />
+          {/* Modal */}
+          <div className="relative bg-card border border-border rounded-xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+            <div className="sticky top-0 z-10 flex items-center justify-between p-4 border-b border-border bg-card">
               <h3 className="font-semibold">Complete your subscription</h3>
-              <Button variant="ghost" size="sm" onClick={() => setCheckoutPlan(null)}>
+              <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setCheckoutPlan(null)}>
                 <X className="h-4 w-4" />
               </Button>
             </div>
-            <div className="p-4">
+            <div className="p-4 min-h-[400px]">
               <StripeCheckout productId={checkoutPlan} />
             </div>
           </div>
