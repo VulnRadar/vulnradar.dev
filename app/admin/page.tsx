@@ -961,7 +961,18 @@ export default function AdminPage() {
 }
 
 // --- User Detail Panel ---
-function UserDetailPanel(props: {
+function UserDetailPanel({
+  detail,
+  detailLoading,
+  actionLoading,
+  onClose,
+  onAction,
+  tempPassword,
+  onClearTempPassword,
+  callerRole,
+  allBadges,
+  onRefreshBadges,
+}: {
   detail: UserDetail
   detailLoading: boolean
   actionLoading: string | null
@@ -973,7 +984,6 @@ function UserDetailPanel(props: {
   allBadges: BadgeDef[]
   onRefreshBadges: () => void
 }) {
-  const { detail, detailLoading, actionLoading, onClose, onAction, tempPassword, onClearTempPassword, callerRole, allBadges, onRefreshBadges } = props
   const u = detail.user
   const isLoading = (action: string) => actionLoading === `${u.id}-${action}`
   const [showBadgePicker, setShowBadgePicker] = useState(false)
