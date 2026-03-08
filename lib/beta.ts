@@ -1,10 +1,10 @@
 // ============================================================================
-// Beta Features System
+// Beta Features Module
 // ============================================================================
 // Manages beta feature flags and user access to beta features
-// ============================================================================
 
 import pool from "./db"
+import { BETA_MODE, BETA_BANNER_MESSAGE } from "./constants"
 
 export interface BetaFeature {
   id: number
@@ -237,7 +237,7 @@ export async function deleteBetaFeature(featureId: number): Promise<void> {
  * Check if the entire app is in beta mode
  */
 export function isAppInBetaMode(): boolean {
-  return process.env.BETA_MODE === "true"
+  return BETA_MODE
 }
 
 /**
@@ -245,5 +245,5 @@ export function isAppInBetaMode(): boolean {
  */
 export function getBetaBannerMessage(): string | null {
   if (!isAppInBetaMode()) return null
-  return process.env.BETA_BANNER_MESSAGE || "This is a beta version. Some features may be unstable."
+  return BETA_BANNER_MESSAGE
 }

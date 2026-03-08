@@ -283,6 +283,13 @@ export const BEARER_PREFIX = "Bearer "
 export const TOTP_ISSUER = APP_NAME
 
 // ============================================================================
+// BETA MODE CONFIGURATION (from config.yaml)
+// ============================================================================
+
+export const BETA_MODE = config.beta.enabled
+export const BETA_BANNER_MESSAGE = config.beta.banner_message
+
+// ============================================================================
 // TURNSTILE / CAPTCHA CONFIG
 // ============================================================================
 
