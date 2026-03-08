@@ -367,6 +367,7 @@ export const ROUTES = {
   DEMO: "/demo",
   STAFF: "/staff",
   DONATE: "/donate",
+  PRICING: "/pricing",
   DOCS: "/docs",
   DOCS_API: "/docs/api",
   DOCS_SETUP: "/docs/setup",
