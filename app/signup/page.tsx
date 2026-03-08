@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { APP_NAME, TURNSTILE_ENABLED } from "@/lib/constants"
+import { API } from "@/lib/client-constants"
 import { getPasswordStrength } from "@/lib/password-strength"
 
 export default function SignupPage() {
@@ -74,7 +75,7 @@ export default function SignupPage() {
     setLoading(true)
 
     try {
-      const res = await fetch("/api/v1/auth/signup", {
+      const res = await fetch(API.AUTH.SIGNUP, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

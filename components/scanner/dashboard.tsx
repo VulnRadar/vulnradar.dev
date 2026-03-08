@@ -20,6 +20,7 @@ import {
   CardTitle,
 } from "@/components/ui/card"
 import { cn } from "@/lib/utils"
+import { API } from "@/lib/constants"
 
 interface DashboardData {
   totalScans: number
@@ -64,7 +65,7 @@ export function Dashboard() {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    fetch("/api/v1/dashboard")
+    fetch(API.DASHBOARD)
       .then((r) => {
         if (!r.ok) {
           if (r.status === 401 || r.status === 403) {

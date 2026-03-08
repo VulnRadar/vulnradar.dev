@@ -4,7 +4,7 @@ import React, { useState, useEffect, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import dynamic from "next/dynamic"
 import { cn } from "@/lib/utils"
-import { APP_NAME } from "@/lib/constants"
+import { APP_NAME, API } from "@/lib/constants"
 
 const ImageCropDialog = dynamic(() => import("@/components/image-crop-dialog").then(m => ({ default: m.ImageCropDialog })), { ssr: false })
 import {
@@ -265,7 +265,7 @@ export default function ProfilePage() {
     setUploadingAvatar(true)
     setError(null)
     try {
-      const res = await fetch("/api/v1/auth/update", {
+      const res = await fetch(API.AUTH.UPDATE, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ avatarUrl: croppedDataUrl }),
@@ -290,7 +290,7 @@ export default function ProfilePage() {
     setUploadingAvatar(true)
     setError(null)
     try {
-      const res = await fetch("/api/v1/auth/update", {
+      const res = await fetch(API.AUTH.UPDATE, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ avatarUrl: "" }),
@@ -309,12 +309,12 @@ export default function ProfilePage() {
   const fetchData = useCallback(async () => {
     try {
       const [userRes, keysRes, dataReqRes, webhooksRes, schedulesRes, notifRes] = await Promise.all([
-        fetch("/api/v1/auth/me"),
-        fetch("/api/v1/keys"),
-        fetch("/api/v1/data-request"),
-        fetch("/api/v1/webhooks"),
-        fetch("/api/v1/schedules"),
-        fetch("/api/v1/account/notifications"),
+        fetch(API.AUTH.ME),
+        fetch(API.KEYS),
+        fetch(API.DATA_REQUEST),
+        fetch(API.WEBHOOKS),
+        fetch(API.SCHEDULES),
+        fetch(API.ACCOUNT_NOTIFICATIONS),
       ])
 
       if (!userRes.ok) {
@@ -332,7 +332,7 @@ export default function ProfilePage() {
       setTotpEnabled(userData.totpEnabled || false)
       setTwoFactorMethod(userData.twoFactorMethod || null)
       if (userData.totpEnabled && userData.twoFactorMethod === "app") {
-        fetch("/api/v1/auth/2fa/backup-codes").then(r => r.json()).then(d => setBackupCodesRemaining(d.remaining || 0)).catch(() => {})
+        fetch(API.AUTH.TWO_FA.BACKUP_CODES).then(r => r.json()).then(d => setBackupCodesRemaining(d.remaining || 0)).catch(() => {})
       }
       setKeys(keysData.keys || [])
       setDataReqInfo(dataReqData)
@@ -382,7 +382,7 @@ export default function ProfilePage() {
     setSavingProfile(true)
     setError(null)
     try {
-      const res = await fetch("/api/v1/auth/update", {
+      const res = await fetch(API.AUTH.UPDATE, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: nameInput.trim() }),
@@ -410,7 +410,7 @@ export default function ProfilePage() {
     setSavingProfile(true)
     setError(null)
     try {
-      const res = await fetch("/api/v1/auth/update", {
+      const res = await fetch(API.AUTH.UPDATE, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: emailInput.trim() }),
@@ -446,7 +446,7 @@ export default function ProfilePage() {
     setSavingPassword(true)
     setError(null)
     try {
-      const res = await fetch("/api/v1/auth/update", {
+      const res = await fetch(API.AUTH.UPDATE, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ currentPassword, newPassword }),
@@ -474,7 +474,7 @@ export default function ProfilePage() {
     setError(null)
     setNewlyCreatedKey(null)
     try {
-      const res = await fetch("/api/v1/keys", {
+      const res = await fetch(API.KEYS, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: newKeyName.trim() || "Default" }),
@@ -498,7 +498,7 @@ export default function ProfilePage() {
   async function handleRevokeKey(keyId: number) {
     setRevokingId(keyId)
     try {
-      await fetch(`/api/v1/keys/${keyId}/revoke`, { method: "POST" })
+      await fetch(`${API.KEYS}/${keyId}/revoke`, { method: "POST" })
       await fetchData()
     } catch {
       setError("Failed to revoke key.")
@@ -520,7 +520,7 @@ export default function ProfilePage() {
     setRequestingData(true)
     setError(null)
     try {
-      const res = await fetch("/api/v1/data-request", { method: "POST" })
+      const res = await fetch(API.DATA_REQUEST, { method: "POST" })
       const data = await res.json()
       if (!res.ok) {
         setError(data.error || "Failed to export data.")
@@ -547,7 +547,7 @@ export default function ProfilePage() {
 
   async function handleDownloadPreviousData() {
     try {
-      const dlRes = await fetch("/api/v1/data-request")
+      const dlRes = await fetch(API.DATA_REQUEST)
       if (!dlRes.ok) {
         setError("Failed to download data.")
         return
@@ -576,7 +576,7 @@ export default function ProfilePage() {
   async function handleDeleteAccount() {
     setDeleting(true)
     try {
-      const res = await fetch("/api/v1/account/delete", { method: "POST" })
+      const res = await fetch(API.ACCOUNT_DELETE, { method: "POST" })
       if (res.ok) {
         router.push("/login")
       } else {
@@ -594,7 +594,7 @@ export default function ProfilePage() {
     setSavingNotifPrefs(true)
     setError(null)
     try {
-      const res = await fetch("/api/v1/account/notifications", {
+      const res = await fetch(API.ACCOUNT_NOTIFICATIONS, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(notifPrefs),
@@ -1044,7 +1044,7 @@ export default function ProfilePage() {
                           <div className="flex items-center gap-2">
                             <Button disabled={!regenPassword} onClick={async () => {
                               try {
-                                const res = await fetch("/api/v1/auth/2fa/backup-codes", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ password: regenPassword }) })
+                                const res = await fetch(API.AUTH.TWO_FA.BACKUP_CODES, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ password: regenPassword }) })
                                 const data = await res.json()
                                 if (res.ok) { setBackupCodes(data.backupCodes); setBackupCodesRemaining(data.backupCodes.length); setShowRegenerateBackup(false); setRegenPassword(""); setSuccess("New backup codes generated.") }
                                 else setError(data.error || "Failed to regenerate codes.")
@@ -1067,7 +1067,7 @@ export default function ProfilePage() {
                           <div className="flex items-center gap-2">
                             <Button variant="destructive" disabled={!disablePassword} onClick={async () => {
                               try {
-                                const res = await fetch("/api/v1/auth/2fa/disable", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ password: disablePassword }) })
+                                const res = await fetch(API.AUTH.TWO_FA.DISABLE, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ password: disablePassword }) })
                                 const data = await res.json()
                                 if (res.ok) { setTotpEnabled(false); setTwoFactorMethod(null); setShowDisable2FA(false); setDisablePassword(""); setSuccess("Authenticator app 2FA has been disabled.") }
                                 else setError(data.error || "Failed to disable 2FA.")
@@ -1089,7 +1089,7 @@ export default function ProfilePage() {
                           disabled={twoFactorMethod === "email" && totpEnabled}
                           onClick={async () => {
                             try {
-                              const res = await fetch("/api/v1/auth/2fa/setup")
+                              const res = await fetch(API.AUTH.TWO_FA.SETUP)
                               const data = await res.json()
                               if (res.ok) { setTotpUri(data.uri); setTotpSecret(data.secret); setSetting2FA(true) }
                               else setError(data.error || "Failed to start 2FA setup.")
@@ -1114,7 +1114,7 @@ export default function ProfilePage() {
                               <Input type="text" inputMode="numeric" pattern="[0-9]{6}" maxLength={6} placeholder="000000" value={totpVerifyCode} onChange={(e) => setTotpVerifyCode(e.target.value.replace(/\D/g, "").slice(0, 6))} className="bg-card h-10 text-center text-lg tracking-[0.3em] font-mono max-w-[180px]" />
                               <Button disabled={totpVerifyCode.length !== 6} onClick={async () => {
                                 try {
-                                  const res = await fetch("/api/v1/auth/2fa/setup", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ code: totpVerifyCode }) })
+                                  const res = await fetch(API.AUTH.TWO_FA.SETUP, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ code: totpVerifyCode }) })
                                   const data = await res.json()
                                   if (res.ok) { setTotpEnabled(true); setTwoFactorMethod("app"); setSetting2FA(false); setTotpUri(""); setTotpSecret(""); setTotpVerifyCode(""); setBackupCodes(data.backupCodes || []); setBackupCodesRemaining(data.backupCodes?.length || 0); setSuccess("Authenticator app 2FA is now enabled! Save your backup codes.") }
                                   else setError(data.error || "Verification failed.")
@@ -1164,7 +1164,7 @@ export default function ProfilePage() {
                           <div className="flex items-center gap-2">
                             <Button variant="destructive" disabled={!disablePassword} onClick={async () => {
                               try {
-                                const res = await fetch("/api/v1/auth/2fa/email-setup", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ password: disablePassword }) })
+                                const res = await fetch(API.AUTH.TWO_FA.EMAIL_SETUP, { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ password: disablePassword }) })
                                 const data = await res.json()
                                 if (res.ok) { setTotpEnabled(false); setTwoFactorMethod(null); setShowDisable2FA(false); setDisablePassword(""); setSuccess("Email 2FA has been disabled.") }
                                 else setError(data.error || "Failed to disable email 2FA.")
@@ -1209,7 +1209,7 @@ export default function ProfilePage() {
                               onClick={async () => {
                                 setTogglingEmail2FA(true)
                                 try {
-                                  const res = await fetch("/api/v1/auth/2fa/email-setup", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ password: email2FAPassword.trim() }) })
+                                  const res = await fetch(API.AUTH.TWO_FA.EMAIL_SETUP, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ password: email2FAPassword.trim() }) })
                                   const data = await res.json()
                                   if (res.ok) { setTotpEnabled(true); setTwoFactorMethod("email"); setEmail2FAPassword(""); setSuccess("Email 2FA is now enabled.") }
                                   else setError(data.error || "Failed to enable email 2FA.")
@@ -1403,7 +1403,7 @@ export default function ProfilePage() {
                       onClick={async () => {
                         setAddingWebhook(true)
                         try {
-                          const res = await fetch("/api/v1/webhooks", {
+                          const res = await fetch(API.WEBHOOKS, {
                             method: "POST",
                             headers: { "Content-Type": "application/json" },
                             body: JSON.stringify({ url: webhookUrl, name: webhookName || "Default", type: "auto" }),
@@ -1464,7 +1464,7 @@ export default function ProfilePage() {
                           size="icon"
                           className="h-7 w-7 text-destructive hover:text-destructive hover:bg-destructive/10 shrink-0"
                           onClick={async () => {
-                            await fetch("/api/v1/webhooks", {
+                            await fetch(API.WEBHOOKS, {
                               method: "DELETE",
                               headers: { "Content-Type": "application/json" },
                               body: JSON.stringify({ id: wh.id }),
@@ -1529,7 +1529,7 @@ export default function ProfilePage() {
                     onClick={async () => {
                       setAddingSchedule(true)
                       try {
-                        const res = await fetch("/api/v1/schedules", {
+                        const res = await fetch(API.SCHEDULES, {
                           method: "POST",
                           headers: { "Content-Type": "application/json" },
                           body: JSON.stringify({ url: scheduleUrl, frequency: scheduleFreq }),
@@ -1579,7 +1579,7 @@ export default function ProfilePage() {
                           size="icon"
                           className="h-7 w-7 text-destructive hover:text-destructive hover:bg-destructive/10 shrink-0"
                           onClick={async () => {
-                            await fetch("/api/v1/schedules", {
+                            await fetch(API.SCHEDULES, {
                               method: "DELETE",
                               headers: { "Content-Type": "application/json" },
                               body: JSON.stringify({ id: sch.id }),

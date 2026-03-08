@@ -10,6 +10,7 @@ import { Footer } from "@/components/scanner/footer"
 import { getSafetyRating } from "@/lib/scanner/safety-rating"
 import { PaginationControl, usePagination } from "@/components/ui/pagination-control"
 import type { Vulnerability } from "@/lib/scanner/types"
+import { API } from "@/lib/constants"
 
 interface Share {
   id: number
@@ -39,7 +40,7 @@ export default function SharesPage() {
   async function fetchShares() {
     setLoading(true)
     try {
-      const res = await fetch("/api/v1/shares")
+      const res = await fetch(API.SHARES)
       if (res.ok) {
         const data = await res.json()
         setShares(data.shares || [])
@@ -56,7 +57,7 @@ export default function SharesPage() {
 
     setRevoking(scanId)
     try {
-      const res = await fetch(`/api/v1/history/${scanId}/share`, { method: "DELETE" })
+      const res = await fetch(`${API.HISTORY}/${scanId}/share`, { method: "DELETE" })
       if (res.ok) {
         setShares((prev) => {
           const updated = prev.filter((s) => s.id !== scanId)
