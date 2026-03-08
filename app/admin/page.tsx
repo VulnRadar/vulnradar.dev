@@ -1409,13 +1409,6 @@ function UserDetailPanel({
                         className="w-6 h-6 rounded-full border-2 border-border shrink-0"
                         style={{ backgroundColor: newBadgeColor }}
                       />
-                      <input
-                        type="color"
-                        value={newBadgeColor}
-                        onChange={(e) => setNewBadgeColor(e.target.value)}
-                        className="w-6 h-6 rounded cursor-pointer opacity-0 absolute"
-                        id="badge-color-native"
-                      />
                       <Input
                         value={newBadgeColor}
                         onChange={(e) => {
@@ -1426,11 +1419,6 @@ function UserDetailPanel({
                         className="h-7 text-xs font-mono w-28"
                         maxLength={7}
                       />
-                      <label htmlFor="badge-color-native" className="cursor-pointer">
-                        <Button size="sm" variant="outline" className="h-7 text-xs pointer-events-none" asChild>
-                          <span>Pick</span>
-                        </Button>
-                      </label>
                     </div>
                   </div>
                   <div className="flex items-center gap-2 mt-1">
