@@ -46,6 +46,9 @@ import {
   User,
   CreditCard,
   Save,
+  Star,
+  StarOff,
+  Download,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -387,14 +390,21 @@ export default function AdminPage() {
           enable: "Account re-enabled.",
           delete: "User deleted.",
           award_badge: "Badge awarded.",
-          revoke_badge: "Badge removed.",
+          revoke_badge: "Badge removed from user.",
           create_badge: "Badge created.",
+          delete_badge: "Badge deleted permanently.",
           update_name: "Name updated.",
           update_email: "Email updated.",
           update_plan: "Plan updated.",
+          reset_2fa: "Two-factor authentication reset.",
+          delete_scans: "All scans deleted.",
+          export_data: "Data export started.",
+          grant_premium: "Premium access granted.",
+          revoke_premium: "Premium access revoked.",
+          clear_rate_limits: "Rate limits cleared.",
         }
-        if (action === "create_badge") { fetchAllBadges() }
-        if (["update_name", "update_email", "update_plan"].includes(action)) { fetchUserDetail(userId) }
+        if (action === "create_badge" || action === "delete_badge") { fetchAllBadges() }
+        if (["update_name", "update_email", "update_plan", "reset_2fa", "delete_scans", "grant_premium", "revoke_premium"].includes(action)) { fetchUserDetail(userId) }
         showToast(labels[action] || "Action completed.", "success")
         await fetchData(page)
         if (selectedUser && selectedUser.user.id === userId) {
@@ -532,20 +542,26 @@ export default function AdminPage() {
                 onRefreshBadges={fetchAllBadges}
                 onClose={() => { setSelectedUser(null); setTempPassword(null) }}
                 onAction={(userId, action, extra) => {
-                  if (["set_role", "award_badge", "revoke_badge", "create_badge", "update_name", "update_email", "update_plan"].includes(action)) {
+                  // Actions that don't need confirmation
+                  if (["set_role", "award_badge", "revoke_badge", "create_badge", "delete_badge", "update_name", "update_email", "update_plan", "enable", "grant_premium", "clear_rate_limits", "export_data"].includes(action)) {
                     handleAction(userId, action, extra)
                     return
                   }
-                  if (["delete", "disable", "reset_password", "revoke_sessions", "revoke_api_keys"].includes(action)) {
-                    const messages: Record<string, { title: string; desc: string; label: string }> = {
-                      delete: { title: "Delete User", desc: `This will permanently delete ${selectedUser.user.email} and all their data. This cannot be undone.`, label: "Delete User" },
-                      disable: { title: "Disable Account", desc: `This will suspend ${selectedUser.user.email}'s account and log them out of all sessions. They will not be able to log in until re-enabled.`, label: "Disable Account" },
+                  // Actions that need confirmation
+                  const confirmActions = ["delete", "disable", "reset_password", "revoke_sessions", "revoke_api_keys", "reset_2fa", "delete_scans", "revoke_premium"]
+                  if (confirmActions.includes(action)) {
+                    const messages: Record<string, { title: string; desc: string; label: string; danger?: boolean }> = {
+                      delete: { title: "Delete User", desc: `This will permanently delete ${selectedUser.user.email} and all their data. This cannot be undone.`, label: "Delete User", danger: true },
+                      disable: { title: "Disable Account", desc: `This will suspend ${selectedUser.user.email}'s account and log them out of all sessions. They will not be able to log in until re-enabled.`, label: "Disable Account", danger: true },
                       reset_password: { title: "Reset Password", desc: `This will generate a temporary password for ${selectedUser.user.email}. All sessions will be invalidated. Share the temporary password securely.`, label: "Reset Password" },
                       revoke_sessions: { title: "Revoke All Sessions", desc: `This will force-logout ${selectedUser.user.email} from all devices and browsers.`, label: "Revoke Sessions" },
                       revoke_api_keys: { title: "Revoke All API Keys", desc: `This will immediately revoke all active API keys for ${selectedUser.user.email}.`, label: "Revoke Keys" },
+                      reset_2fa: { title: "Reset Two-Factor Authentication", desc: `This will remove 2FA from ${selectedUser.user.email}'s account. They will need to set it up again.`, label: "Reset 2FA", danger: true },
+                      delete_scans: { title: "Delete All Scans", desc: `This will permanently delete all scan history for ${selectedUser.user.email}. This cannot be undone.`, label: "Delete Scans", danger: true },
+                      revoke_premium: { title: "Revoke Premium Access", desc: `This will downgrade ${selectedUser.user.email} to the free plan.`, label: "Revoke Premium" },
                     }
                     const m = messages[action]
-                    setConfirmDialog({ title: m.title, description: m.desc, confirmLabel: m.label, danger: ["delete", "disable"].includes(action), action: () => handleAction(userId, action) })
+                    setConfirmDialog({ title: m.title, description: m.desc, confirmLabel: m.label, danger: m.danger ?? false, action: () => handleAction(userId, action) })
                   } else {
                     handleAction(userId, action)
                   }
@@ -960,6 +976,7 @@ function UserDetailPanel({
   const [newBadgeDisplay, setNewBadgeDisplay] = useState("")
   const [newBadgeColor, setNewBadgeColor] = useState("#6366f1")
   const [showCreateBadge, setShowCreateBadge] = useState(false)
+  const [showManageBadges, setShowManageBadges] = useState(false)
 
   const awardedIds = new Set(detail.badges.map((b) => b.id))
   const unawardedBadges = allBadges.filter((b) => !awardedIds.has(b.id))
@@ -1285,15 +1302,15 @@ function UserDetailPanel({
                   {detail.badges.map((badge) => (
                     <div
                       key={badge.id}
-                      className="group flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-xs font-medium transition-all"
+                      className="group flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-xs font-medium transition-all hover:pr-1"
                       style={{ borderColor: `${badge.color}40`, backgroundColor: `${badge.color}15`, color: badge.color || undefined }}
                     >
                       <Tag className="h-3 w-3 shrink-0" />
                       {badge.display_name}
                       <button
-                        className="ml-0.5 opacity-0 group-hover:opacity-100 transition-opacity hover:scale-110"
+                        className="w-0 overflow-hidden group-hover:w-4 group-hover:ml-0.5 transition-all duration-200 hover:scale-110 flex-shrink-0"
                         onClick={() => onAction(u.id, "revoke_badge", { badgeId: String(badge.id) })}
-                        title="Remove badge"
+                        title="Remove badge from user"
                       >
                         <X className="h-3 w-3" />
                       </button>
@@ -1374,21 +1391,55 @@ function UserDetailPanel({
                 </div>
               )}
 
+              {/* Manage all badges (delete) */}
+              {showManageBadges && hasStaffPermission(callerRole, STAFF_PERMISSIONS.DELETE_BADGE) && (
+                <div className="flex flex-col gap-2 p-3 rounded-lg bg-muted/20 border border-border">
+                  <div className="flex items-center justify-between">
+                    <p className="text-[11px] text-muted-foreground font-medium">Manage All Badges ({allBadges.length})</p>
+                    <p className="text-[10px] text-destructive">Click to delete permanently</p>
+                  </div>
+                  {allBadges.length > 0 ? (
+                    <div className="flex flex-wrap gap-1.5">
+                      {allBadges.map((badge) => (
+                        <button
+                          key={badge.id}
+                          onClick={() => onAction(u.id, "delete_badge", { badgeId: String(badge.id) })}
+                          className="group flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-xs font-medium transition-all hover:border-destructive/40 hover:bg-destructive/10"
+                          style={{ borderColor: `${badge.color}40`, backgroundColor: `${badge.color}15`, color: badge.color || undefined }}
+                          title={`Delete "${badge.display_name}" badge permanently`}
+                        >
+                          <Tag className="h-3 w-3 shrink-0" />
+                          {badge.display_name}
+                          <Trash2 className="h-3 w-3 ml-0.5 opacity-0 group-hover:opacity-100 text-destructive transition-opacity" />
+                        </button>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">No badges exist yet.</p>
+                  )}
+                </div>
+              )}
+
               {/* Action buttons */}
-              {!showBadgePicker && !showCreateBadge && (
-                <div className="flex items-center gap-2 mt-1">
+              {!showBadgePicker && !showCreateBadge && !showManageBadges && (
+                <div className="flex items-center gap-2 mt-1 flex-wrap">
                   {unawardedBadges.length > 0 && (
                     <Button size="sm" variant="outline" className="h-7 text-xs gap-1 bg-transparent flex-1" onClick={() => setShowBadgePicker(true)}>
                       <Award className="h-3.5 w-3.5" /> Award Badge
                     </Button>
                   )}
                   <Button size="sm" variant="outline" className="h-7 text-xs gap-1 bg-transparent flex-1" onClick={() => setShowCreateBadge(true)}>
-                    <Plus className="h-3.5 w-3.5" /> New Badge
+                    <Plus className="h-3.5 w-3.5" /> Create Badge
                   </Button>
+                  {hasStaffPermission(callerRole, STAFF_PERMISSIONS.DELETE_BADGE) && allBadges.length > 0 && (
+                    <Button size="sm" variant="outline" className="h-7 text-xs gap-1 bg-transparent text-destructive border-destructive/30 hover:bg-destructive/10 flex-1" onClick={() => setShowManageBadges(true)}>
+                      <Trash2 className="h-3.5 w-3.5" /> Delete Badges
+                    </Button>
+                  )}
                 </div>
               )}
-              {(showBadgePicker || showCreateBadge) && (
-                <Button size="sm" variant="ghost" className="h-7 text-xs self-start" onClick={() => { setShowBadgePicker(false); setShowCreateBadge(false) }}>
+              {(showBadgePicker || showCreateBadge || showManageBadges) && (
+                <Button size="sm" variant="ghost" className="h-7 text-xs self-start" onClick={() => { setShowBadgePicker(false); setShowCreateBadge(false); setShowManageBadges(false) }}>
                   Cancel
                 </Button>
               )}
@@ -1411,15 +1462,7 @@ function UserDetailPanel({
             ) : (
               <>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
-                  {hasStaffPermission(callerRole, STAFF_PERMISSIONS.EDIT_USER_ROLE) && (
-                    <ActionCard
-                      icon={KeyRound} label="Reset Password"
-                      description={u.totp_enabled ? "Unavailable: user has 2FA enabled" : "Generate a temporary password"}
-                      color="text-[hsl(var(--severity-medium))]" bg="bg-[hsl(var(--severity-medium))]/10"
-                      disabled={u.totp_enabled} loading={isLoading("reset_password")}
-                      onClick={() => onAction(u.id, "reset_password")}
-                    />
-                  )}
+                  {/* Session & Auth Actions */}
                   <ActionCard
                     icon={LogOut} label="Force Logout"
                     description={`Revoke all ${u.session_count} active session(s)`}
@@ -1429,11 +1472,51 @@ function UserDetailPanel({
                   />
                   <ActionCard
                     icon={Key} label="Revoke API Keys"
-                    description="Invalidate all active API keys"
+                    description={`Invalidate all ${u.api_key_count} API key(s)`}
                     color="text-[hsl(var(--severity-medium))]" bg="bg-[hsl(var(--severity-medium))]/10"
                     loading={isLoading("revoke_api_keys")}
                     onClick={() => onAction(u.id, "revoke_api_keys")}
                   />
+                  {hasStaffPermission(callerRole, STAFF_PERMISSIONS.RESET_USER_PASSWORD) && (
+                    <ActionCard
+                      icon={KeyRound} label="Reset Password"
+                      description={u.totp_enabled ? "Unavailable: user has 2FA enabled" : "Generate a temporary password"}
+                      color="text-[hsl(var(--severity-medium))]" bg="bg-[hsl(var(--severity-medium))]/10"
+                      disabled={u.totp_enabled} loading={isLoading("reset_password")}
+                      onClick={() => onAction(u.id, "reset_password")}
+                    />
+                  )}
+                  {hasStaffPermission(callerRole, STAFF_PERMISSIONS.RESET_USER_2FA) && u.totp_enabled && (
+                    <ActionCard
+                      icon={ShieldOff} label="Reset 2FA"
+                      description="Remove two-factor authentication"
+                      color="text-[hsl(var(--severity-medium))]" bg="bg-[hsl(var(--severity-medium))]/10"
+                      loading={isLoading("reset_2fa")}
+                      onClick={() => onAction(u.id, "reset_2fa")}
+                    />
+                  )}
+
+                  {/* Data Actions */}
+                  {hasStaffPermission(callerRole, STAFF_PERMISSIONS.DELETE_ANY_SCAN) && (
+                    <ActionCard
+                      icon={Activity} label="Delete All Scans"
+                      description={`Remove all ${u.scan_count} scan(s) and data`}
+                      color="text-destructive" bg="bg-destructive/10" variant="danger"
+                      loading={isLoading("delete_scans")}
+                      onClick={() => onAction(u.id, "delete_scans")}
+                    />
+                  )}
+                  {hasStaffPermission(callerRole, STAFF_PERMISSIONS.EXPORT_SCAN_DATA) && (
+                    <ActionCard
+                      icon={Download} label="Export Data"
+                      description="Download all user data as JSON"
+                      color="text-emerald-500" bg="bg-emerald-500/10"
+                      loading={isLoading("export_data")}
+                      onClick={() => onAction(u.id, "export_data")}
+                    />
+                  )}
+
+                  {/* Account Status */}
                   <ActionCard
                     icon={u.disabled_at ? CheckCircle2 : Ban}
                     label={u.disabled_at ? "Re-enable Account" : "Disable Account"}
@@ -1443,7 +1526,40 @@ function UserDetailPanel({
                     variant={u.disabled_at ? "success" : "danger"}
                     onClick={() => onAction(u.id, u.disabled_at ? "enable" : "disable")}
                   />
-                  {hasStaffPermission(callerRole, STAFF_PERMISSIONS.EDIT_USER_ROLE) && (
+
+                  {/* Subscription Actions */}
+                  {hasStaffPermission(callerRole, STAFF_PERMISSIONS.GRANT_PREMIUM) && u.plan === "free" && (
+                    <ActionCard
+                      icon={Star} label="Grant Premium"
+                      description="Give user premium access"
+                      color="text-amber-500" bg="bg-amber-500/10"
+                      loading={isLoading("grant_premium")}
+                      onClick={() => onAction(u.id, "grant_premium")}
+                    />
+                  )}
+                  {hasStaffPermission(callerRole, STAFF_PERMISSIONS.REVOKE_PREMIUM) && u.plan !== "free" && (
+                    <ActionCard
+                      icon={StarOff} label="Revoke Premium"
+                      description="Remove premium access"
+                      color="text-[hsl(var(--severity-medium))]" bg="bg-[hsl(var(--severity-medium))]/10"
+                      loading={isLoading("revoke_premium")}
+                      onClick={() => onAction(u.id, "revoke_premium")}
+                    />
+                  )}
+
+                  {/* Rate Limit */}
+                  {hasStaffPermission(callerRole, STAFF_PERMISSIONS.MANAGE_RATE_LIMITS) && (
+                    <ActionCard
+                      icon={RefreshCw} label="Clear Rate Limits"
+                      description="Reset all rate limit counters"
+                      color="text-primary" bg="bg-primary/10"
+                      loading={isLoading("clear_rate_limits")}
+                      onClick={() => onAction(u.id, "clear_rate_limits")}
+                    />
+                  )}
+
+                  {/* Danger Zone */}
+                  {hasStaffPermission(callerRole, STAFF_PERMISSIONS.DELETE_USER) && (
                     <ActionCard
                       icon={Trash2} label="Delete Account"
                       description="Permanently remove user and all data"

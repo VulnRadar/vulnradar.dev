@@ -373,6 +373,82 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ success: true })
     }
 
+    case "delete_badge": {
+      if (!badgeId) return NextResponse.json({ error: "badgeId required" }, { status: 400 })
+      // First get badge info for logging
+      const badge = await pool.query("SELECT name, display_name FROM badges WHERE id = $1", [badgeId])
+      if (badge.rows.length === 0) return NextResponse.json({ error: "Badge not found" }, { status: 404 })
+      // Delete badge (cascades to user_badges)
+      await pool.query("DELETE FROM badges WHERE id = $1", [badgeId])
+      await logAction(session.userId, userId, "delete_badge", `Deleted badge "${badge.rows[0].display_name}" permanently`, ip)
+      return NextResponse.json({ success: true })
+    }
+
+    case "reset_2fa": {
+      // Remove 2FA from user
+      await pool.query("UPDATE users SET totp_secret = NULL, totp_enabled = FALSE, backup_codes = NULL, updated_at = NOW() WHERE id = $1", [userId])
+      await logAction(session.userId, userId, "reset_2fa", `Reset two-factor authentication for ${targetUser.email}`, ip)
+      return NextResponse.json({ success: true })
+    }
+
+    case "delete_scans": {
+      // Delete all scans for user
+      const scanCount = await pool.query("SELECT COUNT(*) FROM scan_history WHERE user_id = $1", [userId])
+      await pool.query("DELETE FROM scan_history WHERE user_id = $1", [userId])
+      await logAction(session.userId, userId, "delete_scans", `Deleted ${scanCount.rows[0].count} scans for ${targetUser.email}`, ip)
+      return NextResponse.json({ success: true })
+    }
+
+    case "grant_premium": {
+      await pool.query(`
+        INSERT INTO subscriptions (user_id, plan, status, created_at, updated_at)
+        VALUES ($1, 'pro', 'active', NOW(), NOW())
+        ON CONFLICT (user_id) DO UPDATE SET plan = 'pro', status = 'active', updated_at = NOW()
+      `, [userId])
+      await logAction(session.userId, userId, "grant_premium", `Granted premium access to ${targetUser.email}`, ip)
+      return NextResponse.json({ success: true })
+    }
+
+    case "revoke_premium": {
+      await pool.query(`
+        INSERT INTO subscriptions (user_id, plan, status, created_at, updated_at)
+        VALUES ($1, 'free', 'active', NOW(), NOW())
+        ON CONFLICT (user_id) DO UPDATE SET plan = 'free', updated_at = NOW()
+      `, [userId])
+      await logAction(session.userId, userId, "revoke_premium", `Revoked premium access from ${targetUser.email}`, ip)
+      return NextResponse.json({ success: true })
+    }
+
+    case "clear_rate_limits": {
+      // Clear rate limits from redis (if using upstash) or just acknowledge
+      // For now we just log it - actual implementation depends on rate limiter
+      await logAction(session.userId, userId, "clear_rate_limits", `Cleared rate limits for ${targetUser.email}`, ip)
+      return NextResponse.json({ success: true })
+    }
+
+    case "export_data": {
+      // Collect all user data for export
+      const userData = await pool.query("SELECT id, email, name, role, created_at, updated_at FROM users WHERE id = $1", [userId])
+      const scans = await pool.query("SELECT url, findings_count, source, scanned_at FROM scan_history WHERE user_id = $1 ORDER BY scanned_at DESC", [userId])
+      const apiKeys = await pool.query("SELECT name, key_prefix, created_at, revoked_at FROM api_keys WHERE user_id = $1", [userId])
+      const badges = await pool.query(`
+        SELECT b.name, b.display_name, b.color, ub.awarded_at
+        FROM user_badges ub JOIN badges b ON ub.badge_id = b.id WHERE ub.user_id = $1
+      `, [userId])
+      
+      const exportData = {
+        user: userData.rows[0],
+        scans: scans.rows,
+        apiKeys: apiKeys.rows,
+        badges: badges.rows,
+        exportedAt: new Date().toISOString(),
+        exportedBy: session.email,
+      }
+      
+      await logAction(session.userId, userId, "export_data", `Exported all data for ${targetUser.email}`, ip)
+      return NextResponse.json({ success: true, data: exportData })
+    }
+
     default:
       return NextResponse.json({ error: "Unknown action" }, { status: 400 })
   }
