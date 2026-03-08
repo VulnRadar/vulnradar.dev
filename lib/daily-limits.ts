@@ -8,8 +8,8 @@ import pool from "./db"
 
 // Plan-based daily limits
 export const PLAN_LIMITS = {
-  free: 10,
-  core_supporter: 50,
+  free: 50,
+  core_supporter: 100,
   pro_supporter: 150,
   elite_supporter: 500,
   admin: Infinity, // Unlimited for admins
