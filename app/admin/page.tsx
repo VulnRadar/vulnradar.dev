@@ -1535,104 +1535,119 @@ function UserDetailPanel({
             {!hasStaffPermission(callerRole, STAFF_PERMISSIONS.DISABLE_USER) ? (
               <p className="text-xs text-muted-foreground">You have view-only access. Contact an admin or moderator to perform actions on this user.</p>
             ) : (
-              <>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
-                  {/* Session & Auth Actions */}
-                  <ActionCard
-                    icon={LogOut} label="Force Logout"
-                    description={`Revoke all ${u.session_count} active session(s)`}
-                    color="text-primary" bg="bg-primary/10"
-                    loading={isLoading("revoke_sessions")}
-                    onClick={() => onAction(u.id, "revoke_sessions")}
-                  />
-                  <ActionCard
-                    icon={Key} label="Revoke API Keys"
-                    description={`Invalidate all ${u.api_key_count} API key(s)`}
-                    color="text-[hsl(var(--severity-medium))]" bg="bg-[hsl(var(--severity-medium))]/10"
-                    loading={isLoading("revoke_api_keys")}
-                    onClick={() => onAction(u.id, "revoke_api_keys")}
-                  />
-                  {hasStaffPermission(callerRole, STAFF_PERMISSIONS.RESET_USER_PASSWORD) && (
+              <div className="flex flex-col gap-4">
+                {/* Session & Security */}
+                <div>
+                  <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium mb-2">Session &amp; Security</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
                     <ActionCard
-                      icon={KeyRound} label="Reset Password"
-                      description={u.totp_enabled ? "Unavailable: user has 2FA enabled" : "Generate a temporary password"}
-                      color="text-[hsl(var(--severity-medium))]" bg="bg-[hsl(var(--severity-medium))]/10"
-                      disabled={u.totp_enabled} loading={isLoading("reset_password")}
-                      onClick={() => onAction(u.id, "reset_password")}
-                    />
-                  )}
-                  {hasStaffPermission(callerRole, STAFF_PERMISSIONS.RESET_USER_2FA) && u.totp_enabled && (
-                    <ActionCard
-                      icon={ShieldOff} label="Reset 2FA"
-                      description="Remove two-factor authentication"
-                      color="text-[hsl(var(--severity-medium))]" bg="bg-[hsl(var(--severity-medium))]/10"
-                      loading={isLoading("reset_2fa")}
-                      onClick={() => onAction(u.id, "reset_2fa")}
-                    />
-                  )}
-
-                  {/* Data Actions */}
-                  {hasStaffPermission(callerRole, STAFF_PERMISSIONS.DELETE_ANY_SCAN) && (
-                    <ActionCard
-                      icon={Activity} label="Delete All Scans"
-                      description={`Remove all ${u.scan_count} scan(s) and data`}
-                      color="text-destructive" bg="bg-destructive/10" variant="danger"
-                      loading={isLoading("delete_scans")}
-                      onClick={() => onAction(u.id, "delete_scans")}
-                    />
-                  )}
-                  {/* Account Status */}
-                  <ActionCard
-                    icon={u.disabled_at ? CheckCircle2 : Ban}
-                    label={u.disabled_at ? "Re-enable Account" : "Disable Account"}
-                    description={u.disabled_at ? "Allow the user to log in again" : "Suspend and force-logout"}
-                    color={u.disabled_at ? "text-emerald-500" : "text-destructive"}
-                    bg={u.disabled_at ? "bg-emerald-500/10" : "bg-destructive/10"}
-                    variant={u.disabled_at ? "success" : "danger"}
-                    onClick={() => onAction(u.id, u.disabled_at ? "enable" : "disable")}
-                  />
-
-                  {/* Subscription Actions */}
-                  {hasStaffPermission(callerRole, STAFF_PERMISSIONS.GRANT_PREMIUM) && u.plan === "free" && (
-                    <ActionCard
-                      icon={Star} label="Grant Premium"
-                      description="Give user premium access"
-                      color="text-amber-500" bg="bg-amber-500/10"
-                      loading={isLoading("grant_premium")}
-                      onClick={() => onAction(u.id, "grant_premium")}
-                    />
-                  )}
-                  {hasStaffPermission(callerRole, STAFF_PERMISSIONS.REVOKE_PREMIUM) && u.plan !== "free" && (
-                    <ActionCard
-                      icon={StarOff} label="Revoke Premium"
-                      description="Remove premium access"
-                      color="text-[hsl(var(--severity-medium))]" bg="bg-[hsl(var(--severity-medium))]/10"
-                      loading={isLoading("revoke_premium")}
-                      onClick={() => onAction(u.id, "revoke_premium")}
-                    />
-                  )}
-
-                  {/* Rate Limit */}
-                  {hasStaffPermission(callerRole, STAFF_PERMISSIONS.MANAGE_RATE_LIMITS) && (
-                    <ActionCard
-                      icon={RefreshCw} label="Clear Rate Limits"
-                      description="Reset all rate limit counters"
+                      icon={LogOut} label="Force Logout"
+                      description={`Revoke all ${u.session_count} active session(s)`}
                       color="text-primary" bg="bg-primary/10"
-                      loading={isLoading("clear_rate_limits")}
-                      onClick={() => onAction(u.id, "clear_rate_limits")}
+                      loading={isLoading("revoke_sessions")}
+                      onClick={() => onAction(u.id, "revoke_sessions")}
                     />
-                  )}
-
-                  {/* Danger Zone */}
-                  {hasStaffPermission(callerRole, STAFF_PERMISSIONS.DELETE_USER) && (
                     <ActionCard
-                      icon={Trash2} label="Delete Account"
-                      description="Permanently remove user and all data"
-                      color="text-destructive" bg="bg-destructive/10" variant="danger"
-                      onClick={() => onAction(u.id, "delete")}
+                      icon={Key} label="Revoke API Keys"
+                      description={`Invalidate all ${u.api_key_count} API key(s)`}
+                      color="text-[hsl(var(--severity-medium))]" bg="bg-[hsl(var(--severity-medium))]/10"
+                      loading={isLoading("revoke_api_keys")}
+                      onClick={() => onAction(u.id, "revoke_api_keys")}
                     />
-                  )}
+                    {hasStaffPermission(callerRole, STAFF_PERMISSIONS.RESET_USER_PASSWORD) && (
+                      <ActionCard
+                        icon={KeyRound} label="Reset Password"
+                        description={u.totp_enabled ? "Unavailable: 2FA enabled" : "Generate temp password"}
+                        color="text-[hsl(var(--severity-medium))]" bg="bg-[hsl(var(--severity-medium))]/10"
+                        disabled={u.totp_enabled} loading={isLoading("reset_password")}
+                        onClick={() => onAction(u.id, "reset_password")}
+                      />
+                    )}
+                    {hasStaffPermission(callerRole, STAFF_PERMISSIONS.RESET_USER_2FA) && u.totp_enabled && (
+                      <ActionCard
+                        icon={ShieldOff} label="Reset 2FA"
+                        description="Remove two-factor auth"
+                        color="text-[hsl(var(--severity-medium))]" bg="bg-[hsl(var(--severity-medium))]/10"
+                        loading={isLoading("reset_2fa")}
+                        onClick={() => onAction(u.id, "reset_2fa")}
+                      />
+                    )}
+                    {hasStaffPermission(callerRole, STAFF_PERMISSIONS.MANAGE_RATE_LIMITS) && (
+                      <ActionCard
+                        icon={RefreshCw} label="Clear Rate Limits"
+                        description="Reset rate limit counters"
+                        color="text-primary" bg="bg-primary/10"
+                        loading={isLoading("clear_rate_limits")}
+                        onClick={() => onAction(u.id, "clear_rate_limits")}
+                      />
+                    )}
+                  </div>
                 </div>
+
+                {/* Subscription */}
+                <div>
+                  <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium mb-2">Subscription</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                    {hasStaffPermission(callerRole, STAFF_PERMISSIONS.GRANT_PREMIUM) && u.plan === "free" && (
+                      <ActionCard
+                        icon={Star} label="Grant Premium"
+                        description="Give user premium access"
+                        color="text-amber-500" bg="bg-amber-500/10"
+                        loading={isLoading("grant_premium")}
+                        onClick={() => onAction(u.id, "grant_premium")}
+                      />
+                    )}
+                    {hasStaffPermission(callerRole, STAFF_PERMISSIONS.REVOKE_PREMIUM) && u.plan !== "free" && (
+                      <ActionCard
+                        icon={StarOff} label="Revoke Premium"
+                        description="Remove premium access"
+                        color="text-[hsl(var(--severity-medium))]" bg="bg-[hsl(var(--severity-medium))]/10"
+                        loading={isLoading("revoke_premium")}
+                        onClick={() => onAction(u.id, "revoke_premium")}
+                      />
+                    )}
+                    {u.plan !== "free" && !hasStaffPermission(callerRole, STAFF_PERMISSIONS.REVOKE_PREMIUM) && (
+                      <p className="text-xs text-muted-foreground col-span-full">User has {u.plan} plan.</p>
+                    )}
+                    {u.plan === "free" && !hasStaffPermission(callerRole, STAFF_PERMISSIONS.GRANT_PREMIUM) && (
+                      <p className="text-xs text-muted-foreground col-span-full">User is on free plan.</p>
+                    )}
+                  </div>
+                </div>
+
+                {/* Danger Zone */}
+                <div>
+                  <p className="text-[10px] uppercase tracking-wider text-destructive/70 font-medium mb-2">Danger Zone</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                    <ActionCard
+                      icon={u.disabled_at ? CheckCircle2 : Ban}
+                      label={u.disabled_at ? "Re-enable Account" : "Disable Account"}
+                      description={u.disabled_at ? "Allow user to log in" : "Suspend and force-logout"}
+                      color={u.disabled_at ? "text-emerald-500" : "text-destructive"}
+                      bg={u.disabled_at ? "bg-emerald-500/10" : "bg-destructive/10"}
+                      variant={u.disabled_at ? "success" : "danger"}
+                      onClick={() => onAction(u.id, u.disabled_at ? "enable" : "disable")}
+                    />
+                    {hasStaffPermission(callerRole, STAFF_PERMISSIONS.DELETE_ANY_SCAN) && (
+                      <ActionCard
+                        icon={Activity} label="Delete All Scans"
+                        description={`Remove all ${u.scan_count} scan(s)`}
+                        color="text-destructive" bg="bg-destructive/10" variant="danger"
+                        loading={isLoading("delete_scans")}
+                        onClick={() => onAction(u.id, "delete_scans")}
+                      />
+                    )}
+                    {hasStaffPermission(callerRole, STAFF_PERMISSIONS.DELETE_USER) && (
+                      <ActionCard
+                        icon={Trash2} label="Delete Account"
+                        description="Permanently remove user"
+                        color="text-destructive" bg="bg-destructive/10" variant="danger"
+                        onClick={() => onAction(u.id, "delete")}
+                      />
+                    )}
+                  </div>
+                </div>
+              </div>
 
                 {u.totp_enabled && hasStaffPermission(callerRole, STAFF_PERMISSIONS.RESET_USER_2FA) && (
                   <div className="flex items-start gap-2.5 p-3.5 rounded-lg bg-[hsl(var(--severity-medium))]/5 border border-[hsl(var(--severity-medium))]/20 mt-3">
