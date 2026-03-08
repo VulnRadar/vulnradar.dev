@@ -230,7 +230,7 @@ export default function PricingPage() {
                       Current Plan
                     </Button>
                   ) : plan.price === 0 ? (
-                    <Link href={me ? ROUTES.SCANNER : ROUTES.SIGNUP} className="w-full">
+                    <Link href={me ? ROUTES.DASHBOARD : ROUTES.SIGNUP} className="w-full">
                       <Button variant="outline" className="w-full">
                         {me ? "Go to Scanner" : "Get Started"}
                         <ArrowRight className="h-4 w-4 ml-2" />
@@ -295,7 +295,7 @@ export default function PricingPage() {
       <div className="container mx-auto px-4 py-16 text-center">
         <h2 className="text-2xl font-bold mb-4">Ready to secure your applications?</h2>
         <p className="text-muted-foreground mb-6">Start scanning for free today. No credit card required.</p>
-        <Link href={me ? ROUTES.SCANNER : ROUTES.SIGNUP}>
+        <Link href={me ? ROUTES.DASHBOARD : ROUTES.SIGNUP}>
           <Button size="lg">
             {me ? "Go to Scanner" : "Get Started Free"}
             <ArrowRight className="h-4 w-4 ml-2" />
