@@ -358,7 +358,7 @@ export const ROUTES = {
   COMPARE: "/compare",
   BADGE: "/badge",
   SHARES: "/shares",
-  PROFILE: "/profile",
+  PROFILE: "/profile#account",
   ADMIN: "/admin",
   TEAMS: "/teams",
   TEAMS_JOIN: "/teams/join",
