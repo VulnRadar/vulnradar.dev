@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import Stripe from "stripe"
 import { stripe, isStripeEnabled } from "@/lib/stripe"
-import { upsertSubscription, recordBillingHistory } from "@/lib/billing"
+import { updateUserSubscription, recordBillingHistory } from "@/lib/billing"
 import pool from "@/lib/db"
 
 export async function POST(request: NextRequest) {
@@ -41,12 +41,11 @@ export async function POST(request: NextRequest) {
         if (userId && planId && session.subscription) {
           const subscription = await stripe.subscriptions.retrieve(session.subscription as string)
           
-          await upsertSubscription(userId, {
+          await updateUserSubscription(userId, {
             stripeCustomerId: session.customer as string,
             stripeSubscriptionId: subscription.id,
             plan: planId,
-            status: subscription.status,
-            currentPeriodStart: new Date(subscription.current_period_start * 1000),
+            subscriptionStatus: subscription.status,
             currentPeriodEnd: new Date(subscription.current_period_end * 1000),
             cancelAtPeriodEnd: subscription.cancel_at_period_end,
           })
@@ -60,17 +59,16 @@ export async function POST(request: NextRequest) {
         const subscription = event.data.object as Stripe.Subscription
         const customerId = subscription.customer as string
 
-        // Find user by customer ID
+        // Find user by customer ID (now on users table)
         const userResult = await pool.query(
-          `SELECT user_id FROM subscriptions WHERE stripe_customer_id = $1`,
+          `SELECT id FROM users WHERE stripe_customer_id = $1`,
           [customerId]
         )
-        const userId = userResult.rows[0]?.user_id
+        const userId = userResult.rows[0]?.id
 
         if (userId) {
-          await upsertSubscription(userId, {
-            status: subscription.status,
-            currentPeriodStart: new Date(subscription.current_period_start * 1000),
+          await updateUserSubscription(userId, {
+            subscriptionStatus: subscription.status,
             currentPeriodEnd: new Date(subscription.current_period_end * 1000),
             cancelAtPeriodEnd: subscription.cancel_at_period_end,
           })
@@ -84,17 +82,17 @@ export async function POST(request: NextRequest) {
         const subscription = event.data.object as Stripe.Subscription
         const customerId = subscription.customer as string
 
-        // Find user by customer ID
+        // Find user by customer ID (now on users table)
         const userResult = await pool.query(
-          `SELECT user_id FROM subscriptions WHERE stripe_customer_id = $1`,
+          `SELECT id FROM users WHERE stripe_customer_id = $1`,
           [customerId]
         )
-        const userId = userResult.rows[0]?.user_id
+        const userId = userResult.rows[0]?.id
 
         if (userId) {
-          await upsertSubscription(userId, {
+          await updateUserSubscription(userId, {
             plan: "free",
-            status: "canceled",
+            subscriptionStatus: "canceled",
             stripeSubscriptionId: null,
           })
 
@@ -107,12 +105,12 @@ export async function POST(request: NextRequest) {
         const invoice = event.data.object as Stripe.Invoice
         const customerId = invoice.customer as string
 
-        // Find user by customer ID
+        // Find user by customer ID (now on users table)
         const userResult = await pool.query(
-          `SELECT user_id FROM subscriptions WHERE stripe_customer_id = $1`,
+          `SELECT id FROM users WHERE stripe_customer_id = $1`,
           [customerId]
         )
-        const userId = userResult.rows[0]?.user_id
+        const userId = userResult.rows[0]?.id
 
         if (userId && invoice.id) {
           await recordBillingHistory(
@@ -133,12 +131,12 @@ export async function POST(request: NextRequest) {
         const invoice = event.data.object as Stripe.Invoice
         const customerId = invoice.customer as string
 
-        // Find user by customer ID
+        // Find user by customer ID (now on users table)
         const userResult = await pool.query(
-          `SELECT user_id FROM subscriptions WHERE stripe_customer_id = $1`,
+          `SELECT id FROM users WHERE stripe_customer_id = $1`,
           [customerId]
         )
-        const userId = userResult.rows[0]?.user_id
+        const userId = userResult.rows[0]?.id
 
         if (userId && invoice.id) {
           await recordBillingHistory(
@@ -148,6 +146,9 @@ export async function POST(request: NextRequest) {
             "failed",
             "Payment failed"
           )
+
+          // Optionally downgrade to free on payment failure
+          // await updateUserSubscription(userId, { plan: "free", subscriptionStatus: "past_due" })
 
           console.log(`[Stripe Webhook] Payment failed for user ${userId}`)
         }

@@ -2,6 +2,7 @@
 // Daily Request Limit System
 // ============================================================================
 // Tracks and enforces daily request limits based on subscription plan
+// Uses the rate_limits table for tracking (clean schema)
 // ============================================================================
 
 import pool from "./db"
@@ -18,15 +19,19 @@ export const PLAN_LIMITS = {
 export type PlanType = keyof typeof PLAN_LIMITS
 
 /**
- * Get user's current subscription plan
+ * Get user's current subscription plan (from users table)
  */
 export async function getUserPlan(userId: number): Promise<PlanType> {
   try {
     const result = await pool.query(
-      `SELECT plan FROM subscriptions WHERE user_id = $1 AND status = 'active'`,
+      `SELECT plan, role FROM users WHERE id = $1`,
       [userId]
     )
-    if (result.rows[0]?.plan) {
+    // Admins get unlimited
+    if (result.rows[0]?.role === "admin") {
+      return "admin"
+    }
+    if (result.rows[0]?.plan && result.rows[0].plan !== "free") {
       return result.rows[0].plan as PlanType
     }
     return "free"
@@ -40,30 +45,22 @@ export async function getUserPlan(userId: number): Promise<PlanType> {
  * Get user's daily limit based on their plan
  */
 export async function getDailyLimit(userId: number): Promise<number> {
-  // Check if user is admin (admins have unlimited)
-  const adminCheck = await pool.query(
-    `SELECT role FROM users WHERE id = $1`,
-    [userId]
-  )
-  if (adminCheck.rows[0]?.role === "admin") {
-    return Infinity
-  }
-
   const plan = await getUserPlan(userId)
   return PLAN_LIMITS[plan] || PLAN_LIMITS.free
 }
 
 /**
- * Get current daily request count for a user
+ * Get current daily request count for a user (using rate_limits table)
  */
 export async function getDailyRequestCount(userId: number): Promise<number> {
   try {
+    const key = `daily_scan:${userId}`
     const result = await pool.query(
-      `SELECT request_count FROM daily_request_limits 
-       WHERE user_id = $1 AND date = CURRENT_DATE`,
-      [userId]
+      `SELECT SUM("count") as total FROM rate_limits 
+       WHERE key = $1 AND window_start >= CURRENT_DATE`,
+      [key]
     )
-    return result.rows[0]?.request_count || 0
+    return parseInt(result.rows[0]?.total || "0", 10)
   } catch (error) {
     console.error("[DailyLimits] Error getting request count:", error)
     return 0
@@ -76,15 +73,15 @@ export async function getDailyRequestCount(userId: number): Promise<number> {
  */
 export async function incrementDailyCount(userId: number): Promise<number> {
   try {
-    const result = await pool.query(
-      `INSERT INTO daily_request_limits (user_id, date, request_count)
-       VALUES ($1, CURRENT_DATE, 1)
-       ON CONFLICT (user_id, date) 
-       DO UPDATE SET request_count = daily_request_limits.request_count + 1
-       RETURNING request_count`,
-      [userId]
+    const key = `daily_scan:${userId}`
+    await pool.query(
+      `INSERT INTO rate_limits (key, "count", window_start)
+       VALUES ($1, 1, CURRENT_TIMESTAMP)
+       ON CONFLICT (key, window_start) 
+       DO UPDATE SET "count" = rate_limits."count" + 1`,
+      [key]
     )
-    return result.rows[0]?.request_count || 1
+    return await getDailyRequestCount(userId)
   } catch (error) {
     console.error("[DailyLimits] Error incrementing count:", error)
     return 0
@@ -169,13 +166,13 @@ export function getRateLimitHeaders(rateInfo: {
 }
 
 /**
- * Clean up old daily limit records (run daily via cron)
+ * Clean up old rate limit records (run daily via cron)
  */
-export async function cleanupOldLimits(daysToKeep: number = 30): Promise<number> {
+export async function cleanupOldLimits(daysToKeep: number = 7): Promise<number> {
   try {
     const result = await pool.query(
-      `DELETE FROM daily_request_limits 
-       WHERE date < CURRENT_DATE - INTERVAL '${daysToKeep} days'`
+      `DELETE FROM rate_limits 
+       WHERE window_start < NOW() - INTERVAL '${daysToKeep} days'`
     )
     return result.rowCount || 0
   } catch (error) {
@@ -185,7 +182,7 @@ export async function cleanupOldLimits(daysToKeep: number = 30): Promise<number>
 }
 
 /**
- * Get usage stats for a user over time
+ * Get usage stats for a user over time (using scan_history)
  */
 export async function getUsageStats(userId: number, days: number = 30): Promise<{
   date: string
@@ -193,9 +190,10 @@ export async function getUsageStats(userId: number, days: number = 30): Promise<
 }[]> {
   try {
     const result = await pool.query(
-      `SELECT date::text, request_count as count
-       FROM daily_request_limits
-       WHERE user_id = $1 AND date >= CURRENT_DATE - INTERVAL '${days} days'
+      `SELECT DATE(scanned_at)::text as date, COUNT(*) as count
+       FROM scan_history
+       WHERE user_id = $1 AND scanned_at >= NOW() - INTERVAL '${days} days'
+       GROUP BY DATE(scanned_at)
        ORDER BY date ASC`,
       [userId]
     )

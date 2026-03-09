@@ -2,51 +2,46 @@
 // Billing & Subscription Management
 // ============================================================================
 // Handles Stripe subscriptions, customer management, and billing history
+// All subscription data is stored directly on the users table (clean schema)
 // ============================================================================
 
 import { stripe, isStripeEnabled } from "./stripe"
 import pool from "./db"
-import { PLANS, getPlanById, getFreePlan } from "./plans"
+import { getPlanById, getFreePlan } from "./plans"
 import type { Plan } from "./plans"
 
-export interface Subscription {
-  id: number
+export interface UserSubscription {
   userId: number
   stripeCustomerId: string | null
   stripeSubscriptionId: string | null
   plan: string
-  status: string
-  currentPeriodStart: Date | null
+  subscriptionStatus: string
   currentPeriodEnd: Date | null
   cancelAtPeriodEnd: boolean
-  createdAt: Date
-  updatedAt: Date
 }
 
 /**
- * Get user's subscription
+ * Get user's subscription data (from users table)
  */
-export async function getUserSubscription(userId: number): Promise<Subscription | null> {
+export async function getUserSubscription(userId: number): Promise<UserSubscription | null> {
   try {
     const result = await pool.query(
-      `SELECT * FROM subscriptions WHERE user_id = $1`,
+      `SELECT id, plan, stripe_customer_id, stripe_subscription_id, 
+              subscription_status, current_period_end, cancel_at_period_end
+       FROM users WHERE id = $1`,
       [userId]
     )
     if (!result.rows[0]) return null
     
     const row = result.rows[0]
     return {
-      id: row.id,
-      userId: row.user_id,
+      userId: row.id,
       stripeCustomerId: row.stripe_customer_id,
       stripeSubscriptionId: row.stripe_subscription_id,
-      plan: row.plan,
-      status: row.status,
-      currentPeriodStart: row.current_period_start,
+      plan: row.plan || "free",
+      subscriptionStatus: row.subscription_status || "active",
       currentPeriodEnd: row.current_period_end,
-      cancelAtPeriodEnd: row.cancel_at_period_end,
-      createdAt: row.created_at,
-      updatedAt: row.updated_at,
+      cancelAtPeriodEnd: row.cancel_at_period_end || false,
     }
   } catch (error) {
     console.error("[Billing] Error getting subscription:", error)
@@ -59,46 +54,67 @@ export async function getUserSubscription(userId: number): Promise<Subscription 
  */
 export async function getUserPlan(userId: number): Promise<Plan> {
   const subscription = await getUserSubscription(userId)
-  if (!subscription || subscription.status !== "active") {
+  if (!subscription || subscription.subscriptionStatus !== "active") {
     return getFreePlan()
   }
   return getPlanById(subscription.plan) || getFreePlan()
 }
 
 /**
- * Create or update subscription record
+ * Update user's subscription data (on users table)
  */
-export async function upsertSubscription(
+export async function updateUserSubscription(
   userId: number,
-  data: Partial<Subscription>
+  data: Partial<{
+    stripeCustomerId: string | null
+    stripeSubscriptionId: string | null
+    plan: string
+    subscriptionStatus: string
+    currentPeriodEnd: Date | null
+    cancelAtPeriodEnd: boolean
+  }>
 ): Promise<void> {
   try {
+    const setClauses: string[] = []
+    const values: unknown[] = []
+    let paramIndex = 1
+
+    if (data.stripeCustomerId !== undefined) {
+      setClauses.push(`stripe_customer_id = $${paramIndex++}`)
+      values.push(data.stripeCustomerId)
+    }
+    if (data.stripeSubscriptionId !== undefined) {
+      setClauses.push(`stripe_subscription_id = $${paramIndex++}`)
+      values.push(data.stripeSubscriptionId)
+    }
+    if (data.plan !== undefined) {
+      setClauses.push(`plan = $${paramIndex++}`)
+      values.push(data.plan)
+    }
+    if (data.subscriptionStatus !== undefined) {
+      setClauses.push(`subscription_status = $${paramIndex++}`)
+      values.push(data.subscriptionStatus)
+    }
+    if (data.currentPeriodEnd !== undefined) {
+      setClauses.push(`current_period_end = $${paramIndex++}`)
+      values.push(data.currentPeriodEnd)
+    }
+    if (data.cancelAtPeriodEnd !== undefined) {
+      setClauses.push(`cancel_at_period_end = $${paramIndex++}`)
+      values.push(data.cancelAtPeriodEnd)
+    }
+
+    if (setClauses.length === 0) return
+
+    setClauses.push(`updated_at = NOW()`)
+    values.push(userId)
+
     await pool.query(
-      `INSERT INTO subscriptions (user_id, stripe_customer_id, stripe_subscription_id, plan, status, current_period_start, current_period_end, cancel_at_period_end)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-       ON CONFLICT (user_id) 
-       DO UPDATE SET 
-         stripe_customer_id = COALESCE($2, subscriptions.stripe_customer_id),
-         stripe_subscription_id = COALESCE($3, subscriptions.stripe_subscription_id),
-         plan = COALESCE($4, subscriptions.plan),
-         status = COALESCE($5, subscriptions.status),
-         current_period_start = COALESCE($6, subscriptions.current_period_start),
-         current_period_end = COALESCE($7, subscriptions.current_period_end),
-         cancel_at_period_end = COALESCE($8, subscriptions.cancel_at_period_end),
-         updated_at = NOW()`,
-      [
-        userId,
-        data.stripeCustomerId || null,
-        data.stripeSubscriptionId || null,
-        data.plan || "free",
-        data.status || "active",
-        data.currentPeriodStart || null,
-        data.currentPeriodEnd || null,
-        data.cancelAtPeriodEnd || false,
-      ]
+      `UPDATE users SET ${setClauses.join(", ")} WHERE id = $${paramIndex}`,
+      values
     )
   } catch (error) {
-    console.error("[Billing] Error upserting subscription:", error)
+    console.error("[Billing] Error updating subscription:", error)
     throw error
   }
 }
@@ -121,7 +137,7 @@ export async function createStripeCustomer(userId: number, email: string, name?:
       },
     })
 
-    await upsertSubscription(userId, { stripeCustomerId: customer.id })
+    await updateUserSubscription(userId, { stripeCustomerId: customer.id })
     return customer.id
   } catch (error) {
     console.error("[Billing] Error creating Stripe customer:", error)
@@ -149,7 +165,7 @@ export async function createSubscriptionCheckout(
   }
 
   // Get or create Stripe customer
-  let subscription = await getUserSubscription(userId)
+  const subscription = await getUserSubscription(userId)
   let customerId = subscription?.stripeCustomerId
 
   if (!customerId) {
@@ -239,7 +255,7 @@ export async function cancelSubscription(userId: number): Promise<void> {
       cancel_at_period_end: true,
     })
 
-    await upsertSubscription(userId, { cancelAtPeriodEnd: true })
+    await updateUserSubscription(userId, { cancelAtPeriodEnd: true })
   } catch (error) {
     console.error("[Billing] Error canceling subscription:", error)
     throw error
@@ -299,4 +315,24 @@ export async function getBillingHistory(userId: number): Promise<{
     console.error("[Billing] Error getting billing history:", error)
     return []
   }
+}
+
+// Backwards compatibility - alias for upsertSubscription
+export const upsertSubscription = async (userId: number, data: Partial<{
+  stripeCustomerId: string | null
+  stripeSubscriptionId: string | null
+  plan: string
+  status: string
+  currentPeriodStart: Date | null
+  currentPeriodEnd: Date | null
+  cancelAtPeriodEnd: boolean
+}>) => {
+  await updateUserSubscription(userId, {
+    stripeCustomerId: data.stripeCustomerId,
+    stripeSubscriptionId: data.stripeSubscriptionId,
+    plan: data.plan,
+    subscriptionStatus: data.status,
+    currentPeriodEnd: data.currentPeriodEnd,
+    cancelAtPeriodEnd: data.cancelAtPeriodEnd,
+  })
 }

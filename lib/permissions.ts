@@ -1,393 +1,190 @@
 // ============================================================================
-// Roles & Permissions System
+// Roles & Permissions System (Clean Schema)
 // ============================================================================
-// Manages user roles, permissions, and permission tags
+// Uses the `role` field on users table instead of separate tables.
+// Roles: 'user', 'beta_tester', 'support', 'moderator', 'admin'
 // ============================================================================
 
 import pool from "./db"
 
+// Define available roles and their properties
+export const ROLES = {
+  user: { displayName: "User", color: null, priority: 0 },
+  beta_tester: { displayName: "Beta Tester", color: "#10b981", priority: 1 },
+  support: { displayName: "Support", color: "#3b82f6", priority: 2 },
+  moderator: { displayName: "Moderator", color: "#f59e0b", priority: 3 },
+  admin: { displayName: "Admin", color: "#ef4444", priority: 4 },
+} as const
+
+export type RoleName = keyof typeof ROLES
+
+// Define permissions per role (hardcoded, no DB lookups needed)
+export const ROLE_PERMISSIONS: Record<RoleName, string[]> = {
+  user: [
+    "scan.create", "scan.view", "scan.delete",
+    "api.access", "api.keys.create",
+  ],
+  beta_tester: [
+    "scan.create", "scan.view", "scan.delete", "scan.bulk",
+    "api.access", "api.keys.create",
+    "webhook.manage", "schedule.manage", "beta.access",
+  ],
+  support: [
+    "scan.create", "scan.view",
+    "api.access",
+    "admin.users.view", "admin.scans.view",
+  ],
+  moderator: [
+    "scan.create", "scan.view", "scan.delete", "scan.bulk",
+    "api.access", "api.keys.create",
+    "admin.users.view", "admin.users.edit", "admin.scans.view", "admin.audit.view",
+  ],
+  admin: [
+    "scan.create", "scan.view", "scan.delete", "scan.bulk",
+    "api.access", "api.keys.create",
+    "webhook.manage", "schedule.manage",
+    "team.create", "team.manage",
+    "admin.users.view", "admin.users.edit", "admin.users.delete",
+    "admin.scans.view", "admin.audit.view", "admin.settings",
+    "beta.access",
+  ],
+}
+
 export interface Role {
-  id: number
-  name: string
+  name: RoleName
   displayName: string
-  description: string | null
   color: string | null
   priority: number
-  isSystem: boolean
-  createdAt: Date
-}
-
-export interface Permission {
-  id: number
-  name: string
-  displayName: string
-  description: string | null
-  category: string | null
-  createdAt: Date
 }
 
 /**
- * Get all roles
+ * Get role info by name
  */
-export async function getAllRoles(): Promise<Role[]> {
-  try {
-    const result = await pool.query(
-      `SELECT * FROM roles ORDER BY priority DESC`
-    )
-    return result.rows.map((row) => ({
-      id: row.id,
-      name: row.name,
-      displayName: row.display_name,
-      description: row.description,
-      color: row.color,
-      priority: row.priority,
-      isSystem: row.is_system,
-      createdAt: row.created_at,
-    }))
-  } catch (error) {
-    console.error("[Permissions] Error getting roles:", error)
-    return []
+export function getRoleInfo(roleName: string): Role {
+  const role = ROLES[roleName as RoleName]
+  if (!role) {
+    return { name: "user", displayName: "User", color: null, priority: 0 }
   }
+  return { name: roleName as RoleName, ...role }
 }
 
 /**
- * Get a role by name
+ * Get all available roles
  */
-export async function getRoleByName(name: string): Promise<Role | null> {
-  try {
-    const result = await pool.query(
-      `SELECT * FROM roles WHERE name = $1`,
-      [name]
-    )
-    if (!result.rows[0]) return null
-    const row = result.rows[0]
-    return {
-      id: row.id,
-      name: row.name,
-      displayName: row.display_name,
-      description: row.description,
-      color: row.color,
-      priority: row.priority,
-      isSystem: row.is_system,
-      createdAt: row.created_at,
-    }
-  } catch (error) {
-    console.error("[Permissions] Error getting role:", error)
-    return null
-  }
+export function getAllRoles(): Role[] {
+  return Object.entries(ROLES).map(([name, props]) => ({
+    name: name as RoleName,
+    ...props,
+  }))
 }
 
 /**
- * Get all permissions for a role
+ * Get user's role from the users table
  */
-export async function getRolePermissions(roleId: number): Promise<Permission[]> {
+export async function getUserRole(userId: number): Promise<RoleName> {
   try {
     const result = await pool.query(
-      `SELECT p.* FROM permissions p
-       JOIN role_permissions rp ON p.id = rp.permission_id
-       WHERE rp.role_id = $1`,
-      [roleId]
-    )
-    return result.rows.map((row) => ({
-      id: row.id,
-      name: row.name,
-      displayName: row.display_name,
-      description: row.description,
-      category: row.category,
-      createdAt: row.created_at,
-    }))
-  } catch (error) {
-    console.error("[Permissions] Error getting role permissions:", error)
-    return []
-  }
-}
-
-/**
- * Get all roles assigned to a user
- */
-export async function getUserRoles(userId: number): Promise<Role[]> {
-  try {
-    const result = await pool.query(
-      `SELECT r.* FROM roles r
-       JOIN user_roles ur ON r.id = ur.role_id
-       WHERE ur.user_id = $1
-       ORDER BY r.priority DESC`,
+      `SELECT role FROM users WHERE id = $1`,
       [userId]
     )
-    return result.rows.map((row) => ({
-      id: row.id,
-      name: row.name,
-      displayName: row.display_name,
-      description: row.description,
-      color: row.color,
-      priority: row.priority,
-      isSystem: row.is_system,
-      createdAt: row.created_at,
-    }))
+    const role = result.rows[0]?.role
+    return (role && role in ROLES) ? role as RoleName : "user"
   } catch (error) {
-    console.error("[Permissions] Error getting user roles:", error)
-    return []
+    console.error("[Permissions] Error getting user role:", error)
+    return "user"
   }
 }
 
 /**
- * Get all permissions for a user (from all their roles)
+ * Get all permissions for a user based on their role
+ */
+export function getPermissionsForRole(roleName: RoleName): string[] {
+  return ROLE_PERMISSIONS[roleName] || ROLE_PERMISSIONS.user
+}
+
+/**
+ * Get all permissions for a user
  */
 export async function getUserPermissions(userId: number): Promise<string[]> {
-  try {
-    const result = await pool.query(
-      `SELECT DISTINCT p.name FROM permissions p
-       JOIN role_permissions rp ON p.id = rp.permission_id
-       JOIN user_roles ur ON rp.role_id = ur.role_id
-       WHERE ur.user_id = $1`,
-      [userId]
-    )
-    return result.rows.map((row) => row.name)
-  } catch (error) {
-    console.error("[Permissions] Error getting user permissions:", error)
-    return []
-  }
+  const role = await getUserRole(userId)
+  return getPermissionsForRole(role)
 }
 
 /**
  * Check if user has a specific permission
  */
 export async function userHasPermission(userId: number, permissionName: string): Promise<boolean> {
-  try {
-    const result = await pool.query(
-      `SELECT 1 FROM permissions p
-       JOIN role_permissions rp ON p.id = rp.permission_id
-       JOIN user_roles ur ON rp.role_id = ur.role_id
-       WHERE ur.user_id = $1 AND p.name = $2
-       LIMIT 1`,
-      [userId, permissionName]
-    )
-    return result.rows.length > 0
-  } catch (error) {
-    console.error("[Permissions] Error checking permission:", error)
-    return false
-  }
+  const permissions = await getUserPermissions(userId)
+  return permissions.includes(permissionName)
 }
 
 /**
  * Check if user has any of the specified permissions
  */
 export async function userHasAnyPermission(userId: number, permissionNames: string[]): Promise<boolean> {
-  try {
-    const result = await pool.query(
-      `SELECT 1 FROM permissions p
-       JOIN role_permissions rp ON p.id = rp.permission_id
-       JOIN user_roles ur ON rp.role_id = ur.role_id
-       WHERE ur.user_id = $1 AND p.name = ANY($2)
-       LIMIT 1`,
-      [userId, permissionNames]
-    )
-    return result.rows.length > 0
-  } catch (error) {
-    console.error("[Permissions] Error checking permissions:", error)
-    return false
-  }
+  const permissions = await getUserPermissions(userId)
+  return permissionNames.some(p => permissions.includes(p))
 }
 
 /**
- * Assign a role to a user
+ * Check if a role has a specific permission (sync, no DB)
  */
-export async function assignRoleToUser(userId: number, roleId: number, assignedBy?: number): Promise<void> {
+export function roleHasPermission(roleName: RoleName, permissionName: string): boolean {
+  const permissions = ROLE_PERMISSIONS[roleName] || []
+  return permissions.includes(permissionName)
+}
+
+/**
+ * Set user's role
+ */
+export async function setUserRole(userId: number, roleName: RoleName): Promise<void> {
   try {
     await pool.query(
-      `INSERT INTO user_roles (user_id, role_id, assigned_by)
-       VALUES ($1, $2, $3)
-       ON CONFLICT (user_id, role_id) DO NOTHING`,
-      [userId, roleId, assignedBy || null]
+      `UPDATE users SET role = $1, updated_at = NOW() WHERE id = $2`,
+      [roleName, userId]
     )
   } catch (error) {
-    console.error("[Permissions] Error assigning role:", error)
+    console.error("[Permissions] Error setting user role:", error)
     throw error
   }
 }
 
 /**
- * Remove a role from a user
+ * Check if role can manage another role (based on priority)
  */
-export async function removeRoleFromUser(userId: number, roleId: number): Promise<void> {
-  try {
-    await pool.query(
-      `DELETE FROM user_roles WHERE user_id = $1 AND role_id = $2`,
-      [userId, roleId]
-    )
-  } catch (error) {
-    console.error("[Permissions] Error removing role:", error)
-    throw error
-  }
+export function canManageRole(managerRole: RoleName, targetRole: RoleName): boolean {
+  return ROLES[managerRole].priority > ROLES[targetRole].priority
 }
 
 /**
- * Get user's permission tag (visible badge)
+ * Check if user can access admin panel
  */
-export async function getUserPermissionTag(userId: number): Promise<Role | null> {
-  try {
-    const result = await pool.query(
-      `SELECT r.* FROM roles r
-       JOIN user_permission_tags upt ON r.id = upt.tag_role_id
-       WHERE upt.user_id = $1`,
-      [userId]
-    )
-    if (!result.rows[0]) return null
-    const row = result.rows[0]
-    return {
-      id: row.id,
-      name: row.name,
-      displayName: row.display_name,
-      description: row.description,
-      color: row.color,
-      priority: row.priority,
-      isSystem: row.is_system,
-      createdAt: row.created_at,
-    }
-  } catch (error) {
-    console.error("[Permissions] Error getting permission tag:", error)
-    return null
-  }
+export async function canAccessAdmin(userId: number): Promise<boolean> {
+  const role = await getUserRole(userId)
+  return ["admin", "moderator", "support"].includes(role)
 }
 
 /**
- * Set user's permission tag (visible badge)
- * Users can only have ONE visible permission tag at a time
+ * Get role level/priority
  */
-export async function setUserPermissionTag(userId: number, roleId: number): Promise<void> {
-  try {
-    await pool.query(
-      `INSERT INTO user_permission_tags (user_id, tag_role_id)
-       VALUES ($1, $2)
-       ON CONFLICT (user_id) 
-       DO UPDATE SET tag_role_id = $2, assigned_at = NOW()`,
-      [userId, roleId]
-    )
-  } catch (error) {
-    console.error("[Permissions] Error setting permission tag:", error)
-    throw error
-  }
+export function getRoleLevel(roleName: RoleName): number {
+  return ROLES[roleName]?.priority || 0
 }
 
 /**
- * Remove user's permission tag
+ * Check if role is a staff role
  */
-export async function removeUserPermissionTag(userId: number): Promise<void> {
-  try {
-    await pool.query(
-      `DELETE FROM user_permission_tags WHERE user_id = $1`,
-      [userId]
-    )
-  } catch (error) {
-    console.error("[Permissions] Error removing permission tag:", error)
-    throw error
-  }
+export function isStaffRole(roleName: string): boolean {
+  return ["admin", "moderator", "support"].includes(roleName)
 }
 
-/**
- * Get highest priority role for a user (for display purposes)
- */
-export async function getHighestUserRole(userId: number): Promise<Role | null> {
-  try {
-    const result = await pool.query(
-      `SELECT r.* FROM roles r
-       JOIN user_roles ur ON r.id = ur.role_id
-       WHERE ur.user_id = $1
-       ORDER BY r.priority DESC
-       LIMIT 1`,
-      [userId]
-    )
-    if (!result.rows[0]) return null
-    const row = result.rows[0]
-    return {
-      id: row.id,
-      name: row.name,
-      displayName: row.display_name,
-      description: row.description,
-      color: row.color,
-      priority: row.priority,
-      isSystem: row.is_system,
-      createdAt: row.created_at,
-    }
-  } catch (error) {
-    console.error("[Permissions] Error getting highest role:", error)
-    return null
-  }
-}
-
-/**
- * Create a new role (for custom roles)
- */
-export async function createRole(
-  name: string,
-  displayName: string,
-  description?: string,
-  color?: string,
-  priority?: number
-): Promise<Role | null> {
-  try {
-    const result = await pool.query(
-      `INSERT INTO roles (name, display_name, description, color, priority, is_system)
-       VALUES ($1, $2, $3, $4, $5, false)
-       RETURNING *`,
-      [name, displayName, description || null, color || null, priority || 0]
-    )
-    const row = result.rows[0]
-    return {
-      id: row.id,
-      name: row.name,
-      displayName: row.display_name,
-      description: row.description,
-      color: row.color,
-      priority: row.priority,
-      isSystem: row.is_system,
-      createdAt: row.created_at,
-    }
-  } catch (error) {
-    console.error("[Permissions] Error creating role:", error)
-    return null
-  }
-}
-
-/**
- * Get all permissions grouped by category
- */
-export async function getPermissionsByCategory(): Promise<Record<string, Permission[]>> {
-  try {
-    const result = await pool.query(
-      `SELECT * FROM permissions ORDER BY category, name`
-    )
-    const grouped: Record<string, Permission[]> = {}
-    for (const row of result.rows) {
-      const category = row.category || "other"
-      if (!grouped[category]) grouped[category] = []
-      grouped[category].push({
-        id: row.id,
-        name: row.name,
-        displayName: row.display_name,
-        description: row.description,
-        category: row.category,
-        createdAt: row.created_at,
-      })
-    }
-    return grouped
-  } catch (error) {
-    console.error("[Permissions] Error getting permissions:", error)
-    return {}
-  }
-}
-
-// Export client-side permission helpers for re-export
+// Re-export client-side helpers
 export {
   STAFF_PERMISSIONS,
   hasStaffPermission,
   hasAnyStaffPermission,
   hasAllStaffPermissions,
   getStaffPermissions,
-  isStaffRole,
-  canManageRole,
-  getRoleLevel,
-  canAccessAdmin,
   canAccessStaffPage,
   ADMIN_ACTIONS,
   getAvailableActions,
