@@ -359,7 +359,7 @@ export const ROUTES = {
   BADGE: "/badge",
   SHARES: "/shares",
   PROFILE: "/profile#account",
-  ADMIN: "/admin",
+  ADMIN: "/admin#users",
   TEAMS: "/teams",
   TEAMS_JOIN: "/teams/join",
   CONTACT: "/contact",

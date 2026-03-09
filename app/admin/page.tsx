@@ -319,6 +319,8 @@ function AdminContent() {
     if (typeof window === "undefined") return
     const hash = window.location.hash.replace("#", "")
     if (!hash) {
+      // Set default hash to #users if none provided
+      window.history.replaceState(null, "", "/admin#users")
       setSelectedUser(null)
       return
     }

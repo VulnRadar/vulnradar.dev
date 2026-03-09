@@ -166,6 +166,10 @@ function ProfileContent() {
 
   // On mount, read hash and listen for back/forward hash changes
   useEffect(() => {
+    // Set default hash to #account if none provided
+    if (!window.location.hash) {
+      window.history.replaceState(null, "", "/profile#account")
+    }
     setActiveTab(getTabFromHash())
     const onHashChange = () => setActiveTab(getTabFromHash())
     window.addEventListener("hashchange", onHashChange)
