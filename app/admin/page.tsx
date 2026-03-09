@@ -1,8 +1,8 @@
 "use client"
 
-import React from "react"
+import React, { Suspense } from "react"
 import { useState, useEffect, useCallback, useRef } from "react"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import {
   Users,
   Activity,
@@ -264,7 +264,27 @@ function ActionBadge({ action }: { action: string }) {
 }
 
 export default function AdminPage() {
+  return (
+    <Suspense fallback={<AdminLoading />}>
+      <AdminContent />
+    </Suspense>
+  )
+}
+
+function AdminLoading() {
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-background">
+      <div className="flex flex-col items-center gap-3">
+        <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+        <p className="text-sm text-muted-foreground">Loading admin panel...</p>
+      </div>
+    </div>
+  )
+}
+
+function AdminContent() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const [loading, setLoading] = useState(true)
   const [forbidden, setForbidden] = useState(false)
   const [stats, setStats] = useState<AdminStats | null>(null)
@@ -299,6 +319,32 @@ export default function AdminPage() {
   const showToast = useCallback((message: string, type: "success" | "error") => {
     setToast({ message, type })
   }, [])
+
+  // Sync user selection with URL
+  const updateUrlWithUser = useCallback((userId: number | null, tab?: string) => {
+    const params = new URLSearchParams()
+    if (tab) params.set("tab", tab)
+    if (userId) params.set("user", String(userId))
+    const query = params.toString()
+    router.replace(`/admin${query ? `?${query}` : ""}`, { scroll: false })
+  }, [router])
+
+  // Load user from URL on mount
+  useEffect(() => {
+    const userId = searchParams.get("user")
+    const tab = searchParams.get("tab") as "users" | "audit" | "admins" | null
+    if (tab && ["users", "audit", "admins"].includes(tab)) {
+      setActiveTab(tab)
+      if (tab === "audit") fetchAudit()
+      if (tab === "admins") fetchActiveAdmins()
+    }
+    if (userId) {
+      const id = parseInt(userId, 10)
+      if (!isNaN(id)) {
+        fetchUserDetail(id, true) // Skip URL update on initial load
+      }
+    }
+  }, []) // Only run on mount
 
   async function fetchData(p = 1, search = searchQuery, isInitial = false) {
     if (isInitial) setLoading(true)
@@ -341,12 +387,13 @@ export default function AdminPage() {
     setAdminsLoading(false)
   }
 
-  async function fetchUserDetail(userId: number) {
+  async function fetchUserDetail(userId: number, skipUrlUpdate = false) {
     setDetailLoading(true)
     try {
       const res = await fetch(`${API.ADMIN}?section=user-detail&userId=${userId}`)
       const data = await res.json()
       setSelectedUser(data)
+      if (!skipUrlUpdate) updateUrlWithUser(userId, activeTab)
     } catch { showToast("Failed to load user details.", "error") }
     setDetailLoading(false)
   }
@@ -408,7 +455,7 @@ export default function AdminPage() {
         showToast(labels[action] || "Action completed.", "success")
         await fetchData(page)
         if (selectedUser && selectedUser.user.id === userId) {
-          if (action === "delete") setSelectedUser(null)
+          if (action === "delete") { setSelectedUser(null); updateUrlWithUser(null, activeTab) }
           else await fetchUserDetail(userId)
         }
       } else {
@@ -517,7 +564,7 @@ export default function AdminPage() {
               ]).map((tab) => (
                 <button
                   key={tab.key}
-                  onClick={() => { setActiveTab(tab.key); if (tab.key === "audit") fetchAudit(); if (tab.key === "admins") fetchActiveAdmins(); setSelectedUser(null) }}
+                  onClick={() => { setActiveTab(tab.key); if (tab.key === "audit") fetchAudit(); if (tab.key === "admins") fetchActiveAdmins(); setSelectedUser(null); updateUrlWithUser(null, tab.key) }}
                   className={cn(
                     "flex items-center gap-2 px-4 py-2.5 text-sm font-medium transition-colors border-b-2 -mb-px",
                     activeTab === tab.key
@@ -540,7 +587,7 @@ export default function AdminPage() {
                 callerRole={callerRole}
                 allBadges={allBadges}
                 onRefreshBadges={fetchAllBadges}
-                onClose={() => { setSelectedUser(null); setTempPassword(null) }}
+                onClose={() => { setSelectedUser(null); setTempPassword(null); updateUrlWithUser(null, activeTab) }}
                 onAction={(userId, action, extra) => {
                   // Actions that don't need confirmation
                   if (["set_role", "award_badge", "revoke_badge", "create_badge", "delete_badge", "update_name", "update_email", "update_plan", "enable", "grant_premium", "clear_rate_limits"].includes(action)) {
