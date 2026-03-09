@@ -51,7 +51,6 @@ import {
   Download,
   MailCheck,
   MailX,
-  Webhook,
   CalendarOff,
   ImageOff,
   UserX,
