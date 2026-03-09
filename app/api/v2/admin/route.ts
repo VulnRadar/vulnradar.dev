@@ -31,7 +31,7 @@ export async function GET(request: NextRequest) {
 
   const { searchParams } = new URL(request.url)
   const page = Math.max(1, Number(searchParams.get("page") || 1))
-  const limit = 5
+  const limit = Math.min(100, Math.max(1, Number(searchParams.get("limit") || 10)))
   const offset = (page - 1) * limit
   const section = searchParams.get("section")
   const search = searchParams.get("search")?.trim() || ""
@@ -87,7 +87,7 @@ export async function GET(request: NextRequest) {
 
   // Fetch audit log
   if (section === "audit") {
-    const auditLimit = 5
+    const auditLimit = limit
     const auditOffset = (page - 1) * auditLimit
     const auditRes = await pool.query(
       `SELECT al.id, al.action, al.details, al.created_at, al.ip_address,

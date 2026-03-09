@@ -254,7 +254,8 @@ export default function TeamsPage() {
     }
   }
 
-  const SCANS_PAGE_SIZE = 5
+  const [scansPageSize, setScansPageSize] = useState(10)
+  const SCANS_PAGE_SIZE = scansPageSize
   const { totalPages: scanTotalPages, getPage: getScanPage } = usePagination(memberScans, SCANS_PAGE_SIZE)
   const paginatedScans = getScanPage(scanPage)
 
@@ -520,18 +521,16 @@ export default function TeamsPage() {
                           </div>
                         ))}
                       </div>
-                      {scanTotalPages > 1 && (
-                        <div className="pt-3">
-                          <PaginationControl
-                            currentPage={scanPage}
-                            totalPages={scanTotalPages}
-                            onPageChange={setScanPage}
-                          />
-                          <p className="text-xs text-muted-foreground text-center mt-2">
-                            {`Showing ${(scanPage - 1) * SCANS_PAGE_SIZE + 1}–${Math.min(scanPage * SCANS_PAGE_SIZE, memberScans.length)} of ${memberScans.length} scan${memberScans.length === 1 ? "" : "s"}`}
-                          </p>
-                        </div>
-                      )}
+                      <div className="pt-3">
+                        <PaginationControl
+                          currentPage={scanPage}
+                          totalPages={scanTotalPages}
+                          onPageChange={setScanPage}
+                          pageSize={scansPageSize}
+                          onPageSizeChange={(s) => { setScansPageSize(s); setScanPage(1) }}
+                          totalItems={memberScans.length}
+                        />
+                      </div>
                     </>
                   )}
                 </CardContent>
