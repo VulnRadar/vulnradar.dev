@@ -1,7 +1,7 @@
 "use client"
 
-import React, { useState, useEffect, useCallback } from "react"
-import { useRouter } from "next/navigation"
+import React, { useState, useEffect, useCallback, Suspense } from "react"
+import { useRouter, useSearchParams } from "next/navigation"
 import dynamic from "next/dynamic"
 import { cn } from "@/lib/utils"
 import { APP_NAME, API } from "@/lib/constants"
@@ -147,8 +147,42 @@ interface NotificationPrefs {
 }
 
 export default function ProfilePage() {
+  return (
+    <Suspense fallback={<ProfileLoading />}>
+      <ProfileContent />
+    </Suspense>
+  )
+}
+
+function ProfileLoading() {
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-background">
+      <div className="flex flex-col items-center gap-3">
+        <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+        <p className="text-sm text-muted-foreground">Loading profile...</p>
+      </div>
+    </div>
+  )
+}
+
+function ProfileContent() {
   const router = useRouter()
-  const [activeTab, setActiveTab] = useState<Tab>("account")
+  const searchParams = useSearchParams()
+  
+  // Get initial tab from URL or default to "account"
+  const tabFromUrl = searchParams.get("tab") as Tab | null
+  const validTabs: Tab[] = ["account", "api-keys", "webhooks", "schedules", "notifications", "data"]
+  const initialTab = tabFromUrl && validTabs.includes(tabFromUrl) ? tabFromUrl : "account"
+  
+  const [activeTab, setActiveTab] = useState<Tab>(initialTab)
+  
+  // Sync tab changes to URL
+  const handleTabChange = (tab: Tab) => {
+    setActiveTab(tab)
+    const params = new URLSearchParams(searchParams.toString())
+    params.set("tab", tab)
+    router.replace(`/profile?${params.toString()}`, { scroll: false })
+  }
   const [user, setUser] = useState<User | null>(null)
   const [keys, setKeys] = useState<ApiKey[]>([])
   const [loading, setLoading] = useState(true)
@@ -738,7 +772,7 @@ export default function ProfilePage() {
           {TABS.map((tab) => (
             <button
               key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
+              onClick={() => handleTabChange(tab.id)}
               className={
                 cn(
                   "flex items-center justify-center gap-1.5 px-2.5 sm:px-3 py-2 sm:py-2.5 rounded-md text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 whitespace-nowrap flex-shrink-0",
