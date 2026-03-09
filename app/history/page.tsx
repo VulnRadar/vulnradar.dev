@@ -99,11 +99,13 @@ function HistoryPageContent() {
   const [editingNotes, setEditingNotes] = useState(false)
   const [savingNotes, setSavingNotes] = useState(false)
 
-  // Sync scan selection with URL hash (no page reloads)
-  const updateUrlWithScan = useCallback((id: number | null) => {
+  // Sync scan selection with URL hash
+  // pushState when opening a scan (so back button works), replaceState when closing
+  const updateUrlWithScan = useCallback((id: number | null, replace = false) => {
     if (typeof window === "undefined") return
+    const method = replace ? "replaceState" : "pushState"
     if (id) {
-      window.history.replaceState(null, "", `/history#${id}`)
+      window.history[method](null, "", `/history#${id}`)
     } else {
       window.history.replaceState(null, "", "/history")
     }

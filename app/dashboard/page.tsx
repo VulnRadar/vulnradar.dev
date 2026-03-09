@@ -54,11 +54,12 @@ function DashboardContent() {
   const [result, setResult] = useState<ScanResult | null>(null)
   const [scanHistoryId, setScanHistoryId] = useState<number | null>(null)
   
-  // Sync scan ID to URL hash for better navigation (hash doesn't cause page reloads)
+  // Sync scan ID to URL hash
+  // pushState when scan completes (back returns to clean dashboard), replaceState when resetting
   const updateUrlWithScan = useCallback((id: number | null) => {
     if (typeof window === "undefined") return
     if (id) {
-      window.history.replaceState(null, "", `/dashboard#scan-${id}`)
+      window.history.pushState(null, "", `/dashboard#scan-${id}`)
     } else {
       window.history.replaceState(null, "", "/dashboard")
     }

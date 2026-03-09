@@ -304,14 +304,16 @@ function AdminContent() {
     setToast({ message, type })
   }, [])
 
-  // Sync user/tab selection with URL hash (no page reloads)
-  const updateUrlWithUser = useCallback((userId: number | null, tab?: string) => {
+  // Sync user/tab selection with URL hash
+  // pushState when navigating to a user (back button works), replaceState when closing/switching tabs
+  const updateUrlWithUser = useCallback((userId: number | null, tab?: string, replace = true) => {
     if (typeof window === "undefined") return
     const parts: string[] = []
     if (tab) parts.push(tab)
     if (userId) parts.push(`user-${userId}`)
     const hash = parts.join("/")
-    window.history.replaceState(null, "", `/admin${hash ? `#${hash}` : ""}`)
+    const method = replace ? "replaceState" : "pushState"
+    window.history[method](null, "", `/admin${hash ? `#${hash}` : ""}`)
   }, [])
 
   // Parse hash and load corresponding data
@@ -400,7 +402,8 @@ function AdminContent() {
       const res = await fetch(`${API.ADMIN}?section=user-detail&userId=${userId}`)
       const data = await res.json()
       setSelectedUser(data)
-      if (!skipUrlUpdate) updateUrlWithUser(userId, activeTab)
+      // pushState=false so back button returns to previous tab/list
+      if (!skipUrlUpdate) updateUrlWithUser(userId, activeTab, false)
     } catch { showToast("Failed to load user details.", "error") }
     setDetailLoading(false)
   }
@@ -579,7 +582,7 @@ function AdminContent() {
                       if (tab.key === "audit") fetchAudit()
                       if (tab.key === "admins") fetchActiveAdmins()
                       setSelectedUser(null)
-                      updateUrlWithUser(null, tab.key)
+                      updateUrlWithUser(null, tab.key, false)
                     }
                   }}
                   className={cn(
