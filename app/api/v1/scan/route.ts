@@ -158,9 +158,9 @@ export async function POST(request: NextRequest) {
     const startTime = Date.now()
 
     // Fetch the target URL
-    let response: Response
+    let targetResponse: Response
     try {
-      response = await fetch(url, {
+      targetResponse = await fetch(url, {
         method: "GET",
         headers: {
           "User-Agent": `${APP_NAME}/1.0 (Security Scanner)`,
@@ -179,8 +179,8 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const responseBody = await safeReadBody(response, MAX_BODY_SIZE)
-    const headers = response.headers
+    const responseBody = await safeReadBody(targetResponse, MAX_BODY_SIZE)
+    const headers = targetResponse.headers
 
     // Capture response headers as a plain object for evidence
     const capturedHeaders: Record<string, string> = {}
@@ -241,11 +241,11 @@ export async function POST(request: NextRequest) {
     if (authedUserId) {
       try {
         const source = isApiKeyAuth ? "api" : "web"
-  const insertResult = await pool.query(
-  `INSERT INTO scan_history (user_id, url, summary, findings, findings_count, duration, scanned_at, source, response_headers, notes)
-  VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id`,
-  [authedUserId, url, JSON.stringify(summary), JSON.stringify(findings), summary.total, duration, result.scannedAt, source, JSON.stringify(capturedHeaders), DEFAULT_SCAN_NOTE],
-  )
+        const insertResult = await pool.query(
+          `INSERT INTO scan_history (user_id, url, summary, findings, findings_count, duration, scanned_at, source, response_headers, notes)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id`,
+          [authedUserId, url, JSON.stringify(summary), JSON.stringify(findings), summary.total, duration, result.scannedAt, source, JSON.stringify(capturedHeaders), DEFAULT_SCAN_NOTE],
+        )
         scanHistoryId = insertResult.rows[0]?.id || null
       } catch (err) {
         // Non-fatal: don't fail the scan if history save fails
@@ -288,14 +288,16 @@ export async function POST(request: NextRequest) {
                 blocks: [
                   { type: "header", text: { type: "plain_text", text: `${APP_NAME} Scan Complete` } },
                   { type: "section", text: { type: "mrkdwn", text: `*URL:* ${url}` } },
-                  { type: "section", fields: [
-                    { type: "mrkdwn", text: `*Critical:* ${summary.critical}` },
-                    { type: "mrkdwn", text: `*High:* ${summary.high}` },
-                    { type: "mrkdwn", text: `*Medium:* ${summary.medium}` },
-                    { type: "mrkdwn", text: `*Low:* ${summary.low}` },
-                    { type: "mrkdwn", text: `*Total:* ${summary.total}` },
-                    { type: "mrkdwn", text: `*Duration:* ${(duration / 1000).toFixed(1)}s` },
-                  ]},
+                  {
+                    type: "section", fields: [
+                      { type: "mrkdwn", text: `*Critical:* ${summary.critical}` },
+                      { type: "mrkdwn", text: `*High:* ${summary.high}` },
+                      { type: "mrkdwn", text: `*Medium:* ${summary.medium}` },
+                      { type: "mrkdwn", text: `*Low:* ${summary.low}` },
+                      { type: "mrkdwn", text: `*Total:* ${summary.total}` },
+                      { type: "mrkdwn", text: `*Duration:* ${(duration / 1000).toFixed(1)}s` },
+                    ]
+                  },
                   { type: "context", elements: [{ type: "mrkdwn", text: "Sent by VulnRadar Security Scanner" }] },
                 ],
               })
@@ -309,29 +311,30 @@ export async function POST(request: NextRequest) {
               headers: { "Content-Type": "application/json", "User-Agent": `${APP_NAME}-Webhook/1.0` },
               body,
               signal: AbortSignal.timeout(10000),
-            }).catch(() => {})
+            }).catch(() => { })
           }
         })
-        .catch(() => {})
+        .catch(() => { })
     }
 
     const responseData = { ...result, scanHistoryId }
 
-    // Record API key usage and add rate limit headers
+    // Record API key usage and add rate limit headers, then return response
+    let response: NextResponse
     if (isApiKeyAuth && apiKeyId) {
       await recordUsage(apiKeyId)
       const rateLimit = await checkRateLimit(apiKeyId, 50)
-      const response = NextResponse.json(responseData, {
+      response = NextResponse.json(responseData, {
         headers: {
           "X-RateLimit-Limit": String(rateLimit.limit),
           "X-RateLimit-Remaining": String(rateLimit.remaining),
           "X-RateLimit-Reset": rateLimit.resetsAt,
         },
       })
-      return addDeprecationHeaders(response, "/api/v1/scan")
+    } else {
+      response = NextResponse.json(responseData)
     }
 
-    const response = NextResponse.json(responseData)
     return addDeprecationHeaders(response, "/api/v1/scan")
   } catch {
     const response = NextResponse.json(
