@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useCallback, useEffect, Suspense } from "react"
-import { useSearchParams, useRouter } from "next/navigation"
+import { useSearchParams } from "next/navigation"
 import dynamic from "next/dynamic"
 import { Header } from "@/components/scanner/header"
 import { ScanForm, type ScanMode } from "@/components/scanner/scan-form"
@@ -50,19 +50,19 @@ function DashboardLoading() {
 
 function DashboardContent() {
   const searchParams = useSearchParams()
-  const router = useRouter()
   const [status, setStatus] = useState<ScanStatus>("idle")
   const [result, setResult] = useState<ScanResult | null>(null)
   const [scanHistoryId, setScanHistoryId] = useState<number | null>(null)
   
-  // Sync scan ID to URL for better navigation
+  // Sync scan ID to URL hash for better navigation (hash doesn't cause page reloads)
   const updateUrlWithScan = useCallback((id: number | null) => {
+    if (typeof window === "undefined") return
     if (id) {
-      router.replace(`/dashboard?scan=${id}`, { scroll: false })
+      window.history.replaceState(null, "", `/dashboard#scan-${id}`)
     } else {
-      router.replace("/dashboard", { scroll: false })
+      window.history.replaceState(null, "", "/dashboard")
     }
-  }, [router])
+  }, [])
   const [error, setError] = useState<string | null>(null)
   const [selectedIssue, setSelectedIssue] = useState<Vulnerability | null>(null)
   const [scanNotes, setScanNotes] = useState("")

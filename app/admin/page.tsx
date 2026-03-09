@@ -320,14 +320,15 @@ function AdminContent() {
     setToast({ message, type })
   }, [])
 
-  // Sync user selection with URL
+  // Sync user selection with URL (using replaceState to avoid page reloads)
   const updateUrlWithUser = useCallback((userId: number | null, tab?: string) => {
+    if (typeof window === "undefined") return
     const params = new URLSearchParams()
     if (tab) params.set("tab", tab)
     if (userId) params.set("user", String(userId))
     const query = params.toString()
-    router.replace(`/admin${query ? `?${query}` : ""}`, { scroll: false })
-  }, [router])
+    window.history.replaceState(null, "", `/admin${query ? `?${query}` : ""}`)
+  }, [])
 
   // Load user from URL on mount
   useEffect(() => {
@@ -1008,19 +1009,6 @@ function AdminContent() {
 }
 
 // --- User Detail Panel ---
-interface UserDetailPanelProps {
-  detail: UserDetail
-  detailLoading: boolean
-  actionLoading: string | null
-  onClose: () => void
-  onAction: (userId: number, action: string, extra?: Record<string, string>) => void
-  tempPassword: string | null
-  onClearTempPassword: () => void
-  callerRole: string
-  allBadges: BadgeDef[]
-  onRefreshBadges: () => void
-}
-
 function UserDetailPanel({
   detail,
   detailLoading,
@@ -1032,7 +1020,18 @@ function UserDetailPanel({
   callerRole,
   allBadges,
   onRefreshBadges,
-}: UserDetailPanelProps) {
+}: {
+  detail: UserDetail
+  detailLoading: boolean
+  actionLoading: string | null
+  onClose: () => void
+  onAction: (userId: number, action: string, extra?: Record<string, string>) => void
+  tempPassword: string | null
+  onClearTempPassword: () => void
+  callerRole: string
+  allBadges: BadgeDef[]
+  onRefreshBadges: () => void
+}) {
   const u = detail.user
   const isLoading = (action: string) => actionLoading === `${u.id}-${action}`
   const [showBadgePicker, setShowBadgePicker] = useState(false)

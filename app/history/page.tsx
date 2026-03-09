@@ -100,14 +100,15 @@ function HistoryPageContent() {
   const [editingNotes, setEditingNotes] = useState(false)
   const [savingNotes, setSavingNotes] = useState(false)
 
-  // Sync scan selection with URL
+  // Sync scan selection with URL (using replaceState to avoid page reloads)
   const updateUrlWithScan = useCallback((id: number | null) => {
+    if (typeof window === "undefined") return
     if (id) {
-      router.replace(`/history?id=${id}`, { scroll: false })
+      window.history.replaceState(null, "", `/history?id=${id}`)
     } else {
-      router.replace('/history', { scroll: false })
+      window.history.replaceState(null, "", "/history")
     }
-  }, [router])
+  }, [])
 
   // Check for id parameter in URL and load that scan on mount
   useEffect(() => {
