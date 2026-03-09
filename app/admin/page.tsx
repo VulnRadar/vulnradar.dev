@@ -508,12 +508,15 @@ function AdminContent() {
           clear_rate_limits: "Rate limits cleared.",
         }
         if (action === "create_badge" || action === "delete_badge") { fetchAllBadges() }
-        if (["update_name", "update_email", "update_plan", "reset_2fa", "delete_scans", "grant_premium", "revoke_premium"].includes(action)) { fetchUserDetail(userId) }
         showToast(labels[action] || "Action completed.", "success")
-        await fetchData(page)
-        if (selectedUser && selectedUser.user.id === userId) {
-          if (action === "delete") { setSelectedUser(null); updateUrlWithUser(null, activeTab) }
-          else await fetchUserDetail(userId)
+        // Badge award/revoke: caller handles optimistic update — no fetch needed
+        const skipRefetch = action === "award_badge" || action === "revoke_badge"
+        if (!skipRefetch) {
+          await fetchData(page)
+          if (selectedUser && selectedUser.user.id === userId) {
+            if (action === "delete") { setSelectedUser(null); updateUrlWithUser(null, activeTab) }
+            else await fetchUserDetail(userId)
+          }
         }
       } else {
         showToast(data.error || "Action failed.", "error")
@@ -654,6 +657,17 @@ function AdminContent() {
                 callerRole={callerRole}
                 allBadges={allBadges}
                 onRefreshBadges={fetchAllBadges}
+                onBadgesChanged={(awardedIds, revokedIds) => {
+                  // Optimistically patch selectedUser badges without re-fetching
+                  setSelectedUser((prev) => {
+                    if (!prev) return prev
+                    const awardedBadges = allBadges
+                      .filter((b) => awardedIds.includes(b.id))
+                      .map((b) => ({ id: b.id, name: b.name, display_name: b.display_name, color: b.color, awarded_at: new Date().toISOString() }))
+                    const kept = prev.badges.filter((b) => !revokedIds.includes(b.id))
+                    return { ...prev, badges: [...kept, ...awardedBadges] }
+                  })
+                }}
                 onClose={() => { setSelectedUser(null); setTempPassword(null); updateUrlWithUser(null, activeTab) }}
                 onAction={(userId, action, extra) => {
                   // Actions that don't need confirmation
@@ -1111,6 +1125,7 @@ function UserDetailPanel({
   callerRole,
   allBadges,
   onRefreshBadges,
+  onBadgesChanged,
 }: {
   detail: UserDetail
   detailLoading: boolean
@@ -1122,6 +1137,7 @@ function UserDetailPanel({
   callerRole: string
   allBadges: BadgeDef[]
   onRefreshBadges: () => void
+  onBadgesChanged: (awardedIds: number[], revokedIds: number[]) => void
 }) {
   const u = detail.user
   const isLoading = (action: string) => actionLoading === `${u.id}-${action}`
@@ -1179,19 +1195,23 @@ function UserDetailPanel({
   const saveAllChanges = async () => {
     setIsSaving(true)
     try {
-      // Save field changes
+      // Save field changes sequentially (each triggers its own toast + fetchUserDetail)
       for (const [key, value] of Object.entries(pendingChanges)) {
         if (key === "name") await onAction(u.id, "update_name", { name: value as string })
         else if (key === "email") await onAction(u.id, "update_email", { email: value as string })
         else if (key === "plan") await onAction(u.id, "update_plan", { plan: value as string })
         else if (key === "role") await onAction(u.id, "set_role", { role: value as string })
       }
-      // Save badge changes
-      for (const badgeId of pendingBadgeAwards) {
-        await onAction(u.id, "award_badge", { badgeId: String(badgeId) })
-      }
-      for (const badgeId of pendingBadgeRevokes) {
-        await onAction(u.id, "revoke_badge", { badgeId: String(badgeId) })
+      // Fire badge API calls in parallel — onAction skips re-fetch for badge actions
+      const awardedThisSave = [...pendingBadgeAwards]
+      const revokedThisSave = [...pendingBadgeRevokes]
+      if (awardedThisSave.length > 0 || revokedThisSave.length > 0) {
+        await Promise.all([
+          ...awardedThisSave.map((id) => onAction(u.id, "award_badge", { badgeId: String(id) })),
+          ...revokedThisSave.map((id) => onAction(u.id, "revoke_badge", { badgeId: String(id) })),
+        ])
+        // Patch the UI in one shot — no flicker, no re-fetch
+        onBadgesChanged(awardedThisSave, revokedThisSave)
       }
       setPendingChanges({})
       setPendingBadgeAwards([])
