@@ -70,10 +70,19 @@ import { APP_NAME, TOTAL_CHECKS_LABEL } from "@/lib/constants"
 
 const CHANGELOG = [
   {
+    version: "1.9.5-patch-1",
+    date: "March 9, 2026",
+    title: "API v1 routes fixed",
+    highlights: true,
+    changes: [
+      { icon: Wrench, label: "Middleware Routing Fix", desc: "Updated middleware to whitelist /api/v1/scan, /api/v1/history, and /api/version so API clients and docs are no longer redirected to the login page; API handlers continue to validate API keys and enforce rate limits." },
+    ],
+  },
+  {
     version: "1.9.5",
     date: "March 7, 2026",
     title: "API v1 Versioning, Developer SDK Support & Finding Types Endpoint",
-    highlights: true,
+    highlights: false,
     changes: [
       { icon: Zap, label: "API v1 Versioning", desc: "All API endpoints have been migrated to /api/v1/ for proper versioning. This prepares the codebase for v2.0 which will introduce breaking changes. The version and security-txt endpoints remain unversioned at /api/version and /api/security-txt respectively." },
       { icon: FileText, label: "New Finding Types Endpoint", desc: "Added GET /api/v1/finding-types endpoint that returns all 110+ security check definitions including id, type, title, category, and severity. This enables SDK developers to programmatically access check metadata for building integrations." },

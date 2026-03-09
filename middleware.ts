@@ -75,9 +75,12 @@ export function middleware(request: NextRequest) {
     return applySecurityHeaders(NextResponse.next())
   }
 
-  // Allow API scan requests with Bearer tokens (API key auth handled in route)
-  if (pathname === "/api/v1/scan" && request.headers.get("authorization")?.startsWith("Bearer ")) {
-    return applySecurityHeaders(NextResponse.next())
+  const allowedApiPrefixes = ["/api/v1/scan", "/api/v1/history", "/api/version"]
+  if (pathname.startsWith("/api/")) {
+    const allowed = allowedApiPrefixes.some((p) => pathname === p || pathname.startsWith(p + "/"))
+    if (allowed) {
+      return applySecurityHeaders(NextResponse.next())
+    }
   }
 
   // Protect everything else - redirect to login if no session
