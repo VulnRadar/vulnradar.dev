@@ -1386,8 +1386,8 @@ function ProfileContent() {
                       Each key is rate-limited to 50 requests per 24 hours. Maximum 3 active keys.
                     </CardDescription>
                   </div>
-                  <Button variant="outline" size="sm" onClick={() => router.push("/docs")} className="shrink-0">
-                    View Docs
+                  <Button variant="outline" size="sm" className="shrink-0" asChild>
+                    <a href="/docs">View Docs</a>
                   </Button>
                 </div>
               </CardHeader>
