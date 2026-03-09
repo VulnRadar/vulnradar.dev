@@ -509,7 +509,7 @@ function AdminContent() {
             </div>
             <h1 className="text-xl font-bold text-foreground">Access Denied</h1>
             <p className="text-sm text-muted-foreground max-w-xs">You do not have administrator privileges to access this panel.</p>
-            <Button onClick={() => router.push("/")}>Back to Scanner</Button>
+            <Button asChild><a href="/dashboard">Back to Scanner</a></Button>
           </div>
         </main>
         <Footer />
@@ -569,9 +569,19 @@ function AdminContent() {
                 { key: "audit" as const, label: "Audit Log", icon: History },
                 { key: "admins" as const, label: "Staff", icon: Shield },
               ]).map((tab) => (
-                <button
+                <a
                   key={tab.key}
-                  onClick={() => { setActiveTab(tab.key); if (tab.key === "audit") fetchAudit(); if (tab.key === "admins") fetchActiveAdmins(); setSelectedUser(null); updateUrlWithUser(null, tab.key) }}
+                  href={`/admin#${tab.key}`}
+                  onClick={(e) => {
+                    if (!e.ctrlKey && !e.metaKey) {
+                      e.preventDefault()
+                      setActiveTab(tab.key)
+                      if (tab.key === "audit") fetchAudit()
+                      if (tab.key === "admins") fetchActiveAdmins()
+                      setSelectedUser(null)
+                      updateUrlWithUser(null, tab.key)
+                    }
+                  }}
                   className={cn(
                     "flex items-center gap-2 px-4 py-2.5 text-sm font-medium transition-colors border-b-2 -mb-px",
                     activeTab === tab.key
@@ -581,7 +591,7 @@ function AdminContent() {
                 >
                   <tab.icon className="h-4 w-4" />
                   {tab.label}
-                </button>
+                </a>
               ))}
             </div>
 
@@ -694,8 +704,18 @@ function AdminContent() {
                             </td>
                             <td className="px-5 py-3">
                               <div className="flex items-center justify-end gap-0.5 opacity-60 group-hover:opacity-100 transition-opacity">
-                                <Button variant="ghost" size="icon" className="h-8 w-8" title="View details" onClick={() => fetchUserDetail(u.id)}>
-                                  <Eye className="h-4 w-4 text-muted-foreground" />
+                                <Button variant="ghost" size="icon" className="h-8 w-8" title="View details" asChild>
+                                  <a
+                                    href={`/admin#users/user-${u.id}`}
+                                    onClick={(e) => {
+                                      if (!e.ctrlKey && !e.metaKey) {
+                                        e.preventDefault()
+                                        fetchUserDetail(u.id)
+                                      }
+                                    }}
+                                  >
+                                    <Eye className="h-4 w-4 text-muted-foreground" />
+                                  </a>
                                 </Button>
                                 {hasStaffPermission(callerRole, STAFF_PERMISSIONS.VIEW_AUDIT_LOG) && (
                                   <>
@@ -730,7 +750,17 @@ function AdminContent() {
                   {/* Mobile */}
                   <div className={cn("md:hidden flex flex-col transition-opacity duration-200", searchLoading && "opacity-40 pointer-events-none")}>
                     {users.map((u) => (
-                      <button key={u.id} className="flex items-center gap-3 px-4 py-3.5 border-b border-border last:border-0 hover:bg-muted/20 text-left transition-colors w-full" onClick={() => fetchUserDetail(u.id)}>
+                      <a
+                        key={u.id}
+                        href={`/admin#users/user-${u.id}`}
+                        onClick={(e) => {
+                          if (!e.ctrlKey && !e.metaKey) {
+                            e.preventDefault()
+                            fetchUserDetail(u.id)
+                          }
+                        }}
+                        className="flex items-center gap-3 px-4 py-3.5 border-b border-border last:border-0 hover:bg-muted/20 text-left transition-colors w-full"
+                      >
                         <UserAvatar name={u.name} email={u.email} size="sm" avatarUrl={u.avatar_url} />
                         <div className="flex-1 min-w-0">
                           <p className="text-sm font-medium text-foreground truncate">{u.name || "Unnamed"}</p>
@@ -745,7 +775,7 @@ function AdminContent() {
                           </div>
                         </div>
                         <Eye className="h-4 w-4 text-muted-foreground shrink-0" />
-                      </button>
+                      </a>
                     ))}
                   </div>
 

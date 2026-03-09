@@ -607,8 +607,8 @@ function HistoryPageContent() {
                     Scans you run will appear here automatically.
                   </p>
                 </div>
-                <Button variant="outline" size="sm" onClick={() => router.push("/")} className="bg-transparent">
-                  Run Your First Scan
+                <Button variant="outline" size="sm" className="bg-transparent" asChild>
+                  <a href="/dashboard">Run Your First Scan</a>
                 </Button>
               </div>
             )}
@@ -626,12 +626,16 @@ function HistoryPageContent() {
             {/* Scan list */}
             <div className="flex flex-col gap-2">
               {paginatedScans.map((scan) => (
-                <div
+                <a
                   key={scan.id}
-                  role="button"
-                  tabIndex={0}
-                  onClick={() => handleViewScan(scan)}
-                  onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") handleViewScan(scan) }}
+                  href={`/history#${scan.id}`}
+                  onClick={(e) => {
+                    // Allow ctrl+click to open in new tab naturally
+                    if (!e.ctrlKey && !e.metaKey) {
+                      e.preventDefault()
+                      handleViewScan(scan)
+                    }
+                  }}
                   className="group flex items-center gap-3 sm:gap-4 p-3 sm:p-4 rounded-xl border border-border bg-card hover:bg-muted/50 hover:border-primary/20 transition-all text-left active:scale-[0.99] cursor-pointer"
                 >
                   <div className="flex items-center justify-center w-9 h-9 sm:w-10 sm:h-10 rounded-lg bg-primary/10 shrink-0">
@@ -741,7 +745,7 @@ function HistoryPageContent() {
                   </Button>
 
                   <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0 transition-transform group-hover:translate-x-0.5" />
-                </div>
+                </a>
               ))}
             </div>
 

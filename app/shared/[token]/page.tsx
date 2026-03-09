@@ -79,8 +79,8 @@ export default function SharedScanPage() {
               <h2 className="text-base font-semibold text-foreground">Scan Not Found</h2>
               <p className="text-sm text-muted-foreground leading-relaxed">{error}</p>
             </div>
-            <Button variant="outline" onClick={() => router.push("/login")} className="bg-transparent">
-              Sign In to {APP_NAME}
+            <Button variant="outline" className="bg-transparent" asChild>
+              <a href="/login">Sign In to {APP_NAME}</a>
             </Button>
           </div>
         )}

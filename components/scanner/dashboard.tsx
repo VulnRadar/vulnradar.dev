@@ -353,9 +353,9 @@ export function Dashboard() {
               <Clock className="h-4 w-4 text-primary" />
               Recent Scans
             </CardTitle>
-            <button onClick={() => router.push("/history")} className="text-xs text-primary hover:underline">
+            <a href="/history" className="text-xs text-primary hover:underline">
               View all
-            </button>
+            </a>
           </CardHeader>
           <CardContent className="px-4 pb-4">
             {data.recentScans.length === 0 ? (
@@ -363,9 +363,9 @@ export function Dashboard() {
             ) : (
               <div className="flex flex-col gap-1.5">
                 {data.recentScans.map((scan) => (
-                  <button
+                  <a
                     key={scan.id}
-                    onClick={() => router.push(`/history?view=${scan.id}`)}
+                    href={`/history#${scan.id}`}
                     className="flex items-center gap-2.5 px-2.5 py-2 rounded-lg hover:bg-muted transition-colors text-left"
                   >
                     <Globe className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
@@ -382,7 +382,7 @@ export function Dashboard() {
                     )}>
                       {scan.findings_count > 0 ? `${scan.findings_count} issues` : "Clean"}
                     </span>
-                  </button>
+                  </a>
                 ))}
               </div>
             )}

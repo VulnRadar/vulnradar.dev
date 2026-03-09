@@ -510,10 +510,12 @@ export default function TeamsPage() {
                               variant="ghost"
                               size="sm"
                               className="h-8 px-3 gap-1.5"
-                              onClick={() => router.push(`/history?id=${scan.id}`)}
+                              asChild
                             >
-                              View
-                              <ChevronRight className="h-3 w-3" />
+                              <a href={`/history#${scan.id}`}>
+                                View
+                                <ChevronRight className="h-3 w-3" />
+                              </a>
                             </Button>
                           </div>
                         ))}

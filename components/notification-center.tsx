@@ -110,8 +110,8 @@ export function BackupCodesModal() {
             <Button variant="outline" size="sm" className="bg-transparent" onClick={handleDismiss}>
               Remind Me Later
             </Button>
-            <Button size="sm" onClick={() => { handleDismiss(); router.push("/profile") }}>
-              Rotate Backup Codes
+            <Button size="sm" asChild>
+              <a href="/profile#account" onClick={handleDismiss}>Rotate Backup Codes</a>
             </Button>
           </div>
         </div>
@@ -128,7 +128,7 @@ interface NotifItem {
   iconBg: string
   title: string
   description: string
-  action: { label: string; onClick: () => void }
+  action: { label: string; href?: string; onClick?: () => void }
   onDismiss: () => void
 }
 
@@ -279,7 +279,8 @@ export function NotificationBell() {
         description: "New features, improvements, and bug fixes are available.",
         action: {
           label: "View Changelog",
-          onClick: () => { dismissVersion(); setOpen(false); router.push("/changelog") },
+          href: "/changelog",
+          onClick: () => { dismissVersion(); setOpen(false) },
         },
         onDismiss: dismissVersion,
       })
@@ -369,13 +370,24 @@ export function NotificationBell() {
                       <p className="text-sm font-medium text-foreground">{n.title}</p>
                       <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">{n.description}</p>
                       <div className="flex items-center gap-2 mt-2">
-                        <button
-                          onClick={n.action.onClick}
-                          className="text-xs font-medium text-primary hover:text-primary/80 transition-colors flex items-center gap-1"
-                        >
-                          {n.action.label}
-                          {n.id === "discord" ? <ExternalLink className="h-3 w-3" /> : <ArrowRight className="h-3 w-3" />}
-                        </button>
+                        {n.action.href ? (
+                          <a
+                            href={n.action.href}
+                            onClick={n.action.onClick}
+                            className="text-xs font-medium text-primary hover:text-primary/80 transition-colors flex items-center gap-1"
+                          >
+                            {n.action.label}
+                            {n.id === "discord" ? <ExternalLink className="h-3 w-3" /> : <ArrowRight className="h-3 w-3" />}
+                          </a>
+                        ) : (
+                          <button
+                            onClick={n.action.onClick}
+                            className="text-xs font-medium text-primary hover:text-primary/80 transition-colors flex items-center gap-1"
+                          >
+                            {n.action.label}
+                            {n.id === "discord" ? <ExternalLink className="h-3 w-3" /> : <ArrowRight className="h-3 w-3" />}
+                          </button>
+                        )}
                         <button
                           onClick={n.onDismiss}
                           className="text-xs text-muted-foreground hover:text-foreground transition-colors"
