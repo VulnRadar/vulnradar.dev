@@ -100,7 +100,16 @@ function HistoryPageContent() {
   const [editingNotes, setEditingNotes] = useState(false)
   const [savingNotes, setSavingNotes] = useState(false)
 
-  // Check for id parameter in URL and load that scan
+  // Sync scan selection with URL
+  const updateUrlWithScan = useCallback((id: number | null) => {
+    if (id) {
+      router.replace(`/history?id=${id}`, { scroll: false })
+    } else {
+      router.replace('/history', { scroll: false })
+    }
+  }, [router])
+
+  // Check for id parameter in URL and load that scan on mount
   useEffect(() => {
     const scanId = searchParams.get('id')
     if (scanId) {
@@ -110,7 +119,7 @@ function HistoryPageContent() {
         loadScanDetail(id)
       }
     }
-  }, [searchParams])
+  }, []) // Only run on mount
 
   async function loadScanDetail(scanId: number) {
     setDetailLoading(true)
@@ -249,12 +258,14 @@ function HistoryPageContent() {
     setSelectedScanId(scan.id)
     setSelectedIssue(null)
     loadScanDetail(scan.id)
+    updateUrlWithScan(scan.id)
   }
 
   function handleBackToList() {
     setSelectedScanId(null)
     setScanDetail(null)
     setSelectedIssue(null)
+    updateUrlWithScan(null)
   }
 
   async function handleClearHistory() {
