@@ -1,101 +1,59 @@
 // ============================================================================
 // Beta Features Module
 // ============================================================================
-// Manages beta feature flags and user access to beta features
+// Manages beta feature flags using feature names (no database table needed)
+// Beta access is now tracked via users.beta_access boolean column
 
 import pool from "./db"
 import { BETA_MODE, BETA_BANNER_MESSAGE } from "./constants"
 
 export interface BetaFeature {
-  id: number
   name: string
   description: string | null
   enabled: boolean
-  rolloutPercentage: number
-  createdAt: Date
+}
+
+// In-memory registry of known beta features (no DB needed)
+const BETA_FEATURES_REGISTRY: Record<string, BetaFeature> = {
+  advanced_reporting: {
+    name: "advanced_reporting",
+    description: "Advanced vulnerability reporting and analytics",
+    enabled: true,
+  },
+  api_webhooks: {
+    name: "api_webhooks",
+    description: "Webhook integrations for automated scanning",
+    enabled: true,
+  },
+  team_collaboration: {
+    name: "team_collaboration",
+    description: "Team management and collaboration features",
+    enabled: true,
+  },
+  scheduled_scans: {
+    name: "scheduled_scans",
+    description: "Schedule recurring security scans",
+    enabled: true,
+  },
+  custom_compliance: {
+    name: "custom_compliance",
+    description: "Custom compliance rule creation",
+    enabled: false,
+  },
 }
 
 /**
  * Get all beta features
  */
 export async function getAllBetaFeatures(): Promise<BetaFeature[]> {
-  try {
-    const result = await pool.query(
-      `SELECT * FROM beta_features ORDER BY name`
-    )
-    return result.rows.map((row) => ({
-      id: row.id,
-      name: row.name,
-      description: row.description,
-      enabled: row.enabled,
-      rolloutPercentage: row.rollout_percentage,
-      createdAt: row.created_at,
-    }))
-  } catch (error) {
-    console.error("[Beta] Error getting features:", error)
-    return []
-  }
+  return Object.values(BETA_FEATURES_REGISTRY)
 }
 
 /**
  * Get a beta feature by name
  */
 export async function getBetaFeature(name: string): Promise<BetaFeature | null> {
-  try {
-    const result = await pool.query(
-      `SELECT * FROM beta_features WHERE name = $1`,
-      [name]
-    )
-    if (!result.rows[0]) return null
-    const row = result.rows[0]
-    return {
-      id: row.id,
-      name: row.name,
-      description: row.description,
-      enabled: row.enabled,
-      rolloutPercentage: row.rollout_percentage,
-      createdAt: row.created_at,
-    }
-  } catch (error) {
-    console.error("[Beta] Error getting feature:", error)
-    return null
-  }
-}
-
-/**
- * Create or update a beta feature
- */
-export async function upsertBetaFeature(
-  name: string,
-  description?: string,
-  enabled?: boolean,
-  rolloutPercentage?: number
-): Promise<BetaFeature | null> {
-  try {
-    const result = await pool.query(
-      `INSERT INTO beta_features (name, description, enabled, rollout_percentage)
-       VALUES ($1, $2, $3, $4)
-       ON CONFLICT (name) 
-       DO UPDATE SET 
-         description = COALESCE($2, beta_features.description),
-         enabled = COALESCE($3, beta_features.enabled),
-         rollout_percentage = COALESCE($4, beta_features.rollout_percentage)
-       RETURNING *`,
-      [name, description || null, enabled ?? false, rolloutPercentage ?? 0]
-    )
-    const row = result.rows[0]
-    return {
-      id: row.id,
-      name: row.name,
-      description: row.description,
-      enabled: row.enabled,
-      rolloutPercentage: row.rollout_percentage,
-      createdAt: row.created_at,
-    }
-  } catch (error) {
-    console.error("[Beta] Error upserting feature:", error)
-    return null
-  }
+  return BETA_FEATURES_REGISTRY[name] || null
 }
 
 /**
@@ -104,30 +62,22 @@ export async function upsertBetaFeature(
 export async function userHasBetaAccess(userId: number, featureName: string): Promise<boolean> {
   try {
     // First check if feature exists and is enabled
-    const feature = await getBetaFeature(featureName)
+    const feature = BETA_FEATURES_REGISTRY[featureName]
     if (!feature || !feature.enabled) {
       return false
     }
 
-    // Check if user has explicit access
+    // Check if user has beta access enabled
     const result = await pool.query(
-      `SELECT 1 FROM user_beta_access uba
-       JOIN beta_features bf ON uba.feature_id = bf.id
-       WHERE uba.user_id = $1 AND bf.name = $2`,
-      [userId, featureName]
+      `SELECT beta_access FROM users WHERE id = $1`,
+      [userId]
     )
-    if (result.rows.length > 0) {
-      return true
+
+    if (result.rows.length === 0) {
+      return false
     }
 
-    // Check rollout percentage (use user ID for deterministic random)
-    if (feature.rolloutPercentage > 0) {
-      // Simple hash of user ID for consistent random distribution
-      const hash = userId % 100
-      return hash < feature.rolloutPercentage
-    }
-
-    return false
+    return result.rows[0].beta_access === true
   } catch (error) {
     console.error("[Beta] Error checking access:", error)
     return false
@@ -137,17 +87,11 @@ export async function userHasBetaAccess(userId: number, featureName: string): Pr
 /**
  * Grant beta access to a user
  */
-export async function grantBetaAccess(
-  userId: number,
-  featureId: number,
-  grantedBy?: number
-): Promise<void> {
+export async function grantBetaAccess(userId: number): Promise<void> {
   try {
     await pool.query(
-      `INSERT INTO user_beta_access (user_id, feature_id, granted_by)
-       VALUES ($1, $2, $3)
-       ON CONFLICT (user_id, feature_id) DO NOTHING`,
-      [userId, featureId, grantedBy || null]
+      `UPDATE users SET beta_access = true WHERE id = $1`,
+      [userId]
     )
   } catch (error) {
     console.error("[Beta] Error granting access:", error)
@@ -158,77 +102,14 @@ export async function grantBetaAccess(
 /**
  * Revoke beta access from a user
  */
-export async function revokeBetaAccess(userId: number, featureId: number): Promise<void> {
+export async function revokeBetaAccess(userId: number): Promise<void> {
   try {
     await pool.query(
-      `DELETE FROM user_beta_access WHERE user_id = $1 AND feature_id = $2`,
-      [userId, featureId]
+      `UPDATE users SET beta_access = false WHERE id = $1`,
+      [userId]
     )
   } catch (error) {
     console.error("[Beta] Error revoking access:", error)
-    throw error
-  }
-}
-
-/**
- * Get all beta features a user has access to
- */
-export async function getUserBetaFeatures(userId: number): Promise<BetaFeature[]> {
-  try {
-    const result = await pool.query(
-      `SELECT bf.* FROM beta_features bf
-       JOIN user_beta_access uba ON bf.id = uba.feature_id
-       WHERE uba.user_id = $1 AND bf.enabled = true`,
-      [userId]
-    )
-    return result.rows.map((row) => ({
-      id: row.id,
-      name: row.name,
-      description: row.description,
-      enabled: row.enabled,
-      rolloutPercentage: row.rollout_percentage,
-      createdAt: row.created_at,
-    }))
-  } catch (error) {
-    console.error("[Beta] Error getting user features:", error)
-    return []
-  }
-}
-
-/**
- * Get all users with access to a beta feature
- */
-export async function getBetaFeatureUsers(featureId: number): Promise<{
-  userId: number
-  grantedAt: Date
-  grantedBy: number | null
-}[]> {
-  try {
-    const result = await pool.query(
-      `SELECT user_id, granted_at, granted_by 
-       FROM user_beta_access 
-       WHERE feature_id = $1`,
-      [featureId]
-    )
-    return result.rows.map((row) => ({
-      userId: row.user_id,
-      grantedAt: row.granted_at,
-      grantedBy: row.granted_by,
-    }))
-  } catch (error) {
-    console.error("[Beta] Error getting feature users:", error)
-    return []
-  }
-}
-
-/**
- * Delete a beta feature
- */
-export async function deleteBetaFeature(featureId: number): Promise<void> {
-  try {
-    await pool.query(`DELETE FROM beta_features WHERE id = $1`, [featureId])
-  } catch (error) {
-    console.error("[Beta] Error deleting feature:", error)
     throw error
   }
 }
