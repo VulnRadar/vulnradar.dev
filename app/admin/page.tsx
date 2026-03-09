@@ -314,13 +314,17 @@ function AdminContent() {
     window.history.replaceState(null, "", `/admin${hash ? `#${hash}` : ""}`)
   }, [])
 
-  // Load user/tab from URL hash on mount
-  useEffect(() => {
+  // Parse hash and load corresponding data
+  const handleHashChange = useCallback(() => {
     if (typeof window === "undefined") return
     const hash = window.location.hash.replace("#", "")
-    if (!hash) return
+    if (!hash) {
+      setSelectedUser(null)
+      return
+    }
     
     const parts = hash.split("/")
+    let foundUser = false
     for (const part of parts) {
       // Check if it's a tab
       if (["users", "audit", "admins"].includes(part)) {
@@ -333,10 +337,19 @@ function AdminContent() {
         const id = parseInt(part.replace("user-", ""), 10)
         if (!isNaN(id)) {
           fetchUserDetail(id, true) // Skip URL update on initial load
+          foundUser = true
         }
       }
     }
-  }, []) // Only run on mount
+    if (!foundUser) setSelectedUser(null)
+  }, [activeTab])
+
+  // Load from hash on mount and listen for hash changes
+  useEffect(() => {
+    handleHashChange()
+    window.addEventListener("hashchange", handleHashChange)
+    return () => window.removeEventListener("hashchange", handleHashChange)
+  }, [handleHashChange])
 
   async function fetchData(p = 1, search = searchQuery, isInitial = false) {
     if (isInitial) setLoading(true)

@@ -109,8 +109,8 @@ function HistoryPageContent() {
     }
   }, [])
 
-  // Check for id in URL hash and load that scan on mount
-  useEffect(() => {
+  // Parse hash and load scan
+  const handleHashChange = useCallback(() => {
     if (typeof window === "undefined") return
     const hash = window.location.hash.replace("#", "")
     if (hash) {
@@ -118,9 +118,22 @@ function HistoryPageContent() {
       if (!isNaN(id)) {
         setSelectedScanId(id)
         loadScanDetail(id)
+      } else {
+        setSelectedScanId(null)
+        setScanDetail(null)
       }
+    } else {
+      setSelectedScanId(null)
+      setScanDetail(null)
     }
-  }, []) // Only run on mount
+  }, [])
+
+  // Load from hash on mount and listen for hash changes
+  useEffect(() => {
+    handleHashChange()
+    window.addEventListener("hashchange", handleHashChange)
+    return () => window.removeEventListener("hashchange", handleHashChange)
+  }, [handleHashChange])
 
   async function loadScanDetail(scanId: number) {
     setDetailLoading(true)
