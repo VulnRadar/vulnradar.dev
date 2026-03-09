@@ -332,8 +332,15 @@ export async function PATCH(request: NextRequest) {
     case "create_badge": {
       if (!badgeName || !displayName) return NextResponse.json({ error: "name and displayName required" }, { status: 400 })
       const slug = badgeName.toLowerCase().replace(/\s+/g, "_").replace(/[^a-z0-9_]/g, "")
+      // Check for case-insensitive duplicate
+      const existing = await pool.query("SELECT id, display_name FROM badges WHERE LOWER(name) = LOWER($1)", [slug])
+      if (existing.rows.length > 0) {
+        return NextResponse.json({ 
+          error: `Badge "${existing.rows[0].display_name}" already exists. Delete it first if you want to recreate it with different settings.` 
+        }, { status: 409 })
+      }
       const newBadge = await pool.query(
-        "INSERT INTO badges (name, display_name, color) VALUES ($1, $2, $3) ON CONFLICT (name) DO UPDATE SET display_name = $2, color = $3 RETURNING id",
+        "INSERT INTO badges (name, display_name, color) VALUES ($1, $2, $3) RETURNING id",
         [slug, displayName, badgeColor || "#6366f1"]
       )
       const newBadgeId = newBadge.rows[0].id
