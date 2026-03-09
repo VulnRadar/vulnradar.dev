@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useCallback, useEffect, Suspense } from "react"
-import { useSearchParams } from "next/navigation"
+import { useSearchParams, useRouter } from "next/navigation"
 import dynamic from "next/dynamic"
 import { Header } from "@/components/scanner/header"
 import { ScanForm, type ScanMode } from "@/components/scanner/scan-form"
@@ -50,9 +50,19 @@ function DashboardLoading() {
 
 function DashboardContent() {
   const searchParams = useSearchParams()
+  const router = useRouter()
   const [status, setStatus] = useState<ScanStatus>("idle")
   const [result, setResult] = useState<ScanResult | null>(null)
   const [scanHistoryId, setScanHistoryId] = useState<number | null>(null)
+  
+  // Sync scan ID to URL for better navigation
+  const updateUrlWithScan = useCallback((id: number | null) => {
+    if (id) {
+      router.replace(`/dashboard?scan=${id}`, { scroll: false })
+    } else {
+      router.replace("/dashboard", { scroll: false })
+    }
+  }, [router])
   const [error, setError] = useState<string | null>(null)
   const [selectedIssue, setSelectedIssue] = useState<Vulnerability | null>(null)
   const [scanNotes, setScanNotes] = useState("")
@@ -157,6 +167,11 @@ function DashboardContent() {
       setScanHistoryId(historyId)
       setScanNotes(DEFAULT_SCAN_NOTE)
       setStatus("done")
+      
+      // Update URL with scan ID for bookmarking/sharing
+      if (historyId) {
+        updateUrlWithScan(historyId)
+      }
 
       // Auto-save default note to DB
       if (historyId) {
@@ -207,6 +222,8 @@ function DashboardContent() {
     setCrawlDiscoveryUrls([])
     setPendingCrawlUrl("")
     setCrawlDiscovering(false)
+    // Clear scan from URL
+    updateUrlWithScan(null)
   }
 
   return (

@@ -95,9 +95,9 @@ export default function Error({
             Try Again
           </Button>
           <Button asChild variant="outline" className="flex-1 bg-transparent">
-            <Link href="/" className="flex items-center justify-center gap-2">
+            <Link href="/dashboard" className="flex items-center justify-center gap-2">
               <Home className="h-4 w-4" />
-              Go Home
+              Go to Dashboard
             </Link>
           </Button>
         </div>
