@@ -186,11 +186,22 @@ export async function GET(request: NextRequest) {
 
 // Permission helpers per role
 // Admin: all actions
-// Moderator: disable/enable, revoke_sessions, revoke_api_keys
+// Moderator: disable/enable, revoke_sessions, revoke_api_keys, delete_scans, clear_rate_limits, verify_email, add_note, clear_avatar
 // Support: view only (no PATCH actions)
 function canPerformAction(role: string, action: string): boolean {
-  const adminOnly = ["make_admin", "remove_admin", "set_role", "delete", "reset_password", "award_badge", "revoke_badge", "create_badge"]
-  const modActions = ["disable", "enable", "revoke_sessions", "revoke_api_keys"]
+  const adminOnly = [
+    "make_admin", "remove_admin", "set_role", "delete", "reset_password", 
+    "award_badge", "revoke_badge", "create_badge", "delete_badge",
+    "update_email", "update_plan", "grant_premium", "revoke_premium",
+    "toggle_beta_access", "impersonate", "set_scan_limit", "export_data"
+  ]
+  const modActions = [
+    "disable", "enable", "revoke_sessions", "revoke_api_keys", 
+    "delete_scans", "delete_webhooks", "delete_schedules",
+    "clear_rate_limits", "verify_email", "unverify_email",
+    "force_logout_all", "add_note", "clear_avatar", "update_name",
+    "reset_2fa", "send_notification"
+  ]
   if (role === STAFF_ROLES.ADMIN) return true
   if (role === STAFF_ROLES.MODERATOR) return modActions.includes(action)
   return false // support = view only
@@ -446,6 +457,94 @@ export async function PATCH(request: NextRequest) {
       
       await logAction(session.userId, userId, "export_data", `Exported all data for ${targetUser.email}`, ip)
       return NextResponse.json({ success: true, data: exportData })
+    }
+
+    case "toggle_beta_access": {
+      const currentBeta = await pool.query("SELECT beta_access FROM users WHERE id = $1", [userId])
+      const newBeta = !currentBeta.rows[0]?.beta_access
+      await pool.query("UPDATE users SET beta_access = $1, updated_at = NOW() WHERE id = $2", [newBeta, userId])
+      await logAction(session.userId, userId, "toggle_beta_access", `${newBeta ? "Granted" : "Revoked"} beta access for ${targetUser.email}`, ip)
+      return NextResponse.json({ success: true, beta_access: newBeta })
+    }
+
+    case "send_notification": {
+      const { title, message: notifMessage, type: notifType } = await request.json()
+      if (!title || !notifMessage) return NextResponse.json({ error: "title and message required" }, { status: 400 })
+      // This would integrate with a notification system - for now just log
+      await logAction(session.userId, userId, "send_notification", `Sent notification "${title}" to ${targetUser.email}`, ip)
+      return NextResponse.json({ success: true })
+    }
+
+    case "verify_email": {
+      await pool.query("UPDATE users SET email_verified_at = NOW(), updated_at = NOW() WHERE id = $1", [userId])
+      await logAction(session.userId, userId, "verify_email", `Manually verified email for ${targetUser.email}`, ip)
+      return NextResponse.json({ success: true })
+    }
+
+    case "unverify_email": {
+      await pool.query("UPDATE users SET email_verified_at = NULL, updated_at = NOW() WHERE id = $1", [userId])
+      await logAction(session.userId, userId, "unverify_email", `Unverified email for ${targetUser.email}`, ip)
+      return NextResponse.json({ success: true })
+    }
+
+    case "delete_webhooks": {
+      const webhookCount = await pool.query("SELECT COUNT(*) FROM webhooks WHERE user_id = $1", [userId])
+      await pool.query("DELETE FROM webhooks WHERE user_id = $1", [userId])
+      await logAction(session.userId, userId, "delete_webhooks", `Deleted ${webhookCount.rows[0].count} webhooks for ${targetUser.email}`, ip)
+      return NextResponse.json({ success: true })
+    }
+
+    case "delete_schedules": {
+      const scheduleCount = await pool.query("SELECT COUNT(*) FROM scheduled_scans WHERE user_id = $1", [userId])
+      await pool.query("DELETE FROM scheduled_scans WHERE user_id = $1", [userId])
+      await logAction(session.userId, userId, "delete_schedules", `Deleted ${scheduleCount.rows[0].count} scheduled scans for ${targetUser.email}`, ip)
+      return NextResponse.json({ success: true })
+    }
+
+    case "impersonate": {
+      // Create an impersonation session (admin only, heavily logged)
+      if (session.role !== STAFF_ROLES.ADMIN) {
+        return NextResponse.json({ error: "Only admins can impersonate users" }, { status: 403 })
+      }
+      await logAction(session.userId, userId, "impersonate", `Started impersonation session for ${targetUser.email}`, ip)
+      // Return info for client to handle - actual impersonation would need session management
+      return NextResponse.json({ success: true, impersonating: targetUser.email })
+    }
+
+    case "force_logout_all": {
+      // Delete all sessions and revoke all tokens
+      await pool.query("DELETE FROM sessions WHERE user_id = $1", [userId])
+      await pool.query("UPDATE api_keys SET revoked_at = NOW() WHERE user_id = $1 AND revoked_at IS NULL", [userId])
+      await logAction(session.userId, userId, "force_logout_all", `Force logged out ${targetUser.email} and revoked all API keys`, ip)
+      return NextResponse.json({ success: true })
+    }
+
+    case "set_scan_limit": {
+      const { limit: scanLimit } = await request.json()
+      if (typeof scanLimit !== "number" || scanLimit < 0 || scanLimit > 10000) {
+        return NextResponse.json({ error: "Invalid scan limit (0-10000)" }, { status: 400 })
+      }
+      await pool.query("UPDATE users SET daily_scan_limit = $1, updated_at = NOW() WHERE id = $2", [scanLimit, userId])
+      await logAction(session.userId, userId, "set_scan_limit", `Set daily scan limit to ${scanLimit} for ${targetUser.email}`, ip)
+      return NextResponse.json({ success: true })
+    }
+
+    case "add_note": {
+      const { note } = await request.json()
+      if (!note || typeof note !== "string") return NextResponse.json({ error: "note required" }, { status: 400 })
+      const safeNote = note.trim().slice(0, 1000)
+      await pool.query(`
+        INSERT INTO admin_user_notes (user_id, admin_id, note, created_at)
+        VALUES ($1, $2, $3, NOW())
+      `, [userId, session.userId, safeNote])
+      await logAction(session.userId, userId, "add_note", `Added admin note to ${targetUser.email}`, ip)
+      return NextResponse.json({ success: true })
+    }
+
+    case "clear_avatar": {
+      await pool.query("UPDATE users SET avatar_url = NULL, updated_at = NOW() WHERE id = $1", [userId])
+      await logAction(session.userId, userId, "clear_avatar", `Cleared avatar for ${targetUser.email}`, ip)
+      return NextResponse.json({ success: true })
     }
 
     default:
