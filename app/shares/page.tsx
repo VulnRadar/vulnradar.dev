@@ -28,8 +28,9 @@ export default function SharesPage() {
   const [revoking, setRevoking] = useState<number | null>(null)
   const [copied, setCopied] = useState<string | null>(null)
   const [currentPage, setCurrentPage] = useState(1)
+  const [pageSize, setPageSize] = useState(10)
 
-  const PAGE_SIZE = 5
+  const PAGE_SIZE = pageSize
   const { totalPages, getPage } = usePagination(shares, PAGE_SIZE)
   const paginatedShares = getPage(currentPage)
 
@@ -218,13 +219,14 @@ export default function SharesPage() {
                     </Card>
                 ))}
 
-                {shares.length > PAGE_SIZE && (
-                  <PaginationControl
-                    currentPage={currentPage}
-                    totalPages={totalPages}
-                    onPageChange={setCurrentPage}
-                  />
-                )}
+                <PaginationControl
+                  currentPage={currentPage}
+                  totalPages={totalPages}
+                  onPageChange={setCurrentPage}
+                  pageSize={pageSize}
+                  onPageSizeChange={(s) => { setPageSize(s); setCurrentPage(1) }}
+                  totalItems={shares.length}
+                />
               </div>
           )}
           </div>

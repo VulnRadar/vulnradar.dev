@@ -313,6 +313,7 @@ function AdminContent() {
   const [users, setUsers] = useState<AdminUser[]>([])
   const [page, setPage] = useState(1)
   const [totalPages, setTotalPages] = useState(1)
+  const [usersPageSize, setUsersPageSize] = useState(10)
   const [searchQuery, setSearchQuery] = useState("")
   const [actionLoading, setActionLoading] = useState<string | null>(null)
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null)
@@ -327,16 +328,18 @@ function AdminContent() {
   const [auditLogs, setAuditLogs] = useState<AuditEntry[]>([])
   const [auditPage, setAuditPage] = useState(1)
   const [auditTotalPages, setAuditTotalPages] = useState(1)
+  const [auditPageSize, setAuditPageSize] = useState(10)
   const [expandedLog, setExpandedLog] = useState<number | null>(null)
   const [activeAdmins, setActiveAdmins] = useState<ActiveAdmin[]>([])
   const [adminsLoading, setAdminsLoading] = useState(false)
   const [staffPage, setStaffPage] = useState(1)
+  const [staffPageSize, setStaffPageSize] = useState(10)
   const [searchLoading, setSearchLoading] = useState(false)
   const [callerRole, setCallerRole] = useState<string>("user")
   const [auditPaging, setAuditPaging] = useState(false)
   const [allBadges, setAllBadges] = useState<BadgeDef[]>([])
   const searchInitRef = useRef(false)
-  const staffPagination = usePagination(activeAdmins, 5)
+  const staffPagination = usePagination(activeAdmins, staffPageSize)
   const pagedStaff = staffPagination.getPage(staffPage)
   const showToast = useCallback((message: string, type: "success" | "error") => {
     setToast({ message, type })
@@ -393,11 +396,11 @@ function AdminContent() {
     return () => window.removeEventListener("hashchange", handleHashChange)
   }, [handleHashChange])
 
-  async function fetchData(p = 1, search = searchQuery, isInitial = false) {
+  async function fetchData(p = 1, search = searchQuery, isInitial = false, limit = usersPageSize) {
     if (isInitial) setLoading(true)
     else setSearchLoading(true)
     try {
-      const params = new URLSearchParams({ page: String(p) })
+      const params = new URLSearchParams({ page: String(p), limit: String(limit) })
       if (search.trim()) params.set("search", search.trim())
       const res = await fetch(`${API.ADMIN}?${params}`)
       if (res.status === 403) { setForbidden(true); setLoading(false); setSearchLoading(false); return }
@@ -412,10 +415,10 @@ function AdminContent() {
     setSearchLoading(false)
   }
 
-  async function fetchAudit(p = 1) {
+  async function fetchAudit(p = 1, limit = auditPageSize) {
     setAuditPaging(true)
     try {
-      const res = await fetch(`${API.ADMIN}?section=audit&page=${p}`)
+      const res = await fetch(`${API.ADMIN}?section=audit&page=${p}&limit=${limit}`)
       const data = await res.json()
       setAuditLogs(data.logs)
       setAuditPage(data.page)
@@ -821,15 +824,15 @@ function AdminContent() {
                   </div>
 
                   {/* Pagination */}
-                  {totalPages > 1 && (
-                    <div className="px-5 py-3 border-t border-border bg-muted/10">
-                      <PaginationControl
-                        currentPage={page}
-                        totalPages={totalPages}
-                        onPageChange={(p) => fetchData(p)}
-                      />
-                    </div>
-                  )}
+                  <div className="px-5 py-3 border-t border-border bg-muted/10">
+                    <PaginationControl
+                      currentPage={page}
+                      totalPages={totalPages}
+                      onPageChange={(p) => fetchData(p)}
+                      pageSize={usersPageSize}
+                      onPageSizeChange={(s) => { setUsersPageSize(s); fetchData(1, searchQuery, false, s) }}
+                    />
+                  </div>
                 </CardContent>
               </Card>
             )}
@@ -936,11 +939,13 @@ function AdminContent() {
                       </div>
                       {auditTotalPages > 1 && (
                         <div className="px-5 py-3 border-t border-border bg-muted/10">
-                          <PaginationControl
-                            currentPage={auditPage}
-                            totalPages={auditTotalPages}
-                            onPageChange={(p) => fetchAudit(p)}
-                          />
+                  <PaginationControl
+                    currentPage={auditPage}
+                    totalPages={auditTotalPages}
+                    onPageChange={(p) => fetchAudit(p)}
+                    pageSize={auditPageSize}
+                    onPageSizeChange={(s) => { setAuditPageSize(s); fetchAudit(1, s) }}
+                  />
                         </div>
                       )}
                     </>
@@ -1051,11 +1056,14 @@ function AdminContent() {
                       </div>
                       {staffPagination.totalPages > 1 && (
                         <div className="px-5 py-3 border-t border-border bg-muted/10">
-                          <PaginationControl
-                            currentPage={staffPage}
-                            totalPages={staffPagination.totalPages}
-                            onPageChange={(p) => setStaffPage(p)}
-                          />
+                  <PaginationControl
+                    currentPage={staffPage}
+                    totalPages={staffPagination.totalPages}
+                    onPageChange={setStaffPage}
+                    pageSize={staffPageSize}
+                    onPageSizeChange={(s) => { setStaffPageSize(s); setStaffPage(1) }}
+                    totalItems={activeAdmins.length}
+                  />
                         </div>
                       )}
                     </>

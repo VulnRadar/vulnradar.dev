@@ -95,6 +95,7 @@ function HistoryPageContent() {
   const [bulkLoading, setBulkLoading] = useState(false)
   const [bulkResult, setBulkResult] = useState<{ total: number; successful: number; failed: number } | null>(null)
   const [currentPage, setCurrentPage] = useState(1)
+  const [pageSize, setPageSize] = useState(10)
   const [scanNotes, setScanNotes] = useState("")
   const [editingNotes, setEditingNotes] = useState(false)
   const [savingNotes, setSavingNotes] = useState(false)
@@ -330,7 +331,7 @@ function HistoryPageContent() {
   // Reset to page 1 when filters change
   useEffect(() => { setCurrentPage(1) }, [filter, tagFilter])
 
-  const PAGE_SIZE = 5
+  const PAGE_SIZE = pageSize
   const { totalPages, getPage } = usePagination(filtered, PAGE_SIZE)
   const paginatedScans = getPage(currentPage)
 
@@ -752,22 +753,14 @@ function HistoryPageContent() {
             </div>
 
             {/* Pagination */}
-            {filtered.length >= PAGE_SIZE && (
-              <PaginationControl
-                currentPage={currentPage}
-                totalPages={totalPages}
-                onPageChange={setCurrentPage}
-              />
-            )}
-
-            {/* Summary */}
-            {scans.length > 0 && (
-              <p className="text-xs text-muted-foreground text-center">
-                {filtered.length >= PAGE_SIZE
-                  ? `Showing ${(currentPage - 1) * PAGE_SIZE + 1}–${Math.min(currentPage * PAGE_SIZE, filtered.length)} of ${filtered.length} scan${filtered.length === 1 ? "" : "s"}`
-                  : `Showing ${filtered.length} of ${scans.length} scan${scans.length === 1 ? "" : "s"}`}
-              </p>
-            )}
+            <PaginationControl
+              currentPage={currentPage}
+              totalPages={totalPages}
+              onPageChange={setCurrentPage}
+              pageSize={pageSize}
+              onPageSizeChange={(s) => { setPageSize(s); setCurrentPage(1) }}
+              totalItems={filtered.length}
+            />
           </>
         )}
       </main>
