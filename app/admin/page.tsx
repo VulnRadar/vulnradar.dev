@@ -1,8 +1,8 @@
 "use client"
 
-import React, { Suspense } from "react"
+import React from "react"
 import { useState, useEffect, useCallback, useRef } from "react"
-import { useRouter, useSearchParams } from "next/navigation"
+import { useRouter } from "next/navigation"
 import {
   Users,
   Activity,
@@ -264,27 +264,11 @@ function ActionBadge({ action }: { action: string }) {
 }
 
 export default function AdminPage() {
-  return (
-    <Suspense fallback={<AdminLoading />}>
-      <AdminContent />
-    </Suspense>
-  )
-}
-
-function AdminLoading() {
-  return (
-    <div className="min-h-screen flex items-center justify-center bg-background">
-      <div className="flex flex-col items-center gap-3">
-        <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-        <p className="text-sm text-muted-foreground">Loading admin panel...</p>
-      </div>
-    </div>
-  )
+  return <AdminContent />
 }
 
 function AdminContent() {
   const router = useRouter()
-  const searchParams = useSearchParams()
   const [loading, setLoading] = useState(true)
   const [forbidden, setForbidden] = useState(false)
   const [stats, setStats] = useState<AdminStats | null>(null)
@@ -320,29 +304,36 @@ function AdminContent() {
     setToast({ message, type })
   }, [])
 
-  // Sync user selection with URL (using replaceState to avoid page reloads)
+  // Sync user/tab selection with URL hash (no page reloads)
   const updateUrlWithUser = useCallback((userId: number | null, tab?: string) => {
     if (typeof window === "undefined") return
-    const params = new URLSearchParams()
-    if (tab) params.set("tab", tab)
-    if (userId) params.set("user", String(userId))
-    const query = params.toString()
-    window.history.replaceState(null, "", `/admin${query ? `?${query}` : ""}`)
+    const parts: string[] = []
+    if (tab) parts.push(tab)
+    if (userId) parts.push(`user-${userId}`)
+    const hash = parts.join("/")
+    window.history.replaceState(null, "", `/admin${hash ? `#${hash}` : ""}`)
   }, [])
 
-  // Load user from URL on mount
+  // Load user/tab from URL hash on mount
   useEffect(() => {
-    const userId = searchParams.get("user")
-    const tab = searchParams.get("tab") as "users" | "audit" | "admins" | null
-    if (tab && ["users", "audit", "admins"].includes(tab)) {
-      setActiveTab(tab)
-      if (tab === "audit") fetchAudit()
-      if (tab === "admins") fetchActiveAdmins()
-    }
-    if (userId) {
-      const id = parseInt(userId, 10)
-      if (!isNaN(id)) {
-        fetchUserDetail(id, true) // Skip URL update on initial load
+    if (typeof window === "undefined") return
+    const hash = window.location.hash.replace("#", "")
+    if (!hash) return
+    
+    const parts = hash.split("/")
+    for (const part of parts) {
+      // Check if it's a tab
+      if (["users", "audit", "admins"].includes(part)) {
+        setActiveTab(part as "users" | "audit" | "admins")
+        if (part === "audit") fetchAudit()
+        if (part === "admins") fetchActiveAdmins()
+      }
+      // Check if it's a user ID
+      if (part.startsWith("user-")) {
+        const id = parseInt(part.replace("user-", ""), 10)
+        if (!isNaN(id)) {
+          fetchUserDetail(id, true) // Skip URL update on initial load
+        }
       }
     }
   }, []) // Only run on mount

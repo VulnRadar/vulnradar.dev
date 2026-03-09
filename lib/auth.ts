@@ -107,7 +107,9 @@ export async function createUser(email: string, password: string, name?: string)
   const passwordHash = hashPassword(password)
 
   const result = await pool.query(
-      "INSERT INTO users (email, password_hash, name) VALUES ($1, $2, $3) RETURNING id, email, name",
+      `INSERT INTO users (email, password_hash, name, plan, beta_access, role)
+       VALUES ($1, $2, $3, 'free', false, 'user')
+       RETURNING id, email, name, plan, beta_access, role`,
       [email.toLowerCase().trim(), passwordHash, name || null],
   )
 

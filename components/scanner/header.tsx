@@ -5,6 +5,7 @@ import { ThemeToggle } from "@/components/theme-toggle"
 import { Button } from "@/components/ui/button"
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet"
 import { useRouter, usePathname } from "next/navigation"
+import Link from "next/link"
 import { useState } from "react"
 import { cn } from "@/lib/utils"
 import Image from "next/image"
@@ -40,8 +41,8 @@ export function Header() {
       <header className="sticky top-0 z-50 border-b border-border bg-card/80 backdrop-blur-lg">
         <div className="max-w-6xl mx-auto flex items-center justify-between px-4 h-14">
           {/* Logo */}
-          <button
-              onClick={() => router.push(ROUTES.DASHBOARD)}
+          <Link
+              href={ROUTES.DASHBOARD}
               className="flex items-center gap-2 hover:opacity-80 transition-opacity shrink-0"
               aria-label="Go to scanner"
           >
@@ -55,16 +56,16 @@ export function Header() {
             <span className="text-base font-semibold text-foreground tracking-tight">
             {APP_NAME}
           </span>
-          </button>
+          </Link>
 
           {/* Desktop nav */}
           <nav className="hidden md:flex items-center gap-0.5">
             {NAV_LINKS.map(({ href, label, icon: Icon }) => {
-              const active = href === ROUTES.DOCS ? pathname.startsWith(ROUTES.DOCS) : pathname === href
+              const active = href === ROUTES.DOCS ? pathname.startsWith(ROUTES.DOCS) : pathname === href || pathname.startsWith(href.split("#")[0])
               return (
-                  <button
+                  <Link
                       key={href}
-                      onClick={(e) => {e.ctrlKey ? window.open(href, "_blank") : router.push(href)}}
+                      href={href}
                       className={cn(
                           "flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors",
                           active
@@ -74,11 +75,11 @@ export function Header() {
                   >
                     <Icon className="h-4 w-4" />
                     {label}
-                  </button>
+                  </Link>
               )
             })}
-            <button
-                onClick={() => router.push(ROUTES.ADMIN)}
+            <Link
+                href={ROUTES.ADMIN}
                 className={cn(
                     "vr-staff-only items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors",
                     pathname === ROUTES.ADMIN
@@ -88,7 +89,7 @@ export function Header() {
             >
               <ShieldAlert className="h-4 w-4" />
               Admin
-            </button>
+            </Link>
           </nav>
 
           {/* Right side */}
@@ -123,14 +124,12 @@ export function Header() {
             <SheetTitle className="sr-only">Navigation menu</SheetTitle>
             <nav className="flex flex-col gap-1 px-3 pt-12 pb-4">
               {NAV_LINKS.map(({ href, label, icon: Icon }) => {
-                const active = href === ROUTES.DOCS ? pathname.startsWith(ROUTES.DOCS) : pathname === href
+                const active = href === ROUTES.DOCS ? pathname.startsWith(ROUTES.DOCS) : pathname === href || pathname.startsWith(href.split("#")[0])
                 return (
-                    <button
+                    <Link
                         key={href}
-                        onClick={() => {
-                          router.push(href)
-                          setMobileOpen(false)
-                        }}
+                        href={href}
+                        onClick={() => setMobileOpen(false)}
                         className={cn(
                             "flex items-center gap-2.5 px-3 py-2.5 rounded-md text-sm font-medium transition-colors",
                             active
@@ -140,11 +139,12 @@ export function Header() {
                     >
                       <Icon className="h-4 w-4" />
                       {label}
-                    </button>
+                    </Link>
                 )
               })}
-              <button
-                  onClick={() => { router.push(ROUTES.ADMIN); setMobileOpen(false) }}
+              <Link
+                  href={ROUTES.ADMIN}
+                  onClick={() => setMobileOpen(false)}
                   className={cn(
                       "vr-staff-only items-center gap-2.5 px-3 py-2.5 rounded-md text-sm font-medium transition-colors",
                       pathname === ROUTES.ADMIN
@@ -154,7 +154,7 @@ export function Header() {
               >
                 <ShieldAlert className="h-4 w-4" />
                 Admin
-              </button>
+              </Link>
               <div className="my-2 border-t border-border" />
               <button
                   onClick={handleLogout}
