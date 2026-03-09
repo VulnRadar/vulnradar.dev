@@ -49,6 +49,13 @@ import {
   Star,
   StarOff,
   Download,
+  MailCheck,
+  MailX,
+  Webhook,
+  CalendarOff,
+  ImageOff,
+  UserX,
+  Beaker,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -1131,6 +1138,8 @@ function UserDetailPanel({
 
   // Pending changes state - batch all changes and save together
   const [pendingChanges, setPendingChanges] = useState<Record<string, unknown>>({})
+  const [pendingBadgeAwards, setPendingBadgeAwards] = useState<number[]>([]) // badge IDs to award
+  const [pendingBadgeRevokes, setPendingBadgeRevokes] = useState<number[]>([]) // badge IDs to revoke
   const [editName, setEditName] = useState(u.name || "")
   const [editEmail, setEditEmail] = useState(u.email)
   const [editPlan, setEditPlan] = useState(u.plan || "free")
@@ -1139,11 +1148,13 @@ function UserDetailPanel({
   const [isSaving, setIsSaving] = useState(false)
 
   // Track if there are unsaved changes
-  const hasChanges = Object.keys(pendingChanges).length > 0
+  const hasChanges = Object.keys(pendingChanges).length > 0 || pendingBadgeAwards.length > 0 || pendingBadgeRevokes.length > 0
   
   // Reset pending changes when user changes
   useEffect(() => {
     setPendingChanges({})
+    setPendingBadgeAwards([])
+    setPendingBadgeRevokes([])
     setEditName(u.name || "")
     setEditEmail(u.email)
     setEditPlan(u.plan || "free")
@@ -1169,13 +1180,23 @@ function UserDetailPanel({
   const saveAllChanges = async () => {
     setIsSaving(true)
     try {
+      // Save field changes
       for (const [key, value] of Object.entries(pendingChanges)) {
         if (key === "name") await onAction(u.id, "update_name", { name: value as string })
         else if (key === "email") await onAction(u.id, "update_email", { email: value as string })
         else if (key === "plan") await onAction(u.id, "update_plan", { plan: value as string })
         else if (key === "role") await onAction(u.id, "set_role", { role: value as string })
       }
+      // Save badge changes
+      for (const badgeId of pendingBadgeAwards) {
+        await onAction(u.id, "award_badge", { badgeId: String(badgeId) })
+      }
+      for (const badgeId of pendingBadgeRevokes) {
+        await onAction(u.id, "revoke_badge", { badgeId: String(badgeId) })
+      }
       setPendingChanges({})
+      setPendingBadgeAwards([])
+      setPendingBadgeRevokes([])
     } finally {
       setIsSaving(false)
     }
@@ -1184,6 +1205,8 @@ function UserDetailPanel({
   // Discard all changes
   const discardChanges = () => {
     setPendingChanges({})
+    setPendingBadgeAwards([])
+    setPendingBadgeRevokes([])
     setEditName(u.name || "")
     setEditEmail(u.email)
     setEditPlan(u.plan || "free")
@@ -1441,45 +1464,76 @@ function UserDetailPanel({
               {/* Awarded badges */}
               {detail.badges.length > 0 ? (
                 <div className="flex flex-wrap gap-1.5">
-                  {detail.badges.map((badge) => (
-                    <div
-                      key={badge.id}
-                      className="group flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-xs font-medium transition-all hover:pr-1"
-                      style={{ borderColor: `${badge.color}40`, backgroundColor: `${badge.color}15`, color: badge.color || undefined }}
-                    >
-                      <Tag className="h-3 w-3 shrink-0" />
-                      {badge.display_name}
-                      <button
-                        className="w-0 overflow-hidden group-hover:w-4 group-hover:ml-0.5 transition-all duration-200 hover:scale-110 flex-shrink-0"
-                        onClick={() => onAction(u.id, "revoke_badge", { badgeId: String(badge.id) })}
-                        title="Remove badge from user"
+                  {detail.badges.map((badge) => {
+                    const isPendingRevoke = pendingBadgeRevokes.includes(badge.id)
+                    return (
+                      <div
+                        key={badge.id}
+                        className={cn(
+                          "group flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-xs font-medium transition-all hover:pr-1",
+                          isPendingRevoke && "opacity-50 line-through"
+                        )}
+                        style={{ borderColor: `${badge.color}40`, backgroundColor: `${badge.color}15`, color: badge.color || undefined }}
                       >
-                        <X className="h-3 w-3" />
-                      </button>
-                    </div>
-                  ))}
+                        <Tag className="h-3 w-3 shrink-0" />
+                        {badge.display_name}
+                        <button
+                          className="w-0 overflow-hidden group-hover:w-4 group-hover:ml-0.5 transition-all duration-200 hover:scale-110 flex-shrink-0"
+                          onClick={() => {
+                            if (isPendingRevoke) {
+                              setPendingBadgeRevokes((p) => p.filter((id) => id !== badge.id))
+                            } else {
+                              setPendingBadgeRevokes((p) => [...p, badge.id])
+                            }
+                          }}
+                          title={isPendingRevoke ? "Undo remove" : "Remove badge from user"}
+                        >
+                          {isPendingRevoke ? <RefreshCw className="h-3 w-3" /> : <X className="h-3 w-3" />}
+                        </button>
+                      </div>
+                    )
+                  })}
                 </div>
               ) : (
                 <p className="text-xs text-muted-foreground">No badges awarded yet.</p>
+              )}
+              {pendingBadgeRevokes.length > 0 && (
+                <p className="text-[10px] text-destructive">{pendingBadgeRevokes.length} badge(s) will be removed on save</p>
               )}
 
               {/* Award badge picker */}
               {showBadgePicker && unawardedBadges.length > 0 && (
                 <div className="flex flex-col gap-1.5 p-3 rounded-lg bg-muted/20 border border-border">
-                  <p className="text-[11px] text-muted-foreground font-medium">Select badges to award:</p>
+                  <p className="text-[11px] text-muted-foreground font-medium">Select badges to award (click to toggle):</p>
                   <div className="flex flex-wrap gap-1.5">
-                    {unawardedBadges.map((badge) => (
-                      <button
-                        key={badge.id}
-                        onClick={() => { onAction(u.id, "award_badge", { badgeId: String(badge.id) }); setShowBadgePicker(false) }}
-                        className="flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-xs font-medium transition-all hover:scale-105"
-                        style={{ borderColor: `${badge.color}40`, backgroundColor: `${badge.color}15`, color: badge.color || undefined }}
-                      >
-                        <Tag className="h-3 w-3 shrink-0" />
-                        {badge.display_name}
-                      </button>
-                    ))}
+                    {unawardedBadges.map((badge) => {
+                      const isPending = pendingBadgeAwards.includes(badge.id)
+                      return (
+                        <button
+                          key={badge.id}
+                          onClick={() => {
+                            if (isPending) {
+                              setPendingBadgeAwards((p) => p.filter((id) => id !== badge.id))
+                            } else {
+                              setPendingBadgeAwards((p) => [...p, badge.id])
+                            }
+                          }}
+                          className={cn(
+                            "flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-xs font-medium transition-all",
+                            isPending ? "ring-2 ring-primary scale-105" : "hover:scale-105"
+                          )}
+                          style={{ borderColor: `${badge.color}40`, backgroundColor: `${badge.color}15`, color: badge.color || undefined }}
+                        >
+                          <Tag className="h-3 w-3 shrink-0" />
+                          {badge.display_name}
+                          {isPending && <CheckCircle2 className="h-3 w-3 ml-0.5" />}
+                        </button>
+                      )
+                    })}
                   </div>
+                  {pendingBadgeAwards.length > 0 && (
+                    <p className="text-[10px] text-primary">{pendingBadgeAwards.length} badge(s) will be awarded on save</p>
+                  )}
                 </div>
               )}
 
@@ -1711,6 +1765,53 @@ function UserDetailPanel({
                         onClick={() => onAction(u.id, "clear_rate_limits")}
                       />
                     )}
+                    <ActionCard
+                      icon={UserX} label="Force Logout All"
+                      description="Logout + revoke all API keys"
+                      color="text-[hsl(var(--severity-medium))]" bg="bg-[hsl(var(--severity-medium))]/10"
+                      loading={isLoading("force_logout_all")}
+                      onClick={() => onAction(u.id, "force_logout_all")}
+                    />
+                  </div>
+                </div>
+
+                {/* Account Management */}
+                <div>
+                  <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium mb-2">Account Management</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                    {!u.email_verified_at ? (
+                      <ActionCard
+                        icon={MailCheck} label="Verify Email"
+                        description="Manually verify email address"
+                        color="text-emerald-500" bg="bg-emerald-500/10"
+                        loading={isLoading("verify_email")}
+                        onClick={() => onAction(u.id, "verify_email")}
+                      />
+                    ) : (
+                      <ActionCard
+                        icon={MailX} label="Unverify Email"
+                        description="Remove email verification"
+                        color="text-[hsl(var(--severity-medium))]" bg="bg-[hsl(var(--severity-medium))]/10"
+                        loading={isLoading("unverify_email")}
+                        onClick={() => onAction(u.id, "unverify_email")}
+                      />
+                    )}
+                    <ActionCard
+                      icon={ImageOff} label="Clear Avatar"
+                      description="Remove profile picture"
+                      color="text-muted-foreground" bg="bg-muted/50"
+                      loading={isLoading("clear_avatar")}
+                      onClick={() => onAction(u.id, "clear_avatar")}
+                    />
+                    {hasStaffPermission(callerRole, STAFF_PERMISSIONS.EDIT_USER_ROLE) && (
+                      <ActionCard
+                        icon={Beaker} label="Toggle Beta Access"
+                        description="Enable/disable beta features"
+                        color="text-primary" bg="bg-primary/10"
+                        loading={isLoading("toggle_beta_access")}
+                        onClick={() => onAction(u.id, "toggle_beta_access")}
+                      />
+                    )}
                   </div>
                 </div>
 
@@ -1767,6 +1868,20 @@ function UserDetailPanel({
                         onClick={() => onAction(u.id, "delete_scans")}
                       />
                     )}
+                    <ActionCard
+                      icon={Webhook} label="Delete Webhooks"
+                      description="Remove all webhooks"
+                      color="text-destructive" bg="bg-destructive/10" variant="danger"
+                      loading={isLoading("delete_webhooks")}
+                      onClick={() => onAction(u.id, "delete_webhooks")}
+                    />
+                    <ActionCard
+                      icon={CalendarOff} label="Delete Schedules"
+                      description="Remove scheduled scans"
+                      color="text-destructive" bg="bg-destructive/10" variant="danger"
+                      loading={isLoading("delete_schedules")}
+                      onClick={() => onAction(u.id, "delete_schedules")}
+                    />
                     {hasStaffPermission(callerRole, STAFF_PERMISSIONS.DELETE_USER) && (
                       <ActionCard
                         icon={Trash2} label="Delete Account"
@@ -1948,7 +2063,11 @@ function UserDetailPanel({
                 <div>
                   <p className="text-sm font-medium text-foreground">Unsaved Changes</p>
                   <p className="text-[11px] text-muted-foreground">
-                    {Object.keys(pendingChanges).length} field{Object.keys(pendingChanges).length !== 1 ? "s" : ""} modified
+                    {[
+                      Object.keys(pendingChanges).length > 0 && `${Object.keys(pendingChanges).length} field${Object.keys(pendingChanges).length !== 1 ? "s" : ""}`,
+                      pendingBadgeAwards.length > 0 && `${pendingBadgeAwards.length} badge${pendingBadgeAwards.length !== 1 ? "s" : ""} to award`,
+                      pendingBadgeRevokes.length > 0 && `${pendingBadgeRevokes.length} badge${pendingBadgeRevokes.length !== 1 ? "s" : ""} to remove`,
+                    ].filter(Boolean).join(", ")}
                   </p>
                 </div>
               </div>
