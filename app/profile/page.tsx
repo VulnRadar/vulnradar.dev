@@ -764,9 +764,16 @@ function ProfileContent() {
         {/* Tab Navigation */}
         <div className="flex items-center gap-1 p-1 rounded-lg bg-secondary/50 border border-border overflow-x-auto scrollbar-thin scrollbar-thumb-muted/40 scrollbar-track-transparent min-w-0 -mx-4 px-4 sm:mx-0 sm:px-1">
           {TABS.map((tab) => (
-            <button
+            <a
               key={tab.id}
-              onClick={() => handleTabChange(tab.id)}
+              href={`/profile#${tab.id}`}
+              onClick={(e) => {
+                // Allow ctrl+click to open in new tab naturally
+                if (!e.ctrlKey && !e.metaKey) {
+                  e.preventDefault()
+                  handleTabChange(tab.id)
+                }
+              }}
               className={
                 cn(
                   "flex items-center justify-center gap-1.5 px-2.5 sm:px-3 py-2 sm:py-2.5 rounded-md text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 whitespace-nowrap flex-shrink-0",
@@ -778,7 +785,7 @@ function ProfileContent() {
             >
               {tab.icon}
               <span className="hidden sm:inline text-sm">{tab.label}</span>
-            </button>
+            </a>
           ))}
         </div>
 
