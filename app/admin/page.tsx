@@ -246,20 +246,58 @@ function UserAvatar({ name, email, size = "md", avatarUrl }: { name: string | nu
   )
 }
 
-// --- Action badge ---
+// --- Action badge with human-readable labels ---
 function ActionBadge({ action }: { action: string }) {
   const map: Record<string, { label: string; cls: string }> = {
-    set_role: { label: "Role Changed", cls: "bg-primary/10 text-primary border-primary/20" },
+    // Role changes
+    set_role: { label: "Changed Role", cls: "bg-primary/10 text-primary border-primary/20" },
     make_admin: { label: "Promoted to Admin", cls: "bg-primary/10 text-primary border-primary/20" },
-    remove_admin: { label: "Admin Removed", cls: "bg-muted text-muted-foreground border-border" },
-    reset_password: { label: "Password Reset", cls: "bg-[hsl(var(--severity-medium))]/10 text-[hsl(var(--severity-medium))] border-[hsl(var(--severity-medium))]/20" },
-    revoke_sessions: { label: "Sessions Revoked", cls: "bg-[hsl(var(--severity-medium))]/10 text-[hsl(var(--severity-medium))] border-[hsl(var(--severity-medium))]/20" },
-    revoke_api_keys: { label: "Keys Revoked", cls: "bg-[hsl(var(--severity-medium))]/10 text-[hsl(var(--severity-medium))] border-[hsl(var(--severity-medium))]/20" },
-    disable_user: { label: "Account Disabled", cls: "bg-destructive/10 text-destructive border-destructive/20" },
-    enable_user: { label: "Account Enabled", cls: "bg-emerald-500/10 text-emerald-500 border-emerald-500/20" },
-    delete_user: { label: "Account Deleted", cls: "bg-destructive/10 text-destructive border-destructive/20" },
+    remove_admin: { label: "Removed Admin Role", cls: "bg-muted text-muted-foreground border-border" },
+    // Security actions
+    reset_password: { label: "Reset Password", cls: "bg-[hsl(var(--severity-medium))]/10 text-[hsl(var(--severity-medium))] border-[hsl(var(--severity-medium))]/20" },
+    revoke_sessions: { label: "Revoked Sessions", cls: "bg-[hsl(var(--severity-medium))]/10 text-[hsl(var(--severity-medium))] border-[hsl(var(--severity-medium))]/20" },
+    revoke_api_keys: { label: "Revoked API Keys", cls: "bg-[hsl(var(--severity-medium))]/10 text-[hsl(var(--severity-medium))] border-[hsl(var(--severity-medium))]/20" },
+    reset_2fa: { label: "Reset Two-Factor Auth", cls: "bg-[hsl(var(--severity-medium))]/10 text-[hsl(var(--severity-medium))] border-[hsl(var(--severity-medium))]/20" },
+    force_logout_all: { label: "Force Logged Out", cls: "bg-[hsl(var(--severity-medium))]/10 text-[hsl(var(--severity-medium))] border-[hsl(var(--severity-medium))]/20" },
+    // Account status
+    disable_user: { label: "Disabled Account", cls: "bg-destructive/10 text-destructive border-destructive/20" },
+    disable: { label: "Disabled Account", cls: "bg-destructive/10 text-destructive border-destructive/20" },
+    enable_user: { label: "Enabled Account", cls: "bg-emerald-500/10 text-emerald-500 border-emerald-500/20" },
+    enable: { label: "Enabled Account", cls: "bg-emerald-500/10 text-emerald-500 border-emerald-500/20" },
+    delete_user: { label: "Deleted Account", cls: "bg-destructive/10 text-destructive border-destructive/20" },
+    delete: { label: "Deleted Account", cls: "bg-destructive/10 text-destructive border-destructive/20" },
+    // Profile updates
+    update_name: { label: "Updated Name", cls: "bg-muted text-foreground border-border" },
+    update_email: { label: "Updated Email", cls: "bg-muted text-foreground border-border" },
+    update_plan: { label: "Changed Plan", cls: "bg-primary/10 text-primary border-primary/20" },
+    clear_avatar: { label: "Cleared Avatar", cls: "bg-muted text-muted-foreground border-border" },
+    // Email verification
+    verify_email: { label: "Verified Email", cls: "bg-emerald-500/10 text-emerald-500 border-emerald-500/20" },
+    unverify_email: { label: "Unverified Email", cls: "bg-[hsl(var(--severity-medium))]/10 text-[hsl(var(--severity-medium))] border-[hsl(var(--severity-medium))]/20" },
+    // Beta & Premium
+    toggle_beta_access: { label: "Toggled Beta Access", cls: "bg-primary/10 text-primary border-primary/20" },
+    grant_premium: { label: "Granted Premium", cls: "bg-emerald-500/10 text-emerald-500 border-emerald-500/20" },
+    revoke_premium: { label: "Revoked Premium", cls: "bg-[hsl(var(--severity-medium))]/10 text-[hsl(var(--severity-medium))] border-[hsl(var(--severity-medium))]/20" },
+    // Data management
+    delete_scans: { label: "Deleted Scans", cls: "bg-destructive/10 text-destructive border-destructive/20" },
+    delete_webhooks: { label: "Deleted Webhooks", cls: "bg-destructive/10 text-destructive border-destructive/20" },
+    delete_schedules: { label: "Deleted Schedules", cls: "bg-destructive/10 text-destructive border-destructive/20" },
+    export_data: { label: "Exported Data", cls: "bg-muted text-foreground border-border" },
+    clear_rate_limits: { label: "Cleared Rate Limits", cls: "bg-muted text-foreground border-border" },
+    // Badges
+    award_badge: { label: "Awarded Badge", cls: "bg-primary/10 text-primary border-primary/20" },
+    revoke_badge: { label: "Revoked Badge", cls: "bg-[hsl(var(--severity-medium))]/10 text-[hsl(var(--severity-medium))] border-[hsl(var(--severity-medium))]/20" },
+    create_badge: { label: "Created Badge", cls: "bg-emerald-500/10 text-emerald-500 border-emerald-500/20" },
+    delete_badge: { label: "Deleted Badge", cls: "bg-destructive/10 text-destructive border-destructive/20" },
+    // Admin
+    impersonate: { label: "Started Impersonation", cls: "bg-[hsl(var(--severity-high))]/10 text-[hsl(var(--severity-high))] border-[hsl(var(--severity-high))]/20" },
+    set_scan_limit: { label: "Set Scan Limit", cls: "bg-muted text-foreground border-border" },
+    add_note: { label: "Added Note", cls: "bg-muted text-foreground border-border" },
+    send_notification: { label: "Sent Notification", cls: "bg-primary/10 text-primary border-primary/20" },
   }
-  const m = map[action] || { label: action, cls: "bg-muted text-muted-foreground border-border" }
+  // Fallback: convert snake_case to readable format
+  const fallbackLabel = action.split("_").map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(" ")
+  const m = map[action] || { label: fallbackLabel, cls: "bg-muted text-muted-foreground border-border" }
   return <Badge className={cn("text-[10px] px-2 py-0.5 font-medium", m.cls)}>{m.label}</Badge>
 }
 
@@ -1083,12 +1121,67 @@ function UserDetailPanel({
   const awardedIds = new Set(detail.badges.map((b) => b.id))
   const unawardedBadges = allBadges.filter((b) => !awardedIds.has(b.id))
 
-  // Edit account state
-  const [editMode, setEditMode] = useState<"name" | "email" | "plan" | null>(null)
+  // Pending changes state - batch all changes and save together
+  const [pendingChanges, setPendingChanges] = useState<Record<string, unknown>>({})
   const [editName, setEditName] = useState(u.name || "")
   const [editEmail, setEditEmail] = useState(u.email)
   const [editPlan, setEditPlan] = useState(u.plan || "free")
+  const [editRole, setEditRole] = useState(u.role || "user")
   const [confirmEmail, setConfirmEmail] = useState("")
+  const [isSaving, setIsSaving] = useState(false)
+
+  // Track if there are unsaved changes
+  const hasChanges = Object.keys(pendingChanges).length > 0
+  
+  // Reset pending changes when user changes
+  useEffect(() => {
+    setPendingChanges({})
+    setEditName(u.name || "")
+    setEditEmail(u.email)
+    setEditPlan(u.plan || "free")
+    setEditRole(u.role || "user")
+    setConfirmEmail("")
+  }, [u.id, u.name, u.email, u.plan, u.role])
+
+  // Add a change to pending
+  const addPendingChange = (key: string, value: unknown, originalValue: unknown) => {
+    if (value === originalValue) {
+      // Remove if reverting to original
+      setPendingChanges((prev) => {
+        const next = { ...prev }
+        delete next[key]
+        return next
+      })
+    } else {
+      setPendingChanges((prev) => ({ ...prev, [key]: value }))
+    }
+  }
+
+  // Save all pending changes
+  const saveAllChanges = async () => {
+    setIsSaving(true)
+    try {
+      for (const [key, value] of Object.entries(pendingChanges)) {
+        if (key === "name") await onAction(u.id, "update_name", { name: value as string })
+        else if (key === "email") await onAction(u.id, "update_email", { email: value as string })
+        else if (key === "plan") await onAction(u.id, "update_plan", { plan: value as string })
+        else if (key === "role") await onAction(u.id, "set_role", { role: value as string })
+      }
+      setPendingChanges({})
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  // Discard all changes
+  const discardChanges = () => {
+    setPendingChanges({})
+    setEditName(u.name || "")
+    setEditEmail(u.email)
+    setEditPlan(u.plan || "free")
+    setEditRole(u.role || "user")
+    setConfirmEmail("")
+  }
 
   return (
     <div className="flex flex-col gap-4">
@@ -1174,135 +1267,71 @@ function UserDetailPanel({
           <CardContent className="p-5 pt-3">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               {/* Edit Name */}
-              <div className="flex flex-col gap-2 p-3 rounded-lg bg-muted/20 border border-border">
+              <div className={cn("flex flex-col gap-2 p-3 rounded-lg border transition-colors", pendingChanges.name ? "bg-primary/5 border-primary/30" : "bg-muted/20 border-border")}>
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <User className="h-3.5 w-3.5 text-muted-foreground" />
                     <span className="text-[11px] text-muted-foreground font-medium">Display Name</span>
+                    {pendingChanges.name && <span className="text-[9px] text-primary font-medium px-1.5 py-0.5 rounded bg-primary/10">Modified</span>}
                   </div>
-                  {editMode !== "name" && (
-                    <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => { setEditMode("name"); setEditName(u.name || "") }}>
-                      <Pencil className="h-3 w-3" />
-                    </Button>
-                  )}
                 </div>
-                {editMode === "name" ? (
-                  <div className="flex flex-col gap-2">
-                    <Input
-                      value={editName}
-                      onChange={(e) => setEditName(e.target.value)}
-                      placeholder="Enter name"
-                      className="h-8 text-xs"
-                    />
-                    <div className="flex gap-1.5">
-                      <Button size="sm" className="h-7 text-xs flex-1 gap-1" disabled={!editName.trim() || isLoading("update_name")} onClick={() => onAction(u.id, "update_name", { name: editName.trim() })}>
-                        {isLoading("update_name") ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />} Save
-                      </Button>
-                      <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => setEditMode(null)}>Cancel</Button>
-                    </div>
-                  </div>
-                ) : (
-                  <p className="text-sm font-medium text-foreground truncate">{u.name || "Not set"}</p>
-                )}
+                <Input
+                  value={editName}
+                  onChange={(e) => {
+                    setEditName(e.target.value)
+                    addPendingChange("name", e.target.value.trim(), u.name || "")
+                  }}
+                  placeholder="Enter name"
+                  className="h-8 text-xs"
+                />
               </div>
 
               {/* Edit Email - admin only */}
               {hasStaffPermission(callerRole, STAFF_PERMISSIONS.EDIT_USER_ROLE) && (
-                <div className="flex flex-col gap-2 p-3 rounded-lg bg-muted/20 border border-border">
+                <div className={cn("flex flex-col gap-2 p-3 rounded-lg border transition-colors", pendingChanges.email ? "bg-primary/5 border-primary/30" : "bg-muted/20 border-border")}>
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <Mail className="h-3.5 w-3.5 text-muted-foreground" />
                       <span className="text-[11px] text-muted-foreground font-medium">Email Address</span>
+                      {pendingChanges.email && <span className="text-[9px] text-primary font-medium px-1.5 py-0.5 rounded bg-primary/10">Modified</span>}
                     </div>
-                    {editMode !== "email" && (
-                      <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => { setEditMode("email"); setEditEmail(u.email); setConfirmEmail("") }}>
-                        <Pencil className="h-3 w-3" />
-                      </Button>
-                    )}
                   </div>
-                  {editMode === "email" ? (
-                    <div className="flex flex-col gap-2">
-                      <Input
-                        type="email"
-                        value={editEmail}
-                        onChange={(e) => setEditEmail(e.target.value)}
-                        placeholder="New email"
-                        className="h-8 text-xs"
-                      />
-                      <Input
-                        type="email"
-                        value={confirmEmail}
-                        onChange={(e) => setConfirmEmail(e.target.value)}
-                        placeholder="Confirm email"
-                        className="h-8 text-xs"
-                      />
-                      <div className="flex gap-1.5">
-                        <Button
-                          size="sm"
-                          className="h-7 text-xs flex-1 gap-1"
-                          disabled={!editEmail.trim() || editEmail !== confirmEmail || editEmail === u.email || isLoading("update_email")}
-                          onClick={() => onAction(u.id, "update_email", { email: editEmail.trim() })}
-                        >
-                          {isLoading("update_email") ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />} Save
-                        </Button>
-                        <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => setEditMode(null)}>Cancel</Button>
-                      </div>
-                      {editEmail !== confirmEmail && confirmEmail && (
-                        <p className="text-[10px] text-destructive">Emails do not match</p>
-                      )}
-                    </div>
-                  ) : (
-                    <p className="text-sm font-medium text-foreground truncate">{u.email}</p>
-                  )}
+                  <Input
+                    type="email"
+                    value={editEmail}
+                    onChange={(e) => {
+                      setEditEmail(e.target.value)
+                      addPendingChange("email", e.target.value.trim().toLowerCase(), u.email)
+                    }}
+                    placeholder="Email address"
+                    className="h-8 text-xs"
+                  />
                 </div>
               )}
 
               {/* Edit Plan - admin only */}
               {hasStaffPermission(callerRole, STAFF_PERMISSIONS.EDIT_USER_ROLE) && (
-                <div className="flex flex-col gap-2 p-3 rounded-lg bg-muted/20 border border-border">
+                <div className={cn("flex flex-col gap-2 p-3 rounded-lg border transition-colors", pendingChanges.plan ? "bg-primary/5 border-primary/30" : "bg-muted/20 border-border")}>
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <CreditCard className="h-3.5 w-3.5 text-muted-foreground" />
                       <span className="text-[11px] text-muted-foreground font-medium">Subscription Plan</span>
+                      {pendingChanges.plan && <span className="text-[9px] text-primary font-medium px-1.5 py-0.5 rounded bg-primary/10">Modified</span>}
                     </div>
-                    {editMode !== "plan" && (
-                      <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => { setEditMode("plan"); setEditPlan(u.plan || "free") }}>
-                        <Pencil className="h-3 w-3" />
-                      </Button>
-                    )}
                   </div>
-                  {editMode === "plan" ? (
-                    <div className="flex flex-col gap-2">
-                      <select
-                        value={editPlan}
-                        onChange={(e) => setEditPlan(e.target.value)}
-                        className="h-8 text-xs rounded-md border border-border bg-background px-2"
-                      >
-                        <option value="free">Free</option>
-                        <option value="starter">Starter</option>
-                        <option value="pro">Pro</option>
-                        <option value="elite">Elite</option>
-                      </select>
-                      <div className="flex gap-1.5">
-                        <Button size="sm" className="h-7 text-xs flex-1 gap-1" disabled={editPlan === (u.plan || "free") || isLoading("update_plan")} onClick={() => onAction(u.id, "update_plan", { plan: editPlan })}>
-                          {isLoading("update_plan") ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />} Save
-                        </Button>
-                        <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => setEditMode(null)}>Cancel</Button>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="flex items-center gap-2">
-                      <Badge className={cn(
-                        "text-[10px]",
-                        u.plan === "elite" ? "bg-primary/10 text-primary border-primary/20" :
-                        u.plan === "pro" ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/20" :
-                        u.plan === "starter" ? "bg-[hsl(var(--severity-medium))]/10 text-[hsl(var(--severity-medium))] border-[hsl(var(--severity-medium))]/20" :
-                        "bg-muted/50 text-muted-foreground border-border"
-                      )}>
-                        {(u.plan || "free").charAt(0).toUpperCase() + (u.plan || "free").slice(1)}
-                      </Badge>
-                    </div>
-                  )}
+                  <select
+                    value={editPlan}
+                    onChange={(e) => {
+                      setEditPlan(e.target.value)
+                      addPendingChange("plan", e.target.value, u.plan || "free")
+                    }}
+                    className="h-8 text-xs rounded-md border border-border bg-background px-2"
+                  >
+                    <option value="free">Free</option>
+                    <option value="core">Core</option>
+                    <option value="pro">Pro</option>
+                    <option value="elite">Elite</option>
+                  </select>
                 </div>
               )}
             </div>
@@ -1341,18 +1370,20 @@ function UserDetailPanel({
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
 
           {/* Staff Role - single select */}
-          <Card className="bg-card border-border">
+          <Card className={cn("bg-card border-border transition-colors", pendingChanges.role && "border-primary/30")}>
             <CardHeader className="pb-0 pt-4 px-5">
               <div className="flex items-center gap-2">
                 <Shield className="h-4 w-4 text-muted-foreground" />
                 <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Staff Role</p>
+                {pendingChanges.role && <span className="text-[9px] text-primary font-medium px-1.5 py-0.5 rounded bg-primary/10">Modified</span>}
               </div>
               <p className="text-[11px] text-muted-foreground mt-1">Select one permission level for this user.</p>
             </CardHeader>
             <CardContent className="p-5 pt-3">
               <div className="flex flex-col gap-2">
                 {(["user", "support", "moderator", "admin"] as const).map((role) => {
-                  const active = (u.role || "user") === role
+                  const isSelected = editRole === role
+                  const isOriginal = (u.role || "user") === role
                   const roleColors: Record<string, string> = {
                     user: "border-border hover:border-primary/40",
                     support: "border-emerald-500/30 hover:border-emerald-500/60",
@@ -1368,18 +1399,19 @@ function UserDetailPanel({
                   return (
                     <button
                       key={role}
-                      disabled={active || isLoading("set_role")}
-                      onClick={() => onAction(u.id, "set_role", { role })}
+                      onClick={() => {
+                        setEditRole(role)
+                        addPendingChange("role", role, u.role || "user")
+                      }}
                       className={cn(
                         "flex items-center justify-between px-4 py-2.5 rounded-lg border text-sm font-medium transition-all text-left",
-                        active ? activeColors[role] : `bg-transparent ${roleColors[role]} text-muted-foreground`,
-                        active && "cursor-default",
-                        !active && "hover:text-foreground cursor-pointer"
+                        isSelected ? activeColors[role] : `bg-transparent ${roleColors[role]} text-muted-foreground`,
+                        "hover:text-foreground cursor-pointer"
                       )}
                     >
                       <span>{STAFF_ROLE_LABELS[role] || role}</span>
-                      {active && <CheckCircle2 className="h-4 w-4 text-primary shrink-0" />}
-                      {isLoading("set_role") && !active && <Loader2 className="h-3.5 w-3.5 animate-spin shrink-0" />}
+                      {isSelected && <CheckCircle2 className="h-4 w-4 text-primary shrink-0" />}
+                      {isSelected && !isOriginal && <span className="text-[9px] text-primary ml-1">(pending)</span>}
                     </button>
                   )
                 })}
@@ -1893,6 +1925,56 @@ function UserDetailPanel({
               )}
             </CardContent>
           </Card>
+        </div>
+      )}
+
+      {/* Floating Save Bar - appears when there are pending changes */}
+      {hasChanges && (
+        <div className="fixed bottom-0 left-0 right-0 z-50 p-4 pointer-events-none">
+          <div className="max-w-3xl mx-auto pointer-events-auto">
+            <div className="flex items-center justify-between gap-4 px-5 py-3.5 rounded-xl bg-card border border-primary/30 shadow-2xl shadow-primary/10 backdrop-blur-sm">
+              <div className="flex items-center gap-3">
+                <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center">
+                  <Save className="h-4 w-4 text-primary" />
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-foreground">Unsaved Changes</p>
+                  <p className="text-[11px] text-muted-foreground">
+                    {Object.keys(pendingChanges).length} field{Object.keys(pendingChanges).length !== 1 ? "s" : ""} modified
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={discardChanges}
+                  disabled={isSaving}
+                  className="h-9 px-4"
+                >
+                  Discard
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={saveAllChanges}
+                  disabled={isSaving}
+                  className="h-9 px-5 gap-2"
+                >
+                  {isSaving ? (
+                    <>
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      Saving...
+                    </>
+                  ) : (
+                    <>
+                      <Save className="h-3.5 w-3.5" />
+                      Save Changes
+                    </>
+                  )}
+                </Button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
     </div>
