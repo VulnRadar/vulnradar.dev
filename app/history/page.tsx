@@ -1,8 +1,8 @@
 "use client"
 import { SEVERITY_LEVELS, API } from "@/lib/constants"
 
-import { useState, useEffect, useCallback, Suspense } from "react"
-import { useRouter, useSearchParams } from "next/navigation"
+import { useState, useEffect, useCallback } from "react"
+import { useRouter } from "next/navigation"
 import {
   Clock,
   Globe,
@@ -74,7 +74,6 @@ function SeverityDot({ severity, count }: { severity: string; count: number }) {
 
 function HistoryPageContent() {
   const router = useRouter()
-  const searchParams = useSearchParams()
   const [scans, setScans] = useState<ScanRecord[]>([])
   const [loading, setLoading] = useState(true)
   const [clearing, setClearing] = useState(false)
@@ -100,21 +99,22 @@ function HistoryPageContent() {
   const [editingNotes, setEditingNotes] = useState(false)
   const [savingNotes, setSavingNotes] = useState(false)
 
-  // Sync scan selection with URL (using replaceState to avoid page reloads)
+  // Sync scan selection with URL hash (no page reloads)
   const updateUrlWithScan = useCallback((id: number | null) => {
     if (typeof window === "undefined") return
     if (id) {
-      window.history.replaceState(null, "", `/history?id=${id}`)
+      window.history.replaceState(null, "", `/history#${id}`)
     } else {
       window.history.replaceState(null, "", "/history")
     }
   }, [])
 
-  // Check for id parameter in URL and load that scan on mount
+  // Check for id in URL hash and load that scan on mount
   useEffect(() => {
-    const scanId = searchParams.get('id')
-    if (scanId) {
-      const id = parseInt(scanId, 10)
+    if (typeof window === "undefined") return
+    const hash = window.location.hash.replace("#", "")
+    if (hash) {
+      const id = parseInt(hash, 10)
       if (!isNaN(id)) {
         setSelectedScanId(id)
         loadScanDetail(id)
@@ -759,21 +759,6 @@ function HistoryPageContent() {
 }
 
 export default function HistoryPage() {
-  return (
-    <Suspense fallback={
-      <div className="min-h-screen flex flex-col bg-background">
-        <Header />
-        <main className="flex-1 flex items-center justify-center">
-          <div className="flex flex-col items-center gap-3">
-            <Loader2 className="h-6 w-6 animate-spin text-primary" />
-            <p className="text-sm text-muted-foreground">Loading...</p>
-          </div>
-        </main>
-        <Footer />
-      </div>
-    }>
-      <HistoryPageContent />
-    </Suspense>
-  )
+  return <HistoryPageContent />
 }
 
