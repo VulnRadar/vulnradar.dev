@@ -63,6 +63,23 @@ function DashboardContent() {
       window.history.replaceState(null, "", "/dashboard")
     }
   }, [])
+
+  // If user manually navigates to /dashboard#scan-{id}, redirect to history page
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    const checkHash = () => {
+      const hash = window.location.hash
+      if (hash.startsWith("#scan-") && status === "idle") {
+        const id = hash.replace("#scan-", "")
+        if (id && !isNaN(parseInt(id, 10))) {
+          window.location.href = `/history#${id}`
+        }
+      }
+    }
+    checkHash()
+    window.addEventListener("hashchange", checkHash)
+    return () => window.removeEventListener("hashchange", checkHash)
+  }, [status])
   const [error, setError] = useState<string | null>(null)
   const [selectedIssue, setSelectedIssue] = useState<Vulnerability | null>(null)
   const [scanNotes, setScanNotes] = useState("")
