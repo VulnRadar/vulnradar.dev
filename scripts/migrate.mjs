@@ -32,17 +32,46 @@ const ROOT = resolve(__dirname, "..")
 // ── Version Info ────────────────────────────────────────────────────────────
 const SCHEMA_VERSION = "2.0.0"
 
-// Tables that existed in v1 but are now removed/consolidated in v2
-const V1_LEGACY_TABLES = [
-  "subscriptions",
-  "daily_request_limits",
-  "roles",
-  "permissions",
-  "role_permissions",
-  "user_roles",
-  "user_permission_tags",
-  "beta_features",
-  "user_beta_access",
+// Core tables that exist in v1 (original schema)
+// v1 only has these tables - no badges, billing, subscriptions, etc.
+const V1_CORE_TABLES = [
+  "admin_audit_log",
+  "api_keys",
+  "api_usage",
+  "data_requests",
+  "device_trust",
+  "email_2fa_codes",
+  "email_verification_tokens",
+  "notification_preferences",
+  "password_reset_tokens",
+  "rate_limits",
+  "scan_history",
+  "scan_tags",
+  "scheduled_scans",
+  "sessions",
+  "team_invites",
+  "team_members",
+  "teams",
+  "users",
+  "webhooks",
+]
+
+// New tables added in v2
+const V2_NEW_TABLES = [
+  "badges",
+  "user_badges",
+  "billing_history",
+]
+
+// Columns that v2 adds to the users table
+const V2_USER_COLUMNS = [
+  "plan",
+  "stripe_customer_id",
+  "stripe_subscription_id",
+  "subscription_status",
+  "subscription_current_period_end",
+  "stripe_subscription_metadata",
+  "beta_access",
 ]
 
 // ── Rename Mappings ─────────────────────────────────────────────────────────
@@ -218,39 +247,64 @@ async function getActualSchema(pool) {
 }
 
 // ── Check if this is a v1 database that needs v2 migration ──────────────────
-async function detectV1Database(pool, actual) {
-  const foundLegacyTables = V1_LEGACY_TABLES.filter(t => actual[t])
-  return foundLegacyTables
+// v1 is detected by: has v1 core tables, but MISSING v2 tables and v2 user columns
+function detectV1Database(actual) {
+  // Check if users table exists
+  if (!actual["users"]) return { isV1: false, reason: "No users table found" }
+  
+  const userColumns = actual["users"] || []
+  
+  // Check if v2 tables are missing
+  const missingV2Tables = V2_NEW_TABLES.filter(t => !actual[t])
+  
+  // Check if v2 user columns are missing
+  const missingV2Columns = V2_USER_COLUMNS.filter(col => !userColumns.includes(col))
+  
+  // It's a v1 database if it's missing v2 tables OR v2 user columns
+  const isV1 = missingV2Tables.length > 0 || missingV2Columns.length > 0
+  
+  return {
+    isV1,
+    missingTables: missingV2Tables,
+    missingColumns: missingV2Columns,
+    hasV1CoreTables: V1_CORE_TABLES.filter(t => actual[t]).length,
+  }
 }
 
-// ── V2 Migration: Migrate data and drop legacy tables ───────────────────────
-async function runV2Migration(pool, actual, legacyTables) {
+// ── V2 Migration: Add v2 tables and columns to v1 database ──────────────────
+async function runV2Migration(pool, actual, v1Info) {
   log("")
   log(`${c.bold}${c.bgYellow}${c.white} V1 -> V2 MIGRATION DETECTED ${c.reset}`)
   log("")
-  log(`${c.yellow}Your database contains tables from VulnRadar v1 that have been${c.reset}`)
-  log(`${c.yellow}consolidated into the users table in v2.${c.reset}`)
+  log(`${c.yellow}Your database is running VulnRadar v1 schema.${c.reset}`)
+  log(`${c.yellow}This migration will upgrade it to v2.${c.reset}`)
   log("")
-  log(`${c.cyan}Legacy tables found:${c.reset}`)
-  for (const t of legacyTables) {
-    try {
-      const countRes = await pool.query(`SELECT COUNT(*) as total FROM "${t}"`)
-      log(`  - ${c.bold}${t}${c.reset} ${c.dim}(${countRes.rows[0].total} rows)${c.reset}`)
-    } catch {
-      log(`  - ${c.bold}${t}${c.reset}`)
+  
+  if (v1Info.missingTables.length > 0) {
+    log(`${c.cyan}New tables to create:${c.reset}`)
+    for (const t of v1Info.missingTables) {
+      log(`  + ${c.bold}${t}${c.reset}`)
     }
+    log("")
   }
-  log("")
+  
+  if (v1Info.missingColumns.length > 0) {
+    log(`${c.cyan}New columns to add to users table:${c.reset}`)
+    for (const col of v1Info.missingColumns) {
+      log(`  + ${c.bold}users.${col}${c.reset}`)
+    }
+    log("")
+  }
+  
   log(`${c.cyan}What this migration will do:${c.reset}`)
   log(`  1. Add new columns to the ${c.bold}users${c.reset} table (plan, stripe_customer_id, etc.)`)
-  log(`  2. Migrate subscription data from ${c.bold}subscriptions${c.reset} table to ${c.bold}users${c.reset}`)
-  log(`  3. Migrate beta access from ${c.bold}user_beta_access${c.reset} to ${c.bold}users.beta_access${c.reset}`)
-  log(`  4. Drop the legacy tables (data will be preserved in users table)`)
+  log(`  2. Create new tables: ${c.bold}badges${c.reset}, ${c.bold}user_badges${c.reset}, ${c.bold}billing_history${c.reset}`)
+  log(`  3. Set default values (plan = 'free', beta_access = false)`)
   log("")
-  log(`${c.red}${c.bold}IMPORTANT: Back up your database before proceeding!${c.reset}`)
+  log(`${c.green}This is a safe migration - no data will be lost.${c.reset}`)
   log("")
 
-  const shouldProceed = await askDanger("Proceed with v2 migration?")
+  const shouldProceed = await askReview("Proceed with v2 migration?")
   if (!shouldProceed) {
     info("Migration cancelled. Your database was not modified.")
     return false
@@ -279,66 +333,76 @@ async function runV2Migration(pool, actual, legacyTables) {
     } catch (err) {
       if (!err.message.includes("already exists")) {
         error(`  Failed to add users.${col.name}: ${err.message}`)
-      }
-    }
-  }
-
-  // Step 2: Migrate data from subscriptions table
-  if (actual["subscriptions"]) {
-    info("Migrating subscription data...")
-    try {
-      const subsCount = await pool.query(`SELECT COUNT(*) as total FROM subscriptions`)
-      if (parseInt(subsCount.rows[0].total) > 0) {
-        await pool.query(`
-          UPDATE users u
-          SET 
-            plan = COALESCE(s.plan, u.plan, 'free'),
-            stripe_customer_id = COALESCE(s.stripe_customer_id, u.stripe_customer_id),
-            stripe_subscription_id = COALESCE(s.stripe_subscription_id, u.stripe_subscription_id),
-            subscription_status = COALESCE(s.status, u.subscription_status),
-            subscription_current_period_end = COALESCE(s.current_period_end, u.subscription_current_period_end)
-          FROM subscriptions s
-          WHERE u.id = s.user_id
-        `)
-        success(`  Migrated ${subsCount.rows[0].total} subscription records`)
       } else {
-        info("  No subscription records to migrate")
+        info(`  users.${col.name} already exists`)
       }
-    } catch (err) {
-      warn(`  Could not migrate subscriptions: ${err.message}`)
     }
   }
 
-  // Step 3: Migrate beta access
-  if (actual["user_beta_access"]) {
-    info("Migrating beta access data...")
+  // Step 2: Create badges table
+  if (!actual["badges"]) {
+    info("Creating badges table...")
     try {
-      const betaCount = await pool.query(`SELECT COUNT(*) as total FROM user_beta_access`)
-      if (parseInt(betaCount.rows[0].total) > 0) {
-        await pool.query(`
-          UPDATE users u
-          SET beta_access = TRUE
-          FROM user_beta_access b
-          WHERE u.id = b.user_id
-        `)
-        success(`  Migrated ${betaCount.rows[0].total} beta access records`)
-      } else {
-        info("  No beta access records to migrate")
-      }
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS badges (
+          id SERIAL PRIMARY KEY,
+          name VARCHAR(100) NOT NULL UNIQUE,
+          display_name VARCHAR(255) NOT NULL,
+          description TEXT,
+          color VARCHAR(7) DEFAULT '#6366f1',
+          icon VARCHAR(100),
+          created_at TIMESTAMP DEFAULT NOW()
+        )
+      `)
+      success("  Created badges table")
     } catch (err) {
-      warn(`  Could not migrate beta access: ${err.message}`)
+      error(`  Failed to create badges table: ${err.message}`)
     }
   }
 
-  // Step 4: Drop legacy tables
-  log("")
-  info("Dropping legacy tables...")
-  for (const table of legacyTables) {
+  // Step 3: Create user_badges table
+  if (!actual["user_badges"]) {
+    info("Creating user_badges table...")
     try {
-      await pool.query(`DROP TABLE IF EXISTS "${table}" CASCADE`)
-      success(`  Dropped ${table}`)
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS user_badges (
+          id SERIAL PRIMARY KEY,
+          user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          badge_id INTEGER NOT NULL REFERENCES badges(id) ON DELETE CASCADE,
+          awarded_at TIMESTAMP DEFAULT NOW(),
+          awarded_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+          UNIQUE(user_id, badge_id)
+        )
+      `)
+      await pool.query(`CREATE INDEX IF NOT EXISTS idx_user_badges_user ON user_badges(user_id)`)
+      success("  Created user_badges table")
     } catch (err) {
-      warn(`  Could not drop ${table}: ${err.message}`)
+      error(`  Failed to create user_badges table: ${err.message}`)
+    }
+  }
+
+  // Step 4: Create billing_history table
+  if (!actual["billing_history"]) {
+    info("Creating billing_history table...")
+    try {
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS billing_history (
+          id SERIAL PRIMARY KEY,
+          user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          stripe_invoice_id VARCHAR(255),
+          stripe_payment_intent_id VARCHAR(255),
+          amount_cents INTEGER NOT NULL,
+          currency VARCHAR(3) DEFAULT 'usd',
+          status VARCHAR(50) NOT NULL,
+          description TEXT,
+          invoice_pdf_url TEXT,
+          created_at TIMESTAMP DEFAULT NOW()
+        )
+      `)
+      await pool.query(`CREATE INDEX IF NOT EXISTS idx_billing_history_user ON billing_history(user_id)`)
+      success("  Created billing_history table")
+    } catch (err) {
+      error(`  Failed to create billing_history table: ${err.message}`)
     }
   }
 
@@ -346,7 +410,7 @@ async function runV2Migration(pool, actual, legacyTables) {
   success("V2 migration complete!")
   log("")
   log(`${c.cyan}Your database has been upgraded to VulnRadar v2 schema.${c.reset}`)
-  log(`${c.cyan}All user subscription data is now stored directly in the users table.${c.reset}`)
+  log(`${c.cyan}New features available: badges, billing history, subscription management.${c.reset}`)
   log("")
 
   return true
@@ -447,10 +511,12 @@ async function main() {
   }
 
   // Check for v1 -> v2 migration
-  const legacyTables = await detectV1Database(pool, actual)
-  if (legacyTables.length > 0 || forceV2) {
-    if (legacyTables.length > 0) {
-      const migrated = await runV2Migration(pool, actual, legacyTables)
+  const v1Info = detectV1Database(actual)
+  if (v1Info.isV1 || forceV2) {
+    if (v1Info.isV1) {
+      log("")
+      info(`Detected v1 database (missing ${v1Info.missingTables.length} tables, ${v1Info.missingColumns.length} columns)`)
+      const migrated = await runV2Migration(pool, actual, v1Info)
       if (migrated) {
         // Re-read schema after migration
         info("Re-reading database schema after migration...")
@@ -459,7 +525,7 @@ async function main() {
         Object.assign(actual, newActual)
       }
     } else if (forceV2) {
-      info("No legacy tables found. Your database is already at v2 schema.")
+      info("Your database already has all v2 tables and columns.")
     }
   }
 
