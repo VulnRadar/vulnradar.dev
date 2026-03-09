@@ -70,7 +70,7 @@ import { APP_NAME, TOTAL_CHECKS_LABEL } from "@/lib/constants"
 
 const CHANGELOG = [
   {
-    version: "1.9.5-patch-1",
+    version: "1.9.5-patch.1",
     date: "March 9, 2026",
     title: "API v1 routes fixed",
     highlights: true,
