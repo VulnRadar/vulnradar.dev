@@ -218,6 +218,22 @@ export const PAGINATION = {
 }
 
 // ============================================================================
+// BILLING / PREMIUM (from config.yaml)
+// ============================================================================
+// When BILLING_ENABLED is false, all users get unlimited access
+// Self-hosters can disable this to remove all premium restrictions
+// ============================================================================
+
+export const BILLING_ENABLED = config.billing?.enabled ?? true
+export const BILLING_PLAN_LIMITS = config.billing?.plan_limits ?? {
+  free: 50,
+  core_supporter: 100,
+  pro_supporter: 150,
+  elite_supporter: 500,
+}
+export const BILLING_UNLIMITED_MODE_LIMIT = config.billing?.unlimited_mode_limit ?? -1
+
+// ============================================================================
 // TEAM ROLES
 // ============================================================================
 

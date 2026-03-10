@@ -201,3 +201,35 @@ features:
   bulk_scans: true
   pdf_reports: true
   email_notifications: true
+
+# ----------------------------------------------------------------------------
+# Billing / Premium Configuration
+# ----------------------------------------------------------------------------
+# Self-hosters: Set billing.enabled to false to disable all billing features
+# and give all users unlimited access (or the unlimited_mode_limit if set)
+# ----------------------------------------------------------------------------
+billing:
+  # Master switch - when false, all users get unlimited access
+  # No pricing page, no plan restrictions, no Stripe integration needed
+  enabled: true
+  
+  # Plan limits (daily scans) - only applies when billing is enabled
+  plan_limits:
+    free: 50
+    core_supporter: 100
+    pro_supporter: 150
+    elite_supporter: 500
+  
+  # When billing is disabled, this is the daily limit for all users
+  # Set to -1 for truly unlimited, or a number like 1000 for a high cap
+  unlimited_mode_limit: -1
+
+# ----------------------------------------------------------------------------
+# Stripe Configuration (only needed if billing.enabled = true)
+# ----------------------------------------------------------------------------
+# Required environment variables when billing is enabled:
+#   STRIPE_SECRET_KEY          - Your Stripe secret key (sk_live_... or sk_test_...)
+#   STRIPE_PUBLISHABLE_KEY     - Your Stripe publishable key (pk_live_... or pk_test_...)
+#   STRIPE_WEBHOOK_SECRET      - Webhook signing secret (whsec_...)
+#   NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY - Same as STRIPE_PUBLISHABLE_KEY (for client)
+# ----------------------------------------------------------------------------

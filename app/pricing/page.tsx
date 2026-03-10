@@ -5,7 +5,7 @@ import { Check, ArrowRight, Sparkles, Shield, Zap, Clock, Globe, Lock, Users, He
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
-import { APP_NAME, ROUTES } from "@/lib/constants"
+import { APP_NAME, ROUTES, BILLING_ENABLED } from "@/lib/constants"
 import Link from "next/link"
 import Image from "next/image"
 import { useAuth } from "@/components/auth-provider"
@@ -135,6 +135,29 @@ export default function PricingPage() {
   const getPrice = (basePrice: number) => {
     if (basePrice === 0) return 0
     return billing === "yearly" ? Math.round(basePrice * 0.8 * 12) : basePrice
+  }
+
+  // When billing is disabled, show a simple message
+  if (!BILLING_ENABLED) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center max-w-lg px-4">
+          <div className="w-16 h-16 rounded-full bg-emerald-500/10 flex items-center justify-center mx-auto mb-6">
+            <Check className="h-8 w-8 text-emerald-500" />
+          </div>
+          <h1 className="text-2xl font-bold mb-3">Unlimited Access</h1>
+          <p className="text-muted-foreground mb-6">
+            This {APP_NAME} instance has billing disabled. All users have unlimited access to all features - no payment required.
+          </p>
+          <Button asChild>
+            <Link href={me ? ROUTES.DASHBOARD : ROUTES.SIGNUP}>
+              {me ? "Go to Scanner" : "Get Started"}
+              <ArrowRight className="h-4 w-4 ml-2" />
+            </Link>
+          </Button>
+        </div>
+      </div>
+    )
   }
 
   return (
