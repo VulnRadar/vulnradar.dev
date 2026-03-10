@@ -38,12 +38,12 @@ export function Header() {
   }
 
   return (
-      <header className="sticky top-0 z-50 border-b border-border bg-card/80 backdrop-blur-lg">
-        <div className="max-w-6xl mx-auto flex items-center justify-between px-4 h-14">
+      <header className="sticky top-0 z-50 border-b border-border bg-card/80 backdrop-blur-lg overflow-x-hidden">
+        <div className="max-w-6xl mx-auto flex items-center justify-between px-4 h-14 min-w-0">
           {/* Logo */}
           <Link
               href={ROUTES.DASHBOARD}
-              className="flex items-center gap-2 hover:opacity-80 transition-opacity shrink-0"
+              className="flex items-center gap-2 hover:opacity-80 transition-opacity shrink-0 min-w-0"
               aria-label="Go to scanner"
           >
             <Image
@@ -59,7 +59,7 @@ export function Header() {
           </Link>
 
           {/* Desktop nav */}
-          <nav className="hidden md:flex items-center gap-0.5">
+          <nav className="hidden md:flex items-center gap-0.5 overflow-x-auto scrollbar-none min-w-0 flex-1 justify-center px-2">
             {NAV_LINKS.map(({ href, label, icon: Icon }) => {
               const active = href === ROUTES.DOCS ? pathname.startsWith(ROUTES.DOCS) : pathname === href || pathname.startsWith(href.split("#")[0])
               return (
@@ -96,7 +96,7 @@ export function Header() {
           </nav>
 
           {/* Right side */}
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-1 shrink-0">
             <NotificationBell />
             <ThemeToggle />
             <Button

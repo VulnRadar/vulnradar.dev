@@ -855,26 +855,23 @@ function ProfileContent() {
         )}
 
         {/* Tab Navigation */}
-        <div className="flex items-center gap-1 p-1 rounded-lg bg-secondary/50 border border-border overflow-x-auto scrollbar-thin scrollbar-thumb-muted/40 scrollbar-track-transparent min-w-0 -mx-4 px-4 sm:mx-0 sm:px-1">
+        <div className="flex items-center gap-1 p-1 rounded-lg bg-secondary/50 border border-border overflow-x-auto scrollbar-none min-w-0 justify-between sm:justify-start">
           {TABS.map((tab) => (
             <a
               key={tab.id}
               href={`/profile#${tab.id}`}
               onClick={(e) => {
-                // Allow ctrl+click to open in new tab naturally
                 if (!e.ctrlKey && !e.metaKey) {
                   e.preventDefault()
                   handleTabChange(tab.id)
                 }
               }}
-              className={
-                cn(
-                  "flex items-center justify-center gap-1.5 px-2.5 sm:px-3 py-2 sm:py-2.5 rounded-md text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 whitespace-nowrap flex-shrink-0",
-                  activeTab === tab.id
-                    ? "bg-card text-foreground shadow-sm"
-                    : "text-muted-foreground hover:text-foreground"
-                )
-              }
+              className={cn(
+                "flex items-center justify-center gap-1.5 px-2.5 sm:px-3 py-2 sm:py-2.5 rounded-md text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 whitespace-nowrap flex-1 sm:flex-none",
+                activeTab === tab.id
+                  ? "bg-card text-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground"
+              )}
             >
               {tab.icon}
               <span className="hidden sm:inline text-sm">{tab.label}</span>
