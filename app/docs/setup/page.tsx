@@ -1,22 +1,89 @@
 "use client"
 
-import React from "react"
+import React, { useEffect, useRef } from "react"
 import { Card } from "@/components/ui/card"
+import { Badge } from "@/components/ui/badge"
 import { CopyCodeBlock } from "@/components/copy-code-block"
 import { AlertTriangle, CheckCircle, Info } from "lucide-react"
 import { APP_NAME, APP_URL, APP_VERSION, ENGINE_VERSION, APP_REPO, APP_SLUG } from "@/lib/constants"
+import { useDocsContext, type TocItem } from "../layout"
+
+const tocItems: TocItem[] = [
+  { id: "overview", label: "Overview" },
+  { id: "prerequisites", label: "Prerequisites" },
+  { id: "installation", label: "Installation" },
+  { id: "database", label: "Database Setup" },
+  { id: "environment", label: "Environment Config" },
+  { id: "running", label: "Running the App" },
+  { id: "verification", label: "Verification" },
+  { id: "troubleshooting", label: "Troubleshooting" },
+  { id: "deployment", label: "Deployment Options" },
+  { id: "docker", label: "Docker Deployment" },
+  { id: "migration", label: "Migration Tool" },
+  { id: "version", label: "Version Check" },
+]
 
 export default function SetupPage() {
+  const { setActiveSection, setTocItems } = useDocsContext()
+  const observerRef = useRef<IntersectionObserver | null>(null)
+
+  // Set ToC items on mount
+  useEffect(() => {
+    setTocItems(tocItems)
+    return () => setTocItems([])
+  }, [setTocItems])
+
+  // Intersection observer for active section tracking
+  useEffect(() => {
+    observerRef.current = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            setActiveSection(entry.target.id)
+          }
+        })
+      },
+      { rootMargin: "-20% 0px -70% 0px", threshold: 0 }
+    )
+
+    tocItems.forEach((item) => {
+      const el = document.getElementById(item.id)
+      if (el) observerRef.current?.observe(el)
+    })
+
+    return () => observerRef.current?.disconnect()
+  }, [setActiveSection])
+
   return (
-    <div className="space-y-8">
-      <div>
-        <h1 className="text-4xl font-bold mb-2">Setup Guide</h1>
-        <p className="text-lg text-muted-foreground">Complete guide to installing and configuring {APP_NAME} for your environment</p>
-      </div>
+    <div className="space-y-16">
+      {/* Header */}
+      <section id="overview" className="scroll-mt-24">
+        <Badge variant="outline" className="mb-4 text-primary border-primary/30">Self-Hosting</Badge>
+        <h1 className="text-4xl font-bold tracking-tight mb-4">Setup Guide</h1>
+        <p className="text-lg text-muted-foreground leading-relaxed max-w-3xl">
+          Complete guide to installing and configuring {APP_NAME} for your environment. Choose from local development, Docker, or cloud deployment.
+        </p>
+
+        {/* Quick Options */}
+        <div className="grid sm:grid-cols-3 gap-4 mt-8">
+          <a href="#installation" className="p-4 rounded-lg bg-card border border-border/40 hover:border-primary/30 transition-colors">
+            <div className="text-lg font-bold text-primary mb-1">Local Dev</div>
+            <div className="text-xs text-muted-foreground">Clone and run locally</div>
+          </a>
+          <a href="#docker" className="p-4 rounded-lg bg-card border border-border/40 hover:border-primary/30 transition-colors">
+            <div className="text-lg font-bold text-primary mb-1">Docker</div>
+            <div className="text-xs text-muted-foreground">Deploy in 5 minutes</div>
+          </a>
+          <a href="#deployment" className="p-4 rounded-lg bg-card border border-border/40 hover:border-primary/30 transition-colors">
+            <div className="text-lg font-bold text-primary mb-1">Vercel</div>
+            <div className="text-xs text-muted-foreground">One-click deploy</div>
+          </a>
+        </div>
+      </section>
 
       {/* Prerequisites */}
-      <section id="prerequisites" className="space-y-4">
-        <h2 className="text-2xl font-bold">Prerequisites</h2>
+      <section id="prerequisites" className="scroll-mt-24 space-y-6">
+        <h2 className="text-2xl font-bold tracking-tight">Prerequisites</h2>
         <p className="text-muted-foreground">Before you begin, ensure you have the following installed on your system:</p>
 
         <Card className="p-6 border-border/40 space-y-3">
@@ -59,8 +126,8 @@ export default function SetupPage() {
       </section>
 
       {/* Installation */}
-      <section id="installation" className="space-y-4">
-        <h2 className="text-2xl font-bold">Installation Steps</h2>
+      <section id="installation" className="scroll-mt-24 space-y-6">
+        <h2 className="text-2xl font-bold tracking-tight">Installation Steps</h2>
         <p className="text-muted-foreground">Follow these steps to clone and prepare the repository:</p>
 
         <Card className="p-6 border-border/40">
@@ -93,8 +160,8 @@ pnpm list --depth=0`}</CopyCodeBlock>
       </section>
 
       {/* Database Setup */}
-      <section id="database" className="space-y-4">
-        <h2 className="text-2xl font-bold">Database Setup</h2>
+      <section id="database" className="scroll-mt-24 space-y-6">
+        <h2 className="text-2xl font-bold tracking-tight">Database Setup</h2>
         <p className="text-muted-foreground">Configure PostgreSQL for {APP_NAME}:</p>
 
         <Card className="p-6 border-border/40">
@@ -152,8 +219,8 @@ GRANT ALL PRIVILEGES ON DATABASE vulnradar TO vulnradar_user;
       </section>
 
       {/* Environment Configuration */}
-      <section id="environment" className="space-y-4">
-        <h2 className="text-2xl font-bold">Environment Configuration</h2>
+      <section id="environment" className="scroll-mt-24 space-y-6">
+        <h2 className="text-2xl font-bold tracking-tight">Environment Configuration</h2>
         <p className="text-muted-foreground">Configure environment variables for your {APP_NAME} installation:</p>
 
         <Card className="p-6 border-border/40">
@@ -225,8 +292,8 @@ TURNSTILE_SECRET_KEY=your-turnstile-secret-key`}</code></pre>
       </section>
 
       {/* Running the Application */}
-      <section id="running" className="space-y-4">
-        <h2 className="text-2xl font-bold">Running the Application</h2>
+      <section id="running" className="scroll-mt-24 space-y-6">
+        <h2 className="text-2xl font-bold tracking-tight">Running the Application</h2>
 
         <Card className="p-6 border-border/40">
           <h3 className="font-semibold mb-4">Development Server</h3>
@@ -265,8 +332,8 @@ pnpm dev -- -p 3001`}</CopyCodeBlock>
       </section>
 
       {/* Verification */}
-      <section id="verification" className="space-y-4">
-        <h2 className="text-2xl font-bold">Verification Steps</h2>
+      <section id="verification" className="scroll-mt-24 space-y-6">
+        <h2 className="text-2xl font-bold tracking-tight">Verification Steps</h2>
         <p className="text-muted-foreground">Verify that {APP_NAME} is running correctly:</p>
 
         <Card className="p-6 border-border/40 space-y-4">
@@ -301,8 +368,8 @@ SELECT id, email, name FROM users LIMIT 5;
       </section>
 
       {/* Troubleshooting */}
-      <section id="troubleshooting" className="space-y-4">
-        <h2 className="text-2xl font-bold">Troubleshooting</h2>
+      <section id="troubleshooting" className="scroll-mt-24 space-y-6">
+        <h2 className="text-2xl font-bold tracking-tight">Troubleshooting</h2>
 
         <Card className="p-6 border-border/40 space-y-4">
           <div>
@@ -391,8 +458,8 @@ npm start`}</code></pre>
       </section>
 
       {/* Deployment */}
-      <section id="deployment" className="space-y-4">
-        <h2 className="text-2xl font-bold">Deployment Options</h2>
+      <section id="deployment" className="scroll-mt-24 space-y-6">
+        <h2 className="text-2xl font-bold tracking-tight">Deployment Options</h2>
 
         <Card className="p-6 border-border/40">
           <h3 className="font-semibold mb-4">Vercel (Recommended)</h3>
@@ -429,8 +496,8 @@ npm start`}</code></pre>
       </section>
 
       {/* Docker Setup - REWRITTEN */}
-      <section id="docker" className="space-y-4">
-        <h2 className="text-2xl font-bold">Docker Deployment</h2>
+      <section id="docker" className="scroll-mt-24 space-y-6">
+        <h2 className="text-2xl font-bold tracking-tight">Docker Deployment</h2>
         <p className="text-muted-foreground">Deploy {APP_NAME} using Docker in 5 minutes. No cloning, no build step—just pull the pre-built image and go.</p>
 
         <div className="rounded-lg border border-green-500/20 bg-green-500/5 p-4 flex gap-3">
@@ -526,7 +593,7 @@ NEXT_PUBLIC_APP_URL=https://yourdomain.com
 
 # ─────────────────────────────────────────────────────────────────────────
 # API KEY ENCRYPTION (Server-side - Required for enhanced security)
-# ──────────────────────────────��──────────────────────────────────────────
+# ──────────────────────────────�����─────────────────────────────────────────
 # 32-byte hex string for AES-256 encryption of stored API keys.
 # Generate with: node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 API_KEY_ENCRYPTION_KEY=your-64-character-hex-key
@@ -740,8 +807,8 @@ TURNSTILE_SECRET_KEY=your-secret`}</code></pre>
       </section>
 
       {/* Migration Tool */}
-      <section id="migration" className="space-y-4">
-        <h2 className="text-2xl font-bold">Migration Tool</h2>
+      <section id="migration" className="scroll-mt-24 space-y-6">
+        <h2 className="text-2xl font-bold tracking-tight">Migration Tool</h2>
         <p className="text-muted-foreground">The built-in migration tool helps keep your database schema in sync when updating {APP_NAME} to a new version.</p>
 
         <Card className="p-6 border-border/40">
@@ -779,8 +846,8 @@ TURNSTILE_SECRET_KEY=your-secret`}</code></pre>
       </section>
 
       {/* Version Checking */}
-      <section id="version" className="space-y-4">
-        <h2 className="text-2xl font-bold">Version Checking</h2>
+      <section id="version" className="scroll-mt-24 space-y-6">
+        <h2 className="text-2xl font-bold tracking-tight">Version Checking</h2>
         <p className="text-muted-foreground">{APP_NAME} includes automatic version checking for self-hosted instances.</p>
 
         <Card className="p-6 border-border/40">
