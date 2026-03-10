@@ -153,7 +153,7 @@ export async function GET(request: NextRequest) {
     `),
     search
       ? pool.query(`
-          SELECT u.id, u.email, u.name, u.role, u.avatar_url, u.totp_enabled, u.tos_accepted_at, u.created_at, u.disabled_at,
+          SELECT u.id, u.email, u.name, u.role, u.avatar_url, u.totp_enabled, u.tos_accepted_at, u.created_at, u.disabled_at, u.plan, u.subscription_status,
             (SELECT COUNT(*) FROM scan_history sh WHERE sh.user_id = u.id) as scan_count,
             (SELECT COUNT(*) FROM api_keys ak WHERE ak.user_id = u.id AND ak.revoked_at IS NULL) as api_key_count
           FROM users u
@@ -162,7 +162,7 @@ export async function GET(request: NextRequest) {
           LIMIT $1 OFFSET $2
         `, [limit, offset, `%${search}%`])
       : pool.query(`
-          SELECT u.id, u.email, u.name, u.role, u.avatar_url, u.totp_enabled, u.tos_accepted_at, u.created_at, u.disabled_at,
+          SELECT u.id, u.email, u.name, u.role, u.avatar_url, u.totp_enabled, u.tos_accepted_at, u.created_at, u.disabled_at, u.plan, u.subscription_status,
             (SELECT COUNT(*) FROM scan_history sh WHERE sh.user_id = u.id) as scan_count,
             (SELECT COUNT(*) FROM api_keys ak WHERE ak.user_id = u.id AND ak.revoked_at IS NULL) as api_key_count
           FROM users u

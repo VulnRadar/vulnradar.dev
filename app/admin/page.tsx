@@ -98,7 +98,8 @@ interface AdminUser {
   disabled_at: string | null
   scan_count: number
   api_key_count: number
-  plan?: string
+  plan: string
+  subscription_status: string | null
 }
 
 interface BadgeDef {
@@ -758,6 +759,10 @@ function AdminContent() {
                                 if (u.role && u.role !== STAFF_ROLES.USER && ROLE_BADGE_STYLES[u.role]) {
                                   badges.push(<Badge key="role" className={cn(ROLE_BADGE_STYLES[u.role], "text-[10px] px-1.5 font-medium")}>{STAFF_ROLE_LABELS[u.role] || u.role}</Badge>)
                                 }
+                                if (u.plan && u.plan !== "free") {
+                                  const planLabel = u.plan.replace("_supporter", "").charAt(0).toUpperCase() + u.plan.replace("_supporter", "").slice(1)
+                                  badges.push(<Badge key="plan" className="bg-primary/10 text-primary border-primary/20 text-[10px] px-1.5 font-medium">{planLabel}</Badge>)
+                                }
                                 if (u.totp_enabled) badges.push(<Badge key="2fa" className="bg-emerald-500/10 text-emerald-500 border-emerald-500/20 text-[10px] px-1.5 font-medium">2FA</Badge>)
                                 if (badges.length === 0) return <span className="text-xs text-muted-foreground">Active</span>
                                 return <div className="flex items-center gap-1.5 flex-wrap">{badges}</div>
@@ -834,6 +839,9 @@ function AdminContent() {
                             {u.disabled_at && <Badge className="bg-destructive/10 text-destructive border-destructive/20 text-[10px] px-1.5">Disabled</Badge>}
                             {u.role && u.role !== STAFF_ROLES.USER && ROLE_BADGE_STYLES[u.role] && (
                               <Badge className={cn(ROLE_BADGE_STYLES[u.role], "text-[10px] px-1.5")}>{STAFF_ROLE_LABELS[u.role] || u.role}</Badge>
+                            )}
+                            {u.plan && u.plan !== "free" && (
+                              <Badge className="bg-primary/10 text-primary border-primary/20 text-[10px] px-1.5">{u.plan.replace("_supporter", "").charAt(0).toUpperCase() + u.plan.replace("_supporter", "").slice(1)}</Badge>
                             )}
                             {u.totp_enabled && <Badge className="bg-emerald-500/10 text-emerald-500 border-emerald-500/20 text-[10px] px-1.5">2FA</Badge>}
                           </div>
