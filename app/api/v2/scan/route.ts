@@ -4,6 +4,7 @@ import { runAsyncChecks } from "@/lib/scanner/async-checks"
 import { getSession } from "@/lib/auth"
 import { validateApiKey, checkRateLimit, recordUsage } from "@/lib/api-keys"
 import { checkRateLimit as checkGlobalRL, RATE_LIMITS } from "@/lib/rate-limit"
+import { checkAndRecordRequest, getRateLimitHeaders } from "@/lib/daily-limits"
 import pool from "@/lib/db"
 import type { ScanResult, Severity, Vulnerability } from "@/lib/scanner/types"
 import { APP_NAME, BEARER_PREFIX, SEVERITY_LEVELS, DEFAULT_SCAN_NOTE } from "@/lib/constants"
@@ -138,12 +139,30 @@ export async function POST(request: NextRequest) {
       }
       authedUserId = session.userId
 
-      // Rate limit web scans by user
+      // Rate limit web scans by user (burst protection)
       const rl = await checkGlobalRL({ key: `scan:${session.userId}`, ...RATE_LIMITS.scan })
       if (!rl.allowed) {
         return NextResponse.json(
           { error: `Scan rate limit reached. Please wait before scanning again.` },
           { status: 429 },
+        )
+      }
+
+      // Check daily quota based on subscription plan
+      const dailyQuota = await checkAndRecordRequest(session.userId)
+      if (!dailyQuota.allowed) {
+        return NextResponse.json(
+          { 
+            error: "Daily scan limit reached. Upgrade your plan for more scans.",
+            limit: dailyQuota.limit,
+            used: dailyQuota.used,
+            remaining: 0,
+            resets_at: dailyQuota.resetsAt,
+          },
+          { 
+            status: 429,
+            headers: getRateLimitHeaders(dailyQuota),
+          },
         )
       }
     }

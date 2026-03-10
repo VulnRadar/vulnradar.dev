@@ -461,6 +461,7 @@ export const API = {
   ACCOUNT_NOTIFICATIONS: `/api/${API_VERSION}/account/notifications`,
   FINDING_TYPES: `/api/${API_VERSION}/finding-types`,
   COMPARE: `/api/${API_VERSION}/compare`,
+  BILLING: `/api/${API_VERSION}/billing`,
 } as const
 
 // ============================================================================
