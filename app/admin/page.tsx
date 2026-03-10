@@ -1096,6 +1096,7 @@ function AdminContent() {
                 </CardContent>
               </Card>
         </>
+          </>
         )}
 
       </main>
