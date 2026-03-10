@@ -421,10 +421,8 @@ function ProfileContent() {
       const billingData = billingRes.ok ? await billingRes.json() : null
       setUser(userData)
       if (billingData) {
-        console.log('[v0] Billing data loaded:', { plan: billingData.plan, hasSubscription: !!billingData.subscription })
         setBillingInfo(billingData)
       } else if (billingRes.status === 500) {
-        console.warn('[v0] Billing API error, retrying fetch')
         // Retry once on server error
         try {
           const retryRes = await fetch(API.BILLING)

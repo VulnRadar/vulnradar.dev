@@ -38,8 +38,6 @@ export function StripeCheckout({ productId, userId, onSuccess }: {
     setVerifying(true)
     setError(null)
     
-    console.log('[v0] Starting subscription verification...')
-    
     // Poll up to 15 times with 1.5 second intervals (22.5 seconds total)
     for (let i = 0; i < 15; i++) {
       try {
@@ -48,29 +46,22 @@ export function StripeCheckout({ productId, userId, onSuccess }: {
           const data = await response.json()
           const currentPlan = data.data?.plan || 'free'
           
-          console.log(`[v0] Verification attempt ${i + 1}: current plan = ${currentPlan}, expected = ${expectedPlan}`)
-          
-          // Check if user has the expected plan
           if (currentPlan === expectedPlan) {
-            console.log('[v0] Subscription verified successfully!')
             setVerified(true)
             setVerifying(false)
             onSuccess?.()
             return
           }
-        } else {
-          console.log(`[v0] Auth check returned ${response.status}`)
         }
-      } catch (err) {
-        console.error('[v0] Error verifying subscription:', err)
+      } catch {
+        // Ignore fetch errors, will retry
       }
       
       // Wait 1.5 seconds before next poll
       await new Promise(resolve => setTimeout(resolve, 1500))
     }
     
-    // Verification timed out - but don't fail, user likely has the plan even if webhook is slow
-    console.warn('[v0] Subscription verification timed out, but plan may still be active')
+    // Verification timed out - assume success (webhook may be slow)
     setVerified(true)
     setVerifying(false)
     onSuccess?.()
