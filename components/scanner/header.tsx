@@ -39,7 +39,7 @@ export function Header() {
 
   return (
       <header className="sticky top-0 z-50 border-b border-border bg-card/80 backdrop-blur-lg">
-        <div className="w-full max-w-[1400px] mx-auto flex items-center gap-2 px-4 h-14">
+        <div className="max-w-6xl mx-auto flex items-center justify-between px-4 h-14">
           {/* Logo */}
           <Link
               href={ROUTES.DASHBOARD}
@@ -53,13 +53,13 @@ export function Header() {
                 height={20}
                 className="h-5 w-5"
             />
-            <span className="text-base font-semibold text-foreground tracking-tight whitespace-nowrap">
+            <span className="text-base font-semibold text-foreground tracking-tight">
               {APP_NAME}
             </span>
           </Link>
 
-          {/* Desktop nav — centered, wraps in scrollable container on narrow viewports */}
-          <nav className="hidden md:flex items-center gap-0.5 flex-1 justify-center min-w-0">
+          {/* Desktop nav */}
+          <nav className="hidden md:flex items-center gap-0.5">
             {NAV_LINKS.map(({ href, label, icon: Icon }) => {
               const active = href === ROUTES.DOCS ? pathname.startsWith(ROUTES.DOCS) : pathname === href || pathname.startsWith(href.split("#")[0])
               return (
@@ -96,7 +96,7 @@ export function Header() {
           </nav>
 
           {/* Right side */}
-          <div className="flex items-center gap-1 shrink-0 ml-auto md:ml-0">
+          <div className="flex items-center gap-1">
             <NotificationBell />
             <ThemeToggle />
             <Button

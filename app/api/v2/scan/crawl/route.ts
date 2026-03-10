@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getSession } from "@/lib/auth"
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
+import { canMakeRequest, incrementDailyCount, getRateLimitHeaders } from "@/lib/daily-limits"
 import { allChecks, getFilteredChecks } from "@/lib/scanner/checks"
 import { runAsyncChecks } from "@/lib/scanner/async-checks"
 import pool from "@/lib/db"
@@ -229,6 +230,20 @@ export async function POST(request: NextRequest) {
     pages = await discoverInternalLinks(url)
   }
 
+  // Check daily quota: each page in the crawl counts as 1 scan
+  const quotaCheck = await canMakeRequest(session.userId)
+  if (!quotaCheck.allowed) {
+    return NextResponse.json(
+      { error: `Daily scan limit reached (${quotaCheck.limit} scans/day). Resets at ${new Date(quotaCheck.resetsAt).toUTCString()}.` },
+      { status: 429, headers: getRateLimitHeaders(quotaCheck) },
+    )
+  }
+
+  // Cap pages to remaining quota
+  const maxPagesToScan = quotaCheck.limit === -1 ? pages.length : Math.min(pages.length, quotaCheck.remaining)
+  const pagesToScan = pages.slice(0, maxPagesToScan)
+  const skippedCount = pages.length - pagesToScan.length
+
   // Scan each page
   const pageResults: Array<{
     url: string
@@ -238,7 +253,9 @@ export async function POST(request: NextRequest) {
     responseHeaders: Record<string, string>
   }> = []
 
-  for (const pageUrl of pages) {
+  for (const pageUrl of pagesToScan) {
+    // Increment daily count before each scan
+    await incrementDailyCount(session.userId)
     const result = await scanSingleUrl(pageUrl, scanners)
     pageResults.push(result)
   }
@@ -298,20 +315,26 @@ export async function POST(request: NextRequest) {
     responseHeaders: mainHeaders,
   }
 
-  return NextResponse.json({
-    ...scanResult,
-    scanHistoryId,
-    crawl: {
-      pagesDiscovered: pages.length,
-      pagesScanned: pageResults.length,
-      pages: pageResults.map((p) => ({
-        url: p.url,
-        scanHistoryId: pageHistoryIds[p.url] || null,
-        findings: p.findings,
-        findings_count: p.summary.total,
-        summary: p.summary,
-        duration: p.duration,
-      })),
+  const finalQuota = await canMakeRequest(session.userId)
+
+  return NextResponse.json(
+    {
+      ...scanResult,
+      scanHistoryId,
+      crawl: {
+        pagesDiscovered: pages.length,
+        pagesScanned: pageResults.length,
+        pagesSkipped: skippedCount,
+        pages: pageResults.map((p) => ({
+          url: p.url,
+          scanHistoryId: pageHistoryIds[p.url] || null,
+          findings: p.findings,
+          findings_count: p.summary.total,
+          summary: p.summary,
+          duration: p.duration,
+        })),
+      },
     },
-  })
+    { headers: getRateLimitHeaders(finalQuota) },
+  )
 }
