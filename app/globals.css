@@ -8,6 +8,18 @@
   }
 }
 
+/* Smooth scroll behavior for anchor links */
+html {
+  scroll-behavior: smooth;
+}
+
+/* Reduce motion for users who prefer it */
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+}
+
 /* Pre-hydration visibility: hide staff/auth elements by default.
    The blocking <script> in layout.tsx injects a <style> tag that
    overrides these to visible BEFORE React hydrates, so there is
