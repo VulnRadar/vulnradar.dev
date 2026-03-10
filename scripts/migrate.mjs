@@ -389,14 +389,14 @@ async function runV2Migration(pool, actual, v1Info) {
         CREATE TABLE IF NOT EXISTS billing_history (
           id SERIAL PRIMARY KEY,
           user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-          stripe_invoice_id VARCHAR(255),
+          stripe_invoice_id VARCHAR(255) UNIQUE,
           stripe_payment_intent_id VARCHAR(255),
           amount_cents INTEGER NOT NULL,
-          currency VARCHAR(3) DEFAULT 'usd',
+          currency VARCHAR(10) NOT NULL DEFAULT 'usd',
           status VARCHAR(50) NOT NULL,
           description TEXT,
           invoice_pdf_url TEXT,
-          created_at TIMESTAMP DEFAULT NOW()
+          created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
         )
       `)
       await pool.query(`CREATE INDEX IF NOT EXISTS idx_billing_history_user ON billing_history(user_id)`)
@@ -404,6 +404,11 @@ async function runV2Migration(pool, actual, v1Info) {
     } catch (err) {
       error(`  Failed to create billing_history table: ${err.message}`)
     }
+  } else {
+    // Ensure stripe_payment_intent_id column exists for older v2 installs
+    try {
+      await pool.query(`ALTER TABLE billing_history ADD COLUMN IF NOT EXISTS stripe_payment_intent_id VARCHAR(255)`)
+    } catch { /* column may already exist */ }
   }
 
   log("")
