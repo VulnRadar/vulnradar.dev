@@ -1792,7 +1792,7 @@ function UserDetailPanel({
               )}
             </CardContent>
           </Card>
-        </div>
+        </>
       )}
 
       {/* Support actions */}
