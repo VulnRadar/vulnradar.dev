@@ -26,50 +26,50 @@ export async function POST(req: NextRequest) {
         const customerEmail = session.customer_email
         const customerId = session.customer as string
         const subscriptionId = session.subscription as string
-
-        if (customerEmail && subscriptionId) {
-          // Get subscription details - metadata.productId is set in startCheckoutSession
-          const subscription = await stripe.subscriptions.retrieve(subscriptionId)
-          
-          // The productId is stored in subscription metadata (from subscription_data.metadata in checkout)
-          const productId = subscription.metadata?.productId || ""
-          let plan = getPlanFromProductId(productId)
-          
-          // Fallback: if no productId in metadata, try to get from product name
-          if (plan === "free" && subscription.items?.data?.[0]) {
-            const priceId = subscription.items.data[0].price?.id || ""
-            const productIdFromPrice = subscription.items.data[0].price?.product as string || ""
-            plan = getPlanFromProductId(productIdFromPrice) || getPlanFromProductId(priceId) || "free"
+        
+        // Get planId directly from session metadata (set in createSubscriptionCheckout)
+        let plan = session.metadata?.planId || ""
+        
+        // Validate the plan is a valid supporter plan
+        if (!plan || !["core_supporter", "pro_supporter", "elite_supporter"].includes(plan)) {
+          // Try to get from subscription metadata
+          if (subscriptionId) {
+            const subscription = await stripe.subscriptions.retrieve(subscriptionId)
+            plan = subscription.metadata?.planId || subscription.metadata?.productId || ""
             
-            // Also check product name as last resort
-            if (plan === "free") {
-              const productName = subscription.items.data[0].price?.nickname || 
-                                 (typeof subscription.items.data[0].price?.product === 'object' 
-                                   ? (subscription.items.data[0].price.product as Stripe.Product).name 
-                                   : "")
+            // Last resort: check product name
+            if (!plan && subscription.items?.data?.[0]) {
+              const productName = subscription.items.data[0].price?.nickname || ""
               if (productName.toLowerCase().includes("elite")) plan = "elite_supporter"
               else if (productName.toLowerCase().includes("pro")) plan = "pro_supporter"
               else if (productName.toLowerCase().includes("core")) plan = "core_supporter"
             }
           }
+        }
 
-          // Update user in database
-          await pool.query(
+        if (customerEmail && subscriptionId) {
+          // Update user in database (case-insensitive email match)
+          const result = await pool.query(
             `UPDATE users SET 
               plan = $1,
               stripe_customer_id = $2,
               stripe_subscription_id = $3,
-              subscription_status = $4
-            WHERE email = $5`,
+              subscription_status = 'active'
+            WHERE LOWER(email) = LOWER($4)
+            RETURNING id, email`,
             [
-              plan,
+              plan || "free",
               customerId,
               subscriptionId,
-              subscription.status,
               customerEmail,
             ]
           )
-          console.log(`[Stripe] User ${customerEmail} upgraded to ${plan}`)
+          
+          if (result.rowCount && result.rowCount > 0) {
+            console.log(`[Stripe] User ${customerEmail} upgraded to ${plan}`)
+          } else {
+            console.log(`[Stripe] checkout.session.completed but no user found for email ${customerEmail}`)
+          }
         }
         break
       }
@@ -111,7 +111,7 @@ export async function POST(req: NextRequest) {
                 stripe_subscription_id = $2,
                 subscription_status = $3,
                 stripe_customer_id = $4
-              WHERE email = $5
+              WHERE LOWER(email) = LOWER($5)
               RETURNING id`,
               [plan || "free", subscription.id, subscription.status, customerId, customer.email]
             )
