@@ -1161,6 +1161,7 @@ function UserDetailPanel({
   const [pendingChanges, setPendingChanges] = useState<Record<string, unknown>>({})
   const [pendingBadgeAwards, setPendingBadgeAwards] = useState<number[]>([]) // badge IDs to award
   const [pendingBadgeRevokes, setPendingBadgeRevokes] = useState<number[]>([]) // badge IDs to revoke
+  const [accountEditMode, setAccountEditMode] = useState(false)
   const [editName, setEditName] = useState(u.name || "")
   const [editEmail, setEditEmail] = useState(u.email)
   const [editPlan, setEditPlan] = useState(u.plan || "free")
@@ -1315,90 +1316,149 @@ function UserDetailPanel({
       {!detailLoading && hasStaffPermission(callerRole, STAFF_PERMISSIONS.DISABLE_USER) && (
         <Card className="bg-card border-border">
           <CardHeader className="pb-0 pt-4 px-5">
-            <div className="flex items-center gap-2">
-              <UserCog className="h-4 w-4 text-muted-foreground" />
-              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Account Management</p>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <UserCog className="h-4 w-4 text-muted-foreground" />
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Account Management</p>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 text-xs gap-1.5"
+                onClick={() => {
+                  if (accountEditMode) {
+                    // Cancel - reset pending changes for these fields
+                    setEditName(u.name || "")
+                    setEditEmail(u.email || "")
+                    setEditPlan(u.plan || "free")
+                    setPendingChanges(prev => {
+                      const next = { ...prev }
+                      delete next.name
+                      delete next.email
+                      delete next.plan
+                      return next
+                    })
+                  }
+                  setAccountEditMode(m => !m)
+                }}
+              >
+                {accountEditMode ? (
+                  <><X className="h-3 w-3" />Cancel</>
+                ) : (
+                  <><Pencil className="h-3 w-3" />Edit</>
+                )}
+              </Button>
             </div>
           </CardHeader>
           <CardContent className="p-5 pt-3">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              {/* Edit Name */}
-              <div className={cn("flex flex-col gap-2 p-3 rounded-lg border transition-colors", pendingChanges.name ? "bg-primary/5 border-primary/30" : "bg-muted/20 border-border")}>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
+            {!accountEditMode ? (
+              // Read-only view
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <div className="flex flex-col gap-1 p-3 rounded-lg border bg-muted/20 border-border">
+                  <div className="flex items-center gap-2 mb-1">
                     <User className="h-3.5 w-3.5 text-muted-foreground" />
                     <span className="text-[11px] text-muted-foreground font-medium">Display Name</span>
-                    {pendingChanges.name && <span className="text-[9px] text-primary font-medium px-1.5 py-0.5 rounded bg-primary/10">Modified</span>}
                   </div>
+                  <span className="text-xs font-medium text-foreground truncate">{u.name || <span className="text-muted-foreground italic">Not set</span>}</span>
                 </div>
-                <Input
-                  value={editName}
-                  onChange={(e) => {
-                    setEditName(e.target.value)
-                    addPendingChange("name", e.target.value.trim(), u.name || "")
-                  }}
-                  placeholder="Enter name"
-                  className="h-8 text-xs"
-                />
-              </div>
-
-              {/* Edit Email - admin only */}
-              {hasStaffPermission(callerRole, STAFF_PERMISSIONS.EDIT_USER_ROLE) && (
-                <div className={cn("flex flex-col gap-2 p-3 rounded-lg border transition-colors", pendingChanges.email ? "bg-primary/5 border-primary/30" : "bg-muted/20 border-border")}>
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
+                {hasStaffPermission(callerRole, STAFF_PERMISSIONS.EDIT_USER_ROLE) && (
+                  <div className="flex flex-col gap-1 p-3 rounded-lg border bg-muted/20 border-border">
+                    <div className="flex items-center gap-2 mb-1">
                       <Mail className="h-3.5 w-3.5 text-muted-foreground" />
                       <span className="text-[11px] text-muted-foreground font-medium">Email Address</span>
-                      {pendingChanges.email && <span className="text-[9px] text-primary font-medium px-1.5 py-0.5 rounded bg-primary/10">Modified</span>}
                     </div>
+                    <span className="text-xs font-medium text-foreground truncate">{u.email}</span>
                   </div>
-                  <Input
-                    type="email"
-                    value={editEmail}
-                    onChange={(e) => {
-                      setEditEmail(e.target.value)
-                      addPendingChange("email", e.target.value.trim().toLowerCase(), u.email)
-                    }}
-                    placeholder="Email address"
-                    className="h-8 text-xs"
-                  />
-                </div>
-              )}
-
-              {/* Edit Plan - admin only */}
-              {hasStaffPermission(callerRole, STAFF_PERMISSIONS.EDIT_USER_ROLE) && (
-                <div className={cn("flex flex-col gap-2 p-3 rounded-lg border transition-colors", pendingChanges.plan ? "bg-primary/5 border-primary/30" : "bg-muted/20 border-border")}>
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
+                )}
+                {hasStaffPermission(callerRole, STAFF_PERMISSIONS.EDIT_USER_ROLE) && (
+                  <div className="flex flex-col gap-1 p-3 rounded-lg border bg-muted/20 border-border">
+                    <div className="flex items-center gap-2 mb-1">
                       <CreditCard className="h-3.5 w-3.5 text-muted-foreground" />
                       <span className="text-[11px] text-muted-foreground font-medium">Subscription Plan</span>
-                      {pendingChanges.plan && <span className="text-[9px] text-primary font-medium px-1.5 py-0.5 rounded bg-primary/10">Modified</span>}
                     </div>
+                    <span className="text-xs font-medium text-foreground">
+                      {u.plan === "free" || !u.plan ? "Free" : u.plan.replace("_supporter", " Supporter").replace(/(^\w|\s\w)/g, (m: string) => m.toUpperCase())}
+                    </span>
                   </div>
-                  <select
-                    value={editPlan}
-                    onChange={(e) => {
-                      setEditPlan(e.target.value)
-                      addPendingChange("plan", e.target.value, u.plan || "free")
-                    }}
-                    className="h-8 text-xs rounded-md border border-border bg-background px-2"
-                  >
-                    <option value="free">Free</option>
-                    <option value="core_supporter">Core Supporter</option>
-                    <option value="pro_supporter">Pro Supporter</option>
-                    <option value="elite_supporter">Elite Supporter</option>
-                  </select>
-                </div>
-              )}
-            </div>
+                )}
+              </div>
+            ) : (
+              // Edit view
+              <>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  {/* Edit Name */}
+                  <div className={cn("flex flex-col gap-2 p-3 rounded-lg border transition-colors", pendingChanges.name ? "bg-primary/5 border-primary/30" : "bg-muted/20 border-border")}>
+                    <div className="flex items-center gap-2">
+                      <User className="h-3.5 w-3.5 text-muted-foreground" />
+                      <span className="text-[11px] text-muted-foreground font-medium">Display Name</span>
+                      {pendingChanges.name && <span className="text-[9px] text-primary font-medium px-1.5 py-0.5 rounded bg-primary/10">Modified</span>}
+                    </div>
+                    <Input
+                      value={editName}
+                      onChange={(e) => {
+                        setEditName(e.target.value)
+                        addPendingChange("name", e.target.value.trim(), u.name || "")
+                      }}
+                      placeholder="Enter name"
+                      className="h-8 text-xs"
+                    />
+                  </div>
 
-            {/* Safety note */}
-            <div className="flex items-start gap-2 mt-3 p-2.5 rounded-lg bg-muted/20 border border-border">
-              <AlertTriangle className="h-3.5 w-3.5 text-muted-foreground shrink-0 mt-0.5" />
-              <p className="text-[10px] text-muted-foreground leading-relaxed">
-                Changes are logged in the audit log. Email changes require confirmation input to prevent accidents. Plan changes take effect immediately.
-              </p>
-            </div>
+                  {/* Edit Email - admin only */}
+                  {hasStaffPermission(callerRole, STAFF_PERMISSIONS.EDIT_USER_ROLE) && (
+                    <div className={cn("flex flex-col gap-2 p-3 rounded-lg border transition-colors", pendingChanges.email ? "bg-primary/5 border-primary/30" : "bg-muted/20 border-border")}>
+                      <div className="flex items-center gap-2">
+                        <Mail className="h-3.5 w-3.5 text-muted-foreground" />
+                        <span className="text-[11px] text-muted-foreground font-medium">Email Address</span>
+                        {pendingChanges.email && <span className="text-[9px] text-primary font-medium px-1.5 py-0.5 rounded bg-primary/10">Modified</span>}
+                      </div>
+                      <Input
+                        type="email"
+                        value={editEmail}
+                        onChange={(e) => {
+                          setEditEmail(e.target.value)
+                          addPendingChange("email", e.target.value.trim().toLowerCase(), u.email)
+                        }}
+                        placeholder="Email address"
+                        className="h-8 text-xs"
+                      />
+                    </div>
+                  )}
+
+                  {/* Edit Plan - admin only */}
+                  {hasStaffPermission(callerRole, STAFF_PERMISSIONS.EDIT_USER_ROLE) && (
+                    <div className={cn("flex flex-col gap-2 p-3 rounded-lg border transition-colors", pendingChanges.plan ? "bg-primary/5 border-primary/30" : "bg-muted/20 border-border")}>
+                      <div className="flex items-center gap-2">
+                        <CreditCard className="h-3.5 w-3.5 text-muted-foreground" />
+                        <span className="text-[11px] text-muted-foreground font-medium">Subscription Plan</span>
+                        {pendingChanges.plan && <span className="text-[9px] text-primary font-medium px-1.5 py-0.5 rounded bg-primary/10">Modified</span>}
+                      </div>
+                      <select
+                        value={editPlan}
+                        onChange={(e) => {
+                          setEditPlan(e.target.value)
+                          addPendingChange("plan", e.target.value, u.plan || "free")
+                        }}
+                        className="h-8 text-xs rounded-md border border-border bg-background px-2"
+                      >
+                        <option value="free">Free</option>
+                        <option value="core_supporter">Core Supporter</option>
+                        <option value="pro_supporter">Pro Supporter</option>
+                        <option value="elite_supporter">Elite Supporter</option>
+                      </select>
+                    </div>
+                  )}
+                </div>
+
+                {/* Safety note */}
+                <div className="flex items-start gap-2 mt-3 p-2.5 rounded-lg bg-muted/20 border border-border">
+                  <AlertTriangle className="h-3.5 w-3.5 text-muted-foreground shrink-0 mt-0.5" />
+                  <p className="text-[10px] text-muted-foreground leading-relaxed">
+                    Changes are logged in the audit log. Email changes require confirmation input to prevent accidents. Plan changes take effect immediately.
+                  </p>
+                </div>
+              </>
+            )}
           </CardContent>
         </Card>
       )}
