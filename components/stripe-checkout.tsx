@@ -16,10 +16,9 @@ import { getPlanFromProductId } from '@/lib/products'
 
 const stripePromise = loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY!)
 
-export function StripeCheckout({ productId, userEmail, userId, onSuccess }: { 
+export function StripeCheckout({ productId, userId, onSuccess }: { 
   productId: string
-  userEmail?: string
-  userId?: number
+  userId: number
   onSuccess?: () => void 
 }) {
   const [checkoutComplete, setCheckoutComplete] = useState(false)
@@ -30,9 +29,9 @@ export function StripeCheckout({ productId, userEmail, userId, onSuccess }: {
   const expectedPlan = getPlanFromProductId(productId)
 
   const fetchClientSecret = useCallback(async () => {
-    const clientSecret = await startCheckoutSession(productId, userEmail, userId)
+    const clientSecret = await startCheckoutSession(productId, userId)
     return clientSecret!
-  }, [productId, userEmail, userId])
+  }, [productId, userId])
 
   // Poll /api/v2/auth/me to verify subscription update
   const verifySubscription = useCallback(async () => {
