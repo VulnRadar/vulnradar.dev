@@ -49,9 +49,10 @@ export const GET = withErrorHandling(async () => {
     avatarUrl: user?.avatar_url || null,
     onboardingCompleted: user?.onboarding_completed || false,
     backupCodesInvalid,
-    badges,
     // Billing/Plan info
     plan: user?.plan || "free",
     subscriptionStatus: user?.subscription_status || null,
+    // Badges (last for cleaner JSON structure)
+    badges,
   })
 })
