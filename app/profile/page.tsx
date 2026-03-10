@@ -420,7 +420,22 @@ function ProfileContent() {
       const notifData = notifRes.ok ? await notifRes.json() : null
       const billingData = billingRes.ok ? await billingRes.json() : null
       setUser(userData)
-      if (billingData) setBillingInfo(billingData)
+      if (billingData) {
+        console.log('[v0] Billing data loaded:', { plan: billingData.plan, hasSubscription: !!billingData.subscription })
+        setBillingInfo(billingData)
+      } else if (billingRes.status === 500) {
+        console.warn('[v0] Billing API error, retrying fetch')
+        // Retry once on server error
+        try {
+          const retryRes = await fetch(API.BILLING)
+          if (retryRes.ok) {
+            const retryData = await retryRes.json()
+            setBillingInfo(retryData)
+          }
+        } catch {
+          // Silently fail, user can see partial data
+        }
+      }
       setTotpEnabled(userData.totpEnabled || false)
       setTwoFactorMethod(userData.twoFactorMethod || null)
       if (userData.totpEnabled && userData.twoFactorMethod === "app") {
