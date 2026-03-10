@@ -1168,6 +1168,9 @@ function UserDetailPanel({
   const [editRole, setEditRole] = useState(u.role || "user")
   const [confirmEmail, setConfirmEmail] = useState("")
   const [isSaving, setIsSaving] = useState(false)
+  const [showGiftForm, setShowGiftForm] = useState(false)
+  const [giftPlan, setGiftPlan] = useState("pro_supporter")
+  const [giftEndDate, setGiftEndDate] = useState("")
 
   // Track if there are unsaved changes
   const hasChanges = Object.keys(pendingChanges).length > 0 || pendingBadgeAwards.length > 0 || pendingBadgeRevokes.length > 0
@@ -1897,6 +1900,89 @@ function UserDetailPanel({
                         onClick={() => onAction(u.id, "toggle_beta_access")}
                       />
                     )}
+                  </div>
+                </div>
+
+                {/* Gifted Subscription */}
+                <div>
+                  <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium mb-2">Gifted Subscription</p>
+                  <div className="flex flex-col gap-2.5 p-3 rounded-lg bg-muted/20 border border-border">
+                    {!showGiftForm ? (
+                      <Button
+                        size="sm"
+                        onClick={() => setShowGiftForm(true)}
+                        className="w-full"
+                      >
+                        Gift a Subscription
+                      </Button>
+                    ) : (
+                      <div className="flex flex-col gap-2.5">
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <label className="text-[10px] font-medium text-muted-foreground mb-1.5 block">Plan</label>
+                            <select
+                              value={giftPlan}
+                              onChange={(e) => setGiftPlan(e.target.value)}
+                              className="w-full px-2.5 py-1.5 rounded-md border border-border bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
+                            >
+                              <option value="core_supporter">Core Supporter</option>
+                              <option value="pro_supporter">Pro Supporter</option>
+                              <option value="elite_supporter">Elite Supporter</option>
+                            </select>
+                          </div>
+                          <div>
+                            <label className="text-[10px] font-medium text-muted-foreground mb-1.5 block">Expires</label>
+                            <input
+                              type="datetime-local"
+                              value={giftEndDate}
+                              onChange={(e) => setGiftEndDate(e.target.value)}
+                              className="w-full px-2.5 py-1.5 rounded-md border border-border bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
+                            />
+                          </div>
+                        </div>
+                        <p className="text-[10px] text-muted-foreground">Gift expires at the selected date/time. User reverts to free plan when it expires.</p>
+                        <div className="flex items-center gap-2">
+                          <Button
+                            size="sm"
+                            onClick={() => {
+                              if (!giftEndDate) return
+                              onAction(u.id, "gift_subscription", {
+                                giftPlan,
+                                giftEndDate: new Date(giftEndDate).toISOString(),
+                              })
+                              setShowGiftForm(false)
+                              setGiftPlan("pro_supporter")
+                              setGiftEndDate("")
+                            }}
+                            disabled={!giftEndDate || isLoading("gift_subscription")}
+                            className="flex-1"
+                          >
+                            {isLoading("gift_subscription") ? "Gifting..." : "Gift Plan"}
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => {
+                              setShowGiftForm(false)
+                              setGiftPlan("pro_supporter")
+                              setGiftEndDate("")
+                            }}
+                            className="flex-1"
+                          >
+                            Cancel
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                    <Button
+                      size="sm"
+                      variant="destructive"
+                      onClick={() => onAction(u.id, "revoke_gift")}
+                      disabled={isLoading("revoke_gift")}
+                      className="w-full"
+                    >
+                      {isLoading("revoke_gift") ? "Revoking..." : "Revoke Active Gift"}
+                    </Button>
                   </div>
                 </div>
 

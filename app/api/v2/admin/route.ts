@@ -196,11 +196,13 @@ function canPerformAction(role: string, action: string): boolean {
     "toggle_beta_access", "impersonate", "set_scan_limit", "export_data"
   ]
   const modActions = [
-    "disable", "enable", "revoke_sessions", "revoke_api_keys", 
+    "award_badge", "revoke_badge", "create_badge", "delete_badge",
+    "update_name", "update_email", "verify_email",
+    "revoke_sessions", "revoke_api_keys", "toggle_beta_access",
     "delete_scans", "delete_webhooks", "delete_schedules",
     "clear_rate_limits", "verify_email", "unverify_email",
     "force_logout_all", "add_note", "clear_avatar", "update_name",
-    "reset_2fa", "send_notification"
+    "reset_2fa", "send_notification", "gift_subscription", "revoke_gift"
   ]
   if (role === STAFF_ROLES.ADMIN) return true
   if (role === STAFF_ROLES.MODERATOR) return modActions.includes(action)
@@ -213,7 +215,7 @@ export async function PATCH(request: NextRequest) {
   if (!session) return NextResponse.json({ error: ERROR_MESSAGES.FORBIDDEN }, { status: 403 })
 
   const ip = await getClientIP()
-  const { action, userId, role: newRole, badgeId, name: badgeName, displayName, color: badgeColor, name, email, plan } = await request.json()
+  const { action, userId, role: newRole, badgeId, name: badgeName, displayName, color: badgeColor, name, email, plan, giftPlan, giftEndDate } = await request.json()
 
   if (!userId || !action) {
     return NextResponse.json({ error: "Missing action or userId" }, { status: 400 })
@@ -533,6 +535,39 @@ export async function PATCH(request: NextRequest) {
     case "clear_avatar": {
       await pool.query("UPDATE users SET avatar_url = NULL, updated_at = NOW() WHERE id = $1", [userId])
       await logAction(session.userId, userId, "clear_avatar", `Cleared avatar for ${targetUser.email}`, ip)
+      return NextResponse.json({ success: true })
+    }
+
+    case "gift_subscription": {
+      if (!giftPlan || !giftEndDate) {
+        return NextResponse.json({ error: "giftPlan and giftEndDate required" }, { status: 400 })
+      }
+      const validPlans = ["core_supporter", "pro_supporter", "elite_supporter"]
+      if (!validPlans.includes(giftPlan)) {
+        return NextResponse.json({ error: "Invalid plan. Must be one of: " + validPlans.join(", ") }, { status: 400 })
+      }
+      const expiresAt = new Date(giftEndDate)
+      if (isNaN(expiresAt.getTime())) {
+        return NextResponse.json({ error: "Invalid giftEndDate" }, { status: 400 })
+      }
+      
+      await pool.query(`
+        INSERT INTO gifted_subscriptions (user_id, plan, expires_at, granted_by)
+        VALUES ($1, $2, $3, $4)
+        ON CONFLICT (user_id) DO UPDATE SET 
+          plan = $2, 
+          expires_at = $3,
+          granted_by = $4,
+          updated_at = NOW()
+      `, [userId, giftPlan, expiresAt, session.userId])
+      
+      await logAction(session.userId, userId, "gift_subscription", `Gifted ${giftPlan} subscription to ${targetUser.email} until ${expiresAt.toISOString()}`, ip)
+      return NextResponse.json({ success: true })
+    }
+
+    case "revoke_gift": {
+      await pool.query("DELETE FROM gifted_subscriptions WHERE user_id = $1", [userId])
+      await logAction(session.userId, userId, "revoke_gift", `Revoked gifted subscription from ${targetUser.email}`, ip)
       return NextResponse.json({ success: true })
     }
 
