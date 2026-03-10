@@ -28,10 +28,30 @@ export async function POST(req: NextRequest) {
         const subscriptionId = session.subscription as string
 
         if (customerEmail && subscriptionId) {
-          // Get subscription details
+          // Get subscription details - metadata.productId is set in startCheckoutSession
           const subscription = await stripe.subscriptions.retrieve(subscriptionId)
+          
+          // The productId is stored in subscription metadata (from subscription_data.metadata in checkout)
           const productId = subscription.metadata?.productId || ""
-          const plan = getPlanFromProductId(productId)
+          let plan = getPlanFromProductId(productId)
+          
+          // Fallback: if no productId in metadata, try to get from product name
+          if (plan === "free" && subscription.items?.data?.[0]) {
+            const priceId = subscription.items.data[0].price?.id || ""
+            const productIdFromPrice = subscription.items.data[0].price?.product as string || ""
+            plan = getPlanFromProductId(productIdFromPrice) || getPlanFromProductId(priceId) || "free"
+            
+            // Also check product name as last resort
+            if (plan === "free") {
+              const productName = subscription.items.data[0].price?.nickname || 
+                                 (typeof subscription.items.data[0].price?.product === 'object' 
+                                   ? (subscription.items.data[0].price.product as Stripe.Product).name 
+                                   : "")
+              if (productName.toLowerCase().includes("elite")) plan = "elite_supporter"
+              else if (productName.toLowerCase().includes("pro")) plan = "pro_supporter"
+              else if (productName.toLowerCase().includes("core")) plan = "core_supporter"
+            }
+          }
 
           // Update user in database
           await pool.query(
