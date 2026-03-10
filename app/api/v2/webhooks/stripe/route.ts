@@ -59,15 +59,13 @@ export async function POST(req: NextRequest) {
               plan = $1,
               stripe_customer_id = $2,
               stripe_subscription_id = $3,
-              subscription_status = $4,
-              subscription_current_period_end = to_timestamp($5)
-            WHERE email = $6`,
+              subscription_status = $4
+            WHERE email = $5`,
             [
               plan,
               customerId,
               subscriptionId,
               subscription.status,
-              subscription.current_period_end,
               customerEmail,
             ]
           )
@@ -96,11 +94,10 @@ export async function POST(req: NextRequest) {
           `UPDATE users SET 
             plan = $1,
             stripe_subscription_id = $2,
-            subscription_status = $3,
-            subscription_current_period_end = to_timestamp($4)
-          WHERE stripe_customer_id = $5
+            subscription_status = $3
+          WHERE stripe_customer_id = $4
           RETURNING id`,
-          [plan || "free", subscription.id, subscription.status, subscription.current_period_end, customerId]
+          [plan || "free", subscription.id, subscription.status, customerId]
         )
         
         // If no rows updated, the checkout.session.completed might not have run yet - skip silently
@@ -129,10 +126,9 @@ export async function POST(req: NextRequest) {
         await pool.query(
           `UPDATE users SET 
             plan = $1,
-            subscription_status = $2,
-            subscription_current_period_end = to_timestamp($3)
-          WHERE stripe_customer_id = $4`,
-          [plan || "free", subscription.status, subscription.current_period_end, customerId]
+            subscription_status = $2
+          WHERE stripe_customer_id = $3`,
+          [plan || "free", subscription.status, customerId]
         )
         console.log(`[Stripe] Subscription updated for customer ${customerId}, plan: ${plan}`)
         break
