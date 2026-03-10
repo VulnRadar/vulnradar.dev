@@ -192,7 +192,7 @@ function canPerformAction(role: string, action: string): boolean {
   const adminOnly = [
     "make_admin", "remove_admin", "set_role", "delete", "reset_password", 
     "award_badge", "revoke_badge", "create_badge", "delete_badge",
-    "update_email", "update_plan", "grant_premium", "revoke_premium",
+    "update_email", "update_plan",
     "toggle_beta_access", "impersonate", "set_scan_limit", "export_data"
   ]
   const modActions = [
@@ -377,16 +377,16 @@ export async function PATCH(request: NextRequest) {
     }
 
     case "update_plan": {
-      if (!plan || !["free", "starter", "pro", "elite"].includes(plan)) {
-        return NextResponse.json({ error: "Invalid plan" }, { status: 400 })
+      const validPlans = ["free", "core_supporter", "pro_supporter", "elite_supporter"]
+      if (!plan || !validPlans.includes(plan)) {
+        return NextResponse.json({ error: "Invalid plan. Must be one of: " + validPlans.join(", ") }, { status: 400 })
       }
-      // Update subscription or create if not exists
-      await pool.query(`
-        INSERT INTO subscriptions (user_id, plan, status, created_at, updated_at)
-        VALUES ($1, $2, 'active', NOW(), NOW())
-        ON CONFLICT (user_id) DO UPDATE SET plan = $2, updated_at = NOW()
-      `, [userId, plan])
-      await logAction(session.userId, userId, "update_plan", `Changed subscription plan for ${targetUser.email} to "${plan}"`, ip)
+      // Update user's plan directly in users table
+      await pool.query(
+        "UPDATE users SET plan = $1, subscription_status = $2, updated_at = NOW() WHERE id = $3",
+        [plan, plan === "free" ? null : "active", userId]
+      )
+      await logAction(session.userId, userId, "update_plan", `Changed plan for ${targetUser.email} to "${plan}"`, ip)
       return NextResponse.json({ success: true })
     }
 
@@ -416,25 +416,7 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ success: true })
     }
 
-    case "grant_premium": {
-      await pool.query(`
-        INSERT INTO subscriptions (user_id, plan, status, created_at, updated_at)
-        VALUES ($1, 'pro', 'active', NOW(), NOW())
-        ON CONFLICT (user_id) DO UPDATE SET plan = 'pro', status = 'active', updated_at = NOW()
-      `, [userId])
-      await logAction(session.userId, userId, "grant_premium", `Granted premium access to ${targetUser.email}`, ip)
-      return NextResponse.json({ success: true })
-    }
 
-    case "revoke_premium": {
-      await pool.query(`
-        INSERT INTO subscriptions (user_id, plan, status, created_at, updated_at)
-        VALUES ($1, 'free', 'active', NOW(), NOW())
-        ON CONFLICT (user_id) DO UPDATE SET plan = 'free', updated_at = NOW()
-      `, [userId])
-      await logAction(session.userId, userId, "revoke_premium", `Revoked premium access from ${targetUser.email}`, ip)
-      return NextResponse.json({ success: true })
-    }
 
     case "clear_rate_limits": {
       // Clear rate limits from redis (if using upstash) or just acknowledge

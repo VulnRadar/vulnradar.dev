@@ -46,8 +46,6 @@ import {
   User,
   CreditCard,
   Save,
-  Star,
-  StarOff,
   Download,
   MailCheck,
   MailX,
@@ -283,8 +281,8 @@ function ActionBadge({ action }: { action: string }) {
     unverify_email: { label: "Unverified Email", cls: "bg-[hsl(var(--severity-medium))]/10 text-[hsl(var(--severity-medium))] border-[hsl(var(--severity-medium))]/20" },
     // Beta & Premium
     toggle_beta_access: { label: "Toggled Beta Access", cls: "bg-primary/10 text-primary border-primary/20" },
-    grant_premium: { label: "Granted Premium", cls: "bg-emerald-500/10 text-emerald-500 border-emerald-500/20" },
-    revoke_premium: { label: "Revoked Premium", cls: "bg-[hsl(var(--severity-medium))]/10 text-[hsl(var(--severity-medium))] border-[hsl(var(--severity-medium))]/20" },
+
+
     // Data management
     delete_scans: { label: "Deleted Scans", cls: "bg-destructive/10 text-destructive border-destructive/20" },
     delete_webhooks: { label: "Deleted Webhooks", cls: "bg-destructive/10 text-destructive border-destructive/20" },
@@ -504,8 +502,8 @@ function AdminContent() {
           reset_2fa: "Two-factor authentication reset.",
           delete_scans: "All scans deleted.",
 
-          grant_premium: "Premium access granted.",
-          revoke_premium: "Premium access revoked.",
+      
+      
           clear_rate_limits: "Rate limits cleared.",
         }
         if (action === "create_badge" || action === "delete_badge") { fetchAllBadges() }
@@ -672,12 +670,12 @@ function AdminContent() {
                 onClose={() => { setSelectedUser(null); setTempPassword(null); updateUrlWithUser(null, activeTab) }}
                 onAction={(userId, action, extra) => {
                   // Actions that don't need confirmation
-                  if (["set_role", "award_badge", "revoke_badge", "create_badge", "delete_badge", "update_name", "update_email", "update_plan", "enable", "grant_premium", "clear_rate_limits"].includes(action)) {
+                  if (["set_role", "award_badge", "revoke_badge", "create_badge", "delete_badge", "update_name", "update_email", "update_plan", "enable", "clear_rate_limits"].includes(action)) {
                     handleAction(userId, action, extra)
                     return
                   }
                   // Actions that need confirmation
-                  const confirmActions = ["delete", "disable", "reset_password", "revoke_sessions", "revoke_api_keys", "reset_2fa", "delete_scans", "revoke_premium"]
+                  const confirmActions = ["delete", "disable", "reset_password", "revoke_sessions", "revoke_api_keys", "reset_2fa", "delete_scans"]
                   if (confirmActions.includes(action)) {
                     const messages: Record<string, { title: string; desc: string; label: string; danger?: boolean }> = {
                       delete: { title: "Delete User", desc: `This will permanently delete ${selectedUser.user.email} and all their data. This cannot be undone.`, label: "Delete User", danger: true },
@@ -687,7 +685,7 @@ function AdminContent() {
                       revoke_api_keys: { title: "Revoke All API Keys", desc: `This will immediately revoke all active API keys for ${selectedUser.user.email}.`, label: "Revoke Keys" },
                       reset_2fa: { title: "Reset Two-Factor Authentication", desc: `This will remove 2FA from ${selectedUser.user.email}'s account. They will need to set it up again.`, label: "Reset 2FA", danger: true },
                       delete_scans: { title: "Delete All Scans", desc: `This will permanently delete all scan history for ${selectedUser.user.email}. This cannot be undone.`, label: "Delete Scans", danger: true },
-                      revoke_premium: { title: "Revoke Premium Access", desc: `This will downgrade ${selectedUser.user.email} to the free plan.`, label: "Revoke Premium" },
+                
                     }
                     const m = messages[action]
                     setConfirmDialog({ title: m.title, description: m.desc, confirmLabel: m.label, danger: m.danger ?? false, action: () => handleAction(userId, action) })
@@ -1386,9 +1384,9 @@ function UserDetailPanel({
                     className="h-8 text-xs rounded-md border border-border bg-background px-2"
                   >
                     <option value="free">Free</option>
-                    <option value="core">Core</option>
-                    <option value="pro">Pro</option>
-                    <option value="elite">Elite</option>
+                    <option value="core_supporter">Core Supporter</option>
+                    <option value="pro_supporter">Pro Supporter</option>
+                    <option value="elite_supporter">Elite Supporter</option>
                   </select>
                 </div>
               )}
@@ -1842,35 +1840,14 @@ function UserDetailPanel({
                   </div>
                 </div>
 
-                {/* Subscription */}
+                {/* Subscription Info */}
                 <div>
                   <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium mb-2">Subscription</p>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-                    {hasStaffPermission(callerRole, STAFF_PERMISSIONS.GRANT_PREMIUM) && u.plan === "free" && (
-                      <ActionCard
-                        icon={Star} label="Grant Premium"
-                        description="Give user premium access"
-                        color="text-amber-500" bg="bg-amber-500/10"
-                        loading={isLoading("grant_premium")}
-                        onClick={() => onAction(u.id, "grant_premium")}
-                      />
-                    )}
-                    {hasStaffPermission(callerRole, STAFF_PERMISSIONS.REVOKE_PREMIUM) && u.plan !== "free" && (
-                      <ActionCard
-                        icon={StarOff} label="Revoke Premium"
-                        description="Remove premium access"
-                        color="text-[hsl(var(--severity-medium))]" bg="bg-[hsl(var(--severity-medium))]/10"
-                        loading={isLoading("revoke_premium")}
-                        onClick={() => onAction(u.id, "revoke_premium")}
-                      />
-                    )}
-                    {u.plan !== "free" && !hasStaffPermission(callerRole, STAFF_PERMISSIONS.REVOKE_PREMIUM) && (
-                      <p className="text-xs text-muted-foreground col-span-full">User has {u.plan} plan.</p>
-                    )}
-                    {u.plan === "free" && !hasStaffPermission(callerRole, STAFF_PERMISSIONS.GRANT_PREMIUM) && (
-                      <p className="text-xs text-muted-foreground col-span-full">User is on free plan.</p>
-                    )}
-                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Current plan: <span className="font-medium text-foreground">{u.plan === "free" ? "Free" : u.plan?.replace("_supporter", " Supporter").replace(/(^\w|\s\w)/g, m => m.toUpperCase())}</span>
+                    {u.subscription_status && <span className="ml-2 text-[10px] text-muted-foreground">({u.subscription_status})</span>}
+                  </p>
+                  <p className="text-[10px] text-muted-foreground mt-1">Use the plan dropdown above to change the user&apos;s subscription.</p>
                 </div>
 
                 {/* Danger Zone */}
