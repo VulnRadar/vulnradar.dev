@@ -38,12 +38,12 @@ export function Header() {
   }
 
   return (
-      <header className="sticky top-0 z-50 border-b border-border bg-card/80 backdrop-blur-lg overflow-x-hidden">
-        <div className="max-w-6xl mx-auto flex items-center justify-between px-4 h-14 min-w-0">
+      <header className="sticky top-0 z-50 border-b border-border bg-card/80 backdrop-blur-lg">
+        <div className="w-full max-w-[1400px] mx-auto flex items-center gap-2 px-4 h-14">
           {/* Logo */}
           <Link
               href={ROUTES.DASHBOARD}
-              className="flex items-center gap-2 hover:opacity-80 transition-opacity shrink-0 min-w-0"
+              className="flex items-center gap-2 hover:opacity-80 transition-opacity shrink-0"
               aria-label="Go to scanner"
           >
             <Image
@@ -53,13 +53,13 @@ export function Header() {
                 height={20}
                 className="h-5 w-5"
             />
-            <span className="text-base font-semibold text-foreground tracking-tight">
-            {APP_NAME}
-          </span>
+            <span className="text-base font-semibold text-foreground tracking-tight whitespace-nowrap">
+              {APP_NAME}
+            </span>
           </Link>
 
-          {/* Desktop nav */}
-          <nav className="hidden md:flex items-center gap-0.5 overflow-x-auto scrollbar-none min-w-0 flex-1 justify-center px-2">
+          {/* Desktop nav — centered, wraps in scrollable container on narrow viewports */}
+          <nav className="hidden md:flex items-center gap-0.5 flex-1 justify-center min-w-0">
             {NAV_LINKS.map(({ href, label, icon: Icon }) => {
               const active = href === ROUTES.DOCS ? pathname.startsWith(ROUTES.DOCS) : pathname === href || pathname.startsWith(href.split("#")[0])
               return (
@@ -67,7 +67,7 @@ export function Header() {
                       key={href}
                       href={href}
                       className={cn(
-                          "flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors",
+                          "flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-sm font-medium transition-colors whitespace-nowrap",
                           active
                               ? "bg-primary/10 text-primary"
                               : "text-muted-foreground hover:text-foreground hover:bg-muted",
@@ -83,8 +83,8 @@ export function Header() {
             <Link
                 href={ROUTES.ADMIN}
                 className={cn(
-                    "vr-staff-only items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors",
-                    isStaff && "!flex", // Force visible once React confirms staff status
+                    "vr-staff-only items-center gap-1.5 px-2.5 py-1.5 rounded-md text-sm font-medium transition-colors whitespace-nowrap",
+                    isStaff && "!flex",
                     pathname === ROUTES.ADMIN
                         ? "bg-destructive/10 text-destructive"
                         : "text-destructive/70 hover:text-destructive hover:bg-destructive/10",
@@ -96,7 +96,7 @@ export function Header() {
           </nav>
 
           {/* Right side */}
-          <div className="flex items-center gap-1 shrink-0">
+          <div className="flex items-center gap-1 shrink-0 ml-auto md:ml-0">
             <NotificationBell />
             <ThemeToggle />
             <Button

@@ -107,6 +107,8 @@ function DashboardContent() {
   }
 
   const [pendingScanners, setPendingScanners] = useState<string[] | undefined>(undefined)
+  const [bulkStatus, setBulkStatus] = useState<"idle" | "scanning" | "done">("idle")
+  const [bulkResult, setBulkResult] = useState<{ total: number; successful: number; failed: number; skipped: number } | null>(null)
 
   const handleScan = useCallback(async (url: string, mode: ScanMode = "quick", scanners?: string[], protocol?: string) => {
     setPendingScanners(scanners)
@@ -218,6 +220,27 @@ function DashboardContent() {
     setCrawlDiscovering(false)
   }
 
+  const handleBulkScan = useCallback(async (urls: string[]) => {
+    setBulkStatus("scanning")
+    setBulkResult(null)
+    try {
+      const res = await fetch(API.SCAN_BULK, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ urls }),
+      })
+      const data = await res.json()
+      if (res.ok) {
+        setBulkResult({ total: data.total, successful: data.successful, failed: data.failed, skipped: data.skipped ?? 0 })
+      } else {
+        setBulkResult({ total: urls.length, successful: 0, failed: urls.length, skipped: 0 })
+      }
+    } catch {
+      setBulkResult({ total: urls.length, successful: 0, failed: urls.length, skipped: 0 })
+    }
+    setBulkStatus("done")
+  }, [])
+
   // Auto-scan if ?scan= param is present (e.g. from subdomain scan button on other pages)
   useEffect(() => {
     const scanUrl = searchParams.get("scan")
@@ -251,7 +274,33 @@ function DashboardContent() {
 
       <main className="flex-1 w-full max-w-5xl mx-auto px-4 pb-12">
         {/* Scan form always visible at top */}
-        {status !== "done" && <ScanForm onScan={handleScan} status={status} />}
+        {status !== "done" && (
+          <ScanForm
+            onScan={handleScan}
+            status={status}
+            onBulkScan={handleBulkScan}
+            bulkStatus={bulkStatus}
+          />
+        )}
+
+        {/* Bulk scan result banner */}
+        {bulkStatus === "done" && bulkResult && status === "idle" && (
+          <div className="mx-auto max-w-lg w-full -mt-2 mb-2 rounded-xl border border-border bg-card/60 px-4 py-3 flex items-center justify-between gap-3">
+            <p className="text-sm text-foreground">
+              Bulk scan complete &mdash;{" "}
+              <span className="text-emerald-500 font-medium">{bulkResult.successful} succeeded</span>
+              {bulkResult.failed > 0 && <span className="text-destructive font-medium">, {bulkResult.failed} failed</span>}
+              {bulkResult.skipped > 0 && <span className="text-muted-foreground">, {bulkResult.skipped} skipped (limit)</span>}
+            </p>
+            <button
+              type="button"
+              onClick={() => { setBulkResult(null); setBulkStatus("idle") }}
+              className="text-xs text-muted-foreground hover:text-foreground shrink-0"
+            >
+              Dismiss
+            </button>
+          </div>
+        )}
 
         {/* Dashboard when idle */}
         {status === "idle" && <Dashboard />}

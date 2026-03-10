@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getSession } from "@/lib/auth"
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
+import { canMakeRequest, incrementDailyCount, getRateLimitHeaders } from "@/lib/daily-limits"
 import { allChecks } from "@/lib/scanner/checks"
 import { runAsyncChecks } from "@/lib/scanner/async-checks"
 import pool from "@/lib/db"
@@ -139,18 +140,45 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "No valid URLs provided." }, { status: 400 })
   }
 
+  // Check daily quota: each URL in the bulk scan counts as 1 scan
+  const quotaCheck = await canMakeRequest(session.userId)
+  if (!quotaCheck.allowed) {
+    return NextResponse.json(
+      { error: `Daily scan limit reached (${quotaCheck.limit} scans/day). Resets at ${new Date(quotaCheck.resetsAt).toUTCString()}.` },
+      { status: 429, headers: getRateLimitHeaders(quotaCheck) },
+    )
+  }
+
+  // How many URLs can we actually run given remaining quota?
+  const remaining = quotaCheck.limit === -1 ? validUrls.length : Math.min(validUrls.length, quotaCheck.remaining)
+  const urlsToScan = validUrls.slice(0, remaining)
+  const skipped = validUrls.length - urlsToScan.length
+
   // Run scans sequentially to avoid overwhelming resources
   const results: Array<{ url: string; success: boolean; scanHistoryId?: number | null; error?: string; summary?: any; findings_count?: number; duration?: number }> = []
 
-  for (const scanUrl of validUrls) {
+  for (const scanUrl of urlsToScan) {
+    // Increment daily count before each scan
+    await incrementDailyCount(session.userId)
     const scanResult = await runSingleScan(scanUrl, session.userId)
     results.push(scanResult)
   }
 
-  return NextResponse.json({
-    total: validUrls.length,
-    successful: results.filter((r) => r.success).length,
-    failed: results.filter((r) => !r.success).length,
-    results,
-  })
+  // Add skipped URLs as quota-exceeded entries
+  for (const scanUrl of validUrls.slice(remaining)) {
+    results.push({ url: scanUrl, success: false, error: "Daily scan limit reached" })
+  }
+
+  const finalQuota = await canMakeRequest(session.userId)
+
+  return NextResponse.json(
+    {
+      total: validUrls.length,
+      successful: results.filter((r) => r.success).length,
+      failed: results.filter((r) => !r.success).length,
+      skipped,
+      results,
+    },
+    { headers: getRateLimitHeaders(finalQuota) },
+  )
 }
