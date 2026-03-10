@@ -1840,16 +1840,6 @@ function UserDetailPanel({
                   </div>
                 </div>
 
-                {/* Subscription Info */}
-                <div>
-                  <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium mb-2">Subscription</p>
-                  <p className="text-xs text-muted-foreground">
-                    Current plan: <span className="font-medium text-foreground">{u.plan === "free" ? "Free" : u.plan?.replace("_supporter", " Supporter").replace(/(^\w|\s\w)/g, m => m.toUpperCase())}</span>
-                    {u.subscription_status && <span className="ml-2 text-[10px] text-muted-foreground">({u.subscription_status})</span>}
-                  </p>
-                  <p className="text-[10px] text-muted-foreground mt-1">Use the plan dropdown above to change the user&apos;s subscription.</p>
-                </div>
-
                 {/* Danger Zone */}
                 <div>
                   <p className="text-[10px] uppercase tracking-wider text-destructive/70 font-medium mb-2">Danger Zone</p>
