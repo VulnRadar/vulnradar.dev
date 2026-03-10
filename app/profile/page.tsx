@@ -1509,7 +1509,7 @@ function ProfileContent() {
                           <div className="flex items-center gap-2 p-3 rounded-lg bg-destructive/10 border border-destructive/20">
                             <AlertTriangle className="h-4 w-4 text-destructive" />
                             <p className="text-sm text-destructive">
-                              You&apos;ve reached your daily limit. Upgrade your plan or wait until tomorrow.
+                              Daily scan limit reached. Upgrade your plan or wait until midnight UTC for the limit to reset.
                             </p>
                           </div>
                         )}

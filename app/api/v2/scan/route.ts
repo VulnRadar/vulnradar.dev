@@ -153,7 +153,7 @@ export async function POST(request: NextRequest) {
       if (!dailyQuota.allowed) {
         return NextResponse.json(
           { 
-            error: "Daily scan limit reached. Upgrade your plan for more scans.",
+            error: "Daily scan limit reached. Upgrade your plan or wait until midnight UTC for the limit to reset.",
             limit: dailyQuota.limit,
             used: dailyQuota.used,
             remaining: 0,

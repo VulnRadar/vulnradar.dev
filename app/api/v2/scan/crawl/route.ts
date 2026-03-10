@@ -234,7 +234,7 @@ export async function POST(request: NextRequest) {
   const quotaCheck = await canMakeRequest(session.userId)
   if (!quotaCheck.allowed) {
     return NextResponse.json(
-      { error: `Daily scan limit reached (${quotaCheck.limit} scans/day). Resets at ${new Date(quotaCheck.resetsAt).toUTCString()}.` },
+      { error: "Daily scan limit reached. Upgrade your plan or wait until midnight UTC for the limit to reset." },
       { status: 429, headers: getRateLimitHeaders(quotaCheck) },
     )
   }
