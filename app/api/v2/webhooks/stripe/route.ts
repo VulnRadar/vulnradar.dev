@@ -89,20 +89,38 @@ export async function POST(req: NextRequest) {
           plan = getPlanFromProductId(productId)
         }
 
-        // Try to update by stripe_customer_id first, then by email if needed
-        const result = await pool.query(
+        // Try to update by stripe_customer_id first
+        let result = await pool.query(
           `UPDATE users SET 
             plan = $1,
             stripe_subscription_id = $2,
-            subscription_status = $3
+            subscription_status = $3,
+            stripe_customer_id = $4
           WHERE stripe_customer_id = $4
           RETURNING id`,
           [plan || "free", subscription.id, subscription.status, customerId]
         )
         
-        // If no rows updated, the checkout.session.completed might not have run yet - skip silently
+        // If no rows updated, try to find user by customer email from Stripe
         if (result.rowCount === 0) {
-          console.log(`[Stripe] Subscription created but no user found for customer ${customerId} - checkout handler will update`)
+          const customer = await stripe.customers.retrieve(customerId) as Stripe.Customer
+          if (customer.email) {
+            result = await pool.query(
+              `UPDATE users SET 
+                plan = $1,
+                stripe_subscription_id = $2,
+                subscription_status = $3,
+                stripe_customer_id = $4
+              WHERE email = $5
+              RETURNING id`,
+              [plan || "free", subscription.id, subscription.status, customerId, customer.email]
+            )
+            if (result.rowCount && result.rowCount > 0) {
+              console.log(`[Stripe] Subscription created for ${customer.email}, plan: ${plan}`)
+            } else {
+              console.log(`[Stripe] Subscription created but no user found for email ${customer.email}`)
+            }
+          }
         } else {
           console.log(`[Stripe] Subscription created for customer ${customerId}, plan: ${plan}`)
         }
