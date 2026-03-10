@@ -15,7 +15,6 @@ import {
   Tag,
   Plus,
   X,
-  List,
   RefreshCw,
   MessageSquare,
   Save,
@@ -90,10 +89,6 @@ function HistoryPageContent() {
   const [addingTagFor, setAddingTagFor] = useState<number | null>(null)
   const [newTag, setNewTag] = useState("")
   const [rescanning, setRescanning] = useState<number | null>(null)
-  const [showBulkScan, setShowBulkScan] = useState(false)
-  const [bulkUrls, setBulkUrls] = useState("")
-  const [bulkLoading, setBulkLoading] = useState(false)
-  const [bulkResult, setBulkResult] = useState<{ total: number; successful: number; failed: number } | null>(null)
   const [currentPage, setCurrentPage] = useState(1)
   const [pageSize, setPageSize] = useState(10)
   const [scanNotes, setScanNotes] = useState("")
@@ -251,26 +246,7 @@ function HistoryPageContent() {
     setRescanning(null)
   }
 
-  async function handleBulkScan() {
-    const urls = bulkUrls.split("\n").map((u) => u.trim()).filter((u) => u.length > 0)
-    if (urls.length === 0) return
-    setBulkLoading(true)
-    setBulkResult(null)
-    try {
-      const res = await fetch(API.SCAN_BULK, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ urls }),
-      })
-      const data = await res.json()
-      if (res.ok) {
-        setBulkResult({ total: data.total, successful: data.successful, failed: data.failed })
-        await fetchHistory()
-      }
-    } catch { /* ignore */ }
-    setBulkLoading(false)
-  }
-
+  
   async function handleViewScan(scan: ScanRecord) {
     setSelectedScanId(scan.id)
     setSelectedIssue(null)
@@ -524,23 +500,17 @@ function HistoryPageContent() {
               )}
             </div>
 
-            {/* Search + Bulk Scan + Tag filter */}
+            {/* Search + Tag filter */}
             {scans.length > 0 && (
               <div className="flex flex-col gap-3">
-                <div className="flex gap-2">
-                  <div className="relative flex-1">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                    <Input
-                      placeholder="Filter by URL..."
-                      value={filter}
-                      onChange={(e) => setFilter(e.target.value)}
-                      className="pl-9 bg-card h-10"
-                    />
-                  </div>
-                  <Button variant="outline" size="sm" className="bg-transparent h-10 gap-1.5" onClick={() => setShowBulkScan(!showBulkScan)}>
-                    <List className="h-3.5 w-3.5" />
-                    <span className="hidden sm:inline">Bulk Scan</span>
-                  </Button>
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Filter by URL..."
+                    value={filter}
+                    onChange={(e) => setFilter(e.target.value)}
+                    className="pl-9 bg-card h-10"
+                  />
                 </div>
                 {allTags.length > 0 && (
                   <div className="flex flex-wrap items-center gap-1.5">
@@ -568,33 +538,6 @@ function HistoryPageContent() {
                         {tag}
                       </button>
                     ))}
-                  </div>
-                )}
-                {showBulkScan && (
-                  <div className="rounded-xl border border-border bg-card p-4 flex flex-col gap-3">
-                    <div className="flex items-center justify-between">
-                      <p className="text-sm font-medium text-foreground">Bulk Scan (max 10 URLs)</p>
-                      <button type="button" onClick={() => { setShowBulkScan(false); setBulkResult(null) }} className="text-muted-foreground hover:text-foreground">
-                        <X className="h-4 w-4" />
-                      </button>
-                    </div>
-                    <textarea
-                      placeholder={"https://example.com\nhttps://another-site.com\nhttps://third-site.com"}
-                      value={bulkUrls}
-                      onChange={(e) => setBulkUrls(e.target.value)}
-                      rows={4}
-                      className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 resize-none font-mono"
-                    />
-                    <div className="flex items-center gap-3">
-                      <Button size="sm" onClick={handleBulkScan} disabled={bulkLoading || !bulkUrls.trim()}>
-                        {bulkLoading ? <><Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" /> Scanning...</> : "Start Bulk Scan"}
-                      </Button>
-                      {bulkResult && (
-                        <p className="text-xs text-muted-foreground">
-                          {bulkResult.successful}/{bulkResult.total} scanned successfully{bulkResult.failed > 0 && `, ${bulkResult.failed} failed`}
-                        </p>
-                      )}
-                    </div>
                   </div>
                 )}
               </div>
