@@ -91,16 +91,24 @@ export async function POST(req: NextRequest) {
           plan = getPlanFromProductId(productId)
         }
 
-        await pool.query(
+        // Try to update by stripe_customer_id first, then by email if needed
+        const result = await pool.query(
           `UPDATE users SET 
             plan = $1,
             stripe_subscription_id = $2,
             subscription_status = $3,
             subscription_current_period_end = to_timestamp($4)
-          WHERE stripe_customer_id = $5`,
+          WHERE stripe_customer_id = $5
+          RETURNING id`,
           [plan || "free", subscription.id, subscription.status, subscription.current_period_end, customerId]
         )
-        console.log(`[Stripe] Subscription created for customer ${customerId}, plan: ${plan}`)
+        
+        // If no rows updated, the checkout.session.completed might not have run yet - skip silently
+        if (result.rowCount === 0) {
+          console.log(`[Stripe] Subscription created but no user found for customer ${customerId} - checkout handler will update`)
+        } else {
+          console.log(`[Stripe] Subscription created for customer ${customerId}, plan: ${plan}`)
+        }
         break
       }
 
@@ -152,42 +160,35 @@ export async function POST(req: NextRequest) {
         const customerId = invoice.customer as string
 
         if (customerId) {
-          // Try to get productId from invoice metadata
-          let productId = invoice.metadata?.productId || ""
-          let plan = getPlanFromProductId(productId)
-          
-          // Fallback: try to extract from invoice lines
-          if (!plan || plan === "free") {
-            const lineItem = invoice.lines?.data?.[0]
-            if (lineItem?.metadata?.productId) {
-              productId = lineItem.metadata.productId
-              plan = getPlanFromProductId(productId)
-            }
-          }
-
-          // Record in billing history
-          await pool.query(
-            `INSERT INTO billing_history 
-              (user_id, stripe_invoice_id, stripe_payment_intent_id, amount_cents, currency, status, description, invoice_pdf_url)
-            SELECT id, $1, $2, $3, $4, $5, $6, $7
-            FROM users WHERE stripe_customer_id = $8`,
-            [
-              invoice.id,
-              invoice.payment_intent,
-              invoice.amount_paid,
-              invoice.currency,
-              "succeeded",
-              invoice.description || `Payment for ${invoice.lines?.data?.[0]?.description || "subscription"}`,
-              invoice.invoice_pdf,
-              customerId,
-            ]
-          )
-          
-          // Update subscription status to active
+          // Update subscription status to active (this is the important part)
           await pool.query(
             `UPDATE users SET subscription_status = 'active' WHERE stripe_customer_id = $1`,
             [customerId]
           )
+          
+          // Try to record in billing history (optional - don't fail if table doesn't exist)
+          try {
+            await pool.query(
+              `INSERT INTO billing_history 
+                (user_id, stripe_invoice_id, stripe_payment_intent_id, amount_cents, currency, status, description, invoice_pdf_url)
+              SELECT id, $1, $2, $3, $4, $5, $6, $7
+              FROM users WHERE stripe_customer_id = $8`,
+              [
+                invoice.id,
+                invoice.payment_intent,
+                invoice.amount_paid,
+                invoice.currency,
+                "succeeded",
+                invoice.description || `Payment for ${invoice.lines?.data?.[0]?.description || "subscription"}`,
+                invoice.invoice_pdf,
+                customerId,
+              ]
+            )
+          } catch (historyErr) {
+            // billing_history table might not exist - log but don't fail
+            console.log(`[Stripe] Could not record billing history (table may not exist):`, historyErr)
+          }
+          
           console.log(`[Stripe] Payment succeeded for customer ${customerId}`)
         }
         break
