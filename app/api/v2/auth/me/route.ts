@@ -12,7 +12,7 @@ export const GET = withErrorHandling(async () => {
   // Get 2FA, role, onboarding status, backup codes, badges, and billing info
   const [userResult, badgesResult] = await Promise.all([
     pool.query(
-      "SELECT totp_enabled, two_factor_method, onboarding_completed, role, avatar_url, backup_codes, plan, subscription_status, subscription_current_period_end FROM users WHERE id = $1",
+      "SELECT totp_enabled, two_factor_method, onboarding_completed, role, avatar_url, backup_codes, plan, subscription_status FROM users WHERE id = $1",
       [session.userId],
     ),
     pool.query(
@@ -53,6 +53,5 @@ export const GET = withErrorHandling(async () => {
     // Billing/Plan info
     plan: user?.plan || "free",
     subscriptionStatus: user?.subscription_status || null,
-    subscriptionCurrentPeriodEnd: user?.subscription_current_period_end || null,
   })
 })
