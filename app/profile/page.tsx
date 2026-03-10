@@ -1632,9 +1632,9 @@ function ProfileContent() {
                     )}
 
                     {/* Actions for paid plans */}
-                    {billingInfo.plan !== "free" && (
+                    {billingInfo.plan !== "free" && billingInfo.subscription && (
                       <div className="flex flex-col gap-2 pt-2">
-                        {billingInfo.subscription?.cancelAtPeriodEnd ? (
+                        {billingInfo.subscription.cancelAtPeriodEnd ? (
                           <Button 
                             variant="outline"
                             onClick={handleReactivateSubscription}

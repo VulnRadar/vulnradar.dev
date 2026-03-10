@@ -202,21 +202,6 @@ CREATE TABLE IF NOT EXISTS billing_history (
 CREATE INDEX IF NOT EXISTS idx_billing_history_user ON billing_history(user_id);
 
 -- ════════════════════════════════════════════════════════════════
--- GIFTED SUBSCRIPTIONS
--- ════════════════════════════════════════════════════════════════
-CREATE TABLE IF NOT EXISTS gifted_subscriptions (
-  id SERIAL PRIMARY KEY,
-  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  plan VARCHAR(50) NOT NULL,
-  expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
-  gifted_by_admin_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
-CREATE INDEX IF NOT EXISTS idx_gifted_subscriptions_user ON gifted_subscriptions(user_id);
-CREATE INDEX IF NOT EXISTS idx_gifted_subscriptions_expires ON gifted_subscriptions(expires_at);
-
--- ════════════════════════════════════════════════════════════════
 -- ADMIN AUDIT LOG
 -- ════════════════════════════════════════════════════════════════
 CREATE TABLE IF NOT EXISTS admin_audit_log (

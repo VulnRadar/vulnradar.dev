@@ -47,7 +47,7 @@ export async function GET() {
           currentPeriodStart: new Date(subscription.current_period_start * 1000).toISOString(),
           currentPeriodEnd: new Date(subscription.current_period_end * 1000).toISOString(),
           cancelAtPeriodEnd: subscription.cancel_at_period_end,
-          cancelAt: subscription.cancel_at && subscription.cancel_at > 0 ? new Date(subscription.cancel_at * 1000).toISOString() : null,
+          cancelAt: subscription.cancel_at ? new Date(subscription.cancel_at * 1000).toISOString() : null,
         }
       } catch (stripeErr) {
         console.error("[Billing] Error fetching subscription from Stripe:", stripeErr)
@@ -117,7 +117,7 @@ export async function POST(request: Request) {
       return NextResponse.json({
         success: true,
         message: "Subscription will be canceled at the end of the billing period",
-        cancelAt: subscription.cancel_at && subscription.cancel_at > 0 ? new Date(subscription.cancel_at * 1000).toISOString() : null,
+        cancelAt: subscription.cancel_at ? new Date(subscription.cancel_at * 1000).toISOString() : null,
         currentPeriodEnd: new Date(subscription.current_period_end * 1000).toISOString(),
       })
     }
