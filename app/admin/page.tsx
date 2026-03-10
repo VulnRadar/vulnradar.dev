@@ -1095,7 +1095,6 @@ function AdminContent() {
                   )}
                 </CardContent>
               </Card>
-        </>
           </>
         )}
 
