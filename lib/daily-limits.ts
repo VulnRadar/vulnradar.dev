@@ -3,20 +3,30 @@
 // ============================================================================
 // Tracks and enforces daily request limits based on subscription plan
 // Uses the rate_limits table for tracking (clean schema)
+// When billing is disabled (config.yaml), all users get unlimited access
 // ============================================================================
 
 import pool from "./db"
+import { BILLING_ENABLED, BILLING_PLAN_LIMITS, BILLING_UNLIMITED_MODE_LIMIT } from "./constants"
 
-// Plan-based daily limits
+// Plan-based daily limits (from config.yaml when billing is enabled)
 export const PLAN_LIMITS = {
-  free: 50,
-  core_supporter: 100,
-  pro_supporter: 150,
-  elite_supporter: 500,
-  admin: Infinity, // Unlimited for admins
+  free: BILLING_PLAN_LIMITS.free,
+  core_supporter: BILLING_PLAN_LIMITS.core_supporter,
+  pro_supporter: BILLING_PLAN_LIMITS.pro_supporter,
+  elite_supporter: BILLING_PLAN_LIMITS.elite_supporter,
+  admin: Infinity, // Unlimited for admins always
 } as const
 
 export type PlanType = keyof typeof PLAN_LIMITS
+
+/**
+ * Check if billing is enabled
+ * When disabled, all users get unlimited access (or unlimited_mode_limit)
+ */
+export function isBillingEnabled(): boolean {
+  return BILLING_ENABLED
+}
 
 /**
  * Get user's current subscription plan (from users table)
@@ -43,8 +53,14 @@ export async function getUserPlan(userId: number): Promise<PlanType> {
 
 /**
  * Get user's daily limit based on their plan
+ * When billing is disabled, returns unlimited (-1 means Infinity internally)
  */
 export async function getDailyLimit(userId: number): Promise<number> {
+  // When billing is disabled, everyone gets unlimited (or the configured limit)
+  if (!BILLING_ENABLED) {
+    return BILLING_UNLIMITED_MODE_LIMIT === -1 ? Infinity : BILLING_UNLIMITED_MODE_LIMIT
+  }
+  
   const plan = await getUserPlan(userId)
   return PLAN_LIMITS[plan] || PLAN_LIMITS.free
 }

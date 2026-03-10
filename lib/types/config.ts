@@ -113,6 +113,23 @@ export interface FeaturesConfig {
   email_notifications: boolean
 }
 
+export interface BillingConfig {
+  // Master switch - when false, disables all billing/premium features
+  // Self-hosters can set this to false to give everyone unlimited access
+  enabled: boolean
+  
+  // Plan limits (daily scans) - only applies when billing is enabled
+  plan_limits: {
+    free: number
+    core_supporter: number
+    pro_supporter: number
+    elite_supporter: number
+  }
+  
+  // When billing is disabled, this is the limit for all users (-1 = unlimited)
+  unlimited_mode_limit: number
+}
+
 export interface VulnRadarConfig {
   app: AppConfig
   branding: BrandingConfig
@@ -126,6 +143,7 @@ export interface VulnRadarConfig {
   pagination: PaginationConfig
   beta: BetaConfig
   features: FeaturesConfig
+  billing: BillingConfig
 }
 
 // ============================================================================
@@ -225,5 +243,15 @@ export const DEFAULT_CONFIG: VulnRadarConfig = {
     bulk_scans: true,
     pdf_reports: true,
     email_notifications: true,
+  },
+  billing: {
+    enabled: true,
+    plan_limits: {
+      free: 50,
+      core_supporter: 100,
+      pro_supporter: 150,
+      elite_supporter: 500,
+    },
+    unlimited_mode_limit: -1, // -1 = unlimited when billing is disabled
   },
 }

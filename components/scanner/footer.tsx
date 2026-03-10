@@ -3,7 +3,7 @@
 import Link from "next/link"
 import Image from "next/image"
 import { Heart, Mail, Github } from "lucide-react"
-import { APP_VERSION, APP_NAME, APP_URL, APP_REPO, SUPPORT_EMAIL, ROUTES } from "@/lib/constants"
+import { APP_VERSION, APP_NAME, APP_URL, APP_REPO, SUPPORT_EMAIL, ROUTES, BILLING_ENABLED } from "@/lib/constants"
 import { Button } from "@/components/ui/button"
 
 export function Footer() {
@@ -39,7 +39,7 @@ export function Footer() {
               <li><Link href={ROUTES.HISTORY} className="hover:text-foreground transition-colors">History</Link></li>
               <li><Link href={ROUTES.COMPARE} className="hover:text-foreground transition-colors">Compare</Link></li>
               <li><Link href={ROUTES.BADGE} className="hover:text-foreground transition-colors">Badges</Link></li>
-              <li><Link href={ROUTES.PRICING} className="hover:text-foreground transition-colors">Pricing</Link></li>
+              {BILLING_ENABLED && <li><Link href={ROUTES.PRICING} className="hover:text-foreground transition-colors">Pricing</Link></li>}
             </ul>
           </div>
 
