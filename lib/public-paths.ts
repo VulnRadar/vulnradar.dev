@@ -43,6 +43,17 @@ export const PUBLIC_PATHS = [
   ROUTES.LEGAL_DISCLAIMER,
   ROUTES.LEGAL_ACCEPTABLE_USE,
 
+  // ─── Public Information Pages ──────────────────────────────────
+  ROUTES.PRICING,
+  ROUTES.DOCS,
+  ROUTES.CHANGELOG,
+  ROUTES.CONTACT,
+  ROUTES.GDPR_REQUEST,
+
+  // ─── Public System Endpoints ───────────────────────────────────
+  "/api/version",
+  "/api/security-txt",
+
   // ─── Shared Scan Reports ───────────────────────────────────────
   "/shared",
   "/api/v1/shared",

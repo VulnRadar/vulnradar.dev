@@ -78,10 +78,13 @@ export function Header() {
                   </Link>
               )
             })}
+            {/* Admin link: uses vr-staff-only for instant visibility via localStorage cache, 
+                plus isStaff check as fallback once React hydrates */}
             <Link
                 href={ROUTES.ADMIN}
                 className={cn(
                     "vr-staff-only items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors",
+                    isStaff && "!flex", // Force visible once React confirms staff status
                     pathname === ROUTES.ADMIN
                         ? "bg-destructive/10 text-destructive"
                         : "text-destructive/70 hover:text-destructive hover:bg-destructive/10",
@@ -147,6 +150,7 @@ export function Header() {
                   onClick={() => setMobileOpen(false)}
                   className={cn(
                       "vr-staff-only items-center gap-2.5 px-3 py-2.5 rounded-md text-sm font-medium transition-colors",
+                      isStaff && "!flex", // Force visible once React confirms staff status
                       pathname === ROUTES.ADMIN
                           ? "bg-destructive/10 text-destructive"
                           : "text-destructive/70 hover:text-destructive hover:bg-destructive/10",

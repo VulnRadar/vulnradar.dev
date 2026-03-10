@@ -1,6 +1,6 @@
 "use client"
 
-import React from "react"
+import React, { useState, useEffect } from "react"
 import Image from "next/image"
 import Link from "next/link"
 import { ThemeToggle } from "@/components/theme-toggle"
@@ -20,14 +20,39 @@ interface PublicPageShellProps {
   padding?: string
 }
 
+// Check localStorage cache immediately to prevent header flash
+function getInitialAuthState(): boolean | null {
+  if (typeof window === "undefined") return null
+  try {
+    const cached = localStorage.getItem("vr_auth_cache")
+    if (cached) {
+      const parsed = JSON.parse(cached)
+      return !!parsed?.userId
+    }
+  } catch {}
+  return null
+}
+
 export function PublicPageShell({
   children,
   badge,
   maxWidth = "max-w-5xl",
   padding = "py-8",
 }: PublicPageShellProps) {
-  const { me } = useAuth()
-  const isLoggedIn = !!me?.name
+  const { me, isLoading } = useAuth()
+  // Use localStorage cache for instant render, then sync with actual auth state
+  const [cachedAuth, setCachedAuth] = useState<boolean | null>(() => getInitialAuthState())
+  
+  // Once auth loads, use the real value
+  useEffect(() => {
+    if (!isLoading) {
+      setCachedAuth(!!me?.userId)
+    }
+  }, [me, isLoading])
+  
+  // Show logged-in UI if either cache says yes OR real auth says yes
+  // This prevents flash: cache loads instantly, real auth confirms later
+  const isLoggedIn = cachedAuth === true || !!me?.userId
 
   return (
     <div className="min-h-screen flex flex-col bg-background">
@@ -76,6 +101,10 @@ export function PublicPageShell({
         <footer className="border-t border-border bg-card/50">
           <div className="max-w-4xl mx-auto px-4 py-4 flex flex-col items-center gap-2">
             <div className="flex flex-wrap items-center justify-center gap-4 text-xs text-muted-foreground">
+              <Link href={ROUTES.PRICING} className="hover:text-foreground transition-colors">
+                Pricing
+              </Link>
+              <span className="text-border">|</span>
               <Link href={ROUTES.LEGAL_TERMS} className="hover:text-foreground transition-colors">
                 Terms of Service
               </Link>
