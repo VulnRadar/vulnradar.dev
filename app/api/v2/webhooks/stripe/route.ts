@@ -27,7 +27,8 @@ export async function POST(req: NextRequest) {
         const customerId = session.customer as string
         const subscriptionId = session.subscription as string
         
-        // Get planId directly from session metadata (set in createSubscriptionCheckout)
+        // Get userId and planId directly from session metadata (set in startCheckoutSession)
+        const userId = session.metadata?.userId ? parseInt(session.metadata.userId, 10) : null
         let plan = session.metadata?.planId || ""
         
         // Validate the plan is a valid supporter plan
@@ -47,28 +48,43 @@ export async function POST(req: NextRequest) {
           }
         }
 
-        if (customerEmail && subscriptionId) {
-          // Update user in database (case-insensitive email match)
-          const result = await pool.query(
-            `UPDATE users SET 
-              plan = $1,
-              stripe_customer_id = $2,
-              stripe_subscription_id = $3,
-              subscription_status = 'active'
-            WHERE LOWER(email) = LOWER($4)
-            RETURNING id, email`,
-            [
-              plan || "free",
-              customerId,
-              subscriptionId,
-              customerEmail,
-            ]
-          )
+        if (subscriptionId) {
+          let result
           
-          if (result.rowCount && result.rowCount > 0) {
-            console.log(`[Stripe] User ${customerEmail} upgraded to ${plan}`)
-          } else {
-            console.log(`[Stripe] checkout.session.completed but no user found for email ${customerEmail}`)
+          // Primary: Update by userId if available (most reliable - ID never changes)
+          if (userId) {
+            result = await pool.query(
+              `UPDATE users SET 
+                plan = $1,
+                stripe_customer_id = $2,
+                stripe_subscription_id = $3,
+                subscription_status = 'active'
+              WHERE id = $4
+              RETURNING id, email`,
+              [plan || "free", customerId, subscriptionId, userId]
+            )
+            if (result.rowCount && result.rowCount > 0) {
+              console.log(`[Stripe] User ID ${userId} upgraded to ${plan}`)
+            }
+          }
+          
+          // Fallback: Update by email if userId lookup failed
+          if ((!result || result.rowCount === 0) && customerEmail) {
+            result = await pool.query(
+              `UPDATE users SET 
+                plan = $1,
+                stripe_customer_id = $2,
+                stripe_subscription_id = $3,
+                subscription_status = 'active'
+              WHERE LOWER(email) = LOWER($4)
+              RETURNING id, email`,
+              [plan || "free", customerId, subscriptionId, customerEmail]
+            )
+            if (result.rowCount && result.rowCount > 0) {
+              console.log(`[Stripe] User ${customerEmail} upgraded to ${plan}`)
+            } else {
+              console.log(`[Stripe] checkout.session.completed but no user found for email ${customerEmail}`)
+            }
           }
         }
         break
@@ -79,30 +95,59 @@ export async function POST(req: NextRequest) {
         const subscription = event.data.object as Stripe.Subscription
         const customerId = subscription.customer as string
         
-        // Get productId from subscription metadata first (this is where it's stored!)
-        let productId = subscription.metadata?.productId || ""
-        let plan = getPlanFromProductId(productId)
+        // Get userId and planId from subscription metadata (set in startCheckoutSession)
+        const userId = subscription.metadata?.userId ? parseInt(subscription.metadata.userId, 10) : null
+        let plan = subscription.metadata?.planId || ""
+        
+        // Fallback: try to get plan from productId
+        if (!plan || !["core_supporter", "pro_supporter", "elite_supporter"].includes(plan)) {
+          const productId = subscription.metadata?.productId || ""
+          plan = getPlanFromProductId(productId)
+        }
         
         // Fallback: try to extract from price/product
         if (!plan || plan === "free") {
-          productId = subscription.items?.data?.[0]?.price?.product as string || ""
+          const productId = subscription.items?.data?.[0]?.price?.product as string || ""
           plan = getPlanFromProductId(productId)
         }
 
-        // Try to update by stripe_customer_id first
-        let result = await pool.query(
-          `UPDATE users SET 
-            plan = $1,
-            stripe_subscription_id = $2,
-            subscription_status = $3,
-            stripe_customer_id = $4
-          WHERE stripe_customer_id = $4
-          RETURNING id`,
-          [plan || "free", subscription.id, subscription.status, customerId]
-        )
+        let result
         
-        // If no rows updated, try to find user by customer email from Stripe
-        if (result.rowCount === 0) {
+        // Primary: Update by userId if available (most reliable)
+        if (userId) {
+          result = await pool.query(
+            `UPDATE users SET 
+              plan = $1,
+              stripe_subscription_id = $2,
+              subscription_status = $3,
+              stripe_customer_id = $4
+            WHERE id = $5
+            RETURNING id`,
+            [plan || "free", subscription.id, subscription.status, customerId, userId]
+          )
+          if (result.rowCount && result.rowCount > 0) {
+            console.log(`[Stripe] Subscription created for user ID ${userId}, plan: ${plan}`)
+          }
+        }
+        
+        // Fallback: Try stripe_customer_id
+        if (!result || result.rowCount === 0) {
+          result = await pool.query(
+            `UPDATE users SET 
+              plan = $1,
+              stripe_subscription_id = $2,
+              subscription_status = $3
+            WHERE stripe_customer_id = $4
+            RETURNING id`,
+            [plan || "free", subscription.id, subscription.status, customerId]
+          )
+          if (result.rowCount && result.rowCount > 0) {
+            console.log(`[Stripe] Subscription created for customer ${customerId}, plan: ${plan}`)
+          }
+        }
+        
+        // Last fallback: Try email from Stripe customer
+        if (!result || result.rowCount === 0) {
           const customer = await stripe.customers.retrieve(customerId) as Stripe.Customer
           if (customer.email) {
             result = await pool.query(
@@ -121,8 +166,6 @@ export async function POST(req: NextRequest) {
               console.log(`[Stripe] Subscription created but no user found for email ${customer.email}`)
             }
           }
-        } else {
-          console.log(`[Stripe] Subscription created for customer ${customerId}, plan: ${plan}`)
         }
         break
       }

@@ -195,7 +195,7 @@ export default function PricingPage() {
               </Button>
             </div>
             <div className="p-4 min-h-[400px]">
-              <StripeCheckout productId={checkoutPlan} userEmail={me?.email} />
+              <StripeCheckout productId={checkoutPlan} userEmail={me?.email} userId={me?.userId} />
             </div>
           </div>
         </div>

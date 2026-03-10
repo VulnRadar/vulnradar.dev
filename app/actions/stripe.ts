@@ -3,7 +3,7 @@
 import { stripe } from '@/lib/stripe'
 import { PRODUCTS, getPlanFromProductId } from '@/lib/products'
 
-export async function startCheckoutSession(productId: string, userEmail?: string) {
+export async function startCheckoutSession(productId: string, userEmail?: string, userId?: number) {
   const product = PRODUCTS.find((p) => p.id === productId)
   if (!product) {
     throw new Error(`Product with id "${productId}" not found`)
@@ -34,16 +34,18 @@ export async function startCheckoutSession(productId: string, userEmail?: string
       },
     ],
     mode: 'subscription',
-    // Store planId in session metadata for checkout.session.completed webhook
+    // Store planId and userId in session metadata for checkout.session.completed webhook
     metadata: {
       planId: planId,
       productId: product.id,
+      userId: userId ? String(userId) : '',
     },
     // Also store on subscription for subscription.* webhooks
     subscription_data: {
       metadata: {
         planId: planId,
         productId: product.id,
+        userId: userId ? String(userId) : '',
         scansPerDay: product.scansPerDay.toString(),
       },
     },
