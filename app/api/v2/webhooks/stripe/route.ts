@@ -56,11 +56,33 @@ export async function POST(req: NextRequest) {
         break
       }
 
+      case "customer.subscription.created": {
+        // New subscription created - update user's plan
+        const subscription = event.data.object as Stripe.Subscription
+        const customerId = subscription.customer as string
+        const priceId = subscription.items?.data?.[0]?.price?.id || ""
+        const productId = subscription.items?.data?.[0]?.price?.product as string || ""
+        const plan = getPlanFromProductId(productId) || getPlanFromProductId(priceId)
+
+        await pool.query(
+          `UPDATE users SET 
+            plan = $1,
+            stripe_subscription_id = $2,
+            subscription_status = $3,
+            subscription_current_period_end = to_timestamp($4)
+          WHERE stripe_customer_id = $5`,
+          [plan, subscription.id, subscription.status, subscription.current_period_end, customerId]
+        )
+        console.log(`[Stripe] Subscription created for customer ${customerId}, plan: ${plan}`)
+        break
+      }
+
       case "customer.subscription.updated": {
         const subscription = event.data.object as Stripe.Subscription
         const customerId = subscription.customer as string
-        const productId = subscription.metadata?.productId || ""
-        const plan = getPlanFromProductId(productId)
+        const priceId = subscription.items?.data?.[0]?.price?.id || ""
+        const productId = subscription.items?.data?.[0]?.price?.product as string || ""
+        const plan = getPlanFromProductId(productId) || getPlanFromProductId(priceId)
 
         await pool.query(
           `UPDATE users SET 
@@ -70,7 +92,7 @@ export async function POST(req: NextRequest) {
           WHERE stripe_customer_id = $4`,
           [plan, subscription.status, subscription.current_period_end, customerId]
         )
-        console.log(`[Stripe] Subscription updated for customer ${customerId}`)
+        console.log(`[Stripe] Subscription updated for customer ${customerId}, plan: ${plan}`)
         break
       }
 
