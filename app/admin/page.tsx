@@ -1839,7 +1839,7 @@ function UserDetailPanel({
   )
 }
 
-// --- Action Card ---
+// --- Action Card Component ---
 function ActionCard({
   icon: Icon, label, description, color, bg, variant, disabled, loading, onClick,
 }: {
