@@ -53,6 +53,7 @@ import {
   ImageOff,
   UserX,
   Beaker,
+  Gift,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -115,6 +116,13 @@ interface UserBadge extends BadgeDef {
   awarded_at: string
 }
 
+interface GiftedSubscription {
+  plan: string
+  expires_at: string
+  granted_by: number
+  created_at: string
+}
+
 interface UserDetail {
   user: AdminUser & {
     session_count: number
@@ -126,6 +134,7 @@ interface UserDetail {
   schedules: { id: number; url: string; frequency: string; active: boolean; last_run_at: string | null; next_run_at: string | null }[]
   activeSessions: { id: string; created_at: string; expires_at: string; ip_address: string | null; user_agent: string | null }[]
   badges: UserBadge[]
+  giftedSubscription: GiftedSubscription | null
 }
 
 interface AuditEntry {
@@ -1903,90 +1912,123 @@ function UserDetailPanel({
                   </div>
                 </div>
 
-                {/* Gifted Subscription */}
-                <div>
-                  <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium mb-2">Gifted Subscription</p>
-                  <div className="flex flex-col gap-2.5 p-3 rounded-lg bg-muted/20 border border-border">
-                    {!showGiftForm ? (
-                      <Button
-                        size="sm"
-                        onClick={() => setShowGiftForm(true)}
-                        className="w-full"
-                      >
-                        Gift a Subscription
-                      </Button>
-                    ) : (
-                      <div className="flex flex-col gap-2.5">
-                        <div className="grid grid-cols-2 gap-2">
-                          <div>
-                            <label className="text-[10px] font-medium text-muted-foreground mb-1.5 block">Plan</label>
-                            <select
-                              value={giftPlan}
-                              onChange={(e) => setGiftPlan(e.target.value)}
-                              className="w-full px-2.5 py-1.5 rounded-md border border-border bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
-                            >
-                              <option value="core_supporter">Core Supporter</option>
-                              <option value="pro_supporter">Pro Supporter</option>
-                              <option value="elite_supporter">Elite Supporter</option>
-                            </select>
-                          </div>
-                          <div>
-                            <label className="text-[10px] font-medium text-muted-foreground mb-1.5 block">Expires</label>
-                            <input
-                              type="datetime-local"
-                              value={giftEndDate}
-                              onChange={(e) => setGiftEndDate(e.target.value)}
-                              className="w-full px-2.5 py-1.5 rounded-md border border-border bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
-                            />
-                          </div>
-                        </div>
-                        <p className="text-[10px] text-muted-foreground">Gift expires at the selected date/time. User reverts to free plan when it expires.</p>
-                        <div className="flex items-center gap-2">
-                          <Button
-                            size="sm"
-                            onClick={() => {
-                              if (!giftEndDate) return
-                              onAction(u.id, "gift_subscription", {
-                                giftPlan,
-                                giftEndDate: new Date(giftEndDate).toISOString(),
-                              })
-                              setShowGiftForm(false)
-                              setGiftPlan("pro_supporter")
-                              setGiftEndDate("")
-                            }}
-                            disabled={!giftEndDate || isLoading("gift_subscription")}
-                            className="flex-1"
-                          >
-                            {isLoading("gift_subscription") ? "Gifting..." : "Gift Plan"}
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => {
-                              setShowGiftForm(false)
-                              setGiftPlan("pro_supporter")
-                              setGiftEndDate("")
-                            }}
-                            className="flex-1"
-                          >
-                            Cancel
-                          </Button>
-                        </div>
+                {/* Gifted Subscription - shown in Account Management grid */}
+                <ActionCard
+                  icon={Gift}
+                  label={detail.giftedSubscription ? "Manage Gift" : "Gift Subscription"}
+                  description={
+                    detail.giftedSubscription
+                      ? `${detail.giftedSubscription.plan.replace("_supporter", "").replace("_", " ")} until ${new Date(detail.giftedSubscription.expires_at).toLocaleDateString()}`
+                      : "Grant temporary premium access"
+                  }
+                  color={detail.giftedSubscription ? "text-amber-500" : "text-primary"}
+                  bg={detail.giftedSubscription ? "bg-amber-500/10" : "bg-primary/10"}
+                  loading={isLoading("gift_subscription") || isLoading("revoke_gift")}
+                  onClick={() => setShowGiftForm(true)}
+                />
+              </div>
+            </div>
+
+            {/* Gift Subscription Dialog */}
+            {showGiftForm && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => setShowGiftForm(false)}>
+                <div className="bg-card border border-border rounded-xl shadow-2xl w-full max-w-md p-6 mx-4" onClick={(e) => e.stopPropagation()}>
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center gap-3">
+                      <div className={cn("h-10 w-10 rounded-lg flex items-center justify-center", detail.giftedSubscription ? "bg-amber-500/10" : "bg-primary/10")}>
+                        <Gift className={cn("h-5 w-5", detail.giftedSubscription ? "text-amber-500" : "text-primary")} />
                       </div>
-                    )}
-                    <Button
-                      size="sm"
-                      variant="destructive"
-                      onClick={() => onAction(u.id, "revoke_gift")}
-                      disabled={isLoading("revoke_gift")}
-                      className="w-full"
-                    >
-                      {isLoading("revoke_gift") ? "Revoking..." : "Revoke Active Gift"}
+                      <div>
+                        <h3 className="text-base font-semibold text-foreground">{detail.giftedSubscription ? "Manage Gifted Subscription" : "Gift a Subscription"}</h3>
+                        <p className="text-xs text-muted-foreground">{u.name || u.email}</p>
+                      </div>
+                    </div>
+                    <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setShowGiftForm(false)}>
+                      <X className="h-4 w-4" />
                     </Button>
                   </div>
-                </div>
 
-                {/* Danger Zone */}
+                  {detail.giftedSubscription && (
+                    <div className="mb-4 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20">
+                      <p className="text-xs font-medium text-amber-600 dark:text-amber-400">Current Gift Active</p>
+                      <p className="text-sm text-foreground mt-1 capitalize">
+                        {detail.giftedSubscription.plan.replace("_supporter", " Supporter").replace("_", " ")}
+                      </p>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        Expires {new Date(detail.giftedSubscription.expires_at).toLocaleString()}
+                      </p>
+                    </div>
+                  )}
+
+                  <div className="flex flex-col gap-4">
+                    <div>
+                      <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Plan</label>
+                      <select
+                        value={giftPlan}
+                        onChange={(e) => setGiftPlan(e.target.value)}
+                        className="w-full px-3 py-2 rounded-lg border border-border bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
+                      >
+                        <option value="core_supporter">Core Supporter</option>
+                        <option value="pro_supporter">Pro Supporter</option>
+                        <option value="elite_supporter">Elite Supporter</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Expires At</label>
+                      <input
+                        type="datetime-local"
+                        value={giftEndDate}
+                        onChange={(e) => setGiftEndDate(e.target.value)}
+                        className="w-full px-3 py-2 rounded-lg border border-border bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
+                      />
+                      <p className="text-[10px] text-muted-foreground mt-1.5">User reverts to their normal plan when the gift expires.</p>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col gap-2 mt-6">
+                    <Button
+                      onClick={() => {
+                        if (!giftEndDate) return
+                        onAction(u.id, "gift_subscription", {
+                          giftPlan,
+                          giftEndDate: new Date(giftEndDate).toISOString(),
+                        })
+                        setShowGiftForm(false)
+                        setGiftPlan("pro_supporter")
+                        setGiftEndDate("")
+                      }}
+                      disabled={!giftEndDate || isLoading("gift_subscription")}
+                      className="w-full"
+                    >
+                      {isLoading("gift_subscription") ? (
+                        <><Loader2 className="h-4 w-4 mr-2 animate-spin" />{detail.giftedSubscription ? "Updating..." : "Gifting..."}</>
+                      ) : (
+                        <><Gift className="h-4 w-4 mr-2" />{detail.giftedSubscription ? "Update Gift" : "Gift Subscription"}</>
+                      )}
+                    </Button>
+                    {detail.giftedSubscription && (
+                      <Button
+                        variant="destructive"
+                        onClick={() => {
+                          onAction(u.id, "revoke_gift")
+                          setShowGiftForm(false)
+                        }}
+                        disabled={isLoading("revoke_gift")}
+                        className="w-full"
+                      >
+                        {isLoading("revoke_gift") ? (
+                          <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Revoking...</>
+                        ) : (
+                          "Revoke Gift Now"
+                        )}
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Danger Zone */}
                 <div>
                   <p className="text-[10px] uppercase tracking-wider text-destructive/70 font-medium mb-2">Danger Zone</p>
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">

@@ -41,7 +41,7 @@ export async function GET(request: NextRequest) {
     const userId = searchParams.get("userId")
     if (!userId) return NextResponse.json({ error: "userId required" }, { status: 400 })
 
-    const [userRes, scansRes, keysRes, webhooksRes, schedulesRes, sessionsRes, badgesRes] = await Promise.all([
+    const [userRes, scansRes, keysRes, webhooksRes, schedulesRes, sessionsRes, badgesRes, giftRes] = await Promise.all([
       pool.query(
         `SELECT id, email, name, role, avatar_url, totp_enabled, tos_accepted_at, created_at, disabled_at,
           plan, stripe_customer_id, subscription_status, beta_access,
@@ -70,6 +70,10 @@ export async function GET(request: NextRequest) {
          WHERE ub.user_id = $1 ORDER BY b.priority DESC`,
         [userId]
       ),
+      pool.query(
+        `SELECT plan, expires_at, granted_by, created_at FROM gifted_subscriptions WHERE user_id = $1`,
+        [userId]
+      ),
     ])
 
     if (!userRes.rows[0]) return NextResponse.json({ error: "User not found" }, { status: 404 })
@@ -82,6 +86,7 @@ export async function GET(request: NextRequest) {
       schedules: schedulesRes.rows,
       activeSessions: sessionsRes.rows,
       badges: badgesRes.rows,
+      giftedSubscription: giftRes.rows[0] || null,
     })
   }
 
