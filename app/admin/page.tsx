@@ -501,10 +501,9 @@ function AdminContent() {
           update_plan: "Plan updated.",
           reset_2fa: "Two-factor authentication reset.",
           delete_scans: "All scans deleted.",
-
-      
-      
           clear_rate_limits: "Rate limits cleared.",
+          gift_subscription: "Subscription gifted.",
+          revoke_gift: "Gift revoked.",
         }
         if (action === "create_badge" || action === "delete_badge") { fetchAllBadges() }
         showToast(labels[action] || "Action completed.", "success")
