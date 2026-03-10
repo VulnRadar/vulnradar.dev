@@ -1926,8 +1926,8 @@ function UserDetailPanel({
                   loading={isLoading("gift_subscription") || isLoading("revoke_gift")}
                   onClick={() => setShowGiftForm(true)}
                 />
-                  </div>
-                </div>
+              </div>
+            </div>
 
             {/* Gift Subscription Dialog */}
             {showGiftForm && (
@@ -2028,7 +2028,7 @@ function UserDetailPanel({
               </div>
             )}
 
-                {/* Danger Zone */}
+            {/* Danger Zone */}
                 <div>
                   <p className="text-[10px] uppercase tracking-wider text-destructive/70 font-medium mb-2">Danger Zone</p>
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
