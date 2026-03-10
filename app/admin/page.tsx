@@ -1562,6 +1562,283 @@ function AdminContent() {
   )
 }
 
+// --- User Detail Panel ---
+function UserDetailPanel({
+  detail,
+  detailLoading,
+  actionLoading,
+  callerRole,
+  allBadges,
+  onRefreshBadges,
+  onBadgesChanged,
+  onClose,
+  onAction,
+  tempPassword,
+  onClearTempPassword,
+}: {
+  detail: { user: AdminUser; badges: Array<{ id: number; name: string; display_name: string; color: string; awarded_at: string }> }
+  detailLoading: boolean
+  actionLoading: string | null
+  callerRole: string
+  allBadges: Array<{ id: number; name: string; display_name: string; color: string }>
+  onRefreshBadges: () => void
+  onBadgesChanged: (awardedIds: number[], revokedIds: number[]) => void
+  onClose: () => void
+  onAction: (userId: number, action: string, extra?: Record<string, unknown>) => void
+  tempPassword: string | null
+  onClearTempPassword: () => void
+}) {
+  const u = detail.user
+  const [editRole, setEditRole] = useState(u.role || "user")
+  const [confirmEmail, setConfirmEmail] = useState("")
+  const [isSaving, setIsSaving] = useState(false)
+  const [showGiftForm, setShowGiftForm] = useState(false)
+  const [giftPlan, setGiftPlan] = useState("pro_supporter")
+  const [giftEndDate, setGiftEndDate] = useState("")
+
+  const isLoading = (action: string) => actionLoading === action
+
+  return (
+    <Card className="bg-card border-border">
+      <CardHeader className="pb-0 pt-5 px-5">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <UserAvatar name={u.name} email={u.email} size="md" avatarUrl={u.avatar_url} />
+            <div>
+              <p className="text-sm font-semibold text-foreground">{u.name || "Unnamed User"}</p>
+              <p className="text-xs text-muted-foreground">{u.email}</p>
+            </div>
+          </div>
+          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={onClose}>
+            <X className="h-4 w-4" />
+          </Button>
+        </div>
+      </CardHeader>
+      <CardContent className="p-5 pt-4">
+        {detailLoading ? (
+          <div className="flex items-center justify-center py-8">
+            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+          </div>
+        ) : (
+          <div className="flex flex-col gap-4">
+            {/* User info grid */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div className="p-3 rounded-lg bg-muted/30 border border-border">
+                <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1">Joined</p>
+                <p className="text-sm font-medium text-foreground">{new Date(u.created_at).toLocaleDateString()}</p>
+              </div>
+              <div className="p-3 rounded-lg bg-muted/30 border border-border">
+                <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1">Scans</p>
+                <p className="text-sm font-medium text-foreground">{u.scan_count}</p>
+              </div>
+              <div className="p-3 rounded-lg bg-muted/30 border border-border">
+                <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1">Plan</p>
+                <p className="text-sm font-medium text-foreground capitalize">{(u.plan || "free").replace("_supporter", "")}</p>
+              </div>
+              <div className="p-3 rounded-lg bg-muted/30 border border-border">
+                <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1">Status</p>
+                <p className="text-sm font-medium text-foreground">{u.disabled_at ? "Disabled" : "Active"}</p>
+              </div>
+            </div>
+
+            {/* Role management */}
+            {hasStaffPermission(callerRole, STAFF_PERMISSIONS.EDIT_USER_ROLE) && (
+              <div className="p-3 rounded-lg bg-muted/20 border border-border">
+                <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-2">Role</p>
+                <div className="flex items-center gap-2">
+                  <select
+                    value={editRole}
+                    onChange={(e) => setEditRole(e.target.value)}
+                    className="flex-1 px-3 py-1.5 rounded-md border border-border bg-background text-sm"
+                  >
+                    {Object.entries(STAFF_ROLE_LABELS).map(([value, label]) => (
+                      <option key={value} value={value}>{label}</option>
+                    ))}
+                  </select>
+                  <Button
+                    size="sm"
+                    disabled={editRole === u.role || isLoading("set_role")}
+                    onClick={() => onAction(u.id, "set_role", { role: editRole })}
+                  >
+                    {isLoading("set_role") ? <Loader2 className="h-4 w-4 animate-spin" /> : "Update"}
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {/* Badges */}
+            <div className="p-3 rounded-lg bg-muted/20 border border-border">
+              <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-2">Badges</p>
+              <div className="flex flex-wrap gap-1.5">
+                {detail.badges.length === 0 ? (
+                  <p className="text-xs text-muted-foreground">No badges awarded</p>
+                ) : (
+                  detail.badges.map((badge) => (
+                    <Badge
+                      key={badge.id}
+                      className="text-[10px] px-2 py-0.5"
+                      style={{ backgroundColor: `${badge.color}20`, color: badge.color, borderColor: `${badge.color}40` }}
+                    >
+                      {badge.display_name}
+                    </Badge>
+                  ))
+                )}
+              </div>
+            </div>
+
+            {/* Gifted Subscription */}
+            {hasStaffPermission(callerRole, STAFF_PERMISSIONS.UPDATE_PLAN) && (
+              <div className="p-3 rounded-lg bg-muted/20 border border-border">
+                <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-2">Gifted Subscription</p>
+                <div className="flex flex-col gap-2">
+                  {!showGiftForm ? (
+                    <Button size="sm" onClick={() => setShowGiftForm(true)} className="w-full">
+                      Gift a Subscription
+                    </Button>
+                  ) : (
+                    <div className="flex flex-col gap-2">
+                      <div className="grid grid-cols-2 gap-2">
+                        <select
+                          value={giftPlan}
+                          onChange={(e) => setGiftPlan(e.target.value)}
+                          className="px-2.5 py-1.5 rounded-md border border-border bg-background text-sm"
+                        >
+                          <option value="core_supporter">Core Supporter</option>
+                          <option value="pro_supporter">Pro Supporter</option>
+                          <option value="elite_supporter">Elite Supporter</option>
+                        </select>
+                        <input
+                          type="datetime-local"
+                          value={giftEndDate}
+                          onChange={(e) => setGiftEndDate(e.target.value)}
+                          className="px-2.5 py-1.5 rounded-md border border-border bg-background text-sm"
+                        />
+                      </div>
+                      <div className="flex gap-2">
+                        <Button
+                          size="sm"
+                          onClick={() => {
+                            if (!giftEndDate) return
+                            onAction(u.id, "gift_subscription", { giftPlan, giftEndDate: new Date(giftEndDate).toISOString() })
+                            setShowGiftForm(false)
+                            setGiftPlan("pro_supporter")
+                            setGiftEndDate("")
+                          }}
+                          disabled={!giftEndDate || isLoading("gift_subscription")}
+                          className="flex-1"
+                        >
+                          {isLoading("gift_subscription") ? "Gifting..." : "Gift Plan"}
+                        </Button>
+                        <Button size="sm" variant="ghost" onClick={() => setShowGiftForm(false)} className="flex-1">
+                          Cancel
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                  <Button
+                    size="sm"
+                    variant="destructive"
+                    onClick={() => onAction(u.id, "revoke_gift")}
+                    disabled={isLoading("revoke_gift")}
+                    className="w-full"
+                  >
+                    {isLoading("revoke_gift") ? "Revoking..." : "Revoke Active Gift"}
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {/* Support Actions */}
+            {hasStaffPermission(callerRole, STAFF_PERMISSIONS.DISABLE_USER) && (
+              <div className="p-3 rounded-lg bg-muted/20 border border-border">
+                <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-2">Support Actions</p>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                  <ActionCard
+                    icon={LogOut}
+                    label="Force Logout"
+                    description={`Revoke ${u.session_count} session(s)`}
+                    color="text-primary"
+                    bg="bg-primary/10"
+                    loading={isLoading("revoke_sessions")}
+                    onClick={() => onAction(u.id, "revoke_sessions")}
+                  />
+                  <ActionCard
+                    icon={Key}
+                    label="Revoke API Keys"
+                    description={`Invalidate ${u.api_key_count} key(s)`}
+                    color="text-[hsl(var(--severity-medium))]"
+                    bg="bg-[hsl(var(--severity-medium))]/10"
+                    loading={isLoading("revoke_api_keys")}
+                    onClick={() => onAction(u.id, "revoke_api_keys")}
+                  />
+                  {hasStaffPermission(callerRole, STAFF_PERMISSIONS.RESET_USER_PASSWORD) && (
+                    <ActionCard
+                      icon={KeyRound}
+                      label="Reset Password"
+                      description={u.totp_enabled ? "2FA enabled" : "Generate temp password"}
+                      color="text-[hsl(var(--severity-medium))]"
+                      bg="bg-[hsl(var(--severity-medium))]/10"
+                      disabled={u.totp_enabled}
+                      loading={isLoading("reset_password")}
+                      onClick={() => onAction(u.id, "reset_password")}
+                    />
+                  )}
+                  {hasStaffPermission(callerRole, STAFF_PERMISSIONS.RESET_USER_2FA) && u.totp_enabled && (
+                    <ActionCard
+                      icon={ShieldOff}
+                      label="Reset 2FA"
+                      description="Remove two-factor auth"
+                      color="text-[hsl(var(--severity-medium))]"
+                      bg="bg-[hsl(var(--severity-medium))]/10"
+                      loading={isLoading("reset_2fa")}
+                      onClick={() => onAction(u.id, "reset_2fa")}
+                    />
+                  )}
+                  <ActionCard
+                    icon={u.disabled_at ? CheckCircle2 : Ban}
+                    label={u.disabled_at ? "Re-enable" : "Disable"}
+                    description={u.disabled_at ? "Allow login" : "Suspend account"}
+                    color={u.disabled_at ? "text-emerald-500" : "text-destructive"}
+                    bg={u.disabled_at ? "bg-emerald-500/10" : "bg-destructive/10"}
+                    variant={u.disabled_at ? "success" : "danger"}
+                    onClick={() => onAction(u.id, u.disabled_at ? "enable" : "disable")}
+                  />
+                  {hasStaffPermission(callerRole, STAFF_PERMISSIONS.DELETE_ANY_SCAN) && (
+                    <ActionCard
+                      icon={Activity}
+                      label="Delete Scans"
+                      description={`Remove ${u.scan_count} scan(s)`}
+                      color="text-destructive"
+                      bg="bg-destructive/10"
+                      variant="danger"
+                      loading={isLoading("delete_scans")}
+                      onClick={() => onAction(u.id, "delete_scans")}
+                    />
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Temp password display */}
+            {tempPassword && (
+              <div className="p-3 rounded-lg bg-[hsl(var(--severity-medium))]/10 border border-[hsl(var(--severity-medium))]/30">
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-xs font-medium text-[hsl(var(--severity-medium))]">Temporary Password</p>
+                  <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={onClearTempPassword}>
+                    Dismiss
+                  </Button>
+                </div>
+                <code className="block p-2 rounded bg-background text-sm font-mono text-foreground break-all">{tempPassword}</code>
+                <p className="text-[10px] text-muted-foreground mt-2">Share this password securely. It will only be shown once.</p>
+              </div>
+            )}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
 // --- Action Card ---
 function ActionCard({
   icon: Icon, label, description, color, bg, variant, disabled, loading, onClick,
