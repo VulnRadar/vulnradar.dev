@@ -411,29 +411,6 @@ async function runV2Migration(pool, actual, v1Info) {
     } catch { /* column may already exist */ }
   }
 
-  // Step 5: Create gifted_subscriptions table
-  if (!actual["gifted_subscriptions"]) {
-    info("Creating gifted_subscriptions table...")
-    try {
-      await pool.query(`
-        CREATE TABLE IF NOT EXISTS gifted_subscriptions (
-          id SERIAL PRIMARY KEY,
-          user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-          plan VARCHAR(50) NOT NULL,
-          expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
-          gifted_by_admin_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
-          created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-          updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-        )
-      `)
-      await pool.query(`CREATE INDEX IF NOT EXISTS idx_gifted_subscriptions_user ON gifted_subscriptions(user_id)`)
-      await pool.query(`CREATE INDEX IF NOT EXISTS idx_gifted_subscriptions_expires ON gifted_subscriptions(expires_at)`)
-      success("  Created gifted_subscriptions table")
-    } catch (err) {
-      error(`  Failed to create gifted_subscriptions table: ${err.message}`)
-    }
-  }
-
   log("")
   success("V2 migration complete!")
   log("")

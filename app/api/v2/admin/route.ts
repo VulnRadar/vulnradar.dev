@@ -213,7 +213,7 @@ export async function PATCH(request: NextRequest) {
   if (!session) return NextResponse.json({ error: ERROR_MESSAGES.FORBIDDEN }, { status: 403 })
 
   const ip = await getClientIP()
-  const { action, userId, role: newRole, badgeId, name: badgeName, displayName, color: badgeColor, name, email, plan, giftPlan, giftEndDate } = await request.json()
+  const { action, userId, role: newRole, badgeId, name: badgeName, displayName, color: badgeColor, name, email, plan } = await request.json()
 
   if (!userId || !action) {
     return NextResponse.json({ error: "Missing action or userId" }, { status: 400 })
@@ -387,85 +387,6 @@ export async function PATCH(request: NextRequest) {
         [plan, plan === "free" ? null : "active", userId]
       )
       await logAction(session.userId, userId, "update_plan", `Changed plan for ${targetUser.email} to "${plan}"`, ip)
-      return NextResponse.json({ success: true })
-    }
-
-    case "gift_subscription": {
-      const validPlans = ["core_supporter", "pro_supporter", "elite_supporter"]
-      if (!giftPlan || !validPlans.includes(giftPlan)) {
-        return NextResponse.json({ error: "Invalid gift plan. Must be one of: " + validPlans.join(", ") }, { status: 400 })
-      }
-      if (!giftEndDate) {
-        return NextResponse.json({ error: "giftEndDate required (ISO 8601 format)" }, { status: 400 })
-      }
-      
-      const endDate = new Date(giftEndDate)
-      if (isNaN(endDate.getTime()) || endDate <= new Date()) {
-        return NextResponse.json({ error: "giftEndDate must be a valid future date" }, { status: 400 })
-      }
-
-      // Create or update gifted subscription
-      const existing = await pool.query(
-        "SELECT id FROM gifted_subscriptions WHERE user_id = $1 AND expires_at > NOW()",
-        [userId]
-      )
-
-      if (existing.rows.length > 0) {
-        // Update existing active gift
-        await pool.query(
-          "UPDATE gifted_subscriptions SET plan = $1, expires_at = $2, updated_at = NOW() WHERE id = $3",
-          [giftPlan, endDate.toISOString(), existing.rows[0].id]
-        )
-      } else {
-        // Create new gift
-        await pool.query(
-          "INSERT INTO gifted_subscriptions (user_id, plan, expires_at, gifted_by_admin_id) VALUES ($1, $2, $3, $4)",
-          [userId, giftPlan, endDate.toISOString(), session.userId]
-        )
-      }
-
-      // Update user's plan if they're on free or lower tier
-      const currentPlan = (await pool.query("SELECT plan FROM users WHERE id = $1", [userId])).rows[0].plan
-      const planTiers = { "free": 0, "core_supporter": 1, "pro_supporter": 2, "elite_supporter": 3 }
-      if ((planTiers[currentPlan] || 0) < (planTiers[giftPlan] || 0)) {
-        await pool.query(
-          "UPDATE users SET plan = $1, subscription_status = 'active', updated_at = NOW() WHERE id = $2",
-          [giftPlan, userId]
-        )
-      }
-
-      await logAction(session.userId, userId, "gift_subscription", `Gifted ${giftPlan} plan until ${endDate.toDateString()} for ${targetUser.email}`, ip)
-      return NextResponse.json({ success: true, expiresAt: endDate.toISOString() })
-    }
-
-    case "revoke_gift": {
-      const gift = await pool.query(
-        "SELECT id, plan FROM gifted_subscriptions WHERE user_id = $1 AND expires_at > NOW()",
-        [userId]
-      )
-      if (!gift.rows[0]) {
-        return NextResponse.json({ error: "No active gifted subscription found" }, { status: 404 })
-      }
-
-      // Mark as revoked
-      await pool.query(
-        "UPDATE gifted_subscriptions SET expires_at = NOW(), updated_at = NOW() WHERE id = $1",
-        [gift.rows[0].id]
-      )
-
-      // Revert plan to free if user doesn't have a Stripe subscription
-      const stripeSubscription = await pool.query(
-        "SELECT id FROM subscriptions WHERE user_id = $1 AND stripe_subscription_id IS NOT NULL AND cancel_at_period_end = FALSE AND current_period_end > NOW()",
-        [userId]
-      )
-      if (!stripeSubscription.rows[0]) {
-        await pool.query(
-          "UPDATE users SET plan = 'free', subscription_status = NULL, updated_at = NOW() WHERE id = $1",
-          [userId]
-        )
-      }
-
-      await logAction(session.userId, userId, "revoke_gift", `Revoked gifted ${gift.rows[0].plan} plan for ${targetUser.email}`, ip)
       return NextResponse.json({ success: true })
     }
 
