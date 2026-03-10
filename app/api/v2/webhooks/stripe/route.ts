@@ -80,9 +80,16 @@ export async function POST(req: NextRequest) {
         // New subscription created - update user's plan
         const subscription = event.data.object as Stripe.Subscription
         const customerId = subscription.customer as string
-        const priceId = subscription.items?.data?.[0]?.price?.id || ""
-        const productId = subscription.items?.data?.[0]?.price?.product as string || ""
-        const plan = getPlanFromProductId(productId) || getPlanFromProductId(priceId)
+        
+        // Get productId from subscription metadata first (this is where it's stored!)
+        let productId = subscription.metadata?.productId || ""
+        let plan = getPlanFromProductId(productId)
+        
+        // Fallback: try to extract from price/product
+        if (!plan || plan === "free") {
+          productId = subscription.items?.data?.[0]?.price?.product as string || ""
+          plan = getPlanFromProductId(productId)
+        }
 
         await pool.query(
           `UPDATE users SET 
@@ -91,7 +98,7 @@ export async function POST(req: NextRequest) {
             subscription_status = $3,
             subscription_current_period_end = to_timestamp($4)
           WHERE stripe_customer_id = $5`,
-          [plan, subscription.id, subscription.status, subscription.current_period_end, customerId]
+          [plan || "free", subscription.id, subscription.status, subscription.current_period_end, customerId]
         )
         console.log(`[Stripe] Subscription created for customer ${customerId}, plan: ${plan}`)
         break
@@ -100,9 +107,16 @@ export async function POST(req: NextRequest) {
       case "customer.subscription.updated": {
         const subscription = event.data.object as Stripe.Subscription
         const customerId = subscription.customer as string
-        const priceId = subscription.items?.data?.[0]?.price?.id || ""
-        const productId = subscription.items?.data?.[0]?.price?.product as string || ""
-        const plan = getPlanFromProductId(productId) || getPlanFromProductId(priceId)
+        
+        // Get productId from subscription metadata first
+        let productId = subscription.metadata?.productId || ""
+        let plan = getPlanFromProductId(productId)
+        
+        // Fallback: try to extract from price/product
+        if (!plan || plan === "free") {
+          productId = subscription.items?.data?.[0]?.price?.product as string || ""
+          plan = getPlanFromProductId(productId)
+        }
 
         await pool.query(
           `UPDATE users SET 
@@ -110,7 +124,7 @@ export async function POST(req: NextRequest) {
             subscription_status = $2,
             subscription_current_period_end = to_timestamp($3)
           WHERE stripe_customer_id = $4`,
-          [plan, subscription.status, subscription.current_period_end, customerId]
+          [plan || "free", subscription.status, subscription.current_period_end, customerId]
         )
         console.log(`[Stripe] Subscription updated for customer ${customerId}, plan: ${plan}`)
         break
@@ -137,23 +151,45 @@ export async function POST(req: NextRequest) {
         const invoice = event.data.object as Stripe.Invoice
         const customerId = invoice.customer as string
 
-        // Record in billing history
-        await pool.query(
-          `INSERT INTO billing_history 
-            (user_id, stripe_invoice_id, stripe_payment_intent_id, amount_cents, currency, status, description, invoice_pdf_url)
-          SELECT id, $1, $2, $3, $4, $5, $6, $7
-          FROM users WHERE stripe_customer_id = $8`,
-          [
-            invoice.id,
-            invoice.payment_intent,
-            invoice.amount_paid,
-            invoice.currency,
-            "succeeded",
-            invoice.description || `Payment for ${invoice.lines?.data?.[0]?.description || "subscription"}`,
-            invoice.invoice_pdf,
-            customerId,
-          ]
-        )
+        if (customerId) {
+          // Try to get productId from invoice metadata
+          let productId = invoice.metadata?.productId || ""
+          let plan = getPlanFromProductId(productId)
+          
+          // Fallback: try to extract from invoice lines
+          if (!plan || plan === "free") {
+            const lineItem = invoice.lines?.data?.[0]
+            if (lineItem?.metadata?.productId) {
+              productId = lineItem.metadata.productId
+              plan = getPlanFromProductId(productId)
+            }
+          }
+
+          // Record in billing history
+          await pool.query(
+            `INSERT INTO billing_history 
+              (user_id, stripe_invoice_id, stripe_payment_intent_id, amount_cents, currency, status, description, invoice_pdf_url)
+            SELECT id, $1, $2, $3, $4, $5, $6, $7
+            FROM users WHERE stripe_customer_id = $8`,
+            [
+              invoice.id,
+              invoice.payment_intent,
+              invoice.amount_paid,
+              invoice.currency,
+              "succeeded",
+              invoice.description || `Payment for ${invoice.lines?.data?.[0]?.description || "subscription"}`,
+              invoice.invoice_pdf,
+              customerId,
+            ]
+          )
+          
+          // Update subscription status to active
+          await pool.query(
+            `UPDATE users SET subscription_status = 'active' WHERE stripe_customer_id = $1`,
+            [customerId]
+          )
+          console.log(`[Stripe] Payment succeeded for customer ${customerId}`)
+        }
         break
       }
 
