@@ -14,17 +14,17 @@ export default function APIDocsPage() {
   const codeExamples = {
     curl: (endpoint: string, method: string = "GET", data?: string) => {
       if (method === "POST" && data) {
-        return `curl -X POST "${APP_URL}/api/v1${endpoint}" \\
+        return `curl -X POST "${APP_URL}/api/v2${endpoint}" \\
   -H "Authorization: Bearer YOUR_API_KEY_HERE" \\
   -H "Content-Type: application/json" \\
   -d '${data}'`
       }
-      return `curl -X ${method} "${APP_URL}/api/v1${endpoint}" \\
+      return `curl -X ${method} "${APP_URL}/api/v2${endpoint}" \\
   -H "Authorization: Bearer YOUR_API_KEY_HERE"`
     },
     javascript: (endpoint: string, method: string = "GET", data?: string) => {
       if (method === "POST" && data) {
-        return `const response = await fetch('${APP_URL}/api/v1${endpoint}', {
+        return `const response = await fetch('${APP_URL}/api/v2${endpoint}', {
   method: '${method}',
   headers: {
     'Authorization': 'Bearer YOUR_API_KEY_HERE',
@@ -35,7 +35,7 @@ export default function APIDocsPage() {
 const data = await response.json();
 console.log(data);`
       }
-      return `const response = await fetch('${APP_URL}/api/v1${endpoint}', {
+      return `const response = await fetch('${APP_URL}/api/v2${endpoint}', {
   method: '${method}',
   headers: {
     'Authorization': 'Bearer YOUR_API_KEY_HERE',
@@ -54,7 +54,7 @@ headers = {
 }
 
 payload = ${data}
-response = requests.${method.toLowerCase()}('${APP_URL}/api/v1${endpoint}', 
+response = requests.${method.toLowerCase()}('${APP_URL}/api/v2${endpoint}', 
   headers=headers, json=payload)
 print(response.json())`
       }
@@ -64,7 +64,7 @@ headers = {
     'Authorization': 'Bearer YOUR_API_KEY_HERE',
 }
 
-response = requests.${method.toLowerCase()}('${APP_URL}/api/v1${endpoint}', 
+response = requests.${method.toLowerCase()}('${APP_URL}/api/v2${endpoint}', 
   headers=headers)
 print(response.json())`
     }
@@ -108,7 +108,8 @@ print(response.json())`
       {/* Endpoints */}
       <section id="endpoints" className="space-y-4">
         <h2 className="text-2xl font-bold">Endpoints</h2>
-        <p className="text-muted-foreground">Base URL: <code className="bg-secondary px-2 py-1 rounded text-sm">{APP_URL}/api/v1</code></p>
+        <p className="text-muted-foreground">Base URL: <code className="bg-secondary px-2 py-1 rounded text-sm">{APP_URL}/api/v2</code></p>
+        <p className="text-xs text-muted-foreground mt-1">Note: v1 endpoints are still available for backwards compatibility but may be deprecated in the future.</p>
 
         {/* Create Scan */}
         <Card className="p-6 border-border/40">
@@ -119,14 +120,19 @@ print(response.json())`
             </div>
             <span className="text-xs text-muted-foreground">Create Scan</span>
           </div>
-          <p className="text-muted-foreground mb-4">Initiate a vulnerability scan on a website. Returns immediately with comprehensive security findings.</p>
+          <p className="text-muted-foreground mb-4">Initiate a vulnerability scan on a target URL. Supports HTTP, HTTPS, WebSocket, and FTP protocols. Returns comprehensive security findings.</p>
           
           <div className="space-y-4">
             <div>
               <h4 className="font-semibold text-sm mb-2">Request Body</h4>
               <pre className="bg-secondary/30 p-4 rounded-lg overflow-x-auto text-sm"><code>{`{
-  "url": "https://example.com"  // (required) URL to scan, must be http:// or https://
+  "url": "https://example.com",  // (required) Target URL
+  "scanners": ["headers", "ssl"]  // (optional) Specific scanners to run
 }`}</code></pre>
+              <div className="mt-3 space-y-2 text-xs text-muted-foreground">
+                <p><strong>Supported protocols:</strong> <code className="bg-secondary px-1 rounded">http://</code>, <code className="bg-secondary px-1 rounded">https://</code>, <code className="bg-secondary px-1 rounded">ws://</code>, <code className="bg-secondary px-1 rounded">wss://</code>, <code className="bg-secondary px-1 rounded">ftp://</code>, <code className="bg-secondary px-1 rounded">ftps://</code></p>
+                <p><strong>Scanners parameter:</strong> If omitted, all scanners run. Use to filter specific checks.</p>
+              </div>
             </div>
 
             <div>

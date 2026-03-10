@@ -39,6 +39,7 @@ export function Footer() {
               <li><Link href={ROUTES.HISTORY} className="hover:text-foreground transition-colors">History</Link></li>
               <li><Link href={ROUTES.COMPARE} className="hover:text-foreground transition-colors">Compare</Link></li>
               <li><Link href={ROUTES.BADGE} className="hover:text-foreground transition-colors">Badges</Link></li>
+              <li><Link href={ROUTES.PRICING} className="hover:text-foreground transition-colors">Pricing</Link></li>
             </ul>
           </div>
 
