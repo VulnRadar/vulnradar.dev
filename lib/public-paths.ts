@@ -54,6 +54,11 @@ export const PUBLIC_PATHS = [
   "/api/version",
   "/api/security-txt",
 
+  // ─── Stripe Webhooks (must be public for Stripe to call) ───────
+  "/api/v2/webhooks/stripe",
+  "/api/v2/stripe/setup-webhook",
+  "/api/v2/stripe/setup-products",
+
   // ─── Shared Scan Reports ───────────────────────────────────────
   "/shared",
   "/api/v1/shared",
