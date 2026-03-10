@@ -199,6 +199,14 @@ export async function createSubscriptionCheckout(
         userId: String(userId),
         planId: plan.id,
       },
+      // IMPORTANT: Pass metadata to the subscription so webhooks can identify the plan
+      subscription_data: {
+        metadata: {
+          userId: String(userId),
+          productId: plan.id,
+          planId: plan.id,
+        },
+      },
     })
 
     return session.url
