@@ -4,7 +4,7 @@ import React, { useState, useEffect, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import dynamic from "next/dynamic"
 import { cn } from "@/lib/utils"
-import { APP_NAME, API } from "@/lib/constants"
+import { APP_NAME, API, ROUTES } from "@/lib/constants"
 
 const ImageCropDialog = dynamic(() => import("@/components/image-crop-dialog").then(m => ({ default: m.ImageCropDialog })), { ssr: false })
 import {
@@ -47,6 +47,10 @@ import {
   Award,
   Tag,
   LogOut,
+  CreditCard,
+  TrendingUp,
+  Calendar,
+  RefreshCw,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
@@ -104,7 +108,35 @@ interface DataRequestInfo {
   lastDownloadAt?: string
 }
 
-type Tab = "account" | "api-keys" | "webhooks" | "schedules" | "notifications" | "data"
+interface BillingInfo {
+  billingEnabled: boolean
+  plan: string
+  subscriptionStatus: string | null
+  stripeCustomerId: string | null
+  subscription: {
+    id: string
+    status: string
+    currentPeriodStart: string
+    currentPeriodEnd: string
+    cancelAtPeriodEnd: boolean
+    cancelAt: string | null
+  } | null
+  usage: {
+    used: number
+    limit: number
+    remaining: number
+    resetsAt: string
+    unlimited: boolean
+  }
+  limits: {
+    free: number
+    core_supporter: number
+    pro_supporter: number
+    elite_supporter: number
+  }
+}
+
+type Tab = "account" | "billing" | "api-keys" | "webhooks" | "schedules" | "notifications" | "data"
 
 interface WebhookItem {
   id: number
@@ -153,7 +185,7 @@ export default function ProfilePage() {
 function ProfileContent() {
   const router = useRouter()
 
-  const VALID_TABS: Tab[] = ["account", "api-keys", "webhooks", "schedules", "notifications", "data"]
+  const VALID_TABS: Tab[] = ["account", "billing", "api-keys", "webhooks", "schedules", "notifications", "data"]
 
   // Read the current hash (no leading #), default to "account"
   function getTabFromHash(): Tab {
@@ -275,6 +307,12 @@ function ProfileContent() {
   })
   const [savingNotifPrefs, setSavingNotifPrefs] = useState(false)
 
+  // Billing state
+  const [billingInfo, setBillingInfo] = useState<BillingInfo | null>(null)
+  const [billingLoading, setBillingLoading] = useState(false)
+  const [cancelingSubscription, setCancelingSubscription] = useState(false)
+  const [reactivatingSubscription, setReactivatingSubscription] = useState(false)
+  
   // Avatar state
   const [uploadingAvatar, setUploadingAvatar] = useState(false)
   const [cropDialogOpen, setCropDialogOpen] = useState(false)
@@ -358,14 +396,15 @@ function ProfileContent() {
   }
 
   const fetchData = useCallback(async () => {
-    try {
-      const [userRes, keysRes, dataReqRes, webhooksRes, schedulesRes, notifRes] = await Promise.all([
-        fetch(API.AUTH.ME),
+  try {
+  const [userRes, keysRes, dataReqRes, webhooksRes, schedulesRes, notifRes, billingRes] = await Promise.all([
+  fetch(API.AUTH.ME),
         fetch(API.KEYS),
         fetch(API.DATA_REQUEST),
         fetch(API.WEBHOOKS),
         fetch(API.SCHEDULES),
         fetch(API.ACCOUNT_NOTIFICATIONS),
+        fetch(API.BILLING),
       ])
 
       if (!userRes.ok) {
@@ -379,7 +418,9 @@ function ProfileContent() {
       const webhooksData = await webhooksRes.json()
       const schedulesData = await schedulesRes.json()
       const notifData = notifRes.ok ? await notifRes.json() : null
+      const billingData = billingRes.ok ? await billingRes.json() : null
       setUser(userData)
+      if (billingData) setBillingInfo(billingData)
       setTotpEnabled(userData.totpEnabled || false)
       setTwoFactorMethod(userData.twoFactorMethod || null)
       if (userData.totpEnabled && userData.twoFactorMethod === "app") {
@@ -692,6 +733,53 @@ function ProfileContent() {
     }
   }
 
+  // ---- Billing handlers ----
+  async function handleCancelSubscription() {
+    setCancelingSubscription(true)
+    setError(null)
+    try {
+      const res = await fetch(API.BILLING, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "cancel" }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setError(data.error || "Failed to cancel subscription.")
+        return
+      }
+      setSuccess("Subscription will be canceled at the end of your billing period.")
+      await fetchData() // Refresh billing info
+    } catch {
+      setError("Failed to cancel subscription.")
+    } finally {
+      setCancelingSubscription(false)
+    }
+  }
+
+  async function handleReactivateSubscription() {
+    setReactivatingSubscription(true)
+    setError(null)
+    try {
+      const res = await fetch(API.BILLING, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "reactivate" }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setError(data.error || "Failed to reactivate subscription.")
+        return
+      }
+      setSuccess("Subscription reactivated successfully!")
+      await fetchData() // Refresh billing info
+    } catch {
+      setError("Failed to reactivate subscription.")
+    } finally {
+      setReactivatingSubscription(false)
+    }
+  }
+
   // ---- Helpers ----
   function formatDate(dateStr: string | null) {
     if (!dateStr) return "Never"
@@ -736,6 +824,7 @@ function ProfileContent() {
   const TABS = [
     { id: "account" as Tab, label: "Account", icon: <UserCog className="h-4 w-4" /> },
     { id: "api-keys" as Tab, label: "API Keys", icon: <Key className="h-4 w-4" /> },
+    { id: "billing" as Tab, label: "Billing", icon: <CreditCard className="h-4 w-4" /> },
     { id: "webhooks" as Tab, label: "Webhooks", icon: <Webhook className="h-4 w-4" /> },
     { id: "schedules" as Tab, label: "Schedules", icon: <CalendarClock className="h-4 w-4" /> },
     { id: "notifications" as Tab, label: "Notifications", icon: <Bell className="h-4 w-4" /> },
@@ -1369,6 +1458,238 @@ function ProfileContent() {
                     )}
                   </Button>
                 </div>
+              </CardContent>
+            </Card>
+          </div>
+        )}
+
+        {/* ===================== BILLING TAB ===================== */}
+        {activeTab === "billing" && (
+          <div className="flex flex-col gap-6">
+            {/* Usage Card */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <Gauge className="h-4 w-4 text-muted-foreground" />
+                  Daily Usage
+                </CardTitle>
+                <CardDescription>
+                  Track your scan requests for today. Limits reset at midnight UTC.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="flex flex-col gap-4">
+                {billingInfo ? (
+                  <>
+                    {billingInfo.usage.unlimited ? (
+                      <div className="flex items-center gap-3 p-4 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
+                        <Zap className="h-5 w-5 text-emerald-500" />
+                        <div>
+                          <p className="font-medium text-foreground">Unlimited Access</p>
+                          <p className="text-sm text-muted-foreground">
+                            You have unlimited scans{billingInfo.plan !== "free" && " with your " + billingInfo.plan.replace("_supporter", " Supporter").replace(/(^\w|\s\w)/g, (m: string) => m.toUpperCase()) + " plan"}.
+                          </p>
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="text-2xl font-bold text-foreground">
+                              {billingInfo.usage.used} <span className="text-muted-foreground text-base font-normal">/ {billingInfo.usage.limit}</span>
+                            </p>
+                            <p className="text-sm text-muted-foreground">scans used today</p>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-lg font-semibold text-foreground">{billingInfo.usage.remaining}</p>
+                            <p className="text-sm text-muted-foreground">remaining</p>
+                          </div>
+                        </div>
+                        <Progress 
+                          value={(billingInfo.usage.used / billingInfo.usage.limit) * 100} 
+                          className="h-2"
+                        />
+                        {billingInfo.usage.remaining === 0 && (
+                          <div className="flex items-center gap-2 p-3 rounded-lg bg-destructive/10 border border-destructive/20">
+                            <AlertTriangle className="h-4 w-4 text-destructive" />
+                            <p className="text-sm text-destructive">
+                              You&apos;ve reached your daily limit. Upgrade your plan or wait until tomorrow.
+                            </p>
+                          </div>
+                        )}
+                        {billingInfo.usage.remaining > 0 && billingInfo.usage.remaining <= 10 && (
+                          <div className="flex items-center gap-2 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20">
+                            <AlertTriangle className="h-4 w-4 text-amber-500" />
+                            <p className="text-sm text-amber-600 dark:text-amber-400">
+                              Running low on scans. Consider upgrading for more capacity.
+                            </p>
+                          </div>
+                        )}
+                        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                          <RefreshCw className="h-3.5 w-3.5" />
+                          <span>Resets at {new Date(billingInfo.usage.resetsAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", timeZoneName: "short" })}</span>
+                        </div>
+                      </>
+                    )}
+                  </>
+                ) : (
+                  <div className="flex items-center justify-center py-8">
+                    <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Plan Info Card */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <CreditCard className="h-4 w-4 text-muted-foreground" />
+                  Subscription Plan
+                </CardTitle>
+                <CardDescription>
+                  Manage your subscription and billing.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="flex flex-col gap-4">
+                {billingInfo ? (
+                  <>
+                    <div className="flex items-center justify-between p-4 rounded-lg bg-secondary/50 border border-border">
+                      <div className="flex items-center gap-3">
+                        <div className={cn(
+                          "flex items-center justify-center h-10 w-10 rounded-lg",
+                          billingInfo.plan === "free" 
+                            ? "bg-muted" 
+                            : "bg-primary/10 border border-primary/20"
+                        )}>
+                          {billingInfo.plan === "free" ? (
+                            <Users className="h-5 w-5 text-muted-foreground" />
+                          ) : (
+                            <Zap className="h-5 w-5 text-primary" />
+                          )}
+                        </div>
+                        <div>
+                          <p className="font-semibold text-foreground">
+                            {billingInfo.plan === "free" ? "Free Plan" : billingInfo.plan.replace("_supporter", " Supporter").replace(/(^\w|\s\w)/g, (m: string) => m.toUpperCase())}
+                          </p>
+                          <p className="text-sm text-muted-foreground">
+                            {billingInfo.plan === "free" 
+                              ? `${billingInfo.limits.free} scans/day` 
+                              : `${billingInfo.limits[billingInfo.plan as keyof typeof billingInfo.limits]} scans/day`
+                            }
+                          </p>
+                        </div>
+                      </div>
+                      {billingInfo.plan === "free" && (
+                        <Button asChild size="sm">
+                          <a href={ROUTES.PRICING}>Upgrade</a>
+                        </Button>
+                      )}
+                    </div>
+
+                    {/* Subscription details for paid plans */}
+                    {billingInfo.subscription && (
+                      <div className="flex flex-col gap-3 p-4 rounded-lg border border-border">
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm text-muted-foreground">Status</span>
+                          <Badge className={cn(
+                            billingInfo.subscription.cancelAtPeriodEnd
+                              ? "bg-amber-500/10 text-amber-500 border-amber-500/20"
+                              : billingInfo.subscription.status === "active"
+                                ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/20"
+                                : "bg-muted text-muted-foreground"
+                          )}>
+                            {billingInfo.subscription.cancelAtPeriodEnd 
+                              ? "Canceling" 
+                              : billingInfo.subscription.status.charAt(0).toUpperCase() + billingInfo.subscription.status.slice(1)
+                            }
+                          </Badge>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm text-muted-foreground">Current Period</span>
+                          <span className="text-sm text-foreground">
+                            {new Date(billingInfo.subscription.currentPeriodStart).toLocaleDateString()} - {new Date(billingInfo.subscription.currentPeriodEnd).toLocaleDateString()}
+                          </span>
+                        </div>
+                        {billingInfo.subscription.cancelAtPeriodEnd && (
+                          <div className="flex items-center gap-2 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20 mt-2">
+                            <Calendar className="h-4 w-4 text-amber-500 shrink-0" />
+                            <p className="text-sm text-amber-600 dark:text-amber-400">
+                              Your subscription will end on {new Date(billingInfo.subscription.currentPeriodEnd).toLocaleDateString()}. You&apos;ll keep access until then.
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Actions for paid plans */}
+                    {billingInfo.plan !== "free" && billingInfo.subscription && (
+                      <div className="flex flex-col gap-2 pt-2">
+                        {billingInfo.subscription.cancelAtPeriodEnd ? (
+                          <Button 
+                            variant="outline"
+                            onClick={handleReactivateSubscription}
+                            disabled={reactivatingSubscription}
+                            className="w-full"
+                          >
+                            {reactivatingSubscription ? (
+                              <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Reactivating...</>
+                            ) : (
+                              <><RefreshCw className="mr-2 h-4 w-4" />Reactivate Subscription</>
+                            )}
+                          </Button>
+                        ) : (
+                          <Button 
+                            variant="outline"
+                            onClick={handleCancelSubscription}
+                            disabled={cancelingSubscription}
+                            className="w-full text-destructive hover:text-destructive hover:bg-destructive/10"
+                          >
+                            {cancelingSubscription ? (
+                              <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Canceling...</>
+                            ) : (
+                              "Cancel Subscription"
+                            )}
+                          </Button>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Plan Comparison */}
+                    {billingInfo.plan === "free" && (
+                      <div className="flex flex-col gap-3 pt-4 border-t border-border">
+                        <p className="text-sm font-medium text-muted-foreground">Available Plans</p>
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                          <div className="p-3 rounded-lg border border-border bg-card hover:bg-secondary/30 transition-colors">
+                            <p className="font-medium text-foreground text-sm">Core Supporter</p>
+                            <p className="text-xs text-muted-foreground">{billingInfo.limits.core_supporter} scans/day</p>
+                            <p className="text-sm font-semibold text-primary mt-1">$5/mo</p>
+                          </div>
+                          <div className="p-3 rounded-lg border border-primary/30 bg-primary/5 relative">
+                            <Badge className="absolute -top-2 right-2 text-[10px] bg-primary text-primary-foreground">Popular</Badge>
+                            <p className="font-medium text-foreground text-sm">Pro Supporter</p>
+                            <p className="text-xs text-muted-foreground">{billingInfo.limits.pro_supporter} scans/day</p>
+                            <p className="text-sm font-semibold text-primary mt-1">$10/mo</p>
+                          </div>
+                          <div className="p-3 rounded-lg border border-border bg-card hover:bg-secondary/30 transition-colors">
+                            <p className="font-medium text-foreground text-sm">Elite Supporter</p>
+                            <p className="text-xs text-muted-foreground">{billingInfo.limits.elite_supporter} scans/day</p>
+                            <p className="text-sm font-semibold text-primary mt-1">$20/mo</p>
+                          </div>
+                        </div>
+                        <Button asChild className="w-full mt-2">
+                          <a href={ROUTES.PRICING}>
+                            <TrendingUp className="mr-2 h-4 w-4" />
+                            View All Plans
+                          </a>
+                        </Button>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <div className="flex items-center justify-center py-8">
+                    <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                  </div>
+                )}
               </CardContent>
             </Card>
           </div>
