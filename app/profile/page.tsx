@@ -832,10 +832,10 @@ function ProfileContent() {
   ]
 
   return (
-    <div className="min-h-screen bg-background flex flex-col">
+    <div className="min-h-screen bg-background flex flex-col overflow-x-hidden">
       <Header />
 
-      <main className="flex-1 max-w-3xl w-full mx-auto px-4 py-8 flex flex-col gap-6">
+      <main className="flex-1 w-full max-w-3xl mx-auto px-4 py-8 flex flex-col gap-6 min-w-0">
 
         {/* Toast messages */}
         {(error || success) && (
@@ -855,7 +855,7 @@ function ProfileContent() {
         )}
 
         {/* Tab Navigation */}
-        <div className="flex items-center gap-1 p-1 rounded-lg bg-secondary/50 border border-border overflow-x-auto scrollbar-none min-w-0 justify-between sm:justify-start">
+        <div className="flex items-center gap-0.5 p-1 rounded-lg bg-secondary/50 border border-border overflow-x-auto scrollbar-none">
           {TABS.map((tab) => (
             <a
               key={tab.id}
@@ -867,14 +867,14 @@ function ProfileContent() {
                 }
               }}
               className={cn(
-                "flex items-center justify-center gap-1.5 px-2.5 sm:px-3 py-2 sm:py-2.5 rounded-md text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 whitespace-nowrap flex-1 sm:flex-none",
+                "flex items-center justify-center gap-1 px-2 py-1.5 rounded-md text-xs font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 whitespace-nowrap shrink-0 flex-1",
                 activeTab === tab.id
                   ? "bg-card text-foreground shadow-sm"
                   : "text-muted-foreground hover:text-foreground"
               )}
             >
               {tab.icon}
-              <span className="hidden sm:inline text-sm">{tab.label}</span>
+              <span className="hidden md:inline">{tab.label}</span>
             </a>
           ))}
         </div>
