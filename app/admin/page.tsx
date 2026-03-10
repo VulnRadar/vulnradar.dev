@@ -68,7 +68,7 @@ import {
   canManageRole,
   getAvailableActions,
   STAFF_PERMISSIONS,
-  type AdminAction,
+  type AdminAction
 } from "@/lib/permissions-client"
 
 interface AdminStats {
@@ -119,7 +119,6 @@ interface UserDetail {
   user: AdminUser & {
     session_count: number
     has_backup_codes: boolean
-    email_verified_at?: string | null
   }
   recentScans: { id: number; url: string; findings_count: number; source: string; scanned_at: string }[]
   apiKeys: { id: number; key_prefix: string; name: string; daily_limit: number; created_at: string; last_used_at: string | null; revoked_at: string | null }[]
@@ -168,42 +167,21 @@ function Toast({ message, type, onClose }: { message: string; type: "success" | 
     return () => clearTimeout(t)
   }, [onClose])
   return (
-    <div
-      className={cn(
-        "fixed bottom-4 right-4 z-50 flex items-center gap-2.5 rounded-lg border px-4 py-3 shadow-lg animate-in slide-in-from-bottom-2",
-        type === "success"
-          ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-400"
-          : "bg-destructive/10 border-destructive/30 text-destructive",
-      )}
-    >
+    <div className={cn(
+      "fixed bottom-4 right-4 z-50 flex items-center gap-2.5 rounded-lg border px-4 py-3 shadow-lg animate-in slide-in-from-bottom-2",
+      type === "success" ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-400" : "bg-destructive/10 border-destructive/30 text-destructive"
+    )}>
       {type === "success" ? <CheckCircle2 className="h-4 w-4 shrink-0" /> : <XCircle className="h-4 w-4 shrink-0" />}
       <span className="text-sm font-medium">{message}</span>
-      <button onClick={onClose} className="ml-2 opacity-60 hover:opacity-100 transition-opacity">
-        <X className="h-3.5 w-3.5" />
-      </button>
+      <button onClick={onClose} className="ml-2 opacity-60 hover:opacity-100 transition-opacity"><X className="h-3.5 w-3.5" /></button>
     </div>
   )
 }
 
 // --- Confirm dialog ---
-function ConfirmDialog({
-  open,
-  title,
-  description,
-  confirmLabel,
-  danger,
-  onConfirm,
-  onCancel,
-  children,
-}: {
-  open: boolean
-  title: string
-  description: string
-  confirmLabel: string
-  danger?: boolean
-  onConfirm: () => void
-  onCancel: () => void
-  children?: React.ReactNode
+function ConfirmDialog({ open, title, description, confirmLabel, danger, onConfirm, onCancel, children }: {
+  open: boolean; title: string; description: string; confirmLabel: string; danger?: boolean
+  onConfirm: () => void; onCancel: () => void; children?: React.ReactNode
 }) {
   if (!open) return null
   return (
@@ -220,10 +198,11 @@ function ConfirmDialog({
         </div>
         {children}
         <div className="flex items-center justify-end gap-2 mt-5 pt-4 border-t border-border">
-          <Button variant="ghost" onClick={onCancel}>
-            Cancel
-          </Button>
-          <Button className={danger ? "bg-destructive hover:bg-destructive/90 text-destructive-foreground" : ""} onClick={onConfirm}>
+          <Button variant="ghost" onClick={onCancel}>Cancel</Button>
+          <Button
+            className={danger ? "bg-destructive hover:bg-destructive/90 text-destructive-foreground" : ""}
+            onClick={onConfirm}
+          >
             {confirmLabel}
           </Button>
         </div>
@@ -233,25 +212,13 @@ function ConfirmDialog({
 }
 
 // --- Stat card ---
-function StatCard({
-  label,
-  value,
-  icon: Icon,
-  color,
-  accent,
-}: {
-  label: string
-  value: string
-  icon: React.ElementType
-  color: string
-  accent: string
-}) {
+function StatCard({ label, value, icon: Icon, color, accent }: { label: string; value: string; icon: React.ElementType; color: string; accent: string }) {
   return (
     <div className="relative overflow-hidden rounded-xl border border-border bg-card p-4 flex flex-col gap-2">
       <div className={cn("absolute top-0 left-0 w-full h-0.5", accent)} />
       <div className="flex items-center justify-between">
         <span className="text-xs font-medium text-muted-foreground">{label}</span>
-        <div className="h-8 w-8 rounded-lg flex items-center justify-center bg-muted/50">
+        <div className={cn("h-8 w-8 rounded-lg flex items-center justify-center bg-muted/50")}>
           <Icon className={cn("h-4 w-4", color)} />
         </div>
       </div>
@@ -261,17 +228,7 @@ function StatCard({
 }
 
 // --- User avatar ---
-function UserAvatar({
-  name,
-  email,
-  size = "md",
-  avatarUrl,
-}: {
-  name: string | null
-  email: string
-  size?: "sm" | "md"
-  avatarUrl?: string | null
-}) {
+function UserAvatar({ name, email, size = "md", avatarUrl }: { name: string | null; email: string; size?: "sm" | "md"; avatarUrl?: string | null }) {
   const initial = (name || email).charAt(0).toUpperCase()
   const colors = [
     "bg-primary/15 text-primary",
@@ -283,737 +240,70 @@ function UserAvatar({
   const colorIdx = email.split("").reduce((a, c) => a + c.charCodeAt(0), 0) % colors.length
   const sz = size === "sm" ? "h-7 w-7 text-[10px]" : "h-9 w-9 text-xs"
   if (avatarUrl) {
-    return <img src={avatarUrl} alt={name || email} loading="lazy" className={cn("rounded-full object-cover shrink-0", sz)} />
+    return (
+      <img src={avatarUrl} alt={name || email} loading="lazy" className={cn("rounded-full object-cover shrink-0", sz)} />
+    )
   }
-  return <div className={cn("rounded-full flex items-center justify-center font-bold shrink-0", sz, colors[colorIdx])}>{initial}</div>
+  return (
+    <div className={cn("rounded-full flex items-center justify-center font-bold shrink-0", sz, colors[colorIdx])}>
+      {initial}
+    </div>
+  )
 }
 
 // --- Action badge with human-readable labels ---
 function ActionBadge({ action }: { action: string }) {
   const map: Record<string, { label: string; cls: string }> = {
+    // Role changes
     set_role: { label: "Changed Role", cls: "bg-primary/10 text-primary border-primary/20" },
     make_admin: { label: "Promoted to Admin", cls: "bg-primary/10 text-primary border-primary/20" },
     remove_admin: { label: "Removed Admin Role", cls: "bg-muted text-muted-foreground border-border" },
+    // Security actions
     reset_password: { label: "Reset Password", cls: "bg-[hsl(var(--severity-medium))]/10 text-[hsl(var(--severity-medium))] border-[hsl(var(--severity-medium))]/20" },
     revoke_sessions: { label: "Revoked Sessions", cls: "bg-[hsl(var(--severity-medium))]/10 text-[hsl(var(--severity-medium))] border-[hsl(var(--severity-medium))]/20" },
     revoke_api_keys: { label: "Revoked API Keys", cls: "bg-[hsl(var(--severity-medium))]/10 text-[hsl(var(--severity-medium))] border-[hsl(var(--severity-medium))]/20" },
     reset_2fa: { label: "Reset Two-Factor Auth", cls: "bg-[hsl(var(--severity-medium))]/10 text-[hsl(var(--severity-medium))] border-[hsl(var(--severity-medium))]/20" },
     force_logout_all: { label: "Force Logged Out", cls: "bg-[hsl(var(--severity-medium))]/10 text-[hsl(var(--severity-medium))] border-[hsl(var(--severity-medium))]/20" },
+    // Account status
     disable_user: { label: "Disabled Account", cls: "bg-destructive/10 text-destructive border-destructive/20" },
     disable: { label: "Disabled Account", cls: "bg-destructive/10 text-destructive border-destructive/20" },
     enable_user: { label: "Enabled Account", cls: "bg-emerald-500/10 text-emerald-500 border-emerald-500/20" },
     enable: { label: "Enabled Account", cls: "bg-emerald-500/10 text-emerald-500 border-emerald-500/20" },
     delete_user: { label: "Deleted Account", cls: "bg-destructive/10 text-destructive border-destructive/20" },
     delete: { label: "Deleted Account", cls: "bg-destructive/10 text-destructive border-destructive/20" },
+    // Profile updates
     update_name: { label: "Updated Name", cls: "bg-muted text-foreground border-border" },
     update_email: { label: "Updated Email", cls: "bg-muted text-foreground border-border" },
     update_plan: { label: "Changed Plan", cls: "bg-primary/10 text-primary border-primary/20" },
     clear_avatar: { label: "Cleared Avatar", cls: "bg-muted text-muted-foreground border-border" },
+    // Email verification
     verify_email: { label: "Verified Email", cls: "bg-emerald-500/10 text-emerald-500 border-emerald-500/20" },
     unverify_email: { label: "Unverified Email", cls: "bg-[hsl(var(--severity-medium))]/10 text-[hsl(var(--severity-medium))] border-[hsl(var(--severity-medium))]/20" },
+    // Beta & Premium
     toggle_beta_access: { label: "Toggled Beta Access", cls: "bg-primary/10 text-primary border-primary/20" },
+
+
+    // Data management
     delete_scans: { label: "Deleted Scans", cls: "bg-destructive/10 text-destructive border-destructive/20" },
     delete_webhooks: { label: "Deleted Webhooks", cls: "bg-destructive/10 text-destructive border-destructive/20" },
     delete_schedules: { label: "Deleted Schedules", cls: "bg-destructive/10 text-destructive border-destructive/20" },
     export_data: { label: "Exported Data", cls: "bg-muted text-foreground border-border" },
     clear_rate_limits: { label: "Cleared Rate Limits", cls: "bg-muted text-foreground border-border" },
+    // Badges
     award_badge: { label: "Awarded Badge", cls: "bg-primary/10 text-primary border-primary/20" },
     revoke_badge: { label: "Revoked Badge", cls: "bg-[hsl(var(--severity-medium))]/10 text-[hsl(var(--severity-medium))] border-[hsl(var(--severity-medium))]/20" },
     create_badge: { label: "Created Badge", cls: "bg-emerald-500/10 text-emerald-500 border-emerald-500/20" },
     delete_badge: { label: "Deleted Badge", cls: "bg-destructive/10 text-destructive border-destructive/20" },
+    // Admin
     impersonate: { label: "Started Impersonation", cls: "bg-[hsl(var(--severity-high))]/10 text-[hsl(var(--severity-high))] border-[hsl(var(--severity-high))]/20" },
     set_scan_limit: { label: "Set Scan Limit", cls: "bg-muted text-foreground border-border" },
     add_note: { label: "Added Note", cls: "bg-muted text-foreground border-border" },
     send_notification: { label: "Sent Notification", cls: "bg-primary/10 text-primary border-primary/20" },
   }
-  const fallbackLabel = action
-    .split("_")
-    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-    .join(" ")
+  // Fallback: convert snake_case to readable format
+  const fallbackLabel = action.split("_").map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(" ")
   const m = map[action] || { label: fallbackLabel, cls: "bg-muted text-muted-foreground border-border" }
   return <Badge className={cn("text-[10px] px-2 py-0.5 font-medium", m.cls)}>{m.label}</Badge>
-}
-
-// --- Action Card ---
-function ActionCard({
-  icon: Icon,
-  label,
-  description,
-  color,
-  bg,
-  variant,
-  disabled,
-  loading,
-  onClick,
-}: {
-  icon: React.ElementType
-  label: string
-  description: string
-  color: string
-  bg: string
-  variant?: "danger" | "success"
-  disabled?: boolean
-  loading?: boolean
-  onClick: () => void
-}) {
-  return (
-    <button
-      className={cn(
-        "flex items-center gap-3 p-3.5 rounded-xl border transition-all text-left",
-        disabled
-          ? "border-border bg-muted/20 opacity-50 cursor-not-allowed"
-          : variant === "danger"
-            ? "border-destructive/15 bg-card hover:bg-destructive/5 cursor-pointer"
-            : variant === "success"
-              ? "border-emerald-500/15 bg-card hover:bg-emerald-500/5 cursor-pointer"
-              : "border-border bg-card hover:bg-muted/30 cursor-pointer",
-      )}
-      disabled={disabled || loading}
-      onClick={onClick}
-    >
-      <div className={cn("h-9 w-9 rounded-lg flex items-center justify-center shrink-0", bg)}>
-        {loading ? <Loader2 className={cn("h-4 w-4 animate-spin", color)} /> : <Icon className={cn("h-4 w-4", color)} />}
-      </div>
-      <div className="flex-1 min-w-0">
-        <p
-          className={cn(
-            "text-sm font-medium",
-            variant === "danger" ? "text-destructive" : variant === "success" ? "text-emerald-500" : "text-foreground",
-          )}
-        >
-          {label}
-        </p>
-        <p className="text-[10px] text-muted-foreground leading-tight mt-0.5">{description}</p>
-      </div>
-    </button>
-  )
-}
-
-// --- User Detail Panel ---
-function UserDetailPanel({
-  detail,
-  detailLoading,
-  actionLoading,
-  callerRole,
-  allBadges,
-  onRefreshBadges,
-  onBadgesChanged,
-  onClose,
-  onAction,
-  tempPassword,
-  onClearTempPassword,
-}: {
-  detail: UserDetail
-  detailLoading: boolean
-  actionLoading: string | null
-  callerRole: string
-  allBadges: BadgeDef[]
-  onRefreshBadges: () => void
-  onBadgesChanged: (awardedIds: number[], revokedIds: number[]) => void
-  onClose: () => void
-  onAction: (userId: number, action: string, extra?: Record<string, string>) => void
-  tempPassword: string | null
-  onClearTempPassword: () => void
-}) {
-  const u = detail.user
-  const [pendingChanges, setPendingChanges] = useState<Record<string, string>>({})
-  const [pendingBadgeAwards, setPendingBadgeAwards] = useState<number[]>([])
-  const [pendingBadgeRevokes, setPendingBadgeRevokes] = useState<number[]>([])
-  const [isSaving, setIsSaving] = useState(false)
-  const [showGiftForm, setShowGiftForm] = useState(false)
-  const [giftPlan, setGiftPlan] = useState("pro_supporter")
-  const [giftEndDate, setGiftEndDate] = useState("")
-
-  const hasChanges = Object.keys(pendingChanges).length > 0 || pendingBadgeAwards.length > 0 || pendingBadgeRevokes.length > 0
-
-  const isLoading = (action: string) => actionLoading === `${u.id}-${action}`
-
-  function discardChanges() {
-    setPendingChanges({})
-    setPendingBadgeAwards([])
-    setPendingBadgeRevokes([])
-  }
-
-  async function saveAllChanges() {
-    setIsSaving(true)
-    for (const [action, value] of Object.entries(pendingChanges)) {
-      await onAction(u.id, action, { value })
-    }
-    for (const badgeId of pendingBadgeAwards) {
-      await onAction(u.id, "award_badge", { badgeId: String(badgeId) })
-    }
-    for (const badgeId of pendingBadgeRevokes) {
-      await onAction(u.id, "revoke_badge", { badgeId: String(badgeId) })
-    }
-    onBadgesChanged(pendingBadgeAwards, pendingBadgeRevokes)
-    setPendingChanges({})
-    setPendingBadgeAwards([])
-    setPendingBadgeRevokes([])
-    setIsSaving(false)
-  }
-
-  return (
-    <div className="flex flex-col gap-4">
-      {/* Back button */}
-      <button
-        onClick={onClose}
-        className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors w-fit"
-      >
-        <ArrowLeft className="h-4 w-4" />
-        Back to Users
-      </button>
-
-      {detailLoading ? (
-        <div className="flex flex-col items-center justify-center py-24 gap-3">
-          <Loader2 className="h-6 w-6 animate-spin text-primary" />
-          <p className="text-sm text-muted-foreground">Loading user details...</p>
-        </div>
-      ) : (
-        <>
-          {/* User header card */}
-          <Card className="bg-card border-border">
-            <CardContent className="p-5">
-              <div className="flex items-start gap-4">
-                <UserAvatar name={u.name} email={u.email} avatarUrl={u.avatar_url} />
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <h2 className="text-lg font-bold text-foreground">{u.name || "Unnamed"}</h2>
-                    {u.role && u.role !== STAFF_ROLES.USER && ROLE_BADGE_STYLES[u.role] && (
-                      <Badge className={cn(ROLE_BADGE_STYLES[u.role], "text-[10px] px-1.5")}>{STAFF_ROLE_LABELS[u.role] || u.role}</Badge>
-                    )}
-                    {u.disabled_at && <Badge className="bg-destructive/10 text-destructive border-destructive/20 text-[10px] px-1.5">Disabled</Badge>}
-                    {u.totp_enabled && <Badge className="bg-emerald-500/10 text-emerald-500 border-emerald-500/20 text-[10px] px-1.5">2FA</Badge>}
-                  </div>
-                  <p className="text-sm text-muted-foreground mt-0.5">{u.email}</p>
-                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-2 text-xs text-muted-foreground">
-                    <span className="flex items-center gap-1"><Activity className="h-3 w-3" />{u.scan_count} scans</span>
-                    <span className="flex items-center gap-1"><Key className="h-3 w-3" />{u.api_key_count} API keys</span>
-                    <span className="flex items-center gap-1"><Monitor className="h-3 w-3" />{u.session_count} sessions</span>
-                    <span className="flex items-center gap-1">
-                      <Clock className="h-3 w-3" />
-                      Joined {new Date(u.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Temp password banner */}
-              {tempPassword && (
-                <div className="mt-4 p-3.5 rounded-xl bg-emerald-500/5 border border-emerald-500/20 flex items-start gap-3">
-                  <CheckCircle2 className="h-4 w-4 text-emerald-500 shrink-0 mt-0.5" />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs font-semibold text-emerald-500">Temporary Password Generated</p>
-                    <p className="text-xs text-muted-foreground mt-0.5">Share this securely with the user. It will only be shown once.</p>
-                    <div className="flex items-center gap-2 mt-2">
-                      <code className="text-sm font-mono bg-muted/50 px-2.5 py-1 rounded-lg border border-border text-foreground">{tempPassword}</code>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-7 w-7"
-                        onClick={() => navigator.clipboard.writeText(tempPassword)}
-                      >
-                        <ClipboardCopy className="h-3.5 w-3.5" />
-                      </Button>
-                    </div>
-                  </div>
-                  <button onClick={onClearTempPassword} className="opacity-60 hover:opacity-100 transition-opacity">
-                    <X className="h-4 w-4 text-muted-foreground" />
-                  </button>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Support Actions */}
-          <Card className="bg-card border-border">
-            <CardHeader className="pb-0 pt-4 px-5">
-              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                {!hasStaffPermission(callerRole, STAFF_PERMISSIONS.DISABLE_USER) ? "Account Information" : "Support Actions"}
-              </p>
-            </CardHeader>
-            <CardContent className="p-5 pt-3">
-              {!hasStaffPermission(callerRole, STAFF_PERMISSIONS.DISABLE_USER) ? (
-                <p className="text-xs text-muted-foreground">
-                  You have view-only access. Contact an admin or moderator to perform actions on this user.
-                </p>
-              ) : (
-                <div className="flex flex-col gap-4">
-                  {/* Session & Security */}
-                  <div>
-                    <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium mb-2">Session &amp; Security</p>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-                      <ActionCard
-                        icon={LogOut}
-                        label="Force Logout"
-                        description={`Revoke all ${u.session_count} active session(s)`}
-                        color="text-primary"
-                        bg="bg-primary/10"
-                        loading={isLoading("revoke_sessions")}
-                        onClick={() => onAction(u.id, "revoke_sessions")}
-                      />
-                      <ActionCard
-                        icon={Key}
-                        label="Revoke API Keys"
-                        description={`Invalidate all ${u.api_key_count} API key(s)`}
-                        color="text-[hsl(var(--severity-medium))]"
-                        bg="bg-[hsl(var(--severity-medium))]/10"
-                        loading={isLoading("revoke_api_keys")}
-                        onClick={() => onAction(u.id, "revoke_api_keys")}
-                      />
-                      {hasStaffPermission(callerRole, STAFF_PERMISSIONS.RESET_USER_PASSWORD) && (
-                        <ActionCard
-                          icon={KeyRound}
-                          label="Reset Password"
-                          description={u.totp_enabled ? "Unavailable: 2FA enabled" : "Generate temp password"}
-                          color="text-[hsl(var(--severity-medium))]"
-                          bg="bg-[hsl(var(--severity-medium))]/10"
-                          disabled={u.totp_enabled}
-                          loading={isLoading("reset_password")}
-                          onClick={() => onAction(u.id, "reset_password")}
-                        />
-                      )}
-                      {hasStaffPermission(callerRole, STAFF_PERMISSIONS.RESET_USER_2FA) && u.totp_enabled && (
-                        <ActionCard
-                          icon={ShieldOff}
-                          label="Reset 2FA"
-                          description="Remove two-factor auth"
-                          color="text-[hsl(var(--severity-medium))]"
-                          bg="bg-[hsl(var(--severity-medium))]/10"
-                          loading={isLoading("reset_2fa")}
-                          onClick={() => onAction(u.id, "reset_2fa")}
-                        />
-                      )}
-                      {hasStaffPermission(callerRole, STAFF_PERMISSIONS.MANAGE_RATE_LIMITS) && (
-                        <ActionCard
-                          icon={RefreshCw}
-                          label="Clear Rate Limits"
-                          description="Reset rate limit counters"
-                          color="text-primary"
-                          bg="bg-primary/10"
-                          loading={isLoading("clear_rate_limits")}
-                          onClick={() => onAction(u.id, "clear_rate_limits")}
-                        />
-                      )}
-                      <ActionCard
-                        icon={UserX}
-                        label="Force Logout All"
-                        description="Logout + revoke all API keys"
-                        color="text-[hsl(var(--severity-medium))]"
-                        bg="bg-[hsl(var(--severity-medium))]/10"
-                        loading={isLoading("force_logout_all")}
-                        onClick={() => onAction(u.id, "force_logout_all")}
-                      />
-                    </div>
-                  </div>
-
-                  {/* Account Management */}
-                  <div>
-                    <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium mb-2">Account Management</p>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-                      {!u.email_verified_at ? (
-                        <ActionCard
-                          icon={MailCheck}
-                          label="Verify Email"
-                          description="Manually verify email address"
-                          color="text-emerald-500"
-                          bg="bg-emerald-500/10"
-                          loading={isLoading("verify_email")}
-                          onClick={() => onAction(u.id, "verify_email")}
-                        />
-                      ) : (
-                        <ActionCard
-                          icon={MailX}
-                          label="Unverify Email"
-                          description="Remove email verification"
-                          color="text-[hsl(var(--severity-medium))]"
-                          bg="bg-[hsl(var(--severity-medium))]/10"
-                          loading={isLoading("unverify_email")}
-                          onClick={() => onAction(u.id, "unverify_email")}
-                        />
-                      )}
-                      <ActionCard
-                        icon={ImageOff}
-                        label="Clear Avatar"
-                        description="Remove profile picture"
-                        color="text-muted-foreground"
-                        bg="bg-muted/50"
-                        loading={isLoading("clear_avatar")}
-                        onClick={() => onAction(u.id, "clear_avatar")}
-                      />
-                      {hasStaffPermission(callerRole, STAFF_PERMISSIONS.EDIT_USER_ROLE) && (
-                        <ActionCard
-                          icon={Beaker}
-                          label="Toggle Beta Access"
-                          description="Enable/disable beta features"
-                          color="text-primary"
-                          bg="bg-primary/10"
-                          loading={isLoading("toggle_beta_access")}
-                          onClick={() => onAction(u.id, "toggle_beta_access")}
-                        />
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Danger Zone */}
-                  <div>
-                    <p className="text-[10px] uppercase tracking-wider text-destructive/70 font-medium mb-2">Danger Zone</p>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-                      <ActionCard
-                        icon={u.disabled_at ? CheckCircle2 : Ban}
-                        label={u.disabled_at ? "Re-enable Account" : "Disable Account"}
-                        description={u.disabled_at ? "Allow user to log in" : "Suspend and force-logout"}
-                        color={u.disabled_at ? "text-emerald-500" : "text-destructive"}
-                        bg={u.disabled_at ? "bg-emerald-500/10" : "bg-destructive/10"}
-                        variant={u.disabled_at ? "success" : "danger"}
-                        onClick={() => onAction(u.id, u.disabled_at ? "enable" : "disable")}
-                      />
-                      {hasStaffPermission(callerRole, STAFF_PERMISSIONS.DELETE_ANY_SCAN) && (
-                        <ActionCard
-                          icon={Activity}
-                          label="Delete All Scans"
-                          description={`Remove all ${u.scan_count} scan(s)`}
-                          color="text-destructive"
-                          bg="bg-destructive/10"
-                          variant="danger"
-                          loading={isLoading("delete_scans")}
-                          onClick={() => onAction(u.id, "delete_scans")}
-                        />
-                      )}
-                      <ActionCard
-                        icon={Webhook}
-                        label="Delete Webhooks"
-                        description="Remove all webhooks"
-                        color="text-destructive"
-                        bg="bg-destructive/10"
-                        variant="danger"
-                        loading={isLoading("delete_webhooks")}
-                        onClick={() => onAction(u.id, "delete_webhooks")}
-                      />
-                      <ActionCard
-                        icon={CalendarOff}
-                        label="Delete Schedules"
-                        description="Remove scheduled scans"
-                        color="text-destructive"
-                        bg="bg-destructive/10"
-                        variant="danger"
-                        loading={isLoading("delete_schedules")}
-                        onClick={() => onAction(u.id, "delete_schedules")}
-                      />
-                      {hasStaffPermission(callerRole, STAFF_PERMISSIONS.DELETE_USER) && (
-                        <ActionCard
-                          icon={Trash2}
-                          label="Delete Account"
-                          description="Permanently remove user"
-                          color="text-destructive"
-                          bg="bg-destructive/10"
-                          variant="danger"
-                          onClick={() => onAction(u.id, "delete")}
-                        />
-                      )}
-                    </div>
-                  </div>
-
-                  {u.totp_enabled && hasStaffPermission(callerRole, STAFF_PERMISSIONS.RESET_USER_2FA) && (
-                    <div className="flex items-start gap-2.5 p-3.5 rounded-lg bg-[hsl(var(--severity-medium))]/5 border border-[hsl(var(--severity-medium))]/20">
-                      <AlertTriangle className="h-4 w-4 text-[hsl(var(--severity-medium))] shrink-0 mt-0.5" />
-                      <div>
-                        <p className="text-xs font-medium text-foreground">Password reset is unavailable for this user</p>
-                        <p className="text-[11px] text-muted-foreground mt-0.5 leading-relaxed">
-                          This account has two-factor authentication enabled. For security, passwords cannot be reset by admins when 2FA is active. The user should use their backup codes to regain access, or disable 2FA first.
-                        </p>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Gifted Subscription */}
-          {hasStaffPermission(callerRole, STAFF_PERMISSIONS.UPDATE_PLAN) && (
-            <Card className="bg-card border-border">
-              <CardHeader className="pb-0 pt-4 px-5">
-                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Gifted Subscription</p>
-              </CardHeader>
-              <CardContent className="p-5 pt-3">
-                <div className="flex flex-col gap-3">
-                  {!showGiftForm && (
-                    <Button size="sm" onClick={() => setShowGiftForm(true)} className="w-full">
-                      Gift a Subscription
-                    </Button>
-                  )}
-                  {showGiftForm && (
-                    <div className="flex flex-col gap-3 p-3 rounded-lg bg-muted/20 border border-border">
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                        <div>
-                          <label className="text-[10px] font-medium text-muted-foreground mb-1.5 block">Plan</label>
-                          <select
-                            value={giftPlan}
-                            onChange={(e) => setGiftPlan(e.target.value)}
-                            className="w-full px-2.5 py-1.5 rounded-md border border-border bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
-                          >
-                            <option value="core_supporter">Core Supporter</option>
-                            <option value="pro_supporter">Pro Supporter</option>
-                            <option value="elite_supporter">Elite Supporter</option>
-                          </select>
-                        </div>
-                        <div>
-                          <label className="text-[10px] font-medium text-muted-foreground mb-1.5 block">Expiry Date</label>
-                          <input
-                            type="datetime-local"
-                            value={giftEndDate}
-                            onChange={(e) => setGiftEndDate(e.target.value)}
-                            className="w-full px-2.5 py-1.5 rounded-md border border-border bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
-                          />
-                        </div>
-                      </div>
-                      <p className="text-[10px] text-muted-foreground">
-                        Gift expires at the selected date/time. User will revert to free plan unless they have a Stripe subscription.
-                      </p>
-                      <div className="flex items-center gap-2">
-                        <Button
-                          size="sm"
-                          onClick={() => {
-                            if (!giftEndDate) return
-                            onAction(u.id, "gift_subscription", {
-                              giftPlan,
-                              giftEndDate: new Date(giftEndDate).toISOString(),
-                            })
-                            setShowGiftForm(false)
-                            setGiftPlan("pro_supporter")
-                            setGiftEndDate("")
-                          }}
-                          disabled={!giftEndDate || isLoading("gift_subscription")}
-                          className="flex-1"
-                        >
-                          {isLoading("gift_subscription") ? "Gifting..." : "Gift Plan"}
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => {
-                            setShowGiftForm(false)
-                            setGiftPlan("pro_supporter")
-                            setGiftEndDate("")
-                          }}
-                          className="flex-1"
-                        >
-                          Cancel
-                        </Button>
-                      </div>
-                    </div>
-                  )}
-                  <Button
-                    size="sm"
-                    variant="destructive"
-                    onClick={() => onAction(u.id, "revoke_gift")}
-                    disabled={isLoading("revoke_gift")}
-                    className="w-full"
-                  >
-                    {isLoading("revoke_gift") ? "Revoking..." : "Revoke Active Gift"}
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
-          {/* Recent Scans */}
-          <Card className="bg-card border-border">
-            <CardHeader className="pb-2 pt-4 px-5">
-              <div className="flex items-center gap-2">
-                <Activity className="h-4 w-4 text-muted-foreground" />
-                <CardTitle className="text-sm font-semibold">Recent Scans</CardTitle>
-                <Badge variant="secondary" className="text-[10px] ml-auto">{detail.recentScans.length}</Badge>
-              </div>
-            </CardHeader>
-            <CardContent className="px-5 pb-4">
-              {detail.recentScans.length === 0 ? (
-                <p className="text-xs text-muted-foreground py-4 text-center">No scans recorded.</p>
-              ) : (
-                <div className="flex flex-col gap-1.5">
-                  {detail.recentScans.map((scan) => (
-                    <div key={scan.id} className="flex items-center gap-3 p-2.5 rounded-lg bg-muted/20 border border-border">
-                      <Globe className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                      <div className="flex-1 min-w-0">
-                        <p className="text-xs text-foreground truncate font-medium">{scan.url}</p>
-                        <p className="text-[10px] text-muted-foreground">
-                          {scan.findings_count} findings via {scan.source}
-                        </p>
-                      </div>
-                      <span className="text-[10px] text-muted-foreground shrink-0">
-                        {new Date(scan.scanned_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* API Keys */}
-          <Card className="bg-card border-border">
-            <CardHeader className="pb-2 pt-4 px-5">
-              <div className="flex items-center gap-2">
-                <Key className="h-4 w-4 text-muted-foreground" />
-                <CardTitle className="text-sm font-semibold">API Keys</CardTitle>
-                <Badge variant="secondary" className="text-[10px] ml-auto">{detail.apiKeys.length}</Badge>
-              </div>
-            </CardHeader>
-            <CardContent className="px-5 pb-4">
-              {detail.apiKeys.length === 0 ? (
-                <p className="text-xs text-muted-foreground py-4 text-center">No API keys.</p>
-              ) : (
-                <div className="flex flex-col gap-1.5">
-                  {detail.apiKeys.map((key) => (
-                    <div key={key.id} className="flex items-center justify-between p-2.5 rounded-lg bg-muted/20 border border-border">
-                      <div className="flex items-center gap-2 min-w-0">
-                        <Key className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                        <span className="text-xs font-mono text-foreground">{key.key_prefix}...</span>
-                        <span className="text-[10px] text-muted-foreground truncate">{key.name}</span>
-                      </div>
-                      {key.revoked_at ? (
-                        <Badge className="bg-destructive/10 text-destructive border-destructive/20 text-[10px]">Revoked</Badge>
-                      ) : (
-                        <Badge className="bg-emerald-500/10 text-emerald-500 border-emerald-500/20 text-[10px]">Active</Badge>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Webhooks */}
-          <Card className="bg-card border-border">
-            <CardHeader className="pb-2 pt-4 px-5">
-              <div className="flex items-center gap-2">
-                <Webhook className="h-4 w-4 text-muted-foreground" />
-                <CardTitle className="text-sm font-semibold">Webhooks</CardTitle>
-                <Badge variant="secondary" className="text-[10px] ml-auto">{detail.webhooks.length}</Badge>
-              </div>
-            </CardHeader>
-            <CardContent className="px-5 pb-4">
-              {detail.webhooks.length === 0 ? (
-                <p className="text-xs text-muted-foreground py-4 text-center">No webhooks configured.</p>
-              ) : (
-                <div className="flex flex-col gap-1.5">
-                  {detail.webhooks.map((wh) => (
-                    <div key={wh.id} className="flex items-center justify-between p-2.5 rounded-lg bg-muted/20 border border-border">
-                      <div className="flex items-center gap-2 min-w-0">
-                        <Webhook className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                        <span className="text-xs text-foreground truncate font-medium">{wh.name}</span>
-                        <Badge variant="secondary" className="text-[10px] shrink-0">
-                          {wh.type}
-                        </Badge>
-                      </div>
-                      <Badge
-                        className={cn(
-                          "text-[10px] shrink-0",
-                          wh.active
-                            ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/20"
-                            : "bg-muted text-muted-foreground border-border",
-                        )}
-                      >
-                        {wh.active ? "Active" : "Inactive"}
-                      </Badge>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Active Sessions */}
-          <Card className="bg-card border-border">
-            <CardHeader className="pb-2 pt-4 px-5">
-              <div className="flex items-center gap-2">
-                <Globe className="h-4 w-4 text-muted-foreground" />
-                <CardTitle className="text-sm font-semibold">Active Sessions</CardTitle>
-                <Badge variant="secondary" className="text-[10px] ml-auto">{detail.activeSessions.length}</Badge>
-              </div>
-            </CardHeader>
-            <CardContent className="px-5 pb-4">
-              {detail.activeSessions.length === 0 ? (
-                <p className="text-xs text-muted-foreground py-4 text-center">No active sessions.</p>
-              ) : (
-                <div className="flex flex-col gap-1.5">
-                  {detail.activeSessions.map((sess) => (
-                    <div key={sess.id} className="flex flex-col gap-1 p-2.5 rounded-lg bg-muted/20 border border-border">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <Globe className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                          <span className="text-xs font-mono text-muted-foreground">{sess.id.substring(0, 12)}...</span>
-                        </div>
-                        <span className="text-[10px] text-muted-foreground">
-                          expires {new Date(sess.expires_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-3 text-[10px] text-muted-foreground pl-5">
-                        {sess.ip_address && <span className="font-mono">{sess.ip_address}</span>}
-                        {sess.user_agent && (
-                          <span className="truncate max-w-[200px]" title={sess.user_agent}>
-                            {sess.user_agent.length > 40 ? sess.user_agent.substring(0, 40) + "..." : sess.user_agent}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Floating Save Bar */}
-          {hasChanges && (
-            <div className="fixed bottom-0 left-0 right-0 z-50 p-4 pointer-events-none">
-              <div className="max-w-3xl mx-auto pointer-events-auto">
-                <div className="flex items-center justify-between gap-4 px-5 py-3.5 rounded-xl bg-card border border-primary/30 shadow-2xl shadow-primary/10 backdrop-blur-sm">
-                  <div className="flex items-center gap-3">
-                    <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center">
-                      <Save className="h-4 w-4 text-primary" />
-                    </div>
-                    <div>
-                      <p className="text-sm font-medium text-foreground">Unsaved Changes</p>
-                      <p className="text-[11px] text-muted-foreground">
-                        {[
-                          Object.keys(pendingChanges).length > 0 &&
-                          `${Object.keys(pendingChanges).length} field${Object.keys(pendingChanges).length !== 1 ? "s" : ""}`,
-                          pendingBadgeAwards.length > 0 &&
-                          `${pendingBadgeAwards.length} badge${pendingBadgeAwards.length !== 1 ? "s" : ""} to award`,
-                          pendingBadgeRevokes.length > 0 &&
-                          `${pendingBadgeRevokes.length} badge${pendingBadgeRevokes.length !== 1 ? "s" : ""} to remove`,
-                        ]
-                          .filter(Boolean)
-                          .join(", ")}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Button variant="ghost" size="sm" onClick={discardChanges} disabled={isSaving} className="h-9 px-4">
-                      Discard
-                    </Button>
-                    <Button size="sm" onClick={saveAllChanges} disabled={isSaving} className="h-9 px-5 gap-2">
-                      {isSaving ? (
-                        <>
-                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                          Saving...
-                        </>
-                      ) : (
-                        <>
-                          <Save className="h-3.5 w-3.5" />
-                          Save Changes
-                        </>
-                      )}
-                    </Button>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-        </>
-      )}
-    </div>
-  )
 }
 
 export default function AdminPage() {
@@ -1036,12 +326,8 @@ function AdminContent() {
   const [selectedUser, setSelectedUser] = useState<UserDetail | null>(null)
   const [detailLoading, setDetailLoading] = useState(false)
   const [confirmDialog, setConfirmDialog] = useState<{
-    title: string
-    description: string
-    confirmLabel: string
-    danger?: boolean
-    action: () => Promise<void>
-    children?: React.ReactNode
+    title: string; description: string; confirmLabel: string; danger?: boolean
+    action: () => Promise<void>; children?: React.ReactNode
   } | null>(null)
   const [tempPassword, setTempPassword] = useState<string | null>(null)
   const [auditLogs, setAuditLogs] = useState<AuditEntry[]>([])
@@ -1060,11 +346,12 @@ function AdminContent() {
   const searchInitRef = useRef(false)
   const staffPagination = usePagination(activeAdmins, staffPageSize)
   const pagedStaff = staffPagination.getPage(staffPage)
-
   const showToast = useCallback((message: string, type: "success" | "error") => {
     setToast({ message, type })
   }, [])
 
+  // Sync user/tab selection with URL hash
+  // pushState when navigating to a user (back button works), replaceState when closing/switching tabs
   const updateUrlWithUser = useCallback((userId: number | null, tab?: string, replace = true) => {
     if (typeof window === "undefined") return
     const parts: string[] = []
@@ -1075,26 +362,31 @@ function AdminContent() {
     window.history[method](null, "", `/admin${hash ? `#${hash}` : ""}`)
   }, [])
 
+  // Parse hash and load corresponding data
   const handleHashChange = useCallback(() => {
     if (typeof window === "undefined") return
     const hash = window.location.hash.replace("#", "")
     if (!hash) {
+      // Set default hash to #users if none provided
       window.history.replaceState(null, "", "/admin#users")
       setSelectedUser(null)
       return
     }
+
     const parts = hash.split("/")
     let foundUser = false
     for (const part of parts) {
+      // Check if it's a tab
       if (["users", "audit", "admins"].includes(part)) {
         setActiveTab(part as "users" | "audit" | "admins")
         if (part === "audit") fetchAudit()
         if (part === "admins") fetchActiveAdmins()
       }
+      // Check if it's a user ID
       if (part.startsWith("user-")) {
         const id = parseInt(part.replace("user-", ""), 10)
         if (!isNaN(id)) {
-          fetchUserDetail(id, true)
+          fetchUserDetail(id, true) // Skip URL update on initial load
           foundUser = true
         }
       }
@@ -1102,6 +394,7 @@ function AdminContent() {
     if (!foundUser) setSelectedUser(null)
   }, [activeTab])
 
+  // Load from hash on mount and listen for hash changes
   useEffect(() => {
     handleHashChange()
     window.addEventListener("hashchange", handleHashChange)
@@ -1115,21 +408,14 @@ function AdminContent() {
       const params = new URLSearchParams({ page: String(p), limit: String(limit) })
       if (search.trim()) params.set("search", search.trim())
       const res = await fetch(`${API.ADMIN}?${params}`)
-      if (res.status === 403) {
-        setForbidden(true)
-        setLoading(false)
-        setSearchLoading(false)
-        return
-      }
+      if (res.status === 403) { setForbidden(true); setLoading(false); setSearchLoading(false); return }
       const data = await res.json()
       setStats(data.stats)
       setUsers(data.users)
       setPage(data.page)
       setTotalPages(data.totalPages)
       if (data.callerRole) setCallerRole(data.callerRole)
-    } catch {
-      setForbidden(true)
-    }
+    } catch { setForbidden(true) }
     setLoading(false)
     setSearchLoading(false)
   }
@@ -1142,9 +428,7 @@ function AdminContent() {
       setAuditLogs(data.logs)
       setAuditPage(data.page)
       setAuditTotalPages(data.totalPages)
-    } catch {
-      /* ignore */
-    }
+    } catch { /* ignore */ }
     setAuditPaging(false)
   }
 
@@ -1154,9 +438,7 @@ function AdminContent() {
       const res = await fetch(`${API.ADMIN}?section=active-admins`)
       const data = await res.json()
       setActiveAdmins(data.admins || [])
-    } catch {
-      /* ignore */
-    }
+    } catch { /* ignore */ }
     setAdminsLoading(false)
   }
 
@@ -1166,10 +448,9 @@ function AdminContent() {
       const res = await fetch(`${API.ADMIN}?section=user-detail&userId=${userId}`)
       const data = await res.json()
       setSelectedUser(data)
+      // pushState=false so back button returns to previous tab/list
       if (!skipUrlUpdate) updateUrlWithUser(userId, activeTab, false)
-    } catch {
-      showToast("Failed to load user details.", "error")
-    }
+    } catch { showToast("Failed to load user details.", "error") }
     setDetailLoading(false)
   }
 
@@ -1180,15 +461,10 @@ function AdminContent() {
         const data = await res.json()
         setAllBadges(data.badges || [])
       }
-    } catch {
-      /* ignore */
-    }
+    } catch { /* ignore */ }
   }
 
-  useEffect(() => {
-    fetchData(1, "", true)
-    fetchAllBadges()
-  }, [])
+  useEffect(() => { fetchData(1, "", true); fetchAllBadges() }, [])
 
   useEffect(() => {
     if (activeTab === "audit") fetchAudit()
@@ -1229,26 +505,21 @@ function AdminContent() {
           gift_subscription: "Subscription gifted.",
           revoke_gift: "Gift revoked.",
         }
-        if (action === "create_badge" || action === "delete_badge") {
-          fetchAllBadges()
-        }
+        if (action === "create_badge" || action === "delete_badge") { fetchAllBadges() }
         showToast(labels[action] || "Action completed.", "success")
+        // Badge award/revoke: caller handles optimistic update — no fetch needed
         const skipRefetch = action === "award_badge" || action === "revoke_badge"
         if (!skipRefetch) {
           await fetchData(page)
           if (selectedUser && selectedUser.user.id === userId) {
-            if (action === "delete") {
-              setSelectedUser(null)
-              updateUrlWithUser(null, activeTab)
-            } else await fetchUserDetail(userId)
+            if (action === "delete") { setSelectedUser(null); updateUrlWithUser(null, activeTab) }
+            else await fetchUserDetail(userId)
           }
         }
       } else {
         showToast(data.error || "Action failed.", "error")
       }
-    } catch {
-      showToast("Action failed.", "error")
-    }
+    } catch { showToast("Action failed.", "error") }
     setActionLoading(null)
     setConfirmDialog(null)
   }
@@ -1271,17 +542,13 @@ function AdminContent() {
           setPage(data.page)
           setTotalPages(data.totalPages)
         }
-      } catch {
-        /* ignore */
-      }
+      } catch { /* ignore */ }
       setSearchLoading(false)
     }, 300)
-    return () => {
-      clearTimeout(timeout)
-      setSearchLoading(false)
-    }
+    return () => { clearTimeout(timeout); setSearchLoading(false) }
   }, [searchQuery])
 
+  // Forbidden screen
   if (forbidden) {
     return (
       <div className="min-h-screen bg-background flex flex-col">
@@ -1293,9 +560,7 @@ function AdminContent() {
             </div>
             <h1 className="text-xl font-bold text-foreground">Access Denied</h1>
             <p className="text-sm text-muted-foreground max-w-xs">You do not have administrator privileges to access this panel.</p>
-            <Button asChild>
-              <a href="/dashboard">Back to Scanner</a>
-            </Button>
+            <Button asChild><a href="/dashboard">Back to Scanner</a></Button>
           </div>
         </main>
         <Footer />
@@ -1307,23 +572,6 @@ function AdminContent() {
     <div className="min-h-screen bg-background flex flex-col">
       <Header />
       <main className="flex-1 w-full max-w-7xl mx-auto px-4 py-8 flex flex-col gap-6">
-        {/* Toast */}
-        {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
-
-        {/* Confirm dialog */}
-        {confirmDialog && (
-          <ConfirmDialog
-            open={true}
-            title={confirmDialog.title}
-            description={confirmDialog.description}
-            confirmLabel={confirmDialog.confirmLabel}
-            danger={confirmDialog.danger}
-            onConfirm={confirmDialog.action}
-            onCancel={() => setConfirmDialog(null)}
-          >
-            {confirmDialog.children}
-          </ConfirmDialog>
-        )}
 
         {/* Page header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -1336,16 +584,7 @@ function AdminContent() {
               <p className="text-xs text-muted-foreground">Manage users, monitor activity, and provide support.</p>
             </div>
           </div>
-          <Button
-            variant="outline"
-            size="sm"
-            className="bg-transparent gap-1.5 self-start sm:self-auto"
-            onClick={() => {
-              fetchData(page)
-              if (activeTab === "audit") fetchAudit(auditPage)
-              if (activeTab === "admins") fetchActiveAdmins()
-            }}
-          >
+          <Button variant="outline" size="sm" className="bg-transparent gap-1.5 self-start sm:self-auto" onClick={() => { fetchData(page); if (activeTab === "audit") fetchAudit(auditPage); if (activeTab === "admins") fetchActiveAdmins(); }}>
             <RefreshCw className="h-3.5 w-3.5" />
             Refresh
           </Button>
@@ -1376,13 +615,11 @@ function AdminContent() {
 
             {/* Tab navigation */}
             <div className="flex items-center gap-1 border-b border-border">
-              {(
-                [
-                  { key: "users" as const, label: "Users", icon: Users },
-                  { key: "audit" as const, label: "Audit Log", icon: History },
-                  { key: "admins" as const, label: "Staff", icon: Shield },
-                ] as const
-              ).map((tab) => (
+              {([
+                { key: "users" as const, label: "Users", icon: Users },
+                { key: "audit" as const, label: "Audit Log", icon: History },
+                { key: "admins" as const, label: "Staff", icon: Shield },
+              ]).map((tab) => (
                 <a
                   key={tab.key}
                   href={`/admin#${tab.key}`}
@@ -1419,92 +656,38 @@ function AdminContent() {
                 allBadges={allBadges}
                 onRefreshBadges={fetchAllBadges}
                 onBadgesChanged={(awardedIds, revokedIds) => {
+                  // Optimistically patch selectedUser badges without re-fetching
                   setSelectedUser((prev) => {
                     if (!prev) return prev
                     const awardedBadges = allBadges
                       .filter((b) => awardedIds.includes(b.id))
-                      .map((b) => ({
-                        ...b,
-                        awarded_at: new Date().toISOString(),
-                      }))
+                      .map((b) => ({ id: b.id, name: b.name, display_name: b.display_name, color: b.color, awarded_at: new Date().toISOString() }))
                     const kept = prev.badges.filter((b) => !revokedIds.includes(b.id))
                     return { ...prev, badges: [...kept, ...awardedBadges] }
                   })
                 }}
-                onClose={() => {
-                  setSelectedUser(null)
-                  setTempPassword(null)
-                  updateUrlWithUser(null, activeTab)
-                }}
+                onClose={() => { setSelectedUser(null); setTempPassword(null); updateUrlWithUser(null, activeTab) }}
                 onAction={(userId, action, extra) => {
-                  if (
-                    [
-                      "set_role",
-                      "award_badge",
-                      "revoke_badge",
-                      "create_badge",
-                      "delete_badge",
-                      "update_name",
-                      "update_email",
-                      "update_plan",
-                      "enable",
-                      "clear_rate_limits",
-                    ].includes(action)
-                  ) {
+                  // Actions that don't need confirmation
+                  if (["set_role", "award_badge", "revoke_badge", "create_badge", "delete_badge", "update_name", "update_email", "update_plan", "enable", "clear_rate_limits"].includes(action)) {
                     handleAction(userId, action, extra)
                     return
                   }
+                  // Actions that need confirmation
                   const confirmActions = ["delete", "disable", "reset_password", "revoke_sessions", "revoke_api_keys", "reset_2fa", "delete_scans"]
                   if (confirmActions.includes(action)) {
                     const messages: Record<string, { title: string; desc: string; label: string; danger?: boolean }> = {
-                      delete: {
-                        title: "Delete User",
-                        desc: `This will permanently delete ${selectedUser.user.email} and all their data. This cannot be undone.`,
-                        label: "Delete User",
-                        danger: true,
-                      },
-                      disable: {
-                        title: "Disable Account",
-                        desc: `This will suspend ${selectedUser.user.email}'s account and log them out of all sessions. They will not be able to log in until re-enabled.`,
-                        label: "Disable Account",
-                        danger: true,
-                      },
-                      reset_password: {
-                        title: "Reset Password",
-                        desc: `This will generate a temporary password for ${selectedUser.user.email}. All sessions will be invalidated. Share the temporary password securely.`,
-                        label: "Reset Password",
-                      },
-                      revoke_sessions: {
-                        title: "Revoke All Sessions",
-                        desc: `This will force-logout ${selectedUser.user.email} from all devices and browsers.`,
-                        label: "Revoke Sessions",
-                      },
-                      revoke_api_keys: {
-                        title: "Revoke All API Keys",
-                        desc: `This will immediately revoke all active API keys for ${selectedUser.user.email}.`,
-                        label: "Revoke Keys",
-                      },
-                      reset_2fa: {
-                        title: "Reset Two-Factor Authentication",
-                        desc: `This will remove 2FA from ${selectedUser.user.email}'s account. They will need to set it up again.`,
-                        label: "Reset 2FA",
-                        danger: true,
-                      },
-                      delete_scans: {
-                        title: "Delete All Scans",
-                        desc: `This will permanently delete all scan history for ${selectedUser.user.email}. This cannot be undone.`,
-                        label: "Delete Scans",
-                        danger: true,
-                      },
+                      delete: { title: "Delete User", desc: `This will permanently delete ${selectedUser.user.email} and all their data. This cannot be undone.`, label: "Delete User", danger: true },
+                      disable: { title: "Disable Account", desc: `This will suspend ${selectedUser.user.email}'s account and log them out of all sessions. They will not be able to log in until re-enabled.`, label: "Disable Account", danger: true },
+                      reset_password: { title: "Reset Password", desc: `This will generate a temporary password for ${selectedUser.user.email}. All sessions will be invalidated. Share the temporary password securely.`, label: "Reset Password" },
+                      revoke_sessions: { title: "Revoke All Sessions", desc: `This will force-logout ${selectedUser.user.email} from all devices and browsers.`, label: "Revoke Sessions" },
+                      revoke_api_keys: { title: "Revoke All API Keys", desc: `This will immediately revoke all active API keys for ${selectedUser.user.email}.`, label: "Revoke Keys" },
+                      reset_2fa: { title: "Reset Two-Factor Authentication", desc: `This will remove 2FA from ${selectedUser.user.email}'s account. They will need to set it up again.`, label: "Reset 2FA", danger: true },
+                      delete_scans: { title: "Delete All Scans", desc: `This will permanently delete all scan history for ${selectedUser.user.email}. This cannot be undone.`, label: "Delete Scans", danger: true },
+
                     }
                     const m = messages[action]
-                    setConfirmDialog({
-                      title: m.title,
-                      description: m.desc,
-                      confirmLabel: m.label,
-                      danger: m.danger ?? false,
-                      action: () => handleAction(userId, action),
-                    })
+                    setConfirmDialog({ title: m.title, description: m.desc, confirmLabel: m.label, danger: m.danger ?? false, action: () => handleAction(userId, action) })
                   } else {
                     handleAction(userId, action)
                   }
@@ -1521,9 +704,7 @@ function AdminContent() {
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                     <div className="flex items-center gap-2">
                       <CardTitle className="text-base font-semibold">All Users</CardTitle>
-                      <Badge variant="secondary" className="text-[10px] font-medium">
-                        {stats ? Number(stats.total_users).toLocaleString() : 0}
-                      </Badge>
+                      <Badge variant="secondary" className="text-[10px] font-medium">{stats ? Number(stats.total_users).toLocaleString() : 0}</Badge>
                     </div>
                     <div className="relative w-full sm:w-72">
                       <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
@@ -1571,34 +752,15 @@ function AdminContent() {
                             <td className="px-4 py-3">
                               {(() => {
                                 const badges: React.ReactNode[] = []
-                                if (u.disabled_at)
-                                  badges.push(
-                                    <Badge key="disabled" className="bg-destructive/10 text-destructive border-destructive/20 text-[10px] px-1.5 font-medium">
-                                      Disabled
-                                    </Badge>,
-                                  )
+                                if (u.disabled_at) badges.push(<Badge key="disabled" className="bg-destructive/10 text-destructive border-destructive/20 text-[10px] px-1.5 font-medium">Disabled</Badge>)
                                 if (u.role && u.role !== STAFF_ROLES.USER && ROLE_BADGE_STYLES[u.role]) {
-                                  badges.push(
-                                    <Badge key="role" className={cn(ROLE_BADGE_STYLES[u.role], "text-[10px] px-1.5 font-medium")}>
-                                      {STAFF_ROLE_LABELS[u.role] || u.role}
-                                    </Badge>,
-                                  )
+                                  badges.push(<Badge key="role" className={cn(ROLE_BADGE_STYLES[u.role], "text-[10px] px-1.5 font-medium")}>{STAFF_ROLE_LABELS[u.role] || u.role}</Badge>)
                                 }
                                 if (u.plan && u.plan !== "free") {
-                                  const planLabel =
-                                    u.plan.replace("_supporter", "").charAt(0).toUpperCase() + u.plan.replace("_supporter", "").slice(1)
-                                  badges.push(
-                                    <Badge key="plan" className="bg-primary/10 text-primary border-primary/20 text-[10px] px-1.5 font-medium">
-                                      {planLabel}
-                                    </Badge>,
-                                  )
+                                  const planLabel = u.plan.replace("_supporter", "").charAt(0).toUpperCase() + u.plan.replace("_supporter", "").slice(1)
+                                  badges.push(<Badge key="plan" className="bg-primary/10 text-primary border-primary/20 text-[10px] px-1.5 font-medium">{planLabel}</Badge>)
                                 }
-                                if (u.totp_enabled)
-                                  badges.push(
-                                    <Badge key="2fa" className="bg-emerald-500/10 text-emerald-500 border-emerald-500/20 text-[10px] px-1.5 font-medium">
-                                      2FA
-                                    </Badge>,
-                                  )
+                                if (u.totp_enabled) badges.push(<Badge key="2fa" className="bg-emerald-500/10 text-emerald-500 border-emerald-500/20 text-[10px] px-1.5 font-medium">2FA</Badge>)
                                 if (badges.length === 0) return <span className="text-xs text-muted-foreground">Active</span>
                                 return <div className="flex items-center gap-1.5 flex-wrap">{badges}</div>
                               })()}
@@ -1624,31 +786,12 @@ function AdminContent() {
                                 {hasStaffPermission(callerRole, STAFF_PERMISSIONS.VIEW_AUDIT_LOG) && (
                                   <>
                                     {u.disabled_at ? (
-                                      <Button
-                                        variant="ghost"
-                                        size="icon"
-                                        className="h-8 w-8 text-emerald-500 hover:text-emerald-500 hover:bg-emerald-500/10"
-                                        title="Re-enable"
-                                        onClick={() => handleAction(u.id, "enable")}
-                                      >
+                                      <Button variant="ghost" size="icon" className="h-8 w-8 text-emerald-500 hover:text-emerald-500 hover:bg-emerald-500/10" title="Re-enable" onClick={() => handleAction(u.id, "enable")}>
                                         <CheckCircle2 className="h-4 w-4" />
                                       </Button>
                                     ) : (
-                                      <Button
-                                        variant="ghost"
-                                        size="icon"
-                                        className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10"
-                                        title="Disable"
-                                        onClick={() =>
-                                          setConfirmDialog({
-                                            title: "Disable Account",
-                                            description: `Suspend ${u.email}? They will be logged out and unable to sign in.`,
-                                            confirmLabel: "Disable",
-                                            danger: true,
-                                            action: () => handleAction(u.id, "disable"),
-                                          })
-                                        }
-                                      >
+                                      <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10" title="Disable"
+                                        onClick={() => setConfirmDialog({ title: "Disable Account", description: `Suspend ${u.email}? They will be logged out and unable to sign in.`, confirmLabel: "Disable", danger: true, action: () => handleAction(u.id, "disable") })}>
                                         <Ban className="h-4 w-4" />
                                       </Button>
                                     )}
@@ -1690,20 +833,14 @@ function AdminContent() {
                           <p className="text-xs text-muted-foreground truncate">{u.email}</p>
                           <div className="flex items-center gap-1.5 mt-1 flex-wrap">
                             <span className="text-[10px] text-muted-foreground">{u.scan_count} scans</span>
-                            {u.disabled_at && (
-                              <Badge className="bg-destructive/10 text-destructive border-destructive/20 text-[10px] px-1.5">Disabled</Badge>
-                            )}
+                            {u.disabled_at && <Badge className="bg-destructive/10 text-destructive border-destructive/20 text-[10px] px-1.5">Disabled</Badge>}
                             {u.role && u.role !== STAFF_ROLES.USER && ROLE_BADGE_STYLES[u.role] && (
                               <Badge className={cn(ROLE_BADGE_STYLES[u.role], "text-[10px] px-1.5")}>{STAFF_ROLE_LABELS[u.role] || u.role}</Badge>
                             )}
                             {u.plan && u.plan !== "free" && (
-                              <Badge className="bg-primary/10 text-primary border-primary/20 text-[10px] px-1.5">
-                                {u.plan.replace("_supporter", "").charAt(0).toUpperCase() + u.plan.replace("_supporter", "").slice(1)}
-                              </Badge>
+                              <Badge className="bg-primary/10 text-primary border-primary/20 text-[10px] px-1.5">{u.plan.replace("_supporter", "").charAt(0).toUpperCase() + u.plan.replace("_supporter", "").slice(1)}</Badge>
                             )}
-                            {u.totp_enabled && (
-                              <Badge className="bg-emerald-500/10 text-emerald-500 border-emerald-500/20 text-[10px] px-1.5">2FA</Badge>
-                            )}
+                            {u.totp_enabled && <Badge className="bg-emerald-500/10 text-emerald-500 border-emerald-500/20 text-[10px] px-1.5">2FA</Badge>}
                           </div>
                         </div>
                         <Eye className="h-4 w-4 text-muted-foreground shrink-0" />
@@ -1718,10 +855,7 @@ function AdminContent() {
                       totalPages={totalPages}
                       onPageChange={(p) => fetchData(p)}
                       pageSize={usersPageSize}
-                      onPageSizeChange={(s) => {
-                        setUsersPageSize(s)
-                        fetchData(1, searchQuery, false, s)
-                      }}
+                      onPageSizeChange={(s) => { setUsersPageSize(s); fetchData(1, searchQuery, false, s) }}
                     />
                   </div>
                 </CardContent>
@@ -1734,9 +868,7 @@ function AdminContent() {
                 <CardHeader className="pb-0 pt-5 px-5">
                   <div className="flex items-center gap-2">
                     <CardTitle className="text-base font-semibold">Audit Log</CardTitle>
-                    <Badge variant="secondary" className="text-[10px] font-medium">
-                      Recent Activity
-                    </Badge>
+                    <Badge variant="secondary" className="text-[10px] font-medium">Recent Activity</Badge>
                   </div>
                   <p className="text-xs text-muted-foreground mt-1">All admin actions are logged here for accountability.</p>
                 </CardHeader>
@@ -1759,10 +891,7 @@ function AdminContent() {
                           return (
                             <div key={log.id} className={cn(i < auditLogs.length - 1 && "border-b border-border")}>
                               <button
-                                className={cn(
-                                  "w-full flex items-start gap-4 px-5 py-3.5 transition-colors hover:bg-muted/20 text-left",
-                                  isExpanded && "bg-muted/10",
-                                )}
+                                className={cn("w-full flex items-start gap-4 px-5 py-3.5 transition-colors hover:bg-muted/20 text-left", isExpanded && "bg-muted/10")}
                                 onClick={() => setExpandedLog(isExpanded ? null : log.id)}
                               >
                                 <div className="flex flex-col items-center gap-1 pt-0.5">
@@ -1780,12 +909,7 @@ function AdminContent() {
                                   </div>
                                   <div className="flex items-center gap-2 mt-0.5">
                                     <span className="text-[10px] text-muted-foreground">
-                                      {new Date(log.created_at).toLocaleString("en-US", {
-                                        month: "short",
-                                        day: "numeric",
-                                        hour: "2-digit",
-                                        minute: "2-digit",
-                                      })}
+                                      {new Date(log.created_at).toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
                                     </span>
                                     {log.ip_address && (
                                       <span className="text-[10px] text-muted-foreground font-mono flex items-center gap-0.5">
@@ -1794,13 +918,10 @@ function AdminContent() {
                                     )}
                                   </div>
                                 </div>
-                                {isExpanded ? (
-                                  <ChevronUp className="h-3.5 w-3.5 text-muted-foreground shrink-0 mt-1" />
-                                ) : (
-                                  <ChevronDown className="h-3.5 w-3.5 text-muted-foreground shrink-0 mt-1" />
-                                )}
+                                {isExpanded ? <ChevronUp className="h-3.5 w-3.5 text-muted-foreground shrink-0 mt-1" /> : <ChevronDown className="h-3.5 w-3.5 text-muted-foreground shrink-0 mt-1" />}
                               </button>
 
+                              {/* Expanded detail */}
                               {isExpanded && (
                                 <div className="px-5 pb-4 pt-0 ml-11">
                                   <div className="rounded-xl bg-muted/20 border border-border p-4 flex flex-col gap-3">
@@ -1848,10 +969,7 @@ function AdminContent() {
                             totalPages={auditTotalPages}
                             onPageChange={(p) => fetchAudit(p)}
                             pageSize={auditPageSize}
-                            onPageSizeChange={(s) => {
-                              setAuditPageSize(s)
-                              fetchAudit(1, s)
-                            }}
+                            onPageSizeChange={(s) => { setAuditPageSize(s); fetchAudit(1, s) }}
                           />
                         </div>
                       )}
@@ -1867,16 +985,12 @@ function AdminContent() {
                 <CardHeader className="pb-0 pt-5 px-5">
                   <div className="flex items-center gap-2">
                     <CardTitle className="text-base font-semibold">Staff Members</CardTitle>
-                    <Badge variant="secondary" className="text-[10px] font-medium">
-                      {activeAdmins.length}
-                    </Badge>
+                    <Badge variant="secondary" className="text-[10px] font-medium">{activeAdmins.length}</Badge>
                     <Button variant="outline" size="sm" className="ml-auto h-7 bg-transparent gap-1 text-xs" onClick={fetchActiveAdmins}>
                       <RefreshCw className={cn("h-3 w-3", adminsLoading && "animate-spin")} /> Refresh
                     </Button>
                   </div>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    All staff members (admins, moderators, support) and their current activity status.
-                  </p>
+                  <p className="text-xs text-muted-foreground mt-1">All staff members (admins, moderators, support) and their current activity status.</p>
                 </CardHeader>
                 <CardContent className="p-0 mt-4">
                   {adminsLoading ? (
@@ -1896,21 +1010,14 @@ function AdminContent() {
                           const isOnline = admin.active_sessions > 0
                           const displayName = admin.name || admin.email.split("@")[0]
                           return (
-                            <div
-                              key={admin.id}
-                              className={cn(
-                                "flex items-start gap-4 px-5 py-4 transition-colors hover:bg-muted/20",
-                                i < pagedStaff.length - 1 && "border-b border-border",
-                              )}
-                            >
+                            <div key={admin.id} className={cn("flex items-start gap-4 px-5 py-4 transition-colors hover:bg-muted/20", i < pagedStaff.length - 1 && "border-b border-border")}>
+                              {/* Avatar with online indicator */}
                               <div className="relative shrink-0">
                                 <UserAvatar name={admin.name} email={admin.email} avatarUrl={admin.avatar_url} />
-                                <div
-                                  className={cn(
-                                    "absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-card",
-                                    isOnline ? "bg-emerald-500" : "bg-muted-foreground/40",
-                                  )}
-                                />
+                                <div className={cn(
+                                  "absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-card",
+                                  isOnline ? "bg-emerald-500" : "bg-muted-foreground/40"
+                                )} />
                               </div>
 
                               <div className="flex-1 min-w-0">
@@ -1919,14 +1026,11 @@ function AdminContent() {
                                   <Badge className={cn("text-[10px] px-1.5 font-medium", ROLE_BADGE_STYLES[admin.role] || ROLE_BADGE_STYLES.user)}>
                                     {STAFF_ROLE_LABELS[admin.role] || admin.role}
                                   </Badge>
-                                  <Badge
-                                    className={cn(
-                                      "text-[10px] px-1.5 font-medium",
-                                      isOnline
-                                        ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/20"
-                                        : "bg-muted text-muted-foreground border-border",
-                                    )}
-                                  >
+                                  <Badge className={cn("text-[10px] px-1.5 font-medium",
+                                    isOnline
+                                      ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/20"
+                                      : "bg-muted text-muted-foreground border-border"
+                                  )}>
                                     {isOnline ? "Online" : "Offline"}
                                   </Badge>
                                   {admin.totp_enabled && (
@@ -1935,6 +1039,7 @@ function AdminContent() {
                                 </div>
                                 <p className="text-xs text-muted-foreground mt-0.5">{admin.email}</p>
 
+                                {/* Activity stats row */}
                                 <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-2.5">
                                   <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
                                     <Monitor className="h-3 w-3" />
@@ -1953,16 +1058,12 @@ function AdminContent() {
                                   )}
                                 </div>
 
+                                {/* Last action */}
                                 {admin.last_admin_action && (
                                   <div className="mt-2 text-[11px] text-muted-foreground">
                                     Last action: <ActionBadge action={admin.last_action_type || ""} />
                                     <span className="ml-1.5">
-                                      {new Date(admin.last_admin_action).toLocaleString("en-US", {
-                                        month: "short",
-                                        day: "numeric",
-                                        hour: "2-digit",
-                                        minute: "2-digit",
-                                      })}
+                                      {new Date(admin.last_admin_action).toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
                                     </span>
                                   </div>
                                 )}
@@ -1985,10 +1086,7 @@ function AdminContent() {
                             totalPages={staffPagination.totalPages}
                             onPageChange={setStaffPage}
                             pageSize={staffPageSize}
-                            onPageSizeChange={(s) => {
-                              setStaffPageSize(s)
-                              setStaffPage(1)
-                            }}
+                            onPageSizeChange={(s) => { setStaffPageSize(s); setStaffPage(1) }}
                             totalItems={activeAdmins.length}
                           />
                         </div>
@@ -1997,11 +1095,503 @@ function AdminContent() {
                   )}
                 </CardContent>
               </Card>
-            )}
-          </>
+        </>
         )}
-      </main>
-      <Footer />
+
+        {/* User data sections */}
+        {!detailLoading && (
+          <Card className="bg-card border-border">
+            <CardHeader className="pb-0 pt-4 px-5">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                {!hasStaffPermission(callerRole, STAFF_PERMISSIONS.DISABLE_USER) ? "Account Information" : "Support Actions"}
+              </p>
+            </CardHeader>
+            <CardContent className="p-5 pt-3">
+              {!hasStaffPermission(callerRole, STAFF_PERMISSIONS.DISABLE_USER) ? (
+                <p className="text-xs text-muted-foreground">You have view-only access. Contact an admin or moderator to perform actions on this user.</p>
+              ) : (
+                <div className="flex flex-col gap-4">
+                  {/* Session & Security */}
+                  <div>
+                    <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium mb-2">Session &amp; Security</p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                      <ActionCard
+                        icon={LogOut} label="Force Logout"
+                        description={`Revoke all ${u.session_count} active session(s)`}
+                        color="text-primary" bg="bg-primary/10"
+                        loading={isLoading("revoke_sessions")}
+                        onClick={() => onAction(u.id, "revoke_sessions")}
+                      />
+                      <ActionCard
+                        icon={Key} label="Revoke API Keys"
+                        description={`Invalidate all ${u.api_key_count} API key(s)`}
+                        color="text-[hsl(var(--severity-medium))]" bg="bg-[hsl(var(--severity-medium))]/10"
+                        loading={isLoading("revoke_api_keys")}
+                        onClick={() => onAction(u.id, "revoke_api_keys")}
+                      />
+                      {hasStaffPermission(callerRole, STAFF_PERMISSIONS.RESET_USER_PASSWORD) && (
+                        <ActionCard
+                          icon={KeyRound} label="Reset Password"
+                          description={u.totp_enabled ? "Unavailable: 2FA enabled" : "Generate temp password"}
+                          color="text-[hsl(var(--severity-medium))]" bg="bg-[hsl(var(--severity-medium))]/10"
+                          disabled={u.totp_enabled} loading={isLoading("reset_password")}
+                          onClick={() => onAction(u.id, "reset_password")}
+                        />
+                      )}
+                      {hasStaffPermission(callerRole, STAFF_PERMISSIONS.RESET_USER_2FA) && u.totp_enabled && (
+                        <ActionCard
+                          icon={ShieldOff} label="Reset 2FA"
+                          description="Remove two-factor auth"
+                          color="text-[hsl(var(--severity-medium))]" bg="bg-[hsl(var(--severity-medium))]/10"
+                          loading={isLoading("reset_2fa")}
+                          onClick={() => onAction(u.id, "reset_2fa")}
+                        />
+                      )}
+                      {hasStaffPermission(callerRole, STAFF_PERMISSIONS.MANAGE_RATE_LIMITS) && (
+                        <ActionCard
+                          icon={RefreshCw} label="Clear Rate Limits"
+                          description="Reset rate limit counters"
+                          color="text-primary" bg="bg-primary/10"
+                          loading={isLoading("clear_rate_limits")}
+                          onClick={() => onAction(u.id, "clear_rate_limits")}
+                        />
+                      )}
+                      <ActionCard
+                        icon={UserX} label="Force Logout All"
+                        description="Logout + revoke all API keys"
+                        color="text-[hsl(var(--severity-medium))]" bg="bg-[hsl(var(--severity-medium))]/10"
+                        loading={isLoading("force_logout_all")}
+                        onClick={() => onAction(u.id, "force_logout_all")}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Account Management */}
+                  <div>
+                    <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium mb-2">Account Management</p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                      {!u.email_verified_at ? (
+                        <ActionCard
+                          icon={MailCheck} label="Verify Email"
+                          description="Manually verify email address"
+                          color="text-emerald-500" bg="bg-emerald-500/10"
+                          loading={isLoading("verify_email")}
+                          onClick={() => onAction(u.id, "verify_email")}
+                        />
+                      ) : (
+                        <ActionCard
+                          icon={MailX} label="Unverify Email"
+                          description="Remove email verification"
+                          color="text-[hsl(var(--severity-medium))]" bg="bg-[hsl(var(--severity-medium))]/10"
+                          loading={isLoading("unverify_email")}
+                          onClick={() => onAction(u.id, "unverify_email")}
+                        />
+                      )}
+                      <ActionCard
+                        icon={ImageOff} label="Clear Avatar"
+                        description="Remove profile picture"
+                        color="text-muted-foreground" bg="bg-muted/50"
+                        loading={isLoading("clear_avatar")}
+                        onClick={() => onAction(u.id, "clear_avatar")}
+                      />
+                      {hasStaffPermission(callerRole, STAFF_PERMISSIONS.EDIT_USER_ROLE) && (
+                        <ActionCard
+                          icon={Beaker} label="Toggle Beta Access"
+                          description="Enable/disable beta features"
+                          color="text-primary" bg="bg-primary/10"
+                          loading={isLoading("toggle_beta_access")}
+                          onClick={() => onAction(u.id, "toggle_beta_access")}
+                        />
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Danger Zone */}
+                  <div>
+                    <p className="text-[10px] uppercase tracking-wider text-destructive/70 font-medium mb-2">Danger Zone</p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                      <ActionCard
+                        icon={u.disabled_at ? CheckCircle2 : Ban}
+                        label={u.disabled_at ? "Re-enable Account" : "Disable Account"}
+                        description={u.disabled_at ? "Allow user to log in" : "Suspend and force-logout"}
+                        color={u.disabled_at ? "text-emerald-500" : "text-destructive"}
+                        bg={u.disabled_at ? "bg-emerald-500/10" : "bg-destructive/10"}
+                        variant={u.disabled_at ? "success" : "danger"}
+                        onClick={() => onAction(u.id, u.disabled_at ? "enable" : "disable")}
+                      />
+                      {hasStaffPermission(callerRole, STAFF_PERMISSIONS.DELETE_ANY_SCAN) && (
+                        <ActionCard
+                          icon={Activity} label="Delete All Scans"
+                          description={`Remove all ${u.scan_count} scan(s)`}
+                          color="text-destructive" bg="bg-destructive/10" variant="danger"
+                          loading={isLoading("delete_scans")}
+                          onClick={() => onAction(u.id, "delete_scans")}
+                        />
+                      )}
+                      <ActionCard
+                        icon={Webhook} label="Delete Webhooks"
+                        description="Remove all webhooks"
+                        color="text-destructive" bg="bg-destructive/10" variant="danger"
+                        loading={isLoading("delete_webhooks")}
+                        onClick={() => onAction(u.id, "delete_webhooks")}
+                      />
+                      <ActionCard
+                        icon={CalendarOff} label="Delete Schedules"
+                        description="Remove scheduled scans"
+                        color="text-destructive" bg="bg-destructive/10" variant="danger"
+                        loading={isLoading("delete_schedules")}
+                        onClick={() => onAction(u.id, "delete_schedules")}
+                      />
+                      {hasStaffPermission(callerRole, STAFF_PERMISSIONS.DELETE_USER) && (
+                        <ActionCard
+                          icon={Trash2} label="Delete Account"
+                          description="Permanently remove user"
+                          color="text-destructive" bg="bg-destructive/10" variant="danger"
+                          onClick={() => onAction(u.id, "delete")}
+                        />
+                      )}
+                    </div>
+                  </div>
+
+                  {u.totp_enabled && hasStaffPermission(callerRole, STAFF_PERMISSIONS.RESET_USER_2FA) && (
+                    <div className="flex items-start gap-2.5 p-3.5 rounded-lg bg-[hsl(var(--severity-medium))]/5 border border-[hsl(var(--severity-medium))]/20">
+                      <AlertTriangle className="h-4 w-4 text-[hsl(var(--severity-medium))] shrink-0 mt-0.5" />
+                      <div>
+                        <p className="text-xs font-medium text-foreground">Password reset is unavailable for this user</p>
+                        <p className="text-[11px] text-muted-foreground mt-0.5 leading-relaxed">
+                          This account has two-factor authentication enabled. For security, passwords cannot be reset by admins when 2FA is active. The user should use their backup codes to regain access, or disable 2FA first.
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
+
+        {/* User data sections */}
+        {!detailLoading && (
+          <>
+            {/* Gifted Subscription */}
+            {hasStaffPermission(callerRole, STAFF_PERMISSIONS.UPDATE_PLAN) && (
+              <Card className="bg-card border-border">
+                <CardHeader className="pb-0 pt-4 px-5">
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                    Gifted Subscription
+                  </p>
+                </CardHeader>
+                <CardContent className="p-5 pt-3">
+                  <div className="flex flex-col gap-3">
+                    {!showGiftForm && (
+                      <Button
+                        size="sm"
+                        onClick={() => setShowGiftForm(true)}
+                        className="w-full"
+                      >
+                        Gift a Subscription
+                      </Button>
+                    )}
+                    {showGiftForm && (
+                      <div className="flex flex-col gap-3 p-3 rounded-lg bg-muted/20 border border-border">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                          <div>
+                            <label className="text-[10px] font-medium text-muted-foreground mb-1.5 block">Plan</label>
+                            <select
+                              value={giftPlan}
+                              onChange={(e) => setGiftPlan(e.target.value)}
+                              className="w-full px-2.5 py-1.5 rounded-md border border-border bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
+                            >
+                              <option value="core_supporter">Core Supporter</option>
+                              <option value="pro_supporter">Pro Supporter</option>
+                              <option value="elite_supporter">Elite Supporter</option>
+                            </select>
+                          </div>
+                          <div>
+                            <label className="text-[10px] font-medium text-muted-foreground mb-1.5 block">Expiry Date</label>
+                            <input
+                              type="datetime-local"
+                              value={giftEndDate}
+                              onChange={(e) => setGiftEndDate(e.target.value)}
+                              className="w-full px-2.5 py-1.5 rounded-md border border-border bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
+                            />
+                          </div>
+                        </div>
+                        <p className="text-[10px] text-muted-foreground">Gift expires at the selected date/time. User will revert to free plan unless they have a Stripe subscription.</p>
+                        <div className="flex items-center gap-2">
+                          <Button
+                            size="sm"
+                            onClick={() => {
+                              if (!giftEndDate) return
+                              onAction(u.id, "gift_subscription", {
+                                giftPlan,
+                                giftEndDate: new Date(giftEndDate).toISOString(),
+                              })
+                              setShowGiftForm(false)
+                              setGiftPlan("pro_supporter")
+                              setGiftEndDate("")
+                            }}
+                            disabled={!giftEndDate || isLoading("gift_subscription")}
+                            className="flex-1"
+                          >
+                            {isLoading("gift_subscription") ? "Gifting..." : "Gift Plan"}
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => {
+                              setShowGiftForm(false)
+                              setGiftPlan("pro_supporter")
+                              setGiftEndDate("")
+                            }}
+                            className="flex-1"
+                          >
+                            Cancel
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                    <Button
+                      size="sm"
+                      variant="destructive"
+                      onClick={() => onAction(u.id, "revoke_gift")}
+                      disabled={isLoading("revoke_gift")}
+                      className="w-full"
+                    >
+                      {isLoading("revoke_gift") ? "Revoking..." : "Revoke Active Gift"}
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* User data sections */}
+            {/* Recent Scans */}
+            <Card className="bg-card border-border">
+              <CardHeader className="pb-2 pt-4 px-5">
+                <div className="flex items-center gap-2">
+                  <Activity className="h-4 w-4 text-muted-foreground" />
+                  <CardTitle className="text-sm font-semibold">Recent Scans</CardTitle>
+                  <Badge variant="secondary" className="text-[10px] ml-auto">{detail.recentScans.length}</Badge>
+                </div>
+              </CardHeader>
+              <CardContent className="px-5 pb-4">
+                {detail.recentScans.length === 0 ? (
+                  <p className="text-xs text-muted-foreground py-4 text-center">No scans recorded.</p>
+                ) : (
+                  <div className="flex flex-col gap-1.5">
+                    {detail.recentScans.map((scan) => (
+                      <div key={scan.id} className="flex items-center gap-3 p-2.5 rounded-lg bg-muted/20 border border-border">
+                        <Globe className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs text-foreground truncate font-medium">{scan.url}</p>
+                          <p className="text-[10px] text-muted-foreground">{scan.findings_count} findings via {scan.source}</p>
+                        </div>
+                        <span className="text-[10px] text-muted-foreground shrink-0">
+                          {new Date(scan.scanned_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* API Keys */}
+            <Card className="bg-card border-border">
+              <CardHeader className="pb-2 pt-4 px-5">
+                <div className="flex items-center gap-2">
+                  <Key className="h-4 w-4 text-muted-foreground" />
+                  <CardTitle className="text-sm font-semibold">API Keys</CardTitle>
+                  <Badge variant="secondary" className="text-[10px] ml-auto">{detail.apiKeys.length}</Badge>
+                </div>
+              </CardHeader>
+              <CardContent className="px-5 pb-4">
+                {detail.apiKeys.length === 0 ? (
+                  <p className="text-xs text-muted-foreground py-4 text-center">No API keys.</p>
+                ) : (
+                  <div className="flex flex-col gap-1.5">
+                    {detail.apiKeys.map((key) => (
+                      <div key={key.id} className="flex items-center justify-between p-2.5 rounded-lg bg-muted/20 border border-border">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <Key className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                          <span className="text-xs font-mono text-foreground">{key.key_prefix}...</span>
+                          <span className="text-[10px] text-muted-foreground truncate">{key.name}</span>
+                        </div>
+                        {key.revoked_at
+                          ? <Badge className="bg-destructive/10 text-destructive border-destructive/20 text-[10px]">Revoked</Badge>
+                          : <Badge className="bg-emerald-500/10 text-emerald-500 border-emerald-500/20 text-[10px]">Active</Badge>
+                        }
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Webhooks */}
+            <Card className="bg-card border-border">
+              <CardHeader className="pb-2 pt-4 px-5">
+                <div className="flex items-center gap-2">
+                  <Webhook className="h-4 w-4 text-muted-foreground" />
+                  <CardTitle className="text-sm font-semibold">Webhooks</CardTitle>
+                  <Badge variant="secondary" className="text-[10px] ml-auto">{detail.webhooks.length}</Badge>
+                </div>
+              </CardHeader>
+              <CardContent className="px-5 pb-4">
+                {detail.webhooks.length === 0 ? (
+                  <p className="text-xs text-muted-foreground py-4 text-center">No webhooks configured.</p>
+                ) : (
+                  <div className="flex flex-col gap-1.5">
+                    {detail.webhooks.map((wh) => (
+                      <div key={wh.id} className="flex items-center justify-between p-2.5 rounded-lg bg-muted/20 border border-border">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <Webhook className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                          <span className="text-xs text-foreground truncate font-medium">{wh.name}</span>
+                          <Badge variant="secondary" className="text-[10px] shrink-0">{wh.type}</Badge>
+                        </div>
+                        <Badge className={cn("text-[10px] shrink-0", wh.active ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/20" : "bg-muted text-muted-foreground border-border")}>
+                          {wh.active ? "Active" : "Inactive"}
+                        </Badge>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Active Sessions */}
+            <Card className="bg-card border-border">
+              <CardHeader className="pb-2 pt-4 px-5">
+                <div className="flex items-center gap-2">
+                  <Globe className="h-4 w-4 text-muted-foreground" />
+                  <CardTitle className="text-sm font-semibold">Active Sessions</CardTitle>
+                  <Badge variant="secondary" className="text-[10px] ml-auto">{detail.activeSessions.length}</Badge>
+                </div>
+              </CardHeader>
+              <CardContent className="px-5 pb-4">
+                {detail.activeSessions.length === 0 ? (
+                  <p className="text-xs text-muted-foreground py-4 text-center">No active sessions.</p>
+                ) : (
+                  <div className="flex flex-col gap-1.5">
+                    {detail.activeSessions.map((sess) => (
+                      <div key={sess.id} className="flex flex-col gap-1 p-2.5 rounded-lg bg-muted/20 border border-border">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <Globe className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                            <span className="text-xs font-mono text-muted-foreground">{sess.id.substring(0, 12)}...</span>
+                          </div>
+                          <span className="text-[10px] text-muted-foreground">
+                            expires {new Date(sess.expires_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-3 text-[10px] text-muted-foreground pl-5">
+                          {sess.ip_address && (
+                            <span className="font-mono">{sess.ip_address}</span>
+                          )}
+                          {sess.user_agent && (
+                            <span className="truncate max-w-[200px]" title={sess.user_agent}>
+                              {sess.user_agent.length > 40 ? sess.user_agent.substring(0, 40) + "..." : sess.user_agent}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+      </>
+      )}
+
+      {/* Floating Save Bar - appears when there are pending changes */}
+      {hasChanges && (
+        <div className="fixed bottom-0 left-0 right-0 z-50 p-4 pointer-events-none">
+          <div className="max-w-3xl mx-auto pointer-events-auto">
+            <div className="flex items-center justify-between gap-4 px-5 py-3.5 rounded-xl bg-card border border-primary/30 shadow-2xl shadow-primary/10 backdrop-blur-sm">
+              <div className="flex items-center gap-3">
+                <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center">
+                  <Save className="h-4 w-4 text-primary" />
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-foreground">Unsaved Changes</p>
+                  <p className="text-[11px] text-muted-foreground">
+                    {[
+                      Object.keys(pendingChanges).length > 0 && `${Object.keys(pendingChanges).length} field${Object.keys(pendingChanges).length !== 1 ? "s" : ""}`,
+                      pendingBadgeAwards.length > 0 && `${pendingBadgeAwards.length} badge${pendingBadgeAwards.length !== 1 ? "s" : ""} to award`,
+                      pendingBadgeRevokes.length > 0 && `${pendingBadgeRevokes.length} badge${pendingBadgeRevokes.length !== 1 ? "s" : ""} to remove`,
+                    ].filter(Boolean).join(", ")}
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={discardChanges}
+                  disabled={isSaving}
+                  className="h-9 px-4"
+                >
+                  Discard
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={saveAllChanges}
+                  disabled={isSaving}
+                  className="h-9 px-5 gap-2"
+                >
+                  {isSaving ? (
+                    <>
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      Saving...
+                    </>
+                  ) : (
+                    <>
+                      <Save className="h-3.5 w-3.5" />
+                      Save Changes
+                    </>
+                  )}
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
+  )
+}
+
+// --- Action Card ---
+function ActionCard({
+  icon: Icon, label, description, color, bg, variant, disabled, loading, onClick,
+}: {
+  icon: React.ElementType; label: string; description: string
+  color: string; bg: string; variant?: "danger" | "success"
+  disabled?: boolean; loading?: boolean; onClick: () => void
+}) {
+  return (
+    <button
+      className={cn(
+        "flex items-center gap-3 p-3.5 rounded-xl border transition-all text-left",
+        disabled
+          ? "border-border bg-muted/20 opacity-50 cursor-not-allowed"
+          : variant === "danger"
+            ? "border-destructive/15 bg-card hover:bg-destructive/5 cursor-pointer"
+            : variant === "success"
+              ? "border-emerald-500/15 bg-card hover:bg-emerald-500/5 cursor-pointer"
+              : "border-border bg-card hover:bg-muted/30 cursor-pointer",
+      )}
+      disabled={disabled || loading}
+      onClick={onClick}
+    >
+      <div className={cn("h-9 w-9 rounded-lg flex items-center justify-center shrink-0", bg)}>
+        {loading ? <Loader2 className={cn("h-4 w-4 animate-spin", color)} /> : <Icon className={cn("h-4 w-4", color)} />}
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className={cn("text-sm font-medium", variant === "danger" ? "text-destructive" : variant === "success" ? "text-emerald-500" : "text-foreground")}>{label}</p>
+        <p className="text-[10px] text-muted-foreground leading-tight mt-0.5">{description}</p>
+      </div>
+    </button>
   )
 }
