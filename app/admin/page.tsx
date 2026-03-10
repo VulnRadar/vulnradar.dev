@@ -63,12 +63,12 @@ import { Footer } from "@/components/scanner/footer"
 import { cn } from "@/lib/utils"
 import { PaginationControl, usePagination } from "@/components/ui/pagination-control"
 import { STAFF_ROLES, STAFF_ROLE_LABELS, STAFF_ROLE_HIERARCHY, ROLE_BADGE_STYLES, API } from "@/lib/constants"
-import { 
-  hasStaffPermission, 
-  canManageRole, 
-  getAvailableActions, 
+import {
+  hasStaffPermission,
+  canManageRole,
+  getAvailableActions,
   STAFF_PERMISSIONS,
-  type AdminAction 
+  type AdminAction
 } from "@/lib/permissions-client"
 
 interface AdminStats {
@@ -98,6 +98,8 @@ interface AdminUser {
   api_key_count: number
   plan: string
   subscription_status: string | null
+  gifted_plan?: string | null
+  gift_end_date?: string | null
 }
 
 interface BadgeDef {
@@ -372,7 +374,7 @@ function AdminContent() {
       setSelectedUser(null)
       return
     }
-    
+
     const parts = hash.split("/")
     let foundUser = false
     for (const part of parts) {
@@ -502,8 +504,8 @@ function AdminContent() {
           reset_2fa: "Two-factor authentication reset.",
           delete_scans: "All scans deleted.",
 
-      
-      
+
+
           clear_rate_limits: "Rate limits cleared.",
         }
         if (action === "create_badge" || action === "delete_badge") { fetchAllBadges() }
@@ -536,7 +538,7 @@ function AdminContent() {
       try {
         const params = new URLSearchParams({ page: "1" })
         if (searchQuery.trim()) params.set("search", searchQuery.trim())
-      const res = await fetch(`${API.ADMIN}?${params}`)
+        const res = await fetch(`${API.ADMIN}?${params}`)
         if (res.ok) {
           const data = await res.json()
           setUsers(data.users)
@@ -685,7 +687,7 @@ function AdminContent() {
                       revoke_api_keys: { title: "Revoke All API Keys", desc: `This will immediately revoke all active API keys for ${selectedUser.user.email}.`, label: "Revoke Keys" },
                       reset_2fa: { title: "Reset Two-Factor Authentication", desc: `This will remove 2FA from ${selectedUser.user.email}'s account. They will need to set it up again.`, label: "Reset 2FA", danger: true },
                       delete_scans: { title: "Delete All Scans", desc: `This will permanently delete all scan history for ${selectedUser.user.email}. This cannot be undone.`, label: "Delete Scans", danger: true },
-                
+
                     }
                     const m = messages[action]
                     setConfirmDialog({ title: m.title, description: m.desc, confirmLabel: m.label, danger: m.danger ?? false, action: () => handleAction(userId, action) })
@@ -965,13 +967,13 @@ function AdminContent() {
                       </div>
                       {auditTotalPages > 1 && (
                         <div className="px-5 py-3 border-t border-border bg-muted/10">
-                  <PaginationControl
-                    currentPage={auditPage}
-                    totalPages={auditTotalPages}
-                    onPageChange={(p) => fetchAudit(p)}
-                    pageSize={auditPageSize}
-                    onPageSizeChange={(s) => { setAuditPageSize(s); fetchAudit(1, s) }}
-                  />
+                          <PaginationControl
+                            currentPage={auditPage}
+                            totalPages={auditTotalPages}
+                            onPageChange={(p) => fetchAudit(p)}
+                            pageSize={auditPageSize}
+                            onPageSizeChange={(s) => { setAuditPageSize(s); fetchAudit(1, s) }}
+                          />
                         </div>
                       )}
                     </>
@@ -1082,14 +1084,14 @@ function AdminContent() {
                       </div>
                       {staffPagination.totalPages > 1 && (
                         <div className="px-5 py-3 border-t border-border bg-muted/10">
-                  <PaginationControl
-                    currentPage={staffPage}
-                    totalPages={staffPagination.totalPages}
-                    onPageChange={setStaffPage}
-                    pageSize={staffPageSize}
-                    onPageSizeChange={(s) => { setStaffPageSize(s); setStaffPage(1) }}
-                    totalItems={activeAdmins.length}
-                  />
+                          <PaginationControl
+                            currentPage={staffPage}
+                            totalPages={staffPagination.totalPages}
+                            onPageChange={setStaffPage}
+                            pageSize={staffPageSize}
+                            onPageSizeChange={(s) => { setStaffPageSize(s); setStaffPage(1) }}
+                            totalItems={activeAdmins.length}
+                          />
                         </div>
                       )}
                     </>
@@ -1168,13 +1170,11 @@ function UserDetailPanel({
   const [editRole, setEditRole] = useState(u.role || "user")
   const [confirmEmail, setConfirmEmail] = useState("")
   const [isSaving, setIsSaving] = useState(false)
-  const [showGiftForm, setShowGiftForm] = useState(false)
-  const [giftPlan, setGiftPlan] = useState("pro_supporter")
-  const [giftEndDate, setGiftEndDate] = useState("")
+  const [showGiftModal, setShowGiftModal] = useState(false)
 
   // Track if there are unsaved changes
   const hasChanges = Object.keys(pendingChanges).length > 0 || pendingBadgeAwards.length > 0 || pendingBadgeRevokes.length > 0
-  
+
   // Reset pending changes when user changes
   useEffect(() => {
     setPendingChanges({})
@@ -1906,85 +1906,51 @@ function UserDetailPanel({
                 {/* Gifted Subscription */}
                 <div>
                   <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium mb-2">Gifted Subscription</p>
-                  <div className="flex flex-col gap-2.5 p-3 rounded-lg bg-muted/20 border border-border">
-                    {!showGiftForm ? (
-                      <Button
-                        size="sm"
-                        onClick={() => setShowGiftForm(true)}
-                        className="w-full"
-                      >
-                        Gift a Subscription
-                      </Button>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                    {u.gifted_plan && u.gift_end_date && new Date(u.gift_end_date) > new Date() ? (
+                      <ActionCard
+                        icon={CrownIcon}
+                        label="Edit Gift Subscription"
+                        description={`${u.gifted_plan.replace("_supporter", " Supporter").replace(/(^\w|\s\w)/g, (m: string) => m.toUpperCase())} · expires ${new Date(u.gift_end_date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`}
+                        color="text-primary"
+                        bg="bg-primary/10"
+                        loading={isLoading("gift_subscription") || isLoading("revoke_gift")}
+                        onClick={() => setShowGiftModal(true)}
+                      />
                     ) : (
-                      <div className="flex flex-col gap-2.5">
-                        <div className="grid grid-cols-2 gap-2">
-                          <div>
-                            <label className="text-[10px] font-medium text-muted-foreground mb-1.5 block">Plan</label>
-                            <select
-                              value={giftPlan}
-                              onChange={(e) => setGiftPlan(e.target.value)}
-                              className="w-full px-2.5 py-1.5 rounded-md border border-border bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
-                            >
-                              <option value="core_supporter">Core Supporter</option>
-                              <option value="pro_supporter">Pro Supporter</option>
-                              <option value="elite_supporter">Elite Supporter</option>
-                            </select>
-                          </div>
-                          <div>
-                            <label className="text-[10px] font-medium text-muted-foreground mb-1.5 block">Expires</label>
-                            <input
-                              type="datetime-local"
-                              value={giftEndDate}
-                              onChange={(e) => setGiftEndDate(e.target.value)}
-                              className="w-full px-2.5 py-1.5 rounded-md border border-border bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
-                            />
-                          </div>
-                        </div>
-                        <p className="text-[10px] text-muted-foreground">Gift expires at the selected date/time. User reverts to free plan when it expires.</p>
-                        <div className="flex items-center gap-2">
-                          <Button
-                            size="sm"
-                            onClick={() => {
-                              if (!giftEndDate) return
-                              onAction(u.id, "gift_subscription", {
-                                giftPlan,
-                                giftEndDate: new Date(giftEndDate).toISOString(),
-                              })
-                              setShowGiftForm(false)
-                              setGiftPlan("pro_supporter")
-                              setGiftEndDate("")
-                            }}
-                            disabled={!giftEndDate || isLoading("gift_subscription")}
-                            className="flex-1"
-                          >
-                            {isLoading("gift_subscription") ? "Gifting..." : "Gift Plan"}
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => {
-                              setShowGiftForm(false)
-                              setGiftPlan("pro_supporter")
-                              setGiftEndDate("")
-                            }}
-                            className="flex-1"
-                          >
-                            Cancel
-                          </Button>
-                        </div>
-                      </div>
+                      <ActionCard
+                        icon={CrownIcon}
+                        label="Gift a Subscription"
+                        description={u.gifted_plan ? "Previous gift expired — re-gift" : "Grant temporary premium access"}
+                        color="text-primary"
+                        bg="bg-primary/10"
+                        loading={isLoading("gift_subscription")}
+                        onClick={() => setShowGiftModal(true)}
+                      />
                     )}
-                    <Button
-                      size="sm"
-                      variant="destructive"
-                      onClick={() => onAction(u.id, "revoke_gift")}
-                      disabled={isLoading("revoke_gift")}
-                      className="w-full"
-                    >
-                      {isLoading("revoke_gift") ? "Revoking..." : "Revoke Active Gift"}
-                    </Button>
                   </div>
                 </div>
+
+                {showGiftModal && (
+                  <GiftSubscriptionModal
+                    open={showGiftModal}
+                    onClose={() => setShowGiftModal(false)}
+                    isLoading={isLoading("gift_subscription") || isLoading("revoke_gift")}
+                    existingGift={
+                      u.gifted_plan && u.gift_end_date && new Date(u.gift_end_date) > new Date()
+                        ? { plan: u.gifted_plan, end_date: u.gift_end_date }
+                        : null
+                    }
+                    onGift={(plan, endDate) => {
+                      onAction(u.id, "gift_subscription", { giftPlan: plan, giftEndDate: endDate })
+                      setShowGiftModal(false)
+                    }}
+                    onRevoke={() => {
+                      onAction(u.id, "revoke_gift")
+                      setShowGiftModal(false)
+                    }}
+                  />
+                )}
 
                 {/* Danger Zone */}
                 <div>
@@ -2279,5 +2245,180 @@ function ActionCard({
         <p className="text-[10px] text-muted-foreground leading-tight mt-0.5">{description}</p>
       </div>
     </button>
+  )
+}
+
+// --- Gift Subscription Modal ---
+function GiftSubscriptionModal({
+  open,
+  onClose,
+  onGift,
+  onRevoke,
+  isLoading,
+  existingGift,
+}: {
+  open: boolean
+  onClose: () => void
+  onGift: (plan: string, endDate: string) => void
+  onRevoke: () => void
+  isLoading: boolean
+  existingGift?: { plan: string; end_date: string } | null
+}) {
+  const [giftPlan, setGiftPlan] = useState(existingGift?.plan || "pro_supporter")
+  const [giftEndDate, setGiftEndDate] = useState(
+    existingGift?.end_date
+      ? new Date(existingGift.end_date).toISOString().slice(0, 16)
+      : ""
+  )
+  const [confirmRevoke, setConfirmRevoke] = useState(false)
+
+  useEffect(() => {
+    if (open) {
+      setGiftPlan(existingGift?.plan || "pro_supporter")
+      setGiftEndDate(
+        existingGift?.end_date
+          ? new Date(existingGift.end_date).toISOString().slice(0, 16)
+          : ""
+      )
+      setConfirmRevoke(false)
+    }
+  }, [open, existingGift])
+
+  if (!open) return null
+
+  const planLabels: Record<string, string> = {
+    core_supporter: "Core Supporter",
+    pro_supporter: "Pro Supporter",
+    elite_supporter: "Elite Supporter",
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in">
+      <div className="bg-card border border-border rounded-xl w-full max-w-md mx-4 shadow-2xl animate-in zoom-in-95 overflow-hidden">
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-border">
+          <div className="flex items-center gap-3">
+            <div className="h-9 w-9 rounded-lg bg-primary/10 flex items-center justify-center">
+              <CrownIcon className="h-4 w-4 text-primary" />
+            </div>
+            <div>
+              <h3 className="text-sm font-semibold text-foreground">
+                {existingGift ? "Manage Gift Subscription" : "Gift a Subscription"}
+              </h3>
+              <p className="text-[11px] text-muted-foreground">
+                {existingGift
+                  ? `Active until ${new Date(existingGift.end_date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`
+                  : "Grant temporary premium access"}
+              </p>
+            </div>
+          </div>
+          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={onClose}>
+            <X className="h-4 w-4" />
+          </Button>
+        </div>
+
+        {/* Active gift banner */}
+        {existingGift && (
+          <div className="mx-5 mt-4 flex items-center gap-2.5 px-3.5 py-2.5 rounded-lg border bg-primary/5 border-primary/20 text-primary text-xs font-medium">
+            <CrownIcon className="h-3.5 w-3.5 shrink-0" />
+            Currently gifted: <span className="font-semibold ml-1">{planLabels[existingGift.plan] || existingGift.plan}</span>
+          </div>
+        )}
+
+        {/* Form */}
+        <div className="p-5 flex flex-col gap-4">
+          <div className="grid grid-cols-2 gap-3">
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Plan</label>
+              <select
+                value={giftPlan}
+                onChange={(e) => setGiftPlan(e.target.value)}
+                className="h-9 rounded-md border border-border bg-background px-2.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
+              >
+                <option value="core_supporter">Core Supporter</option>
+                <option value="pro_supporter">Pro Supporter</option>
+                <option value="elite_supporter">Elite Supporter</option>
+              </select>
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Expires</label>
+              <input
+                type="datetime-local"
+                value={giftEndDate}
+                onChange={(e) => setGiftEndDate(e.target.value)}
+                className="h-9 rounded-md border border-border bg-background px-2.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
+              />
+            </div>
+          </div>
+
+          <p className="text-[11px] text-muted-foreground leading-relaxed">
+            {existingGift
+              ? "Saving will overwrite the existing gift. User reverts to their base plan when it expires."
+              : "User reverts to free plan when the gift expires. This is logged in the audit trail."}
+          </p>
+
+          <div className="flex items-center gap-2">
+            <Button
+              className="flex-1 gap-1.5"
+              disabled={!giftEndDate || isLoading}
+              onClick={() => onGift(giftPlan, new Date(giftEndDate).toISOString())}
+            >
+              {isLoading ? (
+                <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Saving...</>
+              ) : (
+                <><CrownIcon className="h-3.5 w-3.5" /> {existingGift ? "Update Gift" : "Gift Plan"}</>
+              )}
+            </Button>
+            <Button variant="ghost" className="flex-1" onClick={onClose} disabled={isLoading}>
+              Cancel
+            </Button>
+          </div>
+
+          {/* Revoke — only shown when there's an active gift */}
+          {existingGift && (
+            <div className="pt-2 border-t border-border">
+              {!confirmRevoke ? (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="w-full h-8 text-xs text-destructive border-destructive/30 hover:bg-destructive/5 hover:border-destructive/50 gap-1.5"
+                  onClick={() => setConfirmRevoke(true)}
+                  disabled={isLoading}
+                >
+                  <Ban className="h-3.5 w-3.5" />
+                  Revoke Active Gift
+                </Button>
+              ) : (
+                <div className="flex flex-col gap-2">
+                  <p className="text-[11px] text-destructive text-center font-medium">
+                    Are you sure? This will immediately remove their gift access.
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      size="sm"
+                      className="flex-1 h-8 text-xs bg-destructive hover:bg-destructive/90 text-destructive-foreground gap-1.5"
+                      onClick={onRevoke}
+                      disabled={isLoading}
+                    >
+                      {isLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Ban className="h-3.5 w-3.5" />}
+                      Yes, Revoke
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="flex-1 h-8 text-xs"
+                      onClick={() => setConfirmRevoke(false)}
+                      disabled={isLoading}
+                    >
+                      Keep Gift
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
   )
 }
