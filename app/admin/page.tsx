@@ -63,12 +63,12 @@ import { Footer } from "@/components/scanner/footer"
 import { cn } from "@/lib/utils"
 import { PaginationControl, usePagination } from "@/components/ui/pagination-control"
 import { STAFF_ROLES, STAFF_ROLE_LABELS, STAFF_ROLE_HIERARCHY, ROLE_BADGE_STYLES, API } from "@/lib/constants"
-import { 
-  hasStaffPermission, 
-  canManageRole, 
-  getAvailableActions, 
+import {
+  hasStaffPermission,
+  canManageRole,
+  getAvailableActions,
   STAFF_PERMISSIONS,
-  type AdminAction 
+  type AdminAction,
 } from "@/lib/permissions-client"
 
 interface AdminStats {
@@ -119,6 +119,7 @@ interface UserDetail {
   user: AdminUser & {
     session_count: number
     has_backup_codes: boolean
+    email_verified_at?: string | null
   }
   recentScans: { id: number; url: string; findings_count: number; source: string; scanned_at: string }[]
   apiKeys: { id: number; key_prefix: string; name: string; daily_limit: number; created_at: string; last_used_at: string | null; revoked_at: string | null }[]
@@ -167,21 +168,42 @@ function Toast({ message, type, onClose }: { message: string; type: "success" | 
     return () => clearTimeout(t)
   }, [onClose])
   return (
-    <div className={cn(
-      "fixed bottom-4 right-4 z-50 flex items-center gap-2.5 rounded-lg border px-4 py-3 shadow-lg animate-in slide-in-from-bottom-2",
-      type === "success" ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-400" : "bg-destructive/10 border-destructive/30 text-destructive"
-    )}>
+    <div
+      className={cn(
+        "fixed bottom-4 right-4 z-50 flex items-center gap-2.5 rounded-lg border px-4 py-3 shadow-lg animate-in slide-in-from-bottom-2",
+        type === "success"
+          ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-400"
+          : "bg-destructive/10 border-destructive/30 text-destructive",
+      )}
+    >
       {type === "success" ? <CheckCircle2 className="h-4 w-4 shrink-0" /> : <XCircle className="h-4 w-4 shrink-0" />}
       <span className="text-sm font-medium">{message}</span>
-      <button onClick={onClose} className="ml-2 opacity-60 hover:opacity-100 transition-opacity"><X className="h-3.5 w-3.5" /></button>
+      <button onClick={onClose} className="ml-2 opacity-60 hover:opacity-100 transition-opacity">
+        <X className="h-3.5 w-3.5" />
+      </button>
     </div>
   )
 }
 
 // --- Confirm dialog ---
-function ConfirmDialog({ open, title, description, confirmLabel, danger, onConfirm, onCancel, children }: {
-  open: boolean; title: string; description: string; confirmLabel: string; danger?: boolean
-  onConfirm: () => void; onCancel: () => void; children?: React.ReactNode
+function ConfirmDialog({
+  open,
+  title,
+  description,
+  confirmLabel,
+  danger,
+  onConfirm,
+  onCancel,
+  children,
+}: {
+  open: boolean
+  title: string
+  description: string
+  confirmLabel: string
+  danger?: boolean
+  onConfirm: () => void
+  onCancel: () => void
+  children?: React.ReactNode
 }) {
   if (!open) return null
   return (
@@ -198,11 +220,10 @@ function ConfirmDialog({ open, title, description, confirmLabel, danger, onConfi
         </div>
         {children}
         <div className="flex items-center justify-end gap-2 mt-5 pt-4 border-t border-border">
-          <Button variant="ghost" onClick={onCancel}>Cancel</Button>
-          <Button
-            className={danger ? "bg-destructive hover:bg-destructive/90 text-destructive-foreground" : ""}
-            onClick={onConfirm}
-          >
+          <Button variant="ghost" onClick={onCancel}>
+            Cancel
+          </Button>
+          <Button className={danger ? "bg-destructive hover:bg-destructive/90 text-destructive-foreground" : ""} onClick={onConfirm}>
             {confirmLabel}
           </Button>
         </div>
@@ -212,13 +233,25 @@ function ConfirmDialog({ open, title, description, confirmLabel, danger, onConfi
 }
 
 // --- Stat card ---
-function StatCard({ label, value, icon: Icon, color, accent }: { label: string; value: string; icon: React.ElementType; color: string; accent: string }) {
+function StatCard({
+  label,
+  value,
+  icon: Icon,
+  color,
+  accent,
+}: {
+  label: string
+  value: string
+  icon: React.ElementType
+  color: string
+  accent: string
+}) {
   return (
     <div className="relative overflow-hidden rounded-xl border border-border bg-card p-4 flex flex-col gap-2">
       <div className={cn("absolute top-0 left-0 w-full h-0.5", accent)} />
       <div className="flex items-center justify-between">
         <span className="text-xs font-medium text-muted-foreground">{label}</span>
-        <div className={cn("h-8 w-8 rounded-lg flex items-center justify-center bg-muted/50")}>
+        <div className="h-8 w-8 rounded-lg flex items-center justify-center bg-muted/50">
           <Icon className={cn("h-4 w-4", color)} />
         </div>
       </div>
@@ -228,7 +261,17 @@ function StatCard({ label, value, icon: Icon, color, accent }: { label: string; 
 }
 
 // --- User avatar ---
-function UserAvatar({ name, email, size = "md", avatarUrl }: { name: string | null; email: string; size?: "sm" | "md"; avatarUrl?: string | null }) {
+function UserAvatar({
+  name,
+  email,
+  size = "md",
+  avatarUrl,
+}: {
+  name: string | null
+  email: string
+  size?: "sm" | "md"
+  avatarUrl?: string | null
+}) {
   const initial = (name || email).charAt(0).toUpperCase()
   const colors = [
     "bg-primary/15 text-primary",
@@ -240,1055 +283,462 @@ function UserAvatar({ name, email, size = "md", avatarUrl }: { name: string | nu
   const colorIdx = email.split("").reduce((a, c) => a + c.charCodeAt(0), 0) % colors.length
   const sz = size === "sm" ? "h-7 w-7 text-[10px]" : "h-9 w-9 text-xs"
   if (avatarUrl) {
-    return (
-      <img src={avatarUrl} alt={name || email} loading="lazy" className={cn("rounded-full object-cover shrink-0", sz)} />
-    )
+    return <img src={avatarUrl} alt={name || email} loading="lazy" className={cn("rounded-full object-cover shrink-0", sz)} />
   }
-  return (
-    <div className={cn("rounded-full flex items-center justify-center font-bold shrink-0", sz, colors[colorIdx])}>
-      {initial}
-    </div>
-  )
+  return <div className={cn("rounded-full flex items-center justify-center font-bold shrink-0", sz, colors[colorIdx])}>{initial}</div>
 }
 
 // --- Action badge with human-readable labels ---
 function ActionBadge({ action }: { action: string }) {
   const map: Record<string, { label: string; cls: string }> = {
-    // Role changes
     set_role: { label: "Changed Role", cls: "bg-primary/10 text-primary border-primary/20" },
     make_admin: { label: "Promoted to Admin", cls: "bg-primary/10 text-primary border-primary/20" },
     remove_admin: { label: "Removed Admin Role", cls: "bg-muted text-muted-foreground border-border" },
-    // Security actions
     reset_password: { label: "Reset Password", cls: "bg-[hsl(var(--severity-medium))]/10 text-[hsl(var(--severity-medium))] border-[hsl(var(--severity-medium))]/20" },
     revoke_sessions: { label: "Revoked Sessions", cls: "bg-[hsl(var(--severity-medium))]/10 text-[hsl(var(--severity-medium))] border-[hsl(var(--severity-medium))]/20" },
     revoke_api_keys: { label: "Revoked API Keys", cls: "bg-[hsl(var(--severity-medium))]/10 text-[hsl(var(--severity-medium))] border-[hsl(var(--severity-medium))]/20" },
     reset_2fa: { label: "Reset Two-Factor Auth", cls: "bg-[hsl(var(--severity-medium))]/10 text-[hsl(var(--severity-medium))] border-[hsl(var(--severity-medium))]/20" },
     force_logout_all: { label: "Force Logged Out", cls: "bg-[hsl(var(--severity-medium))]/10 text-[hsl(var(--severity-medium))] border-[hsl(var(--severity-medium))]/20" },
-    // Account status
     disable_user: { label: "Disabled Account", cls: "bg-destructive/10 text-destructive border-destructive/20" },
     disable: { label: "Disabled Account", cls: "bg-destructive/10 text-destructive border-destructive/20" },
     enable_user: { label: "Enabled Account", cls: "bg-emerald-500/10 text-emerald-500 border-emerald-500/20" },
     enable: { label: "Enabled Account", cls: "bg-emerald-500/10 text-emerald-500 border-emerald-500/20" },
     delete_user: { label: "Deleted Account", cls: "bg-destructive/10 text-destructive border-destructive/20" },
     delete: { label: "Deleted Account", cls: "bg-destructive/10 text-destructive border-destructive/20" },
-    // Profile updates
     update_name: { label: "Updated Name", cls: "bg-muted text-foreground border-border" },
     update_email: { label: "Updated Email", cls: "bg-muted text-foreground border-border" },
     update_plan: { label: "Changed Plan", cls: "bg-primary/10 text-primary border-primary/20" },
     clear_avatar: { label: "Cleared Avatar", cls: "bg-muted text-muted-foreground border-border" },
-    // Email verification
     verify_email: { label: "Verified Email", cls: "bg-emerald-500/10 text-emerald-500 border-emerald-500/20" },
     unverify_email: { label: "Unverified Email", cls: "bg-[hsl(var(--severity-medium))]/10 text-[hsl(var(--severity-medium))] border-[hsl(var(--severity-medium))]/20" },
-    // Beta & Premium
     toggle_beta_access: { label: "Toggled Beta Access", cls: "bg-primary/10 text-primary border-primary/20" },
-
-
-    // Data management
     delete_scans: { label: "Deleted Scans", cls: "bg-destructive/10 text-destructive border-destructive/20" },
     delete_webhooks: { label: "Deleted Webhooks", cls: "bg-destructive/10 text-destructive border-destructive/20" },
     delete_schedules: { label: "Deleted Schedules", cls: "bg-destructive/10 text-destructive border-destructive/20" },
     export_data: { label: "Exported Data", cls: "bg-muted text-foreground border-border" },
     clear_rate_limits: { label: "Cleared Rate Limits", cls: "bg-muted text-foreground border-border" },
-    // Badges
     award_badge: { label: "Awarded Badge", cls: "bg-primary/10 text-primary border-primary/20" },
     revoke_badge: { label: "Revoked Badge", cls: "bg-[hsl(var(--severity-medium))]/10 text-[hsl(var(--severity-medium))] border-[hsl(var(--severity-medium))]/20" },
     create_badge: { label: "Created Badge", cls: "bg-emerald-500/10 text-emerald-500 border-emerald-500/20" },
     delete_badge: { label: "Deleted Badge", cls: "bg-destructive/10 text-destructive border-destructive/20" },
-    // Admin
     impersonate: { label: "Started Impersonation", cls: "bg-[hsl(var(--severity-high))]/10 text-[hsl(var(--severity-high))] border-[hsl(var(--severity-high))]/20" },
     set_scan_limit: { label: "Set Scan Limit", cls: "bg-muted text-foreground border-border" },
     add_note: { label: "Added Note", cls: "bg-muted text-foreground border-border" },
     send_notification: { label: "Sent Notification", cls: "bg-primary/10 text-primary border-primary/20" },
   }
-  // Fallback: convert snake_case to readable format
-  const fallbackLabel = action.split("_").map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(" ")
+  const fallbackLabel = action
+    .split("_")
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(" ")
   const m = map[action] || { label: fallbackLabel, cls: "bg-muted text-muted-foreground border-border" }
   return <Badge className={cn("text-[10px] px-2 py-0.5 font-medium", m.cls)}>{m.label}</Badge>
 }
 
-export default function AdminPage() {
-  return <AdminContent />
+// --- Action Card ---
+function ActionCard({
+  icon: Icon,
+  label,
+  description,
+  color,
+  bg,
+  variant,
+  disabled,
+  loading,
+  onClick,
+}: {
+  icon: React.ElementType
+  label: string
+  description: string
+  color: string
+  bg: string
+  variant?: "danger" | "success"
+  disabled?: boolean
+  loading?: boolean
+  onClick: () => void
+}) {
+  return (
+    <button
+      className={cn(
+        "flex items-center gap-3 p-3.5 rounded-xl border transition-all text-left",
+        disabled
+          ? "border-border bg-muted/20 opacity-50 cursor-not-allowed"
+          : variant === "danger"
+            ? "border-destructive/15 bg-card hover:bg-destructive/5 cursor-pointer"
+            : variant === "success"
+              ? "border-emerald-500/15 bg-card hover:bg-emerald-500/5 cursor-pointer"
+              : "border-border bg-card hover:bg-muted/30 cursor-pointer",
+      )}
+      disabled={disabled || loading}
+      onClick={onClick}
+    >
+      <div className={cn("h-9 w-9 rounded-lg flex items-center justify-center shrink-0", bg)}>
+        {loading ? <Loader2 className={cn("h-4 w-4 animate-spin", color)} /> : <Icon className={cn("h-4 w-4", color)} />}
+      </div>
+      <div className="flex-1 min-w-0">
+        <p
+          className={cn(
+            "text-sm font-medium",
+            variant === "danger" ? "text-destructive" : variant === "success" ? "text-emerald-500" : "text-foreground",
+          )}
+        >
+          {label}
+        </p>
+        <p className="text-[10px] text-muted-foreground leading-tight mt-0.5">{description}</p>
+      </div>
+    </button>
+  )
 }
 
-function AdminContent() {
-  const router = useRouter()
-  const [loading, setLoading] = useState(true)
-  const [forbidden, setForbidden] = useState(false)
-  const [stats, setStats] = useState<AdminStats | null>(null)
-  const [users, setUsers] = useState<AdminUser[]>([])
-  const [page, setPage] = useState(1)
-  const [totalPages, setTotalPages] = useState(1)
-  const [usersPageSize, setUsersPageSize] = useState(10)
-  const [searchQuery, setSearchQuery] = useState("")
-  const [actionLoading, setActionLoading] = useState<string | null>(null)
-  const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null)
-  const [activeTab, setActiveTab] = useState<"users" | "audit" | "admins">("users")
-  const [selectedUser, setSelectedUser] = useState<UserDetail | null>(null)
-  const [detailLoading, setDetailLoading] = useState(false)
-  const [confirmDialog, setConfirmDialog] = useState<{
-    title: string; description: string; confirmLabel: string; danger?: boolean
-    action: () => Promise<void>; children?: React.ReactNode
-  } | null>(null)
-  const [tempPassword, setTempPassword] = useState<string | null>(null)
-  const [auditLogs, setAuditLogs] = useState<AuditEntry[]>([])
-  const [auditPage, setAuditPage] = useState(1)
-  const [auditTotalPages, setAuditTotalPages] = useState(1)
-  const [auditPageSize, setAuditPageSize] = useState(10)
-  const [expandedLog, setExpandedLog] = useState<number | null>(null)
-  const [activeAdmins, setActiveAdmins] = useState<ActiveAdmin[]>([])
-  const [adminsLoading, setAdminsLoading] = useState(false)
-  const [staffPage, setStaffPage] = useState(1)
-  const [staffPageSize, setStaffPageSize] = useState(10)
-  const [searchLoading, setSearchLoading] = useState(false)
-  const [callerRole, setCallerRole] = useState<string>("user")
-  const [auditPaging, setAuditPaging] = useState(false)
-  const [allBadges, setAllBadges] = useState<BadgeDef[]>([])
-  const searchInitRef = useRef(false)
-  const staffPagination = usePagination(activeAdmins, staffPageSize)
-  const pagedStaff = staffPagination.getPage(staffPage)
-  const showToast = useCallback((message: string, type: "success" | "error") => {
-    setToast({ message, type })
-  }, [])
+// --- User Detail Panel ---
+function UserDetailPanel({
+  detail,
+  detailLoading,
+  actionLoading,
+  callerRole,
+  allBadges,
+  onRefreshBadges,
+  onBadgesChanged,
+  onClose,
+  onAction,
+  tempPassword,
+  onClearTempPassword,
+}: {
+  detail: UserDetail
+  detailLoading: boolean
+  actionLoading: string | null
+  callerRole: string
+  allBadges: BadgeDef[]
+  onRefreshBadges: () => void
+  onBadgesChanged: (awardedIds: number[], revokedIds: number[]) => void
+  onClose: () => void
+  onAction: (userId: number, action: string, extra?: Record<string, string>) => void
+  tempPassword: string | null
+  onClearTempPassword: () => void
+}) {
+  const u = detail.user
+  const [pendingChanges, setPendingChanges] = useState<Record<string, string>>({})
+  const [pendingBadgeAwards, setPendingBadgeAwards] = useState<number[]>([])
+  const [pendingBadgeRevokes, setPendingBadgeRevokes] = useState<number[]>([])
+  const [isSaving, setIsSaving] = useState(false)
+  const [showGiftForm, setShowGiftForm] = useState(false)
+  const [giftPlan, setGiftPlan] = useState("pro_supporter")
+  const [giftEndDate, setGiftEndDate] = useState("")
 
-  // Sync user/tab selection with URL hash
-  // pushState when navigating to a user (back button works), replaceState when closing/switching tabs
-  const updateUrlWithUser = useCallback((userId: number | null, tab?: string, replace = true) => {
-    if (typeof window === "undefined") return
-    const parts: string[] = []
-    if (tab) parts.push(tab)
-    if (userId) parts.push(`user-${userId}`)
-    const hash = parts.join("/")
-    const method = replace ? "replaceState" : "pushState"
-    window.history[method](null, "", `/admin${hash ? `#${hash}` : ""}`)
-  }, [])
+  const hasChanges = Object.keys(pendingChanges).length > 0 || pendingBadgeAwards.length > 0 || pendingBadgeRevokes.length > 0
 
-  // Parse hash and load corresponding data
-  const handleHashChange = useCallback(() => {
-    if (typeof window === "undefined") return
-    const hash = window.location.hash.replace("#", "")
-    if (!hash) {
-      // Set default hash to #users if none provided
-      window.history.replaceState(null, "", "/admin#users")
-      setSelectedUser(null)
-      return
+  const isLoading = (action: string) => actionLoading === `${u.id}-${action}`
+
+  function discardChanges() {
+    setPendingChanges({})
+    setPendingBadgeAwards([])
+    setPendingBadgeRevokes([])
+  }
+
+  async function saveAllChanges() {
+    setIsSaving(true)
+    for (const [action, value] of Object.entries(pendingChanges)) {
+      await onAction(u.id, action, { value })
     }
-    
-    const parts = hash.split("/")
-    let foundUser = false
-    for (const part of parts) {
-      // Check if it's a tab
-      if (["users", "audit", "admins"].includes(part)) {
-        setActiveTab(part as "users" | "audit" | "admins")
-        if (part === "audit") fetchAudit()
-        if (part === "admins") fetchActiveAdmins()
-      }
-      // Check if it's a user ID
-      if (part.startsWith("user-")) {
-        const id = parseInt(part.replace("user-", ""), 10)
-        if (!isNaN(id)) {
-          fetchUserDetail(id, true) // Skip URL update on initial load
-          foundUser = true
-        }
-      }
+    for (const badgeId of pendingBadgeAwards) {
+      await onAction(u.id, "award_badge", { badgeId: String(badgeId) })
     }
-    if (!foundUser) setSelectedUser(null)
-  }, [activeTab])
-
-  // Load from hash on mount and listen for hash changes
-  useEffect(() => {
-    handleHashChange()
-    window.addEventListener("hashchange", handleHashChange)
-    return () => window.removeEventListener("hashchange", handleHashChange)
-  }, [handleHashChange])
-
-  async function fetchData(p = 1, search = searchQuery, isInitial = false, limit = usersPageSize) {
-    if (isInitial) setLoading(true)
-    else setSearchLoading(true)
-    try {
-      const params = new URLSearchParams({ page: String(p), limit: String(limit) })
-      if (search.trim()) params.set("search", search.trim())
-      const res = await fetch(`${API.ADMIN}?${params}`)
-      if (res.status === 403) { setForbidden(true); setLoading(false); setSearchLoading(false); return }
-      const data = await res.json()
-      setStats(data.stats)
-      setUsers(data.users)
-      setPage(data.page)
-      setTotalPages(data.totalPages)
-      if (data.callerRole) setCallerRole(data.callerRole)
-    } catch { setForbidden(true) }
-    setLoading(false)
-    setSearchLoading(false)
-  }
-
-  async function fetchAudit(p = 1, limit = auditPageSize) {
-    setAuditPaging(true)
-    try {
-      const res = await fetch(`${API.ADMIN}?section=audit&page=${p}&limit=${limit}`)
-      const data = await res.json()
-      setAuditLogs(data.logs)
-      setAuditPage(data.page)
-      setAuditTotalPages(data.totalPages)
-    } catch { /* ignore */ }
-    setAuditPaging(false)
-  }
-
-  async function fetchActiveAdmins() {
-    setAdminsLoading(true)
-    try {
-      const res = await fetch(`${API.ADMIN}?section=active-admins`)
-      const data = await res.json()
-      setActiveAdmins(data.admins || [])
-    } catch { /* ignore */ }
-    setAdminsLoading(false)
-  }
-
-  async function fetchUserDetail(userId: number, skipUrlUpdate = false) {
-    setDetailLoading(true)
-    try {
-      const res = await fetch(`${API.ADMIN}?section=user-detail&userId=${userId}`)
-      const data = await res.json()
-      setSelectedUser(data)
-      // pushState=false so back button returns to previous tab/list
-      if (!skipUrlUpdate) updateUrlWithUser(userId, activeTab, false)
-    } catch { showToast("Failed to load user details.", "error") }
-    setDetailLoading(false)
-  }
-
-  async function fetchAllBadges() {
-    try {
-      const res = await fetch(`${API.ADMIN}?section=badges`)
-      if (res.ok) {
-        const data = await res.json()
-        setAllBadges(data.badges || [])
-      }
-    } catch { /* ignore */ }
-  }
-
-  useEffect(() => { fetchData(1, "", true); fetchAllBadges() }, [])
-
-  useEffect(() => {
-    if (activeTab === "audit") fetchAudit()
-    if (activeTab === "admins") fetchActiveAdmins()
-  }, [activeTab])
-
-  async function handleAction(userId: number, action: string, extra?: Record<string, string>) {
-    setActionLoading(`${userId}-${action}`)
-    try {
-      const res = await fetch(API.ADMIN, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId, action, ...extra }),
-      })
-      const data = await res.json()
-      if (res.ok) {
-        if (action === "reset_password" && data.tempPassword) setTempPassword(data.tempPassword)
-        const labels: Record<string, string> = {
-          set_role: "User role updated.",
-          make_admin: "User promoted to admin.",
-          remove_admin: "Admin privileges removed.",
-          reset_password: "Password has been reset.",
-          revoke_sessions: "All sessions revoked.",
-          revoke_api_keys: "All API keys revoked.",
-          disable: "Account disabled.",
-          enable: "Account re-enabled.",
-          delete: "User deleted.",
-          award_badge: "Badge awarded.",
-          revoke_badge: "Badge removed from user.",
-          create_badge: "Badge created.",
-          delete_badge: "Badge deleted permanently.",
-          update_name: "Name updated.",
-          update_email: "Email updated.",
-          update_plan: "Plan updated.",
-          reset_2fa: "Two-factor authentication reset.",
-          delete_scans: "All scans deleted.",
-          clear_rate_limits: "Rate limits cleared.",
-          gift_subscription: "Subscription gifted.",
-          revoke_gift: "Gift revoked.",
-        }
-        if (action === "create_badge" || action === "delete_badge") { fetchAllBadges() }
-        showToast(labels[action] || "Action completed.", "success")
-        // Badge award/revoke: caller handles optimistic update — no fetch needed
-        const skipRefetch = action === "award_badge" || action === "revoke_badge"
-        if (!skipRefetch) {
-          await fetchData(page)
-          if (selectedUser && selectedUser.user.id === userId) {
-            if (action === "delete") { setSelectedUser(null); updateUrlWithUser(null, activeTab) }
-            else await fetchUserDetail(userId)
-          }
-        }
-      } else {
-        showToast(data.error || "Action failed.", "error")
-      }
-    } catch { showToast("Action failed.", "error") }
-    setActionLoading(null)
-    setConfirmDialog(null)
-  }
-
-  // Debounced server-side search
-  useEffect(() => {
-    if (!searchInitRef.current) {
-      searchInitRef.current = true
-      return
+    for (const badgeId of pendingBadgeRevokes) {
+      await onAction(u.id, "revoke_badge", { badgeId: String(badgeId) })
     }
-    setSearchLoading(true)
-    const timeout = setTimeout(async () => {
-      try {
-        const params = new URLSearchParams({ page: "1" })
-        if (searchQuery.trim()) params.set("search", searchQuery.trim())
-      const res = await fetch(`${API.ADMIN}?${params}`)
-        if (res.ok) {
-          const data = await res.json()
-          setUsers(data.users)
-          setPage(data.page)
-          setTotalPages(data.totalPages)
-        }
-      } catch { /* ignore */ }
-      setSearchLoading(false)
-    }, 300)
-    return () => { clearTimeout(timeout); setSearchLoading(false) }
-  }, [searchQuery])
-
-  // Forbidden screen
-  if (forbidden) {
-    return (
-      <div className="min-h-screen bg-background flex flex-col">
-        <Header />
-        <main className="flex-1 flex items-center justify-center px-4">
-          <div className="text-center flex flex-col items-center gap-4">
-            <div className="h-16 w-16 rounded-2xl bg-destructive/10 flex items-center justify-center">
-              <ShieldOff className="h-8 w-8 text-destructive" />
-            </div>
-            <h1 className="text-xl font-bold text-foreground">Access Denied</h1>
-            <p className="text-sm text-muted-foreground max-w-xs">You do not have administrator privileges to access this panel.</p>
-            <Button asChild><a href="/dashboard">Back to Scanner</a></Button>
-          </div>
-        </main>
-        <Footer />
-      </div>
-    )
+    onBadgesChanged(pendingBadgeAwards, pendingBadgeRevokes)
+    setPendingChanges({})
+    setPendingBadgeAwards([])
+    setPendingBadgeRevokes([])
+    setIsSaving(false)
   }
 
   return (
-    <div className="min-h-screen bg-background flex flex-col">
-      <Header />
-      <main className="flex-1 w-full max-w-7xl mx-auto px-4 py-8 flex flex-col gap-6">
+    <div className="flex flex-col gap-4">
+      {/* Back button */}
+      <button
+        onClick={onClose}
+        className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors w-fit"
+      >
+        <ArrowLeft className="h-4 w-4" />
+        Back to Users
+      </button>
 
-        {/* Page header */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <div className="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center">
-              <UserCog className="h-5 w-5 text-primary" />
-            </div>
-            <div>
-              <h1 className="text-xl font-bold text-foreground tracking-tight">Admin Panel</h1>
-              <p className="text-xs text-muted-foreground">Manage users, monitor activity, and provide support.</p>
-            </div>
-          </div>
-          <Button variant="outline" size="sm" className="bg-transparent gap-1.5 self-start sm:self-auto" onClick={() => { fetchData(page); if (activeTab === "audit") fetchAudit(auditPage); if (activeTab === "admins") fetchActiveAdmins(); }}>
-            <RefreshCw className="h-3.5 w-3.5" />
-            Refresh
-          </Button>
+      {detailLoading ? (
+        <div className="flex flex-col items-center justify-center py-24 gap-3">
+          <Loader2 className="h-6 w-6 animate-spin text-primary" />
+          <p className="text-sm text-muted-foreground">Loading user details...</p>
         </div>
-
-        {loading ? (
-          <div className="flex flex-col items-center justify-center py-24 gap-3">
-            <Loader2 className="h-6 w-6 animate-spin text-primary" />
-            <p className="text-sm text-muted-foreground">Loading admin data...</p>
-          </div>
-        ) : (
-          <>
-            {/* Stat cards */}
-            {stats && (
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
-                <StatCard label="Total Users" value={stats.total_users} icon={Users} color="text-primary" accent="bg-primary" />
-                <StatCard label="Total Scans" value={stats.total_scans} icon={Activity} color="text-primary" accent="bg-primary" />
-                <StatCard label="Scans (24h)" value={stats.scans_24h} icon={BarChart3} color="text-emerald-500" accent="bg-emerald-500" />
-                <StatCard label="New Users (7d)" value={stats.new_users_7d} icon={Users} color="text-emerald-500" accent="bg-emerald-500" />
-                <StatCard label="Shared Scans" value={stats.shared_scans} icon={Globe} color="text-primary" accent="bg-primary/70" />
-                <StatCard label="API Keys" value={stats.active_api_keys} icon={Key} color="text-[hsl(var(--severity-medium))]" accent="bg-[hsl(var(--severity-medium))]" />
-                <StatCard label="Schedules" value={stats.active_schedules} icon={CalendarClock} color="text-[hsl(var(--severity-low))]" accent="bg-[hsl(var(--severity-low))]" />
-                <StatCard label="Webhooks" value={stats.active_webhooks} icon={Webhook} color="text-muted-foreground" accent="bg-muted-foreground/50" />
-                <StatCard label="2FA Users" value={stats.users_with_2fa} icon={ShieldCheck} color="text-emerald-500" accent="bg-emerald-500/50" />
-                <StatCard label="Disabled" value={stats.disabled_users} icon={Ban} color="text-destructive" accent="bg-destructive" />
+      ) : (
+        <>
+          {/* User header card */}
+          <Card className="bg-card border-border">
+            <CardContent className="p-5">
+              <div className="flex items-start gap-4">
+                <UserAvatar name={u.name} email={u.email} avatarUrl={u.avatar_url} />
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h2 className="text-lg font-bold text-foreground">{u.name || "Unnamed"}</h2>
+                    {u.role && u.role !== STAFF_ROLES.USER && ROLE_BADGE_STYLES[u.role] && (
+                      <Badge className={cn(ROLE_BADGE_STYLES[u.role], "text-[10px] px-1.5")}>{STAFF_ROLE_LABELS[u.role] || u.role}</Badge>
+                    )}
+                    {u.disabled_at && <Badge className="bg-destructive/10 text-destructive border-destructive/20 text-[10px] px-1.5">Disabled</Badge>}
+                    {u.totp_enabled && <Badge className="bg-emerald-500/10 text-emerald-500 border-emerald-500/20 text-[10px] px-1.5">2FA</Badge>}
+                  </div>
+                  <p className="text-sm text-muted-foreground mt-0.5">{u.email}</p>
+                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-2 text-xs text-muted-foreground">
+                    <span className="flex items-center gap-1"><Activity className="h-3 w-3" />{u.scan_count} scans</span>
+                    <span className="flex items-center gap-1"><Key className="h-3 w-3" />{u.api_key_count} API keys</span>
+                    <span className="flex items-center gap-1"><Monitor className="h-3 w-3" />{u.session_count} sessions</span>
+                    <span className="flex items-center gap-1">
+                      <Clock className="h-3 w-3" />
+                      Joined {new Date(u.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                    </span>
+                  </div>
+                </div>
               </div>
-            )}
 
-            {/* Tab navigation */}
-            <div className="flex items-center gap-1 border-b border-border">
-              {([
-                { key: "users" as const, label: "Users", icon: Users },
-                { key: "audit" as const, label: "Audit Log", icon: History },
-                { key: "admins" as const, label: "Staff", icon: Shield },
-              ]).map((tab) => (
-                <a
-                  key={tab.key}
-                  href={`/admin#${tab.key}`}
-                  onClick={(e) => {
-                    if (!e.ctrlKey && !e.metaKey) {
-                      e.preventDefault()
-                      setActiveTab(tab.key)
-                      if (tab.key === "audit") fetchAudit()
-                      if (tab.key === "admins") fetchActiveAdmins()
-                      setSelectedUser(null)
-                      updateUrlWithUser(null, tab.key, false)
-                    }
-                  }}
-                  className={cn(
-                    "flex items-center gap-2 px-4 py-2.5 text-sm font-medium transition-colors border-b-2 -mb-px",
-                    activeTab === tab.key
-                      ? "text-primary border-primary"
-                      : "text-muted-foreground border-transparent hover:text-foreground hover:border-border",
-                  )}
-                >
-                  <tab.icon className="h-4 w-4" />
-                  {tab.label}
-                </a>
-              ))}
-            </div>
-
-            {/* User detail */}
-            {selectedUser && activeTab === "users" && (
-              <UserDetailPanel
-                detail={selectedUser}
-                detailLoading={detailLoading}
-                actionLoading={actionLoading}
-                callerRole={callerRole}
-                allBadges={allBadges}
-                onRefreshBadges={fetchAllBadges}
-                onBadgesChanged={(awardedIds, revokedIds) => {
-                  // Optimistically patch selectedUser badges without re-fetching
-                  setSelectedUser((prev) => {
-                    if (!prev) return prev
-                    const awardedBadges = allBadges
-                      .filter((b) => awardedIds.includes(b.id))
-                      .map((b) => ({ id: b.id, name: b.name, display_name: b.display_name, color: b.color, awarded_at: new Date().toISOString() }))
-                    const kept = prev.badges.filter((b) => !revokedIds.includes(b.id))
-                    return { ...prev, badges: [...kept, ...awardedBadges] }
-                  })
-                }}
-                onClose={() => { setSelectedUser(null); setTempPassword(null); updateUrlWithUser(null, activeTab) }}
-                onAction={(userId, action, extra) => {
-                  // Actions that don't need confirmation
-                  if (["set_role", "award_badge", "revoke_badge", "create_badge", "delete_badge", "update_name", "update_email", "update_plan", "enable", "clear_rate_limits"].includes(action)) {
-                    handleAction(userId, action, extra)
-                    return
-                  }
-                  // Actions that need confirmation
-                  const confirmActions = ["delete", "disable", "reset_password", "revoke_sessions", "revoke_api_keys", "reset_2fa", "delete_scans"]
-                  if (confirmActions.includes(action)) {
-                    const messages: Record<string, { title: string; desc: string; label: string; danger?: boolean }> = {
-                      delete: { title: "Delete User", desc: `This will permanently delete ${selectedUser.user.email} and all their data. This cannot be undone.`, label: "Delete User", danger: true },
-                      disable: { title: "Disable Account", desc: `This will suspend ${selectedUser.user.email}'s account and log them out of all sessions. They will not be able to log in until re-enabled.`, label: "Disable Account", danger: true },
-                      reset_password: { title: "Reset Password", desc: `This will generate a temporary password for ${selectedUser.user.email}. All sessions will be invalidated. Share the temporary password securely.`, label: "Reset Password" },
-                      revoke_sessions: { title: "Revoke All Sessions", desc: `This will force-logout ${selectedUser.user.email} from all devices and browsers.`, label: "Revoke Sessions" },
-                      revoke_api_keys: { title: "Revoke All API Keys", desc: `This will immediately revoke all active API keys for ${selectedUser.user.email}.`, label: "Revoke Keys" },
-                      reset_2fa: { title: "Reset Two-Factor Authentication", desc: `This will remove 2FA from ${selectedUser.user.email}'s account. They will need to set it up again.`, label: "Reset 2FA", danger: true },
-                      delete_scans: { title: "Delete All Scans", desc: `This will permanently delete all scan history for ${selectedUser.user.email}. This cannot be undone.`, label: "Delete Scans", danger: true },
-                
-                    }
-                    const m = messages[action]
-                    setConfirmDialog({ title: m.title, description: m.desc, confirmLabel: m.label, danger: m.danger ?? false, action: () => handleAction(userId, action) })
-                  } else {
-                    handleAction(userId, action)
-                  }
-                }}
-                tempPassword={tempPassword}
-                onClearTempPassword={() => setTempPassword(null)}
-              />
-            )}
-
-            {/* Users table */}
-            {activeTab === "users" && !selectedUser && (
-              <Card className="bg-card border-border overflow-hidden">
-                <CardHeader className="pb-0 pt-5 px-5">
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                    <div className="flex items-center gap-2">
-                      <CardTitle className="text-base font-semibold">All Users</CardTitle>
-                      <Badge variant="secondary" className="text-[10px] font-medium">{stats ? Number(stats.total_users).toLocaleString() : 0}</Badge>
-                    </div>
-                    <div className="relative w-full sm:w-72">
-                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-                      <Input
-                        placeholder="Search by name or email..."
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                        className="pl-9 h-9 bg-background"
-                      />
-                    </div>
-                  </div>
-                </CardHeader>
-                <CardContent className="p-0 mt-4">
-                  {/* Desktop table */}
-                  <div className="hidden md:block overflow-x-auto">
-                    <table className="w-full">
-                      <thead>
-                        <tr className="border-y border-border bg-muted/30">
-                          <th className="px-5 py-2.5 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider text-left">User</th>
-                          <th className="px-4 py-2.5 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider text-left">Scans</th>
-                          <th className="px-4 py-2.5 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider text-left">API Keys</th>
-                          <th className="px-4 py-2.5 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider text-left">Status</th>
-                          <th className="px-4 py-2.5 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider text-left">Joined</th>
-                          <th className="px-5 py-2.5 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider text-right">Actions</th>
-                        </tr>
-                      </thead>
-                      <tbody className={cn("transition-opacity duration-200", searchLoading && "opacity-40 pointer-events-none")}>
-                        {users.map((u) => (
-                          <tr key={u.id} className="border-b border-border last:border-0 hover:bg-muted/20 transition-colors group">
-                            <td className="px-5 py-3">
-                              <div className="flex items-center gap-3">
-                                <UserAvatar name={u.name} email={u.email} avatarUrl={u.avatar_url} />
-                                <div className="min-w-0">
-                                  <p className="text-sm font-medium text-foreground truncate">{u.name || "Unnamed"}</p>
-                                  <p className="text-xs text-muted-foreground truncate">{u.email}</p>
-                                </div>
-                              </div>
-                            </td>
-                            <td className="px-4 py-3">
-                              <span className="text-sm font-medium text-foreground">{u.scan_count}</span>
-                            </td>
-                            <td className="px-4 py-3">
-                              <span className="text-sm font-medium text-foreground">{u.api_key_count}</span>
-                            </td>
-                            <td className="px-4 py-3">
-                              {(() => {
-                                const badges: React.ReactNode[] = []
-                                if (u.disabled_at) badges.push(<Badge key="disabled" className="bg-destructive/10 text-destructive border-destructive/20 text-[10px] px-1.5 font-medium">Disabled</Badge>)
-                                if (u.role && u.role !== STAFF_ROLES.USER && ROLE_BADGE_STYLES[u.role]) {
-                                  badges.push(<Badge key="role" className={cn(ROLE_BADGE_STYLES[u.role], "text-[10px] px-1.5 font-medium")}>{STAFF_ROLE_LABELS[u.role] || u.role}</Badge>)
-                                }
-                                if (u.plan && u.plan !== "free") {
-                                  const planLabel = u.plan.replace("_supporter", "").charAt(0).toUpperCase() + u.plan.replace("_supporter", "").slice(1)
-                                  badges.push(<Badge key="plan" className="bg-primary/10 text-primary border-primary/20 text-[10px] px-1.5 font-medium">{planLabel}</Badge>)
-                                }
-                                if (u.totp_enabled) badges.push(<Badge key="2fa" className="bg-emerald-500/10 text-emerald-500 border-emerald-500/20 text-[10px] px-1.5 font-medium">2FA</Badge>)
-                                if (badges.length === 0) return <span className="text-xs text-muted-foreground">Active</span>
-                                return <div className="flex items-center gap-1.5 flex-wrap">{badges}</div>
-                              })()}
-                            </td>
-                            <td className="px-4 py-3 text-xs text-muted-foreground whitespace-nowrap">
-                              {new Date(u.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
-                            </td>
-                            <td className="px-5 py-3">
-                              <div className="flex items-center justify-end gap-0.5 opacity-60 group-hover:opacity-100 transition-opacity">
-                                <Button variant="ghost" size="icon" className="h-8 w-8" title="View details" asChild>
-                                  <a
-                                    href={`/admin#users/user-${u.id}`}
-                                    onClick={(e) => {
-                                      if (!e.ctrlKey && !e.metaKey) {
-                                        e.preventDefault()
-                                        fetchUserDetail(u.id)
-                                      }
-                                    }}
-                                  >
-                                    <Eye className="h-4 w-4 text-muted-foreground" />
-                                  </a>
-                                </Button>
-                                {hasStaffPermission(callerRole, STAFF_PERMISSIONS.VIEW_AUDIT_LOG) && (
-                                  <>
-                                    {u.disabled_at ? (
-                                      <Button variant="ghost" size="icon" className="h-8 w-8 text-emerald-500 hover:text-emerald-500 hover:bg-emerald-500/10" title="Re-enable" onClick={() => handleAction(u.id, "enable")}>
-                                        <CheckCircle2 className="h-4 w-4" />
-                                      </Button>
-                                    ) : (
-                                      <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10" title="Disable"
-                                        onClick={() => setConfirmDialog({ title: "Disable Account", description: `Suspend ${u.email}? They will be logged out and unable to sign in.`, confirmLabel: "Disable", danger: true, action: () => handleAction(u.id, "disable") })}>
-                                        <Ban className="h-4 w-4" />
-                                      </Button>
-                                    )}
-                                  </>
-                                )}
-                              </div>
-                            </td>
-                          </tr>
-                        ))}
-                        {users.length === 0 && (
-                          <tr>
-                            <td colSpan={6} className="px-5 py-12 text-center">
-                              <Search className="h-6 w-6 text-muted-foreground/40 mx-auto mb-2" />
-                              <p className="text-sm text-muted-foreground">No users found matching your search.</p>
-                            </td>
-                          </tr>
-                        )}
-                      </tbody>
-                    </table>
-                  </div>
-
-                  {/* Mobile */}
-                  <div className={cn("md:hidden flex flex-col transition-opacity duration-200", searchLoading && "opacity-40 pointer-events-none")}>
-                    {users.map((u) => (
-                      <a
-                        key={u.id}
-                        href={`/admin#users/user-${u.id}`}
-                        onClick={(e) => {
-                          if (!e.ctrlKey && !e.metaKey) {
-                            e.preventDefault()
-                            fetchUserDetail(u.id)
-                          }
-                        }}
-                        className="flex items-center gap-3 px-4 py-3.5 border-b border-border last:border-0 hover:bg-muted/20 text-left transition-colors w-full"
+              {/* Temp password banner */}
+              {tempPassword && (
+                <div className="mt-4 p-3.5 rounded-xl bg-emerald-500/5 border border-emerald-500/20 flex items-start gap-3">
+                  <CheckCircle2 className="h-4 w-4 text-emerald-500 shrink-0 mt-0.5" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-semibold text-emerald-500">Temporary Password Generated</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">Share this securely with the user. It will only be shown once.</p>
+                    <div className="flex items-center gap-2 mt-2">
+                      <code className="text-sm font-mono bg-muted/50 px-2.5 py-1 rounded-lg border border-border text-foreground">{tempPassword}</code>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7"
+                        onClick={() => navigator.clipboard.writeText(tempPassword)}
                       >
-                        <UserAvatar name={u.name} email={u.email} size="sm" avatarUrl={u.avatar_url} />
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium text-foreground truncate">{u.name || "Unnamed"}</p>
-                          <p className="text-xs text-muted-foreground truncate">{u.email}</p>
-                          <div className="flex items-center gap-1.5 mt-1 flex-wrap">
-                            <span className="text-[10px] text-muted-foreground">{u.scan_count} scans</span>
-                            {u.disabled_at && <Badge className="bg-destructive/10 text-destructive border-destructive/20 text-[10px] px-1.5">Disabled</Badge>}
-                            {u.role && u.role !== STAFF_ROLES.USER && ROLE_BADGE_STYLES[u.role] && (
-                              <Badge className={cn(ROLE_BADGE_STYLES[u.role], "text-[10px] px-1.5")}>{STAFF_ROLE_LABELS[u.role] || u.role}</Badge>
-                            )}
-                            {u.plan && u.plan !== "free" && (
-                              <Badge className="bg-primary/10 text-primary border-primary/20 text-[10px] px-1.5">{u.plan.replace("_supporter", "").charAt(0).toUpperCase() + u.plan.replace("_supporter", "").slice(1)}</Badge>
-                            )}
-                            {u.totp_enabled && <Badge className="bg-emerald-500/10 text-emerald-500 border-emerald-500/20 text-[10px] px-1.5">2FA</Badge>}
-                          </div>
-                        </div>
-                        <Eye className="h-4 w-4 text-muted-foreground shrink-0" />
-                      </a>
-                    ))}
-                  </div>
-
-                  {/* Pagination */}
-                  <div className="px-5 py-3 border-t border-border bg-muted/10">
-                    <PaginationControl
-                      currentPage={page}
-                      totalPages={totalPages}
-                      onPageChange={(p) => fetchData(p)}
-                      pageSize={usersPageSize}
-                      onPageSizeChange={(s) => { setUsersPageSize(s); fetchData(1, searchQuery, false, s) }}
-                    />
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-
-            {/* Audit log */}
-            {activeTab === "audit" && (
-              <Card className="bg-card border-border overflow-hidden">
-                <CardHeader className="pb-0 pt-5 px-5">
-                  <div className="flex items-center gap-2">
-                    <CardTitle className="text-base font-semibold">Audit Log</CardTitle>
-                    <Badge variant="secondary" className="text-[10px] font-medium">Recent Activity</Badge>
-                  </div>
-                  <p className="text-xs text-muted-foreground mt-1">All admin actions are logged here for accountability.</p>
-                </CardHeader>
-                <CardContent className="p-0 mt-4">
-                  {auditLogs.length === 0 ? (
-                    <div className="py-16 text-center">
-                      <div className="h-12 w-12 rounded-xl bg-muted/50 flex items-center justify-center mx-auto mb-3">
-                        <History className="h-6 w-6 text-muted-foreground/40" />
-                      </div>
-                      <p className="text-sm font-medium text-muted-foreground">No audit log entries yet.</p>
-                      <p className="text-xs text-muted-foreground mt-1">Admin actions will appear here as they occur.</p>
+                        <ClipboardCopy className="h-3.5 w-3.5" />
+                      </Button>
                     </div>
-                  ) : (
-                    <>
-                      <div className={cn("flex flex-col transition-opacity duration-200", auditPaging && "opacity-40 pointer-events-none")}>
-                        {auditLogs.map((log, i) => {
-                          const isExpanded = expandedLog === log.id
-                          const adminDisplay = log.admin_name || log.admin_email.split("@")[0]
-                          const targetDisplay = log.target_name || (log.target_email ? log.target_email.split("@")[0] : null)
-                          return (
-                            <div key={log.id} className={cn(i < auditLogs.length - 1 && "border-b border-border")}>
-                              <button
-                                className={cn("w-full flex items-start gap-4 px-5 py-3.5 transition-colors hover:bg-muted/20 text-left", isExpanded && "bg-muted/10")}
-                                onClick={() => setExpandedLog(isExpanded ? null : log.id)}
-                              >
-                                <div className="flex flex-col items-center gap-1 pt-0.5">
-                                  <UserAvatar name={log.admin_name} email={log.admin_email} size="sm" avatarUrl={log.admin_avatar_url} />
-                                </div>
-                                <div className="flex-1 min-w-0">
-                                  <div className="flex flex-col sm:flex-row sm:items-center gap-1.5 sm:gap-2">
-                                    <span className="text-sm font-medium text-foreground">{adminDisplay}</span>
-                                    <ActionBadge action={log.action} />
-                                    {targetDisplay && (
-                                      <span className="text-xs text-muted-foreground">
-                                        on <span className="text-foreground font-medium">{targetDisplay}</span>
-                                      </span>
-                                    )}
-                                  </div>
-                                  <div className="flex items-center gap-2 mt-0.5">
-                                    <span className="text-[10px] text-muted-foreground">
-                                      {new Date(log.created_at).toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
-                                    </span>
-                                    {log.ip_address && (
-                                      <span className="text-[10px] text-muted-foreground font-mono flex items-center gap-0.5">
-                                        <Globe className="h-2.5 w-2.5" /> {log.ip_address}
-                                      </span>
-                                    )}
-                                  </div>
-                                </div>
-                                {isExpanded ? <ChevronUp className="h-3.5 w-3.5 text-muted-foreground shrink-0 mt-1" /> : <ChevronDown className="h-3.5 w-3.5 text-muted-foreground shrink-0 mt-1" />}
-                              </button>
-
-                              {/* Expanded detail */}
-                              {isExpanded && (
-                                <div className="px-5 pb-4 pt-0 ml-11">
-                                  <div className="rounded-xl bg-muted/20 border border-border p-4 flex flex-col gap-3">
-                                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
-                                      <div>
-                                        <p className="text-muted-foreground mb-0.5 text-[10px] uppercase tracking-wider font-semibold">Performed By</p>
-                                        <p className="text-foreground font-medium">{log.admin_name || "N/A"}</p>
-                                        <p className="text-muted-foreground text-[11px]">{log.admin_email}</p>
-                                      </div>
-                                      {log.target_email && (
-                                        <div>
-                                          <p className="text-muted-foreground mb-0.5 text-[10px] uppercase tracking-wider font-semibold">Target User</p>
-                                          <p className="text-foreground font-medium">{log.target_name || "N/A"}</p>
-                                          <p className="text-muted-foreground text-[11px]">{log.target_email}</p>
-                                        </div>
-                                      )}
-                                      <div>
-                                        <p className="text-muted-foreground mb-0.5 text-[10px] uppercase tracking-wider font-semibold">Timestamp</p>
-                                        <p className="text-foreground font-medium">{new Date(log.created_at).toLocaleString()}</p>
-                                      </div>
-                                      {log.ip_address && (
-                                        <div>
-                                          <p className="text-muted-foreground mb-0.5 text-[10px] uppercase tracking-wider font-semibold">IP Address</p>
-                                          <p className="text-foreground font-mono">{log.ip_address}</p>
-                                        </div>
-                                      )}
-                                    </div>
-                                    {log.details && (
-                                      <div>
-                                        <p className="text-muted-foreground mb-0.5 text-[10px] uppercase tracking-wider font-semibold">Details</p>
-                                        <p className="text-xs text-foreground leading-relaxed">{log.details}</p>
-                                      </div>
-                                    )}
-                                  </div>
-                                </div>
-                              )}
-                            </div>
-                          )
-                        })}
-                      </div>
-                      {auditTotalPages > 1 && (
-                        <div className="px-5 py-3 border-t border-border bg-muted/10">
-                  <PaginationControl
-                    currentPage={auditPage}
-                    totalPages={auditTotalPages}
-                    onPageChange={(p) => fetchAudit(p)}
-                    pageSize={auditPageSize}
-                    onPageSizeChange={(s) => { setAuditPageSize(s); fetchAudit(1, s) }}
-                  />
-                        </div>
-                      )}
-                    </>
-                  )}
-                </CardContent>
-              </Card>
-            )}
-
-            {/* Active Admins tab */}
-            {activeTab === "admins" && (
-              <Card className="bg-card border-border overflow-hidden">
-                <CardHeader className="pb-0 pt-5 px-5">
-                  <div className="flex items-center gap-2">
-                    <CardTitle className="text-base font-semibold">Staff Members</CardTitle>
-                    <Badge variant="secondary" className="text-[10px] font-medium">{activeAdmins.length}</Badge>
-                    <Button variant="outline" size="sm" className="ml-auto h-7 bg-transparent gap-1 text-xs" onClick={fetchActiveAdmins}>
-                      <RefreshCw className={cn("h-3 w-3", adminsLoading && "animate-spin")} /> Refresh
-                    </Button>
                   </div>
-                  <p className="text-xs text-muted-foreground mt-1">All staff members (admins, moderators, support) and their current activity status.</p>
-                </CardHeader>
-                <CardContent className="p-0 mt-4">
-                  {adminsLoading ? (
-                    <div className="flex flex-col items-center justify-center py-16 gap-3">
-                      <Loader2 className="h-5 w-5 animate-spin text-primary" />
-                      <p className="text-xs text-muted-foreground">Loading admin data...</p>
-                    </div>
-                  ) : activeAdmins.length === 0 ? (
-                    <div className="py-16 text-center">
-                      <Shield className="h-8 w-8 text-muted-foreground/30 mx-auto mb-2" />
-                      <p className="text-sm text-muted-foreground">No administrators found.</p>
-                    </div>
-                  ) : (
-                    <>
-                      <div className="flex flex-col">
-                        {pagedStaff.map((admin, i) => {
-                          const isOnline = admin.active_sessions > 0
-                          const displayName = admin.name || admin.email.split("@")[0]
-                          return (
-                            <div key={admin.id} className={cn("flex items-start gap-4 px-5 py-4 transition-colors hover:bg-muted/20", i < pagedStaff.length - 1 && "border-b border-border")}>
-                              {/* Avatar with online indicator */}
-                              <div className="relative shrink-0">
-                                <UserAvatar name={admin.name} email={admin.email} avatarUrl={admin.avatar_url} />
-                                <div className={cn(
-                                  "absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-card",
-                                  isOnline ? "bg-emerald-500" : "bg-muted-foreground/40"
-                                )} />
-                              </div>
-
-                              <div className="flex-1 min-w-0">
-                                <div className="flex items-center gap-2 flex-wrap">
-                                  <span className="text-sm font-semibold text-foreground">{displayName}</span>
-                                  <Badge className={cn("text-[10px] px-1.5 font-medium", ROLE_BADGE_STYLES[admin.role] || ROLE_BADGE_STYLES.user)}>
-                                    {STAFF_ROLE_LABELS[admin.role] || admin.role}
-                                  </Badge>
-                                  <Badge className={cn("text-[10px] px-1.5 font-medium",
-                                    isOnline
-                                      ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/20"
-                                      : "bg-muted text-muted-foreground border-border"
-                                  )}>
-                                    {isOnline ? "Online" : "Offline"}
-                                  </Badge>
-                                  {admin.totp_enabled && (
-                                    <Badge className="bg-emerald-500/10 text-emerald-500 border-emerald-500/20 text-[10px] px-1.5 font-medium">2FA</Badge>
-                                  )}
-                                </div>
-                                <p className="text-xs text-muted-foreground mt-0.5">{admin.email}</p>
-
-                                {/* Activity stats row */}
-                                <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-2.5">
-                                  <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
-                                    <Monitor className="h-3 w-3" />
-                                    {admin.active_sessions} active session{admin.active_sessions !== 1 ? "s" : ""}
-                                  </span>
-                                  <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
-                                    <Activity className="h-3 w-3" />
-                                    {admin.total_actions} total action{admin.total_actions !== 1 ? "s" : ""}
-                                    {admin.actions_24h > 0 && <span className="text-primary font-medium">({admin.actions_24h} today)</span>}
-                                  </span>
-                                  {admin.last_ip && (
-                                    <span className="flex items-center gap-1 text-[11px] text-muted-foreground font-mono">
-                                      <Globe className="h-3 w-3" />
-                                      {admin.last_ip}
-                                    </span>
-                                  )}
-                                </div>
-
-                                {/* Last action */}
-                                {admin.last_admin_action && (
-                                  <div className="mt-2 text-[11px] text-muted-foreground">
-                                    Last action: <ActionBadge action={admin.last_action_type || ""} />
-                                    <span className="ml-1.5">
-                                      {new Date(admin.last_admin_action).toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
-                                    </span>
-                                  </div>
-                                )}
-                              </div>
-
-                              <div className="text-right shrink-0">
-                                <p className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold">Admin since</p>
-                                <p className="text-xs text-foreground mt-0.5">
-                                  {new Date(admin.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
-                                </p>
-                              </div>
-                            </div>
-                          )
-                        })}
-                      </div>
-                      {staffPagination.totalPages > 1 && (
-                        <div className="px-5 py-3 border-t border-border bg-muted/10">
-                  <PaginationControl
-                    currentPage={staffPage}
-                    totalPages={staffPagination.totalPages}
-                    onPageChange={setStaffPage}
-                    pageSize={staffPageSize}
-                    onPageSizeChange={(s) => { setStaffPageSize(s); setStaffPage(1) }}
-                    totalItems={activeAdmins.length}
-                  />
-                        </div>
-                      )}
-                    </>
+                  <button onClick={onClearTempPassword} className="opacity-60 hover:opacity-100 transition-opacity">
+                    <X className="h-4 w-4 text-muted-foreground" />
+                  </button>
+                </div>
               )}
             </CardContent>
           </Card>
-        </>
-      )}
 
-      {/* User data sections */}
-      {!detailLoading && (
-        <Card className="bg-card border-border">
-          <CardHeader className="pb-0 pt-4 px-5">
-            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-              {!hasStaffPermission(callerRole, STAFF_PERMISSIONS.DISABLE_USER) ? "Account Information" : "Support Actions"}
-            </p>
-          </CardHeader>
-          <CardContent className="p-5 pt-3">
-            {!hasStaffPermission(callerRole, STAFF_PERMISSIONS.DISABLE_USER) ? (
-              <p className="text-xs text-muted-foreground">You have view-only access. Contact an admin or moderator to perform actions on this user.</p>
-            ) : (
-              <div className="flex flex-col gap-4">
-                {/* Session & Security */}
-                <div>
-                  <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium mb-2">Session &amp; Security</p>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-                    <ActionCard
-                      icon={LogOut} label="Force Logout"
-                      description={`Revoke all ${u.session_count} active session(s)`}
-                      color="text-primary" bg="bg-primary/10"
-                      loading={isLoading("revoke_sessions")}
-                      onClick={() => onAction(u.id, "revoke_sessions")}
-                    />
-                    <ActionCard
-                      icon={Key} label="Revoke API Keys"
-                      description={`Invalidate all ${u.api_key_count} API key(s)`}
-                      color="text-[hsl(var(--severity-medium))]" bg="bg-[hsl(var(--severity-medium))]/10"
-                      loading={isLoading("revoke_api_keys")}
-                      onClick={() => onAction(u.id, "revoke_api_keys")}
-                    />
-                    {hasStaffPermission(callerRole, STAFF_PERMISSIONS.RESET_USER_PASSWORD) && (
+          {/* Support Actions */}
+          <Card className="bg-card border-border">
+            <CardHeader className="pb-0 pt-4 px-5">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                {!hasStaffPermission(callerRole, STAFF_PERMISSIONS.DISABLE_USER) ? "Account Information" : "Support Actions"}
+              </p>
+            </CardHeader>
+            <CardContent className="p-5 pt-3">
+              {!hasStaffPermission(callerRole, STAFF_PERMISSIONS.DISABLE_USER) ? (
+                <p className="text-xs text-muted-foreground">
+                  You have view-only access. Contact an admin or moderator to perform actions on this user.
+                </p>
+              ) : (
+                <div className="flex flex-col gap-4">
+                  {/* Session & Security */}
+                  <div>
+                    <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium mb-2">Session &amp; Security</p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
                       <ActionCard
-                        icon={KeyRound} label="Reset Password"
-                        description={u.totp_enabled ? "Unavailable: 2FA enabled" : "Generate temp password"}
-                        color="text-[hsl(var(--severity-medium))]" bg="bg-[hsl(var(--severity-medium))]/10"
-                        disabled={u.totp_enabled} loading={isLoading("reset_password")}
-                        onClick={() => onAction(u.id, "reset_password")}
+                        icon={LogOut}
+                        label="Force Logout"
+                        description={`Revoke all ${u.session_count} active session(s)`}
+                        color="text-primary"
+                        bg="bg-primary/10"
+                        loading={isLoading("revoke_sessions")}
+                        onClick={() => onAction(u.id, "revoke_sessions")}
                       />
-                    )}
-                    {hasStaffPermission(callerRole, STAFF_PERMISSIONS.RESET_USER_2FA) && u.totp_enabled && (
                       <ActionCard
-                        icon={ShieldOff} label="Reset 2FA"
-                        description="Remove two-factor auth"
-                        color="text-[hsl(var(--severity-medium))]" bg="bg-[hsl(var(--severity-medium))]/10"
-                        loading={isLoading("reset_2fa")}
-                        onClick={() => onAction(u.id, "reset_2fa")}
+                        icon={Key}
+                        label="Revoke API Keys"
+                        description={`Invalidate all ${u.api_key_count} API key(s)`}
+                        color="text-[hsl(var(--severity-medium))]"
+                        bg="bg-[hsl(var(--severity-medium))]/10"
+                        loading={isLoading("revoke_api_keys")}
+                        onClick={() => onAction(u.id, "revoke_api_keys")}
                       />
-                    )}
-                    {hasStaffPermission(callerRole, STAFF_PERMISSIONS.MANAGE_RATE_LIMITS) && (
+                      {hasStaffPermission(callerRole, STAFF_PERMISSIONS.RESET_USER_PASSWORD) && (
+                        <ActionCard
+                          icon={KeyRound}
+                          label="Reset Password"
+                          description={u.totp_enabled ? "Unavailable: 2FA enabled" : "Generate temp password"}
+                          color="text-[hsl(var(--severity-medium))]"
+                          bg="bg-[hsl(var(--severity-medium))]/10"
+                          disabled={u.totp_enabled}
+                          loading={isLoading("reset_password")}
+                          onClick={() => onAction(u.id, "reset_password")}
+                        />
+                      )}
+                      {hasStaffPermission(callerRole, STAFF_PERMISSIONS.RESET_USER_2FA) && u.totp_enabled && (
+                        <ActionCard
+                          icon={ShieldOff}
+                          label="Reset 2FA"
+                          description="Remove two-factor auth"
+                          color="text-[hsl(var(--severity-medium))]"
+                          bg="bg-[hsl(var(--severity-medium))]/10"
+                          loading={isLoading("reset_2fa")}
+                          onClick={() => onAction(u.id, "reset_2fa")}
+                        />
+                      )}
+                      {hasStaffPermission(callerRole, STAFF_PERMISSIONS.MANAGE_RATE_LIMITS) && (
+                        <ActionCard
+                          icon={RefreshCw}
+                          label="Clear Rate Limits"
+                          description="Reset rate limit counters"
+                          color="text-primary"
+                          bg="bg-primary/10"
+                          loading={isLoading("clear_rate_limits")}
+                          onClick={() => onAction(u.id, "clear_rate_limits")}
+                        />
+                      )}
                       <ActionCard
-                        icon={RefreshCw} label="Clear Rate Limits"
-                        description="Reset rate limit counters"
-                        color="text-primary" bg="bg-primary/10"
-                        loading={isLoading("clear_rate_limits")}
-                        onClick={() => onAction(u.id, "clear_rate_limits")}
+                        icon={UserX}
+                        label="Force Logout All"
+                        description="Logout + revoke all API keys"
+                        color="text-[hsl(var(--severity-medium))]"
+                        bg="bg-[hsl(var(--severity-medium))]/10"
+                        loading={isLoading("force_logout_all")}
+                        onClick={() => onAction(u.id, "force_logout_all")}
                       />
-                    )}
-                    <ActionCard
-                      icon={UserX} label="Force Logout All"
-                      description="Logout + revoke all API keys"
-                      color="text-[hsl(var(--severity-medium))]" bg="bg-[hsl(var(--severity-medium))]/10"
-                      loading={isLoading("force_logout_all")}
-                      onClick={() => onAction(u.id, "force_logout_all")}
-                    />
-                  </div>
-                </div>
-
-                {/* Account Management */}
-                <div>
-                  <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium mb-2">Account Management</p>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-                    {!u.email_verified_at ? (
-                      <ActionCard
-                        icon={MailCheck} label="Verify Email"
-                        description="Manually verify email address"
-                        color="text-emerald-500" bg="bg-emerald-500/10"
-                        loading={isLoading("verify_email")}
-                        onClick={() => onAction(u.id, "verify_email")}
-                      />
-                    ) : (
-                      <ActionCard
-                        icon={MailX} label="Unverify Email"
-                        description="Remove email verification"
-                        color="text-[hsl(var(--severity-medium))]" bg="bg-[hsl(var(--severity-medium))]/10"
-                        loading={isLoading("unverify_email")}
-                        onClick={() => onAction(u.id, "unverify_email")}
-                      />
-                    )}
-                    <ActionCard
-                      icon={ImageOff} label="Clear Avatar"
-                      description="Remove profile picture"
-                      color="text-muted-foreground" bg="bg-muted/50"
-                      loading={isLoading("clear_avatar")}
-                      onClick={() => onAction(u.id, "clear_avatar")}
-                    />
-                    {hasStaffPermission(callerRole, STAFF_PERMISSIONS.EDIT_USER_ROLE) && (
-                      <ActionCard
-                        icon={Beaker} label="Toggle Beta Access"
-                        description="Enable/disable beta features"
-                        color="text-primary" bg="bg-primary/10"
-                        loading={isLoading("toggle_beta_access")}
-                        onClick={() => onAction(u.id, "toggle_beta_access")}
-                      />
-                    )}
-                  </div>
-                </div>
-
-                {/* Danger Zone */}
-                <div>
-                  <p className="text-[10px] uppercase tracking-wider text-destructive/70 font-medium mb-2">Danger Zone</p>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-                    <ActionCard
-                      icon={u.disabled_at ? CheckCircle2 : Ban}
-                      label={u.disabled_at ? "Re-enable Account" : "Disable Account"}
-                      description={u.disabled_at ? "Allow user to log in" : "Suspend and force-logout"}
-                      color={u.disabled_at ? "text-emerald-500" : "text-destructive"}
-                      bg={u.disabled_at ? "bg-emerald-500/10" : "bg-destructive/10"}
-                      variant={u.disabled_at ? "success" : "danger"}
-                      onClick={() => onAction(u.id, u.disabled_at ? "enable" : "disable")}
-                    />
-                    {hasStaffPermission(callerRole, STAFF_PERMISSIONS.DELETE_ANY_SCAN) && (
-                      <ActionCard
-                        icon={Activity} label="Delete All Scans"
-                        description={`Remove all ${u.scan_count} scan(s)`}
-                        color="text-destructive" bg="bg-destructive/10" variant="danger"
-                        loading={isLoading("delete_scans")}
-                        onClick={() => onAction(u.id, "delete_scans")}
-                      />
-                    )}
-                    <ActionCard
-                      icon={Webhook} label="Delete Webhooks"
-                      description="Remove all webhooks"
-                      color="text-destructive" bg="bg-destructive/10" variant="danger"
-                      loading={isLoading("delete_webhooks")}
-                      onClick={() => onAction(u.id, "delete_webhooks")}
-                    />
-                    <ActionCard
-                      icon={CalendarOff} label="Delete Schedules"
-                      description="Remove scheduled scans"
-                      color="text-destructive" bg="bg-destructive/10" variant="danger"
-                      loading={isLoading("delete_schedules")}
-                      onClick={() => onAction(u.id, "delete_schedules")}
-                    />
-                    {hasStaffPermission(callerRole, STAFF_PERMISSIONS.DELETE_USER) && (
-                      <ActionCard
-                        icon={Trash2} label="Delete Account"
-                        description="Permanently remove user"
-                        color="text-destructive" bg="bg-destructive/10" variant="danger"
-                        onClick={() => onAction(u.id, "delete")}
-                      />
-                    )}
-                  </div>
-                </div>
-
-                {u.totp_enabled && hasStaffPermission(callerRole, STAFF_PERMISSIONS.RESET_USER_2FA) && (
-                  <div className="flex items-start gap-2.5 p-3.5 rounded-lg bg-[hsl(var(--severity-medium))]/5 border border-[hsl(var(--severity-medium))]/20">
-                    <AlertTriangle className="h-4 w-4 text-[hsl(var(--severity-medium))] shrink-0 mt-0.5" />
-                    <div>
-                      <p className="text-xs font-medium text-foreground">Password reset is unavailable for this user</p>
-                      <p className="text-[11px] text-muted-foreground mt-0.5 leading-relaxed">
-                        This account has two-factor authentication enabled. For security, passwords cannot be reset by admins when 2FA is active. The user should use their backup codes to regain access, or disable 2FA first.
-                      </p>
                     </div>
                   </div>
-                )}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      )}
 
-      {/* User data sections */}
-      {!detailLoading && (
-        <>
+                  {/* Account Management */}
+                  <div>
+                    <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium mb-2">Account Management</p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                      {!u.email_verified_at ? (
+                        <ActionCard
+                          icon={MailCheck}
+                          label="Verify Email"
+                          description="Manually verify email address"
+                          color="text-emerald-500"
+                          bg="bg-emerald-500/10"
+                          loading={isLoading("verify_email")}
+                          onClick={() => onAction(u.id, "verify_email")}
+                        />
+                      ) : (
+                        <ActionCard
+                          icon={MailX}
+                          label="Unverify Email"
+                          description="Remove email verification"
+                          color="text-[hsl(var(--severity-medium))]"
+                          bg="bg-[hsl(var(--severity-medium))]/10"
+                          loading={isLoading("unverify_email")}
+                          onClick={() => onAction(u.id, "unverify_email")}
+                        />
+                      )}
+                      <ActionCard
+                        icon={ImageOff}
+                        label="Clear Avatar"
+                        description="Remove profile picture"
+                        color="text-muted-foreground"
+                        bg="bg-muted/50"
+                        loading={isLoading("clear_avatar")}
+                        onClick={() => onAction(u.id, "clear_avatar")}
+                      />
+                      {hasStaffPermission(callerRole, STAFF_PERMISSIONS.EDIT_USER_ROLE) && (
+                        <ActionCard
+                          icon={Beaker}
+                          label="Toggle Beta Access"
+                          description="Enable/disable beta features"
+                          color="text-primary"
+                          bg="bg-primary/10"
+                          loading={isLoading("toggle_beta_access")}
+                          onClick={() => onAction(u.id, "toggle_beta_access")}
+                        />
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Danger Zone */}
+                  <div>
+                    <p className="text-[10px] uppercase tracking-wider text-destructive/70 font-medium mb-2">Danger Zone</p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                      <ActionCard
+                        icon={u.disabled_at ? CheckCircle2 : Ban}
+                        label={u.disabled_at ? "Re-enable Account" : "Disable Account"}
+                        description={u.disabled_at ? "Allow user to log in" : "Suspend and force-logout"}
+                        color={u.disabled_at ? "text-emerald-500" : "text-destructive"}
+                        bg={u.disabled_at ? "bg-emerald-500/10" : "bg-destructive/10"}
+                        variant={u.disabled_at ? "success" : "danger"}
+                        onClick={() => onAction(u.id, u.disabled_at ? "enable" : "disable")}
+                      />
+                      {hasStaffPermission(callerRole, STAFF_PERMISSIONS.DELETE_ANY_SCAN) && (
+                        <ActionCard
+                          icon={Activity}
+                          label="Delete All Scans"
+                          description={`Remove all ${u.scan_count} scan(s)`}
+                          color="text-destructive"
+                          bg="bg-destructive/10"
+                          variant="danger"
+                          loading={isLoading("delete_scans")}
+                          onClick={() => onAction(u.id, "delete_scans")}
+                        />
+                      )}
+                      <ActionCard
+                        icon={Webhook}
+                        label="Delete Webhooks"
+                        description="Remove all webhooks"
+                        color="text-destructive"
+                        bg="bg-destructive/10"
+                        variant="danger"
+                        loading={isLoading("delete_webhooks")}
+                        onClick={() => onAction(u.id, "delete_webhooks")}
+                      />
+                      <ActionCard
+                        icon={CalendarOff}
+                        label="Delete Schedules"
+                        description="Remove scheduled scans"
+                        color="text-destructive"
+                        bg="bg-destructive/10"
+                        variant="danger"
+                        loading={isLoading("delete_schedules")}
+                        onClick={() => onAction(u.id, "delete_schedules")}
+                      />
+                      {hasStaffPermission(callerRole, STAFF_PERMISSIONS.DELETE_USER) && (
+                        <ActionCard
+                          icon={Trash2}
+                          label="Delete Account"
+                          description="Permanently remove user"
+                          color="text-destructive"
+                          bg="bg-destructive/10"
+                          variant="danger"
+                          onClick={() => onAction(u.id, "delete")}
+                        />
+                      )}
+                    </div>
+                  </div>
+
+                  {u.totp_enabled && hasStaffPermission(callerRole, STAFF_PERMISSIONS.RESET_USER_2FA) && (
+                    <div className="flex items-start gap-2.5 p-3.5 rounded-lg bg-[hsl(var(--severity-medium))]/5 border border-[hsl(var(--severity-medium))]/20">
+                      <AlertTriangle className="h-4 w-4 text-[hsl(var(--severity-medium))] shrink-0 mt-0.5" />
+                      <div>
+                        <p className="text-xs font-medium text-foreground">Password reset is unavailable for this user</p>
+                        <p className="text-[11px] text-muted-foreground mt-0.5 leading-relaxed">
+                          This account has two-factor authentication enabled. For security, passwords cannot be reset by admins when 2FA is active. The user should use their backup codes to regain access, or disable 2FA first.
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
           {/* Gifted Subscription */}
           {hasStaffPermission(callerRole, STAFF_PERMISSIONS.UPDATE_PLAN) && (
             <Card className="bg-card border-border">
               <CardHeader className="pb-0 pt-4 px-5">
-                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                  Gifted Subscription
-                </p>
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Gifted Subscription</p>
               </CardHeader>
               <CardContent className="p-5 pt-3">
                 <div className="flex flex-col gap-3">
                   {!showGiftForm && (
-                    <Button
-                      size="sm"
-                      onClick={() => setShowGiftForm(true)}
-                      className="w-full"
-                    >
+                    <Button size="sm" onClick={() => setShowGiftForm(true)} className="w-full">
                       Gift a Subscription
                     </Button>
                   )}
@@ -1317,7 +767,9 @@ function AdminContent() {
                           />
                         </div>
                       </div>
-                      <p className="text-[10px] text-muted-foreground">Gift expires at the selected date/time. User will revert to free plan unless they have a Stripe subscription.</p>
+                      <p className="text-[10px] text-muted-foreground">
+                        Gift expires at the selected date/time. User will revert to free plan unless they have a Stripe subscription.
+                      </p>
                       <div className="flex items-center gap-2">
                         <Button
                           size="sm"
@@ -1365,7 +817,6 @@ function AdminContent() {
             </Card>
           )}
 
-          {/* User data sections */}
           {/* Recent Scans */}
           <Card className="bg-card border-border">
             <CardHeader className="pb-2 pt-4 px-5">
@@ -1385,7 +836,9 @@ function AdminContent() {
                       <Globe className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
                       <div className="flex-1 min-w-0">
                         <p className="text-xs text-foreground truncate font-medium">{scan.url}</p>
-                        <p className="text-[10px] text-muted-foreground">{scan.findings_count} findings via {scan.source}</p>
+                        <p className="text-[10px] text-muted-foreground">
+                          {scan.findings_count} findings via {scan.source}
+                        </p>
                       </div>
                       <span className="text-[10px] text-muted-foreground shrink-0">
                         {new Date(scan.scanned_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
@@ -1418,10 +871,11 @@ function AdminContent() {
                         <span className="text-xs font-mono text-foreground">{key.key_prefix}...</span>
                         <span className="text-[10px] text-muted-foreground truncate">{key.name}</span>
                       </div>
-                      {key.revoked_at
-                        ? <Badge className="bg-destructive/10 text-destructive border-destructive/20 text-[10px]">Revoked</Badge>
-                        : <Badge className="bg-emerald-500/10 text-emerald-500 border-emerald-500/20 text-[10px]">Active</Badge>
-                      }
+                      {key.revoked_at ? (
+                        <Badge className="bg-destructive/10 text-destructive border-destructive/20 text-[10px]">Revoked</Badge>
+                      ) : (
+                        <Badge className="bg-emerald-500/10 text-emerald-500 border-emerald-500/20 text-[10px]">Active</Badge>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -1448,9 +902,18 @@ function AdminContent() {
                       <div className="flex items-center gap-2 min-w-0">
                         <Webhook className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
                         <span className="text-xs text-foreground truncate font-medium">{wh.name}</span>
-                        <Badge variant="secondary" className="text-[10px] shrink-0">{wh.type}</Badge>
+                        <Badge variant="secondary" className="text-[10px] shrink-0">
+                          {wh.type}
+                        </Badge>
                       </div>
-                      <Badge className={cn("text-[10px] shrink-0", wh.active ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/20" : "bg-muted text-muted-foreground border-border")}>
+                      <Badge
+                        className={cn(
+                          "text-[10px] shrink-0",
+                          wh.active
+                            ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/20"
+                            : "bg-muted text-muted-foreground border-border",
+                        )}
+                      >
                         {wh.active ? "Active" : "Inactive"}
                       </Badge>
                     </div>
@@ -1486,9 +949,7 @@ function AdminContent() {
                         </span>
                       </div>
                       <div className="flex items-center gap-3 text-[10px] text-muted-foreground pl-5">
-                        {sess.ip_address && (
-                          <span className="font-mono">{sess.ip_address}</span>
-                        )}
+                        {sess.ip_address && <span className="font-mono">{sess.ip_address}</span>}
                         {sess.user_agent && (
                           <span className="truncate max-w-[200px]" title={sess.user_agent}>
                             {sess.user_agent.length > 40 ? sess.user_agent.substring(0, 40) + "..." : sess.user_agent}
@@ -1501,97 +962,1046 @@ function AdminContent() {
               )}
             </CardContent>
           </Card>
-        </div>
-        </>
-      )}
 
-      {/* Floating Save Bar - appears when there are pending changes */}
-      {hasChanges && (
-        <div className="fixed bottom-0 left-0 right-0 z-50 p-4 pointer-events-none">
-          <div className="max-w-3xl mx-auto pointer-events-auto">
-            <div className="flex items-center justify-between gap-4 px-5 py-3.5 rounded-xl bg-card border border-primary/30 shadow-2xl shadow-primary/10 backdrop-blur-sm">
-              <div className="flex items-center gap-3">
-                <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center">
-                  <Save className="h-4 w-4 text-primary" />
+          {/* Floating Save Bar */}
+          {hasChanges && (
+            <div className="fixed bottom-0 left-0 right-0 z-50 p-4 pointer-events-none">
+              <div className="max-w-3xl mx-auto pointer-events-auto">
+                <div className="flex items-center justify-between gap-4 px-5 py-3.5 rounded-xl bg-card border border-primary/30 shadow-2xl shadow-primary/10 backdrop-blur-sm">
+                  <div className="flex items-center gap-3">
+                    <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center">
+                      <Save className="h-4 w-4 text-primary" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-foreground">Unsaved Changes</p>
+                      <p className="text-[11px] text-muted-foreground">
+                        {[
+                          Object.keys(pendingChanges).length > 0 &&
+                          `${Object.keys(pendingChanges).length} field${Object.keys(pendingChanges).length !== 1 ? "s" : ""}`,
+                          pendingBadgeAwards.length > 0 &&
+                          `${pendingBadgeAwards.length} badge${pendingBadgeAwards.length !== 1 ? "s" : ""} to award`,
+                          pendingBadgeRevokes.length > 0 &&
+                          `${pendingBadgeRevokes.length} badge${pendingBadgeRevokes.length !== 1 ? "s" : ""} to remove`,
+                        ]
+                          .filter(Boolean)
+                          .join(", ")}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button variant="ghost" size="sm" onClick={discardChanges} disabled={isSaving} className="h-9 px-4">
+                      Discard
+                    </Button>
+                    <Button size="sm" onClick={saveAllChanges} disabled={isSaving} className="h-9 px-5 gap-2">
+                      {isSaving ? (
+                        <>
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          Saving...
+                        </>
+                      ) : (
+                        <>
+                          <Save className="h-3.5 w-3.5" />
+                          Save Changes
+                        </>
+                      )}
+                    </Button>
+                  </div>
                 </div>
-                <div>
-                  <p className="text-sm font-medium text-foreground">Unsaved Changes</p>
-                  <p className="text-[11px] text-muted-foreground">
-                    {[
-                      Object.keys(pendingChanges).length > 0 && `${Object.keys(pendingChanges).length} field${Object.keys(pendingChanges).length !== 1 ? "s" : ""}`,
-                      pendingBadgeAwards.length > 0 && `${pendingBadgeAwards.length} badge${pendingBadgeAwards.length !== 1 ? "s" : ""} to award`,
-                      pendingBadgeRevokes.length > 0 && `${pendingBadgeRevokes.length} badge${pendingBadgeRevokes.length !== 1 ? "s" : ""} to remove`,
-                    ].filter(Boolean).join(", ")}
-                  </p>
-                </div>
-              </div>
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={discardChanges}
-                  disabled={isSaving}
-                  className="h-9 px-4"
-                >
-                  Discard
-                </Button>
-                <Button
-                  size="sm"
-                  onClick={saveAllChanges}
-                  disabled={isSaving}
-                  className="h-9 px-5 gap-2"
-                >
-                  {isSaving ? (
-                    <>
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      Saving...
-                    </>
-                  ) : (
-                    <>
-                      <Save className="h-3.5 w-3.5" />
-                      Save Changes
-                    </>
-                  )}
-                </Button>
               </div>
             </div>
-          </div>
-        </div>
+          )}
+        </>
       )}
     </div>
   )
 }
 
-// --- Action Card ---
-function ActionCard({
-  icon: Icon, label, description, color, bg, variant, disabled, loading, onClick,
-}: {
-  icon: React.ElementType; label: string; description: string
-  color: string; bg: string; variant?: "danger" | "success"
-  disabled?: boolean; loading?: boolean; onClick: () => void
-}) {
+export default function AdminPage() {
+  return <AdminContent />
+}
+
+function AdminContent() {
+  const router = useRouter()
+  const [loading, setLoading] = useState(true)
+  const [forbidden, setForbidden] = useState(false)
+  const [stats, setStats] = useState<AdminStats | null>(null)
+  const [users, setUsers] = useState<AdminUser[]>([])
+  const [page, setPage] = useState(1)
+  const [totalPages, setTotalPages] = useState(1)
+  const [usersPageSize, setUsersPageSize] = useState(10)
+  const [searchQuery, setSearchQuery] = useState("")
+  const [actionLoading, setActionLoading] = useState<string | null>(null)
+  const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null)
+  const [activeTab, setActiveTab] = useState<"users" | "audit" | "admins">("users")
+  const [selectedUser, setSelectedUser] = useState<UserDetail | null>(null)
+  const [detailLoading, setDetailLoading] = useState(false)
+  const [confirmDialog, setConfirmDialog] = useState<{
+    title: string
+    description: string
+    confirmLabel: string
+    danger?: boolean
+    action: () => Promise<void>
+    children?: React.ReactNode
+  } | null>(null)
+  const [tempPassword, setTempPassword] = useState<string | null>(null)
+  const [auditLogs, setAuditLogs] = useState<AuditEntry[]>([])
+  const [auditPage, setAuditPage] = useState(1)
+  const [auditTotalPages, setAuditTotalPages] = useState(1)
+  const [auditPageSize, setAuditPageSize] = useState(10)
+  const [expandedLog, setExpandedLog] = useState<number | null>(null)
+  const [activeAdmins, setActiveAdmins] = useState<ActiveAdmin[]>([])
+  const [adminsLoading, setAdminsLoading] = useState(false)
+  const [staffPage, setStaffPage] = useState(1)
+  const [staffPageSize, setStaffPageSize] = useState(10)
+  const [searchLoading, setSearchLoading] = useState(false)
+  const [callerRole, setCallerRole] = useState<string>("user")
+  const [auditPaging, setAuditPaging] = useState(false)
+  const [allBadges, setAllBadges] = useState<BadgeDef[]>([])
+  const searchInitRef = useRef(false)
+  const staffPagination = usePagination(activeAdmins, staffPageSize)
+  const pagedStaff = staffPagination.getPage(staffPage)
+
+  const showToast = useCallback((message: string, type: "success" | "error") => {
+    setToast({ message, type })
+  }, [])
+
+  const updateUrlWithUser = useCallback((userId: number | null, tab?: string, replace = true) => {
+    if (typeof window === "undefined") return
+    const parts: string[] = []
+    if (tab) parts.push(tab)
+    if (userId) parts.push(`user-${userId}`)
+    const hash = parts.join("/")
+    const method = replace ? "replaceState" : "pushState"
+    window.history[method](null, "", `/admin${hash ? `#${hash}` : ""}`)
+  }, [])
+
+  const handleHashChange = useCallback(() => {
+    if (typeof window === "undefined") return
+    const hash = window.location.hash.replace("#", "")
+    if (!hash) {
+      window.history.replaceState(null, "", "/admin#users")
+      setSelectedUser(null)
+      return
+    }
+    const parts = hash.split("/")
+    let foundUser = false
+    for (const part of parts) {
+      if (["users", "audit", "admins"].includes(part)) {
+        setActiveTab(part as "users" | "audit" | "admins")
+        if (part === "audit") fetchAudit()
+        if (part === "admins") fetchActiveAdmins()
+      }
+      if (part.startsWith("user-")) {
+        const id = parseInt(part.replace("user-", ""), 10)
+        if (!isNaN(id)) {
+          fetchUserDetail(id, true)
+          foundUser = true
+        }
+      }
+    }
+    if (!foundUser) setSelectedUser(null)
+  }, [activeTab])
+
+  useEffect(() => {
+    handleHashChange()
+    window.addEventListener("hashchange", handleHashChange)
+    return () => window.removeEventListener("hashchange", handleHashChange)
+  }, [handleHashChange])
+
+  async function fetchData(p = 1, search = searchQuery, isInitial = false, limit = usersPageSize) {
+    if (isInitial) setLoading(true)
+    else setSearchLoading(true)
+    try {
+      const params = new URLSearchParams({ page: String(p), limit: String(limit) })
+      if (search.trim()) params.set("search", search.trim())
+      const res = await fetch(`${API.ADMIN}?${params}`)
+      if (res.status === 403) {
+        setForbidden(true)
+        setLoading(false)
+        setSearchLoading(false)
+        return
+      }
+      const data = await res.json()
+      setStats(data.stats)
+      setUsers(data.users)
+      setPage(data.page)
+      setTotalPages(data.totalPages)
+      if (data.callerRole) setCallerRole(data.callerRole)
+    } catch {
+      setForbidden(true)
+    }
+    setLoading(false)
+    setSearchLoading(false)
+  }
+
+  async function fetchAudit(p = 1, limit = auditPageSize) {
+    setAuditPaging(true)
+    try {
+      const res = await fetch(`${API.ADMIN}?section=audit&page=${p}&limit=${limit}`)
+      const data = await res.json()
+      setAuditLogs(data.logs)
+      setAuditPage(data.page)
+      setAuditTotalPages(data.totalPages)
+    } catch {
+      /* ignore */
+    }
+    setAuditPaging(false)
+  }
+
+  async function fetchActiveAdmins() {
+    setAdminsLoading(true)
+    try {
+      const res = await fetch(`${API.ADMIN}?section=active-admins`)
+      const data = await res.json()
+      setActiveAdmins(data.admins || [])
+    } catch {
+      /* ignore */
+    }
+    setAdminsLoading(false)
+  }
+
+  async function fetchUserDetail(userId: number, skipUrlUpdate = false) {
+    setDetailLoading(true)
+    try {
+      const res = await fetch(`${API.ADMIN}?section=user-detail&userId=${userId}`)
+      const data = await res.json()
+      setSelectedUser(data)
+      if (!skipUrlUpdate) updateUrlWithUser(userId, activeTab, false)
+    } catch {
+      showToast("Failed to load user details.", "error")
+    }
+    setDetailLoading(false)
+  }
+
+  async function fetchAllBadges() {
+    try {
+      const res = await fetch(`${API.ADMIN}?section=badges`)
+      if (res.ok) {
+        const data = await res.json()
+        setAllBadges(data.badges || [])
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+
+  useEffect(() => {
+    fetchData(1, "", true)
+    fetchAllBadges()
+  }, [])
+
+  useEffect(() => {
+    if (activeTab === "audit") fetchAudit()
+    if (activeTab === "admins") fetchActiveAdmins()
+  }, [activeTab])
+
+  async function handleAction(userId: number, action: string, extra?: Record<string, string>) {
+    setActionLoading(`${userId}-${action}`)
+    try {
+      const res = await fetch(API.ADMIN, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId, action, ...extra }),
+      })
+      const data = await res.json()
+      if (res.ok) {
+        if (action === "reset_password" && data.tempPassword) setTempPassword(data.tempPassword)
+        const labels: Record<string, string> = {
+          set_role: "User role updated.",
+          make_admin: "User promoted to admin.",
+          remove_admin: "Admin privileges removed.",
+          reset_password: "Password has been reset.",
+          revoke_sessions: "All sessions revoked.",
+          revoke_api_keys: "All API keys revoked.",
+          disable: "Account disabled.",
+          enable: "Account re-enabled.",
+          delete: "User deleted.",
+          award_badge: "Badge awarded.",
+          revoke_badge: "Badge removed from user.",
+          create_badge: "Badge created.",
+          delete_badge: "Badge deleted permanently.",
+          update_name: "Name updated.",
+          update_email: "Email updated.",
+          update_plan: "Plan updated.",
+          reset_2fa: "Two-factor authentication reset.",
+          delete_scans: "All scans deleted.",
+          clear_rate_limits: "Rate limits cleared.",
+          gift_subscription: "Subscription gifted.",
+          revoke_gift: "Gift revoked.",
+        }
+        if (action === "create_badge" || action === "delete_badge") {
+          fetchAllBadges()
+        }
+        showToast(labels[action] || "Action completed.", "success")
+        const skipRefetch = action === "award_badge" || action === "revoke_badge"
+        if (!skipRefetch) {
+          await fetchData(page)
+          if (selectedUser && selectedUser.user.id === userId) {
+            if (action === "delete") {
+              setSelectedUser(null)
+              updateUrlWithUser(null, activeTab)
+            } else await fetchUserDetail(userId)
+          }
+        }
+      } else {
+        showToast(data.error || "Action failed.", "error")
+      }
+    } catch {
+      showToast("Action failed.", "error")
+    }
+    setActionLoading(null)
+    setConfirmDialog(null)
+  }
+
+  // Debounced server-side search
+  useEffect(() => {
+    if (!searchInitRef.current) {
+      searchInitRef.current = true
+      return
+    }
+    setSearchLoading(true)
+    const timeout = setTimeout(async () => {
+      try {
+        const params = new URLSearchParams({ page: "1" })
+        if (searchQuery.trim()) params.set("search", searchQuery.trim())
+        const res = await fetch(`${API.ADMIN}?${params}`)
+        if (res.ok) {
+          const data = await res.json()
+          setUsers(data.users)
+          setPage(data.page)
+          setTotalPages(data.totalPages)
+        }
+      } catch {
+        /* ignore */
+      }
+      setSearchLoading(false)
+    }, 300)
+    return () => {
+      clearTimeout(timeout)
+      setSearchLoading(false)
+    }
+  }, [searchQuery])
+
+  if (forbidden) {
+    return (
+      <div className="min-h-screen bg-background flex flex-col">
+        <Header />
+        <main className="flex-1 flex items-center justify-center px-4">
+          <div className="text-center flex flex-col items-center gap-4">
+            <div className="h-16 w-16 rounded-2xl bg-destructive/10 flex items-center justify-center">
+              <ShieldOff className="h-8 w-8 text-destructive" />
+            </div>
+            <h1 className="text-xl font-bold text-foreground">Access Denied</h1>
+            <p className="text-sm text-muted-foreground max-w-xs">You do not have administrator privileges to access this panel.</p>
+            <Button asChild>
+              <a href="/dashboard">Back to Scanner</a>
+            </Button>
+          </div>
+        </main>
+        <Footer />
+      </div>
+    )
+  }
+
   return (
-    <button
-      className={cn(
-        "flex items-center gap-3 p-3.5 rounded-xl border transition-all text-left",
-        disabled
-          ? "border-border bg-muted/20 opacity-50 cursor-not-allowed"
-          : variant === "danger"
-            ? "border-destructive/15 bg-card hover:bg-destructive/5 cursor-pointer"
-            : variant === "success"
-              ? "border-emerald-500/15 bg-card hover:bg-emerald-500/5 cursor-pointer"
-              : "border-border bg-card hover:bg-muted/30 cursor-pointer",
-      )}
-      disabled={disabled || loading}
-      onClick={onClick}
-    >
-      <div className={cn("h-9 w-9 rounded-lg flex items-center justify-center shrink-0", bg)}>
-        {loading ? <Loader2 className={cn("h-4 w-4 animate-spin", color)} /> : <Icon className={cn("h-4 w-4", color)} />}
-      </div>
-      <div className="flex-1 min-w-0">
-        <p className={cn("text-sm font-medium", variant === "danger" ? "text-destructive" : variant === "success" ? "text-emerald-500" : "text-foreground")}>{label}</p>
-        <p className="text-[10px] text-muted-foreground leading-tight mt-0.5">{description}</p>
-      </div>
-    </button>
+    <div className="min-h-screen bg-background flex flex-col">
+      <Header />
+      <main className="flex-1 w-full max-w-7xl mx-auto px-4 py-8 flex flex-col gap-6">
+        {/* Toast */}
+        {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
+
+        {/* Confirm dialog */}
+        {confirmDialog && (
+          <ConfirmDialog
+            open={true}
+            title={confirmDialog.title}
+            description={confirmDialog.description}
+            confirmLabel={confirmDialog.confirmLabel}
+            danger={confirmDialog.danger}
+            onConfirm={confirmDialog.action}
+            onCancel={() => setConfirmDialog(null)}
+          >
+            {confirmDialog.children}
+          </ConfirmDialog>
+        )}
+
+        {/* Page header */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center">
+              <UserCog className="h-5 w-5 text-primary" />
+            </div>
+            <div>
+              <h1 className="text-xl font-bold text-foreground tracking-tight">Admin Panel</h1>
+              <p className="text-xs text-muted-foreground">Manage users, monitor activity, and provide support.</p>
+            </div>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            className="bg-transparent gap-1.5 self-start sm:self-auto"
+            onClick={() => {
+              fetchData(page)
+              if (activeTab === "audit") fetchAudit(auditPage)
+              if (activeTab === "admins") fetchActiveAdmins()
+            }}
+          >
+            <RefreshCw className="h-3.5 w-3.5" />
+            Refresh
+          </Button>
+        </div>
+
+        {loading ? (
+          <div className="flex flex-col items-center justify-center py-24 gap-3">
+            <Loader2 className="h-6 w-6 animate-spin text-primary" />
+            <p className="text-sm text-muted-foreground">Loading admin data...</p>
+          </div>
+        ) : (
+          <>
+            {/* Stat cards */}
+            {stats && (
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
+                <StatCard label="Total Users" value={stats.total_users} icon={Users} color="text-primary" accent="bg-primary" />
+                <StatCard label="Total Scans" value={stats.total_scans} icon={Activity} color="text-primary" accent="bg-primary" />
+                <StatCard label="Scans (24h)" value={stats.scans_24h} icon={BarChart3} color="text-emerald-500" accent="bg-emerald-500" />
+                <StatCard label="New Users (7d)" value={stats.new_users_7d} icon={Users} color="text-emerald-500" accent="bg-emerald-500" />
+                <StatCard label="Shared Scans" value={stats.shared_scans} icon={Globe} color="text-primary" accent="bg-primary/70" />
+                <StatCard label="API Keys" value={stats.active_api_keys} icon={Key} color="text-[hsl(var(--severity-medium))]" accent="bg-[hsl(var(--severity-medium))]" />
+                <StatCard label="Schedules" value={stats.active_schedules} icon={CalendarClock} color="text-[hsl(var(--severity-low))]" accent="bg-[hsl(var(--severity-low))]" />
+                <StatCard label="Webhooks" value={stats.active_webhooks} icon={Webhook} color="text-muted-foreground" accent="bg-muted-foreground/50" />
+                <StatCard label="2FA Users" value={stats.users_with_2fa} icon={ShieldCheck} color="text-emerald-500" accent="bg-emerald-500/50" />
+                <StatCard label="Disabled" value={stats.disabled_users} icon={Ban} color="text-destructive" accent="bg-destructive" />
+              </div>
+            )}
+
+            {/* Tab navigation */}
+            <div className="flex items-center gap-1 border-b border-border">
+              {(
+                [
+                  { key: "users" as const, label: "Users", icon: Users },
+                  { key: "audit" as const, label: "Audit Log", icon: History },
+                  { key: "admins" as const, label: "Staff", icon: Shield },
+                ] as const
+              ).map((tab) => (
+                <a
+                  key={tab.key}
+                  href={`/admin#${tab.key}`}
+                  onClick={(e) => {
+                    if (!e.ctrlKey && !e.metaKey) {
+                      e.preventDefault()
+                      setActiveTab(tab.key)
+                      if (tab.key === "audit") fetchAudit()
+                      if (tab.key === "admins") fetchActiveAdmins()
+                      setSelectedUser(null)
+                      updateUrlWithUser(null, tab.key, false)
+                    }
+                  }}
+                  className={cn(
+                    "flex items-center gap-2 px-4 py-2.5 text-sm font-medium transition-colors border-b-2 -mb-px",
+                    activeTab === tab.key
+                      ? "text-primary border-primary"
+                      : "text-muted-foreground border-transparent hover:text-foreground hover:border-border",
+                  )}
+                >
+                  <tab.icon className="h-4 w-4" />
+                  {tab.label}
+                </a>
+              ))}
+            </div>
+
+            {/* User detail */}
+            {selectedUser && activeTab === "users" && (
+              <UserDetailPanel
+                detail={selectedUser}
+                detailLoading={detailLoading}
+                actionLoading={actionLoading}
+                callerRole={callerRole}
+                allBadges={allBadges}
+                onRefreshBadges={fetchAllBadges}
+                onBadgesChanged={(awardedIds, revokedIds) => {
+                  setSelectedUser((prev) => {
+                    if (!prev) return prev
+                    const awardedBadges = allBadges
+                      .filter((b) => awardedIds.includes(b.id))
+                      .map((b) => ({
+                        ...b,
+                        awarded_at: new Date().toISOString(),
+                      }))
+                    const kept = prev.badges.filter((b) => !revokedIds.includes(b.id))
+                    return { ...prev, badges: [...kept, ...awardedBadges] }
+                  })
+                }}
+                onClose={() => {
+                  setSelectedUser(null)
+                  setTempPassword(null)
+                  updateUrlWithUser(null, activeTab)
+                }}
+                onAction={(userId, action, extra) => {
+                  if (
+                    [
+                      "set_role",
+                      "award_badge",
+                      "revoke_badge",
+                      "create_badge",
+                      "delete_badge",
+                      "update_name",
+                      "update_email",
+                      "update_plan",
+                      "enable",
+                      "clear_rate_limits",
+                    ].includes(action)
+                  ) {
+                    handleAction(userId, action, extra)
+                    return
+                  }
+                  const confirmActions = ["delete", "disable", "reset_password", "revoke_sessions", "revoke_api_keys", "reset_2fa", "delete_scans"]
+                  if (confirmActions.includes(action)) {
+                    const messages: Record<string, { title: string; desc: string; label: string; danger?: boolean }> = {
+                      delete: {
+                        title: "Delete User",
+                        desc: `This will permanently delete ${selectedUser.user.email} and all their data. This cannot be undone.`,
+                        label: "Delete User",
+                        danger: true,
+                      },
+                      disable: {
+                        title: "Disable Account",
+                        desc: `This will suspend ${selectedUser.user.email}'s account and log them out of all sessions. They will not be able to log in until re-enabled.`,
+                        label: "Disable Account",
+                        danger: true,
+                      },
+                      reset_password: {
+                        title: "Reset Password",
+                        desc: `This will generate a temporary password for ${selectedUser.user.email}. All sessions will be invalidated. Share the temporary password securely.`,
+                        label: "Reset Password",
+                      },
+                      revoke_sessions: {
+                        title: "Revoke All Sessions",
+                        desc: `This will force-logout ${selectedUser.user.email} from all devices and browsers.`,
+                        label: "Revoke Sessions",
+                      },
+                      revoke_api_keys: {
+                        title: "Revoke All API Keys",
+                        desc: `This will immediately revoke all active API keys for ${selectedUser.user.email}.`,
+                        label: "Revoke Keys",
+                      },
+                      reset_2fa: {
+                        title: "Reset Two-Factor Authentication",
+                        desc: `This will remove 2FA from ${selectedUser.user.email}'s account. They will need to set it up again.`,
+                        label: "Reset 2FA",
+                        danger: true,
+                      },
+                      delete_scans: {
+                        title: "Delete All Scans",
+                        desc: `This will permanently delete all scan history for ${selectedUser.user.email}. This cannot be undone.`,
+                        label: "Delete Scans",
+                        danger: true,
+                      },
+                    }
+                    const m = messages[action]
+                    setConfirmDialog({
+                      title: m.title,
+                      description: m.desc,
+                      confirmLabel: m.label,
+                      danger: m.danger ?? false,
+                      action: () => handleAction(userId, action),
+                    })
+                  } else {
+                    handleAction(userId, action)
+                  }
+                }}
+                tempPassword={tempPassword}
+                onClearTempPassword={() => setTempPassword(null)}
+              />
+            )}
+
+            {/* Users table */}
+            {activeTab === "users" && !selectedUser && (
+              <Card className="bg-card border-border overflow-hidden">
+                <CardHeader className="pb-0 pt-5 px-5">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div className="flex items-center gap-2">
+                      <CardTitle className="text-base font-semibold">All Users</CardTitle>
+                      <Badge variant="secondary" className="text-[10px] font-medium">
+                        {stats ? Number(stats.total_users).toLocaleString() : 0}
+                      </Badge>
+                    </div>
+                    <div className="relative w-full sm:w-72">
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+                      <Input
+                        placeholder="Search by name or email..."
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        className="pl-9 h-9 bg-background"
+                      />
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent className="p-0 mt-4">
+                  {/* Desktop table */}
+                  <div className="hidden md:block overflow-x-auto">
+                    <table className="w-full">
+                      <thead>
+                        <tr className="border-y border-border bg-muted/30">
+                          <th className="px-5 py-2.5 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider text-left">User</th>
+                          <th className="px-4 py-2.5 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider text-left">Scans</th>
+                          <th className="px-4 py-2.5 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider text-left">API Keys</th>
+                          <th className="px-4 py-2.5 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider text-left">Status</th>
+                          <th className="px-4 py-2.5 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider text-left">Joined</th>
+                          <th className="px-5 py-2.5 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider text-right">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody className={cn("transition-opacity duration-200", searchLoading && "opacity-40 pointer-events-none")}>
+                        {users.map((u) => (
+                          <tr key={u.id} className="border-b border-border last:border-0 hover:bg-muted/20 transition-colors group">
+                            <td className="px-5 py-3">
+                              <div className="flex items-center gap-3">
+                                <UserAvatar name={u.name} email={u.email} avatarUrl={u.avatar_url} />
+                                <div className="min-w-0">
+                                  <p className="text-sm font-medium text-foreground truncate">{u.name || "Unnamed"}</p>
+                                  <p className="text-xs text-muted-foreground truncate">{u.email}</p>
+                                </div>
+                              </div>
+                            </td>
+                            <td className="px-4 py-3">
+                              <span className="text-sm font-medium text-foreground">{u.scan_count}</span>
+                            </td>
+                            <td className="px-4 py-3">
+                              <span className="text-sm font-medium text-foreground">{u.api_key_count}</span>
+                            </td>
+                            <td className="px-4 py-3">
+                              {(() => {
+                                const badges: React.ReactNode[] = []
+                                if (u.disabled_at)
+                                  badges.push(
+                                    <Badge key="disabled" className="bg-destructive/10 text-destructive border-destructive/20 text-[10px] px-1.5 font-medium">
+                                      Disabled
+                                    </Badge>,
+                                  )
+                                if (u.role && u.role !== STAFF_ROLES.USER && ROLE_BADGE_STYLES[u.role]) {
+                                  badges.push(
+                                    <Badge key="role" className={cn(ROLE_BADGE_STYLES[u.role], "text-[10px] px-1.5 font-medium")}>
+                                      {STAFF_ROLE_LABELS[u.role] || u.role}
+                                    </Badge>,
+                                  )
+                                }
+                                if (u.plan && u.plan !== "free") {
+                                  const planLabel =
+                                    u.plan.replace("_supporter", "").charAt(0).toUpperCase() + u.plan.replace("_supporter", "").slice(1)
+                                  badges.push(
+                                    <Badge key="plan" className="bg-primary/10 text-primary border-primary/20 text-[10px] px-1.5 font-medium">
+                                      {planLabel}
+                                    </Badge>,
+                                  )
+                                }
+                                if (u.totp_enabled)
+                                  badges.push(
+                                    <Badge key="2fa" className="bg-emerald-500/10 text-emerald-500 border-emerald-500/20 text-[10px] px-1.5 font-medium">
+                                      2FA
+                                    </Badge>,
+                                  )
+                                if (badges.length === 0) return <span className="text-xs text-muted-foreground">Active</span>
+                                return <div className="flex items-center gap-1.5 flex-wrap">{badges}</div>
+                              })()}
+                            </td>
+                            <td className="px-4 py-3 text-xs text-muted-foreground whitespace-nowrap">
+                              {new Date(u.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                            </td>
+                            <td className="px-5 py-3">
+                              <div className="flex items-center justify-end gap-0.5 opacity-60 group-hover:opacity-100 transition-opacity">
+                                <Button variant="ghost" size="icon" className="h-8 w-8" title="View details" asChild>
+                                  <a
+                                    href={`/admin#users/user-${u.id}`}
+                                    onClick={(e) => {
+                                      if (!e.ctrlKey && !e.metaKey) {
+                                        e.preventDefault()
+                                        fetchUserDetail(u.id)
+                                      }
+                                    }}
+                                  >
+                                    <Eye className="h-4 w-4 text-muted-foreground" />
+                                  </a>
+                                </Button>
+                                {hasStaffPermission(callerRole, STAFF_PERMISSIONS.VIEW_AUDIT_LOG) && (
+                                  <>
+                                    {u.disabled_at ? (
+                                      <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        className="h-8 w-8 text-emerald-500 hover:text-emerald-500 hover:bg-emerald-500/10"
+                                        title="Re-enable"
+                                        onClick={() => handleAction(u.id, "enable")}
+                                      >
+                                        <CheckCircle2 className="h-4 w-4" />
+                                      </Button>
+                                    ) : (
+                                      <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10"
+                                        title="Disable"
+                                        onClick={() =>
+                                          setConfirmDialog({
+                                            title: "Disable Account",
+                                            description: `Suspend ${u.email}? They will be logged out and unable to sign in.`,
+                                            confirmLabel: "Disable",
+                                            danger: true,
+                                            action: () => handleAction(u.id, "disable"),
+                                          })
+                                        }
+                                      >
+                                        <Ban className="h-4 w-4" />
+                                      </Button>
+                                    )}
+                                  </>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                        {users.length === 0 && (
+                          <tr>
+                            <td colSpan={6} className="px-5 py-12 text-center">
+                              <Search className="h-6 w-6 text-muted-foreground/40 mx-auto mb-2" />
+                              <p className="text-sm text-muted-foreground">No users found matching your search.</p>
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {/* Mobile */}
+                  <div className={cn("md:hidden flex flex-col transition-opacity duration-200", searchLoading && "opacity-40 pointer-events-none")}>
+                    {users.map((u) => (
+                      <a
+                        key={u.id}
+                        href={`/admin#users/user-${u.id}`}
+                        onClick={(e) => {
+                          if (!e.ctrlKey && !e.metaKey) {
+                            e.preventDefault()
+                            fetchUserDetail(u.id)
+                          }
+                        }}
+                        className="flex items-center gap-3 px-4 py-3.5 border-b border-border last:border-0 hover:bg-muted/20 text-left transition-colors w-full"
+                      >
+                        <UserAvatar name={u.name} email={u.email} size="sm" avatarUrl={u.avatar_url} />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-foreground truncate">{u.name || "Unnamed"}</p>
+                          <p className="text-xs text-muted-foreground truncate">{u.email}</p>
+                          <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                            <span className="text-[10px] text-muted-foreground">{u.scan_count} scans</span>
+                            {u.disabled_at && (
+                              <Badge className="bg-destructive/10 text-destructive border-destructive/20 text-[10px] px-1.5">Disabled</Badge>
+                            )}
+                            {u.role && u.role !== STAFF_ROLES.USER && ROLE_BADGE_STYLES[u.role] && (
+                              <Badge className={cn(ROLE_BADGE_STYLES[u.role], "text-[10px] px-1.5")}>{STAFF_ROLE_LABELS[u.role] || u.role}</Badge>
+                            )}
+                            {u.plan && u.plan !== "free" && (
+                              <Badge className="bg-primary/10 text-primary border-primary/20 text-[10px] px-1.5">
+                                {u.plan.replace("_supporter", "").charAt(0).toUpperCase() + u.plan.replace("_supporter", "").slice(1)}
+                              </Badge>
+                            )}
+                            {u.totp_enabled && (
+                              <Badge className="bg-emerald-500/10 text-emerald-500 border-emerald-500/20 text-[10px] px-1.5">2FA</Badge>
+                            )}
+                          </div>
+                        </div>
+                        <Eye className="h-4 w-4 text-muted-foreground shrink-0" />
+                      </a>
+                    ))}
+                  </div>
+
+                  {/* Pagination */}
+                  <div className="px-5 py-3 border-t border-border bg-muted/10">
+                    <PaginationControl
+                      currentPage={page}
+                      totalPages={totalPages}
+                      onPageChange={(p) => fetchData(p)}
+                      pageSize={usersPageSize}
+                      onPageSizeChange={(s) => {
+                        setUsersPageSize(s)
+                        fetchData(1, searchQuery, false, s)
+                      }}
+                    />
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Audit log */}
+            {activeTab === "audit" && (
+              <Card className="bg-card border-border overflow-hidden">
+                <CardHeader className="pb-0 pt-5 px-5">
+                  <div className="flex items-center gap-2">
+                    <CardTitle className="text-base font-semibold">Audit Log</CardTitle>
+                    <Badge variant="secondary" className="text-[10px] font-medium">
+                      Recent Activity
+                    </Badge>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1">All admin actions are logged here for accountability.</p>
+                </CardHeader>
+                <CardContent className="p-0 mt-4">
+                  {auditLogs.length === 0 ? (
+                    <div className="py-16 text-center">
+                      <div className="h-12 w-12 rounded-xl bg-muted/50 flex items-center justify-center mx-auto mb-3">
+                        <History className="h-6 w-6 text-muted-foreground/40" />
+                      </div>
+                      <p className="text-sm font-medium text-muted-foreground">No audit log entries yet.</p>
+                      <p className="text-xs text-muted-foreground mt-1">Admin actions will appear here as they occur.</p>
+                    </div>
+                  ) : (
+                    <>
+                      <div className={cn("flex flex-col transition-opacity duration-200", auditPaging && "opacity-40 pointer-events-none")}>
+                        {auditLogs.map((log, i) => {
+                          const isExpanded = expandedLog === log.id
+                          const adminDisplay = log.admin_name || log.admin_email.split("@")[0]
+                          const targetDisplay = log.target_name || (log.target_email ? log.target_email.split("@")[0] : null)
+                          return (
+                            <div key={log.id} className={cn(i < auditLogs.length - 1 && "border-b border-border")}>
+                              <button
+                                className={cn(
+                                  "w-full flex items-start gap-4 px-5 py-3.5 transition-colors hover:bg-muted/20 text-left",
+                                  isExpanded && "bg-muted/10",
+                                )}
+                                onClick={() => setExpandedLog(isExpanded ? null : log.id)}
+                              >
+                                <div className="flex flex-col items-center gap-1 pt-0.5">
+                                  <UserAvatar name={log.admin_name} email={log.admin_email} size="sm" avatarUrl={log.admin_avatar_url} />
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex flex-col sm:flex-row sm:items-center gap-1.5 sm:gap-2">
+                                    <span className="text-sm font-medium text-foreground">{adminDisplay}</span>
+                                    <ActionBadge action={log.action} />
+                                    {targetDisplay && (
+                                      <span className="text-xs text-muted-foreground">
+                                        on <span className="text-foreground font-medium">{targetDisplay}</span>
+                                      </span>
+                                    )}
+                                  </div>
+                                  <div className="flex items-center gap-2 mt-0.5">
+                                    <span className="text-[10px] text-muted-foreground">
+                                      {new Date(log.created_at).toLocaleString("en-US", {
+                                        month: "short",
+                                        day: "numeric",
+                                        hour: "2-digit",
+                                        minute: "2-digit",
+                                      })}
+                                    </span>
+                                    {log.ip_address && (
+                                      <span className="text-[10px] text-muted-foreground font-mono flex items-center gap-0.5">
+                                        <Globe className="h-2.5 w-2.5" /> {log.ip_address}
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                                {isExpanded ? (
+                                  <ChevronUp className="h-3.5 w-3.5 text-muted-foreground shrink-0 mt-1" />
+                                ) : (
+                                  <ChevronDown className="h-3.5 w-3.5 text-muted-foreground shrink-0 mt-1" />
+                                )}
+                              </button>
+
+                              {isExpanded && (
+                                <div className="px-5 pb-4 pt-0 ml-11">
+                                  <div className="rounded-xl bg-muted/20 border border-border p-4 flex flex-col gap-3">
+                                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
+                                      <div>
+                                        <p className="text-muted-foreground mb-0.5 text-[10px] uppercase tracking-wider font-semibold">Performed By</p>
+                                        <p className="text-foreground font-medium">{log.admin_name || "N/A"}</p>
+                                        <p className="text-muted-foreground text-[11px]">{log.admin_email}</p>
+                                      </div>
+                                      {log.target_email && (
+                                        <div>
+                                          <p className="text-muted-foreground mb-0.5 text-[10px] uppercase tracking-wider font-semibold">Target User</p>
+                                          <p className="text-foreground font-medium">{log.target_name || "N/A"}</p>
+                                          <p className="text-muted-foreground text-[11px]">{log.target_email}</p>
+                                        </div>
+                                      )}
+                                      <div>
+                                        <p className="text-muted-foreground mb-0.5 text-[10px] uppercase tracking-wider font-semibold">Timestamp</p>
+                                        <p className="text-foreground font-medium">{new Date(log.created_at).toLocaleString()}</p>
+                                      </div>
+                                      {log.ip_address && (
+                                        <div>
+                                          <p className="text-muted-foreground mb-0.5 text-[10px] uppercase tracking-wider font-semibold">IP Address</p>
+                                          <p className="text-foreground font-mono">{log.ip_address}</p>
+                                        </div>
+                                      )}
+                                    </div>
+                                    {log.details && (
+                                      <div>
+                                        <p className="text-muted-foreground mb-0.5 text-[10px] uppercase tracking-wider font-semibold">Details</p>
+                                        <p className="text-xs text-foreground leading-relaxed">{log.details}</p>
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          )
+                        })}
+                      </div>
+                      {auditTotalPages > 1 && (
+                        <div className="px-5 py-3 border-t border-border bg-muted/10">
+                          <PaginationControl
+                            currentPage={auditPage}
+                            totalPages={auditTotalPages}
+                            onPageChange={(p) => fetchAudit(p)}
+                            pageSize={auditPageSize}
+                            onPageSizeChange={(s) => {
+                              setAuditPageSize(s)
+                              fetchAudit(1, s)
+                            }}
+                          />
+                        </div>
+                      )}
+                    </>
+                  )}
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Active Admins tab */}
+            {activeTab === "admins" && (
+              <Card className="bg-card border-border overflow-hidden">
+                <CardHeader className="pb-0 pt-5 px-5">
+                  <div className="flex items-center gap-2">
+                    <CardTitle className="text-base font-semibold">Staff Members</CardTitle>
+                    <Badge variant="secondary" className="text-[10px] font-medium">
+                      {activeAdmins.length}
+                    </Badge>
+                    <Button variant="outline" size="sm" className="ml-auto h-7 bg-transparent gap-1 text-xs" onClick={fetchActiveAdmins}>
+                      <RefreshCw className={cn("h-3 w-3", adminsLoading && "animate-spin")} /> Refresh
+                    </Button>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    All staff members (admins, moderators, support) and their current activity status.
+                  </p>
+                </CardHeader>
+                <CardContent className="p-0 mt-4">
+                  {adminsLoading ? (
+                    <div className="flex flex-col items-center justify-center py-16 gap-3">
+                      <Loader2 className="h-5 w-5 animate-spin text-primary" />
+                      <p className="text-xs text-muted-foreground">Loading admin data...</p>
+                    </div>
+                  ) : activeAdmins.length === 0 ? (
+                    <div className="py-16 text-center">
+                      <Shield className="h-8 w-8 text-muted-foreground/30 mx-auto mb-2" />
+                      <p className="text-sm text-muted-foreground">No administrators found.</p>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="flex flex-col">
+                        {pagedStaff.map((admin, i) => {
+                          const isOnline = admin.active_sessions > 0
+                          const displayName = admin.name || admin.email.split("@")[0]
+                          return (
+                            <div
+                              key={admin.id}
+                              className={cn(
+                                "flex items-start gap-4 px-5 py-4 transition-colors hover:bg-muted/20",
+                                i < pagedStaff.length - 1 && "border-b border-border",
+                              )}
+                            >
+                              <div className="relative shrink-0">
+                                <UserAvatar name={admin.name} email={admin.email} avatarUrl={admin.avatar_url} />
+                                <div
+                                  className={cn(
+                                    "absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-card",
+                                    isOnline ? "bg-emerald-500" : "bg-muted-foreground/40",
+                                  )}
+                                />
+                              </div>
+
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className="text-sm font-semibold text-foreground">{displayName}</span>
+                                  <Badge className={cn("text-[10px] px-1.5 font-medium", ROLE_BADGE_STYLES[admin.role] || ROLE_BADGE_STYLES.user)}>
+                                    {STAFF_ROLE_LABELS[admin.role] || admin.role}
+                                  </Badge>
+                                  <Badge
+                                    className={cn(
+                                      "text-[10px] px-1.5 font-medium",
+                                      isOnline
+                                        ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/20"
+                                        : "bg-muted text-muted-foreground border-border",
+                                    )}
+                                  >
+                                    {isOnline ? "Online" : "Offline"}
+                                  </Badge>
+                                  {admin.totp_enabled && (
+                                    <Badge className="bg-emerald-500/10 text-emerald-500 border-emerald-500/20 text-[10px] px-1.5 font-medium">2FA</Badge>
+                                  )}
+                                </div>
+                                <p className="text-xs text-muted-foreground mt-0.5">{admin.email}</p>
+
+                                <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-2.5">
+                                  <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
+                                    <Monitor className="h-3 w-3" />
+                                    {admin.active_sessions} active session{admin.active_sessions !== 1 ? "s" : ""}
+                                  </span>
+                                  <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
+                                    <Activity className="h-3 w-3" />
+                                    {admin.total_actions} total action{admin.total_actions !== 1 ? "s" : ""}
+                                    {admin.actions_24h > 0 && <span className="text-primary font-medium">({admin.actions_24h} today)</span>}
+                                  </span>
+                                  {admin.last_ip && (
+                                    <span className="flex items-center gap-1 text-[11px] text-muted-foreground font-mono">
+                                      <Globe className="h-3 w-3" />
+                                      {admin.last_ip}
+                                    </span>
+                                  )}
+                                </div>
+
+                                {admin.last_admin_action && (
+                                  <div className="mt-2 text-[11px] text-muted-foreground">
+                                    Last action: <ActionBadge action={admin.last_action_type || ""} />
+                                    <span className="ml-1.5">
+                                      {new Date(admin.last_admin_action).toLocaleString("en-US", {
+                                        month: "short",
+                                        day: "numeric",
+                                        hour: "2-digit",
+                                        minute: "2-digit",
+                                      })}
+                                    </span>
+                                  </div>
+                                )}
+                              </div>
+
+                              <div className="text-right shrink-0">
+                                <p className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold">Admin since</p>
+                                <p className="text-xs text-foreground mt-0.5">
+                                  {new Date(admin.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                                </p>
+                              </div>
+                            </div>
+                          )
+                        })}
+                      </div>
+                      {staffPagination.totalPages > 1 && (
+                        <div className="px-5 py-3 border-t border-border bg-muted/10">
+                          <PaginationControl
+                            currentPage={staffPage}
+                            totalPages={staffPagination.totalPages}
+                            onPageChange={setStaffPage}
+                            pageSize={staffPageSize}
+                            onPageSizeChange={(s) => {
+                              setStaffPageSize(s)
+                              setStaffPage(1)
+                            }}
+                            totalItems={activeAdmins.length}
+                          />
+                        </div>
+                      )}
+                    </>
+                  )}
+                </CardContent>
+              </Card>
+            )}
+          </>
+        )}
+      </main>
+      <Footer />
+    </div>
   )
 }
