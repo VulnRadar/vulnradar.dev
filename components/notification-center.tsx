@@ -39,7 +39,6 @@ function setCookie(name: string, value: string, maxAge: number) {
 // ─── Backup Codes Modal (always shows as full-screen overlay) ────
 
 export function BackupCodesModal() {
-  const router = useRouter()
   const pathname = usePathname()
   const [dismissed, setDismissed] = useState(false)
   const [closing, setClosing] = useState(false)
