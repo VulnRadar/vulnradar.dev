@@ -201,7 +201,7 @@ html {
 
   /* Selection */
   ::selection {
-    @apply bg-foreground/20;
+    @apply bg-primary/20;
   }
 }
 
