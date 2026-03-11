@@ -47,156 +47,168 @@ function ResetForm() {
     }
   }
 
+  // Invalid token state
   if (!token) {
     return (
-      <Card className="w-full max-w-sm bg-card border-border">
-        <CardHeader className="text-center space-y-2 pb-6 pt-8">
-          <div className="flex items-center justify-center gap-2 mb-4">
-            <ThemedLogo width={32} height={32} className="h-8 w-8" alt={`${APP_NAME} logo`} />
-            <span className="text-2xl font-bold text-foreground font-mono tracking-tight">{APP_NAME}</span>
-          </div>
-          <div className="flex justify-center mb-2">
-            <div className="p-3 bg-amber-500/10 rounded-full">
-              <AlertTriangle className="h-6 w-6 text-amber-500" />
+      <div className="w-full max-w-sm">
+        <div className="flex items-center justify-center gap-2.5 mb-8">
+          <ThemedLogo width={28} height={28} className="h-7 w-7" alt={`${APP_NAME} logo`} />
+          <span className="text-xl font-semibold text-foreground tracking-tight">{APP_NAME}</span>
+        </div>
+        <Card className="bg-card border-border">
+          <CardHeader className="text-center pb-6 pt-8 px-6">
+            <div className="flex justify-center mb-4">
+              <div className="p-3 bg-destructive/10 rounded-full">
+                <AlertTriangle className="h-6 w-6 text-destructive" />
+              </div>
             </div>
-          </div>
-          <CardTitle className="text-xl font-bold tracking-tight">Invalid Reset Link</CardTitle>
-          <CardDescription>This link is invalid or missing a token. Please request a new reset link.</CardDescription>
-        </CardHeader>
-        <CardContent className="pb-8 flex flex-col items-center">
-          <Button asChild variant="outline" size="sm" className="bg-transparent">
-            <Link href="/forgot-password">Request New Link</Link>
-          </Button>
-        </CardContent>
-      </Card>
+            <CardTitle className="text-xl font-semibold tracking-tight">Invalid Reset Link</CardTitle>
+            <CardDescription className="mt-2">This link is invalid or missing a token. Please request a new one.</CardDescription>
+          </CardHeader>
+          <CardContent className="pb-8 px-6">
+            <Button asChild variant="outline" className="w-full">
+              <Link href="/forgot-password">Request New Link</Link>
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
     )
   }
 
+  // Success state
   if (success) {
     return (
-      <Card className="w-full max-w-sm bg-card border-border">
-        <CardHeader className="text-center space-y-2 pb-6 pt-8">
-          <div className="flex items-center justify-center gap-2 mb-4">
-            <ThemedLogo width={32} height={32} className="h-8 w-8" alt={`${APP_NAME} logo`} />
-            <span className="text-2xl font-bold text-foreground font-mono tracking-tight">{APP_NAME}</span>
-          </div>
-          <div className="flex justify-center mb-2">
-            <div className="p-3 bg-emerald-500/10 rounded-full">
-              <CheckCircle2 className="h-6 w-6 text-emerald-500" />
+      <div className="w-full max-w-sm">
+        <div className="flex items-center justify-center gap-2.5 mb-8">
+          <ThemedLogo width={28} height={28} className="h-7 w-7" alt={`${APP_NAME} logo`} />
+          <span className="text-xl font-semibold text-foreground tracking-tight">{APP_NAME}</span>
+        </div>
+        <Card className="bg-card border-border">
+          <CardHeader className="text-center pb-6 pt-8 px-6">
+            <div className="flex justify-center mb-4">
+              <div className="p-3 bg-primary/10 rounded-full">
+                <CheckCircle2 className="h-6 w-6 text-primary" />
+              </div>
             </div>
-          </div>
-          <CardTitle className="text-xl font-bold tracking-tight">Password Reset Complete</CardTitle>
-          <CardDescription>Your password has been changed. All existing sessions have been logged out.</CardDescription>
-        </CardHeader>
-        <CardContent className="pb-8 flex flex-col items-center">
-          <Button asChild size="sm">
-            <Link href="/login">Go to Login</Link>
-          </Button>
-        </CardContent>
-      </Card>
+            <CardTitle className="text-xl font-semibold tracking-tight">Password Reset Complete</CardTitle>
+            <CardDescription className="mt-2">Your password has been changed. All existing sessions have been signed out.</CardDescription>
+          </CardHeader>
+          <CardContent className="pb-8 px-6">
+            <Button asChild className="w-full">
+              <Link href="/login">Go to Login</Link>
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
     )
   }
 
+  // Main form
   return (
-    <Card className="w-full max-w-sm bg-card border-border">
-      <CardHeader className="text-center space-y-2 pb-6 pt-8">
-        <div className="flex items-center justify-center gap-2 mb-4">
-          <ThemedLogo width={32} height={32} className="h-8 w-8" alt={`${APP_NAME} logo`} />
-          <span className="text-2xl font-bold text-foreground font-mono tracking-tight">{APP_NAME}</span>
-        </div>
-        <CardTitle className="text-xl font-bold tracking-tight">Set New Password</CardTitle>
-        <CardDescription>Choose a strong, unique password for your account.</CardDescription>
-      </CardHeader>
-      <CardContent className="pb-8">
-        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="password">New Password</Label>
-            <div className="relative">
-              <Input
-                id="password"
-                type={showPass ? "text" : "password"}
-                placeholder="Minimum 8 characters"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-                minLength={8}
-                className="h-10 pr-10"
-              />
-              <button
-                type="button"
-                onClick={() => setShowPass(!showPass)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-              >
-                {showPass ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-              </button>
-            </div>
-            {/* Password strength indicator - matching signup page */}
-            {password && (
-              <div className="space-y-1.5 mt-1">
-                <div className="flex gap-1 h-1">
-                  {[
-                    { level: 0, color: "bg-red-600" },
-                    { level: 1, color: "bg-orange-600" },
-                    { level: 2, color: "bg-amber-500" },
-                    { level: 3, color: "bg-lime-500" },
-                    { level: 4, color: "bg-emerald-600" },
-                  ].map((bar, idx) => (
-                    <div
-                      key={idx}
-                      className={`h-full flex-1 rounded-full transition-colors duration-200 ${
-                        strength.level >= bar.level ? bar.color : "bg-muted"
-                      }`}
-                    />
-                  ))}
+    <div className="w-full max-w-sm">
+      <div className="flex items-center justify-center gap-2.5 mb-8">
+        <ThemedLogo width={28} height={28} className="h-7 w-7" alt={`${APP_NAME} logo`} />
+        <span className="text-xl font-semibold text-foreground tracking-tight">{APP_NAME}</span>
+      </div>
+      <Card className="bg-card border-border">
+        <CardHeader className="text-center pb-6 pt-8 px-6">
+          <CardTitle className="text-xl font-semibold tracking-tight">Set New Password</CardTitle>
+          <CardDescription className="mt-2">Choose a strong, unique password for your account.</CardDescription>
+        </CardHeader>
+        <CardContent className="pb-8 px-6">
+          <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="password">New Password</Label>
+              <div className="relative">
+                <Input
+                  id="password"
+                  type={showPass ? "text" : "password"}
+                  placeholder="Minimum 8 characters"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                  minLength={8}
+                  className="h-10 pr-10"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPass(!showPass)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                >
+                  {showPass ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
+              {password && (
+                <div className="space-y-1.5 mt-1">
+                  <div className="flex gap-1 h-1">
+                    {[
+                      { level: 0, color: "bg-red-600" },
+                      { level: 1, color: "bg-orange-600" },
+                      { level: 2, color: "bg-amber-500" },
+                      { level: 3, color: "bg-lime-500" },
+                      { level: 4, color: "bg-emerald-600" },
+                    ].map((bar, idx) => (
+                      <div
+                        key={idx}
+                        className={`h-full flex-1 rounded-full transition-colors duration-200 ${
+                          strength.level >= bar.level ? bar.color : "bg-muted"
+                        }`}
+                      />
+                    ))}
+                  </div>
+                  <p className="text-xs text-muted-foreground text-right">
+                    Strength: <span className="font-medium text-foreground">{strength.label}</span>
+                  </p>
                 </div>
-                <p className="text-xs text-muted-foreground text-right">
-                  Strength: <span className="font-medium text-foreground">{strength.label}</span>
-                </p>
+              )}
+            </div>
+
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="confirm">Confirm Password</Label>
+              <Input
+                id="confirm"
+                type={showPass ? "text" : "password"}
+                placeholder="Re-enter your password"
+                value={confirm}
+                onChange={(e) => setConfirm(e.target.value)}
+                required
+                className="h-10"
+              />
+            </div>
+
+            {error && (
+              <div className="rounded-lg border border-destructive/20 bg-destructive/5 px-3 py-2.5">
+                <p className="text-sm text-destructive" role="alert">{error}</p>
               </div>
             )}
-          </div>
 
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="confirm">Confirm Password</Label>
-            <Input
-              id="confirm"
-              type={showPass ? "text" : "password"}
-              placeholder="Re-enter your password"
-              value={confirm}
-              onChange={(e) => setConfirm(e.target.value)}
-              required
-              className="h-10"
-            />
-          </div>
+            <Button type="submit" disabled={loading || !password || !confirm} className="h-10 w-full mt-2">
+              {loading ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Resetting...
+                </>
+              ) : (
+                "Reset Password"
+              )}
+            </Button>
 
-          {error && (
-            <div className="rounded-lg border border-destructive/20 bg-destructive/5 px-3 py-2.5">
-              <p className="text-sm text-destructive flex items-center gap-2" role="alert">
-                <AlertTriangle className="h-4 w-4 shrink-0" />
-                {error}
-              </p>
-            </div>
-          )}
-
-          <Button type="submit" disabled={loading || !password || !confirm} className="h-10 w-full mt-2">
-            {loading ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Resetting...
-              </>
-            ) : (
-              "Reset Password"
-            )}
-          </Button>
-        </form>
-      </CardContent>
-    </Card>
+            <p className="text-center text-sm text-muted-foreground mt-2">
+              Remember your password?{" "}
+              <Link href="/login" className="text-primary hover:underline font-medium">
+                Sign in
+              </Link>
+            </p>
+          </form>
+        </CardContent>
+      </Card>
+    </div>
   )
 }
 
 export default function ResetPasswordPage() {
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background px-4">
+    <div className="min-h-screen flex items-center justify-center bg-background px-4 py-8">
       <Suspense fallback={null}>
         <ResetForm />
       </Suspense>
