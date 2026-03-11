@@ -761,9 +761,10 @@ function AdminContent() {
                                 if (u.role && u.role !== STAFF_ROLES.USER && ROLE_BADGE_STYLES[u.role]) {
                                   badges.push(<Badge key="role" className={cn(ROLE_BADGE_STYLES[u.role], "text-[10px] px-1.5 font-medium")}>{STAFF_ROLE_LABELS[u.role] || u.role}</Badge>)
                                 }
-                                if (u.plan && u.plan !== "free") {
-                                  const planLabel = u.plan.replace("_supporter", "").charAt(0).toUpperCase() + u.plan.replace("_supporter", "").slice(1)
-                                  badges.push(<Badge key="plan" className="bg-primary/10 text-primary border-primary/20 text-[10px] px-1.5 font-medium">{planLabel}</Badge>)
+                                const effectivePlan = u.gifted_plan || u.plan
+                                if (effectivePlan && effectivePlan !== "free") {
+                                  const planLabel = effectivePlan.replace("_supporter", "").charAt(0).toUpperCase() + effectivePlan.replace("_supporter", "").slice(1)
+                                  badges.push(<Badge key="plan" className={cn("text-[10px] px-1.5 font-medium", u.gifted_plan ? "bg-amber-500/10 text-amber-500 border-amber-500/20" : "bg-primary/10 text-primary border-primary/20")}>{planLabel}{u.gifted_plan ? " (Gift)" : ""}</Badge>)
                                 }
                                 if (u.totp_enabled) badges.push(<Badge key="2fa" className="bg-emerald-500/10 text-emerald-500 border-emerald-500/20 text-[10px] px-1.5 font-medium">2FA</Badge>)
                                 if (badges.length === 0) return <span className="text-xs text-muted-foreground">Active</span>
@@ -842,9 +843,16 @@ function AdminContent() {
                             {u.role && u.role !== STAFF_ROLES.USER && ROLE_BADGE_STYLES[u.role] && (
                               <Badge className={cn(ROLE_BADGE_STYLES[u.role], "text-[10px] px-1.5")}>{STAFF_ROLE_LABELS[u.role] || u.role}</Badge>
                             )}
-                            {u.plan && u.plan !== "free" && (
-                              <Badge className="bg-primary/10 text-primary border-primary/20 text-[10px] px-1.5">{u.plan.replace("_supporter", "").charAt(0).toUpperCase() + u.plan.replace("_supporter", "").slice(1)}</Badge>
-                            )}
+                {(() => {
+                  const effectivePlan = u.gifted_plan || u.plan
+                  if (!effectivePlan || effectivePlan === "free") return null
+                  const label = effectivePlan.replace("_supporter", "").charAt(0).toUpperCase() + effectivePlan.replace("_supporter", "").slice(1)
+                  return (
+                    <Badge className={cn("text-[10px] px-1.5", u.gifted_plan ? "bg-amber-500/10 text-amber-500 border-amber-500/20" : "bg-primary/10 text-primary border-primary/20")}>
+                      {label}{u.gifted_plan ? " (Gift)" : ""}
+                    </Badge>
+                  )
+                })()}
                             {u.totp_enabled && <Badge className="bg-emerald-500/10 text-emerald-500 border-emerald-500/20 text-[10px] px-1.5">2FA</Badge>}
                           </div>
                         </div>
@@ -1381,8 +1389,21 @@ function UserDetailPanel({
                       <CreditCard className="h-3.5 w-3.5 text-muted-foreground" />
                       <span className="text-[11px] text-muted-foreground font-medium">Subscription Plan</span>
                     </div>
-                    <span className="text-xs font-medium text-foreground">
-                      {u.plan === "free" || !u.plan ? "Free" : u.plan.replace("_supporter", " Supporter").replace(/(^\w|\s\w)/g, (m: string) => m.toUpperCase())}
+                    <span className="text-xs font-medium text-foreground flex items-center gap-2">
+                      {(() => {
+                        const effectivePlan = u.gifted_plan || u.plan
+                        const label = effectivePlan === "free" || !effectivePlan
+                          ? "Free"
+                          : effectivePlan.replace("_supporter", " Supporter").replace(/(^\w|\s\w)/g, (m: string) => m.toUpperCase())
+                        return (
+                          <>
+                            {label}
+                            {u.gifted_plan && (
+                              <span className="text-[9px] font-medium px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-500 border border-amber-500/20">Gifted</span>
+                            )}
+                          </>
+                        )
+                      })()}
                     </span>
                   </div>
                 )}

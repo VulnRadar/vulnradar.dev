@@ -76,8 +76,6 @@ export async function GET(request: NextRequest) {
     ])
 
     if (!userRes.rows[0]) return NextResponse.json({ error: "User not found" }, { status: 404 })
-    
-    console.log("[v0] user-detail gift data:", { gifted_plan: userRes.rows[0].gifted_plan, gift_end_date: userRes.rows[0].gift_end_date })
 
     return NextResponse.json({
       user: userRes.rows[0],
@@ -160,8 +158,11 @@ export async function GET(request: NextRequest) {
       ? pool.query(`
           SELECT u.id, u.email, u.name, u.role, u.avatar_url, u.totp_enabled, u.tos_accepted_at, u.created_at, u.disabled_at, u.plan, u.subscription_status,
             (SELECT COUNT(*) FROM scan_history sh WHERE sh.user_id = u.id) as scan_count,
-            (SELECT COUNT(*) FROM api_keys ak WHERE ak.user_id = u.id AND ak.revoked_at IS NULL) as api_key_count
+            (SELECT COUNT(*) FROM api_keys ak WHERE ak.user_id = u.id AND ak.revoked_at IS NULL) as api_key_count,
+            gs.plan as gifted_plan,
+            gs.expires_at as gift_end_date
           FROM users u
+          LEFT JOIN gifted_subscriptions gs ON gs.user_id = u.id AND gs.revoked_at IS NULL AND gs.expires_at > NOW()
           WHERE u.email ILIKE $3 OR u.name ILIKE $3
           ORDER BY u.created_at DESC
           LIMIT $1 OFFSET $2
@@ -169,8 +170,11 @@ export async function GET(request: NextRequest) {
       : pool.query(`
           SELECT u.id, u.email, u.name, u.role, u.avatar_url, u.totp_enabled, u.tos_accepted_at, u.created_at, u.disabled_at, u.plan, u.subscription_status,
             (SELECT COUNT(*) FROM scan_history sh WHERE sh.user_id = u.id) as scan_count,
-            (SELECT COUNT(*) FROM api_keys ak WHERE ak.user_id = u.id AND ak.revoked_at IS NULL) as api_key_count
+            (SELECT COUNT(*) FROM api_keys ak WHERE ak.user_id = u.id AND ak.revoked_at IS NULL) as api_key_count,
+            gs.plan as gifted_plan,
+            gs.expires_at as gift_end_date
           FROM users u
+          LEFT JOIN gifted_subscriptions gs ON gs.user_id = u.id AND gs.revoked_at IS NULL AND gs.expires_at > NOW()
           ORDER BY u.created_at DESC
           LIMIT $1 OFFSET $2
         `, [limit, offset]),
@@ -560,11 +564,10 @@ export async function PATCH(request: NextRequest) {
         "UPDATE gifted_subscriptions SET revoked_at = NOW(), revoked_by = $2 WHERE user_id = $1 AND revoked_at IS NULL",
         [userId, session.userId]
       )
-      const insertResult = await pool.query(
-        "INSERT INTO gifted_subscriptions (user_id, plan, expires_at, gifted_by) VALUES ($1, $2, $3, $4) RETURNING *",
+      await pool.query(
+        "INSERT INTO gifted_subscriptions (user_id, plan, expires_at, gifted_by) VALUES ($1, $2, $3, $4)",
         [userId, giftPlan, expiresAt, session.userId]
       )
-      console.log("[v0] gift_subscription inserted:", insertResult.rows[0])
       await logAction(session.userId, userId, "gift_subscription", `Gifted ${giftPlan} to ${targetUser.email} until ${expiresAt.toISOString()}`, ip)
       return NextResponse.json({ success: true })
     }
