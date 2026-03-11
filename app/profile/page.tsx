@@ -116,8 +116,8 @@ interface BillingInfo {
   subscription: {
     id: string
     status: string
-    currentPeriodStart: string
-    currentPeriodEnd: string
+    currentPeriodStart: string | null
+    currentPeriodEnd: string | null
     cancelAtPeriodEnd: boolean
     cancelAt: string | null
   } | null
@@ -1621,16 +1621,18 @@ function ProfileContent() {
                           </Badge>
                         </div>
                         <div className="flex items-center justify-between">
-                          <span className="text-sm text-muted-foreground">Current Period</span>
-                          <span className="text-sm text-foreground">
-                            {new Date(billingInfo.subscription.currentPeriodStart).toLocaleDateString()} - {new Date(billingInfo.subscription.currentPeriodEnd).toLocaleDateString()}
-                          </span>
+                        <span className="text-sm text-muted-foreground">Current Period</span>
+                        <span className="text-sm font-medium text-foreground">
+                          {billingInfo.subscription.currentPeriodStart && billingInfo.subscription.currentPeriodEnd
+                            ? `${new Date(billingInfo.subscription.currentPeriodStart).toLocaleDateString()} - ${new Date(billingInfo.subscription.currentPeriodEnd).toLocaleDateString()}`
+                            : "Not available"}
+                        </span>
                         </div>
                         {billingInfo.subscription.cancelAtPeriodEnd && (
                           <div className="flex items-center gap-2 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20 mt-2">
                             <Calendar className="h-4 w-4 text-amber-500 shrink-0" />
                             <p className="text-sm text-amber-600 dark:text-amber-400">
-                              Your subscription will end on {new Date(billingInfo.subscription.currentPeriodEnd).toLocaleDateString()}. You&apos;ll keep access until then.
+                              Your subscription will end on {billingInfo.subscription.currentPeriodEnd ? new Date(billingInfo.subscription.currentPeriodEnd).toLocaleDateString() : "the end of your billing period"}. You&apos;ll keep access until then.
                             </p>
                           </div>
                         )}
@@ -1738,8 +1740,8 @@ function ProfileContent() {
                       <div>
                         <p className="font-medium text-foreground">Cancel at period end</p>
                         <p className="text-sm text-muted-foreground">
-                          Keep access until {billingInfo?.subscription?.currentPeriodEnd 
-                            ? new Date(billingInfo.subscription.currentPeriodEnd).toLocaleDateString() 
+                          Keep access until {billingInfo?.subscription?.currentPeriodEnd
+                            ? new Date(billingInfo.subscription.currentPeriodEnd).toLocaleDateString()
                             : "your billing period ends"}
                         </p>
                       </div>
