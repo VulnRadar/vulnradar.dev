@@ -418,8 +418,8 @@ function AdminContent() {
     let foundUser = false
     for (const part of parts) {
       // Check if it's a tab
-      if (["users", "audit", "admins"].includes(part)) {
-        setActiveTab(part as "users" | "audit" | "admins")
+      if (["users", "audit", "admins", "notifications"].includes(part)) {
+        setActiveTab(part as "users" | "audit" | "admins" | "notifications")
         if (part === "audit") fetchAudit()
         if (part === "admins") fetchActiveAdmins()
       }

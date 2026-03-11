@@ -15,9 +15,11 @@ import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { PUBLIC_PATHS } from "@/lib/public-paths"
 import { useAuth } from "@/components/auth-provider"
-import { STAFF_ROLES } from "@/lib/constants"
+import { STAFF_ROLES, APP_VERSION, APP_NAME } from "@/lib/constants"
+import { Sparkles } from "lucide-react"
 
 const STAFF_ROLE_VALUES = Object.values(STAFF_ROLES)
+const VERSION_COOKIE = "vr_last_seen_version"
 
 // ─── Cookie Helpers ──────────────────────────────────────────────
 
@@ -146,6 +148,7 @@ export function NotificationBell() {
   const [dismissedIds, setDismissedIds] = useState<Set<number>>(new Set())
   const [hydrated, setHydrated] = useState(false)
   const [loading, setLoading] = useState(true)
+  const [showVersionNotif, setShowVersionNotif] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
 
   const isPublicRoute = PUBLIC_PATHS.some((p) => {
@@ -154,6 +157,15 @@ export function NotificationBell() {
   })
 
   const isStaff = me?.role && STAFF_ROLE_VALUES.includes(me.role)
+
+  // Check if there's a new version (cookie-based)
+  useEffect(() => {
+    const lastSeenVersion = getCookie(VERSION_COOKIE)
+    if (lastSeenVersion !== APP_VERSION) {
+      // New version detected - show notification
+      setShowVersionNotif(true)
+    }
+  }, [])
 
   // Initialize dismissed IDs from cookies on mount
   useEffect(() => {
