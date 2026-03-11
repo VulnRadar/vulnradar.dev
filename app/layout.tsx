@@ -37,21 +37,12 @@ export const metadata: Metadata = {
     type: 'website',
     url: APP_URL,
     locale: 'en_US',
-    images: [
-      {
-        url: `${APP_URL}/og-image-120-revise.png`,
-        width: 1200,
-        height: 630,
-        alt: `${APP_NAME} - Web Vulnerability Scanner`,
-      },
-    ],
   },
   twitter: {
     card: 'summary_large_image',
     title: `${APP_NAME} - Web Vulnerability Scanner`,
     description: APP_DESCRIPTION,
     site: '@' + APP_NAME,
-    images: [`${APP_URL}/og-image-120-revise.png`],
   },
   robots: {
     index: true,
@@ -59,15 +50,14 @@ export const metadata: Metadata = {
   },
   other: {
     'security-contact': `${APP_URL}/.well-known/security.txt`,
-    'theme-color': '#2563eb',
   },
   metadataBase: new URL(APP_URL),
 }
 
 export const viewport: Viewport = {
   themeColor: [
-    { media: '(prefers-color-scheme: light)', color: '#f5f7fa' },
-    { media: '(prefers-color-scheme: dark)', color: '#0d1117' },
+    { media: '(prefers-color-scheme: light)', color: '#ffffff' },
+    { media: '(prefers-color-scheme: dark)', color: '#000000' },
   ],
 }
 

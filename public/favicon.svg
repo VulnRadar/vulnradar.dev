@@ -1,21 +1,7 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 24 24">
-  <circle cx="12" cy="12" r="11" fill="#0f172a"/>
-  
-  <path d="M12 2a10 10 0 1 1-7.07 17.07l1.41-1.41A8 8 0 1 0 12 4V2z" fill="#3b82f6" opacity="0.2"/>
-  
-  <path d="M12 6a6 6 0 1 1-4.24 10.24l1.41-1.41A4 4 0 1 0 12 8V6z" fill="#3b82f6" opacity="0.4"/>
-
-  <g fill="none" stroke="#60a5fa" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-    <path d="M19.07 4.93A10 10 0 0 0 6.99 3.34" />
-    <path d="M2.29 9.62A10 10 0 1 0 21.31 8.35" />
-    <path d="M16.24 7.76A6 6 0 1 0 8.23 16.67" />
-    <path d="M17.99 11.66A6 6 0 0 1 15.77 16.67" />
-    
-    <path d="m13.41 10.59 5.66-5.66" stroke="#ffffff" stroke-width="2.5" />
-    
-    <circle cx="12" cy="12" r="2" fill="#60a5fa" stroke="none" />
-    
-    <circle cx="4" cy="6" r="1" fill="#fbbf24" stroke="none" />
-    <circle cx="12" cy="18" r="1" fill="#fbbf24" stroke="none" />
-  </g>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none">
+  <rect width="32" height="32" rx="8" fill="#000"/>
+  <path d="M8 10C8 8.89543 8.89543 8 10 8H14C15.1046 8 16 8.89543 16 10V14C16 15.1046 15.1046 16 14 16H10C8.89543 16 8 15.1046 8 14V10Z" fill="#fff"/>
+  <path d="M18 10C18 8.89543 18.8954 8 20 8H22C23.1046 8 24 8.89543 24 10V12C24 13.1046 23.1046 14 22 14H20C18.8954 14 18 13.1046 18 12V10Z" fill="#fff" fill-opacity="0.6"/>
+  <path d="M8 18C8 16.8954 8.89543 16 10 16H12C13.1046 16 14 16.8954 14 18V22C14 23.1046 13.1046 24 12 24H10C8.89543 24 8 23.1046 8 22V18Z" fill="#fff" fill-opacity="0.6"/>
+  <path d="M16 18C16 16.8954 16.8954 16 18 16H22C23.1046 16 24 16.8954 24 18V22C24 23.1046 23.1046 24 22 24H18C16.8954 24 16 23.1046 16 22V18Z" fill="#fff" fill-opacity="0.35"/>
 </svg>

@@ -885,7 +885,7 @@ function ProfileContent() {
         )}
 
         {/* Tab Navigation */}
-        <div className="flex items-center gap-1 border-b border-border overflow-x-auto scrollbar-none -mb-px">
+        <div className="flex items-center gap-1 border-b border-border overflow-x-auto overflow-y-hidden scrollbar-none -mb-px">
           {TABS.map((tab) => (
             <a
               key={tab.id}
