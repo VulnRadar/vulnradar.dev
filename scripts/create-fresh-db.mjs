@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 
 /**
- * VulnRadar Fresh Database Setup Script
+ * VulnRadar Safe Database Migration Script
  * 
- * Creates all tables from scratch. Use for fresh installs only.
- * For migrations, use: npm run migrate
+ * Creates a NEW database with fresh schema, then optionally migrates data
+ * from the original database. Never touches or erases the original DB.
  * 
  * Usage:
  *   npm run new-db
@@ -34,7 +34,9 @@ const c = {
   magenta: "\x1b[35m",
   bgRed: "\x1b[41m",
   bgGreen: "\x1b[42m",
+  bgCyan: "\x1b[46m",
   white: "\x1b[37m",
+  black: "\x1b[30m",
 }
 
 function log(msg) { console.log(msg) }
@@ -45,9 +47,10 @@ function error(msg) { log(`${c.red}[ERR]${c.reset}  ${msg}`) }
 
 function banner() {
   log("")
-  log(`${c.bold}${c.cyan}  ╔══════════════════════════════════════╗${c.reset}`)
-  log(`${c.bold}${c.cyan}  ║   VulnRadar Fresh Database Setup     ║${c.reset}`)
-  log(`${c.bold}${c.cyan}  ╚══════════════════════════════════════╝${c.reset}`)
+  log(`${c.bold}${c.cyan}  ╔══════════════════════════════════════════════╗${c.reset}`)
+  log(`${c.bold}${c.cyan}  ║   VulnRadar Safe Database Migration          ║${c.reset}`)
+  log(`${c.bold}${c.cyan}  ║   Creates new DB, preserves original data    ║${c.reset}`)
+  log(`${c.bold}${c.cyan}  ╚══════════════════════════════════════════════╝${c.reset}`)
   log("")
 }
 
@@ -74,16 +77,42 @@ function loadEnv() {
   }
 }
 
-// ── Prompt helper ───────────────────────────────────────────────────────────
-function askDanger(question) {
+// ── Prompt helpers ──────────────────────────────────────────────────────────
+function ask(question, defaultVal = "") {
   return new Promise((resolve) => {
     const rl = readline.createInterface({ input: process.stdin, output: process.stdout })
-    rl.question(`${c.red}?${c.reset} ${question} ${c.dim}(y/N)${c.reset} `, (answer) => {
+    const defaultHint = defaultVal ? ` ${c.dim}(${defaultVal})${c.reset}` : ""
+    rl.question(`${c.cyan}?${c.reset} ${question}${defaultHint} `, (answer) => {
       rl.close()
-      const val = answer.trim().toLowerCase()
-      resolve(val === "y" || val === "yes")
+      resolve(answer.trim() || defaultVal)
     })
   })
+}
+
+function askYesNo(question, defaultYes = false) {
+  return new Promise((resolve) => {
+    const rl = readline.createInterface({ input: process.stdin, output: process.stdout })
+    const hint = defaultYes ? `${c.dim}(Y/n)${c.reset}` : `${c.dim}(y/N)${c.reset}`
+    rl.question(`${c.cyan}?${c.reset} ${question} ${hint} `, (answer) => {
+      rl.close()
+      const val = answer.trim().toLowerCase()
+      if (val === "") resolve(defaultYes)
+      else resolve(val === "y" || val === "yes")
+    })
+  })
+}
+
+// ── Parse database URL ──────────────────────────────────────────────────────
+function parseDbUrl(url) {
+  const match = url.match(/postgres(?:ql)?:\/\/([^:]+):([^@]+)@([^:\/]+):?(\d+)?\/(.+)/)
+  if (!match) return null
+  return {
+    user: match[1],
+    password: match[2],
+    host: match[3],
+    port: match[4] || "5432",
+    database: match[5].split("?")[0],
+  }
 }
 
 // ── Get existing tables ─────────────────────────────────────────────────────
@@ -97,6 +126,41 @@ async function getExistingTables(pool) {
   return res.rows.map(r => r.table_name)
 }
 
+// ── Get table row counts ────────────────────────────────────────────────────
+async function getTableCounts(pool, tables) {
+  const counts = {}
+  for (const t of tables) {
+    try {
+      const res = await pool.query(`SELECT COUNT(*) as total FROM "${t}"`)
+      counts[t] = parseInt(res.rows[0].total)
+    } catch {
+      counts[t] = 0
+    }
+  }
+  return counts
+}
+
+// ── Tables that should be migrated (contain user data) ─────────────────────
+const MIGRATE_TABLES = [
+  "users",
+  "sessions", 
+  "password_reset_tokens",
+  "backup_codes",
+  "api_keys",
+  "scan_history",
+  "scan_schedules",
+  "scan_tags",
+  "scan_tag_assignments",
+  "teams",
+  "team_members",
+  "team_invites",
+  "audit_log",
+  "billing_history",
+  "user_badges",
+  "gifted_subscriptions",
+  "admin_notifications",
+]
+
 // ── Main ────────────────────────────────────────────────────────────────────
 async function main() {
   banner()
@@ -107,8 +171,18 @@ async function main() {
     process.exit(1)
   }
 
-  info("Connecting to database...")
-  const pool = new pg.Pool({
+  const dbInfo = parseDbUrl(process.env.DATABASE_URL)
+  if (!dbInfo) {
+    error("Could not parse DATABASE_URL. Make sure it's a valid PostgreSQL connection string.")
+    process.exit(1)
+  }
+
+  log(`${c.bold}Current Database:${c.reset} ${c.cyan}${dbInfo.database}${c.reset} on ${dbInfo.host}`)
+  log("")
+
+  // Connect to original database
+  info("Connecting to original database...")
+  const originalPool = new pg.Pool({
     connectionString: process.env.DATABASE_URL,
     ssl: process.env.DATABASE_SSL === "true" ? { rejectUnauthorized: false } : false,
     max: 3,
@@ -116,90 +190,160 @@ async function main() {
   })
 
   try {
-    await pool.query("SELECT 1")
-    success("Connected to database.")
+    await originalPool.query("SELECT 1")
+    success("Connected to original database.")
   } catch (err) {
     error(`Failed to connect: ${err.message}`)
     process.exit(1)
   }
 
-  // Check for existing tables
-  const existingTables = await getExistingTables(pool)
+  // Check existing tables and data
+  const existingTables = await getExistingTables(originalPool)
+  const tableCounts = await getTableCounts(originalPool, existingTables)
   
-  if (existingTables.length > 0) {
-    log("")
-    log(`${c.bold}${c.bgRed}${c.white} WARNING: DATABASE IS NOT EMPTY ${c.reset}`)
-    log("")
-    log(`${c.yellow}Found ${existingTables.length} existing tables:${c.reset}`)
-    for (const t of existingTables) {
-      try {
-        const countRes = await pool.query(`SELECT COUNT(*) as total FROM "${t}"`)
-        log(`  - ${c.bold}${t}${c.reset} ${c.dim}(${countRes.rows[0].total} rows)${c.reset}`)
-      } catch {
-        log(`  - ${c.bold}${t}${c.reset}`)
-      }
-    }
-    log("")
-    log(`${c.red}This script will DROP ALL EXISTING TABLES and create fresh ones.${c.reset}`)
-    log(`${c.red}All existing data will be permanently deleted.${c.reset}`)
-    log("")
+  log("")
+  log(`${c.bold}Original database has ${existingTables.length} tables:${c.reset}`)
+  for (const t of existingTables) {
+    const count = tableCounts[t]
+    const countStr = count > 0 ? `${c.green}${count} rows${c.reset}` : `${c.dim}empty${c.reset}`
+    log(`  - ${t} (${countStr})`)
+  }
+  log("")
 
-    const shouldProceed = await askDanger("Are you SURE you want to delete ALL data and start fresh?")
-    if (!shouldProceed) {
-      info("Operation cancelled. Your database was not modified.")
-      await pool.end()
-      return
-    }
-
-    log("")
-    info("Dropping all existing tables...")
-    for (const table of existingTables) {
-      try {
-        await pool.query(`DROP TABLE IF EXISTS "${table}" CASCADE`)
-        success(`  Dropped ${table}`)
-      } catch (err) {
-        warn(`  Could not drop ${table}: ${err.message}`)
-      }
-    }
-    log("")
+  // Ask for new database name
+  const defaultNewName = `${dbInfo.database}_v2`
+  const newDbName = await ask(`Enter name for the NEW database`, defaultNewName)
+  
+  if (newDbName === dbInfo.database) {
+    error("New database name cannot be the same as the original!")
+    await originalPool.end()
+    process.exit(1)
   }
 
-  // Extract SQL statements from instrumentation.ts
+  log("")
+  log(`${c.bold}${c.bgCyan}${c.black} SAFE MIGRATION PLAN ${c.reset}`)
+  log("")
+  log(`  ${c.green}1.${c.reset} Create new database: ${c.bold}${newDbName}${c.reset}`)
+  log(`  ${c.green}2.${c.reset} Create all tables with fresh schema`)
+  log(`  ${c.green}3.${c.reset} Optionally migrate data from original`)
+  log(`  ${c.green}4.${c.reset} Original database ${c.bold}${dbInfo.database}${c.reset} is ${c.green}NEVER modified${c.reset}`)
+  log("")
+
+  const shouldProceed = await askYesNo("Proceed with creating the new database?", true)
+  if (!shouldProceed) {
+    info("Operation cancelled.")
+    await originalPool.end()
+    return
+  }
+
+  // Connect to postgres database to create new database
+  log("")
+  info("Creating new database...")
+  
+  const adminPool = new pg.Pool({
+    user: dbInfo.user,
+    password: dbInfo.password,
+    host: dbInfo.host,
+    port: parseInt(dbInfo.port),
+    database: "postgres",
+    ssl: process.env.DATABASE_SSL === "true" ? { rejectUnauthorized: false } : false,
+    max: 1,
+  })
+
+  try {
+    // Check if database already exists
+    const existsRes = await adminPool.query(
+      `SELECT 1 FROM pg_database WHERE datname = $1`,
+      [newDbName]
+    )
+    
+    if (existsRes.rows.length > 0) {
+      warn(`Database '${newDbName}' already exists.`)
+      const shouldDrop = await askYesNo(`Drop and recreate '${newDbName}'?`, false)
+      if (shouldDrop) {
+        // Terminate connections to the database
+        await adminPool.query(`
+          SELECT pg_terminate_backend(pg_stat_activity.pid)
+          FROM pg_stat_activity
+          WHERE pg_stat_activity.datname = $1
+          AND pid <> pg_backend_pid()
+        `, [newDbName])
+        await adminPool.query(`DROP DATABASE "${newDbName}"`)
+        success(`Dropped existing database '${newDbName}'`)
+      } else {
+        info("Using existing database.")
+      }
+    }
+    
+    // Create new database
+    const existsAgain = await adminPool.query(
+      `SELECT 1 FROM pg_database WHERE datname = $1`,
+      [newDbName]
+    )
+    if (existsAgain.rows.length === 0) {
+      await adminPool.query(`CREATE DATABASE "${newDbName}"`)
+      success(`Created new database: ${newDbName}`)
+    }
+  } catch (err) {
+    error(`Failed to create database: ${err.message}`)
+    await adminPool.end()
+    await originalPool.end()
+    process.exit(1)
+  }
+  
+  await adminPool.end()
+
+  // Connect to new database
+  const newDbUrl = process.env.DATABASE_URL.replace(`/${dbInfo.database}`, `/${newDbName}`)
+  const newPool = new pg.Pool({
+    connectionString: newDbUrl,
+    ssl: process.env.DATABASE_SSL === "true" ? { rejectUnauthorized: false } : false,
+    max: 3,
+  })
+
+  try {
+    await newPool.query("SELECT 1")
+    success(`Connected to new database: ${newDbName}`)
+  } catch (err) {
+    error(`Failed to connect to new database: ${err.message}`)
+    await originalPool.end()
+    process.exit(1)
+  }
+
+  // Read schema from instrumentation.ts
+  log("")
   info("Reading schema from instrumentation.ts...")
   const instrPath = resolve(ROOT, "instrumentation.ts")
   let instrContent
   try {
     instrContent = readFileSync(instrPath, "utf-8")
-    success("instrumentation.ts loaded.")
+    success("Schema loaded.")
   } catch (err) {
     error(`Failed to read instrumentation.ts: ${err.message}`)
-    await pool.end()
+    await newPool.end()
+    await originalPool.end()
     process.exit(1)
   }
 
-  log("")
-  info("Creating tables...")
+  // Extract and execute SQL statements
+  info("Creating tables in new database...")
   
-  // Extract SQL blocks from pool.query(`...`) calls
   const sqlBlockRegex = /await pool\.query\(`([\s\S]*?)`\)/g
   const statements = []
   let match
   while ((match = sqlBlockRegex.exec(instrContent)) !== null) {
     const sql = match[1].trim()
-    // Split by semicolons for multi-statement blocks
     const parts = sql.split(";").map(s => s.trim()).filter(s => s)
     statements.push(...parts)
   }
 
   let created = 0
   let indexes = 0
-  let errors = 0
 
   for (const stmt of statements) {
     if (!stmt) continue
     try {
-      await pool.query(stmt)
-      // Count CREATE TABLE statements
+      await newPool.query(stmt)
       if (stmt.toUpperCase().includes("CREATE TABLE")) {
         const tableMatch = stmt.match(/CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(\w+)/i)
         if (tableMatch) {
@@ -211,16 +355,17 @@ async function main() {
       }
     } catch (err) {
       if (!err.message.includes("already exists")) {
-        warn(`  Error: ${err.message.slice(0, 80)}...`)
-        errors++
+        warn(`  ${err.message.slice(0, 60)}...`)
       }
     }
   }
   
+  log(`  ${c.dim}Created ${indexes} indexes${c.reset}`)
+
   // Seed default badges
   info("Seeding default badges...")
   try {
-    await pool.query(`
+    await newPool.query(`
       INSERT INTO badges (name, display_name, description, color, icon) VALUES
         ('early_adopter', 'Early Adopter', 'One of the first users of VulnRadar', '#f59e0b', 'star'),
         ('beta_tester', 'Beta Tester', 'Helped test VulnRadar before release', '#8b5cf6', 'flask'),
@@ -236,27 +381,147 @@ async function main() {
     warn(`  Could not seed badges: ${err.message}`)
   }
 
+  // Ask about data migration
   log("")
-  log(`${c.bold}═══════════════════════════════════════════${c.reset}`)
-  success(`Fresh database setup complete!`)
-  log(`${c.bold}═══════════════════════════════════════════${c.reset}`)
+  log(`${c.bold}${c.bgGreen}${c.white} DATA MIGRATION ${c.reset}`)
   log("")
-  log(`  ${c.green}✓${c.reset} ${created} tables created`)
-  log(`  ${c.green}✓${c.reset} ${indexes} indexes created`)
-  if (errors > 0) {
-    log(`  ${c.yellow}!${c.reset} ${errors} statements had errors (may be expected)`)
+  
+  const tablesToMigrate = MIGRATE_TABLES.filter(t => 
+    existingTables.includes(t) && tableCounts[t] > 0
+  )
+  
+  if (tablesToMigrate.length === 0) {
+    info("No data to migrate from original database.")
+  } else {
+    log(`${c.cyan}The following tables have data that can be migrated:${c.reset}`)
+    for (const t of tablesToMigrate) {
+      log(`  - ${t} (${tableCounts[t]} rows)`)
+    }
+    log("")
+    
+    const shouldMigrate = await askYesNo("Migrate data from original database?", true)
+    
+    if (shouldMigrate) {
+      log("")
+      info("Migrating data...")
+      
+      // Order matters for foreign keys
+      const orderedTables = [
+        "users",
+        "badges", // badges before user_badges
+        "sessions",
+        "password_reset_tokens", 
+        "backup_codes",
+        "api_keys",
+        "scan_history",
+        "scan_schedules",
+        "scan_tags",
+        "scan_tag_assignments",
+        "teams",
+        "team_members",
+        "team_invites",
+        "audit_log",
+        "billing_history",
+        "user_badges",
+        "gifted_subscriptions",
+        "admin_notifications",
+      ]
+      
+      for (const table of orderedTables) {
+        if (!tablesToMigrate.includes(table)) continue
+        
+        try {
+          // Get columns from original table
+          const colRes = await originalPool.query(`
+            SELECT column_name FROM information_schema.columns
+            WHERE table_name = $1 AND table_schema = 'public'
+            ORDER BY ordinal_position
+          `, [table])
+          const columns = colRes.rows.map(r => r.column_name)
+          
+          // Check which columns exist in new table
+          const newColRes = await newPool.query(`
+            SELECT column_name FROM information_schema.columns
+            WHERE table_name = $1 AND table_schema = 'public'
+          `, [table])
+          const newColumns = new Set(newColRes.rows.map(r => r.column_name))
+          
+          // Only migrate columns that exist in both
+          const commonColumns = columns.filter(c => newColumns.has(c))
+          
+          if (commonColumns.length === 0) {
+            warn(`  Skipping ${table}: no common columns`)
+            continue
+          }
+          
+          // Fetch data from original
+          const dataRes = await originalPool.query(
+            `SELECT ${commonColumns.map(c => `"${c}"`).join(", ")} FROM "${table}"`
+          )
+          
+          if (dataRes.rows.length === 0) continue
+          
+          // Insert into new database
+          const colList = commonColumns.map(c => `"${c}"`).join(", ")
+          const placeholders = commonColumns.map((_, i) => `$${i + 1}`).join(", ")
+          
+          let migrated = 0
+          for (const row of dataRes.rows) {
+            try {
+              const values = commonColumns.map(c => row[c])
+              await newPool.query(
+                `INSERT INTO "${table}" (${colList}) VALUES (${placeholders}) ON CONFLICT DO NOTHING`,
+                values
+              )
+              migrated++
+            } catch (err) {
+              // Skip constraint violations
+            }
+          }
+          
+          // Reset sequence if table has serial ID
+          if (commonColumns.includes("id")) {
+            try {
+              await newPool.query(`
+                SELECT setval(pg_get_serial_sequence('"${table}"', 'id'), 
+                  COALESCE((SELECT MAX(id) FROM "${table}"), 1))
+              `)
+            } catch {
+              // No sequence, that's fine
+            }
+          }
+          
+          success(`  Migrated ${table}: ${migrated}/${dataRes.rows.length} rows`)
+        } catch (err) {
+          warn(`  Failed to migrate ${table}: ${err.message}`)
+        }
+      }
+    }
   }
+
+  // Done!
   log("")
-  log(`${c.cyan}Next steps:${c.reset}`)
-  log(`  1. Run ${c.bold}npm run dev${c.reset} to start the app`)
-  log(`  2. Create your first admin user via the signup page`)
-  log(`  3. First user to sign up can be promoted to admin via database`)
+  log(`${c.bold}═══════════════════════════════════════════════════════${c.reset}`)
+  success(`Safe migration complete!`)
+  log(`${c.bold}═══════════════════════════════════════════════════════${c.reset}`)
+  log("")
+  log(`  ${c.green}✓${c.reset} New database: ${c.bold}${newDbName}${c.reset}`)
+  log(`  ${c.green}✓${c.reset} ${created} tables created`)
+  log(`  ${c.green}✓${c.reset} Original database ${c.bold}${dbInfo.database}${c.reset} is untouched`)
+  log("")
+  log(`${c.cyan}To use the new database, update your DATABASE_URL:${c.reset}`)
+  log(`  ${c.dim}${newDbUrl}${c.reset}`)
+  log("")
+  log(`${c.cyan}Or in .env.local, change:${c.reset}`)
+  log(`  ${c.dim}DATABASE_URL=".../${newDbName}?..."${c.reset}`)
   log("")
 
-  await pool.end()
+  await newPool.end()
+  await originalPool.end()
 }
 
 main().catch((err) => {
   error(`Unexpected error: ${err.message}`)
+  console.error(err)
   process.exit(1)
 })
