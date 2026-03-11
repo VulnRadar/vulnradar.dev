@@ -2,7 +2,7 @@
 -- Stores configurable site-wide notifications managed by admins
 
 CREATE TABLE IF NOT EXISTS admin_notifications (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id SERIAL PRIMARY KEY,
     
     -- Content
     title VARCHAR(255) NOT NULL,
@@ -36,7 +36,7 @@ CREATE TABLE IF NOT EXISTS admin_notifications (
     priority INTEGER NOT NULL DEFAULT 0,
     
     -- Metadata
-    created_by UUID REFERENCES users(id) ON DELETE SET NULL,
+    created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -75,5 +75,3 @@ INSERT INTO admin_notifications (title, message, type, variant, audience, is_act
 
 -- Welcome notification (bell)
 ('Welcome to VulnRadar', 'Start scanning your websites for vulnerabilities with our comprehensive security scanner.', 'bell', 'success', 'authenticated', true, true, 'Start Scanning', '/dashboard', false, 1)
-
-ON CONFLICT DO NOTHING;
