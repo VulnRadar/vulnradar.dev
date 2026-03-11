@@ -5,7 +5,6 @@ import Image from "next/image"
 import { Button } from "@/components/ui/button"
 import { Shield, Zap, Users, Code, CheckCircle, Globe, BarChart3, ArrowRight, Terminal, Lock, Eye, Cpu } from "lucide-react"
 import { Footer } from "@/components/scanner/footer"
-import { ThemeToggle } from "@/components/theme-toggle"
 import { APP_NAME, TOTAL_CHECKS_LABEL } from "@/lib/constants"
 
 export default function LandingPage() {
@@ -36,7 +35,6 @@ export default function LandingPage() {
             </Link>
           </div>
           <div className="flex items-center gap-3">
-            <ThemeToggle />
             <Link href="/login">
               <Button variant="ghost" size="sm">Log in</Button>
             </Link>

@@ -3,7 +3,6 @@
 import React, { useState, useEffect } from "react"
 import Image from "next/image"
 import Link from "next/link"
-import { ThemeToggle } from "@/components/theme-toggle"
 import { Button } from "@/components/ui/button"
 import { Header } from "@/components/scanner/header"
 import { Footer } from "@/components/scanner/footer"
@@ -84,7 +83,6 @@ export function PublicPageShell({
 
             {/* CTA buttons */}
             <div className="flex items-center gap-3">
-              <ThemeToggle />
               <Link href={ROUTES.LOGIN}>
                 <Button variant="ghost" size="sm">Log in</Button>
               </Link>

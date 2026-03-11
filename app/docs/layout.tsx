@@ -10,7 +10,6 @@ import { APP_NAME, ROUTES, BILLING_ENABLED } from "@/lib/constants"
 import { useState, useEffect, createContext, useContext } from "react"
 import Image from "next/image"
 import { Button } from "@/components/ui/button"
-import { ThemeToggle } from "@/components/theme-toggle"
 import { useAuth } from "@/components/auth-provider"
 
 // Context for sharing active section state between layout and pages
@@ -93,7 +92,6 @@ export default function DocsLayout({ children }: { children: React.ReactNode }) 
                 <Link href="/demo" className="text-sm text-muted-foreground hover:text-foreground transition-colors">Demo</Link>
               </nav>
               <div className="flex items-center gap-3">
-                <ThemeToggle />
                 <Link href={ROUTES.LOGIN}><Button variant="ghost" size="sm">Log in</Button></Link>
                 <Link href={ROUTES.SIGNUP} className="hidden sm:block"><Button size="sm">Get Started</Button></Link>
               </div>
