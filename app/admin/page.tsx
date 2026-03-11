@@ -55,6 +55,7 @@ import {
   Beaker,
   Settings,
   Gift,
+  Bell,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -72,6 +73,7 @@ import {
   STAFF_PERMISSIONS,
   type AdminAction
 } from "@/lib/permissions-client"
+import { NotificationsManager } from "@/components/admin/notifications-manager"
 
 interface AdminStats {
   total_users: string
@@ -361,7 +363,7 @@ function AdminContent() {
   const [searchQuery, setSearchQuery] = useState("")
   const [actionLoading, setActionLoading] = useState<string | null>(null)
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null)
-  const [activeTab, setActiveTab] = useState<"users" | "audit" | "admins">("users")
+  const [activeTab, setActiveTab] = useState<"users" | "audit" | "admins" | "notifications">("users")
   const [selectedUser, setSelectedUser] = useState<UserDetail | null>(null)
   const [detailLoading, setDetailLoading] = useState(false)
   const [confirmDialog, setConfirmDialog] = useState<{
@@ -639,13 +641,13 @@ function AdminContent() {
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
                 <StatCard label="Total Users" value={stats.total_users} icon={Users} color="text-primary" accent="bg-primary" />
                 <StatCard label="Total Scans" value={stats.total_scans} icon={Activity} color="text-primary" accent="bg-primary" />
-                <StatCard label="Scans (24h)" value={stats.scans_24h} icon={BarChart3} color="text-emerald-500" accent="bg-emerald-500" />
-                <StatCard label="New Users (7d)" value={stats.new_users_7d} icon={Users} color="text-emerald-500" accent="bg-emerald-500" />
+                <StatCard label="Scans (24h)" value={stats.scans_24h} icon={BarChart3} color="text-primary" accent="bg-primary" />
+                <StatCard label="New Users (7d)" value={stats.new_users_7d} icon={Users} color="text-primary" accent="bg-primary" />
                 <StatCard label="Shared Scans" value={stats.shared_scans} icon={Globe} color="text-primary" accent="bg-primary/70" />
                 <StatCard label="API Keys" value={stats.active_api_keys} icon={Key} color="text-[hsl(var(--severity-medium))]" accent="bg-[hsl(var(--severity-medium))]" />
                 <StatCard label="Schedules" value={stats.active_schedules} icon={CalendarClock} color="text-[hsl(var(--severity-low))]" accent="bg-[hsl(var(--severity-low))]" />
                 <StatCard label="Webhooks" value={stats.active_webhooks} icon={Webhook} color="text-muted-foreground" accent="bg-muted-foreground/50" />
-                <StatCard label="2FA Users" value={stats.users_with_2fa} icon={ShieldCheck} color="text-emerald-500" accent="bg-emerald-500/50" />
+                <StatCard label="2FA Users" value={stats.users_with_2fa} icon={ShieldCheck} color="text-primary" accent="bg-primary/50" />
                 <StatCard label="Disabled" value={stats.disabled_users} icon={Ban} color="text-destructive" accent="bg-destructive" />
               </div>
             )}
@@ -656,6 +658,7 @@ function AdminContent() {
                 { key: "users" as const, label: "Users", icon: Users },
                 { key: "audit" as const, label: "Audit Log", icon: History },
                 { key: "admins" as const, label: "Staff", icon: Shield },
+                { key: "notifications" as const, label: "Notifications", icon: Bell },
               ]).map((tab) => (
                 <a
                   key={tab.key}
@@ -1181,6 +1184,21 @@ function AdminContent() {
                       )}
                     </>
                   )}
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Notifications Tab */}
+            {activeTab === "notifications" && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Bell className="h-5 w-5" />
+                    Site Notifications
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <NotificationsManager />
                 </CardContent>
               </Card>
             )}
