@@ -1,12 +1,12 @@
-import { NextRequest, NextResponse } from "next/server"
+import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
-import { getCurrentUser } from "@/lib/auth"
+import { getSession } from "@/lib/auth"
 import { hasStaffPermission, STAFF_PERMISSIONS } from "@/lib/permissions-client"
 
-export async function GET(req: NextRequest) {
+export async function GET() {
   try {
-    const user = await getCurrentUser(req)
-    if (!user || !hasStaffPermission(user.role, STAFF_PERMISSIONS.VIEW_USERS)) {
+    const session = await getSession()
+    if (!session || !hasStaffPermission(session.role, STAFF_PERMISSIONS.VIEW_USERS)) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
@@ -21,10 +21,10 @@ export async function GET(req: NextRequest) {
   }
 }
 
-export async function POST(req: NextRequest) {
+export async function POST(req: Request) {
   try {
-    const user = await getCurrentUser(req)
-    if (!user || !hasStaffPermission(user.role, STAFF_PERMISSIONS.SEND_ANNOUNCEMENTS)) {
+    const session = await getSession()
+    if (!session || !hasStaffPermission(session.role, STAFF_PERMISSIONS.SEND_ANNOUNCEMENTS)) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
@@ -74,7 +74,7 @@ export async function POST(req: NextRequest) {
         action_url,
         action_external,
         priority,
-        user.userId,
+        session.userId,
       ]
     )
 
