@@ -102,14 +102,9 @@ export default function ComparePage() {
       <Header />
       <main className="flex-1 w-full max-w-5xl mx-auto px-4 py-8">
         <div className="flex flex-col gap-6">
-          <div className="flex items-center gap-3">
-            <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-primary/10">
-              <GitCompareArrows className="h-5 w-5 text-primary" />
-            </div>
-            <div>
-              <h1 className="text-xl font-bold text-foreground">Compare Scans</h1>
-              <p className="text-sm text-muted-foreground">Select two scans to see what changed between them</p>
-            </div>
+          <div className="flex flex-col gap-1">
+            <h1 className="text-xl font-bold text-foreground">Compare Scans</h1>
+            <p className="text-sm text-muted-foreground">Select two scans to see what changed between them</p>
           </div>
 
           {/* Scan selection */}

@@ -279,9 +279,6 @@ export default function TeamsPage() {
 
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div className="flex items-center gap-3">
-                <div className="flex items-center justify-center w-10 h-10 rounded-lg bg-primary/10 shrink-0">
-                  <Users className="h-5 w-5 text-primary" />
-                </div>
                 <div className="min-w-0">
                   {editingName ? (
                     <div className="flex items-center gap-2">
@@ -477,9 +474,8 @@ export default function TeamsPage() {
               <Card className="bg-card border-border">
                 <CardHeader className="pb-3">
                   <div className="flex items-center justify-between">
-                    <CardTitle className="text-base flex items-center gap-2">
-                      <Eye className="h-4 w-4 text-primary" />
-                      {viewingMember.name || viewingMember.email}'s Scan History
+                    <CardTitle className="text-base">
+                      {viewingMember.name || viewingMember.email}{"'"}s Scan History
                     </CardTitle>
                     <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => setViewingMember(null)} aria-label="Close scan history">
                       <X className="h-4 w-4" />
@@ -584,19 +580,16 @@ export default function TeamsPage() {
                       key={team.id}
                       type="button"
                       onClick={() => openTeam(team)}
-                      className="group flex items-center gap-3 p-4 rounded-xl border border-border bg-card hover:bg-muted/50 hover:border-primary/20 transition-all text-left"
+                      className="group flex items-center gap-4 p-4 rounded-xl border border-border bg-card hover:bg-muted/50 hover:border-primary/20 transition-all text-left"
                     >
-                      <div className="flex items-center justify-center w-10 h-10 rounded-lg bg-primary/10 shrink-0">
-                        <Users className="h-5 w-5 text-primary" />
-                      </div>
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-foreground">{team.name}</p>
-                        <p className="text-xs text-muted-foreground">{team.member_count} member{team.member_count !== 1 && "s"}</p>
+                        <p className="text-sm font-semibold text-foreground">{team.name}</p>
+                        <p className="text-xs text-muted-foreground mt-0.5">{team.member_count} member{team.member_count !== 1 && "s"}</p>
                       </div>
-                      <span className={cn("inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full border", ROLE_COLORS[team.role])}>
+                      <span className={cn("inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full border shrink-0", ROLE_COLORS[team.role])}>
                         <Icon className="h-3 w-3" />{team.role}
                       </span>
-                      <ChevronRight className="h-4 w-4 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
+                      <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0 transition-transform group-hover:translate-x-0.5" />
                     </button>
                   )
                 })}
