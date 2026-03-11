@@ -136,7 +136,7 @@ export async function register() {
           key_hash VARCHAR(255) NOT NULL UNIQUE,
           key_prefix VARCHAR(64) NOT NULL,
           name VARCHAR(100) NOT NULL DEFAULT 'Default',
-          daily_limit INTEGER DEFAULT 1000,
+          daily_limit INTEGER DEFAULT 50,
           created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
           last_used_at TIMESTAMP WITH TIME ZONE,
           revoked_at TIMESTAMP WITH TIME ZONE
@@ -145,7 +145,7 @@ export async function register() {
         CREATE INDEX IF NOT EXISTS idx_api_keys_key_hash ON api_keys(key_hash);
       `)
 
-      // ═══════════════════════════════════════════════════�����════════════
+      // ══════════════��════════════════════════════════════�����════════════
       // API USAGE - Tracks API key usage for rate limiting
       // ════════════════════════════════════════════════════════════════
       await pool.query(`
@@ -281,7 +281,7 @@ export async function register() {
         CREATE INDEX IF NOT EXISTS idx_billing_history_user ON billing_history(user_id);
       `)
 
-      // ════════════════════════════════════════════════════════════════
+      // ═════════════════════════════���══════════════════════════════════
       // ADMIN AUDIT LOG - Admin action audit trail
       // ════════════════════════════════════════════════════════════════
       await pool.query(`
