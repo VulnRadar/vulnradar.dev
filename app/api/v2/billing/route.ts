@@ -36,6 +36,14 @@ export async function GET() {
     const planType: PlanType = user.role === "admin" ? "admin" : (user.plan || "free")
     const dailyLimit = PLAN_LIMITS[planType] || PLAN_LIMITS.free
 
+    // Check for gifted subscription first
+    const giftResult = await pool.query(
+      `SELECT plan, expires_at, created_at FROM gifted_subscriptions 
+       WHERE user_id = $1 AND revoked_at IS NULL AND expires_at > NOW()`,
+      [session.userId]
+    )
+    const giftedSubscription = giftResult.rows[0] || null
+
     // Get subscription details from Stripe if user has one
     let subscriptionDetails = null
     if (user.stripe_subscription_id) {
@@ -69,12 +77,20 @@ export async function GET() {
       }
     }
 
+    // Determine the effective plan (gifted takes priority if active)
+    const effectivePlan = giftedSubscription ? giftedSubscription.plan : (user.plan || "free")
+
     return NextResponse.json({
       billingEnabled: BILLING_ENABLED,
-      plan: user.plan || "free",
-      subscriptionStatus: user.subscription_status,
+      plan: effectivePlan,
+      subscriptionStatus: giftedSubscription ? "gifted" : user.subscription_status,
       stripeCustomerId: user.stripe_customer_id,
       subscription: subscriptionDetails,
+      giftedSubscription: giftedSubscription ? {
+        plan: giftedSubscription.plan,
+        expiresAt: giftedSubscription.expires_at,
+        startedAt: giftedSubscription.created_at,
+      } : null,
       usage: {
         used: usageInfo.used,
         limit: dailyLimit === Infinity ? -1 : dailyLimit,
