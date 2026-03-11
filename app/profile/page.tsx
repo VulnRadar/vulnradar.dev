@@ -885,7 +885,7 @@ function ProfileContent() {
         )}
 
         {/* Tab Navigation */}
-        <div className="flex items-center border-b border-border -mb-px">
+        <div className="flex justify-center sm:justify-start items-center border-b border-border -mb-px">
           {TABS.map((tab) => (
             <a
               key={tab.id}
@@ -898,13 +898,12 @@ function ProfileContent() {
               }}
               title={tab.label}
               className={cn(
-                "flex items-center justify-center gap-2 px-3 sm:px-4 py-2.5 text-sm font-medium transition-colors border-b-2 -mb-px",
+                "flex items-center justify-center gap-2 flex-1 sm:flex-none px-3 sm:px-4 py-2.5 text-sm font-medium transition-colors border-b-2 -mb-px",
                 activeTab === tab.id
                   ? "border-primary text-primary"
                   : "border-transparent text-muted-foreground hover:text-foreground hover:border-border"
               )}
             >
-              {/* Icon only on mobile, icon + label on sm+ */}
               <span className="flex-shrink-0">{tab.icon}</span>
               <span className="hidden sm:inline whitespace-nowrap">{tab.label}</span>
             </a>
