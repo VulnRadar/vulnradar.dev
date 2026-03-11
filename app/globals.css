@@ -6,6 +6,9 @@
   .text-balance {
     text-wrap: balance;
   }
+  .text-pretty {
+    text-wrap: pretty;
+  }
 }
 
 /* Smooth scroll behavior for anchor links */
@@ -18,12 +21,14 @@ html {
   html {
     scroll-behavior: auto;
   }
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }
 
-/* Pre-hydration visibility: hide staff/auth elements by default.
-   The blocking <script> in layout.tsx injects a <style> tag that
-   overrides these to visible BEFORE React hydrates, so there is
-   no flash. React cannot strip an injected <style> tag. */
+/* Pre-hydration visibility: hide staff/auth elements by default. */
 .vr-staff-only {
   display: none !important;
 }
@@ -34,87 +39,116 @@ html {
 
 @layer base {
   :root {
-    --background: 220 20% 97%;
-    --foreground: 220 20% 10%;
+    /* Light theme - clean and minimal */
+    --background: 0 0% 100%;
+    --foreground: 0 0% 9%;
     --card: 0 0% 100%;
-    --card-foreground: 220 20% 10%;
+    --card-foreground: 0 0% 9%;
     --popover: 0 0% 100%;
-    --popover-foreground: 220 20% 10%;
-    --primary: 190 90% 42%;
+    --popover-foreground: 0 0% 9%;
+    --primary: 0 0% 9%;
     --primary-foreground: 0 0% 100%;
-    --secondary: 220 15% 92%;
-    --secondary-foreground: 220 20% 10%;
-    --muted: 220 15% 92%;
-    --muted-foreground: 220 10% 46%;
-    --accent: 190 90% 42%;
-    --accent-foreground: 0 0% 100%;
+    --secondary: 0 0% 96%;
+    --secondary-foreground: 0 0% 9%;
+    --muted: 0 0% 96%;
+    --muted-foreground: 0 0% 45%;
+    --accent: 0 0% 96%;
+    --accent-foreground: 0 0% 9%;
     --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 100%;
-    --border: 220 15% 88%;
-    --input: 220 15% 88%;
-    --ring: 190 90% 42%;
-    --chart-1: 190 90% 42%;
+    --border: 0 0% 90%;
+    --input: 0 0% 90%;
+    --ring: 0 0% 9%;
+    --chart-1: 173 80% 40%;
     --chart-2: 160 60% 45%;
     --chart-3: 30 80% 55%;
     --chart-4: 280 65% 60%;
     --chart-5: 340 75% 55%;
-    --radius: 0.5rem;
+    --radius: 0.625rem;
 
+    /* Severity colors */
     --severity-critical: 0 84% 60%;
     --severity-high: 25 95% 53%;
     --severity-medium: 45 93% 47%;
     --severity-low: 210 90% 56%;
-    --severity-info: 220 10% 46%;
+    --severity-info: 0 0% 45%;
+
+    /* Surface layers for depth */
+    --surface-1: 0 0% 100%;
+    --surface-2: 0 0% 98%;
+    --surface-3: 0 0% 96%;
+
+    /* Success/Warning states */
+    --success: 142 76% 36%;
+    --success-foreground: 0 0% 100%;
+    --warning: 38 92% 50%;
+    --warning-foreground: 0 0% 9%;
   }
+
   .dark {
-    --background: 224 20% 6%;
-    --foreground: 210 20% 95%;
-    --card: 224 18% 9%;
-    --card-foreground: 210 20% 95%;
-    --popover: 224 18% 9%;
-    --popover-foreground: 210 20% 95%;
-    --primary: 190 90% 50%;
-    --primary-foreground: 224 20% 6%;
-    --secondary: 224 15% 14%;
-    --secondary-foreground: 210 20% 95%;
-    --muted: 224 15% 14%;
-    --muted-foreground: 215 15% 55%;
-    --accent: 190 90% 50%;
-    --accent-foreground: 224 20% 6%;
-    --destructive: 0 72% 50%;
+    /* Dark theme - sophisticated and modern like Vercel */
+    --background: 0 0% 0%;
+    --foreground: 0 0% 98%;
+    --card: 0 0% 4%;
+    --card-foreground: 0 0% 98%;
+    --popover: 0 0% 4%;
+    --popover-foreground: 0 0% 98%;
+    --primary: 0 0% 98%;
+    --primary-foreground: 0 0% 9%;
+    --secondary: 0 0% 10%;
+    --secondary-foreground: 0 0% 98%;
+    --muted: 0 0% 10%;
+    --muted-foreground: 0 0% 55%;
+    --accent: 0 0% 10%;
+    --accent-foreground: 0 0% 98%;
+    --destructive: 0 62% 50%;
     --destructive-foreground: 0 0% 100%;
-    --border: 224 15% 16%;
-    --input: 224 15% 16%;
-    --ring: 190 90% 50%;
-    --chart-1: 190 90% 50%;
+    --border: 0 0% 15%;
+    --input: 0 0% 15%;
+    --ring: 0 0% 85%;
+    --chart-1: 173 80% 50%;
     --chart-2: 160 60% 45%;
     --chart-3: 30 80% 55%;
     --chart-4: 280 65% 60%;
     --chart-5: 340 75% 55%;
 
+    /* Severity colors - slightly adjusted for dark mode visibility */
     --severity-critical: 0 84% 60%;
-    --severity-high: 25 95% 53%;
-    --severity-medium: 45 93% 47%;
-    --severity-low: 210 90% 56%;
-    --severity-info: 215 15% 55%;
+    --severity-high: 25 95% 55%;
+    --severity-medium: 45 93% 50%;
+    --severity-low: 210 90% 60%;
+    --severity-info: 0 0% 55%;
+
+    /* Surface layers for depth */
+    --surface-1: 0 0% 4%;
+    --surface-2: 0 0% 7%;
+    --surface-3: 0 0% 10%;
+
+    /* Success/Warning states */
+    --success: 142 70% 45%;
+    --success-foreground: 0 0% 100%;
+    --warning: 38 92% 50%;
+    --warning-foreground: 0 0% 9%;
   }
 }
 
-/* Custom scrollbar — thin, matches both themes */
+/* Custom scrollbar - minimal and elegant */
 * {
   scrollbar-width: thin;
   scrollbar-color: hsl(var(--border)) transparent;
 }
 *::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 8px;
+  height: 8px;
 }
 *::-webkit-scrollbar-track {
   background: transparent;
 }
 *::-webkit-scrollbar-thumb {
-  background-color: hsl(var(--border));
+  background-color: hsl(var(--muted-foreground) / 0.3);
   border-radius: 9999px;
+  border: 2px solid transparent;
+  background-clip: content-box;
 }
 *::-webkit-scrollbar-thumb:hover {
   background-color: hsl(var(--muted-foreground) / 0.5);
@@ -128,26 +162,134 @@ html {
     @apply border-border;
   }
   body {
-    @apply bg-background text-foreground;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-    font-size: 16px;
-    line-height: 1.5;
-    -webkit-font-smoothing: antialiased;
-    -moz-osx-font-smoothing: grayscale;
+    @apply bg-background text-foreground antialiased;
+    font-feature-settings: "rlig" 1, "calt" 1;
   }
+
+  /* Typography scale - clean and readable */
   h1, h2, h3, h4, h5, h6 {
-    @apply font-semibold tracking-tight;
-    line-height: 1.2;
+    @apply font-semibold tracking-tight text-balance;
   }
   h1 {
-    @apply text-3xl;
+    @apply text-4xl md:text-5xl leading-[1.1];
   }
   h2 {
-    @apply text-2xl;
+    @apply text-3xl md:text-4xl leading-[1.15];
   }
   h3 {
-    @apply text-xl;
+    @apply text-2xl md:text-3xl leading-[1.2];
   }
+  h4 {
+    @apply text-xl md:text-2xl leading-[1.25];
+  }
+  h5 {
+    @apply text-lg md:text-xl;
+  }
+  h6 {
+    @apply text-base md:text-lg;
+  }
+
+  /* Paragraph and prose */
+  p {
+    @apply leading-7;
+  }
+
+  /* Focus styles - accessible and minimal */
+  :focus-visible {
+    @apply outline-none ring-2 ring-ring ring-offset-2 ring-offset-background;
+  }
+
+  /* Selection */
+  ::selection {
+    @apply bg-foreground/20;
+  }
+}
+
+/* Animation utilities */
+@layer utilities {
+  .animate-in {
+    animation: animate-in 0.2s ease-out;
+  }
+  .animate-out {
+    animation: animate-out 0.2s ease-in;
+  }
+  .fade-in {
+    animation: fade-in 0.3s ease-out;
+  }
+  .slide-up {
+    animation: slide-up 0.3s ease-out;
+  }
+  .slide-down {
+    animation: slide-down 0.3s ease-out;
+  }
+}
+
+@keyframes animate-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes animate-out {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slide-down {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Gradient text utility */
+.gradient-text {
+  @apply bg-clip-text text-transparent bg-gradient-to-r from-foreground to-foreground/70;
+}
+
+/* Glass effect for cards */
+.glass {
+  @apply backdrop-blur-md bg-card/80 border border-border/50;
+}
+
+/* Subtle glow effects */
+.glow {
+  box-shadow: 0 0 20px -5px hsl(var(--primary) / 0.3);
+}
+
+.glow-sm {
+  box-shadow: 0 0 10px -3px hsl(var(--primary) / 0.2);
 }
 
 
