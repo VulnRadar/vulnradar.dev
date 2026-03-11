@@ -12,12 +12,14 @@ export default function LandingPage() {
     <div className="min-h-screen flex flex-col bg-background">
       {/* Navigation */}
       <nav className="sticky top-0 z-50 border-b border-border bg-background/80 backdrop-blur-lg">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-          <Link href="/" className="flex items-center gap-2.5">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 relative flex items-center">
+          {/* Logo - left */}
+          <Link href="/" className="flex items-center gap-2.5 z-10">
             <ThemedLogo width={24} height={24} className="h-6 w-6" alt={`${APP_NAME} logo`} />
             <span className="font-semibold text-lg tracking-tight">{APP_NAME}</span>
           </Link>
-          <div className="hidden md:flex items-center gap-6">
+          {/* Center nav - absolutely centered */}
+          <div className="hidden md:flex items-center gap-6 absolute left-1/2 -translate-x-1/2">
             <Link href="/pricing" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
               Pricing
             </Link>
@@ -28,7 +30,8 @@ export default function LandingPage() {
               Demo
             </Link>
           </div>
-          <div className="flex items-center gap-3">
+          {/* Right side - pushed to end */}
+          <div className="flex items-center gap-3 ml-auto z-10">
             <Link href="/login">
               <Button variant="ghost" size="sm">Log in</Button>
             </Link>

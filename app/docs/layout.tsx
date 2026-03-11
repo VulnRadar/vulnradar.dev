@@ -79,19 +79,19 @@ export default function DocsLayout({ children }: { children: React.ReactNode }) 
           <Header />
         ) : (
           <header className="sticky top-0 z-50 border-b border-border bg-background/80 backdrop-blur-lg">
-            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-              <Link href="/" className="flex items-center gap-2.5 hover:opacity-80 transition-opacity">
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 relative flex items-center">
+              <Link href="/" className="flex items-center gap-2.5 hover:opacity-80 transition-opacity z-10">
                 <ThemedLogo width={24} height={24} className="h-6 w-6" alt={`${APP_NAME} logo`} />
                 <span className="font-semibold text-lg tracking-tight">{APP_NAME}</span>
               </Link>
-              <nav className="hidden md:flex items-center gap-6">
+              <nav className="hidden md:flex items-center gap-6 absolute left-1/2 -translate-x-1/2">
                 {BILLING_ENABLED && (
                   <Link href={ROUTES.PRICING} className="text-sm text-muted-foreground hover:text-foreground transition-colors">Pricing</Link>
                 )}
                 <Link href="/docs" className="text-sm text-muted-foreground hover:text-foreground transition-colors">Docs</Link>
                 <Link href="/demo" className="text-sm text-muted-foreground hover:text-foreground transition-colors">Demo</Link>
               </nav>
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-3 ml-auto z-10">
                 <Link href={ROUTES.LOGIN}><Button variant="ghost" size="sm">Log in</Button></Link>
                 <Link href={ROUTES.SIGNUP} className="hidden sm:block"><Button size="sm">Get Started</Button></Link>
               </div>
