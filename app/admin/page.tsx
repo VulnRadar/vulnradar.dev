@@ -673,7 +673,7 @@ function AdminContent() {
                   className={cn(
                     "flex items-center gap-2 px-4 py-3 text-sm font-medium transition-colors border-b-2 -mb-px",
                     activeTab === tab.key
-                      ? "text-foreground border-foreground"
+                      ? "text-primary border-primary"
                       : "text-muted-foreground border-transparent hover:text-foreground hover:border-border",
                   )}
                 >

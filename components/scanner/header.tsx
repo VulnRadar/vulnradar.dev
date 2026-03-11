@@ -69,8 +69,8 @@ export function Header() {
                       className={cn(
                           "px-3 py-2 rounded-md text-sm transition-colors",
                           active
-                              ? "text-foreground font-medium"
-                              : "text-muted-foreground hover:text-foreground",
+                              ? "bg-primary/10 text-primary font-medium"
+                              : "text-muted-foreground hover:text-foreground hover:bg-muted",
                       )}
                   >
                     {label}
@@ -135,8 +135,8 @@ export function Header() {
                           className={cn(
                               "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors",
                               active
-                                  ? "bg-foreground/5 text-foreground font-medium"
-                                  : "text-muted-foreground hover:text-foreground hover:bg-foreground/5",
+                                  ? "bg-primary/10 text-primary font-medium"
+                                  : "text-muted-foreground hover:text-foreground hover:bg-muted",
                           )}
                       >
                         <Icon className="h-4 w-4" />
@@ -162,7 +162,7 @@ export function Header() {
               <div className="my-4 border-t border-border" />
               <button
                   onClick={handleLogout}
-                  className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-muted-foreground hover:text-foreground hover:bg-foreground/5 transition-colors"
+                  className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-destructive hover:bg-destructive/10 transition-colors"
               >
                 <LogOut className="h-4 w-4" />
                 Log out
