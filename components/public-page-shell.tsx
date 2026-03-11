@@ -1,13 +1,13 @@
 "use client"
 
 import React, { useState, useEffect } from "react"
-import Image from "next/image"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Header } from "@/components/scanner/header"
 import { Footer } from "@/components/scanner/footer"
 import { useAuth } from "@/components/auth-provider"
 import { APP_NAME, ROUTES, BILLING_ENABLED } from "@/lib/constants"
+import { ThemedLogo } from "@/components/themed-logo"
 
 interface PublicPageShellProps {
   children: React.ReactNode
@@ -62,7 +62,7 @@ export function PublicPageShell({
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
             {/* Logo */}
             <Link href="/" className="flex items-center gap-2.5 hover:opacity-80 transition-opacity">
-              <Image src="/favicon.svg" alt={`${APP_NAME} logo`} width={24} height={24} className="h-6 w-6" />
+              <ThemedLogo width={24} height={24} className="h-6 w-6" alt={`${APP_NAME} logo`} />
               <span className="font-semibold text-lg tracking-tight">{APP_NAME}</span>
             </Link>
 

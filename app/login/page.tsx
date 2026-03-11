@@ -4,8 +4,8 @@ import React, { Suspense } from "react"
 import { useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import Link from "next/link"
-import Image from "next/image"
 import { Loader2, Eye, EyeOff, Mail } from "lucide-react"
+import { ThemedLogo } from "@/components/themed-logo"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -153,13 +153,7 @@ function LoginForm() {
       <div className="w-full max-w-sm">
         {/* Logo */}
         <div className="flex items-center justify-center gap-2.5 mb-8">
-          <Image
-            src="/favicon.svg"
-            alt={`${APP_NAME} logo`}
-            width={28}
-            height={28}
-            className="h-7 w-7"
-          />
+            <ThemedLogo width={28} height={28} className="h-7 w-7" alt={`${APP_NAME} logo`} />
           <span className="text-xl font-semibold text-foreground tracking-tight">{APP_NAME}</span>
         </div>
         

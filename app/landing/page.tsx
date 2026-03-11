@@ -1,11 +1,11 @@
 "use client"
 
 import Link from "next/link"
-import Image from "next/image"
 import { Button } from "@/components/ui/button"
 import { Shield, Zap, Users, Code, CheckCircle, Globe, BarChart3, ArrowRight, Terminal, Lock, Eye, Cpu } from "lucide-react"
 import { Footer } from "@/components/scanner/footer"
 import { APP_NAME, TOTAL_CHECKS_LABEL } from "@/lib/constants"
+import { ThemedLogo } from "@/components/themed-logo"
 
 export default function LandingPage() {
   return (
@@ -14,13 +14,7 @@ export default function LandingPage() {
       <nav className="sticky top-0 z-50 border-b border-border bg-background/80 backdrop-blur-lg">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
           <Link href="/" className="flex items-center gap-2.5">
-            <Image
-              src="/favicon.svg"
-              alt={`${APP_NAME} logo`}
-              width={24}
-              height={24}
-              className="h-6 w-6"
-            />
+            <ThemedLogo width={24} height={24} className="h-6 w-6" alt={`${APP_NAME} logo`} />
             <span className="font-semibold text-lg tracking-tight">{APP_NAME}</span>
           </Link>
           <div className="hidden md:flex items-center gap-6">

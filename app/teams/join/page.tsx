@@ -2,8 +2,8 @@
 
 import { useState, Suspense } from "react"
 import { useSearchParams, useRouter } from "next/navigation"
-import Image from "next/image"
 import { Button } from "@/components/ui/button"
+import { ThemedLogo } from "@/components/themed-logo"
 import { Card, CardContent } from "@/components/ui/card"
 import { Users, Loader2, CheckCircle2, AlertTriangle } from "lucide-react"
 import Link from "next/link"
@@ -91,13 +91,7 @@ export default function JoinTeamPage() {
     <div className="min-h-screen bg-background flex flex-col items-center justify-center px-4">
       <div className="w-full max-w-md">
         <div className="flex items-center justify-center gap-2 mb-8">
-          <Image
-            src="/favicon.svg"
-            alt={`${APP_NAME} logo`}
-            width={32}
-            height={32}
-            className="h-8 w-8"
-          />
+          <ThemedLogo width={32} height={32} className="h-8 w-8" alt={`${APP_NAME} logo`} />
           <span className="text-2xl font-bold text-foreground font-mono tracking-tight">{APP_NAME}</span>
         </div>
         <Suspense fallback={null}>

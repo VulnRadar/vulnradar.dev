@@ -3,8 +3,8 @@
 import React from "react"
 import { useState } from "react"
 import Link from "next/link"
-import Image from "next/image"
 import { Button } from "@/components/ui/button"
+import { ThemedLogo } from "@/components/themed-logo"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -43,13 +43,7 @@ export default function ForgotPasswordPage() {
       <Card className="w-full max-w-sm bg-card border-border">
         <CardHeader className="text-center space-y-2 pb-6 pt-8">
           <div className="flex items-center justify-center gap-2 mb-4">
-            <Image
-              src="/favicon.svg"
-              alt={`${APP_NAME} logo`}
-              width={32}
-              height={32}
-              className="h-8 w-8"
-            />
+            <ThemedLogo width={32} height={32} className="h-8 w-8" alt={`${APP_NAME} logo`} />
             <span className="text-2xl font-bold text-foreground font-mono tracking-tight">{APP_NAME}</span>
           </div>
           {sent ? (

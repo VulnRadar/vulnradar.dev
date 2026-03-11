@@ -8,8 +8,8 @@ import { useRouter, usePathname } from "next/navigation"
 import Link from "next/link"
 import { useState } from "react"
 import { cn } from "@/lib/utils"
-import Image from "next/image"
 import { APP_NAME, ROUTES, API } from "@/lib/constants"
+import { ThemedLogo } from "@/components/themed-logo"
 import { NotificationBell } from "@/components/notification-center"
 import { useAuth, clearAuthCache } from "@/components/auth-provider"
 
@@ -46,13 +46,7 @@ export function Header() {
               className="flex items-center gap-2.5 hover:opacity-80 transition-opacity shrink-0"
               aria-label="Go to scanner"
           >
-            <Image
-                src="/favicon.svg"
-                alt={`${APP_NAME} logo`}
-                width={24}
-                height={24}
-                className="h-6 w-6"
-            />
+            <ThemedLogo width={24} height={24} className="h-6 w-6" alt={`${APP_NAME} logo`} />
             <span className="text-lg font-semibold text-foreground tracking-tight">
               {APP_NAME}
             </span>
