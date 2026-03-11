@@ -37,12 +37,21 @@ export const metadata: Metadata = {
     type: 'website',
     url: APP_URL,
     locale: 'en_US',
+    images: [
+      {
+        url: `${APP_URL}/og-image-120-revise.png`,
+        width: 1200,
+        height: 630,
+        alt: `${APP_NAME} - Web Vulnerability Scanner`,
+      },
+    ],
   },
   twitter: {
     card: 'summary_large_image',
     title: `${APP_NAME} - Web Vulnerability Scanner`,
     description: APP_DESCRIPTION,
     site: '@' + APP_NAME,
+    images: [`${APP_URL}/og-image-120-revise.png`],
   },
   robots: {
     index: true,
