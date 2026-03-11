@@ -1,15 +1,15 @@
-import { NextRequest, NextResponse } from "next/server"
+import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
-import { getCurrentUser } from "@/lib/auth"
+import { getSession } from "@/lib/auth"
 import { hasStaffPermission, STAFF_PERMISSIONS } from "@/lib/permissions-client"
 
 export async function PUT(
-  req: NextRequest,
+  req: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const user = await getCurrentUser(req)
-    if (!user || !hasStaffPermission(user.role, STAFF_PERMISSIONS.SEND_ANNOUNCEMENTS)) {
+    const session = await getSession()
+    if (!session || !hasStaffPermission(session.role, STAFF_PERMISSIONS.SEND_ANNOUNCEMENTS)) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
@@ -85,12 +85,12 @@ export async function PUT(
 }
 
 export async function DELETE(
-  req: NextRequest,
+  req: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const user = await getCurrentUser(req)
-    if (!user || !hasStaffPermission(user.role, STAFF_PERMISSIONS.SEND_ANNOUNCEMENTS)) {
+    const session = await getSession()
+    if (!session || !hasStaffPermission(session.role, STAFF_PERMISSIONS.SEND_ANNOUNCEMENTS)) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
