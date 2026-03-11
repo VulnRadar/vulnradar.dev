@@ -10,7 +10,6 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import {
-  MessageSquare,
   Bug,
   Lightbulb,
   HelpCircle,
@@ -175,10 +174,7 @@ export default function ContactPage() {
         <Header />
         <main className="flex-1 w-full max-w-3xl mx-auto px-4 py-6 sm:py-10">
           <div className="flex flex-col gap-2 mb-8">
-            <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
-              <MessageSquare className="h-6 w-6 text-primary" />
-              Contact & Support
-            </h1>
+            <h1 className="text-2xl font-bold text-foreground">Contact & Support</h1>
             <p className="text-sm text-muted-foreground leading-relaxed">
               Need help? Found a bug? Have a great idea? {"We'd"} love to hear from you.
             </p>

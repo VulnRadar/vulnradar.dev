@@ -4,7 +4,6 @@ import { SEVERITY_LEVELS, API } from "@/lib/constants"
 import { useState, useEffect, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import {
-  Clock,
   Globe,
   Trash2,
   Search,
@@ -478,10 +477,7 @@ function HistoryPageContent() {
             {/* Page header */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div className="flex flex-col gap-1">
-                <h1 className="text-xl font-bold text-foreground flex items-center gap-2">
-                  <Clock className="h-5 w-5 text-primary" />
-                  Scan History
-                </h1>
+                <h1 className="text-xl font-bold text-foreground">Scan History</h1>
                 <p className="text-sm text-muted-foreground">
                   Click any scan to view full results. History kept for 90 days.
                 </p>
