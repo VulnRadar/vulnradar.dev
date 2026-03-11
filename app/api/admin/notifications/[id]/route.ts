@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server"
-import { db } from "@/lib/db"
+import pool from "@/lib/db"
 import { getSession } from "@/lib/auth"
 import { hasStaffPermission, STAFF_PERMISSIONS } from "@/lib/permissions-client"
 
@@ -33,7 +33,7 @@ export async function PUT(
       priority,
     } = body
 
-    const result = await db.query(
+    const result = await pool.query(
       `UPDATE admin_notifications SET
         title = COALESCE($1, title),
         message = COALESCE($2, message),
@@ -95,7 +95,7 @@ export async function DELETE(
     }
 
     const { id } = await params
-    const result = await db.query(
+    const result = await pool.query(
       `DELETE FROM admin_notifications WHERE id = $1 RETURNING id`,
       [id]
     )
