@@ -424,7 +424,7 @@ async function runV2Migration(pool, actual, v1Info) {
 
   // Step 6: Add missing api_keys columns
   try {
-    await pool.query(`ALTER TABLE api_keys ADD COLUMN IF NOT EXISTS daily_limit INTEGER DEFAULT 1000`)
+    await pool.query(`ALTER TABLE api_keys ADD COLUMN IF NOT EXISTS daily_limit INTEGER DEFAULT 50`)
     success("  Added daily_limit to api_keys table")
   } catch { /* column may already exist */ }
 
@@ -813,7 +813,7 @@ async function main() {
     }
   }
 
-  // ── Handle extra columns ──────────────────────────────────────────────────
+  // ── Handle extra columns ─────────────────────────────���────────────────────
   if (extraColumns.length > 0) {
     log("")
     log(`${c.yellow}${extraColumns.length} extra column(s) found that are not in the current schema.${c.reset}`)
