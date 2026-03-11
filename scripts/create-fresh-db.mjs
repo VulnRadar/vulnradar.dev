@@ -561,6 +561,22 @@ async function main() {
           warn(`  Failed to migrate ${table}: ${err.message}`)
         }
       }
+      
+      // Post-migration cleanup: fix invalid roles from v1
+      log("")
+      info("Cleaning up v1 data...")
+      try {
+        const roleUpdate = await newPool.query(`
+          UPDATE users SET role = 'user' WHERE role = 'beta_tester'
+        `)
+        if (roleUpdate.rowCount > 0) {
+          success(`  Fixed ${roleUpdate.rowCount} users with invalid 'beta_tester' role -> 'user'`)
+        } else {
+          log(`  ${c.dim}No beta_tester roles to fix${c.reset}`)
+        }
+      } catch (err) {
+        warn(`  Could not fix beta_tester roles: ${err.message}`)
+      }
     }
   }
 
