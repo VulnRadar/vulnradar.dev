@@ -164,15 +164,15 @@ async function main() {
     log("")
   }
 
-  // Read and execute the SQL file
-  info("Reading SQL schema file...")
-  const sqlPath = resolve(__dirname, "create-fresh-db.sql")
-  let sql
+  // Extract SQL statements from instrumentation.ts
+  info("Reading schema from instrumentation.ts...")
+  const instrPath = resolve(ROOT, "instrumentation.ts")
+  let instrContent
   try {
-    sql = readFileSync(sqlPath, "utf-8")
-    success("SQL file loaded.")
+    instrContent = readFileSync(instrPath, "utf-8")
+    success("instrumentation.ts loaded.")
   } catch (err) {
-    error(`Failed to read SQL file: ${err.message}`)
+    error(`Failed to read instrumentation.ts: ${err.message}`)
     await pool.end()
     process.exit(1)
   }
@@ -180,13 +180,19 @@ async function main() {
   log("")
   info("Creating tables...")
   
-  // Split by semicolons and execute each statement
-  const statements = sql
-    .split(";")
-    .map(s => s.trim())
-    .filter(s => s && !s.startsWith("--"))
+  // Extract SQL blocks from pool.query(`...`) calls
+  const sqlBlockRegex = /await pool\.query\(`([\s\S]*?)`\)/g
+  const statements = []
+  let match
+  while ((match = sqlBlockRegex.exec(instrContent)) !== null) {
+    const sql = match[1].trim()
+    // Split by semicolons for multi-statement blocks
+    const parts = sql.split(";").map(s => s.trim()).filter(s => s)
+    statements.push(...parts)
+  }
 
   let created = 0
+  let indexes = 0
   let errors = 0
 
   for (const stmt of statements) {
@@ -195,15 +201,13 @@ async function main() {
       await pool.query(stmt)
       // Count CREATE TABLE statements
       if (stmt.toUpperCase().includes("CREATE TABLE")) {
-        const match = stmt.match(/CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(\w+)/i)
-        if (match) {
-          success(`  Created table: ${match[1]}`)
+        const tableMatch = stmt.match(/CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(\w+)/i)
+        if (tableMatch) {
+          success(`  Created table: ${tableMatch[1]}`)
           created++
         }
       } else if (stmt.toUpperCase().includes("CREATE INDEX")) {
-        // Skip logging indexes
-      } else if (stmt.toUpperCase().includes("INSERT INTO badges")) {
-        success(`  Seeded default badges`)
+        indexes++
       }
     } catch (err) {
       if (!err.message.includes("already exists")) {
@@ -212,6 +216,25 @@ async function main() {
       }
     }
   }
+  
+  // Seed default badges
+  info("Seeding default badges...")
+  try {
+    await pool.query(`
+      INSERT INTO badges (name, display_name, description, color, icon) VALUES
+        ('early_adopter', 'Early Adopter', 'One of the first users of VulnRadar', '#f59e0b', 'star'),
+        ('beta_tester', 'Beta Tester', 'Helped test VulnRadar before release', '#8b5cf6', 'flask'),
+        ('bug_hunter', 'Bug Hunter', 'Reported bugs or security issues', '#ef4444', 'bug'),
+        ('contributor', 'Contributor', 'Contributed to VulnRadar development', '#10b981', 'code'),
+        ('supporter', 'Supporter', 'Supports VulnRadar with a paid plan', '#3b82f6', 'heart'),
+        ('power_user', 'Power User', 'Performed over 1000 scans', '#ec4899', 'zap'),
+        ('verified', 'Verified', 'Verified identity', '#06b6d4', 'check-circle')
+      ON CONFLICT (name) DO NOTHING
+    `)
+    success("  Seeded default badges")
+  } catch (err) {
+    warn(`  Could not seed badges: ${err.message}`)
+  }
 
   log("")
   log(`${c.bold}═══════════════════════════════════════════${c.reset}`)
@@ -219,6 +242,7 @@ async function main() {
   log(`${c.bold}═══════════════════════════════════════════${c.reset}`)
   log("")
   log(`  ${c.green}✓${c.reset} ${created} tables created`)
+  log(`  ${c.green}✓${c.reset} ${indexes} indexes created`)
   if (errors > 0) {
     log(`  ${c.yellow}!${c.reset} ${errors} statements had errors (may be expected)`)
   }
@@ -226,6 +250,7 @@ async function main() {
   log(`${c.cyan}Next steps:${c.reset}`)
   log(`  1. Run ${c.bold}npm run dev${c.reset} to start the app`)
   log(`  2. Create your first admin user via the signup page`)
+  log(`  3. First user to sign up can be promoted to admin via database`)
   log("")
 
   await pool.end()

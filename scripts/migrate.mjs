@@ -61,6 +61,8 @@ const V2_NEW_TABLES = [
   "badges",
   "user_badges",
   "billing_history",
+  "gifted_subscriptions",
+  "admin_notifications",
 ]
 
 // Columns that v2 adds to the users table
@@ -411,11 +413,71 @@ async function runV2Migration(pool, actual, v1Info) {
     } catch { /* column may already exist */ }
   }
 
+  // Step 5: Create gifted_subscriptions table
+  if (!actual["gifted_subscriptions"]) {
+    info("Creating gifted_subscriptions table...")
+    try {
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS gifted_subscriptions (
+          id SERIAL PRIMARY KEY,
+          user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          gifted_by INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          plan VARCHAR(50) NOT NULL,
+          reason TEXT,
+          expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
+          revoked_at TIMESTAMP WITH TIME ZONE,
+          revoked_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+          created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+        )
+      `)
+      await pool.query(`CREATE INDEX IF NOT EXISTS idx_gifted_subscriptions_user ON gifted_subscriptions(user_id)`)
+      await pool.query(`CREATE INDEX IF NOT EXISTS idx_gifted_subscriptions_expires ON gifted_subscriptions(expires_at) WHERE revoked_at IS NULL`)
+      success("  Created gifted_subscriptions table")
+    } catch (err) {
+      error(`  Failed to create gifted_subscriptions table: ${err.message}`)
+    }
+  }
+
+  // Step 6: Create admin_notifications table
+  if (!actual["admin_notifications"]) {
+    info("Creating admin_notifications table...")
+    try {
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS admin_notifications (
+          id SERIAL PRIMARY KEY,
+          title VARCHAR(255) NOT NULL,
+          message TEXT NOT NULL,
+          type VARCHAR(20) NOT NULL DEFAULT 'bell' CHECK (type IN ('banner', 'modal', 'toast', 'bell')),
+          variant VARCHAR(20) NOT NULL DEFAULT 'info' CHECK (variant IN ('info', 'success', 'warning', 'error')),
+          audience VARCHAR(20) NOT NULL DEFAULT 'all' CHECK (audience IN ('all', 'authenticated', 'unauthenticated', 'admin', 'staff')),
+          path_pattern VARCHAR(255) DEFAULT NULL,
+          starts_at TIMESTAMPTZ DEFAULT NOW(),
+          ends_at TIMESTAMPTZ DEFAULT NULL,
+          is_active BOOLEAN NOT NULL DEFAULT true,
+          is_dismissible BOOLEAN NOT NULL DEFAULT true,
+          dismiss_duration_hours INTEGER DEFAULT NULL,
+          action_label VARCHAR(100) DEFAULT NULL,
+          action_url VARCHAR(500) DEFAULT NULL,
+          action_external BOOLEAN DEFAULT false,
+          priority INTEGER NOT NULL DEFAULT 0,
+          created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+      `)
+      await pool.query(`CREATE INDEX IF NOT EXISTS idx_admin_notifications_active ON admin_notifications (is_active, starts_at, ends_at) WHERE is_active = true`)
+      await pool.query(`CREATE INDEX IF NOT EXISTS idx_admin_notifications_type ON admin_notifications (type)`)
+      success("  Created admin_notifications table")
+    } catch (err) {
+      error(`  Failed to create admin_notifications table: ${err.message}`)
+    }
+  }
+
   log("")
   success("V2 migration complete!")
   log("")
   log(`${c.cyan}Your database has been upgraded to VulnRadar v2 schema.${c.reset}`)
-  log(`${c.cyan}New features available: badges, billing history, subscription management.${c.reset}`)
+  log(`${c.cyan}New features available: badges, billing history, subscription management, admin notifications.${c.reset}`)
   log("")
 
   return true
@@ -520,7 +582,28 @@ async function main() {
   if (v1Info.isV1 || forceV2) {
     if (v1Info.isV1) {
       log("")
-      info(`Detected v1 database (missing ${v1Info.missingTables.length} tables, ${v1Info.missingColumns.length} columns)`)
+      log(`${c.bold}${c.bgYellow}${c.white} V1 DATABASE DETECTED ${c.reset}`)
+      log("")
+      log(`${c.yellow}Your database is running VulnRadar v1 schema.${c.reset}`)
+      log(`${c.yellow}Missing ${v1Info.missingTables.length} tables, ${v1Info.missingColumns.length} columns.${c.reset}`)
+      log("")
+      log(`${c.cyan}${c.bold}RECOMMENDATION:${c.reset}`)
+      log(`${c.cyan}For v1 databases, we recommend using ${c.bold}npm run new-db${c.reset}${c.cyan} instead.${c.reset}`)
+      log(`${c.cyan}This creates a fresh database with the latest schema and is safer${c.reset}`)
+      log(`${c.cyan}than incremental migration for large schema changes.${c.reset}`)
+      log("")
+      log(`${c.dim}If you have important data to preserve, the migration below will${c.reset}`)
+      log(`${c.dim}attempt to add missing tables/columns without data loss.${c.reset}`)
+      log("")
+      
+      const continueAnyway = await askReview("Continue with incremental migration anyway?")
+      if (!continueAnyway) {
+        log("")
+        info("Migration cancelled. Run 'npm run new-db' for a fresh install.")
+        await pool.end()
+        return
+      }
+      
       const migrated = await runV2Migration(pool, actual, v1Info)
       if (migrated) {
         // Re-read schema after migration
