@@ -9,7 +9,7 @@ import { APP_NAME, ROUTES, BILLING_ENABLED } from "@/lib/constants"
 import Link from "next/link"
 import Image from "next/image"
 import { useAuth } from "@/components/auth-provider"
-import { Header } from "@/components/scanner/header"
+import { PublicPageShell } from "@/components/public-page-shell"
 import { StripeCheckout } from "@/components/stripe-checkout"
 import { X } from "lucide-react"
 
@@ -162,27 +162,8 @@ export default function PricingPage() {
   }
 
   return (
-    <div className="min-h-screen bg-background">
-      {me ? (
-        <Header />
-      ) : (
-        <header className="sticky top-0 z-40 border-b border-border bg-background/80 backdrop-blur-lg">
-          <div className="max-w-7xl mx-auto flex items-center justify-between px-4 sm:px-6 h-14">
-            <Link href={ROUTES.HOME} className="flex items-center gap-2 hover:opacity-80 transition-opacity">
-              <Image src="/favicon.svg" alt={`${APP_NAME} logo`} width={24} height={24} className="h-6 w-6" />
-              <span className="font-semibold">{APP_NAME}</span>
-            </Link>
-            <div className="flex items-center gap-2">
-              <Button variant="ghost" size="sm" asChild>
-                <Link href={ROUTES.LOGIN}>Log in</Link>
-              </Button>
-              <Button size="sm" asChild>
-                <Link href={ROUTES.SIGNUP}>Get Started</Link>
-              </Button>
-            </div>
-          </div>
-        </header>
-      )}
+    <PublicPageShell maxWidth="max-w-7xl" padding="py-0">
+      <div>
 
       {/* Stripe Checkout Modal */}
       {checkoutPlan && (
@@ -456,6 +437,7 @@ export default function PricingPage() {
           </div>
         </div>
       </footer>
-    </div>
+      </div>
+    </PublicPageShell>
   )
 }

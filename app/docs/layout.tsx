@@ -6,8 +6,12 @@ import { cn } from "@/lib/utils"
 import { BookOpen, Zap, Code2, ChevronRight } from "lucide-react"
 import { Header } from "@/components/scanner/header"
 import { Footer } from "@/components/scanner/footer"
-import { APP_NAME } from "@/lib/constants"
+import { APP_NAME, ROUTES, BILLING_ENABLED } from "@/lib/constants"
 import { useState, useEffect, createContext, useContext } from "react"
+import Image from "next/image"
+import { Button } from "@/components/ui/button"
+import { ThemeToggle } from "@/components/theme-toggle"
+import { useAuth } from "@/components/auth-provider"
 
 // Context for sharing active section state between layout and pages
 interface DocsContextType {
@@ -41,21 +45,61 @@ const mainNavItems = [
   { href: "/docs/developers", label: "Developers", icon: Code2 },
 ]
 
+function getInitialAuthState(): boolean | null {
+  if (typeof window === "undefined") return null
+  try {
+    const cached = localStorage.getItem("vr_auth_cache")
+    if (cached) return !!JSON.parse(cached)?.userId
+  } catch {}
+  return null
+}
+
 export default function DocsLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
+  const { me, isLoading } = useAuth()
   const [activeSection, setActiveSection] = useState("")
   const [tocItems, setTocItems] = useState<TocItem[]>([])
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
+  const [cachedAuth, setCachedAuth] = useState<boolean | null>(() => getInitialAuthState())
+
+  useEffect(() => {
+    if (!isLoading) setCachedAuth(!!me?.userId)
+  }, [me, isLoading])
 
   // Close mobile nav on route change
   useEffect(() => {
     setMobileNavOpen(false)
   }, [pathname])
 
+  const isLoggedIn = cachedAuth === true || !!me?.userId
+
   return (
     <DocsContext.Provider value={{ activeSection, setActiveSection, tocItems, setTocItems }}>
       <div className="min-h-screen flex flex-col bg-background">
-        <Header />
+        {isLoggedIn ? (
+          <Header />
+        ) : (
+          <header className="sticky top-0 z-50 border-b border-border bg-background/80 backdrop-blur-lg">
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+              <Link href="/" className="flex items-center gap-2.5 hover:opacity-80 transition-opacity">
+                <Image src="/favicon.svg" alt={`${APP_NAME} logo`} width={24} height={24} className="h-6 w-6" />
+                <span className="font-semibold text-lg tracking-tight">{APP_NAME}</span>
+              </Link>
+              <nav className="hidden md:flex items-center gap-6">
+                {BILLING_ENABLED && (
+                  <Link href={ROUTES.PRICING} className="text-sm text-muted-foreground hover:text-foreground transition-colors">Pricing</Link>
+                )}
+                <Link href="/docs" className="text-sm text-muted-foreground hover:text-foreground transition-colors">Docs</Link>
+                <Link href="/demo" className="text-sm text-muted-foreground hover:text-foreground transition-colors">Demo</Link>
+              </nav>
+              <div className="flex items-center gap-3">
+                <ThemeToggle />
+                <Link href={ROUTES.LOGIN}><Button variant="ghost" size="sm">Log in</Button></Link>
+                <Link href={ROUTES.SIGNUP} className="hidden sm:block"><Button size="sm">Get Started</Button></Link>
+              </div>
+            </div>
+          </header>
+        )}
         
         <div className="flex-1 max-w-[90rem] w-full mx-auto">
           <div className="flex">
@@ -233,7 +277,7 @@ export default function DocsLayout({ children }: { children: React.ReactNode }) 
           </div>
         </div>
 
-        <Footer />
+        {isLoggedIn && <Footer />}
       </div>
     </DocsContext.Provider>
   )
