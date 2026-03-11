@@ -8,23 +8,23 @@ import { Button } from "@/components/ui/button"
 
 export function Footer() {
   return (
-    <footer className="border-t border-border bg-card/50 mt-auto">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-        <nav aria-label="Footer navigation" className="grid md:grid-cols-5 gap-8 mb-8">
+    <footer className="border-t border-border bg-background mt-auto">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
+        <nav aria-label="Footer navigation" className="grid md:grid-cols-5 gap-10 mb-12">
           {/* Brand */}
           <div className="md:col-span-2">
-            <div className="flex items-center gap-2 mb-3">
-              <Image src="/favicon.svg" alt={`${APP_NAME} logo`} width={20} height={20} className="h-5 w-5" />
-              <span className="text-sm font-bold text-foreground">{APP_NAME}</span>
-              <span className="inline-flex items-center rounded-md bg-primary/10 text-primary border border-primary/20 px-1.5 py-0.5 text-[10px] font-semibold font-mono">
+            <div className="flex items-center gap-2.5 mb-4">
+              <Image src="/favicon.svg" alt={`${APP_NAME} logo`} width={24} height={24} className="h-6 w-6" />
+              <span className="text-base font-semibold text-foreground">{APP_NAME}</span>
+              <span className="inline-flex items-center rounded-full bg-foreground/5 border border-border px-2 py-0.5 text-[10px] font-medium font-mono text-muted-foreground">
                 v{APP_VERSION}
               </span>
             </div>
-            <p className="text-sm text-muted-foreground leading-relaxed mb-4">
+            <p className="text-sm text-muted-foreground leading-relaxed mb-5 max-w-xs">
               Professional web vulnerability scanning. Open-source, free forever.
             </p>
             <Link href={ROUTES.DONATE}>
-              <Button variant="outline" size="sm" className="gap-1.5 text-yellow-500 border-yellow-500/30 hover:bg-yellow-500/10 hover:text-yellow-400">
+              <Button variant="outline" size="sm" className="gap-2 h-9">
                 <Heart className="h-3.5 w-3.5" />
                 Support the Project
               </Button>
@@ -73,16 +73,16 @@ export function Footer() {
           <p className="text-sm text-muted-foreground">
             {"\u00A9"} {new Date().getFullYear()} {APP_NAME}. For authorized security testing only.
           </p>
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-5">
             <a href={`https://github.com/${APP_REPO}`} target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-foreground transition-colors" aria-label="GitHub">
-              <Github className="h-5 w-5" />
+              <Github className="h-4 w-4" />
             </a>
             <a href={`mailto:${SUPPORT_EMAIL}`} className="text-muted-foreground hover:text-foreground transition-colors" aria-label="Email">
-              <Mail className="h-5 w-5" />
+              <Mail className="h-4 w-4" />
             </a>
-            <a href={APP_URL} target="_blank" rel="noopener noreferrer" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
+            <span className="text-xs text-muted-foreground">
               {APP_URL.replace(/^https?:\/\//, "")}
-            </a>
+            </span>
           </div>
         </div>
       </div>

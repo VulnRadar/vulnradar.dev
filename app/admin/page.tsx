@@ -53,6 +53,8 @@ import {
   ImageOff,
   UserX,
   Beaker,
+  Settings,
+  Gift,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -611,21 +613,16 @@ function AdminContent() {
   return (
     <div className="min-h-screen bg-background flex flex-col">
       <Header />
-      <main className="flex-1 w-full max-w-7xl mx-auto px-4 py-8 flex flex-col gap-6">
+      <main className="flex-1 w-full max-w-7xl mx-auto px-4 sm:px-6 py-8 sm:py-12 flex flex-col gap-8">
 
         {/* Page header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <div className="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center">
-              <UserCog className="h-5 w-5 text-primary" />
-            </div>
-            <div>
-              <h1 className="text-xl font-bold text-foreground tracking-tight">Admin Panel</h1>
-              <p className="text-xs text-muted-foreground">Manage users, monitor activity, and provide support.</p>
-            </div>
+          <div>
+            <h1 className="text-2xl font-semibold tracking-tight mb-1">Admin Panel</h1>
+            <p className="text-sm text-muted-foreground">Manage users, monitor activity, and provide support.</p>
           </div>
-          <Button variant="outline" size="sm" className="bg-transparent gap-1.5 self-start sm:self-auto" onClick={() => { fetchData(page); if (activeTab === "audit") fetchAudit(auditPage); if (activeTab === "admins") fetchActiveAdmins(); }}>
-            <RefreshCw className="h-3.5 w-3.5" />
+          <Button variant="outline" size="sm" className="gap-2 self-start sm:self-auto" onClick={() => { fetchData(page); if (activeTab === "audit") fetchAudit(auditPage); if (activeTab === "admins") fetchActiveAdmins(); }}>
+            <RefreshCw className="h-4 w-4" />
             Refresh
           </Button>
         </div>
@@ -654,7 +651,7 @@ function AdminContent() {
             )}
 
             {/* Tab navigation */}
-            <div className="flex items-center gap-1 border-b border-border">
+            <div className="flex items-center gap-1 border-b border-border -mb-px">
               {([
                 { key: "users" as const, label: "Users", icon: Users },
                 { key: "audit" as const, label: "Audit Log", icon: History },
@@ -674,9 +671,9 @@ function AdminContent() {
                     }
                   }}
                   className={cn(
-                    "flex items-center gap-2 px-4 py-2.5 text-sm font-medium transition-colors border-b-2 -mb-px",
+                    "flex items-center gap-2 px-4 py-3 text-sm font-medium transition-colors border-b-2 -mb-px",
                     activeTab === tab.key
-                      ? "text-primary border-primary"
+                      ? "text-foreground border-foreground"
                       : "text-muted-foreground border-transparent hover:text-foreground hover:border-border",
                   )}
                 >

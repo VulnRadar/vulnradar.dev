@@ -143,21 +143,24 @@ export default function SignupPage() {
 
   return (
       <div className="min-h-screen flex items-center justify-center bg-background px-4 py-8">
-        <Card className="w-full max-w-sm bg-card border-border">
-          <CardHeader className="text-center space-y-2 pb-6 pt-8">
-            <div className="flex items-center justify-center gap-2 mb-4">
-              <Image
-                  src="/favicon.svg"
-                  alt={`${APP_NAME} logo`}
-                  width={32}
-                  height={32}
-                  className="h-8 w-8"
-              />
-              <span className="text-2xl font-bold text-foreground font-mono tracking-tight">{APP_NAME}</span>
-            </div>
-            <CardTitle className="text-xl font-bold tracking-tight">Create an account</CardTitle>
-            <CardDescription>Enter your details below to create your account and start scanning.</CardDescription>
-          </CardHeader>
+        <div className="w-full max-w-sm">
+          {/* Logo */}
+          <div className="flex items-center justify-center gap-2.5 mb-8">
+            <Image
+                src="/favicon.svg"
+                alt={`${APP_NAME} logo`}
+                width={28}
+                height={28}
+                className="h-7 w-7"
+            />
+            <span className="text-xl font-semibold text-foreground tracking-tight">{APP_NAME}</span>
+          </div>
+
+          <Card className="bg-card border-border">
+            <CardHeader className="text-center pb-6 pt-8 px-6">
+              <CardTitle className="text-xl font-semibold tracking-tight">Create an account</CardTitle>
+              <CardDescription className="mt-2">Enter your details below to get started.</CardDescription>
+            </CardHeader>
 
           <CardContent>
             <form onSubmit={handleSubmit} className="flex flex-col gap-4">
@@ -287,6 +290,7 @@ export default function SignupPage() {
             </form>
           </CardContent>
         </Card>
+        </div>
         {TURNSTILE_ENABLED && (
             <Script
                 src="https://challenges.cloudflare.com/turnstile/v0/api.js"

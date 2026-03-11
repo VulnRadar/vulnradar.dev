@@ -860,27 +860,32 @@ function ProfileContent() {
     <div className="min-h-screen bg-background flex flex-col overflow-x-hidden">
       <Header />
 
-      <main className="flex-1 w-full max-w-3xl mx-auto px-4 py-8 flex flex-col gap-6 min-w-0">
+      <main className="flex-1 w-full max-w-4xl mx-auto px-4 sm:px-6 py-8 sm:py-12 flex flex-col gap-8 min-w-0">
+        
+        {/* Page Header */}
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight mb-1">Settings</h1>
+          <p className="text-sm text-muted-foreground">Manage your account settings and preferences.</p>
+        </div>
 
         {/* Toast messages */}
         {(error || success) && (
           <div
-            className={`flex items-center gap-2 p-3 rounded-lg text-sm ${
-              error
-                ? "bg-destructive/10 text-destructive"
-                : "bg-primary/10 text-primary"
-            }`}
+            className={cn(
+              "flex items-center gap-3 px-4 py-3 rounded-lg text-sm",
+              error ? "bg-destructive/10 text-destructive border border-destructive/20" : "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20"
+            )}
           >
             {error ? <AlertTriangle className="h-4 w-4 shrink-0" /> : <Check className="h-4 w-4 shrink-0" />}
             <span className="flex-1">{error || success}</span>
-            <button onClick={() => { setError(null); setSuccess(null) }} className="text-xs underline opacity-70 hover:opacity-100">
+            <button onClick={() => { setError(null); setSuccess(null) }} className="text-xs hover:underline opacity-70 hover:opacity-100">
               Dismiss
             </button>
           </div>
         )}
 
         {/* Tab Navigation */}
-        <div className="flex items-center gap-0.5 p-1 rounded-lg bg-secondary/50 border border-border overflow-x-auto scrollbar-none">
+        <div className="flex items-center gap-1 border-b border-border overflow-x-auto scrollbar-none -mb-px">
           {TABS.map((tab) => (
             <a
               key={tab.id}
@@ -892,14 +897,14 @@ function ProfileContent() {
                 }
               }}
               className={cn(
-                "flex items-center justify-center gap-1 px-2 py-1.5 rounded-md text-xs font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 whitespace-nowrap shrink-0 flex-1",
+                "flex items-center gap-2 px-4 py-3 text-sm font-medium transition-colors whitespace-nowrap border-b-2 -mb-px",
                 activeTab === tab.id
-                  ? "bg-card text-foreground shadow-sm"
-                  : "text-muted-foreground hover:text-foreground"
+                  ? "border-foreground text-foreground"
+                  : "border-transparent text-muted-foreground hover:text-foreground hover:border-border"
               )}
             >
               {tab.icon}
-              <span className="hidden md:inline">{tab.label}</span>
+              <span className="hidden sm:inline">{tab.label}</span>
             </a>
           ))}
         </div>
