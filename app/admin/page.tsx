@@ -475,11 +475,13 @@ function AdminContent() {
 
   async function handleAction(userId: number, action: string, extra?: Record<string, unknown>) {
     setActionLoading(`${userId}-${action}`)
+    const body = { userId, action, ...extra }
+    console.log("[v0] handleAction sending:", body)
     try {
       const res = await fetch(API.ADMIN, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId, action, ...extra }),
+        body: JSON.stringify(body),
       })
       const data = await res.json()
       if (res.ok) {
@@ -1944,6 +1946,7 @@ function UserDetailPanel({
                         : null
                     }
                     onGift={(plan, endDate) => {
+                      console.log("[v0] onGift callback:", { plan, endDate })
                       onAction(u.id, "gift_subscription", { giftPlan: plan, giftEndDate: endDate })
                       setShowGiftModal(false)
                     }}
@@ -2363,7 +2366,10 @@ function GiftSubscriptionModal({
             <Button
               className="flex-1 gap-1.5"
               disabled={!giftEndDate || isLoading}
-              onClick={() => onGift(giftPlan, new Date(giftEndDate).toISOString())}
+              onClick={() => {
+                console.log("[v0] Gift submit:", { giftPlan, giftEndDate, isoString: new Date(giftEndDate).toISOString() })
+                onGift(giftPlan, new Date(giftEndDate).toISOString())
+              }}
             >
               {isLoading ? (
                 <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Saving...</>
