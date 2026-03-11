@@ -14,6 +14,8 @@
 /* Smooth scroll behavior for anchor links */
 html {
   scroll-behavior: smooth;
+  /* Always show scrollbar to prevent layout shift when navigating between pages */
+  overflow-y: scroll;
 }
 
 /* Reduce motion for users who prefer it */
