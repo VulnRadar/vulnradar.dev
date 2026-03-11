@@ -63,6 +63,7 @@ import {
   Container,
   Menu,
   Image,
+  Newspaper,
   Settings
 } from "lucide-react"
 import { APP_NAME, TOTAL_CHECKS_LABEL } from "@/lib/constants"

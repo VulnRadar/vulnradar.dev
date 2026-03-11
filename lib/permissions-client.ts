@@ -69,6 +69,9 @@ export const STAFF_PERMISSIONS = {
   SEND_ANNOUNCEMENTS: "send_announcements",
   SEND_USER_EMAILS: "send_user_emails",
   
+  // Notifications Management
+  MANAGE_NOTIFICATIONS: "manage_notifications",
+  
   // Development
   VIEW_DEBUG_INFO: "view_debug_info",
   TRIGGER_MAINTENANCE: "trigger_maintenance",
