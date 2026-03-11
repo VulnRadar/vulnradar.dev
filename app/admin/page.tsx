@@ -656,9 +656,9 @@ function AdminContent() {
             <div className="flex items-center gap-1 border-b border-border -mb-px">
               {([
                 { key: "users" as const, label: "Users", icon: Users },
-                { key: "audit" as const, label: "Audit Log", icon: History },
-                { key: "admins" as const, label: "Staff", icon: Shield },
                 { key: "notifications" as const, label: "Notifications", icon: Bell },
+                { key: "admins" as const, label: "Active Staff", icon: Shield },
+                { key: "audit" as const, label: "Audit Logs", icon: History },
               ]).map((tab) => (
                 <a
                   key={tab.key}
