@@ -9,6 +9,11 @@ export async function GET(req: Request) {
     const now = new Date()
     
     // Fetch active notifications matching criteria
+    // Audience logic:
+    // - "all" = everyone
+    // - "authenticated" = logged in users only
+    // - "unauthenticated" = guests only  
+    // - "staff" / "admin" = staff members only
     const result = await pool.query(
       `SELECT id, title, message, type, variant, audience, path_pattern, is_active,
               is_dismissible, dismiss_duration_hours, action_label, action_url, action_external, priority
@@ -18,10 +23,10 @@ export async function GET(req: Request) {
        AND (ends_at IS NULL OR ends_at > $1)
        AND (
          audience = 'all' 
-         OR (audience = 'authenticated' AND $2 = true)
-         OR (audience = 'unauthenticated' AND $2 = false)
-         OR (audience = 'staff' AND $3 = true)
-         OR (audience = 'admin' AND $3 = true)
+         OR (audience = 'authenticated' AND $2)
+         OR (audience = 'unauthenticated' AND NOT $2)
+         OR (audience = 'staff' AND $3)
+         OR (audience = 'admin' AND $3)
        )
        ORDER BY priority DESC, created_at DESC`,
       [now, isAuthenticated, isStaff]
