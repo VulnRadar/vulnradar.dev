@@ -17,6 +17,8 @@ import { PUBLIC_PATHS } from "@/lib/public-paths"
 import { useAuth } from "@/components/auth-provider"
 import { STAFF_ROLES } from "@/lib/constants"
 
+const STAFF_ROLE_VALUES = Object.values(STAFF_ROLES)
+
 // ─── Cookie Helpers ──────────────────────────────────────────────
 
 function getCookie(name: string): string | undefined {
@@ -151,7 +153,7 @@ export function NotificationBell() {
     return pathname.startsWith(p)
   })
 
-  const isStaff = me?.role && STAFF_ROLES.includes(me.role)
+  const isStaff = me?.role && STAFF_ROLE_VALUES.includes(me.role)
 
   // Initialize dismissed IDs from cookies on mount
   useEffect(() => {
