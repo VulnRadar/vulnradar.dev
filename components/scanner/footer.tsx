@@ -16,7 +16,7 @@ export function Footer() {
             <div className="flex items-center gap-2.5 mb-4">
               <ThemedLogo width={24} height={24} className="h-6 w-6" alt={`${APP_NAME} logo`} />
               <span className="text-base font-semibold text-foreground">{APP_NAME}</span>
-              <span className="inline-flex items-center rounded-full bg-foreground/5 border border-border px-2 py-0.5 text-[10px] font-medium font-mono text-muted-foreground">
+              <span className="inline-flex items-center rounded-full bg-primary/10 border border-primary/30 px-2 py-0.5 text-[10px] font-medium font-mono text-primary">
                 v{APP_VERSION}
               </span>
             </div>
