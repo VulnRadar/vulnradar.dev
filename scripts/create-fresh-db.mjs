@@ -427,6 +427,30 @@ async function main() {
         "admin_notifications",
       ]
       
+      // Column defaults for v1 -> v2 migration (columns that exist in v2 but not v1)
+      // These are used when a NOT NULL column exists in v2 but not in v1 data
+      const COLUMN_DEFAULTS = {
+        scan_history: {
+          summary: "'{}'::jsonb",
+          findings: "'[]'::jsonb", 
+          findings_count: "0",
+          duration: "0",
+          source: "'web'",
+        },
+        users: {
+          subscription_source: "'manual'",
+        },
+      }
+      
+      // Column renames from v1 -> v2 (old_name: new_name)
+      const COLUMN_RENAMES = {
+        scan_history: {
+          results: "findings",  // v1 might have "results" instead of "findings"
+          scan_results: "findings",
+          result: "findings",
+        },
+      }
+      
       for (const table of orderedTables) {
         if (!tablesToMigrate.includes(table)) continue
         
@@ -439,15 +463,45 @@ async function main() {
           `, [table])
           const columns = colRes.rows.map(r => r.column_name)
           
-          // Check which columns exist in new table
+          // Check which columns exist in new table (with nullability info)
           const newColRes = await newPool.query(`
-            SELECT column_name FROM information_schema.columns
+            SELECT column_name, is_nullable, column_default 
+            FROM information_schema.columns
             WHERE table_name = $1 AND table_schema = 'public'
           `, [table])
+          const newColumnsInfo = new Map(newColRes.rows.map(r => [r.column_name, r]))
           const newColumns = new Set(newColRes.rows.map(r => r.column_name))
           
-          // Only migrate columns that exist in both
-          const commonColumns = columns.filter(c => newColumns.has(c))
+          // Handle column renames and find common columns
+          const renames = COLUMN_RENAMES[table] || {}
+          const columnMapping = new Map() // old_name -> new_name
+          
+          for (const oldCol of columns) {
+            if (newColumns.has(oldCol)) {
+              columnMapping.set(oldCol, oldCol)
+            } else if (renames[oldCol] && newColumns.has(renames[oldCol])) {
+              columnMapping.set(oldCol, renames[oldCol])
+            }
+          }
+          
+          const commonColumns = [...columnMapping.keys()]
+          const targetColumns = [...columnMapping.values()]
+          
+          // Find new NOT NULL columns that need defaults (not in source, not already mapped)
+          const tableDefaults = COLUMN_DEFAULTS[table] || {}
+          const extraColumns = []
+          const extraValues = []
+          const mappedTargets = new Set(targetColumns)
+          
+          for (const [col, info] of newColumnsInfo) {
+            if (!mappedTargets.has(col) && info.is_nullable === 'NO' && !info.column_default) {
+              // New required column - check if we have a default
+              if (tableDefaults[col]) {
+                extraColumns.push(col)
+                extraValues.push(tableDefaults[col])
+              }
+            }
+          }
           
           if (commonColumns.length === 0) {
             warn(`  Skipping ${table}: no common columns`)
@@ -461,11 +515,16 @@ async function main() {
           
           if (dataRes.rows.length === 0) continue
           
-          // Insert into new database
-          const colList = commonColumns.map(c => `"${c}"`).join(", ")
-          const placeholders = commonColumns.map((_, i) => `$${i + 1}`).join(", ")
+          // Build column list with extra defaults (using target column names)
+          const allTargetColumns = [...targetColumns, ...extraColumns]
+          const colList = allTargetColumns.map(c => `"${c}"`).join(", ")
+          const placeholders = [
+            ...targetColumns.map((_, i) => `$${i + 1}`),
+            ...extraValues
+          ].join(", ")
           
           let migrated = 0
+          let firstError = null
           for (const row of dataRes.rows) {
             try {
               const values = commonColumns.map(c => row[c])
@@ -475,12 +534,18 @@ async function main() {
               )
               migrated++
             } catch (err) {
-              // Skip constraint violations
+              // Capture first error for debugging
+              if (!firstError) firstError = err.message
             }
           }
           
+          // Show error if most rows failed
+          if (migrated < dataRes.rows.length / 2 && firstError) {
+            warn(`    Error sample: ${firstError.slice(0, 100)}`)
+          }
+          
           // Reset sequence if table has serial ID
-          if (commonColumns.includes("id")) {
+          if (targetColumns.includes("id")) {
             try {
               await newPool.query(`
                 SELECT setval(pg_get_serial_sequence('"${table}"', 'id'), 
