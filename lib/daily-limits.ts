@@ -29,20 +29,31 @@ export function isBillingEnabled(): boolean {
 }
 
 /**
- * Get user's current subscription plan (from users table)
+ * Get user's current subscription plan (from users table, checking gifted subscriptions first)
  */
 export async function getUserPlan(userId: number): Promise<PlanType> {
   try {
+    // Check for active gifted subscription first, then fall back to user's regular plan
     const result = await pool.query(
-      `SELECT plan, role FROM users WHERE id = $1`,
+      `SELECT u.plan, u.role, gs.plan as gifted_plan
+       FROM users u
+       LEFT JOIN gifted_subscriptions gs ON gs.user_id = u.id 
+         AND gs.revoked_at IS NULL 
+         AND gs.expires_at > NOW()
+       WHERE u.id = $1`,
       [userId]
     )
+    const row = result.rows[0]
+    
     // Admins get unlimited
-    if (result.rows[0]?.role === "admin") {
+    if (row?.role === "admin") {
       return "admin"
     }
-    if (result.rows[0]?.plan && result.rows[0].plan !== "free") {
-      return result.rows[0].plan as PlanType
+    
+    // Gifted plan takes priority over regular plan
+    const effectivePlan = row?.gifted_plan || row?.plan
+    if (effectivePlan && effectivePlan !== "free") {
+      return effectivePlan as PlanType
     }
     return "free"
   } catch (error) {
