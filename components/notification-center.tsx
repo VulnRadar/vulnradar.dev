@@ -234,9 +234,14 @@ export function NotificationBell() {
     })
   }, [])
 
+  const dismissVersionNotif = useCallback(() => {
+    setCookie(VERSION_COOKIE, APP_VERSION, 60 * 60 * 24 * 365) // 1 year
+    setShowVersionNotif(false)
+  }, [])
+
   // Filter out dismissed notifications
   const visibleNotifications = notifications.filter((n) => !dismissedIds.has(n.id))
-  const count = visibleNotifications.length
+  const count = visibleNotifications.length + (showVersionNotif ? 1 : 0)
 
   return (
     <div ref={ref} className={cn("relative vr-auth-only", isPublicRoute && "!invisible !pointer-events-none")}>
@@ -278,6 +283,44 @@ export function NotificationBell() {
             </div>
           ) : (
             <div className="max-h-80 overflow-y-auto">
+              {/* Version notification (hardcoded, cookie-based) */}
+              {showVersionNotif && (
+                <div className="px-4 py-3 border-b border-border hover:bg-muted/50 transition-colors">
+                  <div className="flex items-start gap-3">
+                    <div className="flex-shrink-0 p-2 rounded-lg bg-primary/10 text-primary">
+                      <Sparkles className="h-4 w-4" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-foreground">{APP_NAME} v{APP_VERSION} Released</p>
+                      <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">New features, improvements, and bug fixes are available.</p>
+                      <div className="flex items-center gap-2 mt-2">
+                        <a
+                          href="/changelog"
+                          onClick={() => { dismissVersionNotif(); setOpen(false) }}
+                          className="text-xs font-medium text-primary hover:text-primary/80 transition-colors flex items-center gap-1"
+                        >
+                          View Changelog
+                          <ArrowRight className="h-3 w-3" />
+                        </a>
+                        <button
+                          onClick={dismissVersionNotif}
+                          className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+                        >
+                          Dismiss
+                        </button>
+                      </div>
+                    </div>
+                    <button
+                      onClick={dismissVersionNotif}
+                      className="flex-shrink-0 p-0.5 rounded text-muted-foreground/50 hover:text-muted-foreground transition-colors"
+                      aria-label="Dismiss version notification"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                </div>
+              )}
+              {/* API-driven notifications */}
               {visibleNotifications.map((n) => {
                 const variant = VARIANT_ICONS[n.variant] || VARIANT_ICONS.info
                 return (
