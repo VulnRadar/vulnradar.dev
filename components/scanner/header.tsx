@@ -1,6 +1,6 @@
 "use client"
 
-import { LogOut, User, Clock, Book, Menu, GitCompareArrows, ShieldAlert, Users, Radar, BadgeCheck, Link2 } from "lucide-react"
+import { LogOut, Menu, ShieldAlert } from "lucide-react"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { Button } from "@/components/ui/button"
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet"
@@ -14,14 +14,14 @@ import { NotificationBell } from "@/components/notification-center"
 import { useAuth, clearAuthCache } from "@/components/auth-provider"
 
 const NAV_LINKS = [
-  { href: ROUTES.DASHBOARD, label: "Scanner", icon: Radar },
-  { href: ROUTES.HISTORY, label: "History", icon: Clock },
-  { href: ROUTES.COMPARE, label: "Compare", icon: GitCompareArrows },
-  { href: ROUTES.SHARES, label: "Shared", icon: Link2 },
-  { href: ROUTES.TEAMS, label: "Teams", icon: Users },
-  { href: ROUTES.BADGE, label: "Badge", icon: BadgeCheck },
-  { href: ROUTES.DOCS, label: "Docs", icon: Book },
-  { href: ROUTES.PROFILE, label: "Profile", icon: User },
+  { href: ROUTES.DASHBOARD, label: "Scanner" },
+  { href: ROUTES.HISTORY, label: "History" },
+  { href: ROUTES.COMPARE, label: "Compare" },
+  { href: ROUTES.SHARES, label: "Shared" },
+  { href: ROUTES.TEAMS, label: "Teams" },
+  { href: ROUTES.BADGE, label: "Badge" },
+  { href: ROUTES.DOCS, label: "Docs" },
+  { href: ROUTES.PROFILE, label: "Profile" },
 ]
 
 export function Header() {
@@ -55,7 +55,9 @@ export function Header() {
           {/* Desktop nav - absolutely centered */}
           <nav className="hidden lg:flex items-center gap-0.5 absolute left-1/2 -translate-x-1/2">
             {NAV_LINKS.map(({ href, label }) => {
-              const active = href === ROUTES.DOCS ? pathname.startsWith(ROUTES.DOCS) : pathname === href || pathname.startsWith(href.split("#")[0])
+              const active = href === ROUTES.DOCS
+                  ? pathname.startsWith(ROUTES.DOCS)
+                  : pathname === href || pathname.startsWith(href.split("#")[0])
               return (
                   <Link
                       key={href}
@@ -114,53 +116,57 @@ export function Header() {
 
         {/* Mobile overlay menu */}
         <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
-          <SheetContent side="right" className="w-72 bg-background p-0 border-l border-border">
+          <SheetContent side="right" className="w-64 bg-background p-0 border-l border-border flex flex-col">
             <SheetTitle className="sr-only">Navigation menu</SheetTitle>
-            <nav className="flex flex-col px-4 pt-14 pb-6">
-              <div className="flex flex-col gap-1">
-                {NAV_LINKS.map(({ href, label, icon: Icon }) => {
-                  const active = href === ROUTES.DOCS ? pathname.startsWith(ROUTES.DOCS) : pathname === href || pathname.startsWith(href.split("#")[0])
-                  return (
-                      <Link
-                          key={href}
-                          href={href}
-                          onClick={() => setMobileOpen(false)}
-                          className={cn(
-                              "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors",
-                              active
-                                  ? "bg-primary/10 text-primary font-medium"
-                                  : "text-muted-foreground hover:text-foreground hover:bg-muted",
-                          )}
-                      >
-                        <Icon className="h-4 w-4" />
-                        {label}
-                      </Link>
-                  )
-                })}
-                <Link
-                    href={ROUTES.ADMIN}
-                    onClick={() => setMobileOpen(false)}
-                    className={cn(
-                        "vr-staff-only items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors",
-                        isStaff && "!flex",
-                        pathname === ROUTES.ADMIN
-                            ? "bg-destructive/10 text-destructive font-medium"
-                            : "text-destructive/70 hover:text-destructive hover:bg-destructive/10",
-                    )}
-                >
-                  <ShieldAlert className="h-4 w-4" />
-                  Admin
-                </Link>
-              </div>
-              <div className="my-4 border-t border-border" />
+            {/* Sheet header */}
+            <div className="flex items-center gap-2.5 px-4 h-16 border-b border-border shrink-0">
+              <ThemedLogo width={22} height={22} className="h-5.5 w-5.5" alt={`${APP_NAME} logo`} />
+              <span className="font-semibold text-foreground tracking-tight">{APP_NAME}</span>
+            </div>
+            {/* Links */}
+            <nav className="flex flex-col gap-0.5 p-3 flex-1 overflow-y-auto">
+              {NAV_LINKS.map(({ href, label }) => {
+                const active = href === ROUTES.DOCS ? pathname.startsWith(ROUTES.DOCS) : pathname === href || pathname.startsWith(href.split("#")[0])
+                return (
+                    <Link
+                        key={href}
+                        href={href}
+                        onClick={() => setMobileOpen(false)}
+                        className={cn(
+                            "flex items-center px-3 py-2 rounded-md text-sm transition-colors",
+                            active
+                                ? "bg-primary/10 text-primary font-medium"
+                                : "text-muted-foreground hover:text-foreground hover:bg-muted",
+                        )}
+                    >
+                      {label}
+                    </Link>
+                )
+              })}
+              <Link
+                  href={ROUTES.ADMIN}
+                  onClick={() => setMobileOpen(false)}
+                  className={cn(
+                      "vr-staff-only px-3 py-2 rounded-md text-sm transition-colors",
+                      isStaff && "!flex",
+                      pathname === ROUTES.ADMIN
+                          ? "bg-destructive/10 text-destructive font-medium"
+                          : "text-destructive/70 hover:text-destructive hover:bg-destructive/10",
+                  )}
+              >
+                Admin
+              </Link>
+            </nav>
+            {/* Footer */}
+            <div className="p-3 border-t border-border shrink-0">
               <button
                   onClick={handleLogout}
-                  className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-destructive hover:bg-destructive/10 transition-colors"
+                  className="flex items-center gap-2 w-full px-3 py-2 rounded-md text-sm text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
               >
                 <LogOut className="h-4 w-4" />
                 Log out
               </button>
-            </nav>
+            </div>
           </SheetContent>
         </Sheet>
       </header>
