@@ -39,21 +39,21 @@ export function Header() {
 
   return (
       <header className="sticky top-0 z-50 border-b border-border bg-background/80 backdrop-blur-lg">
-        <div className="max-w-7xl mx-auto flex items-center justify-between px-4 sm:px-6 h-16">
-          {/* Logo */}
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 relative flex items-center">
+          {/* Logo - left */}
           <Link
               href={ROUTES.DASHBOARD}
-              className="flex items-center gap-2.5 hover:opacity-80 transition-opacity shrink-0"
+              className="flex items-center gap-2.5 hover:opacity-80 transition-opacity shrink-0 z-10"
               aria-label="Go to scanner"
           >
             <ThemedLogo width={24} height={24} className="h-6 w-6" alt={`${APP_NAME} logo`} />
-            <span className="text-lg font-semibold text-foreground tracking-tight">
+            <span className="text-lg font-semibold text-foreground tracking-tight hidden sm:inline">
               {APP_NAME}
             </span>
           </Link>
 
-          {/* Desktop nav */}
-          <nav className="hidden lg:flex items-center gap-1">
+          {/* Desktop nav - absolutely centered */}
+          <nav className="hidden lg:flex items-center gap-0.5 absolute left-1/2 -translate-x-1/2">
             {NAV_LINKS.map(({ href, label }) => {
               const active = href === ROUTES.DOCS ? pathname.startsWith(ROUTES.DOCS) : pathname === href || pathname.startsWith(href.split("#")[0])
               return (
@@ -61,7 +61,7 @@ export function Header() {
                       key={href}
                       href={href}
                       className={cn(
-                          "px-3 py-2 rounded-md text-sm transition-colors",
+                          "px-2.5 py-1.5 rounded-md text-sm transition-colors",
                           active
                               ? "bg-primary/10 text-primary font-medium"
                               : "text-muted-foreground hover:text-foreground hover:bg-muted",
@@ -71,11 +71,10 @@ export function Header() {
                   </Link>
               )
             })}
-            {/* Admin link */}
             <Link
                 href={ROUTES.ADMIN}
                 className={cn(
-                    "vr-staff-only px-3 py-2 rounded-md text-sm transition-colors",
+                    "vr-staff-only px-2.5 py-1.5 rounded-md text-sm transition-colors",
                     isStaff && "!inline-flex",
                     pathname === ROUTES.ADMIN
                         ? "text-destructive font-medium"
@@ -86,19 +85,19 @@ export function Header() {
             </Link>
           </nav>
 
-          {/* Right side */}
-          <div className="flex items-center gap-2">
+          {/* Right side - pushed to end */}
+          <div className="flex items-center gap-1 ml-auto z-10">
             <NotificationBell />
             <ThemeToggle />
-            <div className="hidden md:block w-px h-5 bg-border mx-1" />
+            <div className="hidden lg:block w-px h-5 bg-border mx-1" />
             <Button
                 variant="ghost"
                 size="sm"
                 onClick={handleLogout}
-                className="hidden md:inline-flex text-muted-foreground hover:text-foreground gap-2"
+                className="hidden lg:inline-flex items-center gap-1.5 text-muted-foreground hover:text-foreground px-2.5"
             >
               <LogOut className="h-4 w-4" />
-              <span className="hidden lg:inline">Log out</span>
+              <span>Log out</span>
             </Button>
             {/* Mobile hamburger */}
             <Button
