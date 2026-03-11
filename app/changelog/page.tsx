@@ -1,7 +1,6 @@
 import { Header } from "@/components/scanner/header"
 import { Footer } from "@/components/scanner/footer"
 import {
-  Newspaper,
   Zap,
   Shield,
   Users,
@@ -604,10 +603,7 @@ export default function ChangelogPage() {
       <Header />
       <main className="flex-1 w-full max-w-3xl mx-auto px-4 py-6 sm:py-10">
         <div className="flex flex-col gap-2 mb-8">
-          <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
-            <Newspaper className="h-6 w-6 text-primary" />
-            Changelog
-          </h1>
+          <h1 className="text-2xl font-bold text-foreground">Changelog</h1>
           <p className="text-sm text-muted-foreground leading-relaxed">
             {"What's"} new in VulnRadar. Follow along as we ship new checks, features, and improvements.
           </p>

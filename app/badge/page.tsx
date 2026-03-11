@@ -4,7 +4,7 @@ import { useState, useEffect } from "react"
 import { Header } from "@/components/scanner/header"
 import { Footer } from "@/components/scanner/footer"
 import { Button } from "@/components/ui/button"
-import { Copy, Check, Code2, Loader2, ExternalLink, Image as ImageIcon, ShieldCheck, AlertTriangle, Search } from "lucide-react"
+import { Copy, Check, Code2, Loader2, ExternalLink, ShieldCheck, AlertTriangle, Search } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { getSafetyRating } from "@/lib/scanner/safety-rating"
 import type { Vulnerability } from "@/lib/scanner/types"
@@ -125,15 +125,8 @@ export default function BadgePage() {
       <main className="flex-1 w-full max-w-3xl mx-auto px-4 py-8">
         <div className="flex flex-col gap-6">
           {/* Page header */}
-          <div className="flex flex-col gap-2">
-            <div className="flex items-center gap-2">
-              <div className="flex items-center justify-center w-9 h-9 rounded-lg bg-primary/10">
-                <ImageIcon className="h-4 w-4 text-primary" />
-              </div>
-              <h1 className="text-xl font-bold text-foreground tracking-tight">
-                Embed Security Badge
-              </h1>
-            </div>
+          <div className="flex flex-col gap-1">
+            <h1 className="text-xl font-bold text-foreground">Embed Security Badge</h1>
             <p className="text-sm text-muted-foreground leading-relaxed">
               Pick any scan to generate a &ldquo;Secured by VulnRadar&rdquo; badge you can embed on your site.
             </p>

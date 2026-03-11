@@ -542,9 +542,7 @@ export default function TeamsPage() {
           <>
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div className="flex flex-col gap-1">
-                <h1 className="text-xl font-bold text-foreground flex items-center gap-2">
-                  <Users className="h-5 w-5 text-primary" />Teams
-                </h1>
+                <h1 className="text-xl font-bold text-foreground">Teams</h1>
                 <p className="text-sm text-muted-foreground">Collaborate with team members on security scans.</p>
               </div>
               <Button size="sm" className="shrink-0 gap-1.5 self-start sm:self-auto" onClick={() => setShowCreate(!showCreate)}>
