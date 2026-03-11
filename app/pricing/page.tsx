@@ -143,8 +143,8 @@ export default function PricingPage() {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="text-center max-w-lg px-4">
-          <div className="w-16 h-16 rounded-full bg-emerald-500/10 flex items-center justify-center mx-auto mb-6">
-            <Check className="h-8 w-8 text-emerald-500" />
+          <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-6">
+            <Check className="h-8 w-8 text-primary" />
           </div>
           <h1 className="text-2xl font-bold mb-3">Unlimited Access</h1>
           <p className="text-muted-foreground mb-6">
@@ -224,7 +224,7 @@ export default function PricingPage() {
                 )}
               >
                 Yearly
-                <span className="text-xs text-emerald-500 font-semibold">-20%</span>
+                <span className="text-xs text-primary font-semibold">-20%</span>
               </button>
             </div>
           </div>
@@ -272,7 +272,7 @@ export default function PricingPage() {
                     <p className="text-sm text-muted-foreground mt-1">Free forever</p>
                   )}
                   {plan.price > 0 && billing === "yearly" && (
-                    <p className="text-xs text-emerald-500 mt-1">
+                    <p className="text-xs text-primary mt-1">
                       ${Math.round(price / 12)}/mo billed annually
                     </p>
                   )}
