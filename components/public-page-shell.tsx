@@ -59,34 +59,39 @@ export function PublicPageShell({
       {isLoggedIn ? (
         <Header />
       ) : (
-        <header className="sticky top-0 z-50 h-14 flex items-center justify-between px-4 sm:px-6 border-b border-border bg-card/95 backdrop-blur-sm">
-          <div className="flex items-center gap-2">
-            <Link
-              href="/"
-              className="flex items-center gap-2 hover:opacity-80 transition-opacity"
-            >
-              <Image
-                src="/favicon.svg"
-                alt={`${APP_NAME} logo`}
-                width={20}
-                height={20}
-                className="h-5 w-5"
-              />
-              <span className="text-base font-semibold text-foreground tracking-tight">
-                {APP_NAME}
-              </span>
+        <header className="sticky top-0 z-50 border-b border-border bg-background/80 backdrop-blur-lg">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+            {/* Logo */}
+            <Link href="/" className="flex items-center gap-2.5 hover:opacity-80 transition-opacity">
+              <Image src="/favicon.svg" alt={`${APP_NAME} logo`} width={24} height={24} className="h-6 w-6" />
+              <span className="font-semibold text-lg tracking-tight">{APP_NAME}</span>
             </Link>
-            {badge && (
-              <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded-md font-medium">
-                {badge}
-              </span>
-            )}
-          </div>
-          <div className="flex items-center gap-3">
-            <ThemeToggle />
-            <Button asChild variant="outline" size="sm" className="bg-transparent text-xs">
-              <Link href={ROUTES.LOGIN}>Sign In</Link>
-            </Button>
+
+            {/* Center nav links */}
+            <nav className="hidden md:flex items-center gap-6">
+              {BILLING_ENABLED && (
+                <Link href={ROUTES.PRICING} className="text-sm text-muted-foreground hover:text-foreground transition-colors">
+                  Pricing
+                </Link>
+              )}
+              <Link href="/docs" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
+                Docs
+              </Link>
+              <Link href="/demo" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
+                Demo
+              </Link>
+            </nav>
+
+            {/* CTA buttons */}
+            <div className="flex items-center gap-3">
+              <ThemeToggle />
+              <Link href={ROUTES.LOGIN}>
+                <Button variant="ghost" size="sm">Log in</Button>
+              </Link>
+              <Link href={ROUTES.SIGNUP} className="hidden sm:block">
+                <Button size="sm">Get Started</Button>
+              </Link>
+            </div>
           </div>
         </header>
       )}
