@@ -127,6 +127,7 @@ export default function PricingPage() {
   const [checkoutPlan, setCheckoutPlan] = useState<string | null>(null)
 
   const currentPlan = me?.plan || "free"
+  const isGifted = me?.subscriptionStatus === "gifted"
 
   const getStripeProductId = (planId: string) => {
     return `${planId}_${billing === "yearly" ? "yearly" : "monthly"}`
@@ -306,8 +307,8 @@ export default function PricingPage() {
                 </div>
 
                 {isCurrentPlan ? (
-                  <Button variant="outline" className="w-full" disabled>
-                    Current Plan
+                  <Button variant="outline" className={cn("w-full", isGifted && "border-amber-500/50 text-amber-500")} disabled>
+                    {isGifted ? "Gifted Plan" : "Current Plan"}
                   </Button>
                 ) : plan.price === 0 ? (
                   <Button variant={plan.popular ? "default" : "outline"} className="w-full" asChild>
