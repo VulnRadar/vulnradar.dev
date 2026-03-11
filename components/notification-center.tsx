@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState, useCallback, useMemo, useRef } from "react"
-import { useRouter, usePathname } from "next/navigation"
+import { usePathname } from "next/navigation"
 import {
   X,
   Sparkles,
@@ -24,10 +24,6 @@ import { useAuth } from "@/components/auth-provider"
 
 // ─── Cookie Helpers ──────────────────────────────────────────────
 
-const DISCORD_COOKIE = "vulnradar_discord_dismissed"
-const GIVEAWAY_COOKIE = "vulnradar_giveaway_shown"
-const GIVEAWAY_START_DATE = new Date("2026-02-26") // Giveaway starts Feb 26
-const GIVEAWAY_END_DATE = new Date("2026-03-12") // Giveaway ends Mar 12 (14 days)
 const DISCORD_INVITE_URL = "https://discord.gg/Y7R6hdGbNe"
 
 function getCookie(name: string): string | undefined {
@@ -151,26 +147,11 @@ function initVersionDismissed(): boolean {
   return !!v && v === APP_VERSION
 }
 
-function initDiscordDismissed(): boolean {
-  if (typeof document === "undefined") return true
-  return !!getCookie(DISCORD_COOKIE)
-}
-
-function initGiveawayDismissed(): boolean {
-  if (typeof document === "undefined") return true
-  // Hide if giveaway period has ended
-  if (new Date() > GIVEAWAY_END_DATE) return true
-  // Otherwise check if shown in last 24 hours
-  return !!getCookie(GIVEAWAY_COOKIE)
-}
 
 export function NotificationBell() {
-  const router = useRouter()
   const pathname = usePathname()
   const [open, setOpen] = useState(false)
   const [versionDismissed, setVersionDismissed] = useState(initVersionDismissed)
-  const [discordDismissed, setDiscordDismissed] = useState(initDiscordDismissed)
-  const [giveawayDismissed, setGiveawayDismissed] = useState(initGiveawayDismissed)
   const [customNotifs, setCustomNotifs] = useState<CustomNotification[]>([])
   const [hydrated, setHydrated] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
@@ -221,16 +202,6 @@ export function NotificationBell() {
   const dismissVersion = useCallback(() => {
     setCookie(VERSION_COOKIE_NAME, APP_VERSION, VERSION_COOKIE_MAX_AGE)
     setVersionDismissed(true)
-  }, [])
-
-  const dismissDiscord = useCallback(() => {
-    setCookie(DISCORD_COOKIE, "1", 60 * 60 * 24 * 30)
-    setDiscordDismissed(true)
-  }, [])
-
-  const dismissGiveaway = useCallback(() => {
-    setCookie(GIVEAWAY_COOKIE, "1", 1) // 24 hours
-    setGiveawayDismissed(true)
   }, [])
 
   const notifications = useMemo<NotifItem[]>(() => {
@@ -286,42 +257,8 @@ export function NotificationBell() {
       })
     }
 
-    if (!discordDismissed) {
-      list.push({
-        id: "discord",
-        icon: (
-          <svg className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-            <path d="M20.317 4.3698a19.7913 19.7913 0 00-4.8851-1.5152.0741.0741 0 00-.0785.0371c-.211.3753-.4447.8648-.6083 1.2495-1.8447-.2762-3.68-.2762-5.4868 0-.1636-.3933-.4058-.8742-.6177-1.2495a.077.077 0 00-.0785-.037 19.7363 19.7363 0 00-4.8852 1.515.0699.0699 0 00-.0321.0277C.5334 9.0458-.319 13.5799.0992 18.0578a.0824.0824 0 00.0312.0561c2.0528 1.5076 4.0413 2.4228 5.9929 3.0294a.0777.0777 0 00.0842-.0276c.4616-.6304.8731-1.2952 1.226-1.9942a.076.076 0 00-.0416-.1057c-.6528-.2476-1.2743-.5495-1.8722-.8923a.077.077 0 01-.0076-.1277c.1258-.0943.2517-.1923.3718-.2914a.0743.0743 0 01.0776-.0105c3.9278 1.7933 8.18 1.7933 12.0614 0a.0739.0739 0 01.0785.0095c.1202.099.246.1981.3728.2924a.077.077 0 01-.0066.1276 12.2986 12.2986 0 01-1.873.8914.0766.0766 0 00-.0407.1067c.3604.698.7719 1.3628 1.225 1.9932a.076.076 0 00.0842.0286c1.961-.6067 3.9495-1.5219 6.0023-3.0294a.077.077 0 00.0313-.0552c.5004-5.177-.8382-9.6739-3.5485-13.6604a.061.061 0 00-.0312-.0286zM8.02 15.3312c-1.1825 0-2.1569-1.0857-2.1569-2.419 0-1.3332.9555-2.4189 2.157-2.4189 1.2108 0 2.1757 1.0952 2.1568 2.419 0 1.3332-.9555 2.4189-2.1569 2.4189zm7.9748 0c-1.1825 0-2.1569-1.0857-2.1569-2.419 0-1.3332.9554-2.4189 2.1569-2.4189 1.2108 0 2.1757 1.0952 2.1568 2.419 0 1.3332-.946 2.4189-2.1568 2.4189z" />
-          </svg>
-        ),
-        iconBg: "bg-[#5865F2]/10 text-[#5865F2]",
-        title: "Join Our Discord",
-        description: "Connect with the community, get support, and stay updated.",
-        action: {
-          label: "Join Server",
-          onClick: () => { dismissDiscord(); setOpen(false); window.open(DISCORD_INVITE_URL, "_blank", "noopener,noreferrer") },
-        },
-        onDismiss: dismissDiscord,
-      })
-    }
-
-    if (!giveawayDismissed) {
-      list.push({
-        id: "giveaway",
-        icon: <Sparkles className="h-4 w-4" />,
-        iconBg: "bg-amber-500/10 text-amber-500",
-        title: "🎁 Giveaway Happening Now!",
-        description: "We're giving away 3 months FREE of VulnRadar Elite Supporter tier! Join our Discord server to enter.",
-        action: {
-          label: "Enter Giveaway",
-          onClick: () => { dismissGiveaway(); setOpen(false); window.open(DISCORD_INVITE_URL, "_blank", "noopener,noreferrer") },
-        },
-        onDismiss: dismissGiveaway,
-      })
-    }
-
     return list
-  }, [versionDismissed, discordDismissed, giveawayDismissed, dismissVersion, dismissDiscord, dismissGiveaway, router, customNotifs])
+  }, [versionDismissed, dismissVersion, customNotifs])
 
   const count = notifications.length
 
