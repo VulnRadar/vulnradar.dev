@@ -48,10 +48,10 @@ export default function LandingPage() {
           <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-24 pb-20 sm:pt-32 sm:pb-28">
             <div className="max-w-4xl mx-auto text-center">
               {/* Badge */}
-              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-border bg-card text-sm text-muted-foreground mb-8">
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-primary/30 bg-primary/5 text-sm text-muted-foreground mb-8">
                 <span className="relative flex h-2 w-2">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-primary"></span>
                 </span>
                 {TOTAL_CHECKS_LABEL} vulnerability checks
               </div>
@@ -85,15 +85,15 @@ export default function LandingPage() {
               {/* Trust indicators */}
               <div className="mt-12 flex items-center justify-center gap-8 text-sm text-muted-foreground">
                 <div className="flex items-center gap-2">
-                  <CheckCircle className="h-4 w-4 text-emerald-500" />
+                  <CheckCircle className="h-4 w-4 text-primary" />
                   <span>No credit card required</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <CheckCircle className="h-4 w-4 text-emerald-500" />
+                  <CheckCircle className="h-4 w-4 text-primary" />
                   <span>Free forever tier</span>
                 </div>
                 <div className="hidden sm:flex items-center gap-2">
-                  <CheckCircle className="h-4 w-4 text-emerald-500" />
+                  <CheckCircle className="h-4 w-4 text-primary" />
                   <span>Open source</span>
                 </div>
               </div>
@@ -139,9 +139,9 @@ export default function LandingPage() {
             
             <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
               {/* Feature cards */}
-              <div className="group p-6 rounded-xl border border-border bg-card hover:border-foreground/20 transition-all duration-200">
-                <div className="w-10 h-10 rounded-lg bg-foreground/5 flex items-center justify-center mb-4 group-hover:bg-foreground/10 transition-colors">
-                  <Zap className="h-5 w-5" />
+              <div className="group p-6 rounded-xl border border-border bg-card hover:border-primary/30 transition-all duration-200">
+                <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center mb-4 group-hover:bg-primary/20 transition-colors">
+                  <Zap className="h-5 w-5 text-primary" />
                 </div>
                 <h3 className="text-lg font-semibold mb-2">Lightning Fast</h3>
                 <p className="text-sm text-muted-foreground leading-relaxed">
@@ -149,9 +149,9 @@ export default function LandingPage() {
                 </p>
               </div>
 
-              <div className="group p-6 rounded-xl border border-border bg-card hover:border-foreground/20 transition-all duration-200">
-                <div className="w-10 h-10 rounded-lg bg-foreground/5 flex items-center justify-center mb-4 group-hover:bg-foreground/10 transition-colors">
-                  <Eye className="h-5 w-5" />
+              <div className="group p-6 rounded-xl border border-border bg-card hover:border-primary/30 transition-all duration-200">
+                <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center mb-4 group-hover:bg-primary/20 transition-colors">
+                  <Eye className="h-5 w-5 text-primary" />
                 </div>
                 <h3 className="text-lg font-semibold mb-2">Deep Analysis</h3>
                 <p className="text-sm text-muted-foreground leading-relaxed">
@@ -159,9 +159,9 @@ export default function LandingPage() {
                 </p>
               </div>
 
-              <div className="group p-6 rounded-xl border border-border bg-card hover:border-foreground/20 transition-all duration-200">
-                <div className="w-10 h-10 rounded-lg bg-foreground/5 flex items-center justify-center mb-4 group-hover:bg-foreground/10 transition-colors">
-                  <Code className="h-5 w-5" />
+              <div className="group p-6 rounded-xl border border-border bg-card hover:border-primary/30 transition-all duration-200">
+                <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center mb-4 group-hover:bg-primary/20 transition-colors">
+                  <Code className="h-5 w-5 text-primary" />
                 </div>
                 <h3 className="text-lg font-semibold mb-2">Developer First</h3>
                 <p className="text-sm text-muted-foreground leading-relaxed">
@@ -169,9 +169,9 @@ export default function LandingPage() {
                 </p>
               </div>
 
-              <div className="group p-6 rounded-xl border border-border bg-card hover:border-foreground/20 transition-all duration-200">
-                <div className="w-10 h-10 rounded-lg bg-foreground/5 flex items-center justify-center mb-4 group-hover:bg-foreground/10 transition-colors">
-                  <Users className="h-5 w-5" />
+              <div className="group p-6 rounded-xl border border-border bg-card hover:border-primary/30 transition-all duration-200">
+                <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center mb-4 group-hover:bg-primary/20 transition-colors">
+                  <Users className="h-5 w-5 text-primary" />
                 </div>
                 <h3 className="text-lg font-semibold mb-2">Team Collaboration</h3>
                 <p className="text-sm text-muted-foreground leading-relaxed">
@@ -179,9 +179,9 @@ export default function LandingPage() {
                 </p>
               </div>
 
-              <div className="group p-6 rounded-xl border border-border bg-card hover:border-foreground/20 transition-all duration-200">
-                <div className="w-10 h-10 rounded-lg bg-foreground/5 flex items-center justify-center mb-4 group-hover:bg-foreground/10 transition-colors">
-                  <Cpu className="h-5 w-5" />
+              <div className="group p-6 rounded-xl border border-border bg-card hover:border-primary/30 transition-all duration-200">
+                <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center mb-4 group-hover:bg-primary/20 transition-colors">
+                  <Cpu className="h-5 w-5 text-primary" />
                 </div>
                 <h3 className="text-lg font-semibold mb-2">Scheduled Scans</h3>
                 <p className="text-sm text-muted-foreground leading-relaxed">
@@ -189,9 +189,9 @@ export default function LandingPage() {
                 </p>
               </div>
 
-              <div className="group p-6 rounded-xl border border-border bg-card hover:border-foreground/20 transition-all duration-200">
-                <div className="w-10 h-10 rounded-lg bg-foreground/5 flex items-center justify-center mb-4 group-hover:bg-foreground/10 transition-colors">
-                  <Lock className="h-5 w-5" />
+              <div className="group p-6 rounded-xl border border-border bg-card hover:border-primary/30 transition-all duration-200">
+                <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center mb-4 group-hover:bg-primary/20 transition-colors">
+                  <Lock className="h-5 w-5 text-primary" />
                 </div>
                 <h3 className="text-lg font-semibold mb-2">Privacy Focused</h3>
                 <p className="text-sm text-muted-foreground leading-relaxed">
@@ -216,7 +216,7 @@ export default function LandingPage() {
 
             <div className="grid md:grid-cols-3 gap-12 md:gap-8">
               <div className="relative text-center">
-                <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-foreground text-background text-lg font-bold mb-6">
+                <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-primary text-primary-foreground text-lg font-bold mb-6">
                   1
                 </div>
                 <h3 className="text-xl font-semibold mb-3">Enter your URL</h3>
@@ -228,7 +228,7 @@ export default function LandingPage() {
               </div>
 
               <div className="relative text-center">
-                <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-foreground text-background text-lg font-bold mb-6">
+                <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-primary text-primary-foreground text-lg font-bold mb-6">
                   2
                 </div>
                 <h3 className="text-xl font-semibold mb-3">We analyze</h3>
@@ -239,7 +239,7 @@ export default function LandingPage() {
               </div>
 
               <div className="text-center">
-                <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-foreground text-background text-lg font-bold mb-6">
+                <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-primary text-primary-foreground text-lg font-bold mb-6">
                   3
                 </div>
                 <h3 className="text-xl font-semibold mb-3">Get actionable results</h3>
@@ -272,15 +272,15 @@ export default function LandingPage() {
                 </p>
                 <ul className="space-y-2">
                   <li className="flex items-center gap-2 text-sm">
-                    <CheckCircle className="h-4 w-4 text-emerald-500" />
+                    <CheckCircle className="h-4 w-4 text-primary" />
                     Quick single-page scans
                   </li>
                   <li className="flex items-center gap-2 text-sm">
-                    <CheckCircle className="h-4 w-4 text-emerald-500" />
+                    <CheckCircle className="h-4 w-4 text-primary" />
                     API & CLI access
                   </li>
                   <li className="flex items-center gap-2 text-sm">
-                    <CheckCircle className="h-4 w-4 text-emerald-500" />
+                    <CheckCircle className="h-4 w-4 text-primary" />
                     Code fix suggestions
                   </li>
                 </ul>
@@ -294,15 +294,15 @@ export default function LandingPage() {
                 </p>
                 <ul className="space-y-2">
                   <li className="flex items-center gap-2 text-sm">
-                    <CheckCircle className="h-4 w-4 text-emerald-500" />
+                    <CheckCircle className="h-4 w-4 text-primary" />
                     Bulk scanning
                   </li>
                   <li className="flex items-center gap-2 text-sm">
-                    <CheckCircle className="h-4 w-4 text-emerald-500" />
+                    <CheckCircle className="h-4 w-4 text-primary" />
                     Compliance reports
                   </li>
                   <li className="flex items-center gap-2 text-sm">
-                    <CheckCircle className="h-4 w-4 text-emerald-500" />
+                    <CheckCircle className="h-4 w-4 text-primary" />
                     Trend analysis
                   </li>
                 </ul>
@@ -316,15 +316,15 @@ export default function LandingPage() {
                 </p>
                 <ul className="space-y-2">
                   <li className="flex items-center gap-2 text-sm">
-                    <CheckCircle className="h-4 w-4 text-emerald-500" />
+                    <CheckCircle className="h-4 w-4 text-primary" />
                     CI/CD integration
                   </li>
                   <li className="flex items-center gap-2 text-sm">
-                    <CheckCircle className="h-4 w-4 text-emerald-500" />
+                    <CheckCircle className="h-4 w-4 text-primary" />
                     Webhook notifications
                   </li>
                   <li className="flex items-center gap-2 text-sm">
-                    <CheckCircle className="h-4 w-4 text-emerald-500" />
+                    <CheckCircle className="h-4 w-4 text-primary" />
                     Scheduled monitoring
                   </li>
                 </ul>
