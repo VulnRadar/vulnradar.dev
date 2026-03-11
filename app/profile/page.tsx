@@ -312,6 +312,8 @@ function ProfileContent() {
   const [billingLoading, setBillingLoading] = useState(false)
   const [cancelingSubscription, setCancelingSubscription] = useState(false)
   const [reactivatingSubscription, setReactivatingSubscription] = useState(false)
+  const [showCancelDialog, setShowCancelDialog] = useState(false)
+  const [cancelType, setCancelType] = useState<"period_end" | "immediate">("period_end")
   
   // Avatar state
   const [uploadingAvatar, setUploadingAvatar] = useState(false)
@@ -747,21 +749,25 @@ function ProfileContent() {
   }
 
   // ---- Billing handlers ----
-  async function handleCancelSubscription() {
+  async function handleCancelSubscription(immediate: boolean = false) {
     setCancelingSubscription(true)
     setError(null)
     try {
       const res = await fetch(API.BILLING, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "cancel" }),
+        body: JSON.stringify({ action: immediate ? "cancel_immediately" : "cancel" }),
       })
       const data = await res.json()
       if (!res.ok) {
         setError(data.error || "Failed to cancel subscription.")
         return
       }
-      setSuccess("Subscription will be canceled at the end of your billing period.")
+      setShowCancelDialog(false)
+      setSuccess(immediate 
+        ? "Subscription canceled. You've been moved to the free plan."
+        : "Subscription will be canceled at the end of your billing period."
+      )
       await fetchData() // Refresh billing info
     } catch {
       setError("Failed to cancel subscription.")
@@ -1650,15 +1656,10 @@ function ProfileContent() {
                         ) : (
                           <Button 
                             variant="outline"
-                            onClick={handleCancelSubscription}
-                            disabled={cancelingSubscription}
+                            onClick={() => setShowCancelDialog(true)}
                             className="w-full text-destructive hover:text-destructive hover:bg-destructive/10"
                           >
-                            {cancelingSubscription ? (
-                              <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Canceling...</>
-                            ) : (
-                              "Cancel Subscription"
-                            )}
+                            Cancel Subscription
                           </Button>
                         )}
                       </div>
@@ -1702,6 +1703,98 @@ function ProfileContent() {
                 )}
               </CardContent>
             </Card>
+
+            {/* Cancel Subscription Dialog */}
+            {showCancelDialog && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => setShowCancelDialog(false)}>
+                <div className="bg-card border border-border rounded-xl shadow-2xl w-full max-w-md p-6 mx-4" onClick={(e) => e.stopPropagation()}>
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="h-10 w-10 rounded-full bg-destructive/10 flex items-center justify-center">
+                      <XCircle className="h-5 w-5 text-destructive" />
+                    </div>
+                    <div>
+                      <h3 className="text-lg font-semibold text-foreground">Cancel Subscription</h3>
+                      <p className="text-sm text-muted-foreground">Choose how you&apos;d like to cancel</p>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col gap-3 mb-6">
+                    <label 
+                      className={cn(
+                        "flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors",
+                        cancelType === "period_end" 
+                          ? "border-primary bg-primary/5" 
+                          : "border-border hover:border-muted-foreground/50"
+                      )}
+                      onClick={() => setCancelType("period_end")}
+                    >
+                      <input 
+                        type="radio" 
+                        name="cancelType" 
+                        checked={cancelType === "period_end"}
+                        onChange={() => setCancelType("period_end")}
+                        className="mt-1"
+                      />
+                      <div>
+                        <p className="font-medium text-foreground">Cancel at period end</p>
+                        <p className="text-sm text-muted-foreground">
+                          Keep access until {billingInfo?.subscription?.currentPeriodEnd 
+                            ? new Date(billingInfo.subscription.currentPeriodEnd).toLocaleDateString() 
+                            : "your billing period ends"}
+                        </p>
+                      </div>
+                    </label>
+
+                    <label 
+                      className={cn(
+                        "flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors",
+                        cancelType === "immediate" 
+                          ? "border-destructive bg-destructive/5" 
+                          : "border-border hover:border-muted-foreground/50"
+                      )}
+                      onClick={() => setCancelType("immediate")}
+                    >
+                      <input 
+                        type="radio" 
+                        name="cancelType" 
+                        checked={cancelType === "immediate"}
+                        onChange={() => setCancelType("immediate")}
+                        className="mt-1"
+                      />
+                      <div>
+                        <p className="font-medium text-foreground">Cancel immediately</p>
+                        <p className="text-sm text-muted-foreground">
+                          Lose access now and move to the free plan. No refund will be issued.
+                        </p>
+                      </div>
+                    </label>
+                  </div>
+
+                  <div className="flex gap-3">
+                    <Button 
+                      variant="outline" 
+                      onClick={() => setShowCancelDialog(false)}
+                      className="flex-1"
+                      disabled={cancelingSubscription}
+                    >
+                      Keep Subscription
+                    </Button>
+                    <Button 
+                      variant={cancelType === "immediate" ? "destructive" : "default"}
+                      onClick={() => handleCancelSubscription(cancelType === "immediate")}
+                      disabled={cancelingSubscription}
+                      className="flex-1"
+                    >
+                      {cancelingSubscription ? (
+                        <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Canceling...</>
+                      ) : (
+                        cancelType === "immediate" ? "Cancel Now" : "Cancel at Period End"
+                      )}
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         )}
 

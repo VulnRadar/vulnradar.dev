@@ -542,9 +542,7 @@ export async function PATCH(request: NextRequest) {
     }
 
     case "gift_subscription": {
-      console.log("[v0] gift_subscription case - received:", { giftPlan, giftEndDate })
       if (!giftPlan || !giftEndDate) {
-        console.log("[v0] missing giftPlan or giftEndDate")
         return NextResponse.json({ error: "giftPlan and giftEndDate required" }, { status: 400 })
       }
       const validPlans = ["core_supporter", "pro_supporter", "elite_supporter"]

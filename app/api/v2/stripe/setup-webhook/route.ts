@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server"
 import { ensureStripeWebhook } from "@/lib/stripe-webhook-setup"
 import { BILLING_ENABLED } from "@/lib/constants"
+import { getSession } from "@/lib/auth"
+import pool from "@/lib/db"
 
 export const dynamic = "force-dynamic"
 
@@ -15,8 +17,36 @@ export const dynamic = "force-dynamic"
  * IMPORTANT: If a new webhook is created, you'll need to manually copy
  * the webhook secret to your STRIPE_WEBHOOK_SECRET environment variable.
  * The secret is only returned when the webhook is first created.
+ * 
+ * SECURITY: Only admins can access this endpoint when not configured.
+ * When configured, only returns a simple success message.
  */
 export async function GET() {
+  const hasWebhookSecret = !!process.env.STRIPE_WEBHOOK_SECRET
+
+  // If webhook is already configured, return simple success message (no auth required)
+  if (hasWebhookSecret) {
+    return NextResponse.json({
+      success: true,
+      message: "Webhook is configured",
+      configured: true,
+    })
+  }
+
+  // If not configured, require admin authentication
+  const session = await getSession()
+  if (!session) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  }
+
+  // Check if user is admin
+  const userResult = await pool.query("SELECT role FROM users WHERE id = $1", [session.userId])
+  const userRole = userResult.rows[0]?.role
+  if (userRole !== "admin") {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  }
+
+  // Admin is authenticated - proceed with setup
   if (!BILLING_ENABLED) {
     return NextResponse.json({
       success: true,
@@ -27,7 +57,6 @@ export async function GET() {
 
   const appUrl = process.env.NEXT_PUBLIC_APP_URL
   const hasSecretKey = !!process.env.STRIPE_SECRET_KEY
-  const hasWebhookSecret = !!process.env.STRIPE_WEBHOOK_SECRET
 
   if (!hasSecretKey) {
     return NextResponse.json({
@@ -62,7 +91,7 @@ export async function GET() {
     webhookUrl: `${appUrl}/api/v2/webhooks/stripe`,
     webhookId: result.webhookId,
     alreadyExists: result.alreadyExists,
-    webhookSecretConfigured: hasWebhookSecret,
+    webhookSecretConfigured: false,
   }
 
   // Only include webhook secret if it was just created (for manual copying)
@@ -70,9 +99,7 @@ export async function GET() {
     response.webhookSecret = result.webhookSecret
     response.message = "NEW WEBHOOK CREATED! Copy the webhookSecret to your STRIPE_WEBHOOK_SECRET environment variable."
   } else if (result.alreadyExists) {
-    response.message = hasWebhookSecret 
-      ? "Webhook already exists and STRIPE_WEBHOOK_SECRET is configured"
-      : "Webhook already exists. Make sure STRIPE_WEBHOOK_SECRET is set in your environment."
+    response.message = "Webhook already exists. Make sure STRIPE_WEBHOOK_SECRET is set in your environment."
   }
 
   return NextResponse.json(response)

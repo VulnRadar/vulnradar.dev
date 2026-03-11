@@ -44,10 +44,16 @@ export async function GET() {
         subscriptionDetails = {
           id: subscription.id,
           status: subscription.status,
-          currentPeriodStart: new Date(subscription.current_period_start * 1000).toISOString(),
-          currentPeriodEnd: new Date(subscription.current_period_end * 1000).toISOString(),
+          currentPeriodStart: subscription.current_period_start 
+            ? new Date(subscription.current_period_start * 1000).toISOString() 
+            : null,
+          currentPeriodEnd: subscription.current_period_end 
+            ? new Date(subscription.current_period_end * 1000).toISOString() 
+            : null,
           cancelAtPeriodEnd: subscription.cancel_at_period_end,
-          cancelAt: subscription.cancel_at ? new Date(subscription.cancel_at * 1000).toISOString() : null,
+          cancelAt: subscription.cancel_at 
+            ? new Date(subscription.cancel_at * 1000).toISOString() 
+            : null,
         }
       } catch (stripeErr) {
         console.error("[Billing] Error fetching subscription from Stripe:", stripeErr)
@@ -119,6 +125,33 @@ export async function POST(request: Request) {
         message: "Subscription will be canceled at the end of the billing period",
         cancelAt: subscription.cancel_at ? new Date(subscription.cancel_at * 1000).toISOString() : null,
         currentPeriodEnd: new Date(subscription.current_period_end * 1000).toISOString(),
+      })
+    }
+
+    if (action === "cancel_immediately") {
+      // Get user's subscription ID
+      const userResult = await pool.query(
+        `SELECT stripe_subscription_id FROM users WHERE id = $1`,
+        [session.userId]
+      )
+      
+      const subscriptionId = userResult.rows[0]?.stripe_subscription_id
+      if (!subscriptionId) {
+        return NextResponse.json({ error: "No active subscription found" }, { status: 400 })
+      }
+
+      // Cancel immediately (user loses access now)
+      await stripe.subscriptions.cancel(subscriptionId)
+
+      // Update user's plan and subscription status in database
+      await pool.query(
+        `UPDATE users SET plan = 'free', subscription_status = 'canceled', stripe_subscription_id = NULL WHERE id = $1`,
+        [session.userId]
+      )
+
+      return NextResponse.json({
+        success: true,
+        message: "Subscription canceled immediately",
       })
     }
 
