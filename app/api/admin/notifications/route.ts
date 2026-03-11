@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server"
-import { db } from "@/lib/db"
+import pool from "@/lib/db"
 import { getSession } from "@/lib/auth"
 import { hasStaffPermission, STAFF_PERMISSIONS } from "@/lib/permissions-client"
 
@@ -10,7 +10,7 @@ export async function GET() {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    const result = await db.query(
+    const result = await pool.query(
       `SELECT * FROM admin_notifications ORDER BY priority DESC, created_at DESC`
     )
 
@@ -51,7 +51,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Title and message are required" }, { status: 400 })
     }
 
-    const result = await db.query(
+    const result = await pool.query(
       `INSERT INTO admin_notifications (
         title, message, type, variant, audience, path_pattern,
         starts_at, ends_at, is_active, is_dismissible, dismiss_duration_hours,
