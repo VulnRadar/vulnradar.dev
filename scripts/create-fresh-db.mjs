@@ -451,6 +451,11 @@ async function main() {
         },
       }
       
+      // Columns that need JSON conversion (v1 might store as text)
+      const JSON_COLUMNS = {
+        scan_history: ["summary", "findings", "metadata", "results", "scan_results", "result"],
+      }
+      
       for (const table of orderedTables) {
         if (!tablesToMigrate.includes(table)) continue
         
@@ -525,9 +530,37 @@ async function main() {
           
           let migrated = 0
           let firstError = null
+          const jsonCols = JSON_COLUMNS[table] || []
+          
           for (const row of dataRes.rows) {
             try {
-              const values = commonColumns.map(c => row[c])
+              // Transform values, handling JSON columns specially
+              const values = commonColumns.map((col, idx) => {
+                let val = row[col]
+                const targetCol = targetColumns[idx]
+                
+                // Handle JSON columns - ensure they're valid JSON
+                if (jsonCols.includes(col) || jsonCols.includes(targetCol)) {
+                  if (val === null || val === undefined) {
+                    return col.includes('findings') || col.includes('results') ? '[]' : '{}'
+                  }
+                  if (typeof val === 'string') {
+                    try {
+                      // Try to parse - if valid, return as-is
+                      JSON.parse(val)
+                      return val
+                    } catch {
+                      // Not valid JSON, wrap as string or return empty
+                      return col.includes('findings') || col.includes('results') ? '[]' : '{}'
+                    }
+                  }
+                  if (typeof val === 'object') {
+                    return JSON.stringify(val)
+                  }
+                }
+                return val
+              })
+              
               await newPool.query(
                 `INSERT INTO "${table}" (${colList}) VALUES (${placeholders}) ON CONFLICT DO NOTHING`,
                 values
