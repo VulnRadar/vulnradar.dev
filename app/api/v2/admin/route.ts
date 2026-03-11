@@ -76,6 +76,8 @@ export async function GET(request: NextRequest) {
     ])
 
     if (!userRes.rows[0]) return NextResponse.json({ error: "User not found" }, { status: 404 })
+    
+    console.log("[v0] user-detail gift data:", { gifted_plan: userRes.rows[0].gifted_plan, gift_end_date: userRes.rows[0].gift_end_date })
 
     return NextResponse.json({
       user: userRes.rows[0],
@@ -558,10 +560,11 @@ export async function PATCH(request: NextRequest) {
         "UPDATE gifted_subscriptions SET revoked_at = NOW(), revoked_by = $2 WHERE user_id = $1 AND revoked_at IS NULL",
         [userId, session.userId]
       )
-      await pool.query(
-        "INSERT INTO gifted_subscriptions (user_id, plan, expires_at, gifted_by) VALUES ($1, $2, $3, $4)",
+      const insertResult = await pool.query(
+        "INSERT INTO gifted_subscriptions (user_id, plan, expires_at, gifted_by) VALUES ($1, $2, $3, $4) RETURNING *",
         [userId, giftPlan, expiresAt, session.userId]
       )
+      console.log("[v0] gift_subscription inserted:", insertResult.rows[0])
       await logAction(session.userId, userId, "gift_subscription", `Gifted ${giftPlan} to ${targetUser.email} until ${expiresAt.toISOString()}`, ip)
       return NextResponse.json({ success: true })
     }
