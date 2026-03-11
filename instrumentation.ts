@@ -98,6 +98,7 @@ export async function register() {
           totp_enabled BOOLEAN NOT NULL DEFAULT false,
           two_factor_method VARCHAR(10),
           backup_codes TEXT,
+          email_session_revoked BOOLEAN NOT NULL DEFAULT false,
           
           -- Timestamps
           created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
@@ -135,6 +136,7 @@ export async function register() {
           key_hash VARCHAR(255) NOT NULL UNIQUE,
           key_prefix VARCHAR(64) NOT NULL,
           name VARCHAR(100) NOT NULL DEFAULT 'Default',
+          daily_limit INTEGER DEFAULT 1000,
           created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
           last_used_at TIMESTAMP WITH TIME ZONE,
           revoked_at TIMESTAMP WITH TIME ZONE
@@ -143,7 +145,7 @@ export async function register() {
         CREATE INDEX IF NOT EXISTS idx_api_keys_key_hash ON api_keys(key_hash);
       `)
 
-      // ═══════════════════════════════════════════════════���════════════
+      // ═══════════════════════════════════════════════════�����════════════
       // API USAGE - Tracks API key usage for rate limiting
       // ════════════════════════════════════════════════════════════════
       await pool.query(`
