@@ -41,22 +41,31 @@ export async function GET() {
     if (user.stripe_subscription_id) {
       try {
         const subscription = await stripe.subscriptions.retrieve(user.stripe_subscription_id)
-        subscriptionDetails = {
-          id: subscription.id,
-          status: subscription.status,
-          currentPeriodStart: subscription.current_period_start 
-            ? new Date(subscription.current_period_start * 1000).toISOString() 
-            : null,
-          currentPeriodEnd: subscription.current_period_end 
-            ? new Date(subscription.current_period_end * 1000).toISOString() 
-            : null,
-          cancelAtPeriodEnd: subscription.cancel_at_period_end,
-          cancelAt: subscription.cancel_at 
-            ? new Date(subscription.cancel_at * 1000).toISOString() 
-            : null,
+        // Only set subscription details if the subscription is valid and has period data
+        if (subscription && subscription.current_period_start && subscription.current_period_end) {
+          subscriptionDetails = {
+            id: subscription.id,
+            status: subscription.status,
+            currentPeriodStart: new Date(subscription.current_period_start * 1000).toISOString(),
+            currentPeriodEnd: new Date(subscription.current_period_end * 1000).toISOString(),
+            cancelAtPeriodEnd: subscription.cancel_at_period_end,
+            cancelAt: subscription.cancel_at 
+              ? new Date(subscription.cancel_at * 1000).toISOString() 
+              : null,
+          }
+        } else {
+          console.warn("[Billing] Subscription exists but has no period data:", subscription?.id)
         }
-      } catch (stripeErr) {
+      } catch (stripeErr: unknown) {
         console.error("[Billing] Error fetching subscription from Stripe:", stripeErr)
+        // If the subscription doesn't exist in Stripe, clear it from the database
+        if (stripeErr && typeof stripeErr === "object" && "code" in stripeErr && stripeErr.code === "resource_missing") {
+          console.warn("[Billing] Clearing orphaned subscription ID from database")
+          await pool.query(
+            `UPDATE users SET stripe_subscription_id = NULL, subscription_status = NULL WHERE id = $1`,
+            [session.userId]
+          )
+        }
       }
     }
 
