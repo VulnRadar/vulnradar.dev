@@ -1,10 +1,10 @@
 "use client"
 
 import Link from "next/link"
-import Image from "next/image"
 import { Heart, Mail, Github } from "lucide-react"
 import { APP_VERSION, APP_NAME, APP_URL, APP_REPO, SUPPORT_EMAIL, ROUTES, BILLING_ENABLED } from "@/lib/constants"
 import { Button } from "@/components/ui/button"
+import { ThemedLogo } from "@/components/themed-logo"
 
 export function Footer() {
   return (
@@ -14,7 +14,7 @@ export function Footer() {
           {/* Brand */}
           <div className="md:col-span-2">
             <div className="flex items-center gap-2.5 mb-4">
-              <Image src="/favicon.svg" alt={`${APP_NAME} logo`} width={24} height={24} className="h-6 w-6" />
+              <ThemedLogo width={24} height={24} className="h-6 w-6" alt={`${APP_NAME} logo`} />
               <span className="text-base font-semibold text-foreground">{APP_NAME}</span>
               <span className="inline-flex items-center rounded-full bg-foreground/5 border border-border px-2 py-0.5 text-[10px] font-medium font-mono text-muted-foreground">
                 v{APP_VERSION}

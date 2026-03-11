@@ -3,8 +3,8 @@
 import React from "react"
 import { useState, useEffect, useRef } from "react"
 import Link from "next/link"
-import Image from "next/image"
 import Script from "next/script"
+import { ThemedLogo } from "@/components/themed-logo"
 import { Loader2, Eye, EyeOff, Mail, CheckCircle2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -146,13 +146,7 @@ export default function SignupPage() {
         <div className="w-full max-w-sm">
           {/* Logo */}
           <div className="flex items-center justify-center gap-2.5 mb-8">
-            <Image
-                src="/favicon.svg"
-                alt={`${APP_NAME} logo`}
-                width={28}
-                height={28}
-                className="h-7 w-7"
-            />
+            <ThemedLogo width={28} height={28} className="h-7 w-7" alt={`${APP_NAME} logo`} />
             <span className="text-xl font-semibold text-foreground tracking-tight">{APP_NAME}</span>
           </div>
 

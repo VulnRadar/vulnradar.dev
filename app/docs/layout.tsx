@@ -8,9 +8,9 @@ import { Header } from "@/components/scanner/header"
 import { Footer } from "@/components/scanner/footer"
 import { APP_NAME, ROUTES, BILLING_ENABLED } from "@/lib/constants"
 import { useState, useEffect, createContext, useContext } from "react"
-import Image from "next/image"
 import { Button } from "@/components/ui/button"
 import { useAuth } from "@/components/auth-provider"
+import { ThemedLogo } from "@/components/themed-logo"
 
 // Context for sharing active section state between layout and pages
 interface DocsContextType {
@@ -81,7 +81,7 @@ export default function DocsLayout({ children }: { children: React.ReactNode }) 
           <header className="sticky top-0 z-50 border-b border-border bg-background/80 backdrop-blur-lg">
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
               <Link href="/" className="flex items-center gap-2.5 hover:opacity-80 transition-opacity">
-                <Image src="/favicon.svg" alt={`${APP_NAME} logo`} width={24} height={24} className="h-6 w-6" />
+                <ThemedLogo width={24} height={24} className="h-6 w-6" alt={`${APP_NAME} logo`} />
                 <span className="font-semibold text-lg tracking-tight">{APP_NAME}</span>
               </Link>
               <nav className="hidden md:flex items-center gap-6">

@@ -7,8 +7,8 @@ import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
 import { APP_NAME, ROUTES, BILLING_ENABLED } from "@/lib/constants"
 import Link from "next/link"
-import Image from "next/image"
 import { useAuth } from "@/components/auth-provider"
+import { ThemedLogo } from "@/components/themed-logo"
 import { PublicPageShell } from "@/components/public-page-shell"
 import { StripeCheckout } from "@/components/stripe-checkout"
 import { X } from "lucide-react"
@@ -428,7 +428,7 @@ export default function PricingPage() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
           <div className="flex flex-col sm:flex-row items-center justify-between gap-4 text-sm text-muted-foreground">
             <div className="flex items-center gap-2">
-              <Image src="/favicon.svg" alt={APP_NAME} width={20} height={20} className="h-5 w-5" />
+              <ThemedLogo width={20} height={20} className="h-5 w-5" alt={APP_NAME} />
               <span>{APP_NAME}</span>
             </div>
             <div className="flex items-center gap-4">
