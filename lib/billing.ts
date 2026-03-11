@@ -21,25 +21,35 @@ export interface UserSubscription {
 }
 
 /**
- * Get user's subscription data (from users table)
+ * Get user's subscription data (from users table + gifted subscriptions)
  */
 export async function getUserSubscription(userId: number): Promise<UserSubscription | null> {
   try {
-    const result = await pool.query(
-      `SELECT id, plan, stripe_customer_id, stripe_subscription_id, 
-              subscription_status, current_period_end, cancel_at_period_end
-       FROM users WHERE id = $1`,
-      [userId]
-    )
-    if (!result.rows[0]) return null
+    const [userResult, giftResult] = await Promise.all([
+      pool.query(
+        `SELECT id, plan, stripe_customer_id, stripe_subscription_id, 
+                subscription_status, current_period_end, cancel_at_period_end
+         FROM users WHERE id = $1`,
+        [userId]
+      ),
+      pool.query(
+        `SELECT plan, expires_at FROM gifted_subscriptions 
+         WHERE user_id = $1 AND revoked_at IS NULL AND expires_at > NOW()`,
+        [userId]
+      )
+    ])
     
-    const row = result.rows[0]
+    if (!userResult.rows[0]) return null
+    
+    const row = userResult.rows[0]
+    const giftedSub = giftResult.rows[0]
+    
     return {
       userId: row.id,
       stripeCustomerId: row.stripe_customer_id,
       stripeSubscriptionId: row.stripe_subscription_id,
-      plan: row.plan || "free",
-      subscriptionStatus: row.subscription_status || "active",
+      plan: giftedSub?.plan || row.plan || "free", // Gifted plan takes priority
+      subscriptionStatus: giftedSub ? "gifted" : (row.subscription_status || "active"),
       currentPeriodEnd: row.current_period_end,
       cancelAtPeriodEnd: row.cancel_at_period_end || false,
     }
@@ -50,13 +60,23 @@ export async function getUserSubscription(userId: number): Promise<UserSubscript
 }
 
 /**
- * Get user's current plan
+ * Get user's current plan (respects gifted subscriptions first)
  */
 export async function getUserPlan(userId: number): Promise<Plan> {
   const subscription = await getUserSubscription(userId)
-  if (!subscription || subscription.subscriptionStatus !== "active") {
+  if (!subscription) {
     return getFreePlan()
   }
+  
+  // Gifted plans should always return their plan, even if status doesn't indicate "active"
+  if (subscription.subscriptionStatus === "gifted" || (subscription.plan && subscription.plan !== "free")) {
+    return getPlanById(subscription.plan) || getFreePlan()
+  }
+  
+  if (subscription.subscriptionStatus !== "active") {
+    return getFreePlan()
+  }
+  
   return getPlanById(subscription.plan) || getFreePlan()
 }
 
