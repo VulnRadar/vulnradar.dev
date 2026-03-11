@@ -29,20 +29,22 @@ export async function GET() {
       return NextResponse.json({ error: "User not found" }, { status: 404 })
     }
 
-    // Get usage info
-    const usageInfo = await canMakeRequest(session.userId)
-    
-    // Determine plan type for limits
-    const planType: PlanType = user.role === "admin" ? "admin" : (user.plan || "free")
-    const dailyLimit = PLAN_LIMITS[planType] || PLAN_LIMITS.free
-
-    // Check for gifted subscription first
+    // Check for gifted subscription first (before calculating limits)
     const giftResult = await pool.query(
       `SELECT plan, expires_at, created_at FROM gifted_subscriptions 
        WHERE user_id = $1 AND revoked_at IS NULL AND expires_at > NOW()`,
       [session.userId]
     )
     const giftedSubscription = giftResult.rows[0] || null
+
+    // Get usage info (this already checks gifted subscriptions internally)
+    const usageInfo = await canMakeRequest(session.userId)
+    
+    // Determine plan type for limits - gifted plan takes priority
+    const effectivePlanType: PlanType = user.role === "admin" 
+      ? "admin" 
+      : (giftedSubscription?.plan || user.plan || "free")
+    const dailyLimit = PLAN_LIMITS[effectivePlanType] || PLAN_LIMITS.free
 
     // Get subscription details from Stripe if user has one
     let subscriptionDetails = null
