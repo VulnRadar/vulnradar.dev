@@ -26,7 +26,9 @@ export const metadata: Metadata = {
   icons: {
     icon: [
       { url: '/favicon.ico', sizes: 'any' },
-      { url: '/favicon.png', type: 'image/png' },
+      { url: '/favicon.svg', type: 'image/svg+xml' },
+      { url: '/favicon-dark.svg', type: 'image/svg+xml', media: '(prefers-color-scheme: dark)' },
+      { url: '/favicon-light.svg', type: 'image/svg+xml', media: '(prefers-color-scheme: light)' },
     ],
     apple: '/favicon.png',
   },
@@ -39,7 +41,7 @@ export const metadata: Metadata = {
     locale: 'en_US',
     images: [
       {
-        url: `${APP_URL}/og-image-120-revise.png`,
+        url: `${APP_URL}/og-image-175.png`,
         width: 1200,
         height: 630,
         alt: `${APP_NAME} - Web Vulnerability Scanner`,
@@ -51,7 +53,7 @@ export const metadata: Metadata = {
     title: `${APP_NAME} - Web Vulnerability Scanner`,
     description: APP_DESCRIPTION,
     site: '@' + APP_NAME,
-    images: [`${APP_URL}/og-image-120-revise.png`],
+    images: [`${APP_URL}/og-image-175.png`],
   },
   robots: {
     index: true,
@@ -65,8 +67,8 @@ export const metadata: Metadata = {
 
 export const viewport: Viewport = {
   themeColor: [
-    { media: '(prefers-color-scheme: light)', color: '#ffffff' },
-    { media: '(prefers-color-scheme: dark)', color: '#000000' },
+    { media: '(prefers-color-scheme: light)', color: '#f5f7fa' },
+    { media: '(prefers-color-scheme: dark)', color: '#0d1117' },
   ],
 }
 
