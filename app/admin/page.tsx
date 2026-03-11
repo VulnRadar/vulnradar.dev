@@ -1531,25 +1531,41 @@ function UserDetailPanel({
 
                   {/* Edit Plan - admin only */}
                   {hasStaffPermission(callerRole, STAFF_PERMISSIONS.EDIT_USER_ROLE) && (
-                    <div className={cn("flex flex-col gap-2 p-3 rounded-lg border transition-colors", pendingChanges.plan ? "bg-primary/5 border-primary/30" : "bg-muted/20 border-border")}>
+                    <div className={cn("flex flex-col gap-2 p-3 rounded-lg border transition-colors", 
+                      u.gifted_plan ? "bg-amber-500/5 border-amber-500/30" : 
+                      pendingChanges.plan ? "bg-primary/5 border-primary/30" : "bg-muted/20 border-border"
+                    )}>
                       <div className="flex items-center gap-2">
                         <CreditCard className="h-3.5 w-3.5 text-muted-foreground" />
                         <span className="text-[11px] text-muted-foreground font-medium">Subscription Plan</span>
-                        {pendingChanges.plan && <span className="text-[9px] text-primary font-medium px-1.5 py-0.5 rounded bg-primary/10">Modified</span>}
+                        {u.gifted_plan && <span className="text-[9px] text-amber-500 font-medium px-1.5 py-0.5 rounded bg-amber-500/10">Gifted</span>}
+                        {pendingChanges.plan && !u.gifted_plan && <span className="text-[9px] text-primary font-medium px-1.5 py-0.5 rounded bg-primary/10">Modified</span>}
                       </div>
-                      <select
-                        value={editPlan}
-                        onChange={(e) => {
-                          setEditPlan(e.target.value)
-                          addPendingChange("plan", e.target.value, u.plan || "free")
-                        }}
-                        className="h-8 text-xs rounded-md border border-border bg-background px-2"
-                      >
-                        <option value="free">Free</option>
-                        <option value="core_supporter">Core Supporter</option>
-                        <option value="pro_supporter">Pro Supporter</option>
-                        <option value="elite_supporter">Elite Supporter</option>
-                      </select>
+                      {u.gifted_plan ? (
+                        <div className="flex flex-col gap-1.5">
+                          <div className="h-8 text-xs rounded-md border border-amber-500/30 bg-amber-500/5 px-2 flex items-center gap-2 text-amber-600">
+                            <Gift className="h-3.5 w-3.5" />
+                            {u.gifted_plan.replace("_supporter", " Supporter").replace(/(^\w|\s\w)/g, (m: string) => m.toUpperCase())}
+                          </div>
+                          <p className="text-[10px] text-muted-foreground">
+                            Gifted until {u.gift_end_date ? new Date(u.gift_end_date).toLocaleDateString() : "N/A"}. Use the Gift button above to modify.
+                          </p>
+                        </div>
+                      ) : (
+                        <select
+                          value={editPlan}
+                          onChange={(e) => {
+                            setEditPlan(e.target.value)
+                            addPendingChange("plan", e.target.value, u.plan || "free")
+                          }}
+                          className="h-8 text-xs rounded-md border border-border bg-background px-2"
+                        >
+                          <option value="free">Free</option>
+                          <option value="core_supporter">Core Supporter</option>
+                          <option value="pro_supporter">Pro Supporter</option>
+                          <option value="elite_supporter">Elite Supporter</option>
+                        </select>
+                      )}
                     </div>
                   )}
                 </div>
