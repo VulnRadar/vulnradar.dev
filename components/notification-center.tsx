@@ -1,30 +1,23 @@
 "use client"
 
-import { useEffect, useState, useCallback, useMemo, useRef } from "react"
+import { useEffect, useState, useCallback, useRef } from "react"
 import { usePathname } from "next/navigation"
 import {
   X,
-  Sparkles,
   ArrowRight,
   AlertTriangle,
-  MessageCircle,
   Bell,
   ExternalLink,
+  Info,
+  CheckCircle2,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
-import {
-  VERSION_COOKIE_NAME,
-  VERSION_COOKIE_MAX_AGE,
-  APP_VERSION,
-  APP_NAME,
-} from "@/lib/constants"
 import { PUBLIC_PATHS } from "@/lib/public-paths"
 import { useAuth } from "@/components/auth-provider"
+import { STAFF_ROLES } from "@/lib/constants"
 
 // ─── Cookie Helpers ──────────────────────────────────────────────
-
-const DISCORD_INVITE_URL = "https://discord.gg/Y7R6hdGbNe"
 
 function getCookie(name: string): string | undefined {
   if (typeof document === "undefined") return undefined
@@ -32,8 +25,25 @@ function getCookie(name: string): string | undefined {
   return cookies.find((c) => c.startsWith(`${name}=`))?.split("=")[1]
 }
 
-function setCookie(name: string, value: string, maxAge: number) {
-  document.cookie = `${name}=${value}; path=/; max-age=${maxAge}; SameSite=Lax`
+function setCookie(name: string, value: string, maxAgeSeconds: number) {
+  document.cookie = `${name}=${value}; path=/; max-age=${maxAgeSeconds}; SameSite=Lax`
+}
+
+// ─── Types ───────────────────────────────────────────────────────
+
+interface ApiNotification {
+  id: number
+  title: string
+  message: string
+  type: "bell" | "banner" | "modal" | "toast"
+  variant: "info" | "success" | "warning" | "error"
+  audience: string
+  is_dismissible: boolean
+  dismiss_duration_hours: number | null
+  action_label: string | null
+  action_url: string | null
+  action_external: boolean
+  priority: number
 }
 
 // ─── Backup Codes Modal (always shows as full-screen overlay) ────
@@ -115,76 +125,77 @@ export function BackupCodesModal() {
   )
 }
 
-// ─── Notification Item Type ──────────────────────────────────────
+// ─── Variant Styles ──────────────────────────────────────────────
 
-interface NotifItem {
-  id: string
-  icon: React.ReactNode
-  iconBg: string
-  title: string
-  description: string
-  action: { label: string; href?: string; onClick?: () => void }
-  onDismiss: () => void
-}
-
-interface CustomNotification {
-  id: string
-  title: string
-  message: string
-  type: "warning" | "info" | "success" | "error"
-  actionLabel?: string
-  actionUrl?: string
-  autoClose?: boolean
-  autoCloseDelay?: number
+const VARIANT_ICONS: Record<string, { icon: React.ReactNode; bg: string }> = {
+  info: { icon: <Info className="h-4 w-4" />, bg: "bg-blue-500/10 text-blue-500" },
+  success: { icon: <CheckCircle2 className="h-4 w-4" />, bg: "bg-emerald-500/10 text-emerald-500" },
+  warning: { icon: <AlertTriangle className="h-4 w-4" />, bg: "bg-amber-500/10 text-amber-500" },
+  error: { icon: <AlertTriangle className="h-4 w-4" />, bg: "bg-destructive/10 text-destructive" },
 }
 
 // ─── Notification Bell (header dropdown) ─────────────────────────
 
-function initVersionDismissed(): boolean {
-  if (typeof document === "undefined") return true
-  const v = getCookie(VERSION_COOKIE_NAME)
-  return !!v && v === APP_VERSION
-}
-
-
 export function NotificationBell() {
   const pathname = usePathname()
+  const { me } = useAuth()
   const [open, setOpen] = useState(false)
-  const [versionDismissed, setVersionDismissed] = useState(initVersionDismissed)
-  const [customNotifs, setCustomNotifs] = useState<CustomNotification[]>([])
+  const [notifications, setNotifications] = useState<ApiNotification[]>([])
+  const [dismissedIds, setDismissedIds] = useState<Set<number>>(new Set())
   const [hydrated, setHydrated] = useState(false)
+  const [loading, setLoading] = useState(true)
   const ref = useRef<HTMLDivElement>(null)
-  useAuth() // ensure auth hook runs for side-effects (if any), but avoid unused variable
 
   const isPublicRoute = PUBLIC_PATHS.some((p) => {
     if (p === "/" || p === "/landing") return pathname === p
     return pathname.startsWith(p)
   })
 
-  // Listen for custom notifications from AdminVersionNotifier
-  useEffect(() => {
-    function handleCustomNotif(e: Event) {
-      const evt = e as CustomEvent<CustomNotification>
-      if (evt.detail) {
-        setCustomNotifs((prev) => {
-          const filtered = prev.filter((n) => n.id !== evt.detail.id)
-          return [...filtered, evt.detail]
-        })
+  const isStaff = me?.role && STAFF_ROLES.includes(me.role)
 
-        // Auto-close if specified
-        if (evt.detail.autoClose) {
-          setTimeout(() => {
-            setCustomNotifs((prev) => prev.filter((n) => n.id !== evt.detail.id))
-          }, evt.detail.autoCloseDelay || 5000)
+  // Initialize dismissed IDs from cookies on mount
+  useEffect(() => {
+    const dismissed = getCookie("vr_notif_dismissed")
+    if (dismissed) {
+      try {
+        const parsed = JSON.parse(decodeURIComponent(dismissed))
+        if (Array.isArray(parsed)) {
+          setDismissedIds(new Set(parsed.map(Number)))
         }
+      } catch {
+        // Invalid cookie, ignore
+      }
+    }
+  }, [])
+
+  // Fetch notifications from API
+  useEffect(() => {
+    async function fetchNotifications() {
+      try {
+        const params = new URLSearchParams({
+          authenticated: me?.userId ? "true" : "false",
+          staff: isStaff ? "true" : "false",
+        })
+        const res = await fetch(`/api/v2/notifications/active?${params}`)
+        if (res.ok) {
+          const data = await res.json()
+          // Only show "bell" type notifications in the bell dropdown
+          setNotifications(data.filter((n: ApiNotification) => n.type === "bell"))
+        }
+      } catch (err) {
+        console.error("Failed to fetch notifications:", err)
+      } finally {
+        setLoading(false)
       }
     }
 
-    window.addEventListener("app:notification", handleCustomNotif)
-    return () => window.removeEventListener("app:notification", handleCustomNotif)
-  }, [])
+    fetchNotifications()
+    // Refetch every 5 minutes
+    const interval = setInterval(fetchNotifications, 5 * 60 * 1000)
+    return () => clearInterval(interval)
+  }, [me?.userId, isStaff])
 
-  // Mark component as hydrated after client mount to avoid SSR/CSR mismatches
+  // Mark component as hydrated after client mount
   useEffect(() => {
     setHydrated(true)
   }, [])
@@ -198,68 +209,20 @@ export function NotificationBell() {
     return () => document.removeEventListener("mousedown", handle)
   }, [open])
 
-  const dismissVersion = useCallback(() => {
-    setCookie(VERSION_COOKIE_NAME, APP_VERSION, VERSION_COOKIE_MAX_AGE)
-    setVersionDismissed(true)
+  const dismissNotification = useCallback((id: number, durationHours: number | null) => {
+    setDismissedIds((prev) => {
+      const next = new Set(prev)
+      next.add(id)
+      // Save to cookie
+      const maxAge = durationHours ? durationHours * 60 * 60 : 60 * 60 * 24 * 365 // default 1 year
+      setCookie("vr_notif_dismissed", encodeURIComponent(JSON.stringify([...next])), maxAge)
+      return next
+    })
   }, [])
 
-  const notifications = useMemo<NotifItem[]>(() => {
-    const list: NotifItem[] = []
-
-    // Add custom notifications (from AdminVersionNotifier, etc)
-    customNotifs.forEach((cn) => {
-      let icon = <Sparkles className="h-4 w-4" />
-      let iconBg = "bg-primary/10 text-primary"
-
-      if (cn.type === "warning") {
-        icon = <AlertTriangle className="h-4 w-4" />
-        iconBg = "bg-destructive/10 text-destructive"
-      } else if (cn.type === "info") {
-        icon = <MessageCircle className="h-4 w-4" />
-        iconBg = "bg-blue-500/10 text-blue-500"
-      } else if (cn.type === "success") {
-        icon = <Sparkles className="h-4 w-4" />
-        iconBg = "bg-emerald-500/10 text-emerald-500"
-      }
-
-      list.push({
-        id: cn.id,
-        icon,
-        iconBg,
-        title: cn.title,
-        description: cn.message,
-        action: {
-          label: cn.actionLabel || "View",
-          onClick: () => {
-            if (cn.actionUrl) window.open(cn.actionUrl, "_blank", "noopener,noreferrer")
-          },
-        },
-        onDismiss: () => {
-          setCustomNotifs((prev) => prev.filter((n) => n.id !== cn.id))
-        },
-      })
-    })
-
-    if (!versionDismissed) {
-      list.push({
-        id: "version",
-        icon: <Sparkles className="h-4 w-4" />,
-        iconBg: "bg-primary/10 text-primary",
-        title: `${APP_NAME} v${APP_VERSION} Released`,
-        description: "New features, improvements, and bug fixes are available.",
-        action: {
-          label: "View Changelog",
-          href: "/changelog",
-          onClick: () => { dismissVersion(); setOpen(false) },
-        },
-        onDismiss: dismissVersion,
-      })
-    }
-
-    return list
-  }, [versionDismissed, dismissVersion, customNotifs])
-
-  const count = notifications.length
+  // Filter out dismissed notifications
+  const visibleNotifications = notifications.filter((n) => !dismissedIds.has(n.id))
+  const count = visibleNotifications.length
 
   return (
     <div ref={ref} className={cn("relative vr-auth-only", isPublicRoute && "!invisible !pointer-events-none")}>
@@ -289,59 +252,65 @@ export function NotificationBell() {
           </div>
 
           {/* Items */}
-          {count === 0 ? (
+          {loading ? (
+            <div className="px-4 py-8 text-center">
+              <div className="h-6 w-6 border-2 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-2" />
+              <p className="text-sm text-muted-foreground">Loading...</p>
+            </div>
+          ) : count === 0 ? (
             <div className="px-4 py-8 text-center">
               <Bell className="h-8 w-8 text-muted-foreground/30 mx-auto mb-2" />
               <p className="text-sm text-muted-foreground">All caught up!</p>
             </div>
           ) : (
             <div className="max-h-80 overflow-y-auto">
-              {notifications.map((n) => (
-                <div key={n.id} className="px-4 py-3 border-b border-border last:border-b-0 hover:bg-muted/50 transition-colors">
-                  <div className="flex items-start gap-3">
-                    <div className={cn("flex-shrink-0 p-2 rounded-lg", n.iconBg)}>
-                      {n.icon}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-foreground">{n.title}</p>
-                      <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">{n.description}</p>
-                      <div className="flex items-center gap-2 mt-2">
-                        {n.action.href ? (
-                          <a
-                            href={n.action.href}
-                            onClick={n.action.onClick}
-                            className="text-xs font-medium text-primary hover:text-primary/80 transition-colors flex items-center gap-1"
-                          >
-                            {n.action.label}
-                            {n.id === "discord" ? <ExternalLink className="h-3 w-3" /> : <ArrowRight className="h-3 w-3" />}
-                          </a>
-                        ) : (
-                          <button
-                            onClick={n.action.onClick}
-                            className="text-xs font-medium text-primary hover:text-primary/80 transition-colors flex items-center gap-1"
-                          >
-                            {n.action.label}
-                            {n.id === "discord" ? <ExternalLink className="h-3 w-3" /> : <ArrowRight className="h-3 w-3" />}
-                          </button>
-                        )}
-                        <button
-                          onClick={n.onDismiss}
-                          className="text-xs text-muted-foreground hover:text-foreground transition-colors"
-                        >
-                          Dismiss
-                        </button>
+              {visibleNotifications.map((n) => {
+                const variant = VARIANT_ICONS[n.variant] || VARIANT_ICONS.info
+                return (
+                  <div key={n.id} className="px-4 py-3 border-b border-border last:border-b-0 hover:bg-muted/50 transition-colors">
+                    <div className="flex items-start gap-3">
+                      <div className={cn("flex-shrink-0 p-2 rounded-lg", variant.bg)}>
+                        {variant.icon}
                       </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-foreground">{n.title}</p>
+                        <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">{n.message}</p>
+                        <div className="flex items-center gap-2 mt-2">
+                          {n.action_url && (
+                            <a
+                              href={n.action_url}
+                              target={n.action_external ? "_blank" : "_self"}
+                              rel={n.action_external ? "noopener noreferrer" : undefined}
+                              onClick={() => { if (n.is_dismissible) dismissNotification(n.id, n.dismiss_duration_hours); setOpen(false) }}
+                              className="text-xs font-medium text-primary hover:text-primary/80 transition-colors flex items-center gap-1"
+                            >
+                              {n.action_label || "View"}
+                              {n.action_external ? <ExternalLink className="h-3 w-3" /> : <ArrowRight className="h-3 w-3" />}
+                            </a>
+                          )}
+                          {n.is_dismissible && (
+                            <button
+                              onClick={() => dismissNotification(n.id, n.dismiss_duration_hours)}
+                              className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+                            >
+                              Dismiss
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                      {n.is_dismissible && (
+                        <button
+                          onClick={() => dismissNotification(n.id, n.dismiss_duration_hours)}
+                          className="flex-shrink-0 p-0.5 rounded text-muted-foreground/50 hover:text-muted-foreground transition-colors"
+                          aria-label={`Dismiss ${n.title}`}
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      )}
                     </div>
-                    <button
-                      onClick={n.onDismiss}
-                      className="flex-shrink-0 p-0.5 rounded text-muted-foreground/50 hover:text-muted-foreground transition-colors"
-                      aria-label={`Dismiss ${n.title}`}
-                    >
-                      <X className="h-3.5 w-3.5" />
-                    </button>
                   </div>
-                </div>
-              ))}
+                )
+              })}
             </div>
           )}
         </div>

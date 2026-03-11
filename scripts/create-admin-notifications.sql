@@ -65,13 +65,16 @@ CREATE TRIGGER trigger_admin_notifications_updated_at
     FOR EACH ROW
     EXECUTE FUNCTION update_admin_notifications_updated_at();
 
--- Seed initial notifications (migrated from hardcoded ones)
-INSERT INTO admin_notifications (title, message, type, variant, audience, is_active, is_dismissible, action_label, action_url, action_external, priority) VALUES
--- Version update notification (bell)
-('New Version Available', 'VulnRadar has been updated! Check out the changelog for new features and improvements.', 'bell', 'info', 'authenticated', true, true, 'View Changelog', '/changelog', false, 10),
+-- Seed initial notifications
+-- NOTE: These are examples. Admins can manage notifications via the admin panel.
+-- The INSERT uses ON CONFLICT DO NOTHING to avoid duplicates on re-runs.
 
--- Discord invite (bell)
-('Join Our Community', 'Connect with other security professionals on our Discord server.', 'bell', 'info', 'authenticated', true, true, 'Join Discord', 'https://discord.gg/vulnradar', true, 5),
-
--- Welcome notification (bell)
-('Welcome to VulnRadar', 'Start scanning your websites for vulnerabilities with our comprehensive security scanner.', 'bell', 'success', 'authenticated', true, true, 'Start Scanning', '/dashboard', false, 1)
+INSERT INTO admin_notifications (title, message, type, variant, audience, is_active, is_dismissible, action_label, action_url, action_external, priority) 
+SELECT * FROM (VALUES
+    -- Example: Version update notification for all authenticated users
+    ('New Version Available', 'VulnRadar has been updated with new features and improvements. Check out the changelog!', 'bell', 'info', 'authenticated', false, true, 'View Changelog', '/changelog', false, 10),
+    
+    -- Example: Staff notification for version sync issues
+    ('Version Sync Notice', 'Your local version may be out of sync. Please check the admin panel for details.', 'bell', 'warning', 'staff', false, true, 'Admin Panel', '/admin', false, 50)
+) AS v(title, message, type, variant, audience, is_active, is_dismissible, action_label, action_url, action_external, priority)
+WHERE NOT EXISTS (SELECT 1 FROM admin_notifications LIMIT 1);

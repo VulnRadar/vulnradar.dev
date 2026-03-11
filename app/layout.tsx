@@ -5,7 +5,6 @@ import Script from 'next/script'
 import { ThemeProvider } from '@/components/theme-provider'
 import { TosGate } from '@/components/tos-gate'
 import { BackupCodesModal } from '@/components/notification-center'
-import { AdminVersionNotifier } from '@/components/admin-version-notifier'
 import { AuthProvider } from '@/components/auth-provider'
 import { APP_NAME, APP_DESCRIPTION, APP_URL, APP_VERSION, LOGO_URL, STAFF_ROLES } from '@/lib/constants'
 
@@ -94,7 +93,6 @@ export default function RootLayout({
               {children}
             </TosGate>
             <BackupCodesModal />
-            <AdminVersionNotifier />
           </AuthProvider>
         </ThemeProvider>
 {/*        <Script id="tawk-to" strategy="lazyOnload">*/}
