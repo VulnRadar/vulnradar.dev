@@ -8,7 +8,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
-    "migrate": "node scripts/migrate.mjs"
+    "migrate": "node scripts/migrate.mjs",
+    "new-db": "node scripts/create-fresh-db.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.1",
