@@ -38,6 +38,7 @@ import {
   MonitorSmartphone,
   Scan,
   XCircle,
+  Gift,
   Gauge,
   Zap,
   Users,
@@ -120,6 +121,11 @@ interface BillingInfo {
     currentPeriodEnd: string | null
     cancelAtPeriodEnd: boolean
     cancelAt: string | null
+  } | null
+  giftedSubscription: {
+    plan: string
+    expiresAt: string
+    startedAt: string
   } | null
   usage: {
     used: number
@@ -1602,8 +1608,32 @@ function ProfileContent() {
                       )}
                     </div>
 
-                    {/* Subscription details for paid plans */}
-                    {billingInfo.subscription && (
+                    {/* Gifted subscription details */}
+                    {billingInfo.giftedSubscription && (
+                      <div className="flex flex-col gap-3 p-4 rounded-lg border border-primary/30 bg-primary/5">
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm text-muted-foreground">Status</span>
+                          <Badge className="bg-primary/10 text-primary border-primary/20">
+                            Gifted
+                          </Badge>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm text-muted-foreground">Gift Period</span>
+                          <span className="text-sm font-medium text-foreground">
+                            {new Date(billingInfo.giftedSubscription.startedAt).toLocaleDateString()} - {new Date(billingInfo.giftedSubscription.expiresAt).toLocaleDateString()}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2 p-3 rounded-lg bg-primary/10 border border-primary/20 mt-2">
+                          <Gift className="h-4 w-4 text-primary shrink-0" />
+                          <p className="text-sm text-primary">
+                            You have a gifted {billingInfo.giftedSubscription.plan.replace("_supporter", "").replace("_", " ")} subscription until {new Date(billingInfo.giftedSubscription.expiresAt).toLocaleDateString()}.
+                          </p>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Subscription details for paid Stripe plans */}
+                    {billingInfo.subscription && !billingInfo.giftedSubscription && (
                       <div className="flex flex-col gap-3 p-4 rounded-lg border border-border">
                         <div className="flex items-center justify-between">
                           <span className="text-sm text-muted-foreground">Status</span>
