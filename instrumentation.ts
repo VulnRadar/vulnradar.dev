@@ -143,7 +143,7 @@ export async function register() {
         CREATE INDEX IF NOT EXISTS idx_api_keys_key_hash ON api_keys(key_hash);
       `)
 
-      // ════════════════════════════════════════════════════════════════
+      // ═══════════════════════════════════════════════════���════════════
       // API USAGE - Tracks API key usage for rate limiting
       // ════════════════════════════════════════════════════════════════
       await pool.query(`
@@ -437,6 +437,54 @@ export async function register() {
           created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
         );
         CREATE INDEX IF NOT EXISTS idx_team_invites_token ON team_invites(token);
+      `)
+
+      // ════════════════════════════════════════════════════════════════
+      // GIFTED SUBSCRIPTIONS - Manual plan gifts
+      // ════════════════════════════════════════════════════════════════
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS gifted_subscriptions (
+          id SERIAL PRIMARY KEY,
+          user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          gifted_by INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          plan VARCHAR(50) NOT NULL,
+          reason TEXT,
+          expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
+          revoked_at TIMESTAMP WITH TIME ZONE,
+          revoked_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+          created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+        );
+        CREATE INDEX IF NOT EXISTS idx_gifted_subscriptions_user ON gifted_subscriptions(user_id);
+        CREATE INDEX IF NOT EXISTS idx_gifted_subscriptions_expires ON gifted_subscriptions(expires_at) WHERE revoked_at IS NULL;
+      `)
+
+      // ════════════════════════════════════════════════════════════════
+      // ADMIN NOTIFICATIONS - Site-wide notifications
+      // ════════════════════════════════════════════════════════════════
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS admin_notifications (
+          id SERIAL PRIMARY KEY,
+          title VARCHAR(255) NOT NULL,
+          message TEXT NOT NULL,
+          type VARCHAR(20) NOT NULL DEFAULT 'bell' CHECK (type IN ('banner', 'modal', 'toast', 'bell')),
+          variant VARCHAR(20) NOT NULL DEFAULT 'info' CHECK (variant IN ('info', 'success', 'warning', 'error')),
+          audience VARCHAR(20) NOT NULL DEFAULT 'all' CHECK (audience IN ('all', 'authenticated', 'unauthenticated', 'admin', 'staff')),
+          path_pattern VARCHAR(255) DEFAULT NULL,
+          starts_at TIMESTAMPTZ DEFAULT NOW(),
+          ends_at TIMESTAMPTZ DEFAULT NULL,
+          is_active BOOLEAN NOT NULL DEFAULT true,
+          is_dismissible BOOLEAN NOT NULL DEFAULT true,
+          dismiss_duration_hours INTEGER DEFAULT NULL,
+          action_label VARCHAR(100) DEFAULT NULL,
+          action_url VARCHAR(500) DEFAULT NULL,
+          action_external BOOLEAN DEFAULT false,
+          priority INTEGER NOT NULL DEFAULT 0,
+          created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
+        CREATE INDEX IF NOT EXISTS idx_admin_notifications_active ON admin_notifications (is_active, starts_at, ends_at) WHERE is_active = true;
+        CREATE INDEX IF NOT EXISTS idx_admin_notifications_type ON admin_notifications (type);
       `)
 
       console.log(`[${APP_NAME}] Database schema verified successfully.`)
