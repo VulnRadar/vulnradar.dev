@@ -473,7 +473,7 @@ function AdminContent() {
     if (activeTab === "admins") fetchActiveAdmins()
   }, [activeTab])
 
-  async function handleAction(userId: number, action: string, extra?: Record<string, string>) {
+  async function handleAction(userId: number, action: string, extra?: Record<string, unknown>) {
     setActionLoading(`${userId}-${action}`)
     try {
       const res = await fetch(API.ADMIN, {
@@ -507,6 +507,8 @@ function AdminContent() {
 
 
           clear_rate_limits: "Rate limits cleared.",
+          gift_subscription: "Subscription gifted successfully.",
+          revoke_gift: "Gifted subscription revoked.",
         }
         if (action === "create_badge" || action === "delete_badge") { fetchAllBadges() }
         showToast(labels[action] || "Action completed.", "success")
@@ -1139,7 +1141,7 @@ function UserDetailPanel({
   detailLoading: boolean
   actionLoading: string | null
   onClose: () => void
-  onAction: (userId: number, action: string, extra?: Record<string, string>) => void
+  onAction: (userId: number, action: string, extra?: Record<string, unknown>) => void
   tempPassword: string | null
   onClearTempPassword: () => void
   callerRole: string

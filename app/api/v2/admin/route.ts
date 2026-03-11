@@ -43,14 +43,17 @@ export async function GET(request: NextRequest) {
 
     const [userRes, scansRes, keysRes, webhooksRes, schedulesRes, sessionsRes, badgesRes] = await Promise.all([
       pool.query(
-        `SELECT id, email, name, role, avatar_url, totp_enabled, tos_accepted_at, created_at, disabled_at,
-          plan, stripe_customer_id, subscription_status, beta_access,
+        `SELECT u.id, u.email, u.name, u.role, u.avatar_url, u.totp_enabled, u.tos_accepted_at, u.created_at, u.disabled_at,
+          u.plan, u.stripe_customer_id, u.subscription_status, u.beta_access,
           (SELECT COUNT(*) FROM scan_history WHERE user_id = $1)::int as scan_count,
           (SELECT COUNT(*) FROM api_keys WHERE user_id = $1 AND revoked_at IS NULL)::int as api_key_count,
           (SELECT COUNT(*) FROM sessions WHERE user_id = $1 AND expires_at > NOW())::int as session_count,
-          (backup_codes IS NOT NULL AND backup_codes != '[]') as has_backup_codes
-        FROM users
-        WHERE id = $1`,
+          (u.backup_codes IS NOT NULL AND u.backup_codes != '[]') as has_backup_codes,
+          gs.plan as gifted_plan,
+          gs.expires_at as gift_end_date
+        FROM users u
+        LEFT JOIN gifted_subscriptions gs ON gs.user_id = u.id AND gs.revoked_at IS NULL AND gs.expires_at > NOW()
+        WHERE u.id = $1`,
         [userId],
       ),
       pool.query(
@@ -550,23 +553,24 @@ export async function PATCH(request: NextRequest) {
       if (isNaN(expiresAt.getTime())) {
         return NextResponse.json({ error: "Invalid giftEndDate" }, { status: 400 })
       }
-      
-      await pool.query(`
-        INSERT INTO gifted_subscriptions (user_id, plan, expires_at, granted_by)
-        VALUES ($1, $2, $3, $4)
-        ON CONFLICT (user_id) DO UPDATE SET 
-          plan = $2, 
-          expires_at = $3,
-          granted_by = $4,
-          updated_at = NOW()
-      `, [userId, giftPlan, expiresAt, session.userId])
-      
-      await logAction(session.userId, userId, "gift_subscription", `Gifted ${giftPlan} subscription to ${targetUser.email} until ${expiresAt.toISOString()}`, ip)
+      // Revoke any existing active gift first, then insert new one
+      await pool.query(
+        "UPDATE gifted_subscriptions SET revoked_at = NOW(), revoked_by = $2 WHERE user_id = $1 AND revoked_at IS NULL",
+        [userId, session.userId]
+      )
+      await pool.query(
+        "INSERT INTO gifted_subscriptions (user_id, plan, expires_at, gifted_by) VALUES ($1, $2, $3, $4)",
+        [userId, giftPlan, expiresAt, session.userId]
+      )
+      await logAction(session.userId, userId, "gift_subscription", `Gifted ${giftPlan} to ${targetUser.email} until ${expiresAt.toISOString()}`, ip)
       return NextResponse.json({ success: true })
     }
 
     case "revoke_gift": {
-      await pool.query("DELETE FROM gifted_subscriptions WHERE user_id = $1", [userId])
+      await pool.query(
+        "UPDATE gifted_subscriptions SET revoked_at = NOW(), revoked_by = $2 WHERE user_id = $1 AND revoked_at IS NULL",
+        [userId, session.userId]
+      )
       await logAction(session.userId, userId, "revoke_gift", `Revoked gifted subscription from ${targetUser.email}`, ip)
       return NextResponse.json({ success: true })
     }
