@@ -74,6 +74,7 @@ const V2_USER_COLUMNS = [
   "subscription_current_period_end",
   "stripe_subscription_metadata",
   "beta_access",
+  "email_session_revoked",
 ]
 
 // ── Rename Mappings ─────────────────────────────────────────────────────────
@@ -415,7 +416,19 @@ async function runV2Migration(pool, actual, v1Info) {
     } catch { /* column may already exist */ }
   }
 
-  // Step 5: Create gifted_subscriptions table
+  // Step 5: Add missing user columns
+  try {
+    await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS email_session_revoked BOOLEAN NOT NULL DEFAULT false`)
+    success("  Added email_session_revoked to users table")
+  } catch { /* column may already exist */ }
+
+  // Step 6: Add missing api_keys columns
+  try {
+    await pool.query(`ALTER TABLE api_keys ADD COLUMN IF NOT EXISTS daily_limit INTEGER DEFAULT 1000`)
+    success("  Added daily_limit to api_keys table")
+  } catch { /* column may already exist */ }
+
+  // Step 7: Create gifted_subscriptions table
   if (!actual["gifted_subscriptions"]) {
     info("Creating gifted_subscriptions table...")
     try {
@@ -440,7 +453,7 @@ async function runV2Migration(pool, actual, v1Info) {
     }
   }
 
-  // Step 6: Create admin_notifications table
+  // Step 8: Create admin_notifications table
   if (!actual["admin_notifications"]) {
     info("Creating admin_notifications table...")
     try {
@@ -631,7 +644,7 @@ async function main() {
     process.exit(1)
   }
 
-  // ── Phase 1: Detect and apply table renames ─────────────────────────────
+  // ── Phase 1: Detect and apply table renames ───────────���─────────────────
   const pendingTableRenames = []
   for (const [oldName, newName] of Object.entries(TABLE_RENAMES)) {
     if (actual[oldName] && !actual[newName] && expected[newName]) {
