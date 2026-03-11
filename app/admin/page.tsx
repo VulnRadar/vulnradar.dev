@@ -254,58 +254,93 @@ function UserAvatar({ name, email, size = "md", avatarUrl }: { name: string | nu
 }
 
 // --- Action badge with human-readable labels ---
+// Action metadata for audit log display
+const ACTION_META: Record<string, { label: string; verb: string; icon: string; cls: string }> = {
+  // Role changes
+  set_role: { label: "Changed Role", verb: "changed the role of", icon: "shield", cls: "bg-primary/10 text-primary border-primary/20" },
+  make_admin: { label: "Promoted to Admin", verb: "promoted to admin", icon: "crown", cls: "bg-primary/10 text-primary border-primary/20" },
+  remove_admin: { label: "Removed Admin Role", verb: "removed admin role from", icon: "shield-off", cls: "bg-muted text-muted-foreground border-border" },
+  // Security actions
+  reset_password: { label: "Reset Password", verb: "sent a password reset to", icon: "key", cls: "bg-amber-500/10 text-amber-500 border-amber-500/20" },
+  revoke_sessions: { label: "Revoked Sessions", verb: "revoked all sessions for", icon: "log-out", cls: "bg-amber-500/10 text-amber-500 border-amber-500/20" },
+  revoke_api_keys: { label: "Revoked API Keys", verb: "revoked API keys for", icon: "key", cls: "bg-amber-500/10 text-amber-500 border-amber-500/20" },
+  reset_2fa: { label: "Reset 2FA", verb: "reset two-factor authentication for", icon: "smartphone", cls: "bg-amber-500/10 text-amber-500 border-amber-500/20" },
+  force_logout_all: { label: "Force Logout", verb: "force logged out", icon: "log-out", cls: "bg-amber-500/10 text-amber-500 border-amber-500/20" },
+  // Account status
+  disable_user: { label: "Disabled", verb: "disabled the account of", icon: "ban", cls: "bg-destructive/10 text-destructive border-destructive/20" },
+  disable: { label: "Disabled", verb: "disabled the account of", icon: "ban", cls: "bg-destructive/10 text-destructive border-destructive/20" },
+  enable_user: { label: "Enabled", verb: "re-enabled the account of", icon: "check-circle", cls: "bg-emerald-500/10 text-emerald-500 border-emerald-500/20" },
+  enable: { label: "Enabled", verb: "re-enabled the account of", icon: "check-circle", cls: "bg-emerald-500/10 text-emerald-500 border-emerald-500/20" },
+  delete_user: { label: "Deleted", verb: "permanently deleted", icon: "trash-2", cls: "bg-destructive/10 text-destructive border-destructive/20" },
+  delete: { label: "Deleted", verb: "permanently deleted", icon: "trash-2", cls: "bg-destructive/10 text-destructive border-destructive/20" },
+  // Profile updates
+  update_name: { label: "Name Changed", verb: "updated the name of", icon: "user", cls: "bg-muted text-foreground border-border" },
+  update_email: { label: "Email Changed", verb: "updated the email of", icon: "mail", cls: "bg-muted text-foreground border-border" },
+  update_plan: { label: "Plan Changed", verb: "changed the subscription plan for", icon: "credit-card", cls: "bg-primary/10 text-primary border-primary/20" },
+  clear_avatar: { label: "Avatar Cleared", verb: "cleared the avatar of", icon: "image-off", cls: "bg-muted text-muted-foreground border-border" },
+  // Email verification
+  verify_email: { label: "Email Verified", verb: "verified the email of", icon: "mail-check", cls: "bg-emerald-500/10 text-emerald-500 border-emerald-500/20" },
+  unverify_email: { label: "Email Unverified", verb: "unverified the email of", icon: "mail-x", cls: "bg-amber-500/10 text-amber-500 border-amber-500/20" },
+  // Beta & Premium
+  toggle_beta_access: { label: "Beta Access", verb: "toggled beta access for", icon: "flask", cls: "bg-primary/10 text-primary border-primary/20" },
+  // Gift subscriptions
+  gift_subscription: { label: "Gifted Plan", verb: "gifted a subscription to", icon: "gift", cls: "bg-amber-500/10 text-amber-500 border-amber-500/20" },
+  revoke_gift: { label: "Revoked Gift", verb: "revoked gifted subscription from", icon: "gift-off", cls: "bg-destructive/10 text-destructive border-destructive/20" },
+  // Data management
+  delete_scans: { label: "Scans Deleted", verb: "deleted all scans for", icon: "trash-2", cls: "bg-destructive/10 text-destructive border-destructive/20" },
+  delete_webhooks: { label: "Webhooks Deleted", verb: "deleted webhooks for", icon: "webhook-off", cls: "bg-destructive/10 text-destructive border-destructive/20" },
+  delete_schedules: { label: "Schedules Deleted", verb: "deleted schedules for", icon: "calendar-off", cls: "bg-destructive/10 text-destructive border-destructive/20" },
+  export_data: { label: "Data Exported", verb: "exported data for", icon: "download", cls: "bg-muted text-foreground border-border" },
+  clear_rate_limits: { label: "Rate Limits Cleared", verb: "cleared rate limits for", icon: "gauge", cls: "bg-muted text-foreground border-border" },
+  // Badges
+  award_badge: { label: "Badge Awarded", verb: "awarded a badge to", icon: "award", cls: "bg-primary/10 text-primary border-primary/20" },
+  revoke_badge: { label: "Badge Revoked", verb: "revoked a badge from", icon: "award-off", cls: "bg-amber-500/10 text-amber-500 border-amber-500/20" },
+  create_badge: { label: "Badge Created", verb: "created a new badge", icon: "plus-circle", cls: "bg-emerald-500/10 text-emerald-500 border-emerald-500/20" },
+  delete_badge: { label: "Badge Deleted", verb: "deleted a badge", icon: "trash-2", cls: "bg-destructive/10 text-destructive border-destructive/20" },
+  // Admin
+  impersonate: { label: "Impersonation", verb: "started impersonating", icon: "eye", cls: "bg-[hsl(var(--severity-high))]/10 text-[hsl(var(--severity-high))] border-[hsl(var(--severity-high))]/20" },
+  set_scan_limit: { label: "Scan Limit Set", verb: "set scan limit for", icon: "gauge", cls: "bg-muted text-foreground border-border" },
+  add_note: { label: "Note Added", verb: "added a note about", icon: "sticky-note", cls: "bg-muted text-foreground border-border" },
+  send_notification: { label: "Notification Sent", verb: "sent a notification to", icon: "bell", cls: "bg-primary/10 text-primary border-primary/20" },
+}
+
 function ActionBadge({ action }: { action: string }) {
-  const map: Record<string, { label: string; cls: string }> = {
-    // Role changes
-    set_role: { label: "Changed Role", cls: "bg-primary/10 text-primary border-primary/20" },
-    make_admin: { label: "Promoted to Admin", cls: "bg-primary/10 text-primary border-primary/20" },
-    remove_admin: { label: "Removed Admin Role", cls: "bg-muted text-muted-foreground border-border" },
-    // Security actions
-    reset_password: { label: "Reset Password", cls: "bg-[hsl(var(--severity-medium))]/10 text-[hsl(var(--severity-medium))] border-[hsl(var(--severity-medium))]/20" },
-    revoke_sessions: { label: "Revoked Sessions", cls: "bg-[hsl(var(--severity-medium))]/10 text-[hsl(var(--severity-medium))] border-[hsl(var(--severity-medium))]/20" },
-    revoke_api_keys: { label: "Revoked API Keys", cls: "bg-[hsl(var(--severity-medium))]/10 text-[hsl(var(--severity-medium))] border-[hsl(var(--severity-medium))]/20" },
-    reset_2fa: { label: "Reset Two-Factor Auth", cls: "bg-[hsl(var(--severity-medium))]/10 text-[hsl(var(--severity-medium))] border-[hsl(var(--severity-medium))]/20" },
-    force_logout_all: { label: "Force Logged Out", cls: "bg-[hsl(var(--severity-medium))]/10 text-[hsl(var(--severity-medium))] border-[hsl(var(--severity-medium))]/20" },
-    // Account status
-    disable_user: { label: "Disabled Account", cls: "bg-destructive/10 text-destructive border-destructive/20" },
-    disable: { label: "Disabled Account", cls: "bg-destructive/10 text-destructive border-destructive/20" },
-    enable_user: { label: "Enabled Account", cls: "bg-emerald-500/10 text-emerald-500 border-emerald-500/20" },
-    enable: { label: "Enabled Account", cls: "bg-emerald-500/10 text-emerald-500 border-emerald-500/20" },
-    delete_user: { label: "Deleted Account", cls: "bg-destructive/10 text-destructive border-destructive/20" },
-    delete: { label: "Deleted Account", cls: "bg-destructive/10 text-destructive border-destructive/20" },
-    // Profile updates
-    update_name: { label: "Updated Name", cls: "bg-muted text-foreground border-border" },
-    update_email: { label: "Updated Email", cls: "bg-muted text-foreground border-border" },
-    update_plan: { label: "Changed Plan", cls: "bg-primary/10 text-primary border-primary/20" },
-    clear_avatar: { label: "Cleared Avatar", cls: "bg-muted text-muted-foreground border-border" },
-    // Email verification
-    verify_email: { label: "Verified Email", cls: "bg-emerald-500/10 text-emerald-500 border-emerald-500/20" },
-    unverify_email: { label: "Unverified Email", cls: "bg-[hsl(var(--severity-medium))]/10 text-[hsl(var(--severity-medium))] border-[hsl(var(--severity-medium))]/20" },
-    // Beta & Premium
-    toggle_beta_access: { label: "Toggled Beta Access", cls: "bg-primary/10 text-primary border-primary/20" },
-
-
-    // Data management
-    delete_scans: { label: "Deleted Scans", cls: "bg-destructive/10 text-destructive border-destructive/20" },
-    delete_webhooks: { label: "Deleted Webhooks", cls: "bg-destructive/10 text-destructive border-destructive/20" },
-    delete_schedules: { label: "Deleted Schedules", cls: "bg-destructive/10 text-destructive border-destructive/20" },
-    export_data: { label: "Exported Data", cls: "bg-muted text-foreground border-border" },
-    clear_rate_limits: { label: "Cleared Rate Limits", cls: "bg-muted text-foreground border-border" },
-    // Badges
-    award_badge: { label: "Awarded Badge", cls: "bg-primary/10 text-primary border-primary/20" },
-    revoke_badge: { label: "Revoked Badge", cls: "bg-[hsl(var(--severity-medium))]/10 text-[hsl(var(--severity-medium))] border-[hsl(var(--severity-medium))]/20" },
-    create_badge: { label: "Created Badge", cls: "bg-emerald-500/10 text-emerald-500 border-emerald-500/20" },
-    delete_badge: { label: "Deleted Badge", cls: "bg-destructive/10 text-destructive border-destructive/20" },
-    // Admin
-    impersonate: { label: "Started Impersonation", cls: "bg-[hsl(var(--severity-high))]/10 text-[hsl(var(--severity-high))] border-[hsl(var(--severity-high))]/20" },
-    set_scan_limit: { label: "Set Scan Limit", cls: "bg-muted text-foreground border-border" },
-    add_note: { label: "Added Note", cls: "bg-muted text-foreground border-border" },
-    send_notification: { label: "Sent Notification", cls: "bg-primary/10 text-primary border-primary/20" },
-  }
   // Fallback: convert snake_case to readable format
   const fallbackLabel = action.split("_").map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(" ")
-  const m = map[action] || { label: fallbackLabel, cls: "bg-muted text-muted-foreground border-border" }
+  const m = ACTION_META[action] || { label: fallbackLabel, cls: "bg-muted text-muted-foreground border-border" }
   return <Badge className={cn("text-[10px] px-2 py-0.5 font-medium", m.cls)}>{m.label}</Badge>
+}
+
+function getActionSentence(log: AuditEntry): string {
+  const meta = ACTION_META[log.action]
+  const adminName = log.admin_name || log.admin_email.split("@")[0]
+  const targetName = log.target_name || (log.target_email ? log.target_email.split("@")[0] : null)
+  
+  if (meta?.verb) {
+    if (targetName) {
+      return `${adminName} ${meta.verb} ${targetName}`
+    }
+    return `${adminName} ${meta.verb.replace(/ (for|to|from|of)$/, "")}`
+  }
+  
+  // Fallback
+  const actionLabel = log.action.split("_").join(" ")
+  return targetName ? `${adminName} performed "${actionLabel}" on ${targetName}` : `${adminName} performed "${actionLabel}"`
+}
+
+function formatRelativeTime(date: Date): string {
+  const now = new Date()
+  const diffMs = now.getTime() - date.getTime()
+  const diffSecs = Math.floor(diffMs / 1000)
+  const diffMins = Math.floor(diffSecs / 60)
+  const diffHours = Math.floor(diffMins / 60)
+  const diffDays = Math.floor(diffHours / 24)
+  
+  if (diffSecs < 60) return "just now"
+  if (diffMins < 60) return `${diffMins}m ago`
+  if (diffHours < 24) return `${diffHours}h ago`
+  if (diffDays < 7) return `${diffDays}d ago`
+  return date.toLocaleDateString("en-US", { month: "short", day: "numeric" })
 }
 
 export default function AdminPage() {
@@ -899,30 +934,44 @@ function AdminContent() {
                       <div className={cn("flex flex-col transition-opacity duration-200", auditPaging && "opacity-40 pointer-events-none")}>
                         {auditLogs.map((log, i) => {
                           const isExpanded = expandedLog === log.id
-                          const adminDisplay = log.admin_name || log.admin_email.split("@")[0]
-                          const targetDisplay = log.target_name || (log.target_email ? log.target_email.split("@")[0] : null)
+                          const actionMeta = ACTION_META[log.action]
+                          const logDate = new Date(log.created_at)
+                          
                           return (
                             <div key={log.id} className={cn(i < auditLogs.length - 1 && "border-b border-border")}>
                               <button
-                                className={cn("w-full flex items-start gap-4 px-5 py-3.5 transition-colors hover:bg-muted/20 text-left", isExpanded && "bg-muted/10")}
+                                className={cn("w-full flex items-start gap-4 px-5 py-4 transition-colors hover:bg-muted/20 text-left", isExpanded && "bg-muted/10")}
                                 onClick={() => setExpandedLog(isExpanded ? null : log.id)}
                               >
-                                <div className="flex flex-col items-center gap-1 pt-0.5">
+                                {/* Avatar with action indicator */}
+                                <div className="relative">
                                   <UserAvatar name={log.admin_name} email={log.admin_email} size="sm" avatarUrl={log.admin_avatar_url} />
-                                </div>
-                                <div className="flex-1 min-w-0">
-                                  <div className="flex flex-col sm:flex-row sm:items-center gap-1.5 sm:gap-2">
-                                    <span className="text-sm font-medium text-foreground">{adminDisplay}</span>
-                                    <ActionBadge action={log.action} />
-                                    {targetDisplay && (
-                                      <span className="text-xs text-muted-foreground">
-                                        on <span className="text-foreground font-medium">{targetDisplay}</span>
-                                      </span>
+                                  <div className={cn(
+                                    "absolute -bottom-1 -right-1 h-4 w-4 rounded-full flex items-center justify-center ring-2 ring-card",
+                                    actionMeta?.cls || "bg-muted"
+                                  )}>
+                                    {log.action.includes("delete") || log.action.includes("disable") || log.action.includes("revoke") ? (
+                                      <XCircle className="h-2.5 w-2.5" />
+                                    ) : log.action.includes("enable") || log.action.includes("create") || log.action.includes("award") || log.action.includes("gift") ? (
+                                      <CheckCircle2 className="h-2.5 w-2.5" />
+                                    ) : (
+                                      <Settings className="h-2.5 w-2.5" />
                                     )}
                                   </div>
-                                  <div className="flex items-center gap-2 mt-0.5">
+                                </div>
+                                
+                                {/* Main content */}
+                                <div className="flex-1 min-w-0">
+                                  {/* Human-readable sentence */}
+                                  <p className="text-sm text-foreground leading-relaxed">
+                                    {getActionSentence(log)}
+                                  </p>
+                                  
+                                  {/* Meta row */}
+                                  <div className="flex flex-wrap items-center gap-2 mt-1.5">
+                                    <ActionBadge action={log.action} />
                                     <span className="text-[10px] text-muted-foreground">
-                                      {new Date(log.created_at).toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
+                                      {formatRelativeTime(logDate)}
                                     </span>
                                     {log.ip_address && (
                                       <span className="text-[10px] text-muted-foreground font-mono flex items-center gap-0.5">
@@ -931,41 +980,70 @@ function AdminContent() {
                                     )}
                                   </div>
                                 </div>
-                                {isExpanded ? <ChevronUp className="h-3.5 w-3.5 text-muted-foreground shrink-0 mt-1" /> : <ChevronDown className="h-3.5 w-3.5 text-muted-foreground shrink-0 mt-1" />}
+                                
+                                <ChevronDown className={cn("h-4 w-4 text-muted-foreground shrink-0 transition-transform", isExpanded && "rotate-180")} />
                               </button>
 
-                              {/* Expanded detail */}
+                              {/* Expanded detail panel */}
                               {isExpanded && (
-                                <div className="px-5 pb-4 pt-0 ml-11">
-                                  <div className="rounded-xl bg-muted/20 border border-border p-4 flex flex-col gap-3">
-                                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
-                                      <div>
-                                        <p className="text-muted-foreground mb-0.5 text-[10px] uppercase tracking-wider font-semibold">Performed By</p>
-                                        <p className="text-foreground font-medium">{log.admin_name || "N/A"}</p>
-                                        <p className="text-muted-foreground text-[11px]">{log.admin_email}</p>
-                                      </div>
-                                      {log.target_email && (
-                                        <div>
-                                          <p className="text-muted-foreground mb-0.5 text-[10px] uppercase tracking-wider font-semibold">Target User</p>
-                                          <p className="text-foreground font-medium">{log.target_name || "N/A"}</p>
-                                          <p className="text-muted-foreground text-[11px]">{log.target_email}</p>
+                                <div className="px-5 pb-4 pt-0 ml-12">
+                                  <div className="rounded-xl bg-gradient-to-br from-muted/30 to-muted/10 border border-border p-4 space-y-4">
+                                    {/* Action summary */}
+                                    <div className="flex items-center gap-3 pb-3 border-b border-border/50">
+                                      <ActionBadge action={log.action} />
+                                      <span className="text-sm text-muted-foreground">
+                                        {logDate.toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" })} at {logDate.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" })}
+                                      </span>
+                                    </div>
+                                    
+                                    {/* People involved */}
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                      <div className="flex items-center gap-3">
+                                        <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
+                                          <Shield className="h-5 w-5 text-primary" />
                                         </div>
-                                      )}
-                                      <div>
-                                        <p className="text-muted-foreground mb-0.5 text-[10px] uppercase tracking-wider font-semibold">Timestamp</p>
-                                        <p className="text-foreground font-medium">{new Date(log.created_at).toLocaleString()}</p>
-                                      </div>
-                                      {log.ip_address && (
                                         <div>
-                                          <p className="text-muted-foreground mb-0.5 text-[10px] uppercase tracking-wider font-semibold">IP Address</p>
-                                          <p className="text-foreground font-mono">{log.ip_address}</p>
+                                          <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Admin</p>
+                                          <p className="text-sm font-medium text-foreground">{log.admin_name || log.admin_email.split("@")[0]}</p>
+                                          <p className="text-xs text-muted-foreground">{log.admin_email}</p>
+                                        </div>
+                                      </div>
+                                      
+                                      {log.target_email && (
+                                        <div className="flex items-center gap-3">
+                                          <div className="h-10 w-10 rounded-full bg-muted flex items-center justify-center">
+                                            <User className="h-5 w-5 text-muted-foreground" />
+                                          </div>
+                                          <div>
+                                            <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Target User</p>
+                                            <p className="text-sm font-medium text-foreground">{log.target_name || log.target_email.split("@")[0]}</p>
+                                            <p className="text-xs text-muted-foreground">{log.target_email}</p>
+                                          </div>
                                         </div>
                                       )}
                                     </div>
+                                    
+                                    {/* Details section */}
                                     {log.details && (
-                                      <div>
-                                        <p className="text-muted-foreground mb-0.5 text-[10px] uppercase tracking-wider font-semibold">Details</p>
-                                        <p className="text-xs text-foreground leading-relaxed">{log.details}</p>
+                                      <div className="pt-3 border-t border-border/50">
+                                        <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1.5">Details</p>
+                                        <div className="bg-card/50 rounded-lg p-3 border border-border/50">
+                                          <p className="text-sm text-foreground leading-relaxed">{log.details}</p>
+                                        </div>
+                                      </div>
+                                    )}
+                                    
+                                    {/* Technical details */}
+                                    {log.ip_address && (
+                                      <div className="flex items-center gap-4 pt-3 border-t border-border/50 text-xs text-muted-foreground">
+                                        <span className="flex items-center gap-1.5">
+                                          <Globe className="h-3.5 w-3.5" />
+                                          <span className="font-mono">{log.ip_address}</span>
+                                        </span>
+                                        <span className="flex items-center gap-1.5">
+                                          <Clock className="h-3.5 w-3.5" />
+                                          <span>{logDate.toISOString()}</span>
+                                        </span>
                                       </div>
                                     )}
                                   </div>
