@@ -262,8 +262,10 @@ function detectV1Database(actual) {
   // Check if v2 user columns are missing
   const missingV2Columns = V2_USER_COLUMNS.filter(col => !userColumns.includes(col))
   
-  // It's a v1 database if it's missing v2 tables OR v2 user columns
-  const isV1 = missingV2Tables.length > 0 || missingV2Columns.length > 0
+  // It's v1 if it's MISSING v2 tables (core infrastructure)
+  // Missing a few columns is OK - those can be added incrementally
+  // But if v2 tables don't exist, it's definitely v1
+  const isV1 = missingV2Tables.length > 0
   
   return {
     isV1,
