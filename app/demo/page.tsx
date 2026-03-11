@@ -195,17 +195,17 @@ export default function DemoPage() {
           {
             title: "Transparency",
             description: "We run the same checks on ourselves that we run on any site. No special treatment.",
-            color: "text-emerald-500",
+            color: "text-primary",
           },
           {
             title: "Eat Our Own Cooking",
             description: "If we find issues on our own site, we fix them. This page proves we practice what we preach.",
-            color: "text-blue-500",
+            color: "text-primary",
           },
           {
             title: "Real Results",
             description: `These are live scan results, not pre-generated. The same ${TOTAL_CHECKS_LABEL} checks run in real-time.`,
-            color: "text-amber-500",
+            color: "text-primary",
           },
         ].map((item) => (
           <Card key={item.title} className="bg-card border-border">
