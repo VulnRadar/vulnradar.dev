@@ -3,6 +3,7 @@
 
 const nextConfig = {
   output: "standalone",
+  serverComponentsExternalPackages: ["fs", "path"],
   typescript: {
     ignoreBuildErrors: true,
   },
