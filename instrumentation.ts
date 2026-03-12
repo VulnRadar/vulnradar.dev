@@ -135,10 +135,10 @@ export async function register() {
           id SERIAL PRIMARY KEY,
           user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
           key_hash VARCHAR(255) NOT NULL UNIQUE,
+          key_encrypted TEXT,
           key_prefix VARCHAR(64) NOT NULL,
           name VARCHAR(100) NOT NULL DEFAULT 'Default',
-          daily_limit INTEGER DEFAULT 50,
-          key_encrypted TEXT NOT NULL DEFAULT '',
+          daily_limit INTEGER NOT NULL DEFAULT 50,
           created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
           last_used_at TIMESTAMP WITH TIME ZONE,
           revoked_at TIMESTAMP WITH TIME ZONE

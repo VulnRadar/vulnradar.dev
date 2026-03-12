@@ -429,9 +429,9 @@ async function runV2Migration(pool, actual, v1Info) {
     success("  Added daily_limit to api_keys table")
   } catch { /* column may already exist */ }
 
-  // Step 6b: Add key_encrypted to api_keys
+  // Step 6b: Add key_encrypted to api_keys (nullable - stores encrypted key for reveal feature)
   try {
-    await pool.query(`ALTER TABLE api_keys ADD COLUMN IF NOT EXISTS key_encrypted TEXT NOT NULL DEFAULT ''`)
+    await pool.query(`ALTER TABLE api_keys ADD COLUMN IF NOT EXISTS key_encrypted TEXT`)
     success("  Added key_encrypted to api_keys table")
   } catch { /* column may already exist */ }
 
