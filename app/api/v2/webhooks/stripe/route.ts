@@ -6,14 +6,6 @@ import Stripe from "stripe"
 
 const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET!
 
-// GET - Simple health check for the webhook endpoint
-export async function GET() {
-  return NextResponse.json({ 
-    status: "ok", 
-    message: "Stripe webhook endpoint is active. This endpoint only accepts POST requests from Stripe." 
-  })
-}
-
 export async function POST(req: NextRequest) {
   const body = await req.text()
   const signature = req.headers.get("stripe-signature")!
