@@ -81,7 +81,7 @@ export async function register() {
           plan VARCHAR(50) NOT NULL DEFAULT 'free',
           stripe_customer_id VARCHAR(255) UNIQUE,
           stripe_subscription_id VARCHAR(255) UNIQUE,
-          subscription_status VARCHAR(50) DEFAULT 'active',
+          subscription_status VARCHAR(50) DEFAULT NULL,
           current_period_end TIMESTAMP WITH TIME ZONE,
           cancel_at_period_end BOOLEAN NOT NULL DEFAULT false,
           

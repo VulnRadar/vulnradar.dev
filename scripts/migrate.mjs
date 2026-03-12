@@ -345,6 +345,14 @@ async function runV2Migration(pool, actual, v1Info) {
     }
   }
 
+  // Step 1b: Fix subscription_status default for new users (should be NULL, not 'active')
+  try {
+    await pool.query(`ALTER TABLE users ALTER COLUMN subscription_status SET DEFAULT NULL`)
+    // Update any users who have 'active' but no actual subscription
+    await pool.query(`UPDATE users SET subscription_status = NULL WHERE subscription_status = 'active' AND stripe_subscription_id IS NULL AND plan = 'free'`)
+    success("  Fixed subscription_status default to NULL")
+  } catch { /* column may not exist yet */ }
+
   // Step 2: Create badges table
   if (!actual["badges"]) {
     info("Creating badges table...")
@@ -805,7 +813,7 @@ async function main() {
   log("")
   log(`${c.bold}═══════════════════════════════════════════${c.reset}`)
   log(`${c.bold}  Schema Comparison${c.reset}`)
-  log(`${c.bold}═══════════════════════════════════════════${c.reset}`)
+  log(`${c.bold}════════════════════════���══════════════════${c.reset}`)
   log("")
 
   const missingTables = []
