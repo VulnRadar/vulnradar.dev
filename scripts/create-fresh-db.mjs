@@ -440,6 +440,9 @@ async function main() {
         users: {
           subscription_source: "'manual'",
         },
+        api_keys: {
+          key_encrypted: "''",
+        },
       }
       
       // Column renames from v1 -> v2 (old_name: new_name)

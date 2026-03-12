@@ -138,7 +138,7 @@ export async function register() {
           key_prefix VARCHAR(64) NOT NULL,
           name VARCHAR(100) NOT NULL DEFAULT 'Default',
           daily_limit INTEGER DEFAULT 50,
-          key_encrypted TEXT NOT NULL,
+          key_encrypted TEXT NOT NULL DEFAULT '',
           created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
           last_used_at TIMESTAMP WITH TIME ZONE,
           revoked_at TIMESTAMP WITH TIME ZONE
@@ -550,7 +550,7 @@ export async function register() {
         console.error(`[${APP_NAME}] Initial cleanup failed (non-fatal):`, cleanupError)
       }
 
-      // ── Schedule periodic cleanup ─────────────────────────────────
+      // ── Schedule periodic cleanup ─���───────────────────────────────
       try {
         const { schedulePeriodicCleanup } = await import("./lib/cleanup")
         schedulePeriodicCleanup(5000)
