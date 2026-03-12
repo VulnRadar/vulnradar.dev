@@ -6,7 +6,8 @@ import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 import { ApiResponse, Validate, parseBody, withErrorHandling } from "@/lib/api-utils"
 import { getClientIp, getUserAgent } from "@/lib/request-utils"
 import { AUTH_2FA_PENDING_COOKIE, AUTH_2FA_PENDING_MAX_AGE, DEVICE_TRUST_COOKIE_NAME, ERROR_MESSAGES } from "@/lib/constants"
-import { email2FACodeEmail, sendEmail } from "@/lib/email"
+import { email2FACodeEmail, sendEmail, newLoginEmail } from "@/lib/email"
+import { sendNotificationEmail } from "@/lib/notifications"
 
 export const POST = withErrorHandling(async (request: Request) => {
   // Parse body
@@ -73,6 +74,17 @@ export const POST = withErrorHandling(async (request: Request) => {
     if (deviceCookie && deviceCookie === String(deviceId)) {
       // Device is trusted - create session directly without 2FA
       await createSession(user.id, ip, userAgent)
+      
+      // Send new login alert email in background
+      setImmediate(() => {
+        sendNotificationEmail({
+          userId: user.id,
+          userEmail: user.email,
+          type: "login_alerts",
+          emailContent: newLoginEmail("Trusted device", ip, { ipAddress: ip, userAgent }),
+        }).catch((err) => console.error("Failed to send login alert:", err))
+      })
+      
       return ApiResponse.success({
         user: { id: user.id, email: user.email, name: user.name },
       })
@@ -126,6 +138,16 @@ export const POST = withErrorHandling(async (request: Request) => {
   // No 2FA: create session directly
   const ua = await getUserAgent()
   await createSession(user.id, ip, ua)
+
+  // Send new login alert email in background
+  setImmediate(() => {
+    sendNotificationEmail({
+      userId: user.id,
+      userEmail: user.email,
+      type: "login_alerts",
+      emailContent: newLoginEmail("New session", ip, { ipAddress: ip, userAgent: ua }),
+    }).catch((err) => console.error("Failed to send login alert:", err))
+  })
 
   return ApiResponse.success({
     user: { id: user.id, email: user.email, name: user.name },

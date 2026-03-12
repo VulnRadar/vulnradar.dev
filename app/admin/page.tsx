@@ -1042,7 +1042,7 @@ function AdminContent() {
                                         </span>
                                         <span className="flex items-center gap-1.5">
                                           <Clock className="h-3.5 w-3.5" />
-                                          <span>{logDate.toISOString()}</span>
+                                          <span>{logDate.toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" })}</span>
                                         </span>
                                       </div>
                                     )}

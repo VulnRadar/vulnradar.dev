@@ -7,8 +7,13 @@ import { runAsyncChecks } from "@/lib/scanner/async-checks"
 import pool from "@/lib/db"
 import { ERROR_MESSAGES, APP_NAME, SEVERITY_LEVELS } from "@/lib/constants"
 import type { Vulnerability, Severity } from "@/lib/scanner/types"
+import { getProtocolFromUrl } from "@/lib/scanner/protocols"
+import { runWebSocketChecks } from "@/lib/scanner/protocols/websocket"
+import { runFtpChecks } from "@/lib/scanner/protocols/ftp"
+import { validateScanTarget } from "@/lib/scanner/safe-fetch"
 
 const SEVERITY_ORDER: Record<Severity, number> = { critical: 0, high: 1, medium: 2, low: 3, info: 4 }
+const SUPPORTED_PROTOCOLS = ["http:", "https:", "ws:", "wss:", "ftp:", "ftps:"]
 const MAX_BODY_SIZE = 1 * 1024 * 1024
 
 async function safeReadBody(response: Response, maxBytes: number): Promise<string> {
@@ -36,47 +41,95 @@ async function safeReadBody(response: Response, maxBytes: number): Promise<strin
   return chunks.join("")
 }
 
+function getProtocolType(url: string): "http" | "websocket" | "ftp" {
+  const protocol = getProtocolFromUrl(url)
+  if (protocol === "ws" || protocol === "wss") return "websocket"
+  if (protocol === "ftp" || protocol === "ftps") return "ftp"
+  return "http"
+}
+
 async function runSingleScan(url: string, userId: number) {
   const startTime = Date.now()
+  
+  // SSRF protection - validate target is not internal/private
+  const safetyCheck = await validateScanTarget(url)
+  if (!safetyCheck.safe) {
+    return { url, success: false, error: safetyCheck.reason || "URL blocked for security reasons" }
+  }
+  
+  const protocolType = getProtocolType(url)
 
-  let response: Response
-  try {
-    response = await fetch(url, {
-      method: "GET",
-      headers: { "User-Agent": `${APP_NAME}/1.0 (Security Scanner)` },
-      redirect: "follow",
-      signal: AbortSignal.timeout(15000),
-    })
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : "Unknown error"
-    return { url, success: false, error: `Could not reach: ${msg}` }
+  let response: Response | null = null
+  let responseBody = ""
+  let headers = new Headers()
+  let capturedHeaders: Record<string, string> = {}
+  const protocolSpecificFindings: Vulnerability[] = []
+
+  // Handle different protocol types
+  if (protocolType === "websocket") {
+    // For WebSocket URLs, convert to HTTP(S) for initial check
+    const httpUrl = url.replace(/^wss?:\/\//, (m) => m.startsWith("wss") ? "https://" : "http://")
+    try {
+      response = await fetch(httpUrl, {
+        method: "GET",
+        headers: { "User-Agent": `${APP_NAME}/1.0 (Security Scanner)` },
+        redirect: "follow",
+        signal: AbortSignal.timeout(15000),
+      })
+      responseBody = await safeReadBody(response, MAX_BODY_SIZE)
+      headers = response.headers
+      headers.forEach((v, k) => { capturedHeaders[k] = v })
+    } catch {
+      // WebSocket endpoint may not respond to HTTP - that's ok
+    }
+    // Add WebSocket-specific security checks
+    protocolSpecificFindings.push(...runWebSocketChecks(url, headers))
+  } else if (protocolType === "ftp") {
+    // FTP protocol checks - limited to protocol-level security
+    protocolSpecificFindings.push(...runFtpChecks(url))
+  } else {
+    // Standard HTTP/HTTPS fetch
+    try {
+      response = await fetch(url, {
+        method: "GET",
+        headers: { "User-Agent": `${APP_NAME}/1.0 (Security Scanner)` },
+        redirect: "follow",
+        signal: AbortSignal.timeout(15000),
+      })
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Unknown error"
+      return { url, success: false, error: `Could not reach: ${msg}` }
+    }
+
+    responseBody = await safeReadBody(response, MAX_BODY_SIZE)
+    headers = response.headers
+    headers.forEach((v, k) => { capturedHeaders[k] = v })
   }
 
-  const responseBody = await safeReadBody(response, MAX_BODY_SIZE)
-  const headers = response.headers
-  const capturedHeaders: Record<string, string> = {}
-  headers.forEach((v, k) => { capturedHeaders[k] = v })
-
-  // Sync checks
+  // Sync checks (only run on HTTP-like protocols)
   const bodyForChecks = responseBody.length > 1_000_000 ? responseBody.slice(0, 1_000_000) : responseBody
   const syncFindings: Vulnerability[] = []
-  for (const check of allChecks) {
-    try {
-      const r = check(url, headers, bodyForChecks)
-      if (r) syncFindings.push(r)
-    } catch { /* skip */ }
+  if (protocolType === "http" || protocolType === "websocket") {
+    for (const check of allChecks) {
+      try {
+        const r = check(url, headers, bodyForChecks)
+        if (r) syncFindings.push(r)
+      } catch { /* skip */ }
+    }
   }
 
-  // Async checks
+  // Async checks (only run on HTTP)
   let asyncFindings: Vulnerability[] = []
-  try {
-    asyncFindings = await Promise.race([
-      runAsyncChecks(url),
-      new Promise<Vulnerability[]>((resolve) => setTimeout(() => resolve([]), 15000)),
-    ])
-  } catch { /* non-fatal */ }
+  if (protocolType === "http") {
+    try {
+      asyncFindings = await Promise.race([
+        runAsyncChecks(url),
+        new Promise<Vulnerability[]>((resolve) => setTimeout(() => resolve([]), 15000)),
+      ])
+    } catch { /* non-fatal */ }
+  }
 
-  const findings = [...syncFindings, ...asyncFindings].sort(
+  const findings = [...protocolSpecificFindings, ...syncFindings, ...asyncFindings].sort(
     (a, b) => SEVERITY_ORDER[a.severity] - SEVERITY_ORDER[b.severity],
   )
 
@@ -132,7 +185,7 @@ export async function POST(request: NextRequest) {
   for (const u of urls) {
     try {
       const parsed = new URL(u)
-      if (parsed.protocol === "http:" || parsed.protocol === "https:") validUrls.push(u)
+      if (SUPPORTED_PROTOCOLS.includes(parsed.protocol)) validUrls.push(u)
     } catch { /* skip */ }
   }
 

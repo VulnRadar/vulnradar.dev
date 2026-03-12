@@ -23,6 +23,9 @@ export default function SignupPage() {
   const [error, setError] = useState("")
   const [loading, setLoading] = useState(false)
   const [signupSuccess, setSignupSuccess] = useState(false)
+  const [resending, setResending] = useState(false)
+  const [resendCooldown, setResendCooldown] = useState(0)
+  const [resendMessage, setResendMessage] = useState("")
   const [turnstileToken, setTurnstileToken] = useState<string | null>(null)
   const [scriptLoaded, setScriptLoaded] = useState(false)
   const widgetRef = useRef<HTMLDivElement>(null)
@@ -47,6 +50,40 @@ export default function SignupPage() {
   }, [scriptLoaded])
 
   const strength = getPasswordStrength(password)
+
+  // Cooldown timer for resend button
+  useEffect(() => {
+    if (resendCooldown <= 0) return
+    const timer = setTimeout(() => setResendCooldown(resendCooldown - 1), 1000)
+    return () => clearTimeout(timer)
+  }, [resendCooldown])
+
+  async function handleResendVerification() {
+    if (resending || resendCooldown > 0) return
+    setResending(true)
+    setResendMessage("")
+    
+    try {
+      const res = await fetch(API.AUTH.RESEND_VERIFICATION, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      })
+      
+      const data = await res.json()
+      
+      if (res.ok) {
+        setResendMessage("Verification email sent! Check your inbox.")
+        setResendCooldown(60) // 60 second cooldown
+      } else {
+        setResendMessage(data.error || "Failed to resend email. Try again.")
+      }
+    } catch {
+      setResendMessage("Something went wrong. Please try again.")
+    } finally {
+      setResending(false)
+    }
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -126,12 +163,34 @@ export default function SignupPage() {
                   Click the link in your email to verify your account and start using {APP_NAME}.
                 </p>
               </div>
-              <p className="text-xs text-muted-foreground text-center">
-                Didn&apos;t receive the email? Check your spam folder or{" "}
-                <Link href="/login" className="text-primary hover:underline">
-                  request a new link
-                </Link>
-              </p>
+              <div className="text-center space-y-2">
+                <p className="text-xs text-muted-foreground">
+                  Didn&apos;t receive the email? Check your spam folder or
+                </p>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleResendVerification}
+                  disabled={resending || resendCooldown > 0}
+                  className="text-primary hover:text-primary/80 h-auto p-0"
+                >
+                  {resending ? (
+                    <>
+                      <Loader2 className="mr-1.5 h-3 w-3 animate-spin" />
+                      Sending...
+                    </>
+                  ) : resendCooldown > 0 ? (
+                    `Resend in ${resendCooldown}s`
+                  ) : (
+                    "Resend verification email"
+                  )}
+                </Button>
+                {resendMessage && (
+                  <p className={`text-xs ${resendMessage.includes("sent") ? "text-green-500" : "text-destructive"}`}>
+                    {resendMessage}
+                  </p>
+                )}
+              </div>
               <Button asChild variant="outline" className="w-full mt-4">
                 <Link href="/login">Back to Login</Link>
               </Button>

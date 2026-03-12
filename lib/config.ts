@@ -5,38 +5,40 @@
 // On the server, reads from filesystem. In the browser, uses defaults only.
 // ============================================================================
 
-// Conditional imports - only use fs/path on Node.js server
-// Using dynamic require to avoid Edge Runtime static analysis warnings
-let readFileSync: ((path: string, encoding: string) => string) | null = null
-let existsSync: ((path: string) => boolean) | null = null
-let join: ((...paths: string[]) => string) | null = null
-let getCwd: (() => string) | null = null
+// Helper to check if we're in browser or edge runtime
+function isClientOrEdge(): boolean {
+  if (typeof window !== "undefined") return true
+  if (typeof globalThis !== "undefined" && "EdgeRuntime" in globalThis) return true
+  return false
+}
 
-// Check if we're in a Node.js environment at runtime only
-// Wrapped in IIFE to avoid Edge static analysis detecting process.versions
-;(() => {
-  // Skip in browser
-  if (typeof window !== "undefined") return
-  // Skip in Edge Runtime
-  if (typeof globalThis !== "undefined" && "EdgeRuntime" in globalThis) return
+// Dynamically load fs functions only on Node.js server
+// This avoids webpack/next static analysis issues
+function getNodeFs(): {
+  readFileSync: (path: string, encoding: string) => string
+  existsSync: (path: string) => boolean
+  join: (...paths: string[]) => string
+  cwd: () => string
+} | null {
+  if (isClientOrEdge()) return null
   
   try {
-    // Use indirect eval to bypass static analysis
-    const nodeProcess = (0, eval)("typeof process !== 'undefined' ? process : null")
-    if (!nodeProcess?.versions?.node) return
+    // Dynamic import using Function constructor to completely bypass static analysis
+    const requireFn = new Function("moduleName", "return require(moduleName)")
+    const fs = requireFn("fs")
+    const path = requireFn("path")
+    const cwd = () => requireFn("process").cwd()
     
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const fs = require("fs")
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const path = require("path")
-    readFileSync = fs.readFileSync
-    existsSync = fs.existsSync
-    join = path.join
-    getCwd = () => nodeProcess.cwd()
+    return {
+      readFileSync: fs.readFileSync,
+      existsSync: fs.existsSync,
+      join: path.join,
+      cwd,
+    }
   } catch {
-    // Fallback if requires fail
+    return null
   }
-})()
+}
 
 import { VulnRadarConfig, DEFAULT_CONFIG } from "./types/config"
 
@@ -169,39 +171,46 @@ let _configLoadError: string | null = null
 export function loadConfig(): VulnRadarConfig {
   if (_config) return _config
   
+  // Get Node.js fs functions (returns null in browser/edge)
+  const nodeFs = getNodeFs()
+  
   // If running in browser or Edge Runtime (no fs access), use defaults immediately
-  if (!readFileSync || !existsSync || !join || !getCwd) {
+  if (!nodeFs) {
     _config = DEFAULT_CONFIG
     return _config
   }
   
   try {
     // Try multiple possible paths for config.yaml
-    const currentDir = getCwd()
+    const currentDir = nodeFs.cwd()
     const possiblePaths = [
-      join(currentDir, "config.yaml"),
-      join(currentDir, "config.yml"),
+      nodeFs.join(currentDir, "config.yaml"),
+      nodeFs.join(currentDir, "config.yml"),
     ]
     
     let configPath: string | null = null
     for (const p of possiblePaths) {
-      if (existsSync(p)) {
+      if (nodeFs.existsSync(p)) {
         configPath = p
         break
       }
     }
     
     if (!configPath) {
-      console.warn("[Config] No config.yaml found, using defaults")
+      if (process.env.NODE_ENV === "development") {
+        console.warn("[Config] No config.yaml found, using defaults")
+      }
       _config = DEFAULT_CONFIG
       return _config
     }
     
-    const content = readFileSync(configPath, "utf-8")
+    const content = nodeFs.readFileSync(configPath, "utf-8")
     const parsed = parseYaml(content)
     
     if (!validateConfig(parsed)) {
-      console.warn("[Config] Invalid config.yaml structure, using defaults")
+      if (process.env.NODE_ENV === "development") {
+        console.warn("[Config] Invalid config.yaml structure, using defaults")
+      }
       _config = DEFAULT_CONFIG
       return _config
     }
@@ -209,13 +218,18 @@ export function loadConfig(): VulnRadarConfig {
     // Merge with defaults to ensure all required fields exist
     _config = deepMerge(DEFAULT_CONFIG, parsed as Partial<VulnRadarConfig>)
     
-    console.log(`[Config] Loaded from ${configPath}`)
+    // Only log in development to reduce console spam during build
+    if (process.env.NODE_ENV === "development") {
+      console.log(`[Config] Loaded from ${configPath}`)
+    }
     return _config
     
   } catch (error) {
     _configLoadError = error instanceof Error ? error.message : "Unknown error"
-    console.error(`[Config] Error loading config: ${_configLoadError}`)
-    console.warn("[Config] Falling back to defaults")
+    if (process.env.NODE_ENV === "development") {
+      console.error(`[Config] Error loading config: ${_configLoadError}`)
+      console.warn("[Config] Falling back to defaults")
+    }
     _config = DEFAULT_CONFIG
     return _config
   }

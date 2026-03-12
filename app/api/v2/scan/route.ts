@@ -11,6 +11,7 @@ import { APP_NAME, BEARER_PREFIX, SEVERITY_LEVELS, DEFAULT_SCAN_NOTE } from "@/l
 import { getProtocolFromUrl, getProtocolFindings, type SupportedProtocol } from "@/lib/scanner/protocols"
 import { runWebSocketChecks } from "@/lib/scanner/protocols/websocket"
 import { runFtpChecks } from "@/lib/scanner/protocols/ftp"
+import { validateScanTarget } from "@/lib/scanner/safe-fetch"
 
 const SEVERITY_ORDER: Record<Severity, number> = {
   critical: 0,
@@ -181,6 +182,15 @@ export async function POST(request: NextRequest) {
     if (!isValidUrl(url)) {
       return NextResponse.json(
         { error: "Invalid URL. Supported protocols: http://, https://, ws://, wss://, ftp://, ftps://" },
+        { status: 400 }
+      )
+    }
+
+    // SSRF protection - validate target is not internal/private
+    const safetyCheck = await validateScanTarget(url)
+    if (!safetyCheck.safe) {
+      return NextResponse.json(
+        { error: safetyCheck.reason || "URL blocked for security reasons" },
         { status: 400 }
       )
     }
