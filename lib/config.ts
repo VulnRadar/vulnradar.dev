@@ -23,17 +23,20 @@ function getNodeFs(): {
   if (isClientOrEdge()) return null
   
   try {
-    // Dynamic import using Function constructor to completely bypass static analysis
-    const requireFn = new Function("moduleName", "return require(moduleName)")
-    const fs = requireFn("fs")
-    const path = requireFn("path")
-    const cwd = () => requireFn("process").cwd()
+    // Use standard require for server-side file system access
+    // Next.js build process will exclude this from edge runtime
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const fs = require("fs")
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const path = require("path")
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const process = require("process")
     
     return {
       readFileSync: fs.readFileSync,
       existsSync: fs.existsSync,
       join: path.join,
-      cwd,
+      cwd: () => process.cwd(),
     }
   } catch {
     return null
