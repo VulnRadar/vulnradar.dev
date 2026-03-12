@@ -168,15 +168,21 @@ export async function GET(request: Request) {
       // Update user's discord_id
       await pool.query("UPDATE users SET discord_id = $1 WHERE id = $2", [discordUser.id, session.userId])
 
-      // Optionally update avatar if user doesn't have one
-      if (discordUser.avatar) {
-        await pool.query(
-          "UPDATE users SET avatar_url = $1 WHERE id = $2 AND avatar_url IS NULL",
-          [`https://cdn.discordapp.com/avatars/${discordUser.id}/${discordUser.avatar}.png`, session.userId]
-        )
+      // Build Discord avatar URL
+      const discordAvatarUrl = discordUser.avatar 
+        ? `https://cdn.discordapp.com/avatars/${discordUser.id}/${discordUser.avatar}.png`
+        : null
+
+      // Redirect with Discord profile info so user can choose to use it
+      const redirectUrl = new URL(`${baseUrl}/profile`)
+      redirectUrl.searchParams.set("tab", "social")
+      redirectUrl.searchParams.set("discord_connected", "true")
+      redirectUrl.searchParams.set("discord_username", discordUser.username)
+      if (discordAvatarUrl) {
+        redirectUrl.searchParams.set("discord_avatar", discordAvatarUrl)
       }
 
-      return NextResponse.redirect(`${baseUrl}/profile?tab=account&success=discord_connected`)
+      return NextResponse.redirect(redirectUrl.toString())
     } else {
       // Login with Discord
       // Check if Discord account is linked to a user
