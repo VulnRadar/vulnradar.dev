@@ -11,6 +11,7 @@ export interface AppConfig {
   total_checks_label: string
   url: string
   repo: string
+  discord_invite_url: string
   support_email: string
 }
 
@@ -160,6 +161,7 @@ export const DEFAULT_CONFIG: VulnRadarConfig = {
     total_checks_label: "175+",
     url: "https://vulnradar.dev",
     repo: "VulnRadar/vulnradar.dev",
+    discord_invite_url: "https://discord.gg/Y7R6hdGbNe",
     support_email: "support@vulnradar.dev",
   },
   branding: {

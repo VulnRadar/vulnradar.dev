@@ -22,6 +22,7 @@ app:
   # URLs - Update these for self-hosted deployments
   url: "https://vulnradar.dev"
   repo: "VulnRadar/vulnradar.dev"
+  discord_invite_url: "https://discord.gg/Y7R6hdGbNe"
   
   # Contact
   support_email: "support@vulnradar.dev"
