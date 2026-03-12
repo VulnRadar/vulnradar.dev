@@ -192,10 +192,8 @@ export default function ProfilePage() {
 
 function ProfileContent() {
   const router = useRouter()
-
   const VALID_TABS: Tab[] = ["general", "security", "social", "billing", "developer", "notifications", "privacy"]
-  
-  // Read the current hash (no leading #), default to "general"
+
   const getTabFromHash = (): Tab => {
     if (typeof window === "undefined") return "general"
     const hash = window.location.hash.replace("#", "") as Tab
