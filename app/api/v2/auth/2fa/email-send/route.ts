@@ -6,14 +6,35 @@ import { ApiResponse, withErrorHandling } from "@/lib/api-utils"
 import { AUTH_2FA_PENDING_COOKIE } from "@/lib/constants"
 
 export const POST = withErrorHandling(async (request: NextRequest) => {
-  // Validate the pending 2FA cookie
+  // Validate the pending 2FA cookie (check both normal login and Discord login)
   const pending = request.cookies.get(AUTH_2FA_PENDING_COOKIE)?.value
-  if (!pending) {
+  const discordPending = request.cookies.get("discord_pending_login")?.value
+  
+  let userId: number | null = null
+  
+  if (discordPending) {
+    try {
+      const parsed = JSON.parse(discordPending)
+      if (parsed && parsed.userId) {
+        userId = parsed.userId
+        // Check if Discord pending token is expired (5 minutes)
+        if (Date.now() - parsed.ts > 5 * 60 * 1000) {
+          return ApiResponse.unauthorized("Discord login session expired. Please try again.")
+        }
+      }
+    } catch {
+      // Invalid JSON, check regular pending
+    }
+  }
+  
+  if (!userId && pending) {
+    userId = parseInt(pending, 10)
+    if (isNaN(userId)) userId = null
+  }
+  
+  if (!userId) {
     return ApiResponse.unauthorized("No pending 2FA session.")
   }
-
-  const userId = parseInt(pending, 10)
-  if (isNaN(userId)) return ApiResponse.badRequest("Invalid session.")
 
   // Get user email
   const userResult = await pool.query("SELECT email FROM users WHERE id = $1", [userId])

@@ -28,21 +28,48 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   const { userId, code, backupCode, rememberDevice } = parsed.data
 
   const validationError = Validate.multiple([
-    Validate.required(userId, "User ID"),
     Validate.required(code || backupCode, "Code or backup code"),
   ])
   if (validationError) return ApiResponse.badRequest(validationError)
 
-  // Verify the pending 2FA token
+  // Verify the pending 2FA token (check both normal login and Discord login pending cookies)
   const pending = request.cookies.get(AUTH_2FA_PENDING_COOKIE)?.value
-  if (!pending || pending !== String(userId)) {
-    return ApiResponse.unauthorized(ERROR_MESSAGES.INVALID_2FA_SESSION)
+  const discordPending = request.cookies.get("discord_pending_login")?.value
+  
+  let isDiscordLogin = false
+  let effectiveUserId = userId
+  let parsedDiscordPending: { userId: number; token: string; ts: number } | null = null
+  
+  // Check for Discord pending login first (userId might be 0 from client)
+  if (discordPending) {
+    try {
+      parsedDiscordPending = JSON.parse(discordPending)
+      if (parsedDiscordPending) {
+        isDiscordLogin = true
+        effectiveUserId = parsedDiscordPending.userId
+        // Check if Discord pending token is expired (5 minutes)
+        if (Date.now() - parsedDiscordPending.ts > 5 * 60 * 1000) {
+          return ApiResponse.unauthorized("Discord login session expired. Please try again.")
+        }
+      }
+    } catch {
+      // Invalid JSON, ignore
+    }
+  }
+  
+  if (!isDiscordLogin) {
+    if (!userId) {
+      return ApiResponse.badRequest("User ID is required")
+    }
+    if (!pending || pending !== String(userId)) {
+      return ApiResponse.unauthorized(ERROR_MESSAGES.INVALID_2FA_SESSION)
+    }
   }
 
   // Get user's TOTP secret, backup codes, and 2FA method
   const result = await pool.query(
     "SELECT totp_secret, totp_enabled, backup_codes, two_factor_method FROM users WHERE id = $1",
-    [userId],
+    [effectiveUserId],
   )
   const user = result.rows[0]
   if (!user || !user.totp_enabled) {
@@ -69,7 +96,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
       storedHashes.splice(matchIndex, 1)
       await pool.query("UPDATE users SET backup_codes = $1 WHERE id = $2", [
         JSON.stringify(storedHashes),
-        userId,
+        effectiveUserId,
       ])
     }
   } else if (code) {
@@ -84,12 +111,12 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
       // Verify email 2FA code
       const codeResult = await pool.query(
         "SELECT id FROM email_2fa_codes WHERE user_id = $1 AND code_hash = encode(sha256($2::bytea), 'hex') AND expires_at > NOW()",
-        [userId, code],
+        [effectiveUserId, code],
       )
       if (codeResult.rows.length > 0) {
         verified = true
         // Delete used code
-        await pool.query("DELETE FROM email_2fa_codes WHERE user_id = $1", [userId])
+        await pool.query("DELETE FROM email_2fa_codes WHERE user_id = $1", [effectiveUserId])
       }
     } else {
       // Verify TOTP code (app-based)
@@ -105,17 +132,17 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   }
 
   // Create session with IP and user agent
-  await createSession(userId, ip, userAgent)
+  await createSession(effectiveUserId, ip, userAgent)
 
   // Get user email for login notification
-  const userEmailResult = await pool.query("SELECT email FROM users WHERE id = $1", [userId])
+  const userEmailResult = await pool.query("SELECT email FROM users WHERE id = $1", [effectiveUserId])
   const userEmail = userEmailResult.rows[0]?.email
   
   // Send new login alert email in background
   if (userEmail) {
     setImmediate(() => {
       sendNotificationEmail({
-        userId,
+        userId: effectiveUserId,
         userEmail,
         type: "login_alerts",
         emailContent: newLoginEmail("2FA verified login", ip, { ipAddress: ip, userAgent }),
@@ -126,8 +153,11 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   // Create response
   const response = NextResponse.json({ success: true })
 
-  // Clear the pending cookie
+  // Clear the pending cookies
   response.cookies.delete(AUTH_2FA_PENDING_COOKIE)
+  if (isDiscordLogin) {
+    response.cookies.delete("discord_pending_login")
+  }
 
   // If user wants to remember this device, set device trust cookie
   if (rememberDevice === true) {

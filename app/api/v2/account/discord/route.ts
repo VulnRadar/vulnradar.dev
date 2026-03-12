@@ -2,6 +2,39 @@ import { NextResponse } from "next/server"
 import { getSession } from "@/lib/auth"
 import pool from "@/lib/db"
 
+// GET /api/v2/account/discord - Get Discord connection status
+export async function GET() {
+  const session = await getSession()
+  if (!session) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  }
+
+  try {
+    const result = await pool.query(
+      `SELECT discord_id, discord_username, discord_avatar, guild_joined, updated_at 
+       FROM discord_connections WHERE user_id = $1`,
+      [session.userId]
+    )
+
+    if (!result.rows[0]) {
+      return NextResponse.json({ connected: false })
+    }
+
+    const connection = result.rows[0]
+    return NextResponse.json({
+      connected: true,
+      discordId: connection.discord_id,
+      discordUsername: connection.discord_username,
+      discordAvatar: connection.discord_avatar,
+      guildJoined: connection.guild_joined,
+      updatedAt: connection.updated_at,
+    })
+  } catch (error) {
+    console.error("Discord connection check error:", error)
+    return NextResponse.json({ error: "Failed to check Discord connection" }, { status: 500 })
+  }
+}
+
 // DELETE /api/v2/account/discord - Disconnect Discord account
 export async function DELETE() {
   const session = await getSession()

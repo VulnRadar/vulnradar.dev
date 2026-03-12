@@ -9,10 +9,10 @@ export const GET = withErrorHandling(async () => {
     return ApiResponse.unauthorized(ERROR_MESSAGES.UNAUTHORIZED)
   }
 
-  // Get 2FA, role, onboarding status, backup codes, badges, and billing info (including gifted subscription)
-  const [userResult, badgesResult, giftResult] = await Promise.all([
+  // Get 2FA, role, onboarding status, backup codes, badges, discord, and billing info (including gifted subscription)
+  const [userResult, badgesResult, giftResult, discordResult] = await Promise.all([
     pool.query(
-      "SELECT totp_enabled, two_factor_method, onboarding_completed, role, avatar_url, backup_codes, plan, subscription_status FROM users WHERE id = $1",
+      "SELECT totp_enabled, two_factor_method, onboarding_completed, role, avatar_url, backup_codes, plan, subscription_status, discord_id FROM users WHERE id = $1",
       [session.userId],
     ),
     pool.query(
@@ -25,11 +25,16 @@ export const GET = withErrorHandling(async () => {
       `SELECT plan, expires_at FROM gifted_subscriptions 
        WHERE user_id = $1 AND revoked_at IS NULL AND expires_at > NOW()`,
       [session.userId]
+    ),
+    pool.query(
+      `SELECT discord_id, discord_username, discord_avatar FROM discord_connections WHERE user_id = $1`,
+      [session.userId]
     )
   ])
   const user = userResult.rows[0]
   const badges = badgesResult.rows
   const giftedSubscription = giftResult.rows[0] || null
+  const discordConnection = discordResult.rows[0] || null
   
   // Effective plan: gifted takes priority over regular plan
   const effectivePlan = giftedSubscription?.plan || user?.plan || "free"
@@ -58,6 +63,10 @@ export const GET = withErrorHandling(async () => {
     avatarUrl: user?.avatar_url || null,
     onboardingCompleted: user?.onboarding_completed || false,
     backupCodesInvalid,
+    // Discord connection
+    discordId: discordConnection?.discord_id || user?.discord_id || null,
+    discordUsername: discordConnection?.discord_username || null,
+    discordAvatar: discordConnection?.discord_avatar || null,
     // Billing/Plan info
     plan: effectivePlan,
     subscriptionStatus: giftedSubscription ? "gifted" : (user?.subscription_status || null),
