@@ -40,6 +40,9 @@ export const PUBLIC_PATHS = [
   // ─── Discord OAuth (must be public for OAuth flow) ─────────────
   "/api/v2/auth/discord",
   "/api/v2/auth/discord/callback",
+  
+  // ─── 2FA Email (needed for Discord login with email 2FA) ───────
+  "/api/v2/auth/2fa/email-send",
 
   // ─── Legal Pages ───────────────────────────────────────────────
   ROUTES.LEGAL_TERMS,

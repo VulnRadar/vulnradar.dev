@@ -25,25 +25,45 @@ function LoginForm() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const redirectTo = searchParams.get("redirect") || "/dashboard"
+  const discordError = searchParams.get("error")
+  const discord2FA = searchParams.get("discord_2fa")
+  const discord2FAMethod = searchParams.get("method")
+  
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [showPassword, setShowPassword] = useState(false)
-  const [error, setError] = useState("")
+  const [error, setError] = useState(() => {
+    // Map Discord error codes to user-friendly messages
+    if (discordError === "discord_not_linked") {
+      return "This Discord account is not linked to any account. Please sign up first, then connect your Discord in Profile settings."
+    }
+    if (discordError === "discord_denied") {
+      return "Discord authorization was cancelled."
+    }
+    if (discordError === "discord_expired") {
+      return "Discord login session expired. Please try again."
+    }
+    if (discordError === "discord_failed") {
+      return "Discord login failed. Please try again."
+    }
+    return ""
+  })
   const [loading, setLoading] = useState(false)
   const [unverifiedEmail, setUnverifiedEmail] = useState(false)
   const [resendingVerification, setResendingVerification] = useState(false)
   const [resendSuccess, setResendSuccess] = useState(false)
 
-  // 2FA state
-  const [needs2FA, setNeeds2FA] = useState(false)
-  const [twoFactorMethod, setTwoFactorMethod] = useState<string | null>(null)
+  // 2FA state - initialize from Discord callback if pending
+  const [needs2FA, setNeeds2FA] = useState(discord2FA === "pending")
+  const [twoFactorMethod, setTwoFactorMethod] = useState<string | null>(discord2FAMethod || null)
   const [pendingUserId, setPendingUserId] = useState<number | null>(null)
+  const [isDiscord2FA, setIsDiscord2FA] = useState(discord2FA === "pending")
   const [totpCode, setTotpCode] = useState("")
   const [verifying2FA, setVerifying2FA] = useState(false)
   const [useBackupCode, setUseBackupCode] = useState(false)
   const [backupCodeInput, setBackupCodeInput] = useState("")
   const [rememberDevice, setRememberDevice] = useState(false)
-  const [emailCodeSent, setEmailCodeSent] = useState(false)
+  const [emailCodeSent, setEmailCodeSent] = useState(discord2FA === "pending" && discord2FAMethod === "email")
   const [resendingCode, setResendingCode] = useState(false)
   const [maskedEmail, setMaskedEmail] = useState("")
 
@@ -123,9 +143,11 @@ function LoginForm() {
     setVerifying2FA(true)
 
     try {
+      // For Discord 2FA, we pass userId: 0 and the server reads from the cookie
+      const effectiveUserId = isDiscord2FA ? 0 : pendingUserId
       const body = useBackupCode
-        ? { userId: pendingUserId, backupCode: backupCodeInput, rememberDevice }
-        : { userId: pendingUserId, code: totpCode, rememberDevice }
+        ? { userId: effectiveUserId, backupCode: backupCodeInput, rememberDevice }
+        : { userId: effectiveUserId, code: totpCode, rememberDevice }
       const res = await fetch(API.AUTH.TWO_FA.VERIFY, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
