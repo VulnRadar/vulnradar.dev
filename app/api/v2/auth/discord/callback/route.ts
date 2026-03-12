@@ -7,13 +7,12 @@ import { getSession, createSession } from "@/lib/auth"
 import pool from "@/lib/db"
 import { cookies } from "next/headers"
 import crypto from "crypto"
+import { loadConfig } from "@/lib/config"
 
 const DISCORD_CLIENT_ID = process.env.DISCORD_CLIENT_ID
 const DISCORD_CLIENT_SECRET = process.env.DISCORD_CLIENT_SECRET
-const DISCORD_REDIRECT_URI = process.env.DISCORD_REDIRECT_URI || `${process.env.NEXT_PUBLIC_APP_URL}/api/v2/auth/discord/callback`
 const DISCORD_BOT_TOKEN = process.env.DISCORD_BOT_TOKEN
 const DISCORD_GUILD_ID = process.env.DISCORD_GUILD_ID
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"
 
 interface DiscordTokenResponse {
   access_token: string
@@ -39,17 +38,22 @@ export async function GET(request: Request) {
   const state = searchParams.get("state")
   const error = searchParams.get("error")
 
+  // Get base URL from config or request
+  const config = loadConfig()
+  const baseUrl = config.app?.url || new URL(request.url).origin
+  const redirectUri = `${baseUrl}/api/v2/auth/discord/callback`
+
   // Handle errors from Discord
   if (error) {
-    return NextResponse.redirect(`${APP_URL}/login?error=discord_denied`)
+    return NextResponse.redirect(`${baseUrl}/login?error=discord_denied`)
   }
 
   if (!code || !state) {
-    return NextResponse.redirect(`${APP_URL}/login?error=discord_invalid`)
+    return NextResponse.redirect(`${baseUrl}/login?error=discord_invalid`)
   }
 
   if (!DISCORD_CLIENT_ID || !DISCORD_CLIENT_SECRET) {
-    return NextResponse.redirect(`${APP_URL}/login?error=discord_not_configured`)
+    return NextResponse.redirect(`${baseUrl}/login?error=discord_not_configured`)
   }
 
   // Parse state to get action
@@ -59,10 +63,10 @@ export async function GET(request: Request) {
     action = stateData.action || "connect"
     // Check if state is too old (5 minutes)
     if (Date.now() - stateData.ts > 5 * 60 * 1000) {
-      return NextResponse.redirect(`${APP_URL}/login?error=discord_expired`)
+      return NextResponse.redirect(`${baseUrl}/login?error=discord_expired`)
     }
   } catch {
-    return NextResponse.redirect(`${APP_URL}/login?error=discord_invalid_state`)
+    return NextResponse.redirect(`${baseUrl}/login?error=discord_invalid_state`)
   }
 
   try {
@@ -75,13 +79,13 @@ export async function GET(request: Request) {
         client_secret: DISCORD_CLIENT_SECRET,
         grant_type: "authorization_code",
         code,
-        redirect_uri: DISCORD_REDIRECT_URI,
+        redirect_uri: redirectUri,
       }),
     })
 
     if (!tokenResponse.ok) {
       console.error("[Discord] Token exchange failed:", await tokenResponse.text())
-      return NextResponse.redirect(`${APP_URL}/login?error=discord_token_failed`)
+      return NextResponse.redirect(`${baseUrl}/login?error=discord_token_failed`)
     }
 
     const tokens: DiscordTokenResponse = await tokenResponse.json()
@@ -93,7 +97,7 @@ export async function GET(request: Request) {
 
     if (!userResponse.ok) {
       console.error("[Discord] User fetch failed:", await userResponse.text())
-      return NextResponse.redirect(`${APP_URL}/login?error=discord_user_failed`)
+      return NextResponse.redirect(`${baseUrl}/login?error=discord_user_failed`)
     }
 
     const discordUser: DiscordUser = await userResponse.json()
@@ -126,7 +130,7 @@ export async function GET(request: Request) {
       // Connect Discord to existing account
       const session = await getSession()
       if (!session) {
-        return NextResponse.redirect(`${APP_URL}/login?error=session_expired`)
+        return NextResponse.redirect(`${baseUrl}/login?error=session_expired`)
       }
 
       // Check if this Discord account is already connected to another user
@@ -135,7 +139,7 @@ export async function GET(request: Request) {
         [discordUser.id]
       )
       if (existingConnection.rows.length > 0 && existingConnection.rows[0].user_id !== session.userId) {
-        return NextResponse.redirect(`${APP_URL}/profile?tab=account&error=discord_already_linked`)
+        return NextResponse.redirect(`${baseUrl}/profile?tab=account&error=discord_already_linked`)
       }
 
       // Upsert discord connection
@@ -172,7 +176,7 @@ export async function GET(request: Request) {
         )
       }
 
-      return NextResponse.redirect(`${APP_URL}/profile?tab=account&success=discord_connected`)
+      return NextResponse.redirect(`${baseUrl}/profile?tab=account&success=discord_connected`)
     } else {
       // Login with Discord
       // Check if Discord account is linked to a user
@@ -208,7 +212,7 @@ export async function GET(request: Request) {
       } else {
         // New user - create account if we have email
         if (!discordUser.email) {
-          return NextResponse.redirect(`${APP_URL}/login?error=discord_no_email`)
+          return NextResponse.redirect(`${baseUrl}/login?error=discord_no_email`)
         }
 
         // Check if email already exists
@@ -216,7 +220,7 @@ export async function GET(request: Request) {
         
         if (existingUser.rows.length > 0) {
           // Email exists but not linked to Discord - prompt to link
-          return NextResponse.redirect(`${APP_URL}/login?error=discord_email_exists&email=${encodeURIComponent(discordUser.email)}`)
+          return NextResponse.redirect(`${baseUrl}/login?error=discord_email_exists&email=${encodeURIComponent(discordUser.email)}`)
         }
 
         // Create new user (password is random since they'll use Discord to login)
@@ -259,10 +263,10 @@ export async function GET(request: Request) {
       const userAgent = request.headers.get("user-agent") || "unknown"
       await createSession(userId, ip, userAgent)
 
-      return NextResponse.redirect(`${APP_URL}/dashboard`)
+      return NextResponse.redirect(`${baseUrl}/dashboard`)
     }
   } catch (error) {
     console.error("[Discord] OAuth callback error:", error)
-    return NextResponse.redirect(`${APP_URL}/login?error=discord_failed`)
+    return NextResponse.redirect(`${baseUrl}/login?error=discord_failed`)
   }
 }
