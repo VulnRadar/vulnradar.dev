@@ -1997,7 +1997,7 @@ function ProfileContent() {
                       </p>
                       <Button
                         variant="outline"
-                        className="self-start text-destructive border-destructive/30 hover:bg-destructive/10"
+                        className="self-start text-destructive dark:text-red-400 border-destructive/30 hover:bg-destructive/10"
                         onClick={handleForceLogout}
                         disabled={forceLoggingOut}
                       >
