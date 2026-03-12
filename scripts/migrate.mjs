@@ -480,7 +480,41 @@ async function runV2Migration(pool, actual, v1Info) {
     }
   }
 
-  // Step 7: Create gifted_subscriptions table
+  // Step 7: Add discord_id to users and create discord_connections table
+  try {
+    await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS discord_id VARCHAR(64) UNIQUE`)
+    success("  Added discord_id to users table")
+  } catch { /* column may already exist */ }
+
+  if (!actual["discord_connections"]) {
+    info("Creating discord_connections table...")
+    try {
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS discord_connections (
+          id SERIAL PRIMARY KEY,
+          user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE UNIQUE,
+          discord_id VARCHAR(64) NOT NULL UNIQUE,
+          discord_username VARCHAR(100) NOT NULL,
+          discord_discriminator VARCHAR(10),
+          discord_avatar VARCHAR(255),
+          discord_email VARCHAR(255),
+          access_token TEXT NOT NULL,
+          refresh_token TEXT,
+          token_expires_at TIMESTAMP WITH TIME ZONE,
+          guild_joined BOOLEAN NOT NULL DEFAULT false,
+          connected_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+          updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+        )
+      `)
+      await pool.query(`CREATE INDEX IF NOT EXISTS idx_discord_user ON discord_connections(user_id)`)
+      await pool.query(`CREATE INDEX IF NOT EXISTS idx_discord_id ON discord_connections(discord_id)`)
+      success("  Created discord_connections table")
+    } catch (err) {
+      error(`  Failed to create discord_connections table: ${err.message}`)
+    }
+  }
+
+  // Step 8: Create gifted_subscriptions table
   if (!actual["gifted_subscriptions"]) {
     info("Creating gifted_subscriptions table...")
     try {
