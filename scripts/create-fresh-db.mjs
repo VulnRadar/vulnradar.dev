@@ -500,14 +500,21 @@ async function main() {
           const extraColumns = []
           const extraValues = []
           const mappedTargets = new Set(targetColumns)
+          const oldColumns = new Set(columns)
           
+          // Always add columns from COLUMN_DEFAULTS if they don't exist in old table
+          for (const [col, defaultVal] of Object.entries(tableDefaults)) {
+            if (!oldColumns.has(col) && !mappedTargets.has(col) && newColumnsInfo.has(col)) {
+              extraColumns.push(col)
+              extraValues.push(defaultVal)
+            }
+          }
+          
+          // Also check for other NOT NULL columns without defaults
           for (const [col, info] of newColumnsInfo) {
-            if (!mappedTargets.has(col) && info.is_nullable === 'NO' && !info.column_default) {
-              // New required column - check if we have a default
-              if (tableDefaults[col]) {
-                extraColumns.push(col)
-                extraValues.push(tableDefaults[col])
-              }
+            if (!mappedTargets.has(col) && !extraColumns.includes(col) && info.is_nullable === 'NO' && !info.column_default) {
+              // New required column without a default - this will fail
+              warn(`    Missing default for NOT NULL column: ${col}`)
             }
           }
           
