@@ -428,6 +428,12 @@ async function runV2Migration(pool, actual, v1Info) {
     success("  Added daily_limit to api_keys table")
   } catch { /* column may already exist */ }
 
+  // Step 6b: Add key_encrypted to api_keys
+  try {
+    await pool.query(`ALTER TABLE api_keys ADD COLUMN IF NOT EXISTS key_encrypted TEXT NOT NULL DEFAULT ''`)
+    success("  Added key_encrypted to api_keys table")
+  } catch { /* column may already exist */ }
+
   // Step 7: Create gifted_subscriptions table
   if (!actual["gifted_subscriptions"]) {
     info("Creating gifted_subscriptions table...")
