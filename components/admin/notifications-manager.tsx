@@ -269,10 +269,10 @@ export function NotificationsManager() {
               <div
                 key={notif.id}
                 className={cn(
-                  "group relative p-4 rounded-xl border transition-all",
+                  "group relative p-4 rounded-xl border transition-all cursor-pointer",
                   notif.is_active
-                    ? cn("border-l-4 bg-card", v.border)
-                    : "border border-border bg-card/50 opacity-60"
+                    ? cn("border-l-4 bg-card hover:bg-muted/50", v.border)
+                    : "border border-border bg-card/50 opacity-60 hover:opacity-80 hover:bg-muted/30"
                 )}
               >
                 <div className="flex items-start gap-3">
@@ -348,8 +348,8 @@ export function NotificationsManager() {
       )}
 
       {/* Create / Edit Dialog */}
-      <Dialog open={isCreating} onOpenChange={(open) => !open && closeDialog()}>
-        <DialogContent className="max-w-2xl max-h-[92vh] overflow-y-auto gap-0 p-0">
+      <Dialog open={isCreating} onOpenChange={(open) => !open && closeDialog()} modal={true}>
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto gap-0 p-0 my-4">
           {/* Dialog header with variant color stripe */}
           <div className={cn("px-6 py-5 border-b border-border rounded-t-lg", activeVariant.bg)}>
             <DialogHeader>
