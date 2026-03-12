@@ -197,7 +197,7 @@ function ProfileContent() {
   
   // Read the current hash (no leading #), default to "general"
   const getTabFromHash = (): Tab => {
-  if (typeof window === "undefined") return "general"
+    if (typeof window === "undefined") return "general"
     const hash = window.location.hash.replace("#", "") as Tab
     return VALID_TABS.includes(hash) ? hash : "general"
   }
