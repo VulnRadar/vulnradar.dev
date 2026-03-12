@@ -737,13 +737,13 @@ function ProfileContent() {
         setError(data.error || "Failed to save notification preferences.")
         return
       }
-    setNotifPrefs((prev) => {
-      const updated = { ...prev }
-      for (const key of Object.keys(prev) as (keyof NotificationPrefs)[]) {
-        if (key in data) updated[key] = data[key]
-      }
-      return updated
-    })
+      setNotifPrefs((prev) => {
+        const updated = { ...prev }
+        for (const key of Object.keys(prev) as (keyof NotificationPrefs)[]) {
+          if (key in data) updated[key] = data[key]
+        }
+        return updated
+      })
       setSuccess("Notification preferences saved.")
     } catch {
       setError("Failed to save notification preferences.")
