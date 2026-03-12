@@ -1239,7 +1239,7 @@ function ProfileContent() {
                   <CardContent>
                     <div className="grid gap-3 sm:grid-cols-2">
                       <a
-                        href="https://discord.gg/vulnradar"
+                        href="https://discord.gg/Y7R6hdGbNe"
                         target="_blank"
                         rel="noopener noreferrer"
                         className="flex items-center gap-3 p-4 rounded-lg border border-border hover:bg-secondary/50 transition-colors"
@@ -1252,23 +1252,6 @@ function ProfileContent() {
                         <div>
                           <p className="text-sm font-medium">Discord Server</p>
                           <p className="text-xs text-muted-foreground">Join our community</p>
-                        </div>
-                        <ExternalLink className="h-4 w-4 ml-auto text-muted-foreground" />
-                      </a>
-                      <a
-                        href="https://twitter.com/vulnradar"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex items-center gap-3 p-4 rounded-lg border border-border hover:bg-secondary/50 transition-colors"
-                      >
-                        <div className="flex items-center justify-center h-10 w-10 rounded-lg bg-foreground/5">
-                          <svg className="h-5 w-5" viewBox="0 0 24 24" fill="currentColor">
-                            <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
-                          </svg>
-                        </div>
-                        <div>
-                          <p className="text-sm font-medium">X (Twitter)</p>
-                          <p className="text-xs text-muted-foreground">Follow for updates</p>
                         </div>
                         <ExternalLink className="h-4 w-4 ml-auto text-muted-foreground" />
                       </a>
