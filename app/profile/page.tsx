@@ -53,6 +53,7 @@ import {
   TrendingUp,
   Calendar,
   RefreshCw,
+  ExternalLink,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
@@ -143,7 +144,7 @@ interface BillingInfo {
   }
 }
 
-type Tab = "general" | "security" | "billing" | "developer" | "notifications" | "privacy"
+type Tab = "general" | "security" | "social" | "billing" | "developer" | "notifications" | "privacy"
 
 interface WebhookItem {
   id: number
@@ -850,6 +851,7 @@ const VALID_TABS: Tab[] = ["general", "security", "billing", "developer", "notif
   const TABS = [
     { id: "general" as Tab, label: "General", icon: <UserCog className="h-4 w-4" /> },
     { id: "security" as Tab, label: "Security", icon: <Lock className="h-4 w-4" /> },
+    { id: "social" as Tab, label: "Social", icon: <Share2 className="h-4 w-4" /> },
     { id: "billing" as Tab, label: "Billing", icon: <CreditCard className="h-4 w-4" /> },
     { id: "developer" as Tab, label: "Developer", icon: <Key className="h-4 w-4" /> },
     { id: "notifications" as Tab, label: "Notifications", icon: <Bell className="h-4 w-4" /> },
@@ -885,12 +887,33 @@ const VALID_TABS: Tab[] = ["general", "security", "billing", "developer", "notif
         )}
 
         {/* Two-column layout: Sidebar + Content */}
-        <div className="flex flex-col lg:flex-row gap-6 lg:gap-8">
+        <div className="flex flex-col lg:flex-row gap-6 lg:gap-10">
           
           {/* Sidebar Navigation */}
-          <aside className="lg:w-56 lg:shrink-0">
-            {/* Mobile: Horizontal scroll tabs */}
-            <div className="lg:hidden flex overflow-x-auto pb-2 -mb-px border-b border-border gap-1">
+          <aside className="lg:w-52 lg:shrink-0">
+            {/* Mobile: Clean horizontal tabs with underline indicator */}
+            <div className="lg:hidden">
+              <div className="flex overflow-x-auto scrollbar-hide -mx-4 px-4 pb-1 gap-1 border-b border-border">
+                {TABS.map((tab) => (
+                  <button
+                    key={tab.id}
+                    onClick={() => handleTabChange(tab.id)}
+                    className={cn(
+                      "flex items-center gap-1.5 px-3 py-2.5 text-sm font-medium whitespace-nowrap transition-all border-b-2 -mb-px",
+                      activeTab === tab.id
+                        ? "border-primary text-primary"
+                        : "border-transparent text-muted-foreground hover:text-foreground"
+                    )}
+                  >
+                    {tab.icon}
+                    <span>{tab.label}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+            
+            {/* Desktop: Vertical sidebar */}
+            <nav className="hidden lg:flex flex-col gap-0.5 sticky top-24">
               {TABS.map((tab) => (
                 <a
                   key={tab.id}
@@ -902,77 +925,21 @@ const VALID_TABS: Tab[] = ["general", "security", "billing", "developer", "notif
                     }
                   }}
                   className={cn(
-                    "flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-md whitespace-nowrap transition-colors",
+                    "flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-md transition-all",
                     activeTab === tab.id
-                      ? "bg-primary/10 text-primary"
-                      : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+                      ? "bg-secondary text-foreground"
+                      : "text-muted-foreground hover:text-foreground hover:bg-secondary/50"
                   )}
                 >
                   {tab.icon}
                   <span>{tab.label}</span>
                 </a>
               ))}
-            </div>
-            
-            {/* Desktop: Vertical sidebar */}
-            <nav className="hidden lg:flex flex-col gap-1 sticky top-24">
-              {TABS.map((tab) => (
-                <a
-                  key={tab.id}
-                  href={`/profile#${tab.id}`}
-                  onClick={(e) => {
-                    if (!e.ctrlKey && !e.metaKey) {
-                      e.preventDefault()
-                      handleTabChange(tab.id)
-                    }
-                  }}
-                  className={cn(
-                    "flex items-center gap-3 px-3 py-2.5 text-sm font-medium rounded-lg transition-all",
-                    activeTab === tab.id
-                      ? "bg-primary/10 text-primary border border-primary/20"
-                      : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
-                  )}
-                >
-                  <span className={cn(
-                    "flex items-center justify-center",
-                    activeTab === tab.id ? "text-primary" : "text-muted-foreground"
-                  )}>
-                    {tab.icon}
-                  </span>
-                  <span>{tab.label}</span>
-                </a>
-              ))}
-              
-              {/* Quick Info Card */}
-              <div className="mt-6 p-4 rounded-lg border border-border bg-card/50">
-                <div className="flex items-center gap-3 mb-3">
-                  <div className="h-10 w-10 rounded-full bg-secondary/60 flex items-center justify-center overflow-hidden border border-border">
-                    {user?.avatarUrl ? (
-                      <img src={user.avatarUrl} alt="" className="h-full w-full object-cover" />
-                    ) : (
-                      <span className="text-sm font-semibold text-muted-foreground">
-                        {user?.name?.charAt(0)?.toUpperCase() || "?"}
-                      </span>
-                    )}
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium truncate">{user?.name || "User"}</p>
-                    <p className="text-xs text-muted-foreground truncate">{user?.email}</p>
-                  </div>
-                </div>
-                {billingInfo && (
-                  <div className="flex items-center gap-2 text-xs">
-                    <Badge variant="secondary" className="capitalize">
-                      {billingInfo.plan.replace(/_/g, " ")}
-                    </Badge>
-                  </div>
-                )}
-              </div>
             </nav>
           </aside>
 
           {/* Main Content Area */}
-          <div className="flex-1 min-w-0">
+          <div className="flex-1 min-w-0 space-y-6">
 
         {/* ===================== GENERAL TAB ===================== */}
         {activeTab === "general" && (
@@ -1553,63 +1520,125 @@ const VALID_TABS: Tab[] = ["general", "security", "billing", "developer", "notif
               </CardContent>
             </Card>
 
-            {/* Connected Accounts */}
+          </div>
+        )}
+
+        {/* ===================== SOCIAL TAB ===================== */}
+        {activeTab === "social" && (
+          <div className="space-y-6">
+            {/* Discord Integration */}
             <Card>
               <CardHeader>
-                <CardTitle className="text-lg flex items-center gap-2">
-                  <Share2 className="h-4 w-4 text-muted-foreground" />
-                  Connected Accounts
-                </CardTitle>
-                <CardDescription>Link your social accounts to enable features like "Sign in with Discord".</CardDescription>
+                <CardTitle className="text-lg">Discord</CardTitle>
+                <CardDescription>Connect your Discord account to enable sign-in with Discord and auto-join our community server.</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {user?.discordId ? (
+                  <>
+                    <div className="flex items-center gap-4 p-4 rounded-lg bg-emerald-500/5 border border-emerald-500/20">
+                      <div className="flex items-center justify-center h-12 w-12 rounded-full bg-[#5865F2] text-white">
+                        <svg className="h-6 w-6" viewBox="0 0 24 24" fill="currentColor">
+                          <path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028 14.09 14.09 0 0 0 1.226-1.994.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418z"/>
+                        </svg>
+                      </div>
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2">
+                          <p className="font-medium">Connected</p>
+                          <Badge variant="secondary" className="text-xs bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20">Active</Badge>
+                        </div>
+                        <p className="text-sm text-muted-foreground">Your Discord account is linked</p>
+                      </div>
+                    </div>
+                    <div className="flex gap-3">
+                      <Button 
+                        variant="outline" 
+                        className="text-destructive border-destructive/30 hover:bg-destructive/10"
+                        onClick={async () => {
+                          try {
+                            const res = await fetch("/api/v2/account/discord", { method: "DELETE" })
+                            if (res.ok) {
+                              setSuccess("Discord account disconnected")
+                              const authRes = await fetch("/api/v2/auth/me")
+                              const authData = await authRes.json()
+                              setUser(authData.data)
+                            } else {
+                              setError("Failed to disconnect Discord account")
+                            }
+                          } catch {
+                            setError("Failed to disconnect Discord account")
+                          }
+                        }}
+                      >
+                        Disconnect Discord
+                      </Button>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="flex items-center gap-4 p-4 rounded-lg border border-border bg-secondary/20">
+                      <div className="flex items-center justify-center h-12 w-12 rounded-full bg-[#5865F2]/10 border border-[#5865F2]/20">
+                        <svg className="h-6 w-6 text-[#5865F2]" viewBox="0 0 24 24" fill="currentColor">
+                          <path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028 14.09 14.09 0 0 0 1.226-1.994.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418z"/>
+                        </svg>
+                      </div>
+                      <div className="flex-1">
+                        <p className="font-medium">Not connected</p>
+                        <p className="text-sm text-muted-foreground">Link your Discord for faster sign-in and community features</p>
+                      </div>
+                    </div>
+                    <Button onClick={() => window.location.href = "/api/v2/auth/discord?action=connect"}>
+                      <svg className="mr-2 h-4 w-4" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028 14.09 14.09 0 0 0 1.226-1.994.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418z"/>
+                      </svg>
+                      Connect Discord
+                    </Button>
+                  </>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Community Links */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg">Community</CardTitle>
+                <CardDescription>Join our community and stay connected with the latest updates.</CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="rounded-lg border border-border p-4 flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="flex items-center justify-center h-10 w-10 rounded-lg bg-[#5865F2]/10 border border-[#5865F2]/20">
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <a 
+                    href="https://discord.gg/vulnradar" 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-3 p-4 rounded-lg border border-border hover:bg-secondary/50 transition-colors"
+                  >
+                    <div className="flex items-center justify-center h-10 w-10 rounded-lg bg-[#5865F2]/10">
                       <svg className="h-5 w-5 text-[#5865F2]" viewBox="0 0 24 24" fill="currentColor">
                         <path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028 14.09 14.09 0 0 0 1.226-1.994.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418z"/>
                       </svg>
                     </div>
                     <div>
-                      <p className="text-sm font-semibold text-foreground">Discord</p>
-                      {user?.discordId ? (
-                        <p className="text-xs text-muted-foreground">Connected</p>
-                      ) : (
-                        <p className="text-xs text-muted-foreground">Not connected</p>
-                      )}
+                      <p className="text-sm font-medium">Discord Server</p>
+                      <p className="text-xs text-muted-foreground">Join our community</p>
                     </div>
-                  </div>
-                  {user?.discordId ? (
-                    <Button 
-                      variant="outline" 
-                      size="sm"
-                      className="text-destructive border-destructive/30 hover:bg-destructive/10"
-                      onClick={async () => {
-                        try {
-                          const res = await fetch("/api/v2/account/discord", { method: "DELETE" })
-                          if (res.ok) {
-                            setSuccess("Discord account disconnected")
-                            const authRes = await fetch("/api/v2/auth/me")
-                            const authData = await authRes.json()
-                            setUser(authData.data)
-                          } else {
-                            setError("Failed to disconnect Discord account")
-                          }
-                        } catch {
-                          setError("Failed to disconnect Discord account")
-                        }
-                      }}
-                    >
-                      Disconnect
-                    </Button>
-                  ) : (
-                    <Button 
-                      size="sm"
-                      onClick={() => window.location.href = "/api/v2/auth/discord?action=connect"}
-                    >
-                      Connect
-                    </Button>
-                  )}
+                    <ExternalLink className="h-4 w-4 ml-auto text-muted-foreground" />
+                  </a>
+                  <a 
+                    href="https://twitter.com/vulnradar" 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-3 p-4 rounded-lg border border-border hover:bg-secondary/50 transition-colors"
+                  >
+                    <div className="flex items-center justify-center h-10 w-10 rounded-lg bg-foreground/5">
+                      <svg className="h-5 w-5" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
+                      </svg>
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium">X (Twitter)</p>
+                      <p className="text-xs text-muted-foreground">Follow for updates</p>
+                    </div>
+                    <ExternalLink className="h-4 w-4 ml-auto text-muted-foreground" />
+                  </a>
                 </div>
               </CardContent>
             </Card>
