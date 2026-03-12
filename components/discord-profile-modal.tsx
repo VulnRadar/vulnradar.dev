@@ -8,7 +8,9 @@ import {
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { Check, Loader2, Sparkles } from "lucide-react"
+import { Checkbox } from "@/components/ui/checkbox"
+import { Check, Loader2, Image, User, Mail } from "lucide-react"
+import { cn } from "@/lib/utils"
 
 const AUTH_UPDATE_ENDPOINT = "/api/v2/auth/update"
 
@@ -19,10 +21,18 @@ export function DiscordProfileModal() {
   const discordConnected = searchParams.get("discord_connected") === "true"
   const discordUsername = searchParams.get("discord_username")
   const discordAvatar = searchParams.get("discord_avatar")
+  const discordEmail = searchParams.get("discord_email")
   
   const [open, setOpen] = useState(discordConnected && !!discordUsername)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
+  
+  // Selection state for each field
+  const [syncAvatar, setSyncAvatar] = useState(true)
+  const [syncName, setSyncName] = useState(true)
+  const [syncEmail, setSyncEmail] = useState(false)
+
+  const hasAnySelection = syncAvatar || syncName || syncEmail
 
   const handleClose = () => {
     setOpen(false)
@@ -30,21 +40,36 @@ export function DiscordProfileModal() {
     url.searchParams.delete("discord_connected")
     url.searchParams.delete("discord_username")
     url.searchParams.delete("discord_avatar")
+    url.searchParams.delete("discord_email")
     router.replace(url.pathname + url.search)
   }
 
-  const handleUseDiscordProfile = async () => {
+  const handleSync = async () => {
+    if (!hasAnySelection) {
+      handleClose()
+      return
+    }
+
     setLoading(true)
     setError("")
     
     try {
+      const updateData: Record<string, string | undefined> = {}
+      
+      if (syncAvatar && discordAvatar) {
+        updateData.avatarUrl = discordAvatar
+      }
+      if (syncName && discordUsername) {
+        updateData.name = discordUsername
+      }
+      if (syncEmail && discordEmail) {
+        updateData.email = discordEmail
+      }
+
       const res = await fetch(AUTH_UPDATE_ENDPOINT, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: discordUsername,
-          avatarUrl: discordAvatar,
-        }),
+        body: JSON.stringify(updateData),
       })
 
       if (!res.ok) {
@@ -69,10 +94,9 @@ export function DiscordProfileModal() {
 
   return (
     <Dialog open={open} onOpenChange={(isOpen) => !isOpen && handleClose()}>
-      <DialogContent className="sm:max-w-[420px] p-0 overflow-hidden border-0 gap-0">
+      <DialogContent className="sm:max-w-[440px] p-0 overflow-hidden border-0 gap-0">
         {/* Header with Discord branding */}
         <div className="relative bg-[#5865F2] px-6 pt-8 pb-14">
-          {/* Decorative background pattern */}
           <div className="absolute inset-0 opacity-10">
             <div className="absolute top-4 left-8 w-16 h-16 rounded-full bg-white/20" />
             <div className="absolute top-12 right-12 w-8 h-8 rounded-full bg-white/20" />
@@ -107,24 +131,88 @@ export function DiscordProfileModal() {
 
         {/* Content */}
         <div className="px-6 pt-4 pb-6">
-          <div className="text-center mb-6">
+          <div className="text-center mb-5">
             <p className="text-lg font-semibold text-foreground">{discordUsername}</p>
-            <p className="text-sm text-muted-foreground">Discord Profile</p>
+            <p className="text-sm text-muted-foreground">Select what to sync from Discord</p>
           </div>
 
-          {/* Question card */}
-          <div className="rounded-xl bg-muted/50 border border-border p-4 mb-6">
-            <div className="flex items-start gap-3">
-              <div className="flex items-center justify-center h-9 w-9 rounded-lg bg-[#5865F2]/10 shrink-0">
-                <Sparkles className="h-4 w-4 text-[#5865F2]" />
+          {/* Sync options */}
+          <div className="space-y-2 mb-5">
+            {/* Avatar option */}
+            {discordAvatar && (
+              <label
+                className={cn(
+                  "flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-all",
+                  syncAvatar 
+                    ? "border-[#5865F2] bg-[#5865F2]/5" 
+                    : "border-border hover:border-muted-foreground/30 hover:bg-muted/30"
+                )}
+              >
+                <Checkbox
+                  checked={syncAvatar}
+                  onCheckedChange={(checked) => setSyncAvatar(checked === true)}
+                  className="data-[state=checked]:bg-[#5865F2] data-[state=checked]:border-[#5865F2]"
+                />
+                <div className="flex items-center justify-center h-9 w-9 rounded-lg bg-muted shrink-0">
+                  <Image className="h-4 w-4 text-muted-foreground" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-foreground">Profile Picture</p>
+                  <p className="text-xs text-muted-foreground truncate">Use Discord avatar</p>
+                </div>
+                <Avatar className="h-8 w-8 shrink-0">
+                  <AvatarImage src={discordAvatar} alt="" />
+                </Avatar>
+              </label>
+            )}
+
+            {/* Name option */}
+            <label
+              className={cn(
+                "flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-all",
+                syncName 
+                  ? "border-[#5865F2] bg-[#5865F2]/5" 
+                  : "border-border hover:border-muted-foreground/30 hover:bg-muted/30"
+              )}
+            >
+              <Checkbox
+                checked={syncName}
+                onCheckedChange={(checked) => setSyncName(checked === true)}
+                className="data-[state=checked]:bg-[#5865F2] data-[state=checked]:border-[#5865F2]"
+              />
+              <div className="flex items-center justify-center h-9 w-9 rounded-lg bg-muted shrink-0">
+                <User className="h-4 w-4 text-muted-foreground" />
               </div>
-              <div>
-                <p className="text-sm font-medium text-foreground">Sync your profile?</p>
-                <p className="text-sm text-muted-foreground mt-0.5">
-                  Use your Discord avatar and username as your VulnRadar profile.
-                </p>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-foreground">Display Name</p>
+                <p className="text-xs text-muted-foreground truncate">{discordUsername}</p>
               </div>
-            </div>
+            </label>
+
+            {/* Email option */}
+            {discordEmail && (
+              <label
+                className={cn(
+                  "flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-all",
+                  syncEmail 
+                    ? "border-[#5865F2] bg-[#5865F2]/5" 
+                    : "border-border hover:border-muted-foreground/30 hover:bg-muted/30"
+                )}
+              >
+                <Checkbox
+                  checked={syncEmail}
+                  onCheckedChange={(checked) => setSyncEmail(checked === true)}
+                  className="data-[state=checked]:bg-[#5865F2] data-[state=checked]:border-[#5865F2]"
+                />
+                <div className="flex items-center justify-center h-9 w-9 rounded-lg bg-muted shrink-0">
+                  <Mail className="h-4 w-4 text-muted-foreground" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-foreground">Email Address</p>
+                  <p className="text-xs text-muted-foreground truncate">{discordEmail}</p>
+                </div>
+              </label>
+            )}
           </div>
 
           {error && (
@@ -136,20 +224,22 @@ export function DiscordProfileModal() {
           {/* Actions */}
           <div className="flex flex-col gap-2">
             <Button
-              onClick={handleUseDiscordProfile}
+              onClick={handleSync}
               disabled={loading}
               className="w-full h-11 bg-[#5865F2] hover:bg-[#4752C4] text-white font-medium"
             >
               {loading ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Updating...
+                  Syncing...
                 </>
-              ) : (
+              ) : hasAnySelection ? (
                 <>
                   <Check className="mr-2 h-4 w-4" />
-                  Yes, use Discord profile
+                  Sync Selected
                 </>
+              ) : (
+                "Skip"
               )}
             </Button>
             <Button
@@ -158,7 +248,7 @@ export function DiscordProfileModal() {
               disabled={loading}
               className="w-full h-11 text-muted-foreground hover:text-foreground"
             >
-              No thanks, keep my current profile
+              Skip for now
             </Button>
           </div>
         </div>

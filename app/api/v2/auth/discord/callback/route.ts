@@ -181,6 +181,9 @@ export async function GET(request: Request) {
       if (discordAvatarUrl) {
         redirectUrl.searchParams.set("discord_avatar", discordAvatarUrl)
       }
+      if (discordUser.email) {
+        redirectUrl.searchParams.set("discord_email", discordUser.email)
+      }
 
       return NextResponse.redirect(redirectUrl.toString())
     } else {
