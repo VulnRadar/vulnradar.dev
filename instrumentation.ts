@@ -86,6 +86,7 @@ export async function register() {
           
           -- Feature flags
           beta_access BOOLEAN NOT NULL DEFAULT false,
+          daily_scan_limit INTEGER DEFAULT NULL,
           
           -- Account status
           email_verified_at TIMESTAMP WITH TIME ZONE,
@@ -282,7 +283,7 @@ export async function register() {
         CREATE INDEX IF NOT EXISTS idx_billing_history_user ON billing_history(user_id);
       `)
 
-      // ═════════════════════════════���══════════════════════════════════
+      // ═════════════��═══════════════���══════════════════════════════════
       // ADMIN AUDIT LOG - Admin action audit trail
       // ════════════════════════════════════════════════════════════════
       await pool.query(`
@@ -297,6 +298,20 @@ export async function register() {
         );
         CREATE INDEX IF NOT EXISTS idx_admin_audit_admin_id ON admin_audit_log(admin_id);
         CREATE INDEX IF NOT EXISTS idx_admin_audit_created_at ON admin_audit_log(created_at);
+      `)
+
+      // ════════════════════════════════════════════════════════════════
+      // ADMIN USER NOTES - Admin notes on users
+      // ════════════════════════════════════════════════════════════════
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS admin_user_notes (
+          id SERIAL PRIMARY KEY,
+          user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          admin_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          note TEXT NOT NULL,
+          created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+        );
+        CREATE INDEX IF NOT EXISTS idx_admin_user_notes_user ON admin_user_notes(user_id);
       `)
 
       // ════════════════════════════════════════════════════════════════
@@ -340,14 +355,28 @@ export async function register() {
         CREATE TABLE IF NOT EXISTS notification_preferences (
           id SERIAL PRIMARY KEY,
           user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE UNIQUE,
+          -- Security notifications
           email_security BOOLEAN NOT NULL DEFAULT true,
           email_new_login BOOLEAN NOT NULL DEFAULT true,
           email_password_change BOOLEAN NOT NULL DEFAULT true,
           email_2fa_change BOOLEAN NOT NULL DEFAULT true,
+          email_session_revoked BOOLEAN NOT NULL DEFAULT true,
+          -- Scanning notifications
           email_scan_complete BOOLEAN NOT NULL DEFAULT true,
           email_critical_findings BOOLEAN NOT NULL DEFAULT true,
+          email_regression_alert BOOLEAN NOT NULL DEFAULT true,
+          email_schedules BOOLEAN NOT NULL DEFAULT true,
+          -- API & Integrations
           email_api_keys BOOLEAN NOT NULL DEFAULT true,
+          email_api_limit_warning BOOLEAN NOT NULL DEFAULT true,
           email_webhooks BOOLEAN NOT NULL DEFAULT true,
+          email_webhook_failure BOOLEAN NOT NULL DEFAULT true,
+          -- Account notifications
+          email_data_requests BOOLEAN NOT NULL DEFAULT true,
+          email_account_deletion BOOLEAN NOT NULL DEFAULT true,
+          email_team_invite BOOLEAN NOT NULL DEFAULT true,
+          email_team_changes BOOLEAN NOT NULL DEFAULT true,
+          -- Product notifications
           email_product_updates BOOLEAN NOT NULL DEFAULT true,
           email_tips_guides BOOLEAN NOT NULL DEFAULT false,
           created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
@@ -407,7 +436,7 @@ export async function register() {
 
       // ════════════════════════════════════════════════════════════════
       // TEAMS
-      // ════════════════════════════════════════════════════════════════
+      // ═══════════════════════════════════════════════════════════���════
       await pool.query(`
         CREATE TABLE IF NOT EXISTS teams (
           id SERIAL PRIMARY KEY,

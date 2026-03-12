@@ -63,6 +63,7 @@ const V2_NEW_TABLES = [
   "billing_history",
   "gifted_subscriptions",
   "admin_notifications",
+  "admin_user_notes",
 ]
 
 // Columns that v2 adds to the users table
@@ -433,6 +434,51 @@ async function runV2Migration(pool, actual, v1Info) {
     await pool.query(`ALTER TABLE api_keys ADD COLUMN IF NOT EXISTS key_encrypted TEXT NOT NULL DEFAULT ''`)
     success("  Added key_encrypted to api_keys table")
   } catch { /* column may already exist */ }
+
+  // Step 6c: Add missing notification_preferences columns
+  const notifPrefColumns = [
+    "email_session_revoked BOOLEAN NOT NULL DEFAULT true",
+    "email_regression_alert BOOLEAN NOT NULL DEFAULT true",
+    "email_schedules BOOLEAN NOT NULL DEFAULT true",
+    "email_api_limit_warning BOOLEAN NOT NULL DEFAULT true",
+    "email_webhook_failure BOOLEAN NOT NULL DEFAULT true",
+    "email_data_requests BOOLEAN NOT NULL DEFAULT true",
+    "email_account_deletion BOOLEAN NOT NULL DEFAULT true",
+    "email_team_invite BOOLEAN NOT NULL DEFAULT true",
+    "email_team_changes BOOLEAN NOT NULL DEFAULT true",
+  ]
+  for (const colDef of notifPrefColumns) {
+    try {
+      await pool.query(`ALTER TABLE notification_preferences ADD COLUMN IF NOT EXISTS ${colDef}`)
+    } catch { /* column may already exist */ }
+  }
+  success("  Added missing notification_preferences columns")
+
+  // Step 6d: Add daily_scan_limit to users
+  try {
+    await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS daily_scan_limit INTEGER DEFAULT NULL`)
+    success("  Added daily_scan_limit to users table")
+  } catch { /* column may already exist */ }
+
+  // Step 6e: Create admin_user_notes table
+  if (!actual["admin_user_notes"]) {
+    info("Creating admin_user_notes table...")
+    try {
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS admin_user_notes (
+          id SERIAL PRIMARY KEY,
+          user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          admin_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          note TEXT NOT NULL,
+          created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+        )
+      `)
+      await pool.query(`CREATE INDEX IF NOT EXISTS idx_admin_user_notes_user ON admin_user_notes(user_id)`)
+      success("  Created admin_user_notes table")
+    } catch (err) {
+      error(`  Failed to create admin_user_notes table: ${err.message}`)
+    }
+  }
 
   // Step 7: Create gifted_subscriptions table
   if (!actual["gifted_subscriptions"]) {
