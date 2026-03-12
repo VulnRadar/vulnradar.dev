@@ -193,25 +193,23 @@ export default function ProfilePage() {
 function ProfileContent() {
   const router = useRouter()
   const VALID_TABS: Tab[] = ["general", "security", "social", "billing", "developer", "notifications", "privacy"]
-
-  const getTabFromHash = (): Tab => {
-    if (typeof window === "undefined") return "general"
-    const hash = window.location.hash.replace("#", "") as Tab
-    return VALID_TABS.includes(hash) ? hash : "general"
-  }
-
   const [activeTab, setActiveTab] = useState<Tab>("general")
 
   // On mount, read hash and listen for back/forward hash changes
   useEffect(() => {
+    const getTab = (): Tab => {
+      const hash = window.location.hash.replace("#", "") as Tab
+      return VALID_TABS.includes(hash) ? hash : "general"
+    }
     // Set default hash to #general if none provided
     if (!window.location.hash) {
       window.history.replaceState(null, "", "/profile#general")
     }
-    setActiveTab(getTabFromHash())
-    const onHashChange = () => setActiveTab(getTabFromHash())
+    setActiveTab(getTab())
+    const onHashChange = () => setActiveTab(getTab())
     window.addEventListener("hashchange", onHashChange)
     return () => window.removeEventListener("hashchange", onHashChange)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // Change tab — just update the hash, no page reload
