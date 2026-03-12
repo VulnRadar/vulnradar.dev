@@ -402,9 +402,9 @@ function ProfileContent() {
   }
 
   const fetchData = useCallback(async () => {
-  try {
-  const [userRes, keysRes, dataReqRes, webhooksRes, schedulesRes, notifRes, billingRes] = await Promise.all([
-  fetch(API.AUTH.ME),
+    try {
+      const [userRes, keysRes, dataReqRes, webhooksRes, schedulesRes, notifRes, billingRes] = await Promise.all([
+        fetch(API.AUTH.ME),
         fetch(API.KEYS),
         fetch(API.DATA_REQUEST),
         fetch(API.WEBHOOKS),
