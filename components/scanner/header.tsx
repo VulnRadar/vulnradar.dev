@@ -79,7 +79,7 @@ export function Header() {
                     "vr-staff-only px-2.5 py-1.5 rounded-md text-sm transition-colors",
                     isStaff && "!inline-flex",
                     pathname === ROUTES.ADMIN
-                        ? "bg-primary/10 text-destructive font-medium"
+                        ? "bg-destructive/10 text-destructive font-medium"
                         : "text-destructive/70 hover:text-destructive hover:bg-muted",
                 )}
             >
@@ -150,7 +150,7 @@ export function Header() {
                       "vr-staff-only px-3 py-2 rounded-md text-sm transition-colors",
                       isStaff && "!flex",
                       pathname === ROUTES.ADMIN
-                          ? "bg-primary/10 text-destructive font-medium"
+                          ? "bg-destructive/10 text-destructive font-medium"
                           : "text-destructive/70 hover:text-destructive hover:bg-muted",
                   )}
               >
