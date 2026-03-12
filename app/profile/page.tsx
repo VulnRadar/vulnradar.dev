@@ -887,22 +887,23 @@ function ProfileContent() {
 
           {/* Sidebar Navigation */}
           <aside className="lg:w-52 lg:shrink-0">
-            {/* Mobile: Clean horizontal tabs with underline indicator */}
+            {/* Mobile: Icons-only centered tab bar */}
             <div className="lg:hidden">
-              <div className="flex overflow-x-auto scrollbar-hide -mx-4 px-4 pb-1 gap-1 border-b border-border">
+              <div className="flex justify-center gap-1 border-b border-border pb-1">
                 {TABS.map((tab) => (
                   <button
                     key={tab.id}
                     onClick={() => handleTabChange(tab.id)}
+                    title={tab.label}
+                    aria-label={tab.label}
                     className={cn(
-                      "flex items-center gap-1.5 px-3 py-2.5 text-sm font-medium whitespace-nowrap transition-all border-b-2 -mb-px",
+                      "flex items-center justify-center w-9 h-9 rounded-md transition-all",
                       activeTab === tab.id
-                        ? "border-primary text-primary"
-                        : "border-transparent text-muted-foreground hover:text-foreground"
+                        ? "bg-primary/10 text-primary"
+                        : "text-muted-foreground hover:text-foreground hover:bg-secondary/50"
                     )}
                   >
                     {tab.icon}
-                    <span>{tab.label}</span>
                   </button>
                 ))}
               </div>
