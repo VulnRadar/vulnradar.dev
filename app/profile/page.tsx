@@ -889,7 +889,7 @@ function ProfileContent() {
           <aside className="lg:w-52 lg:shrink-0">
             {/* Mobile: Icons-only centered tab bar */}
             <div className="lg:hidden">
-              <div className="flex justify-center gap-1 border-b border-border pb-1">
+              <div className="flex justify-center gap-2 border-b border-border pb-2 pt-1">
                 {TABS.map((tab) => (
                   <button
                     key={tab.id}
@@ -897,7 +897,7 @@ function ProfileContent() {
                     title={tab.label}
                     aria-label={tab.label}
                     className={cn(
-                      "flex items-center justify-center w-9 h-9 rounded-md transition-all",
+                      "flex items-center justify-center w-10 h-10 rounded-md transition-all",
                       activeTab === tab.id
                         ? "bg-primary/10 text-primary"
                         : "text-muted-foreground hover:text-foreground hover:bg-secondary/50"
