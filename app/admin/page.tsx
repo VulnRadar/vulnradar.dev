@@ -653,38 +653,75 @@ function AdminContent() {
             )}
 
             {/* Tab navigation */}
-            <div className="flex items-center gap-1 border-b border-border -mb-px">
-              {([
+            {(() => {
+              const ADMIN_TABS = [
                 { key: "users" as const, label: "Users", icon: Users },
                 { key: "notifications" as const, label: "Notifications", icon: Bell },
                 { key: "admins" as const, label: "Active Staff", icon: Shield },
                 { key: "audit" as const, label: "Audit Logs", icon: History },
-              ]).map((tab) => (
-                <a
-                  key={tab.key}
-                  href={`/admin#${tab.key}`}
-                  onClick={(e) => {
-                    if (!e.ctrlKey && !e.metaKey) {
-                      e.preventDefault()
-                      setActiveTab(tab.key)
-                      if (tab.key === "audit") fetchAudit()
-                      if (tab.key === "admins") fetchActiveAdmins()
-                      setSelectedUser(null)
-                      updateUrlWithUser(null, tab.key, false)
-                    }
-                  }}
-                  className={cn(
-                    "flex items-center gap-2 px-4 py-3 text-sm font-medium transition-colors border-b-2 -mb-px",
-                    activeTab === tab.key
-                      ? "text-primary border-primary"
-                      : "text-muted-foreground border-transparent hover:text-foreground hover:border-border",
-                  )}
-                >
-                  <tab.icon className="h-4 w-4" />
-                  {tab.label}
-                </a>
-              ))}
-            </div>
+              ]
+              return (
+                <>
+                  {/* Mobile: icons-only centered */}
+                  <div className="flex sm:hidden justify-center gap-2 border-b border-border pb-2 pt-1">
+                    {ADMIN_TABS.map((tab) => (
+                      <a
+                        key={tab.key}
+                        href={`/admin#${tab.key}`}
+                        title={tab.label}
+                        aria-label={tab.label}
+                        onClick={(e) => {
+                          if (!e.ctrlKey && !e.metaKey) {
+                            e.preventDefault()
+                            setActiveTab(tab.key)
+                            if (tab.key === "audit") fetchAudit()
+                            if (tab.key === "admins") fetchActiveAdmins()
+                            setSelectedUser(null)
+                            updateUrlWithUser(null, tab.key, false)
+                          }
+                        }}
+                        className={cn(
+                          "flex items-center justify-center w-10 h-10 rounded-md transition-all",
+                          activeTab === tab.key
+                            ? "bg-primary/10 text-primary"
+                            : "text-muted-foreground hover:text-foreground hover:bg-secondary/50"
+                        )}
+                      >
+                        <tab.icon className="h-4 w-4" />
+                      </a>
+                    ))}
+                  </div>
+                  {/* Desktop: text + icon underline tabs */}
+                  <div className="hidden sm:flex items-center gap-1 border-b border-border -mb-px">
+                    {ADMIN_TABS.map((tab) => (
+                      <a
+                        key={tab.key}
+                        href={`/admin#${tab.key}`}
+                        onClick={(e) => {
+                          if (!e.ctrlKey && !e.metaKey) {
+                            e.preventDefault()
+                            setActiveTab(tab.key)
+                            if (tab.key === "audit") fetchAudit()
+                            if (tab.key === "admins") fetchActiveAdmins()
+                            setSelectedUser(null)
+                            updateUrlWithUser(null, tab.key, false)
+                          }
+                        }}
+                        className={cn(
+                          "flex items-center gap-2 px-4 py-3 text-sm font-medium transition-colors border-b-2 -mb-px",
+                          activeTab === tab.key
+                            ? "text-primary border-primary"
+                            : "text-muted-foreground border-transparent hover:text-foreground hover:border-border",
+                        )}
+                      >
+                        <tab.icon className="h-4 w-4" />
+                        {tab.label}
+                      </a>
+                    ))}
+                  </div>
+                </>
+              )
+            })()}
 
             {/* User detail */}
             {selectedUser && activeTab === "users" && (
