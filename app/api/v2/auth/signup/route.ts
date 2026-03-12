@@ -57,8 +57,16 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   }
 
   // Check if user already exists
-  const existing = await getUserByEmail(email)
+  let existing
+  try {
+    existing = await getUserByEmail(email)
+    console.log("[v0] getUserByEmail result:", existing)
+  } catch (dbError) {
+    console.error("[v0] getUserByEmail error:", dbError)
+    return ApiResponse.internalError("Database error checking user existence")
+  }
   if (existing) {
+    console.log("[v0] User already exists, returning 409")
     return ApiResponse.conflict(ERROR_MESSAGES.DUPLICATE_EMAIL)
   }
 
