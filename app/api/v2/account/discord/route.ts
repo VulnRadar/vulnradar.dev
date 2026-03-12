@@ -1,9 +1,14 @@
-import pool from "@/lib/db"
-import { authMiddleware } from "@/lib/auth-middleware"
-import { ApiResponse } from "@/lib/api-utils"
 import { NextResponse } from "next/server"
+import { getSession } from "@/lib/auth"
+import pool from "@/lib/db"
 
-export const DELETE = authMiddleware(async (req, session) => {
+// DELETE /api/v2/account/discord - Disconnect Discord account
+export async function DELETE() {
+  const session = await getSession()
+  if (!session) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  }
+
   try {
     // Get current Discord connection
     const discordResult = await pool.query(
@@ -30,9 +35,9 @@ export const DELETE = authMiddleware(async (req, session) => {
       [session.userId]
     )
 
-    return ApiResponse.success({ message: "Discord account disconnected" })
+    return NextResponse.json({ success: true, message: "Discord account disconnected" })
   } catch (error) {
     console.error("Discord disconnect error:", error)
-    return ApiResponse.internalError("Failed to disconnect Discord account")
+    return NextResponse.json({ error: "Failed to disconnect Discord account" }, { status: 500 })
   }
-})
+}
