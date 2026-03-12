@@ -80,6 +80,7 @@ export default function RootLayout({
   return (
     <html lang="en" className="dark" suppressHydrationWarning>
       <head>
+        <meta name="theme-color" content="#0d1117" />
         <script dangerouslySetInnerHTML={{ __html: `try{var d=localStorage.getItem("vr_auth_cache");if(d){var p=JSON.parse(d),s=document.createElement("style");s.id="vr-auth-css";var r="";if(p&&p.userId){r+=".vr-auth-only{visibility:visible!important;pointer-events:auto!important}"}if(p&&p.role&&${JSON.stringify([STAFF_ROLES.ADMIN, STAFF_ROLES.MODERATOR, STAFF_ROLES.SUPPORT])}.includes(p.role)){r+=".vr-staff-only{display:flex!important}"}if(r){s.textContent=r;document.head.appendChild(s)}}}catch(e){}` }} />
       </head>
       <body className="font-sans antialiased" suppressHydrationWarning>
