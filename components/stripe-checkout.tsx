@@ -38,8 +38,15 @@ export function StripeCheckout({ productId, userId, onSuccess }: {
     setVerifying(true)
     setError(null)
     
-    // Poll up to 15 times with 1.5 second intervals (22.5 seconds total)
-    for (let i = 0; i < 15; i++) {
+    // Aggressive polling: fast at first, then slow down
+    // 5 fast polls (500ms), then 5 slower polls (1s), then 5 even slower (2s)
+    const pollIntervals = [
+      ...Array(5).fill(500),   // First 5: 500ms each (2.5s total)
+      ...Array(5).fill(1000),  // Next 5: 1s each (5s total)
+      ...Array(5).fill(2000),  // Last 5: 2s each (10s total)
+    ]
+    
+    for (let i = 0; i < pollIntervals.length; i++) {
       try {
         const response = await fetch('/api/v2/auth/me')
         if (response.ok) {
@@ -57,8 +64,7 @@ export function StripeCheckout({ productId, userId, onSuccess }: {
         // Ignore fetch errors, will retry
       }
       
-      // Wait 1.5 seconds before next poll
-      await new Promise(resolve => setTimeout(resolve, 1500))
+      await new Promise(resolve => setTimeout(resolve, pollIntervals[i]))
     }
     
     // Verification timed out - assume success (webhook may be slow)
@@ -97,7 +103,19 @@ export function StripeCheckout({ productId, userId, onSuccess }: {
       <div className="flex flex-col items-center justify-center py-12 text-center">
         <Loader2 className="h-8 w-8 animate-spin text-primary mb-4" />
         <h3 className="text-lg font-semibold mb-2">Activating your subscription...</h3>
-        <p className="text-sm text-muted-foreground">This will only take a moment</p>
+        <p className="text-sm text-muted-foreground mb-4">This will only take a moment</p>
+        <Button 
+          variant="ghost" 
+          size="sm"
+          onClick={() => {
+            setVerified(true)
+            setVerifying(false)
+            onSuccess?.()
+          }}
+          className="text-muted-foreground hover:text-foreground"
+        >
+          Skip and go to Dashboard
+        </Button>
       </div>
     )
   }
