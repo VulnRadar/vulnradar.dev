@@ -1122,404 +1122,41 @@ const VALID_TABS: Tab[] = ["general", "security", "billing", "developer", "notif
               </CardContent>
             </Card>
 
-            {/* Password */}
+            {/* Quick Links to Other Settings */}
             <Card>
               <CardHeader>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <CardTitle className="text-lg flex items-center gap-2">
-                      <Lock className="h-4 w-4 text-muted-foreground" />
-                      Password
-                    </CardTitle>
-                    <CardDescription>Update your account password.</CardDescription>
-                  </div>
-                  {!showPasswordForm && (
-                    <Button variant="outline" size="sm" onClick={() => setShowPasswordForm(true)}>
-                      Change Password
-                    </Button>
-                  )}
-                </div>
-              </CardHeader>
-              {showPasswordForm && (
-                <CardContent className="flex flex-col gap-4">
-                  <div className="flex flex-col gap-2">
-                    <Label htmlFor="current-pw" className="text-sm">Current Password</Label>
-                    <Input
-                      id="current-pw"
-                      type="password"
-                      value={currentPassword}
-                      onChange={(e) => setCurrentPassword(e.target.value)}
-                      className="bg-card h-10"
-                      placeholder="Enter current password"
-                    />
-                  </div>
-                  <div className="flex flex-col gap-2">
-                    <Label htmlFor="new-pw" className="text-sm">New Password</Label>
-                    <Input
-                      id="new-pw"
-                      type="password"
-                      value={newPassword}
-                      onChange={(e) => setNewPassword(e.target.value)}
-                      className="bg-card h-10"
-                      placeholder="At least 8 characters"
-                    />
-                  </div>
-                  <div className="flex flex-col gap-2">
-                    <Label htmlFor="confirm-new-pw" className="text-sm">Confirm New Password</Label>
-                    <Input
-                      id="confirm-new-pw"
-                      type="password"
-                      value={confirmNewPassword}
-                      onChange={(e) => setConfirmNewPassword(e.target.value)}
-                      className="bg-card h-10"
-                      placeholder="Re-enter new password"
-                      onKeyDown={(e) => { if (e.key === "Enter") handleChangePassword() }}
-                    />
-                  </div>
-                  <div className="flex items-center gap-2 pt-1">
-                    <Button onClick={handleChangePassword} disabled={savingPassword}>
-                      <Save className="mr-2 h-4 w-4" />
-                      {savingPassword ? "Saving..." : "Update Password"}
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      onClick={() => {
-                        setShowPasswordForm(false)
-                        setCurrentPassword("")
-                        setNewPassword("")
-                        setConfirmNewPassword("")
-                      }}
-                    >
-                      Cancel
-                    </Button>
-                  </div>
-                </CardContent>
-              )}
-            </Card>
-
-            {/* Two-Factor Authentication */}
-            <Card className="bg-card border-border">
-              <CardHeader>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <CardTitle className="text-lg flex items-center gap-2">
-                      <Shield className="h-4 w-4 text-muted-foreground" />
-                      Two-Factor Authentication
-                    </CardTitle>
-                    <CardDescription>
-                      {totpEnabled
-                        ? `2FA is active via ${twoFactorMethod === "email" ? "email" : "authenticator app"}.`
-                        : "Add an extra layer of security to your account."}
-                    </CardDescription>
-                  </div>
-                  {totpEnabled ? (
-                    <Badge className="bg-emerald-500/10 text-emerald-500 border-emerald-500/20">
-                      {twoFactorMethod === "email" ? "Email" : "App"} Enabled
-                    </Badge>
-                  ) : (
-                    <Badge variant="secondary">Disabled</Badge>
-                  )}
-                </div>
-              </CardHeader>
-              <CardContent className="flex flex-col gap-4">
-                {/* ===== AUTHENTICATOR APP 2FA ===== */}
-                <div className="rounded-lg border border-border p-4 flex flex-col gap-4">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className="flex items-center justify-center h-9 w-9 rounded-lg bg-primary/10 border border-primary/20">
-                        <Smartphone className="h-4 w-4 text-primary" />
-                      </div>
-                      <div>
-                        <p className="text-sm font-semibold text-foreground">Authenticator App</p>
-                        <p className="text-xs text-muted-foreground">Use Google Authenticator, Authy, or similar apps.</p>
-                      </div>
-                    </div>
-                    {twoFactorMethod === "app" && totpEnabled && (
-                      <Badge className="bg-emerald-500/10 text-emerald-500 border-emerald-500/20 shrink-0">Active</Badge>
-                    )}
-                  </div>
-
-                  {/* App 2FA is currently enabled */}
-                  {totpEnabled && twoFactorMethod === "app" && (
-                    <>
-                      {/* Backup codes display */}
-                      {backupCodes.length > 0 && (
-                        <div className="flex flex-col gap-3 p-4 rounded-lg bg-amber-500/5 border border-amber-500/20">
-                          <div className="flex items-center gap-2">
-                            <KeyRound className="h-4 w-4 text-amber-500" />
-                            <p className="text-sm font-semibold text-foreground">Save Your Backup Codes</p>
-                          </div>
-                          <p className="text-xs text-muted-foreground leading-relaxed">
-                            These codes can be used to sign in if you lose access to your authenticator app. Each code can only be used once.
-                          </p>
-                          <div className="grid grid-cols-2 gap-2 p-3 bg-card border border-border rounded-lg font-mono text-sm">
-                            {backupCodes.map((code, i) => (
-                              <span key={i} className="text-foreground select-all text-center py-0.5">{code}</span>
-                            ))}
-                          </div>
-                          <div className="flex gap-2">
-                            <Button variant="outline" size="sm" className="bg-transparent" onClick={() => { navigator.clipboard.writeText(backupCodes.join("\n")); setSuccess("Backup codes copied.") }}>
-                              <Copy className="mr-1.5 h-3.5 w-3.5" />Copy All
-                            </Button>
-                            <Button variant="outline" size="sm" className="bg-transparent" onClick={() => {
-                              const blob = new Blob([`${APP_NAME} 2FA Backup Codes\n${"=".repeat(30)}\n\n${backupCodes.join("\n")}\n\nEach code can only be used once.`], { type: "text/plain" })
-                              const url = URL.createObjectURL(blob); const a = document.createElement("a"); a.href = url; a.download = "vulnradar-backup-codes.txt"; a.click(); URL.revokeObjectURL(url)
-                            }}>
-                              <Download className="mr-1.5 h-3.5 w-3.5" />Download
-                            </Button>
-                            <Button variant="ghost" size="sm" onClick={() => setBackupCodes([])} className="ml-auto text-muted-foreground">{"I've saved them"}</Button>
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Backup code status */}
-                      {backupCodes.length === 0 && (
-                        <div className="flex items-center gap-3 p-3 rounded-lg bg-secondary/30 border border-border">
-                          <KeyRound className="h-4 w-4 text-muted-foreground shrink-0" />
-                          <div className="flex-1">
-                            <p className="text-sm text-foreground font-medium">Backup Codes</p>
-                            <p className="text-xs text-muted-foreground">
-                              {backupCodesRemaining} of 8 codes remaining.
-                              {backupCodesRemaining <= 2 && backupCodesRemaining > 0 && " Consider regenerating soon."}
-                              {backupCodesRemaining === 0 && " Regenerate to get new codes."}
-                            </p>
-                          </div>
-                          {!showRegenerateBackup && (
-                            <Button variant="outline" size="sm" className="bg-transparent shrink-0" onClick={() => setShowRegenerateBackup(true)}>Regenerate</Button>
-                          )}
-                        </div>
-                      )}
-
-                      {/* Regenerate backup codes form */}
-                      {showRegenerateBackup && backupCodes.length === 0 && (
-                        <div className="flex flex-col gap-3 p-4 rounded-lg bg-muted/50 border border-border">
-                          <p className="text-sm text-foreground font-medium">Enter your password to regenerate backup codes</p>
-                          <p className="text-xs text-muted-foreground">This will invalidate all existing backup codes.</p>
-                          <Input type="password" placeholder="Current password" value={regenPassword} onChange={(e) => setRegenPassword(e.target.value)} className="bg-card h-10" />
-                          <div className="flex items-center gap-2">
-                            <Button disabled={!regenPassword} onClick={async () => {
-                              try {
-                                const res = await fetch(API.AUTH.TWO_FA.BACKUP_CODES, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ password: regenPassword }) })
-                                const data = await res.json()
-                                if (res.ok) { setBackupCodes(data.backupCodes); setBackupCodesRemaining(data.backupCodes.length); setShowRegenerateBackup(false); setRegenPassword(""); setSuccess("New backup codes generated.") }
-                                else setError(data.error || "Failed to regenerate codes.")
-                              } catch { setError("Failed to regenerate codes.") }
-                            }}>Regenerate Codes</Button>
-                            <Button variant="ghost" onClick={() => { setShowRegenerateBackup(false); setRegenPassword("") }}>Cancel</Button>
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Disable app 2FA */}
-                      {!showDisable2FA ? (
-                        <Button variant="outline" className="self-start text-destructive border-destructive/30 hover:bg-destructive/10" onClick={() => setShowDisable2FA(true)}>
-                          Disable Authenticator App
-                        </Button>
-                      ) : (
-                        <div className="flex flex-col gap-3 p-4 rounded-lg bg-destructive/5 border border-destructive/20">
-                          <p className="text-sm text-foreground font-medium">Enter your password to disable authenticator app 2FA</p>
-                          <Input type="password" placeholder="Current password" value={disablePassword} onChange={(e) => setDisablePassword(e.target.value)} className="bg-card h-10" />
-                          <div className="flex items-center gap-2">
-                            <Button variant="destructive" disabled={!disablePassword} onClick={async () => {
-                              try {
-                                const res = await fetch(API.AUTH.TWO_FA.DISABLE, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ password: disablePassword }) })
-                                const data = await res.json()
-                                if (res.ok) { setTotpEnabled(false); setTwoFactorMethod(null); setShowDisable2FA(false); setDisablePassword(""); setSuccess("Authenticator app 2FA has been disabled.") }
-                                else setError(data.error || "Failed to disable 2FA.")
-                              } catch { setError("Failed to disable 2FA.") }
-                            }}>Confirm Disable</Button>
-                            <Button variant="ghost" onClick={() => { setShowDisable2FA(false); setDisablePassword("") }}>Cancel</Button>
-                          </div>
-                        </div>
-                      )}
-                    </>
-                  )}
-
-                  {/* Setup app 2FA (when not enabled or email is active) */}
-                  {(!totpEnabled || twoFactorMethod === "email") && (
-                    <>
-                      {!setting2FA ? (
-                        <Button
-                          className="self-start"
-                          disabled={twoFactorMethod === "email" && totpEnabled}
-                          onClick={async () => {
-                            try {
-                              const res = await fetch(API.AUTH.TWO_FA.SETUP)
-                              const data = await res.json()
-                              if (res.ok) { setTotpUri(data.uri); setTotpSecret(data.secret); setSetting2FA(true) }
-                              else setError(data.error || "Failed to start 2FA setup.")
-                            } catch { setError("Failed to start 2FA setup.") }
-                          }}
-                        >
-                          {twoFactorMethod === "email" && totpEnabled ? "Disable email 2FA first" : "Enable Authenticator App"}
-                        </Button>
-                      ) : (
-                        <div className="flex flex-col gap-4">
-                          <div className="flex flex-col gap-3 p-4 rounded-lg bg-muted/50 border border-border">
-                            <p className="text-sm font-medium text-foreground">1. Scan this QR code with your authenticator app:</p>
-                            <div className="flex justify-center p-4 bg-background rounded-lg border border-border">
-                              <img src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(totpUri)}`} alt="2FA QR Code" className="w-[200px] h-[200px]" crossOrigin="anonymous" />
-                            </div>
-                            <p className="text-sm text-muted-foreground">Or enter this secret manually:</p>
-                            <code className="text-xs bg-card border border-border px-3 py-2 rounded font-mono text-primary break-all select-all">{totpSecret}</code>
-                          </div>
-                          <div className="flex flex-col gap-3 p-4 rounded-lg bg-muted/50 border border-border">
-                            <p className="text-sm font-medium text-foreground">2. Enter the 6-digit code to verify:</p>
-                            <div className="flex gap-2">
-                              <Input type="text" inputMode="numeric" pattern="[0-9]{6}" maxLength={6} placeholder="000000" value={totpVerifyCode} onChange={(e) => setTotpVerifyCode(e.target.value.replace(/\D/g, "").slice(0, 6))} className="bg-card h-10 text-center text-lg tracking-[0.3em] font-mono max-w-[180px]" />
-                              <Button disabled={totpVerifyCode.length !== 6} onClick={async () => {
-                                try {
-                                  const res = await fetch(API.AUTH.TWO_FA.SETUP, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ code: totpVerifyCode }) })
-                                  const data = await res.json()
-                                  if (res.ok) { setTotpEnabled(true); setTwoFactorMethod("app"); setSetting2FA(false); setTotpUri(""); setTotpSecret(""); setTotpVerifyCode(""); setBackupCodes(data.backupCodes || []); setBackupCodesRemaining(data.backupCodes?.length || 0); setSuccess("Authenticator app 2FA is now enabled! Save your backup codes.") }
-                                  else setError(data.error || "Verification failed.")
-                                } catch { setError("Failed to verify code.") }
-                              }}>Verify & Enable</Button>
-                            </div>
-                          </div>
-                          <Button variant="ghost" className="self-start text-muted-foreground" onClick={() => { setSetting2FA(false); setTotpUri(""); setTotpSecret(""); setTotpVerifyCode("") }}>Cancel Setup</Button>
-                        </div>
-                      )}
-                    </>
-                  )}
-                </div>
-
-                {/* ===== EMAIL 2FA ===== */}
-                <div className="rounded-lg border border-border p-4 flex flex-col gap-4">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className="flex items-center justify-center h-9 w-9 rounded-lg bg-primary/10 border border-primary/20">
-                        <Mail className="h-4 w-4 text-primary" />
-                      </div>
-                      <div>
-                        <p className="text-sm font-semibold text-foreground">Email Verification</p>
-                        <p className="text-xs text-muted-foreground">Receive a 6-digit code via email each time you sign in.</p>
-                      </div>
-                    </div>
-                    {twoFactorMethod === "email" && totpEnabled && (
-                      <Badge className="bg-emerald-500/10 text-emerald-500 border-emerald-500/20 shrink-0">Active</Badge>
-                    )}
-                  </div>
-
-                  {/* Email 2FA is enabled */}
-                  {totpEnabled && twoFactorMethod === "email" && (
-                    <>
-                      <div className="flex items-center gap-2 p-3 rounded-lg bg-emerald-500/5 border border-emerald-500/20">
-                        <Check className="h-4 w-4 text-emerald-500" />
-                        <p className="text-sm text-foreground">A verification code will be sent to your email on each login.</p>
-                      </div>
-                      {!showDisable2FA ? (
-                        <Button variant="outline" className="self-start text-destructive border-destructive/30 hover:bg-destructive/10" onClick={() => setShowDisable2FA(true)}>
-                          Disable Email 2FA
-                        </Button>
-                      ) : (
-                        <div className="flex flex-col gap-3 p-4 rounded-lg bg-destructive/5 border border-destructive/20">
-                          <p className="text-sm text-foreground font-medium">Enter your password to disable email 2FA</p>
-                          <Input type="password" placeholder="Current password" value={disablePassword} onChange={(e) => setDisablePassword(e.target.value)} className="bg-card h-10" />
-                          <div className="flex items-center gap-2">
-                            <Button variant="destructive" disabled={!disablePassword} onClick={async () => {
-                              try {
-                                const res = await fetch(API.AUTH.TWO_FA.EMAIL_SETUP, { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ password: disablePassword }) })
-                                const data = await res.json()
-                                if (res.ok) { setTotpEnabled(false); setTwoFactorMethod(null); setShowDisable2FA(false); setDisablePassword(""); setSuccess("Email 2FA has been disabled.") }
-                                else setError(data.error || "Failed to disable email 2FA.")
-                              } catch { setError("Failed to disable email 2FA.") }
-                            }}>Confirm Disable</Button>
-                            <Button variant="ghost" onClick={() => { setShowDisable2FA(false); setDisablePassword("") }}>Cancel</Button>
-                          </div>
-                        </div>
-                      )}
-                    </>
-                  )}
-
-                  {/* Enable email 2FA (when not enabled or app is active) */}
-                  {(!totpEnabled || twoFactorMethod === "app") && (
-                    <div className="flex flex-col gap-3">
-                      {!email2FAPassword ? (
-                        <Button
-                          className="self-start"
-                          variant="outline"
-                          disabled={twoFactorMethod === "app" && totpEnabled}
-                          onClick={() => {
-                            if (twoFactorMethod === "app" && totpEnabled) return
-                            setEmail2FAPassword(" ")
-                          }}
-                        >
-                          {twoFactorMethod === "app" && totpEnabled ? "Disable app 2FA first" : "Enable Email 2FA"}
-                        </Button>
-                      ) : (
-                        <div className="flex flex-col gap-3 p-4 rounded-lg bg-muted/50 border border-border">
-                          <p className="text-sm text-foreground font-medium">Enter your password to enable email 2FA</p>
-                          <p className="text-xs text-muted-foreground">A 6-digit code will be sent to your email every time you log in.</p>
-                          <Input
-                            type="password"
-                            placeholder="Current password"
-                            value={email2FAPassword.trim() === "" ? "" : email2FAPassword}
-                            onChange={(e) => setEmail2FAPassword(e.target.value)}
-                            className="bg-card h-10"
-                          />
-                          <div className="flex items-center gap-2">
-                            <Button
-                              disabled={!email2FAPassword.trim() || togglingEmail2FA}
-                              onClick={async () => {
-                                setTogglingEmail2FA(true)
-                                try {
-                                  const res = await fetch(API.AUTH.TWO_FA.EMAIL_SETUP, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ password: email2FAPassword.trim() }) })
-                                  const data = await res.json()
-                                  if (res.ok) { setTotpEnabled(true); setTwoFactorMethod("email"); setEmail2FAPassword(""); setSuccess("Email 2FA is now enabled.") }
-                                  else setError(data.error || "Failed to enable email 2FA.")
-                                } catch { setError("Failed to enable email 2FA.") } finally { setTogglingEmail2FA(false) }
-                              }}
-                            >
-                              {togglingEmail2FA ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Enabling...</> : "Enable Email 2FA"}
-                            </Button>
-                            <Button variant="ghost" onClick={() => setEmail2FAPassword("")}>Cancel</Button>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Active Sessions / Force Logout */}
-            <Card className="bg-card border-border">
-              <CardHeader>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <CardTitle className="text-lg flex items-center gap-2">
-                      <MonitorSmartphone className="h-4 w-4 text-muted-foreground" />
-                      Active Sessions
-                    </CardTitle>
-                    <CardDescription>
-                      Log out of all devices and browsers at once.
-                    </CardDescription>
-                  </div>
-                </div>
+                <CardTitle className="text-lg">Quick Settings</CardTitle>
+                <CardDescription>Manage other account settings.</CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="flex flex-col gap-4">
-                  <p className="text-sm text-muted-foreground">
-                    If you suspect unauthorized access to your account or want to sign out everywhere, 
-                    use the button below. This will invalidate all active sessions including this one.
-                  </p>
-                  <Button
-                    variant="outline"
-                    className="self-start text-destructive border-destructive/30 hover:bg-destructive/10"
-                    onClick={handleForceLogout}
-                    disabled={forceLoggingOut}
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <button 
+                    onClick={() => { setActiveTab("security" as Tab); window.location.hash = "security" }}
+                    className="flex items-center gap-3 p-4 rounded-lg border border-border hover:bg-secondary/50 transition-colors text-left"
                   >
-                    {forceLoggingOut ? (
-                      <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Logging out...</>
-                    ) : (
-                      <><LogOut className="mr-2 h-4 w-4" />Log Out All Devices</>
-                    )}
-                  </Button>
+                    <div className="flex items-center justify-center h-10 w-10 rounded-lg bg-primary/10">
+                      <Lock className="h-5 w-5 text-primary" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium">Security</p>
+                      <p className="text-xs text-muted-foreground">Password, 2FA, sessions</p>
+                    </div>
+                  </button>
+                  <button 
+                    onClick={() => { setActiveTab("social" as Tab); window.location.hash = "social" }}
+                    className="flex items-center gap-3 p-4 rounded-lg border border-border hover:bg-secondary/50 transition-colors text-left"
+                  >
+                    <div className="flex items-center justify-center h-10 w-10 rounded-lg bg-[#5865F2]/10">
+                      <Share2 className="h-5 w-5 text-[#5865F2]" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium">Connected Accounts</p>
+                      <p className="text-xs text-muted-foreground">Discord integration</p>
+                    </div>
+                  </button>
                 </div>
               </CardContent>
             </Card>
-
           </div>
         )}
 
@@ -2317,36 +1954,29 @@ const VALID_TABS: Tab[] = ["general", "security", "billing", "developer", "notif
         {/* ===================== WEBHOOKS SECTION (renders in Developer tab) ===================== */}
         {activeTab === "developer" && (
           <>
-            {/* Section Header */}
-            <div className="flex items-center gap-2 pt-4">
-              <Webhook className="h-4 w-4 text-primary" />
-              <h3 className="text-sm font-semibold text-foreground">Webhooks</h3>
-            </div>
-            <Card className="bg-card border-border">
-              <CardHeader className="pb-3 pt-4 px-4">
-                <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                  <Globe className="h-4 w-4 text-muted-foreground" />
-                  Webhook Endpoints
-                </CardTitle>
-                <CardDescription className="text-xs text-muted-foreground">
-                  Get notified when scans complete. Supports Discord, Slack, and generic JSON webhooks. Max 5.
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg">Webhooks</CardTitle>
+                <CardDescription>
+                  Get notified when scans complete. Supports Discord, Slack, and generic JSON webhooks. Maximum 5 endpoints.
                 </CardDescription>
               </CardHeader>
-              <CardContent className="px-4 pb-4 flex flex-col gap-4">
+              <CardContent className="space-y-4">
                 {/* Add webhook form */}
-                <div className="flex flex-col gap-2">
+                <div className="flex flex-col gap-3 p-4 rounded-lg border border-border bg-secondary/30">
+                  <Label className="text-sm font-medium">Add Endpoint</Label>
                   <div className="flex flex-col sm:flex-row gap-2">
                     <Input
-                      placeholder="Webhook name"
+                      placeholder="Name (e.g. Discord Alerts)"
                       value={webhookName}
                       onChange={(e) => setWebhookName(e.target.value)}
-                      className="sm:w-36"
+                      className="sm:w-44 bg-card h-10"
                     />
                     <Input
-                      placeholder="https://discord.com/api/webhooks/... or any URL"
+                      placeholder="https://discord.com/api/webhooks/..."
                       value={webhookUrl}
                       onChange={(e) => setWebhookUrl(e.target.value)}
-                      className="flex-1"
+                      className="flex-1 bg-card h-10"
                     />
                     <Button
                       disabled={!webhookUrl || addingWebhook}
@@ -2376,9 +2006,6 @@ const VALID_TABS: Tab[] = ["general", "security", "billing", "developer", "notif
                       <span className="ml-1.5">Add</span>
                     </Button>
                   </div>
-                  <p className="text-xs text-muted-foreground">
-                    Paste a Discord or Slack webhook URL and the type is auto-detected. Discord gets rich embeds with color-coded severity, Slack gets Block Kit messages, and other URLs get standard JSON.
-                  </p>
                 </div>
 
                 {/* Webhook list */}
@@ -2429,51 +2056,37 @@ const VALID_TABS: Tab[] = ["general", "security", "billing", "developer", "notif
                   </div>
                 )}
 
-                <div className="rounded-lg bg-muted/50 border border-border p-3 flex flex-col gap-2">
-                  <p className="text-xs font-medium text-foreground">Payload Formats:</p>
-                  <div className="flex flex-col gap-1">
-                    <p className="text-xs text-muted-foreground"><span className="text-[#5865F2] font-semibold">Discord:</span> Rich embeds with color-coded severity (red for critical, orange for high, yellow for medium, green for clean).</p>
-                    <p className="text-xs text-muted-foreground"><span className="text-[#E01E5A] font-semibold">Slack:</span> Block Kit messages with structured fields for each severity level.</p>
-                    <p className="text-xs text-muted-foreground"><span className="text-primary font-semibold">Generic:</span> Standard JSON with <code className="text-primary">event</code> and <code className="text-primary">data</code> fields.</p>
-                  </div>
-                  <p className="text-xs text-muted-foreground mt-1">Webhooks fire for all scans, both UI and API-triggered.</p>
-                </div>
+
               </CardContent>
             </Card>
 
-            {/* Section Header */}
-            <div className="flex items-center gap-2 pt-2">
-              <CalendarClock className="h-4 w-4 text-primary" />
-              <h3 className="text-sm font-semibold text-foreground">Scheduled Scans</h3>
-            </div>
-            <Card className="bg-card border-border">
-              <CardHeader className="pb-3 pt-4 px-4">
-                <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                  <Clock className="h-4 w-4 text-muted-foreground" />
-                  Schedule Configuration
-                </CardTitle>
-                <CardDescription className="text-xs text-muted-foreground">
-                  Set URLs to auto-scan on a recurring schedule. Max 10 schedules.
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg">Scheduled Scans</CardTitle>
+                <CardDescription>
+                  Set URLs to auto-scan on a recurring schedule. Maximum 10 schedules.
                 </CardDescription>
               </CardHeader>
-              <CardContent className="px-4 pb-4 flex flex-col gap-4">
+              <CardContent className="space-y-4">
                 {/* Add schedule form */}
-                <div className="flex flex-col sm:flex-row gap-2">
-                  <Input
-                    placeholder="https://example.com"
-                    value={scheduleUrl}
-                    onChange={(e) => setScheduleUrl(e.target.value)}
-                    className="flex-1"
-                  />
-                  <select
-                    value={scheduleFreq}
-                    onChange={(e) => setScheduleFreq(e.target.value)}
-                    className="h-10 px-3 rounded-md border border-border bg-background text-foreground text-sm"
-                  >
-                    <option value="daily">Daily</option>
-                    <option value="weekly">Weekly</option>
-                    <option value="monthly">Monthly</option>
-                  </select>
+                <div className="flex flex-col gap-3 p-4 rounded-lg border border-border bg-secondary/30">
+                  <Label className="text-sm font-medium">Add Schedule</Label>
+                  <div className="flex flex-col sm:flex-row gap-2">
+                    <Input
+                      placeholder="https://example.com"
+                      value={scheduleUrl}
+                      onChange={(e) => setScheduleUrl(e.target.value)}
+                      className="flex-1 bg-card h-10"
+                    />
+                    <select
+                      value={scheduleFreq}
+                      onChange={(e) => setScheduleFreq(e.target.value)}
+                      className="h-10 px-3 rounded-md border border-border bg-card text-foreground text-sm"
+                    >
+                      <option value="daily">Daily</option>
+                      <option value="weekly">Weekly</option>
+                      <option value="monthly">Monthly</option>
+                    </select>
                   <Button
                     disabled={!scheduleUrl || addingSchedule}
                     onClick={async () => {
