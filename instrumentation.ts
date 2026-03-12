@@ -71,6 +71,7 @@ export async function register() {
           password_hash VARCHAR(255) NOT NULL,
           name VARCHAR(255),
           avatar_url TEXT,
+          discord_id VARCHAR(64) UNIQUE,
           
           -- Role & permissions (simple string, not FK)
           -- Values: 'user', 'beta_tester', 'support', 'moderator', 'admin'
@@ -315,6 +316,29 @@ export async function register() {
       `)
 
       // ════════════════════════════════════════════════════════════════
+      // DISCORD CONNECTIONS - OAuth integration with Discord
+      // ════════════════════════════════════════════════════════════════
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS discord_connections (
+          id SERIAL PRIMARY KEY,
+          user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE UNIQUE,
+          discord_id VARCHAR(64) NOT NULL UNIQUE,
+          discord_username VARCHAR(100) NOT NULL,
+          discord_discriminator VARCHAR(10),
+          discord_avatar VARCHAR(255),
+          discord_email VARCHAR(255),
+          access_token TEXT NOT NULL,
+          refresh_token TEXT,
+          token_expires_at TIMESTAMP WITH TIME ZONE,
+          guild_joined BOOLEAN NOT NULL DEFAULT false,
+          connected_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+          updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+        );
+        CREATE INDEX IF NOT EXISTS idx_discord_user ON discord_connections(user_id);
+        CREATE INDEX IF NOT EXISTS idx_discord_id ON discord_connections(discord_id);
+      `)
+
+      // ════════════════════════════════════════════════════════════════
       // AUTH TOKENS - Password reset & email verification
       // ════════════════════════════════════════════════════════════════
       await pool.query(`
@@ -550,7 +574,7 @@ export async function register() {
         console.error(`[${APP_NAME}] Initial cleanup failed (non-fatal):`, cleanupError)
       }
 
-      // ── Schedule periodic cleanup ─���───────────────────────────────
+      // ── Schedule periodic cleanup ─�����───────────────────────────────
       try {
         const { schedulePeriodicCleanup } = await import("./lib/cleanup")
         schedulePeriodicCleanup(5000)

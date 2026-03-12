@@ -125,13 +125,32 @@ export async function POST(request: Request) {
     const { action } = body
 
     if (action === "cancel") {
-      // Get user's subscription ID
+      // Get user's subscription ID (or customer ID to look it up)
       const userResult = await pool.query(
-        `SELECT stripe_subscription_id FROM users WHERE id = $1`,
+        `SELECT stripe_subscription_id, stripe_customer_id FROM users WHERE id = $1`,
         [session.userId]
       )
       
-      const subscriptionId = userResult.rows[0]?.stripe_subscription_id
+      let subscriptionId = userResult.rows[0]?.stripe_subscription_id
+      const customerId = userResult.rows[0]?.stripe_customer_id
+      
+      // If no subscription ID but we have a customer ID, try to find the subscription
+      if (!subscriptionId && customerId) {
+        const subscriptions = await stripe.subscriptions.list({
+          customer: customerId,
+          status: "active",
+          limit: 1,
+        })
+        if (subscriptions.data.length > 0) {
+          subscriptionId = subscriptions.data[0].id
+          // Update the database with the found subscription ID
+          await pool.query(
+            `UPDATE users SET stripe_subscription_id = $1 WHERE id = $2`,
+            [subscriptionId, session.userId]
+          )
+        }
+      }
+      
       if (!subscriptionId) {
         return NextResponse.json({ error: "No active subscription found" }, { status: 400 })
       }
@@ -156,13 +175,27 @@ export async function POST(request: Request) {
     }
 
     if (action === "cancel_immediately") {
-      // Get user's subscription ID
+      // Get user's subscription ID (or customer ID to look it up)
       const userResult = await pool.query(
-        `SELECT stripe_subscription_id FROM users WHERE id = $1`,
+        `SELECT stripe_subscription_id, stripe_customer_id FROM users WHERE id = $1`,
         [session.userId]
       )
       
-      const subscriptionId = userResult.rows[0]?.stripe_subscription_id
+      let subscriptionId = userResult.rows[0]?.stripe_subscription_id
+      const customerId = userResult.rows[0]?.stripe_customer_id
+      
+      // If no subscription ID but we have a customer ID, try to find the subscription
+      if (!subscriptionId && customerId) {
+        const subscriptions = await stripe.subscriptions.list({
+          customer: customerId,
+          status: "active",
+          limit: 1,
+        })
+        if (subscriptions.data.length > 0) {
+          subscriptionId = subscriptions.data[0].id
+        }
+      }
+      
       if (!subscriptionId) {
         return NextResponse.json({ error: "No active subscription found" }, { status: 400 })
       }

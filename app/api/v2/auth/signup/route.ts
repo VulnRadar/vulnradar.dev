@@ -65,6 +65,24 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   // Create user
   const user = await createUser(email, password, name)
 
+  // Try to fetch Gravatar or other avatar services (non-blocking)
+  setImmediate(async () => {
+    try {
+      const emailHash = crypto.createHash("md5").update(email.toLowerCase().trim()).digest("hex")
+      // Check if Gravatar exists (returns 404 if not)
+      const gravatarUrl = `https://www.gravatar.com/avatar/${emailHash}?d=404&s=200`
+      const gravatarRes = await fetch(gravatarUrl, { method: "HEAD" })
+      if (gravatarRes.ok) {
+        await pool.query("UPDATE users SET avatar_url = $1 WHERE id = $2 AND avatar_url IS NULL", [
+          `https://www.gravatar.com/avatar/${emailHash}?s=200`,
+          user.id
+        ])
+      }
+    } catch {
+      // Silently fail - avatar is not critical
+    }
+  })
+
   // Generate verification token
   const token = crypto.randomBytes(32).toString("hex")
   const expiresAt = new Date(Date.now() + EMAIL_VERIFICATION_TOKEN_LIFETIME * 1000)
