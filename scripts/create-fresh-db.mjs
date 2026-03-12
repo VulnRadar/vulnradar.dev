@@ -238,7 +238,7 @@ async function main() {
 
   // Connect to postgres database to create new database
   log("")
-  info("Creating new database...")
+  log(`${c.bold}${c.cyan}Step 1: Creating New Database${c.reset}`)
   
   const adminPool = new pg.Pool({
     user: dbInfo.user,
@@ -312,6 +312,7 @@ async function main() {
 
   // Read schema from instrumentation.ts
   log("")
+  log(`${c.bold}${c.cyan}Step 2: Creating Schema${c.reset}`)
   info("Reading schema from instrumentation.ts...")
   const instrPath = resolve(ROOT, "instrumentation.ts")
   let instrContent
@@ -403,7 +404,9 @@ async function main() {
     
     if (shouldMigrate) {
       log("")
-      info("Migrating data...")
+      log(`${c.bold}${c.cyan}Step 3: Data Migration${c.reset}`)
+      log(`${c.dim}Transferring data from original database to new database...${c.reset}`)
+      log("")
       
       // Order matters for foreign keys
       const orderedTables = [
@@ -622,19 +625,22 @@ async function main() {
 
   // Done!
   log("")
-  log(`${c.bold}═══════════════════════════════════════════════════════${c.reset}`)
-  success(`Safe migration complete!`)
-  log(`${c.bold}═══════════════════════════════════════════════════════${c.reset}`)
+  log(`${c.bold}${c.bgGreen}${c.black}                                                         ${c.reset}`)
+  log(`${c.bold}${c.bgGreen}${c.black}   Migration Complete!                                   ${c.reset}`)
+  log(`${c.bold}${c.bgGreen}${c.black}                                                         ${c.reset}`)
   log("")
-  log(`  ${c.green}✓${c.reset} New database: ${c.bold}${newDbName}${c.reset}`)
-  log(`  ${c.green}✓${c.reset} ${created} tables created`)
-  log(`  ${c.green}✓${c.reset} Original database ${c.bold}${dbInfo.database}${c.reset} is untouched`)
+  log(`  ${c.green}✓${c.reset} New database created: ${c.bold}${c.green}${newDbName}${c.reset}`)
+  log(`  ${c.green}✓${c.reset} ${created} tables with fresh v2 schema`)
+  log(`  ${c.green}✓${c.reset} Original database ${c.bold}${dbInfo.database}${c.reset} is ${c.green}safe and untouched${c.reset}`)
   log("")
-  log(`${c.cyan}To use the new database, update your DATABASE_URL:${c.reset}`)
-  log(`  ${c.dim}${newDbUrl}${c.reset}`)
+  log(`${c.bold}${c.cyan}Next Steps:${c.reset}`)
+  log(`  ${c.white}1.${c.reset} Update your DATABASE_URL in .env.local:`)
+  log(`     ${c.dim}DATABASE_URL="${newDbUrl}"${c.reset}`)
   log("")
-  log(`${c.cyan}Or in .env.local, change:${c.reset}`)
-  log(`  ${c.dim}DATABASE_URL=".../${newDbName}?..."${c.reset}`)
+  log(`  ${c.white}2.${c.reset} Restart your dev server to use the new database`)
+  log("")
+  log(`  ${c.white}3.${c.reset} Once verified, you can optionally delete the old database:`)
+  log(`     ${c.dim}${dbInfo.database}${c.reset}`)
   log("")
 
   await newPool.end()

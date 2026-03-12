@@ -568,7 +568,7 @@ export async function PATCH(request: NextRequest) {
         "INSERT INTO gifted_subscriptions (user_id, plan, expires_at, gifted_by) VALUES ($1, $2, $3, $4)",
         [userId, giftPlan, expiresAt, session.userId]
       )
-      await logAction(session.userId, userId, "gift_subscription", `Gifted ${giftPlan} to ${targetUser.email} until ${expiresAt.toISOString()}`, ip)
+      await logAction(session.userId, userId, "gift_subscription", `Gifted ${giftPlan} plan until ${expiresAt.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}`, ip)
       return NextResponse.json({ success: true })
     }
 

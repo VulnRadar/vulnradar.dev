@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server"
 import { createSession, verifyPassword } from "@/lib/auth"
 import { verifyTOTP } from "@/lib/totp"
 import pool from "@/lib/db"
+import { sendNotificationEmail } from "@/lib/notifications"
+import { newLoginEmail } from "@/lib/email"
 import { ApiResponse, parseBody, Validate, withErrorHandling } from "@/lib/api-utils"
 import { getClientIp, getUserAgent } from "@/lib/request-utils"
 import {
@@ -104,6 +106,22 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
 
   // Create session with IP and user agent
   await createSession(userId, ip, userAgent)
+
+  // Get user email for login notification
+  const userEmailResult = await pool.query("SELECT email FROM users WHERE id = $1", [userId])
+  const userEmail = userEmailResult.rows[0]?.email
+  
+  // Send new login alert email in background
+  if (userEmail) {
+    setImmediate(() => {
+      sendNotificationEmail({
+        userId,
+        userEmail,
+        type: "login_alerts",
+        emailContent: newLoginEmail("2FA verified login", ip, { ipAddress: ip, userAgent }),
+      }).catch((err) => console.error("Failed to send login alert:", err))
+    })
+  }
 
   // Create response
   const response = NextResponse.json({ success: true })
