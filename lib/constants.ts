@@ -392,7 +392,7 @@ export const ROUTES = {
   LEGAL_PRIVACY: "/legal/privacy",
   LEGAL_DISCLAIMER: "/legal/disclaimer",
   LEGAL_ACCEPTABLE_USE: "/legal/acceptable-use",
-  GDPR_REQUEST: "/legal/privacy#privacy",
+  GDPR_REQUEST: "/legal/privacy#gdpr",
 } as const
 
 // ============================================================================
