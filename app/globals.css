@@ -9,6 +9,14 @@
   .text-pretty {
     text-wrap: pretty;
   }
+  /* Hide scrollbar but allow scrolling */
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
 }
 
 /* Smooth scroll behavior for anchor links */
