@@ -143,7 +143,7 @@ interface BillingInfo {
   }
 }
 
-type Tab = "account" | "api-keys" | "billing" | "webhooks" | "schedules" | "notifications" | "data"
+type Tab = "general" | "security" | "billing" | "developer" | "notifications" | "privacy"
 
 interface WebhookItem {
   id: number
@@ -192,22 +192,22 @@ export default function ProfilePage() {
 function ProfileContent() {
   const router = useRouter()
 
-  const VALID_TABS: Tab[] = ["account", "billing", "api-keys", "webhooks", "schedules", "notifications", "data"]
-
-  // Read the current hash (no leading #), default to "account"
-  function getTabFromHash(): Tab {
-    if (typeof window === "undefined") return "account"
+const VALID_TABS: Tab[] = ["general", "security", "billing", "developer", "notifications", "privacy"]
+  
+  // Read the current hash (no leading #), default to "general"
+  const getTabFromHash = (): Tab => {
+  if (typeof window === "undefined") return "general"
     const hash = window.location.hash.replace("#", "") as Tab
-    return VALID_TABS.includes(hash) ? hash : "account"
+    return VALID_TABS.includes(hash) ? hash : "general"
   }
 
-  const [activeTab, setActiveTab] = useState<Tab>("account")
+  const [activeTab, setActiveTab] = useState<Tab>("general")
 
   // On mount, read hash and listen for back/forward hash changes
   useEffect(() => {
-    // Set default hash to #account if none provided
+    // Set default hash to #general if none provided
     if (!window.location.hash) {
-      window.history.replaceState(null, "", "/profile#account")
+      window.history.replaceState(null, "", "/profile#general")
     }
     setActiveTab(getTabFromHash())
     const onHashChange = () => setActiveTab(getTabFromHash())
@@ -848,21 +848,19 @@ function ProfileContent() {
   const revokedKeys = keys.filter((k) => k.revoked_at)
 
   const TABS = [
-    { id: "account" as Tab, label: "Account", icon: <UserCog className="h-4 w-4" /> },
-    { id: "api-keys" as Tab, label: "API Keys", icon: <Key className="h-4 w-4" /> },
-
+    { id: "general" as Tab, label: "General", icon: <UserCog className="h-4 w-4" /> },
+    { id: "security" as Tab, label: "Security", icon: <Lock className="h-4 w-4" /> },
     { id: "billing" as Tab, label: "Billing", icon: <CreditCard className="h-4 w-4" /> },
-    { id: "webhooks" as Tab, label: "Webhooks", icon: <Webhook className="h-4 w-4" /> },
-    { id: "schedules" as Tab, label: "Schedules", icon: <CalendarClock className="h-4 w-4" /> },
+    { id: "developer" as Tab, label: "Developer", icon: <Key className="h-4 w-4" /> },
     { id: "notifications" as Tab, label: "Notifications", icon: <Bell className="h-4 w-4" /> },
-    { id: "data" as Tab, label: "Data & Privacy", icon: <Shield className="h-4 w-4" /> },
+    { id: "privacy" as Tab, label: "Privacy", icon: <Shield className="h-4 w-4" /> },
   ]
 
   return (
     <div className="min-h-screen bg-background flex flex-col overflow-x-hidden">
       <Header />
 
-      <main className="flex-1 w-full max-w-4xl mx-auto px-4 sm:px-6 py-8 sm:py-12 flex flex-col gap-8 min-w-0">
+      <main className="flex-1 w-full max-w-6xl mx-auto px-4 sm:px-6 py-8 sm:py-12 flex flex-col gap-6 min-w-0">
         
         {/* Page Header */}
         <div>
@@ -886,34 +884,98 @@ function ProfileContent() {
           </div>
         )}
 
-        {/* Tab Navigation */}
-        <div className="flex justify-center sm:justify-start items-center border-b border-border -mb-px">
-          {TABS.map((tab) => (
-            <a
-              key={tab.id}
-              href={`/profile#${tab.id}`}
-              onClick={(e) => {
-                if (!e.ctrlKey && !e.metaKey) {
-                  e.preventDefault()
-                  handleTabChange(tab.id)
-                }
-              }}
-              title={tab.label}
-              className={cn(
-                "flex items-center justify-center gap-2 flex-1 sm:flex-none px-3 sm:px-4 py-2.5 text-sm font-medium transition-colors border-b-2 -mb-px",
-                activeTab === tab.id
-                  ? "border-primary text-primary"
-                  : "border-transparent text-muted-foreground hover:text-foreground hover:border-border"
-              )}
-            >
-              <span className="flex-shrink-0">{tab.icon}</span>
-              <span className="hidden sm:inline whitespace-nowrap">{tab.label}</span>
-            </a>
-          ))}
-        </div>
+        {/* Two-column layout: Sidebar + Content */}
+        <div className="flex flex-col lg:flex-row gap-6 lg:gap-8">
+          
+          {/* Sidebar Navigation */}
+          <aside className="lg:w-56 lg:shrink-0">
+            {/* Mobile: Horizontal scroll tabs */}
+            <div className="lg:hidden flex overflow-x-auto pb-2 -mb-px border-b border-border gap-1">
+              {TABS.map((tab) => (
+                <a
+                  key={tab.id}
+                  href={`/profile#${tab.id}`}
+                  onClick={(e) => {
+                    if (!e.ctrlKey && !e.metaKey) {
+                      e.preventDefault()
+                      handleTabChange(tab.id)
+                    }
+                  }}
+                  className={cn(
+                    "flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-md whitespace-nowrap transition-colors",
+                    activeTab === tab.id
+                      ? "bg-primary/10 text-primary"
+                      : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+                  )}
+                >
+                  {tab.icon}
+                  <span>{tab.label}</span>
+                </a>
+              ))}
+            </div>
+            
+            {/* Desktop: Vertical sidebar */}
+            <nav className="hidden lg:flex flex-col gap-1 sticky top-24">
+              {TABS.map((tab) => (
+                <a
+                  key={tab.id}
+                  href={`/profile#${tab.id}`}
+                  onClick={(e) => {
+                    if (!e.ctrlKey && !e.metaKey) {
+                      e.preventDefault()
+                      handleTabChange(tab.id)
+                    }
+                  }}
+                  className={cn(
+                    "flex items-center gap-3 px-3 py-2.5 text-sm font-medium rounded-lg transition-all",
+                    activeTab === tab.id
+                      ? "bg-primary/10 text-primary border border-primary/20"
+                      : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+                  )}
+                >
+                  <span className={cn(
+                    "flex items-center justify-center",
+                    activeTab === tab.id ? "text-primary" : "text-muted-foreground"
+                  )}>
+                    {tab.icon}
+                  </span>
+                  <span>{tab.label}</span>
+                </a>
+              ))}
+              
+              {/* Quick Info Card */}
+              <div className="mt-6 p-4 rounded-lg border border-border bg-card/50">
+                <div className="flex items-center gap-3 mb-3">
+                  <div className="h-10 w-10 rounded-full bg-secondary/60 flex items-center justify-center overflow-hidden border border-border">
+                    {user?.avatarUrl ? (
+                      <img src={user.avatarUrl} alt="" className="h-full w-full object-cover" />
+                    ) : (
+                      <span className="text-sm font-semibold text-muted-foreground">
+                        {user?.name?.charAt(0)?.toUpperCase() || "?"}
+                      </span>
+                    )}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium truncate">{user?.name || "User"}</p>
+                    <p className="text-xs text-muted-foreground truncate">{user?.email}</p>
+                  </div>
+                </div>
+                {billingInfo && (
+                  <div className="flex items-center gap-2 text-xs">
+                    <Badge variant="secondary" className="capitalize">
+                      {billingInfo.plan.replace(/_/g, " ")}
+                    </Badge>
+                  </div>
+                )}
+              </div>
+            </nav>
+          </aside>
 
-        {/* ===================== ACCOUNT TAB ===================== */}
-        {activeTab === "account" && (
+          {/* Main Content Area */}
+          <div className="flex-1 min-w-0">
+
+        {/* ===================== GENERAL TAB ===================== */}
+        {activeTab === "general" && (
           <div className="flex flex-col gap-6">
             {/* Personal Information */}
             <Card>
@@ -1899,8 +1961,193 @@ function ProfileContent() {
           </div>
         )}
 
-        {/* ===================== API KEYS TAB ===================== */}
-        {activeTab === "api-keys" && (
+        {/* ===================== SECURITY TAB ===================== */}
+        {activeTab === "security" && (
+          <div className="flex flex-col gap-6">
+            {/* Password */}
+            <Card>
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle className="text-lg flex items-center gap-2">
+                      <Lock className="h-4 w-4 text-muted-foreground" />
+                      Password
+                    </CardTitle>
+                    <CardDescription>Update your account password.</CardDescription>
+                  </div>
+                  {!showPasswordForm && (
+                    <Button variant="outline" size="sm" onClick={() => setShowPasswordForm(true)}>
+                      Change Password
+                    </Button>
+                  )}
+                </div>
+              </CardHeader>
+              {showPasswordForm && (
+                <CardContent className="flex flex-col gap-4">
+                  <div className="flex flex-col gap-2">
+                    <Label htmlFor="sec-current-pw" className="text-sm">Current Password</Label>
+                    <Input
+                      id="sec-current-pw"
+                      type="password"
+                      value={currentPassword}
+                      onChange={(e) => setCurrentPassword(e.target.value)}
+                      className="bg-card h-10"
+                      placeholder="Enter current password"
+                    />
+                  </div>
+                  <div className="flex flex-col gap-2">
+                    <Label htmlFor="sec-new-pw" className="text-sm">New Password</Label>
+                    <Input
+                      id="sec-new-pw"
+                      type="password"
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                      className="bg-card h-10"
+                      placeholder="At least 8 characters"
+                    />
+                  </div>
+                  <div className="flex flex-col gap-2">
+                    <Label htmlFor="sec-confirm-new-pw" className="text-sm">Confirm New Password</Label>
+                    <Input
+                      id="sec-confirm-new-pw"
+                      type="password"
+                      value={confirmNewPassword}
+                      onChange={(e) => setConfirmNewPassword(e.target.value)}
+                      className="bg-card h-10"
+                      placeholder="Re-enter new password"
+                      onKeyDown={(e) => { if (e.key === "Enter") handleChangePassword() }}
+                    />
+                  </div>
+                  <div className="flex items-center gap-2 pt-1">
+                    <Button onClick={handleChangePassword} disabled={savingPassword}>
+                      <Save className="mr-2 h-4 w-4" />
+                      {savingPassword ? "Saving..." : "Update Password"}
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      onClick={() => {
+                        setShowPasswordForm(false)
+                        setCurrentPassword("")
+                        setNewPassword("")
+                        setConfirmNewPassword("")
+                      }}
+                    >
+                      Cancel
+                    </Button>
+                  </div>
+                </CardContent>
+              )}
+            </Card>
+
+            {/* Two-Factor Authentication */}
+            <Card className="bg-card border-border">
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle className="text-lg flex items-center gap-2">
+                      <Shield className="h-4 w-4 text-muted-foreground" />
+                      Two-Factor Authentication
+                    </CardTitle>
+                    <CardDescription>
+                      {totpEnabled
+                        ? `2FA is active via ${twoFactorMethod === "email" ? "email" : "authenticator app"}.`
+                        : "Add an extra layer of security to your account."}
+                    </CardDescription>
+                  </div>
+                  {totpEnabled ? (
+                    <Badge className="bg-emerald-500/10 text-emerald-500 border-emerald-500/20">
+                      {twoFactorMethod === "email" ? "Email" : "App"} Enabled
+                    </Badge>
+                  ) : (
+                    <Badge variant="secondary">Disabled</Badge>
+                  )}
+                </div>
+              </CardHeader>
+              <CardContent className="flex flex-col gap-4">
+                <p className="text-sm text-muted-foreground">
+                  Two-factor authentication adds an extra layer of security to your account by requiring a code 
+                  in addition to your password when signing in.
+                </p>
+                <div className="flex gap-2">
+                  <Button
+                    variant={totpEnabled ? "outline" : "default"}
+                    size="sm"
+                    onClick={() => {
+                      setActiveTab("general" as Tab)
+                      window.location.hash = "general"
+                    }}
+                  >
+                    {totpEnabled ? "Manage 2FA Settings" : "Set Up 2FA"}
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Active Sessions / Force Logout */}
+            <Card className="bg-card border-border">
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle className="text-lg flex items-center gap-2">
+                      <MonitorSmartphone className="h-4 w-4 text-muted-foreground" />
+                      Active Sessions
+                    </CardTitle>
+                    <CardDescription>
+                      Log out of all devices and browsers at once.
+                    </CardDescription>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <div className="flex flex-col gap-4">
+                  <p className="text-sm text-muted-foreground">
+                    If you suspect unauthorized access to your account or want to sign out everywhere, 
+                    use the button below. This will invalidate all active sessions including this one.
+                  </p>
+                  <Button
+                    variant="outline"
+                    className="self-start text-destructive border-destructive/30 hover:bg-destructive/10"
+                    onClick={handleForceLogout}
+                    disabled={forceLoggingOut}
+                  >
+                    {forceLoggingOut ? (
+                      <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Logging out...</>
+                    ) : (
+                      <><LogOut className="mr-2 h-4 w-4" />Log Out All Devices</>
+                    )}
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Security Notifications Quick Link */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <Bell className="h-4 w-4 text-muted-foreground" />
+                  Security Notifications
+                </CardTitle>
+                <CardDescription>
+                  Configure which security-related email notifications you receive.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setActiveTab("notifications" as Tab)
+                    window.location.hash = "notifications"
+                  }}
+                >
+                  Manage Notification Settings
+                </Button>
+              </CardContent>
+            </Card>
+          </div>
+        )}
+
+        {/* ===================== DEVELOPER TAB ===================== */}
+        {activeTab === "developer" && (
           <div className="flex flex-col gap-6">
             <Card>
               <CardHeader>
@@ -2038,13 +2285,18 @@ function ProfileContent() {
           </div>
         )}
 
-        {/* ===================== WEBHOOKS TAB ===================== */}
-        {activeTab === "webhooks" && (
-          <div className="flex flex-col gap-6">
+        {/* ===================== WEBHOOKS SECTION (renders in Developer tab) ===================== */}
+        {activeTab === "developer" && (
+          <>
+            {/* Section Header */}
+            <div className="flex items-center gap-2 pt-4">
+              <Webhook className="h-4 w-4 text-primary" />
+              <h3 className="text-sm font-semibold text-foreground">Webhooks</h3>
+            </div>
             <Card className="bg-card border-border">
               <CardHeader className="pb-3 pt-4 px-4">
                 <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                  <Webhook className="h-4 w-4 text-primary" />
+                  <Globe className="h-4 w-4 text-muted-foreground" />
                   Webhook Endpoints
                 </CardTitle>
                 <CardDescription className="text-xs text-muted-foreground">
@@ -2159,17 +2411,17 @@ function ProfileContent() {
                 </div>
               </CardContent>
             </Card>
-          </div>
-        )}
 
-        {/* ===================== SCHEDULES TAB ===================== */}
-        {activeTab === "schedules" && (
-          <div className="flex flex-col gap-6">
+            {/* Section Header */}
+            <div className="flex items-center gap-2 pt-2">
+              <CalendarClock className="h-4 w-4 text-primary" />
+              <h3 className="text-sm font-semibold text-foreground">Scheduled Scans</h3>
+            </div>
             <Card className="bg-card border-border">
               <CardHeader className="pb-3 pt-4 px-4">
                 <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                  <CalendarClock className="h-4 w-4 text-primary" />
-                  Scheduled Scans
+                  <Clock className="h-4 w-4 text-muted-foreground" />
+                  Schedule Configuration
                 </CardTitle>
                 <CardDescription className="text-xs text-muted-foreground">
                   Set URLs to auto-scan on a recurring schedule. Max 10 schedules.
@@ -2270,7 +2522,7 @@ function ProfileContent() {
                 </div>
               </CardContent>
             </Card>
-          </div>
+          </>
         )}
 
         {/* ===================== NOTIFICATIONS TAB ===================== */}
@@ -2461,8 +2713,8 @@ function ProfileContent() {
           </div>
         )}
 
-        {/* ===================== DATA & PRIVACY TAB ===================== */}
-        {activeTab === "data" && (
+        {/* ===================== PRIVACY TAB ===================== */}
+        {activeTab === "privacy" && (
           <div className="flex flex-col gap-6">
             {/* Privacy & Data Protection */}
             <Card className="bg-blue-500/5 border-blue-500/20">
@@ -2656,6 +2908,8 @@ function ProfileContent() {
             </Card>
           </div>
         )}
+          </div>{/* End Main Content Area */}
+        </div>{/* End Two-column layout */}
       </main>
 
       <Footer />
