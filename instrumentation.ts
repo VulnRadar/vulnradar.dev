@@ -572,7 +572,6 @@ export async function register() {
           INSERT INTO badges (name, display_name, description, icon, color, priority, is_limited)
           VALUES 
             ('beta_tester', 'Beta Tester', 'Early beta program participant', 'flask', '#10b981', 10, true),
-            ('early_supporter', 'Early Supporter', 'Supported the project early on', 'heart', '#ec4899', 9, true),
             ('founder', 'Founder', 'Original founding member', 'crown', '#f59e0b', 20, true),
             ('contributor', 'Contributor', 'Open source contributor', 'code', '#8b5cf6', 8, false),
             ('bug_hunter', 'Bug Hunter', 'Found and reported bugs', 'bug', '#ef4444', 7, false),
