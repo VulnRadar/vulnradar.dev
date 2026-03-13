@@ -52,46 +52,50 @@ function dismissNotification(cookieId: string, durationHours?: number | null): v
   setCookie(`dismissed_${cookieId}`, "1", durationHours)
 }
 
+// Design tokens matching site aesthetic - uses CSS variables for theme consistency
 const variantConfig = {
   info: {
-    gradient: "from-blue-500/20 via-blue-500/10 to-transparent",
-    iconBg: "bg-blue-500/20",
-    iconColor: "text-blue-400",
-    borderColor: "border-blue-500/30",
-    accentColor: "text-blue-400",
+    bg: "bg-primary/10",
+    border: "border-primary/20",
+    iconBg: "bg-primary/15",
+    iconColor: "text-primary",
+    progressBar: "bg-primary",
     icon: Info,
   },
   success: {
-    gradient: "from-emerald-500/20 via-emerald-500/10 to-transparent",
-    iconBg: "bg-emerald-500/20",
-    iconColor: "text-emerald-400",
-    borderColor: "border-emerald-500/30",
-    accentColor: "text-emerald-400",
+    bg: "bg-[hsl(var(--success))]/10",
+    border: "border-[hsl(var(--success))]/20",
+    iconBg: "bg-[hsl(var(--success))]/15",
+    iconColor: "text-[hsl(var(--success))]",
+    progressBar: "bg-[hsl(var(--success))]",
     icon: CheckCircle2,
   },
   warning: {
-    gradient: "from-amber-500/20 via-amber-500/10 to-transparent",
-    iconBg: "bg-amber-500/20",
-    iconColor: "text-amber-400",
-    borderColor: "border-amber-500/30",
-    accentColor: "text-amber-400",
+    bg: "bg-[hsl(var(--warning))]/10",
+    border: "border-[hsl(var(--warning))]/20",
+    iconBg: "bg-[hsl(var(--warning))]/15",
+    iconColor: "text-[hsl(var(--warning))]",
+    progressBar: "bg-[hsl(var(--warning))]",
     icon: AlertTriangle,
   },
   error: {
-    gradient: "from-red-500/20 via-red-500/10 to-transparent",
-    iconBg: "bg-red-500/20",
-    iconColor: "text-red-400",
-    borderColor: "border-red-500/30",
-    accentColor: "text-red-400",
+    bg: "bg-destructive/10",
+    border: "border-destructive/20",
+    iconBg: "bg-destructive/15",
+    iconColor: "text-destructive",
+    progressBar: "bg-destructive",
     icon: AlertCircle,
   },
 }
 
-// Banner - full width at top of page
+// Banner - full width at top of page, matches header style
 export function SiteBanner({ notification }: { notification: Notification }) {
   const [dismissed, setDismissed] = useState(() => isNotificationDismissed(notification.cookie_id))
+  const [mounted, setMounted] = useState(false)
   const config = variantConfig[notification.variant]
   const Icon = config.icon
+
+  useEffect(() => setMounted(true), [])
 
   const handleDismiss = useCallback(() => {
     dismissNotification(notification.cookie_id, notification.dismiss_duration_hours)
@@ -101,35 +105,39 @@ export function SiteBanner({ notification }: { notification: Notification }) {
   if (dismissed) return null
 
   return (
-    <div className={cn(
-      "relative overflow-hidden border-b bg-card/80 backdrop-blur-sm",
-      config.borderColor
-    )}>
-      {/* Gradient accent */}
-      <div className={cn("absolute inset-0 bg-gradient-to-r", config.gradient)} />
+    <div 
+      className={cn(
+        "relative border-b bg-background/80 backdrop-blur-lg transition-all duration-300",
+        config.border,
+        mounted ? "opacity-100 translate-y-0" : "opacity-0 -translate-y-2"
+      )}
+    >
+      {/* Subtle left accent bar */}
+      <div className={cn("absolute left-0 top-0 bottom-0 w-1", config.progressBar)} />
       
-      <div className="relative max-w-7xl mx-auto px-4 py-3 flex items-center justify-between gap-4">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-2.5 flex items-center justify-between gap-4">
         <div className="flex items-center gap-3 flex-1 min-w-0">
-          <div className={cn("flex-shrink-0 p-2 rounded-lg", config.iconBg)}>
+          <div className={cn("flex-shrink-0 p-1.5 rounded-md", config.iconBg)}>
             <Megaphone className={cn("h-4 w-4", config.iconColor)} />
           </div>
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 flex-wrap">
-              {notification.title && (
-                <span className="font-semibold text-sm text-foreground">{notification.title}</span>
-              )}
-              <span className="text-sm text-muted-foreground">{notification.message}</span>
-            </div>
+          <div className="flex items-center gap-2 flex-wrap min-w-0">
+            {notification.title && (
+              <span className="font-medium text-sm text-foreground">{notification.title}</span>
+            )}
+            {notification.title && notification.message && (
+              <span className="text-muted-foreground hidden sm:inline">—</span>
+            )}
+            <span className="text-sm text-muted-foreground truncate">{notification.message}</span>
           </div>
         </div>
-        <div className="flex items-center gap-2 flex-shrink-0">
+        <div className="flex items-center gap-1.5 flex-shrink-0">
           {notification.action_url && (
-            <Button size="sm" variant="ghost" asChild className={cn("h-8 text-xs font-medium", config.accentColor)}>
+            <Button size="sm" variant="ghost" asChild className="h-7 px-2.5 text-xs font-medium text-primary hover:text-primary hover:bg-primary/10">
               <a
                 href={notification.action_url}
                 target={notification.action_external ? "_blank" : "_self"}
                 rel={notification.action_external ? "noopener noreferrer" : undefined}
-                className="flex items-center gap-1.5"
+                className="flex items-center gap-1"
               >
                 {notification.action_label || "Learn more"}
                 {notification.action_external && <ExternalLink className="h-3 w-3" />}
@@ -139,7 +147,8 @@ export function SiteBanner({ notification }: { notification: Notification }) {
           {notification.is_dismissible && (
             <button
               onClick={handleDismiss}
-              className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+              className="p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+              aria-label="Dismiss notification"
             >
               <X className="h-4 w-4" />
             </button>
@@ -150,10 +159,13 @@ export function SiteBanner({ notification }: { notification: Notification }) {
   )
 }
 
-// Modal - centered overlay with glassmorphism
+// Modal - centered overlay matching site card/popover styles
 export function SiteModal({ notification, onClose }: { notification: Notification; onClose: () => void }) {
+  const [mounted, setMounted] = useState(false)
   const config = variantConfig[notification.variant]
   const Icon = config.icon
+
+  useEffect(() => setMounted(true), [])
 
   const handleClose = useCallback(() => {
     if (notification.is_dismissible) {
@@ -164,74 +176,75 @@ export function SiteModal({ notification, onClose }: { notification: Notificatio
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      {/* Backdrop */}
+      {/* Backdrop - matches site overlay style */}
       <div 
-        className="absolute inset-0 bg-background/80 backdrop-blur-sm"
+        className={cn(
+          "absolute inset-0 bg-background/80 backdrop-blur-sm transition-opacity duration-200",
+          mounted ? "opacity-100" : "opacity-0"
+        )}
         onClick={notification.is_dismissible ? handleClose : undefined}
       />
       
-      {/* Modal */}
+      {/* Modal card */}
       <div className={cn(
-        "relative w-full max-w-md rounded-2xl border bg-card/95 backdrop-blur-xl shadow-2xl overflow-hidden",
-        config.borderColor
+        "relative w-full max-w-md rounded-lg border border-border bg-card shadow-lg transition-all duration-200",
+        mounted ? "opacity-100 scale-100" : "opacity-0 scale-95"
       )}>
-        {/* Gradient header accent */}
-        <div className={cn("absolute top-0 left-0 right-0 h-32 bg-gradient-to-b opacity-50", config.gradient)} />
-        
-        <div className="relative p-6">
-          {/* Header */}
-          <div className="flex items-start gap-4 mb-4">
-            <div className={cn("flex-shrink-0 p-3 rounded-xl", config.iconBg)}>
-              <Icon className={cn("h-6 w-6", config.iconColor)} />
-            </div>
-            <div className="flex-1 min-w-0 pt-1">
-              {notification.title && (
-                <h2 className="text-lg font-semibold text-foreground">{notification.title}</h2>
-              )}
-            </div>
-            {notification.is_dismissible && (
-              <button 
-                onClick={handleClose} 
-                className="flex-shrink-0 p-2 -m-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
-              >
-                <X className="h-5 w-5" />
-              </button>
+        {/* Header */}
+        <div className={cn("flex items-start gap-3 p-4 border-b border-border", config.bg)}>
+          <div className={cn("flex-shrink-0 p-2 rounded-md", config.iconBg)}>
+            <Icon className={cn("h-5 w-5", config.iconColor)} />
+          </div>
+          <div className="flex-1 min-w-0 pt-0.5">
+            {notification.title && (
+              <h2 className="text-base font-semibold text-foreground">{notification.title}</h2>
             )}
           </div>
-          
-          {/* Content */}
-          <p className="text-sm text-muted-foreground leading-relaxed mb-6 pl-[52px]">
+          {notification.is_dismissible && (
+            <button 
+              onClick={handleClose} 
+              className="flex-shrink-0 p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+              aria-label="Close modal"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          )}
+        </div>
+        
+        {/* Content */}
+        <div className="p-4">
+          <p className="text-sm text-muted-foreground leading-relaxed">
             {notification.message}
           </p>
-          
-          {/* Actions */}
-          <div className="flex items-center justify-end gap-3 pl-[52px]">
-            {notification.is_dismissible && (
-              <Button variant="ghost" size="sm" onClick={handleClose} className="h-9">
-                Dismiss
-              </Button>
-            )}
-            {notification.action_url && (
-              <Button size="sm" asChild className="h-9">
-                <a
-                  href={notification.action_url}
-                  target={notification.action_external ? "_blank" : "_self"}
-                  rel={notification.action_external ? "noopener noreferrer" : undefined}
-                  className="flex items-center gap-1.5"
-                >
-                  {notification.action_label || "Learn more"}
-                  {notification.action_external && <ExternalLink className="h-3.5 w-3.5" />}
-                </a>
-              </Button>
-            )}
-          </div>
+        </div>
+        
+        {/* Footer */}
+        <div className="flex items-center justify-end gap-2 p-4 pt-0">
+          {notification.is_dismissible && (
+            <Button variant="ghost" size="sm" onClick={handleClose}>
+              Dismiss
+            </Button>
+          )}
+          {notification.action_url && (
+            <Button size="sm" asChild>
+              <a
+                href={notification.action_url}
+                target={notification.action_external ? "_blank" : "_self"}
+                rel={notification.action_external ? "noopener noreferrer" : undefined}
+                className="flex items-center gap-1.5"
+              >
+                {notification.action_label || "Learn more"}
+                {notification.action_external && <ExternalLink className="h-3.5 w-3.5" />}
+              </a>
+            </Button>
+          )}
         </div>
       </div>
     </div>
   )
 }
 
-// Toast - sleek notification in corner
+// Toast - compact notification in corner
 export function SiteToast({ notification, onDismiss }: { notification: Notification; onDismiss: () => void }) {
   const [dismissed, setDismissed] = useState(() => isNotificationDismissed(notification.cookie_id))
   const [exiting, setExiting] = useState(false)
@@ -245,14 +258,14 @@ export function SiteToast({ notification, onDismiss }: { notification: Notificat
       dismissNotification(notification.cookie_id, notification.dismiss_duration_hours)
       setDismissed(true)
       onDismiss()
-    }, 200)
+    }, 150)
   }, [notification.cookie_id, notification.dismiss_duration_hours, onDismiss])
 
   // Auto-dismiss with progress bar
   useEffect(() => {
     if (!notification.is_dismissible) return
     
-    const duration = 8000
+    const duration = 6000
     const interval = 50
     const decrement = (interval / duration) * 100
     
@@ -273,40 +286,38 @@ export function SiteToast({ notification, onDismiss }: { notification: Notificat
   return (
     <div 
       className={cn(
-        "pointer-events-auto w-full max-w-sm rounded-xl border bg-card/95 backdrop-blur-xl shadow-2xl overflow-hidden transition-all duration-300",
-        config.borderColor,
-        exiting ? "opacity-0 translate-x-8 scale-95" : "opacity-100 translate-x-0 scale-100"
+        "pointer-events-auto w-full max-w-sm rounded-lg border border-border bg-card shadow-lg overflow-hidden transition-all duration-150",
+        exiting ? "opacity-0 translate-x-4 scale-95" : "opacity-100 translate-x-0 scale-100"
       )}
     >
       {/* Progress bar */}
       {notification.is_dismissible && (
-        <div className="h-1 bg-muted/30">
+        <div className="h-0.5 bg-muted">
           <div 
-            className={cn("h-full transition-all duration-100 ease-linear", config.iconBg.replace('/20', ''))}
+            className={cn("h-full transition-all duration-100 ease-linear", config.progressBar)}
             style={{ width: `${progress}%` }}
           />
         </div>
       )}
       
-      <div className="p-4">
-        <div className="flex items-start gap-3">
-          <div className={cn("flex-shrink-0 p-2 rounded-lg", config.iconBg)}>
+      <div className="p-3">
+        <div className="flex items-start gap-2.5">
+          <div className={cn("flex-shrink-0 p-1.5 rounded-md mt-0.5", config.iconBg)}>
             <Icon className={cn("h-4 w-4", config.iconColor)} />
           </div>
-          <div className="flex-1 min-w-0 pt-0.5">
+          <div className="flex-1 min-w-0">
             {notification.title && (
-              <p className="text-sm font-semibold text-foreground mb-0.5">{notification.title}</p>
+              <p className="text-sm font-medium text-foreground">{notification.title}</p>
             )}
-            <p className="text-sm text-muted-foreground leading-relaxed">{notification.message}</p>
+            <p className={cn("text-sm text-muted-foreground leading-snug", notification.title && "mt-0.5")}>
+              {notification.message}
+            </p>
             {notification.action_url && (
               <a
                 href={notification.action_url}
                 target={notification.action_external ? "_blank" : "_self"}
                 rel={notification.action_external ? "noopener noreferrer" : undefined}
-                className={cn(
-                  "inline-flex items-center gap-1 text-sm font-medium mt-2 hover:underline underline-offset-2",
-                  config.accentColor
-                )}
+                className="inline-flex items-center gap-1 text-sm font-medium text-primary mt-1.5 hover:underline underline-offset-2"
               >
                 {notification.action_label || "Learn more"}
                 {notification.action_external && <ExternalLink className="h-3 w-3" />}
@@ -316,9 +327,10 @@ export function SiteToast({ notification, onDismiss }: { notification: Notificat
           {notification.is_dismissible && (
             <button
               onClick={handleDismiss}
-              className="flex-shrink-0 p-1.5 -m-1 rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+              className="flex-shrink-0 p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+              aria-label="Dismiss toast"
             >
-              <X className="h-4 w-4" />
+              <X className="h-3.5 w-3.5" />
             </button>
           )}
         </div>
