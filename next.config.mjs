@@ -41,20 +41,22 @@ const nextConfig = {
           {
             key: "Content-Security-Policy",
             value:
-              "default-src 'self'; " +
-              "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://challenges.cloudflare.com https://static.cloudflareinsights.com https://embed.tawk.to https://*.tawk.to https:; " +
-              "script-src-elem 'self' 'unsafe-inline' https://challenges.cloudflare.com https://static.cloudflareinsights.com https://embed.tawk.to https://*.tawk.to https:; " +
-              "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://embed.tawk.to https://*.tawk.to https:; " +
-              "style-src-elem 'self' 'unsafe-inline' https://fonts.googleapis.com https://embed.tawk.to https://*.tawk.to https:; " +
-              "font-src 'self' https://fonts.gstatic.com https://static.cloudflareinsights.com https:; " +
-              "img-src 'self' data: blob: https:; " +
-              "connect-src 'self' https://challenges.cloudflare.com https://embed.tawk.to https://*.tawk.to https://va.tawk.to wss://*.tawk.to https://static.cloudflareinsights.com https: wss:; " +
-              "frame-src https://challenges.cloudflare.com https://embed.tawk.to https://*.tawk.to https:; " +
-              "frame-ancestors 'none'; " +
-              "base-uri 'self'; " +
-              "form-action 'self'; " +
-              "object-src 'none'; " +
-              "upgrade-insecure-requests",
+                "default-src 'self'; " +
+                // Removed trailing 'https:' wildcard — now explicit domains only
+                "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://challenges.cloudflare.com https://static.cloudflareinsights.com https://embed.tawk.to https://*.tawk.to; " +
+                "script-src-elem 'self' 'unsafe-inline' https://challenges.cloudflare.com https://static.cloudflareinsights.com https://embed.tawk.to https://*.tawk.to; " +
+                // Removed trailing 'https:' wildcard from style-src
+                "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://embed.tawk.to https://*.tawk.to; " +
+                "style-src-elem 'self' 'unsafe-inline' https://fonts.googleapis.com https://embed.tawk.to https://*.tawk.to; " +
+                "font-src 'self' https://fonts.gstatic.com https://static.cloudflareinsights.com; " +
+                "img-src 'self' data: blob: https:; " +
+                "connect-src 'self' https://challenges.cloudflare.com https://embed.tawk.to https://*.tawk.to https://va.tawk.to wss://*.tawk.to https://static.cloudflareinsights.com https: wss:; " +
+                "frame-src https://challenges.cloudflare.com https://embed.tawk.to https://*.tawk.to; " +
+                "frame-ancestors 'none'; " +
+                "base-uri 'self'; " +
+                "form-action 'self'; " +
+                "object-src 'none'; " +
+                "upgrade-insecure-requests",
           },
           {
             key: "X-Frame-Options",
@@ -81,8 +83,9 @@ const nextConfig = {
             value: "same-origin-allow-popups",
           },
           {
+            // Changed from "off" to "on" — scanner flagged "off" as a performance issue
             key: "X-DNS-Prefetch-Control",
-            value: "off",
+            value: "on",
           },
           {
             key: "Strict-Transport-Security",
@@ -92,9 +95,16 @@ const nextConfig = {
             key: "Cross-Origin-Embedder-Policy",
             value: "unsafe-none",
           },
+          // Removed Expect-CT — deprecated since 2022, ignored by modern browsers
           {
-            key: "Expect-CT",
-            value: "max-age=86400, enforce",
+            // Added: requests per-origin process isolation
+            key: "Origin-Agent-Cluster",
+            value: "?1",
+          },
+          {
+            // Added: missing Document-Policy header
+            key: "Document-Policy",
+            value: "force-load-at-top",
           },
         ],
       },
