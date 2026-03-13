@@ -133,8 +133,8 @@ export async function GET(request: NextRequest) {
         -- Activity tracking fields
         sa.last_heartbeat,
         sa.current_section,
-        EXTRACT(EPOCH FROM (NOW() - COALESCE(sa.last_heartbeat, NOW())))::int as seconds_since_heartbeat,
-        CASE WHEN EXTRACT(EPOCH FROM (NOW() - COALESCE(sa.last_heartbeat, NOW()))) < 120 THEN true ELSE false END as is_active,
+        CASE WHEN sa.last_heartbeat IS NOT NULL THEN EXTRACT(EPOCH FROM (NOW() - sa.last_heartbeat))::int ELSE NULL END as seconds_since_heartbeat,
+        CASE WHEN sa.last_heartbeat IS NOT NULL AND EXTRACT(EPOCH FROM (NOW() - sa.last_heartbeat)) < 120 THEN true ELSE false END as is_active,
         (SELECT COUNT(*) FROM admin_audit_log al WHERE al.admin_id = u.id AND al.created_at > NOW() - INTERVAL '5 minutes')::int as recent_actions
       FROM users u
       LEFT JOIN staff_activity sa ON sa.user_id = u.id

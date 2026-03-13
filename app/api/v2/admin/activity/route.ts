@@ -26,20 +26,24 @@ export async function POST(request: NextRequest) {
 
     // Update or insert activity record
     const result = await pool.query(
-      `INSERT INTO staff_activity (user_id, last_heartbeat, current_section, ip_address, user_agent)
-       VALUES ($1, NOW(), $2, $3, $4)
+      `INSERT INTO staff_activity (user_id, last_heartbeat, current_section, ip_address, user_agent, updated_at)
+       VALUES ($1, NOW(), $2, $3, $4, NOW())
        ON CONFLICT (user_id) DO UPDATE SET
          last_heartbeat = NOW(),
          current_section = $2,
          ip_address = $3,
-         user_agent = $4
-       RETURNING user_id, last_heartbeat, is_active`,
+         user_agent = $4,
+         updated_at = NOW()
+       RETURNING user_id, last_heartbeat, current_section`,
       [session.userId, section || "dashboard", ip, userAgent]
     )
 
     return NextResponse.json({
       success: true,
-      activity: result.rows[0],
+      activity: {
+        ...result.rows[0],
+        is_active: true, // Just sent heartbeat, so is active
+      },
     })
   } catch (error) {
     console.error("[Admin Activity] Heartbeat error:", error)
@@ -64,6 +68,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Get all staff with their activity status
+    // is_active = true only if heartbeat exists AND was within last 120 seconds
     const staffResult = await pool.query(
       `SELECT 
          u.id,
@@ -72,15 +77,15 @@ export async function GET(request: NextRequest) {
          u.role,
          u.avatar_url,
          sa.last_heartbeat,
-         sa.is_active,
          sa.current_section,
-         EXTRACT(EPOCH FROM (NOW() - sa.last_heartbeat))::INT as seconds_since_heartbeat,
+         CASE WHEN sa.last_heartbeat IS NOT NULL THEN EXTRACT(EPOCH FROM (NOW() - sa.last_heartbeat))::INT ELSE NULL END as seconds_since_heartbeat,
+         CASE WHEN sa.last_heartbeat IS NOT NULL AND EXTRACT(EPOCH FROM (NOW() - sa.last_heartbeat)) < 120 THEN true ELSE false END as is_active,
          (SELECT COUNT(*) FROM admin_audit_log al WHERE al.admin_id = u.id AND al.created_at > NOW() - INTERVAL '5 minutes')::INT as recent_actions
        FROM users u
        LEFT JOIN staff_activity sa ON u.id = sa.user_id
        WHERE u.role IN ('admin', 'moderator', 'support')
        ORDER BY
-         CASE WHEN sa.is_active THEN 0 ELSE 1 END,
+         CASE WHEN sa.last_heartbeat IS NOT NULL AND EXTRACT(EPOCH FROM (NOW() - sa.last_heartbeat)) < 120 THEN 0 ELSE 1 END,
          sa.last_heartbeat DESC NULLS LAST,
          u.role IN ('admin') DESC,
          u.email ASC`
