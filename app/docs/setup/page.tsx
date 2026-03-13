@@ -66,15 +66,15 @@ export default function SetupPage() {
 
         {/* Quick Options */}
         <div className="grid sm:grid-cols-3 gap-4 mt-8">
-          <a href="#installation" className="p-4 rounded-lg bg-card border border-border/40 hover:border-primary/30 transition-colors">
+          <a href="#installation" className="p-4 rounded-lg bg-card border border-border/40 hover:border-accent transition-colors">
             <div className="text-lg font-bold text-primary mb-1">Local Dev</div>
             <div className="text-xs text-muted-foreground">Clone and run locally</div>
           </a>
-          <a href="#docker" className="p-4 rounded-lg bg-card border border-border/40 hover:border-primary/30 transition-colors">
+          <a href="#docker" className="p-4 rounded-lg bg-card border border-border/40 hover:border-accent transition-colors">
             <div className="text-lg font-bold text-primary mb-1">Docker</div>
             <div className="text-xs text-muted-foreground">Deploy in 5 minutes</div>
           </a>
-          <a href="#deployment" className="p-4 rounded-lg bg-card border border-border/40 hover:border-primary/30 transition-colors">
+          <a href="#deployment" className="p-4 rounded-lg bg-card border border-border/40 hover:border-accent transition-colors">
             <div className="text-lg font-bold text-primary mb-1">Vercel</div>
             <div className="text-xs text-muted-foreground">One-click deploy</div>
           </a>
@@ -556,7 +556,7 @@ API_KEY_ENCRYPTION_KEY=your-64-character-hex-key
 
 # ─────────────────────────────────────────────────────────────────────────
 # SMTP EMAIL CONFIGURATION (Server-side - Optional)
-# ─────────────────────────────────────────────────────────────────────────
+# ───────────────────────────────��─────────────────────────────────────────
 # Used for sending transactional emails (password resets, notifications, etc.)
 SMTP_HOST=smtp.protonmail.ch
 SMTP_PORT=587
@@ -587,7 +587,7 @@ DATABASE_SSL=false
 
 # ─────────────────────────────────────────────────────────────────────────
 # APPLICATION (Client-side - NEXT_PUBLIC_* - Required)
-# ─────────────────────────────────────────────────────────────────────────
+# ────────────────���────────────────────────────────────────────────────────
 # Public URL where your app is accessible. Used in emails, redirects, and client-side code.
 NEXT_PUBLIC_APP_URL=https://yourdomain.com
 

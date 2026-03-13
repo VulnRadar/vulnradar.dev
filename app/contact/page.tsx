@@ -220,7 +220,7 @@ export default function ContactPage() {
                     { icon: FileText, label: "Changelog", href: "/changelog", desc: "Latest updates" },
                     { icon: Mail, label: "Email Us", href: `mailto:${SUPPORT_EMAIL}`, desc: SUPPORT_EMAIL },
                   ].map((link) => (
-                      <Link key={link.label} href={link.href} className="flex items-center gap-3 p-3 rounded-xl border border-border bg-card hover:bg-muted/50 hover:border-primary/20 transition-all">
+                      <Link key={link.label} href={link.href} className="flex items-center gap-3 p-3 rounded-xl border border-border bg-card hover:bg-muted/50 hover:border-accent transition-all">
                         <div className="flex items-center justify-center w-9 h-9 rounded-lg bg-primary/10 shrink-0">
                           <link.icon className="h-4 w-4 text-primary" />
                         </div>
@@ -245,7 +245,7 @@ export default function ContactPage() {
                                 "flex flex-col items-center gap-2 p-4 rounded-xl border transition-all text-center",
                                 category === cat.id
                                     ? "border-primary bg-primary/5"
-                                    : "border-border bg-card hover:bg-muted/50 hover:border-primary/20"
+                                    : "border-border bg-card hover:bg-muted/50 hover:border-accent"
                             )}
                         >
                           <cat.icon className={cn("h-5 w-5", category === cat.id ? "text-primary" : "text-muted-foreground")} />

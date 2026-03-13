@@ -142,8 +142,8 @@ export default function LandingPage() {
             
             <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
               {/* Feature cards */}
-              <div className="group p-6 rounded-xl border border-border bg-card hover:border-primary/30 transition-all duration-200">
-                <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center mb-4 group-hover:bg-primary/20 transition-colors">
+              <div className="group p-6 rounded-xl border border-border bg-card hover:border-accent transition-all duration-200">
+                <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center mb-4 group-hover:bg-accent transition-colors">
                   <Zap className="h-5 w-5 text-primary" />
                 </div>
                 <h3 className="text-lg font-semibold mb-2">Lightning Fast</h3>
@@ -152,8 +152,8 @@ export default function LandingPage() {
                 </p>
               </div>
 
-              <div className="group p-6 rounded-xl border border-border bg-card hover:border-primary/30 transition-all duration-200">
-                <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center mb-4 group-hover:bg-primary/20 transition-colors">
+              <div className="group p-6 rounded-xl border border-border bg-card hover:border-accent transition-all duration-200">
+                <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center mb-4 group-hover:bg-accent transition-colors">
                   <Eye className="h-5 w-5 text-primary" />
                 </div>
                 <h3 className="text-lg font-semibold mb-2">Deep Analysis</h3>
@@ -162,8 +162,8 @@ export default function LandingPage() {
                 </p>
               </div>
 
-              <div className="group p-6 rounded-xl border border-border bg-card hover:border-primary/30 transition-all duration-200">
-                <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center mb-4 group-hover:bg-primary/20 transition-colors">
+              <div className="group p-6 rounded-xl border border-border bg-card hover:border-accent transition-all duration-200">
+                <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center mb-4 group-hover:bg-accent transition-colors">
                   <Code className="h-5 w-5 text-primary" />
                 </div>
                 <h3 className="text-lg font-semibold mb-2">Developer First</h3>
@@ -172,8 +172,8 @@ export default function LandingPage() {
                 </p>
               </div>
 
-              <div className="group p-6 rounded-xl border border-border bg-card hover:border-primary/30 transition-all duration-200">
-                <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center mb-4 group-hover:bg-primary/20 transition-colors">
+              <div className="group p-6 rounded-xl border border-border bg-card hover:border-accent transition-all duration-200">
+                <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center mb-4 group-hover:bg-accent transition-colors">
                   <Users className="h-5 w-5 text-primary" />
                 </div>
                 <h3 className="text-lg font-semibold mb-2">Team Collaboration</h3>
@@ -182,8 +182,8 @@ export default function LandingPage() {
                 </p>
               </div>
 
-              <div className="group p-6 rounded-xl border border-border bg-card hover:border-primary/30 transition-all duration-200">
-                <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center mb-4 group-hover:bg-primary/20 transition-colors">
+              <div className="group p-6 rounded-xl border border-border bg-card hover:border-accent transition-all duration-200">
+                <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center mb-4 group-hover:bg-accent transition-colors">
                   <Cpu className="h-5 w-5 text-primary" />
                 </div>
                 <h3 className="text-lg font-semibold mb-2">Scheduled Scans</h3>
@@ -192,8 +192,8 @@ export default function LandingPage() {
                 </p>
               </div>
 
-              <div className="group p-6 rounded-xl border border-border bg-card hover:border-primary/30 transition-all duration-200">
-                <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center mb-4 group-hover:bg-primary/20 transition-colors">
+              <div className="group p-6 rounded-xl border border-border bg-card hover:border-accent transition-all duration-200">
+                <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center mb-4 group-hover:bg-accent transition-colors">
                   <Lock className="h-5 w-5 text-primary" />
                 </div>
                 <h3 className="text-lg font-semibold mb-2">Privacy Focused</h3>

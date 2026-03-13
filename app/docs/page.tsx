@@ -173,9 +173,9 @@ export default function DocsPage() {
         
         <div className="grid md:grid-cols-2 gap-6">
           {/* API Reference */}
-          <Card className="p-6 border-border/40 hover:border-primary/30 transition-all duration-200 group">
+          <Card className="p-6 border-border/40 hover:border-accent transition-all duration-200 group">
             <div className="flex items-center gap-3 mb-4">
-              <div className="flex items-center justify-center w-10 h-10 rounded-lg bg-primary/10 group-hover:bg-primary/20 transition-colors">
+              <div className="flex items-center justify-center w-10 h-10 rounded-lg bg-primary/10 group-hover:bg-accent transition-colors">
                 <Zap className="h-5 w-5 text-primary" />
               </div>
               <div>
@@ -199,7 +199,7 @@ export default function DocsPage() {
                 </li>
               ))}
             </ul>
-            <Button asChild variant="outline" className="w-full group-hover:bg-primary group-hover:text-primary-foreground transition-colors">
+            <Button asChild variant="outline" className="w-full group-hover:bg-accent group-hover:text-accent-foreground transition-colors">
               <Link href="/docs/api" className="flex items-center justify-center gap-2">
                 View API Reference
                 <ArrowRight className="h-4 w-4" />
@@ -208,9 +208,9 @@ export default function DocsPage() {
           </Card>
 
           {/* Setup Guide */}
-          <Card className="p-6 border-border/40 hover:border-primary/30 transition-all duration-200 group">
+          <Card className="p-6 border-border/40 hover:border-accent transition-all duration-200 group">
             <div className="flex items-center gap-3 mb-4">
-              <div className="flex items-center justify-center w-10 h-10 rounded-lg bg-primary/10 group-hover:bg-primary/20 transition-colors">
+              <div className="flex items-center justify-center w-10 h-10 rounded-lg bg-primary/10 group-hover:bg-accent transition-colors">
                 <Code2 className="h-5 w-5 text-primary" />
               </div>
               <div>
@@ -234,7 +234,7 @@ export default function DocsPage() {
                 </li>
               ))}
             </ul>
-            <Button asChild variant="outline" className="w-full group-hover:bg-primary group-hover:text-primary-foreground transition-colors">
+            <Button asChild variant="outline" className="w-full group-hover:bg-accent group-hover:text-accent-foreground transition-colors">
               <Link href="/docs/setup" className="flex items-center justify-center gap-2">
                 View Setup Guide
                 <ArrowRight className="h-4 w-4" />
@@ -243,9 +243,9 @@ export default function DocsPage() {
           </Card>
 
           {/* Developer Guide */}
-          <Card className="p-6 border-border/40 hover:border-primary/30 transition-all duration-200 group">
+          <Card className="p-6 border-border/40 hover:border-accent transition-all duration-200 group">
             <div className="flex items-center gap-3 mb-4">
-              <div className="flex items-center justify-center w-10 h-10 rounded-lg bg-primary/10 group-hover:bg-primary/20 transition-colors">
+              <div className="flex items-center justify-center w-10 h-10 rounded-lg bg-primary/10 group-hover:bg-accent transition-colors">
                 <Terminal className="h-5 w-5 text-primary" />
               </div>
               <div>
@@ -269,7 +269,7 @@ export default function DocsPage() {
                 </li>
               ))}
             </ul>
-            <Button asChild variant="outline" className="w-full group-hover:bg-primary group-hover:text-primary-foreground transition-colors">
+            <Button asChild variant="outline" className="w-full group-hover:bg-accent group-hover:text-accent-foreground transition-colors">
               <Link href="/docs/developers" className="flex items-center justify-center gap-2">
                 View Developer Guide
                 <ArrowRight className="h-4 w-4" />
@@ -278,9 +278,9 @@ export default function DocsPage() {
           </Card>
 
           {/* Changelog */}
-          <Card className="p-6 border-border/40 hover:border-primary/30 transition-all duration-200 group">
+          <Card className="p-6 border-border/40 hover:border-accent transition-all duration-200 group">
             <div className="flex items-center gap-3 mb-4">
-              <div className="flex items-center justify-center w-10 h-10 rounded-lg bg-primary/10 group-hover:bg-primary/20 transition-colors">
+              <div className="flex items-center justify-center w-10 h-10 rounded-lg bg-primary/10 group-hover:bg-accent transition-colors">
                 <BookOpen className="h-5 w-5 text-primary" />
               </div>
               <div>
@@ -304,7 +304,7 @@ export default function DocsPage() {
                 </li>
               ))}
             </ul>
-            <Button asChild variant="outline" className="w-full group-hover:bg-primary group-hover:text-primary-foreground transition-colors">
+            <Button asChild variant="outline" className="w-full group-hover:bg-accent group-hover:text-accent-foreground transition-colors">
               <Link href="/changelog" className="flex items-center justify-center gap-2">
                 View Changelog
                 <ArrowRight className="h-4 w-4" />

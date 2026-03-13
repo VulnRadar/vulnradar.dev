@@ -132,7 +132,7 @@ export function CrawlUrlSelector({ urls, isLoading, onConfirm, onCancel }: Crawl
                       type="button"
                       onClick={() => toggleUrl(url)}
                       className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-left transition-colors ${
-                        isChecked ? "bg-primary/5 hover:bg-primary/10" : "hover:bg-muted/50"
+                        isChecked ? "bg-accent/50 hover:bg-accent" : "hover:bg-accent/50"
                       }`}
                     >
                       {isChecked ? (
