@@ -8,6 +8,7 @@ import { BackupCodesModal } from '@/components/notification-center'
 import { DiscordProfileModalWrapper } from '@/components/discord-profile-modal-wrapper'
 import { AuthProvider } from '@/components/auth-provider'
 import { StaffHeartbeat } from '@/components/staff-heartbeat'
+import { SiteNotificationsWrapper } from '@/components/site-notifications'
 import { APP_NAME, APP_DESCRIPTION, APP_URL, APP_VERSION, LOGO_URL, STAFF_ROLES } from '@/lib/constants'
 
 import './globals.css'
@@ -93,6 +94,7 @@ export default function RootLayout({
         >
           <AuthProvider>
             <StaffHeartbeat />
+            <SiteNotificationsWrapper />
             <TosGate>
               {children}
             </TosGate>

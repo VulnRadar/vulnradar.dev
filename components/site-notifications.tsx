@@ -185,6 +185,73 @@ export function SiteModal({ notification, onClose }: { notification: Notificatio
   )
 }
 
+// Toast notification component
+export function SiteToast({ notification, onDismiss }: { notification: Notification; onDismiss: () => void }) {
+  const [dismissed, setDismissed] = useState(() => isNotificationDismissed(notification.cookie_id))
+  const [exiting, setExiting] = useState(false)
+  const style = variantStyles[notification.variant]
+
+  const handleDismiss = useCallback(() => {
+    setExiting(true)
+    setTimeout(() => {
+      dismissNotification(notification.cookie_id, notification.dismiss_duration_hours)
+      setDismissed(true)
+      onDismiss()
+    }, 200)
+  }, [notification.cookie_id, notification.dismiss_duration_hours, onDismiss])
+
+  // Auto-dismiss after 8 seconds if dismissible
+  useEffect(() => {
+    if (notification.is_dismissible) {
+      const timer = setTimeout(handleDismiss, 8000)
+      return () => clearTimeout(timer)
+    }
+  }, [notification.is_dismissible, handleDismiss])
+
+  if (dismissed) return null
+
+  return (
+    <div 
+      className={cn(
+        "pointer-events-auto w-full max-w-sm rounded-lg border shadow-lg transition-all duration-200",
+        style.bg, style.border, style.text,
+        exiting ? "opacity-0 translate-x-4" : "opacity-100 translate-x-0"
+      )}
+    >
+      <div className="p-4">
+        <div className="flex items-start gap-3">
+          <div className="flex-shrink-0">{style.icon}</div>
+          <div className="flex-1 min-w-0">
+            {notification.title && (
+              <p className="text-sm font-semibold">{notification.title}</p>
+            )}
+            <p className="text-sm opacity-90 mt-0.5">{notification.message}</p>
+            {notification.action_url && (
+              <a
+                href={notification.action_url}
+                target={notification.action_external ? "_blank" : "_self"}
+                rel={notification.action_external ? "noopener noreferrer" : undefined}
+                className="inline-flex items-center gap-1 text-sm font-medium mt-2 underline-offset-2 hover:underline"
+              >
+                {notification.action_label || "Learn more"}
+                {notification.action_external && <ExternalLink className="h-3 w-3" />}
+              </a>
+            )}
+          </div>
+          {notification.is_dismissible && (
+            <button
+              onClick={handleDismiss}
+              className="flex-shrink-0 rounded p-1 hover:bg-black/10 dark:hover:bg-white/10 transition-colors"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // Main component that renders all active notifications
 export function SiteNotifications({ 
   notifications 
@@ -192,6 +259,7 @@ export function SiteNotifications({
   notifications: Notification[] 
 }) {
   const [activeModal, setActiveModal] = useState<Notification | null>(null)
+  const [toastQueue, setToastQueue] = useState<Notification[]>([])
   
   // Filter out dismissed notifications and separate by type
   const banners = notifications.filter(
@@ -200,6 +268,9 @@ export function SiteNotifications({
   const modals = notifications.filter(
     n => n.type === "modal" && !isNotificationDismissed(n.cookie_id)
   )
+  const toasts = notifications.filter(
+    n => n.type === "toast" && !isNotificationDismissed(n.cookie_id)
+  )
 
   // Show the highest priority modal that hasn't been dismissed
   useEffect(() => {
@@ -207,6 +278,17 @@ export function SiteNotifications({
       setActiveModal(modals[0])
     }
   }, [modals, activeModal])
+
+  // Initialize toast queue
+  useEffect(() => {
+    if (toasts.length > 0 && toastQueue.length === 0) {
+      setToastQueue(toasts)
+    }
+  }, [toasts, toastQueue.length])
+
+  const removeToast = useCallback((id: number) => {
+    setToastQueue(prev => prev.filter(t => t.id !== id))
+  }, [])
 
   return (
     <>
@@ -228,6 +310,48 @@ export function SiteNotifications({
           }} 
         />
       )}
+
+      {/* Toast container - bottom right */}
+      {toastQueue.length > 0 && (
+        <div className="fixed bottom-4 right-4 z-50 flex flex-col gap-2 pointer-events-none">
+          {toastQueue.slice(0, 3).map(notification => (
+            <SiteToast 
+              key={notification.id} 
+              notification={notification} 
+              onDismiss={() => removeToast(notification.id)}
+            />
+          ))}
+        </div>
+      )}
     </>
   )
+}
+
+// Wrapper component that fetches notifications and renders them
+export function SiteNotificationsWrapper() {
+  const [notifications, setNotifications] = useState<Notification[]>([])
+
+  useEffect(() => {
+    const fetchNotifications = async () => {
+      try {
+        const res = await fetch("/api/v2/notifications/active")
+        if (res.ok) {
+          const data = await res.json()
+          // Filter to only banner, modal, toast types (bell is handled by NotificationCenter)
+          const siteNotifs = (data.notifications || []).filter(
+            (n: Notification) => n.type === "banner" || n.type === "modal" || n.type === "toast"
+          )
+          setNotifications(siteNotifs)
+        }
+      } catch {
+        // Silently fail
+      }
+    }
+
+    fetchNotifications()
+  }, [])
+
+  if (notifications.length === 0) return null
+
+  return <SiteNotifications notifications={notifications} />
 }
