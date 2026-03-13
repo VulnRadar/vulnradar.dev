@@ -1147,10 +1147,14 @@ function AdminContent() {
                     <>
                       <div className="flex flex-col">
                         {pagedStaff.map((admin, i) => {
-                          const isOnline = admin.active_sessions > 0
-                          const isActive = admin.is_active === true // Real-time activity tracking
+                          // Real-time activity is based ONLY on heartbeat, not sessions
+                          // is_active = heartbeat within 2 minutes
+                          // "Recently Active" = heartbeat within 10 minutes
+                          // "Offline" = no heartbeat or older than 10 minutes
+                          const isActive = admin.is_active === true
+                          const isRecentlyActive = !isActive && admin.seconds_since_heartbeat != null && admin.seconds_since_heartbeat < 600
                           const displayName = admin.name || admin.email.split("@")[0]
-                          const statusDisplay = isActive ? "Active Now" : isOnline ? "Online" : "Offline"
+                          const statusDisplay = isActive ? "Active Now" : isRecentlyActive ? "Recently Active" : "Offline"
                           return (
                             <div key={admin.id} className={cn("flex items-start gap-4 px-5 py-4 transition-colors hover:bg-muted/20", i < pagedStaff.length - 1 && "border-b border-border")}>
                               {/* Avatar with activity indicator */}
@@ -1158,7 +1162,7 @@ function AdminContent() {
                                 <UserAvatar name={admin.name} email={admin.email} avatarUrl={admin.avatar_url} />
                                 <div className={cn(
                                   "absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-card",
-                                  isActive ? "bg-blue-500 animate-pulse" : isOnline ? "bg-emerald-500" : "bg-muted-foreground/40"
+                                  isActive ? "bg-blue-500 animate-pulse" : isRecentlyActive ? "bg-emerald-500" : "bg-muted-foreground/40"
                                 )} />
                               </div>
 
@@ -1171,7 +1175,7 @@ function AdminContent() {
                                   <Badge className={cn("text-[10px] px-1.5 font-medium flex items-center gap-1",
                                     isActive
                                       ? "bg-blue-500/10 text-blue-500 border-blue-500/20"
-                                      : isOnline
+                                      : isRecentlyActive
                                       ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/20"
                                       : "bg-muted text-muted-foreground border-border"
                                   )}>
