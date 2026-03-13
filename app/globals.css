@@ -62,8 +62,8 @@ html {
     --secondary-foreground: 220 20% 10%;
     --muted: 220 15% 92%;
     --muted-foreground: 220 10% 46%;
-    --accent: 190 90% 42%;
-    --accent-foreground: 0 0% 100%;
+    --accent: 214 35% 78%;
+    --accent-foreground: 214 40% 14%;
     --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 100%;
     --border: 220 15% 88%;
@@ -108,8 +108,8 @@ html {
     --secondary-foreground: 210 20% 95%;
     --muted: 224 15% 14%;
     --muted-foreground: 215 15% 55%;
-    --accent: 190 90% 50%;
-    --accent-foreground: 224 20% 6%;
+    --accent: 214 30% 20%;
+    --accent-foreground: 210 20% 90%;
     --destructive: 0 72% 50%;
     --destructive-foreground: 0 0% 100%;
     --border: 224 15% 16%;
@@ -207,9 +207,22 @@ html {
     @apply outline-none ring-2 ring-ring ring-offset-2 ring-offset-background;
   }
 
-  /* Selection */
+  /* Selection - dark navy to match accent hover surfaces */
   ::selection {
-    @apply bg-primary/20;
+    background-color: hsl(214 35% 40% / 0.35);
+    color: hsl(var(--foreground));
+  }
+  ::-moz-selection {
+    background-color: hsl(214 35% 40% / 0.35);
+    color: hsl(var(--foreground));
+  }
+  .dark ::selection {
+    background-color: hsl(214 30% 55% / 0.25);
+    color: hsl(var(--foreground));
+  }
+  .dark ::-moz-selection {
+    background-color: hsl(214 30% 55% / 0.25);
+    color: hsl(var(--foreground));
   }
 }
 
