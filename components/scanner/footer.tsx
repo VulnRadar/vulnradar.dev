@@ -24,7 +24,7 @@ export function Footer() {
               Professional web vulnerability scanning. Open-source, free forever.
             </p>
             <Link href={ROUTES.DONATE}>
-              <Button variant="outline" size="sm" className="gap-2 h-9 border-violet-500/30 bg-violet-500/10 text-violet-400 hover:bg-violet-500/20 hover:border-violet-500/50 hover:text-violet-300">
+              <Button variant="outline" size="sm" className="gap-2 h-9 border-violet-500/30 bg-violet-500/10 text-violet-400 hover:bg-accent hover:text-accent-foreground hover:border-accent">
                 <Heart className="h-3.5 w-3.5 fill-violet-400" />
                 Support VulnRadar
               </Button>

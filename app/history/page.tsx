@@ -516,7 +516,7 @@ function HistoryPageContent() {
                       onClick={() => setTagFilter(null)}
                       className={cn(
                         "text-[11px] px-2 py-0.5 rounded-full border transition-colors",
-                        !tagFilter ? "bg-primary/10 text-primary border-primary/20" : "bg-muted text-muted-foreground border-border hover:border-primary/20"
+                        !tagFilter ? "bg-primary/10 text-primary border-primary/20" : "bg-muted text-muted-foreground border-border hover:border-accent"
                       )}
                     >
                       All
@@ -528,7 +528,7 @@ function HistoryPageContent() {
                         onClick={() => setTagFilter(tagFilter === tag ? null : tag)}
                         className={cn(
                           "text-[11px] px-2 py-0.5 rounded-full border transition-colors",
-                          tagFilter === tag ? "bg-primary/10 text-primary border-primary/20" : "bg-muted text-muted-foreground border-border hover:border-primary/20"
+                          tagFilter === tag ? "bg-primary/10 text-primary border-primary/20" : "bg-muted text-muted-foreground border-border hover:border-accent"
                         )}
                       >
                         {tag}
@@ -578,7 +578,7 @@ function HistoryPageContent() {
                       handleViewScan(scan)
                     }
                   }}
-                  className="group flex items-center gap-3 sm:gap-4 p-3 sm:p-4 rounded-xl border border-border bg-card hover:bg-muted/50 hover:border-primary/20 transition-all text-left active:scale-[0.99] cursor-pointer"
+                  className="group flex items-center gap-3 sm:gap-4 p-3 sm:p-4 rounded-xl border border-border bg-card hover:bg-muted/50 hover:border-accent transition-all text-left active:scale-[0.99] cursor-pointer"
                 >
                   <div className="flex items-center justify-center w-9 h-9 sm:w-10 sm:h-10 rounded-lg bg-primary/10 shrink-0">
                     <Globe className="h-4 w-4 sm:h-5 sm:w-5 text-primary" />
@@ -646,7 +646,7 @@ function HistoryPageContent() {
                       ) : (
                         <button
                           type="button"
-                          className="inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded-full border border-dashed border-border text-muted-foreground hover:border-primary/30 hover:text-primary transition-colors"
+                          className="inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded-full border border-dashed border-border text-muted-foreground hover:border-accent hover:text-primary transition-colors"
                           onClick={(e) => { e.stopPropagation(); setAddingTagFor(scan.id); setNewTag("") }}
                         >
                           <Plus className="h-2.5 w-2.5" />tag

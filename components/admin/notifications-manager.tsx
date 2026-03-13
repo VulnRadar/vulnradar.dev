@@ -329,7 +329,7 @@ export function NotificationsManager() {
                     </button>
                     <button
                       onClick={() => openEditDialog(notif)}
-                      className="flex items-center justify-center h-8 w-8 rounded-md text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors"
+                      className="flex items-center justify-center h-8 w-8 rounded-md text-muted-foreground hover:text-accent-foreground hover:bg-accent transition-colors"
                     >
                       <Pencil className="h-3.5 w-3.5" />
                     </button>

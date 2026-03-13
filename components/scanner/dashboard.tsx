@@ -274,7 +274,7 @@ export function Dashboard() {
                         d.scans > 0
                           ? isToday ? "bg-primary" : "bg-primary/60"
                           : "bg-muted/60",
-                        "group-hover:bg-primary group-hover:opacity-90"
+                        "group-hover:bg-accent group-hover:opacity-90"
                       )}
                       style={{ height: d.scans > 0 ? `${Math.max(height, 8)}%` : "4%" }}
                     />

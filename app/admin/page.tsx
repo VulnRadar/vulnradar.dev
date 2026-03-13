@@ -1709,10 +1709,10 @@ function UserDetailPanel({
                   const isSelected = editRole === role
                   const isOriginal = (u.role || "user") === role
                   const roleColors: Record<string, string> = {
-                    user: "border-border hover:border-primary/40",
-                    support: "border-emerald-500/30 hover:border-emerald-500/60",
-                    moderator: "border-[hsl(var(--severity-medium))]/30 hover:border-[hsl(var(--severity-medium))]/60",
-                    admin: "border-primary/30 hover:border-primary/60",
+                    user: "border-border hover:border-accent",
+                    support: "border-emerald-500/30 hover:border-accent",
+                    moderator: "border-[hsl(var(--severity-medium))]/30 hover:border-accent",
+                    admin: "border-primary/30 hover:border-accent",
                   }
                   const activeColors: Record<string, string> = {
                     user: "bg-muted/50 border-border",

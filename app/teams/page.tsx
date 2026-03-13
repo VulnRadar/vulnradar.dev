@@ -580,7 +580,7 @@ export default function TeamsPage() {
                       key={team.id}
                       type="button"
                       onClick={() => openTeam(team)}
-                      className="group flex items-center gap-4 p-4 rounded-xl border border-border bg-card hover:bg-muted/50 hover:border-primary/20 transition-all text-left"
+                      className="group flex items-center gap-4 p-4 rounded-xl border border-border bg-card hover:bg-muted/50 hover:border-accent transition-all text-left"
                     >
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-semibold text-foreground">{team.name}</p>
