@@ -1881,7 +1881,7 @@ function ProfileContent() {
                           )}
 
                           {!showDisable2FA ? (
-                            <Button variant="outline" className="self-start text-destructive border-destructive/30 hover:bg-destructive/10" onClick={() => setShowDisable2FA(true)}>
+                            <Button variant="outline" className="self-start text-destructive dark:text-red-400 border-destructive/30 hover:bg-destructive/10" onClick={() => setShowDisable2FA(true)}>
                               Disable Authenticator App
                             </Button>
                           ) : (
@@ -1987,7 +1987,7 @@ function ProfileContent() {
                             <p className="text-sm">A verification code will be sent to your email on each login.</p>
                           </div>
                           {!showDisable2FA ? (
-                            <Button variant="outline" className="self-start text-destructive border-destructive/30 hover:bg-destructive/10" onClick={() => setShowDisable2FA(true)}>
+                            <Button variant="outline" className="self-start text-destructive dark:text-red-400 border-destructive/30 hover:bg-destructive/10" onClick={() => setShowDisable2FA(true)}>
                               Disable Email 2FA
                             </Button>
                           ) : (
