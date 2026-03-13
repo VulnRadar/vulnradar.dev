@@ -18,14 +18,7 @@ export const PUBLIC_PATHS = [
   ROUTES.VERIFY_EMAIL,
 
   // ─── Authentication API Routes (v1) ────────────────────────────
-  API.AUTH.LOGIN,
-  API.AUTH.SIGNUP,
-  API.AUTH.FORGOT_PASSWORD,
-  API.AUTH.RESET_PASSWORD,
-  API.AUTH.ACCEPT_TOS,
-  API.AUTH.TWO_FA.VERIFY,
-  API.AUTH.VERIFY_EMAIL,
-  API.AUTH.RESEND_VERIFICATION,
+  // Removed - v1 API deprecated, use v2 only
 
   // ─── Authentication API Routes (v2) ────────────────────────────
   API_V2.AUTH.LOGIN,
@@ -68,28 +61,22 @@ export const PUBLIC_PATHS = [
 
   // ─── Shared Scan Reports ───────────────────────────────────────
   "/shared",
-  "/api/v1/shared",
   "/api/v2/shared",
 
-  // ─── Public Demo (v1 & v2) ─────────────────────────────────────
+  // ─── Public Demo (v2) ──────────────────────────────────────────
   ROUTES.DEMO,
-  API.DEMO_SCAN,
   API_V2.DEMO_SCAN,
 
-  // ─── Public Staff Page (v1 & v2) ───────────────────────────────
+  // ─── Public Staff Page (v2) ────────────────────────────────────
   ROUTES.STAFF,
-  API.STAFF,
   API_V2.STAFF,
 
-  // ─── Public API Endpoints (v1 & v2) ────────────────────────────
-  API.LANDING_CONTACT,
+  // ─── Public API Endpoints (v2) ─────────────────────────────────
   API_V2.LANDING_CONTACT,
 
-  // ─── Public Badge Endpoints (v1 & v2) ──────────────────────────
-  "/api/v1/badge",
+  // ─── Public Badge Endpoints (v2) ────────────────────────────────
   "/api/v2/badge",
 
-  // ─── Public Finding Types Endpoint (v1 & v2) ───────────────────
-  API.FINDING_TYPES,
+  // ─── Public Finding Types Endpoint (v2) ────────────────────────
   API_V2.FINDING_TYPES,
 ]
