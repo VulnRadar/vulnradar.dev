@@ -442,16 +442,15 @@ result.findings.forEach(f => console.log(\`[\${f.severity}] \${f.title}\`));`} l
               </a>
             </div>
             <p className="text-sm text-muted-foreground mb-4">Community-maintained Python SDK for VulnRadar API integration. Supports async operations and comprehensive vulnerability scanning.</p>
-            <CodeBlock code={`pip install vulnradar
-
-from vulnradar import VulnRadar
+            <CodeBlock code={`from vulnradar import VulnRadar
 
 client = VulnRadar(api_key="your-api-key")
 result = client.scan("https://example.com")
 
-print(f"Found {len(result.findings)} vulnerabilities")
+print(f"Total findings: {result.summary.total}")
+print(f"Critical: {result.summary.critical}")
 for finding in result.findings:
-    print(f"[{finding.severity}] {finding.title}")`} language="python" />
+    print(f"[{finding.severity.value.upper()}] {finding.title}")`} language="python" />
           </Card>
         </div>
 
