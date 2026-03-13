@@ -74,7 +74,6 @@ import {
   STAFF_PERMISSIONS,
   type AdminAction
 } from "@/lib/permissions-client"
-import { useAdminHeartbeat } from "@/lib/hooks/use-admin-heartbeat"
 import { NotificationsManager } from "@/components/admin/notifications-manager"
 
 interface AdminStats {
@@ -393,9 +392,6 @@ function AdminContent() {
   const [auditPaging, setAuditPaging] = useState(false)
   const [allBadges, setAllBadges] = useState<BadgeDef[]>([])
   const searchInitRef = useRef(false)
-  
-  // Enable activity heartbeat tracking
-  useAdminHeartbeat({ interval: 60000, section: activeTab, enabled: true })
   
   const staffPagination = usePagination(activeAdmins, staffPageSize)
   const pagedStaff = staffPagination.getPage(staffPage)
