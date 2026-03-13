@@ -19,6 +19,7 @@ export interface CleanupStats {
   expiredGiftedSubs: number
   oldAuditLogs: number
   oldAdminNotes: number
+  oldStaffActivity: number
 }
 
 /**
@@ -41,6 +42,7 @@ export async function performDatabaseCleanup(): Promise<CleanupStats> {
     expiredGiftedSubs: 0,
     oldAuditLogs: 0,
     oldAdminNotes: 0,
+    oldStaffActivity: 0,
   }
 
   try {
@@ -117,6 +119,12 @@ export async function performDatabaseCleanup(): Promise<CleanupStats> {
     )
     stats.oldAdminNotes = adminNotesRes.rowCount || 0
 
+    // Delete old staff activity records (> 30 days)
+    const staffActivityRes = await pool.query(
+      "DELETE FROM staff_activity WHERE last_heartbeat < NOW() - INTERVAL '30 days'"
+    )
+    stats.oldStaffActivity = staffActivityRes.rowCount || 0
+
     return stats
   } catch (error) {
     console.error("[Database Cleanup] Error during cleanup:", error)
@@ -146,6 +154,7 @@ export function formatCleanupStats(stats: CleanupStats): string {
   if (stats.expiredGiftedSubs > 0) items.push(`${stats.expiredGiftedSubs} gifted subs`)
   if (stats.oldAuditLogs > 0) items.push(`${stats.oldAuditLogs} audit logs`)
   if (stats.oldAdminNotes > 0) items.push(`${stats.oldAdminNotes} admin notes`)
+  if (stats.oldStaffActivity > 0) items.push(`${stats.oldStaffActivity} staff activity`)
   
   return `${total} total (${items.join(", ")})`
 }

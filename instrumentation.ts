@@ -339,6 +339,25 @@ export async function register() {
       `)
 
       // ════════════════════════════════════════════════════════════════
+      // STAFF ACTIVITY - Real-time admin dashboard activity tracking
+      // ════════════════════════════════════════════════════════════════
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS staff_activity (
+          id SERIAL PRIMARY KEY,
+          user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          last_heartbeat TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+          current_section VARCHAR(50),
+          ip_address TEXT,
+          user_agent TEXT,
+          created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+          updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+          UNIQUE(user_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_staff_activity_user_heartbeat ON staff_activity(user_id, last_heartbeat DESC);
+        CREATE INDEX IF NOT EXISTS idx_staff_activity_heartbeat ON staff_activity(last_heartbeat DESC);
+      `)
+
+      // ════════════════════════════════════════════════════════════════
       // AUTH TOKENS - Password reset & email verification
       // ════════════════════════════════════════════════════════════════
       await pool.query(`
@@ -545,7 +564,7 @@ export async function register() {
 
       console.log(`[${APP_NAME}] Database schema verified successfully.`)
 
-      // ── Seed Default Badges ───────────────────────────────────────
+      // ── Seed Default Badges ──────────────────────��────────────────
       try {
         await pool.query(`
           INSERT INTO badges (name, display_name, description, icon, color, priority, is_limited)
