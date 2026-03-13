@@ -15,7 +15,7 @@ export async function GET(req: Request) {
     // - "unauthenticated" = guests only  
     // - "staff" / "admin" = staff members only
     const result = await pool.query(
-      `SELECT id, title, message, type, variant, audience, path_pattern, is_active,
+      `SELECT id, cookie_id, title, message, type, variant, audience, path_pattern, is_active,
               is_dismissible, dismiss_duration_hours, action_label, action_url, action_external, priority
        FROM admin_notifications
        WHERE is_active = true
