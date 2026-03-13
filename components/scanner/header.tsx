@@ -1,37 +1,34 @@
 "use client"
 
-import { LogOut, User, Clock, Book, Menu, GitCompareArrows, ShieldAlert, Users, Radar, BadgeCheck, Link2 } from "lucide-react"
+import { LogOut, Menu, ShieldAlert } from "lucide-react"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { Button } from "@/components/ui/button"
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet"
 import { useRouter, usePathname } from "next/navigation"
+import Link from "next/link"
 import { useState } from "react"
 import { cn } from "@/lib/utils"
-import Image from "next/image"
-import { APP_NAME, ROUTES, API, STAFF_ROLES } from "@/lib/constants"
+import { APP_NAME, ROUTES, API } from "@/lib/constants"
+import { ThemedLogo } from "@/components/themed-logo"
 import { NotificationBell } from "@/components/notification-center"
 import { useAuth, clearAuthCache } from "@/components/auth-provider"
 
-const VISIBLE_STAFF_ROLES = [STAFF_ROLES.ADMIN, STAFF_ROLES.MODERATOR, STAFF_ROLES.SUPPORT]
-
 const NAV_LINKS = [
-  { href: ROUTES.DASHBOARD, label: "Scanner", icon: Radar },
-  { href: ROUTES.HISTORY, label: "History", icon: Clock },
-  { href: ROUTES.COMPARE, label: "Compare", icon: GitCompareArrows },
-  { href: ROUTES.SHARES, label: "Shared", icon: Link2 },
-  { href: ROUTES.TEAMS, label: "Teams", icon: Users },
-  { href: ROUTES.BADGE, label: "Badge", icon: BadgeCheck },
-  { href: ROUTES.DOCS, label: "Docs", icon: Book },
-  { href: ROUTES.PROFILE, label: "Profile", icon: User },
+  { href: ROUTES.DASHBOARD, label: "Scanner" },
+  { href: ROUTES.HISTORY, label: "History" },
+  { href: ROUTES.COMPARE, label: "Compare" },
+  { href: ROUTES.SHARES, label: "Shared" },
+  { href: ROUTES.TEAMS, label: "Teams" },
+  { href: ROUTES.BADGE, label: "Badge" },
+  { href: ROUTES.DOCS, label: "Docs" },
+  { href: ROUTES.PROFILE, label: "Profile" },
 ]
 
 export function Header() {
   const router = useRouter()
   const pathname = usePathname()
   const [mobileOpen, setMobileOpen] = useState(false)
-  const { me } = useAuth()
-
-  const isStaff = VISIBLE_STAFF_ROLES.includes(me?.role || "")
+  const { me, isStaff } = useAuth()
 
   async function handleLogout() {
     clearAuthCache()
@@ -41,72 +38,68 @@ export function Header() {
   }
 
   return (
-      <header className="sticky top-0 z-50 border-b border-border bg-card/80 backdrop-blur-lg">
-        <div className="max-w-6xl mx-auto flex items-center justify-between px-4 h-14">
-          {/* Logo */}
-          <button
-              onClick={() => router.push(ROUTES.DASHBOARD)}
-              className="flex items-center gap-2 hover:opacity-80 transition-opacity shrink-0"
+      <header className="sticky top-0 z-50 border-b border-border bg-background/80 backdrop-blur-lg">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 relative flex items-center">
+          {/* Logo - left */}
+          <Link
+              href={ROUTES.DASHBOARD}
+              className="flex items-center gap-2.5 hover:opacity-80 transition-opacity shrink-0 z-10"
               aria-label="Go to scanner"
           >
-            <Image
-                src="/favicon.svg"
-                alt={`${APP_NAME} logo`}
-                width={20}
-                height={20}
-                className="h-5 w-5"
-            />
-            <span className="text-base font-semibold text-foreground tracking-tight">
-            {APP_NAME}
-          </span>
-          </button>
+            <ThemedLogo width={24} height={24} className="h-6 w-6" alt={`${APP_NAME} logo`} />
+            <span className="text-lg font-semibold text-foreground tracking-tight hidden sm:inline">
+              {APP_NAME}
+            </span>
+          </Link>
 
-          {/* Desktop nav */}
-          <nav className="hidden md:flex items-center gap-0.5">
-            {NAV_LINKS.map(({ href, label, icon: Icon }) => {
-              const active = href === ROUTES.DOCS ? pathname.startsWith(ROUTES.DOCS) : pathname === href
+          {/* Desktop nav - absolutely centered */}
+          <nav className="hidden lg:flex items-center gap-0.5 absolute left-1/2 -translate-x-1/2">
+            {NAV_LINKS.map(({ href, label }) => {
+              const active = href === ROUTES.DOCS
+                  ? pathname.startsWith(ROUTES.DOCS)
+                  : pathname === href || pathname.startsWith(href.split("#")[0])
               return (
-                  <button
+                  <Link
                       key={href}
-                      onClick={(e) => {e.ctrlKey ? window.open(href, "_blank") : router.push(href)}}
+                      href={href}
                       className={cn(
-                          "flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors",
+                          "px-2.5 py-1.5 rounded-md text-sm transition-colors",
                           active
-                              ? "bg-primary/10 text-primary"
+                              ? "bg-primary/10 text-primary font-medium"
                               : "text-muted-foreground hover:text-foreground hover:bg-muted",
                       )}
                   >
-                    <Icon className="h-4 w-4" />
                     {label}
-                  </button>
+                  </Link>
               )
             })}
-            <button
-                onClick={() => router.push(ROUTES.ADMIN)}
+            <Link
+                href={ROUTES.ADMIN}
                 className={cn(
-                    "vr-staff-only items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors",
+                    "vr-staff-only px-2.5 py-1.5 rounded-md text-sm transition-colors",
+                    isStaff && "!inline-flex",
                     pathname === ROUTES.ADMIN
-                        ? "bg-destructive/10 text-destructive"
-                        : "text-destructive/70 hover:text-destructive hover:bg-destructive/10",
+                        ? "bg-destructive/10 text-destructive font-medium"
+                        : "text-destructive/70 hover:text-destructive hover:bg-muted",
                 )}
             >
-              <ShieldAlert className="h-4 w-4" />
               Admin
-            </button>
+            </Link>
           </nav>
 
-          {/* Right side */}
-          <div className="flex items-center gap-1">
+          {/* Right side - pushed to end */}
+          <div className="flex items-center gap-1 ml-auto z-10">
             <NotificationBell />
             <ThemeToggle />
+            <div className="hidden lg:block w-px h-5 bg-border mx-1" />
             <Button
                 variant="ghost"
-                size="icon"
+                size="sm"
                 onClick={handleLogout}
-                aria-label="Log out"
-                className="hidden md:inline-flex text-muted-foreground hover:text-foreground h-8 w-8"
+                className="hidden lg:inline-flex items-center gap-1.5 text-muted-foreground hover:text-foreground px-2.5"
             >
               <LogOut className="h-4 w-4" />
+              <span>Log out</span>
             </Button>
             {/* Mobile hamburger */}
             <Button
@@ -114,60 +107,66 @@ export function Header() {
                 size="icon"
                 onClick={() => setMobileOpen(true)}
                 aria-label="Toggle menu"
-                className="md:hidden text-muted-foreground hover:text-foreground h-8 w-8"
+                className="lg:hidden text-muted-foreground hover:text-foreground"
             >
-              <Menu className="h-4 w-4" />
+              <Menu className="h-5 w-5" />
             </Button>
           </div>
         </div>
 
         {/* Mobile overlay menu */}
         <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
-          <SheetContent side="right" className="w-64 bg-card p-0">
+          <SheetContent side="right" className="w-64 bg-background p-0 border-l border-border flex flex-col">
             <SheetTitle className="sr-only">Navigation menu</SheetTitle>
-            <nav className="flex flex-col gap-1 px-3 pt-12 pb-4">
-              {NAV_LINKS.map(({ href, label, icon: Icon }) => {
-                const active = href === ROUTES.DOCS ? pathname.startsWith(ROUTES.DOCS) : pathname === href
+            {/* Sheet header */}
+            <div className="flex items-center gap-2.5 px-4 h-16 border-b border-border shrink-0">
+              <ThemedLogo width={22} height={22} className="h-5.5 w-5.5" alt={`${APP_NAME} logo`} />
+              <span className="font-semibold text-foreground tracking-tight">{APP_NAME}</span>
+            </div>
+            {/* Links */}
+            <nav className="flex flex-col gap-0.5 p-3 flex-1 overflow-y-auto">
+              {NAV_LINKS.map(({ href, label }) => {
+                const active = href === ROUTES.DOCS ? pathname.startsWith(ROUTES.DOCS) : pathname === href || pathname.startsWith(href.split("#")[0])
                 return (
-                    <button
+                    <Link
                         key={href}
-                        onClick={() => {
-                          router.push(href)
-                          setMobileOpen(false)
-                        }}
+                        href={href}
+                        onClick={() => setMobileOpen(false)}
                         className={cn(
-                            "flex items-center gap-2.5 px-3 py-2.5 rounded-md text-sm font-medium transition-colors",
+                            "flex items-center px-3 py-2 rounded-md text-sm transition-colors",
                             active
-                                ? "bg-primary/10 text-primary"
+                                ? "bg-primary/10 text-primary font-medium"
                                 : "text-muted-foreground hover:text-foreground hover:bg-muted",
                         )}
                     >
-                      <Icon className="h-4 w-4" />
                       {label}
-                    </button>
+                    </Link>
                 )
               })}
-              <button
-                  onClick={() => { router.push(ROUTES.ADMIN); setMobileOpen(false) }}
+              <Link
+                  href={ROUTES.ADMIN}
+                  onClick={() => setMobileOpen(false)}
                   className={cn(
-                      "vr-staff-only items-center gap-2.5 px-3 py-2.5 rounded-md text-sm font-medium transition-colors",
+                      "vr-staff-only px-3 py-2 rounded-md text-sm transition-colors",
+                      isStaff && "!flex",
                       pathname === ROUTES.ADMIN
-                          ? "bg-destructive/10 text-destructive"
-                          : "text-destructive/70 hover:text-destructive hover:bg-destructive/10",
+                          ? "bg-destructive/10 text-destructive font-medium"
+                          : "text-destructive/70 hover:text-destructive hover:bg-muted",
                   )}
               >
-                <ShieldAlert className="h-4 w-4" />
                 Admin
-              </button>
-              <div className="my-2 border-t border-border" />
+              </Link>
+            </nav>
+            {/* Footer */}
+            <div className="p-3 border-t border-border shrink-0">
               <button
                   onClick={handleLogout}
-                  className="flex items-center gap-2.5 px-3 py-2.5 rounded-md text-sm font-medium text-destructive hover:bg-destructive/10 transition-colors"
+                  className="flex items-center gap-2 w-full px-3 py-2 rounded-md text-sm text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
               >
                 <LogOut className="h-4 w-4" />
                 Log out
               </button>
-            </nav>
+            </div>
           </SheetContent>
         </Sheet>
       </header>

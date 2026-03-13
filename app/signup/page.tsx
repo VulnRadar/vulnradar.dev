@@ -3,14 +3,15 @@
 import React from "react"
 import { useState, useEffect, useRef } from "react"
 import Link from "next/link"
-import Image from "next/image"
 import Script from "next/script"
+import { ThemedLogo } from "@/components/themed-logo"
 import { Loader2, Eye, EyeOff, Mail, CheckCircle2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { APP_NAME, TURNSTILE_ENABLED } from "@/lib/constants"
+import { API } from "@/lib/client-constants"
 import { getPasswordStrength } from "@/lib/password-strength"
 
 export default function SignupPage() {
@@ -22,6 +23,9 @@ export default function SignupPage() {
   const [error, setError] = useState("")
   const [loading, setLoading] = useState(false)
   const [signupSuccess, setSignupSuccess] = useState(false)
+  const [resending, setResending] = useState(false)
+  const [resendCooldown, setResendCooldown] = useState(0)
+  const [resendMessage, setResendMessage] = useState("")
   const [turnstileToken, setTurnstileToken] = useState<string | null>(null)
   const [scriptLoaded, setScriptLoaded] = useState(false)
   const widgetRef = useRef<HTMLDivElement>(null)
@@ -46,6 +50,40 @@ export default function SignupPage() {
   }, [scriptLoaded])
 
   const strength = getPasswordStrength(password)
+
+  // Cooldown timer for resend button
+  useEffect(() => {
+    if (resendCooldown <= 0) return
+    const timer = setTimeout(() => setResendCooldown(resendCooldown - 1), 1000)
+    return () => clearTimeout(timer)
+  }, [resendCooldown])
+
+  async function handleResendVerification() {
+    if (resending || resendCooldown > 0) return
+    setResending(true)
+    setResendMessage("")
+    
+    try {
+      const res = await fetch(API.AUTH.RESEND_VERIFICATION, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      })
+      
+      const data = await res.json()
+      
+      if (res.ok) {
+        setResendMessage("Verification email sent! Check your inbox.")
+        setResendCooldown(60) // 60 second cooldown
+      } else {
+        setResendMessage(data.error || "Failed to resend email. Try again.")
+      }
+    } catch {
+      setResendMessage("Something went wrong. Please try again.")
+    } finally {
+      setResending(false)
+    }
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -74,7 +112,7 @@ export default function SignupPage() {
     setLoading(true)
 
     try {
-      const res = await fetch("/api/v1/auth/signup", {
+      const res = await fetch(API.AUTH.SIGNUP, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -125,12 +163,34 @@ export default function SignupPage() {
                   Click the link in your email to verify your account and start using {APP_NAME}.
                 </p>
               </div>
-              <p className="text-xs text-muted-foreground text-center">
-                Didn&apos;t receive the email? Check your spam folder or{" "}
-                <Link href="/login" className="text-primary hover:underline">
-                  request a new link
-                </Link>
-              </p>
+              <div className="text-center space-y-2">
+                <p className="text-xs text-muted-foreground">
+                  Didn&apos;t receive the email? Check your spam folder or
+                </p>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleResendVerification}
+                  disabled={resending || resendCooldown > 0}
+                  className="text-primary hover:text-primary/80 h-auto p-0"
+                >
+                  {resending ? (
+                    <>
+                      <Loader2 className="mr-1.5 h-3 w-3 animate-spin" />
+                      Sending...
+                    </>
+                  ) : resendCooldown > 0 ? (
+                    `Resend in ${resendCooldown}s`
+                  ) : (
+                    "Resend verification email"
+                  )}
+                </Button>
+                {resendMessage && (
+                  <p className={`text-xs ${resendMessage.includes("sent") ? "text-green-500" : "text-destructive"}`}>
+                    {resendMessage}
+                  </p>
+                )}
+              </div>
               <Button asChild variant="outline" className="w-full mt-4">
                 <Link href="/login">Back to Login</Link>
               </Button>
@@ -142,21 +202,18 @@ export default function SignupPage() {
 
   return (
       <div className="min-h-screen flex items-center justify-center bg-background px-4 py-8">
-        <Card className="w-full max-w-sm bg-card border-border">
-          <CardHeader className="text-center space-y-2 pb-6 pt-8">
-            <div className="flex items-center justify-center gap-2 mb-4">
-              <Image
-                  src="/favicon.svg"
-                  alt={`${APP_NAME} logo`}
-                  width={32}
-                  height={32}
-                  className="h-8 w-8"
-              />
-              <span className="text-2xl font-bold text-foreground font-mono tracking-tight">{APP_NAME}</span>
-            </div>
-            <CardTitle className="text-xl font-bold tracking-tight">Create an account</CardTitle>
-            <CardDescription>Enter your details below to create your account and start scanning.</CardDescription>
-          </CardHeader>
+        <div className="w-full max-w-sm">
+          {/* Logo */}
+          <div className="flex items-center justify-center gap-2.5 mb-8">
+            <ThemedLogo width={28} height={28} className="h-7 w-7" alt={`${APP_NAME} logo`} />
+            <span className="text-xl font-semibold text-foreground tracking-tight">{APP_NAME}</span>
+          </div>
+
+          <Card className="bg-card border-border">
+            <CardHeader className="text-center pb-6 pt-8 px-6">
+              <CardTitle className="text-xl font-semibold tracking-tight">Create an account</CardTitle>
+              <CardDescription className="mt-2">Enter your details below to get started.</CardDescription>
+            </CardHeader>
 
           <CardContent>
             <form onSubmit={handleSubmit} className="flex flex-col gap-4">
@@ -286,6 +343,7 @@ export default function SignupPage() {
             </form>
           </CardContent>
         </Card>
+        </div>
         {TURNSTILE_ENABLED && (
             <Script
                 src="https://challenges.cloudflare.com/turnstile/v0/api.js"

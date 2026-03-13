@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Shield, ExternalLink, Check, Lock, ShieldCheck } from "lucide-react"
-import { APP_NAME } from "@/lib/constants"
+import { APP_NAME, API } from "@/lib/constants"
 
 interface TosModalProps {
   onAccept: () => void
@@ -90,7 +90,7 @@ export function TosModal({ onAccept }: TosModalProps) {
     if (!allChecked) return
     setAccepting(true)
     try {
-      const res = await fetch("/api/v1/auth/accept-tos", { method: "POST" })
+      const res = await fetch(API.AUTH.ACCEPT_TOS, { method: "POST" })
       if (res.ok) onAccept()
     } catch {
       // retry on next attempt

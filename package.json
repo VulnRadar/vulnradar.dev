@@ -1,6 +1,6 @@
 {
   "name": "vulnradar",
-  "version": "1.9.5-patch.1",
+  "version": "2.0.0",
   "description": "Professional open-source web vulnerability scanner",
   "private": true,
   "scripts": {
@@ -8,7 +8,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
-    "migrate": "node scripts/migrate.mjs"
+    "migrate": "node scripts/migrate.mjs",
+    "new-db": "node scripts/create-fresh-db.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.1",
@@ -40,7 +41,10 @@
     "@radix-ui/react-toggle": "^1.1.1",
     "@radix-ui/react-toggle-group": "^1.1.1",
     "@radix-ui/react-tooltip": "^1.1.6",
+    "@stripe/react-stripe-js": "^5.6.1",
+    "@stripe/stripe-js": "^8.9.0",
     "autoprefixer": "^10.4.20",
+    "bcrypt": "^6.0.0",
     "bcryptjs": "^3.0.2",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
@@ -62,7 +66,9 @@
     "react-hook-form": "^7.54.2",
     "react-resizable-panels": "^2.1.7",
     "recharts": "^2.15.0",
+    "server-only": "^0.0.1",
     "sonner": "^1.7.1",
+    "stripe": "^20.4.1",
     "swr": "^2.3.0",
     "tailwind-merge": "^2.5.5",
     "tailwindcss": "^3.4.17",

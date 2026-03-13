@@ -9,6 +9,7 @@ import {
   User,
   RotateCcw,
   MessageSquare,
+  Tag,
 } from "lucide-react"
 import { PublicPageShell } from "@/components/public-page-shell"
 import { ScanSummary } from "@/components/scanner/scan-summary"
@@ -17,7 +18,7 @@ import { IssueDetail } from "@/components/scanner/issue-detail"
 import { ExportButton } from "@/components/scanner/export-button"
 import { ResponseHeaders } from "@/components/scanner/response-headers"
 import { SubdomainDiscovery } from "@/components/scanner/subdomain-discovery"
-import { STAFF_ROLES, STAFF_ROLE_LABELS, ROLE_BADGE_STYLES } from "@/lib/constants"
+import { STAFF_ROLES, STAFF_ROLE_LABELS, ROLE_BADGE_STYLES, API } from "@/lib/constants"
 import type { ScanResult, Vulnerability } from "@/lib/scanner/types"
 
 export default function SharedScanPage() {
@@ -28,6 +29,7 @@ export default function SharedScanPage() {
   const [scannedBy, setScannedBy] = useState("")
   const [scannedByAvatar, setScannedByAvatar] = useState<string | null>(null)
   const [scannedByRole, setScannedByRole] = useState<string>("user")
+  const [scannedByBadges, setScannedByBadges] = useState<{ id: number; name: string; display_name: string; icon: string | null; color: string | null; priority: number }[]>([])
   const [scanNotes, setScanNotes] = useState("")
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -36,7 +38,7 @@ export default function SharedScanPage() {
   useEffect(() => {
     async function load() {
       try {
-        const res = await fetch(`/api/v1/shared/${token}`)
+        const res = await fetch(`${API.SHARED}/${token}`)
         if (!res.ok) {
           const data = await res.json()
           setError(data.error || "This shared scan could not be found.")
@@ -47,6 +49,7 @@ export default function SharedScanPage() {
         setScannedBy(data.scannedBy || "")
         setScannedByAvatar(data.scannedByAvatar || null)
         setScannedByRole(data.scannedByRole || "user")
+        setScannedByBadges(data.scannedByBadges || [])
         setScanNotes(data.notes || "")
       } catch {
         setError("Failed to load shared scan.")
@@ -76,8 +79,8 @@ export default function SharedScanPage() {
               <h2 className="text-base font-semibold text-foreground">Scan Not Found</h2>
               <p className="text-sm text-muted-foreground leading-relaxed">{error}</p>
             </div>
-            <Button variant="outline" onClick={() => router.push("/login")} className="bg-transparent">
-              Sign In to {APP_NAME}
+            <Button variant="outline" className="bg-transparent" asChild>
+              <a href="/login">Sign In to {APP_NAME}</a>
             </Button>
           </div>
         )}
@@ -107,6 +110,22 @@ export default function SharedScanPage() {
                               {STAFF_ROLE_LABELS[scannedByRole] || scannedByRole}
                             </span>
                           )}
+                          {scannedByBadges.length > 0 && scannedByBadges.slice(0, 3).map((badge) => (
+                            <span
+                              key={badge.id}
+                              className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-medium"
+                              style={{
+                                backgroundColor: `${badge.color}15`,
+                                borderWidth: 1,
+                                borderColor: `${badge.color}40`,
+                                color: badge.color || undefined,
+                              }}
+                              title={badge.display_name}
+                            >
+                              <Tag className="h-2.5 w-2.5" />
+                              {badge.display_name}
+                            </span>
+                          ))}
                         </div>
                       )}
                     </div>

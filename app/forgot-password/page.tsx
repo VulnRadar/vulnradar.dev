@@ -3,13 +3,14 @@
 import React from "react"
 import { useState } from "react"
 import Link from "next/link"
-import Image from "next/image"
 import { Button } from "@/components/ui/button"
+import { ThemedLogo } from "@/components/themed-logo"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { ArrowLeft, Mail, CheckCircle2, AlertTriangle, Loader2 } from "lucide-react"
 import { APP_NAME } from "@/lib/constants"
+import { API } from "@/lib/client-constants"
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState("")
@@ -22,7 +23,7 @@ export default function ForgotPasswordPage() {
     setLoading(true)
     setError("")
     try {
-      const res = await fetch("/api/v1/auth/forgot-password", {
+      const res = await fetch(API.AUTH.FORGOT_PASSWORD, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: email.trim().toLowerCase() }),
@@ -42,13 +43,7 @@ export default function ForgotPasswordPage() {
       <Card className="w-full max-w-sm bg-card border-border">
         <CardHeader className="text-center space-y-2 pb-6 pt-8">
           <div className="flex items-center justify-center gap-2 mb-4">
-            <Image
-              src="/favicon.svg"
-              alt={`${APP_NAME} logo`}
-              width={32}
-              height={32}
-              className="h-8 w-8"
-            />
+            <ThemedLogo width={32} height={32} className="h-8 w-8" alt={`${APP_NAME} logo`} />
             <span className="text-2xl font-bold text-foreground font-mono tracking-tight">{APP_NAME}</span>
           </div>
           {sent ? (

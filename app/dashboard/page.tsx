@@ -21,6 +21,7 @@ const CrawlUrlSelector = dynamic(() => import("@/components/scanner/crawl-url-se
 const OnboardingTour = dynamic(() => import("@/components/onboarding-tour").then(m => ({ default: m.OnboardingTour })), { ssr: false })
 import type { ScanResult, ScanStatus, Vulnerability } from "@/lib/scanner/types"
 import { DEFAULT_SCAN_NOTE } from "@/lib/constants"
+import { API } from "@/lib/client-constants"
 import { AlertCircle, RotateCcw, MessageSquare, Pencil, Save, Loader2 as Loader2Icon, Globe, ChevronDown, ChevronRight, ExternalLink } from "lucide-react"
 import { Button } from "@/components/ui/button"
 
@@ -52,6 +53,34 @@ function DashboardContent() {
   const [status, setStatus] = useState<ScanStatus>("idle")
   const [result, setResult] = useState<ScanResult | null>(null)
   const [scanHistoryId, setScanHistoryId] = useState<number | null>(null)
+  
+  // Sync scan ID to URL hash
+  // pushState when scan completes (back returns to clean dashboard), replaceState when resetting
+  const updateUrlWithScan = useCallback((id: number | null) => {
+    if (typeof window === "undefined") return
+    if (id) {
+      window.history.pushState(null, "", `/dashboard#scan-${id}`)
+    } else {
+      window.history.replaceState(null, "", "/dashboard")
+    }
+  }, [])
+
+  // If user manually navigates to /dashboard#scan-{id}, redirect to history page
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    const checkHash = () => {
+      const hash = window.location.hash
+      if (hash.startsWith("#scan-") && status === "idle") {
+        const id = hash.replace("#scan-", "")
+        if (id && !isNaN(parseInt(id, 10))) {
+          window.location.href = `/history#${id}`
+        }
+      }
+    }
+    checkHash()
+    window.addEventListener("hashchange", checkHash)
+    return () => window.removeEventListener("hashchange", checkHash)
+  }, [status])
   const [error, setError] = useState<string | null>(null)
   const [selectedIssue, setSelectedIssue] = useState<Vulnerability | null>(null)
   const [scanNotes, setScanNotes] = useState("")
@@ -67,7 +96,7 @@ function DashboardContent() {
     if (!scanHistoryId) return
     setSavingNotes(true)
     try {
-      await fetch(`/api/v1/history/${scanHistoryId}`, {
+      await fetch(`${API.HISTORY}/${scanHistoryId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ notes: scanNotes }),
@@ -78,18 +107,21 @@ function DashboardContent() {
   }
 
   const [pendingScanners, setPendingScanners] = useState<string[] | undefined>(undefined)
+  const [bulkStatus, setBulkStatus] = useState<"idle" | "scanning" | "done">("idle")
+  const [bulkResult, setBulkResult] = useState<{ total: number; successful: number; failed: number; skipped: number } | null>(null)
 
-  const handleScan = useCallback(async (url: string, mode: ScanMode = "quick", scanners?: string[]) => {
+  const handleScan = useCallback(async (url: string, mode: ScanMode = "quick", scanners?: string[], protocol?: string) => {
     setPendingScanners(scanners)
     // Deep crawl: first discover URLs, then show selector
-    if (mode === "deep") {
+    // Note: Deep crawl only works for HTTP/HTTPS protocols
+    if (mode === "deep" && (!protocol || protocol.startsWith("http"))) {
       setPendingCrawlUrl(url)
       setShowCrawlSelector(true)
       setCrawlDiscovering(true)
       setCrawlDiscoveryUrls([url]) // always include the entry URL
 
       try {
-        const res = await fetch("/api/v1/scan/crawl/discover", {
+        const res = await fetch(API.SCAN_CRAWL_DISCOVER, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ url }),
@@ -118,7 +150,7 @@ function DashboardContent() {
     setCrawlInfo(null)
 
     const isCrawl = !!crawlUrls
-    const endpoint = isCrawl ? "/api/v1/scan/crawl" : "/api/v1/scan"
+    const endpoint = isCrawl ? API.SCAN_CRAWL : API.SCAN
     const payload = isCrawl
       ? { url, urls: crawlUrls, ...(scanners ? { scanners } : {}) }
       : { url, ...(scanners ? { scanners } : {}) }
@@ -155,10 +187,15 @@ function DashboardContent() {
       setScanHistoryId(historyId)
       setScanNotes(DEFAULT_SCAN_NOTE)
       setStatus("done")
+      
+      // Update URL with scan ID for bookmarking/sharing
+      if (historyId) {
+        updateUrlWithScan(historyId)
+      }
 
       // Auto-save default note to DB
       if (historyId) {
-        fetch(`/api/v1/history/${historyId}`, {
+        fetch(`${API.HISTORY}/${historyId}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ notes: DEFAULT_SCAN_NOTE }),
@@ -183,6 +220,27 @@ function DashboardContent() {
     setCrawlDiscovering(false)
   }
 
+  const handleBulkScan = useCallback(async (urls: string[]) => {
+    setBulkStatus("scanning")
+    setBulkResult(null)
+    try {
+      const res = await fetch(API.SCAN_BULK, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ urls }),
+      })
+      const data = await res.json()
+      if (res.ok) {
+        setBulkResult({ total: data.total, successful: data.successful, failed: data.failed, skipped: data.skipped ?? 0 })
+      } else {
+        setBulkResult({ total: urls.length, successful: 0, failed: urls.length, skipped: 0 })
+      }
+    } catch {
+      setBulkResult({ total: urls.length, successful: 0, failed: urls.length, skipped: 0 })
+    }
+    setBulkStatus("done")
+  }, [])
+
   // Auto-scan if ?scan= param is present (e.g. from subdomain scan button on other pages)
   useEffect(() => {
     const scanUrl = searchParams.get("scan")
@@ -205,6 +263,8 @@ function DashboardContent() {
     setCrawlDiscoveryUrls([])
     setPendingCrawlUrl("")
     setCrawlDiscovering(false)
+    // Clear scan from URL
+    updateUrlWithScan(null)
   }
 
   return (
@@ -214,7 +274,33 @@ function DashboardContent() {
 
       <main className="flex-1 w-full max-w-5xl mx-auto px-4 pb-12">
         {/* Scan form always visible at top */}
-        {status !== "done" && <ScanForm onScan={handleScan} status={status} />}
+        {status !== "done" && (
+          <ScanForm
+            onScan={handleScan}
+            status={status}
+            onBulkScan={handleBulkScan}
+            bulkStatus={bulkStatus}
+          />
+        )}
+
+        {/* Bulk scan result banner */}
+        {bulkStatus === "done" && bulkResult && status === "idle" && (
+          <div className="mx-auto max-w-lg w-full -mt-2 mb-2 rounded-xl border border-border bg-card/60 px-4 py-3 flex items-center justify-between gap-3">
+            <p className="text-sm text-foreground">
+              Bulk scan complete &mdash;{" "}
+              <span className="text-emerald-500 font-medium">{bulkResult.successful} succeeded</span>
+              {bulkResult.failed > 0 && <span className="text-destructive font-medium">, {bulkResult.failed} failed</span>}
+              {bulkResult.skipped > 0 && <span className="text-muted-foreground">, {bulkResult.skipped} skipped (limit)</span>}
+            </p>
+            <button
+              type="button"
+              onClick={() => { setBulkResult(null); setBulkStatus("idle") }}
+              className="text-xs text-muted-foreground hover:text-foreground shrink-0"
+            >
+              Dismiss
+            </button>
+          </div>
+        )}
 
         {/* Dashboard when idle */}
         {status === "idle" && <Dashboard />}
