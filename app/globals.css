@@ -300,4 +300,31 @@ html {
   box-shadow: 0 0 10px -3px hsl(var(--primary) / 0.2);
 }
 
+/**
+ * Scanner selection states
+ * Used for protocol picker, scanner category toggles, and any
+ * interactive scanner element that has a selected/active state.
+ * Deliberately darker than --primary so selected items contrast
+ * clearly against the background without the bright-cyan flare.
+ */
+.scanner-selected {
+  background-color: hsl(210 55% 22% / 0.55);
+}
+.dark .scanner-selected {
+  background-color: hsl(210 45% 28% / 0.45);
+}
+.scanner-selected-hover:hover {
+  background-color: hsl(210 55% 22% / 0.70);
+}
+.dark .scanner-selected-hover:hover {
+  background-color: hsl(210 45% 28% / 0.60);
+}
+/* Unselected items: very faint hover so it doesn't compete */
+.scanner-hover:hover {
+  background-color: hsl(220 15% 50% / 0.08);
+}
+.dark .scanner-hover:hover {
+  background-color: hsl(220 15% 80% / 0.06);
+}
+
 

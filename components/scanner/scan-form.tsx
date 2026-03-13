@@ -259,7 +259,7 @@ export function ScanForm({ onScan, onBulkScan, bulkStatus = "idle", status }: Sc
                       }}
                       className={cn(
                         "flex flex-col items-start gap-0.5",
-                        protocol === p.value && "bg-primary/10"
+                        protocol === p.value && "scanner-selected"
                       )}
                     >
                       <span className="font-mono font-medium">{p.value}</span>
@@ -344,7 +344,7 @@ export function ScanForm({ onScan, onBulkScan, bulkStatus = "idle", status }: Sc
                           className={cn(
                             "w-full flex items-start gap-2.5 px-2.5 py-2 rounded-md text-left transition-colors",
                             !isAvailable && "opacity-40 cursor-not-allowed",
-                            isAvailable && checked ? "bg-primary/5 hover:bg-primary/10" : isAvailable && "hover:bg-muted",
+                            isAvailable && checked ? "scanner-selected scanner-selected-hover" : isAvailable && "scanner-hover",
                           )}
                         >
                           <div className={cn(
