@@ -306,25 +306,38 @@ html {
  * interactive scanner element that has a selected/active state.
  * Deliberately darker than --primary so selected items contrast
  * clearly against the background without the bright-cyan flare.
+ * Uses !important to override shadcn's focus:bg-accent styles.
  */
-.scanner-selected {
-  background-color: hsl(210 55% 22% / 0.55);
+.scanner-selected,
+.scanner-selected:focus,
+.scanner-selected[data-highlighted] {
+  background-color: hsl(210 55% 22% / 0.55) !important;
 }
-.dark .scanner-selected {
-  background-color: hsl(210 45% 28% / 0.45);
+.dark .scanner-selected,
+.dark .scanner-selected:focus,
+.dark .scanner-selected[data-highlighted] {
+  background-color: hsl(210 45% 28% / 0.45) !important;
 }
-.scanner-selected-hover:hover {
-  background-color: hsl(210 55% 22% / 0.70);
+.scanner-selected-hover:hover,
+.scanner-selected-hover:focus,
+.scanner-selected-hover[data-highlighted] {
+  background-color: hsl(210 55% 22% / 0.70) !important;
 }
-.dark .scanner-selected-hover:hover {
-  background-color: hsl(210 45% 28% / 0.60);
+.dark .scanner-selected-hover:hover,
+.dark .scanner-selected-hover:focus,
+.dark .scanner-selected-hover[data-highlighted] {
+  background-color: hsl(210 45% 28% / 0.60) !important;
 }
-/* Unselected items: very faint hover so it doesn't compete */
-.scanner-hover:hover {
-  background-color: hsl(220 15% 50% / 0.08);
+/* Unselected items: muted hover so it doesn't compete */
+.scanner-hover:hover,
+.scanner-hover:focus,
+.scanner-hover[data-highlighted] {
+  background-color: hsl(220 15% 50% / 0.12) !important;
 }
-.dark .scanner-hover:hover {
-  background-color: hsl(220 15% 80% / 0.06);
+.dark .scanner-hover:hover,
+.dark .scanner-hover:focus,
+.dark .scanner-hover[data-highlighted] {
+  background-color: hsl(220 15% 80% / 0.08) !important;
 }
 
 
