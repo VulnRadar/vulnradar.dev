@@ -58,9 +58,9 @@ html {
     --popover-foreground: 220 20% 10%;
     --primary: 190 90% 42%;
     --primary-foreground: 0 0% 100%;
-    --secondary: 220 15% 92%;
-    --secondary-foreground: 220 20% 10%;
-    --muted: 220 15% 92%;
+    --secondary: 214 25% 92%;
+    --secondary-foreground: 214 35% 15%;
+    --muted: 214 30% 90%;
     --muted-foreground: 220 10% 46%;
     --accent: 214 35% 78%;
     --accent-foreground: 214 40% 14%;
@@ -104,9 +104,9 @@ html {
     --popover-foreground: 210 20% 95%;
     --primary: 190 90% 50%;
     --primary-foreground: 224 20% 6%;
-    --secondary: 224 15% 14%;
-    --secondary-foreground: 210 20% 95%;
-    --muted: 224 15% 14%;
+    --secondary: 214 25% 14%;
+    --secondary-foreground: 210 25% 92%;
+    --muted: 214 25% 16%;
     --muted-foreground: 215 15% 55%;
     --accent: 214 30% 20%;
     --accent-foreground: 210 20% 90%;
@@ -311,6 +311,62 @@ html {
 
 .glow-sm {
   box-shadow: 0 0 10px -3px hsl(var(--primary) / 0.2);
+}
+
+/**
+ * Universal hover surface utilities
+ * A standardized dark-blue hover that ensures text stays legible.
+ * Use .hover-surface on any interactive element for consistent hover feedback.
+ */
+.hover-surface {
+  transition: background-color 0.15s ease;
+}
+.hover-surface:hover,
+.hover-surface:focus-visible,
+.hover-surface[data-highlighted] {
+  background-color: hsl(214 40% 88% / 0.9) !important;
+  color: hsl(214 40% 14%) !important;
+}
+.dark .hover-surface:hover,
+.dark .hover-surface:focus-visible,
+.dark .hover-surface[data-highlighted] {
+  background-color: hsl(214 30% 22% / 0.9) !important;
+  color: hsl(210 20% 92%) !important;
+}
+
+/* Alternative: a subtler hover that doesn't override text color */
+.hover-surface-subtle {
+  transition: background-color 0.15s ease;
+}
+.hover-surface-subtle:hover,
+.hover-surface-subtle:focus-visible,
+.hover-surface-subtle[data-highlighted] {
+  background-color: hsl(214 35% 85% / 0.5);
+}
+.dark .hover-surface-subtle:hover,
+.dark .hover-surface-subtle:focus-visible,
+.dark .hover-surface-subtle[data-highlighted] {
+  background-color: hsl(214 30% 25% / 0.5);
+}
+
+/**
+ * Global Radix UI menu item hover styling
+ * Applies dark-blue hover to all dropdown/context/command menu items
+ * ensuring consistent UX across all menus and popovers.
+ */
+[data-radix-menu-content] [role="menuitem"][data-highlighted],
+[data-radix-menu-content] [role="menuitemcheckbox"][data-highlighted],
+[data-radix-menu-content] [role="menuitemradio"][data-highlighted],
+[data-radix-collection-item][data-highlighted] {
+  background-color: hsl(214 40% 88% / 0.95);
+  color: hsl(214 40% 12%);
+}
+.dark [data-radix-menu-content] [role="menuitem"][data-highlighted],
+.dark [data-radix-menu-content] [role="menuitemcheckbox"][data-highlighted],
+.dark [data-radix-menu-content] [role="menuitemradio"][data-highlighted],
+.dark [data-radix-collection-item][data-highlighted] {
+  background-color: hsl(214 30% 22% / 0.95);
+  color: hsl(210 20% 92%);
 }
 
 /**
