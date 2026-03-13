@@ -8,6 +8,12 @@ import pool from "@/lib/db"
 import { cookies } from "next/headers"
 import crypto from "crypto"
 import { loadConfig } from "@/lib/config"
+import {
+  sendDiscordEmail2FACode,
+  updateDiscordTokens,
+  getDiscordUserConnection,
+  getUserTwoFAConfig,
+} from "@/lib/discord-utils"
 
 const DISCORD_CLIENT_ID = process.env.DISCORD_CLIENT_ID
 const DISCORD_CLIENT_SECRET = process.env.DISCORD_CLIENT_SECRET
@@ -189,97 +195,60 @@ export async function GET(request: Request) {
     } else {
       // Login with Discord
       // Check if Discord account is linked to a user
-      const connectionResult = await pool.query(
-        "SELECT user_id FROM discord_connections WHERE discord_id = $1",
-        [discordUser.id]
-      )
+      const userId = await getDiscordUserConnection(discordUser.id)
 
       // Discord login ONLY works if account is already connected
       // Users must first create an account and connect Discord in profile settings
-      if (connectionResult.rows.length === 0) {
+      if (!userId) {
         return NextResponse.redirect(`${baseUrl}/login?error=discord_not_linked`)
       }
 
-      const userId = connectionResult.rows[0].user_id
-
       // Update tokens
-      await pool.query(
-        `UPDATE discord_connections SET 
-         discord_username = $1, discord_avatar = $2, discord_email = $3,
-         access_token = $4, refresh_token = $5, token_expires_at = $6, 
-         guild_joined = $7, updated_at = NOW()
-         WHERE discord_id = $8`,
-        [
-          discordUser.username,
-          discordUser.avatar,
-          discordUser.email || null,
-          tokens.access_token,
-          tokens.refresh_token,
-          tokenExpiresAt,
-          guildJoined,
-          discordUser.id,
-        ]
+      await updateDiscordTokens(
+        discordUser.id,
+        tokens.access_token,
+        tokens.refresh_token,
+        tokenExpiresAt,
+        guildJoined
       )
 
       // Check if user has 2FA enabled
-      const userResult = await pool.query(
-        "SELECT totp_enabled, two_factor_method, email FROM users WHERE id = $1",
-        [userId]
-      )
-      const user = userResult.rows[0]
+      const user2FA = await getUserTwoFAConfig(userId)
 
-      if (user?.totp_enabled) {
+      if (user2FA?.totp_enabled) {
         // User has 2FA enabled - store pending login and redirect to 2FA verification
         const cookieStore = await cookies()
         const pendingToken = crypto.randomBytes(32).toString("hex")
-        
-        // Store pending Discord login in a cookie (expires in 5 minutes)
-        cookieStore.set("discord_pending_login", JSON.stringify({
-          token: pendingToken,
-          userId,
-          method: user.two_factor_method,
-          email: user.email,
-          ts: Date.now()
-        }), {
-          httpOnly: true,
-          secure: process.env.NODE_ENV === "production",
-          sameSite: "lax",
-          maxAge: 300, // 5 minutes
-          path: "/"
-        })
 
-        // If email 2FA, send the code now
-        if (user.two_factor_method === "email") {
-          try {
-            const { randomInt } = await import("node:crypto")
-            const { email2FACodeEmail, sendEmail } = await import("@/lib/email")
-            
-            // Delete old codes for this user
-            await pool.query("DELETE FROM email_2fa_codes WHERE user_id = $1", [userId])
-            
-            // Generate 6-digit code
-            const code = randomInt(100000, 999999).toString()
-            
-            // Store hashed code with 10 min expiry
-            await pool.query(
-              "INSERT INTO email_2fa_codes (user_id, code_hash, expires_at) VALUES ($1, encode(sha256($2::bytea), 'hex'), NOW() + INTERVAL '10 minutes')",
-              [userId, code],
-            )
-            
-            // Send the email
-            const emailContent = email2FACodeEmail(code)
-            await sendEmail({
-              to: user.email,
-              subject: emailContent.subject,
-              text: emailContent.text,
-              html: emailContent.html,
-            })
-          } catch (e) {
-            console.error("[Discord] Failed to send email 2FA code:", e)
+        // Store pending Discord login in a cookie (expires in 5 minutes)
+        cookieStore.set(
+          "discord_pending_login",
+          JSON.stringify({
+            token: pendingToken,
+            userId,
+            method: user2FA.two_factor_method,
+            email: user2FA.email,
+            ts: Date.now(),
+          }),
+          {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === "production",
+            sameSite: "lax",
+            maxAge: 300, // 5 minutes
+            path: "/",
           }
+        )
+
+        // Send email 2FA code in background (non-blocking)
+        if (user2FA.two_factor_method === "email") {
+          setImmediate(() => {
+            sendDiscordEmail2FACode(userId, user2FA.email).catch((err) => {
+              console.error("[Discord] Background email send failed:", err)
+            })
+          })
         }
 
-        return NextResponse.redirect(`${baseUrl}/login?discord_2fa=pending&method=${user.two_factor_method}`)
+        return NextResponse.redirect(`${baseUrl}/login?discord_2fa=pending&method=${user2FA.two_factor_method}`)
       }
 
       // No 2FA - create session directly
