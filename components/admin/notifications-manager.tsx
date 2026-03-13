@@ -43,6 +43,7 @@ import { cn } from "@/lib/utils"
 
 interface AdminNotification {
   id: number
+  cookie_id: string
   title: string
   message: string
   type: "banner" | "modal" | "toast" | "bell"
@@ -305,6 +306,7 @@ export function NotificationsManager() {
                       )}
                     </div>
                     <p className="text-xs text-muted-foreground line-clamp-2 leading-relaxed">{notif.message}</p>
+                    <p className="text-[10px] text-muted-foreground/60 font-mono mt-1">Cookie: {notif.cookie_id}</p>
                     {notif.action_url && (
                       <div className="mt-1.5 flex items-center gap-1 text-xs text-primary font-medium">
                         <ExternalLink className="h-3 w-3" />

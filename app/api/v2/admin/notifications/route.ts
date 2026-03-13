@@ -51,14 +51,18 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Title and message are required" }, { status: 400 })
     }
 
+    // Generate unique cookie_id: notif_ + 16 random hex chars
+    const cookieId = `notif_${crypto.randomUUID().replace(/-/g, '').slice(0, 16)}`
+
     const result = await pool.query(
       `INSERT INTO admin_notifications (
-        title, message, type, variant, audience, path_pattern,
+        cookie_id, title, message, type, variant, audience, path_pattern,
         starts_at, ends_at, is_active, is_dismissible, dismiss_duration_hours,
         action_label, action_url, action_external, priority, created_by
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
       RETURNING *`,
       [
+        cookieId,
         title,
         message,
         type,

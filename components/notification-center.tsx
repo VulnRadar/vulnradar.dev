@@ -37,6 +37,7 @@ function setCookie(name: string, value: string, maxAgeSeconds: number) {
 
 interface ApiNotification {
   id: number
+  cookie_id: string
   title: string
   message: string
   type: "bell" | "banner" | "modal" | "toast"
@@ -223,15 +224,11 @@ export function NotificationBell() {
     return () => document.removeEventListener("mousedown", handle)
   }, [open])
 
-  const dismissNotification = useCallback((id: number, durationHours: number | null) => {
-    setDismissedIds((prev) => {
-      const next = new Set(prev)
-      next.add(id)
-      // Save to cookie
-      const maxAge = durationHours ? durationHours * 60 * 60 : 60 * 60 * 24 * 365 // default 1 year
-      setCookie("vr_notif_dismissed", encodeURIComponent(JSON.stringify([...next])), maxAge)
-      return next
-    })
+  // Dismiss using unique cookie_id - each notification has its own cookie
+  const dismissNotification = useCallback((cookieId: string, durationHours: number | null) => {
+    const maxAge = durationHours ? durationHours * 60 * 60 : 60 * 60 * 24 * 365 // default 1 year
+    setCookie(`dismissed_${cookieId}`, "1", maxAge)
+    setDismissedIds((prev) => new Set([...prev, cookieId]))
   }, [])
 
   const dismissVersionNotif = useCallback(() => {
@@ -239,8 +236,13 @@ export function NotificationBell() {
     setShowVersionNotif(false)
   }, [])
 
-  // Filter out dismissed notifications
-  const visibleNotifications = notifications.filter((n) => !dismissedIds.has(n.id))
+  // Filter out dismissed notifications (check both Set and cookie)
+  const visibleNotifications = notifications.filter((n) => {
+    if (dismissedIds.has(n.cookie_id)) return false
+    // Also check cookie directly for SSR/hydration
+    if (typeof document !== "undefined" && getCookie(`dismissed_${n.cookie_id}`) === "1") return false
+    return true
+  })
   const count = visibleNotifications.length + (showVersionNotif ? 1 : 0)
 
   return (
@@ -338,7 +340,7 @@ export function NotificationBell() {
                               href={n.action_url}
                               target={n.action_external ? "_blank" : "_self"}
                               rel={n.action_external ? "noopener noreferrer" : undefined}
-                              onClick={() => { if (n.is_dismissible) dismissNotification(n.id, n.dismiss_duration_hours); setOpen(false) }}
+                              onClick={() => { if (n.is_dismissible) dismissNotification(n.cookie_id, n.dismiss_duration_hours); setOpen(false) }}
                               className="text-xs font-medium text-primary hover:text-primary/80 transition-colors flex items-center gap-1"
                             >
                               {n.action_label || "View"}
@@ -347,7 +349,7 @@ export function NotificationBell() {
                           )}
                           {n.is_dismissible && (
                             <button
-                              onClick={() => dismissNotification(n.id, n.dismiss_duration_hours)}
+                              onClick={() => dismissNotification(n.cookie_id, n.dismiss_duration_hours)}
                               className="text-xs text-muted-foreground hover:text-foreground transition-colors"
                             >
                               Dismiss
@@ -357,7 +359,7 @@ export function NotificationBell() {
                       </div>
                       {n.is_dismissible && (
                         <button
-                          onClick={() => dismissNotification(n.id, n.dismiss_duration_hours)}
+                          onClick={() => dismissNotification(n.cookie_id, n.dismiss_duration_hours)}
                           className="flex-shrink-0 p-0.5 rounded text-muted-foreground/50 hover:text-muted-foreground transition-colors"
                           aria-label={`Dismiss ${n.title}`}
                         >
