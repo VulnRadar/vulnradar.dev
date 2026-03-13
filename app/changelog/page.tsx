@@ -94,6 +94,15 @@ const CHANGELOG = [
     ],
   },
   {
+    version: "1.9.5-patch.1",
+    date: "March 9, 2026",
+    title: "API v1 routes fixed",
+    highlights: true,
+    changes: [
+      { icon: Wrench, label: "Middleware Routing Fix", desc: "Updated middleware to whitelist /api/v1/scan, /api/v1/history, and /api/version so API clients and docs are no longer redirected to the login page; API handlers continue to validate API keys and enforce rate limits." },
+    ],
+  },
+  {
     version: "1.9.5",
     date: "March 7, 2026",
     title: "API v1 Versioning, Developer SDK Support & Finding Types Endpoint",
