@@ -334,22 +334,28 @@ export function SiteNotificationsWrapper() {
   useEffect(() => {
     const fetchNotifications = async () => {
       try {
+        console.log("[v0] SiteNotificationsWrapper: Fetching notifications...")
         const res = await fetch("/api/v2/notifications/active")
+        console.log("[v0] SiteNotificationsWrapper: Response status:", res.status)
         if (res.ok) {
           const data = await res.json()
+          console.log("[v0] SiteNotificationsWrapper: Raw data:", data)
           // Filter to only banner, modal, toast types (bell is handled by NotificationCenter)
           const siteNotifs = (data.notifications || []).filter(
             (n: Notification) => n.type === "banner" || n.type === "modal" || n.type === "toast"
           )
+          console.log("[v0] SiteNotificationsWrapper: Filtered site notifs:", siteNotifs)
           setNotifications(siteNotifs)
         }
-      } catch {
-        // Silently fail
+      } catch (err) {
+        console.error("[v0] SiteNotificationsWrapper: Error fetching:", err)
       }
     }
 
     fetchNotifications()
   }, [])
+
+  console.log("[v0] SiteNotificationsWrapper: Current notifications state:", notifications)
 
   if (notifications.length === 0) return null
 
