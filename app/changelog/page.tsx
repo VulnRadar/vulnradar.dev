@@ -70,10 +70,34 @@ import { APP_NAME, TOTAL_CHECKS_LABEL } from "@/lib/constants"
 
 const CHANGELOG = [
   {
+    version: "2.0.0",
+    date: "March 12, 2026",
+    title: "Stripe Billing, Discord Integration, Admin Notifications & Design System Overhaul",
+    highlights: true,
+    changes: [
+      { icon: Crown, label: "Stripe Billing Integration", desc: "Full Stripe Checkout integration with 4 subscription tiers: Free, Core Supporter ($5/mo), Pro Supporter ($10/mo), and Elite Supporter ($20/mo). Each tier unlocks higher scan limits. Billing portal for managing subscriptions, automatic webhook handling for subscription lifecycle events, and seamless upgrade/downgrade flows." },
+      { icon: Globe, label: "Discord Account Linking", desc: "Link your Discord account to your VulnRadar profile for enhanced community features. OAuth2 flow with secure token storage, profile display showing Discord avatar and username, and one-click unlink option. Enables future Discord bot integrations and community verification." },
+      { icon: BellRing, label: "Admin Notification System", desc: "Comprehensive notification system for site-wide announcements. Admins can create Banner, Modal, Toast, or Bell notifications with customizable variants (info, success, warning, error), audience targeting (all, authenticated, unauthenticated, admin, staff), scheduling with start/end dates, and unique cookie-based dismiss tracking per notification." },
+      { icon: Palette, label: "Design System Overhaul", desc: "Complete redesign of the color system using semantic design tokens. Primary color updated to a refined cyan/teal, all hover states standardized to use neutral gray accent colors, and consistent theming across all pages. Removed blue/purple color bleeding in favor of cohesive neutral palette with intentional accent colors." },
+      { icon: Zap, label: "API v2 Migration", desc: "All API endpoints migrated from /api/v1/ to /api/v2/ with automatic deprecation warnings. New API_VERSION constant enables single-source version control. v1 endpoints return deprecation headers directing developers to upgrade. Full backward compatibility maintained during transition period." },
+      { icon: Database, label: "Enhanced Database Schema", desc: "New tables for Discord accounts (discord_accounts), Stripe customers (stripe_customers), subscriptions (stripe_subscriptions), and admin notifications (admin_notifications). Added cookie_id column for unique notification dismiss tracking. Improved indexing for billing and notification queries." },
+      { icon: ShieldCheck, label: "Subscription-Gated Scanning", desc: "Scan limits now enforced based on subscription tier. Free users get 50 scans/month, Core gets 100, Pro gets 150, Elite gets 500. Usage tracking via billing API with clear limit indicators in the UI. Self-hosters can disable billing entirely via config.yaml." },
+      { icon: Settings, label: "Admin Notifications Manager", desc: "Full CRUD interface for managing site notifications. Create notifications with rich options: type selector, variant badges, audience targeting, path patterns for page-specific display, scheduling controls, dismiss duration, and action buttons with external link support. Real-time preview of notification appearance." },
+      { icon: Bell, label: "Multi-Type Notification Display", desc: "Banner notifications appear at page top with gradient accents and megaphone icons. Modal notifications show as centered overlays with backdrop blur. Toast notifications stack in bottom-right corner with auto-dismiss progress bars. Each type respects its own cookie-based dismiss state independently." },
+      { icon: Link2, label: "Discord Profile Modal", desc: "New modal for connecting Discord accounts with OAuth2 authorization flow. Shows connected account details including avatar, username, and Discord ID. Clean disconnect flow with confirmation. Integrated into profile page security section." },
+      { icon: BarChart3, label: "Billing Dashboard", desc: "New /pricing page showing all subscription tiers with feature comparison. Current plan highlighted with usage statistics. One-click upgrade buttons that redirect to Stripe Checkout. Billing portal access for existing subscribers to manage payment methods and cancel subscriptions." },
+      { icon: Wrench, label: "Stripe Webhook Automation", desc: "Automatic webhook endpoint registration on first billing API call. Handles checkout.session.completed, customer.subscription.updated, customer.subscription.deleted, and invoice.payment_failed events. Robust signature verification and idempotent event processing." },
+      { icon: Activity, label: "Staff Heartbeat System", desc: "Real-time presence tracking for staff members. Automatic status updates (online/away/offline) based on activity. Visible in admin panel for coordinating support coverage. Uses efficient polling with 30-second intervals." },
+      { icon: Filter, label: "Notification Audience Targeting", desc: "Notifications can target specific audiences: all users, authenticated only, unauthenticated only, admin only, or staff only. Path patterns allow page-specific notifications (e.g., only show on /dashboard). Priority system ensures most important notifications display first." },
+      { icon: Timer, label: "Scheduled Notifications", desc: "Set start and end dates for notifications. Notifications automatically appear when starts_at is reached and disappear after ends_at. Perfect for maintenance windows, limited-time announcements, and scheduled promotions." },
+      { icon: Fingerprint, label: "Unique Cookie-Based Dismiss", desc: "Each notification has a unique cookie_id (notif_ + 16 hex chars). Dismissing one notification doesn't affect others. Dismiss duration configurable per notification (hours until cookie expires). Persists across sessions and page refreshes." },
+    ],
+  },
+  {
     version: "1.9.5",
     date: "March 7, 2026",
     title: "API v1 Versioning, Developer SDK Support & Finding Types Endpoint",
-    highlights: true,
+    highlights: false,
     changes: [
       { icon: Zap, label: "API v1 Versioning", desc: "All API endpoints have been migrated to /api/v1/ for proper versioning. This prepares the codebase for v2.0 which will introduce breaking changes. The version and security-txt endpoints remain unversioned at /api/version and /api/security-txt respectively." },
       { icon: FileText, label: "New Finding Types Endpoint", desc: "Added GET /api/v1/finding-types endpoint that returns all 110+ security check definitions including id, type, title, category, and severity. This enables SDK developers to programmatically access check metadata for building integrations." },
