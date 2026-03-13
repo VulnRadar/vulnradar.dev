@@ -14,7 +14,6 @@ const tocItems: TocItem[] = [
   { id: "finding-types", label: "Finding Types API" },
   { id: "building-sdks", label: "Building SDKs" },
   { id: "sdk-checklist", label: "SDK Checklist", level: 2 },
-  { id: "official-sdks", label: "Official SDKs" },
   { id: "community", label: "Community SDKs" },
   { id: "contributing", label: "Contributing" },
 ]
@@ -326,83 +325,6 @@ export default function DevelopersPage() {
                 </div>
               ))}
             </div>
-          </Card>
-        </div>
-      </section>
-
-      {/* Official SDKs */}
-      <section id="official-sdks" className="scroll-mt-24 space-y-6">
-        <div className="flex items-center gap-3">
-          <div className="p-2 rounded-lg bg-primary/10">
-            <Zap className="h-5 w-5 text-primary" />
-          </div>
-          <h2 className="text-2xl font-bold tracking-tight">Official SDKs</h2>
-        </div>
-
-        <div className="grid gap-4">
-          {/* Python SDK */}
-          <Card className="p-6 border-border/40">
-            <div className="flex items-start justify-between mb-4">
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-blue-600/20 rounded-lg">
-                  <Terminal className="h-5 w-5 text-blue-600" />
-                </div>
-                <div>
-                  <h3 className="font-semibold flex items-center gap-2">
-                    Python SDK
-                    <Badge variant="outline" className="text-xs">In Development</Badge>
-                  </h3>
-                  <p className="text-sm text-muted-foreground">vulnradar-py</p>
-                </div>
-              </div>
-              <a 
-                href="https://github.com/VulnRadar/vulnradar-py" 
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-muted-foreground hover:text-foreground transition-colors"
-              >
-                <Github className="h-5 w-5" />
-              </a>
-            </div>
-            <CodeBlock code={`# Coming soon
-pip install vulnradar
-
-from vulnradar import VulnRadar
-
-client = VulnRadar(api_key="your-api-key")
-result = client.scan("https://example.com")
-
-print(f"Found {len(result.findings)} vulnerabilities")
-for finding in result.findings:
-    print(f"[{finding.severity}] {finding.title}")`} language="python" />
-          </Card>
-
-          {/* TypeScript SDK */}
-          <Card className="p-6 border-border/40">
-            <div className="flex items-start justify-between mb-4">
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-blue-600/20 rounded-lg">
-                  <Code2 className="h-5 w-5 text-blue-600" />
-                </div>
-                <div>
-                  <h3 className="font-semibold flex items-center gap-2">
-                    TypeScript SDK
-                    <Badge variant="outline" className="text-xs">Planned</Badge>
-                  </h3>
-                  <p className="text-sm text-muted-foreground">@vulnradar/sdk</p>
-                </div>
-              </div>
-            </div>
-            <CodeBlock code={`// Coming soon
-npm install @vulnradar/sdk
-
-import { VulnRadar } from '@vulnradar/sdk';
-
-const client = new VulnRadar({ apiKey: 'your-api-key' });
-const result = await client.scan('https://example.com');
-
-console.log(\`Found \${result.findings.length} vulnerabilities\`);
-result.findings.forEach(f => console.log(\`[\${f.severity}] \${f.title}\`));`} language="typescript" />
           </Card>
         </div>
       </section>
