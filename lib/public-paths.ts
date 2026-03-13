@@ -1,4 +1,4 @@
-import { ROUTES, API, API_V2 } from "./constants"
+import { ROUTES, API_V2 } from "./constants"
 
 /**
  * Public paths that don't require authentication
@@ -17,18 +17,15 @@ export const PUBLIC_PATHS = [
   ROUTES.RESET_PASSWORD,
   ROUTES.VERIFY_EMAIL,
 
-  // ─── Authentication API Routes (v1) ────────────────────────────
-  // Removed - v1 API deprecated, use v2 only
-
   // ─── Authentication API Routes (v2) ────────────────────────────
-  API_V2.AUTH.LOGIN,
-  API_V2.AUTH.SIGNUP,
-  API_V2.AUTH.FORGOT_PASSWORD,
-  API_V2.AUTH.RESET_PASSWORD,
-  API_V2.AUTH.ACCEPT_TOS,
-  API_V2.AUTH.TWO_FA.VERIFY,
-  API_V2.AUTH.VERIFY_EMAIL,
-  API_V2.AUTH.RESEND_VERIFICATION,
+  API_V2.AUTH?.LOGIN || "/api/v2/auth/login",
+  API_V2.AUTH?.SIGNUP || "/api/v2/auth/signup",
+  API_V2.AUTH?.FORGOT_PASSWORD || "/api/v2/auth/forgot-password",
+  API_V2.AUTH?.RESET_PASSWORD || "/api/v2/auth/reset-password",
+  API_V2.AUTH?.ACCEPT_TOS || "/api/v2/auth/accept-tos",
+  API_V2.AUTH?.TWO_FA?.VERIFY || "/api/v2/auth/2fa/verify",
+  API_V2.AUTH?.VERIFY_EMAIL || "/api/v2/auth/verify-email",
+  API_V2.AUTH?.RESEND_VERIFICATION || "/api/v2/auth/resend-verification",
 
   // ─── Discord OAuth (must be public for OAuth flow) ─────────────
   "/api/v2/auth/discord",
@@ -65,18 +62,18 @@ export const PUBLIC_PATHS = [
 
   // ─── Public Demo (v2) ──────────────────────────────────────────
   ROUTES.DEMO,
-  API_V2.DEMO_SCAN,
+  API_V2.DEMO_SCAN || "/api/v2/demo-scan",
 
   // ─── Public Staff Page (v2) ────────────────────────────────────
   ROUTES.STAFF,
-  API_V2.STAFF,
+  API_V2.STAFF || "/api/v2/staff",
 
   // ─── Public API Endpoints (v2) ─────────────────────────────────
-  API_V2.LANDING_CONTACT,
+  API_V2.LANDING_CONTACT || "/api/v2/landing-contact",
 
   // ─── Public Badge Endpoints (v2) ────────────────────────────────
   "/api/v2/badge",
 
   // ─── Public Finding Types Endpoint (v2) ────────────────────────
-  API_V2.FINDING_TYPES,
+  API_V2.FINDING_TYPES || "/api/v2/finding-types",
 ]
