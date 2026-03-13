@@ -106,7 +106,7 @@ export default function StaffPage() {
       {/* Staff sections by role */}
       {!loading && staff.length > 0 && (
         <div className="flex flex-col gap-10">
-          {([STAFF_ROLES.ADMIN, STAFF_ROLES.MODERATOR, STAFF_ROLES.SUPPORT, STAFF_ROLES.BETA_TESTER] as const).map((roleKey) => {
+          {DISPLAY_STAFF_ROLES.map((roleKey) => {
             const members = grouped[roleKey]
             if (members.length === 0) return null
             const config = ROLE_CONFIG[roleKey]
