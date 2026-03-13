@@ -1242,7 +1242,7 @@ function ProfileContent() {
                           </Button>
                           <Button
                             variant="outline"
-                            className="flex-1 text-destructive border-destructive/30 hover:bg-destructive/10"
+                            className="flex-1 text-destructive dark:text-red-400 border-destructive/30 hover:bg-destructive/10"
                             onClick={async () => {
                               try {
                                 const res = await fetch("/api/v2/account/discord", { method: "DELETE" })
@@ -1553,7 +1553,7 @@ function ProfileContent() {
                               <Button
                                 variant="outline"
                                 onClick={() => setShowCancelDialog(true)}
-                                className="w-full text-destructive hover:text-destructive hover:bg-destructive/10"
+                                className="w-full text-destructive dark:text-red-400 hover:text-destructive dark:hover:text-red-400 hover:bg-destructive/10"
                               >
                                 Cancel Subscription
                               </Button>
@@ -2352,7 +2352,7 @@ function ProfileContent() {
                             <Button
                               variant="ghost"
                               size="icon"
-                              className="h-7 w-7 text-destructive hover:text-destructive hover:bg-destructive/10 shrink-0"
+                              className="h-7 w-7 text-destructive dark:text-red-400 hover:text-destructive dark:hover:text-red-400 hover:bg-destructive/10 shrink-0"
                               onClick={async () => {
                                 await fetch(API.WEBHOOKS, {
                                   method: "DELETE",
@@ -2454,7 +2454,7 @@ function ProfileContent() {
                             <Button
                               variant="ghost"
                               size="icon"
-                              className="h-7 w-7 text-destructive hover:text-destructive hover:bg-destructive/10 shrink-0"
+                              className="h-7 w-7 text-destructive dark:text-red-400 hover:text-destructive dark:hover:text-red-400 hover:bg-destructive/10 shrink-0"
                               onClick={async () => {
                                 await fetch(API.SCHEDULES, {
                                   method: "DELETE",
@@ -2828,7 +2828,7 @@ function ProfileContent() {
                     {!showDeleteConfirm ? (
                       <Button
                         variant="outline"
-                        className="text-destructive border-destructive/30 hover:bg-destructive/10 hover:text-destructive bg-transparent"
+                        className="text-destructive dark:text-red-400 border-destructive/30 hover:bg-destructive/10 hover:text-destructive dark:hover:text-red-400 bg-transparent"
                         onClick={() => setShowDeleteConfirm(true)}
                       >
                         <Trash2 className="mr-2 h-4 w-4" />
