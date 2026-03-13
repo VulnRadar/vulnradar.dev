@@ -340,8 +340,10 @@ export function SiteNotificationsWrapper() {
         if (res.ok) {
           const data = await res.json()
           console.log("[v0] SiteNotificationsWrapper: Raw data:", data)
+          // API returns array directly, not { notifications: [...] }
+          const allNotifs = Array.isArray(data) ? data : (data.notifications || [])
           // Filter to only banner, modal, toast types (bell is handled by NotificationCenter)
-          const siteNotifs = (data.notifications || []).filter(
+          const siteNotifs = allNotifs.filter(
             (n: Notification) => n.type === "banner" || n.type === "modal" || n.type === "toast"
           )
           console.log("[v0] SiteNotificationsWrapper: Filtered site notifs:", siteNotifs)
