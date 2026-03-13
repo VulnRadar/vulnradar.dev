@@ -49,7 +49,7 @@ export async function createSession(userId: number, ipAddress?: string, userAgen
   return sessionId
 }
 
-export async function getSession(): Promise<{ userId: number; email: string; name: string | null; tosAcceptedAt: string | null } | null> {
+export async function getSession(): Promise<{ userId: number; email: string; name: string | null; tosAcceptedAt: string | null; role: string } | null> {
   // Run cleanup every 24 hours
   const now = Date.now()
   if (now - lastCleanupTime > CLEANUP_INTERVAL) {
@@ -63,7 +63,7 @@ export async function getSession(): Promise<{ userId: number; email: string; nam
   if (!sessionId) return null
 
   const result = await pool.query(
-      `SELECT s.user_id, s.expires_at, u.email, u.name, u.tos_accepted_at, u.disabled_at
+      `SELECT s.user_id, s.expires_at, u.email, u.name, u.tos_accepted_at, u.disabled_at, u.role
        FROM sessions s
               JOIN users u ON s.user_id = u.id
        WHERE s.id = $1`,
@@ -89,6 +89,7 @@ export async function getSession(): Promise<{ userId: number; email: string; nam
     email: session.email,
     name: session.name,
     tosAcceptedAt: session.tos_accepted_at || null,
+    role: session.role || "user",
   }
 }
 
@@ -107,7 +108,9 @@ export async function createUser(email: string, password: string, name?: string)
   const passwordHash = hashPassword(password)
 
   const result = await pool.query(
-      "INSERT INTO users (email, password_hash, name) VALUES ($1, $2, $3) RETURNING id, email, name",
+      `INSERT INTO users (email, password_hash, name, plan, beta_access, role)
+       VALUES ($1, $2, $3, 'free', false, 'user')
+       RETURNING id, email, name, plan, beta_access, role`,
       [email.toLowerCase().trim(), passwordHash, name || null],
   )
 
@@ -126,4 +129,9 @@ export async function getUserByEmail(email: string) {
 // Cleanup expired sessions
 export async function cleanupExpiredSessions(): Promise<void> {
   await pool.query("DELETE FROM sessions WHERE expires_at < NOW()")
+}
+
+// Delete all sessions for a user (force logout all devices)
+export async function deleteAllSessions(userId: number): Promise<void> {
+  await pool.query("DELETE FROM sessions WHERE user_id = $1", [userId])
 }

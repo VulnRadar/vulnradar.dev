@@ -109,7 +109,7 @@ function layout(content: string): string {
                 <tr>
                   <td style="text-align: center;">
                     <p style="margin: 0 0 8px 0; font-size: 12px; color: ${COLORS.TEXT_MUTED}; line-height: 1.6;">
-                      <a href="${APP_URL}" style="color: ${COLORS.ACCENT_BLUE_LIGHT}; text-decoration: none;">vulnradar.dev</a>
+                      <a href="${APP_URL}" style="color: ${COLORS.ACCENT_BLUE_LIGHT}; text-decoration: none;">${new URL(APP_URL).hostname}</a>
                     </p>
                     <p style="margin: 0; font-size: 11px; color: ${COLORS.TEXT_DARK}; line-height: 1.5;">
                       ${APP_NAME} - Web Vulnerability Scanner<br />

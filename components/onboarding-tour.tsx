@@ -16,7 +16,7 @@ import {
   X,
   Sparkles,
 } from "lucide-react"
-import { APP_NAME, TOTAL_CHECKS_LABEL } from "@/lib/constants"
+import { APP_NAME, TOTAL_CHECKS_LABEL, API } from "@/lib/constants"
 
 const STEPS = [
   {
@@ -74,7 +74,7 @@ export function OnboardingTour() {
   const [step, setStep] = useState(0)
 
   useEffect(() => {
-    fetch("/api/v1/auth/me")
+    fetch(API.AUTH.ME)
       .then((r) => r.json())
       .then((d) => {
         if (d.userId && !d.onboardingCompleted) {
@@ -86,7 +86,7 @@ export function OnboardingTour() {
 
   async function handleComplete() {
     setShow(false)
-    await fetch("/api/v1/auth/onboarding", { method: "POST" })
+    await fetch(API.AUTH.ONBOARDING, { method: "POST" })
   }
 
   function handleSkip() {

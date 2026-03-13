@@ -1,34 +1,27 @@
 "use client"
 
-import { useEffect, useState, useCallback, useMemo, useRef } from "react"
-import { useRouter, usePathname } from "next/navigation"
+import { useEffect, useState, useCallback, useRef } from "react"
+import { usePathname } from "next/navigation"
 import {
   X,
-  Sparkles,
   ArrowRight,
   AlertTriangle,
-  MessageCircle,
   Bell,
   ExternalLink,
+  Info,
+  CheckCircle2,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
-import {
-  VERSION_COOKIE_NAME,
-  VERSION_COOKIE_MAX_AGE,
-  APP_VERSION,
-  APP_NAME,
-} from "@/lib/constants"
 import { PUBLIC_PATHS } from "@/lib/public-paths"
 import { useAuth } from "@/components/auth-provider"
+import { STAFF_ROLES, APP_VERSION, APP_NAME } from "@/lib/constants"
+import { Sparkles } from "lucide-react"
+
+const STAFF_ROLE_VALUES = Object.values(STAFF_ROLES)
+const VERSION_COOKIE = "vr_last_seen_version"
 
 // ─── Cookie Helpers ──────────────────────────────────────────────
-
-const DISCORD_COOKIE = "vulnradar_discord_dismissed"
-const GIVEAWAY_COOKIE = "vulnradar_giveaway_shown"
-const GIVEAWAY_START_DATE = new Date("2026-02-26") // Giveaway starts Feb 26
-const GIVEAWAY_END_DATE = new Date("2026-03-12") // Giveaway ends Mar 12 (14 days)
-const DISCORD_INVITE_URL = "https://discord.gg/Y7R6hdGbNe"
 
 function getCookie(name: string): string | undefined {
   if (typeof document === "undefined") return undefined
@@ -36,14 +29,31 @@ function getCookie(name: string): string | undefined {
   return cookies.find((c) => c.startsWith(`${name}=`))?.split("=")[1]
 }
 
-function setCookie(name: string, value: string, maxAge: number) {
-  document.cookie = `${name}=${value}; path=/; max-age=${maxAge}; SameSite=Lax`
+function setCookie(name: string, value: string, maxAgeSeconds: number) {
+  document.cookie = `${name}=${value}; path=/; max-age=${maxAgeSeconds}; SameSite=Lax`
+}
+
+// ─── Types ───────────────────────────────────────────────────────
+
+interface ApiNotification {
+  id: number
+  cookie_id: string
+  title: string
+  message: string
+  type: "bell" | "banner" | "modal" | "toast"
+  variant: "info" | "success" | "warning" | "error"
+  audience: string
+  is_dismissible: boolean
+  dismiss_duration_hours: number | null
+  action_label: string | null
+  action_url: string | null
+  action_external: boolean
+  priority: number
 }
 
 // ─── Backup Codes Modal (always shows as full-screen overlay) ────
 
 export function BackupCodesModal() {
-  const router = useRouter()
   const pathname = usePathname()
   const [dismissed, setDismissed] = useState(false)
   const [closing, setClosing] = useState(false)
@@ -110,8 +120,8 @@ export function BackupCodesModal() {
             <Button variant="outline" size="sm" className="bg-transparent" onClick={handleDismiss}>
               Remind Me Later
             </Button>
-            <Button size="sm" onClick={() => { handleDismiss(); router.push("/profile") }}>
-              Rotate Backup Codes
+            <Button size="sm" asChild>
+              <a href="/profile#account" onClick={handleDismiss}>Rotate Backup Codes</a>
             </Button>
           </div>
         </div>
@@ -120,91 +130,87 @@ export function BackupCodesModal() {
   )
 }
 
-// ─── Notification Item Type ──────────────────────────────────────
+// ─── Variant Styles ──────────────────────────────────────────────
 
-interface NotifItem {
-  id: string
-  icon: React.ReactNode
-  iconBg: string
-  title: string
-  description: string
-  action: { label: string; onClick: () => void }
-  onDismiss: () => void
-}
-
-interface CustomNotification {
-  id: string
-  title: string
-  message: string
-  type: "warning" | "info" | "success" | "error"
-  actionLabel?: string
-  actionUrl?: string
-  autoClose?: boolean
-  autoCloseDelay?: number
+const VARIANT_ICONS: Record<string, { icon: React.ReactNode; bg: string }> = {
+  info: { icon: <Info className="h-4 w-4" />, bg: "bg-blue-500/10 text-blue-500" },
+  success: { icon: <CheckCircle2 className="h-4 w-4" />, bg: "bg-emerald-500/10 text-emerald-500" },
+  warning: { icon: <AlertTriangle className="h-4 w-4" />, bg: "bg-amber-500/10 text-amber-500" },
+  error: { icon: <AlertTriangle className="h-4 w-4" />, bg: "bg-destructive/10 text-destructive" },
 }
 
 // ─── Notification Bell (header dropdown) ─────────────────────────
 
-function initVersionDismissed(): boolean {
-  if (typeof document === "undefined") return true
-  const v = getCookie(VERSION_COOKIE_NAME)
-  return !!v && v === APP_VERSION
-}
-
-function initDiscordDismissed(): boolean {
-  if (typeof document === "undefined") return true
-  return !!getCookie(DISCORD_COOKIE)
-}
-
-function initGiveawayDismissed(): boolean {
-  if (typeof document === "undefined") return true
-  // Hide if giveaway period has ended
-  if (new Date() > GIVEAWAY_END_DATE) return true
-  // Otherwise check if shown in last 24 hours
-  return !!getCookie(GIVEAWAY_COOKIE)
-}
-
 export function NotificationBell() {
-  const router = useRouter()
   const pathname = usePathname()
+  const { me } = useAuth()
   const [open, setOpen] = useState(false)
-  const [versionDismissed, setVersionDismissed] = useState(initVersionDismissed)
-  const [discordDismissed, setDiscordDismissed] = useState(initDiscordDismissed)
-  const [giveawayDismissed, setGiveawayDismissed] = useState(initGiveawayDismissed)
-  const [customNotifs, setCustomNotifs] = useState<CustomNotification[]>([])
+  const [notifications, setNotifications] = useState<ApiNotification[]>([])
+  const [dismissedIds, setDismissedIds] = useState<Set<number>>(new Set())
   const [hydrated, setHydrated] = useState(false)
+  const [loading, setLoading] = useState(true)
+  const [showVersionNotif, setShowVersionNotif] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
-  useAuth() // ensure auth hook runs for side-effects (if any), but avoid unused variable
 
   const isPublicRoute = PUBLIC_PATHS.some((p) => {
     if (p === "/" || p === "/landing") return pathname === p
     return pathname.startsWith(p)
   })
 
-  // Listen for custom notifications from AdminVersionNotifier
-  useEffect(() => {
-    function handleCustomNotif(e: Event) {
-      const evt = e as CustomEvent<CustomNotification>
-      if (evt.detail) {
-        setCustomNotifs((prev) => {
-          const filtered = prev.filter((n) => n.id !== evt.detail.id)
-          return [...filtered, evt.detail]
-        })
+  const isStaff = me?.role && STAFF_ROLE_VALUES.includes(me.role)
 
-        // Auto-close if specified
-        if (evt.detail.autoClose) {
-          setTimeout(() => {
-            setCustomNotifs((prev) => prev.filter((n) => n.id !== evt.detail.id))
-          }, evt.detail.autoCloseDelay || 5000)
+  // Check if there's a new version (cookie-based)
+  useEffect(() => {
+    const lastSeenVersion = getCookie(VERSION_COOKIE)
+    if (lastSeenVersion !== APP_VERSION) {
+      // New version detected - show notification
+      setShowVersionNotif(true)
+    }
+  }, [])
+
+  // Initialize dismissed IDs from cookies on mount
+  useEffect(() => {
+    const dismissed = getCookie("vr_notif_dismissed")
+    if (dismissed) {
+      try {
+        const parsed = JSON.parse(decodeURIComponent(dismissed))
+        if (Array.isArray(parsed)) {
+          setDismissedIds(new Set(parsed.map(Number)))
         }
+      } catch {
+        // Invalid cookie, ignore
+      }
+    }
+  }, [])
+
+  // Fetch notifications from API
+  useEffect(() => {
+    async function fetchNotifications() {
+      try {
+        const params = new URLSearchParams({
+          authenticated: me?.userId ? "true" : "false",
+          staff: isStaff ? "true" : "false",
+        })
+        const res = await fetch(`/api/v2/notifications/active?${params}`)
+        if (res.ok) {
+          const data = await res.json()
+          // Only show "bell" type notifications in the bell dropdown
+          setNotifications(data.filter((n: ApiNotification) => n.type === "bell"))
+        }
+      } catch (err) {
+        console.error("Failed to fetch notifications:", err)
+      } finally {
+        setLoading(false)
       }
     }
 
-    window.addEventListener("app:notification", handleCustomNotif)
-    return () => window.removeEventListener("app:notification", handleCustomNotif)
-  }, [])
+    fetchNotifications()
+    // Refetch every 5 minutes
+    const interval = setInterval(fetchNotifications, 5 * 60 * 1000)
+    return () => clearInterval(interval)
+  }, [me?.userId, isStaff])
 
-  // Mark component as hydrated after client mount to avoid SSR/CSR mismatches
+  // Mark component as hydrated after client mount
   useEffect(() => {
     setHydrated(true)
   }, [])
@@ -218,111 +224,26 @@ export function NotificationBell() {
     return () => document.removeEventListener("mousedown", handle)
   }, [open])
 
-  const dismissVersion = useCallback(() => {
-    setCookie(VERSION_COOKIE_NAME, APP_VERSION, VERSION_COOKIE_MAX_AGE)
-    setVersionDismissed(true)
+  // Dismiss using unique cookie_id - each notification has its own cookie
+  const dismissNotification = useCallback((cookieId: string, durationHours: number | null) => {
+    const maxAge = durationHours ? durationHours * 60 * 60 : 60 * 60 * 24 * 365 // default 1 year
+    setCookie(`dismissed_${cookieId}`, "1", maxAge)
+    setDismissedIds((prev) => new Set([...prev, cookieId]))
   }, [])
 
-  const dismissDiscord = useCallback(() => {
-    setCookie(DISCORD_COOKIE, "1", 60 * 60 * 24 * 30)
-    setDiscordDismissed(true)
+  const dismissVersionNotif = useCallback(() => {
+    setCookie(VERSION_COOKIE, APP_VERSION, 60 * 60 * 24 * 365) // 1 year
+    setShowVersionNotif(false)
   }, [])
 
-  const dismissGiveaway = useCallback(() => {
-    setCookie(GIVEAWAY_COOKIE, "1", 1) // 24 hours
-    setGiveawayDismissed(true)
-  }, [])
-
-  const notifications = useMemo<NotifItem[]>(() => {
-    const list: NotifItem[] = []
-
-    // Add custom notifications (from AdminVersionNotifier, etc)
-    customNotifs.forEach((cn) => {
-      let icon = <Sparkles className="h-4 w-4" />
-      let iconBg = "bg-primary/10 text-primary"
-
-      if (cn.type === "warning") {
-        icon = <AlertTriangle className="h-4 w-4" />
-        iconBg = "bg-destructive/10 text-destructive"
-      } else if (cn.type === "info") {
-        icon = <MessageCircle className="h-4 w-4" />
-        iconBg = "bg-blue-500/10 text-blue-500"
-      } else if (cn.type === "success") {
-        icon = <Sparkles className="h-4 w-4" />
-        iconBg = "bg-emerald-500/10 text-emerald-500"
-      }
-
-      list.push({
-        id: cn.id,
-        icon,
-        iconBg,
-        title: cn.title,
-        description: cn.message,
-        action: {
-          label: cn.actionLabel || "View",
-          onClick: () => {
-            if (cn.actionUrl) window.open(cn.actionUrl, "_blank", "noopener,noreferrer")
-          },
-        },
-        onDismiss: () => {
-          setCustomNotifs((prev) => prev.filter((n) => n.id !== cn.id))
-        },
-      })
-    })
-
-    if (!versionDismissed) {
-      list.push({
-        id: "version",
-        icon: <Sparkles className="h-4 w-4" />,
-        iconBg: "bg-primary/10 text-primary",
-        title: `${APP_NAME} v${APP_VERSION} Released`,
-        description: "New features, improvements, and bug fixes are available.",
-        action: {
-          label: "View Changelog",
-          onClick: () => { dismissVersion(); setOpen(false); router.push("/changelog") },
-        },
-        onDismiss: dismissVersion,
-      })
-    }
-
-    if (!discordDismissed) {
-      list.push({
-        id: "discord",
-        icon: (
-          <svg className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-            <path d="M20.317 4.3698a19.7913 19.7913 0 00-4.8851-1.5152.0741.0741 0 00-.0785.0371c-.211.3753-.4447.8648-.6083 1.2495-1.8447-.2762-3.68-.2762-5.4868 0-.1636-.3933-.4058-.8742-.6177-1.2495a.077.077 0 00-.0785-.037 19.7363 19.7363 0 00-4.8852 1.515.0699.0699 0 00-.0321.0277C.5334 9.0458-.319 13.5799.0992 18.0578a.0824.0824 0 00.0312.0561c2.0528 1.5076 4.0413 2.4228 5.9929 3.0294a.0777.0777 0 00.0842-.0276c.4616-.6304.8731-1.2952 1.226-1.9942a.076.076 0 00-.0416-.1057c-.6528-.2476-1.2743-.5495-1.8722-.8923a.077.077 0 01-.0076-.1277c.1258-.0943.2517-.1923.3718-.2914a.0743.0743 0 01.0776-.0105c3.9278 1.7933 8.18 1.7933 12.0614 0a.0739.0739 0 01.0785.0095c.1202.099.246.1981.3728.2924a.077.077 0 01-.0066.1276 12.2986 12.2986 0 01-1.873.8914.0766.0766 0 00-.0407.1067c.3604.698.7719 1.3628 1.225 1.9932a.076.076 0 00.0842.0286c1.961-.6067 3.9495-1.5219 6.0023-3.0294a.077.077 0 00.0313-.0552c.5004-5.177-.8382-9.6739-3.5485-13.6604a.061.061 0 00-.0312-.0286zM8.02 15.3312c-1.1825 0-2.1569-1.0857-2.1569-2.419 0-1.3332.9555-2.4189 2.157-2.4189 1.2108 0 2.1757 1.0952 2.1568 2.419 0 1.3332-.9555 2.4189-2.1569 2.4189zm7.9748 0c-1.1825 0-2.1569-1.0857-2.1569-2.419 0-1.3332.9554-2.4189 2.1569-2.4189 1.2108 0 2.1757 1.0952 2.1568 2.419 0 1.3332-.946 2.4189-2.1568 2.4189z" />
-          </svg>
-        ),
-        iconBg: "bg-[#5865F2]/10 text-[#5865F2]",
-        title: "Join Our Discord",
-        description: "Connect with the community, get support, and stay updated.",
-        action: {
-          label: "Join Server",
-          onClick: () => { dismissDiscord(); setOpen(false); window.open(DISCORD_INVITE_URL, "_blank", "noopener,noreferrer") },
-        },
-        onDismiss: dismissDiscord,
-      })
-    }
-
-    if (!giveawayDismissed) {
-      list.push({
-        id: "giveaway",
-        icon: <Sparkles className="h-4 w-4" />,
-        iconBg: "bg-amber-500/10 text-amber-500",
-        title: "🎁 Giveaway Happening Now!",
-        description: "We're giving away 3 months FREE of VulnRadar Elite Supporter tier! Join our Discord server to enter.",
-        action: {
-          label: "Enter Giveaway",
-          onClick: () => { dismissGiveaway(); setOpen(false); window.open(DISCORD_INVITE_URL, "_blank", "noopener,noreferrer") },
-        },
-        onDismiss: dismissGiveaway,
-      })
-    }
-
-    return list
-  }, [versionDismissed, discordDismissed, giveawayDismissed, dismissVersion, dismissDiscord, dismissGiveaway, router, customNotifs])
-
-  const count = notifications.length
+  // Filter out dismissed notifications (check both Set and cookie)
+  const visibleNotifications = notifications.filter((n) => {
+    if (dismissedIds.has(n.cookie_id)) return false
+    // Also check cookie directly for SSR/hydration
+    if (typeof document !== "undefined" && getCookie(`dismissed_${n.cookie_id}`) === "1") return false
+    return true
+  })
+  const count = visibleNotifications.length + (showVersionNotif ? 1 : 0)
 
   return (
     <div ref={ref} className={cn("relative vr-auth-only", isPublicRoute && "!invisible !pointer-events-none")}>
@@ -352,32 +273,39 @@ export function NotificationBell() {
           </div>
 
           {/* Items */}
-          {count === 0 ? (
+          {loading ? (
+            <div className="px-4 py-8 text-center">
+              <div className="h-6 w-6 border-2 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-2" />
+              <p className="text-sm text-muted-foreground">Loading...</p>
+            </div>
+          ) : count === 0 ? (
             <div className="px-4 py-8 text-center">
               <Bell className="h-8 w-8 text-muted-foreground/30 mx-auto mb-2" />
               <p className="text-sm text-muted-foreground">All caught up!</p>
             </div>
           ) : (
             <div className="max-h-80 overflow-y-auto">
-              {notifications.map((n) => (
-                <div key={n.id} className="px-4 py-3 border-b border-border last:border-b-0 hover:bg-muted/50 transition-colors">
+              {/* Version notification (hardcoded, cookie-based) */}
+              {showVersionNotif && (
+                <div className="px-4 py-3 border-b border-border hover:bg-muted/50 transition-colors">
                   <div className="flex items-start gap-3">
-                    <div className={cn("flex-shrink-0 p-2 rounded-lg", n.iconBg)}>
-                      {n.icon}
+                    <div className="flex-shrink-0 p-2 rounded-lg bg-primary/10 text-primary">
+                      <Sparkles className="h-4 w-4" />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-foreground">{n.title}</p>
-                      <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">{n.description}</p>
+                      <p className="text-sm font-medium text-foreground">{APP_NAME} v{APP_VERSION} Released</p>
+                      <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">New features, improvements, and bug fixes are available.</p>
                       <div className="flex items-center gap-2 mt-2">
-                        <button
-                          onClick={n.action.onClick}
+                        <a
+                          href="/changelog"
+                          onClick={() => { dismissVersionNotif(); setOpen(false) }}
                           className="text-xs font-medium text-primary hover:text-primary/80 transition-colors flex items-center gap-1"
                         >
-                          {n.action.label}
-                          {n.id === "discord" ? <ExternalLink className="h-3 w-3" /> : <ArrowRight className="h-3 w-3" />}
-                        </button>
+                          View Changelog
+                          <ArrowRight className="h-3 w-3" />
+                        </a>
                         <button
-                          onClick={n.onDismiss}
+                          onClick={dismissVersionNotif}
                           className="text-xs text-muted-foreground hover:text-foreground transition-colors"
                         >
                           Dismiss
@@ -385,15 +313,63 @@ export function NotificationBell() {
                       </div>
                     </div>
                     <button
-                      onClick={n.onDismiss}
+                      onClick={dismissVersionNotif}
                       className="flex-shrink-0 p-0.5 rounded text-muted-foreground/50 hover:text-muted-foreground transition-colors"
-                      aria-label={`Dismiss ${n.title}`}
+                      aria-label="Dismiss version notification"
                     >
                       <X className="h-3.5 w-3.5" />
                     </button>
                   </div>
                 </div>
-              ))}
+              )}
+              {/* API-driven notifications */}
+              {visibleNotifications.map((n) => {
+                const variant = VARIANT_ICONS[n.variant] || VARIANT_ICONS.info
+                return (
+                  <div key={n.id} className="px-4 py-3 border-b border-border last:border-b-0 hover:bg-muted/50 transition-colors">
+                    <div className="flex items-start gap-3">
+                      <div className={cn("flex-shrink-0 p-2 rounded-lg", variant.bg)}>
+                        {variant.icon}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-foreground">{n.title}</p>
+                        <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">{n.message}</p>
+                        <div className="flex items-center gap-2 mt-2">
+                          {n.action_url && (
+                            <a
+                              href={n.action_url}
+                              target={n.action_external ? "_blank" : "_self"}
+                              rel={n.action_external ? "noopener noreferrer" : undefined}
+                              onClick={() => { if (n.is_dismissible) dismissNotification(n.cookie_id, n.dismiss_duration_hours); setOpen(false) }}
+                              className="text-xs font-medium text-primary hover:text-primary/80 transition-colors flex items-center gap-1"
+                            >
+                              {n.action_label || "View"}
+                              {n.action_external ? <ExternalLink className="h-3 w-3" /> : <ArrowRight className="h-3 w-3" />}
+                            </a>
+                          )}
+                          {n.is_dismissible && (
+                            <button
+                              onClick={() => dismissNotification(n.cookie_id, n.dismiss_duration_hours)}
+                              className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+                            >
+                              Dismiss
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                      {n.is_dismissible && (
+                        <button
+                          onClick={() => dismissNotification(n.cookie_id, n.dismiss_duration_hours)}
+                          className="flex-shrink-0 p-0.5 rounded text-muted-foreground/50 hover:text-muted-foreground transition-colors"
+                          aria-label={`Dismiss ${n.title}`}
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )
+              })}
             </div>
           )}
         </div>

@@ -1,66 +1,83 @@
 // ============================================================================
 // APP CONSTANTS - Centralized configuration for the entire application
 // ============================================================================
+// This file reads from config.yaml via the config system.
+// Self-hosters: Modify config.yaml to customize your deployment.
+// ============================================================================
 
-// Checks count (used in descriptions and UI)
-export const TOTAL_CHECKS_LABEL = "175+"
+import { getConfig } from "./config"
 
-// Application metadata
-export const APP_NAME = "VulnRadar"
-export const APP_VERSION = "1.9.5-patch.1"
-export const ENGINE_VERSION = "2.0.0"
+// Get config (loads from config.yaml or uses defaults)
+const config = getConfig()
+
+// ============================================================================
+// APPLICATION METADATA (from config.yaml)
+// ============================================================================
+
+export const APP_NAME = config.app.name
+export const APP_SLUG = config.app.slug
+export const APP_VERSION = config.app.version
+export const ENGINE_VERSION = config.app.engine_version
+export const APP_DESCRIPTION = config.app.description
+export const TOTAL_CHECKS_LABEL = config.app.total_checks_label
+export const APP_URL = config.app.url
+export const APP_REPO = config.app.repo
+
+// Derived values
 export const DEFAULT_SCAN_NOTE = `${APP_NAME} v${APP_VERSION} (Detection Engine v${ENGINE_VERSION})`
-export const APP_DESCRIPTION = `Scan websites for ${TOTAL_CHECKS_LABEL} security vulnerabilities. Get instant reports with severity ratings, actionable fix guidance, and team collaboration tools.`
-export const APP_URL = "https://vulnradar.dev"
-export const APP_REPO = "VulnRadar/vulnradar.dev"
 export const VERSION_CHECK_URL = `https://api.github.com/repos/${APP_REPO}/releases/latest`
 export const RELEASES_URL = `https://github.com/${APP_REPO}/releases`
 
-// Short slug used for filenames and slugs
-export const APP_SLUG = "vulnradar"
+// ============================================================================
+// BRANDING (from config.yaml)
+// ============================================================================
+
+export const LOGO_URL = process.env.LOGO_URL || `${APP_URL}${config.branding.logo_url}`
+export const BRANDING_PRIMARY_COLOR = config.branding.primary_color
+export const BRANDING_FOOTER_TEXT = config.branding.footer_text
 
 // ============================================================================
-// COOKIE NAMES AND SETTINGS
+// COOKIE NAMES AND SETTINGS (from config.yaml)
 // ============================================================================
 
 // Version notification
-export const VERSION_COOKIE_NAME = "vulnradar_last_seen_version"
-export const VERSION_COOKIE_MAX_AGE = 60 * 60 * 24 * 365 // 1 year
+export const VERSION_COOKIE_NAME = config.cookies.version.name
+export const VERSION_COOKIE_MAX_AGE = 60 * 60 * 24 * config.cookies.version.max_age_days
 
 // Authentication
-export const AUTH_SESSION_COOKIE_NAME = "vulnradar_session"
-export const AUTH_SESSION_MAX_AGE = 60 * 60 * 24 * 7 // 7 days
-export const AUTH_CLEANUP_INTERVAL = 24 * 60 * 60 * 1000 // 24 hours
-export const AUTH_2FA_PENDING_COOKIE = "vulnradar_2fa_pending"
-export const AUTH_2FA_PENDING_MAX_AGE = 300 // 5 minutes
+export const AUTH_SESSION_COOKIE_NAME = config.cookies.session.name
+export const AUTH_SESSION_MAX_AGE = 60 * 60 * 24 * config.cookies.session.max_age_days
+export const AUTH_CLEANUP_INTERVAL = config.auth.cleanup_interval_ms
+export const AUTH_2FA_PENDING_COOKIE = config.cookies.two_fa_pending.name
+export const AUTH_2FA_PENDING_MAX_AGE = config.cookies.two_fa_pending.max_age_seconds
 
 // Device trust
-export const DEVICE_TRUST_COOKIE_NAME = "vulnradar_device_trusted"
-export const DEVICE_TRUST_MAX_AGE = 60 * 60 * 24 * 30 // 30 days
+export const DEVICE_TRUST_COOKIE_NAME = config.cookies.device_trust.name
+export const DEVICE_TRUST_MAX_AGE = 60 * 60 * 24 * config.cookies.device_trust.max_age_days
 
 // ============================================================================
-// TIME INTERVALS (in seconds)
+// TIME INTERVALS (from config.yaml)
 // ============================================================================
 
 // Authentication timeouts
-export const TOTP_CODE_VALIDITY = 30 // TOTP codes valid for 30 seconds
-export const SESSION_TIMEOUT = 60 * 60 * 24 * 7 // 7 days
-export const PASSWORD_RESET_TOKEN_LIFETIME = 60 * 60 // 1 hour
-export const EMAIL_VERIFICATION_TOKEN_LIFETIME = 60 * 60 * 24 // 24 hours
+export const TOTP_CODE_VALIDITY = config.auth.totp_validity_seconds
+export const SESSION_TIMEOUT = 60 * 60 * 24 * config.auth.session_timeout_days
+export const PASSWORD_RESET_TOKEN_LIFETIME = 60 * 60 * config.auth.password_reset_hours
+export const EMAIL_VERIFICATION_TOKEN_LIFETIME = 60 * 60 * config.auth.email_verification_hours
 
 // Device trust
-export const DEVICE_TRUST_DURATION = 60 * 60 * 24 * 30 // 30 days
+export const DEVICE_TRUST_DURATION = 60 * 60 * 24 * config.auth.device_trust_days
 
 // Rate limiting
-export const RATE_LIMIT_LOGIN_ATTEMPTS = 5
-export const RATE_LIMIT_LOGIN_WINDOW = 60 * 15 // 15 minutes
-export const RATE_LIMIT_API_WINDOW = 60 * 60 // 1 hour
-export const RATE_LIMIT_SIGNUP_ATTEMPTS = 3
-export const RATE_LIMIT_SIGNUP_WINDOW = 60 * 60 // 1 hour
+export const RATE_LIMIT_LOGIN_ATTEMPTS = config.rate_limits.login.max_attempts || 5
+export const RATE_LIMIT_LOGIN_WINDOW = 60 * config.rate_limits.login.window_minutes
+export const RATE_LIMIT_API_WINDOW = 60 * config.rate_limits.api.window_minutes
+export const RATE_LIMIT_SIGNUP_ATTEMPTS = config.rate_limits.signup.max_attempts || 3
+export const RATE_LIMIT_SIGNUP_WINDOW = 60 * config.rate_limits.signup.window_minutes
 
 // Scanning
-export const SCAN_TIMEOUT = 60 * 5 // 5 minutes
-export const BULK_SCAN_TIMEOUT = 60 * 30 // 30 minutes
+export const SCAN_TIMEOUT = config.scanning.timeout_seconds
+export const BULK_SCAN_TIMEOUT = config.scanning.bulk_timeout_seconds
 
 // ============================================================================
 // HTTP HEADERS
@@ -136,69 +153,85 @@ export const PATTERNS = {
 }
 
 // ============================================================================
-// RATE LIMIT CONFIGS
+// RATE LIMIT CONFIGS (from config.yaml)
 // ============================================================================
 
 export const RATE_LIMITS = {
   login: {
-    maxAttempts: RATE_LIMIT_LOGIN_ATTEMPTS,
-    windowSeconds: RATE_LIMIT_LOGIN_WINDOW,
+    maxAttempts: config.rate_limits.login.max_attempts || 5,
+    windowSeconds: 60 * config.rate_limits.login.window_minutes,
   },
   forgotPassword: {
-    maxAttempts: 3,
-    windowSeconds: 600, // 10 minutes
+    maxAttempts: config.rate_limits.forgot_password.max_attempts || 3,
+    windowSeconds: 60 * config.rate_limits.forgot_password.window_minutes,
   },
   signup: {
-    maxAttempts: RATE_LIMIT_SIGNUP_ATTEMPTS,
-    windowSeconds: RATE_LIMIT_SIGNUP_WINDOW,
+    maxAttempts: config.rate_limits.signup.max_attempts || 3,
+    windowSeconds: 60 * config.rate_limits.signup.window_minutes,
   },
   api: {
-    maxAttempts: 100,
-    windowSeconds: RATE_LIMIT_API_WINDOW,
+    maxAttempts: config.rate_limits.api.max_requests || 100,
+    windowSeconds: 60 * config.rate_limits.api.window_minutes,
   },
   scan: {
-    maxAttempts: 100,
-    windowSeconds: RATE_LIMIT_API_WINDOW,
+    maxAttempts: config.rate_limits.scan.max_requests || 100,
+    windowSeconds: 60 * config.rate_limits.scan.window_minutes,
   },
   bulkScan: {
-    maxAttempts: 10,
-    windowSeconds: RATE_LIMIT_API_WINDOW,
+    maxAttempts: config.rate_limits.bulk_scan.max_requests || 10,
+    windowSeconds: 60 * config.rate_limits.bulk_scan.window_minutes,
   },
 }
 
 // ============================================================================
-// DATABASE CONSTRAINTS
+// DATABASE CONSTRAINTS (from config.yaml)
 // ============================================================================
 
 export const DATABASE = {
-  MAX_EMAIL_LENGTH: 255,
-  MAX_NAME_LENGTH: 255,
-  MAX_DESCRIPTION_LENGTH: 1000,
-  MAX_TEAM_NAME_LENGTH: 255,
-  MAX_TAGS_PER_SCAN: 10,
+  MAX_EMAIL_LENGTH: config.database.max_email_length,
+  MAX_NAME_LENGTH: config.database.max_name_length,
+  MAX_DESCRIPTION_LENGTH: config.database.max_description_length,
+  MAX_TEAM_NAME_LENGTH: config.database.max_team_name_length,
+  MAX_TAGS_PER_SCAN: config.database.max_tags_per_scan,
 }
 
 // ============================================================================
-// SECURITY SCANNING CONSTRAINTS
+// SECURITY SCANNING CONSTRAINTS (from config.yaml)
 // ============================================================================
 
 export const SCANNING = {
-  MAX_URL_LENGTH: 2048,
-  MAX_URLS_IN_BULK: 100,
-  TIMEOUT_SECONDS: SCAN_TIMEOUT,
-  BULK_TIMEOUT_SECONDS: BULK_SCAN_TIMEOUT,
-  DEFAULT_SEVERITY_THRESHOLD: "low", // "critical" | "high" | "medium" | "low"
+  MAX_URL_LENGTH: config.scanning.max_url_length,
+  MAX_URLS_IN_BULK: config.scanning.max_urls_bulk,
+  TIMEOUT_SECONDS: config.scanning.timeout_seconds,
+  BULK_TIMEOUT_SECONDS: config.scanning.bulk_timeout_seconds,
+  DEFAULT_SEVERITY_THRESHOLD: config.scanning.default_severity_threshold,
 }
 
 // ============================================================================
-// PAGINATION
+// PAGINATION (from config.yaml)
 // ============================================================================
 
 export const PAGINATION = {
-  DEFAULT_PAGE_SIZE: 20,
-  MAX_PAGE_SIZE: 100,
-  DEFAULT_PAGE: 1,
+  DEFAULT_PAGE_SIZE: config.pagination.default_page_size,
+  MAX_PAGE_SIZE: config.pagination.max_page_size,
+  DEFAULT_PAGE: config.pagination.default_page,
 }
+
+// ============================================================================
+// BILLING / PREMIUM (from config.yaml)
+// ============================================================================
+// When BILLING_ENABLED is false, all users get unlimited access
+// Self-hosters can disable this to remove all premium restrictions
+// ============================================================================
+
+export const BILLING_ENABLED = config.billing?.enabled ?? true
+export const BILLING_PLAN_LIMITS = config.billing?.plan_limits ?? {
+  free: 50,
+  core_supporter: 100,
+  pro_supporter: 150,
+  elite_supporter: 500,
+}
+export const BILLING_UNLIMITED_MODE_LIMIT = config.billing?.unlimited_mode_limit ?? -1
 
 // ============================================================================
 // TEAM ROLES
@@ -239,11 +272,10 @@ export const SEVERITY_PRIORITY = {
 }
 
 // ============================================================================
-// EMAIL / SMTP CONFIG
+// EMAIL / SMTP CONFIG (from config.yaml + env vars)
 // ============================================================================
 
-export const SUPPORT_EMAIL = process.env.SUPPORT_EMAIL || "support@vulnradar.dev"
-export const LOGO_URL = process.env.LOGO_URL || `${APP_URL}/favicon.png`
+export const SUPPORT_EMAIL = process.env.SUPPORT_EMAIL || config.app.support_email
 
 export const SMTP_HOST = process.env.SMTP_HOST || ""
 export const SMTP_PORT = Number(process.env.SMTP_PORT) || 587
@@ -251,9 +283,13 @@ export const SMTP_USER = process.env.SMTP_USER || ""
 export const SMTP_PASS = process.env.SMTP_PASS || ""
 export const SMTP_FROM = process.env.SMTP_FROM || process.env.SMTP_USER || SMTP_USER
 
-// API key configuration
-export const API_KEY_PREFIX = "vr_live_"
-export const DEFAULT_API_KEY_DAILY_LIMIT = 50
+// ============================================================================
+// API KEY CONFIGURATION (from config.yaml)
+// ============================================================================
+
+export const API_KEY_PREFIX = config.api.key_prefix
+export const DEFAULT_API_KEY_DAILY_LIMIT = config.api.default_daily_limit
+export const API_CURRENT_VERSION = config.api.current_version
 
 // Auth / headers
 export const AUTH_HEADER = "authorization"
@@ -263,16 +299,23 @@ export const BEARER_PREFIX = "Bearer "
 export const TOTP_ISSUER = APP_NAME
 
 // ============================================================================
+// BETA MODE CONFIGURATION (from config.yaml)
+// ============================================================================
+
+export const BETA_MODE = config.beta.enabled
+export const BETA_BANNER_MESSAGE = config.beta.banner_message
+
+// ============================================================================
 // TURNSTILE / CAPTCHA CONFIG
 // ============================================================================
 
 export const TURNSTILE_ENABLED = !!process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY
 
 // ============================================================================
-// DEMO SCAN LIMITS
+// DEMO SCAN LIMITS (from config.yaml)
 // ============================================================================
-export const DEMO_SCAN_LIMIT = 5
-export const DEMO_SCAN_WINDOW = 60 * 60 * 12 // 12 hours in seconds
+export const DEMO_SCAN_LIMIT = config.demo.scan_limit
+export const DEMO_SCAN_WINDOW = 60 * 60 * config.demo.window_hours
 
 // ============================================================================
 // STAFF / ADMIN ROLES
@@ -310,7 +353,7 @@ export const STAFF_ROLE_LABELS: Record<string, string> = {
 export const ROLE_BADGE_STYLES: Record<string, string> = {
   admin: "bg-primary/10 text-primary border-primary/20",
   moderator: "bg-[hsl(var(--severity-medium))]/10 text-[hsl(var(--severity-medium))] border-[hsl(var(--severity-medium))]/20",
-  support: "bg-blue-500/10 text-blue-500 border-blue-500/20",
+  support: "bg-[hsl(var(--accent))]/40 text-[hsl(var(--accent-foreground))] border-[hsl(var(--accent))]/30",
   beta_tester: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
   user: "bg-muted text-muted-foreground border-border",
 }
@@ -340,6 +383,7 @@ export const ROUTES = {
   DEMO: "/demo",
   STAFF: "/staff",
   DONATE: "/donate",
+  PRICING: "/pricing",
   DOCS: "/docs",
   DOCS_API: "/docs/api",
   DOCS_SETUP: "/docs/setup",
@@ -352,54 +396,143 @@ export const ROUTES = {
 } as const
 
 // ============================================================================
-// API ENDPOINTS
+// API VERSION CONSTANT
+// ============================================================================
+// Change this to switch ALL API calls between versions
+// This is the single source of truth for the active API version
+
+export const API_VERSION = "v2"
+
+// ============================================================================
+// API ENDPOINTS (dynamically versioned)
 // ============================================================================
 
 export const API = {
   AUTH: {
-    ME: "/api/v1/auth/me",
-    LOGIN: "/api/v1/auth/login",
-    SIGNUP: "/api/v1/auth/signup",
-    LOGOUT: "/api/v1/auth/logout",
-    UPDATE: "/api/v1/auth/update",
-    FORGOT_PASSWORD: "/api/v1/auth/forgot-password",
-    RESET_PASSWORD: "/api/v1/auth/reset-password",
-    VERIFY_EMAIL: "/api/v1/auth/verify-email",
-    RESEND_VERIFICATION: "/api/v1/auth/resend-verification",
-    ACCEPT_TOS: "/api/v1/auth/accept-tos",
-    ONBOARDING: "/api/v1/auth/onboarding",
+    ME: `/api/${API_VERSION}/auth/me`,
+    LOGIN: `/api/${API_VERSION}/auth/login`,
+    SIGNUP: `/api/${API_VERSION}/auth/signup`,
+    LOGOUT: `/api/${API_VERSION}/auth/logout`,
+    UPDATE: `/api/${API_VERSION}/auth/update`,
+    FORGOT_PASSWORD: `/api/${API_VERSION}/auth/forgot-password`,
+    RESET_PASSWORD: `/api/${API_VERSION}/auth/reset-password`,
+    VERIFY_EMAIL: `/api/${API_VERSION}/auth/verify-email`,
+    RESEND_VERIFICATION: `/api/${API_VERSION}/auth/resend-verification`,
+    ACCEPT_TOS: `/api/${API_VERSION}/auth/accept-tos`,
+    ONBOARDING: `/api/${API_VERSION}/auth/onboarding`,
     TWO_FA: {
-      SETUP: "/api/v1/auth/2fa/setup",
-      VERIFY: "/api/v1/auth/2fa/verify",
-      DISABLE: "/api/v1/auth/2fa/disable",
-      EMAIL_SETUP: "/api/v1/auth/2fa/email-setup",
-      EMAIL_SEND: "/api/v1/auth/2fa/email-send",
-      BACKUP_CODES: "/api/v1/auth/2fa/backup-codes",
+      SETUP: `/api/${API_VERSION}/auth/2fa/setup`,
+      VERIFY: `/api/${API_VERSION}/auth/2fa/verify`,
+      DISABLE: `/api/${API_VERSION}/auth/2fa/disable`,
+      EMAIL_SETUP: `/api/${API_VERSION}/auth/2fa/email-setup`,
+      EMAIL_SEND: `/api/${API_VERSION}/auth/2fa/email-send`,
+      BACKUP_CODES: `/api/${API_VERSION}/auth/2fa/backup-codes`,
+    },
+    SESSIONS: `/api/${API_VERSION}/auth/sessions`,
+  },
+  SCAN: `/api/${API_VERSION}/scan`,
+  SCAN_BULK: `/api/${API_VERSION}/scan/bulk`,
+  SCAN_TAGS: `/api/${API_VERSION}/scan/tags`,
+  SCAN_DISCOVER: `/api/${API_VERSION}/scan/discover`,
+  SCAN_CRAWL: `/api/${API_VERSION}/scan/crawl`,
+  SCAN_CRAWL_DISCOVER: `/api/${API_VERSION}/scan/crawl/discover`,
+  DEMO_SCAN: `/api/${API_VERSION}/demo-scan`,
+  HISTORY: `/api/${API_VERSION}/history`,
+  DASHBOARD: `/api/${API_VERSION}/dashboard`,
+  SHARES: `/api/${API_VERSION}/shares`,
+  SHARED: `/api/${API_VERSION}/shared`,
+  KEYS: `/api/${API_VERSION}/keys`,
+  WEBHOOKS: `/api/${API_VERSION}/webhooks`,
+  SCHEDULES: `/api/${API_VERSION}/schedules`,
+  TEAMS: `/api/${API_VERSION}/teams`,
+  TEAMS_MEMBERS: `/api/${API_VERSION}/teams/members`,
+  TEAMS_MEMBER_SCANS: `/api/${API_VERSION}/teams/member-scans`,
+  TEAMS_ACCEPT_INVITE: `/api/${API_VERSION}/teams/accept-invite`,
+  CONTACT: `/api/${API_VERSION}/contact`,
+  LANDING_CONTACT: `/api/${API_VERSION}/landing-contact`,
+  ADMIN: `/api/${API_VERSION}/admin`,
+  STAFF: `/api/${API_VERSION}/staff`,
+  VERSION: "/api/version",
+  BADGE: `/api/${API_VERSION}/badge`,
+  BADGE_SCANS: `/api/${API_VERSION}/badge/scans`,
+  DATA_REQUEST: `/api/${API_VERSION}/data-request`,
+  DATA_REQUEST_DOWNLOAD: `/api/${API_VERSION}/data-request/download`,
+  ACCOUNT_DELETE: `/api/${API_VERSION}/account/delete`,
+  ACCOUNT_NOTIFICATIONS: `/api/${API_VERSION}/account/notifications`,
+  FINDING_TYPES: `/api/${API_VERSION}/finding-types`,
+  COMPARE: `/api/${API_VERSION}/compare`,
+  BILLING: `/api/${API_VERSION}/billing`,
+} as const
+
+// ============================================================================
+// API V2 ENDPOINTS
+// ============================================================================
+
+export const API_V2 = {
+  AUTH: {
+    ME: "/api/v2/auth/me",
+    LOGIN: "/api/v2/auth/login",
+    SIGNUP: "/api/v2/auth/signup",
+    LOGOUT: "/api/v2/auth/logout",
+    UPDATE: "/api/v2/auth/update",
+    FORGOT_PASSWORD: "/api/v2/auth/forgot-password",
+    RESET_PASSWORD: "/api/v2/auth/reset-password",
+    VERIFY_EMAIL: "/api/v2/auth/verify-email",
+    RESEND_VERIFICATION: "/api/v2/auth/resend-verification",
+    ACCEPT_TOS: "/api/v2/auth/accept-tos",
+    ONBOARDING: "/api/v2/auth/onboarding",
+    TWO_FA: {
+      SETUP: "/api/v2/auth/2fa/setup",
+      VERIFY: "/api/v2/auth/2fa/verify",
+      DISABLE: "/api/v2/auth/2fa/disable",
+      EMAIL_SETUP: "/api/v2/auth/2fa/email-setup",
+      EMAIL_SEND: "/api/v2/auth/2fa/email-send",
+      BACKUP_CODES: "/api/v2/auth/2fa/backup-codes",
     },
   },
-  SCAN: "/api/v1/scan",
-  SCAN_BULK: "/api/v1/scan/bulk",
-  SCAN_TAGS: "/api/v1/scan/tags",
-  SCAN_DISCOVER: "/api/v1/scan/discover",
-  SCAN_CRAWL_DISCOVER: "/api/v1/scan/crawl/discover",
-  DEMO_SCAN: "/api/v1/demo-scan",
-  HISTORY: "/api/v1/history",
-  DASHBOARD: "/api/v1/dashboard",
-  SHARES: "/api/v1/shares",
-  KEYS: "/api/v1/keys",
-  WEBHOOKS: "/api/v1/webhooks",
-  SCHEDULES: "/api/v1/schedules",
-  TEAMS: "/api/v1/teams",
-  TEAMS_MEMBERS: "/api/v1/teams/members",
-  TEAMS_ACCEPT_INVITE: "/api/v1/teams/accept-invite",
-  CONTACT: "/api/v1/contact",
-  LANDING_CONTACT: "/api/v1/landing-contact",
-  ADMIN: "/api/v1/admin",
-  STAFF: "/api/v1/staff",
-  VERSION: "/api/version",
-  BADGE_SCANS: "/api/v1/badge/scans",
-  DATA_REQUEST: "/api/v1/data-request",
-  ACCOUNT_DELETE: "/api/v1/account/delete",
-  ACCOUNT_NOTIFICATIONS: "/api/v1/account/notifications",
-  FINDING_TYPES: "/api/v1/finding-types",
+  SCAN: "/api/v2/scan",
+  SCAN_BULK: "/api/v2/scan/bulk",
+  SCAN_TAGS: "/api/v2/scan/tags",
+  SCAN_DISCOVER: "/api/v2/scan/discover",
+  SCAN_CRAWL_DISCOVER: "/api/v2/scan/crawl/discover",
+  DEMO_SCAN: "/api/v2/demo-scan",
+  HISTORY: "/api/v2/history",
+  DASHBOARD: "/api/v2/dashboard",
+  SHARES: "/api/v2/shares",
+  KEYS: "/api/v2/keys",
+  WEBHOOKS: "/api/v2/webhooks",
+  SCHEDULES: "/api/v2/schedules",
+  TEAMS: "/api/v2/teams",
+  TEAMS_MEMBERS: "/api/v2/teams/members",
+  TEAMS_ACCEPT_INVITE: "/api/v2/teams/accept-invite",
+  CONTACT: "/api/v2/contact",
+  LANDING_CONTACT: "/api/v2/landing-contact",
+  ADMIN: "/api/v2/admin",
+  STAFF: "/api/v2/staff",
+  BADGE_SCANS: "/api/v2/badge/scans",
+  DATA_REQUEST: "/api/v2/data-request",
+  ACCOUNT_DELETE: "/api/v2/account/delete",
+  ACCOUNT_NOTIFICATIONS: "/api/v2/account/notifications",
+  FINDING_TYPES: "/api/v2/finding-types",
 } as const
+
+// ============================================================================
+// FEATURE FLAGS (from config.yaml)
+// ============================================================================
+
+export const FEATURES = {
+  DEMO_MODE: config.features.demo_mode,
+  TEAMS: config.features.teams,
+  API_KEYS: config.features.api_keys,
+  WEBHOOKS: config.features.webhooks,
+  SCHEDULED_SCANS: config.features.scheduled_scans,
+  BULK_SCANS: config.features.bulk_scans,
+  PDF_REPORTS: config.features.pdf_reports,
+  EMAIL_NOTIFICATIONS: config.features.email_notifications,
+} as const
+
+// ============================================================================
+// RE-EXPORT CONFIG FOR CONVENIENCE
+// ============================================================================
+
+export { getConfig, CONFIG } from "./config"

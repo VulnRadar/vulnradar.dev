@@ -1,5 +1,5 @@
 "use client"
-import { TEAM_ROLES, STAFF_ROLE_LABELS, ROLE_BADGE_STYLES, STAFF_ROLES } from "@/lib/constants"
+import { TEAM_ROLES, STAFF_ROLE_LABELS, ROLE_BADGE_STYLES, STAFF_ROLES, API } from "@/lib/constants"
 
 import { useState, useEffect, useCallback } from "react"
 import { useRouter } from "next/navigation"
@@ -100,7 +100,7 @@ export default function TeamsPage() {
 
   const fetchTeams = useCallback(async () => {
     try {
-      const res = await fetch("/api/v1/teams")
+      const res = await fetch(API.TEAMS)
       if (!res.ok) { router.push("/login"); return }
       const data = await res.json()
       setTeams(data.teams || [])
@@ -113,7 +113,7 @@ export default function TeamsPage() {
     if (!newName.trim()) return
     setCreating(true)
     try {
-      const res = await fetch("/api/v1/teams", {
+      const res = await fetch(API.TEAMS, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: newName.trim() }),
@@ -128,7 +128,7 @@ export default function TeamsPage() {
 
   async function handleDelete(teamId: number) {
     if (!confirm("Delete this team? All members will lose access.")) return
-    await fetch("/api/v1/teams", {
+    await fetch(API.TEAMS, {
       method: "DELETE",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ teamId }),
@@ -143,7 +143,7 @@ export default function TeamsPage() {
     setShowInvite(false)
     setInviteToken(null)
     try {
-      const res = await fetch(`/api/v1/teams/members?teamId=${team.id}`)
+      const res = await fetch(`${API.TEAMS_MEMBERS}?teamId=${team.id}`)
       if (res.ok) {
         const data = await res.json()
         setMembers(data.members || [])
@@ -158,7 +158,7 @@ export default function TeamsPage() {
     setInviting(true)
     setInviteToken(null)
     try {
-      const res = await fetch("/api/v1/teams/members", {
+      const res = await fetch(API.TEAMS_MEMBERS, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ teamId: selectedTeam.id, email: inviteEmail.trim(), role: inviteRole }),
@@ -175,7 +175,7 @@ export default function TeamsPage() {
   async function handleRemoveMember(userId: number) {
     if (!selectedTeam) return
     if (!confirm("Remove this member from the team?")) return
-    await fetch("/api/v1/teams/members", {
+    await fetch(API.TEAMS_MEMBERS, {
       method: "DELETE",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ teamId: selectedTeam.id, userId }),
@@ -185,7 +185,7 @@ export default function TeamsPage() {
 
   async function handleCancelInvite(inviteId: number) {
     if (!selectedTeam) return
-    await fetch("/api/v1/teams/members", {
+    await fetch(API.TEAMS_MEMBERS, {
       method: "DELETE",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ teamId: selectedTeam.id, inviteId }),
@@ -196,7 +196,7 @@ export default function TeamsPage() {
   async function handleLeave() {
     if (!selectedTeam) return
     if (!confirm("Leave this team?")) return
-    const res = await fetch("/api/v1/teams/members", {
+    const res = await fetch(API.TEAMS_MEMBERS, {
       method: "DELETE",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ teamId: selectedTeam.id, userId: "self" }),
@@ -214,7 +214,7 @@ export default function TeamsPage() {
     }
     setSavingName(true)
     try {
-      const res = await fetch("/api/v1/teams", {
+      const res = await fetch(API.TEAMS, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ teamId: selectedTeam.id, name: nameInput.trim() }),
@@ -234,7 +234,7 @@ export default function TeamsPage() {
     setScanPage(1)
     setScansLoading(true)
     try {
-      const res = await fetch(`/api/v1/teams/member-scans?teamId=${selectedTeam?.id}&userId=${member.user_id}`)
+      const res = await fetch(`${API.TEAMS_MEMBER_SCANS}?teamId=${selectedTeam?.id}&userId=${member.user_id}`)
       if (res.ok) {
         const data = await res.json()
         setMemberScans(data.scans || [])
@@ -254,7 +254,8 @@ export default function TeamsPage() {
     }
   }
 
-  const SCANS_PAGE_SIZE = 5
+  const [scansPageSize, setScansPageSize] = useState(10)
+  const SCANS_PAGE_SIZE = scansPageSize
   const { totalPages: scanTotalPages, getPage: getScanPage } = usePagination(memberScans, SCANS_PAGE_SIZE)
   const paginatedScans = getScanPage(scanPage)
 
@@ -278,9 +279,6 @@ export default function TeamsPage() {
 
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div className="flex items-center gap-3">
-                <div className="flex items-center justify-center w-10 h-10 rounded-lg bg-primary/10 shrink-0">
-                  <Users className="h-5 w-5 text-primary" />
-                </div>
                 <div className="min-w-0">
                   {editingName ? (
                     <div className="flex items-center gap-2">
@@ -476,9 +474,8 @@ export default function TeamsPage() {
               <Card className="bg-card border-border">
                 <CardHeader className="pb-3">
                   <div className="flex items-center justify-between">
-                    <CardTitle className="text-base flex items-center gap-2">
-                      <Eye className="h-4 w-4 text-primary" />
-                      {viewingMember.name || viewingMember.email}'s Scan History
+                    <CardTitle className="text-base">
+                      {viewingMember.name || viewingMember.email}{"'"}s Scan History
                     </CardTitle>
                     <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => setViewingMember(null)} aria-label="Close scan history">
                       <X className="h-4 w-4" />
@@ -510,26 +507,26 @@ export default function TeamsPage() {
                               variant="ghost"
                               size="sm"
                               className="h-8 px-3 gap-1.5"
-                              onClick={() => router.push(`/history?id=${scan.id}`)}
+                              asChild
                             >
-                              View
-                              <ChevronRight className="h-3 w-3" />
+                              <a href={`/history#${scan.id}`}>
+                                View
+                                <ChevronRight className="h-3 w-3" />
+                              </a>
                             </Button>
                           </div>
                         ))}
                       </div>
-                      {scanTotalPages > 1 && (
-                        <div className="pt-3">
-                          <PaginationControl
-                            currentPage={scanPage}
-                            totalPages={scanTotalPages}
-                            onPageChange={setScanPage}
-                          />
-                          <p className="text-xs text-muted-foreground text-center mt-2">
-                            {`Showing ${(scanPage - 1) * SCANS_PAGE_SIZE + 1}–${Math.min(scanPage * SCANS_PAGE_SIZE, memberScans.length)} of ${memberScans.length} scan${memberScans.length === 1 ? "" : "s"}`}
-                          </p>
-                        </div>
-                      )}
+                      <div className="pt-3">
+                        <PaginationControl
+                          currentPage={scanPage}
+                          totalPages={scanTotalPages}
+                          onPageChange={setScanPage}
+                          pageSize={scansPageSize}
+                          onPageSizeChange={(s) => { setScansPageSize(s); setScanPage(1) }}
+                          totalItems={memberScans.length}
+                        />
+                      </div>
                     </>
                   )}
                 </CardContent>
@@ -541,9 +538,7 @@ export default function TeamsPage() {
           <>
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div className="flex flex-col gap-1">
-                <h1 className="text-xl font-bold text-foreground flex items-center gap-2">
-                  <Users className="h-5 w-5 text-primary" />Teams
-                </h1>
+                <h1 className="text-xl font-bold text-foreground">Teams</h1>
                 <p className="text-sm text-muted-foreground">Collaborate with team members on security scans.</p>
               </div>
               <Button size="sm" className="shrink-0 gap-1.5 self-start sm:self-auto" onClick={() => setShowCreate(!showCreate)}>
@@ -585,19 +580,16 @@ export default function TeamsPage() {
                       key={team.id}
                       type="button"
                       onClick={() => openTeam(team)}
-                      className="group flex items-center gap-3 p-4 rounded-xl border border-border bg-card hover:bg-muted/50 hover:border-primary/20 transition-all text-left"
+                      className="group flex items-center gap-4 p-4 rounded-xl border border-border bg-card hover:bg-muted/50 hover:border-accent transition-all text-left"
                     >
-                      <div className="flex items-center justify-center w-10 h-10 rounded-lg bg-primary/10 shrink-0">
-                        <Users className="h-5 w-5 text-primary" />
-                      </div>
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-foreground">{team.name}</p>
-                        <p className="text-xs text-muted-foreground">{team.member_count} member{team.member_count !== 1 && "s"}</p>
+                        <p className="text-sm font-semibold text-foreground">{team.name}</p>
+                        <p className="text-xs text-muted-foreground mt-0.5">{team.member_count} member{team.member_count !== 1 && "s"}</p>
                       </div>
-                      <span className={cn("inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full border", ROLE_COLORS[team.role])}>
+                      <span className={cn("inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full border shrink-0", ROLE_COLORS[team.role])}>
                         <Icon className="h-3 w-3" />{team.role}
                       </span>
-                      <ChevronRight className="h-4 w-4 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
+                      <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0 transition-transform group-hover:translate-x-0.5" />
                     </button>
                   )
                 })}

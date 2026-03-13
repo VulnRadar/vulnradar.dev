@@ -1,13 +1,18 @@
 /**
  * Database initialization and schema management
  * Runs on server startup to ensure all required tables exist
+ * 
+ * SCHEMA PHILOSOPHY:
+ * - Users table contains ALL user-specific data (role, plan, billing, settings)
+ * - Separate tables only for: 1-to-many relationships, audit trails, shared definitions
+ * - No unnecessary junction tables - use simple foreign keys where possible
  */
 export async function register() {
   if (process.env.NEXT_RUNTIME === "nodejs") {
     const { default: pool } = await import("./lib/db")
     const { APP_NAME, APP_VERSION, ENGINE_VERSION, VERSION_CHECK_URL, RELEASES_URL } = await import("./lib/constants")
 
-    // ── Startup version check (logs to server console) ───────────
+    // ── Startup version check ───────────────────────────────────────
     console.log(`\x1b[36m[${APP_NAME}]\x1b[0m Starting ${APP_NAME} v${APP_VERSION} (Detection Engine v${ENGINE_VERSION})`)
     try {
       const vRes = await fetch(VERSION_CHECK_URL, {
@@ -35,12 +40,10 @@ export async function register() {
           console.log(`\x1b[33m[${APP_NAME}]\x1b[0m ${releaseUrl}`)
         } else {
           const msgs = [
-            "Whoa, you're running a version from the future! Can you tell us if we ever fix that one CSS bug?",
-            "Nice try, time traveler. What's the stock market doing in your timeline?",
-            "You're ahead of us... literally. Did the robots take over yet?",
+            "Whoa, you're running a version from the future!",
+            "Nice try, time traveler.",
+            "You're ahead of us... literally.",
             "Running unreleased code? You absolute legend.",
-            "You're living in the future and we're still fixing merge conflicts.",
-            "Hold up, this version doesn't exist yet. Are you a wizard?",
           ]
           console.log(`\x1b[35m[${APP_NAME}]\x1b[0m Running v${APP_VERSION}, but latest release is v${latest}.`)
           console.log(`\x1b[35m[${APP_NAME}]\x1b[0m ${msgs[Math.floor(Math.random() * msgs.length)]}`)
@@ -50,40 +53,68 @@ export async function register() {
       console.log(`\x1b[90m[${APP_NAME}]\x1b[0m Could not check for updates. Running v${APP_VERSION}.`)
     }
 
-    // Check if DATABASE_URL is set
     if (!process.env.DATABASE_URL) {
-      console.error(
-        `[${APP_NAME}] DATABASE_URL is not configured. Database initialization skipped. Please set DATABASE_URL in your environment variables.`,
-      )
+      console.error(`[${APP_NAME}] DATABASE_URL is not configured. Database initialization skipped.`)
       return
     }
 
     try {
-      // ── Users ─────────────────────────────────────────────────────
+      // ════════════════════════════════════════════════════════════════
+      // USERS - The central table. Contains ALL user data.
+      // ════════════════════════════════════════════════════════════════
       await pool.query(`
         CREATE TABLE IF NOT EXISTS users (
           id SERIAL PRIMARY KEY,
+          
+          -- Core identity
           email VARCHAR(255) UNIQUE NOT NULL,
           password_hash VARCHAR(255) NOT NULL,
           name VARCHAR(255),
-          role VARCHAR(20) NOT NULL DEFAULT 'user',
           avatar_url TEXT,
-          tos_accepted_at TIMESTAMP WITH TIME ZONE,
+          discord_id VARCHAR(64) UNIQUE,
+          
+          -- Role & permissions (simple string, not FK)
+          -- Values: 'user', 'beta_tester', 'support', 'moderator', 'admin'
+          role VARCHAR(20) NOT NULL DEFAULT 'user',
+          
+          -- Subscription & billing (previously separate table)
+          plan VARCHAR(50) NOT NULL DEFAULT 'free',
+          stripe_customer_id VARCHAR(255) UNIQUE,
+          stripe_subscription_id VARCHAR(255) UNIQUE,
+          subscription_status VARCHAR(50) DEFAULT NULL,
+          current_period_end TIMESTAMP WITH TIME ZONE,
+          cancel_at_period_end BOOLEAN NOT NULL DEFAULT false,
+          
+          -- Feature flags
+          beta_access BOOLEAN NOT NULL DEFAULT false,
+          daily_scan_limit INTEGER DEFAULT NULL,
+          
+          -- Account status
           email_verified_at TIMESTAMP WITH TIME ZONE,
+          tos_accepted_at TIMESTAMP WITH TIME ZONE,
           disabled_at TIMESTAMP WITH TIME ZONE,
           onboarding_completed BOOLEAN NOT NULL DEFAULT false,
+          
+          -- Two-factor authentication
           totp_secret VARCHAR(255),
           totp_enabled BOOLEAN NOT NULL DEFAULT false,
           two_factor_method VARCHAR(10),
           backup_codes TEXT,
+          email_session_revoked BOOLEAN NOT NULL DEFAULT false,
+          
+          -- Timestamps
           created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
           updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
         );
         CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
         CREATE INDEX IF NOT EXISTS idx_users_role ON users(role);
+        CREATE INDEX IF NOT EXISTS idx_users_plan ON users(plan);
+        CREATE INDEX IF NOT EXISTS idx_users_stripe_customer ON users(stripe_customer_id);
       `)
 
-      // ── Sessions ──────────────────────────────────────────────────
+      // ════════════════════════════════════════════════════════════════
+      // SESSIONS - User login sessions (1 user : many sessions)
+      // ════════════════════════════════════════════════════════════════
       await pool.query(`
         CREATE TABLE IF NOT EXISTS sessions (
           id VARCHAR(64) PRIMARY KEY,
@@ -97,7 +128,9 @@ export async function register() {
         CREATE INDEX IF NOT EXISTS idx_sessions_expires_at ON sessions(expires_at);
       `)
 
-      // ── API Keys ──────────────────────────────────────────────────
+      // ════════════════════════════════════════════════════════════════
+      // API KEYS - User API keys (1 user : many keys)
+      // ════════════════════════════════════════════════════════════════
       await pool.query(`
         CREATE TABLE IF NOT EXISTS api_keys (
           id SERIAL PRIMARY KEY,
@@ -115,7 +148,9 @@ export async function register() {
         CREATE INDEX IF NOT EXISTS idx_api_keys_key_hash ON api_keys(key_hash);
       `)
 
-      // ── API Usage ─────────────────────────────────────────────────
+      // ══════════════����════════════════════════════════════�����════════════
+      // API USAGE - Tracks API key usage for rate limiting
+      // ════════════════════════════════════════════════════════════════
       await pool.query(`
         CREATE TABLE IF NOT EXISTS api_usage (
           id SERIAL PRIMARY KEY,
@@ -126,7 +161,9 @@ export async function register() {
         CREATE INDEX IF NOT EXISTS idx_api_usage_used_at ON api_usage(used_at);
       `)
 
-      // ── Scan History ──────────────────────────────────────────────
+      // ════════════════════════════════════════════════════════════════
+      // SCAN HISTORY - Scan results (1 user : many scans)
+      // ════════════════════════════════════════════════════════════════
       await pool.query(`
         CREATE TABLE IF NOT EXISTS scan_history (
           id SERIAL PRIMARY KEY,
@@ -144,9 +181,12 @@ export async function register() {
         );
         CREATE INDEX IF NOT EXISTS idx_scan_history_user_id ON scan_history(user_id);
         CREATE INDEX IF NOT EXISTS idx_scan_history_scanned_at ON scan_history(scanned_at);
+        CREATE INDEX IF NOT EXISTS idx_scan_history_share_token ON scan_history(share_token);
       `)
 
-      // ── Scan Tags ─────────────────────────────────────────────────
+      // ════════════════════════════════════════════════════════════════
+      // SCAN TAGS - Tags on scans (many-to-many via scan_id)
+      // ════════════════════════════════════════════════════════════════
       await pool.query(`
         CREATE TABLE IF NOT EXISTS scan_tags (
           id SERIAL PRIMARY KEY,
@@ -157,24 +197,11 @@ export async function register() {
         );
         CREATE INDEX IF NOT EXISTS idx_scan_tags_scan_id ON scan_tags(scan_id);
         CREATE INDEX IF NOT EXISTS idx_scan_tags_user_id ON scan_tags(user_id);
-        CREATE INDEX IF NOT EXISTS idx_scan_tags_tag ON scan_tags(tag);
       `)
 
-      // ── Webhooks ──────────────────────────────────────────────────
-      await pool.query(`
-        CREATE TABLE IF NOT EXISTS webhooks (
-          id SERIAL PRIMARY KEY,
-          user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-          url TEXT NOT NULL,
-          name VARCHAR(100) NOT NULL DEFAULT 'Default',
-          type VARCHAR(20) NOT NULL DEFAULT 'generic',
-          active BOOLEAN NOT NULL DEFAULT true,
-          created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-        );
-        CREATE INDEX IF NOT EXISTS idx_webhooks_user_id ON webhooks(user_id);
-      `)
-
-      // ── Scheduled Scans ───────────────────────────────────────────
+      // ════════════════════════════════════════════════════════════════
+      // SCHEDULED SCANS - Recurring scan jobs
+      // ════════════════════════════════════════════════════════════════
       await pool.query(`
         CREATE TABLE IF NOT EXISTS scheduled_scans (
           id SERIAL PRIMARY KEY,
@@ -190,21 +217,76 @@ export async function register() {
         CREATE INDEX IF NOT EXISTS idx_scheduled_scans_next_run ON scheduled_scans(next_run_at);
       `)
 
-      // ── Data Requests ─────────────────────────────────────────────
+      // ════════════════════════════════════════════════════════════════
+      // WEBHOOKS - User webhook endpoints
+      // ════════════════════════════════════════════════════════════════
       await pool.query(`
-        CREATE TABLE IF NOT EXISTS data_requests (
+        CREATE TABLE IF NOT EXISTS webhooks (
           id SERIAL PRIMARY KEY,
           user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-          status VARCHAR(20) NOT NULL DEFAULT 'pending',
-          data TEXT,
-          requested_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-          completed_at TIMESTAMP WITH TIME ZONE,
-          downloaded_at TIMESTAMP WITH TIME ZONE
+          url TEXT NOT NULL,
+          name VARCHAR(100) NOT NULL DEFAULT 'Default',
+          type VARCHAR(20) NOT NULL DEFAULT 'generic',
+          active BOOLEAN NOT NULL DEFAULT true,
+          created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
         );
-        CREATE INDEX IF NOT EXISTS idx_data_requests_user_id ON data_requests(user_id);
+        CREATE INDEX IF NOT EXISTS idx_webhooks_user_id ON webhooks(user_id);
       `)
 
-      // ── Admin Audit Log ───────────────────────────────────────────
+      // ════════════════════════════════════════════════════════════════
+      // BADGES - Badge definitions (shared across all users)
+      // ════════════════════════════════════════════════════════════════
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS badges (
+          id SERIAL PRIMARY KEY,
+          name VARCHAR(50) NOT NULL UNIQUE,
+          display_name VARCHAR(100) NOT NULL,
+          description TEXT,
+          icon VARCHAR(50),
+          color VARCHAR(20),
+          priority INTEGER NOT NULL DEFAULT 0,
+          is_limited BOOLEAN NOT NULL DEFAULT false,
+          created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+        );
+        CREATE INDEX IF NOT EXISTS idx_badges_name ON badges(name);
+      `)
+
+      // ════════════════════════════════════════════════════════════════
+      // USER BADGES - Junction table (user <-> badge)
+      // ════════════════════════════════════════════════════════════════
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS user_badges (
+          user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          badge_id INTEGER NOT NULL REFERENCES badges(id) ON DELETE CASCADE,
+          awarded_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+          awarded_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+          PRIMARY KEY (user_id, badge_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_user_badges_user ON user_badges(user_id);
+      `)
+
+      // ════════════════════════════════════════════════════════════════
+      // BILLING HISTORY - Payment audit trail
+      // ════════════════════════════════════════════════════════════════
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS billing_history (
+          id SERIAL PRIMARY KEY,
+          user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          stripe_invoice_id VARCHAR(255) UNIQUE,
+          stripe_payment_intent_id VARCHAR(255),
+          amount_cents INTEGER NOT NULL,
+          currency VARCHAR(10) NOT NULL DEFAULT 'usd',
+          status VARCHAR(50) NOT NULL,
+          description TEXT,
+          invoice_pdf_url TEXT,
+          created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+        );
+        CREATE INDEX IF NOT EXISTS idx_billing_history_user ON billing_history(user_id);
+      `)
+
+      // ═════════════��═══════════════���══════════════════════════════════
+      // ADMIN AUDIT LOG - Admin action audit trail
+      // ════════════════════════════════════════════════════════════════
       await pool.query(`
         CREATE TABLE IF NOT EXISTS admin_audit_log (
           id SERIAL PRIMARY KEY,
@@ -219,7 +301,65 @@ export async function register() {
         CREATE INDEX IF NOT EXISTS idx_admin_audit_created_at ON admin_audit_log(created_at);
       `)
 
-      // ── Password Reset Tokens ─────────────────────────────────────
+      // ════════════════════════════════════════════════════════════════
+      // ADMIN USER NOTES - Admin notes on users
+      // ════════════════════════════════════════════════════════════════
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS admin_user_notes (
+          id SERIAL PRIMARY KEY,
+          user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          admin_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          note TEXT NOT NULL,
+          created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+        );
+        CREATE INDEX IF NOT EXISTS idx_admin_user_notes_user ON admin_user_notes(user_id);
+      `)
+
+      // ════════════════════════════════════════════════════════════════
+      // DISCORD CONNECTIONS - OAuth integration with Discord
+      // ════════════════════════════════════════════════════════════════
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS discord_connections (
+          id SERIAL PRIMARY KEY,
+          user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE UNIQUE,
+          discord_id VARCHAR(64) NOT NULL UNIQUE,
+          discord_username VARCHAR(100) NOT NULL,
+          discord_discriminator VARCHAR(10),
+          discord_avatar VARCHAR(255),
+          discord_email VARCHAR(255),
+          access_token TEXT NOT NULL,
+          refresh_token TEXT,
+          token_expires_at TIMESTAMP WITH TIME ZONE,
+          guild_joined BOOLEAN NOT NULL DEFAULT false,
+          connected_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+          updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+        );
+        CREATE INDEX IF NOT EXISTS idx_discord_user ON discord_connections(user_id);
+        CREATE INDEX IF NOT EXISTS idx_discord_id ON discord_connections(discord_id);
+      `)
+
+      // ════════════════════════════════════════════════════════════════
+      // STAFF ACTIVITY - Real-time admin dashboard activity tracking
+      // ════════════════════════════════════════════════════════════════
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS staff_activity (
+          id SERIAL PRIMARY KEY,
+          user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          last_heartbeat TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+          current_section VARCHAR(50),
+          ip_address TEXT,
+          user_agent TEXT,
+          created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+          updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+          UNIQUE(user_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_staff_activity_user_heartbeat ON staff_activity(user_id, last_heartbeat DESC);
+        CREATE INDEX IF NOT EXISTS idx_staff_activity_heartbeat ON staff_activity(last_heartbeat DESC);
+      `)
+
+      // ════════════════════════════════════════════════════════════════
+      // AUTH TOKENS - Password reset & email verification
+      // ════════════════════════════════════════════════════════════════
       await pool.query(`
         CREATE TABLE IF NOT EXISTS password_reset_tokens (
           id SERIAL PRIMARY KEY,
@@ -230,11 +370,7 @@ export async function register() {
           created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
         );
         CREATE INDEX IF NOT EXISTS idx_prt_token_hash ON password_reset_tokens(token_hash);
-        CREATE INDEX IF NOT EXISTS idx_prt_user_id ON password_reset_tokens(user_id);
-      `)
 
-      // ── Email Verification Tokens ─────────────────────────────────
-      await pool.query(`
         CREATE TABLE IF NOT EXISTS email_verification_tokens (
           id SERIAL PRIMARY KEY,
           user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -244,41 +380,7 @@ export async function register() {
           created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
         );
         CREATE INDEX IF NOT EXISTS idx_evt_token_hash ON email_verification_tokens(token_hash);
-        CREATE INDEX IF NOT EXISTS idx_evt_user_id ON email_verification_tokens(user_id);
-      `)
 
-      // ── Notification Preferences (19 categories) ──────────────────
-      await pool.query(`
-        CREATE TABLE IF NOT EXISTS notification_preferences (
-          id SERIAL PRIMARY KEY,
-          user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE UNIQUE,
-          email_security BOOLEAN NOT NULL DEFAULT true,
-          email_new_login BOOLEAN NOT NULL DEFAULT true,
-          email_password_change BOOLEAN NOT NULL DEFAULT true,
-          email_2fa_change BOOLEAN NOT NULL DEFAULT true,
-          email_session_revoked BOOLEAN NOT NULL DEFAULT true,
-          email_scan_complete BOOLEAN NOT NULL DEFAULT true,
-          email_critical_findings BOOLEAN NOT NULL DEFAULT true,
-          email_regression_alert BOOLEAN NOT NULL DEFAULT true,
-          email_api_keys BOOLEAN NOT NULL DEFAULT true,
-          email_api_limit_warning BOOLEAN NOT NULL DEFAULT true,
-          email_webhooks BOOLEAN NOT NULL DEFAULT true,
-          email_webhook_failure BOOLEAN NOT NULL DEFAULT true,
-          email_schedules BOOLEAN NOT NULL DEFAULT true,
-          email_data_requests BOOLEAN NOT NULL DEFAULT true,
-          email_account_deletion BOOLEAN NOT NULL DEFAULT true,
-          email_team_invite BOOLEAN NOT NULL DEFAULT true,
-          email_team_changes BOOLEAN NOT NULL DEFAULT true,
-          email_product_updates BOOLEAN NOT NULL DEFAULT true,
-          email_tips_guides BOOLEAN NOT NULL DEFAULT false,
-          created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-          updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-        );
-        CREATE INDEX IF NOT EXISTS idx_notif_prefs_user_id ON notification_preferences(user_id);
-      `)
-
-      // ── Email 2FA Codes ───────────────────────────────────────────
-      await pool.query(`
         CREATE TABLE IF NOT EXISTS email_2fa_codes (
           id SERIAL PRIMARY KEY,
           user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -289,7 +391,46 @@ export async function register() {
         CREATE INDEX IF NOT EXISTS idx_email_2fa_user ON email_2fa_codes(user_id);
       `)
 
-      // ── Rate Limiting ─────────────────────────────────────────────
+      // ════════════════════════════════════════════════════════════════
+      // NOTIFICATION PREFERENCES
+      // ════════════════════════════════════════════════════════════════
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS notification_preferences (
+          id SERIAL PRIMARY KEY,
+          user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE UNIQUE,
+          -- Security notifications
+          email_security BOOLEAN NOT NULL DEFAULT true,
+          email_new_login BOOLEAN NOT NULL DEFAULT true,
+          email_password_change BOOLEAN NOT NULL DEFAULT true,
+          email_2fa_change BOOLEAN NOT NULL DEFAULT true,
+          email_session_revoked BOOLEAN NOT NULL DEFAULT true,
+          -- Scanning notifications
+          email_scan_complete BOOLEAN NOT NULL DEFAULT true,
+          email_critical_findings BOOLEAN NOT NULL DEFAULT true,
+          email_regression_alert BOOLEAN NOT NULL DEFAULT true,
+          email_schedules BOOLEAN NOT NULL DEFAULT true,
+          -- API & Integrations
+          email_api_keys BOOLEAN NOT NULL DEFAULT true,
+          email_api_limit_warning BOOLEAN NOT NULL DEFAULT true,
+          email_webhooks BOOLEAN NOT NULL DEFAULT true,
+          email_webhook_failure BOOLEAN NOT NULL DEFAULT true,
+          -- Account notifications
+          email_data_requests BOOLEAN NOT NULL DEFAULT true,
+          email_account_deletion BOOLEAN NOT NULL DEFAULT true,
+          email_team_invite BOOLEAN NOT NULL DEFAULT true,
+          email_team_changes BOOLEAN NOT NULL DEFAULT true,
+          -- Product notifications
+          email_product_updates BOOLEAN NOT NULL DEFAULT true,
+          email_tips_guides BOOLEAN NOT NULL DEFAULT false,
+          created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+          updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+        );
+        CREATE INDEX IF NOT EXISTS idx_notif_prefs_user_id ON notification_preferences(user_id);
+      `)
+
+      // ════════════════════════════════════════════════════════════════
+      // RATE LIMITING
+      // ════════════════════════════════════════════════════════════════
       await pool.query(`
         CREATE TABLE IF NOT EXISTS rate_limits (
           id SERIAL PRIMARY KEY,
@@ -299,10 +440,11 @@ export async function register() {
           UNIQUE(key, window_start)
         );
         CREATE INDEX IF NOT EXISTS idx_rate_limits_key ON rate_limits(key);
-        CREATE INDEX IF NOT EXISTS idx_rate_limits_window ON rate_limits(window_start);
       `)
 
-      // ── Device Trust ──────────────────────────────────────────────
+      // ════════════════════════════════════════════════════════════════
+      // DEVICE TRUST - Trusted devices for 2FA
+      // ════════════════════════════════════════════════════════════════
       await pool.query(`
         CREATE TABLE IF NOT EXISTS device_trust (
           id SERIAL PRIMARY KEY,
@@ -311,16 +453,33 @@ export async function register() {
           device_name VARCHAR(255),
           ip_address VARCHAR(45),
           user_agent TEXT,
-          last_used_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-          created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-          expires_at TIMESTAMP WITHOUT TIME ZONE NOT NULL,
+          last_used_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+          created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+          expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
           UNIQUE(user_id, device_fingerprint)
         );
         CREATE INDEX IF NOT EXISTS idx_device_trust_user_id ON device_trust(user_id);
-        CREATE INDEX IF NOT EXISTS idx_device_trust_expires_at ON device_trust(expires_at);
       `)
 
-      // ── Teams ─────────────────────────────────────────────────────
+      // ════════════════════════════════════════════════════════════════
+      // DATA REQUESTS - GDPR data export
+      // ════════════════════════════════════════════════════════════════
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS data_requests (
+          id SERIAL PRIMARY KEY,
+          user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          status VARCHAR(20) NOT NULL DEFAULT 'pending',
+          data TEXT,
+          requested_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+          completed_at TIMESTAMP WITH TIME ZONE,
+          downloaded_at TIMESTAMP WITH TIME ZONE
+        );
+        CREATE INDEX IF NOT EXISTS idx_data_requests_user_id ON data_requests(user_id);
+      `)
+
+      // ════════════════════════════════════════════════════════════════
+      // TEAMS
+      // ═══════════════════════════════════════════════════════════���════
       await pool.query(`
         CREATE TABLE IF NOT EXISTS teams (
           id SERIAL PRIMARY KEY,
@@ -353,12 +512,81 @@ export async function register() {
           created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
         );
         CREATE INDEX IF NOT EXISTS idx_team_invites_token ON team_invites(token);
-        CREATE INDEX IF NOT EXISTS idx_team_invites_email ON team_invites(email);
+      `)
+
+      // ════════════════════════════════════════════════════════════════
+      // GIFTED SUBSCRIPTIONS - Manual plan gifts
+      // ════════════════════════════════════════════════════════════════
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS gifted_subscriptions (
+          id SERIAL PRIMARY KEY,
+          user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          gifted_by INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          plan VARCHAR(50) NOT NULL,
+          reason TEXT,
+          expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
+          revoked_at TIMESTAMP WITH TIME ZONE,
+          revoked_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+          created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+        );
+        CREATE INDEX IF NOT EXISTS idx_gifted_subscriptions_user ON gifted_subscriptions(user_id);
+        CREATE INDEX IF NOT EXISTS idx_gifted_subscriptions_expires ON gifted_subscriptions(expires_at) WHERE revoked_at IS NULL;
+      `)
+
+      // ════════════════════════════════════════════════════════════════
+      // ADMIN NOTIFICATIONS - Site-wide notifications
+      // ════════════════════════════════════════════════════════════════
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS admin_notifications (
+          id SERIAL PRIMARY KEY,
+          cookie_id VARCHAR(32) NOT NULL UNIQUE,
+          title VARCHAR(255) NOT NULL,
+          message TEXT NOT NULL,
+          type VARCHAR(20) NOT NULL DEFAULT 'bell' CHECK (type IN ('banner', 'modal', 'toast', 'bell')),
+          variant VARCHAR(20) NOT NULL DEFAULT 'info' CHECK (variant IN ('info', 'success', 'warning', 'error')),
+          audience VARCHAR(20) NOT NULL DEFAULT 'all' CHECK (audience IN ('all', 'authenticated', 'unauthenticated', 'admin', 'staff')),
+          path_pattern VARCHAR(255) DEFAULT NULL,
+          starts_at TIMESTAMPTZ DEFAULT NOW(),
+          ends_at TIMESTAMPTZ DEFAULT NULL,
+          is_active BOOLEAN NOT NULL DEFAULT true,
+          is_dismissible BOOLEAN NOT NULL DEFAULT true,
+          dismiss_duration_hours INTEGER DEFAULT NULL,
+          action_label VARCHAR(100) DEFAULT NULL,
+          action_url VARCHAR(500) DEFAULT NULL,
+          action_external BOOLEAN DEFAULT false,
+          priority INTEGER NOT NULL DEFAULT 0,
+          created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
+        CREATE INDEX IF NOT EXISTS idx_admin_notifications_active ON admin_notifications (is_active, starts_at, ends_at) WHERE is_active = true;
+        CREATE INDEX IF NOT EXISTS idx_admin_notifications_type ON admin_notifications (type);
+        CREATE INDEX IF NOT EXISTS idx_admin_notifications_cookie ON admin_notifications (cookie_id);
       `)
 
       console.log(`[${APP_NAME}] Database schema verified successfully.`)
 
-      // Run initial cleanup on startup
+      // ── Seed Default Badges ──────────────────────��────────────────
+      try {
+        await pool.query(`
+          INSERT INTO badges (name, display_name, description, icon, color, priority, is_limited)
+          VALUES 
+            ('beta_tester', 'Beta Tester', 'Early beta program participant', 'flask', '#10b981', 10, true),
+            ('early_supporter', 'Early Supporter', 'Supported the project early on', 'heart', '#ec4899', 9, true),
+            ('founder', 'Founder', 'Original founding member', 'crown', '#f59e0b', 20, true),
+            ('contributor', 'Contributor', 'Open source contributor', 'code', '#8b5cf6', 8, false),
+            ('bug_hunter', 'Bug Hunter', 'Found and reported bugs', 'bug', '#ef4444', 7, false),
+            ('verified', 'Verified', 'Verified account', 'badge-check', '#3b82f6', 5, false),
+            ('premium', 'Premium', 'Premium subscription member', 'star', '#fbbf24', 6, false),
+            ('staff', 'Staff', 'VulnRadar team member', 'shield', '#6366f1', 15, true)
+          ON CONFLICT (name) DO NOTHING;
+        `)
+        console.log(`[${APP_NAME}] Default badges seeded.`)
+      } catch (seedError) {
+        console.error(`[${APP_NAME}] Failed to seed badges (non-fatal):`, seedError)
+      }
+
+      // ── Run initial cleanup ───────────────────────────────────────
       try {
         const { performDatabaseCleanup, formatCleanupStats } = await import("./lib/cleanup")
         const stats = await performDatabaseCleanup()
@@ -367,16 +595,16 @@ export async function register() {
         console.error(`[${APP_NAME}] Initial cleanup failed (non-fatal):`, cleanupError)
       }
 
-      // Schedule periodic cleanup every 24 hours
+      // ── Schedule periodic cleanup ─�����───────────────────────────────
       try {
         const { schedulePeriodicCleanup } = await import("./lib/cleanup")
         schedulePeriodicCleanup(5000)
-        console.log(`[${APP_NAME}] Scheduled periodic database cleanup (every 24 hours).`)
+        console.log(`[${APP_NAME}] Scheduled periodic database cleanup.`)
       } catch (scheduleError) {
         console.error(`[${APP_NAME}] Failed to schedule periodic cleanup:`, scheduleError)
       }
 
-      // Set up graceful shutdown to close pool on process termination
+      // ── Graceful shutdown ─────────────────────────────────────────
       const gracefulShutdown = async () => {
         try {
           await pool.end()
@@ -390,7 +618,5 @@ export async function register() {
     } catch (error) {
       console.error(`[${APP_NAME}] Database migration failed:`, error)
     }
-    // Do NOT call pool.end() here - the pool must stay open for the application's lifetime
-    // The pool will be closed when the application shuts down via graceful shutdown handlers
   }
 }

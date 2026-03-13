@@ -10,7 +10,6 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import {
-  MessageSquare,
   Bug,
   Lightbulb,
   HelpCircle,
@@ -24,7 +23,7 @@ import {
 } from "lucide-react"
 import Link from "next/link"
 import { cn } from "@/lib/utils"
-import { SUPPORT_EMAIL, TURNSTILE_ENABLED } from "@/lib/constants"
+import { SUPPORT_EMAIL, TURNSTILE_ENABLED, API } from "@/lib/constants"
 
 const CATEGORIES = [
   { id: "bug", label: "Bug Report", icon: Bug, desc: "Something is broken or not working as expected" },
@@ -61,7 +60,7 @@ export default function ContactPage() {
   useEffect(() => {
     async function fetchUser() {
       try {
-        const res = await fetch("/api/v1/auth/me")
+        const res = await fetch(API.AUTH.ME)
         if (res.ok) {
           const data = await res.json()
           if (data?.email) {
@@ -143,7 +142,7 @@ export default function ContactPage() {
         : message
 
     try {
-      const res = await fetch("/api/v1/contact", {
+      const res = await fetch(API.CONTACT, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -175,10 +174,7 @@ export default function ContactPage() {
         <Header />
         <main className="flex-1 w-full max-w-3xl mx-auto px-4 py-6 sm:py-10">
           <div className="flex flex-col gap-2 mb-8">
-            <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
-              <MessageSquare className="h-6 w-6 text-primary" />
-              Contact & Support
-            </h1>
+            <h1 className="text-2xl font-bold text-foreground">Contact & Support</h1>
             <p className="text-sm text-muted-foreground leading-relaxed">
               Need help? Found a bug? Have a great idea? {"We'd"} love to hear from you.
             </p>
@@ -224,7 +220,7 @@ export default function ContactPage() {
                     { icon: FileText, label: "Changelog", href: "/changelog", desc: "Latest updates" },
                     { icon: Mail, label: "Email Us", href: `mailto:${SUPPORT_EMAIL}`, desc: SUPPORT_EMAIL },
                   ].map((link) => (
-                      <Link key={link.label} href={link.href} className="flex items-center gap-3 p-3 rounded-xl border border-border bg-card hover:bg-muted/50 hover:border-primary/20 transition-all">
+                      <Link key={link.label} href={link.href} className="flex items-center gap-3 p-3 rounded-xl border border-border bg-card hover:bg-muted/50 hover:border-accent transition-all">
                         <div className="flex items-center justify-center w-9 h-9 rounded-lg bg-primary/10 shrink-0">
                           <link.icon className="h-4 w-4 text-primary" />
                         </div>
@@ -249,7 +245,7 @@ export default function ContactPage() {
                                 "flex flex-col items-center gap-2 p-4 rounded-xl border transition-all text-center",
                                 category === cat.id
                                     ? "border-primary bg-primary/5"
-                                    : "border-border bg-card hover:bg-muted/50 hover:border-primary/20"
+                                    : "border-border bg-card hover:bg-muted/50 hover:border-accent"
                             )}
                         >
                           <cat.icon className={cn("h-5 w-5", category === cat.id ? "text-primary" : "text-muted-foreground")} />

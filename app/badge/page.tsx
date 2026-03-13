@@ -4,10 +4,11 @@ import { useState, useEffect } from "react"
 import { Header } from "@/components/scanner/header"
 import { Footer } from "@/components/scanner/footer"
 import { Button } from "@/components/ui/button"
-import { Copy, Check, Code2, Loader2, ExternalLink, Image as ImageIcon, ShieldCheck, AlertTriangle, Search } from "lucide-react"
+import { Copy, Check, Code2, Loader2, ExternalLink, ShieldCheck, AlertTriangle, Search } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { getSafetyRating } from "@/lib/scanner/safety-rating"
 import type { Vulnerability } from "@/lib/scanner/types"
+import { API } from "@/lib/constants"
 
 interface ScanEntry {
   id: number
@@ -28,7 +29,7 @@ export default function BadgePage() {
   const [searchQuery, setSearchQuery] = useState("")
 
   useEffect(() => {
-    fetch("/api/v1/badge/scans")
+    fetch(API.BADGE_SCANS)
       .then((r) => r.json())
       .then((data) => {
         if (Array.isArray(data)) {
@@ -49,7 +50,7 @@ export default function BadgePage() {
     setGenerating(true)
     setSelected(scan)
     try {
-      const res = await fetch(`/api/v1/history/${scan.id}/share`, { method: "POST" })
+      const res = await fetch(`${API.HISTORY}/${scan.id}/share`, { method: "POST" })
       const data = await res.json()
       if (res.ok && data.token) {
         const updated = { ...scan, share_token: data.token }
@@ -86,7 +87,7 @@ export default function BadgePage() {
 
   const origin = typeof window !== "undefined" ? window.location.origin : ""
   const token = selected?.share_token
-  const badgeUrl = token ? `${origin}/api/v1/badge/${token}` : ""
+  const badgeUrl = token ? `${origin}${API.BADGE}/${token}` : ""
   const shareUrl = token ? `${origin}/shared/${token}` : ""
   const htmlSnippet = token
     ? `<a href="${shareUrl}" target="_blank" rel="noopener noreferrer">\n  <img src="${badgeUrl}" alt="Secured by VulnRadar" />\n</a>`
@@ -124,15 +125,8 @@ export default function BadgePage() {
       <main className="flex-1 w-full max-w-3xl mx-auto px-4 py-8">
         <div className="flex flex-col gap-6">
           {/* Page header */}
-          <div className="flex flex-col gap-2">
-            <div className="flex items-center gap-2">
-              <div className="flex items-center justify-center w-9 h-9 rounded-lg bg-primary/10">
-                <ImageIcon className="h-4 w-4 text-primary" />
-              </div>
-              <h1 className="text-xl font-bold text-foreground tracking-tight">
-                Embed Security Badge
-              </h1>
-            </div>
+          <div className="flex flex-col gap-1">
+            <h1 className="text-xl font-bold text-foreground">Embed Security Badge</h1>
             <p className="text-sm text-muted-foreground leading-relaxed">
               Pick any scan to generate a &ldquo;Secured by VulnRadar&rdquo; badge you can embed on your site.
             </p>

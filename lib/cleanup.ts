@@ -13,6 +13,13 @@ export interface CleanupStats {
   oldRateLimits: number
   expiredTokens: number
   expiredInvites: number
+  expired2FACodes: number
+  expiredDeviceTrust: number
+  expiredNotifications: number
+  expiredGiftedSubs: number
+  oldAuditLogs: number
+  oldAdminNotes: number
+  oldStaffActivity: number
 }
 
 /**
@@ -29,6 +36,13 @@ export async function performDatabaseCleanup(): Promise<CleanupStats> {
     oldRateLimits: 0,
     expiredTokens: 0,
     expiredInvites: 0,
+    expired2FACodes: 0,
+    expiredDeviceTrust: 0,
+    expiredNotifications: 0,
+    expiredGiftedSubs: 0,
+    oldAuditLogs: 0,
+    oldAdminNotes: 0,
+    oldStaffActivity: 0,
   }
 
   try {
@@ -73,6 +87,44 @@ export async function performDatabaseCleanup(): Promise<CleanupStats> {
     )
     stats.expiredInvites = invitesRes.rowCount || 0
 
+    // Delete expired email 2FA codes
+    const email2faRes = await pool.query("DELETE FROM email_2fa_codes WHERE expires_at < NOW()")
+    stats.expired2FACodes = email2faRes.rowCount || 0
+
+    // Delete expired device trust records
+    const deviceTrustRes = await pool.query("DELETE FROM device_trust WHERE expires_at < NOW()")
+    stats.expiredDeviceTrust = deviceTrustRes.rowCount || 0
+
+    // Delete expired/ended admin notifications (ended more than 30 days ago)
+    const notificationsRes = await pool.query(
+      "DELETE FROM admin_notifications WHERE ends_at IS NOT NULL AND ends_at < NOW() - INTERVAL '30 days'"
+    )
+    stats.expiredNotifications = notificationsRes.rowCount || 0
+
+    // Delete expired gifted subscriptions that ended more than 90 days ago
+    const giftedSubsRes = await pool.query(
+      "DELETE FROM gifted_subscriptions WHERE expires_at < NOW() - INTERVAL '90 days'"
+    )
+    stats.expiredGiftedSubs = giftedSubsRes.rowCount || 0
+
+    // Delete old admin audit logs (> 1 year)
+    const auditLogsRes = await pool.query(
+      "DELETE FROM admin_audit_log WHERE created_at < NOW() - INTERVAL '365 days'"
+    )
+    stats.oldAuditLogs = auditLogsRes.rowCount || 0
+
+    // Delete old admin user notes (> 1 year)
+    const adminNotesRes = await pool.query(
+      "DELETE FROM admin_user_notes WHERE created_at < NOW() - INTERVAL '365 days'"
+    )
+    stats.oldAdminNotes = adminNotesRes.rowCount || 0
+
+    // Delete old staff activity records (> 30 days)
+    const staffActivityRes = await pool.query(
+      "DELETE FROM staff_activity WHERE last_heartbeat < NOW() - INTERVAL '30 days'"
+    )
+    stats.oldStaffActivity = staffActivityRes.rowCount || 0
+
     return stats
   } catch (error) {
     console.error("[Database Cleanup] Error during cleanup:", error)
@@ -84,17 +136,27 @@ export async function performDatabaseCleanup(): Promise<CleanupStats> {
  * Format cleanup stats into a readable log message
  */
 export function formatCleanupStats(stats: CleanupStats): string {
-  const items = [
-    `${stats.expiredSessions} expired sessions`,
-    `${stats.oldApiUsage} old API usage records`,
-    `${stats.revokedApiKeys} revoked API keys`,
-    `${stats.oldDataRequests} old data requests`,
-    `${stats.oldScans} old scans`,
-    `${stats.oldRateLimits} old rate limit records`,
-    `${stats.expiredTokens} expired tokens`,
-    `${stats.expiredInvites} expired invites`,
-  ]
-  return items.join(", ")
+  const total = Object.values(stats).reduce((a, b) => a + b, 0)
+  if (total === 0) return "no records to clean"
+  
+  const items: string[] = []
+  if (stats.expiredSessions > 0) items.push(`${stats.expiredSessions} sessions`)
+  if (stats.oldApiUsage > 0) items.push(`${stats.oldApiUsage} API logs`)
+  if (stats.revokedApiKeys > 0) items.push(`${stats.revokedApiKeys} revoked keys`)
+  if (stats.oldDataRequests > 0) items.push(`${stats.oldDataRequests} data requests`)
+  if (stats.oldScans > 0) items.push(`${stats.oldScans} old scans`)
+  if (stats.oldRateLimits > 0) items.push(`${stats.oldRateLimits} rate limits`)
+  if (stats.expiredTokens > 0) items.push(`${stats.expiredTokens} tokens`)
+  if (stats.expiredInvites > 0) items.push(`${stats.expiredInvites} invites`)
+  if (stats.expired2FACodes > 0) items.push(`${stats.expired2FACodes} 2FA codes`)
+  if (stats.expiredDeviceTrust > 0) items.push(`${stats.expiredDeviceTrust} device trusts`)
+  if (stats.expiredNotifications > 0) items.push(`${stats.expiredNotifications} notifications`)
+  if (stats.expiredGiftedSubs > 0) items.push(`${stats.expiredGiftedSubs} gifted subs`)
+  if (stats.oldAuditLogs > 0) items.push(`${stats.oldAuditLogs} audit logs`)
+  if (stats.oldAdminNotes > 0) items.push(`${stats.oldAdminNotes} admin notes`)
+  if (stats.oldStaffActivity > 0) items.push(`${stats.oldStaffActivity} staff activity`)
+  
+  return `${total} total (${items.join(", ")})`
 }
 
 /**

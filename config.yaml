@@ -1,0 +1,236 @@
+# ============================================================================
+# VulnRadar Configuration File
+# ============================================================================
+# This file contains all configurable settings for VulnRadar.
+# Self-hosters: Modify these values to customize your deployment.
+# 
+# IMPORTANT: Security-sensitive values (secrets, API keys, database URLs)
+# should ALWAYS be set via environment variables, not in this file.
+# ============================================================================
+
+# ----------------------------------------------------------------------------
+# Application Metadata
+# ----------------------------------------------------------------------------
+app:
+  name: "VulnRadar"
+  slug: "vulnradar"
+  version: "2.0.0"
+  engine_version: "2.0.0"
+  description: "Scan websites for security vulnerabilities. Get instant reports with severity ratings, actionable fix guidance, and team collaboration tools."
+  total_checks_label: "175+"
+  
+  # URLs - Update these for self-hosted deployments
+  url: "https://vulnradar.dev"
+  repo: "VulnRadar/vulnradar.dev"
+  discord_invite_url: "https://discord.gg/Y7R6hdGbNe"
+  
+  # Contact
+  support_email: "support@vulnradar.dev"
+
+# ----------------------------------------------------------------------------
+# Branding
+# ----------------------------------------------------------------------------
+branding:
+  # Logo URL - can be relative path or absolute URL
+  logo_url: "/favicon.png"
+  
+  # Primary color (used in emails, PDFs, etc.)
+  primary_color: "#6366f1"
+  
+  # Footer text
+  footer_text: "VulnRadar - Security Scanner"
+
+# ----------------------------------------------------------------------------
+# Cookie Configuration
+# ----------------------------------------------------------------------------
+cookies:
+  # Session cookie
+  session:
+    name: "vulnradar_session"
+    max_age_days: 7
+  
+  # Version notification cookie
+  version:
+    name: "vulnradar_last_seen_version"
+    max_age_days: 365
+  
+  # Device trust cookie (remember device for 2FA)
+  device_trust:
+    name: "vulnradar_device_trusted"
+    max_age_days: 30
+  
+  # 2FA pending cookie
+  two_fa_pending:
+    name: "vulnradar_2fa_pending"
+    max_age_seconds: 300
+
+# ----------------------------------------------------------------------------
+# Authentication Timeouts
+# ----------------------------------------------------------------------------
+auth:
+  # Session timeout in days
+  session_timeout_days: 7
+  
+  # Password reset token lifetime in hours
+  password_reset_hours: 1
+  
+  # Email verification token lifetime in hours
+  email_verification_hours: 24
+  
+  # Device trust duration in days
+  device_trust_days: 30
+  
+  # TOTP code validity in seconds
+  totp_validity_seconds: 30
+  
+  # Cleanup interval for expired sessions (milliseconds)
+  cleanup_interval_ms: 86400000
+
+# ----------------------------------------------------------------------------
+# Rate Limiting
+# ----------------------------------------------------------------------------
+rate_limits:
+  login:
+    max_attempts: 5
+    window_minutes: 15
+  
+  signup:
+    max_attempts: 3
+    window_minutes: 60
+  
+  forgot_password:
+    max_attempts: 3
+    window_minutes: 10
+  
+  api:
+    max_requests: 100
+    window_minutes: 60
+  
+  scan:
+    max_requests: 100
+    window_minutes: 60
+  
+  bulk_scan:
+    max_requests: 10
+    window_minutes: 60
+
+# ----------------------------------------------------------------------------
+# Scanning Configuration
+# ----------------------------------------------------------------------------
+scanning:
+  # Maximum URL length
+  max_url_length: 2048
+  
+  # Maximum URLs in bulk scan
+  max_urls_bulk: 100
+  
+  # Single scan timeout in seconds
+  timeout_seconds: 300
+  
+  # Bulk scan timeout in seconds
+  bulk_timeout_seconds: 1800
+  
+  # Default severity threshold for notifications
+  default_severity_threshold: "low"
+
+# ----------------------------------------------------------------------------
+# API Configuration
+# ----------------------------------------------------------------------------
+api:
+  # API key prefix
+  key_prefix: "vr_live_"
+  
+  # Default daily limit for API keys
+  default_daily_limit: 50
+  
+  # Current API version
+  current_version: "v2"
+  
+  # Supported API versions (for backwards compatibility)
+  supported_versions:
+    - "v1"
+    - "v2"
+
+# ----------------------------------------------------------------------------
+# Demo Mode Configuration
+# ----------------------------------------------------------------------------
+demo:
+  # Maximum scans per IP in demo mode
+  scan_limit: 5
+  
+  # Window for demo scan limit (hours)
+  window_hours: 12
+
+# ----------------------------------------------------------------------------
+# Database Constraints
+# ----------------------------------------------------------------------------
+database:
+  max_email_length: 255
+  max_name_length: 255
+  max_description_length: 1000
+  max_team_name_length: 255
+  max_tags_per_scan: 10
+
+# ----------------------------------------------------------------------------
+# Pagination Defaults
+# ----------------------------------------------------------------------------
+pagination:
+  default_page_size: 20
+  max_page_size: 100
+  default_page: 1
+
+# ----------------------------------------------------------------------------
+# Beta Mode Configuration
+# ----------------------------------------------------------------------------
+beta:
+  # Enable beta mode - shows beta banner, creates beta testing account
+  enabled: true
+  
+  # Banner message to show when beta mode is enabled
+  banner_message: "You are using VulnRadar v2.0 BETA - Some features may be unstable. Please report issues."
+
+# ----------------------------------------------------------------------------
+# Feature Flags
+# ----------------------------------------------------------------------------
+features:
+  # Enable/disable features
+  demo_mode: true
+  teams: true
+  api_keys: true
+  webhooks: true
+  scheduled_scans: true
+  bulk_scans: true
+  pdf_reports: true
+  email_notifications: true
+
+# ----------------------------------------------------------------------------
+# Billing / Premium Configuration
+# ----------------------------------------------------------------------------
+# Self-hosters: Set billing.enabled to false to disable all billing features
+# and give all users unlimited access (or the unlimited_mode_limit if set)
+# ----------------------------------------------------------------------------
+billing:
+  # Master switch - when false, all users get unlimited access
+  # No pricing page, no plan restrictions, no Stripe integration needed
+  enabled: true
+  
+  # Plan limits (daily scans) - only applies when billing is enabled
+  plan_limits:
+    free: 50
+    core_supporter: 100
+    pro_supporter: 150
+    elite_supporter: 500
+  
+  # When billing is disabled, this is the daily limit for all users
+  # Set to -1 for truly unlimited, or a number like 1000 for a high cap
+  unlimited_mode_limit: -1
+
+# ----------------------------------------------------------------------------
+# Stripe Configuration (only needed if billing.enabled = true)
+# ----------------------------------------------------------------------------
+# Required environment variables when billing is enabled:
+#   STRIPE_SECRET_KEY          - Your Stripe secret key (sk_live_... or sk_test_...)
+#   STRIPE_PUBLISHABLE_KEY     - Your Stripe publishable key (pk_live_... or pk_test_...)
+#   STRIPE_WEBHOOK_SECRET      - Webhook signing secret (whsec_...)
+#   NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY - Same as STRIPE_PUBLISHABLE_KEY (for client)
+# ----------------------------------------------------------------------------

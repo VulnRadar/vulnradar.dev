@@ -173,7 +173,7 @@ export function ResultsList({ findings, onSelectIssue }: ResultsListProps) {
               key={issue.id}
               type="button"
               onClick={() => onSelectIssue(issue)}
-              className="group flex items-start sm:items-center gap-2 sm:gap-3 rounded-xl border border-border bg-card p-3 sm:p-4 text-left transition-all hover:bg-muted/50 hover:border-primary/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:scale-[0.99]"
+              className="group flex items-start sm:items-center gap-2 sm:gap-3 rounded-xl border border-border bg-card p-3 sm:p-4 text-left transition-all hover:bg-muted/50 hover:border-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:scale-[0.99]"
             >
               <div className="shrink-0 mt-0.5 sm:mt-0">
                 <SeverityBadge severity={issue.severity} />

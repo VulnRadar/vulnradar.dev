@@ -6,12 +6,39 @@
   .text-balance {
     text-wrap: balance;
   }
+  .text-pretty {
+    text-wrap: pretty;
+  }
+  /* Hide scrollbar but allow scrolling */
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
 }
 
-/* Pre-hydration visibility: hide staff/auth elements by default.
-   The blocking <script> in layout.tsx injects a <style> tag that
-   overrides these to visible BEFORE React hydrates, so there is
-   no flash. React cannot strip an injected <style> tag. */
+/* Smooth scroll behavior for anchor links */
+html {
+  scroll-behavior: smooth;
+  /* Always show scrollbar to prevent layout shift when navigating between pages */
+  overflow-y: scroll;
+}
+
+/* Reduce motion for users who prefer it */
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Pre-hydration visibility: hide staff/auth elements by default. */
 .vr-staff-only {
   display: none !important;
 }
@@ -22,6 +49,7 @@
 
 @layer base {
   :root {
+    /* Light theme - blue accent */
     --background: 220 20% 97%;
     --foreground: 220 20% 10%;
     --card: 0 0% 100%;
@@ -30,12 +58,12 @@
     --popover-foreground: 220 20% 10%;
     --primary: 190 90% 42%;
     --primary-foreground: 0 0% 100%;
-    --secondary: 220 15% 92%;
-    --secondary-foreground: 220 20% 10%;
-    --muted: 220 15% 92%;
+    --secondary: 220 10% 93%;
+    --secondary-foreground: 220 15% 15%;
+    --muted: 220 10% 92%;
     --muted-foreground: 220 10% 46%;
-    --accent: 190 90% 42%;
-    --accent-foreground: 0 0% 100%;
+    --accent: 220 10% 88%;
+    --accent-foreground: 220 15% 12%;
     --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 100%;
     --border: 220 15% 88%;
@@ -53,8 +81,21 @@
     --severity-medium: 45 93% 47%;
     --severity-low: 210 90% 56%;
     --severity-info: 220 10% 46%;
+
+    /* Surface layers */
+    --surface-1: 0 0% 100%;
+    --surface-2: 220 20% 98%;
+    --surface-3: 220 15% 96%;
+
+    /* Success/Warning */
+    --success: 142 76% 36%;
+    --success-foreground: 0 0% 100%;
+    --warning: 38 92% 50%;
+    --warning-foreground: 0 0% 9%;
   }
+
   .dark {
+    /* Dark theme - blue accent */
     --background: 224 20% 6%;
     --foreground: 210 20% 95%;
     --card: 224 18% 9%;
@@ -63,12 +104,12 @@
     --popover-foreground: 210 20% 95%;
     --primary: 190 90% 50%;
     --primary-foreground: 224 20% 6%;
-    --secondary: 224 15% 14%;
-    --secondary-foreground: 210 20% 95%;
-    --muted: 224 15% 14%;
-    --muted-foreground: 215 15% 55%;
-    --accent: 190 90% 50%;
-    --accent-foreground: 224 20% 6%;
+    --secondary: 220 10% 14%;
+    --secondary-foreground: 220 10% 92%;
+    --muted: 220 10% 16%;
+    --muted-foreground: 220 8% 55%;
+    --accent: 220 8% 22%;
+    --accent-foreground: 220 10% 92%;
     --destructive: 0 72% 50%;
     --destructive-foreground: 0 0% 100%;
     --border: 224 15% 16%;
@@ -85,24 +126,37 @@
     --severity-medium: 45 93% 47%;
     --severity-low: 210 90% 56%;
     --severity-info: 215 15% 55%;
+
+    /* Surface layers */
+    --surface-1: 224 18% 9%;
+    --surface-2: 224 18% 12%;
+    --surface-3: 224 15% 16%;
+
+    /* Success/Warning */
+    --success: 142 70% 45%;
+    --success-foreground: 0 0% 100%;
+    --warning: 38 92% 50%;
+    --warning-foreground: 0 0% 9%;
   }
 }
 
-/* Custom scrollbar — thin, matches both themes */
+/* Custom scrollbar - minimal and elegant */
 * {
   scrollbar-width: thin;
   scrollbar-color: hsl(var(--border)) transparent;
 }
 *::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 8px;
+  height: 8px;
 }
 *::-webkit-scrollbar-track {
   background: transparent;
 }
 *::-webkit-scrollbar-thumb {
-  background-color: hsl(var(--border));
+  background-color: hsl(var(--muted-foreground) / 0.3);
   border-radius: 9999px;
+  border: 2px solid transparent;
+  background-clip: content-box;
 }
 *::-webkit-scrollbar-thumb:hover {
   background-color: hsl(var(--muted-foreground) / 0.5);
@@ -116,26 +170,242 @@
     @apply border-border;
   }
   body {
-    @apply bg-background text-foreground;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-    font-size: 16px;
-    line-height: 1.5;
-    -webkit-font-smoothing: antialiased;
-    -moz-osx-font-smoothing: grayscale;
+    @apply bg-background text-foreground antialiased;
+    font-feature-settings: "rlig" 1, "calt" 1;
   }
+
+  /* Typography scale - clean and readable */
   h1, h2, h3, h4, h5, h6 {
-    @apply font-semibold tracking-tight;
-    line-height: 1.2;
+    @apply font-semibold tracking-tight text-balance;
   }
   h1 {
-    @apply text-3xl;
+    @apply text-4xl md:text-5xl leading-[1.1];
   }
   h2 {
-    @apply text-2xl;
+    @apply text-3xl md:text-4xl leading-[1.15];
   }
   h3 {
-    @apply text-xl;
+    @apply text-2xl md:text-3xl leading-[1.2];
   }
+  h4 {
+    @apply text-xl md:text-2xl leading-[1.25];
+  }
+  h5 {
+    @apply text-lg md:text-xl;
+  }
+  h6 {
+    @apply text-base md:text-lg;
+  }
+
+  /* Paragraph and prose */
+  p {
+    @apply leading-7;
+  }
+
+  /* Focus styles - accessible and minimal */
+  :focus-visible {
+    @apply outline-none ring-2 ring-ring ring-offset-2 ring-offset-background;
+  }
+
+  /* Selection - neutral gray for consistent highlight */
+  ::selection {
+    background-color: hsl(220 10% 50% / 0.30);
+    color: hsl(var(--foreground));
+  }
+  ::-moz-selection {
+    background-color: hsl(220 10% 50% / 0.30);
+    color: hsl(var(--foreground));
+  }
+  .dark ::selection {
+    background-color: hsl(220 8% 60% / 0.25);
+    color: hsl(var(--foreground));
+  }
+  .dark ::-moz-selection {
+    background-color: hsl(220 8% 60% / 0.25);
+    color: hsl(var(--foreground));
+  }
+}
+
+/* Animation utilities */
+@layer utilities {
+  .animate-in {
+    animation: animate-in 0.2s ease-out;
+  }
+  .animate-out {
+    animation: animate-out 0.2s ease-in;
+  }
+  .fade-in {
+    animation: fade-in 0.3s ease-out;
+  }
+  .slide-up {
+    animation: slide-up 0.3s ease-out;
+  }
+  .slide-down {
+    animation: slide-down 0.3s ease-out;
+  }
+}
+
+@keyframes animate-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes animate-out {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slide-down {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Gradient text utility */
+.gradient-text {
+  @apply bg-clip-text text-transparent bg-gradient-to-r from-foreground to-foreground/70;
+}
+
+/* Glass effect for cards */
+.glass {
+  @apply backdrop-blur-md bg-card/80 border border-border/50;
+}
+
+/* Subtle glow effects */
+.glow {
+  box-shadow: 0 0 20px -5px hsl(var(--primary) / 0.3);
+}
+
+.glow-sm {
+  box-shadow: 0 0 10px -3px hsl(var(--primary) / 0.2);
+}
+
+/**
+ * Universal hover surface utilities
+ * A standardized neutral gray hover that ensures text stays legible.
+ * Use .hover-surface on any interactive element for consistent hover feedback.
+ */
+.hover-surface {
+  transition: background-color 0.15s ease;
+}
+.hover-surface:hover,
+.hover-surface:focus-visible,
+.hover-surface[data-highlighted] {
+  background-color: hsl(220 10% 88% / 0.95) !important;
+  color: hsl(220 15% 12%) !important;
+}
+.dark .hover-surface:hover,
+.dark .hover-surface:focus-visible,
+.dark .hover-surface[data-highlighted] {
+  background-color: hsl(220 8% 24% / 0.95) !important;
+  color: hsl(220 10% 92%) !important;
+}
+
+/* Alternative: a subtler hover that doesn't override text color */
+.hover-surface-subtle {
+  transition: background-color 0.15s ease;
+}
+.hover-surface-subtle:hover,
+.hover-surface-subtle:focus-visible,
+.hover-surface-subtle[data-highlighted] {
+  background-color: hsl(220 10% 85% / 0.5);
+}
+.dark .hover-surface-subtle:hover,
+.dark .hover-surface-subtle:focus-visible,
+.dark .hover-surface-subtle[data-highlighted] {
+  background-color: hsl(220 8% 28% / 0.5);
+}
+
+/**
+ * Global Radix UI menu item hover styling
+ * Applies neutral gray hover to all dropdown/context/command menu items
+ * ensuring consistent UX across all menus and popovers.
+ */
+[data-radix-menu-content] [role="menuitem"][data-highlighted],
+[data-radix-menu-content] [role="menuitemcheckbox"][data-highlighted],
+[data-radix-menu-content] [role="menuitemradio"][data-highlighted],
+[data-radix-collection-item][data-highlighted] {
+  background-color: hsl(220 10% 88% / 0.95);
+  color: hsl(220 15% 10%);
+}
+.dark [data-radix-menu-content] [role="menuitem"][data-highlighted],
+.dark [data-radix-menu-content] [role="menuitemcheckbox"][data-highlighted],
+.dark [data-radix-menu-content] [role="menuitemradio"][data-highlighted],
+.dark [data-radix-collection-item][data-highlighted] {
+  background-color: hsl(220 8% 24% / 0.95);
+  color: hsl(220 10% 92%);
+}
+
+/**
+ * Scanner selection states
+ * Used for protocol picker, scanner category toggles, and any
+ * interactive scanner element that has a selected/active state.
+ * Uses neutral gray for consistent hover experience.
+ * Uses !important to override shadcn's focus:bg-accent styles.
+ */
+.scanner-selected,
+.scanner-selected:focus,
+.scanner-selected[data-highlighted] {
+  background-color: hsl(220 10% 75% / 0.55) !important;
+}
+.dark .scanner-selected,
+.dark .scanner-selected:focus,
+.dark .scanner-selected[data-highlighted] {
+  background-color: hsl(220 8% 30% / 0.55) !important;
+}
+.scanner-selected-hover:hover,
+.scanner-selected-hover:focus,
+.scanner-selected-hover[data-highlighted] {
+  background-color: hsl(220 10% 70% / 0.70) !important;
+}
+.dark .scanner-selected-hover:hover,
+.dark .scanner-selected-hover:focus,
+.dark .scanner-selected-hover[data-highlighted] {
+  background-color: hsl(220 8% 35% / 0.65) !important;
+}
+/* Unselected items: subtle gray hover */
+.scanner-hover:hover,
+.scanner-hover:focus,
+.scanner-hover[data-highlighted] {
+  background-color: hsl(220 10% 50% / 0.12) !important;
+}
+.dark .scanner-hover:hover,
+.dark .scanner-hover:focus,
+.dark .scanner-hover[data-highlighted] {
+  background-color: hsl(220 8% 70% / 0.10) !important;
 }
 
 

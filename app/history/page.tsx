@@ -1,10 +1,9 @@
 "use client"
-import { SEVERITY_LEVELS } from "@/lib/constants"
+import { SEVERITY_LEVELS, API } from "@/lib/constants"
 
-import { useState, useEffect, useCallback, Suspense } from "react"
-import { useRouter, useSearchParams } from "next/navigation"
+import { useState, useEffect, useCallback } from "react"
+import { useRouter } from "next/navigation"
 import {
-  Clock,
   Globe,
   Trash2,
   Search,
@@ -15,7 +14,6 @@ import {
   Tag,
   Plus,
   X,
-  List,
   RefreshCw,
   MessageSquare,
   Save,
@@ -74,7 +72,6 @@ function SeverityDot({ severity, count }: { severity: string; count: number }) {
 
 function HistoryPageContent() {
   const router = useRouter()
-  const searchParams = useSearchParams()
   const [scans, setScans] = useState<ScanRecord[]>([])
   const [loading, setLoading] = useState(true)
   const [clearing, setClearing] = useState(false)
@@ -91,31 +88,54 @@ function HistoryPageContent() {
   const [addingTagFor, setAddingTagFor] = useState<number | null>(null)
   const [newTag, setNewTag] = useState("")
   const [rescanning, setRescanning] = useState<number | null>(null)
-  const [showBulkScan, setShowBulkScan] = useState(false)
-  const [bulkUrls, setBulkUrls] = useState("")
-  const [bulkLoading, setBulkLoading] = useState(false)
-  const [bulkResult, setBulkResult] = useState<{ total: number; successful: number; failed: number } | null>(null)
   const [currentPage, setCurrentPage] = useState(1)
+  const [pageSize, setPageSize] = useState(10)
   const [scanNotes, setScanNotes] = useState("")
   const [editingNotes, setEditingNotes] = useState(false)
   const [savingNotes, setSavingNotes] = useState(false)
 
-  // Check for id parameter in URL and load that scan
-  useEffect(() => {
-    const scanId = searchParams.get('id')
-    if (scanId) {
-      const id = parseInt(scanId, 10)
+  // Sync scan selection with URL hash
+  // pushState when opening a scan (so back button works), replaceState when closing
+  const updateUrlWithScan = useCallback((id: number | null, replace = false) => {
+    if (typeof window === "undefined") return
+    const method = replace ? "replaceState" : "pushState"
+    if (id) {
+      window.history[method](null, "", `/history#${id}`)
+    } else {
+      window.history.replaceState(null, "", "/history")
+    }
+  }, [])
+
+  // Parse hash and load scan
+  const handleHashChange = useCallback(() => {
+    if (typeof window === "undefined") return
+    const hash = window.location.hash.replace("#", "")
+    if (hash) {
+      const id = parseInt(hash, 10)
       if (!isNaN(id)) {
         setSelectedScanId(id)
         loadScanDetail(id)
+      } else {
+        setSelectedScanId(null)
+        setScanDetail(null)
       }
+    } else {
+      setSelectedScanId(null)
+      setScanDetail(null)
     }
-  }, [searchParams])
+  }, [])
+
+  // Load from hash on mount and listen for hash changes
+  useEffect(() => {
+    handleHashChange()
+    window.addEventListener("hashchange", handleHashChange)
+    return () => window.removeEventListener("hashchange", handleHashChange)
+  }, [handleHashChange])
 
   async function loadScanDetail(scanId: number) {
     setDetailLoading(true)
     try {
-      const res = await fetch(`/api/v1/history/${scanId}`)
+      const res = await fetch(`${API.HISTORY}/${scanId}`)
       if (!res.ok) {
         setSelectedScanId(null)
         return
@@ -144,7 +164,7 @@ function HistoryPageContent() {
     if (!selectedScanId) return
     setSavingNotes(true)
     try {
-      const res = await fetch(`/api/v1/history/${selectedScanId}`, {
+      const res = await fetch(`${API.HISTORY}/${selectedScanId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ notes: scanNotes }),
@@ -161,7 +181,7 @@ function HistoryPageContent() {
 
   const fetchHistory = useCallback(async () => {
     try {
-      const res = await fetch("/api/v1/history")
+      const res = await fetch(API.HISTORY)
       if (!res.ok) {
         router.push("/login")
         return
@@ -177,14 +197,14 @@ function HistoryPageContent() {
 
   useEffect(() => {
     fetchHistory()
-    fetch("/api/v1/scan/tags").then((r) => r.json()).then((d) => setAllTags(d.tags || [])).catch(() => { })
+    fetch(API.SCAN_TAGS).then((r) => r.json()).then((d) => setAllTags(d.tags || [])).catch(() => { })
     // Get current user ID
-    fetch("/api/v1/auth/me").then((r) => r.json()).then((d) => setCurrentUserId(d.userId || null)).catch(() => { })
+    fetch(API.AUTH.ME).then((r) => r.json()).then((d) => setCurrentUserId(d.userId || null)).catch(() => { })
   }, [fetchHistory])
 
   async function handleAddTag(scanId: number, tag: string) {
     if (!tag.trim()) return
-    const res = await fetch("/api/v1/scan/tags", {
+    const res = await fetch(API.SCAN_TAGS, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ scanId, tag: tag.trim() }),
@@ -199,7 +219,7 @@ function HistoryPageContent() {
   }
 
   async function handleRemoveTag(scanId: number, tag: string) {
-    const res = await fetch("/api/v1/scan/tags", {
+    const res = await fetch(API.SCAN_TAGS, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ scanId, tag, action: "remove" }),
@@ -213,7 +233,7 @@ function HistoryPageContent() {
   async function handleRescan(scan: ScanRecord) {
     setRescanning(scan.id)
     try {
-      const res = await fetch("/api/v1/scan", {
+      const res = await fetch(API.SCAN, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ url: scan.url }),
@@ -225,43 +245,26 @@ function HistoryPageContent() {
     setRescanning(null)
   }
 
-  async function handleBulkScan() {
-    const urls = bulkUrls.split("\n").map((u) => u.trim()).filter((u) => u.length > 0)
-    if (urls.length === 0) return
-    setBulkLoading(true)
-    setBulkResult(null)
-    try {
-      const res = await fetch("/api/v1/scan/bulk", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ urls }),
-      })
-      const data = await res.json()
-      if (res.ok) {
-        setBulkResult({ total: data.total, successful: data.successful, failed: data.failed })
-        await fetchHistory()
-      }
-    } catch { /* ignore */ }
-    setBulkLoading(false)
-  }
-
+  
   async function handleViewScan(scan: ScanRecord) {
     setSelectedScanId(scan.id)
     setSelectedIssue(null)
     loadScanDetail(scan.id)
+    updateUrlWithScan(scan.id)
   }
 
   function handleBackToList() {
     setSelectedScanId(null)
     setScanDetail(null)
     setSelectedIssue(null)
+    updateUrlWithScan(null)
   }
 
   async function handleClearHistory() {
     if (!confirm("Are you sure you want to clear all scan history? This cannot be undone.")) return
     setClearing(true)
     try {
-      await fetch("/api/v1/history", { method: "DELETE" })
+      await fetch(API.HISTORY, { method: "DELETE" })
       setScans([])
     } catch {
       // silently fail
@@ -303,7 +306,7 @@ function HistoryPageContent() {
   // Reset to page 1 when filters change
   useEffect(() => { setCurrentPage(1) }, [filter, tagFilter])
 
-  const PAGE_SIZE = 5
+  const PAGE_SIZE = pageSize
   const { totalPages, getPage } = usePagination(filtered, PAGE_SIZE)
   const paginatedScans = getPage(currentPage)
 
@@ -311,7 +314,7 @@ function HistoryPageContent() {
     <div className="min-h-screen flex flex-col bg-background">
       <Header />
 
-      <main className="flex-1 w-full max-w-5xl mx-auto px-4 py-6 sm:py-8 flex flex-col gap-6">
+      <main className="flex-1 w-full max-w-6xl mx-auto px-4 sm:px-6 py-8 sm:py-12 flex flex-col gap-8">
         {loading ? (
           <div className="flex flex-col items-center gap-3 py-20">
             <Loader2 className="h-6 w-6 animate-spin text-primary" />
@@ -474,10 +477,7 @@ function HistoryPageContent() {
             {/* Page header */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div className="flex flex-col gap-1">
-                <h1 className="text-xl font-bold text-foreground flex items-center gap-2">
-                  <Clock className="h-5 w-5 text-primary" />
-                  Scan History
-                </h1>
+                <h1 className="text-xl font-bold text-foreground">Scan History</h1>
                 <p className="text-sm text-muted-foreground">
                   Click any scan to view full results. History kept for 90 days.
                 </p>
@@ -496,23 +496,17 @@ function HistoryPageContent() {
               )}
             </div>
 
-            {/* Search + Bulk Scan + Tag filter */}
+            {/* Search + Tag filter */}
             {scans.length > 0 && (
               <div className="flex flex-col gap-3">
-                <div className="flex gap-2">
-                  <div className="relative flex-1">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                    <Input
-                      placeholder="Filter by URL..."
-                      value={filter}
-                      onChange={(e) => setFilter(e.target.value)}
-                      className="pl-9 bg-card h-10"
-                    />
-                  </div>
-                  <Button variant="outline" size="sm" className="bg-transparent h-10 gap-1.5" onClick={() => setShowBulkScan(!showBulkScan)}>
-                    <List className="h-3.5 w-3.5" />
-                    <span className="hidden sm:inline">Bulk Scan</span>
-                  </Button>
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Filter by URL..."
+                    value={filter}
+                    onChange={(e) => setFilter(e.target.value)}
+                    className="pl-9 bg-card h-10"
+                  />
                 </div>
                 {allTags.length > 0 && (
                   <div className="flex flex-wrap items-center gap-1.5">
@@ -522,7 +516,7 @@ function HistoryPageContent() {
                       onClick={() => setTagFilter(null)}
                       className={cn(
                         "text-[11px] px-2 py-0.5 rounded-full border transition-colors",
-                        !tagFilter ? "bg-primary/10 text-primary border-primary/20" : "bg-muted text-muted-foreground border-border hover:border-primary/20"
+                        !tagFilter ? "bg-primary/10 text-primary border-primary/20" : "bg-muted text-muted-foreground border-border hover:border-accent"
                       )}
                     >
                       All
@@ -534,39 +528,12 @@ function HistoryPageContent() {
                         onClick={() => setTagFilter(tagFilter === tag ? null : tag)}
                         className={cn(
                           "text-[11px] px-2 py-0.5 rounded-full border transition-colors",
-                          tagFilter === tag ? "bg-primary/10 text-primary border-primary/20" : "bg-muted text-muted-foreground border-border hover:border-primary/20"
+                          tagFilter === tag ? "bg-primary/10 text-primary border-primary/20" : "bg-muted text-muted-foreground border-border hover:border-accent"
                         )}
                       >
                         {tag}
                       </button>
                     ))}
-                  </div>
-                )}
-                {showBulkScan && (
-                  <div className="rounded-xl border border-border bg-card p-4 flex flex-col gap-3">
-                    <div className="flex items-center justify-between">
-                      <p className="text-sm font-medium text-foreground">Bulk Scan (max 10 URLs)</p>
-                      <button type="button" onClick={() => { setShowBulkScan(false); setBulkResult(null) }} className="text-muted-foreground hover:text-foreground">
-                        <X className="h-4 w-4" />
-                      </button>
-                    </div>
-                    <textarea
-                      placeholder={"https://example.com\nhttps://another-site.com\nhttps://third-site.com"}
-                      value={bulkUrls}
-                      onChange={(e) => setBulkUrls(e.target.value)}
-                      rows={4}
-                      className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 resize-none font-mono"
-                    />
-                    <div className="flex items-center gap-3">
-                      <Button size="sm" onClick={handleBulkScan} disabled={bulkLoading || !bulkUrls.trim()}>
-                        {bulkLoading ? <><Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" /> Scanning...</> : "Start Bulk Scan"}
-                      </Button>
-                      {bulkResult && (
-                        <p className="text-xs text-muted-foreground">
-                          {bulkResult.successful}/{bulkResult.total} scanned successfully{bulkResult.failed > 0 && `, ${bulkResult.failed} failed`}
-                        </p>
-                      )}
-                    </div>
                   </div>
                 )}
               </div>
@@ -582,8 +549,8 @@ function HistoryPageContent() {
                     Scans you run will appear here automatically.
                   </p>
                 </div>
-                <Button variant="outline" size="sm" onClick={() => router.push("/")} className="bg-transparent">
-                  Run Your First Scan
+                <Button variant="outline" size="sm" className="bg-transparent" asChild>
+                  <a href="/dashboard">Run Your First Scan</a>
                 </Button>
               </div>
             )}
@@ -601,13 +568,17 @@ function HistoryPageContent() {
             {/* Scan list */}
             <div className="flex flex-col gap-2">
               {paginatedScans.map((scan) => (
-                <div
+                <a
                   key={scan.id}
-                  role="button"
-                  tabIndex={0}
-                  onClick={() => handleViewScan(scan)}
-                  onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") handleViewScan(scan) }}
-                  className="group flex items-center gap-3 sm:gap-4 p-3 sm:p-4 rounded-xl border border-border bg-card hover:bg-muted/50 hover:border-primary/20 transition-all text-left active:scale-[0.99] cursor-pointer"
+                  href={`/history#${scan.id}`}
+                  onClick={(e) => {
+                    // Allow ctrl+click to open in new tab naturally
+                    if (!e.ctrlKey && !e.metaKey) {
+                      e.preventDefault()
+                      handleViewScan(scan)
+                    }
+                  }}
+                  className="group flex items-center gap-3 sm:gap-4 p-3 sm:p-4 rounded-xl border border-border bg-card hover:bg-muted/50 hover:border-accent transition-all text-left active:scale-[0.99] cursor-pointer"
                 >
                   <div className="flex items-center justify-center w-9 h-9 sm:w-10 sm:h-10 rounded-lg bg-primary/10 shrink-0">
                     <Globe className="h-4 w-4 sm:h-5 sm:w-5 text-primary" />
@@ -675,7 +646,7 @@ function HistoryPageContent() {
                       ) : (
                         <button
                           type="button"
-                          className="inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded-full border border-dashed border-border text-muted-foreground hover:border-primary/30 hover:text-primary transition-colors"
+                          className="inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded-full border border-dashed border-border text-muted-foreground hover:border-accent hover:text-primary transition-colors"
                           onClick={(e) => { e.stopPropagation(); setAddingTagFor(scan.id); setNewTag("") }}
                         >
                           <Plus className="h-2.5 w-2.5" />tag
@@ -716,27 +687,19 @@ function HistoryPageContent() {
                   </Button>
 
                   <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0 transition-transform group-hover:translate-x-0.5" />
-                </div>
+                </a>
               ))}
             </div>
 
             {/* Pagination */}
-            {filtered.length >= PAGE_SIZE && (
-              <PaginationControl
-                currentPage={currentPage}
-                totalPages={totalPages}
-                onPageChange={setCurrentPage}
-              />
-            )}
-
-            {/* Summary */}
-            {scans.length > 0 && (
-              <p className="text-xs text-muted-foreground text-center">
-                {filtered.length >= PAGE_SIZE
-                  ? `Showing ${(currentPage - 1) * PAGE_SIZE + 1}–${Math.min(currentPage * PAGE_SIZE, filtered.length)} of ${filtered.length} scan${filtered.length === 1 ? "" : "s"}`
-                  : `Showing ${filtered.length} of ${scans.length} scan${scans.length === 1 ? "" : "s"}`}
-              </p>
-            )}
+            <PaginationControl
+              currentPage={currentPage}
+              totalPages={totalPages}
+              onPageChange={setCurrentPage}
+              pageSize={pageSize}
+              onPageSizeChange={(s) => { setPageSize(s); setCurrentPage(1) }}
+              totalItems={filtered.length}
+            />
           </>
         )}
       </main>
@@ -747,21 +710,6 @@ function HistoryPageContent() {
 }
 
 export default function HistoryPage() {
-  return (
-    <Suspense fallback={
-      <div className="min-h-screen flex flex-col bg-background">
-        <Header />
-        <main className="flex-1 flex items-center justify-center">
-          <div className="flex flex-col items-center gap-3">
-            <Loader2 className="h-6 w-6 animate-spin text-primary" />
-            <p className="text-sm text-muted-foreground">Loading...</p>
-          </div>
-        </main>
-        <Footer />
-      </div>
-    }>
-      <HistoryPageContent />
-    </Suspense>
-  )
+  return <HistoryPageContent />
 }
 

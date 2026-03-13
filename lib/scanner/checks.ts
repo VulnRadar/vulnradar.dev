@@ -1555,6 +1555,449 @@ const detectors: Record<string, DetectFn> = {
     }
     return null
   },
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // ADDITIONAL v2.1 SECURITY CHECKS
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  // ── OWASP Top 10 & Modern Vulnerabilities ──────────────────────────────────
+
+  "postmessage-wildcard": (_url, _headers, body) => {
+    if (/\.postMessage\s*\([^)]*,\s*["']\*["']\s*\)/g.test(body)) {
+      return "postMessage() called with wildcard origin (*), allowing any origin to receive messages."
+    }
+    return null
+  },
+
+  "innerhtml-xss-sink": (_url, _headers, body) => {
+    const matches = body.match(/\.innerHTML\s*=(?!\s*["'])/g) || []
+    if (matches.length < 2) return null
+    return `Found ${matches.length} innerHTML assignments that may be XSS sinks.`
+  },
+
+  "outerhtml-xss-sink": (_url, _headers, body) => {
+    const matches = body.match(/\.outerHTML\s*=/g) || []
+    if (matches.length < 1) return null
+    return `Found ${matches.length} outerHTML assignment(s) - potential XSS sink.`
+  },
+
+  "document-write-sink": (_url, _headers, body) => {
+    const matches = body.match(/document\.write(?:ln)?\s*\(/g) || []
+    if (matches.length < 1) return null
+    return `Found ${matches.length} document.write() call(s) - DOM XSS sink.`
+  },
+
+  "insertadjacenthtml-sink": (_url, _headers, body) => {
+    if (/\.insertAdjacentHTML\s*\(/g.test(body)) {
+      return "insertAdjacentHTML() found - potential DOM XSS sink."
+    }
+    return null
+  },
+
+  "unsafe-setattribute": (_url, _headers, body) => {
+    if (/\.setAttribute\s*\(\s*["'](?:on\w+|href|src|action)["']/gi.test(body)) {
+      return "setAttribute() used with event handlers or URL attributes - XSS risk."
+    }
+    return null
+  },
+
+  "csp-unsafe-hashes": (_url, headers) => {
+    const csp = h(headers, "content-security-policy")
+    if (!csp) return null
+    if (/'unsafe-hashes'/.test(csp)) {
+      return "CSP uses 'unsafe-hashes' which allows inline event handlers."
+    }
+    return null
+  },
+
+  "ssrf-indicators": (_url, _headers, body) => {
+    const patterns = [
+      /url=http/gi,
+      /[?&](?:image|img|src|file|path|uri)=https?%3A/gi,
+      /fetch\s*\(\s*(?:req|request|params|query)\./gi,
+    ]
+    for (const p of patterns) {
+      if (p.test(body)) return "Potential SSRF indicators found - user-controlled URL parameters."
+    }
+    return null
+  },
+
+  "path-traversal-indicators": (_url, _headers, body) => {
+    if (/[?&](?:file|path|dir|folder|include)=[^&]*(?:\.\.\/|\.\.%2F)/gi.test(body)) {
+      return "Potential path traversal pattern in URL parameters."
+    }
+    return null
+  },
+
+  "ssti-indicators": (_url, _headers, body) => {
+    if (/\{\{\s*\d+\s*\*\s*\d+\s*\}\}|\$\{.*?\}|<%.*?%>/g.test(body)) {
+      return "Template syntax detected in output - potential SSTI vulnerability."
+    }
+    return null
+  },
+
+  "ldap-injection-indicators": (_url, _headers, body) => {
+    if (/[?&](?:user|uid|cn|dn|filter)=[^&]*[()&|*]/gi.test(body)) {
+      return "LDAP filter characters in URL parameters - potential LDAP injection."
+    }
+    return null
+  },
+
+  "xml-external-entity": (_url, _headers, body) => {
+    if (/<!ENTITY|SYSTEM\s*["'][^"']*["']/i.test(body)) {
+      return "XML entity declaration found - potential XXE vulnerability."
+    }
+    return null
+  },
+
+  "command-injection-indicators": (_url, _headers, body) => {
+    if (/[?&](?:cmd|exec|command|run|shell)=/gi.test(body)) {
+      return "Command-related parameter names found - potential command injection vector."
+    }
+    return null
+  },
+
+  // ── Authentication & Session Checks ────────────────────────────────────────
+
+  "session-cookie-flags": (_url, headers) => {
+    const setCookie = h(headers, "set-cookie")
+    if (!setCookie) return null
+    if (/session|sid|auth/i.test(setCookie)) {
+      const issues: string[] = []
+      if (!/httponly/i.test(setCookie)) issues.push("missing HttpOnly")
+      if (!/secure/i.test(setCookie)) issues.push("missing Secure")
+      if (!/samesite/i.test(setCookie)) issues.push("missing SameSite")
+      if (issues.length > 0) return `Session cookie has issues: ${issues.join(", ")}.`
+    }
+    return null
+  },
+
+  "exposed-session-id": (_url, _headers, body) => {
+    if (/[?&](?:session_id|sid|PHPSESSID|JSESSIONID|ASP\.NET_SessionId)=/gi.test(body)) {
+      return "Session ID exposed in URL - session fixation risk."
+    }
+    return null
+  },
+
+  "password-in-get": (_url, _headers, body) => {
+    if (/[?&](?:password|passwd|pwd|pass)=/gi.test(body)) {
+      return "Password parameter found in URL (GET request) - credentials exposed in logs."
+    }
+    return null
+  },
+
+  "weak-password-policy": (_url, _headers, body) => {
+    if (/<input[^>]*type=["']?password[^>]*minlength=["']?([1-5])["']?/i.test(body)) {
+      return "Password field with weak minlength constraint (< 6 characters)."
+    }
+    return null
+  },
+
+  "remember-me-token": (_url, _headers, body) => {
+    if (/[?&](?:remember|rememberme|remember_token)=/gi.test(body)) {
+      return "Remember-me token exposed in URL."
+    }
+    return null
+  },
+
+  "oauth-state-missing": (_url, _headers, body) => {
+    if (/oauth2?.*(?:authorize|auth)[^"']*(?:\?|&)(?!.*state=)/gi.test(body)) {
+      return "OAuth authorization URL without state parameter - CSRF risk."
+    }
+    return null
+  },
+
+  // ── API & Data Exposure ────────────────────────────────────────────────────
+
+  "graphql-introspection": (_url, _headers, body) => {
+    if (/__schema|__type|introspectionQuery/i.test(body)) {
+      return "GraphQL introspection appears enabled - exposes entire API schema."
+    }
+    return null
+  },
+
+  "api-version-exposed": (_url, _headers, body) => {
+    if (/["']\/api\/v[0-9]+/gi.test(body) && /["']\/api\/v[0-9]+.*["']\/api\/v[0-9]+/gi.test(body)) {
+      return "Multiple API versions exposed - older versions may have vulnerabilities."
+    }
+    return null
+  },
+
+  "debug-endpoint": (_url, _headers, body) => {
+    if (/\/debug\/|\/trace\/|\/profiler\/|\/_debug\//gi.test(body)) {
+      return "Debug endpoints referenced in page source."
+    }
+    return null
+  },
+
+  "admin-endpoint": (_url, _headers, body) => {
+    if (/\/admin\/|\/administrator\/|\/management\/|\/dashboard\//gi.test(body)) {
+      return "Admin/management endpoints referenced in page source."
+    }
+    return null
+  },
+
+  "internal-ip-exposed": (_url, _headers, body) => {
+    if (/\b(?:10\.\d{1,3}\.\d{1,3}\.\d{1,3}|172\.(?:1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3})\b/.test(body)) {
+      return "Internal/private IP address found in page source."
+    }
+    return null
+  },
+
+  "stack-trace-exposed": (_url, _headers, body) => {
+    if (/at\s+[\w.]+\s+\([^)]+:\d+:\d+\)|Traceback \(most recent call last\)/i.test(body)) {
+      return "Stack trace exposed in page output."
+    }
+    return null
+  },
+
+  "email-enumeration": (_url, _headers, body) => {
+    if (/email.*(?:already exists|not found|is taken|invalid)/gi.test(body)) {
+      return "Error message reveals email existence - user enumeration risk."
+    }
+    return null
+  },
+
+  "verbose-error-messages": (_url, _headers, body) => {
+    const patterns = [
+      /syntax error/i,
+      /undefined variable/i,
+      /null pointer/i,
+      /access violation/i,
+      /stack trace:/i,
+      /at line \d+/i,
+    ]
+    for (const p of patterns) {
+      if (p.test(body)) return "Verbose error message found in page output."
+    }
+    return null
+  },
+
+  // ── Third-Party & Supply Chain ─────────────────────────────────────────────
+
+  "cdn-fallback-missing": (_url, _headers, body) => {
+    const cdnScripts = body.match(/<script[^>]*src=["'][^"']*(?:cdnjs|jsdelivr|unpkg|cloudflare)[^"']*["'][^>]*>/gi) || []
+    if (cdnScripts.length > 0 && !/onerror\s*=/i.test(body)) {
+      return `${cdnScripts.length} CDN script(s) without fallback mechanism.`
+    }
+    return null
+  },
+
+  "outdated-jquery": (_url, _headers, body) => {
+    const match = body.match(/jquery[-.v]?(\d+)\.(\d+)\.?(\d*)/i)
+    if (match) {
+      const major = parseInt(match[1])
+      const minor = parseInt(match[2])
+      if (major < 3 || (major === 3 && minor < 5)) {
+        return `Potentially outdated jQuery version (${major}.${minor}) - check for security updates.`
+      }
+    }
+    return null
+  },
+
+  "outdated-angular": (_url, _headers, body) => {
+    if (/angular(?:\.min)?\.js|ng-app/i.test(body) && !/angular\/\d{2}\./i.test(body)) {
+      return "AngularJS (1.x) detected - end-of-life framework with known vulnerabilities."
+    }
+    return null
+  },
+
+  "prototype-js-outdated": (_url, _headers, body) => {
+    if (/prototype\.js/i.test(body)) {
+      return "Prototype.js detected - outdated library with known vulnerabilities."
+    }
+    return null
+  },
+
+  "mootools-outdated": (_url, _headers, body) => {
+    if (/mootools/i.test(body)) {
+      return "MooTools detected - outdated library with potential security issues."
+    }
+    return null
+  },
+
+  // ── Browser & Client-Side Security ─────────────────────────────────────────
+
+  "document-cookie-access": (_url, _headers, body) => {
+    const matches = body.match(/document\.cookie/g) || []
+    if (matches.length > 2) {
+      return `${matches.length} document.cookie accesses - consider HttpOnly cookies.`
+    }
+    return null
+  },
+
+  "eval-usage": (_url, _headers, body) => {
+    const matches = body.match(/\beval\s*\(/g) || []
+    if (matches.length > 0) {
+      return `${matches.length} eval() call(s) found - code execution risk.`
+    }
+    return null
+  },
+
+  "function-constructor": (_url, _headers, body) => {
+    if (/new\s+Function\s*\(/g.test(body)) {
+      return "Function constructor used - similar risks to eval()."
+    }
+    return null
+  },
+
+  "settimeout-string": (_url, _headers, body) => {
+    if (/setTimeout\s*\(\s*["']/g.test(body) || /setInterval\s*\(\s*["']/g.test(body)) {
+      return "setTimeout/setInterval with string argument - implicit eval()."
+    }
+    return null
+  },
+
+  "geolocation-usage": (_url, _headers, body) => {
+    if (/navigator\.geolocation/g.test(body)) {
+      return "Geolocation API usage detected - ensure user consent."
+    }
+    return null
+  },
+
+  "clipboard-access": (_url, _headers, body) => {
+    if (/navigator\.clipboard|document\.execCommand\s*\(\s*["']copy/gi.test(body)) {
+      return "Clipboard API access detected - potential data exfiltration vector."
+    }
+    return null
+  },
+
+  "webcam-microphone-access": (_url, _headers, body) => {
+    if (/getUserMedia|mediaDevices/g.test(body)) {
+      return "Media device access (camera/microphone) detected."
+    }
+    return null
+  },
+
+  // ── Infrastructure & Server ────────────────────────────────────────────────
+
+  "x-amz-request-id": (_url, headers) => {
+    if (hasHeader(headers, "x-amz-request-id") || hasHeader(headers, "x-amz-id-2")) {
+      return "AWS request ID headers exposed - reveals AWS infrastructure."
+    }
+    return null
+  },
+
+  "cf-ray-header": (_url, headers) => {
+    if (hasHeader(headers, "cf-ray")) {
+      return "Cloudflare CF-Ray header present - reveals CDN usage."
+    }
+    return null
+  },
+
+  "x-vercel-id": (_url, headers) => {
+    if (hasHeader(headers, "x-vercel-id")) {
+      return "Vercel deployment ID exposed."
+    }
+    return null
+  },
+
+  "x-cache-header": (_url, headers) => {
+    const xCache = h(headers, "x-cache")
+    if (xCache && /hit|miss/i.test(xCache)) {
+      return `X-Cache header reveals caching behavior: ${xCache}.`
+    }
+    return null
+  },
+
+  "etag-inode": (_url, headers) => {
+    const etag = h(headers, "etag")
+    if (etag && /^["\']?[0-9a-f]+-[0-9a-f]+-[0-9a-f]+["\']?$/i.test(etag)) {
+      return "ETag appears to contain inode information - filesystem disclosure."
+    }
+    return null
+  },
+
+  "date-time-skew": (_url, headers) => {
+    const serverDate = h(headers, "date")
+    if (!serverDate) return null
+    const serverTime = new Date(serverDate).getTime()
+    const now = Date.now()
+    const skew = Math.abs(serverTime - now)
+    if (skew > 300000) { // 5 minutes
+      return "Server date significantly differs from client time - potential NTP issues."
+    }
+    return null
+  },
+
+  // ── Content & Data Validation ──────────────────────────────────────────────
+
+  "reflected-input": (_url, _headers, body) => {
+    // Check if common test strings appear in output
+    if (/jaVasCript:|javascript:|<script|onload=|onerror=/gi.test(body)) {
+      return "Potentially reflected dangerous content patterns found."
+    }
+    return null
+  },
+
+  "html-injection-patterns": (_url, _headers, body) => {
+    if (/<\/title><script|<img[^>]*onerror/gi.test(body)) {
+      return "HTML injection patterns detected in page output."
+    }
+    return null
+  },
+
+  "credit-card-pattern": (_url, _headers, body) => {
+    // Basic Luhn-valid patterns (not in JS variable context)
+    if (/\b(?:4[0-9]{12}(?:[0-9]{3})?|5[1-5][0-9]{14}|3[47][0-9]{13})\b/.test(body)) {
+      return "Potential credit card number pattern found in page source."
+    }
+    return null
+  },
+
+  "ssn-pattern": (_url, _headers, body) => {
+    if (/\b\d{3}-\d{2}-\d{4}\b/.test(body) && !/<script/i.test(body.substring(0, body.indexOf(/\d{3}-\d{2}-\d{4}/)))) {
+      return "Potential SSN pattern found in page content."
+    }
+    return null
+  },
+
+  "phone-number-leak": (_url, _headers, body) => {
+    const matches = body.match(/(?:\+1|1)?[-.\s]?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}/g) || []
+    if (matches.length > 5) {
+      return `Multiple phone numbers (${matches.length}) found in page source.`
+    }
+    return null
+  },
+
+  "email-address-leak": (_url, _headers, body) => {
+    const matches = body.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g) || []
+    if (matches.length > 10) {
+      return `Many email addresses (${matches.length}) found in page source - potential data leak.`
+    }
+    return null
+  },
+
+  // ── Modern Security Headers ────────────────────────────────────────────────
+
+  "coep-header-missing": (_url, headers) => {
+    if (!hasHeader(headers, "cross-origin-embedder-policy")) {
+      return "Cross-Origin-Embedder-Policy header not set."
+    }
+    return null
+  },
+
+  "document-policy-missing": (_url, headers) => {
+    if (!hasHeader(headers, "document-policy")) {
+      return "Document-Policy header not set."
+    }
+    return null
+  },
+
+  "origin-agent-cluster": (_url, headers) => {
+    if (!hasHeader(headers, "origin-agent-cluster")) {
+      return "Origin-Agent-Cluster header not set (helps isolate origins)."
+    }
+    return null
+  },
+
+  "x-dns-prefetch-control-off": (_url, headers) => {
+    const v = h(headers, "x-dns-prefetch-control")
+    if (v && v.toLowerCase() === "off") {
+      return "X-DNS-Prefetch-Control is off - may impact performance."
+    }
+    return null
+  },
 }
 
 // ─�� Build CheckFn array from JSON + detectors ─────────────────────────────

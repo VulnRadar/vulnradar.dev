@@ -5,8 +5,10 @@ import Script from 'next/script'
 import { ThemeProvider } from '@/components/theme-provider'
 import { TosGate } from '@/components/tos-gate'
 import { BackupCodesModal } from '@/components/notification-center'
-import { AdminVersionNotifier } from '@/components/admin-version-notifier'
+import { DiscordProfileModalWrapper } from '@/components/discord-profile-modal-wrapper'
 import { AuthProvider } from '@/components/auth-provider'
+import { StaffHeartbeat } from '@/components/staff-heartbeat'
+import { SiteNotificationsWrapper } from '@/components/site-notifications'
 import { APP_NAME, APP_DESCRIPTION, APP_URL, APP_VERSION, LOGO_URL, STAFF_ROLES } from '@/lib/constants'
 
 import './globals.css'
@@ -26,7 +28,9 @@ export const metadata: Metadata = {
   icons: {
     icon: [
       { url: '/favicon.ico', sizes: 'any' },
-      { url: '/favicon.png', type: 'image/png' },
+      { url: '/favicon.svg', type: 'image/svg+xml' },
+      { url: '/favicon-dark.svg', type: 'image/svg+xml', media: '(prefers-color-scheme: dark)' },
+      { url: '/favicon-light.svg', type: 'image/svg+xml', media: '(prefers-color-scheme: light)' },
     ],
     apple: '/favicon.png',
   },
@@ -89,41 +93,43 @@ export default function RootLayout({
           disableTransitionOnChange
         >
           <AuthProvider>
+            <StaffHeartbeat />
+            <SiteNotificationsWrapper />
             <TosGate>
               {children}
             </TosGate>
             <BackupCodesModal />
-            <AdminVersionNotifier />
+            <DiscordProfileModalWrapper />
           </AuthProvider>
         </ThemeProvider>
-{/*        <Script id="tawk-to" strategy="lazyOnload">*/}
-{/*          {`var Tawk_API=Tawk_API||{}, Tawk_LoadStart=new Date();*/}
-{/*Tawk_API.onLoad = function(){*/}
-{/*  if(window.innerWidth < 640){*/}
-{/*    Tawk_API.setProperty('fontSize', 14);*/}
-{/*    var el = document.querySelector('iframe[title="chat widget"]');*/}
-{/*    if(el){*/}
-{/*      el.style.minWidth = '80px';*/}
-{/*      el.style.minHeight = '80px';*/}
-{/*    }*/}
-{/*  }*/}
-{/*};*/}
-{/*Tawk_API.customStyle = {*/}
-{/*  visibility: {*/}
-{/*    desktop: { position: 'br', xOffset: 20, yOffset: 20 },*/}
-{/*    mobile: { position: 'br', xOffset: 10, yOffset: 10 },*/}
-{/*  },*/}
-{/*  zIndex: 999*/}
-{/*};*/}
-{/*(function(){*/}
-{/*var s1=document.createElement("script"),s0=document.getElementsByTagName("script")[0];*/}
-{/*s1.async=true;*/}
-{/*s1.src='https://embed.tawk.to/6993aa8073d8cb1c357e314e/1jhkd41di';*/}
-{/*s1.charset='UTF-8';*/}
-{/*s1.setAttribute('crossorigin','*');*/}
-{/*s0.parentNode.insertBefore(s1,s0);*/}
-{/*})();`}*/}
-{/*        </Script>*/}
+        {/*        <Script id="tawk-to" strategy="lazyOnload">*/}
+        {/*          {`var Tawk_API=Tawk_API||{}, Tawk_LoadStart=new Date();*/}
+        {/*Tawk_API.onLoad = function(){*/}
+        {/*  if(window.innerWidth < 640){*/}
+        {/*    Tawk_API.setProperty('fontSize', 14);*/}
+        {/*    var el = document.querySelector('iframe[title="chat widget"]');*/}
+        {/*    if(el){*/}
+        {/*      el.style.minWidth = '80px';*/}
+        {/*      el.style.minHeight = '80px';*/}
+        {/*    }*/}
+        {/*  }*/}
+        {/*};*/}
+        {/*Tawk_API.customStyle = {*/}
+        {/*  visibility: {*/}
+        {/*    desktop: { position: 'br', xOffset: 20, yOffset: 20 },*/}
+        {/*    mobile: { position: 'br', xOffset: 10, yOffset: 10 },*/}
+        {/*  },*/}
+        {/*  zIndex: 999*/}
+        {/*};*/}
+        {/*(function(){*/}
+        {/*var s1=document.createElement("script"),s0=document.getElementsByTagName("script")[0];*/}
+        {/*s1.async=true;*/}
+        {/*s1.src='https://embed.tawk.to/6993aa8073d8cb1c357e314e/1jhkd41di';*/}
+        {/*s1.charset='UTF-8';*/}
+        {/*s1.setAttribute('crossorigin','*');*/}
+        {/*s0.parentNode.insertBefore(s1,s0);*/}
+        {/*})();`}*/}
+        {/*        </Script>*/}
       </body>
     </html>
   )

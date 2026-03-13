@@ -2,8 +2,8 @@
 
 import { useRouter } from "next/navigation"
 import Link from "next/link"
-import Image from "next/image"
 import { AlertCircle, Home, ArrowLeft } from "lucide-react"
+import { ThemedLogo } from "@/components/themed-logo"
 import { Button } from "@/components/ui/button"
 import { APP_NAME } from "@/lib/constants"
 
@@ -14,13 +14,7 @@ export default function NotFound() {
       <div className="w-full max-w-md flex flex-col items-center gap-8">
         {/* Logo */}
         <div className="flex items-center gap-2">
-          <Image
-            src="/favicon.svg"
-            alt={`${APP_NAME} logo`}
-            width={32}
-            height={32}
-            className="h-8 w-8"
-          />
+          <ThemedLogo width={32} height={32} className="h-8 w-8" alt={`${APP_NAME} logo`} />
           <span className="text-2xl font-bold text-foreground font-mono tracking-tight">{APP_NAME}</span>
         </div>
 
@@ -50,9 +44,9 @@ export default function NotFound() {
             variant="default"
             className="flex-1"
           >
-            <Link href="/" className="flex items-center justify-center gap-2">
+            <Link href="/dashboard" className="flex items-center justify-center gap-2">
               <Home className="h-4 w-4" />
-              Go Home
+              Go to Dashboard
             </Link>
           </Button>
           <Button

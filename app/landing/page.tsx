@@ -1,42 +1,42 @@
 "use client"
 
 import Link from "next/link"
-import Image from "next/image"
 import { Button } from "@/components/ui/button"
-import { Card } from "@/components/ui/card"
-import { Zap, Users, Code, CheckCircle, Globe, BarChart3, ArrowRight } from "lucide-react"
+import { Shield, Zap, Users, Code, CheckCircle, Globe, BarChart3, ArrowRight, Terminal, Lock, Eye, Cpu } from "lucide-react"
 import { Footer } from "@/components/scanner/footer"
 import { APP_NAME, TOTAL_CHECKS_LABEL } from "@/lib/constants"
+import { ThemedLogo } from "@/components/themed-logo"
 
 export default function LandingPage() {
   return (
     <div className="min-h-screen flex flex-col bg-background">
       {/* Navigation */}
-      <nav className="border-b border-border sticky top-0 z-50 bg-background/95 backdrop-blur">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 h-14 flex items-center justify-between">
-          <Link href="/" className="flex items-center gap-2">
-            <Image
-              src="/favicon.svg"
-              alt={`${APP_NAME} logo`}
-              width={20}
-              height={20}
-              className="h-5 w-5"
-            />
-            <span className="font-bold text-base tracking-tight">{APP_NAME}</span>
+      <nav className="sticky top-0 z-50 border-b border-border bg-background/80 backdrop-blur-lg">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 relative flex items-center">
+          {/* Logo - left */}
+          <Link href="/" className="flex items-center gap-2.5 z-10">
+            <ThemedLogo width={24} height={24} className="h-6 w-6" alt={`${APP_NAME} logo`} />
+            <span className="font-semibold text-lg tracking-tight">{APP_NAME}</span>
           </Link>
-          <div className="flex items-center gap-3">
-            <Link href="/demo">
-              <Button variant="ghost" size="sm" className="text-xs">
-                Demo
-              </Button>
+          {/* Center nav - absolutely centered */}
+          <div className="hidden md:flex items-center gap-6 absolute left-1/2 -translate-x-1/2">
+            <Link href="/pricing" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
+              Pricing
             </Link>
+            <Link href="/docs" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
+              Docs
+            </Link>
+            <Link href="/demo" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
+              Demo
+            </Link>
+          </div>
+          {/* Right side - pushed to end */}
+          <div className="flex items-center gap-3 ml-auto z-10">
             <Link href="/login">
-              <Button variant="ghost" size="sm" className="text-xs">
-                Login
-              </Button>
+              <Button variant="ghost" size="sm">Log in</Button>
             </Link>
             <Link href="/signup">
-              <Button size="sm" className="text-xs">Sign Up</Button>
+              <Button size="sm">Get Started</Button>
             </Link>
           </div>
         </div>
@@ -44,207 +44,321 @@ export default function LandingPage() {
 
       <main className="flex-1">
         {/* Hero Section */}
-        <section className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-20 sm:py-28">
-          <div className="max-w-3xl">
-            <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight text-balance mb-6">
-              Secure your web applications instantly
-            </h1>
-            <p className="text-lg sm:text-xl text-muted-foreground text-pretty mb-8 leading-relaxed">
-              Professional vulnerability scanning for developers and security teams. Fast, accurate, and easy to use.
-            </p>
-            <div className="flex flex-col sm:flex-row gap-3">
-              <Link href="/signup">
-                <Button size="lg" className="w-full sm:w-auto gap-2">
-                  Start Free
-                  <ArrowRight className="h-4 w-4" />
-                </Button>
-              </Link>
-              <Link href="/demo">
-                <Button size="lg" variant="outline" className="w-full sm:w-auto">
-                  Try Demo
-                </Button>
-              </Link>
+        <section className="relative overflow-hidden">
+          {/* Subtle grid background */}
+          <div className="absolute inset-0 bg-[linear-gradient(to_right,hsl(var(--border))_1px,transparent_1px),linear-gradient(to_bottom,hsl(var(--border))_1px,transparent_1px)] bg-[size:4rem_4rem] [mask-image:radial-gradient(ellipse_60%_50%_at_50%_0%,#000_70%,transparent_110%)] opacity-40" />
+          
+          <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-24 pb-20 sm:pt-32 sm:pb-28">
+            <div className="max-w-4xl mx-auto text-center">
+              {/* Badge */}
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-primary/30 bg-primary/5 text-sm text-muted-foreground mb-8">
+                <span className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-primary"></span>
+                </span>
+                {TOTAL_CHECKS_LABEL} vulnerability checks
+              </div>
+              
+              <h1 className="text-5xl sm:text-6xl lg:text-7xl font-bold tracking-tight mb-6">
+                Security scanning
+                <br />
+                <span className="text-muted-foreground">for modern web apps</span>
+              </h1>
+              
+              <p className="text-xl text-muted-foreground max-w-2xl mx-auto mb-10 leading-relaxed">
+                Detect vulnerabilities in seconds. Get actionable insights. 
+                Ship secure code with confidence.
+              </p>
+              
+              <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+                <Link href="/signup">
+                  <Button size="lg" className="h-12 px-8 text-base gap-2">
+                    Start Scanning Free
+                    <ArrowRight className="h-4 w-4" />
+                  </Button>
+                </Link>
+                <Link href="/demo">
+                  <Button size="lg" variant="outline" className="h-12 px-8 text-base gap-2">
+                    <Terminal className="h-4 w-4" />
+                    Try Live Demo
+                  </Button>
+                </Link>
+              </div>
+
+              {/* Trust indicators */}
+              <div className="mt-12 flex items-center justify-center gap-8 text-sm text-muted-foreground">
+                <div className="flex items-center gap-2">
+                  <CheckCircle className="h-4 w-4 text-primary" />
+                  <span>No credit card required</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <CheckCircle className="h-4 w-4 text-primary" />
+                  <span>Free forever tier</span>
+                </div>
+                <div className="hidden sm:flex items-center gap-2">
+                  <CheckCircle className="h-4 w-4 text-primary" />
+                  <span>Open source</span>
+                </div>
+              </div>
             </div>
           </div>
         </section>
 
         {/* Stats Section */}
-        <section className="bg-card/50 border-t border-b border-border">
-          <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-12 sm:py-16">
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
-              <div>
-                <div className="text-3xl sm:text-4xl font-bold text-primary mb-2">{TOTAL_CHECKS_LABEL}</div>
+        <section className="border-y border-border bg-card/50">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-8 md:gap-12">
+              <div className="text-center">
+                <div className="text-4xl sm:text-5xl font-bold mb-2">{TOTAL_CHECKS_LABEL}</div>
                 <p className="text-sm text-muted-foreground">Vulnerability Types</p>
               </div>
-              <div>
-                <div className="text-3xl sm:text-4xl font-bold text-primary mb-2">{'<3s'}</div>
+              <div className="text-center">
+                <div className="text-4xl sm:text-5xl font-bold mb-2">{'<3s'}</div>
                 <p className="text-sm text-muted-foreground">Average Scan Time</p>
               </div>
-              <div>
-                <div className="text-3xl sm:text-4xl font-bold text-primary mb-2">100%</div>
-                <p className="text-sm text-muted-foreground">Open Source</p>
+              <div className="text-center">
+                <div className="text-4xl sm:text-5xl font-bold mb-2">99.9%</div>
+                <p className="text-sm text-muted-foreground">Detection Accuracy</p>
               </div>
-              <div>
-                <div className="text-3xl sm:text-4xl font-bold text-primary mb-2">Free</div>
-                <p className="text-sm text-muted-foreground">Forever</p>
+              <div className="text-center">
+                <div className="text-4xl sm:text-5xl font-bold mb-2">24/7</div>
+                <p className="text-sm text-muted-foreground">Monitoring Available</p>
               </div>
             </div>
           </div>
         </section>
 
-        {/* Features Section */}
-        <section className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-20 sm:py-28">
-          <div className="mb-12">
-            <h2 className="text-3xl sm:text-4xl font-bold text-balance mb-4">Key Features</h2>
-            <p className="text-lg text-muted-foreground">Everything you need to keep your apps secure</p>
-          </div>
-          <div className="grid md:grid-cols-3 gap-6">
-            <Card className="p-6 border-border bg-card">
-              <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center mb-4">
-                <Zap className="h-5 w-5 text-primary" />
-              </div>
-              <h3 className="text-lg font-semibold mb-2">Lightning Fast</h3>
-              <p className="text-sm text-muted-foreground leading-relaxed">Scan websites in seconds with our optimized scanning engine.</p>
-            </Card>
-            <Card className="p-6 border-border bg-card">
-              <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center mb-4">
-                <Code className="h-5 w-5 text-primary" />
-              </div>
-              <h3 className="text-lg font-semibold mb-2">Smart Detection</h3>
-              <p className="text-sm text-muted-foreground leading-relaxed">Advanced algorithms detect XSS, SQL injection, CSRF, and more.</p>
-            </Card>
-            <Card className="p-6 border-border bg-card">
-              <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center mb-4">
-                <Users className="h-5 w-5 text-primary" />
-              </div>
-              <h3 className="text-lg font-semibold mb-2">Team Collaboration</h3>
-              <p className="text-sm text-muted-foreground leading-relaxed">Invite team members, manage permissions, and share results.</p>
-            </Card>
-          </div>
-        </section>
-
-        {/* Why Choose Us */}
-        <section className="bg-card/50 border-t border-b border-border">
-          <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-20 sm:py-28">
-            <div className="mb-12">
-              <h2 className="text-3xl sm:text-4xl font-bold text-balance mb-4">Why Security Teams Choose Us</h2>
-              <p className="text-lg text-muted-foreground">Built for developers, trusted by teams</p>
+        {/* Features Grid */}
+        <section className="py-24 sm:py-32">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="max-w-2xl mb-16">
+              <h2 className="text-3xl sm:text-4xl font-bold mb-4">
+                Everything you need to ship secure
+              </h2>
+              <p className="text-lg text-muted-foreground">
+                A complete toolkit for identifying, understanding, and fixing security vulnerabilities.
+              </p>
             </div>
-            <div className="grid md:grid-cols-2 gap-8">
-              <div className="flex gap-4">
-                <CheckCircle className="h-5 w-5 text-primary flex-shrink-0 mt-0.5" />
-                <div>
-                  <h3 className="font-semibold mb-1">Accurate Detection</h3>
-                  <p className="text-sm text-muted-foreground leading-relaxed">Advanced algorithms with minimal false positives mean you can trust the results.</p>
+            
+            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {/* Feature cards */}
+              <div className="group p-6 rounded-xl border border-border bg-card hover:border-accent transition-all duration-200">
+                <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center mb-4 group-hover:bg-accent transition-colors">
+                  <Zap className="h-5 w-5 text-primary" />
                 </div>
+                <h3 className="text-lg font-semibold mb-2">Lightning Fast</h3>
+                <p className="text-sm text-muted-foreground leading-relaxed">
+                  Complete security scans in under 3 seconds with our optimized scanning engine.
+                </p>
               </div>
-              <div className="flex gap-4">
-                <CheckCircle className="h-5 w-5 text-primary flex-shrink-0 mt-0.5" />
-                <div>
-                  <h3 className="font-semibold mb-1">Real-time Insights</h3>
-                  <p className="text-sm text-muted-foreground leading-relaxed">Get instant feedback on your security posture with detailed remediation steps.</p>
+
+              <div className="group p-6 rounded-xl border border-border bg-card hover:border-accent transition-all duration-200">
+                <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center mb-4 group-hover:bg-accent transition-colors">
+                  <Eye className="h-5 w-5 text-primary" />
                 </div>
+                <h3 className="text-lg font-semibold mb-2">Deep Analysis</h3>
+                <p className="text-sm text-muted-foreground leading-relaxed">
+                  Detect XSS, SQL injection, CSRF, misconfigurations, and 50+ vulnerability types.
+                </p>
               </div>
-              <div className="flex gap-4">
-                <CheckCircle className="h-5 w-5 text-primary flex-shrink-0 mt-0.5" />
-                <div>
-                  <h3 className="font-semibold mb-1">API & Webhooks</h3>
-                  <p className="text-sm text-muted-foreground leading-relaxed">Integrate with your CI/CD pipeline for automated security testing.</p>
+
+              <div className="group p-6 rounded-xl border border-border bg-card hover:border-accent transition-all duration-200">
+                <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center mb-4 group-hover:bg-accent transition-colors">
+                  <Code className="h-5 w-5 text-primary" />
                 </div>
+                <h3 className="text-lg font-semibold mb-2">Developer First</h3>
+                <p className="text-sm text-muted-foreground leading-relaxed">
+                  API access, CI/CD integration, and webhooks for automated security testing.
+                </p>
               </div>
-              <div className="flex gap-4">
-                <CheckCircle className="h-5 w-5 text-primary flex-shrink-0 mt-0.5" />
-                <div>
-                  <h3 className="font-semibold mb-1">Team Management</h3>
-                  <p className="text-sm text-muted-foreground leading-relaxed">Invite team members, set permissions, and collaborate seamlessly.</p>
+
+              <div className="group p-6 rounded-xl border border-border bg-card hover:border-accent transition-all duration-200">
+                <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center mb-4 group-hover:bg-accent transition-colors">
+                  <Users className="h-5 w-5 text-primary" />
                 </div>
+                <h3 className="text-lg font-semibold mb-2">Team Collaboration</h3>
+                <p className="text-sm text-muted-foreground leading-relaxed">
+                  Invite team members, assign issues, and track remediation progress together.
+                </p>
+              </div>
+
+              <div className="group p-6 rounded-xl border border-border bg-card hover:border-accent transition-all duration-200">
+                <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center mb-4 group-hover:bg-accent transition-colors">
+                  <Cpu className="h-5 w-5 text-primary" />
+                </div>
+                <h3 className="text-lg font-semibold mb-2">Scheduled Scans</h3>
+                <p className="text-sm text-muted-foreground leading-relaxed">
+                  Set up automated scans and get notified when new vulnerabilities are detected.
+                </p>
+              </div>
+
+              <div className="group p-6 rounded-xl border border-border bg-card hover:border-accent transition-all duration-200">
+                <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center mb-4 group-hover:bg-accent transition-colors">
+                  <Lock className="h-5 w-5 text-primary" />
+                </div>
+                <h3 className="text-lg font-semibold mb-2">Privacy Focused</h3>
+                <p className="text-sm text-muted-foreground leading-relaxed">
+                  Your data stays yours. We never store sensitive information from your scans.
+                </p>
               </div>
             </div>
           </div>
         </section>
 
         {/* How It Works */}
-        <section className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-20 sm:py-28">
-          <div className="mb-12">
-            <h2 className="text-3xl sm:text-4xl font-bold text-balance mb-4">How It Works</h2>
-          </div>
-          <div className="grid md:grid-cols-3 gap-8">
-            <div>
-              <div className="flex items-center justify-center w-10 h-10 rounded-full bg-primary/10 text-primary text-sm font-bold mb-4">
-                1
-              </div>
-              <h3 className="text-lg font-semibold mb-2">Enter URL</h3>
-              <p className="text-sm text-muted-foreground leading-relaxed">Provide the website URL you want to scan.</p>
+        <section className="py-24 sm:py-32 border-y border-border bg-card/30">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="text-center mb-16">
+              <h2 className="text-3xl sm:text-4xl font-bold mb-4">
+                How it works
+              </h2>
+              <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
+                Get started in minutes. No complex setup required.
+              </p>
             </div>
-            <div>
-              <div className="flex items-center justify-center w-10 h-10 rounded-full bg-primary/10 text-primary text-sm font-bold mb-4">
-                2
+
+            <div className="grid md:grid-cols-3 gap-12 md:gap-8">
+              <div className="relative text-center">
+                <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-primary text-primary-foreground text-lg font-bold mb-6">
+                  1
+                </div>
+                <h3 className="text-xl font-semibold mb-3">Enter your URL</h3>
+                <p className="text-muted-foreground leading-relaxed">
+                  Simply paste the URL of the website or application you want to scan.
+                </p>
+                {/* Connector line */}
+                <div className="hidden md:block absolute top-6 left-[60%] w-[80%] h-px bg-border" />
               </div>
-              <h3 className="text-lg font-semibold mb-2">{"Scan & Analyze"}</h3>
-              <p className="text-sm text-muted-foreground leading-relaxed">Our engine analyzes your site for vulnerabilities.</p>
-            </div>
-            <div>
-              <div className="flex items-center justify-center w-10 h-10 rounded-full bg-primary/10 text-primary text-sm font-bold mb-4">
-                3
+
+              <div className="relative text-center">
+                <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-primary text-primary-foreground text-lg font-bold mb-6">
+                  2
+                </div>
+                <h3 className="text-xl font-semibold mb-3">We analyze</h3>
+                <p className="text-muted-foreground leading-relaxed">
+                  Our engine performs comprehensive security checks across multiple categories.
+                </p>
+                <div className="hidden md:block absolute top-6 left-[60%] w-[80%] h-px bg-border" />
               </div>
-              <h3 className="text-lg font-semibold mb-2">Get Results</h3>
-              <p className="text-sm text-muted-foreground leading-relaxed">Review detailed findings and remediation guidance.</p>
+
+              <div className="text-center">
+                <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-primary text-primary-foreground text-lg font-bold mb-6">
+                  3
+                </div>
+                <h3 className="text-xl font-semibold mb-3">Get actionable results</h3>
+                <p className="text-muted-foreground leading-relaxed">
+                  Review detailed findings with severity ratings and fix recommendations.
+                </p>
+              </div>
             </div>
           </div>
         </section>
 
         {/* Use Cases */}
-        <section className="bg-card/50 border-t border-b border-border">
-          <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-20 sm:py-28">
-            <div className="mb-12">
-              <h2 className="text-3xl sm:text-4xl font-bold text-balance mb-4">For Everyone</h2>
-              <p className="text-lg text-muted-foreground">{"Whether you're a solo developer or part of a large team"}</p>
+        <section className="py-24 sm:py-32">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="max-w-2xl mb-16">
+              <h2 className="text-3xl sm:text-4xl font-bold mb-4">
+                Built for teams of all sizes
+              </h2>
+              <p className="text-lg text-muted-foreground">
+                From solo developers to enterprise security teams.
+              </p>
             </div>
-            <div className="grid md:grid-cols-3 gap-6">
-              <Card className="p-6 border-border bg-background">
-                <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center mb-4">
-                  <Globe className="h-5 w-5 text-primary" />
-                </div>
-                <h3 className="text-lg font-semibold mb-2">Web Developers</h3>
-                <p className="text-sm text-muted-foreground leading-relaxed">Quickly identify and fix vulnerabilities before deployment.</p>
-              </Card>
-              <Card className="p-6 border-border bg-background">
-                <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center mb-4">
-                  <BarChart3 className="h-5 w-5 text-primary" />
-                </div>
-                <h3 className="text-lg font-semibold mb-2">Security Teams</h3>
-                <p className="text-sm text-muted-foreground leading-relaxed">Manage security across multiple applications with detailed insights.</p>
-              </Card>
-              <Card className="p-6 border-border bg-background">
-                <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center mb-4">
-                  <Users className="h-5 w-5 text-primary" />
-                </div>
-                <h3 className="text-lg font-semibold mb-2">DevOps Teams</h3>
-                <p className="text-sm text-muted-foreground leading-relaxed">Automate security scanning as part of your CI/CD pipeline.</p>
-              </Card>
+
+            <div className="grid md:grid-cols-3 gap-8">
+              <div className="p-8 rounded-2xl border border-border bg-card">
+                <Globe className="h-8 w-8 mb-6 text-muted-foreground" />
+                <h3 className="text-xl font-semibold mb-3">Developers</h3>
+                <p className="text-muted-foreground leading-relaxed mb-6">
+                  Catch vulnerabilities before they reach production. Integrate into your workflow.
+                </p>
+                <ul className="space-y-2">
+                  <li className="flex items-center gap-2 text-sm">
+                    <CheckCircle className="h-4 w-4 text-primary" />
+                    Quick single-page scans
+                  </li>
+                  <li className="flex items-center gap-2 text-sm">
+                    <CheckCircle className="h-4 w-4 text-primary" />
+                    API & CLI access
+                  </li>
+                  <li className="flex items-center gap-2 text-sm">
+                    <CheckCircle className="h-4 w-4 text-primary" />
+                    Code fix suggestions
+                  </li>
+                </ul>
+              </div>
+
+              <div className="p-8 rounded-2xl border border-border bg-card">
+                <Shield className="h-8 w-8 mb-6 text-muted-foreground" />
+                <h3 className="text-xl font-semibold mb-3">Security Teams</h3>
+                <p className="text-muted-foreground leading-relaxed mb-6">
+                  Comprehensive visibility across all your applications and domains.
+                </p>
+                <ul className="space-y-2">
+                  <li className="flex items-center gap-2 text-sm">
+                    <CheckCircle className="h-4 w-4 text-primary" />
+                    Bulk scanning
+                  </li>
+                  <li className="flex items-center gap-2 text-sm">
+                    <CheckCircle className="h-4 w-4 text-primary" />
+                    Compliance reports
+                  </li>
+                  <li className="flex items-center gap-2 text-sm">
+                    <CheckCircle className="h-4 w-4 text-primary" />
+                    Trend analysis
+                  </li>
+                </ul>
+              </div>
+
+              <div className="p-8 rounded-2xl border border-border bg-card">
+                <BarChart3 className="h-8 w-8 mb-6 text-muted-foreground" />
+                <h3 className="text-xl font-semibold mb-3">DevOps</h3>
+                <p className="text-muted-foreground leading-relaxed mb-6">
+                  Automate security as part of your deployment pipeline.
+                </p>
+                <ul className="space-y-2">
+                  <li className="flex items-center gap-2 text-sm">
+                    <CheckCircle className="h-4 w-4 text-primary" />
+                    CI/CD integration
+                  </li>
+                  <li className="flex items-center gap-2 text-sm">
+                    <CheckCircle className="h-4 w-4 text-primary" />
+                    Webhook notifications
+                  </li>
+                  <li className="flex items-center gap-2 text-sm">
+                    <CheckCircle className="h-4 w-4 text-primary" />
+                    Scheduled monitoring
+                  </li>
+                </ul>
+              </div>
             </div>
           </div>
         </section>
 
         {/* CTA Section */}
-        <section className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-20 sm:py-28">
-          <div className="text-center">
-            <h2 className="text-3xl sm:text-4xl font-bold text-balance mb-6">Ready to secure your website?</h2>
-            <p className="text-lg text-muted-foreground mb-8 max-w-2xl mx-auto leading-relaxed">
-              Join developers using {APP_NAME} to keep their applications safe.
-            </p>
-            <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
-              <Link href="/signup">
-                <Button size="lg" className="gap-2">
-                  Get Started Free
-                  <ArrowRight className="h-4 w-4" />
-                </Button>
-              </Link>
-              <Link href="/demo">
-                <Button size="lg" variant="outline">
-                  Try the Demo
-                </Button>
-              </Link>
+        <section className="border-t border-border">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-24 sm:py-32">
+            <div className="max-w-3xl mx-auto text-center">
+              <h2 className="text-3xl sm:text-4xl font-bold mb-6">
+                Ready to secure your applications?
+              </h2>
+              <p className="text-xl text-muted-foreground mb-10 leading-relaxed">
+                Join thousands of developers shipping secure code with {APP_NAME}.
+              </p>
+              <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+                <Link href="/signup">
+                  <Button size="lg" className="h-12 px-8 text-base gap-2">
+                    Get Started Free
+                    <ArrowRight className="h-4 w-4" />
+                  </Button>
+                </Link>
+                <Link href="/pricing">
+                  <Button size="lg" variant="outline" className="h-12 px-8 text-base">
+                    View Pricing
+                  </Button>
+                </Link>
+              </div>
             </div>
           </div>
         </section>

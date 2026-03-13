@@ -75,12 +75,10 @@ export function middleware(request: NextRequest) {
     return applySecurityHeaders(NextResponse.next())
   }
 
-  const allowedApiPrefixes = ["/api/v1/scan", "/api/v1/history", "/api/version"]
-  if (pathname.startsWith("/api/")) {
-    const allowed = allowedApiPrefixes.some((p) => pathname === p || pathname.startsWith(p + "/"))
-    if (allowed) {
-      return applySecurityHeaders(NextResponse.next())
-    }
+  // Allow API requests with Bearer tokens (API key auth handled in route)
+  const hasBearerToken = request.headers.get("authorization")?.startsWith("Bearer ")
+  if (hasBearerToken && pathname.startsWith("/api/v2/")) {
+    return applySecurityHeaders(NextResponse.next())
   }
 
   // Protect everything else - redirect to login if no session

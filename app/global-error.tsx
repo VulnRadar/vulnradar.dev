@@ -53,7 +53,7 @@ export default function GlobalError({
                 Try Again
               </button>
               <a
-                href="/"
+                href="/dashboard"
                 style={{
                   flex: 1, padding: "0.625rem 1rem", borderRadius: "0.5rem",
                   border: "1px solid rgba(255,255,255,0.1)", backgroundColor: "transparent",
@@ -61,7 +61,7 @@ export default function GlobalError({
                   cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: "0.5rem",
                 }}
               >
-                Go Home
+                Go to Dashboard
               </a>
             </div>
 
