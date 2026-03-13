@@ -1,29 +1,30 @@
 'use client'
 
 import { useEffect, useRef } from 'react'
+import { usePathname } from 'next/navigation'
 
 interface AdminHeartbeatOptions {
-  interval?: number // milliseconds between heartbeats (default: 60000 = 1 min)
-  section?: string // current section (dashboard, users, notifications, etc)
-  enabled?: boolean // whether to enable heartbeat
+  interval?: number  // ms between heartbeats, default 60s
+  enabled?: boolean  // only fires when true (i.e. user is staff)
 }
 
 /**
- * Hook that sends periodic heartbeats to track staff activity in admin dashboard
- * Updates server every 60 seconds (configurable) with current activity status
+ * Global staff heartbeat hook.
+ * Tracks staff presence across the entire app — not just the admin panel.
+ * The "section" is derived from the current pathname automatically.
  */
 export function useAdminHeartbeat({
   interval = 60000,
-  section = 'dashboard',
   enabled = true,
 }: AdminHeartbeatOptions = {}) {
+  const pathname = usePathname()
   const intervalRef = useRef<NodeJS.Timeout | null>(null)
-  const lastSectionRef = useRef(section)
+  const pathnameRef = useRef(pathname)
 
-  // Update section reference when it changes
+  // Always keep the ref fresh so the interval closure picks up route changes
   useEffect(() => {
-    lastSectionRef.current = section
-  }, [section])
+    pathnameRef.current = pathname
+  }, [pathname])
 
   useEffect(() => {
     if (!enabled) {
@@ -34,26 +35,31 @@ export function useAdminHeartbeat({
       return
     }
 
-    // Send initial heartbeat immediately
     const sendHeartbeat = async () => {
+      // Derive a human-readable section label from the pathname
+      const path = pathnameRef.current || '/'
+      let section = 'app'
+      if (path.startsWith('/admin')) section = 'admin'
+      else if (path.startsWith('/dashboard')) section = 'dashboard'
+      else if (path.startsWith('/profile')) section = 'profile'
+      else if (path.startsWith('/teams')) section = 'teams'
+      else if (path.startsWith('/scan')) section = 'scan'
+      else if (path.startsWith('/history')) section = 'history'
+      else if (path.startsWith('/staff')) section = 'staff'
+
       try {
         await fetch('/api/v2/admin/activity', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ section: lastSectionRef.current }),
-        }).catch(() => {
-          // Silently fail - don't disrupt UI
-          console.debug('[Admin Heartbeat] Failed to send heartbeat')
+          body: JSON.stringify({ section }),
         })
       } catch {
-        // Silently fail
+        // Silently fail — never disrupt the UI
       }
     }
 
-    // Send initial heartbeat
+    // Fire immediately on mount / when enabled flips to true
     sendHeartbeat()
-
-    // Set up interval
     intervalRef.current = setInterval(sendHeartbeat, interval)
 
     return () => {
