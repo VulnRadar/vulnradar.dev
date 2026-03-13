@@ -6,6 +6,53 @@ import Stripe from "stripe"
 
 const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET!
 
+// Helper function to grant premium badge to user
+async function grantPremiumBadge(userId: number) {
+  try {
+    // Get the premium badge ID
+    const badgeResult = await pool.query(
+      `SELECT id FROM badges WHERE name = 'premium' LIMIT 1`
+    )
+    if (badgeResult.rows.length === 0) {
+      console.log(`[Stripe] Premium badge not found in database`)
+      return
+    }
+    const badgeId = badgeResult.rows[0].id
+
+    // Grant badge if not already granted
+    await pool.query(
+      `INSERT INTO user_badges (user_id, badge_id) 
+       VALUES ($1, $2) 
+       ON CONFLICT (user_id, badge_id) DO NOTHING`,
+      [userId, badgeId]
+    )
+    console.log(`[Stripe] Granted premium badge to user ${userId}`)
+  } catch (err) {
+    console.error(`[Stripe] Failed to grant premium badge:`, err)
+  }
+}
+
+// Helper function to revoke premium badge from user
+async function revokePremiumBadge(userId: number) {
+  try {
+    // Get the premium badge ID
+    const badgeResult = await pool.query(
+      `SELECT id FROM badges WHERE name = 'premium' LIMIT 1`
+    )
+    if (badgeResult.rows.length === 0) return
+    const badgeId = badgeResult.rows[0].id
+
+    // Remove badge
+    await pool.query(
+      `DELETE FROM user_badges WHERE user_id = $1 AND badge_id = $2`,
+      [userId, badgeId]
+    )
+    console.log(`[Stripe] Revoked premium badge from user ${userId}`)
+  } catch (err) {
+    console.error(`[Stripe] Failed to revoke premium badge:`, err)
+  }
+}
+
 export async function POST(req: NextRequest) {
   const body = await req.text()
   const signature = req.headers.get("stripe-signature")!
@@ -65,6 +112,8 @@ export async function POST(req: NextRequest) {
             )
             if (result.rowCount && result.rowCount > 0) {
               console.log(`[Stripe] User ID ${userId} upgraded to ${plan}`)
+              // Grant premium badge
+              await grantPremiumBadge(userId)
             }
           }
           
@@ -82,6 +131,8 @@ export async function POST(req: NextRequest) {
             )
             if (result.rowCount && result.rowCount > 0) {
               console.log(`[Stripe] User ${customerEmail} upgraded to ${plan}`)
+              // Grant premium badge
+              await grantPremiumBadge(result.rows[0].id)
             } else {
               console.log(`[Stripe] checkout.session.completed but no user found for email ${customerEmail}`)
             }
@@ -127,6 +178,10 @@ export async function POST(req: NextRequest) {
           )
           if (result.rowCount && result.rowCount > 0) {
             console.log(`[Stripe] Subscription created for user ID ${userId}, plan: ${plan}`)
+            // Grant premium badge for paid plans
+            if (plan && plan !== "free") {
+              await grantPremiumBadge(userId)
+            }
           }
         }
         
@@ -143,6 +198,10 @@ export async function POST(req: NextRequest) {
           )
           if (result.rowCount && result.rowCount > 0) {
             console.log(`[Stripe] Subscription created for customer ${customerId}, plan: ${plan}`)
+            // Grant premium badge for paid plans
+            if (plan && plan !== "free") {
+              await grantPremiumBadge(result.rows[0].id)
+            }
           }
         }
         
@@ -162,6 +221,10 @@ export async function POST(req: NextRequest) {
             )
             if (result.rowCount && result.rowCount > 0) {
               console.log(`[Stripe] Subscription created for ${customer.email}, plan: ${plan}`)
+              // Grant premium badge for paid plans
+              if (plan && plan !== "free") {
+                await grantPremiumBadge(result.rows[0].id)
+              }
             } else {
               console.log(`[Stripe] Subscription created but no user found for email ${customer.email}`)
             }
@@ -199,15 +262,19 @@ export async function POST(req: NextRequest) {
         const subscription = event.data.object as Stripe.Subscription
         const customerId = subscription.customer as string
 
-        // Downgrade to free plan
-        await pool.query(
+        // Downgrade to free plan and revoke premium badge
+        const result = await pool.query(
           `UPDATE users SET 
             plan = 'free',
             subscription_status = 'canceled',
             stripe_subscription_id = NULL
-          WHERE stripe_customer_id = $1`,
+          WHERE stripe_customer_id = $1
+          RETURNING id`,
           [customerId]
         )
+        if (result.rowCount && result.rowCount > 0) {
+          await revokePremiumBadge(result.rows[0].id)
+        }
         console.log(`[Stripe] Subscription canceled for customer ${customerId}`)
         break
       }

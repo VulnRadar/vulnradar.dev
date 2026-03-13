@@ -367,14 +367,13 @@ async function main() {
   info("Seeding default badges...")
   try {
     await newPool.query(`
-      INSERT INTO badges (name, display_name, description, color, icon) VALUES
-        ('early_adopter', 'Early Adopter', 'One of the first users of VulnRadar', '#f59e0b', 'star'),
-        ('beta_tester', 'Beta Tester', 'Helped test VulnRadar before release', '#8b5cf6', 'flask'),
-        ('bug_hunter', 'Bug Hunter', 'Reported bugs or security issues', '#ef4444', 'bug'),
-        ('contributor', 'Contributor', 'Contributed to VulnRadar development', '#10b981', 'code'),
-        ('supporter', 'Supporter', 'Supports VulnRadar with a paid plan', '#3b82f6', 'heart'),
-        ('power_user', 'Power User', 'Performed over 1000 scans', '#ec4899', 'zap'),
-        ('verified', 'Verified', 'Verified identity', '#06b6d4', 'check-circle')
+      INSERT INTO badges (name, display_name, description, color, icon, priority) VALUES
+        ('beta_tester', 'Beta Tester', 'Helped test VulnRadar before release', '#8b5cf6', 'flask', 10),
+        ('bug_hunter', 'Bug Hunter', 'Reported bugs or security issues', '#ef4444', 'bug', 7),
+        ('contributor', 'Contributor', 'Contributed to VulnRadar development', '#10b981', 'code', 8),
+        ('premium', 'Premium', 'Premium subscription member', '#fbbf24', 'star', 6),
+        ('verified', 'Verified', 'Verified identity', '#06b6d4', 'check-circle', 5),
+        ('founder', 'Founder', 'Original founding member', '#f59e0b', 'crown', 20)
       ON CONFLICT (name) DO NOTHING
     `)
     success("  Seeded default badges")
