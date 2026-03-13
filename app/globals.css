@@ -56,20 +56,20 @@ html {
     --card-foreground: 220 20% 10%;
     --popover: 0 0% 100%;
     --popover-foreground: 220 20% 10%;
-    --primary: 190 55% 38%;
+    --primary: 192 40% 32%;
     --primary-foreground: 0 0% 100%;
     --secondary: 220 15% 92%;
     --secondary-foreground: 220 20% 10%;
     --muted: 220 15% 92%;
     --muted-foreground: 220 10% 46%;
-    --accent: 190 55% 38%;
+    --accent: 192 40% 32%;
     --accent-foreground: 0 0% 100%;
     --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 100%;
     --border: 220 15% 88%;
     --input: 220 15% 88%;
-    --ring: 190 55% 38%;
-    --chart-1: 190 55% 38%;
+    --ring: 192 40% 32%;
+    --chart-1: 192 40% 32%;
     --chart-2: 160 60% 45%;
     --chart-3: 30 80% 55%;
     --chart-4: 280 65% 60%;
@@ -102,20 +102,20 @@ html {
     --card-foreground: 210 20% 95%;
     --popover: 224 18% 9%;
     --popover-foreground: 210 20% 95%;
-    --primary: 190 50% 42%;
-    --primary-foreground: 224 20% 6%;
+    --primary: 192 35% 36%;
+    --primary-foreground: 0 0% 100%;
     --secondary: 224 15% 14%;
     --secondary-foreground: 210 20% 95%;
     --muted: 224 15% 14%;
     --muted-foreground: 215 15% 55%;
-    --accent: 190 50% 42%;
-    --accent-foreground: 224 20% 6%;
+    --accent: 192 35% 36%;
+    --accent-foreground: 0 0% 100%;
     --destructive: 0 72% 50%;
     --destructive-foreground: 0 0% 100%;
     --border: 224 15% 16%;
     --input: 224 15% 16%;
-    --ring: 190 50% 42%;
-    --chart-1: 190 50% 42%;
+    --ring: 192 35% 36%;
+    --chart-1: 192 35% 36%;
     --chart-2: 160 60% 45%;
     --chart-3: 30 80% 55%;
     --chart-4: 280 65% 60%;
@@ -207,12 +207,22 @@ html {
     @apply outline-none ring-2 ring-ring ring-offset-2 ring-offset-background;
   }
 
-  /* Selection - very subtle, low-opacity highlight for minimal distraction */
+  /* Selection - darker background with high contrast text for readability */
   ::selection {
-    @apply bg-muted-foreground/10 text-foreground;
+    background-color: hsl(220 15% 25% / 0.35);
+    color: hsl(var(--foreground));
   }
   ::-moz-selection {
-    @apply bg-muted-foreground/10 text-foreground;
+    background-color: hsl(220 15% 25% / 0.35);
+    color: hsl(var(--foreground));
+  }
+  .dark ::selection {
+    background-color: hsl(210 20% 70% / 0.25);
+    color: hsl(var(--foreground));
+  }
+  .dark ::-moz-selection {
+    background-color: hsl(210 20% 70% / 0.25);
+    color: hsl(var(--foreground));
   }
 }
 
@@ -294,13 +304,13 @@ html {
   @apply backdrop-blur-md bg-card/80 border border-border/50;
 }
 
-/* Subtle glow effects */
+/* Subtle glow effects - very muted for dark UI */
 .glow {
-  box-shadow: 0 0 20px -5px hsl(var(--primary) / 0.3);
+  box-shadow: 0 0 20px -5px hsl(var(--primary) / 0.15);
 }
 
 .glow-sm {
-  box-shadow: 0 0 10px -3px hsl(var(--primary) / 0.2);
+  box-shadow: 0 0 10px -3px hsl(var(--primary) / 0.1);
 }
 
 
