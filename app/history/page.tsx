@@ -183,13 +183,18 @@ function HistoryPageContent() {
     try {
       const res = await fetch(API.HISTORY)
       if (!res.ok) {
-        router.push("/login")
+        if (res.status === 401 || res.status === 403) {
+          router.push("/login")
+        } else {
+          console.error(`[v0] History API error: ${res.status}`)
+        }
         return
       }
       const data = await res.json()
-      setScans(data.scans || [])
-    } catch {
-      // silently fail
+      setScans(Array.isArray(data.scans) ? data.scans : [])
+    } catch (err) {
+      console.error("[v0] Failed to fetch history:", err)
+      setScans([])
     } finally {
       setLoading(false)
     }
