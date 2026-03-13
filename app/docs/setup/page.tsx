@@ -58,25 +58,25 @@ export default function SetupPage() {
     <div className="space-y-16">
       {/* Header */}
       <section id="overview" className="scroll-mt-24">
-        <Badge variant="outline" className="mb-4 text-primary border-primary/30">Self-Hosting</Badge>
-        <h1 className="text-4xl font-bold tracking-tight mb-4">Setup Guide</h1>
-        <p className="text-lg text-muted-foreground leading-relaxed max-w-3xl">
+        <Badge variant="outline" className="mb-3 sm:mb-4 text-primary border-primary/30">Self-Hosting</Badge>
+        <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold tracking-tight mb-3 sm:mb-4">Setup Guide</h1>
+        <p className="text-base sm:text-lg text-muted-foreground leading-relaxed max-w-3xl">
           Complete guide to installing and configuring {APP_NAME} for your environment. Choose from local development, Docker, or cloud deployment.
         </p>
 
         {/* Quick Options */}
-        <div className="grid sm:grid-cols-3 gap-4 mt-8">
-          <a href="#installation" className="p-4 rounded-lg bg-card border border-border/40 hover:border-accent transition-colors">
-            <div className="text-lg font-bold text-primary mb-1">Local Dev</div>
-            <div className="text-xs text-muted-foreground">Clone and run locally</div>
+        <div className="grid grid-cols-3 gap-2 sm:gap-4 mt-6 sm:mt-8">
+          <a href="#installation" className="p-2.5 sm:p-4 rounded-lg bg-card border border-border/40 hover:border-accent transition-colors">
+            <div className="text-sm sm:text-lg font-bold text-primary mb-0.5 sm:mb-1">Local Dev</div>
+            <div className="text-[10px] sm:text-xs text-muted-foreground">Clone locally</div>
           </a>
-          <a href="#docker" className="p-4 rounded-lg bg-card border border-border/40 hover:border-accent transition-colors">
-            <div className="text-lg font-bold text-primary mb-1">Docker</div>
-            <div className="text-xs text-muted-foreground">Deploy in 5 minutes</div>
+          <a href="#docker" className="p-2.5 sm:p-4 rounded-lg bg-card border border-border/40 hover:border-accent transition-colors">
+            <div className="text-sm sm:text-lg font-bold text-primary mb-0.5 sm:mb-1">Docker</div>
+            <div className="text-[10px] sm:text-xs text-muted-foreground">5 min deploy</div>
           </a>
-          <a href="#deployment" className="p-4 rounded-lg bg-card border border-border/40 hover:border-accent transition-colors">
-            <div className="text-lg font-bold text-primary mb-1">Vercel</div>
-            <div className="text-xs text-muted-foreground">One-click deploy</div>
+          <a href="#deployment" className="p-2.5 sm:p-4 rounded-lg bg-card border border-border/40 hover:border-accent transition-colors">
+            <div className="text-sm sm:text-lg font-bold text-primary mb-0.5 sm:mb-1">Vercel</div>
+            <div className="text-[10px] sm:text-xs text-muted-foreground">One-click</div>
           </a>
         </div>
       </section>
@@ -556,7 +556,7 @@ API_KEY_ENCRYPTION_KEY=your-64-character-hex-key
 
 # ─────────────────────────────────────────────────────────────────────────
 # SMTP EMAIL CONFIGURATION (Server-side - Optional)
-# ───────────────────────────────��─────────────────────────────────────────
+# ───────────────────────────────��──��──────────────────────────────────────
 # Used for sending transactional emails (password resets, notifications, etc.)
 SMTP_HOST=smtp.protonmail.ch
 SMTP_PORT=587

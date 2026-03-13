@@ -77,38 +77,38 @@ export default function DocsPage() {
     <div className="space-y-16">
       {/* Hero Section */}
       <section id="overview" className="scroll-mt-24">
-        <Badge variant="outline" className="mb-4 text-primary border-primary/30">v{APP_VERSION}</Badge>
-        <h1 className="text-4xl font-bold tracking-tight mb-4">{APP_NAME} Documentation</h1>
-        <p className="text-lg text-muted-foreground leading-relaxed max-w-3xl">
+        <Badge variant="outline" className="mb-3 sm:mb-4 text-primary border-primary/30">v{APP_VERSION}</Badge>
+        <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold tracking-tight mb-3 sm:mb-4">{APP_NAME} Documentation</h1>
+        <p className="text-base sm:text-lg text-muted-foreground leading-relaxed max-w-3xl">
           Complete guide to using {APP_NAME} for web vulnerability scanning. Learn how to integrate our API, 
           self-host the platform, and build custom security workflows.
         </p>
 
         {/* Quick Stats */}
-        <div className="grid sm:grid-cols-4 gap-4 mt-8">
-          <div className="p-4 rounded-lg bg-card border border-border/40">
-            <div className="text-2xl font-bold text-primary mb-1">110+</div>
-            <div className="text-xs text-muted-foreground">Security Checks</div>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4 mt-8">
+          <div className="p-3 sm:p-4 rounded-lg bg-card border border-border/40">
+            <div className="text-xl sm:text-2xl font-bold text-primary mb-1">{TOTAL_CHECKS_LABEL}</div>
+            <div className="text-[10px] sm:text-xs text-muted-foreground">Security Checks</div>
           </div>
-          <div className="p-4 rounded-lg bg-card border border-border/40">
-            <div className="text-2xl font-bold text-primary mb-1">v2</div>
-            <div className="text-xs text-muted-foreground">API Version</div>
+          <div className="p-3 sm:p-4 rounded-lg bg-card border border-border/40">
+            <div className="text-xl sm:text-2xl font-bold text-primary mb-1">v2</div>
+            <div className="text-[10px] sm:text-xs text-muted-foreground">API Version</div>
           </div>
-          <div className="p-4 rounded-lg bg-card border border-border/40">
-            <div className="text-2xl font-bold text-primary mb-1">6</div>
-            <div className="text-xs text-muted-foreground">Protocols</div>
+          <div className="p-3 sm:p-4 rounded-lg bg-card border border-border/40">
+            <div className="text-xl sm:text-2xl font-bold text-primary mb-1">6</div>
+            <div className="text-[10px] sm:text-xs text-muted-foreground">Protocols</div>
           </div>
-          <div className="p-4 rounded-lg bg-card border border-border/40">
-            <div className="text-2xl font-bold text-primary mb-1">MIT</div>
-            <div className="text-xs text-muted-foreground">License</div>
+          <div className="p-3 sm:p-4 rounded-lg bg-card border border-border/40">
+            <div className="text-xl sm:text-2xl font-bold text-primary mb-1">MIT</div>
+            <div className="text-[10px] sm:text-xs text-muted-foreground">License</div>
           </div>
         </div>
       </section>
 
       {/* Key Features */}
-      <section id="features" className="scroll-mt-24 space-y-6">
-        <h2 className="text-2xl font-bold tracking-tight">Platform Features</h2>
-        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+      <section id="features" className="scroll-mt-24 space-y-4 sm:space-y-6">
+        <h2 className="text-xl sm:text-2xl font-bold tracking-tight">Platform Features</h2>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
           {[
             { icon: Shield, title: TOTAL_CHECKS_LABEL, description: "Comprehensive vulnerability detection engine" },
             { icon: Globe, title: "Multi-Protocol Support", description: "HTTP, HTTPS, WebSocket, FTP scanning" },
@@ -129,12 +129,12 @@ export default function DocsPage() {
       </section>
 
       {/* Quick Start */}
-      <section id="quick-start" className="scroll-mt-24 space-y-6">
-        <h2 className="text-2xl font-bold tracking-tight">Quick Start</h2>
-        <p className="text-muted-foreground">Get scanning in under 2 minutes.</p>
+      <section id="quick-start" className="scroll-mt-24 space-y-4 sm:space-y-6">
+        <h2 className="text-xl sm:text-2xl font-bold tracking-tight">Quick Start</h2>
+        <p className="text-sm sm:text-base text-muted-foreground">Get scanning in under 2 minutes.</p>
 
-        <Card className="p-6 border-border/40 bg-primary/5">
-          <div className="grid lg:grid-cols-2 gap-8">
+        <Card className="p-4 sm:p-6 border-border/40 bg-primary/5">
+          <div className="grid lg:grid-cols-2 gap-6 lg:gap-8">
             {/* Steps */}
             <div className="space-y-6">
               {[
@@ -168,12 +168,12 @@ export default function DocsPage() {
       </section>
 
       {/* Documentation Navigation */}
-      <section id="documentation" className="scroll-mt-24 space-y-6">
-        <h2 className="text-2xl font-bold tracking-tight">Documentation</h2>
+      <section id="documentation" className="scroll-mt-24 space-y-4 sm:space-y-6">
+        <h2 className="text-xl sm:text-2xl font-bold tracking-tight">Documentation</h2>
         
-        <div className="grid md:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
           {/* API Reference */}
-          <Card className="p-6 border-border/40 hover:border-accent transition-all duration-200 group">
+          <Card className="p-4 sm:p-6 border-border/40 hover:border-accent transition-all duration-200 group">
             <div className="flex items-center gap-3 mb-4">
               <div className="flex items-center justify-center w-10 h-10 rounded-lg bg-primary/10 group-hover:bg-accent transition-colors">
                 <Zap className="h-5 w-5 text-primary" />
@@ -208,7 +208,7 @@ export default function DocsPage() {
           </Card>
 
           {/* Setup Guide */}
-          <Card className="p-6 border-border/40 hover:border-accent transition-all duration-200 group">
+          <Card className="p-4 sm:p-6 border-border/40 hover:border-accent transition-all duration-200 group">
             <div className="flex items-center gap-3 mb-4">
               <div className="flex items-center justify-center w-10 h-10 rounded-lg bg-primary/10 group-hover:bg-accent transition-colors">
                 <Code2 className="h-5 w-5 text-primary" />
@@ -243,7 +243,7 @@ export default function DocsPage() {
           </Card>
 
           {/* Developer Guide */}
-          <Card className="p-6 border-border/40 hover:border-accent transition-all duration-200 group">
+          <Card className="p-4 sm:p-6 border-border/40 hover:border-accent transition-all duration-200 group">
             <div className="flex items-center gap-3 mb-4">
               <div className="flex items-center justify-center w-10 h-10 rounded-lg bg-primary/10 group-hover:bg-accent transition-colors">
                 <Terminal className="h-5 w-5 text-primary" />
@@ -278,7 +278,7 @@ export default function DocsPage() {
           </Card>
 
           {/* Changelog */}
-          <Card className="p-6 border-border/40 hover:border-accent transition-all duration-200 group">
+          <Card className="p-4 sm:p-6 border-border/40 hover:border-accent transition-all duration-200 group">
             <div className="flex items-center gap-3 mb-4">
               <div className="flex items-center justify-center w-10 h-10 rounded-lg bg-primary/10 group-hover:bg-accent transition-colors">
                 <BookOpen className="h-5 w-5 text-primary" />
@@ -315,11 +315,11 @@ export default function DocsPage() {
       </section>
 
       {/* Support */}
-      <section id="support" className="scroll-mt-24 space-y-6">
-        <h2 className="text-2xl font-bold tracking-tight">Support</h2>
+      <section id="support" className="scroll-mt-24 space-y-4 sm:space-y-6">
+        <h2 className="text-xl sm:text-2xl font-bold tracking-tight">Support</h2>
         
-        <Card className="p-6 border-border/40">
-          <div className="flex flex-wrap items-center justify-between gap-4">
+        <Card className="p-4 sm:p-6 border-border/40">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
               <h3 className="font-semibold mb-1">Need Help?</h3>
               <p className="text-sm text-muted-foreground">
