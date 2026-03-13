@@ -258,8 +258,10 @@ export function ScanForm({ onScan, onBulkScan, bulkStatus = "idle", status }: Sc
                         }
                       }}
                       className={cn(
-                        "flex flex-col items-start gap-0.5",
-                        protocol === p.value && "scanner-selected"
+                        "flex flex-col items-start gap-0.5 focus:bg-transparent",
+                        protocol === p.value 
+                          ? "scanner-selected scanner-selected-hover" 
+                          : "scanner-hover"
                       )}
                     >
                       <span className="font-mono font-medium">{p.value}</span>
