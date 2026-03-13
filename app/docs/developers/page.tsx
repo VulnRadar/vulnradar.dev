@@ -2,7 +2,7 @@
 
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { APP_NAME, APP_URL, APP_VERSION, ENGINE_VERSION } from "@/lib/constants"
+import { APP_NAME, APP_URL, APP_VERSION, ENGINE_VERSION, TOTAL_CHECKS_LABEL } from "@/lib/constants"
 import { Code2, Package, Github, ExternalLink, Zap, FileJson, Terminal, Copy, Check, BookOpen, Lightbulb } from "lucide-react"
 import Link from "next/link"
 import { useEffect, useRef, useState } from "react"
@@ -85,26 +85,26 @@ export default function DevelopersPage() {
     <div className="space-y-16">
       {/* Header */}
       <section id="overview" className="scroll-mt-24">
-        <Badge variant="outline" className="mb-4 text-primary border-primary/30">SDK Development</Badge>
-        <h1 className="text-4xl font-bold tracking-tight mb-4">Developer Documentation</h1>
-        <p className="text-lg text-muted-foreground leading-relaxed max-w-3xl">
+        <Badge variant="outline" className="mb-3 sm:mb-4 text-primary border-primary/30">SDK Development</Badge>
+        <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold tracking-tight mb-3 sm:mb-4">Developer Documentation</h1>
+        <p className="text-base sm:text-lg text-muted-foreground leading-relaxed max-w-3xl">
           Build SDKs, integrations, and tools for {APP_NAME}. Everything you need to programmatically 
           interact with our security scanning platform.
         </p>
 
         {/* Quick Stats */}
-        <div className="grid sm:grid-cols-3 gap-4 mt-8">
-          <div className="p-4 rounded-lg bg-card border border-border/40">
-            <div className="text-2xl font-bold text-primary mb-1">110+</div>
-            <div className="text-xs text-muted-foreground">Security Checks</div>
+        <div className="grid grid-cols-3 gap-2 sm:gap-4 mt-6 sm:mt-8">
+          <div className="p-2.5 sm:p-4 rounded-lg bg-card border border-border/40">
+            <div className="text-lg sm:text-2xl font-bold text-primary mb-0.5 sm:mb-1">{TOTAL_CHECKS_LABEL}</div>
+            <div className="text-[10px] sm:text-xs text-muted-foreground">Security Checks</div>
           </div>
-          <div className="p-4 rounded-lg bg-card border border-border/40">
-            <div className="text-2xl font-bold text-primary mb-1">MIT</div>
-            <div className="text-xs text-muted-foreground">License</div>
+          <div className="p-2.5 sm:p-4 rounded-lg bg-card border border-border/40">
+            <div className="text-lg sm:text-2xl font-bold text-primary mb-0.5 sm:mb-1">MIT</div>
+            <div className="text-[10px] sm:text-xs text-muted-foreground">License</div>
           </div>
-          <div className="p-4 rounded-lg bg-card border border-border/40">
-            <div className="text-2xl font-bold text-primary mb-1">v2</div>
-            <div className="text-xs text-muted-foreground">API Version</div>
+          <div className="p-2.5 sm:p-4 rounded-lg bg-card border border-border/40">
+            <div className="text-lg sm:text-2xl font-bold text-primary mb-0.5 sm:mb-1">v2</div>
+            <div className="text-[10px] sm:text-xs text-muted-foreground">API Version</div>
           </div>
         </div>
       </section>
@@ -139,8 +139,8 @@ export default function DevelopersPage() {
             <div>
               <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">Response</h4>
               <CodeBlock code={`{
-  "version": "2.0.0",
-  "count": 110,
+  "version": "${APP_VERSION}",
+  "count": "...",
   "types": [
     {
       "id": "hsts-missing",
@@ -163,7 +163,7 @@ export default function DevelopersPage() {
       "category": "Cookie Security",
       "severity": "medium"
     }
-    // ... 107 more types
+    // ... more types
   ]
 }`} />
             </div>

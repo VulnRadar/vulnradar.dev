@@ -3,7 +3,7 @@
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { AlertTriangle, CheckCircle, Copy, Check } from "lucide-react"
-import { APP_URL, APP_NAME, APP_VERSION, ENGINE_VERSION } from "@/lib/constants"
+import { APP_URL, APP_NAME, APP_VERSION, ENGINE_VERSION, TOTAL_CHECKS_LABEL } from "@/lib/constants"
 import { useState, useEffect, useRef } from "react"
 import { cn } from "@/lib/utils"
 import { useDocsContext, type TocItem } from "../layout"
@@ -97,16 +97,16 @@ function EndpointCard({
   }
 
   return (
-    <Card id={id} className="p-6 border-border/40 scroll-mt-24 transition-all duration-300 hover:border-border/60">
+    <Card id={id} className="p-4 sm:p-6 border-border/40 scroll-mt-24 transition-all duration-300 hover:border-border/60">
       {/* Header */}
-      <div className="flex flex-wrap items-center gap-3 mb-4">
-        <Badge className={cn("font-mono text-xs border", methodColors[method])}>{method}</Badge>
-        <code className="text-primary font-mono text-sm">{path}</code>
-        <span className="text-xs text-muted-foreground ml-auto">{title}</span>
+      <div className="flex flex-wrap items-center gap-2 sm:gap-3 mb-3 sm:mb-4">
+        <Badge className={cn("font-mono text-[10px] sm:text-xs border", methodColors[method])}>{method}</Badge>
+        <code className="text-primary font-mono text-xs sm:text-sm break-all">{path}</code>
+        <span className="text-[10px] sm:text-xs text-muted-foreground ml-auto hidden sm:inline">{title}</span>
       </div>
       
       {/* Description */}
-      <p className="text-muted-foreground text-sm mb-6 leading-relaxed">{description}</p>
+      <p className="text-muted-foreground text-xs sm:text-sm mb-4 sm:mb-6 leading-relaxed">{description}</p>
       
       <div className="space-y-6">
         {/* Path Parameters */}
@@ -282,38 +282,38 @@ scan = response.json()`,
     <div className="space-y-16">
       {/* Header */}
       <section id="overview" className="scroll-mt-24">
-        <Badge variant="outline" className="mb-4 text-primary border-primary/30">v2 API</Badge>
-        <h1 className="text-4xl font-bold tracking-tight mb-4">API Reference</h1>
-        <p className="text-lg text-muted-foreground leading-relaxed max-w-3xl">
+        <Badge variant="outline" className="mb-3 sm:mb-4 text-primary border-primary/30">v2 API</Badge>
+        <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold tracking-tight mb-3 sm:mb-4">API Reference</h1>
+        <p className="text-base sm:text-lg text-muted-foreground leading-relaxed max-w-3xl">
           Complete documentation for the {APP_NAME} REST API. Integrate automated vulnerability scanning 
           into your applications, CI/CD pipelines, or custom security tools.
         </p>
         
         {/* Quick Info Cards */}
-        <div className="grid sm:grid-cols-3 gap-4 mt-8">
-          <div className="p-4 rounded-lg bg-card border border-border/40">
-            <div className="text-2xl font-bold text-primary mb-1">v2</div>
-            <div className="text-xs text-muted-foreground">API Version</div>
+        <div className="grid grid-cols-3 gap-2 sm:gap-4 mt-6 sm:mt-8">
+          <div className="p-2.5 sm:p-4 rounded-lg bg-card border border-border/40">
+            <div className="text-lg sm:text-2xl font-bold text-primary mb-0.5 sm:mb-1">v2</div>
+            <div className="text-[10px] sm:text-xs text-muted-foreground">API Version</div>
           </div>
-          <div className="p-4 rounded-lg bg-card border border-border/40">
-            <div className="text-2xl font-bold text-primary mb-1">50/day</div>
-            <div className="text-xs text-muted-foreground">Rate Limit per Key</div>
+          <div className="p-2.5 sm:p-4 rounded-lg bg-card border border-border/40">
+            <div className="text-lg sm:text-2xl font-bold text-primary mb-0.5 sm:mb-1">50/day</div>
+            <div className="text-[10px] sm:text-xs text-muted-foreground">Rate Limit per Key</div>
           </div>
-          <div className="p-4 rounded-lg bg-card border border-border/40">
-            <div className="text-2xl font-bold text-primary mb-1">Bearer</div>
-            <div className="text-xs text-muted-foreground">Auth Method</div>
+          <div className="p-2.5 sm:p-4 rounded-lg bg-card border border-border/40">
+            <div className="text-lg sm:text-2xl font-bold text-primary mb-0.5 sm:mb-1">Bearer</div>
+            <div className="text-[10px] sm:text-xs text-muted-foreground">Auth Method</div>
           </div>
         </div>
       </section>
 
       {/* Authentication */}
-      <section id="authentication" className="scroll-mt-24 space-y-6">
-        <h2 className="text-2xl font-bold tracking-tight">Authentication</h2>
-        <p className="text-muted-foreground">
+      <section id="authentication" className="scroll-mt-24 space-y-4 sm:space-y-6">
+        <h2 className="text-xl sm:text-2xl font-bold tracking-tight">Authentication</h2>
+        <p className="text-sm sm:text-base text-muted-foreground">
           All API requests require authentication using a Bearer token. Generate API keys from your account settings.
         </p>
 
-        <Card className="p-6 border-border/40">
+        <Card className="p-4 sm:p-6 border-border/40">
           <h3 className="font-semibold mb-4">Bearer Token Authentication</h3>
           <p className="text-sm text-muted-foreground mb-4">Include your API key in the Authorization header:</p>
           <CodeBlock code="Authorization: Bearer YOUR_API_KEY_HERE" language="http" />
@@ -339,11 +339,11 @@ scan = response.json()`,
       </section>
 
       {/* Endpoints */}
-      <section id="endpoints" className="scroll-mt-24 space-y-6">
-        <div className="flex items-center justify-between">
-          <h2 className="text-2xl font-bold tracking-tight">Endpoints</h2>
-          <div className="text-sm text-muted-foreground">
-            Base URL: <code className="bg-secondary px-2 py-1 rounded text-xs">{APP_URL}/api/v2</code>
+      <section id="endpoints" className="scroll-mt-24 space-y-4 sm:space-y-6">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <h2 className="text-xl sm:text-2xl font-bold tracking-tight">Endpoints</h2>
+          <div className="text-xs sm:text-sm text-muted-foreground">
+            Base URL: <code className="bg-secondary px-1.5 sm:px-2 py-0.5 sm:py-1 rounded text-[10px] sm:text-xs break-all">{APP_URL}/api/v2</code>
           </div>
         </div>
         

@@ -153,13 +153,13 @@ export default function DocsLayout({ children }: { children: React.ReactNode }) 
             </aside>
 
             {/* Mobile Navigation Toggle */}
-            <div className="lg:hidden fixed bottom-4 left-4 z-50">
+            <div className="lg:hidden fixed bottom-20 right-4 z-50">
               <button
                 onClick={() => setMobileNavOpen(!mobileNavOpen)}
-                className="flex items-center gap-2 px-4 py-2.5 bg-primary text-primary-foreground rounded-full shadow-lg text-sm font-medium"
+                className="flex items-center gap-2 px-3 py-2 bg-primary text-primary-foreground rounded-full shadow-lg text-xs sm:text-sm font-medium"
               >
-                <BookOpen className="h-4 w-4" />
-                Docs
+                <BookOpen className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                <span className="hidden xs:inline">Docs</span>
               </button>
             </div>
 
@@ -233,8 +233,8 @@ export default function DocsLayout({ children }: { children: React.ReactNode }) 
             )}
 
             {/* Main Content */}
-            <main className="flex-1 min-w-0 px-4 sm:px-6 lg:px-10 py-8 lg:py-10">
-              <article className="max-w-4xl">
+            <main className="flex-1 min-w-0 px-3 sm:px-6 lg:px-10 py-6 sm:py-8 lg:py-10">
+              <article className="max-w-4xl mx-auto lg:mx-0">
                 {children}
               </article>
             </main>
