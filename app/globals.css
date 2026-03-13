@@ -207,9 +207,12 @@ html {
     @apply outline-none ring-2 ring-ring ring-offset-2 ring-offset-background;
   }
 
-  /* Selection */
+  /* Selection - subtle, distinguishable highlight that works in both themes */
   ::selection {
-    @apply bg-primary/20;
+    @apply bg-muted-foreground/20 text-foreground;
+  }
+  ::-moz-selection {
+    @apply bg-muted-foreground/20 text-foreground;
   }
 }
 
