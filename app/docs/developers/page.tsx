@@ -416,23 +416,59 @@ result.findings.forEach(f => console.log(\`[\${f.severity}] \${f.title}\`));`} l
           <h2 className="text-2xl font-bold tracking-tight">Community SDKs</h2>
         </div>
 
-        <Card className="p-6 border-border/40">
-          <p className="text-muted-foreground mb-6">
-            Building an SDK for {APP_NAME}? We&apos;d love to feature it here! Community-built SDKs in any language are welcome.
+        <div className="space-y-4">
+          {/* Python SDK */}
+          <Card className="p-6 border-border/40 hover:border-primary/50 transition-colors">
+            <div className="flex items-start justify-between mb-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-blue-600/20 rounded-lg">
+                  <Package className="h-5 w-5 text-blue-600" />
+                </div>
+                <div>
+                  <h3 className="font-semibold flex items-center gap-2">
+                    Python SDK
+                    <Badge variant="outline" className="text-xs">Community</Badge>
+                  </h3>
+                  <p className="text-sm text-muted-foreground">VulnRadar/Python-SDK</p>
+                </div>
+              </div>
+              <a 
+                href="https://github.com/VulnRadar/Python-SDK" 
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-muted-foreground hover:text-foreground transition-colors"
+              >
+                <Github className="h-5 w-5" />
+              </a>
+            </div>
+            <p className="text-sm text-muted-foreground mb-4">Community-maintained Python SDK for VulnRadar API integration. Supports async operations and comprehensive vulnerability scanning.</p>
+            <CodeBlock code={`pip install vulnradar
+
+from vulnradar import VulnRadar
+
+client = VulnRadar(api_key="your-api-key")
+result = client.scan("https://example.com")
+
+print(f"Found {len(result.findings)} vulnerabilities")
+for finding in result.findings:
+    print(f"[{finding.severity}] {finding.title}")`} language="python" />
+          </Card>
+        </div>
+
+        <Card className="p-6 border-border/40 bg-secondary/30">
+          <h4 className="font-semibold mb-3">Building Your Own SDK?</h4>
+          <p className="text-sm text-muted-foreground mb-4">
+            We welcome community-built SDKs in any language! If you build one, let us know and we'll feature it here.
           </p>
-          
-          <div className="p-4 bg-secondary/30 rounded-lg">
-            <h4 className="font-semibold mb-3 text-sm">Submit Your SDK</h4>
-            <ol className="text-sm text-muted-foreground space-y-2 list-decimal list-inside">
-              <li>Publish your SDK to a package manager (npm, PyPI, RubyGems, etc.)</li>
-              <li>Open source it on GitHub with an MIT or compatible license</li>
-              <li>Include documentation and usage examples</li>
-              <li>Contact us via the <Link href="/contact" className="text-primary hover:underline">contact form</Link> or open a GitHub issue</li>
-            </ol>
-          </div>
-          
-          <div className="mt-6 text-center py-8 text-muted-foreground text-sm border border-dashed border-border/60 rounded-lg">
-            No community SDKs listed yet. Be the first to build one!
+          <div className="p-3 bg-card rounded-lg border border-border/40 text-sm text-muted-foreground space-y-2">
+            <p className="font-medium text-foreground">Requirements:</p>
+            <ul className="list-disc list-inside space-y-1">
+              <li>Use the <Link href="/docs/api" className="text-primary hover:underline">v2 API</Link> for all requests</li>
+              <li>Support Bearer token authentication</li>
+              <li>Include comprehensive documentation</li>
+              <li>Open source with MIT or compatible license</li>
+              <li>Publish to your language's package manager</li>
+            </ul>
           </div>
         </Card>
       </section>

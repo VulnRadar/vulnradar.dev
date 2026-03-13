@@ -76,9 +76,8 @@ export function middleware(request: NextRequest) {
   }
 
   // Allow API requests with Bearer tokens (API key auth handled in route)
-  // Supports both v1 and v2 API endpoints - let the route handlers validate the key
   const hasBearerToken = request.headers.get("authorization")?.startsWith("Bearer ")
-  if (hasBearerToken && (pathname.startsWith("/api/v1/") || pathname.startsWith("/api/v2/"))) {
+  if (hasBearerToken && pathname.startsWith("/api/v2/")) {
     return applySecurityHeaders(NextResponse.next())
   }
 
