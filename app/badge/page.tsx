@@ -29,15 +29,25 @@ export default function BadgePage() {
   const [searchQuery, setSearchQuery] = useState("")
 
   useEffect(() => {
-    fetch(API.BADGE_SCANS)
-      .then((r) => r.json())
-      .then((data) => {
-        if (Array.isArray(data)) {
-          setScans(data)
+    const fetchBadgeScans = async () => {
+      try {
+        const res = await fetch(API.BADGE_SCANS)
+        if (!res.ok) {
+          console.error(`[v0] Badge API error: ${res.status}`)
+          setScans([])
+          setLoading(false)
+          return
         }
+        const data = await res.json()
+        setScans(Array.isArray(data) ? data : [])
+      } catch (err) {
+        console.error("[v0] Failed to fetch badge scans:", err)
+        setScans([])
+      } finally {
         setLoading(false)
-      })
-      .catch(() => setLoading(false))
+      }
+    }
+    fetchBadgeScans()
   }, [])
 
   async function handleSelect(scan: ScanEntry) {
