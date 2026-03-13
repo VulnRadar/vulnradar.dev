@@ -1,7 +1,7 @@
 "use client"
 
 import React, { useState, useEffect, useCallback } from "react"
-import { X, ExternalLink, AlertCircle, CheckCircle2, AlertTriangle, Info } from "lucide-react"
+import { X, ExternalLink, AlertCircle, CheckCircle2, AlertTriangle, Info, Megaphone } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 
@@ -52,36 +52,46 @@ function dismissNotification(cookieId: string, durationHours?: number | null): v
   setCookie(`dismissed_${cookieId}`, "1", durationHours)
 }
 
-const variantStyles: Record<string, { bg: string; border: string; text: string; icon: React.ReactNode }> = {
+const variantConfig = {
   info: {
-    bg: "bg-blue-50 dark:bg-blue-950",
-    border: "border-blue-200 dark:border-blue-800",
-    text: "text-blue-900 dark:text-blue-100",
-    icon: <Info className="h-5 w-5 text-blue-600 dark:text-blue-400" />,
+    gradient: "from-blue-500/20 via-blue-500/10 to-transparent",
+    iconBg: "bg-blue-500/20",
+    iconColor: "text-blue-400",
+    borderColor: "border-blue-500/30",
+    accentColor: "text-blue-400",
+    icon: Info,
   },
   success: {
-    bg: "bg-emerald-50 dark:bg-emerald-950",
-    border: "border-emerald-200 dark:border-emerald-800",
-    text: "text-emerald-900 dark:text-emerald-100",
-    icon: <CheckCircle2 className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />,
+    gradient: "from-emerald-500/20 via-emerald-500/10 to-transparent",
+    iconBg: "bg-emerald-500/20",
+    iconColor: "text-emerald-400",
+    borderColor: "border-emerald-500/30",
+    accentColor: "text-emerald-400",
+    icon: CheckCircle2,
   },
   warning: {
-    bg: "bg-amber-50 dark:bg-amber-950",
-    border: "border-amber-200 dark:border-amber-800",
-    text: "text-amber-900 dark:text-amber-100",
-    icon: <AlertTriangle className="h-5 w-5 text-amber-600 dark:text-amber-400" />,
+    gradient: "from-amber-500/20 via-amber-500/10 to-transparent",
+    iconBg: "bg-amber-500/20",
+    iconColor: "text-amber-400",
+    borderColor: "border-amber-500/30",
+    accentColor: "text-amber-400",
+    icon: AlertTriangle,
   },
   error: {
-    bg: "bg-red-50 dark:bg-red-950",
-    border: "border-red-200 dark:border-red-800",
-    text: "text-red-900 dark:text-red-100",
-    icon: <AlertCircle className="h-5 w-5 text-red-600 dark:text-red-400" />,
+    gradient: "from-red-500/20 via-red-500/10 to-transparent",
+    iconBg: "bg-red-500/20",
+    iconColor: "text-red-400",
+    borderColor: "border-red-500/30",
+    accentColor: "text-red-400",
+    icon: AlertCircle,
   },
 }
 
+// Banner - full width at top of page
 export function SiteBanner({ notification }: { notification: Notification }) {
   const [dismissed, setDismissed] = useState(() => isNotificationDismissed(notification.cookie_id))
-  const style = variantStyles[notification.variant]
+  const config = variantConfig[notification.variant]
+  const Icon = config.icon
 
   const handleDismiss = useCallback(() => {
     dismissNotification(notification.cookie_id, notification.dismiss_duration_hours)
@@ -91,43 +101,48 @@ export function SiteBanner({ notification }: { notification: Notification }) {
   if (dismissed) return null
 
   return (
-    <div className={cn("border-b", style.bg, style.border, style.text)}>
-      <div className="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between gap-4">
-        <div className="flex items-center gap-3 flex-1">
-          {style.icon}
-          <div className="flex-1">
-            {notification.title && <h3 className="font-semibold text-sm">{notification.title}</h3>}
-            <p className="text-sm opacity-90">{notification.message}</p>
+    <div className={cn(
+      "relative overflow-hidden border-b bg-card/80 backdrop-blur-sm",
+      config.borderColor
+    )}>
+      {/* Gradient accent */}
+      <div className={cn("absolute inset-0 bg-gradient-to-r", config.gradient)} />
+      
+      <div className="relative max-w-7xl mx-auto px-4 py-3 flex items-center justify-between gap-4">
+        <div className="flex items-center gap-3 flex-1 min-w-0">
+          <div className={cn("flex-shrink-0 p-2 rounded-lg", config.iconBg)}>
+            <Megaphone className={cn("h-4 w-4", config.iconColor)} />
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              {notification.title && (
+                <span className="font-semibold text-sm text-foreground">{notification.title}</span>
+              )}
+              <span className="text-sm text-muted-foreground">{notification.message}</span>
+            </div>
           </div>
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
           {notification.action_url && (
-            <Button
-              size="sm"
-              variant="ghost"
-              asChild
-              className={style.text}
-            >
+            <Button size="sm" variant="ghost" asChild className={cn("h-8 text-xs font-medium", config.accentColor)}>
               <a
                 href={notification.action_url}
                 target={notification.action_external ? "_blank" : "_self"}
                 rel={notification.action_external ? "noopener noreferrer" : undefined}
-                className="flex items-center gap-1"
+                className="flex items-center gap-1.5"
               >
-                {notification.action_label}
+                {notification.action_label || "Learn more"}
                 {notification.action_external && <ExternalLink className="h-3 w-3" />}
               </a>
             </Button>
           )}
           {notification.is_dismissible && (
-            <Button
-              size="sm"
-              variant="ghost"
+            <button
               onClick={handleDismiss}
-              className={style.text}
+              className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
             >
               <X className="h-4 w-4" />
-            </Button>
+            </button>
           )}
         </div>
       </div>
@@ -135,8 +150,10 @@ export function SiteBanner({ notification }: { notification: Notification }) {
   )
 }
 
+// Modal - centered overlay with glassmorphism
 export function SiteModal({ notification, onClose }: { notification: Notification; onClose: () => void }) {
-  const style = variantStyles[notification.variant]
+  const config = variantConfig[notification.variant]
+  const Icon = config.icon
 
   const handleClose = useCallback(() => {
     if (notification.is_dismissible) {
@@ -146,38 +163,67 @@ export function SiteModal({ notification, onClose }: { notification: Notificatio
   }, [notification.cookie_id, notification.dismiss_duration_hours, notification.is_dismissible, onClose])
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-      <div className={cn("bg-background border rounded-lg shadow-lg max-w-md w-full mx-4", style.border)}>
-        <div className={cn("p-6", style.bg)}>
-          <div className="flex items-start gap-3 mb-4">
-            {style.icon}
-            <div className="flex-1">
-              {notification.title && <h2 className="font-bold text-lg">{notification.title}</h2>}
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      {/* Backdrop */}
+      <div 
+        className="absolute inset-0 bg-background/80 backdrop-blur-sm"
+        onClick={notification.is_dismissible ? handleClose : undefined}
+      />
+      
+      {/* Modal */}
+      <div className={cn(
+        "relative w-full max-w-md rounded-2xl border bg-card/95 backdrop-blur-xl shadow-2xl overflow-hidden",
+        config.borderColor
+      )}>
+        {/* Gradient header accent */}
+        <div className={cn("absolute top-0 left-0 right-0 h-32 bg-gradient-to-b opacity-50", config.gradient)} />
+        
+        <div className="relative p-6">
+          {/* Header */}
+          <div className="flex items-start gap-4 mb-4">
+            <div className={cn("flex-shrink-0 p-3 rounded-xl", config.iconBg)}>
+              <Icon className={cn("h-6 w-6", config.iconColor)} />
+            </div>
+            <div className="flex-1 min-w-0 pt-1">
+              {notification.title && (
+                <h2 className="text-lg font-semibold text-foreground">{notification.title}</h2>
+              )}
             </div>
             {notification.is_dismissible && (
-              <button onClick={handleClose} className="text-muted-foreground hover:text-foreground">
+              <button 
+                onClick={handleClose} 
+                className="flex-shrink-0 p-2 -m-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+              >
                 <X className="h-5 w-5" />
               </button>
             )}
           </div>
-          <p className="text-sm text-foreground mb-6">{notification.message}</p>
-          <div className="flex gap-2 justify-end">
+          
+          {/* Content */}
+          <p className="text-sm text-muted-foreground leading-relaxed mb-6 pl-[52px]">
+            {notification.message}
+          </p>
+          
+          {/* Actions */}
+          <div className="flex items-center justify-end gap-3 pl-[52px]">
+            {notification.is_dismissible && (
+              <Button variant="ghost" size="sm" onClick={handleClose} className="h-9">
+                Dismiss
+              </Button>
+            )}
             {notification.action_url && (
-              <Button asChild>
+              <Button size="sm" asChild className="h-9">
                 <a
                   href={notification.action_url}
                   target={notification.action_external ? "_blank" : "_self"}
                   rel={notification.action_external ? "noopener noreferrer" : undefined}
-                  className="flex items-center gap-1"
+                  className="flex items-center gap-1.5"
                 >
-                  {notification.action_label}
-                  {notification.action_external && <ExternalLink className="h-4 w-4" />}
+                  {notification.action_label || "Learn more"}
+                  {notification.action_external && <ExternalLink className="h-3.5 w-3.5" />}
                 </a>
               </Button>
             )}
-            <Button variant="outline" onClick={handleClose}>
-              Close
-            </Button>
           </div>
         </div>
       </div>
@@ -185,11 +231,13 @@ export function SiteModal({ notification, onClose }: { notification: Notificatio
   )
 }
 
-// Toast notification component
+// Toast - sleek notification in corner
 export function SiteToast({ notification, onDismiss }: { notification: Notification; onDismiss: () => void }) {
   const [dismissed, setDismissed] = useState(() => isNotificationDismissed(notification.cookie_id))
   const [exiting, setExiting] = useState(false)
-  const style = variantStyles[notification.variant]
+  const [progress, setProgress] = useState(100)
+  const config = variantConfig[notification.variant]
+  const Icon = config.icon
 
   const handleDismiss = useCallback(() => {
     setExiting(true)
@@ -200,11 +248,23 @@ export function SiteToast({ notification, onDismiss }: { notification: Notificat
     }, 200)
   }, [notification.cookie_id, notification.dismiss_duration_hours, onDismiss])
 
-  // Auto-dismiss after 8 seconds if dismissible
+  // Auto-dismiss with progress bar
   useEffect(() => {
-    if (notification.is_dismissible) {
-      const timer = setTimeout(handleDismiss, 8000)
-      return () => clearTimeout(timer)
+    if (!notification.is_dismissible) return
+    
+    const duration = 8000
+    const interval = 50
+    const decrement = (interval / duration) * 100
+    
+    const progressTimer = setInterval(() => {
+      setProgress(prev => Math.max(0, prev - decrement))
+    }, interval)
+    
+    const dismissTimer = setTimeout(handleDismiss, duration)
+    
+    return () => {
+      clearInterval(progressTimer)
+      clearTimeout(dismissTimer)
     }
   }, [notification.is_dismissible, handleDismiss])
 
@@ -213,25 +273,40 @@ export function SiteToast({ notification, onDismiss }: { notification: Notificat
   return (
     <div 
       className={cn(
-        "pointer-events-auto w-full max-w-sm rounded-lg border shadow-lg transition-all duration-200",
-        style.bg, style.border, style.text,
-        exiting ? "opacity-0 translate-x-4" : "opacity-100 translate-x-0"
+        "pointer-events-auto w-full max-w-sm rounded-xl border bg-card/95 backdrop-blur-xl shadow-2xl overflow-hidden transition-all duration-300",
+        config.borderColor,
+        exiting ? "opacity-0 translate-x-8 scale-95" : "opacity-100 translate-x-0 scale-100"
       )}
     >
+      {/* Progress bar */}
+      {notification.is_dismissible && (
+        <div className="h-1 bg-muted/30">
+          <div 
+            className={cn("h-full transition-all duration-100 ease-linear", config.iconBg.replace('/20', ''))}
+            style={{ width: `${progress}%` }}
+          />
+        </div>
+      )}
+      
       <div className="p-4">
         <div className="flex items-start gap-3">
-          <div className="flex-shrink-0">{style.icon}</div>
-          <div className="flex-1 min-w-0">
+          <div className={cn("flex-shrink-0 p-2 rounded-lg", config.iconBg)}>
+            <Icon className={cn("h-4 w-4", config.iconColor)} />
+          </div>
+          <div className="flex-1 min-w-0 pt-0.5">
             {notification.title && (
-              <p className="text-sm font-semibold">{notification.title}</p>
+              <p className="text-sm font-semibold text-foreground mb-0.5">{notification.title}</p>
             )}
-            <p className="text-sm opacity-90 mt-0.5">{notification.message}</p>
+            <p className="text-sm text-muted-foreground leading-relaxed">{notification.message}</p>
             {notification.action_url && (
               <a
                 href={notification.action_url}
                 target={notification.action_external ? "_blank" : "_self"}
                 rel={notification.action_external ? "noopener noreferrer" : undefined}
-                className="inline-flex items-center gap-1 text-sm font-medium mt-2 underline-offset-2 hover:underline"
+                className={cn(
+                  "inline-flex items-center gap-1 text-sm font-medium mt-2 hover:underline underline-offset-2",
+                  config.accentColor
+                )}
               >
                 {notification.action_label || "Learn more"}
                 {notification.action_external && <ExternalLink className="h-3 w-3" />}
@@ -241,7 +316,7 @@ export function SiteToast({ notification, onDismiss }: { notification: Notificat
           {notification.is_dismissible && (
             <button
               onClick={handleDismiss}
-              className="flex-shrink-0 rounded p-1 hover:bg-black/10 dark:hover:bg-white/10 transition-colors"
+              className="flex-shrink-0 p-1.5 -m-1 rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
             >
               <X className="h-4 w-4" />
             </button>
@@ -334,30 +409,24 @@ export function SiteNotificationsWrapper() {
   useEffect(() => {
     const fetchNotifications = async () => {
       try {
-        console.log("[v0] SiteNotificationsWrapper: Fetching notifications...")
         const res = await fetch("/api/v2/notifications/active")
-        console.log("[v0] SiteNotificationsWrapper: Response status:", res.status)
         if (res.ok) {
           const data = await res.json()
-          console.log("[v0] SiteNotificationsWrapper: Raw data:", data)
           // API returns array directly, not { notifications: [...] }
           const allNotifs = Array.isArray(data) ? data : (data.notifications || [])
           // Filter to only banner, modal, toast types (bell is handled by NotificationCenter)
           const siteNotifs = allNotifs.filter(
             (n: Notification) => n.type === "banner" || n.type === "modal" || n.type === "toast"
           )
-          console.log("[v0] SiteNotificationsWrapper: Filtered site notifs:", siteNotifs)
           setNotifications(siteNotifs)
         }
-      } catch (err) {
-        console.error("[v0] SiteNotificationsWrapper: Error fetching:", err)
+      } catch {
+        // Silent fail
       }
     }
 
     fetchNotifications()
   }, [])
-
-  console.log("[v0] SiteNotificationsWrapper: Current notifications state:", notifications)
 
   if (notifications.length === 0) return null
 
