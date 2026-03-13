@@ -6,28 +6,24 @@ CREATE TABLE IF NOT EXISTS staff_activity (
   id SERIAL PRIMARY KEY,
   user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   last_heartbeat TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
-  is_active BOOLEAN GENERATED ALWAYS AS (
-    EXTRACT(EPOCH FROM (NOW() - last_heartbeat)) < 120
-  ) STORED,
   current_section VARCHAR(50),
   ip_address TEXT,
   user_agent TEXT,
   created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
   UNIQUE(user_id)
 );
 
--- Index for quick lookups of active staff
-CREATE INDEX IF NOT EXISTS idx_staff_activity_active ON staff_activity(is_active, last_heartbeat DESC)
-WHERE is_active = true;
+-- Index for quick lookups of staff activity by user and timestamp
+CREATE INDEX IF NOT EXISTS idx_staff_activity_user_heartbeat ON staff_activity(user_id, last_heartbeat DESC);
 
--- Index for staff member activity history
-CREATE INDEX IF NOT EXISTS idx_staff_activity_user ON staff_activity(user_id, last_heartbeat DESC);
+-- Index for getting all recent activity
+CREATE INDEX IF NOT EXISTS idx_staff_activity_heartbeat ON staff_activity(last_heartbeat DESC);
 
--- Function to clean up old activity records (older than 30 days with no recent heartbeat)
+-- Function to clean up old activity records (older than 30 days)
 CREATE OR REPLACE FUNCTION cleanup_old_staff_activity() RETURNS void AS $$
 BEGIN
   DELETE FROM staff_activity
-  WHERE last_heartbeat < NOW() - INTERVAL '30 days'
-    AND NOT is_active;
+  WHERE last_heartbeat < NOW() - INTERVAL '30 days';
 END;
 $$ LANGUAGE plpgsql;

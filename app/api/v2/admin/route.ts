@@ -129,8 +129,15 @@ export async function GET(request: NextRequest) {
         (SELECT al.action FROM admin_audit_log al WHERE al.admin_id = u.id ORDER BY al.created_at DESC LIMIT 1) as last_action_type,
         (SELECT s.ip_address FROM sessions s WHERE s.user_id = u.id ORDER BY s.created_at DESC LIMIT 1) as last_ip,
         (SELECT COUNT(*) FROM admin_audit_log al WHERE al.admin_id = u.id)::int as total_actions,
-        (SELECT COUNT(*) FROM admin_audit_log al WHERE al.admin_id = u.id AND al.created_at > NOW() - INTERVAL '24 hours')::int as actions_24h
+        (SELECT COUNT(*) FROM admin_audit_log al WHERE al.admin_id = u.id AND al.created_at > NOW() - INTERVAL '24 hours')::int as actions_24h,
+        -- Activity tracking fields
+        sa.last_heartbeat,
+        sa.current_section,
+        EXTRACT(EPOCH FROM (NOW() - COALESCE(sa.last_heartbeat, NOW())))::int as seconds_since_heartbeat,
+        CASE WHEN EXTRACT(EPOCH FROM (NOW() - COALESCE(sa.last_heartbeat, NOW()))) < 120 THEN true ELSE false END as is_active,
+        (SELECT COUNT(*) FROM admin_audit_log al WHERE al.admin_id = u.id AND al.created_at > NOW() - INTERVAL '5 minutes')::int as recent_actions
       FROM users u
+      LEFT JOIN staff_activity sa ON sa.user_id = u.id
       WHERE u.role IN ('admin', 'moderator', 'support')
       ORDER BY
         CASE u.role WHEN 'admin' THEN 0 WHEN 'moderator' THEN 1 WHEN 'support' THEN 2 END,
