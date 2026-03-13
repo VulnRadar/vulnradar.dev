@@ -58,12 +58,12 @@ html {
     --popover-foreground: 220 20% 10%;
     --primary: 190 90% 42%;
     --primary-foreground: 0 0% 100%;
-    --secondary: 214 25% 92%;
-    --secondary-foreground: 214 35% 15%;
-    --muted: 214 30% 90%;
+    --secondary: 220 10% 93%;
+    --secondary-foreground: 220 15% 15%;
+    --muted: 220 10% 92%;
     --muted-foreground: 220 10% 46%;
-    --accent: 214 35% 78%;
-    --accent-foreground: 214 40% 14%;
+    --accent: 220 10% 88%;
+    --accent-foreground: 220 15% 12%;
     --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 100%;
     --border: 220 15% 88%;
@@ -104,12 +104,12 @@ html {
     --popover-foreground: 210 20% 95%;
     --primary: 190 90% 50%;
     --primary-foreground: 224 20% 6%;
-    --secondary: 214 25% 14%;
-    --secondary-foreground: 210 25% 92%;
-    --muted: 214 25% 16%;
-    --muted-foreground: 215 15% 55%;
-    --accent: 214 30% 20%;
-    --accent-foreground: 210 20% 90%;
+    --secondary: 220 10% 14%;
+    --secondary-foreground: 220 10% 92%;
+    --muted: 220 10% 16%;
+    --muted-foreground: 220 8% 55%;
+    --accent: 220 8% 22%;
+    --accent-foreground: 220 10% 92%;
     --destructive: 0 72% 50%;
     --destructive-foreground: 0 0% 100%;
     --border: 224 15% 16%;
@@ -207,21 +207,21 @@ html {
     @apply outline-none ring-2 ring-ring ring-offset-2 ring-offset-background;
   }
 
-  /* Selection - dark navy to match accent hover surfaces */
+  /* Selection - neutral gray for consistent highlight */
   ::selection {
-    background-color: hsl(214 35% 40% / 0.35);
+    background-color: hsl(220 10% 50% / 0.30);
     color: hsl(var(--foreground));
   }
   ::-moz-selection {
-    background-color: hsl(214 35% 40% / 0.35);
+    background-color: hsl(220 10% 50% / 0.30);
     color: hsl(var(--foreground));
   }
   .dark ::selection {
-    background-color: hsl(214 30% 55% / 0.25);
+    background-color: hsl(220 8% 60% / 0.25);
     color: hsl(var(--foreground));
   }
   .dark ::-moz-selection {
-    background-color: hsl(214 30% 55% / 0.25);
+    background-color: hsl(220 8% 60% / 0.25);
     color: hsl(var(--foreground));
   }
 }
@@ -315,7 +315,7 @@ html {
 
 /**
  * Universal hover surface utilities
- * A standardized dark-blue hover that ensures text stays legible.
+ * A standardized neutral gray hover that ensures text stays legible.
  * Use .hover-surface on any interactive element for consistent hover feedback.
  */
 .hover-surface {
@@ -324,14 +324,14 @@ html {
 .hover-surface:hover,
 .hover-surface:focus-visible,
 .hover-surface[data-highlighted] {
-  background-color: hsl(214 40% 88% / 0.9) !important;
-  color: hsl(214 40% 14%) !important;
+  background-color: hsl(220 10% 88% / 0.95) !important;
+  color: hsl(220 15% 12%) !important;
 }
 .dark .hover-surface:hover,
 .dark .hover-surface:focus-visible,
 .dark .hover-surface[data-highlighted] {
-  background-color: hsl(214 30% 22% / 0.9) !important;
-  color: hsl(210 20% 92%) !important;
+  background-color: hsl(220 8% 24% / 0.95) !important;
+  color: hsl(220 10% 92%) !important;
 }
 
 /* Alternative: a subtler hover that doesn't override text color */
@@ -341,72 +341,71 @@ html {
 .hover-surface-subtle:hover,
 .hover-surface-subtle:focus-visible,
 .hover-surface-subtle[data-highlighted] {
-  background-color: hsl(214 35% 85% / 0.5);
+  background-color: hsl(220 10% 85% / 0.5);
 }
 .dark .hover-surface-subtle:hover,
 .dark .hover-surface-subtle:focus-visible,
 .dark .hover-surface-subtle[data-highlighted] {
-  background-color: hsl(214 30% 25% / 0.5);
+  background-color: hsl(220 8% 28% / 0.5);
 }
 
 /**
  * Global Radix UI menu item hover styling
- * Applies dark-blue hover to all dropdown/context/command menu items
+ * Applies neutral gray hover to all dropdown/context/command menu items
  * ensuring consistent UX across all menus and popovers.
  */
 [data-radix-menu-content] [role="menuitem"][data-highlighted],
 [data-radix-menu-content] [role="menuitemcheckbox"][data-highlighted],
 [data-radix-menu-content] [role="menuitemradio"][data-highlighted],
 [data-radix-collection-item][data-highlighted] {
-  background-color: hsl(214 40% 88% / 0.95);
-  color: hsl(214 40% 12%);
+  background-color: hsl(220 10% 88% / 0.95);
+  color: hsl(220 15% 10%);
 }
 .dark [data-radix-menu-content] [role="menuitem"][data-highlighted],
 .dark [data-radix-menu-content] [role="menuitemcheckbox"][data-highlighted],
 .dark [data-radix-menu-content] [role="menuitemradio"][data-highlighted],
 .dark [data-radix-collection-item][data-highlighted] {
-  background-color: hsl(214 30% 22% / 0.95);
-  color: hsl(210 20% 92%);
+  background-color: hsl(220 8% 24% / 0.95);
+  color: hsl(220 10% 92%);
 }
 
 /**
  * Scanner selection states
  * Used for protocol picker, scanner category toggles, and any
  * interactive scanner element that has a selected/active state.
- * Deliberately darker than --primary so selected items contrast
- * clearly against the background without the bright-cyan flare.
+ * Uses neutral gray for consistent hover experience.
  * Uses !important to override shadcn's focus:bg-accent styles.
  */
 .scanner-selected,
 .scanner-selected:focus,
 .scanner-selected[data-highlighted] {
-  background-color: hsl(210 55% 22% / 0.55) !important;
+  background-color: hsl(220 10% 75% / 0.55) !important;
 }
 .dark .scanner-selected,
 .dark .scanner-selected:focus,
 .dark .scanner-selected[data-highlighted] {
-  background-color: hsl(210 45% 28% / 0.45) !important;
+  background-color: hsl(220 8% 30% / 0.55) !important;
 }
 .scanner-selected-hover:hover,
 .scanner-selected-hover:focus,
 .scanner-selected-hover[data-highlighted] {
-  background-color: hsl(210 55% 22% / 0.70) !important;
+  background-color: hsl(220 10% 70% / 0.70) !important;
 }
 .dark .scanner-selected-hover:hover,
 .dark .scanner-selected-hover:focus,
 .dark .scanner-selected-hover[data-highlighted] {
-  background-color: hsl(210 45% 28% / 0.60) !important;
+  background-color: hsl(220 8% 35% / 0.65) !important;
 }
-/* Unselected items: muted hover so it doesn't compete */
+/* Unselected items: subtle gray hover */
 .scanner-hover:hover,
 .scanner-hover:focus,
 .scanner-hover[data-highlighted] {
-  background-color: hsl(220 15% 50% / 0.12) !important;
+  background-color: hsl(220 10% 50% / 0.12) !important;
 }
 .dark .scanner-hover:hover,
 .dark .scanner-hover:focus,
 .dark .scanner-hover[data-highlighted] {
-  background-color: hsl(220 15% 80% / 0.08) !important;
+  background-color: hsl(220 8% 70% / 0.10) !important;
 }
 
 
