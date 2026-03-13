@@ -1158,7 +1158,7 @@ function AdminContent() {
                                 <UserAvatar name={admin.name} email={admin.email} avatarUrl={admin.avatar_url} />
                                 <div className={cn(
                                   "absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-card",
-                                  isActive ? "bg-blue-500 animate-pulse" : isRecentlyActive ? "bg-emerald-500" : "bg-muted-foreground/40"
+                                  isActive ? "bg-primary animate-pulse" : isRecentlyActive ? "bg-emerald-500" : "bg-muted-foreground/40"
                                 )} />
                               </div>
 
@@ -1170,7 +1170,7 @@ function AdminContent() {
                                   </Badge>
                                   <Badge className={cn("text-[10px] px-1.5 font-medium flex items-center gap-1",
                                     isActive
-                                      ? "bg-blue-500/10 text-blue-500 border-blue-500/20"
+                                      ? "bg-accent text-accent-foreground border-accent/30"
                                       : isRecentlyActive
                                       ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/20"
                                       : "bg-muted text-muted-foreground border-border"
@@ -1187,7 +1187,7 @@ function AdminContent() {
                                 {/* Activity stats row */}
                                 <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-2.5">
                                   {admin.current_section && isActive && (
-                                    <span className="flex items-center gap-1 text-[11px] text-blue-500 font-medium">
+                                    <span className="flex items-center gap-1 text-[11px] text-accent-foreground font-medium">
                                       <Monitor className="h-3 w-3" />
                                       Viewing {admin.current_section}
                                     </span>
