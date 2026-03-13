@@ -1984,7 +1984,7 @@ function UserDetailPanel({
                     <Plus className="h-3.5 w-3.5" /> Create Badge
                   </Button>
                   {hasStaffPermission(callerRole, STAFF_PERMISSIONS.DELETE_BADGE) && allBadges.length > 0 && (
-                    <Button size="sm" variant="outline" className="h-7 text-xs gap-1 bg-transparent text-destructive border-destructive/30 hover:bg-destructive/10 flex-1" onClick={() => setShowManageBadges(true)}>
+                    <Button size="sm" variant="outline" className="h-7 text-xs gap-1 bg-transparent text-destructive dark:text-red-400 border-destructive/30 hover:bg-destructive/10 flex-1" onClick={() => setShowManageBadges(true)}>
                       <Trash2 className="h-3.5 w-3.5" /> Delete Badges
                     </Button>
                   )}
@@ -2586,7 +2586,7 @@ function GiftSubscriptionModal({
                 <Button
                   variant="outline"
                   size="sm"
-                  className="w-full h-8 text-xs text-destructive border-destructive/30 hover:bg-destructive/5 hover:border-destructive/50 gap-1.5"
+                  className="w-full h-8 text-xs text-destructive dark:text-red-400 border-destructive/30 hover:bg-destructive/5 hover:border-destructive/50 gap-1.5"
                   onClick={() => setConfirmRevoke(true)}
                   disabled={isLoading}
                 >
