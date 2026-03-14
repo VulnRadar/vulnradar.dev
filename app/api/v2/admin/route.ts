@@ -240,7 +240,7 @@ export async function PATCH(request: NextRequest) {
   if (!session) return NextResponse.json({ error: ERROR_MESSAGES.FORBIDDEN }, { status: 403 })
 
   const ip = await getClientIP()
-  const { action, userId, role: newRole, badgeId, name: badgeName, displayName, color: badgeColor, name, email, plan, giftPlan, giftEndDate, note } = await request.json()
+  const { action, userId, role: newRole, badgeId, name: badgeName, displayName, color: badgeColor, name, email, plan, giftPlan, giftEndDate, note, noteId } = await request.json()
 
   if (!userId || !action) {
     return NextResponse.json({ error: "Missing action or userId" }, { status: 400 })
@@ -553,6 +553,29 @@ export async function PATCH(request: NextRequest) {
         VALUES ($1, $2, $3, NOW())
       `, [userId, session.userId, safeNote])
       await logAction(session.userId, userId, "add_note", `Added admin note to ${targetUser.email}`, ip)
+      return NextResponse.json({ success: true })
+    }
+
+    case "edit_note": {
+      if (!noteId || !note || typeof note !== "string") return NextResponse.json({ error: "noteId and note required" }, { status: 400 })
+      const safeNote = note.trim().slice(0, 1000)
+      const ownerCheck = await pool.query("SELECT admin_id FROM admin_user_notes WHERE id = $1", [noteId])
+      if (!ownerCheck.rows[0]) return NextResponse.json({ error: "Note not found" }, { status: 404 })
+      const isOwner = ownerCheck.rows[0].admin_id === session.userId
+      if (!isOwner && callerRole !== "admin") return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+      await pool.query("UPDATE admin_user_notes SET note = $1 WHERE id = $2", [safeNote, noteId])
+      await logAction(session.userId, userId, "edit_note", `Edited admin note on ${targetUser.email}`, ip)
+      return NextResponse.json({ success: true })
+    }
+
+    case "delete_note": {
+      if (!noteId) return NextResponse.json({ error: "noteId required" }, { status: 400 })
+      const ownerCheck = await pool.query("SELECT admin_id FROM admin_user_notes WHERE id = $1", [noteId])
+      if (!ownerCheck.rows[0]) return NextResponse.json({ error: "Note not found" }, { status: 404 })
+      const isOwner = ownerCheck.rows[0].admin_id === session.userId
+      if (!isOwner && callerRole !== "admin") return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+      await pool.query("DELETE FROM admin_user_notes WHERE id = $1", [noteId])
+      await logAction(session.userId, userId, "delete_note", `Deleted admin note on ${targetUser.email}`, ip)
       return NextResponse.json({ success: true })
     }
 

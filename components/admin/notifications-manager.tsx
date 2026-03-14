@@ -363,9 +363,9 @@ export function NotificationsManager() {
 
       {/* Create / Edit Dialog */}
       <Dialog open={isCreating} onOpenChange={(open) => !open && closeDialog()} modal={true}>
-        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto gap-0 p-0 my-4">
+        <DialogContent className="w-full max-w-2xl max-h-[95dvh] sm:max-h-[85vh] overflow-y-auto gap-0 p-0 my-0 sm:my-4 rounded-t-xl sm:rounded-xl mx-0 sm:mx-auto fixed bottom-0 sm:bottom-auto sm:relative">
           {/* Dialog header with variant color stripe */}
-          <div className={cn("px-6 py-5 border-b border-border rounded-t-lg", activeVariant.bg)}>
+          <div className={cn("px-5 py-4 border-b border-border rounded-t-xl", activeVariant.bg)}>
             <DialogHeader>
               <DialogTitle className={cn("flex items-center gap-2 text-base", activeVariant.text)}>
                 <activeVariant.icon className="h-5 w-5" />
@@ -374,7 +374,7 @@ export function NotificationsManager() {
             </DialogHeader>
           </div>
 
-          <div className="p-6 space-y-6">
+          <div className="p-4 sm:p-6 space-y-5">
             {/* Content */}
             <div>
               <SectionHeader icon={Megaphone} label="Content" />
@@ -393,11 +393,11 @@ export function NotificationsManager() {
             {/* Display */}
             <div>
               <SectionHeader icon={Layers} label="Display" />
-              <div className="grid grid-cols-2 gap-3 p-4 rounded-xl border border-border bg-muted/20">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-4 rounded-xl border border-border bg-muted/20">
                 <div className="space-y-1.5">
                   <Label className="text-xs font-medium">Type</Label>
                   <Select value={formData.type} onValueChange={(v) => set({ type: v as AdminNotification["type"] })}>
-                    <SelectTrigger className="bg-background h-9"><SelectValue /></SelectTrigger>
+                    <SelectTrigger className="bg-background h-10"><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="bell">Bell Notification</SelectItem>
                       <SelectItem value="banner">Banner</SelectItem>
@@ -409,7 +409,7 @@ export function NotificationsManager() {
                 <div className="space-y-1.5">
                   <Label className="text-xs font-medium">Variant</Label>
                   <Select value={formData.variant} onValueChange={(v) => set({ variant: v as AdminNotification["variant"] })}>
-                    <SelectTrigger className={cn("h-9 font-medium border", activeVariant.bg, activeVariant.text, activeVariant.border)}>
+                    <SelectTrigger className={cn("h-10 font-medium border", activeVariant.bg, activeVariant.text, activeVariant.border)}>
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -431,11 +431,11 @@ export function NotificationsManager() {
             <div>
               <SectionHeader icon={Users} label="Targeting" />
               <div className="space-y-3 p-4 rounded-xl border border-border bg-muted/20">
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div className="space-y-1.5">
                     <Label className="text-xs font-medium">Audience</Label>
                     <Select value={formData.audience} onValueChange={(v) => set({ audience: v as AdminNotification["audience"] })}>
-                      <SelectTrigger className="bg-background h-9"><SelectValue /></SelectTrigger>
+                      <SelectTrigger className="bg-background h-10"><SelectValue /></SelectTrigger>
                       <SelectContent>
                         <SelectItem value="all">Everyone</SelectItem>
                         <SelectItem value="authenticated">Logged In Users</SelectItem>
@@ -447,12 +447,12 @@ export function NotificationsManager() {
                   </div>
                   <div className="space-y-1.5">
                     <Label htmlFor="priority" className="text-xs font-medium">Priority</Label>
-                    <Input id="priority" type="number" value={formData.priority} onChange={(e) => set({ priority: e.target.value })} placeholder="0 = default" className="bg-background h-9" />
+                    <Input id="priority" type="number" value={formData.priority} onChange={(e) => set({ priority: e.target.value })} placeholder="0 = default" className="bg-background h-10" />
                   </div>
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="path_pattern" className="text-xs font-medium">Page Filter <span className="text-muted-foreground font-normal">(optional)</span></Label>
-                  <Input id="path_pattern" value={formData.path_pattern} onChange={(e) => set({ path_pattern: e.target.value })} placeholder="/dashboard* — leave empty for all pages" className="bg-background h-9" />
+                  <Input id="path_pattern" value={formData.path_pattern} onChange={(e) => set({ path_pattern: e.target.value })} placeholder="/dashboard* — leave empty for all pages" className="bg-background h-10" />
                 </div>
               </div>
             </div>
@@ -461,30 +461,30 @@ export function NotificationsManager() {
             <div>
               <SectionHeader icon={Clock} label="Scheduling & Behavior" />
               <div className="space-y-4 p-4 rounded-xl border border-border bg-muted/20">
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div className="space-y-1.5">
                     <Label htmlFor="starts_at" className="text-xs font-medium">Starts At</Label>
-                    <Input id="starts_at" type="datetime-local" value={formData.starts_at} onChange={(e) => set({ starts_at: e.target.value })} className="bg-background h-9" />
+                    <Input id="starts_at" type="datetime-local" value={formData.starts_at} onChange={(e) => set({ starts_at: e.target.value })} className="bg-background h-10" />
                   </div>
                   <div className="space-y-1.5">
                     <Label htmlFor="ends_at" className="text-xs font-medium">Ends At <span className="text-muted-foreground font-normal">(optional)</span></Label>
-                    <Input id="ends_at" type="datetime-local" value={formData.ends_at} onChange={(e) => set({ ends_at: e.target.value })} className="bg-background h-9" />
+                    <Input id="ends_at" type="datetime-local" value={formData.ends_at} onChange={(e) => set({ ends_at: e.target.value })} className="bg-background h-10" />
                   </div>
                 </div>
-                <div className="flex items-center gap-6">
-                  <div className="flex items-center gap-2">
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="flex items-center gap-3 p-3 rounded-lg bg-background border border-border">
                     <Switch id="is_active" checked={formData.is_active} onCheckedChange={(v) => set({ is_active: v })} />
-                    <Label htmlFor="is_active" className="text-sm cursor-pointer">Active</Label>
+                    <Label htmlFor="is_active" className="text-sm cursor-pointer font-medium">Active</Label>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-3 p-3 rounded-lg bg-background border border-border">
                     <Switch id="is_dismissible" checked={formData.is_dismissible} onCheckedChange={(v) => set({ is_dismissible: v })} />
-                    <Label htmlFor="is_dismissible" className="text-sm cursor-pointer">Dismissible</Label>
+                    <Label htmlFor="is_dismissible" className="text-sm cursor-pointer font-medium">Dismissible</Label>
                   </div>
                 </div>
                 {formData.is_dismissible && (
                   <div className="space-y-1.5">
                     <Label htmlFor="dismiss_duration_hours" className="text-xs font-medium">Re-show after dismiss (hours)</Label>
-                    <Input id="dismiss_duration_hours" type="number" value={formData.dismiss_duration_hours} onChange={(e) => set({ dismiss_duration_hours: e.target.value })} placeholder="Leave empty for permanent dismiss" className="bg-background h-9" />
+                    <Input id="dismiss_duration_hours" type="number" value={formData.dismiss_duration_hours} onChange={(e) => set({ dismiss_duration_hours: e.target.value })} placeholder="Leave empty for permanent dismiss" className="bg-background h-10" />
                   </div>
                 )}
               </div>
@@ -494,32 +494,32 @@ export function NotificationsManager() {
             <div>
               <SectionHeader icon={ExternalLink} label="Action Button (optional)" />
               <div className="space-y-3 p-4 rounded-xl border border-border bg-muted/20">
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div className="space-y-1.5">
                     <Label className="text-xs font-medium">Button Label</Label>
-                    <Input value={formData.action_label} onChange={(e) => set({ action_label: e.target.value })} placeholder="e.g. Learn more" className="bg-background h-9" />
+                    <Input value={formData.action_label} onChange={(e) => set({ action_label: e.target.value })} placeholder="e.g. Learn more" className="bg-background h-10" />
                   </div>
                   <div className="space-y-1.5">
                     <Label className="text-xs font-medium">URL / Path</Label>
-                    <Input value={formData.action_url} onChange={(e) => set({ action_url: e.target.value })} placeholder="https:// or /path" className="bg-background h-9" />
+                    <Input value={formData.action_url} onChange={(e) => set({ action_url: e.target.value })} placeholder="https:// or /path" className="bg-background h-10" />
                   </div>
                 </div>
                 {formData.action_url && (
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-3 p-3 rounded-lg bg-background border border-border w-fit">
                     <Switch id="action_external" checked={formData.action_external} onCheckedChange={(v) => set({ action_external: v })} />
-                    <Label htmlFor="action_external" className="text-sm cursor-pointer">Open in new tab</Label>
+                    <Label htmlFor="action_external" className="text-sm cursor-pointer font-medium">Open in new tab</Label>
                   </div>
                 )}
               </div>
             </div>
           </div>
 
-          <DialogFooter className="px-6 py-4 border-t border-border bg-muted/20 rounded-b-lg">
-            <Button variant="outline" onClick={closeDialog}>Cancel</Button>
+          <DialogFooter className="flex-row px-4 sm:px-6 py-4 border-t border-border bg-muted/20 rounded-b-xl gap-2">
+            <Button variant="outline" onClick={closeDialog} className="flex-1 sm:flex-none">Cancel</Button>
             <Button
               onClick={handleSave}
               disabled={saving || !formData.title || !formData.message}
-              className={cn(activeVariant.bg, activeVariant.text, activeVariant.border, "border hover:opacity-90")}
+              className={cn(activeVariant.bg, activeVariant.text, activeVariant.border, "border hover:opacity-90 flex-1 sm:flex-none")}
             >
               {saving && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
               {editingNotification ? "Save Changes" : "Create Notification"}
