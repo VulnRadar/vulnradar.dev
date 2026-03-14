@@ -20,7 +20,13 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Not authorized as staff" }, { status: 403 })
     }
 
-    const { section } = await request.json()
+    let section = "dashboard"
+    try {
+      const body = await request.json()
+      if (body?.section) section = body.section
+    } catch {
+      // No body or invalid JSON - use default section
+    }
     const ip = await getClientIP()
     const userAgent = request.headers.get("user-agent") || "unknown"
 
