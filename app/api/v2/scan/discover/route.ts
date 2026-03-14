@@ -41,8 +41,8 @@ async function cacheSubdomains(domain: string, subdomains: DiscoveredSubdomain[]
   try {
     await pool.query(
       `INSERT INTO subdomain_cache (domain, subdomains, cached_at)
-       VALUES ($1, $2, NOW())
-       ON CONFLICT (domain) DO UPDATE SET subdomains = $2, cached_at = NOW()`,
+       VALUES ($1, $2::jsonb, NOW())
+       ON CONFLICT (domain) DO UPDATE SET subdomains = $2::jsonb, cached_at = NOW()`,
       [domain, JSON.stringify(subdomains)]
     )
   } catch {

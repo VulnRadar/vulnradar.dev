@@ -605,15 +605,17 @@ function HistoryPageContent() {
                       >
                         {scan.source === "api" ? "API" : "Web"}
                       </span>
-                      <a
-                        href={scan.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
+                      <button
+                        onClick={(e) => {
+                          e.preventDefault()
+                          e.stopPropagation()
+                          window.open(scan.url, "_blank", "noopener,noreferrer")
+                        }}
                         className="text-muted-foreground hover:text-primary shrink-0"
-                        onClick={(e) => e.stopPropagation()}
+                        title="Open in new tab"
                       >
                         <ExternalLink className="h-3 w-3" />
-                      </a>
+                      </button>
                     </div>
                     <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1">
                       <span className="text-xs text-muted-foreground">
