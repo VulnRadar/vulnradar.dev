@@ -1,5 +1,4 @@
 {
-  "version": "2.0.1",
   "description": "VulnRadar security check definitions. All check metadata lives here; detection logic lives in checks.ts.",
   "checks": [
     {
