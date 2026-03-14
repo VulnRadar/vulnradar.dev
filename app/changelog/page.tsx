@@ -73,7 +73,7 @@ const CHANGELOG = [
     version: "2.0.1",
     date: "March 14, 2026",
     title: "Detection Engine v2.0.1, Subdomain Caching & Share Modal",
-    highlights: false,
+    highlights: true,
     changes: [
       { icon: ShieldCheck, label: "Detection Engine v2.0.1", desc: "Major improvements to reduce false positives. CSP checks now skip framework sites (Next.js, Nuxt, Angular) that legitimately require unsafe-inline/eval. Fixed wildcard detection to not flag 'https:' as a wildcard. XXE and reflected input checks now skip code examples and documentation. CDN fallback check no longer flags analytics scripts like cloudflareinsights.com." },
       { icon: Globe, label: "Subdomain Discovery Caching", desc: "Subdomain results are now cached for 4 hours in the database to prevent rate limiting on external APIs. Shows cache status with time remaining until refresh, plus a 'Refresh Now' button to force-refresh if needed. Also expanded the discovery limit from 150 to 1000 subdomains." },
@@ -88,7 +88,7 @@ const CHANGELOG = [
     version: "2.0.0",
     date: "March 12, 2026",
     title: "Stripe Billing, Discord Integration, Admin Notifications & Design System Overhaul",
-    highlights: true,
+    highlights: false,
     changes: [
       { icon: Crown, label: "Stripe Billing Integration", desc: "Full Stripe Checkout integration with 4 subscription tiers: Free, Core Supporter ($5/mo), Pro Supporter ($10/mo), and Elite Supporter ($20/mo). Each tier unlocks higher scan limits. Billing portal for managing subscriptions, automatic webhook handling for subscription lifecycle events, and seamless upgrade/downgrade flows." },
       { icon: Globe, label: "Discord Account Linking", desc: "Link your Discord account to your VulnRadar profile for enhanced community features. OAuth2 flow with secure token storage, profile display showing Discord avatar and username, and one-click unlink option. Enables future Discord bot integrations and community verification." },
