@@ -184,9 +184,9 @@ function DashboardContent() {
         setResult(data)
       }
       const historyId = data.scanHistoryId || null
-      setScanHistoryId(historyId)
-      setScanNotes(DEFAULT_SCAN_NOTE)
-      setStatus("done")
+  setScanHistoryId(historyId)
+  setScanNotes(DEFAULT_SCAN_NOTE())
+  setStatus("done")
       
       // Update URL with scan ID for bookmarking/sharing
       if (historyId) {
@@ -198,7 +198,7 @@ function DashboardContent() {
         fetch(`${API.HISTORY}/${historyId}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ notes: DEFAULT_SCAN_NOTE }),
+          body: JSON.stringify({ notes: DEFAULT_SCAN_NOTE() }),
         }).catch(() => {})
       }
     } catch {

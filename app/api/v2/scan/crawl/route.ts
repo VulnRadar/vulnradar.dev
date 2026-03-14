@@ -288,14 +288,14 @@ export async function POST(request: NextRequest) {
   const scannedAt = new Date().toISOString()
 
   // Save EACH page as its own history entry (like bulk scan)
-  const { DEFAULT_SCAN_NOTE } = await import("@/lib/constants")
+  const DEFAULT_SCAN_NOTE_VALUE = (await import("@/lib/constants")).DEFAULT_SCAN_NOTE()
   const pageHistoryIds: Record<string, number> = {}
   for (const pr of pageResults) {
     try {
       const insertResult = await pool.query(
         `INSERT INTO scan_history (user_id, url, summary, findings, findings_count, duration, scanned_at, source, response_headers, notes)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id`,
-        [session.userId, pr.url, JSON.stringify(pr.summary), JSON.stringify(pr.findings), pr.summary.total, pr.duration, scannedAt, "deep-crawl", JSON.stringify(pr.responseHeaders), DEFAULT_SCAN_NOTE],
+        [session.userId, pr.url, JSON.stringify(pr.summary), JSON.stringify(pr.findings), pr.summary.total, pr.duration, scannedAt, "deep-crawl", JSON.stringify(pr.responseHeaders), DEFAULT_SCAN_NOTE_VALUE],
       )
       pageHistoryIds[pr.url] = insertResult.rows[0]?.id
     } catch (err) {

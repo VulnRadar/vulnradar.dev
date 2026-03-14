@@ -6,6 +6,7 @@
 // ============================================================================
 
 import { getConfig } from "./config"
+import { getVersionInfo } from "./hooks/useVersion"
 
 // Get config (loads from config.yaml or uses defaults)
 const config = getConfig()
@@ -16,15 +17,31 @@ const config = getConfig()
 
 export const APP_NAME = config.app.name
 export const APP_SLUG = config.app.slug
-export const APP_VERSION = config.app.version
-export const ENGINE_VERSION = config.app.engine_version
+// Versions are now fetched from /api/version and cached per instance
+// Use getVersionInfo() to get the actual versions from config.yaml
+export const APP_VERSION = "fetching..."
+export const ENGINE_VERSION = "fetching..."
 export const APP_DESCRIPTION = config.app.description
 export const TOTAL_CHECKS_LABEL = config.app.total_checks_label
 export const APP_URL = config.app.url
 export const APP_REPO = config.app.repo
 
-// Derived values
-export const DEFAULT_SCAN_NOTE = `${APP_NAME} v${APP_VERSION} (Detection Engine v${ENGINE_VERSION})`
+// Derived values - will be updated once versions are fetched
+let cachedScanNote = `${APP_NAME} v${APP_VERSION} (Detection Engine v${ENGINE_VERSION})`
+
+// Fetch and cache the actual versions
+getVersionInfo()
+  .then((versionInfo) => {
+    cachedScanNote = `${APP_NAME} v${versionInfo.current} (Detection Engine v${versionInfo.engine})`
+  })
+  .catch((err) => {
+    console.error("[v0] Failed to get version info:", err)
+  })
+
+export function DEFAULT_SCAN_NOTE() {
+  return cachedScanNote
+}
+
 export const VERSION_CHECK_URL = `https://api.github.com/repos/${APP_REPO}/releases/latest`
 export const RELEASES_URL = `https://github.com/${APP_REPO}/releases`
 
