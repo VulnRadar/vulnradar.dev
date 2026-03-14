@@ -5,50 +5,30 @@ import { readFileSync, existsSync } from "fs"
 import { join } from "path"
 
 // Read version from config.yaml at build time so it's available on the client
-function readVersionFromConfig() {
-  const configPath = join(process.cwd(), "config.yaml")
-  if (!existsSync(configPath)) {
-    console.error("⚠️  config.yaml not found - cannot determine version")
-    process.exit(1)
-  }
+const configPath = join(process.cwd(), "config.yaml")
+let version = "2.0.1"
+let engineVersion = "2.0.1"
+
+if (existsSync(configPath)) {
   try {
     const content = readFileSync(configPath, "utf-8")
     const versionMatch = content.match(/version:\s*["']?([^"'\s]+)["']?/)
     const engineMatch = content.match(/engine_version:\s*["']?([^"'\s]+)["']?/)
     
-    if (!versionMatch?.[1]) {
-      console.error("⚠️  app version not found in config.yaml")
-      process.exit(1)
-    }
-    if (!engineMatch?.[1]) {
-      console.error("⚠️  engine_version not found in config.yaml")
-      process.exit(1)
-    }
-    
-    return {
-      version: versionMatch[1],
-      engineVersion: engineMatch[1],
-    }
+    if (versionMatch?.[1]) version = versionMatch[1]
+    if (engineMatch?.[1]) engineVersion = engineMatch[1]
   } catch (err) {
-    console.error(`⚠️  Failed to read version from config.yaml: ${err.message}`)
-    process.exit(1)
+    console.warn(`⚠️  Could not read config.yaml, using defaults: ${err.message}`)
   }
-}
-
-let { version, engineVersion } = { version: undefined, engineVersion: undefined }
-try {
-  const versionInfo = readVersionFromConfig()
-  version = versionInfo.version
-  engineVersion = versionInfo.engineVersion
-} catch {
-  // Versions will be handled by env var fallback if available
+} else {
+  console.warn("⚠️  config.yaml not found, using default versions")
 }
 
 const nextConfig = {
-  env: version && engineVersion ? {
+  env: {
     NEXT_PUBLIC_APP_VERSION: version,
     NEXT_PUBLIC_ENGINE_VERSION: engineVersion,
-  } : {},
+  },
   output: "standalone",
   serverExternalPackages: ["fs", "path"],
   typescript: {
