@@ -15,11 +15,10 @@ import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { PUBLIC_PATHS } from "@/lib/public-paths"
 import { useAuth } from "@/components/auth-provider"
-import { STAFF_ROLES, APP_VERSION, APP_NAME } from "@/lib/constants"
+import { STAFF_ROLES, APP_VERSION, APP_NAME, VERSION_COOKIE_NAME } from "@/lib/constants"
 import { Sparkles } from "lucide-react"
 
 const STAFF_ROLE_VALUES = Object.values(STAFF_ROLES)
-const VERSION_COOKIE = "vr_last_seen_version"
 
 // ─── Cookie Helpers ──────────────────────────────────────────────
 
@@ -161,7 +160,7 @@ export function NotificationBell() {
 
   // Check if there's a new version (cookie-based)
   useEffect(() => {
-    const lastSeenVersion = getCookie(VERSION_COOKIE)
+    const lastSeenVersion = getCookie(VERSION_COOKIE_NAME)
     if (lastSeenVersion !== APP_VERSION) {
       // New version detected - show notification
       setShowVersionNotif(true)
@@ -232,7 +231,7 @@ export function NotificationBell() {
   }, [])
 
   const dismissVersionNotif = useCallback(() => {
-    setCookie(VERSION_COOKIE, APP_VERSION, 60 * 60 * 24 * 365) // 1 year
+    setCookie(VERSION_COOKIE_NAME, APP_VERSION, 60 * 60 * 24 * 365) // 1 year
     setShowVersionNotif(false)
   }, [])
 
