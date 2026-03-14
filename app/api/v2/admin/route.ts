@@ -240,7 +240,7 @@ export async function PATCH(request: NextRequest) {
   if (!session) return NextResponse.json({ error: ERROR_MESSAGES.FORBIDDEN }, { status: 403 })
 
   const ip = await getClientIP()
-  const { action, userId, role: newRole, badgeId, name: badgeName, displayName, color: badgeColor, name, email, plan, giftPlan, giftEndDate } = await request.json()
+  const { action, userId, role: newRole, badgeId, name: badgeName, displayName, color: badgeColor, name, email, plan, giftPlan, giftEndDate, note } = await request.json()
 
   if (!userId || !action) {
     return NextResponse.json({ error: "Missing action or userId" }, { status: 400 })
@@ -546,7 +546,6 @@ export async function PATCH(request: NextRequest) {
     }
 
     case "add_note": {
-      const { note } = await request.json()
       if (!note || typeof note !== "string") return NextResponse.json({ error: "note required" }, { status: 400 })
       const safeNote = note.trim().slice(0, 1000)
       await pool.query(`
