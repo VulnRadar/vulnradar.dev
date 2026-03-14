@@ -78,6 +78,7 @@ const CHANGELOG = [
       { icon: Share2, label: "Custom Share Modal", desc: "Replaced the native browser share with a custom YouTube-style share modal. Share scan results directly to X (Twitter), Facebook, LinkedIn, WhatsApp, or Email with one click. The modal includes a copy-to-clipboard link button with visual feedback. Works identically on both scan results and the Shares management page." },
       { icon: Bell, label: "Admin Notifications UI Overhaul", desc: "Completely redesigned the notification cards in the admin panel. New cleaner card layout with colored accent bar, improved badge styling using neutral backgrounds for better readability, larger icons, better spacing, and always-visible action buttons for easier management." },
       { icon: Globe, label: "Increased Subdomain Discovery Limit", desc: "Expanded the maximum subdomain discovery limit from 150 to 500 subdomains per scan. This allows for more comprehensive attack surface mapping on larger domains with extensive subdomain infrastructure." },
+      { icon: FileText, label: "Admin User Notes", desc: "Added a dedicated Notes section in the admin user detail panel. Staff can now add internal notes about users that persist across sessions. Notes display the author, timestamp, and full note content in a scrollable list." },
     ],
   },
   {
