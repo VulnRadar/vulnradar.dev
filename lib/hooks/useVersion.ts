@@ -1,3 +1,5 @@
+"use client"
+
 import { useEffect, useState } from "react"
 
 interface Version {
@@ -61,9 +63,4 @@ export function useVersion() {
   }, [])
 
   return { version, error }
-}
-
-// Export cache function for server-side use
-export async function getVersionInfo(): Promise<Version> {
-  return fetchVersionOnce()
 }
