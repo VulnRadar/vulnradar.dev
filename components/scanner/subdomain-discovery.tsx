@@ -83,7 +83,6 @@ export function SubdomainDiscovery({ url, onScanSubdomain }: SubdomainDiscoveryP
   const [expanded, setExpanded] = useState(false)
 
   async function handleDiscover(forceRefresh = false) {
-    console.log("[v0] handleDiscover called with url:", url, "forceRefresh:", forceRefresh)
     if (forceRefresh) {
       setRefreshing(true)
     } else {
@@ -91,15 +90,12 @@ export function SubdomainDiscovery({ url, onScanSubdomain }: SubdomainDiscoveryP
     }
     setError(null)
     try {
-      console.log("[v0] Fetching:", API.SCAN_DISCOVER)
       const res = await fetch(API.SCAN_DISCOVER, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ url, forceRefresh }),
       })
-      console.log("[v0] Fetch response status:", res.status, res.statusText)
       const data = await res.json()
-      console.log("[v0] Fetch response data:", data)
       if (!res.ok) {
         if (res.status === 401) {
           setError("You need to be logged in to use Subdomain Discovery. Create a free account to unlock this feature.")
@@ -110,8 +106,7 @@ export function SubdomainDiscovery({ url, onScanSubdomain }: SubdomainDiscoveryP
         setResult(data)
         setExpanded(true)
       }
-    } catch (err) {
-      console.error("[v0] Subdomain discovery fetch error:", err)
+    } catch {
       setError("Failed to discover subdomains")
     } finally {
       setLoading(false)
@@ -135,7 +130,7 @@ export function SubdomainDiscovery({ url, onScanSubdomain }: SubdomainDiscoveryP
             </div>
           </div>
           <Button
-            onClick={handleDiscover}
+            onClick={() => handleDiscover(false)}
             disabled={loading}
             size="sm"
             variant="outline"
