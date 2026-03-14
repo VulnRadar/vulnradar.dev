@@ -3,15 +3,14 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-RUN npm install -g pnpm
-
 # Accept build arguments for client-side env vars
 ARG NEXT_PUBLIC_APP_URL
-ARG NEXT_PUBLIC_TURNSTILE_SITE_KEY
 
 # Install dependencies first (better layer caching)
-COPY package.json pnpm-lock.yaml ./
-RUN pnpm install --frozen-lockfile
+# Prefer package-lock.json (npm). If you use pnpm, keep a pnpm-lock.yaml and adapt if needed.
+COPY package.json package-lock.json ./
+# Install exact versions from package-lock.json
+RUN npm ci --silent
 
 # Copy source code
 COPY . .
@@ -20,13 +19,12 @@ COPY . .
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL}
-ENV NEXT_PUBLIC_TURNSTILE_SITE_KEY=${NEXT_PUBLIC_TURNSTILE_SITE_KEY}
 
 # Provide a dummy DATABASE_URL so Next.js can build without a live DB.
 # The real value is injected at runtime via docker-compose or docker run.
 ENV DATABASE_URL="postgresql://placeholder:placeholder@localhost:5432/placeholder"
 
-RUN pnpm build
+RUN npm run build
 
 # ── Production stage ───────────────────────────────────────────
 FROM node:20-alpine AS runner
