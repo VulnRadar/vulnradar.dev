@@ -17,6 +17,7 @@ import {
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -371,6 +372,9 @@ export function NotificationsManager() {
                 <activeVariant.icon className="h-5 w-5" />
                 {editingNotification ? "Edit Notification" : "Create Notification"}
               </DialogTitle>
+              <DialogDescription className="sr-only">
+                {editingNotification ? "Edit an existing notification" : "Create a new site-wide notification"}
+              </DialogDescription>
             </DialogHeader>
           </div>
 
