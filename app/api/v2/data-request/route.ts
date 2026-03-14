@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getSession } from "@/lib/auth"
 import pool from "@/lib/db"
-import { ERROR_MESSAGES } from "@/lib/constants"
+import { ERROR_MESSAGES, APP_VERSION } from "@/lib/constants"
 
 const COOLDOWN_DAYS = 30
 
@@ -224,7 +224,7 @@ export async function POST(request: NextRequest) {
 
     const exportData = {
       exportedAt: new Date().toISOString(),
-      dataExportVersion: "2.0.1",
+      dataExportVersion: APP_VERSION,
       
       // Account Information
       account: userData.rows[0] || null,

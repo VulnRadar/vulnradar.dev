@@ -2,7 +2,7 @@
 
 import { useState } from "react"
 import { useRouter } from "next/navigation"
-import { Globe, Loader2, Search, ExternalLink, ChevronDown, ChevronRight, Radar } from "lucide-react"
+import { Globe, Loader2, Search, ExternalLink, ChevronDown, ChevronRight, Radar, RefreshCw, Clock } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { API } from "@/lib/constants"
@@ -21,6 +21,9 @@ interface DiscoveryResult {
   reachable: number
   subdomains: DiscoveredSubdomain[]
   sources?: Record<string, number>
+  cached?: boolean
+  cachedAt?: string
+  expiresAt?: string
 }
 
 interface SubdomainDiscoveryProps {
@@ -59,21 +62,38 @@ function statusBucket(code?: number): string {
   return "red"
 }
 
+function formatTimeRemaining(expiresAt: string): string {
+  const now = new Date()
+  const expires = new Date(expiresAt)
+  const diffMs = expires.getTime() - now.getTime()
+  if (diffMs <= 0) return "expired"
+  const diffMins = Math.floor(diffMs / 60000)
+  if (diffMins < 60) return `${diffMins}m`
+  const diffHours = Math.floor(diffMins / 60)
+  const remainingMins = diffMins % 60
+  return remainingMins > 0 ? `${diffHours}h ${remainingMins}m` : `${diffHours}h`
+}
+
 export function SubdomainDiscovery({ url, onScanSubdomain }: SubdomainDiscoveryProps) {
   const router = useRouter()
   const [loading, setLoading] = useState(false)
+  const [refreshing, setRefreshing] = useState(false)
   const [result, setResult] = useState<DiscoveryResult | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [expanded, setExpanded] = useState(false)
 
-  async function handleDiscover() {
-    setLoading(true)
+  async function handleDiscover(forceRefresh = false) {
+    if (forceRefresh) {
+      setRefreshing(true)
+    } else {
+      setLoading(true)
+    }
     setError(null)
     try {
       const res = await fetch(API.SCAN_DISCOVER, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url }),
+        body: JSON.stringify({ url, forceRefresh }),
       })
       const data = await res.json()
       if (!res.ok) {
@@ -90,6 +110,7 @@ export function SubdomainDiscovery({ url, onScanSubdomain }: SubdomainDiscoveryP
       setError("Failed to discover subdomains")
     } finally {
       setLoading(false)
+      setRefreshing(false)
     }
   }
 
@@ -109,7 +130,7 @@ export function SubdomainDiscovery({ url, onScanSubdomain }: SubdomainDiscoveryP
             </div>
           </div>
           <Button
-            onClick={handleDiscover}
+            onClick={() => handleDiscover(false)}
             disabled={loading}
             size="sm"
             variant="outline"
@@ -181,6 +202,31 @@ export function SubdomainDiscovery({ url, onScanSubdomain }: SubdomainDiscoveryP
             <span className="text-xs text-muted-foreground">
               {result.total - result.reachable} unreachable
             </span>
+            
+            {/* Cache status */}
+            {result.cached && result.expiresAt && (
+              <div className="flex items-center gap-2 ml-auto">
+                <div className="flex items-center gap-1.5">
+                  <Clock className="h-3.5 w-3.5 text-amber-500" />
+                  <span className="text-xs text-muted-foreground">
+                    Cached • Refreshes in <span className="font-medium text-foreground">{formatTimeRemaining(result.expiresAt)}</span>
+                  </span>
+                </div>
+                <button
+                  onClick={() => handleDiscover(true)}
+                  disabled={refreshing}
+                  className="inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium text-foreground hover:bg-muted disabled:opacity-50 transition-colors"
+                  title="Force refresh cache now"
+                >
+                  {refreshing ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <RefreshCw className="h-3.5 w-3.5" />
+                  )}
+                  <span className="hidden sm:inline">Refresh Now</span>
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Source breakdown */}

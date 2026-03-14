@@ -578,7 +578,7 @@ scan = response.json()`,
             title="Finding Types"
             description="Returns all security check definitions. Use this to understand what findings your integration should handle, display human-readable titles, and categorize results by severity."
             responseExample={`{
-  "version": "2.0.0",
+  "version": "<current_version>",
   "count": 110,
   "types": [
     {

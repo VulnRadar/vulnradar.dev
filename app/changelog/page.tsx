@@ -70,10 +70,25 @@ import { APP_NAME, TOTAL_CHECKS_LABEL } from "@/lib/constants"
 
 const CHANGELOG = [
   {
+    version: "2.0.1",
+    date: "March 14, 2026",
+    title: "Detection Engine v2.0.1, Subdomain Caching & Share Modal",
+    highlights: true,
+    changes: [
+      { icon: ShieldCheck, label: "Detection Engine v2.0.1", desc: "Major improvements to reduce false positives. CSP checks now skip framework sites (Next.js, Nuxt, Angular) that legitimately require unsafe-inline/eval. Fixed wildcard detection to not flag 'https:' as a wildcard. XXE and reflected input checks now skip code examples and documentation. CDN fallback check no longer flags analytics scripts like cloudflareinsights.com." },
+      { icon: Globe, label: "Subdomain Discovery Caching", desc: "Subdomain results are now cached for 4 hours in the database to prevent rate limiting on external APIs. Shows cache status with time remaining until refresh, plus a 'Refresh Now' button to force-refresh if needed. Also expanded the discovery limit from 150 to 1000 subdomains." },
+      { icon: Share2, label: "Custom Share Modal", desc: "Replaced the native browser share with a custom YouTube-style share modal. Share scan results directly to X (Twitter), Facebook, LinkedIn, WhatsApp, or Email with one click. The modal includes a copy-to-clipboard link button with visual feedback." },
+      { icon: Bell, label: "Admin Notifications UI Overhaul", desc: "Completely redesigned the notification cards in the admin panel. New cleaner card layout with colored accent bar, improved badge styling using neutral backgrounds for better readability, larger icons, better spacing, and always-visible action buttons." },
+      { icon: FileText, label: "Admin User Notes", desc: "Added a dedicated Notes section in the admin user detail panel. Staff can now add internal notes about users that persist across sessions. Notes display the author, timestamp, and full note content in a scrollable list." },
+      { icon: Settings, label: "Dynamic Version System", desc: "Completely eliminated hardcoded version numbers. All versions now read from config.yaml at server startup and are cached for the instance lifetime. No more lazy loading or build-time injection - versions are immediately available when the app starts." },
+      { icon: Wrench, label: "Bug Fixes", desc: "Fixed JSON parse errors in admin activity API when request body is empty. Fixed nested anchor tag hydration errors in history page. Fixed subdomain discovery button passing click event instead of boolean. Added missing DialogDescription for accessibility. Fixed notifications manager dialog centering. Added data-scroll-behavior attribute for Next.js smooth scrolling compatibility." },
+    ],
+  },
+  {
     version: "2.0.0",
     date: "March 12, 2026",
     title: "Stripe Billing, Discord Integration, Admin Notifications & Design System Overhaul",
-    highlights: true,
+    highlights: false,
     changes: [
       { icon: Crown, label: "Stripe Billing Integration", desc: "Full Stripe Checkout integration with 4 subscription tiers: Free, Core Supporter ($5/mo), Pro Supporter ($10/mo), and Elite Supporter ($20/mo). Each tier unlocks higher scan limits. Billing portal for managing subscriptions, automatic webhook handling for subscription lifecycle events, and seamless upgrade/downgrade flows." },
       { icon: Globe, label: "Discord Account Linking", desc: "Link your Discord account to your VulnRadar profile for enhanced community features. OAuth2 flow with secure token storage, profile display showing Discord avatar and username, and one-click unlink option. Enables future Discord bot integrations and community verification." },

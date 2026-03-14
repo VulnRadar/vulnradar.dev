@@ -17,6 +17,7 @@ import {
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -270,53 +271,65 @@ export function NotificationsManager() {
               <div
                 key={notif.id}
                 className={cn(
-                  "group relative p-4 rounded-xl border transition-all cursor-pointer",
+                  "group relative rounded-lg border bg-card transition-all overflow-hidden",
                   notif.is_active
-                    ? cn("border-l-4 bg-card hover:bg-muted/50", v.border)
-                    : "border border-border bg-card/50 opacity-60 hover:opacity-80 hover:bg-muted/30"
+                    ? "border-border hover:border-border/80"
+                    : "border-border/50 opacity-60 hover:opacity-80"
                 )}
               >
-                <div className="flex items-start gap-3">
+                {/* Colored accent bar */}
+                <div className={cn("absolute inset-y-0 left-0 w-1", notif.is_active ? v.bg.replace("/10", "") : "bg-muted")} />
+                
+                <div className="flex items-start gap-3 p-4 pl-5">
                   {/* Variant icon */}
-                  <div className={cn("flex items-center justify-center h-9 w-9 rounded-lg shrink-0 border", v.bg, v.border)}>
-                    <Icon className={cn("h-4 w-4", v.text)} />
+                  <div className={cn("flex items-center justify-center h-10 w-10 rounded-lg shrink-0", v.bg)}>
+                    <Icon className={cn("h-5 w-5", v.text)} />
                   </div>
 
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap mb-1">
-                      <span className="font-semibold text-sm text-foreground">{notif.title}</span>
-                      {/* Type badge */}
-                      <Badge variant="outline" className={cn("text-[10px] px-1.5 py-0 gap-0.5 flex items-center", v.badgeBg)}>
-                        <TypeIcon className="h-2.5 w-2.5" />
+                  <div className="flex-1 min-w-0 space-y-2">
+                    {/* Title and status row */}
+                    <div className="flex items-center gap-2">
+                      <span className="font-semibold text-sm text-foreground truncate">{notif.title}</span>
+                      {!notif.is_active && (
+                        <Badge variant="secondary" className="text-[10px] px-1.5 py-0 shrink-0">Inactive</Badge>
+                      )}
+                    </div>
+                    
+                    {/* Badges row */}
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <Badge variant="outline" className="text-[10px] px-2 py-0.5 gap-1 border-border bg-muted/50 text-foreground">
+                        <TypeIcon className="h-3 w-3" />
                         {TYPE_CONFIG[notif.type].label}
                       </Badge>
-                      {/* Audience badge */}
-                      <Badge variant="outline" className="text-[10px] px-1.5 py-0 gap-0.5 flex items-center text-muted-foreground">
-                        <Users className="h-2.5 w-2.5" />
+                      <Badge variant="outline" className="text-[10px] px-2 py-0.5 gap-1 border-border bg-muted/50 text-foreground">
+                        <Users className="h-3 w-3" />
                         {AUDIENCE_LABELS[notif.audience]}
                       </Badge>
                       {notif.ends_at && (
-                        <Badge variant="outline" className="text-[10px] px-1.5 py-0 gap-0.5 flex items-center text-muted-foreground">
-                          <Clock className="h-2.5 w-2.5" />
+                        <Badge variant="outline" className="text-[10px] px-2 py-0.5 gap-1 border-border bg-muted/50 text-foreground">
+                          <Clock className="h-3 w-3" />
                           Expires {new Date(notif.ends_at).toLocaleDateString()}
                         </Badge>
                       )}
-                      {!notif.is_active && (
-                        <Badge variant="secondary" className="text-[10px] px-1.5 py-0">Inactive</Badge>
+                    </div>
+
+                    {/* Message */}
+                    <p className="text-sm text-muted-foreground line-clamp-2 leading-relaxed">{notif.message}</p>
+                    
+                    {/* Footer row */}
+                    <div className="flex items-center gap-3 pt-1">
+                      <span className="text-[11px] text-muted-foreground/70 font-mono">ID: {notif.cookie_id}</span>
+                      {notif.action_url && (
+                        <div className="flex items-center gap-1 text-xs text-primary font-medium">
+                          <ExternalLink className="h-3 w-3" />
+                          {notif.action_label || "Action"}
+                        </div>
                       )}
                     </div>
-                    <p className="text-xs text-muted-foreground line-clamp-2 leading-relaxed">{notif.message}</p>
-                    <p className="text-[10px] text-muted-foreground/60 font-mono mt-1">Cookie: {notif.cookie_id}</p>
-                    {notif.action_url && (
-                      <div className="mt-1.5 flex items-center gap-1 text-xs text-primary font-medium">
-                        <ExternalLink className="h-3 w-3" />
-                        {notif.action_label || notif.action_url}
-                      </div>
-                    )}
                   </div>
 
-                  {/* Actions */}
-                  <div className="flex items-center gap-1 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                  {/* Actions - always visible for better UX */}
+                  <div className="flex items-center gap-0.5 shrink-0">
                     <button
                       onClick={() => handleToggleActive(notif)}
                       title={notif.is_active ? "Deactivate" : "Activate"}
@@ -331,15 +344,15 @@ export function NotificationsManager() {
                     </button>
                     <button
                       onClick={() => openEditDialog(notif)}
-                      className="flex items-center justify-center h-8 w-8 rounded-md text-muted-foreground hover:text-accent-foreground hover:bg-accent transition-colors"
+                      className="flex items-center justify-center h-8 w-8 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
                     >
-                      <Pencil className="h-3.5 w-3.5" />
+                      <Pencil className="h-4 w-4" />
                     </button>
                     <button
                       onClick={() => handleDelete(notif.id)}
                       className="flex items-center justify-center h-8 w-8 rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
                     >
-                      <Trash2 className="h-3.5 w-3.5" />
+                      <Trash2 className="h-4 w-4" />
                     </button>
                   </div>
                 </div>
@@ -351,18 +364,21 @@ export function NotificationsManager() {
 
       {/* Create / Edit Dialog */}
       <Dialog open={isCreating} onOpenChange={(open) => !open && closeDialog()} modal={true}>
-        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto gap-0 p-0 my-4">
+        <DialogContent className="w-full max-w-2xl max-h-[95dvh] sm:max-h-[85vh] overflow-y-auto gap-0 p-0 rounded-xl">
           {/* Dialog header with variant color stripe */}
-          <div className={cn("px-6 py-5 border-b border-border rounded-t-lg", activeVariant.bg)}>
+          <div className={cn("px-5 py-4 border-b border-border rounded-t-xl", activeVariant.bg)}>
             <DialogHeader>
               <DialogTitle className={cn("flex items-center gap-2 text-base", activeVariant.text)}>
                 <activeVariant.icon className="h-5 w-5" />
                 {editingNotification ? "Edit Notification" : "Create Notification"}
               </DialogTitle>
+              <DialogDescription className="sr-only">
+                {editingNotification ? "Edit an existing notification" : "Create a new site-wide notification"}
+              </DialogDescription>
             </DialogHeader>
           </div>
 
-          <div className="p-6 space-y-6">
+          <div className="p-4 sm:p-6 space-y-5">
             {/* Content */}
             <div>
               <SectionHeader icon={Megaphone} label="Content" />
@@ -381,11 +397,11 @@ export function NotificationsManager() {
             {/* Display */}
             <div>
               <SectionHeader icon={Layers} label="Display" />
-              <div className="grid grid-cols-2 gap-3 p-4 rounded-xl border border-border bg-muted/20">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-4 rounded-xl border border-border bg-muted/20">
                 <div className="space-y-1.5">
                   <Label className="text-xs font-medium">Type</Label>
                   <Select value={formData.type} onValueChange={(v) => set({ type: v as AdminNotification["type"] })}>
-                    <SelectTrigger className="bg-background h-9"><SelectValue /></SelectTrigger>
+                    <SelectTrigger className="bg-background h-10"><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="bell">Bell Notification</SelectItem>
                       <SelectItem value="banner">Banner</SelectItem>
@@ -397,7 +413,7 @@ export function NotificationsManager() {
                 <div className="space-y-1.5">
                   <Label className="text-xs font-medium">Variant</Label>
                   <Select value={formData.variant} onValueChange={(v) => set({ variant: v as AdminNotification["variant"] })}>
-                    <SelectTrigger className={cn("h-9 font-medium border", activeVariant.bg, activeVariant.text, activeVariant.border)}>
+                    <SelectTrigger className={cn("h-10 font-medium border", activeVariant.bg, activeVariant.text, activeVariant.border)}>
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -419,11 +435,11 @@ export function NotificationsManager() {
             <div>
               <SectionHeader icon={Users} label="Targeting" />
               <div className="space-y-3 p-4 rounded-xl border border-border bg-muted/20">
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div className="space-y-1.5">
                     <Label className="text-xs font-medium">Audience</Label>
                     <Select value={formData.audience} onValueChange={(v) => set({ audience: v as AdminNotification["audience"] })}>
-                      <SelectTrigger className="bg-background h-9"><SelectValue /></SelectTrigger>
+                      <SelectTrigger className="bg-background h-10"><SelectValue /></SelectTrigger>
                       <SelectContent>
                         <SelectItem value="all">Everyone</SelectItem>
                         <SelectItem value="authenticated">Logged In Users</SelectItem>
@@ -435,12 +451,12 @@ export function NotificationsManager() {
                   </div>
                   <div className="space-y-1.5">
                     <Label htmlFor="priority" className="text-xs font-medium">Priority</Label>
-                    <Input id="priority" type="number" value={formData.priority} onChange={(e) => set({ priority: e.target.value })} placeholder="0 = default" className="bg-background h-9" />
+                    <Input id="priority" type="number" value={formData.priority} onChange={(e) => set({ priority: e.target.value })} placeholder="0 = default" className="bg-background h-10" />
                   </div>
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="path_pattern" className="text-xs font-medium">Page Filter <span className="text-muted-foreground font-normal">(optional)</span></Label>
-                  <Input id="path_pattern" value={formData.path_pattern} onChange={(e) => set({ path_pattern: e.target.value })} placeholder="/dashboard* — leave empty for all pages" className="bg-background h-9" />
+                  <Input id="path_pattern" value={formData.path_pattern} onChange={(e) => set({ path_pattern: e.target.value })} placeholder="/dashboard* — leave empty for all pages" className="bg-background h-10" />
                 </div>
               </div>
             </div>
@@ -449,30 +465,30 @@ export function NotificationsManager() {
             <div>
               <SectionHeader icon={Clock} label="Scheduling & Behavior" />
               <div className="space-y-4 p-4 rounded-xl border border-border bg-muted/20">
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div className="space-y-1.5">
                     <Label htmlFor="starts_at" className="text-xs font-medium">Starts At</Label>
-                    <Input id="starts_at" type="datetime-local" value={formData.starts_at} onChange={(e) => set({ starts_at: e.target.value })} className="bg-background h-9" />
+                    <Input id="starts_at" type="datetime-local" value={formData.starts_at} onChange={(e) => set({ starts_at: e.target.value })} className="bg-background h-10" />
                   </div>
                   <div className="space-y-1.5">
                     <Label htmlFor="ends_at" className="text-xs font-medium">Ends At <span className="text-muted-foreground font-normal">(optional)</span></Label>
-                    <Input id="ends_at" type="datetime-local" value={formData.ends_at} onChange={(e) => set({ ends_at: e.target.value })} className="bg-background h-9" />
+                    <Input id="ends_at" type="datetime-local" value={formData.ends_at} onChange={(e) => set({ ends_at: e.target.value })} className="bg-background h-10" />
                   </div>
                 </div>
-                <div className="flex items-center gap-6">
-                  <div className="flex items-center gap-2">
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="flex items-center gap-3 p-3 rounded-lg bg-background border border-border">
                     <Switch id="is_active" checked={formData.is_active} onCheckedChange={(v) => set({ is_active: v })} />
-                    <Label htmlFor="is_active" className="text-sm cursor-pointer">Active</Label>
+                    <Label htmlFor="is_active" className="text-sm cursor-pointer font-medium">Active</Label>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-3 p-3 rounded-lg bg-background border border-border">
                     <Switch id="is_dismissible" checked={formData.is_dismissible} onCheckedChange={(v) => set({ is_dismissible: v })} />
-                    <Label htmlFor="is_dismissible" className="text-sm cursor-pointer">Dismissible</Label>
+                    <Label htmlFor="is_dismissible" className="text-sm cursor-pointer font-medium">Dismissible</Label>
                   </div>
                 </div>
                 {formData.is_dismissible && (
                   <div className="space-y-1.5">
                     <Label htmlFor="dismiss_duration_hours" className="text-xs font-medium">Re-show after dismiss (hours)</Label>
-                    <Input id="dismiss_duration_hours" type="number" value={formData.dismiss_duration_hours} onChange={(e) => set({ dismiss_duration_hours: e.target.value })} placeholder="Leave empty for permanent dismiss" className="bg-background h-9" />
+                    <Input id="dismiss_duration_hours" type="number" value={formData.dismiss_duration_hours} onChange={(e) => set({ dismiss_duration_hours: e.target.value })} placeholder="Leave empty for permanent dismiss" className="bg-background h-10" />
                   </div>
                 )}
               </div>
@@ -482,32 +498,32 @@ export function NotificationsManager() {
             <div>
               <SectionHeader icon={ExternalLink} label="Action Button (optional)" />
               <div className="space-y-3 p-4 rounded-xl border border-border bg-muted/20">
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div className="space-y-1.5">
                     <Label className="text-xs font-medium">Button Label</Label>
-                    <Input value={formData.action_label} onChange={(e) => set({ action_label: e.target.value })} placeholder="e.g. Learn more" className="bg-background h-9" />
+                    <Input value={formData.action_label} onChange={(e) => set({ action_label: e.target.value })} placeholder="e.g. Learn more" className="bg-background h-10" />
                   </div>
                   <div className="space-y-1.5">
                     <Label className="text-xs font-medium">URL / Path</Label>
-                    <Input value={formData.action_url} onChange={(e) => set({ action_url: e.target.value })} placeholder="https:// or /path" className="bg-background h-9" />
+                    <Input value={formData.action_url} onChange={(e) => set({ action_url: e.target.value })} placeholder="https:// or /path" className="bg-background h-10" />
                   </div>
                 </div>
                 {formData.action_url && (
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-3 p-3 rounded-lg bg-background border border-border w-fit">
                     <Switch id="action_external" checked={formData.action_external} onCheckedChange={(v) => set({ action_external: v })} />
-                    <Label htmlFor="action_external" className="text-sm cursor-pointer">Open in new tab</Label>
+                    <Label htmlFor="action_external" className="text-sm cursor-pointer font-medium">Open in new tab</Label>
                   </div>
                 )}
               </div>
             </div>
           </div>
 
-          <DialogFooter className="px-6 py-4 border-t border-border bg-muted/20 rounded-b-lg">
-            <Button variant="outline" onClick={closeDialog}>Cancel</Button>
+          <DialogFooter className="flex-row px-4 sm:px-6 py-4 border-t border-border bg-muted/20 rounded-b-xl gap-2">
+            <Button variant="outline" onClick={closeDialog} className="flex-1 sm:flex-none">Cancel</Button>
             <Button
               onClick={handleSave}
               disabled={saving || !formData.title || !formData.message}
-              className={cn(activeVariant.bg, activeVariant.text, activeVariant.border, "border hover:opacity-90")}
+              className={cn(activeVariant.bg, activeVariant.text, activeVariant.border, "border hover:opacity-90 flex-1 sm:flex-none")}
             >
               {saving && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
               {editingNotification ? "Save Changes" : "Create Notification"}

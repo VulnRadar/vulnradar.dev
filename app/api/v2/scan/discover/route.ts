@@ -2,6 +2,53 @@ import { NextRequest, NextResponse } from "next/server"
 import { getSession } from "@/lib/auth"
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 import dns from "dns/promises"
+import pool from "@/lib/db"
+
+// ============================================================================
+// Subdomain Cache - 4 hour TTL using database for persistence across instances
+// ============================================================================
+const CACHE_TTL_HOURS = 4
+
+interface CacheResult {
+  subdomains: DiscoveredSubdomain[]
+  cachedAt: string
+  expiresAt: string
+}
+
+async function getCachedSubdomains(domain: string): Promise<CacheResult | null> {
+  try {
+    const result = await pool.query(
+      `SELECT subdomains, cached_at, 
+              cached_at + INTERVAL '${CACHE_TTL_HOURS} hours' as expires_at
+       FROM subdomain_cache 
+       WHERE domain = $1 AND cached_at > NOW() - INTERVAL '${CACHE_TTL_HOURS} hours'`,
+      [domain]
+    )
+    if (result.rows[0]?.subdomains) {
+      return {
+        subdomains: result.rows[0].subdomains as DiscoveredSubdomain[],
+        cachedAt: result.rows[0].cached_at,
+        expiresAt: result.rows[0].expires_at,
+      }
+    }
+  } catch (err) {
+    console.error("[v0] getCachedSubdomains error:", err)
+  }
+  return null
+}
+
+async function cacheSubdomains(domain: string, subdomains: DiscoveredSubdomain[]) {
+  try {
+    await pool.query(
+      `INSERT INTO subdomain_cache (domain, subdomains, cached_at)
+       VALUES ($1, $2::jsonb, NOW())
+       ON CONFLICT (domain) DO UPDATE SET subdomains = $2::jsonb, cached_at = NOW()`,
+      [domain, JSON.stringify(subdomains)]
+    )
+  } catch (err) {
+    console.error("[v0] cacheSubdomains error:", err)
+  }
+}
 
 // 150+ common subdomain prefixes, all resolved via parallel DNS (no sequential overhead)
 const BRUTE_FORCE_PREFIXES = [
@@ -80,24 +127,30 @@ function extractRootDomain(hostname: string): string {
 }
 
 export async function POST(request: NextRequest) {
-  const session = await getSession()
-  if (!session) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-  }
+  try {
+    const session = await getSession()
+    if (!session) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    }
 
-  const rl = await checkRateLimit({
-    key: `discover:${session.userId}`,
-    ...RATE_LIMITS.scan,
-  })
-  if (!rl.allowed) {
-    return NextResponse.json(
-      { error: "Rate limit reached. Please wait before discovering again." },
-      { status: 429 },
-    )
-  }
+    const rl = await checkRateLimit({
+      key: `discover:${session.userId}`,
+      ...RATE_LIMITS.scan,
+    })
+    if (!rl.allowed) {
+      return NextResponse.json(
+        { error: "Rate limit reached. Please wait before discovering again." },
+        { status: 429 },
+      )
+    }
 
-  const body = await request.json()
-  const { url } = body
+    let body
+    try {
+      body = await request.json()
+    } catch {
+      return NextResponse.json({ error: "Invalid request body" }, { status: 400 })
+    }
+    const { url } = body
 
   if (!url || typeof url !== "string") {
     return NextResponse.json({ error: "URL is required" }, { status: 400 })
@@ -112,6 +165,25 @@ export async function POST(request: NextRequest) {
   }
 
   const rootDomain = extractRootDomain(domain)
+
+  // Check if force refresh is requested
+  const forceRefresh = body.forceRefresh === true
+
+  // Check cache first (4 hour TTL) unless force refresh
+  if (!forceRefresh) {
+    const cached = await getCachedSubdomains(rootDomain)
+    if (cached) {
+      return NextResponse.json({
+        domain: rootDomain,
+        subdomains: cached.subdomains,
+        total: cached.subdomains.length,
+        reachable: cached.subdomains.filter(s => s.reachable).length,
+        cached: true,
+        cachedAt: cached.cachedAt,
+        expiresAt: cached.expiresAt,
+      })
+    }
+  }
 
   // Run all passive data sources in parallel
   const [ctResults, hackerTargetResults, subdomainCenterResults, rapidDnsResults] =
@@ -157,8 +229,8 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  // DNS resolution check: filter dead entries before HTTP checks (cap at 150)
-  const passiveEntries = Array.from(passiveMap.entries()).slice(0, 150)
+  // DNS resolution check: filter dead entries before HTTP checks (cap at 1000)
+  const passiveEntries = Array.from(passiveMap.entries()).slice(0, 1000)
   const dnsResolved = await batchDnsResolve(passiveEntries.map(([sub]) => sub))
 
   // Only HTTP-check subdomains with DNS records
@@ -186,11 +258,15 @@ export async function POST(request: NextRequest) {
     return a.subdomain.localeCompare(b.subdomain)
   })
 
+  // Cache results for 4 hours (fire and forget - don't block response)
+  cacheSubdomains(rootDomain, results).catch(() => {})
+
   return NextResponse.json({
     domain: rootDomain,
     total: results.length,
     reachable: results.filter((r) => r.reachable).length,
     subdomains: results,
+    cached: false,
     sources: {
       "crt.sh": ctResults.length,
       hackertarget: hackerTargetResults.length,
@@ -199,6 +275,10 @@ export async function POST(request: NextRequest) {
       "brute-force": bruteResults.size,
     },
   })
+  } catch (err) {
+    console.error("[v0] Subdomain discovery error:", err)
+    return NextResponse.json({ error: "Subdomain discovery failed" }, { status: 500 })
+  }
 }
 
 // ─── Data Sources ──────────────────────────────────────────
