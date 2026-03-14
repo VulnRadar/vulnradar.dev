@@ -7,7 +7,7 @@ import { join } from "path"
 // Read version from config.yaml at build time so it's available on the client
 function readVersionFromConfig() {
   const configPath = join(process.cwd(), "config.yaml")
-  if (!existsSync(configPath)) return { version: "2.0.1", engineVersion: "2.0.0" }
+  if (!existsSync(configPath)) return { version: "2.0.1", engineVersion: "2.0.1" }
   try {
     const content = readFileSync(configPath, "utf-8")
     // Match "app:" section and its nested "version:" and "engine_version:" fields
@@ -15,10 +15,10 @@ function readVersionFromConfig() {
     const engineMatch = content.match(/engine_version:\s*["']?([^"'\s]+)["']?/)
     return {
       version: versionMatch?.[1] ?? "2.0.1",
-      engineVersion: engineMatch?.[1] ?? "2.0.0",
+      engineVersion: engineMatch?.[1] ?? "2.0.1",
     }
   } catch {
-    return { version: "2.0.1", engineVersion: "2.0.0" }
+    return { version: "2.0.1", engineVersion: "2.0.1" }
   }
 }
 

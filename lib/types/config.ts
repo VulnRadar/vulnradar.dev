@@ -156,7 +156,7 @@ function getDefaultVersion(): { version: string; engineVersion: string } {
   if (process.env.NEXT_PUBLIC_APP_VERSION) {
     return {
       version: process.env.NEXT_PUBLIC_APP_VERSION,
-      engineVersion: process.env.NEXT_PUBLIC_ENGINE_VERSION ?? "2.0.0",
+      engineVersion: process.env.NEXT_PUBLIC_ENGINE_VERSION ?? "2.0.1",
     }
   }
   
@@ -174,7 +174,7 @@ function getDefaultVersion(): { version: string; engineVersion: string } {
         const engineMatch = content.match(/engine_version:\s*["']?([^"'\s]+)["']?/)
         return {
           version: versionMatch?.[1] ?? "2.0.1",
-          engineVersion: engineMatch?.[1] ?? "2.0.0",
+          engineVersion: engineMatch?.[1] ?? "2.0.1",
         }
       }
     } catch {
@@ -183,7 +183,7 @@ function getDefaultVersion(): { version: string; engineVersion: string } {
   }
   
   // Final fallback
-  return { version: "2.0.1", engineVersion: "2.0.0" }
+  return { version: "2.0.1", engineVersion: "2.0.1" }
 }
 
 const { version: defaultVersion, engineVersion: defaultEngineVersion } = getDefaultVersion()
