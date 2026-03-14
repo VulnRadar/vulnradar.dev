@@ -3,6 +3,7 @@
 // ============================================================================
 // This file reads from config.yaml via the config system.
 // Self-hosters: Modify config.yaml to customize your deployment.
+// cache-bust: rebuild
 // ============================================================================
 
 import { getConfig } from "./config"

@@ -1,5 +1,6 @@
 // Server-side version fetcher - no React hooks
-// Reads from config.yaml directly on server, or fetches from /api/version on client
+// Reads from config.yaml directly on server
+// cache-bust: rebuild
 
 interface Version {
   current: string
