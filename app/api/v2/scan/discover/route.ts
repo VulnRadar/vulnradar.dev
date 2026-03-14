@@ -31,8 +31,8 @@ async function getCachedSubdomains(domain: string): Promise<CacheResult | null> 
         expiresAt: result.rows[0].expires_at,
       }
     }
-  } catch {
-    // Cache miss or error, proceed with fresh scan
+  } catch (err) {
+    console.error("[v0] getCachedSubdomains error:", err)
   }
   return null
 }
@@ -45,8 +45,8 @@ async function cacheSubdomains(domain: string, subdomains: DiscoveredSubdomain[]
        ON CONFLICT (domain) DO UPDATE SET subdomains = $2::jsonb, cached_at = NOW()`,
       [domain, JSON.stringify(subdomains)]
     )
-  } catch {
-    // Silently fail - caching is optional
+  } catch (err) {
+    console.error("[v0] cacheSubdomains error:", err)
   }
 }
 
@@ -127,24 +127,30 @@ function extractRootDomain(hostname: string): string {
 }
 
 export async function POST(request: NextRequest) {
-  const session = await getSession()
-  if (!session) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-  }
+  try {
+    const session = await getSession()
+    if (!session) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    }
 
-  const rl = await checkRateLimit({
-    key: `discover:${session.userId}`,
-    ...RATE_LIMITS.scan,
-  })
-  if (!rl.allowed) {
-    return NextResponse.json(
-      { error: "Rate limit reached. Please wait before discovering again." },
-      { status: 429 },
-    )
-  }
+    const rl = await checkRateLimit({
+      key: `discover:${session.userId}`,
+      ...RATE_LIMITS.scan,
+    })
+    if (!rl.allowed) {
+      return NextResponse.json(
+        { error: "Rate limit reached. Please wait before discovering again." },
+        { status: 429 },
+      )
+    }
 
-  const body = await request.json()
-  const { url } = body
+    let body
+    try {
+      body = await request.json()
+    } catch {
+      return NextResponse.json({ error: "Invalid request body" }, { status: 400 })
+    }
+    const { url } = body
 
   if (!url || typeof url !== "string") {
     return NextResponse.json({ error: "URL is required" }, { status: 400 })
@@ -269,6 +275,10 @@ export async function POST(request: NextRequest) {
       "brute-force": bruteResults.size,
     },
   })
+  } catch (err) {
+    console.error("[v0] Subdomain discovery error:", err)
+    return NextResponse.json({ error: "Subdomain discovery failed" }, { status: 500 })
+  }
 }
 
 // ─── Data Sources ──────────────────────────────────────────
