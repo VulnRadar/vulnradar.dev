@@ -152,11 +152,11 @@ export interface VulnRadarConfig {
 // ============================================================================
 
 function getDefaultVersion(): { version: string; engineVersion: string } {
-  // First try NEXT_PUBLIC_ env vars (available everywhere after build)
-  if (process.env.NEXT_PUBLIC_APP_VERSION) {
+  // First try NEXT_PUBLIC_ env vars (set by next.config.mjs at build time)
+  if (process.env.NEXT_PUBLIC_APP_VERSION && process.env.NEXT_PUBLIC_ENGINE_VERSION) {
     return {
       version: process.env.NEXT_PUBLIC_APP_VERSION,
-      engineVersion: process.env.NEXT_PUBLIC_ENGINE_VERSION ?? "2.0.1",
+      engineVersion: process.env.NEXT_PUBLIC_ENGINE_VERSION,
     }
   }
   
@@ -172,18 +172,20 @@ function getDefaultVersion(): { version: string; engineVersion: string } {
         const content = fs.readFileSync(configPath, "utf-8")
         const versionMatch = content.match(/version:\s*["']?([^"'\s]+)["']?/)
         const engineMatch = content.match(/engine_version:\s*["']?([^"'\s]+)["']?/)
-        return {
-          version: versionMatch?.[1] ?? "2.0.1",
-          engineVersion: engineMatch?.[1] ?? "2.0.1",
+        if (versionMatch?.[1] && engineMatch?.[1]) {
+          return {
+            version: versionMatch[1],
+            engineVersion: engineMatch[1],
+          }
         }
       }
     } catch {
-      // Ignore errors, fall through to default
+      // Continue to error
     }
   }
   
-  // Final fallback
-  return { version: "2.0.1", engineVersion: "2.0.1" }
+  // No versions available - error
+  throw new Error("Unable to determine app and engine versions. Ensure config.yaml exists with version and engine_version fields.")
 }
 
 const { version: defaultVersion, engineVersion: defaultEngineVersion } = getDefaultVersion()
