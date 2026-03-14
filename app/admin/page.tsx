@@ -57,6 +57,8 @@ import {
   Gift,
   Bell,
   Dot,
+  StickyNote,
+  Send,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -122,6 +124,16 @@ interface UserBadge extends BadgeDef {
   awarded_at: string
 }
 
+interface AdminNote {
+  id: number
+  note: string
+  created_at: string
+  admin_id: number
+  admin_email: string
+  admin_name: string | null
+  admin_avatar_url: string | null
+}
+
 interface UserDetail {
   user: AdminUser & {
     session_count: number
@@ -133,6 +145,7 @@ interface UserDetail {
   schedules: { id: number; url: string; frequency: string; active: boolean; last_run_at: string | null; next_run_at: string | null }[]
   activeSessions: { id: string; created_at: string; expires_at: string; ip_address: string | null; user_agent: string | null }[]
   badges: UserBadge[]
+  notes: AdminNote[]
 }
 
 interface AuditEntry {
@@ -1326,6 +1339,7 @@ function UserDetailPanel({
   const u = detail.user
   const isLoading = (action: string) => actionLoading === `${u.id}-${action}`
   const [showBadgePicker, setShowBadgePicker] = useState(false)
+  const [newNote, setNewNote] = useState("")
   const [newBadgeName, setNewBadgeName] = useState("")
   const [newBadgeDisplay, setNewBadgeDisplay] = useState("")
   const [newBadgeColor, setNewBadgeColor] = useState("#6366f1")
@@ -1998,6 +2012,78 @@ function UserDetailPanel({
             </CardContent>
           </Card>
         </div>
+      )}
+
+      {/* Admin Notes */}
+      {!detailLoading && (
+        <Card className="bg-card border-border">
+          <CardHeader className="pb-0 pt-4 px-5">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <StickyNote className="h-4 w-4 text-muted-foreground" />
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Admin Notes</p>
+                <span className="text-[10px] text-muted-foreground">({detail.notes?.length || 0})</span>
+              </div>
+            </div>
+            <p className="text-[11px] text-muted-foreground mt-1">Internal notes about this user. Only visible to staff.</p>
+          </CardHeader>
+          <CardContent className="p-5 pt-3 flex flex-col gap-3">
+            {/* Add note form */}
+            <div className="flex gap-2">
+              <Input
+                placeholder="Add a note about this user..."
+                value={newNote}
+                onChange={(e) => setNewNote(e.target.value)}
+                className="h-9 text-sm flex-1"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && newNote.trim()) {
+                    onAction(u.id, "add_note", { note: newNote.trim() })
+                    setNewNote("")
+                  }
+                }}
+              />
+              <Button
+                size="sm"
+                className="h-9 gap-1.5"
+                disabled={!newNote.trim() || isLoading("add_note")}
+                onClick={() => {
+                  if (newNote.trim()) {
+                    onAction(u.id, "add_note", { note: newNote.trim() })
+                    setNewNote("")
+                  }
+                }}
+              >
+                {isLoading("add_note") ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
+                Add
+              </Button>
+            </div>
+
+            {/* Notes list */}
+            {detail.notes && detail.notes.length > 0 ? (
+              <div className="flex flex-col gap-2 max-h-64 overflow-y-auto">
+                {detail.notes.map((note) => (
+                  <div key={note.id} className="flex items-start gap-3 p-3 rounded-lg bg-muted/30 border border-border">
+                    <UserAvatar
+                      name={note.admin_name}
+                      email={note.admin_email}
+                      size="sm"
+                      avatarUrl={note.admin_avatar_url}
+                    />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="text-xs font-medium text-foreground">{note.admin_name || note.admin_email.split("@")[0]}</span>
+                        <span className="text-[10px] text-muted-foreground">{formatRelativeTime(new Date(note.created_at))}</span>
+                      </div>
+                      <p className="text-sm text-muted-foreground whitespace-pre-wrap break-words">{note.note}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-xs text-muted-foreground text-center py-4">No notes yet. Add one above.</p>
+            )}
+          </CardContent>
+        </Card>
       )}
 
       {/* Support actions */}
