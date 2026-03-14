@@ -9,15 +9,27 @@ import pool from "@/lib/db"
 // ============================================================================
 const CACHE_TTL_HOURS = 4
 
-async function getCachedSubdomains(domain: string): Promise<DiscoveredSubdomain[] | null> {
+interface CacheResult {
+  subdomains: DiscoveredSubdomain[]
+  cachedAt: string
+  expiresAt: string
+}
+
+async function getCachedSubdomains(domain: string): Promise<CacheResult | null> {
   try {
     const result = await pool.query(
-      `SELECT subdomains FROM subdomain_cache 
+      `SELECT subdomains, cached_at, 
+              cached_at + INTERVAL '${CACHE_TTL_HOURS} hours' as expires_at
+       FROM subdomain_cache 
        WHERE domain = $1 AND cached_at > NOW() - INTERVAL '${CACHE_TTL_HOURS} hours'`,
       [domain]
     )
     if (result.rows[0]?.subdomains) {
-      return result.rows[0].subdomains as DiscoveredSubdomain[]
+      return {
+        subdomains: result.rows[0].subdomains as DiscoveredSubdomain[],
+        cachedAt: result.rows[0].cached_at,
+        expiresAt: result.rows[0].expires_at,
+      }
     }
   } catch {
     // Cache miss or error, proceed with fresh scan
@@ -148,16 +160,23 @@ export async function POST(request: NextRequest) {
 
   const rootDomain = extractRootDomain(domain)
 
-  // Check cache first (4 hour TTL)
-  const cached = await getCachedSubdomains(rootDomain)
-  if (cached) {
-    return NextResponse.json({
-      domain: rootDomain,
-      subdomains: cached,
-      total: cached.length,
-      reachable: cached.filter(s => s.reachable).length,
-      cached: true,
-    })
+  // Check if force refresh is requested
+  const forceRefresh = body.forceRefresh === true
+
+  // Check cache first (4 hour TTL) unless force refresh
+  if (!forceRefresh) {
+    const cached = await getCachedSubdomains(rootDomain)
+    if (cached) {
+      return NextResponse.json({
+        domain: rootDomain,
+        subdomains: cached.subdomains,
+        total: cached.subdomains.length,
+        reachable: cached.subdomains.filter(s => s.reachable).length,
+        cached: true,
+        cachedAt: cached.cachedAt,
+        expiresAt: cached.expiresAt,
+      })
+    }
   }
 
   // Run all passive data sources in parallel
