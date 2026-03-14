@@ -157,8 +157,8 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  // DNS resolution check: filter dead entries before HTTP checks (cap at 150)
-  const passiveEntries = Array.from(passiveMap.entries()).slice(0, 150)
+  // DNS resolution check: filter dead entries before HTTP checks (cap at 500)
+  const passiveEntries = Array.from(passiveMap.entries()).slice(0, 500)
   const dnsResolved = await batchDnsResolve(passiveEntries.map(([sub]) => sub))
 
   // Only HTTP-check subdomains with DNS records

@@ -70,6 +70,17 @@ import { APP_NAME, TOTAL_CHECKS_LABEL } from "@/lib/constants"
 
 const CHANGELOG = [
   {
+    version: "2.0.1",
+    date: "March 14, 2026",
+    title: "Custom Share Modal, Admin Notifications UI Fix & Expanded Subdomain Discovery",
+    highlights: false,
+    changes: [
+      { icon: Share2, label: "Custom Share Modal", desc: "Replaced the native browser share with a custom YouTube-style share modal. Share scan results directly to X (Twitter), Facebook, LinkedIn, WhatsApp, or Email with one click. The modal includes a copy-to-clipboard link button with visual feedback. Works identically on both scan results and the Shares management page." },
+      { icon: Bell, label: "Admin Notifications UI Overhaul", desc: "Completely redesigned the notification cards in the admin panel. New cleaner card layout with colored accent bar, improved badge styling using neutral backgrounds for better readability, larger icons, better spacing, and always-visible action buttons for easier management." },
+      { icon: Globe, label: "Increased Subdomain Discovery Limit", desc: "Expanded the maximum subdomain discovery limit from 150 to 500 subdomains per scan. This allows for more comprehensive attack surface mapping on larger domains with extensive subdomain infrastructure." },
+    ],
+  },
+  {
     version: "2.0.0",
     date: "March 12, 2026",
     title: "Stripe Billing, Discord Integration, Admin Notifications & Design System Overhaul",
