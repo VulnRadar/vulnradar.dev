@@ -16,10 +16,8 @@ const config = getConfig()
 
 export const APP_NAME = config.app.name
 export const APP_SLUG = config.app.slug
-// Prefer the NEXT_PUBLIC_ env vars injected at build time from config.yaml (available on client).
-// Falls back to the server-side config read for SSR/server routes.
-export const APP_VERSION = process.env.NEXT_PUBLIC_APP_VERSION ?? config.app.version
-export const ENGINE_VERSION = process.env.NEXT_PUBLIC_ENGINE_VERSION ?? config.app.engine_version
+export const APP_VERSION = config.app.version
+export const ENGINE_VERSION = config.app.engine_version
 export const APP_DESCRIPTION = config.app.description
 export const TOTAL_CHECKS_LABEL = config.app.total_checks_label
 export const APP_URL = config.app.url
