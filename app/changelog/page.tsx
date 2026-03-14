@@ -72,13 +72,15 @@ const CHANGELOG = [
   {
     version: "2.0.1",
     date: "March 14, 2026",
-    title: "Custom Share Modal, Admin Notifications UI Fix & Expanded Subdomain Discovery",
+    title: "Detection Engine v2.0.1, Subdomain Caching & Share Modal",
     highlights: false,
     changes: [
-      { icon: Share2, label: "Custom Share Modal", desc: "Replaced the native browser share with a custom YouTube-style share modal. Share scan results directly to X (Twitter), Facebook, LinkedIn, WhatsApp, or Email with one click. The modal includes a copy-to-clipboard link button with visual feedback. Works identically on both scan results and the Shares management page." },
-      { icon: Bell, label: "Admin Notifications UI Overhaul", desc: "Completely redesigned the notification cards in the admin panel. New cleaner card layout with colored accent bar, improved badge styling using neutral backgrounds for better readability, larger icons, better spacing, and always-visible action buttons for easier management." },
-      { icon: Globe, label: "Increased Subdomain Discovery Limit", desc: "Expanded the maximum subdomain discovery limit from 150 to 500 subdomains per scan. This allows for more comprehensive attack surface mapping on larger domains with extensive subdomain infrastructure." },
+      { icon: ShieldCheck, label: "Detection Engine v2.0.1", desc: "Major improvements to reduce false positives. CSP checks now skip framework sites (Next.js, Nuxt, Angular) that legitimately require unsafe-inline/eval. Fixed wildcard detection to not flag 'https:' as a wildcard. XXE and reflected input checks now skip code examples and documentation. CDN fallback check no longer flags analytics scripts like cloudflareinsights.com." },
+      { icon: Globe, label: "Subdomain Discovery Caching", desc: "Subdomain results are now cached for 4 hours in the database to prevent rate limiting on external APIs. Shows cache status with time remaining until refresh, plus a 'Refresh Now' button to force-refresh if needed. Also expanded the discovery limit from 150 to 1000 subdomains." },
+      { icon: Share2, label: "Custom Share Modal", desc: "Replaced the native browser share with a custom YouTube-style share modal. Share scan results directly to X (Twitter), Facebook, LinkedIn, WhatsApp, or Email with one click. The modal includes a copy-to-clipboard link button with visual feedback." },
+      { icon: Bell, label: "Admin Notifications UI Overhaul", desc: "Completely redesigned the notification cards in the admin panel. New cleaner card layout with colored accent bar, improved badge styling using neutral backgrounds for better readability, larger icons, better spacing, and always-visible action buttons." },
       { icon: FileText, label: "Admin User Notes", desc: "Added a dedicated Notes section in the admin user detail panel. Staff can now add internal notes about users that persist across sessions. Notes display the author, timestamp, and full note content in a scrollable list." },
+      { icon: Settings, label: "Centralized Version Config", desc: "All version numbers now read from a single source of truth (config.yaml). Dynamic version injection at build time ensures consistency across the entire application. Separate app version and engine version tracking." },
     ],
   },
   {
