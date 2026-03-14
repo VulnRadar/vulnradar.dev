@@ -70,10 +70,23 @@ import { APP_NAME, TOTAL_CHECKS_LABEL } from "@/lib/constants"
 
 const CHANGELOG = [
   {
+    version: "2.0.2",
+    date: "March 14, 2026",
+    title: "Badge page 500 error fixed",
+    highlights: true,
+    changes: [
+      {
+        icon: Wrench,
+        label: "Bug Fix",
+        desc: "Resolved a 500 error on the badge page caused by a missing import during server rendering. The required module is now properly imported, allowing the page to load normally."
+      },
+    ],
+  },
+  {
     version: "2.0.1",
     date: "March 14, 2026",
     title: "Detection Engine v2.0.1, Subdomain Caching & Share Modal",
-    highlights: true,
+    highlights: false,
     changes: [
       { icon: ShieldCheck, label: "Detection Engine v2.0.1", desc: "Major improvements to reduce false positives. CSP checks now skip framework sites (Next.js, Nuxt, Angular) that legitimately require unsafe-inline/eval. Fixed wildcard detection to not flag 'https:' as a wildcard. XXE and reflected input checks now skip code examples and documentation. CDN fallback check no longer flags analytics scripts like cloudflareinsights.com." },
       { icon: Globe, label: "Subdomain Discovery Caching", desc: "Subdomain results are now cached for 4 hours in the database to prevent rate limiting on external APIs. Shows cache status with time remaining until refresh, plus a 'Refresh Now' button to force-refresh if needed. Also expanded the discovery limit from 150 to 1000 subdomains." },
