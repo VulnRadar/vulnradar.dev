@@ -179,6 +179,7 @@ export function loadConfig(): VulnRadarConfig {
   
   // If running in browser or Edge Runtime (no fs access), use defaults immediately
   if (!nodeFs) {
+    console.log("[v0] Config: No nodeFs available, using defaults. isClientOrEdge:", isClientOrEdge(), "window:", typeof window, "EdgeRuntime:", typeof globalThis !== "undefined" && "EdgeRuntime" in globalThis)
     _config = DEFAULT_CONFIG
     return _config
   }
@@ -221,10 +222,7 @@ export function loadConfig(): VulnRadarConfig {
     // Merge with defaults to ensure all required fields exist
     _config = deepMerge(DEFAULT_CONFIG, parsed as Partial<VulnRadarConfig>)
     
-    // Only log in development to reduce console spam during build
-    if (process.env.NODE_ENV === "development") {
-      console.log(`[Config] Loaded from ${configPath}`)
-    }
+    console.log(`[v0] Config loaded from ${configPath}, version: ${_config.app.version}, engine: ${_config.app.engine_version}`)
     return _config
     
   } catch (error) {

@@ -316,7 +316,7 @@ export async function POST(request: NextRequest) {
   const insertResult = await pool.query(
   `INSERT INTO scan_history (user_id, url, summary, findings, findings_count, duration, scanned_at, source, response_headers, notes)
   VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id`,
-  [authedUserId, url, JSON.stringify(summary), JSON.stringify(findings), summary.total, duration, result.scannedAt, source, JSON.stringify(capturedHeaders), DEFAULT_SCAN_NOTE()],
+  [authedUserId, url, JSON.stringify(summary), JSON.stringify(findings), summary.total, duration, result.scannedAt, source, JSON.stringify(capturedHeaders), DEFAULT_SCAN_NOTE],
   )
         scanHistoryId = insertResult.rows[0]?.id || null
       } catch (err) {
