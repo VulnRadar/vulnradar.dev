@@ -559,8 +559,11 @@ const detectors: Record<string, DetectFn> = {
       const scriptSrc = csp.match(/script-src[^;]*/i)?.[0] || ""
       if (scriptSrc.includes("data:")) issues.push("data: in script-src")
     }
-    if (/default-src[^;]*\*/.test(csp)) issues.push("wildcard in default-src")
-    if (/script-src[^;]*\*/.test(csp)) issues.push("wildcard in script-src")
+    // Only flag true wildcards (standalone *), not "https:" which ends with :
+    const defaultSrc = csp.match(/default-src[^;]*/i)?.[0] || ""
+    const scriptSrc = csp.match(/script-src[^;]*/i)?.[0] || ""
+    if (/(?:^|\s)\*(?:\s|;|$)/.test(defaultSrc)) issues.push("wildcard in default-src")
+    if (/(?:^|\s)\*(?:\s|;|$)/.test(scriptSrc)) issues.push("wildcard in script-src")
 
     return issues.length > 0 ? `Weak CSP directives: ${issues.join(", ")}` : null
   },
@@ -693,12 +696,20 @@ const detectors: Record<string, DetectFn> = {
   },
 
   "xxe-vulnerability": (_url, _headers, body) => {
-    const patterns = [/<!DOCTYPE[^>]*\[.*<!ENTITY/si, /DOMParser.*parseFromString/gi, /xml2js|fast-xml-parser|libxmljs/gi]
-    const found: string[] = []
-    for (const p of patterns) {
-      if (p.test(body)) found.push("XML parsing detected")
+    // Only flag actual DOCTYPE with ENTITY declarations (real XXE indicator)
+    // Skip DOMParser and library mentions - those are just usage, not vulnerabilities
+    const xxePattern = /<!DOCTYPE[^>]*\[[\s\S]*?<!ENTITY/i
+    if (xxePattern.test(body)) {
+      // Verify it's not in a code example or documentation
+      const match = body.match(xxePattern)
+      if (match) {
+        const idx = body.indexOf(match[0])
+        const before = body.slice(Math.max(0, idx - 200), idx).toLowerCase()
+        if (/<code|<pre|```|example/i.test(before)) return null
+        return "XXE risk: DOCTYPE with ENTITY declaration found"
+      }
     }
-    return found.length > 0 ? `XXE risk: ${found[0]}` : null
+    return null
   },
 
   "ssrf-vulnerability": (_url, _headers, body) => {
@@ -1203,19 +1214,27 @@ const detectors: Record<string, DetectFn> = {
     return null
   },
 
-  "csp-unsafe-inline-script": (_url, headers) => {
+  "csp-unsafe-inline-script": (_url, headers, body) => {
     const csp = h(headers, "content-security-policy")
     if (!csp) return null
     const scriptSrc = csp.match(/script-src[^;]*/i)?.[0] || ""
     if (!scriptSrc.includes("'unsafe-inline'")) return null
-    if (scriptSrc.includes("'nonce-") || scriptSrc.includes("'sha256-")) return null
+    if (scriptSrc.includes("'nonce-") || scriptSrc.includes("'sha256-") || scriptSrc.includes("'strict-dynamic'")) return null
+    // Skip for framework sites - handled by csp-framework-required INFO check
+    const isFramework = body.includes("/_next/") || body.includes("__NEXT_DATA__") ||
+      body.includes("__nuxt") || body.includes("/_nuxt/") || /ng-version/i.test(body)
+    if (isFramework) return null
     return "CSP script-src allows 'unsafe-inline' without nonce/hash, negating XSS protection."
   },
 
-  "csp-unsafe-eval-detected": (_url, headers) => {
+  "csp-unsafe-eval-detected": (_url, headers, body) => {
     const csp = h(headers, "content-security-policy")
     if (!csp) return null
     if (!csp.includes("'unsafe-eval'")) return null
+    // Skip for framework sites - handled by csp-framework-required INFO check
+    const isFramework = body.includes("/_next/") || body.includes("__NEXT_DATA__") ||
+      body.includes("__nuxt") || body.includes("/_nuxt/") || /ng-version/i.test(body)
+    if (isFramework) return null
     return "CSP allows 'unsafe-eval', permitting eval(), Function(), and setTimeout with strings."
   },
 
@@ -1224,7 +1243,10 @@ const detectors: Record<string, DetectFn> = {
     if (!csp) return null
     const parts = csp.split(";").map(s => s.trim())
     for (const p of parts) {
-      if (p.match(/-src\s.*\*/) && !p.includes("img-src") && !p.includes("media-src")) {
+      // Only match actual wildcards like "* " or " *" or standalone "*", not "https:" which ends in :
+      // A true wildcard is " * " or starts with "* " or ends with " *"
+      const hasRealWildcard = /(?:^|\s)\*(?:\s|$)/.test(p)
+      if (hasRealWildcard && !p.includes("img-src") && !p.includes("media-src")) {
         return `CSP uses wildcard source: '${p}'.`
       }
     }
@@ -1644,8 +1666,18 @@ const detectors: Record<string, DetectFn> = {
   },
 
   "xml-external-entity": (_url, _headers, body) => {
-    if (/<!ENTITY|SYSTEM\s*["'][^"']*["']/i.test(body)) {
-      return "XML entity declaration found - potential XXE vulnerability."
+    // Only flag actual XXE patterns - external entities with SYSTEM or PUBLIC declarations
+    // Skip if it's inside <code>, <pre>, or documentation contexts
+    const xxePattern = /<!DOCTYPE[^>]*\[[\s\S]*?<!ENTITY[^>]*(?:SYSTEM|PUBLIC)/i
+    if (xxePattern.test(body)) {
+      // Verify it's not in a code example
+      const match = body.match(xxePattern)
+      if (match) {
+        const idx = body.indexOf(match[0])
+        const before = body.slice(Math.max(0, idx - 200), idx).toLowerCase()
+        if (/<code|<pre|```|example|documentation/i.test(before)) return null
+        return "XML external entity declaration found - potential XXE vulnerability."
+      }
     }
     return null
   },
@@ -1707,7 +1739,7 @@ const detectors: Record<string, DetectFn> = {
     return null
   },
 
-  // ── API & Data Exposure ────────────────────────────────────────────────────
+  // ── API & Data Exposure ────────────────────────────────────���───────────────
 
   "graphql-introspection": (_url, _headers, body) => {
     if (/__schema|__type|introspectionQuery/i.test(body)) {
@@ -1776,7 +1808,9 @@ const detectors: Record<string, DetectFn> = {
   // ── Third-Party & Supply Chain ─────────────────────────────────────────────
 
   "cdn-fallback-missing": (_url, _headers, body) => {
-    const cdnScripts = body.match(/<script[^>]*src=["'][^"']*(?:cdnjs|jsdelivr|unpkg|cloudflare)[^"']*["'][^>]*>/gi) || []
+    // Only match actual CDN library hosts, not analytics/tracking scripts
+    // cloudflare.com CDN is cdnjs.cloudflare.com, NOT cloudflareinsights.com or static.cloudflareinsights.com
+    const cdnScripts = body.match(/<script[^>]*src=["'][^"']*(?:cdnjs\.cloudflare\.com|cdn\.jsdelivr\.net|unpkg\.com)[^"']*["'][^>]*>/gi) || []
     if (cdnScripts.length > 0 && !/onerror\s*=/i.test(body)) {
       return `${cdnScripts.length} CDN script(s) without fallback mechanism.`
     }
@@ -1923,9 +1957,21 @@ const detectors: Record<string, DetectFn> = {
   // ── Content & Data Validation ──────────────────────────────────────────────
 
   "reflected-input": (_url, _headers, body) => {
-    // Check if common test strings appear in output
-    if (/jaVasCript:|javascript:|<script|onload=|onerror=/gi.test(body)) {
-      return "Potentially reflected dangerous content patterns found."
+    // Check for XSS payloads that appear OUTSIDE of code blocks, scripts, and documentation
+    // These patterns indicate actual reflection, not legitimate code examples
+    const dangerousPatterns = [
+      /jaVasCript:/gi,  // Mixed case is a payload indicator
+      /<script[^>]*>[^<]*(?:document\.cookie|eval\(|alert\(|fetch\([^)]*document)/gi, // Script with suspicious content
+    ]
+    for (const p of dangerousPatterns) {
+      const match = body.match(p)
+      if (match) {
+        const idx = body.indexOf(match[0])
+        const before = body.slice(Math.max(0, idx - 300), idx).toLowerCase()
+        // Skip if inside code block, pre, or looks like documentation
+        if (/<code|<pre|```|class=["'][^"']*(?:code|syntax|highlight)|documentation|example/i.test(before)) continue
+        return "Potentially reflected dangerous content patterns found."
+      }
     }
     return null
   },
