@@ -3,11 +3,9 @@
 // ============================================================================
 // This file reads from config.yaml via the config system.
 // Self-hosters: Modify config.yaml to customize your deployment.
-// cache-bust: rebuild
 // ============================================================================
 
 import { getConfig } from "./config"
-import { getVersionSync, getScanNote } from "./version"
 
 // Get config (loads from config.yaml or uses defaults)
 const config = getConfig()
@@ -18,21 +16,15 @@ const config = getConfig()
 
 export const APP_NAME = config.app.name
 export const APP_SLUG = config.app.slug
-
-// Versions read synchronously from config.yaml on server
-const versionInfo = getVersionSync()
-export const APP_VERSION = versionInfo.current
-export const ENGINE_VERSION = versionInfo.engine
-
+export const APP_VERSION = config.app.version
+export const ENGINE_VERSION = config.app.engine_version
 export const APP_DESCRIPTION = config.app.description
 export const TOTAL_CHECKS_LABEL = config.app.total_checks_label
 export const APP_URL = config.app.url
 export const APP_REPO = config.app.repo
 
 // Scan note with version info
-export function DEFAULT_SCAN_NOTE() {
-  return getScanNote()
-}
+export const DEFAULT_SCAN_NOTE = `${APP_NAME} v${APP_VERSION} (Detection Engine v${ENGINE_VERSION})`
 
 export const VERSION_CHECK_URL = `https://api.github.com/repos/${APP_REPO}/releases/latest`
 export const RELEASES_URL = `https://github.com/${APP_REPO}/releases`
