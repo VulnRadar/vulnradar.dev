@@ -16,8 +16,8 @@ const config = getConfig()
 
 export const APP_NAME = config.app.name
 export const APP_SLUG = config.app.slug
-export const APP_VERSION = config.app.version
-export const ENGINE_VERSION = config.app.engine_version
+export const APP_VERSION = process.env.NEXT_PUBLIC_APP_VERSION ?? "unknown"
+export const ENGINE_VERSION = process.env.NEXT_PUBLIC_ENGINE_VERSION ?? "unknown"
 export const APP_DESCRIPTION = config.app.description
 export const TOTAL_CHECKS_LABEL = config.app.total_checks_label
 export const APP_URL = config.app.url
