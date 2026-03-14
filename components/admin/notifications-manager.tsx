@@ -363,7 +363,7 @@ export function NotificationsManager() {
 
       {/* Create / Edit Dialog */}
       <Dialog open={isCreating} onOpenChange={(open) => !open && closeDialog()} modal={true}>
-        <DialogContent className="w-full max-w-2xl max-h-[95dvh] sm:max-h-[85vh] overflow-y-auto gap-0 p-0 my-0 sm:my-4 rounded-t-xl sm:rounded-xl mx-0 sm:mx-auto fixed bottom-0 sm:bottom-auto sm:relative">
+        <DialogContent className="w-full max-w-2xl max-h-[95dvh] sm:max-h-[85vh] overflow-y-auto gap-0 p-0 rounded-xl">
           {/* Dialog header with variant color stripe */}
           <div className={cn("px-5 py-4 border-b border-border rounded-t-xl", activeVariant.bg)}>
             <DialogHeader>
