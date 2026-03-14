@@ -444,7 +444,7 @@ export async function register() {
 
       // ════════════════════════════════════════════════════════════════
       // DEVICE TRUST - Trusted devices for 2FA
-      // ════════════════════════════════════════════════════════════════
+      // ═══════════════════════════════════════���════════════════════════
       await pool.query(`
         CREATE TABLE IF NOT EXISTS device_trust (
           id SERIAL PRIMARY KEY,
@@ -562,6 +562,18 @@ export async function register() {
         CREATE INDEX IF NOT EXISTS idx_admin_notifications_active ON admin_notifications (is_active, starts_at, ends_at) WHERE is_active = true;
         CREATE INDEX IF NOT EXISTS idx_admin_notifications_type ON admin_notifications (type);
         CREATE INDEX IF NOT EXISTS idx_admin_notifications_cookie ON admin_notifications (cookie_id);
+      `)
+
+      // ════════════════════════════════════════════════════════════════
+      // SUBDOMAIN CACHE - Caches subdomain discovery results (4 hour TTL)
+      // ════════════════════════════════════════════════════════════════
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS subdomain_cache (
+          domain VARCHAR(255) PRIMARY KEY,
+          subdomains JSONB NOT NULL,
+          cached_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+        );
+        CREATE INDEX IF NOT EXISTS idx_subdomain_cache_cached_at ON subdomain_cache(cached_at);
       `)
 
       console.log(`[${APP_NAME}] Database schema verified successfully.`)
