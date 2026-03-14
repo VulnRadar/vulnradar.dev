@@ -1,34 +1,7 @@
 /** @type {import('next').NextConfig} */
 // cache-bust: force rebuild after dependency fix
 
-import { readFileSync, existsSync } from "fs"
-import { join } from "path"
-
-// Read version from config.yaml at build time so it's available on the client
-const configPath = join(process.cwd(), "config.yaml")
-let version = "2.0.1"
-let engineVersion = "2.0.1"
-
-if (existsSync(configPath)) {
-  try {
-    const content = readFileSync(configPath, "utf-8")
-    const versionMatch = content.match(/version:\s*["']?([^"'\s]+)["']?/)
-    const engineMatch = content.match(/engine_version:\s*["']?([^"'\s]+)["']?/)
-    
-    if (versionMatch?.[1]) version = versionMatch[1]
-    if (engineMatch?.[1]) engineVersion = engineMatch[1]
-  } catch (err) {
-    console.warn(`⚠️  Could not read config.yaml, using defaults: ${err.message}`)
-  }
-} else {
-  console.warn("⚠️  config.yaml not found, using default versions")
-}
-
 const nextConfig = {
-  env: {
-    NEXT_PUBLIC_APP_VERSION: version,
-    NEXT_PUBLIC_ENGINE_VERSION: engineVersion,
-  },
   output: "standalone",
   serverExternalPackages: ["fs", "path"],
   typescript: {
