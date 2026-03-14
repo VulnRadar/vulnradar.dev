@@ -156,7 +156,7 @@ function getDefaultVersion(): { version: string; engineVersion: string } {
   if (process.env.NEXT_PUBLIC_APP_VERSION) {
     return {
       version: process.env.NEXT_PUBLIC_APP_VERSION,
-      engineVersion: process.env.NEXT_PUBLIC_ENGINE_VERSION ?? process.env.NEXT_PUBLIC_APP_VERSION,
+      engineVersion: process.env.NEXT_PUBLIC_ENGINE_VERSION ?? "2.0.0",
     }
   }
   
@@ -170,11 +170,11 @@ function getDefaultVersion(): { version: string; engineVersion: string } {
       const configPath = path.join(process.cwd(), "config.yaml")
       if (fs.existsSync(configPath)) {
         const content = fs.readFileSync(configPath, "utf-8")
-        const versionMatch = content.match(/^\s{2}version:\s*["']?([^"'\s]+)["']?/m)
-        const engineMatch = content.match(/^\s{2}engine_version:\s*["']?([^"'\s]+)["']?/m)
+        const versionMatch = content.match(/version:\s*["']?([^"'\s]+)["']?/)
+        const engineMatch = content.match(/engine_version:\s*["']?([^"'\s]+)["']?/)
         return {
           version: versionMatch?.[1] ?? "2.0.1",
-          engineVersion: engineMatch?.[1] ?? "2.0.1",
+          engineVersion: engineMatch?.[1] ?? "2.0.0",
         }
       }
     } catch {
@@ -183,7 +183,7 @@ function getDefaultVersion(): { version: string; engineVersion: string } {
   }
   
   // Final fallback
-  return { version: "2.0.1", engineVersion: "2.0.1" }
+  return { version: "2.0.1", engineVersion: "2.0.0" }
 }
 
 const { version: defaultVersion, engineVersion: defaultEngineVersion } = getDefaultVersion()
