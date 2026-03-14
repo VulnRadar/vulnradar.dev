@@ -2,37 +2,40 @@ import { NextRequest, NextResponse } from "next/server"
 import { getSession } from "@/lib/auth"
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 import dns from "dns/promises"
+import pool from "@/lib/db"
 
 // ============================================================================
-// Subdomain Cache - 4 hour TTL to avoid rate limiting external APIs
+// Subdomain Cache - 4 hour TTL using database for persistence across instances
 // ============================================================================
-interface CachedSubdomainResult {
-  subdomains: DiscoveredSubdomain[]
-  timestamp: number
-}
+const CACHE_TTL_HOURS = 4
 
-const SUBDOMAIN_CACHE = new Map<string, CachedSubdomainResult>()
-const CACHE_TTL_MS = 4 * 60 * 60 * 1000 // 4 hours
-
-function getCachedSubdomains(domain: string): DiscoveredSubdomain[] | null {
-  const cached = SUBDOMAIN_CACHE.get(domain)
-  if (!cached) return null
-  if (Date.now() - cached.timestamp > CACHE_TTL_MS) {
-    SUBDOMAIN_CACHE.delete(domain)
-    return null
-  }
-  return cached.subdomains
-}
-
-function cacheSubdomains(domain: string, subdomains: DiscoveredSubdomain[]) {
-  // Clean old entries periodically (keep cache under 500 entries)
-  if (SUBDOMAIN_CACHE.size > 500) {
-    const now = Date.now()
-    for (const [key, val] of SUBDOMAIN_CACHE) {
-      if (now - val.timestamp > CACHE_TTL_MS) SUBDOMAIN_CACHE.delete(key)
+async function getCachedSubdomains(domain: string): Promise<DiscoveredSubdomain[] | null> {
+  try {
+    const result = await pool.query(
+      `SELECT subdomains FROM subdomain_cache 
+       WHERE domain = $1 AND cached_at > NOW() - INTERVAL '${CACHE_TTL_HOURS} hours'`,
+      [domain]
+    )
+    if (result.rows[0]?.subdomains) {
+      return result.rows[0].subdomains as DiscoveredSubdomain[]
     }
+  } catch {
+    // Cache miss or error, proceed with fresh scan
   }
-  SUBDOMAIN_CACHE.set(domain, { subdomains, timestamp: Date.now() })
+  return null
+}
+
+async function cacheSubdomains(domain: string, subdomains: DiscoveredSubdomain[]) {
+  try {
+    await pool.query(
+      `INSERT INTO subdomain_cache (domain, subdomains, cached_at)
+       VALUES ($1, $2, NOW())
+       ON CONFLICT (domain) DO UPDATE SET subdomains = $2, cached_at = NOW()`,
+      [domain, JSON.stringify(subdomains)]
+    )
+  } catch {
+    // Silently fail - caching is optional
+  }
 }
 
 // 150+ common subdomain prefixes, all resolved via parallel DNS (no sequential overhead)
@@ -146,7 +149,7 @@ export async function POST(request: NextRequest) {
   const rootDomain = extractRootDomain(domain)
 
   // Check cache first (4 hour TTL)
-  const cached = getCachedSubdomains(rootDomain)
+  const cached = await getCachedSubdomains(rootDomain)
   if (cached) {
     return NextResponse.json({
       domain: rootDomain,
@@ -230,8 +233,8 @@ export async function POST(request: NextRequest) {
     return a.subdomain.localeCompare(b.subdomain)
   })
 
-  // Cache results for 4 hours
-  cacheSubdomains(rootDomain, results)
+  // Cache results for 4 hours (fire and forget - don't block response)
+  cacheSubdomains(rootDomain, results).catch(() => {})
 
   return NextResponse.json({
     domain: rootDomain,
