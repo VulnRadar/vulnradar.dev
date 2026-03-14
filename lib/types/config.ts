@@ -155,8 +155,8 @@ export const DEFAULT_CONFIG: VulnRadarConfig = {
   app: {
     name: "VulnRadar",
     slug: "vulnradar",
-    version: "unknown",
-    engine_version: "unknown",
+    version: process.env.NEXT_PUBLIC_APP_VERSION || "unknown",
+    engine_version: process.env.NEXT_PUBLIC_ENGINE_VERSION || "unknown",
     description: "Scan websites for security vulnerabilities. Get instant reports with severity ratings, actionable fix guidance, and team collaboration tools.",
     total_checks_label: "175+",
     url: "https://vulnradar.dev",

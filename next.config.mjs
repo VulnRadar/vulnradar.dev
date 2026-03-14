@@ -1,7 +1,32 @@
 /** @type {import('next').NextConfig} */
 // cache-bust: force rebuild after dependency fix
 
+import { readFileSync, existsSync } from "fs"
+import { join } from "path"
+
+// Read version from config.yaml at build time and inject as env vars
+// This makes versions available in Edge runtime where fs is not accessible
+function getVersions() {
+  const configPath = join(process.cwd(), "config.yaml")
+  if (existsSync(configPath)) {
+    const content = readFileSync(configPath, "utf-8")
+    const versionMatch = content.match(/version:\s*["']?([^"'\s]+)["']?/)
+    const engineMatch = content.match(/engine_version:\s*["']?([^"'\s]+)["']?/)
+    return {
+      version: versionMatch?.[1] || "unknown",
+      engineVersion: engineMatch?.[1] || "unknown",
+    }
+  }
+  return { version: "unknown", engineVersion: "unknown" }
+}
+
+const { version, engineVersion } = getVersions()
+
 const nextConfig = {
+  env: {
+    NEXT_PUBLIC_APP_VERSION: version,
+    NEXT_PUBLIC_ENGINE_VERSION: engineVersion,
+  },
   output: "standalone",
   serverExternalPackages: ["fs", "path"],
   typescript: {
