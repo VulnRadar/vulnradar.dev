@@ -1,6 +1,5 @@
 // Server-side version fetcher - no React hooks
-// Reads from config.yaml directly on server
-// cache-bust: rebuild
+// Reads from config.yaml directly on server at module load time
 
 interface Version {
   current: string
@@ -9,8 +8,6 @@ interface Version {
   status: "up-to-date" | "behind" | "ahead" | "unknown"
   message: string
 }
-
-let versionCache: Version | null = null
 
 // Server-side: Read directly from config.yaml
 function readVersionFromConfig(): Version {
@@ -49,28 +46,16 @@ function readVersionFromConfig(): Version {
   }
 }
 
+// Initialize cache IMMEDIATELY at module load time on server
+// This ensures versions are always available before any code runs
+const versionCache: Version = typeof window === "undefined" 
+  ? readVersionFromConfig()
+  : { current: "2.0.1", engine: "2.0.1", latest: null, status: "unknown", message: "Client fallback" }
+
 export function getVersionSync(): Version {
-  if (versionCache) {
-    return versionCache
-  }
-  
-  // On server, read from config.yaml directly
-  if (typeof window === "undefined") {
-    versionCache = readVersionFromConfig()
-    return versionCache
-  }
-  
-  // On client, return placeholder (should use useVersion hook instead)
-  return {
-    current: "loading",
-    engine: "loading",
-    latest: null,
-    status: "unknown",
-    message: "Use useVersion hook on client"
-  }
+  return versionCache
 }
 
 export function getScanNote(): string {
-  const v = getVersionSync()
-  return `VulnRadar v${v.current} (Detection Engine v${v.engine})`
+  return `VulnRadar v${versionCache.current} (Detection Engine v${versionCache.engine})`
 }
