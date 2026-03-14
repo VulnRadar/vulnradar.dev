@@ -148,6 +148,47 @@ export interface VulnRadarConfig {
 }
 
 // ============================================================================
+// Dynamic Version Getter (reads from config.yaml or NEXT_PUBLIC_ env vars)
+// ============================================================================
+
+function getDefaultVersion(): { version: string; engineVersion: string } {
+  // First try NEXT_PUBLIC_ env vars (available everywhere after build)
+  if (process.env.NEXT_PUBLIC_APP_VERSION) {
+    return {
+      version: process.env.NEXT_PUBLIC_APP_VERSION,
+      engineVersion: process.env.NEXT_PUBLIC_ENGINE_VERSION ?? process.env.NEXT_PUBLIC_APP_VERSION,
+    }
+  }
+  
+  // On server, try reading config.yaml directly
+  if (typeof window === "undefined") {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const fs = require("fs")
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const path = require("path")
+      const configPath = path.join(process.cwd(), "config.yaml")
+      if (fs.existsSync(configPath)) {
+        const content = fs.readFileSync(configPath, "utf-8")
+        const versionMatch = content.match(/^\s{2}version:\s*["']?([^"'\s]+)["']?/m)
+        const engineMatch = content.match(/^\s{2}engine_version:\s*["']?([^"'\s]+)["']?/m)
+        return {
+          version: versionMatch?.[1] ?? "2.0.1",
+          engineVersion: engineMatch?.[1] ?? "2.0.1",
+        }
+      }
+    } catch {
+      // Ignore errors, fall through to default
+    }
+  }
+  
+  // Final fallback
+  return { version: "2.0.1", engineVersion: "2.0.1" }
+}
+
+const { version: defaultVersion, engineVersion: defaultEngineVersion } = getDefaultVersion()
+
+// ============================================================================
 // Default Configuration (fallback if config.yaml is missing/invalid)
 // ============================================================================
 
@@ -155,8 +196,8 @@ export const DEFAULT_CONFIG: VulnRadarConfig = {
   app: {
     name: "VulnRadar",
     slug: "vulnradar",
-    version: "2.0.1",
-    engine_version: "2.0.1",
+    version: defaultVersion,
+    engine_version: defaultEngineVersion,
     description: "Scan websites for security vulnerabilities. Get instant reports with severity ratings, actionable fix guidance, and team collaboration tools.",
     total_checks_label: "175+",
     url: "https://vulnradar.dev",
