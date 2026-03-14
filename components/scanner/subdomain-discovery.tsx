@@ -2,7 +2,7 @@
 
 import { useState } from "react"
 import { useRouter } from "next/navigation"
-import { Globe, Loader2, Search, ExternalLink, ChevronDown, ChevronRight, Radar } from "lucide-react"
+import { Globe, Loader2, Search, ExternalLink, ChevronDown, ChevronRight, Radar, RefreshCw, Clock } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { API } from "@/lib/constants"
@@ -21,6 +21,9 @@ interface DiscoveryResult {
   reachable: number
   subdomains: DiscoveredSubdomain[]
   sources?: Record<string, number>
+  cached?: boolean
+  cachedAt?: string
+  expiresAt?: string
 }
 
 interface SubdomainDiscoveryProps {
@@ -59,21 +62,38 @@ function statusBucket(code?: number): string {
   return "red"
 }
 
+function formatTimeRemaining(expiresAt: string): string {
+  const now = new Date()
+  const expires = new Date(expiresAt)
+  const diffMs = expires.getTime() - now.getTime()
+  if (diffMs <= 0) return "expired"
+  const diffMins = Math.floor(diffMs / 60000)
+  if (diffMins < 60) return `${diffMins}m`
+  const diffHours = Math.floor(diffMins / 60)
+  const remainingMins = diffMins % 60
+  return remainingMins > 0 ? `${diffHours}h ${remainingMins}m` : `${diffHours}h`
+}
+
 export function SubdomainDiscovery({ url, onScanSubdomain }: SubdomainDiscoveryProps) {
   const router = useRouter()
   const [loading, setLoading] = useState(false)
+  const [refreshing, setRefreshing] = useState(false)
   const [result, setResult] = useState<DiscoveryResult | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [expanded, setExpanded] = useState(false)
 
-  async function handleDiscover() {
-    setLoading(true)
+  async function handleDiscover(forceRefresh = false) {
+    if (forceRefresh) {
+      setRefreshing(true)
+    } else {
+      setLoading(true)
+    }
     setError(null)
     try {
       const res = await fetch(API.SCAN_DISCOVER, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url }),
+        body: JSON.stringify({ url, forceRefresh }),
       })
       const data = await res.json()
       if (!res.ok) {
@@ -90,6 +110,7 @@ export function SubdomainDiscovery({ url, onScanSubdomain }: SubdomainDiscoveryP
       setError("Failed to discover subdomains")
     } finally {
       setLoading(false)
+      setRefreshing(false)
     }
   }
 
