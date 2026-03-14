@@ -29,8 +29,18 @@ import * as readline from "readline"
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const ROOT = resolve(__dirname, "..")
 
-// ── Version Info ────────────────────────────────────────────────────────────
-const SCHEMA_VERSION = "2.0.0"
+// ── Version Info (read from config.yaml) ────────────────────────────────────
+function getSchemaVersion() {
+  try {
+    const configPath = resolve(ROOT, "config.yaml")
+    const content = fs.readFileSync(configPath, "utf-8")
+    const match = content.match(/^\s{2}version:\s*["']?([^"'\s]+)["']?/m)
+    return match?.[1] ?? "2.0.1"
+  } catch {
+    return "2.0.1"
+  }
+}
+const SCHEMA_VERSION = getSchemaVersion()
 
 // Core tables that exist in v1 (original schema)
 // v1 only has these tables - no badges, billing, subscriptions, etc.
