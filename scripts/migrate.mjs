@@ -34,10 +34,12 @@ function getSchemaVersion() {
   try {
     const configPath = resolve(ROOT, "config.yaml")
     const content = fs.readFileSync(configPath, "utf-8")
-    const match = content.match(/^\s{2}version:\s*["']?([^"'\s]+)["']?/m)
-    return match?.[1] ?? "2.0.1"
-  } catch {
-    return "2.0.1"
+    const match = content.match(/version:\s*["']?([^"'\s]+)["']?/)
+    if (!match?.[1]) throw new Error("Version not found in config.yaml")
+    return match[1]
+  } catch (err) {
+    console.error("ERROR: Could not read version from config.yaml:", err.message)
+    process.exit(1)
   }
 }
 const SCHEMA_VERSION = getSchemaVersion()
@@ -819,7 +821,7 @@ async function main() {
     }
   }
 
-  // ── Phase 3: Schema comparison ──────────────────────────────────────────
+  // ── Phase 3: Schema comparison ─────────────��────────────────────────────
   log("")
   log(`${c.bold}═══════════════════════════════════════════${c.reset}`)
   log(`${c.bold}  Schema Comparison${c.reset}`)
