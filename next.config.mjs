@@ -8,32 +8,47 @@ import { join } from "path"
 function readVersionFromConfig() {
   const configPath = join(process.cwd(), "config.yaml")
   if (!existsSync(configPath)) {
-    throw new Error("config.yaml not found - cannot determine version")
+    console.error("⚠️  config.yaml not found - cannot determine version")
+    process.exit(1)
   }
   try {
     const content = readFileSync(configPath, "utf-8")
     const versionMatch = content.match(/version:\s*["']?([^"'\s]+)["']?/)
     const engineMatch = content.match(/engine_version:\s*["']?([^"'\s]+)["']?/)
     
-    if (!versionMatch?.[1]) throw new Error("app version not found in config.yaml")
-    if (!engineMatch?.[1]) throw new Error("engine_version not found in config.yaml")
+    if (!versionMatch?.[1]) {
+      console.error("⚠️  app version not found in config.yaml")
+      process.exit(1)
+    }
+    if (!engineMatch?.[1]) {
+      console.error("⚠️  engine_version not found in config.yaml")
+      process.exit(1)
+    }
     
     return {
       version: versionMatch[1],
       engineVersion: engineMatch[1],
     }
   } catch (err) {
-    throw new Error(`Failed to read version from config.yaml: ${err.message}`)
+    console.error(`⚠️  Failed to read version from config.yaml: ${err.message}`)
+    process.exit(1)
   }
 }
 
-const { version, engineVersion } = readVersionFromConfig()
+let { version, engineVersion } = { version: undefined, engineVersion: undefined }
+try {
+  const versionInfo = readVersionFromConfig()
+  version = versionInfo.version
+  engineVersion = versionInfo.engineVersion
+} catch {
+  // Versions will be handled by env var fallback if available
+}
 
 const nextConfig = {
-  env: {
+  env: version && engineVersion ? {
     NEXT_PUBLIC_APP_VERSION: version,
     NEXT_PUBLIC_ENGINE_VERSION: engineVersion,
-  },
+  } : {},
   output: "standalone",
   serverExternalPackages: ["fs", "path"],
   typescript: {
