@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
@@ -137,6 +138,7 @@ export function ShareModal({ open, onOpenChange, shareUrl, title = "VulnRadar Sc
       <DialogContent className="sm:max-w-md gap-0 p-0 overflow-hidden">
         <DialogHeader className="px-6 pt-6 pb-4">
           <DialogTitle className="text-center text-lg font-semibold">Share</DialogTitle>
+          <DialogDescription className="sr-only">Share this scan report via social media or copy the link</DialogDescription>
         </DialogHeader>
 
         <div className="px-6 pb-6 space-y-5">
