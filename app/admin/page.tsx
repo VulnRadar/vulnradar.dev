@@ -57,6 +57,8 @@ import {
   Gift,
   Bell,
   Dot,
+  StickyNote,
+  Send,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -122,6 +124,16 @@ interface UserBadge extends BadgeDef {
   awarded_at: string
 }
 
+interface AdminNote {
+  id: number
+  note: string
+  created_at: string
+  admin_id: number
+  admin_email: string
+  admin_name: string | null
+  admin_avatar_url: string | null
+}
+
 interface UserDetail {
   user: AdminUser & {
     session_count: number
@@ -133,6 +145,7 @@ interface UserDetail {
   schedules: { id: number; url: string; frequency: string; active: boolean; last_run_at: string | null; next_run_at: string | null }[]
   activeSessions: { id: string; created_at: string; expires_at: string; ip_address: string | null; user_agent: string | null }[]
   badges: UserBadge[]
+  notes: AdminNote[]
 }
 
 interface AuditEntry {
@@ -754,7 +767,7 @@ function AdminContent() {
                 onClose={() => { setSelectedUser(null); setTempPassword(null); updateUrlWithUser(null, activeTab) }}
                 onAction={(userId, action, extra) => {
                   // Actions that don't need confirmation
-                  if (["set_role", "award_badge", "revoke_badge", "create_badge", "delete_badge", "update_name", "update_email", "update_plan", "enable", "clear_rate_limits", "gift_subscription", "revoke_gift"].includes(action)) {
+                  if (["set_role", "award_badge", "revoke_badge", "create_badge", "delete_badge", "update_name", "update_email", "update_plan", "enable", "clear_rate_limits", "gift_subscription", "revoke_gift", "add_note", "edit_note", "delete_note"].includes(action)) {
                     handleAction(userId, action, extra)
                     return
                   }
@@ -1326,6 +1339,8 @@ function UserDetailPanel({
   const u = detail.user
   const isLoading = (action: string) => actionLoading === `${u.id}-${action}`
   const [showBadgePicker, setShowBadgePicker] = useState(false)
+  const [newNote, setNewNote] = useState("")
+  const [editingNote, setEditingNote] = useState<{ id: number; text: string } | null>(null)
   const [newBadgeName, setNewBadgeName] = useState("")
   const [newBadgeDisplay, setNewBadgeDisplay] = useState("")
   const [newBadgeColor, setNewBadgeColor] = useState("#6366f1")
@@ -1998,6 +2013,117 @@ function UserDetailPanel({
             </CardContent>
           </Card>
         </div>
+      )}
+
+      {/* Admin Notes */}
+      {!detailLoading && (
+        <Card className="bg-card border-border">
+          <CardHeader className="pb-0 pt-4 px-5">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <StickyNote className="h-4 w-4 text-muted-foreground" />
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Admin Notes</p>
+                <span className="text-[10px] text-muted-foreground">({detail.notes?.length || 0})</span>
+              </div>
+            </div>
+            <p className="text-[11px] text-muted-foreground mt-1">Internal notes about this user. Only visible to staff.</p>
+          </CardHeader>
+          <CardContent className="p-5 pt-3 flex flex-col gap-3">
+            {/* Add note form */}
+            <div className="flex gap-2">
+              <Input
+                placeholder="Add a note about this user..."
+                value={newNote}
+                onChange={(e) => setNewNote(e.target.value)}
+                className="h-9 text-sm flex-1"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && newNote.trim()) {
+                    onAction(u.id, "add_note", { note: newNote.trim() })
+                    setNewNote("")
+                  }
+                }}
+              />
+              <Button
+                size="sm"
+                className="h-9 gap-1.5"
+                disabled={!newNote.trim() || isLoading("add_note")}
+                onClick={() => {
+                  if (newNote.trim()) {
+                    onAction(u.id, "add_note", { note: newNote.trim() })
+                    setNewNote("")
+                  }
+                }}
+              >
+                {isLoading("add_note") ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
+                Add
+              </Button>
+            </div>
+
+            {/* Notes list */}
+            {detail.notes && detail.notes.length > 0 ? (
+              <div className="flex flex-col gap-2 max-h-64 overflow-y-auto">
+                {detail.notes.map((note) => (
+                  <div key={note.id} className="group flex items-start gap-3 p-3 rounded-lg bg-muted/30 border border-border">
+                    <UserAvatar
+                      name={note.admin_name}
+                      email={note.admin_email}
+                      size="sm"
+                      avatarUrl={note.admin_avatar_url}
+                    />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="text-xs font-medium text-foreground">{note.admin_name || note.admin_email.split("@")[0]}</span>
+                        <span className="text-[10px] text-muted-foreground">{formatRelativeTime(new Date(note.created_at))}</span>
+                      </div>
+                      {editingNote?.id === note.id ? (
+                        <div className="flex gap-2 mt-1">
+                          <Input
+                            value={editingNote.text}
+                            onChange={(e) => setEditingNote({ ...editingNote, text: e.target.value })}
+                            className="h-8 text-xs flex-1"
+                            autoFocus
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter" && editingNote.text.trim()) {
+                                onAction(u.id, "edit_note", { noteId: note.id, note: editingNote.text.trim() })
+                                setEditingNote(null)
+                              }
+                              if (e.key === "Escape") setEditingNote(null)
+                            }}
+                          />
+                          <Button size="sm" className="h-8 px-2 text-xs" disabled={!editingNote.text.trim()} onClick={() => {
+                            onAction(u.id, "edit_note", { noteId: note.id, note: editingNote.text.trim() })
+                            setEditingNote(null)
+                          }}>Save</Button>
+                          <Button size="sm" variant="ghost" className="h-8 px-2 text-xs" onClick={() => setEditingNote(null)}>Cancel</Button>
+                        </div>
+                      ) : (
+                        <p className="text-sm text-muted-foreground whitespace-pre-wrap break-words">{note.note}</p>
+                      )}
+                    </div>
+                    {editingNote?.id !== note.id && (
+                      <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+                        <button
+                          onClick={() => setEditingNote({ id: note.id, text: note.note })}
+                          className="flex items-center justify-center h-7 w-7 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          onClick={() => onAction(u.id, "delete_note", { noteId: note.id })}
+                          className="flex items-center justify-center h-7 w-7 rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-xs text-muted-foreground text-center py-4">No notes yet. Add one above.</p>
+            )}
+          </CardContent>
+        </Card>
       )}
 
       {/* Support actions */}

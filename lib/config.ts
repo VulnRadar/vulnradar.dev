@@ -220,11 +220,6 @@ export function loadConfig(): VulnRadarConfig {
     
     // Merge with defaults to ensure all required fields exist
     _config = deepMerge(DEFAULT_CONFIG, parsed as Partial<VulnRadarConfig>)
-    
-    // Only log in development to reduce console spam during build
-    if (process.env.NODE_ENV === "development") {
-      console.log(`[Config] Loaded from ${configPath}`)
-    }
     return _config
     
   } catch (error) {

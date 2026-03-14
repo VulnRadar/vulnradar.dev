@@ -29,8 +29,20 @@ import * as readline from "readline"
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const ROOT = resolve(__dirname, "..")
 
-// ── Version Info ────────────────────────────────────────────────────────────
-const SCHEMA_VERSION = "2.0.0"
+// ── Version Info (read from config.yaml) ────────────────────────────────────
+function getSchemaVersion() {
+  try {
+    const configPath = resolve(ROOT, "config.yaml")
+    const content = fs.readFileSync(configPath, "utf-8")
+    const match = content.match(/version:\s*["']?([^"'\s]+)["']?/)
+    if (!match?.[1]) throw new Error("Version not found in config.yaml")
+    return match[1]
+  } catch (err) {
+    console.error("ERROR: Could not read version from config.yaml:", err.message)
+    process.exit(1)
+  }
+}
+const SCHEMA_VERSION = getSchemaVersion()
 
 // Core tables that exist in v1 (original schema)
 // v1 only has these tables - no badges, billing, subscriptions, etc.
@@ -809,7 +821,7 @@ async function main() {
     }
   }
 
-  // ── Phase 3: Schema comparison ──────────────────────────────────────────
+  // ── Phase 3: Schema comparison ─────────────��────────────────────────────
   log("")
   log(`${c.bold}═══════════════════════════════════════════${c.reset}`)
   log(`${c.bold}  Schema Comparison${c.reset}`)
