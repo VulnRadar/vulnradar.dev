@@ -1,149 +1,72 @@
 "use client"
 
 import { useState } from "react"
-import { Share2, Check, Link2, Loader2 } from "lucide-react"
+import { Share2, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { API } from "@/lib/constants"
+import { ShareModal } from "./share-modal"
 
 interface ShareButtonProps {
   scanId: number
 }
 
-/**
- * Clipboard write with fallback for mobile browsers that don't support
- * navigator.clipboard (or block it outside secure user-gesture contexts).
- */
-async function copyText(text: string): Promise<boolean> {
-  // Try modern clipboard API first
-  if (navigator.clipboard?.writeText) {
-    try {
-      await navigator.clipboard.writeText(text)
-      return true
-    } catch {
-      // Fall through to legacy fallback
-    }
-  }
-
-  // Legacy fallback using textarea + execCommand
-  try {
-    const textarea = document.createElement("textarea")
-    textarea.value = text
-    textarea.style.position = "fixed"
-    textarea.style.left = "-9999px"
-    textarea.style.top = "-9999px"
-    textarea.style.opacity = "0"
-    document.body.appendChild(textarea)
-    textarea.focus()
-    textarea.select()
-    const success = document.execCommand("copy")
-    document.body.removeChild(textarea)
-    return success
-  } catch {
-    return false
-  }
-}
-
-/**
- * Try the Web Share API (native share sheet on mobile), returns true if shared.
- */
-async function tryNativeShare(url: string, title: string): Promise<boolean> {
-  if (typeof navigator.share !== "function") return false
-  try {
-    await navigator.share({ title, text: "Check out this VulnRadar scan report", url })
-    return true
-  } catch {
-    // User cancelled or share failed - not an error
-    return false
-  }
-}
-
 export function ShareButton({ scanId }: ShareButtonProps) {
-  const [state, setState] = useState<"idle" | "loading" | "shared" | "copied">("idle")
+  const [loading, setLoading] = useState(false)
   const [shareUrl, setShareUrl] = useState<string | null>(null)
+  const [modalOpen, setModalOpen] = useState(false)
 
   async function handleShare() {
-    setState("loading")
+    // If we already have a share URL, just open the modal
+    if (shareUrl) {
+      setModalOpen(true)
+      return
+    }
+
+    setLoading(true)
     try {
       const res = await fetch(`${API.HISTORY}/${scanId}/share`, { method: "POST" })
       const data = await res.json()
       if (res.ok && data.token) {
         const url = `${window.location.origin}/shared/${data.token}`
         setShareUrl(url)
-
-        // On mobile, prefer native share sheet
-        const shared = await tryNativeShare(url, "VulnRadar Scan Report")
-        if (shared) {
-          setState("shared")
-          return
-        }
-
-        // Otherwise copy to clipboard
-        const copied = await copyText(url)
-        if (copied) {
-          setState("copied")
-          setTimeout(() => setState("shared"), 2000)
-        } else {
-          // Even if copy fails, still show the link is generated
-          setState("shared")
-        }
-      } else {
-        setState("idle")
+        setModalOpen(true)
       }
     } catch {
-      setState("idle")
+      // Silently fail
+    } finally {
+      setLoading(false)
     }
-  }
-
-  async function handleCopy() {
-    if (!shareUrl) return
-
-    // Try native share first on mobile
-    const shared = await tryNativeShare(shareUrl, "VulnRadar Scan Report")
-    if (shared) return
-
-    const copied = await copyText(shareUrl)
-    if (copied) {
-      setState("copied")
-      setTimeout(() => setState("shared"), 2000)
-    }
-  }
-
-  if (state === "idle") {
-    return (
-      <Button variant="outline" onClick={handleShare} size="sm" className="gap-2 bg-transparent">
-        <Share2 className="h-4 w-4" />
-        <span className="hidden sm:inline">Share</span>
-      </Button>
-    )
-  }
-
-  if (state === "loading") {
-    return (
-      <Button variant="outline" disabled size="sm" className="gap-2 bg-transparent">
-        <Loader2 className="h-4 w-4 animate-spin" />
-        <span className="hidden sm:inline">Sharing...</span>
-      </Button>
-    )
   }
 
   return (
-    <Button
-      variant="outline"
-      onClick={handleCopy}
-      size="sm"
-      className="gap-2 bg-transparent"
-    >
-      {state === "copied" ? (
-        <>
-          <Check className="h-4 w-4 text-emerald-500" />
-          <span className="hidden sm:inline">Link Copied</span>
-        </>
-      ) : (
-        <>
-          <Link2 className="h-4 w-4" />
-          <span className="hidden sm:inline">Copy Link</span>
-        </>
+    <>
+      <Button
+        variant="outline"
+        onClick={handleShare}
+        disabled={loading}
+        size="sm"
+        className="gap-2 bg-transparent"
+      >
+        {loading ? (
+          <>
+            <Loader2 className="h-4 w-4 animate-spin" />
+            <span className="hidden sm:inline">Sharing...</span>
+          </>
+        ) : (
+          <>
+            <Share2 className="h-4 w-4" />
+            <span className="hidden sm:inline">Share</span>
+          </>
+        )}
+      </Button>
+
+      {shareUrl && (
+        <ShareModal
+          open={modalOpen}
+          onOpenChange={setModalOpen}
+          shareUrl={shareUrl}
+        />
       )}
-    </Button>
+    </>
   )
 }

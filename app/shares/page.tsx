@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { Copy, ExternalLink, Trash2, Loader2, Check } from "lucide-react"
+import { ExternalLink, Trash2, Loader2, Share2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import Link from "next/link"
@@ -11,6 +11,7 @@ import { getSafetyRating } from "@/lib/scanner/safety-rating"
 import { PaginationControl, usePagination } from "@/components/ui/pagination-control"
 import type { Vulnerability } from "@/lib/scanner/types"
 import { API } from "@/lib/constants"
+import { ShareModal } from "@/components/scanner/share-modal"
 
 interface Share {
   id: number
@@ -26,9 +27,10 @@ export default function SharesPage() {
   const [shares, setShares] = useState<Share[]>([])
   const [loading, setLoading] = useState(true)
   const [revoking, setRevoking] = useState<number | null>(null)
-  const [copied, setCopied] = useState<string | null>(null)
   const [currentPage, setCurrentPage] = useState(1)
   const [pageSize, setPageSize] = useState(10)
+  const [shareModalOpen, setShareModalOpen] = useState(false)
+  const [selectedShare, setSelectedShare] = useState<Share | null>(null)
 
   const PAGE_SIZE = pageSize
   const { totalPages, getPage } = usePagination(shares, PAGE_SIZE)
@@ -74,23 +76,9 @@ export default function SharesPage() {
     }
   }
 
-  async function copyShareLink(token: string) {
-    const url = `${window.location.origin}/shared/${token}`
-    try {
-      await navigator.clipboard.writeText(url)
-      setCopied(token)
-      setTimeout(() => setCopied(null), 2000)
-    } catch {
-      // Fallback
-      const textarea = document.createElement("textarea")
-      textarea.value = url
-      document.body.appendChild(textarea)
-      textarea.select()
-      document.execCommand("copy")
-      document.body.removeChild(textarea)
-      setCopied(token)
-      setTimeout(() => setCopied(null), 2000)
-    }
+  function openShareModal(share: Share) {
+    setSelectedShare(share)
+    setShareModalOpen(true)
   }
 
   const getSeverityColor = (share: Share) => {
@@ -171,20 +159,11 @@ export default function SharesPage() {
                         <Button
                             variant="outline"
                             size="sm"
-                            onClick={() => copyShareLink(share.token)}
+                            onClick={() => openShareModal(share)}
                             className="gap-2"
                         >
-                          {copied === share.token ? (
-                              <>
-                                <Check className="h-4 w-4 text-green-500" />
-                                <span className="hidden sm:inline">Copied</span>
-                              </>
-                          ) : (
-                              <>
-                                <Copy className="h-4 w-4" />
-                                <span className="hidden sm:inline">Copy Link</span>
-                              </>
-                          )}
+                          <Share2 className="h-4 w-4" />
+                          <span className="hidden sm:inline">Share</span>
                         </Button>
                         <a
                             href={`/shared/${share.token}`}
@@ -227,6 +206,15 @@ export default function SharesPage() {
           </div>
         </main>
         <Footer />
+
+        {selectedShare && (
+          <ShareModal
+            open={shareModalOpen}
+            onOpenChange={setShareModalOpen}
+            shareUrl={`${typeof window !== 'undefined' ? window.location.origin : ''}/shared/${selectedShare.token}`}
+            title={`VulnRadar Scan: ${selectedShare.url}`}
+          />
+        )}
       </div>
   )
 }

@@ -270,53 +270,65 @@ export function NotificationsManager() {
               <div
                 key={notif.id}
                 className={cn(
-                  "group relative p-4 rounded-xl border transition-all cursor-pointer",
+                  "group relative rounded-lg border bg-card transition-all overflow-hidden",
                   notif.is_active
-                    ? cn("border-l-4 bg-card hover:bg-muted/50", v.border)
-                    : "border border-border bg-card/50 opacity-60 hover:opacity-80 hover:bg-muted/30"
+                    ? "border-border hover:border-border/80"
+                    : "border-border/50 opacity-60 hover:opacity-80"
                 )}
               >
-                <div className="flex items-start gap-3">
+                {/* Colored accent bar */}
+                <div className={cn("absolute inset-y-0 left-0 w-1", notif.is_active ? v.bg.replace("/10", "") : "bg-muted")} />
+                
+                <div className="flex items-start gap-3 p-4 pl-5">
                   {/* Variant icon */}
-                  <div className={cn("flex items-center justify-center h-9 w-9 rounded-lg shrink-0 border", v.bg, v.border)}>
-                    <Icon className={cn("h-4 w-4", v.text)} />
+                  <div className={cn("flex items-center justify-center h-10 w-10 rounded-lg shrink-0", v.bg)}>
+                    <Icon className={cn("h-5 w-5", v.text)} />
                   </div>
 
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap mb-1">
-                      <span className="font-semibold text-sm text-foreground">{notif.title}</span>
-                      {/* Type badge */}
-                      <Badge variant="outline" className={cn("text-[10px] px-1.5 py-0 gap-0.5 flex items-center", v.badgeBg)}>
-                        <TypeIcon className="h-2.5 w-2.5" />
+                  <div className="flex-1 min-w-0 space-y-2">
+                    {/* Title and status row */}
+                    <div className="flex items-center gap-2">
+                      <span className="font-semibold text-sm text-foreground truncate">{notif.title}</span>
+                      {!notif.is_active && (
+                        <Badge variant="secondary" className="text-[10px] px-1.5 py-0 shrink-0">Inactive</Badge>
+                      )}
+                    </div>
+                    
+                    {/* Badges row */}
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <Badge variant="outline" className="text-[10px] px-2 py-0.5 gap-1 border-border bg-muted/50 text-foreground">
+                        <TypeIcon className="h-3 w-3" />
                         {TYPE_CONFIG[notif.type].label}
                       </Badge>
-                      {/* Audience badge */}
-                      <Badge variant="outline" className="text-[10px] px-1.5 py-0 gap-0.5 flex items-center text-muted-foreground">
-                        <Users className="h-2.5 w-2.5" />
+                      <Badge variant="outline" className="text-[10px] px-2 py-0.5 gap-1 border-border bg-muted/50 text-foreground">
+                        <Users className="h-3 w-3" />
                         {AUDIENCE_LABELS[notif.audience]}
                       </Badge>
                       {notif.ends_at && (
-                        <Badge variant="outline" className="text-[10px] px-1.5 py-0 gap-0.5 flex items-center text-muted-foreground">
-                          <Clock className="h-2.5 w-2.5" />
+                        <Badge variant="outline" className="text-[10px] px-2 py-0.5 gap-1 border-border bg-muted/50 text-foreground">
+                          <Clock className="h-3 w-3" />
                           Expires {new Date(notif.ends_at).toLocaleDateString()}
                         </Badge>
                       )}
-                      {!notif.is_active && (
-                        <Badge variant="secondary" className="text-[10px] px-1.5 py-0">Inactive</Badge>
+                    </div>
+
+                    {/* Message */}
+                    <p className="text-sm text-muted-foreground line-clamp-2 leading-relaxed">{notif.message}</p>
+                    
+                    {/* Footer row */}
+                    <div className="flex items-center gap-3 pt-1">
+                      <span className="text-[11px] text-muted-foreground/70 font-mono">ID: {notif.cookie_id}</span>
+                      {notif.action_url && (
+                        <div className="flex items-center gap-1 text-xs text-primary font-medium">
+                          <ExternalLink className="h-3 w-3" />
+                          {notif.action_label || "Action"}
+                        </div>
                       )}
                     </div>
-                    <p className="text-xs text-muted-foreground line-clamp-2 leading-relaxed">{notif.message}</p>
-                    <p className="text-[10px] text-muted-foreground/60 font-mono mt-1">Cookie: {notif.cookie_id}</p>
-                    {notif.action_url && (
-                      <div className="mt-1.5 flex items-center gap-1 text-xs text-primary font-medium">
-                        <ExternalLink className="h-3 w-3" />
-                        {notif.action_label || notif.action_url}
-                      </div>
-                    )}
                   </div>
 
-                  {/* Actions */}
-                  <div className="flex items-center gap-1 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                  {/* Actions - always visible for better UX */}
+                  <div className="flex items-center gap-0.5 shrink-0">
                     <button
                       onClick={() => handleToggleActive(notif)}
                       title={notif.is_active ? "Deactivate" : "Activate"}
@@ -331,15 +343,15 @@ export function NotificationsManager() {
                     </button>
                     <button
                       onClick={() => openEditDialog(notif)}
-                      className="flex items-center justify-center h-8 w-8 rounded-md text-muted-foreground hover:text-accent-foreground hover:bg-accent transition-colors"
+                      className="flex items-center justify-center h-8 w-8 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
                     >
-                      <Pencil className="h-3.5 w-3.5" />
+                      <Pencil className="h-4 w-4" />
                     </button>
                     <button
                       onClick={() => handleDelete(notif.id)}
                       className="flex items-center justify-center h-8 w-8 rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
                     >
-                      <Trash2 className="h-3.5 w-3.5" />
+                      <Trash2 className="h-4 w-4" />
                     </button>
                   </div>
                 </div>
