@@ -146,11 +146,11 @@ async function runSingleScan(url: string, userId: number) {
   // Save to history
   let scanHistoryId: number | null = null
   try {
-    const { DEFAULT_SCAN_NOTE } = await import("@/lib/constants")
+    const DEFAULT_SCAN_NOTE_VALUE = (await import("@/lib/constants")).DEFAULT_SCAN_NOTE()
     const insertResult = await pool.query(
       `INSERT INTO scan_history (user_id, url, summary, findings, findings_count, duration, scanned_at, source, response_headers, notes)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id`,
-      [userId, url, JSON.stringify(summary), JSON.stringify(findings), summary.total, duration, new Date().toISOString(), "web", JSON.stringify(capturedHeaders), DEFAULT_SCAN_NOTE],
+      [userId, url, JSON.stringify(summary), JSON.stringify(findings), summary.total, duration, new Date().toISOString(), "web", JSON.stringify(capturedHeaders), DEFAULT_SCAN_NOTE_VALUE],
     )
     scanHistoryId = insertResult.rows[0]?.id || null
   } catch (err) {
