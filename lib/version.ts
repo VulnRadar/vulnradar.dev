@@ -48,9 +48,10 @@ function readVersionFromConfig(): Version {
 
 // Initialize cache IMMEDIATELY at module load time on server
 // This ensures versions are always available before any code runs
+// On client, this file shouldn't be imported - use useVersion hook instead
 const versionCache: Version = typeof window === "undefined" 
   ? readVersionFromConfig()
-  : { current: "2.0.1", engine: "2.0.1", latest: null, status: "unknown", message: "Client fallback" }
+  : { current: "unknown", engine: "unknown", latest: null, status: "unknown", message: "Use useVersion hook on client" }
 
 export function getVersionSync(): Version {
   return versionCache
