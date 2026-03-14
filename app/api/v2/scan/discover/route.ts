@@ -3,6 +3,38 @@ import { getSession } from "@/lib/auth"
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 import dns from "dns/promises"
 
+// ============================================================================
+// Subdomain Cache - 4 hour TTL to avoid rate limiting external APIs
+// ============================================================================
+interface CachedSubdomainResult {
+  subdomains: DiscoveredSubdomain[]
+  timestamp: number
+}
+
+const SUBDOMAIN_CACHE = new Map<string, CachedSubdomainResult>()
+const CACHE_TTL_MS = 4 * 60 * 60 * 1000 // 4 hours
+
+function getCachedSubdomains(domain: string): DiscoveredSubdomain[] | null {
+  const cached = SUBDOMAIN_CACHE.get(domain)
+  if (!cached) return null
+  if (Date.now() - cached.timestamp > CACHE_TTL_MS) {
+    SUBDOMAIN_CACHE.delete(domain)
+    return null
+  }
+  return cached.subdomains
+}
+
+function cacheSubdomains(domain: string, subdomains: DiscoveredSubdomain[]) {
+  // Clean old entries periodically (keep cache under 500 entries)
+  if (SUBDOMAIN_CACHE.size > 500) {
+    const now = Date.now()
+    for (const [key, val] of SUBDOMAIN_CACHE) {
+      if (now - val.timestamp > CACHE_TTL_MS) SUBDOMAIN_CACHE.delete(key)
+    }
+  }
+  SUBDOMAIN_CACHE.set(domain, { subdomains, timestamp: Date.now() })
+}
+
 // 150+ common subdomain prefixes, all resolved via parallel DNS (no sequential overhead)
 const BRUTE_FORCE_PREFIXES = [
   // Core infrastructure
@@ -113,6 +145,18 @@ export async function POST(request: NextRequest) {
 
   const rootDomain = extractRootDomain(domain)
 
+  // Check cache first (4 hour TTL)
+  const cached = getCachedSubdomains(rootDomain)
+  if (cached) {
+    return NextResponse.json({
+      domain: rootDomain,
+      subdomains: cached,
+      total: cached.length,
+      reachable: cached.filter(s => s.reachable).length,
+      cached: true,
+    })
+  }
+
   // Run all passive data sources in parallel
   const [ctResults, hackerTargetResults, subdomainCenterResults, rapidDnsResults] =
     await Promise.all([
@@ -186,11 +230,15 @@ export async function POST(request: NextRequest) {
     return a.subdomain.localeCompare(b.subdomain)
   })
 
+  // Cache results for 4 hours
+  cacheSubdomains(rootDomain, results)
+
   return NextResponse.json({
     domain: rootDomain,
     total: results.length,
     reachable: results.filter((r) => r.reachable).length,
     subdomains: results,
+    cached: false,
     sources: {
       "crt.sh": ctResults.length,
       hackertarget: hackerTargetResults.length,
