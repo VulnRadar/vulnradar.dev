@@ -33,7 +33,7 @@ const ROOT = resolve(__dirname, "..")
 function getSchemaVersion() {
   try {
     const configPath = resolve(ROOT, "config.yaml")
-    const content = fs.readFileSync(configPath, "utf-8")
+    const content = readFileSync(configPath, "utf-8")
     const match = content.match(/version:\s*["']?([^"'\s]+)["']?/)
     if (!match?.[1]) throw new Error("Version not found in config.yaml")
     return match[1]

@@ -107,6 +107,19 @@ const CHANGELOG: Release[] = [
     ],
   },
   {
+    version: "2.0.2",
+    date: "March 14, 2026",
+    title: "Badge page 500 error fixed",
+    highlights: true,
+    changes: [
+      {
+        icon: Wrench,
+        label: "Bug Fix",
+        desc: "Resolved a 500 error on the badge page caused by a missing import during server rendering. The required module is now properly imported, allowing the page to load normally."
+      },
+    ],
+  },
+  {
     version: "2.0.1",
     date: "March 14, 2026",
     title: "Detection Engine v2.0.1, Subdomain Caching & Share Modal",
