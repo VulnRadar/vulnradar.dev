@@ -3,73 +3,31 @@ import { Footer } from "@/components/scanner/footer"
 import {
   Zap,
   Shield,
-  Users,
-  Tag,
-  List,
-  RefreshCw,
   Lock,
-  Gauge,
-  MessageSquare,
-  Sparkles,
-  Eye,
   ShieldCheck,
-  Target,
-  AlertTriangle,
-  Search,
   Bell,
   Heart,
   Layout,
-  Mail,
-  CheckCircle,
-  Trash2,
-  Camera,
   Crown,
-  UserCheck,
   Key,
   BellRing,
-  ChevronRight,
-  BadgeCheck,
   Globe,
   Share2,
   Fingerprint,
-  Smartphone,
   FileText,
-  ScanSearch,
   Filter,
-  Sun,
-  Radar,
-  Network,
-  ShieldOff,
-  FileDown,
-  FileSpreadsheet,
-  Pencil,
   Activity,
   Link2,
   BarChart3,
-  Bug,
-  ShieldAlert,
   Database,
-  ServerCrash,
-  Columns3,
-  Crosshair,
-  FileSearch,
   Timer,
-  Layers,
-  GitMerge,
   Palette,
-  ServerCog,
   Wrench,
   Container,
-  Menu,
-  Image,
-  Newspaper,
   Settings,
-  Plus,
-  ArrowRight,
   type LucideIcon,
 } from "lucide-react"
-import { APP_NAME, TOTAL_CHECKS_LABEL, APP_VERSION } from "@/lib/constants"
-import Link from "next/link"
+import { APP_NAME } from "@/lib/constants"
 
 // Change categories with colors
 const CHANGE_CATEGORIES = {
@@ -557,170 +515,104 @@ function CategoryBadge({ category }: { category?: ChangeCategory }) {
 }
 
 export default function ChangelogPage() {
-  const latestVersion = CHANGELOG[0]
-  
   return (
     <div className="min-h-screen flex flex-col bg-background">
       <Header />
-      <main className="flex-1 w-full">
-        {/* Hero Section */}
-        <section className="relative border-b border-border/40 bg-gradient-to-b from-primary/5 via-background to-background">
-          <div className="absolute inset-0 bg-[linear-gradient(to_right,hsl(var(--border)/0.3)_1px,transparent_1px),linear-gradient(to_bottom,hsl(var(--border)/0.3)_1px,transparent_1px)] bg-[size:4rem_4rem] [mask-image:radial-gradient(ellipse_60%_50%_at_50%_0%,#000_70%,transparent_110%)]" />
-          <div className="relative max-w-4xl mx-auto px-4 py-16 sm:py-24">
-            <div className="flex flex-col items-center text-center gap-6">
-              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-primary/30 bg-primary/5 text-sm text-muted-foreground">
-                <span className="relative flex h-2 w-2">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-2 w-2 bg-primary"></span>
-                </span>
-                <span className="font-mono text-xs">{TOTAL_CHECKS_LABEL} security checks</span>
-              </div>
-              <h1 className="text-4xl sm:text-5xl font-bold tracking-tight text-foreground text-balance">
-                Changelog
-              </h1>
-              <p className="text-lg text-muted-foreground max-w-2xl text-balance">
-                Follow along as we ship new security checks, features, and improvements. 
-                Building the most comprehensive web vulnerability scanner.
-              </p>
-              <div className="flex flex-col sm:flex-row items-center gap-4 mt-4">
-                <Link 
-                  href="/dashboard"
-                  className="inline-flex items-center gap-2 px-6 py-3 rounded-lg bg-primary text-primary-foreground font-medium hover:bg-primary/90 transition-colors"
-                >
-                  Start Scanning
-                  <ArrowRight className="h-4 w-4" />
-                </Link>
-                <Link
-                  href="/docs"
-                  className="inline-flex items-center gap-2 px-6 py-3 rounded-lg border border-border bg-background hover:bg-accent transition-colors font-medium"
-                >
-                  View Documentation
-                </Link>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        {/* Latest Release Highlight */}
-        <section className="border-b border-border/40 bg-card/50">
-          <div className="max-w-4xl mx-auto px-4 py-8">
-            <div className="flex flex-col sm:flex-row sm:items-center gap-4 sm:gap-6">
-              <div className="flex items-center gap-3">
-                <div className="flex items-center justify-center w-12 h-12 rounded-xl bg-primary/10 border border-primary/20">
-                  <Sparkles className="h-6 w-6 text-primary" />
-                </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-medium text-muted-foreground">Latest Release</span>
-                    <span className="inline-flex items-center rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider">
-                      New
-                    </span>
-                  </div>
-                  <h2 className="text-xl font-bold text-foreground">v{latestVersion.version}</h2>
-                </div>
-              </div>
-              <div className="sm:ml-auto text-sm text-muted-foreground">
-                {latestVersion.date}
-              </div>
-            </div>
-            {latestVersion.summary && (
-              <p className="mt-4 text-sm text-muted-foreground leading-relaxed">
-                {latestVersion.summary}
-              </p>
-            )}
-          </div>
-        </section>
+      <main className="flex-1 w-full max-w-4xl mx-auto px-4 py-8">
+        {/* Page Header */}
+        <div className="mb-8">
+          <h1 className="text-3xl font-bold text-foreground mb-2">Changelog</h1>
+          <p className="text-muted-foreground">
+            Follow along as we ship new security checks, features, and improvements.
+          </p>
+        </div>
 
         {/* Timeline */}
-        <section className="max-w-4xl mx-auto px-4 py-12">
-          <div className="relative">
-            {/* Timeline line */}
-            <div className="absolute left-6 top-0 bottom-0 w-px bg-gradient-to-b from-primary/50 via-border to-border hidden sm:block" />
+        <div className="relative">
+          {/* Timeline line */}
+          <div className="absolute left-[11px] top-3 bottom-3 w-px bg-border hidden sm:block" />
 
-            <div className="flex flex-col gap-12">
-              {CHANGELOG.map((release, index) => (
-                <article key={release.version} className="relative group">
-                  {/* Timeline dot */}
-                  <div className={`absolute left-[17px] top-1 w-[18px] h-[18px] rounded-full border-2 hidden sm:flex items-center justify-center ${
-                    index === 0 
-                      ? 'border-primary bg-primary' 
-                      : 'border-border bg-background group-hover:border-primary/50'
-                  } transition-colors`}>
-                    {index === 0 && <div className="w-2 h-2 rounded-full bg-primary-foreground" />}
-                  </div>
+          <div className="flex flex-col gap-10">
+            {CHANGELOG.map((release, index) => (
+              <article key={release.version} className="relative">
+                {/* Timeline dot */}
+                <div className={`absolute left-0 top-1.5 w-[22px] h-[22px] rounded-full border-2 hidden sm:flex items-center justify-center ${
+                  index === 0 
+                    ? 'border-primary bg-primary' 
+                    : 'border-border bg-background'
+                }`}>
+                  {index === 0 && <div className="w-2 h-2 rounded-full bg-primary-foreground" />}
+                </div>
 
-                  <div className="sm:pl-16 flex flex-col gap-5">
-                    {/* Version header */}
-                    <div className="flex flex-col gap-2">
-                      <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-                        <span className={`inline-flex items-center rounded-lg px-3 py-1 text-sm font-bold font-mono ${
-                          index === 0 
-                            ? 'bg-primary text-primary-foreground' 
-                            : 'bg-secondary text-foreground'
-                        }`}>
-                          v{release.version}
+                <div className="sm:pl-10 flex flex-col gap-4">
+                  {/* Version header */}
+                  <div className="flex flex-col gap-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className={`inline-flex items-center rounded-md px-2.5 py-0.5 text-sm font-bold font-mono ${
+                        index === 0 
+                          ? 'bg-primary text-primary-foreground' 
+                          : 'bg-secondary text-foreground'
+                      }`}>
+                        v{release.version}
+                      </span>
+                      <span className="text-sm text-muted-foreground">{release.date}</span>
+                      {index === 0 && (
+                        <span className="inline-flex items-center rounded-md bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 px-2 py-0.5 text-xs font-medium">
+                          Latest
                         </span>
-                        <span className="text-sm text-muted-foreground">{release.date}</span>
-                        {release.highlights && index === 0 && (
-                          <span className="inline-flex items-center rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider">
-                            Latest
-                          </span>
-                        )}
-                      </div>
-                      <h2 className="text-xl sm:text-2xl font-bold text-foreground">{release.title}</h2>
-                      {release.summary && (
-                        <p className="text-sm text-muted-foreground leading-relaxed">{release.summary}</p>
                       )}
                     </div>
-
-                    {/* Changes grid */}
-                    <div className="grid gap-3">
-                      {release.changes.map((change, changeIndex) => (
-                        <div 
-                          key={changeIndex} 
-                          className="flex gap-4 p-4 rounded-xl border border-border/60 bg-card hover:border-border hover:bg-card/80 transition-colors"
-                        >
-                          <div className={`flex items-center justify-center w-10 h-10 rounded-lg shrink-0 ${
-                            change.category === 'security' ? 'bg-red-500/10' :
-                            change.category === 'added' ? 'bg-emerald-500/10' :
-                            change.category === 'fixed' ? 'bg-amber-500/10' :
-                            change.category === 'performance' ? 'bg-purple-500/10' :
-                            'bg-primary/10'
-                          }`}>
-                            <change.icon className={`h-5 w-5 ${
-                              change.category === 'security' ? 'text-red-600 dark:text-red-400' :
-                              change.category === 'added' ? 'text-emerald-600 dark:text-emerald-400' :
-                              change.category === 'fixed' ? 'text-amber-600 dark:text-amber-400' :
-                              change.category === 'performance' ? 'text-purple-600 dark:text-purple-400' :
-                              'text-primary'
-                            }`} />
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex flex-wrap items-center gap-2 mb-1">
-                              <h3 className="font-semibold text-foreground">{change.label}</h3>
-                              <CategoryBadge category={change.category} />
-                            </div>
-                            <p className="text-sm text-muted-foreground leading-relaxed">{change.desc}</p>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
+                    <h2 className="text-lg font-semibold text-foreground">{release.title}</h2>
+                    {release.summary && (
+                      <p className="text-sm text-muted-foreground">{release.summary}</p>
+                    )}
                   </div>
-                </article>
-              ))}
-            </div>
-          </div>
 
-          {/* End of timeline */}
-          <div className="flex items-center justify-center mt-16">
-            <div className="flex items-center gap-4 px-6 py-3 rounded-full border border-border bg-card">
-              <div className="w-3 h-3 rounded-full bg-primary/50" />
-              <span className="text-sm text-muted-foreground">
-                {"That's"} the beginning of {APP_NAME}
-              </span>
-            </div>
+                  {/* Changes list */}
+                  <div className="flex flex-col gap-2">
+                    {release.changes.map((change, changeIndex) => (
+                      <div 
+                        key={changeIndex} 
+                        className="flex gap-3 p-3 rounded-lg border border-border/50 bg-card/50 hover:bg-card transition-colors"
+                      >
+                        <div className={`flex items-center justify-center w-8 h-8 rounded-md shrink-0 ${
+                          change.category === 'security' ? 'bg-red-500/10' :
+                          change.category === 'added' ? 'bg-emerald-500/10' :
+                          change.category === 'fixed' ? 'bg-amber-500/10' :
+                          change.category === 'performance' ? 'bg-purple-500/10' :
+                          'bg-primary/10'
+                        }`}>
+                          <change.icon className={`h-4 w-4 ${
+                            change.category === 'security' ? 'text-red-600 dark:text-red-400' :
+                            change.category === 'added' ? 'text-emerald-600 dark:text-emerald-400' :
+                            change.category === 'fixed' ? 'text-amber-600 dark:text-amber-400' :
+                            change.category === 'performance' ? 'text-purple-600 dark:text-purple-400' :
+                            'text-primary'
+                          }`} />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex flex-wrap items-center gap-2 mb-0.5">
+                            <h3 className="font-medium text-sm text-foreground">{change.label}</h3>
+                            <CategoryBadge category={change.category} />
+                          </div>
+                          <p className="text-xs text-muted-foreground leading-relaxed">{change.desc}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </article>
+            ))}
           </div>
-        </section>
+        </div>
+
+        {/* End marker */}
+        <div className="flex items-center justify-center mt-12 mb-4">
+          <div className="flex items-center gap-3 px-4 py-2 rounded-full border border-border bg-card/50 text-sm text-muted-foreground">
+            <div className="w-2 h-2 rounded-full bg-border" />
+            <span>The beginning of {APP_NAME}</span>
+          </div>
+        </div>
       </main>
       <Footer />
     </div>
