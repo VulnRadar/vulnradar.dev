@@ -33,8 +33,8 @@ function parseConfigYaml(): Record<string, unknown> | null {
       app: {
         name: getValue("name") || "VulnRadar",
         slug: getValue("slug") || "vulnradar",
-        version: getValue("version") || "unknown",
-        engine_version: getValue("engine_version") || "unknown",
+        version: getValue("version") || "2.0.3",
+        engine_version: getValue("engine_version") || "2.0.3",
         description: getValue("description") || "Security Scanner",
         total_checks_label: getValue("total_checks_label") || "310+",
         url: getValue("url") || "https://vulnradar.dev",
@@ -74,8 +74,8 @@ const app = (config.app as Record<string, string>) || {}
 // App metadata
 export const CONFIG_APP_NAME = app.name || "VulnRadar"
 export const CONFIG_APP_SLUG = app.slug || "vulnradar"
-export const CONFIG_APP_VERSION = app.version || "unknown"
-export const CONFIG_ENGINE_VERSION = app.engine_version || "unknown"
+export const CONFIG_APP_VERSION = app.version || "2.0.3"
+export const CONFIG_ENGINE_VERSION = app.engine_version || "2.0.3"
 export const CONFIG_APP_DESCRIPTION = app.description || "Security Scanner"
 export const CONFIG_TOTAL_CHECKS_LABEL = app.total_checks_label || "310+"
 export const CONFIG_APP_URL = app.url || "https://vulnradar.dev"
