@@ -2,6 +2,23 @@
 // Configuration Type Definitions
 // ============================================================================
 
+import {
+  CONFIG_APP_NAME,
+  CONFIG_APP_SLUG,
+  CONFIG_APP_VERSION,
+  CONFIG_ENGINE_VERSION,
+  CONFIG_APP_DESCRIPTION,
+  CONFIG_TOTAL_CHECKS_LABEL,
+  CONFIG_APP_URL,
+  CONFIG_APP_REPO,
+  CONFIG_DISCORD_INVITE_URL,
+  CONFIG_SUPPORT_EMAIL,
+  CONFIG_LEGAL_EMAIL,
+  CONFIG_SECURITY_EMAIL,
+  CONFIG_ENTERPRISE_EMAIL,
+  CONFIG_NOREPLY_EMAIL,
+} from "../config-values"
+
 export interface AppConfig {
   name: string
   slug: string
@@ -13,6 +30,10 @@ export interface AppConfig {
   repo: string
   discord_invite_url: string
   support_email: string
+  legal_email: string
+  security_email: string
+  enterprise_email: string
+  noreply_email: string
 }
 
 export interface BrandingConfig {
@@ -153,16 +174,20 @@ export interface VulnRadarConfig {
 
 export const DEFAULT_CONFIG: VulnRadarConfig = {
   app: {
-    name: "VulnRadar",
-    slug: "vulnradar",
-    version: process.env.NEXT_PUBLIC_APP_VERSION ?? "unknown",
-    engine_version: process.env.NEXT_PUBLIC_ENGINE_VERSION ?? "unknown",
-    description: "Scan websites for security vulnerabilities. Get instant reports with severity ratings, actionable fix guidance, and team collaboration tools.",
-    total_checks_label: "175+",
-    url: "https://vulnradar.dev",
-    repo: "VulnRadar/vulnradar.dev",
-    discord_invite_url: "https://discord.gg/Y7R6hdGbNe",
-    support_email: "support@vulnradar.dev",
+    name: CONFIG_APP_NAME,
+    slug: CONFIG_APP_SLUG,
+    version: CONFIG_APP_VERSION,
+    engine_version: CONFIG_ENGINE_VERSION,
+    description: CONFIG_APP_DESCRIPTION,
+    total_checks_label: CONFIG_TOTAL_CHECKS_LABEL,
+    url: CONFIG_APP_URL,
+    repo: CONFIG_APP_REPO,
+    discord_invite_url: CONFIG_DISCORD_INVITE_URL,
+    support_email: CONFIG_SUPPORT_EMAIL,
+    legal_email: CONFIG_LEGAL_EMAIL,
+    security_email: CONFIG_SECURITY_EMAIL,
+    enterprise_email: CONFIG_ENTERPRISE_EMAIL,
+    noreply_email: CONFIG_NOREPLY_EMAIL,
   },
   branding: {
     logo_url: "/favicon.png",

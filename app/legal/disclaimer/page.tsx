@@ -1,4 +1,4 @@
-import { TOTAL_CHECKS_LABEL } from "@/lib/constants"
+import { TOTAL_CHECKS_LABEL, LEGAL_EMAIL } from "@/lib/constants"
 
 export default function DisclaimerPage() {
   return (
@@ -90,10 +90,10 @@ export default function DisclaimerPage() {
 
       <h2 className="text-lg font-semibold text-foreground mt-8">7. Contact</h2>
       <p className="leading-relaxed text-foreground/90">
-        For questions about this Disclaimer, please contact us at{" "}
-        <a href="mailto:legal@vulnradar.dev" className="text-primary hover:underline">
-          legal@vulnradar.dev
-        </a>.
+  For questions about this Disclaimer, please contact us at{" "}
+  <a href={`mailto:${LEGAL_EMAIL}`} className="text-primary hover:underline">
+  {LEGAL_EMAIL}
+  </a>.
       </p>
     </article>
   )

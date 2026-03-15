@@ -108,6 +108,7 @@ function DashboardContent() {
 
   const [pendingScanners, setPendingScanners] = useState<string[] | undefined>(undefined)
   const [bulkStatus, setBulkStatus] = useState<"idle" | "scanning" | "done">("idle")
+  const [bulkProgress, setBulkProgress] = useState<{ current: number; total: number } | undefined>(undefined)
   const [bulkResult, setBulkResult] = useState<{ total: number; successful: number; failed: number; skipped: number } | null>(null)
 
   const handleScan = useCallback(async (url: string, mode: ScanMode = "quick", scanners?: string[], protocol?: string) => {
@@ -223,21 +224,38 @@ function DashboardContent() {
   const handleBulkScan = useCallback(async (urls: string[]) => {
     setBulkStatus("scanning")
     setBulkResult(null)
-    try {
-      const res = await fetch(API.SCAN_BULK, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ urls }),
-      })
-      const data = await res.json()
-      if (res.ok) {
-        setBulkResult({ total: data.total, successful: data.successful, failed: data.failed, skipped: data.skipped ?? 0 })
-      } else {
-        setBulkResult({ total: urls.length, successful: 0, failed: urls.length, skipped: 0 })
+    setBulkProgress({ current: 0, total: urls.length })
+    
+    let successful = 0
+    let failed = 0
+    let skipped = 0
+    
+    // Scan URLs sequentially to show progress
+    for (let i = 0; i < urls.length; i++) {
+      setBulkProgress({ current: i + 1, total: urls.length })
+      
+      try {
+        const res = await fetch(API.SCAN, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ url: urls[i], source: "bulk" }),
+        })
+        const data = await res.json()
+        
+        if (res.ok && !data.error) {
+          successful++
+        } else if (data.error?.includes("limit") || data.error?.includes("Limit")) {
+          skipped++
+        } else {
+          failed++
+        }
+      } catch {
+        failed++
       }
-    } catch {
-      setBulkResult({ total: urls.length, successful: 0, failed: urls.length, skipped: 0 })
     }
+    
+    setBulkResult({ total: urls.length, successful, failed, skipped })
+    setBulkProgress(undefined)
     setBulkStatus("done")
   }, [])
 
@@ -280,6 +298,7 @@ function DashboardContent() {
             status={status}
             onBulkScan={handleBulkScan}
             bulkStatus={bulkStatus}
+            bulkProgress={bulkProgress}
           />
         )}
 

@@ -47,6 +47,7 @@ interface ScanFormProps {
   onScan: (url: string, mode?: ScanMode, scanners?: string[], protocol?: ScanProtocol) => void
   onBulkScan?: (urls: string[]) => void
   bulkStatus?: "idle" | "scanning" | "done"
+  bulkProgress?: { current: number; total: number }
   status: ScanStatus
 }
 
@@ -59,7 +60,7 @@ const FEATURES = [
   `${TOTAL_CHECKS_LABEL} checks total`,
 ]
 
-export function ScanForm({ onScan, onBulkScan, bulkStatus = "idle", status }: ScanFormProps) {
+export function ScanForm({ onScan, onBulkScan, bulkStatus = "idle", bulkProgress, status }: ScanFormProps) {
   const [url, setUrl] = useState("")
   const [error, setError] = useState("")
   const [mode, setMode] = useState<ScanMode>("quick")
@@ -398,21 +399,42 @@ export function ScanForm({ onScan, onBulkScan, bulkStatus = "idle", status }: Sc
             className="w-full rounded-lg border border-border bg-card px-3 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 resize-none font-mono disabled:opacity-50"
             aria-label="URLs to bulk scan, one per line"
           />
-          <div className="flex items-center justify-between gap-3">
-            <p className="text-[11px] text-muted-foreground">
-              {bulkUrls.split("\n").filter(u => u.trim()).length} / 10 URLs &middot; one per line &middot; must include https://
-            </p>
-            <Button
-              type="submit"
-              disabled={isBulkScanning || !bulkUrls.trim()}
-              className="h-10 px-5 font-medium shrink-0"
-            >
-              {isBulkScanning ? (
-                <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Scanning...</>
-              ) : (
-                <><List className="mr-2 h-4 w-4" />Start Bulk Scan</>
-              )}
-            </Button>
+          <div className="flex flex-col gap-2">
+            {/* Progress bar during scanning */}
+            {isBulkScanning && bulkProgress && (
+              <div className="flex flex-col gap-1.5">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-muted-foreground">
+                    Scanning URL {bulkProgress.current} of {bulkProgress.total}
+                  </span>
+                  <span className="text-foreground font-medium">
+                    {Math.round((bulkProgress.current / bulkProgress.total) * 100)}%
+                  </span>
+                </div>
+                <div className="h-2 w-full bg-muted rounded-full overflow-hidden">
+                  <div 
+                    className="h-full bg-primary transition-all duration-300 ease-out rounded-full"
+                    style={{ width: `${(bulkProgress.current / bulkProgress.total) * 100}%` }}
+                  />
+                </div>
+              </div>
+            )}
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-[11px] text-muted-foreground">
+                {bulkUrls.split("\n").filter(u => u.trim()).length} / 10 URLs &middot; one per line
+              </p>
+              <Button
+                type="submit"
+                disabled={isBulkScanning || !bulkUrls.trim()}
+                className="h-10 px-5 font-medium shrink-0"
+              >
+                {isBulkScanning ? (
+                  <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Scanning {bulkProgress ? `${bulkProgress.current}/${bulkProgress.total}` : "..."}</>
+                ) : (
+                  <><List className="mr-2 h-4 w-4" />Start Bulk Scan</>
+                )}
+              </Button>
+            </div>
           </div>
           {bulkError && (
             <p className="text-sm text-destructive" role="alert">{bulkError}</p>

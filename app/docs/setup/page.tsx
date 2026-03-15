@@ -4,7 +4,7 @@ import React, { useEffect, useRef } from "react"
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { CopyCodeBlock } from "@/components/copy-code-block"
-import { AlertTriangle, CheckCircle, Info } from "lucide-react"
+import { AlertTriangle, CheckCircle, Info, Settings } from "lucide-react"
 import { APP_NAME, APP_URL, APP_VERSION, ENGINE_VERSION, APP_REPO, APP_SLUG } from "@/lib/constants"
 import { useDocsContext, type TocItem } from "../layout"
 
@@ -14,6 +14,7 @@ const tocItems: TocItem[] = [
   { id: "installation", label: "Installation" },
   { id: "database", label: "Database Setup" },
   { id: "environment", label: "Environment Config" },
+  { id: "config", label: "App Configuration" },
   { id: "running", label: "Running the App" },
   { id: "verification", label: "Verification" },
   { id: "troubleshooting", label: "Troubleshooting" },
@@ -225,57 +226,120 @@ GRANT ALL PRIVILEGES ON DATABASE vulnradar TO vulnradar_user;
 
         <Card className="p-6 border-border/40">
           <h3 className="font-semibold mb-4">Create .env.local File</h3>
-          <p className="text-sm text-muted-foreground mb-3">Create a <code className="bg-secondary px-2 py-1 rounded text-xs">.env.local</code> file in the project root with the following environment variables:</p>
-          <pre className="bg-secondary/50 p-4 rounded text-sm overflow-x-auto mb-4"><code>{`# Database
+          <p className="text-sm text-muted-foreground mb-3">Create a <code className="bg-secondary px-2 py-1 rounded text-xs">.env.local</code> file in the project root. Copy from <code className="bg-secondary px-2 py-1 rounded text-xs">.env.example</code> and configure:</p>
+          <CopyCodeBlock code={`# ─────────────────────────────────────────────────────────────────────────
+# DATABASE (Server-side - Required)
+# ─────────────────────────────────────────────────────────────────────────
 DATABASE_URL=postgresql://vulnradar:yourpassword@localhost:5432/vulnradar
 DATABASE_SSL=false
 
-# SMTP - No-Reply (password resets, team invites, scan alerts)
+# ─────────────────────────────────────────────────────────────────────────
+# APPLICATION (Client-side - Required)
+# ─────────────────────────────────────────────────────────────────────────
+NEXT_PUBLIC_APP_URL=http://localhost:3000
+
+# ─────────────────────────────────────────────────────────────────────────
+# API KEY ENCRYPTION (Server-side - Required)
+# ─────────────────────────────────────────────────────────────────────────
+# Generate with: node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+API_KEY_ENCRYPTION_KEY=your-64-character-hex-key
+
+# ─────────────────────────────────────────────────────────────────────────
+# SMTP EMAIL (Server-side - Optional)
+# ─────────────────────────────────────────────────────────────────────────
 SMTP_HOST=smtp.protonmail.ch
 SMTP_PORT=587
 SMTP_USER=noreply@yourdomain.com
 SMTP_PASS=your-smtp-password
 SMTP_FROM=noreply@yourdomain.com
-
-# Contact Form
 CONTACT_EMAIL=support@yourdomain.com
 
-# Turnstile (Cloudflare CAPTCHA)
+# ─────────────────────────────────────────────────────────────────────────
+# STRIPE BILLING (Server-side - Optional)
+# ─────────────────────────────────────────────────────────────────────────
+STRIPE_SECRET_KEY=sk_test_xxxxxxxxxxxxxxxxxxxxxxxxxxxx
+STRIPE_PUBLISHABLE_KEY=pk_test_xxxxxxxxxxxxxxxxxxxxxxxxxxxx
+NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=pk_test_xxxxxxxxxxxxxxxxxxxxxxxxxxxx
+STRIPE_WEBHOOK_SECRET=whsec_xxxxxxxxxxxxxxxxxxxxxxxxxxxx
+
+# ─────────────────────────────────────────────────────────────────────────
+# DISCORD OAUTH (Server-side - Optional)
+# ─────────────────────────────────────────────────────────────────────────
+DISCORD_CLIENT_ID=your-discord-client-id
+DISCORD_CLIENT_SECRET=your-discord-client-secret
+DISCORD_BOT_TOKEN=your-discord-bot-token
+DISCORD_GUILD_ID=your-discord-guild-id
+
+# ─────────────────────────────────────────────────────────────────────────
+# TURNSTILE CAPTCHA (Optional)
+# ─────────────────────────────────────────────────────────────────────────
 TURNSTILE_SITE_KEY=your-turnstile-site-key
-TURNSTILE_SECRET_KEY=your-turnstile-secret-key`}</code></pre>
+TURNSTILE_SECRET_KEY=your-turnstile-secret-key`}>{`# ─────────────────────────────────────────────────────────────────────────
+# DATABASE (Server-side - Required)
+# ─────────────────────────────────────────────────────────────────────────
+DATABASE_URL=postgresql://vulnradar:yourpassword@localhost:5432/vulnradar
+DATABASE_SSL=false
+
+# ─────────────────────────────────────────────────────────────────────────
+# APPLICATION (Client-side - Required)
+# ─────────────────────────────────────────────────────────────────────────
+NEXT_PUBLIC_APP_URL=http://localhost:3000
+
+# ─────────────────────────────────────────────────────────────────────────
+# API KEY ENCRYPTION (Server-side - Required)
+# ─────────────────────────────────────────────────────────────────────────
+# Generate with: node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+API_KEY_ENCRYPTION_KEY=your-64-character-hex-key
+
+# ─────────────────────────────────────────────────────────────────────────
+# SMTP EMAIL (Server-side - Optional)
+# ─────────────────────────────────────────────────────────────────────────
+SMTP_HOST=smtp.protonmail.ch
+SMTP_PORT=587
+SMTP_USER=noreply@yourdomain.com
+SMTP_PASS=your-smtp-password
+SMTP_FROM=noreply@yourdomain.com
+CONTACT_EMAIL=support@yourdomain.com
+
+# ─────────────────────────────────────────────────────────────────────────
+# STRIPE BILLING (Server-side - Optional)
+# ─────────────────────────────────────────────────────────────────────────
+STRIPE_SECRET_KEY=sk_test_xxxxxxxxxxxxxxxxxxxxxxxxxxxx
+STRIPE_PUBLISHABLE_KEY=pk_test_xxxxxxxxxxxxxxxxxxxxxxxxxxxx
+NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=pk_test_xxxxxxxxxxxxxxxxxxxxxxxxxxxx
+STRIPE_WEBHOOK_SECRET=whsec_xxxxxxxxxxxxxxxxxxxxxxxxxxxx
+
+# ─────────────────────────────────────────────────────────────────────────
+# DISCORD OAUTH (Server-side - Optional)
+# ─────────────────────────────────────────────────────────────────────────
+DISCORD_CLIENT_ID=your-discord-client-id
+DISCORD_CLIENT_SECRET=your-discord-client-secret
+DISCORD_BOT_TOKEN=your-discord-bot-token
+DISCORD_GUILD_ID=your-discord-guild-id
+
+# ─────────────────────────────────────────────────────────────────────────
+# TURNSTILE CAPTCHA (Optional)
+# ─────────────────────────────────────────────────────────────────────────
+TURNSTILE_SITE_KEY=your-turnstile-site-key
+TURNSTILE_SECRET_KEY=your-turnstile-secret-key`}</CopyCodeBlock>
 
           <div className="space-y-4 mt-4">
             <div>
-              <h4 className="font-semibold text-sm mb-2">Database Configuration</h4>
+              <h4 className="font-semibold text-sm mb-2">Required Variables</h4>
               <div className="space-y-2 text-xs text-muted-foreground">
-                <p><code className="bg-secondary px-1 rounded">DATABASE_URL</code> - PostgreSQL connection string. Replace <code className="bg-secondary px-1 rounded">yourpassword</code> with your actual PostgreSQL password.</p>
-                <p><code className="bg-secondary px-1 rounded">DATABASE_SSL</code> - Set to <code className="bg-secondary px-1 rounded">true</code> for production environments with SSL.</p>
+                <p><code className="bg-secondary px-1 rounded">DATABASE_URL</code> - PostgreSQL connection string</p>
+                <p><code className="bg-secondary px-1 rounded">NEXT_PUBLIC_APP_URL</code> - Your app&apos;s public URL</p>
+                <p><code className="bg-secondary px-1 rounded">API_KEY_ENCRYPTION_KEY</code> - 64-char hex key for API key encryption</p>
               </div>
             </div>
 
             <div>
-              <h4 className="font-semibold text-sm mb-2">SMTP Configuration (Email)</h4>
+              <h4 className="font-semibold text-sm mb-2">Optional Integrations</h4>
               <div className="space-y-2 text-xs text-muted-foreground">
-                <p><code className="bg-secondary px-1 rounded">SMTP_HOST</code> - Your SMTP server host (e.g., smtp.protonmail.ch for ProtonMail)</p>
-                <p><code className="bg-secondary px-1 rounded">SMTP_PORT</code> - SMTP port (typically 587 for TLS or 465 for SSL)</p>
-                <p><code className="bg-secondary px-1 rounded">SMTP_USER</code> - Email address for no-reply emails</p>
-                <p><code className="bg-secondary px-1 rounded">SMTP_PASS</code> - SMTP password or app-specific password</p>
-                <p><code className="bg-secondary px-1 rounded">SMTP_FROM</code> - Sender email address</p>
-              </div>
-            </div>
-
-            <div>
-              <h4 className="font-semibold text-sm mb-2">Contact & Support</h4>
-              <div className="space-y-2 text-xs text-muted-foreground">
-                <p><code className="bg-secondary px-1 rounded">CONTACT_EMAIL</code> - Email address for contact form submissions</p>
-              </div>
-            </div>
-
-            <div>
-              <h4 className="font-semibold text-sm mb-2">Security (Turnstile CAPTCHA)</h4>
-              <div className="space-y-2 text-xs text-muted-foreground">
-                <p><code className="bg-secondary px-1 rounded">TURNSTILE_SITE_KEY</code> - Get from <a href="https://dash.cloudflare.com/" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">Cloudflare Dashboard</a></p>
-                <p><code className="bg-secondary px-1 rounded">TURNSTILE_SECRET_KEY</code> - Keep secret, never expose to frontend</p>
+                <p><code className="bg-secondary px-1 rounded">SMTP_*</code> - Email sending for password resets, notifications</p>
+                <p><code className="bg-secondary px-1 rounded">STRIPE_*</code> - Billing (enable in <code className="bg-secondary px-1 rounded">config.yaml</code>)</p>
+                <p><code className="bg-secondary px-1 rounded">DISCORD_*</code> - OAuth sign-in (enable in <code className="bg-secondary px-1 rounded">config.yaml</code>)</p>
+                <p><code className="bg-secondary px-1 rounded">TURNSTILE_*</code> - Cloudflare CAPTCHA (enable in <code className="bg-secondary px-1 rounded">config.yaml</code>)</p>
               </div>
             </div>
           </div>
@@ -287,6 +351,59 @@ TURNSTILE_SECRET_KEY=your-turnstile-secret-key`}</code></pre>
             <h3 className="font-semibold text-foreground mb-1 text-sm">Environment File Security</h3>
             <p className="text-xs text-muted-foreground">Never commit <code className="bg-secondary px-1 rounded">.env.local</code> to version control. It contains sensitive credentials. Add it to <code className="bg-secondary px-1 rounded">.gitignore</code>:</p>
             <CopyCodeBlock code={`echo ".env.local" >> .gitignore`}>{`echo ".env.local" >> .gitignore`}</CopyCodeBlock>
+          </div>
+        </div>
+      </section>
+
+      {/* Application Configuration */}
+      <section id="config" className="scroll-mt-24 space-y-6">
+        <h2 className="text-2xl font-bold tracking-tight">Application Configuration</h2>
+        <p className="text-muted-foreground">Customize {APP_NAME} by editing <code className="bg-secondary px-2 py-1 rounded text-xs">config.yaml</code> in the project root:</p>
+
+        <Card className="p-6 border-border/40">
+          <h3 className="font-semibold mb-4">config.yaml Overview</h3>
+          <p className="text-sm text-muted-foreground mb-3">The <code className="bg-secondary px-1 rounded text-xs">config.yaml</code> file is the single source of truth for all application metadata. No environment variables are needed for these settings.</p>
+          <pre className="bg-secondary/50 p-4 rounded text-sm overflow-x-auto mb-4"><code>{`app:
+  name: "VulnRadar"           # Application name shown in UI
+  slug: "vulnradar"           # URL-safe identifier
+  version: "2.0.1"            # Application version
+  engine_version: "2.0.1"     # Detection engine version
+  description: "..."          # Meta description for SEO
+  total_checks_label: "310+"  # Number of security checks
+  url: "https://vulnradar.dev"
+  repo: "VulnRadar/vulnradar.dev"
+  
+  # Contact emails
+  support_email: "support@yourdomain.com"
+  legal_email: "legal@yourdomain.com"
+  security_email: "security@yourdomain.com"
+  enterprise_email: "enterprise@yourdomain.com"
+  noreply_email: "noreply@yourdomain.com"
+
+billing:
+  enabled: false              # Enable/disable Stripe billing
+
+features:
+  discord_oauth: true         # Enable Discord sign-in
+  turnstile: true             # Enable Cloudflare Turnstile`}</code></pre>
+
+          <div className="space-y-4 mt-4">
+            <div>
+              <h4 className="font-semibold text-sm mb-2">Key Sections</h4>
+              <div className="space-y-2 text-xs text-muted-foreground">
+                <p><code className="bg-secondary px-1 rounded">app</code> - Application metadata, branding, version info, and contact emails</p>
+                <p><code className="bg-secondary px-1 rounded">billing</code> - Enable or disable Stripe billing integration</p>
+                <p><code className="bg-secondary px-1 rounded">features</code> - Toggle features like Discord OAuth and Turnstile CAPTCHA</p>
+              </div>
+            </div>
+          </div>
+        </Card>
+
+        <div className="rounded-lg border border-green-500/20 bg-green-500/5 p-4 flex gap-3">
+          <Settings className="h-5 w-5 text-green-600 flex-shrink-0 mt-0.5" />
+          <div>
+            <h3 className="font-semibold text-foreground mb-1 text-sm">No Environment Variables Needed</h3>
+            <p className="text-xs text-muted-foreground">Unlike typical Next.js apps, {APP_NAME} reads app metadata from <code className="bg-secondary px-1 rounded">config.yaml</code> instead of <code className="bg-secondary px-1 rounded">NEXT_PUBLIC_*</code> environment variables. This makes configuration simpler and keeps all settings in one place.</p>
           </div>
         </div>
       </section>
@@ -533,7 +650,7 @@ cd ~/vulnradar`}</CopyCodeBlock>
             <p className="text-sm text-muted-foreground mb-3">Create a <code className="bg-secondary px-1 rounded text-xs">.env</code> file with required environment variables:</p>
             <CopyCodeBlock code="nano .env">nano .env</CopyCodeBlock>
 
-            <p className="text-sm text-muted-foreground mb-3">Paste the minimum required configuration:</p>
+            <p className="text-sm text-muted-foreground mb-3">Paste the full configuration (edit values as needed):</p>
             <CopyCodeBlock code={`# ─────────────────────────────────────────────────────────────────────────
 # DATABASE (Server-side - Required)
 # ─────────────────────────────────────────────────────────────────────────
@@ -556,7 +673,7 @@ API_KEY_ENCRYPTION_KEY=your-64-character-hex-key
 
 # ─────────────────────────────────────────────────────────────────────────
 # SMTP EMAIL CONFIGURATION (Server-side - Optional)
-# ───────────────────────────────��──��──────────────────────────────────────
+# ─────────────────────────────────────────────────────────────────────────
 # Used for sending transactional emails (password resets, notifications, etc.)
 SMTP_HOST=smtp.protonmail.ch
 SMTP_PORT=587
@@ -569,6 +686,44 @@ SMTP_FROM=noreply@yourdomain.com
 # ─────────────────────────────────────────────────────────────────────────
 # Email addresses for contact form submissions and support inquiries
 CONTACT_EMAIL=support@yourdomain.com
+
+# ─────────────────────────────────────────────────────────────────────────
+# STRIPE BILLING (Server-side - Optional, only if billing.enabled=true in config.yaml)
+# ────────────────────────────────────��────────────────────────────────────
+# Get these from: https://dashboard.stripe.com/apikeys
+STRIPE_SECRET_KEY=sk_test_xxxxxxxxxxxxxxxxxxxxxxxxxxxx
+STRIPE_PUBLISHABLE_KEY=pk_test_xxxxxxxxxxxxxxxxxxxxxxxxxxxx
+
+# Client-side publishable key (same value as STRIPE_PUBLISHABLE_KEY)
+NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=pk_test_xxxxxxxxxxxxxxxxxxxxxxxxxxxx
+
+# Webhook signing secret
+# OPTION 1 (Automatic): Call GET /api/v2/stripe/setup-webhook after starting the server
+#   - This will auto-create the webhook in Stripe and return the secret
+#   - Copy the returned webhookSecret value here
+# OPTION 2 (Manual): Create at https://dashboard.stripe.com/webhooks
+#   - Endpoint URL: https://yourdomain.com/api/v2/webhooks/stripe
+#   - Events: checkout.session.completed, customer.subscription.created,
+#             customer.subscription.updated, customer.subscription.deleted,
+#             invoice.payment_succeeded, invoice.payment_failed
+STRIPE_WEBHOOK_SECRET=whsec_xxxxxxxxxxxxxxxxxxxxxxxxxxxx
+
+# ─────────────────────────────────────────────────────────────────────────
+# DISCORD OAUTH (Server-side - Optional, for "Sign in with Discord")
+# ─────────────────────────────────────────────────────────────────────────
+# Get these from: https://discord.com/developers/applications
+# OAuth2 Redirect URL to add in Discord Developer Portal:
+#   https://yourdomain.com/api/v2/auth/discord/callback
+#   (or for local dev: http://localhost:3000/api/v2/auth/discord/callback)
+DISCORD_CLIENT_ID=your-discord-client-id
+DISCORD_CLIENT_SECRET=your-discord-client-secret
+
+# Bot token (for auto-joining users to your server)
+# Required scopes: guilds.join, identify, email
+DISCORD_BOT_TOKEN=your-discord-bot-token
+
+# Your Discord server ID (for auto-join feature)
+DISCORD_GUILD_ID=your-discord-guild-id
 
 # ═══════════════════════════════════════════════════════════════════════
 # DOCKER-ONLY VARIABLES (Only for docker-compose.yml)
@@ -587,13 +742,13 @@ DATABASE_SSL=false
 
 # ─────────────────────────────────────────────────────────────────────────
 # APPLICATION (Client-side - NEXT_PUBLIC_* - Required)
-# ────────────────���────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────────────────
 # Public URL where your app is accessible. Used in emails, redirects, and client-side code.
 NEXT_PUBLIC_APP_URL=https://yourdomain.com
 
 # ─────────────────────────────────────────────────────────────────────────
 # API KEY ENCRYPTION (Server-side - Required for enhanced security)
-# ──────────────────────────────�����─────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────────────────
 # 32-byte hex string for AES-256 encryption of stored API keys.
 # Generate with: node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 API_KEY_ENCRYPTION_KEY=your-64-character-hex-key
@@ -613,6 +768,44 @@ SMTP_FROM=noreply@yourdomain.com
 # ─────────────────────────────────────────────────────────────────────────
 # Email addresses for contact form submissions and support inquiries
 CONTACT_EMAIL=support@yourdomain.com
+
+# ─────────────────────────────────────────────────────────────────────────
+# STRIPE BILLING (Server-side - Optional, only if billing.enabled=true in config.yaml)
+# ─────────────────────────────────────────────────────────────────────────
+# Get these from: https://dashboard.stripe.com/apikeys
+STRIPE_SECRET_KEY=sk_test_xxxxxxxxxxxxxxxxxxxxxxxxxxxx
+STRIPE_PUBLISHABLE_KEY=pk_test_xxxxxxxxxxxxxxxxxxxxxxxxxxxx
+
+# Client-side publishable key (same value as STRIPE_PUBLISHABLE_KEY)
+NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=pk_test_xxxxxxxxxxxxxxxxxxxxxxxxxxxx
+
+# Webhook signing secret
+# OPTION 1 (Automatic): Call GET /api/v2/stripe/setup-webhook after starting the server
+#   - This will auto-create the webhook in Stripe and return the secret
+#   - Copy the returned webhookSecret value here
+# OPTION 2 (Manual): Create at https://dashboard.stripe.com/webhooks
+#   - Endpoint URL: https://yourdomain.com/api/v2/webhooks/stripe
+#   - Events: checkout.session.completed, customer.subscription.created,
+#             customer.subscription.updated, customer.subscription.deleted,
+#             invoice.payment_succeeded, invoice.payment_failed
+STRIPE_WEBHOOK_SECRET=whsec_xxxxxxxxxxxxxxxxxxxxxxxxxxxx
+
+# ─────────────────────────────────────────────────────────────────────────
+# DISCORD OAUTH (Server-side - Optional, for "Sign in with Discord")
+# ───────────────────────────────────────────────────────────���─────────────
+# Get these from: https://discord.com/developers/applications
+# OAuth2 Redirect URL to add in Discord Developer Portal:
+#   https://yourdomain.com/api/v2/auth/discord/callback
+#   (or for local dev: http://localhost:3000/api/v2/auth/discord/callback)
+DISCORD_CLIENT_ID=your-discord-client-id
+DISCORD_CLIENT_SECRET=your-discord-client-secret
+
+# Bot token (for auto-joining users to your server)
+# Required scopes: guilds.join, identify, email
+DISCORD_BOT_TOKEN=your-discord-bot-token
+
+# Your Discord server ID (for auto-join feature)
+DISCORD_GUILD_ID=your-discord-guild-id
 
 # ═══════════════════════════════════════════════════════════════════════
 # DOCKER-ONLY VARIABLES (Only for docker-compose.yml)
@@ -777,32 +970,35 @@ docker logs vulnradar-db`}</CopyCodeBlock>
 
         {/* Environment variables reference */}
         <Card className="p-6 border-border/40">
-          <h3 className="font-semibold mb-4">Full Environment Variables Reference</h3>
-          <pre className="bg-secondary/50 p-4 rounded text-xs overflow-x-auto"><code>{`# Database (required for docker-compose)
-POSTGRES_PASSWORD=strong-password
-POSTGRES_DB=vulnradar              # default: vulnradar
-POSTGRES_USER=vulnradar            # default: vulnradar
-
-# Application (required)
-NEXT_PUBLIC_APP_URL=https://yourdomain.com
-API_KEY_ENCRYPTION_KEY=64-char-hex-key
-
-# Port (optional)
-APP_PORT=3000                      # default: 3000
-
-# Email (optional but recommended)
-SMTP_HOST=smtp.protonmail.ch
-SMTP_PORT=587
-SMTP_USER=noreply@yourdomain.com
-SMTP_PASS=app-password
-SMTP_FROM=noreply@yourdomain.com
-
-# Contact Form (optional)
-CONTACT_EMAIL=support@yourdomain.com
-
-# CAPTCHA - Cloudflare Turnstile (optional)
-NEXT_PUBLIC_TURNSTILE_SITE_KEY=your-key
-TURNSTILE_SECRET_KEY=your-secret`}</code></pre>
+          <h3 className="font-semibold mb-4">Environment Variables Quick Reference</h3>
+          <div className="space-y-4 text-xs">
+            <div>
+              <h4 className="font-semibold text-sm mb-2">Required</h4>
+              <div className="space-y-1 text-muted-foreground">
+                <p><code className="bg-secondary px-1 rounded">DATABASE_URL</code> - PostgreSQL connection string</p>
+                <p><code className="bg-secondary px-1 rounded">NEXT_PUBLIC_APP_URL</code> - Public URL of your deployment</p>
+                <p><code className="bg-secondary px-1 rounded">API_KEY_ENCRYPTION_KEY</code> - 64-char hex key for encryption</p>
+              </div>
+            </div>
+            <div>
+              <h4 className="font-semibold text-sm mb-2">Docker-Only</h4>
+              <div className="space-y-1 text-muted-foreground">
+                <p><code className="bg-secondary px-1 rounded">POSTGRES_PASSWORD</code> - Database password</p>
+                <p><code className="bg-secondary px-1 rounded">POSTGRES_DB</code> - Database name (default: vulnradar)</p>
+                <p><code className="bg-secondary px-1 rounded">POSTGRES_USER</code> - Database user (default: vulnradar)</p>
+                <p><code className="bg-secondary px-1 rounded">APP_PORT</code> - App port (default: 3000)</p>
+              </div>
+            </div>
+            <div>
+              <h4 className="font-semibold text-sm mb-2">Optional Integrations</h4>
+              <div className="space-y-1 text-muted-foreground">
+                <p><code className="bg-secondary px-1 rounded">SMTP_*</code> - Email sending (HOST, PORT, USER, PASS, FROM)</p>
+                <p><code className="bg-secondary px-1 rounded">STRIPE_*</code> - Billing (SECRET_KEY, PUBLISHABLE_KEY, WEBHOOK_SECRET)</p>
+                <p><code className="bg-secondary px-1 rounded">DISCORD_*</code> - OAuth (CLIENT_ID, CLIENT_SECRET, BOT_TOKEN, GUILD_ID)</p>
+              </div>
+            </div>
+          </div>
+          <p className="text-xs text-muted-foreground mt-4">See the full .env file above for complete documentation and setup instructions.</p>
         </Card>
       </section>
 

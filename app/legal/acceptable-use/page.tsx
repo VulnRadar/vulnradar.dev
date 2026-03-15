@@ -1,3 +1,5 @@
+import { SECURITY_EMAIL } from "@/lib/constants"
+
 export default function AcceptableUsePage() {
   return (
     <article className="prose prose-sm dark:prose-invert max-w-none">
@@ -73,10 +75,10 @@ export default function AcceptableUsePage() {
 
       <h2 className="text-lg font-semibold text-foreground mt-8">6. Reporting Abuse</h2>
       <p className="leading-relaxed text-foreground/90">
-        If you believe VulnRadar is being used in violation of this policy, please report it to{" "}
-        <a href="mailto:security@vulnradar.dev" className="text-primary hover:underline">
-          security@vulnradar.dev
-        </a>.
+  If you believe VulnRadar is being used in violation of this policy, please report it to{" "}
+  <a href={`mailto:${SECURITY_EMAIL}`} className="text-primary hover:underline">
+  {SECURITY_EMAIL}
+  </a>.
       </p>
     </article>
   )
