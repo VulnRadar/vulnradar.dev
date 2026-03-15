@@ -13,6 +13,10 @@ export interface AppConfig {
   repo: string
   discord_invite_url: string
   support_email: string
+  legal_email: string
+  security_email: string
+  enterprise_email: string
+  noreply_email: string
 }
 
 export interface BrandingConfig {
@@ -163,6 +167,10 @@ export const DEFAULT_CONFIG: VulnRadarConfig = {
     repo: "VulnRadar/vulnradar.dev",
     discord_invite_url: "https://discord.gg/Y7R6hdGbNe",
     support_email: "support@vulnradar.dev",
+    legal_email: "legal@vulnradar.dev",
+    security_email: "security@vulnradar.dev",
+    enterprise_email: "enterprise@vulnradar.dev",
+    noreply_email: "noreply@vulnradar.dev",
   },
   branding: {
     logo_url: "/favicon.png",

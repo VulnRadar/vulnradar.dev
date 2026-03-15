@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { checkRateLimit, getClientIP, RATE_LIMITS } from "@/lib/rate-limit"
 import { contactConfirmationEmail, contactEmail, sendEmail } from "@/lib/email"
-import { TURNSTILE_ENABLED } from "@/lib/constants"
+import { TURNSTILE_ENABLED, NOREPLY_EMAIL } from "@/lib/constants"
 
 const CATEGORY_LABELS: Record<string, string> = {
   bug: "Bug Report",
@@ -79,7 +79,7 @@ export async function POST(request: NextRequest) {
       category: categoryLabel,
     })
 
-    const noreplyEmail = process.env.SMTP_FROM || process.env.SMTP_USER || "noreply@vulnradar.dev"
+    const noreplyEmail = process.env.SMTP_FROM || process.env.SMTP_USER || NOREPLY_EMAIL
     const confirmationPayload = contactConfirmationEmail({ name, category: categoryLabel })
 
     const sendEmails = async () => {

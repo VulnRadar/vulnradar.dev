@@ -1,3 +1,5 @@
+import { LEGAL_EMAIL } from "@/lib/constants"
+
 export default function PrivacyPage() {
   return (
     <article className="prose prose-sm dark:prose-invert max-w-none">
@@ -97,8 +99,8 @@ export default function PrivacyPage() {
       <p className="leading-relaxed text-foreground/90 mt-3">
         <strong className="text-foreground">How to exercise your rights:</strong> If you have an account, you can export or delete your data directly from
         your <a href="/profile#privacy" className="text-primary hover:underline">Profile settings</a>. If you do not have an account or need further assistance,
-        email us at{" "}
-        <a href="mailto:legal@vulnradar.dev" className="text-primary hover:underline">legal@vulnradar.dev</a> with your request.
+  email us at{" "}
+  <a href={`mailto:${LEGAL_EMAIL}`} className="text-primary hover:underline">{LEGAL_EMAIL}</a> with your request.
         We will respond within 30 days.
       </p>
 
@@ -110,10 +112,10 @@ export default function PrivacyPage() {
 
       <h2 className="text-lg font-semibold text-foreground mt-8">10. Contact</h2>
       <p className="leading-relaxed text-foreground/90">
-        For privacy-related inquiries, please contact us at{" "}
-        <a href="mailto:legal@vulnradar.dev" className="text-primary hover:underline">
-          legal@vulnradar.dev
-        </a>.
+  For privacy-related inquiries, please contact us at{" "}
+  <a href={`mailto:${LEGAL_EMAIL}`} className="text-primary hover:underline">
+  {LEGAL_EMAIL}
+  </a>.
       </p>
     </article>
   )
