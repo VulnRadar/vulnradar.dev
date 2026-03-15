@@ -17,7 +17,7 @@ app:
   version: "2.0.1"
   engine_version: "2.0.1"
   description: "Scan websites for security vulnerabilities. Get instant reports with severity ratings, actionable fix guidance, and team collaboration tools."
-  total_checks_label: "175+"
+  total_checks_label: "210+"
   
   # URLs - Update these for self-hosted deployments
   url: "https://vulnradar.dev"

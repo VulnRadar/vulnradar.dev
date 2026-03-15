@@ -421,7 +421,7 @@ export function ScanForm({ onScan, onBulkScan, bulkStatus = "idle", bulkProgress
             )}
             <div className="flex items-center justify-between gap-3">
               <p className="text-[11px] text-muted-foreground">
-                {bulkUrls.split("\n").filter(u => u.trim()).length} / 10 URLs &middot; one per line &middot; must include https://
+                {bulkUrls.split("\n").filter(u => u.trim()).length} / 10 URLs &middot; one per line
               </p>
               <Button
                 type="submit"
