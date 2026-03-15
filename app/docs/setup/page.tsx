@@ -4,7 +4,7 @@ import React, { useEffect, useRef } from "react"
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { CopyCodeBlock } from "@/components/copy-code-block"
-import { AlertTriangle, CheckCircle, Info } from "lucide-react"
+import { AlertTriangle, CheckCircle, Info, Settings } from "lucide-react"
 import { APP_NAME, APP_URL, APP_VERSION, ENGINE_VERSION, APP_REPO, APP_SLUG } from "@/lib/constants"
 import { useDocsContext, type TocItem } from "../layout"
 
@@ -14,6 +14,7 @@ const tocItems: TocItem[] = [
   { id: "installation", label: "Installation" },
   { id: "database", label: "Database Setup" },
   { id: "environment", label: "Environment Config" },
+  { id: "config", label: "App Configuration" },
   { id: "running", label: "Running the App" },
   { id: "verification", label: "Verification" },
   { id: "troubleshooting", label: "Troubleshooting" },
@@ -291,6 +292,59 @@ TURNSTILE_SECRET_KEY=your-turnstile-secret-key`}</code></pre>
         </div>
       </section>
 
+      {/* Application Configuration */}
+      <section id="config" className="scroll-mt-24 space-y-6">
+        <h2 className="text-2xl font-bold tracking-tight">Application Configuration</h2>
+        <p className="text-muted-foreground">Customize {APP_NAME} by editing <code className="bg-secondary px-2 py-1 rounded text-xs">config.yaml</code> in the project root:</p>
+
+        <Card className="p-6 border-border/40">
+          <h3 className="font-semibold mb-4">config.yaml Overview</h3>
+          <p className="text-sm text-muted-foreground mb-3">The <code className="bg-secondary px-1 rounded text-xs">config.yaml</code> file is the single source of truth for all application metadata. No environment variables are needed for these settings.</p>
+          <pre className="bg-secondary/50 p-4 rounded text-sm overflow-x-auto mb-4"><code>{`app:
+  name: "VulnRadar"           # Application name shown in UI
+  slug: "vulnradar"           # URL-safe identifier
+  version: "2.0.1"            # Application version
+  engine_version: "2.0.1"     # Detection engine version
+  description: "..."          # Meta description for SEO
+  total_checks_label: "310+"  # Number of security checks
+  url: "https://vulnradar.dev"
+  repo: "VulnRadar/vulnradar.dev"
+  
+  # Contact emails
+  support_email: "support@yourdomain.com"
+  legal_email: "legal@yourdomain.com"
+  security_email: "security@yourdomain.com"
+  enterprise_email: "enterprise@yourdomain.com"
+  noreply_email: "noreply@yourdomain.com"
+
+billing:
+  enabled: false              # Enable/disable Stripe billing
+
+features:
+  discord_oauth: true         # Enable Discord sign-in
+  turnstile: true             # Enable Cloudflare Turnstile`}</code></pre>
+
+          <div className="space-y-4 mt-4">
+            <div>
+              <h4 className="font-semibold text-sm mb-2">Key Sections</h4>
+              <div className="space-y-2 text-xs text-muted-foreground">
+                <p><code className="bg-secondary px-1 rounded">app</code> - Application metadata, branding, version info, and contact emails</p>
+                <p><code className="bg-secondary px-1 rounded">billing</code> - Enable or disable Stripe billing integration</p>
+                <p><code className="bg-secondary px-1 rounded">features</code> - Toggle features like Discord OAuth and Turnstile CAPTCHA</p>
+              </div>
+            </div>
+          </div>
+        </Card>
+
+        <div className="rounded-lg border border-green-500/20 bg-green-500/5 p-4 flex gap-3">
+          <Settings className="h-5 w-5 text-green-600 flex-shrink-0 mt-0.5" />
+          <div>
+            <h3 className="font-semibold text-foreground mb-1 text-sm">No Environment Variables Needed</h3>
+            <p className="text-xs text-muted-foreground">Unlike typical Next.js apps, {APP_NAME} reads app metadata from <code className="bg-secondary px-1 rounded">config.yaml</code> instead of <code className="bg-secondary px-1 rounded">NEXT_PUBLIC_*</code> environment variables. This makes configuration simpler and keeps all settings in one place.</p>
+          </div>
+        </div>
+      </section>
+
       {/* Running the Application */}
       <section id="running" className="scroll-mt-24 space-y-6">
         <h2 className="text-2xl font-bold tracking-tight">Running the Application</h2>
@@ -554,7 +608,7 @@ NEXT_PUBLIC_APP_URL=https://yourdomain.com
 # Generate with: node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 API_KEY_ENCRYPTION_KEY=your-64-character-hex-key
 
-# ─────────────────────────────────────────────────────────────────────────
+# ───────────────────────────────────────────────────────────────────��─────
 # SMTP EMAIL CONFIGURATION (Server-side - Optional)
 # ───────────────────────────────��──��──────────────────────────────────────
 # Used for sending transactional emails (password resets, notifications, etc.)
