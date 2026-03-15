@@ -277,6 +277,10 @@ export const SEVERITY_PRIORITY = {
 // ============================================================================
 
 export const SUPPORT_EMAIL = process.env.SUPPORT_EMAIL || config.app.support_email
+export const LEGAL_EMAIL = config.app.legal_email
+export const SECURITY_EMAIL = config.app.security_email
+export const ENTERPRISE_EMAIL = config.app.enterprise_email
+export const NOREPLY_EMAIL = config.app.noreply_email
 
 export const SMTP_HOST = process.env.SMTP_HOST || ""
 export const SMTP_PORT = Number(process.env.SMTP_PORT) || 587

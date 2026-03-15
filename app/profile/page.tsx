@@ -55,6 +55,7 @@ import {
   RefreshCw,
   ExternalLink,
   Unlink,
+  Play,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
@@ -273,6 +274,7 @@ function ProfileContent() {
   const [webhookUrl, setWebhookUrl] = useState("")
   const [webhookName, setWebhookName] = useState("")
   const [addingWebhook, setAddingWebhook] = useState(false)
+  const [testingWebhookId, setTestingWebhookId] = useState<number | null>(null)
 
   // Schedules state
   const [schedules, setSchedules] = useState<ScheduleItem[]>([])
@@ -2349,21 +2351,56 @@ function ProfileContent() {
                               </div>
                               <p className="text-xs text-muted-foreground truncate">{wh.url}</p>
                             </div>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-7 w-7 text-destructive dark:text-red-400 hover:text-destructive dark:hover:text-red-400 hover:bg-destructive/10 shrink-0"
-                              onClick={async () => {
-                                await fetch(API.WEBHOOKS, {
-                                  method: "DELETE",
-                                  headers: { "Content-Type": "application/json" },
-                                  body: JSON.stringify({ id: wh.id }),
-                                })
-                                setWebhooks((prev) => prev.filter((w) => w.id !== wh.id))
-                              }}
-                            >
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </Button>
+                            <div className="flex items-center gap-1 shrink-0">
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-7 w-7 text-primary hover:text-primary hover:bg-primary/10"
+                                disabled={testingWebhookId === wh.id}
+                                onClick={async () => {
+                                  setTestingWebhookId(wh.id)
+                                  try {
+                                    const res = await fetch(API.WEBHOOKS, {
+                                      method: "PATCH",
+                                      headers: { "Content-Type": "application/json" },
+                                      body: JSON.stringify({ id: wh.id }),
+                                    })
+                                    const data = await res.json()
+                                    if (res.ok) {
+                                      setSuccess("Test webhook sent successfully!")
+                                    } else {
+                                      setError(data.error || "Failed to test webhook")
+                                    }
+                                  } catch {
+                                    setError("Failed to test webhook")
+                                  }
+                                  setTestingWebhookId(null)
+                                }}
+                                title="Send test webhook"
+                              >
+                                {testingWebhookId === wh.id ? (
+                                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                ) : (
+                                  <Play className="h-3.5 w-3.5" />
+                                )}
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-7 w-7 text-destructive dark:text-red-400 hover:text-destructive dark:hover:text-red-400 hover:bg-destructive/10"
+                                onClick={async () => {
+                                  await fetch(API.WEBHOOKS, {
+                                    method: "DELETE",
+                                    headers: { "Content-Type": "application/json" },
+                                    body: JSON.stringify({ id: wh.id }),
+                                  })
+                                  setWebhooks((prev) => prev.filter((w) => w.id !== wh.id))
+                                }}
+                                title="Delete webhook"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </Button>
+                            </div>
                           </div>
                         ))}
                       </div>

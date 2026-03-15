@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { checkRateLimit, getClientIP, RATE_LIMITS } from "@/lib/rate-limit"
 import { sendEmail, landingContactEmail, landingContactConfirmationEmail } from "@/lib/email"
+import { NOREPLY_EMAIL } from "@/lib/constants"
 
 function asTrimmedString(value: unknown): string | null {
   if (typeof value !== "string") {
@@ -56,7 +57,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Message is too long." }, { status: 400 })
     }
 
-    const noreplyEmail = process.env.SMTP_FROM || process.env.SMTP_USER || "noreply@vulnradar.dev"
+    const noreplyEmail = process.env.SMTP_FROM || process.env.SMTP_USER || NOREPLY_EMAIL
 
     // Generate emails using the email module
     const adminEmail = landingContactEmail({ email: normalizedEmail, message })

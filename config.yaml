@@ -24,8 +24,12 @@ app:
   repo: "VulnRadar/vulnradar.dev"
   discord_invite_url: "https://discord.gg/Y7R6hdGbNe"
   
-  # Contact
+  # Contact Emails
   support_email: "support@vulnradar.dev"
+  legal_email: "legal@vulnradar.dev"
+  security_email: "security@vulnradar.dev"
+  enterprise_email: "enterprise@vulnradar.dev"
+  noreply_email: "noreply@vulnradar.dev"
 
 # ----------------------------------------------------------------------------
 # Branding
