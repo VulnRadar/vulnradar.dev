@@ -70,10 +70,23 @@ import { APP_NAME, TOTAL_CHECKS_LABEL } from "@/lib/constants"
 
 const CHANGELOG = [
   {
+    version: "2.0.3",
+    date: "March 15, 2026",
+    title: "310+ Security Checks, Config System Overhaul & UI Improvements",
+    highlights: true,
+    changes: [
+      { icon: ShieldCheck, label: "310+ Security Checks", desc: "Expanded detection engine from 175 to 310+ security checks. Added comprehensive checks for CSP directives (base-uri, form-action, frame-src, upgrade-insecure-requests), CORS misconfigurations, cookie security (domain scope, prefixes, partitioned), credential exposure patterns (AWS, Stripe, GitHub, npm, Docker Hub, SendGrid, Twilio, Slack/Discord webhooks), DOM security (clobbering, srcdoc iframes, blob/data URIs), and many more." },
+      { icon: Settings, label: "Config System Overhaul", desc: "Eliminated all NEXT_PUBLIC environment variables for app metadata. New config-values.ts reads directly from config.yaml at startup with zero circular dependencies. Version numbers, app name, and all metadata now come from a single source of truth. No more hydration mismatches from stale cached values." },
+      { icon: FileText, label: "Updated Documentation", desc: "Setup docs now include complete .env.example with all sections (Database, SMTP, Stripe, Discord OAuth, Turnstile). Added new 'Application Configuration' section explaining config.yaml. All environment variable code blocks now have copy buttons. Removed outdated v1 API references." },
+      { icon: Layout, label: "Modal & Toast Scrolling", desc: "Added max-height constraints with overflow-y-auto to Dialog, AlertDialog, and Toast components. Long notifications and modal content now scroll properly instead of overflowing the viewport on all platforms." },
+      { icon: Wrench, label: "Bulk Scan Helper Text", desc: "Fixed misleading 'must include https://' text in bulk scan form since the scanner auto-adds protocols." },
+    ],
+  },
+  {
     version: "2.0.1",
     date: "March 14, 2026",
     title: "Detection Engine v2.0.1, Subdomain Caching & Share Modal",
-    highlights: true,
+    highlights: false,
     changes: [
       { icon: ShieldCheck, label: "Detection Engine v2.0.1", desc: "Major improvements to reduce false positives. CSP checks now skip framework sites (Next.js, Nuxt, Angular) that legitimately require unsafe-inline/eval. Fixed wildcard detection to not flag 'https:' as a wildcard. XXE and reflected input checks now skip code examples and documentation. CDN fallback check no longer flags analytics scripts like cloudflareinsights.com." },
       { icon: Globe, label: "Subdomain Discovery Caching", desc: "Subdomain results are now cached for 4 hours in the database to prevent rate limiting on external APIs. Shows cache status with time remaining until refresh, plus a 'Refresh Now' button to force-refresh if needed. Also expanded the discovery limit from 150 to 1000 subdomains." },
