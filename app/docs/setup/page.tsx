@@ -226,57 +226,73 @@ GRANT ALL PRIVILEGES ON DATABASE vulnradar TO vulnradar_user;
 
         <Card className="p-6 border-border/40">
           <h3 className="font-semibold mb-4">Create .env.local File</h3>
-          <p className="text-sm text-muted-foreground mb-3">Create a <code className="bg-secondary px-2 py-1 rounded text-xs">.env.local</code> file in the project root with the following environment variables:</p>
-          <pre className="bg-secondary/50 p-4 rounded text-sm overflow-x-auto mb-4"><code>{`# Database
+          <p className="text-sm text-muted-foreground mb-3">Create a <code className="bg-secondary px-2 py-1 rounded text-xs">.env.local</code> file in the project root. Copy from <code className="bg-secondary px-2 py-1 rounded text-xs">.env.example</code> and configure:</p>
+          <pre className="bg-secondary/50 p-4 rounded text-xs overflow-x-auto mb-4"><code>{`# ─────────────────────────────────────────────────────────────────────────
+# DATABASE (Server-side - Required)
+# ─────────────────────────────────────────────────────────────────────────
 DATABASE_URL=postgresql://vulnradar:yourpassword@localhost:5432/vulnradar
 DATABASE_SSL=false
 
-# SMTP - No-Reply (password resets, team invites, scan alerts)
+# ─────────────────────────────────────────────────────────────────────────
+# APPLICATION (Client-side - Required)
+# ─────────────────────────────────────────────────────────────────────────
+NEXT_PUBLIC_APP_URL=http://localhost:3000
+
+# ─────────────────────────────────────────────────────────────────────────
+# API KEY ENCRYPTION (Server-side - Required)
+# ─────────────────────────────────────────────────────────────────────────
+# Generate with: node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+API_KEY_ENCRYPTION_KEY=your-64-character-hex-key
+
+# ─────────────────────────────────────────────────────────────────────────
+# SMTP EMAIL (Server-side - Optional)
+# ─────────────────────────────────────────────────────────────────────────
 SMTP_HOST=smtp.protonmail.ch
 SMTP_PORT=587
 SMTP_USER=noreply@yourdomain.com
 SMTP_PASS=your-smtp-password
 SMTP_FROM=noreply@yourdomain.com
-
-# Contact Form
 CONTACT_EMAIL=support@yourdomain.com
 
-# Turnstile (Cloudflare CAPTCHA)
+# ─────────────────────────────────────────────────────────────────────────
+# STRIPE BILLING (Server-side - Optional)
+# ─────────────────────────────────────────────────────────────────────────
+STRIPE_SECRET_KEY=sk_test_xxxxxxxxxxxxxxxxxxxxxxxxxxxx
+STRIPE_PUBLISHABLE_KEY=pk_test_xxxxxxxxxxxxxxxxxxxxxxxxxxxx
+NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=pk_test_xxxxxxxxxxxxxxxxxxxxxxxxxxxx
+STRIPE_WEBHOOK_SECRET=whsec_xxxxxxxxxxxxxxxxxxxxxxxxxxxx
+
+# ─────────────────────────────────────────────────────────────────────────
+# DISCORD OAUTH (Server-side - Optional)
+# ─────────────────────────────────────────────────────────────────────────
+DISCORD_CLIENT_ID=your-discord-client-id
+DISCORD_CLIENT_SECRET=your-discord-client-secret
+DISCORD_BOT_TOKEN=your-discord-bot-token
+DISCORD_GUILD_ID=your-discord-guild-id
+
+# ─────────────────────────────────────────────────────────────────────────
+# TURNSTILE CAPTCHA (Optional)
+# ─────────────────────────────────────────────────────────────────────────
 TURNSTILE_SITE_KEY=your-turnstile-site-key
 TURNSTILE_SECRET_KEY=your-turnstile-secret-key`}</code></pre>
 
           <div className="space-y-4 mt-4">
             <div>
-              <h4 className="font-semibold text-sm mb-2">Database Configuration</h4>
+              <h4 className="font-semibold text-sm mb-2">Required Variables</h4>
               <div className="space-y-2 text-xs text-muted-foreground">
-                <p><code className="bg-secondary px-1 rounded">DATABASE_URL</code> - PostgreSQL connection string. Replace <code className="bg-secondary px-1 rounded">yourpassword</code> with your actual PostgreSQL password.</p>
-                <p><code className="bg-secondary px-1 rounded">DATABASE_SSL</code> - Set to <code className="bg-secondary px-1 rounded">true</code> for production environments with SSL.</p>
+                <p><code className="bg-secondary px-1 rounded">DATABASE_URL</code> - PostgreSQL connection string</p>
+                <p><code className="bg-secondary px-1 rounded">NEXT_PUBLIC_APP_URL</code> - Your app&apos;s public URL</p>
+                <p><code className="bg-secondary px-1 rounded">API_KEY_ENCRYPTION_KEY</code> - 64-char hex key for API key encryption</p>
               </div>
             </div>
 
             <div>
-              <h4 className="font-semibold text-sm mb-2">SMTP Configuration (Email)</h4>
+              <h4 className="font-semibold text-sm mb-2">Optional Integrations</h4>
               <div className="space-y-2 text-xs text-muted-foreground">
-                <p><code className="bg-secondary px-1 rounded">SMTP_HOST</code> - Your SMTP server host (e.g., smtp.protonmail.ch for ProtonMail)</p>
-                <p><code className="bg-secondary px-1 rounded">SMTP_PORT</code> - SMTP port (typically 587 for TLS or 465 for SSL)</p>
-                <p><code className="bg-secondary px-1 rounded">SMTP_USER</code> - Email address for no-reply emails</p>
-                <p><code className="bg-secondary px-1 rounded">SMTP_PASS</code> - SMTP password or app-specific password</p>
-                <p><code className="bg-secondary px-1 rounded">SMTP_FROM</code> - Sender email address</p>
-              </div>
-            </div>
-
-            <div>
-              <h4 className="font-semibold text-sm mb-2">Contact & Support</h4>
-              <div className="space-y-2 text-xs text-muted-foreground">
-                <p><code className="bg-secondary px-1 rounded">CONTACT_EMAIL</code> - Email address for contact form submissions</p>
-              </div>
-            </div>
-
-            <div>
-              <h4 className="font-semibold text-sm mb-2">Security (Turnstile CAPTCHA)</h4>
-              <div className="space-y-2 text-xs text-muted-foreground">
-                <p><code className="bg-secondary px-1 rounded">TURNSTILE_SITE_KEY</code> - Get from <a href="https://dash.cloudflare.com/" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">Cloudflare Dashboard</a></p>
-                <p><code className="bg-secondary px-1 rounded">TURNSTILE_SECRET_KEY</code> - Keep secret, never expose to frontend</p>
+                <p><code className="bg-secondary px-1 rounded">SMTP_*</code> - Email sending for password resets, notifications</p>
+                <p><code className="bg-secondary px-1 rounded">STRIPE_*</code> - Billing (enable in <code className="bg-secondary px-1 rounded">config.yaml</code>)</p>
+                <p><code className="bg-secondary px-1 rounded">DISCORD_*</code> - OAuth sign-in (enable in <code className="bg-secondary px-1 rounded">config.yaml</code>)</p>
+                <p><code className="bg-secondary px-1 rounded">TURNSTILE_*</code> - Cloudflare CAPTCHA (enable in <code className="bg-secondary px-1 rounded">config.yaml</code>)</p>
               </div>
             </div>
           </div>
