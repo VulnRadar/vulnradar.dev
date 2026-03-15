@@ -162,7 +162,7 @@ export const DEFAULT_CONFIG: VulnRadarConfig = {
     version: process.env.NEXT_PUBLIC_APP_VERSION ?? "unknown",
     engine_version: process.env.NEXT_PUBLIC_ENGINE_VERSION ?? "unknown",
     description: "Scan websites for security vulnerabilities. Get instant reports with severity ratings, actionable fix guidance, and team collaboration tools.",
-    total_checks_label: "175+",
+    total_checks_label: "310+",
     url: "https://vulnradar.dev",
     repo: "VulnRadar/vulnradar.dev",
     discord_invite_url: "https://discord.gg/Y7R6hdGbNe",
