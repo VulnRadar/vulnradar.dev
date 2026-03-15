@@ -5,6 +5,7 @@ import {
   Shield,
   Lock,
   ShieldCheck,
+  ShieldAlert,
   Bell,
   Heart,
   Layout,
@@ -15,6 +16,9 @@ import {
   Share2,
   Fingerprint,
   FileText,
+  FileSearch,
+  FileDown,
+  FileSpreadsheet,
   Filter,
   Activity,
   Link2,
@@ -26,6 +30,35 @@ import {
   Container,
   Settings,
   Trash2,
+  Eye,
+  Mail,
+  Users,
+  UserCheck,
+  MessageSquare,
+  Newspaper,
+  Sparkles,
+  Network,
+  Layers,
+  List,
+  Tag,
+  RefreshCw,
+  Gauge,
+  Search,
+  ScanSearch,
+  Columns3,
+  AlertTriangle,
+  Menu,
+  Smartphone,
+  Pencil,
+  Image,
+  ServerCrash,
+  ServerCog,
+  GitMerge,
+  Bug,
+  Target,
+  Radar,
+  Crosshair,
+  CheckCircle,
   type LucideIcon,
 } from "lucide-react"
 import { APP_NAME } from "@/lib/constants"
@@ -538,8 +571,8 @@ export default function ChangelogPage() {
               <article key={release.version} className="relative">
                 {/* Timeline dot */}
                 <div className={`absolute left-0 top-1.5 w-[22px] h-[22px] rounded-full border-2 hidden sm:flex items-center justify-center ${index === 0
-                    ? 'border-primary bg-primary'
-                    : 'border-border bg-background'
+                  ? 'border-primary bg-primary'
+                  : 'border-border bg-background'
                   }`}>
                   {index === 0 && <div className="w-2 h-2 rounded-full bg-primary-foreground" />}
                 </div>
@@ -549,8 +582,8 @@ export default function ChangelogPage() {
                   <div className="flex flex-col gap-1">
                     <div className="flex flex-wrap items-center gap-2">
                       <span className={`inline-flex items-center rounded-md px-2.5 py-0.5 text-sm font-bold font-mono ${index === 0
-                          ? 'bg-primary text-primary-foreground'
-                          : 'bg-secondary text-foreground'
+                        ? 'bg-primary text-primary-foreground'
+                        : 'bg-secondary text-foreground'
                         }`}>
                         v{release.version}
                       </span>
@@ -575,16 +608,16 @@ export default function ChangelogPage() {
                         className="flex gap-3 p-3 rounded-lg border border-border/50 bg-card/50 hover:bg-card transition-colors"
                       >
                         <div className={`flex items-center justify-center w-8 h-8 rounded-md shrink-0 ${change.category === 'security' ? 'bg-red-500/10' :
-                            change.category === 'added' ? 'bg-emerald-500/10' :
-                              change.category === 'fixed' ? 'bg-amber-500/10' :
-                                change.category === 'performance' ? 'bg-purple-500/10' :
-                                  'bg-primary/10'
+                          change.category === 'added' ? 'bg-emerald-500/10' :
+                            change.category === 'fixed' ? 'bg-amber-500/10' :
+                              change.category === 'performance' ? 'bg-purple-500/10' :
+                                'bg-primary/10'
                           }`}>
                           <change.icon className={`h-4 w-4 ${change.category === 'security' ? 'text-red-600 dark:text-red-400' :
-                              change.category === 'added' ? 'text-emerald-600 dark:text-emerald-400' :
-                                change.category === 'fixed' ? 'text-amber-600 dark:text-amber-400' :
-                                  change.category === 'performance' ? 'text-purple-600 dark:text-purple-400' :
-                                    'text-primary'
+                            change.category === 'added' ? 'text-emerald-600 dark:text-emerald-400' :
+                              change.category === 'fixed' ? 'text-amber-600 dark:text-amber-400' :
+                                change.category === 'performance' ? 'text-purple-600 dark:text-purple-400' :
+                                  'text-primary'
                             }`} />
                         </div>
                         <div className="flex-1 min-w-0">
