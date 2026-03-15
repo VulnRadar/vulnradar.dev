@@ -17,7 +17,7 @@ const endpoints = [
   { id: "post-scan-crawl", method: "POST", path: "/scan/crawl", label: "Deep Crawl Scan" },
   { id: "post-scan-crawl-discover", method: "POST", path: "/scan/crawl/discover", label: "Discover URLs" },
   { id: "get-version", method: "GET", path: "/api/version", label: "Version Check" },
-  { id: "get-finding-types", method: "GET", path: "/api/v1/finding-types", label: "Finding Types" },
+  { id: "get-finding-types", method: "GET", path: "/api/v2/finding-types", label: "Finding Types" },
 ]
 
 // Table of contents items
@@ -570,11 +570,11 @@ scan = response.json()`,
             errors={[]}
           />
 
-          {/* GET /api/v1/finding-types */}
+          {/* GET /api/v2/finding-types */}
           <EndpointCard
             id="get-finding-types"
             method="GET"
-            path="/api/v1/finding-types"
+            path="/api/v2/finding-types"
             title="Finding Types"
             description="Returns all security check definitions. Use this to understand what findings your integration should handle, display human-readable titles, and categorize results by severity."
             responseExample={`{

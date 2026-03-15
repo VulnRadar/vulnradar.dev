@@ -125,14 +125,14 @@ export default function DevelopersPage() {
         <Card className="p-6 border-border/40">
           <div className="flex flex-wrap items-center gap-3 mb-4">
             <Badge className="bg-blue-600/20 text-blue-600 border-blue-600/30 border font-mono text-xs">GET</Badge>
-            <code className="text-primary font-mono text-sm">/api/v1/finding-types</code>
+            <code className="text-primary font-mono text-sm">/api/v2/finding-types</code>
             <Badge variant="outline" className="text-xs ml-auto">Public - No Auth</Badge>
           </div>
 
           <div className="space-y-6">
             <div>
               <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">Example Request</h4>
-              <CodeBlock code={`curl ${APP_URL}/api/v1/finding-types`} language="bash" />
+              <CodeBlock code={`curl ${APP_URL}/api/v2/finding-types`} language="bash" />
             </div>
 
             <div>
