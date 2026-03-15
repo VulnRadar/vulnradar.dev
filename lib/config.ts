@@ -167,19 +167,12 @@ function validateConfig(config: unknown): config is Partial<VulnRadarConfig> {
 let _config: VulnRadarConfig | null = null
 let _configLoadError: string | null = null
 
-// Clear config cache (useful for development hot reloads)
-export function clearConfigCache() {
-  _config = null
-  _configLoadError = null
-}
-
 /**
  * Load configuration from config.yaml
  * Falls back to defaults if file is missing or invalid
  */
 export function loadConfig(): VulnRadarConfig {
-  // In development, skip cache to pick up config changes without restart
-  if (_config && process.env.NODE_ENV !== "development") return _config
+  if (_config) return _config
   
   // Get Node.js fs functions (returns null in browser/edge)
   const nodeFs = getNodeFs()
