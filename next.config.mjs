@@ -1,30 +1,6 @@
 /** @type {import('next').NextConfig} */
-import { readFileSync, existsSync } from "fs"
-import { join } from "path"
-
-// Read version from config.yaml once at build time.
-// NEXT_PUBLIC_ env vars are available everywhere (server, client, edge).
-function getVersions() {
-  const configPath = join(process.cwd(), "config.yaml")
-  if (existsSync(configPath)) {
-    const content = readFileSync(configPath, "utf-8")
-    const versionMatch = content.match(/version:\s*["']?([^"'\s]+)["']?/)
-    const engineMatch = content.match(/engine_version:\s*["']?([^"'\s]+)["']?/)
-    return {
-      version: versionMatch?.[1] ?? "unknown",
-      engineVersion: engineMatch?.[1] ?? "unknown",
-    }
-  }
-  return { version: "unknown", engineVersion: "unknown" }
-}
-
-const { version, engineVersion } = getVersions()
 
 const nextConfig = {
-  env: {
-    NEXT_PUBLIC_APP_VERSION: version,
-    NEXT_PUBLIC_ENGINE_VERSION: engineVersion,
-  },
   output: "standalone",
   serverExternalPackages: ["fs", "path"],
   typescript: {

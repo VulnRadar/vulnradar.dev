@@ -1,27 +1,43 @@
 // ============================================================================
 // APP CONSTANTS - Centralized configuration for the entire application
 // ============================================================================
-// This file reads from config.yaml via the config system.
+// This file imports from config-values.ts which reads config.yaml directly.
 // Self-hosters: Modify config.yaml to customize your deployment.
 // ============================================================================
 
 import { getConfig } from "./config"
+import {
+  CONFIG_APP_NAME,
+  CONFIG_APP_SLUG,
+  CONFIG_APP_VERSION,
+  CONFIG_ENGINE_VERSION,
+  CONFIG_APP_DESCRIPTION,
+  CONFIG_TOTAL_CHECKS_LABEL,
+  CONFIG_APP_URL,
+  CONFIG_APP_REPO,
+  CONFIG_DISCORD_INVITE_URL,
+  CONFIG_SUPPORT_EMAIL,
+  CONFIG_LEGAL_EMAIL,
+  CONFIG_SECURITY_EMAIL,
+  CONFIG_ENTERPRISE_EMAIL,
+  CONFIG_NOREPLY_EMAIL,
+} from "./config-values"
 
-// Get config (loads from config.yaml or uses defaults)
+// Get config (loads from config.yaml or uses defaults) - for non-app settings
 const config = getConfig()
 
 // ============================================================================
-// APPLICATION METADATA (from config.yaml)
+// APPLICATION METADATA (from config-values.ts -> config.yaml)
 // ============================================================================
 
-export const APP_NAME = config.app.name
-export const APP_SLUG = config.app.slug
-export const APP_VERSION = process.env.NEXT_PUBLIC_APP_VERSION ?? "unknown"
-export const ENGINE_VERSION = process.env.NEXT_PUBLIC_ENGINE_VERSION ?? "unknown"
-export const APP_DESCRIPTION = config.app.description
-export const TOTAL_CHECKS_LABEL = config.app.total_checks_label
-export const APP_URL = config.app.url
-export const APP_REPO = config.app.repo
+export const APP_NAME = CONFIG_APP_NAME
+export const APP_SLUG = CONFIG_APP_SLUG
+export const APP_VERSION = CONFIG_APP_VERSION
+export const ENGINE_VERSION = CONFIG_ENGINE_VERSION
+export const APP_DESCRIPTION = CONFIG_APP_DESCRIPTION
+export const TOTAL_CHECKS_LABEL = CONFIG_TOTAL_CHECKS_LABEL
+export const APP_URL = CONFIG_APP_URL
+export const APP_REPO = CONFIG_APP_REPO
 
 // Scan note with version info
 export const DEFAULT_SCAN_NOTE = `${APP_NAME} v${APP_VERSION} (Detection Engine v${ENGINE_VERSION})`
@@ -276,7 +292,11 @@ export const SEVERITY_PRIORITY = {
 // EMAIL / SMTP CONFIG (from config.yaml + env vars)
 // ============================================================================
 
-export const SUPPORT_EMAIL = process.env.SUPPORT_EMAIL || config.app.support_email
+export const SUPPORT_EMAIL = process.env.SUPPORT_EMAIL || CONFIG_SUPPORT_EMAIL
+export const LEGAL_EMAIL = CONFIG_LEGAL_EMAIL
+export const SECURITY_EMAIL = CONFIG_SECURITY_EMAIL
+export const ENTERPRISE_EMAIL = CONFIG_ENTERPRISE_EMAIL
+export const NOREPLY_EMAIL = CONFIG_NOREPLY_EMAIL
 
 export const SMTP_HOST = process.env.SMTP_HOST || ""
 export const SMTP_PORT = Number(process.env.SMTP_PORT) || 587

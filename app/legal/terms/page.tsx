@@ -1,3 +1,5 @@
+import { LEGAL_EMAIL } from "@/lib/constants"
+
 export default function TermsPage() {
   return (
     <article className="prose prose-sm dark:prose-invert max-w-none">
@@ -115,10 +117,10 @@ export default function TermsPage() {
 
       <h2 className="text-lg font-semibold text-foreground mt-8">12. Contact</h2>
       <p className="leading-relaxed text-foreground/90">
-        For questions about these Terms, please contact us at{" "}
-        <a href="mailto:legal@vulnradar.dev" className="text-primary hover:underline">
-          legal@vulnradar.dev
-        </a>.
+  For questions about these Terms, please contact us at{" "}
+  <a href={`mailto:${LEGAL_EMAIL}`} className="text-primary hover:underline">
+  {LEGAL_EMAIL}
+  </a>.
       </p>
     </article>
   )
