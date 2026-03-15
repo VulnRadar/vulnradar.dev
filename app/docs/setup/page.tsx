@@ -227,7 +227,7 @@ GRANT ALL PRIVILEGES ON DATABASE vulnradar TO vulnradar_user;
         <Card className="p-6 border-border/40">
           <h3 className="font-semibold mb-4">Create .env.local File</h3>
           <p className="text-sm text-muted-foreground mb-3">Create a <code className="bg-secondary px-2 py-1 rounded text-xs">.env.local</code> file in the project root. Copy from <code className="bg-secondary px-2 py-1 rounded text-xs">.env.example</code> and configure:</p>
-          <pre className="bg-secondary/50 p-4 rounded text-xs overflow-x-auto mb-4"><code>{`# ─────────────────────────────────────────────────────────────────────────
+          <CopyCodeBlock code={`# ─────────────────────────────────────────────────────────────────────────
 # DATABASE (Server-side - Required)
 # ─────────────────────────────────────────────────────────────────────────
 DATABASE_URL=postgresql://vulnradar:yourpassword@localhost:5432/vulnradar
@@ -274,7 +274,54 @@ DISCORD_GUILD_ID=your-discord-guild-id
 # TURNSTILE CAPTCHA (Optional)
 # ─────────────────────────────────────────────────────────────────────────
 TURNSTILE_SITE_KEY=your-turnstile-site-key
-TURNSTILE_SECRET_KEY=your-turnstile-secret-key`}</code></pre>
+TURNSTILE_SECRET_KEY=your-turnstile-secret-key`}>{`# ─────────────────────────────────────────────────────────────────────────
+# DATABASE (Server-side - Required)
+# ─────────────────────────────────────────────────────────────────────────
+DATABASE_URL=postgresql://vulnradar:yourpassword@localhost:5432/vulnradar
+DATABASE_SSL=false
+
+# ─────────────────────────────────────────────────────────────────────────
+# APPLICATION (Client-side - Required)
+# ─────────────────────────────────────────────────────────────────────────
+NEXT_PUBLIC_APP_URL=http://localhost:3000
+
+# ─────────────────────────────────────────────────────────────────────────
+# API KEY ENCRYPTION (Server-side - Required)
+# ─────────────────────────────────────────────────────────────────────────
+# Generate with: node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+API_KEY_ENCRYPTION_KEY=your-64-character-hex-key
+
+# ─────────────────────────────────────────────────────────────────────────
+# SMTP EMAIL (Server-side - Optional)
+# ─────────────────────────────────────────────────────────────────────────
+SMTP_HOST=smtp.protonmail.ch
+SMTP_PORT=587
+SMTP_USER=noreply@yourdomain.com
+SMTP_PASS=your-smtp-password
+SMTP_FROM=noreply@yourdomain.com
+CONTACT_EMAIL=support@yourdomain.com
+
+# ─────────────────────────────────────────────────────────────────────────
+# STRIPE BILLING (Server-side - Optional)
+# ─────────────────────────────────────────────────────────────────────────
+STRIPE_SECRET_KEY=sk_test_xxxxxxxxxxxxxxxxxxxxxxxxxxxx
+STRIPE_PUBLISHABLE_KEY=pk_test_xxxxxxxxxxxxxxxxxxxxxxxxxxxx
+NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=pk_test_xxxxxxxxxxxxxxxxxxxxxxxxxxxx
+STRIPE_WEBHOOK_SECRET=whsec_xxxxxxxxxxxxxxxxxxxxxxxxxxxx
+
+# ─────────────────────────────────────────────────────────────────────────
+# DISCORD OAUTH (Server-side - Optional)
+# ─────────────────────────────────────────────────────────────────────────
+DISCORD_CLIENT_ID=your-discord-client-id
+DISCORD_CLIENT_SECRET=your-discord-client-secret
+DISCORD_BOT_TOKEN=your-discord-bot-token
+DISCORD_GUILD_ID=your-discord-guild-id
+
+# ─────────────────────────────────────────────────────────────────────────
+# TURNSTILE CAPTCHA (Optional)
+# ─────────────────────────────────────────────────────────────────────────
+TURNSTILE_SITE_KEY=your-turnstile-site-key
+TURNSTILE_SECRET_KEY=your-turnstile-secret-key`}</CopyCodeBlock>
 
           <div className="space-y-4 mt-4">
             <div>
@@ -642,7 +689,7 @@ CONTACT_EMAIL=support@yourdomain.com
 
 # ─────────────────────────────────────────────────────────────────────────
 # STRIPE BILLING (Server-side - Optional, only if billing.enabled=true in config.yaml)
-# ─────────────────────────────────────────────────────────────────────────
+# ────────────────────────────────────��────────────────────────────────────
 # Get these from: https://dashboard.stripe.com/apikeys
 STRIPE_SECRET_KEY=sk_test_xxxxxxxxxxxxxxxxxxxxxxxxxxxx
 STRIPE_PUBLISHABLE_KEY=pk_test_xxxxxxxxxxxxxxxxxxxxxxxxxxxx
@@ -745,7 +792,7 @@ STRIPE_WEBHOOK_SECRET=whsec_xxxxxxxxxxxxxxxxxxxxxxxxxxxx
 
 # ─────────────────────────────────────────────────────────────────────────
 # DISCORD OAUTH (Server-side - Optional, for "Sign in with Discord")
-# ─────────────────────────────────────────────────────────────────────────
+# ───────────────────────────────────────────────────────────���─────────────
 # Get these from: https://discord.com/developers/applications
 # OAuth2 Redirect URL to add in Discord Developer Portal:
 #   https://yourdomain.com/api/v2/auth/discord/callback
