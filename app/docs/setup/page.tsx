@@ -587,7 +587,7 @@ cd ~/vulnradar`}</CopyCodeBlock>
             <p className="text-sm text-muted-foreground mb-3">Create a <code className="bg-secondary px-1 rounded text-xs">.env</code> file with required environment variables:</p>
             <CopyCodeBlock code="nano .env">nano .env</CopyCodeBlock>
 
-            <p className="text-sm text-muted-foreground mb-3">Paste the minimum required configuration:</p>
+            <p className="text-sm text-muted-foreground mb-3">Paste the full configuration (edit values as needed):</p>
             <CopyCodeBlock code={`# ─────────────────────────────────────────────────────────────────────────
 # DATABASE (Server-side - Required)
 # ─────────────────────────────────────────────────────────────────────────
@@ -608,9 +608,9 @@ NEXT_PUBLIC_APP_URL=https://yourdomain.com
 # Generate with: node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 API_KEY_ENCRYPTION_KEY=your-64-character-hex-key
 
-# ───────────────────────────────────────────────────────────────────��─────
+# ─────────────────────────────────────────────────────────────────────────
 # SMTP EMAIL CONFIGURATION (Server-side - Optional)
-# ───────────────────────────────��──��──────────────────────────────────────
+# ─────────────────────────────────────────────────────────────────────────
 # Used for sending transactional emails (password resets, notifications, etc.)
 SMTP_HOST=smtp.protonmail.ch
 SMTP_PORT=587
@@ -623,6 +623,44 @@ SMTP_FROM=noreply@yourdomain.com
 # ─────────────────────────────────────────────────────────────────────────
 # Email addresses for contact form submissions and support inquiries
 CONTACT_EMAIL=support@yourdomain.com
+
+# ─────────────────────────────────────────────────────────────────────────
+# STRIPE BILLING (Server-side - Optional, only if billing.enabled=true in config.yaml)
+# ─────────────────────────────────────────────────────────────────────────
+# Get these from: https://dashboard.stripe.com/apikeys
+STRIPE_SECRET_KEY=sk_test_xxxxxxxxxxxxxxxxxxxxxxxxxxxx
+STRIPE_PUBLISHABLE_KEY=pk_test_xxxxxxxxxxxxxxxxxxxxxxxxxxxx
+
+# Client-side publishable key (same value as STRIPE_PUBLISHABLE_KEY)
+NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=pk_test_xxxxxxxxxxxxxxxxxxxxxxxxxxxx
+
+# Webhook signing secret
+# OPTION 1 (Automatic): Call GET /api/v2/stripe/setup-webhook after starting the server
+#   - This will auto-create the webhook in Stripe and return the secret
+#   - Copy the returned webhookSecret value here
+# OPTION 2 (Manual): Create at https://dashboard.stripe.com/webhooks
+#   - Endpoint URL: https://yourdomain.com/api/v2/webhooks/stripe
+#   - Events: checkout.session.completed, customer.subscription.created,
+#             customer.subscription.updated, customer.subscription.deleted,
+#             invoice.payment_succeeded, invoice.payment_failed
+STRIPE_WEBHOOK_SECRET=whsec_xxxxxxxxxxxxxxxxxxxxxxxxxxxx
+
+# ─────────────────────────────────────────────────────────────────────────
+# DISCORD OAUTH (Server-side - Optional, for "Sign in with Discord")
+# ─────────────────────────────────────────────────────────────────────────
+# Get these from: https://discord.com/developers/applications
+# OAuth2 Redirect URL to add in Discord Developer Portal:
+#   https://yourdomain.com/api/v2/auth/discord/callback
+#   (or for local dev: http://localhost:3000/api/v2/auth/discord/callback)
+DISCORD_CLIENT_ID=your-discord-client-id
+DISCORD_CLIENT_SECRET=your-discord-client-secret
+
+# Bot token (for auto-joining users to your server)
+# Required scopes: guilds.join, identify, email
+DISCORD_BOT_TOKEN=your-discord-bot-token
+
+# Your Discord server ID (for auto-join feature)
+DISCORD_GUILD_ID=your-discord-guild-id
 
 # ═══════════════════════════════════════════════════════════════════════
 # DOCKER-ONLY VARIABLES (Only for docker-compose.yml)
@@ -641,13 +679,13 @@ DATABASE_SSL=false
 
 # ─────────────────────────────────────────────────────────────────────────
 # APPLICATION (Client-side - NEXT_PUBLIC_* - Required)
-# ────────────────���────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────────────────
 # Public URL where your app is accessible. Used in emails, redirects, and client-side code.
 NEXT_PUBLIC_APP_URL=https://yourdomain.com
 
 # ─────────────────────────────────────────────────────────────────────────
 # API KEY ENCRYPTION (Server-side - Required for enhanced security)
-# ──────────────────────────────�����─────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────────────────
 # 32-byte hex string for AES-256 encryption of stored API keys.
 # Generate with: node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 API_KEY_ENCRYPTION_KEY=your-64-character-hex-key
@@ -667,6 +705,44 @@ SMTP_FROM=noreply@yourdomain.com
 # ─────────────────────────────────────────────────────────────────────────
 # Email addresses for contact form submissions and support inquiries
 CONTACT_EMAIL=support@yourdomain.com
+
+# ─────────────────────────────────────────────────────────────────────────
+# STRIPE BILLING (Server-side - Optional, only if billing.enabled=true in config.yaml)
+# ─────────────────────────────────────────────────────────────────────────
+# Get these from: https://dashboard.stripe.com/apikeys
+STRIPE_SECRET_KEY=sk_test_xxxxxxxxxxxxxxxxxxxxxxxxxxxx
+STRIPE_PUBLISHABLE_KEY=pk_test_xxxxxxxxxxxxxxxxxxxxxxxxxxxx
+
+# Client-side publishable key (same value as STRIPE_PUBLISHABLE_KEY)
+NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=pk_test_xxxxxxxxxxxxxxxxxxxxxxxxxxxx
+
+# Webhook signing secret
+# OPTION 1 (Automatic): Call GET /api/v2/stripe/setup-webhook after starting the server
+#   - This will auto-create the webhook in Stripe and return the secret
+#   - Copy the returned webhookSecret value here
+# OPTION 2 (Manual): Create at https://dashboard.stripe.com/webhooks
+#   - Endpoint URL: https://yourdomain.com/api/v2/webhooks/stripe
+#   - Events: checkout.session.completed, customer.subscription.created,
+#             customer.subscription.updated, customer.subscription.deleted,
+#             invoice.payment_succeeded, invoice.payment_failed
+STRIPE_WEBHOOK_SECRET=whsec_xxxxxxxxxxxxxxxxxxxxxxxxxxxx
+
+# ─────────────────────────────────────────────────────────────────────────
+# DISCORD OAUTH (Server-side - Optional, for "Sign in with Discord")
+# ─────────────────────────────────────────────────────────────────────────
+# Get these from: https://discord.com/developers/applications
+# OAuth2 Redirect URL to add in Discord Developer Portal:
+#   https://yourdomain.com/api/v2/auth/discord/callback
+#   (or for local dev: http://localhost:3000/api/v2/auth/discord/callback)
+DISCORD_CLIENT_ID=your-discord-client-id
+DISCORD_CLIENT_SECRET=your-discord-client-secret
+
+# Bot token (for auto-joining users to your server)
+# Required scopes: guilds.join, identify, email
+DISCORD_BOT_TOKEN=your-discord-bot-token
+
+# Your Discord server ID (for auto-join feature)
+DISCORD_GUILD_ID=your-discord-guild-id
 
 # ═══════════════════════════════════════════════════════════════════════
 # DOCKER-ONLY VARIABLES (Only for docker-compose.yml)
@@ -831,32 +907,35 @@ docker logs vulnradar-db`}</CopyCodeBlock>
 
         {/* Environment variables reference */}
         <Card className="p-6 border-border/40">
-          <h3 className="font-semibold mb-4">Full Environment Variables Reference</h3>
-          <pre className="bg-secondary/50 p-4 rounded text-xs overflow-x-auto"><code>{`# Database (required for docker-compose)
-POSTGRES_PASSWORD=strong-password
-POSTGRES_DB=vulnradar              # default: vulnradar
-POSTGRES_USER=vulnradar            # default: vulnradar
-
-# Application (required)
-NEXT_PUBLIC_APP_URL=https://yourdomain.com
-API_KEY_ENCRYPTION_KEY=64-char-hex-key
-
-# Port (optional)
-APP_PORT=3000                      # default: 3000
-
-# Email (optional but recommended)
-SMTP_HOST=smtp.protonmail.ch
-SMTP_PORT=587
-SMTP_USER=noreply@yourdomain.com
-SMTP_PASS=app-password
-SMTP_FROM=noreply@yourdomain.com
-
-# Contact Form (optional)
-CONTACT_EMAIL=support@yourdomain.com
-
-# CAPTCHA - Cloudflare Turnstile (optional)
-NEXT_PUBLIC_TURNSTILE_SITE_KEY=your-key
-TURNSTILE_SECRET_KEY=your-secret`}</code></pre>
+          <h3 className="font-semibold mb-4">Environment Variables Quick Reference</h3>
+          <div className="space-y-4 text-xs">
+            <div>
+              <h4 className="font-semibold text-sm mb-2">Required</h4>
+              <div className="space-y-1 text-muted-foreground">
+                <p><code className="bg-secondary px-1 rounded">DATABASE_URL</code> - PostgreSQL connection string</p>
+                <p><code className="bg-secondary px-1 rounded">NEXT_PUBLIC_APP_URL</code> - Public URL of your deployment</p>
+                <p><code className="bg-secondary px-1 rounded">API_KEY_ENCRYPTION_KEY</code> - 64-char hex key for encryption</p>
+              </div>
+            </div>
+            <div>
+              <h4 className="font-semibold text-sm mb-2">Docker-Only</h4>
+              <div className="space-y-1 text-muted-foreground">
+                <p><code className="bg-secondary px-1 rounded">POSTGRES_PASSWORD</code> - Database password</p>
+                <p><code className="bg-secondary px-1 rounded">POSTGRES_DB</code> - Database name (default: vulnradar)</p>
+                <p><code className="bg-secondary px-1 rounded">POSTGRES_USER</code> - Database user (default: vulnradar)</p>
+                <p><code className="bg-secondary px-1 rounded">APP_PORT</code> - App port (default: 3000)</p>
+              </div>
+            </div>
+            <div>
+              <h4 className="font-semibold text-sm mb-2">Optional Integrations</h4>
+              <div className="space-y-1 text-muted-foreground">
+                <p><code className="bg-secondary px-1 rounded">SMTP_*</code> - Email sending (HOST, PORT, USER, PASS, FROM)</p>
+                <p><code className="bg-secondary px-1 rounded">STRIPE_*</code> - Billing (SECRET_KEY, PUBLISHABLE_KEY, WEBHOOK_SECRET)</p>
+                <p><code className="bg-secondary px-1 rounded">DISCORD_*</code> - OAuth (CLIENT_ID, CLIENT_SECRET, BOT_TOKEN, GUILD_ID)</p>
+              </div>
+            </div>
+          </div>
+          <p className="text-xs text-muted-foreground mt-4">See the full .env file above for complete documentation and setup instructions.</p>
         </Card>
       </section>
 
