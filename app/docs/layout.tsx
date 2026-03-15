@@ -3,7 +3,7 @@
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { cn } from "@/lib/utils"
-import { BookOpen, Zap, Code2, ChevronRight } from "lucide-react"
+import { BookOpen, Zap, Code2, ChevronRight, History } from "lucide-react"
 import { Header } from "@/components/scanner/header"
 import { Footer } from "@/components/scanner/footer"
 import { APP_NAME, ROUTES, BILLING_ENABLED } from "@/lib/constants"
@@ -42,6 +42,7 @@ const mainNavItems = [
   { href: "/docs/api", label: "API Reference", icon: Zap },
   { href: "/docs/setup", label: "Setup Guide", icon: BookOpen },
   { href: "/docs/developers", label: "Developers", icon: Code2 },
+  { href: "/docs/changelog", label: "Changelog", icon: History },
 ]
 
 function getInitialAuthState(): boolean | null {
