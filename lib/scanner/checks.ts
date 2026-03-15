@@ -1,5 +1,5 @@
 /**
- * VulnRadar Detection Engine v2.0.1
+ * VulnRadar Detection Engine
  *
  * Pure detection engine. ALL metadata (title, description, fixSteps, codeExamples, etc.)
  * lives in checks-data.json. This file contains ONLY detection logic.
