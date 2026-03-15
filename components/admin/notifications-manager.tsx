@@ -314,7 +314,7 @@ export function NotificationsManager() {
                     </div>
 
                     {/* Message */}
-                    <p className="text-sm text-muted-foreground line-clamp-2 leading-relaxed">{notif.message}</p>
+                    <p className="text-sm text-muted-foreground line-clamp-2 leading-relaxed whitespace-pre-wrap">{notif.message}</p>
                     
                     {/* Footer row */}
                     <div className="flex items-center gap-3 pt-1">

@@ -213,7 +213,7 @@ export function SiteModal({ notification, onClose }: { notification: Notificatio
         
         {/* Content */}
         <div className="p-4">
-          <p className="text-sm text-muted-foreground leading-relaxed">
+          <p className="text-sm text-muted-foreground leading-relaxed whitespace-pre-wrap">
             {notification.message}
           </p>
         </div>
@@ -309,7 +309,7 @@ export function SiteToast({ notification, onDismiss }: { notification: Notificat
             {notification.title && (
               <p className="text-sm font-medium text-foreground">{notification.title}</p>
             )}
-            <p className={cn("text-sm text-muted-foreground leading-snug", notification.title && "mt-0.5")}>
+            <p className={cn("text-sm text-muted-foreground leading-snug whitespace-pre-wrap", notification.title && "mt-0.5")}>
               {notification.message}
             </p>
             {notification.action_url && (
