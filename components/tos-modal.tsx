@@ -24,9 +24,13 @@ const CHECKBOXES = [
           <a href="/legal/privacy" target="_blank" className="text-primary hover:text-primary/80 underline underline-offset-2 decoration-primary/40 hover:decoration-primary inline-flex items-center gap-1 transition-colors">
             Privacy Policy <ExternalLink className="h-2.5 w-2.5" />
           </a>
-          , and the{" "}
+          ,{" "}
           <a href="/legal/acceptable-use" target="_blank" className="text-primary hover:text-primary/80 underline underline-offset-2 decoration-primary/40 hover:decoration-primary inline-flex items-center gap-1 transition-colors">
             Acceptable Use Policy <ExternalLink className="h-2.5 w-2.5" />
+          </a>
+          , and{" "}
+          <a href="/legal/disclaimer" target="_blank" className="text-primary hover:text-primary/80 underline underline-offset-2 decoration-primary/40 hover:decoration-primary inline-flex items-center gap-1 transition-colors">
+            Disclaimer <ExternalLink className="h-2.5 w-2.5" />
           </a>
           .
         </>
@@ -39,7 +43,7 @@ const CHECKBOXES = [
         <>
           I will only scan systems I{" "}
           <strong className="text-foreground font-semibold">own or have explicit written authorization</strong>{" "}
-          to test. I understand that unauthorized scanning may constitute a criminal offense under applicable law.
+          to test. I understand that unauthorized scanning may constitute a criminal offense under applicable law (including the CFAA).
         </>
     ),
   },
@@ -56,12 +60,12 @@ const CHECKBOXES = [
   },
   {
     key: "liability" as const,
-    title: "Assumption of Liability",
+    title: "Assumption of Liability & Jurisdiction",
     label: (
         <>
           I acknowledge that {APP_NAME} and its operators bear{" "}
           <strong className="text-foreground font-semibold">no liability for misuse, damages, or legal consequences</strong>.
-          I accept full personal and legal responsibility for all actions taken with this tool.
+          I accept full personal responsibility and agree that disputes will be governed by Missouri law with binding arbitration.
         </>
     ),
   },
