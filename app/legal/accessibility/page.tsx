@@ -1,7 +1,5 @@
 import { Metadata } from "next"
 import Link from "next/link"
-import { Header } from "@/components/scanner/header"
-import { Footer } from "@/components/scanner/footer"
 import { APP_NAME, SUPPORT_EMAIL } from "@/lib/constants"
 
 export const metadata: Metadata = {
@@ -11,9 +9,7 @@ export const metadata: Metadata = {
 
 export default function AccessibilityPage() {
   return (
-    <div className="min-h-screen flex flex-col bg-background">
-      <Header />
-      <main className="flex-1 w-full max-w-3xl mx-auto px-4 py-8 text-sm text-muted-foreground">
+    <article className="prose prose-sm dark:prose-invert max-w-none text-sm text-muted-foreground">
         <h1 className="text-2xl font-bold text-foreground mb-2">Accessibility Statement</h1>
         <p className="text-xs text-muted-foreground mb-6">Last updated: March 16, 2026</p>
 
@@ -68,9 +64,9 @@ export default function AccessibilityPage() {
           actively working to identify and address any accessibility barriers. Known limitations include:
         </p>
         <ul className="list-disc pl-6 mt-3 space-y-2">
-          <li><strong>Third-party content:</strong> Some third-party integrations (such as CAPTCHA) may have accessibility limitations outside our control</li>
+          <li><strong>Third-party content:</strong> Some third-party integrations (such as CAPTCHA) may have accessibility limitations outside our control. If you are unable to complete a CAPTCHA challenge, please contact us at <a href={`mailto:${SUPPORT_EMAIL}?subject=Accessibility%20CAPTCHA%20Issue`} className="text-primary hover:underline">{SUPPORT_EMAIL}</a> and we will assist you directly</li>
           <li><strong>Complex data visualizations:</strong> Some security scan result charts may require additional screen reader descriptions</li>
-          <li><strong>PDF exports:</strong> Exported PDF reports may not be fully accessible; we recommend using the web interface for optimal accessibility</li>
+          <li><strong>PDF exports:</strong> Exported PDF reports may not be fully accessible. We recommend using the web interface for the most accessible experience. If you require an accessible version of a report, please contact us and we will do our best to assist</li>
         </ul>
 
         <h2 className="text-lg font-semibold text-foreground mt-8">5. Feedback</h2>
@@ -93,7 +89,7 @@ export default function AccessibilityPage() {
           </li>
         </ul>
         <p className="leading-relaxed text-foreground/90 mt-3">
-          We try to respond to accessibility feedback within 5 business days.
+          We try to respond to accessibility feedback within 5 business days. Response times may vary during high volume periods.
         </p>
 
         <h2 className="text-lg font-semibold text-foreground mt-8">6. Compatibility</h2>
@@ -108,7 +104,7 @@ export default function AccessibilityPage() {
           <li>Keyboard-only navigation</li>
         </ul>
         <p className="leading-relaxed text-foreground/90 mt-3">
-          {APP_NAME} is not compatible with browsers older than 3 major versions or Internet Explorer.
+          {APP_NAME} is not compatible with browsers older than 3 major versions or Internet Explorer. For the best accessible experience, we recommend keeping your browser up to date.
         </p>
 
         <h2 className="text-lg font-semibold text-foreground mt-8">7. Assessment Approach</h2>
@@ -134,8 +130,6 @@ export default function AccessibilityPage() {
             <Link href="/legal/terms" className="text-primary hover:underline">Terms of Service</Link>.
           </p>
         </div>
-      </main>
-      <Footer />
-    </div>
+    </article>
   )
 }

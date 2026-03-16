@@ -1,7 +1,5 @@
 import { Metadata } from "next"
 import Link from "next/link"
-import { Header } from "@/components/scanner/header"
-import { Footer } from "@/components/scanner/footer"
 import { APP_NAME, LEGAL_EMAIL } from "@/lib/constants"
 
 export const metadata: Metadata = {
@@ -11,9 +9,7 @@ export const metadata: Metadata = {
 
 export default function DMCAPage() {
   return (
-    <div className="min-h-screen flex flex-col bg-background">
-      <Header />
-      <main className="flex-1 w-full max-w-3xl mx-auto px-4 py-8 text-sm text-muted-foreground">
+    <article className="prose prose-sm dark:prose-invert max-w-none text-sm text-muted-foreground">
         <h1 className="text-2xl font-bold text-foreground mb-2">DMCA & Copyright Policy</h1>
         <p className="text-xs text-muted-foreground mb-6">Last updated: March 16, 2026</p>
 
@@ -96,8 +92,6 @@ export default function DMCAPage() {
             <a href={`mailto:${LEGAL_EMAIL}`} className="text-primary hover:underline">{LEGAL_EMAIL}</a>.
           </p>
         </div>
-      </main>
-      <Footer />
-    </div>
+    </article>
   )
 }

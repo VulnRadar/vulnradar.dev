@@ -39,6 +39,8 @@ export const PUBLIC_PATHS = [
   ROUTES.LEGAL_PRIVACY,
   ROUTES.LEGAL_DISCLAIMER,
   ROUTES.LEGAL_ACCEPTABLE_USE,
+  "/legal/dmca",
+  "/legal/accessibility",
 
   // ─── Public Information Pages ──────────────────────────────────
   ROUTES.PRICING,
