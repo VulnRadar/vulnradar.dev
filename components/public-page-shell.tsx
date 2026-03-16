@@ -104,14 +104,6 @@ export function PublicPageShell({
         <footer className="border-t border-border bg-card/50">
           <div className="max-w-4xl mx-auto px-4 py-4 flex flex-col items-center gap-2">
             <div className="flex flex-wrap items-center justify-center gap-4 text-xs text-muted-foreground">
-              {BILLING_ENABLED && (
-                <>
-                  <Link href={ROUTES.PRICING} className="hover:text-foreground transition-colors">
-                    Pricing
-                  </Link>
-                  <span className="text-border">|</span>
-                </>
-              )}
               <Link href={ROUTES.LEGAL_TERMS} className="hover:text-foreground transition-colors">
                 Terms of Service
               </Link>
