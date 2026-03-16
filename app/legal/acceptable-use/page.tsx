@@ -7,7 +7,7 @@ export default function AcceptableUsePage() {
       <p className="text-sm text-muted-foreground">Last updated: March 16, 2026</p>
 
       <p className="leading-relaxed text-foreground/90">
-        This Acceptable Use Policy (&quot;AUP&quot;) outlines the rules and guidelines for using {APP_NAME}{""}.
+        This Acceptable Use Policy (&quot;AUP&quot;) outlines the rules and guidelines for using {APP_NAME}.
         By using the Service, you agree to comply with this policy.
       </p>
 
@@ -22,8 +22,7 @@ export default function AcceptableUsePage() {
       </div>
 
       <h2 className="text-lg font-semibold text-foreground mt-8">1. Permitted Uses</h2>
-      <p className="leading-relaxed text-foreground/90">You may use {APP_NAME}{" "}
-      to:</p>
+      <p className="leading-relaxed text-foreground/90">You may use {APP_NAME} to:</p>
       <ul className="flex flex-col gap-2 text-foreground/90">
         <li>Scan websites that you own and operate.</li>
         <li>Scan websites for which you have explicit, documented written permission from the owner.</li>
@@ -33,8 +32,7 @@ export default function AcceptableUsePage() {
       </ul>
 
       <h2 className="text-lg font-semibold text-foreground mt-8">2. Prohibited Uses</h2>
-      <p className="leading-relaxed text-foreground/90">You may <strong>NOT</strong> use {APP_NAME}{" "}
-      to:</p>
+      <p className="leading-relaxed text-foreground/90">You may <strong>NOT</strong> use {APP_NAME} to:</p>
       <ul className="flex flex-col gap-2 text-foreground/90">
         <li>Scan any website without authorization from its owner.</li>
         <li>Discover vulnerabilities for the purpose of exploitation, unauthorized access, data theft, or extortion.</li>
@@ -58,16 +56,14 @@ export default function AcceptableUsePage() {
         <li>Employment or contractor relationship where security testing is part of your job duties.</li>
       </ul>
       <p className="leading-relaxed text-foreground/90 mt-3">
-        <strong>You are solely responsible</strong> for obtaining and maintaining proof of authorization. 
-        {APP_NAME}{" "}
-        may request proof of authorization at any time. Failure to provide adequate documentation 
+        <strong>You are solely responsible</strong> for obtaining and maintaining proof of authorization.{" "}
+        {APP_NAME} may request proof of authorization at any time. Failure to provide adequate documentation 
         may result in account suspension.
       </p>
 
       <h2 className="text-lg font-semibold text-foreground mt-8">4. Bug Bounty Programs</h2>
       <p className="leading-relaxed text-foreground/90">
-        If you use {APP_NAME}{" "}
-        for bug bounty hunting:
+        If you use {APP_NAME} for bug bounty hunting:
       </p>
       <ul className="flex flex-col gap-2 text-foreground/90">
         <li>Verify that the program&apos;s scope explicitly permits automated scanning tools.</li>
@@ -77,8 +73,7 @@ export default function AcceptableUsePage() {
         <li>Do not publicly disclose vulnerabilities without following the program&apos;s disclosure policy.</li>
       </ul>
       <p className="leading-relaxed text-foreground/90 mt-3">
-        <strong>Disclaimer:</strong> {APP_NAME}{" "}
-        does not guarantee that any particular bug bounty program 
+        <strong>Disclaimer:</strong> {APP_NAME} does not guarantee that any particular bug bounty program 
         permits the use of our service. You are responsible for verifying program rules before scanning.
       </p>
 
@@ -136,16 +131,14 @@ export default function AcceptableUsePage() {
       <h2 className="text-lg font-semibold text-foreground mt-8">9. Your Liability</h2>
       <p className="leading-relaxed text-foreground/90">
         You are solely responsible for your use of {APP_NAME}. You agree to indemnify and hold 
-        harmless {APP_NAME}{" "}
-        and its operators from any claims, damages, or legal actions arising 
+        harmless {APP_NAME} and its operators from any claims, damages, or legal actions arising 
         from your use of the Service, including but not limited to claims by third parties whose 
         systems you have scanned.
       </p>
 
       <h2 className="text-lg font-semibold text-foreground mt-8">10. Reporting Abuse</h2>
       <p className="leading-relaxed text-foreground/90">
-        If you believe {APP_NAME}{" "}
-        is being used in violation of this policy, please report it to{" "}
+        If you believe {APP_NAME} is being used in violation of this policy, please report it to{" "}
         <a href={`mailto:${SECURITY_EMAIL}`} className="text-primary hover:underline">
           {SECURITY_EMAIL}
         </a>. For general legal inquiries, contact{" "}

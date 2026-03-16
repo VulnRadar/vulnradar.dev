@@ -108,8 +108,7 @@ export default function AccessibilityPage() {
           <li>Keyboard-only navigation</li>
         </ul>
         <p className="leading-relaxed text-foreground/90 mt-3">
-          {APP_NAME}{" "}} 
-          is not compatible with browsers older than 3 major versions or Internet Explorer.
+          {APP_NAME} is not compatible with browsers older than 3 major versions or Internet Explorer.
         </p>
 
         <h2 className="text-lg font-semibold text-foreground mt-8">7. Assessment Approach</h2>
