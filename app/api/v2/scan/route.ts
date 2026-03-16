@@ -99,6 +99,14 @@ export async function POST(request: NextRequest) {
         )
       }
 
+      // Check if user needs to accept updated terms
+      if (keyData.needsTermsAcceptance) {
+        return NextResponse.json(
+          { error: "Please accept our updated Terms of Service. Log in to your account to review and accept the new terms before using the API." },
+          { status: 403 },
+        )
+      }
+
       // Check rate limit
       const rateLimit = await checkRateLimit(keyData.keyId, keyData.dailyLimit)
 

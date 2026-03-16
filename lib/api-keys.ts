@@ -2,6 +2,7 @@ import { randomBytes, createHash } from "node:crypto"
 import pool from "./db"
 import { API_KEY_PREFIX, DEFAULT_API_KEY_DAILY_LIMIT } from "./constants"
 import { encryptApiKey, decryptApiKey, isEncryptionConfigured } from "./crypto"
+import { CONFIG_TERMS_UPDATED_AT } from "./config-values"
 
 const DAILY_LIMIT = DEFAULT_API_KEY_DAILY_LIMIT
 
@@ -47,13 +48,30 @@ function hashKey(key: string): string {
     return createHash("sha256").update(key).digest("hex")
 }
 
+// Check if user has accepted the latest terms
+function hasAcceptedLatestTerms(termsAcceptedAt: string | null): boolean {
+    if (!termsAcceptedAt) return false
+    const acceptedDate = new Date(termsAcceptedAt)
+    const termsUpdatedDate = new Date(CONFIG_TERMS_UPDATED_AT)
+    return acceptedDate >= termsUpdatedDate
+}
+
 // Validate an API key and return the user/key info, or null
-export async function validateApiKey(key: string) {
+// Returns { needsTermsAcceptance: true } if user hasn't accepted latest terms
+export async function validateApiKey(key: string): Promise<{
+    keyId: number
+    userId: number
+    email: string
+    userName: string
+    keyName: string
+    dailyLimit: number
+    needsTermsAcceptance?: boolean
+} | null> {
     if (isEncryptionConfigured()) {
         // If encryption is configured, fetch all encrypted keys and decrypt to compare
         const result = await pool.query(
             `SELECT ak.id as key_id, ak.user_id, ak.name, ak.daily_limit, ak.revoked_at, ak.key_encrypted,
-                    u.email, u.name as user_name
+                    u.email, u.name as user_name, u.terms_accepted_at
              FROM api_keys ak
                       JOIN users u ON ak.user_id = u.id
              WHERE ak.key_encrypted IS NOT NULL`,
@@ -73,6 +91,7 @@ export async function validateApiKey(key: string) {
                         userName: row.user_name,
                         keyName: row.name,
                         dailyLimit: row.daily_limit,
+                        needsTermsAcceptance: !hasAcceptedLatestTerms(row.terms_accepted_at),
                     }
                 }
             } catch (error) {
@@ -85,7 +104,7 @@ export async function validateApiKey(key: string) {
         const keyHash = hashKey(key)
         const hashResult = await pool.query(
             `SELECT ak.id as key_id, ak.user_id, ak.name, ak.daily_limit, ak.revoked_at,
-                    u.email, u.name as user_name
+                    u.email, u.name as user_name, u.terms_accepted_at
              FROM api_keys ak
                       JOIN users u ON ak.user_id = u.id
              WHERE ak.key_hash = $1`,
@@ -103,13 +122,14 @@ export async function validateApiKey(key: string) {
             userName: row.user_name,
             keyName: row.name,
             dailyLimit: row.daily_limit,
+            needsTermsAcceptance: !hasAcceptedLatestTerms(row.terms_accepted_at),
         }
     } else {
         // Fallback: hash-based lookup if encryption is not configured
         const keyHash = hashKey(key)
         const result = await pool.query(
             `SELECT ak.id as key_id, ak.user_id, ak.name, ak.daily_limit, ak.revoked_at,
-                    u.email, u.name as user_name
+                    u.email, u.name as user_name, u.terms_accepted_at
              FROM api_keys ak
                       JOIN users u ON ak.user_id = u.id
              WHERE ak.key_hash = $1`,
@@ -127,6 +147,7 @@ export async function validateApiKey(key: string) {
             userName: row.user_name,
             keyName: row.name,
             dailyLimit: row.daily_limit,
+            needsTermsAcceptance: !hasAcceptedLatestTerms(row.terms_accepted_at),
         }
     }
 }

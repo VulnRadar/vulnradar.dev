@@ -17,6 +17,9 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
     if (!keyData) {
       return ApiResponse.unauthorized("Invalid or revoked API key.")
     }
+    if (keyData.needsTermsAcceptance) {
+      return ApiResponse.error("Please accept our updated Terms of Service. Log in to your account to review and accept the new terms before using the API.", 403)
+    }
     authedUserId = keyData.userId
   } else {
     const session = await getSession()
@@ -57,6 +60,9 @@ export const DELETE = withErrorHandling(async (request: NextRequest) => {
 
     if (!keyData) {
       return ApiResponse.unauthorized("Invalid or revoked API key.")
+    }
+    if (keyData.needsTermsAcceptance) {
+      return ApiResponse.error("Please accept our updated Terms of Service. Log in to your account to review and accept the new terms before using the API.", 403)
     }
     authedUserId = keyData.userId
   } else {
