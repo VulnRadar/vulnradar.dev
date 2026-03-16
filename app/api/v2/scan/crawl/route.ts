@@ -364,7 +364,8 @@ export async function POST(request: NextRequest) {
       const insertResult = await pool.query(
         `INSERT INTO scan_history (user_id, url, summary, findings, findings_count, duration, scanned_at, source, response_headers, notes)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id`,
-        [authedUserId, pr.url, JSON.stringify(pr.summary), JSON.stringify(pr.findings), pr.summary.total, pr.duration, scannedAt, isApiKeyAuth ? "api-crawl" : "deep-crawl", JSON.stringify(pr.responseHeaders), DEFAULT_SCAN_NOTE],
+        // source must be either 'api' or 'web'
+        [authedUserId, pr.url, JSON.stringify(pr.summary), JSON.stringify(pr.findings), pr.summary.total, pr.duration, scannedAt, isApiKeyAuth ? "api" : "web", JSON.stringify(pr.responseHeaders), DEFAULT_SCAN_NOTE],
       )
       pageHistoryIds[pr.url] = insertResult.rows[0]?.id
     } catch (err) {
