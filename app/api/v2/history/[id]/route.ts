@@ -1,14 +1,34 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getSession } from "@/lib/auth"
 import pool from "@/lib/db"
-import { ERROR_MESSAGES } from "@/lib/constants"
+import { ERROR_MESSAGES, BEARER_PREFIX } from "@/lib/constants"
+import { validateApiKey } from "@/lib/api-keys"
 
 export async function GET(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const session = await getSession()
-  if (!session) {
+  // Auth: check API key first (Bearer token), then fall back to session cookie
+  const authHeader = request.headers.get("authorization")
+  let authedUserId: number | null = null
+
+  if (authHeader?.startsWith(BEARER_PREFIX)) {
+    const token = authHeader.slice(7)
+    const keyData = await validateApiKey(token)
+
+    if (!keyData) {
+      return NextResponse.json({ error: "Invalid or revoked API key." }, { status: 401 })
+    }
+    authedUserId = keyData.userId
+  } else {
+    const session = await getSession()
+    if (!session) {
+      return NextResponse.json({ error: ERROR_MESSAGES.UNAUTHORIZED }, { status: 401 })
+    }
+    authedUserId = session.userId
+  }
+
+  if (!authedUserId) {
     return NextResponse.json({ error: ERROR_MESSAGES.UNAUTHORIZED }, { status: 401 })
   }
 
@@ -29,7 +49,7 @@ export async function GET(
   const scan = scanResult.rows[0]
 
   // Allow if it's the user's own scan
-  if (scan.user_id === session.userId) {
+  if (scan.user_id === authedUserId) {
     return NextResponse.json({
       url: scan.url,
       scannedAt: scan.scanned_at,
@@ -48,7 +68,7 @@ export async function GET(
      FROM team_members tm1
      JOIN team_members tm2 ON tm1.team_id = tm2.team_id
      WHERE tm1.user_id = $1 AND tm2.user_id = $2`,
-    [session.userId, scan.user_id],
+    [authedUserId, scan.user_id],
   )
 
   if (teamCheck.rows[0].team_count > 0) {
@@ -73,8 +93,27 @@ export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const session = await getSession()
-  if (!session) {
+  // Auth: check API key first (Bearer token), then fall back to session cookie
+  const authHeader = request.headers.get("authorization")
+  let authedUserId: number | null = null
+
+  if (authHeader?.startsWith(BEARER_PREFIX)) {
+    const token = authHeader.slice(7)
+    const keyData = await validateApiKey(token)
+
+    if (!keyData) {
+      return NextResponse.json({ error: "Invalid or revoked API key." }, { status: 401 })
+    }
+    authedUserId = keyData.userId
+  } else {
+    const session = await getSession()
+    if (!session) {
+      return NextResponse.json({ error: ERROR_MESSAGES.UNAUTHORIZED }, { status: 401 })
+    }
+    authedUserId = session.userId
+  }
+
+  if (!authedUserId) {
     return NextResponse.json({ error: ERROR_MESSAGES.UNAUTHORIZED }, { status: 401 })
   }
 
@@ -89,7 +128,7 @@ export async function PATCH(
   // Only allow the scan owner to update notes
   const result = await pool.query(
     `UPDATE scan_history SET notes = $1 WHERE id = $2 AND user_id = $3 RETURNING id, notes`,
-    [notes.slice(0, 2000), id, session.userId],
+    [notes.slice(0, 2000), id, authedUserId],
   )
 
   if (result.rows.length === 0) {

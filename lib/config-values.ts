@@ -45,6 +45,7 @@ function parseConfigYaml(): Record<string, unknown> | null {
         security_email: getValue("security_email") || "security@vulnradar.dev",
         enterprise_email: getValue("enterprise_email") || "enterprise@vulnradar.dev",
         noreply_email: getValue("noreply_email") || "noreply@vulnradar.dev",
+        terms_updated_at: getValue("terms_updated_at") || "2026-03-16",
       },
     }
   } catch {
@@ -88,3 +89,4 @@ export const CONFIG_LEGAL_EMAIL = app.legal_email || "legal@vulnradar.dev"
 export const CONFIG_SECURITY_EMAIL = app.security_email || "security@vulnradar.dev"
 export const CONFIG_ENTERPRISE_EMAIL = app.enterprise_email || "enterprise@vulnradar.dev"
 export const CONFIG_NOREPLY_EMAIL = app.noreply_email || "noreply@vulnradar.dev"
+export const CONFIG_TERMS_UPDATED_AT = app.terms_updated_at || "2026-03-16"

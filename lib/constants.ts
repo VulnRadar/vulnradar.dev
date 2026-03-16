@@ -21,6 +21,7 @@ import {
   CONFIG_SECURITY_EMAIL,
   CONFIG_ENTERPRISE_EMAIL,
   CONFIG_NOREPLY_EMAIL,
+  CONFIG_TERMS_UPDATED_AT,
 } from "./config-values"
 
 // Get config (loads from config.yaml or uses defaults) - for non-app settings
@@ -38,6 +39,7 @@ export const APP_DESCRIPTION = CONFIG_APP_DESCRIPTION
 export const TOTAL_CHECKS_LABEL = CONFIG_TOTAL_CHECKS_LABEL
 export const APP_URL = CONFIG_APP_URL
 export const APP_REPO = CONFIG_APP_REPO
+export const TERMS_UPDATED_AT = CONFIG_TERMS_UPDATED_AT
 
 // Scan note with version info
 export const DEFAULT_SCAN_NOTE = `${APP_NAME} v${APP_VERSION} (Detection Engine v${ENGINE_VERSION})`
