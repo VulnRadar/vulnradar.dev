@@ -8,7 +8,7 @@ export default function PrivacyPage() {
 
       <p className="leading-relaxed text-foreground/90">
         This Privacy Policy describes how {APP_NAME} (&quot;we&quot;, &quot;us&quot;, &quot;our&quot;) collects, uses,
-        and protects your personal information when you use our Service at {APP_URL}. {APP_NAME} 
+        and protects your personal information when you use our Service at {APP_URL}. {APP_NAME}{" "}
         is operated from Missouri, United States.
       </p>
 
