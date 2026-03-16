@@ -22,9 +22,17 @@ export default function TermsPage() {
 
       <h2 className="text-lg font-semibold text-foreground mt-8">2. Eligibility</h2>
       <p className="leading-relaxed text-foreground/90">
-        You must be at least 18 years of age to use this Service. By registering, you represent
-        and warrant that you are at least 18 years old and have the legal capacity to enter into
-        these Terms.
+        You must be at least 13 years of age to use this Service. If you are between 13 and 18 
+        years of age (or the age of majority in your jurisdiction), you may only use the Service 
+        with the consent and supervision of a parent or legal guardian who agrees to be bound by 
+        these Terms on your behalf. By registering, you represent and warrant that you meet these 
+        eligibility requirements.
+      </p>
+      <p className="leading-relaxed text-foreground/90 mt-3">
+        <strong>Parents and guardians:</strong> If you permit a minor to use the Service, you are 
+        responsible for their activity and agree to supervise their use to ensure compliance with 
+        these Terms, the Acceptable Use Policy, and all applicable laws regarding computer access 
+        and security testing.
       </p>
 
       <h2 className="text-lg font-semibold text-foreground mt-8">3. Account Responsibilities</h2>
