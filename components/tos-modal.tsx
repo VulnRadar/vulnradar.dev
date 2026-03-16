@@ -231,21 +231,30 @@ export function TosModal({ onAccept, isUpdate = false }: TosModalProps) {
 
               {/* Info callout - different for updates */}
               {isUpdate ? (
-                <div className="mt-4 rounded-xl border border-amber-500/30 px-4 py-3 bg-amber-500/5">
-                  <p className="text-[11.5px] text-muted-foreground leading-relaxed">
-                    <span className="font-semibold text-amber-600 dark:text-amber-400">Our legal documents have been updated.</span>{" "}
-                    We&apos;ve made changes to improve clarity and compliance with applicable laws, including enhanced 
-                    privacy rights disclosures (CCPA/CPRA, state privacy laws), governing law provisions, 
-                    arbitration clauses, and liability limitations. Please review the updated terms below.
-                  </p>
+                <div className="mt-4 rounded-xl border border-amber-500/30 px-4 py-3 bg-amber-500/5 flex gap-3 items-start">
+                  <div className="flex-shrink-0 pt-0.5">
+                    <RefreshCw className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[11.5px] leading-relaxed">
+                      <span className="font-semibold text-amber-600 dark:text-amber-400">Terms updated on {formatDate(TERMS_UPDATED_AT)}.</span>{" "}
+                      We&apos;ve enhanced privacy disclosures (CCPA/CPRA compliance, state privacy laws), added governing law and arbitration clauses, 
+                      improved liability limitations, and strengthened data handling practices. Please review and accept to continue.
+                    </p>
+                  </div>
                 </div>
               ) : (
-                <div className="mt-4 rounded-xl border border-border/40 px-4 py-3 bg-muted/35">
-                  <p className="text-[11.5px] text-muted-foreground leading-relaxed">
-                    {APP_NAME} is intended <span className="font-semibold text-foreground/80">exclusively</span> for
-                    authorized security testing, research, and educational use. Misuse may violate
-                    federal and international cybercrime laws, including the CFAA and its equivalents.
-                  </p>
+                <div className="mt-4 rounded-xl border border-border/40 px-4 py-3 bg-muted/35 flex gap-3 items-start">
+                  <div className="flex-shrink-0 pt-0.5">
+                    <Shield className="h-4 w-4 text-primary/60" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[11.5px] text-muted-foreground leading-relaxed">
+                      {APP_NAME} is intended <span className="font-semibold text-foreground/80">exclusively</span> for
+                      authorized security testing, research, and educational use. Misuse may violate
+                      federal and international cybercrime laws, including the CFAA and its equivalents.
+                    </p>
+                  </div>
                 </div>
               )}
             </div>
