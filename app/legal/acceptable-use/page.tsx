@@ -22,7 +22,7 @@ export default function AcceptableUsePage() {
       </div>
 
       <h2 className="text-lg font-semibold text-foreground mt-8">1. Permitted Uses</h2>
-      <p className="leading-relaxed text-foreground/90">You may use {APP_NAME}{" "}} 
+      <p className="leading-relaxed text-foreground/90">You may use {APP_NAME}{" "}
       to:</p>
       <ul className="flex flex-col gap-2 text-foreground/90">
         <li>Scan websites that you own and operate.</li>
@@ -33,7 +33,7 @@ export default function AcceptableUsePage() {
       </ul>
 
       <h2 className="text-lg font-semibold text-foreground mt-8">2. Prohibited Uses</h2>
-      <p className="leading-relaxed text-foreground/90">You may <strong>NOT</strong> use {APP_NAME}{" "}} 
+      <p className="leading-relaxed text-foreground/90">You may <strong>NOT</strong> use {APP_NAME}{" "}
       to:</p>
       <ul className="flex flex-col gap-2 text-foreground/90">
         <li>Scan any website without authorization from its owner.</li>
@@ -59,14 +59,14 @@ export default function AcceptableUsePage() {
       </ul>
       <p className="leading-relaxed text-foreground/90 mt-3">
         <strong>You are solely responsible</strong> for obtaining and maintaining proof of authorization. 
-        {APP_NAME}{" "}} 
+        {APP_NAME}{" "}
         may request proof of authorization at any time. Failure to provide adequate documentation 
         may result in account suspension.
       </p>
 
       <h2 className="text-lg font-semibold text-foreground mt-8">4. Bug Bounty Programs</h2>
       <p className="leading-relaxed text-foreground/90">
-        If you use {APP_NAME}{" "}} 
+        If you use {APP_NAME}{" "}
         for bug bounty hunting:
       </p>
       <ul className="flex flex-col gap-2 text-foreground/90">
@@ -77,7 +77,7 @@ export default function AcceptableUsePage() {
         <li>Do not publicly disclose vulnerabilities without following the program&apos;s disclosure policy.</li>
       </ul>
       <p className="leading-relaxed text-foreground/90 mt-3">
-        <strong>Disclaimer:</strong> {APP_NAME}{" "}} 
+        <strong>Disclaimer:</strong> {APP_NAME}{" "}
         does not guarantee that any particular bug bounty program 
         permits the use of our service. You are responsible for verifying program rules before scanning.
       </p>
@@ -136,7 +136,7 @@ export default function AcceptableUsePage() {
       <h2 className="text-lg font-semibold text-foreground mt-8">9. Your Liability</h2>
       <p className="leading-relaxed text-foreground/90">
         You are solely responsible for your use of {APP_NAME}. You agree to indemnify and hold 
-        harmless {APP_NAME}{" "}} 
+        harmless {APP_NAME}{" "}
         and its operators from any claims, damages, or legal actions arising 
         from your use of the Service, including but not limited to claims by third parties whose 
         systems you have scanned.
@@ -144,7 +144,7 @@ export default function AcceptableUsePage() {
 
       <h2 className="text-lg font-semibold text-foreground mt-8">10. Reporting Abuse</h2>
       <p className="leading-relaxed text-foreground/90">
-        If you believe {APP_NAME}{" "}} 
+        If you believe {APP_NAME}{" "}
         is being used in violation of this policy, please report it to{" "}
         <a href={`mailto:${SECURITY_EMAIL}`} className="text-primary hover:underline">
           {SECURITY_EMAIL}
