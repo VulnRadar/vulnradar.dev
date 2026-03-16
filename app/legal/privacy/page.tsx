@@ -212,14 +212,23 @@ export default function PrivacyPage() {
         <a href={`mailto:${LEGAL_EMAIL}`} className="text-primary hover:underline">{LEGAL_EMAIL}</a>.
       </p>
 
-      <h2 className="text-lg font-semibold text-foreground mt-8">13. Changes to This Policy</h2>
+      <h2 className="text-lg font-semibold text-foreground mt-8">13. Do Not Track Disclosure</h2>
+      <p className="leading-relaxed text-foreground/90">
+        Some browsers have a &quot;Do Not Track&quot; (DNT) feature that sends a signal to websites you visit 
+        indicating you do not want to be tracked. {APP_NAME} does not track users across third-party 
+        websites and does not respond to Do Not Track signals because we do not engage in the type 
+        of tracking that such signals are designed to prevent. We only use essential session cookies 
+        for authentication and do not use any advertising, analytics, or cross-site tracking cookies.
+      </p>
+
+      <h2 className="text-lg font-semibold text-foreground mt-8">14. Changes to This Policy</h2>
       <p className="leading-relaxed text-foreground/90">
         We may update this Privacy Policy at any time. When we make material changes, we will notify 
         you by displaying a prominent notice within the Service or by sending you an email. Continued 
         use of the Service after accepting changes constitutes acceptance of the revised policy.
       </p>
 
-      <h2 className="text-lg font-semibold text-foreground mt-8">14. Contact</h2>
+      <h2 className="text-lg font-semibold text-foreground mt-8">15. Contact</h2>
       <p className="leading-relaxed text-foreground/90">
         For privacy-related inquiries, please contact us at{" "}
         <a href={`mailto:${LEGAL_EMAIL}`} className="text-primary hover:underline">

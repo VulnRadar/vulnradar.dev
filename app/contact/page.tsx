@@ -341,6 +341,14 @@ export default function ContactPage() {
                               </div>
                           )}
 
+                          {/* Privacy Notice */}
+                          <p className="text-[11px] text-muted-foreground leading-relaxed">
+                            By submitting this form, you agree that we may collect and process your name, email address, 
+                            and message content to respond to your inquiry. Your information will be handled in accordance 
+                            with our <Link href="/legal/privacy" className="text-primary hover:underline">Privacy Policy</Link>. 
+                            We will not use your contact information for marketing purposes.
+                          </p>
+
                           <Button type="submit" className="w-full sm:w-auto self-end gap-1.5" disabled={isSubmitting || (TURNSTILE_ENABLED && !turnstileToken)}>
                             <Send className="h-3.5 w-3.5" />{isSubmitting ? "Sending..." : "Send Message"}
                           </Button>
