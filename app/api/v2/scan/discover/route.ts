@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getSession } from "@/lib/auth"
+import { validateApiKey } from "@/lib/api-keys"
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 import dns from "dns/promises"
 import pool from "@/lib/db"
@@ -128,13 +129,40 @@ function extractRootDomain(hostname: string): string {
 
 export async function POST(request: NextRequest) {
   try {
+    let userId: number | null = null
+    let isApiKeyAuth = false
+
+    // Try session auth first
     const session = await getSession()
-    if (!session) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    if (session) {
+      userId = session.userId
+    } else {
+      // Try API key auth
+      const authHeader = request.headers.get("authorization")
+      if (authHeader?.startsWith("Bearer ")) {
+        const apiKey = authHeader.slice(7)
+        const keyData = await validateApiKey(apiKey)
+        if (!keyData) {
+          return NextResponse.json({ error: "Invalid or revoked API key." }, { status: 401 })
+        }
+
+        // Check if user needs to accept updated terms
+        if (keyData.needsTermsAcceptance) {
+          return NextResponse.json(
+            { error: "Please accept our updated Terms of Service. Log in to your account to review and accept the new terms before using the API." },
+            { status: 403 },
+          )
+        }
+
+        userId = keyData.userId
+        isApiKeyAuth = true
+      } else {
+        return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+      }
     }
 
     const rl = await checkRateLimit({
-      key: `discover:${session.userId}`,
+      key: `discover:${userId}`,
       ...RATE_LIMITS.scan,
     })
     if (!rl.allowed) {
