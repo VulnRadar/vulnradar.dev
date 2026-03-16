@@ -253,6 +253,7 @@ export async function POST(request: NextRequest) {
     apiKeyId = keyData.keyId
     isApiKeyAuth = true
     authedUserId = keyData.userId
+    console.log("[VulnRadar] API Key Auth Detected:", { keyId: keyData.keyId, userId: keyData.userId, isApiKeyAuth: true })
   } else {
     const session = await getSession()
     if (!session) {
@@ -359,6 +360,7 @@ export async function POST(request: NextRequest) {
   // Save EACH page as its own history entry (like bulk scan)
   const { DEFAULT_SCAN_NOTE } = await import("@/lib/constants")
   const pageHistoryIds: Record<string, number> = {}
+  console.log("[VulnRadar] Crawl: About to save history - isApiKeyAuth:", isApiKeyAuth, "source should be:", isApiKeyAuth ? "api-crawl" : "deep-crawl")
   for (const pr of pageResults) {
     try {
       const insertResult = await pool.query(
