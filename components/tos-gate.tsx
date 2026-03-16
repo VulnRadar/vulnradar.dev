@@ -5,13 +5,13 @@ import React from "react"
 import { useEffect, useState } from "react"
 import { usePathname } from "next/navigation"
 import { TosModal } from "@/components/tos-modal"
-import { API } from "@/lib/constants"
+import { API, TERMS_UPDATED_AT } from "@/lib/constants"
 
 const SKIP_TOS_PATHS = ["/login", "/signup", "/legal"]
 
 export function TosGate({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
-  const [status, setStatus] = useState<"loading" | "accepted" | "pending" | "skip">("loading")
+  const [status, setStatus] = useState<"loading" | "accepted" | "pending" | "needs_reaccept" | "skip">("loading")
 
   const shouldSkip = SKIP_TOS_PATHS.some((p) => pathname.startsWith(p))
 
@@ -30,7 +30,23 @@ export function TosGate({ children }: { children: React.ReactNode }) {
           return
         }
         const data = await res.json()
-        setStatus(data.tosAcceptedAt ? "accepted" : "pending")
+        
+        if (!data.tosAcceptedAt) {
+          // Never accepted terms
+          setStatus("pending")
+          return
+        }
+        
+        // Check if user accepted before the latest terms update
+        const userAcceptedDate = new Date(data.tosAcceptedAt)
+        const termsUpdatedDate = new Date(TERMS_UPDATED_AT)
+        
+        if (userAcceptedDate < termsUpdatedDate) {
+          // User needs to re-accept updated terms
+          setStatus("needs_reaccept")
+        } else {
+          setStatus("accepted")
+        }
       } catch {
         setStatus("skip")
       }
@@ -48,13 +64,16 @@ export function TosGate({ children }: { children: React.ReactNode }) {
     )
   }
 
-  if (status === "pending" && !shouldSkip) {
+  if ((status === "pending" || status === "needs_reaccept") && !shouldSkip) {
     return (
       <>
         <div className="pointer-events-none select-none opacity-20 blur-sm" aria-hidden>
           {children}
         </div>
-        <TosModal onAccept={() => setStatus("accepted")} />
+        <TosModal 
+          onAccept={() => setStatus("accepted")} 
+          isUpdate={status === "needs_reaccept"}
+        />
       </>
     )
   }

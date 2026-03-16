@@ -2,10 +2,11 @@ import { NextRequest, NextResponse } from "next/server"
 import { getSession } from "@/lib/auth"
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 import { canMakeRequest, incrementDailyCount, getRateLimitHeaders } from "@/lib/daily-limits"
+import { validateApiKey, checkRateLimit as checkApiKeyRateLimit, recordUsage } from "@/lib/api-keys"
 import { allChecks, getFilteredChecks } from "@/lib/scanner/checks"
 import { runAsyncChecks } from "@/lib/scanner/async-checks"
 import pool from "@/lib/db"
-import { APP_NAME, SEVERITY_LEVELS } from "@/lib/constants"
+import { APP_NAME, SEVERITY_LEVELS, BEARER_PREFIX } from "@/lib/constants"
 import type { Vulnerability, Severity, ScanResult } from "@/lib/scanner/types"
 
 const SEVERITY_ORDER: Record<Severity, number> = { critical: 0, high: 1, medium: 2, low: 3, info: 4 }
@@ -196,12 +197,68 @@ async function scanSingleUrl(url: string, scanners?: string[] | null): Promise<{
 }
 
 export async function POST(request: NextRequest) {
-  const session = await getSession()
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  // Auth: check API key first (Bearer token), then fall back to session cookie
+  const authHeader = request.headers.get("authorization")
+  let apiKeyId: number | null = null
+  let isApiKeyAuth = false
+  let authedUserId: number | null = null
 
-  const rl = await checkRateLimit({ key: `crawl:${session.userId}`, ...RATE_LIMITS.scan })
-  if (!rl.allowed) {
-    return NextResponse.json({ error: "Crawl rate limit reached. Please wait before scanning again." }, { status: 429 })
+  if (authHeader?.startsWith(BEARER_PREFIX)) {
+    const token = authHeader.slice(7)
+    const keyData = await validateApiKey(token)
+
+    if (!keyData) {
+      return NextResponse.json(
+        { error: "Invalid or revoked API key." },
+        { status: 401 },
+      )
+    }
+
+    // Check API key rate limit
+    const rateLimit = await checkApiKeyRateLimit(keyData.keyId, keyData.dailyLimit)
+
+    if (!rateLimit.allowed) {
+      return NextResponse.json(
+        {
+          error: "Rate limit exceeded. 50 requests per 24 hours.",
+          limit: rateLimit.limit,
+          used: rateLimit.used,
+          remaining: rateLimit.remaining,
+          resets_at: rateLimit.resetsAt,
+        },
+        {
+          status: 429,
+          headers: {
+            "X-RateLimit-Limit": String(rateLimit.limit),
+            "X-RateLimit-Remaining": String(rateLimit.remaining),
+            "X-RateLimit-Reset": rateLimit.resetsAt,
+            "Retry-After": String(
+              Math.ceil(
+                (new Date(rateLimit.resetsAt).getTime() - Date.now()) / 1000,
+              ),
+            ),
+          },
+        },
+      )
+    }
+
+    apiKeyId = keyData.keyId
+    isApiKeyAuth = true
+    authedUserId = keyData.userId
+  } else {
+    const session = await getSession()
+    if (!session) {
+      return NextResponse.json(
+        { error: "Unauthorized. Provide an API key via Authorization: Bearer <key> header, or sign in." },
+        { status: 401 },
+      )
+    }
+    authedUserId = session.userId
+
+    const rl = await checkRateLimit({ key: `crawl:${session.userId}`, ...RATE_LIMITS.scan })
+    if (!rl.allowed) {
+      return NextResponse.json({ error: "Crawl rate limit reached. Please wait before scanning again." }, { status: 429 })
+    }
   }
 
   const body = await request.json()
@@ -230,8 +287,10 @@ export async function POST(request: NextRequest) {
     pages = await discoverInternalLinks(url)
   }
 
-  // Check daily quota: each page in the crawl counts as 1 scan
-  const quotaCheck = await canMakeRequest(session.userId)
+  // Check daily quota: each page in the crawl counts as 1 scan (skip for API key auth - they use API rate limits)
+  const quotaCheck = isApiKeyAuth 
+    ? { allowed: true, limit: -1, used: 0, remaining: pages.length, resetsAt: "" } 
+    : await canMakeRequest(authedUserId!)
   if (!quotaCheck.allowed) {
     return NextResponse.json(
       { error: "Daily scan limit reached. Upgrade your plan or wait until midnight UTC for the limit to reset." },
@@ -254,8 +313,10 @@ export async function POST(request: NextRequest) {
   }> = []
 
   for (const pageUrl of pagesToScan) {
-    // Increment daily count before each scan
-    await incrementDailyCount(session.userId)
+    // Increment daily count before each scan (skip for API key auth)
+    if (!isApiKeyAuth) {
+      await incrementDailyCount(authedUserId!)
+    }
     const result = await scanSingleUrl(pageUrl, scanners)
     pageResults.push(result)
   }
@@ -295,7 +356,7 @@ export async function POST(request: NextRequest) {
       const insertResult = await pool.query(
         `INSERT INTO scan_history (user_id, url, summary, findings, findings_count, duration, scanned_at, source, response_headers, notes)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id`,
-        [session.userId, pr.url, JSON.stringify(pr.summary), JSON.stringify(pr.findings), pr.summary.total, pr.duration, scannedAt, "deep-crawl", JSON.stringify(pr.responseHeaders), DEFAULT_SCAN_NOTE],
+        [authedUserId, pr.url, JSON.stringify(pr.summary), JSON.stringify(pr.findings), pr.summary.total, pr.duration, scannedAt, isApiKeyAuth ? "api-crawl" : "deep-crawl", JSON.stringify(pr.responseHeaders), DEFAULT_SCAN_NOTE],
       )
       pageHistoryIds[pr.url] = insertResult.rows[0]?.id
     } catch (err) {
@@ -315,26 +376,37 @@ export async function POST(request: NextRequest) {
     responseHeaders: mainHeaders,
   }
 
-  const finalQuota = await canMakeRequest(session.userId)
-
-  return NextResponse.json(
-    {
-      ...scanResult,
-      scanHistoryId,
-      crawl: {
-        pagesDiscovered: pages.length,
-        pagesScanned: pageResults.length,
-        pagesSkipped: skippedCount,
-        pages: pageResults.map((p) => ({
-          url: p.url,
-          scanHistoryId: pageHistoryIds[p.url] || null,
-          findings: p.findings,
-          findings_count: p.summary.total,
-          summary: p.summary,
-          duration: p.duration,
-        })),
-      },
+  const responseData = {
+    ...scanResult,
+    scanHistoryId,
+    crawl: {
+      pagesDiscovered: pages.length,
+      pagesScanned: pageResults.length,
+      pagesSkipped: skippedCount,
+      pages: pageResults.map((p) => ({
+        url: p.url,
+        scanHistoryId: pageHistoryIds[p.url] || null,
+        findings: p.findings,
+        findings_count: p.summary.total,
+        summary: p.summary,
+        duration: p.duration,
+      })),
     },
-    { headers: getRateLimitHeaders(finalQuota) },
-  )
+  }
+
+  // Record API key usage and add rate limit headers
+  if (isApiKeyAuth && apiKeyId) {
+    await recordUsage(apiKeyId)
+    const rateLimit = await checkApiKeyRateLimit(apiKeyId, 50)
+    return NextResponse.json(responseData, {
+      headers: {
+        "X-RateLimit-Limit": String(rateLimit.limit),
+        "X-RateLimit-Remaining": String(rateLimit.remaining),
+        "X-RateLimit-Reset": rateLimit.resetsAt,
+      },
+    })
+  }
+
+  const finalQuota = await canMakeRequest(authedUserId!)
+  return NextResponse.json(responseData, { headers: getRateLimitHeaders(finalQuota) })
 }

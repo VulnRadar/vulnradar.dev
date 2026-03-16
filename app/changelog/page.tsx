@@ -93,10 +93,27 @@ interface Release {
 
 const CHANGELOG: Release[] = [
   {
+    version: "2.0.4",
+    date: "March 16, 2026",
+    title: "Comprehensive Legal Overhaul & API Route Authentication Fix",
+    highlights: true,
+    summary: "Major update to all legal documents for full Missouri/US compliance including CCPA/CPRA, state privacy laws, and GDPR. Fixed API key authentication across all v2 endpoints and added terms re-acceptance system for returning users.",
+    changes: [
+      { icon: FileText, label: "Legal Documents Overhaul", desc: "Complete rewrite of Terms of Service, Privacy Policy, Acceptable Use Policy, and Disclaimer for Missouri/US compliance. Added governing law (Missouri), arbitration clause, class action waiver, severability, force majeure, and assignment clauses. Updated age requirement to 13+ with COPPA-compliant parental consent language.", category: "changed" },
+      { icon: Shield, label: "CCPA/CPRA & State Privacy Compliance", desc: "Added comprehensive California Consumer Privacy Act disclosures including right to know, delete, and opt-out. Added compliance sections for Virginia (VCDPA), Colorado (CPA), Connecticut (CTDPA), and Utah (UCPA) privacy laws. Added Do Not Track disclosure.", category: "added" },
+      { icon: Bell, label: "Terms Re-Acceptance System", desc: "New terms_updated_at config value tracks when legal documents were last updated. Users who previously accepted terms before this date are shown an updated TOS modal with amber styling explaining the changes. Modal requires re-accepting all 4 checkboxes before continuing.", category: "added" },
+      { icon: FileSearch, label: "New Legal Pages", desc: "Added DMCA Policy page with full takedown procedure, counter-notification process, and repeat infringer policy. Added Accessibility Statement page with WCAG 2.1 Level AA compliance commitment, known limitations, and feedback channels.", category: "added" },
+      { icon: Key, label: "API Route Authentication Fix", desc: "Fixed critical bug where /api/v2/scan/crawl, /api/v2/scan/bulk, /api/v2/history, and /api/v2/history/[id] routes only accepted session auth but not API key authentication. All endpoints now properly support Bearer token authentication with rate limiting.", category: "fixed" },
+      { icon: Lock, label: "Data Breach Notification Policy", desc: "Added Missouri-compliant data breach notification policy (Mo. Rev. Stat. 407.1500) to Privacy Policy. Users will be notified within 72 hours of confirmed breaches affecting their personal information.", category: "added" },
+      { icon: Mail, label: "Contact Form Privacy Notice", desc: "Added mini privacy notice to the contact form explaining data collection and linking to the Privacy Policy. Clarifies that contact information won't be used for marketing.", category: "added" },
+      { icon: Wrench, label: "Layout JSON Parse Fix", desc: "Fixed 'Unexpected end of JSON input' error on page load caused by empty localStorage values. Auth cache script now validates string length before parsing.", category: "fixed" },
+    ],
+  },
+  {
     version: "2.0.3",
     date: "March 15, 2026",
     title: "310+ Security Checks, Config System Overhaul & UI Improvements",
-    highlights: true,
+    highlights: false,
     summary: "Massive expansion of the detection engine to 310+ checks, complete configuration system overhaul eliminating environment variable complexity, and important UI fixes for better cross-platform support.",
     changes: [
       { icon: ShieldCheck, label: "310+ Security Checks", desc: "Expanded detection engine from 175 to 310+ security checks. Added comprehensive checks for CSP directives (base-uri, form-action, frame-src, upgrade-insecure-requests), CORS misconfigurations, cookie security (domain scope, prefixes, partitioned), credential exposure patterns (AWS, Stripe, GitHub, npm, Docker Hub, SendGrid, Twilio, Slack/Discord webhooks), DOM security (clobbering, srcdoc iframes, blob/data URIs), and many more.", category: "added" },

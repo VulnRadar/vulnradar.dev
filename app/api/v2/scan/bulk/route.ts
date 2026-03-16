@@ -2,10 +2,11 @@ import { NextRequest, NextResponse } from "next/server"
 import { getSession } from "@/lib/auth"
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 import { canMakeRequest, incrementDailyCount, getRateLimitHeaders } from "@/lib/daily-limits"
+import { validateApiKey, checkRateLimit as checkApiKeyRateLimit, recordUsage } from "@/lib/api-keys"
 import { allChecks } from "@/lib/scanner/checks"
 import { runAsyncChecks } from "@/lib/scanner/async-checks"
 import pool from "@/lib/db"
-import { ERROR_MESSAGES, APP_NAME, SEVERITY_LEVELS } from "@/lib/constants"
+import { ERROR_MESSAGES, APP_NAME, SEVERITY_LEVELS, BEARER_PREFIX } from "@/lib/constants"
 import type { Vulnerability, Severity } from "@/lib/scanner/types"
 import { getProtocolFromUrl } from "@/lib/scanner/protocols"
 import { runWebSocketChecks } from "@/lib/scanner/protocols/websocket"
@@ -161,15 +162,71 @@ async function runSingleScan(url: string, userId: number) {
 }
 
 export async function POST(request: NextRequest) {
-  const session = await getSession()
-  if (!session) return NextResponse.json({ error: ERROR_MESSAGES.UNAUTHORIZED }, { status: 401 })
+  // Auth: check API key first (Bearer token), then fall back to session cookie
+  const authHeader = request.headers.get("authorization")
+  let apiKeyId: number | null = null
+  let isApiKeyAuth = false
+  let authedUserId: number | null = null
 
-  const rl = await checkRateLimit({ key: `bulkscan:${session.userId}`, ...RATE_LIMITS.bulkScan })
-  if (!rl.allowed) {
-    return NextResponse.json(
-      { error: `Bulk scan rate limit reached. Try again in ${Math.ceil(rl.retryAfterSeconds / 60)} minute(s).` },
-      { status: 429 },
-    )
+  if (authHeader?.startsWith(BEARER_PREFIX)) {
+    const token = authHeader.slice(7)
+    const keyData = await validateApiKey(token)
+
+    if (!keyData) {
+      return NextResponse.json(
+        { error: "Invalid or revoked API key." },
+        { status: 401 },
+      )
+    }
+
+    // Check API key rate limit
+    const rateLimit = await checkApiKeyRateLimit(keyData.keyId, keyData.dailyLimit)
+
+    if (!rateLimit.allowed) {
+      return NextResponse.json(
+        {
+          error: "Rate limit exceeded. 50 requests per 24 hours.",
+          limit: rateLimit.limit,
+          used: rateLimit.used,
+          remaining: rateLimit.remaining,
+          resets_at: rateLimit.resetsAt,
+        },
+        {
+          status: 429,
+          headers: {
+            "X-RateLimit-Limit": String(rateLimit.limit),
+            "X-RateLimit-Remaining": String(rateLimit.remaining),
+            "X-RateLimit-Reset": rateLimit.resetsAt,
+            "Retry-After": String(
+              Math.ceil(
+                (new Date(rateLimit.resetsAt).getTime() - Date.now()) / 1000,
+              ),
+            ),
+          },
+        },
+      )
+    }
+
+    apiKeyId = keyData.keyId
+    isApiKeyAuth = true
+    authedUserId = keyData.userId
+  } else {
+    const session = await getSession()
+    if (!session) {
+      return NextResponse.json(
+        { error: "Unauthorized. Provide an API key via Authorization: Bearer <key> header, or sign in." },
+        { status: 401 },
+      )
+    }
+    authedUserId = session.userId
+
+    const rl = await checkRateLimit({ key: `bulkscan:${session.userId}`, ...RATE_LIMITS.bulkScan })
+    if (!rl.allowed) {
+      return NextResponse.json(
+        { error: `Bulk scan rate limit reached. Try again in ${Math.ceil(rl.retryAfterSeconds / 60)} minute(s).` },
+        { status: 429 },
+      )
+    }
   }
 
   const { urls } = await request.json()
@@ -193,8 +250,10 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "No valid URLs provided." }, { status: 400 })
   }
 
-  // Check daily quota: each URL in the bulk scan counts as 1 scan
-  const quotaCheck = await canMakeRequest(session.userId)
+  // Check daily quota: each URL in the bulk scan counts as 1 scan (skip for API key auth)
+  const quotaCheck = isApiKeyAuth
+    ? { allowed: true, limit: -1, used: 0, remaining: validUrls.length, resetsAt: "" }
+    : await canMakeRequest(authedUserId!)
   if (!quotaCheck.allowed) {
     return NextResponse.json(
       { error: "Daily scan limit reached. Upgrade your plan or wait until midnight UTC for the limit to reset." },
@@ -211,9 +270,11 @@ export async function POST(request: NextRequest) {
   const results: Array<{ url: string; success: boolean; scanHistoryId?: number | null; error?: string; summary?: any; findings_count?: number; duration?: number }> = []
 
   for (const scanUrl of urlsToScan) {
-    // Increment daily count before each scan
-    await incrementDailyCount(session.userId)
-    const scanResult = await runSingleScan(scanUrl, session.userId)
+    // Increment daily count before each scan (skip for API key auth)
+    if (!isApiKeyAuth) {
+      await incrementDailyCount(authedUserId!)
+    }
+    const scanResult = await runSingleScan(scanUrl, authedUserId!)
     results.push(scanResult)
   }
 
@@ -222,16 +283,27 @@ export async function POST(request: NextRequest) {
     results.push({ url: scanUrl, success: false, error: "Daily scan limit reached. Upgrade your plan or wait until midnight UTC for the limit to reset." })
   }
 
-  const finalQuota = await canMakeRequest(session.userId)
+  const responseData = {
+    total: validUrls.length,
+    successful: results.filter((r) => r.success).length,
+    failed: results.filter((r) => !r.success).length,
+    skipped,
+    results,
+  }
 
-  return NextResponse.json(
-    {
-      total: validUrls.length,
-      successful: results.filter((r) => r.success).length,
-      failed: results.filter((r) => !r.success).length,
-      skipped,
-      results,
-    },
-    { headers: getRateLimitHeaders(finalQuota) },
-  )
+  // Record API key usage and add rate limit headers
+  if (isApiKeyAuth && apiKeyId) {
+    await recordUsage(apiKeyId)
+    const rateLimit = await checkApiKeyRateLimit(apiKeyId, 50)
+    return NextResponse.json(responseData, {
+      headers: {
+        "X-RateLimit-Limit": String(rateLimit.limit),
+        "X-RateLimit-Remaining": String(rateLimit.remaining),
+        "X-RateLimit-Reset": rateLimit.resetsAt,
+      },
+    })
+  }
+
+  const finalQuota = await canMakeRequest(authedUserId!)
+  return NextResponse.json(responseData, { headers: getRateLimitHeaders(finalQuota) })
 }
