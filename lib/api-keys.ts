@@ -84,7 +84,7 @@ export async function validateApiKey(key: string): Promise<{
         // If encryption is configured, fetch all encrypted keys and decrypt to compare
         const result = await pool.query(
             `SELECT ak.id as key_id, ak.user_id, ak.name, ak.daily_limit, ak.revoked_at, ak.key_encrypted,
-                    u.email, u.name as user_name, u.terms_accepted_at
+                    u.email, u.name as user_name, u.tos_accepted_at
              FROM api_keys ak
                       JOIN users u ON ak.user_id = u.id
              WHERE ak.key_encrypted IS NOT NULL`,
@@ -104,7 +104,7 @@ export async function validateApiKey(key: string): Promise<{
                         userName: row.user_name,
                         keyName: row.name,
                         dailyLimit: row.daily_limit,
-                        needsTermsAcceptance: !hasAcceptedLatestTerms(row.terms_accepted_at),
+                        needsTermsAcceptance: !hasAcceptedLatestTerms(row.tos_accepted_at),
                     }
                 }
             } catch (error) {
@@ -117,7 +117,7 @@ export async function validateApiKey(key: string): Promise<{
         const keyHash = hashKey(key)
         const hashResult = await pool.query(
             `SELECT ak.id as key_id, ak.user_id, ak.name, ak.daily_limit, ak.revoked_at,
-                    u.email, u.name as user_name, u.terms_accepted_at
+                    u.email, u.name as user_name, u.tos_accepted_at
              FROM api_keys ak
                       JOIN users u ON ak.user_id = u.id
              WHERE ak.key_hash = $1`,
@@ -135,14 +135,14 @@ export async function validateApiKey(key: string): Promise<{
             userName: row.user_name,
             keyName: row.name,
             dailyLimit: row.daily_limit,
-            needsTermsAcceptance: !hasAcceptedLatestTerms(row.terms_accepted_at),
+            needsTermsAcceptance: !hasAcceptedLatestTerms(row.tos_accepted_at),
         }
     } else {
         // Fallback: hash-based lookup if encryption is not configured
         const keyHash = hashKey(key)
         const result = await pool.query(
             `SELECT ak.id as key_id, ak.user_id, ak.name, ak.daily_limit, ak.revoked_at,
-                    u.email, u.name as user_name, u.terms_accepted_at
+                    u.email, u.name as user_name, u.tos_accepted_at
              FROM api_keys ak
                       JOIN users u ON ak.user_id = u.id
              WHERE ak.key_hash = $1`,
@@ -160,7 +160,7 @@ export async function validateApiKey(key: string): Promise<{
             userName: row.user_name,
             keyName: row.name,
             dailyLimit: row.daily_limit,
-            needsTermsAcceptance: !hasAcceptedLatestTerms(row.terms_accepted_at),
+            needsTermsAcceptance: !hasAcceptedLatestTerms(row.tos_accepted_at),
         }
     }
 }
