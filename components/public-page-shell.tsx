@@ -124,6 +124,18 @@ export function PublicPageShell({
                 Disclaimer
               </Link>
               <span className="text-border">|</span>
+              <Link href={ROUTES.LEGAL_ACCEPTABLE_USE} className="hover:text-foreground transition-colors">
+                Acceptable Use
+              </Link>
+              <span className="text-border">|</span>
+              <Link href="/legal/dmca" className="hover:text-foreground transition-colors">
+                DMCA Policy
+              </Link>
+              <span className="text-border">|</span>
+              <Link href="/legal/accessibility" className="hover:text-foreground transition-colors">
+                Accessibility
+              </Link>
+              <span className="text-border">|</span>
               <Link href={ROUTES.GDPR_REQUEST} className="hover:text-foreground transition-colors">
                 GDPR / Data Request
               </Link>
