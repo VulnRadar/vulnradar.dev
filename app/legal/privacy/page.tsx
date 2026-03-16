@@ -9,7 +9,8 @@ export default function PrivacyPage() {
       <p className="leading-relaxed text-foreground/90">
         This Privacy Policy describes how {APP_NAME} (&quot;we&quot;, &quot;us&quot;, &quot;our&quot;) collects, uses,
         and protects your personal information when you use our Service at {APP_URL}. {APP_NAME}{" "}
-        is operated from Missouri, United States.
+        is operated by an independent developer based in Missouri, United States. All data processing 
+        occurs on servers located in the United States.
       </p>
 
       <h2 className="text-lg font-semibold text-foreground mt-8">1. Information We Collect</h2>
@@ -58,10 +59,12 @@ export default function PrivacyPage() {
         emails such as password resets and notifications. Only your email address and name are shared 
         with this provider.</li>
         <li><strong>Discord OAuth (Optional)</strong>: If you choose to sign in with Discord, Discord 
-        provides us with your Discord user ID, username, and email. Discord&apos;s privacy policy is available 
+        provides us with basic account information including your Discord user ID, username, and email address 
+        if available. Discord&apos;s privacy policy is available 
         at <a href="https://discord.com/privacy" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">discord.com/privacy</a>.</li>
         <li><strong>Cloudflare Turnstile (CAPTCHA)</strong>: We use Cloudflare Turnstile to prevent abuse 
-        and bot activity. Cloudflare may collect device and browser information. Cloudflare&apos;s privacy 
+        and bot activity. Cloudflare may collect limited device, browser, and interaction data necessary 
+        to determine whether a request is made by a human or automated system. Cloudflare&apos;s privacy 
         policy is available at <a href="https://www.cloudflare.com/privacypolicy/" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">cloudflare.com/privacypolicy</a>.</li>
       </ul>
       <p className="leading-relaxed text-foreground/90 mt-3">
@@ -76,6 +79,11 @@ export default function PrivacyPage() {
         values. API keys are hashed before storage: we never store plaintext API keys after initial 
         generation. Two-factor authentication secrets are stored server-side and backup codes are
         cryptographically generated. Backup codes are consumed on use and cannot be reused.
+      </p>
+      <p className="leading-relaxed text-foreground/90 mt-3">
+        <strong>Security Disclaimer:</strong> While we implement industry-standard security measures, 
+        no method of transmission over the Internet or electronic storage is completely secure. 
+        Therefore, we cannot guarantee absolute security of your information.
       </p>
 
       <h2 className="text-lg font-semibold text-foreground mt-8">5. Data Retention</h2>
@@ -125,7 +133,7 @@ export default function PrivacyPage() {
         In the event of a data breach that compromises your personal information, we will:
       </p>
       <ul className="flex flex-col gap-2 text-foreground/90 mt-3">
-        <li>Notify affected users via email within 72 hours of discovering the breach.</li>
+        <li>Notify affected users via email without unreasonable delay after discovery of the breach, consistent with applicable law.</li>
         <li>Provide information about the nature of the breach and what data was affected.</li>
         <li>Describe the steps we are taking to address the breach and prevent future occurrences.</li>
         <li>Provide guidance on steps you can take to protect yourself.</li>
@@ -212,7 +220,28 @@ export default function PrivacyPage() {
         <a href={`mailto:${LEGAL_EMAIL}`} className="text-primary hover:underline">{LEGAL_EMAIL}</a>.
       </p>
 
-      <h2 className="text-lg font-semibold text-foreground mt-8">13. Do Not Track Disclosure</h2>
+      <h2 className="text-lg font-semibold text-foreground mt-8">13. Legal Compliance</h2>
+      <p className="leading-relaxed text-foreground/90">
+        We may disclose your information if required to do so by law or in response to valid legal 
+        requests by public authorities, including court orders, subpoenas, or law enforcement requests.
+      </p>
+
+      <h2 className="text-lg font-semibold text-foreground mt-8">14. Business Transfers</h2>
+      <p className="leading-relaxed text-foreground/90">
+        If {APP_NAME} is involved in a merger, acquisition, asset sale, or restructuring, user 
+        information may be transferred as part of that transaction. We will notify you of any such 
+        change in ownership or control of your personal information.
+      </p>
+
+      <h2 className="text-lg font-semibold text-foreground mt-8">15. Authorized Scanning Responsibility</h2>
+      <p className="leading-relaxed text-foreground/90">
+        Users are responsible for ensuring they have proper authorization to scan any website or 
+        system submitted to {APP_NAME}. {APP_NAME} is not responsible for misuse of the Service 
+        or for scanning performed without proper authorization. Unauthorized scanning of websites 
+        or systems may violate applicable laws and the rights of third parties.
+      </p>
+
+      <h2 className="text-lg font-semibold text-foreground mt-8">16. Do Not Track Disclosure</h2>
       <p className="leading-relaxed text-foreground/90">
         Some browsers have a &quot;Do Not Track&quot; (DNT) feature that sends a signal to websites you visit 
         indicating you do not want to be tracked. {APP_NAME} does not track users across third-party 
@@ -221,14 +250,14 @@ export default function PrivacyPage() {
         for authentication and do not use any advertising, analytics, or cross-site tracking cookies.
       </p>
 
-      <h2 className="text-lg font-semibold text-foreground mt-8">14. Changes to This Policy</h2>
+      <h2 className="text-lg font-semibold text-foreground mt-8">17. Changes to This Policy</h2>
       <p className="leading-relaxed text-foreground/90">
         We may update this Privacy Policy at any time. When we make material changes, we will notify 
         you by displaying a prominent notice within the Service or by sending you an email. Continued 
         use of the Service after accepting changes constitutes acceptance of the revised policy.
       </p>
 
-      <h2 className="text-lg font-semibold text-foreground mt-8">15. Contact</h2>
+      <h2 className="text-lg font-semibold text-foreground mt-8">18. Contact</h2>
       <p className="leading-relaxed text-foreground/90">
         For privacy-related inquiries, please contact us at{" "}
         <a href={`mailto:${LEGAL_EMAIL}`} className="text-primary hover:underline">
