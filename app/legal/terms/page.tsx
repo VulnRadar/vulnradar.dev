@@ -69,8 +69,7 @@ export default function TermsPage() {
         <li>Use the Service to perform denial-of-service attacks or any form of disruption.</li>
         <li>Attempt to bypass rate limits, authentication, or any security measures of the Service.</li>
         <li>Use the Service for any unlawful, harmful, or malicious purposes.</li>
-        <li>Redistribute, resell, or sublicense access to {APP_NAME}{" "}} 
-        or its API.</li>
+        <li>Redistribute, resell, or sublicense access to {APP_NAME} or its API.</li>
         <li>Reverse-engineer, decompile, or disassemble any part of the Service.</li>
         <li>Use automated tools to scrape, harvest, or extract data from the Service beyond the documented API.</li>
       </ul>
@@ -111,8 +110,7 @@ export default function TermsPage() {
 
       <h2 className="text-lg font-semibold text-foreground mt-8">9. Indemnification</h2>
       <p className="leading-relaxed text-foreground/90">
-        You agree to indemnify, defend, and hold harmless {APP_NAME}{" "}} 
-        and its operators from and
+        You agree to indemnify, defend, and hold harmless {APP_NAME} and its operators from and
         against any claims, damages, obligations, losses, liabilities, costs, or expenses arising
         from your use of the Service or violation of these Terms.
       </p>
