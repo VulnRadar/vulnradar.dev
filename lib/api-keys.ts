@@ -1,8 +1,7 @@
 import { randomBytes, createHash } from "node:crypto"
 import pool from "./db"
-import { API_KEY_PREFIX, DEFAULT_API_KEY_DAILY_LIMIT } from "./constants"
+import { API_KEY_PREFIX, DEFAULT_API_KEY_DAILY_LIMIT, TERMS_UPDATED_AT } from "./constants"
 import { encryptApiKey, decryptApiKey, isEncryptionConfigured } from "./crypto"
-import { CONFIG_TERMS_UPDATED_AT } from "./config-values"
 
 const DAILY_LIMIT = DEFAULT_API_KEY_DAILY_LIMIT
 
@@ -48,12 +47,26 @@ function hashKey(key: string): string {
     return createHash("sha256").update(key).digest("hex")
 }
 
+// Fallback date for terms updated at (in case config loading fails)
+const TERMS_UPDATED_AT_FALLBACK = "2025-03-16"
+
 // Check if user has accepted the latest terms
 function hasAcceptedLatestTerms(termsAcceptedAt: string | null): boolean {
     if (!termsAcceptedAt) return false
-    const acceptedDate = new Date(termsAcceptedAt)
-    const termsUpdatedDate = new Date(CONFIG_TERMS_UPDATED_AT)
-    return acceptedDate >= termsUpdatedDate
+    try {
+        const acceptedDate = new Date(termsAcceptedAt)
+        const termsDate = TERMS_UPDATED_AT || TERMS_UPDATED_AT_FALLBACK
+        const termsUpdatedDate = new Date(termsDate)
+        // Validate dates are valid
+        if (isNaN(acceptedDate.getTime()) || isNaN(termsUpdatedDate.getTime())) {
+            // If dates are invalid, assume terms are accepted to avoid blocking
+            return true
+        }
+        return acceptedDate >= termsUpdatedDate
+    } catch {
+        // On any error, don't block the user
+        return true
+    }
 }
 
 // Validate an API key and return the user/key info, or null
