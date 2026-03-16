@@ -116,7 +116,7 @@ export default function PrivacyPage() {
         Users between 13 and 18 years of age may use the Service with the consent and supervision 
         of a parent or legal guardian. If you are a parent or guardian and believe your child under 
         13 has provided us with personal information, please contact us at{" "}
-        <a href={`mailto:${LEGAL_EMAIL}`} className="text-primary hover:underline">{LEGAL_EMAIL}</a> 
+        <a href={`mailto:${LEGAL_EMAIL}`} className="text-primary hover:underline">{LEGAL_EMAIL}</a>{" "}
         so we can take appropriate action.
       </p>
 
