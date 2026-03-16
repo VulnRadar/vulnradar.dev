@@ -33,7 +33,7 @@ function parseConfigYaml(): Record<string, unknown> | null {
       app: {
         name: getValue("name") || "VulnRadar",
         slug: getValue("slug") || "vulnradar",
-        version: getValue("version") || "2.0.3",
+        version: getValue("version") || "2.0.4",
         engine_version: getValue("engine_version") || "2.1.0",
         description: getValue("description") || "Security Scanner",
         total_checks_label: getValue("total_checks_label") || "310+",
@@ -45,6 +45,7 @@ function parseConfigYaml(): Record<string, unknown> | null {
         security_email: getValue("security_email") || "security@vulnradar.dev",
         enterprise_email: getValue("enterprise_email") || "enterprise@vulnradar.dev",
         noreply_email: getValue("noreply_email") || "noreply@vulnradar.dev",
+        terms_updated_at: getValue("terms_updated_at") || "2026-03-16",
       },
     }
   } catch {
@@ -74,7 +75,7 @@ const app = (config.app as Record<string, string>) || {}
 // App metadata
 export const CONFIG_APP_NAME = app.name || "VulnRadar"
 export const CONFIG_APP_SLUG = app.slug || "vulnradar"
-export const CONFIG_APP_VERSION = app.version || "2.0.3"
+export const CONFIG_APP_VERSION = app.version || "2.0.4"
 export const CONFIG_ENGINE_VERSION = app.engine_version || "2.1.0"
 export const CONFIG_APP_DESCRIPTION = app.description || "Security Scanner"
 export const CONFIG_TOTAL_CHECKS_LABEL = app.total_checks_label || "310+"
@@ -88,3 +89,4 @@ export const CONFIG_LEGAL_EMAIL = app.legal_email || "legal@vulnradar.dev"
 export const CONFIG_SECURITY_EMAIL = app.security_email || "security@vulnradar.dev"
 export const CONFIG_ENTERPRISE_EMAIL = app.enterprise_email || "enterprise@vulnradar.dev"
 export const CONFIG_NOREPLY_EMAIL = app.noreply_email || "noreply@vulnradar.dev"
+export const CONFIG_TERMS_UPDATED_AT = app.terms_updated_at || "2026-03-16"
