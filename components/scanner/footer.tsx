@@ -62,10 +62,10 @@ export function Footer() {
           <div>
             <h3 className="font-semibold text-sm mb-4 text-foreground">Legal</h3>
             <ul className="space-y-2.5 text-sm text-muted-foreground">
-              <li><Link href={ROUTES.LEGAL_PRIVACY} className="hover:text-foreground transition-colors">Privacy Policy</Link></li>
               <li><Link href={ROUTES.LEGAL_TERMS} className="hover:text-foreground transition-colors">Terms of Service</Link></li>
-              <li><Link href={ROUTES.LEGAL_DISCLAIMER} className="hover:text-foreground transition-colors">Disclaimer</Link></li>
+              <li><Link href={ROUTES.LEGAL_PRIVACY} className="hover:text-foreground transition-colors">Privacy Policy</Link></li>
               <li><Link href={ROUTES.LEGAL_ACCEPTABLE_USE} className="hover:text-foreground transition-colors">Acceptable Use</Link></li>
+              <li><Link href={ROUTES.LEGAL_DISCLAIMER} className="hover:text-foreground transition-colors">Disclaimer</Link></li>
               <li><Link href="/legal/dmca" className="hover:text-foreground transition-colors">DMCA Policy</Link></li>
               <li><Link href="/legal/accessibility" className="hover:text-foreground transition-colors">Accessibility</Link></li>
               <li><Link href={ROUTES.GDPR_REQUEST} className="hover:text-foreground transition-colors">GDPR / Data Request</Link></li>
