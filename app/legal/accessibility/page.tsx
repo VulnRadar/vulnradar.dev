@@ -64,9 +64,9 @@ export default function AccessibilityPage() {
           actively working to identify and address any accessibility barriers. Known limitations include:
         </p>
         <ul className="list-disc pl-6 mt-3 space-y-2">
-          <li><strong>Third-party content:</strong> Some third-party integrations (such as CAPTCHA) may have accessibility limitations outside our control</li>
+          <li><strong>Third-party content:</strong> Some third-party integrations (such as CAPTCHA) may have accessibility limitations outside our control. If you are unable to complete a CAPTCHA challenge, please contact us at <a href={`mailto:${SUPPORT_EMAIL}?subject=Accessibility%20CAPTCHA%20Issue`} className="text-primary hover:underline">{SUPPORT_EMAIL}</a> and we will assist you directly</li>
           <li><strong>Complex data visualizations:</strong> Some security scan result charts may require additional screen reader descriptions</li>
-          <li><strong>PDF exports:</strong> Exported PDF reports may not be fully accessible; we recommend using the web interface for optimal accessibility</li>
+          <li><strong>PDF exports:</strong> Exported PDF reports may not be fully accessible. We recommend using the web interface for the most accessible experience. If you require an accessible version of a report, please contact us and we will do our best to assist</li>
         </ul>
 
         <h2 className="text-lg font-semibold text-foreground mt-8">5. Feedback</h2>
@@ -89,7 +89,7 @@ export default function AccessibilityPage() {
           </li>
         </ul>
         <p className="leading-relaxed text-foreground/90 mt-3">
-          We try to respond to accessibility feedback within 5 business days.
+          We try to respond to accessibility feedback within 5 business days. Response times may vary during high volume periods.
         </p>
 
         <h2 className="text-lg font-semibold text-foreground mt-8">6. Compatibility</h2>
@@ -104,7 +104,7 @@ export default function AccessibilityPage() {
           <li>Keyboard-only navigation</li>
         </ul>
         <p className="leading-relaxed text-foreground/90 mt-3">
-          {APP_NAME} is not compatible with browsers older than 3 major versions or Internet Explorer.
+          {APP_NAME} is not compatible with browsers older than 3 major versions or Internet Explorer. For the best accessible experience, we recommend keeping your browser up to date.
         </p>
 
         <h2 className="text-lg font-semibold text-foreground mt-8">7. Assessment Approach</h2>
