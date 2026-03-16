@@ -105,11 +105,19 @@ export default function PrivacyPage() {
         We do not use advertising cookies, tracking cookies, or third-party analytics cookies.
       </p>
 
-      <h2 className="text-lg font-semibold text-foreground mt-8">8. Children&apos;s Privacy</h2>
+      <h2 className="text-lg font-semibold text-foreground mt-8">8. Children&apos;s Privacy (COPPA Compliance)</h2>
       <p className="leading-relaxed text-foreground/90">
-        The Service is not intended for use by anyone under the age of 18. We do not knowingly
-        collect personal information from minors. If we learn that we have collected personal 
-        information from a child under 18, we will delete that information as quickly as possible.
+        The Service is intended for users 13 years of age and older. We do not knowingly collect 
+        personal information from children under the age of 13. If we learn that we have collected 
+        personal information from a child under 13, we will delete that information as quickly as 
+        possible and terminate any associated account.
+      </p>
+      <p className="leading-relaxed text-foreground/90 mt-3">
+        Users between 13 and 18 years of age may use the Service with the consent and supervision 
+        of a parent or legal guardian. If you are a parent or guardian and believe your child under 
+        13 has provided us with personal information, please contact us at{" "}
+        <a href={`mailto:${LEGAL_EMAIL}`} className="text-primary hover:underline">{LEGAL_EMAIL}</a> 
+        so we can take appropriate action.
       </p>
 
       <h2 className="text-lg font-semibold text-foreground mt-8">9. Data Breach Notification</h2>
