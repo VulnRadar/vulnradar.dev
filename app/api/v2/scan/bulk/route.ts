@@ -49,7 +49,7 @@ function getProtocolType(url: string): "http" | "websocket" | "ftp" {
   return "http"
 }
 
-async function runSingleScan(url: string, userId: number) {
+async function runSingleScan(url: string, userId: number, isApiKeyAuth: boolean) {
   const startTime = Date.now()
   
   // SSRF protection - validate target is not internal/private
@@ -151,7 +151,7 @@ async function runSingleScan(url: string, userId: number) {
     const insertResult = await pool.query(
       `INSERT INTO scan_history (user_id, url, summary, findings, findings_count, duration, scanned_at, source, response_headers, notes)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id`,
-      [userId, url, JSON.stringify(summary), JSON.stringify(findings), summary.total, duration, new Date().toISOString(), "web", JSON.stringify(capturedHeaders), DEFAULT_SCAN_NOTE],
+      [userId, url, JSON.stringify(summary), JSON.stringify(findings), summary.total, duration, new Date().toISOString(), isApiKeyAuth ? "api-bulk" : "bulk", JSON.stringify(capturedHeaders), DEFAULT_SCAN_NOTE],
     )
     scanHistoryId = insertResult.rows[0]?.id || null
   } catch (err) {
@@ -282,7 +282,7 @@ export async function POST(request: NextRequest) {
     if (!isApiKeyAuth) {
       await incrementDailyCount(authedUserId!)
     }
-    const scanResult = await runSingleScan(scanUrl, authedUserId!)
+    const scanResult = await runSingleScan(scanUrl, authedUserId!, isApiKeyAuth)
     results.push(scanResult)
   }
 
