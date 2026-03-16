@@ -143,3 +143,49 @@ export async function PATCH(
 
   return NextResponse.json({ notes: result.rows[0].notes })
 }
+
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  // Auth: check API key first (Bearer token), then fall back to session cookie
+  const authHeader = request.headers.get("authorization")
+  let authedUserId: number | null = null
+
+  if (authHeader?.startsWith(BEARER_PREFIX)) {
+    const token = authHeader.slice(7)
+    const keyData = await validateApiKey(token)
+
+    if (!keyData) {
+      return NextResponse.json({ error: "Invalid or revoked API key." }, { status: 401 })
+    }
+    if (keyData.needsTermsAcceptance) {
+      return NextResponse.json({ error: "Please accept our updated Terms of Service. Log in to your account to review and accept the new terms before using the API." }, { status: 403 })
+    }
+    authedUserId = keyData.userId
+  } else {
+    const session = await getSession()
+    if (!session) {
+      return NextResponse.json({ error: ERROR_MESSAGES.UNAUTHORIZED }, { status: 401 })
+    }
+    authedUserId = session.userId
+  }
+
+  if (!authedUserId) {
+    return NextResponse.json({ error: ERROR_MESSAGES.UNAUTHORIZED }, { status: 401 })
+  }
+
+  const { id } = await params
+
+  // Only allow the scan owner to delete
+  const result = await pool.query(
+    `DELETE FROM scan_history WHERE id = $1 AND user_id = $2 RETURNING id`,
+    [id, authedUserId],
+  )
+
+  if (result.rows.length === 0) {
+    return NextResponse.json({ error: "Scan not found" }, { status: 404 })
+  }
+
+  return NextResponse.json({ success: true })
+}
