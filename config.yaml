@@ -24,6 +24,10 @@ app:
   repo: "VulnRadar/vulnradar.dev"
   discord_invite_url: "https://discord.gg/Y7R6hdGbNe"
   
+  # Legal documents last updated date (ISO 8601 format)
+  # Users who accepted terms before this date will be prompted to re-accept
+  terms_updated_at: "2026-03-16"
+  
   # Contact Emails
   support_email: "support@vulnradar.dev"
   legal_email: "legal@vulnradar.dev"

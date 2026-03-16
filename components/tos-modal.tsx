@@ -2,11 +2,12 @@
 
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
-import { Shield, ExternalLink, Check, Lock, ShieldCheck } from "lucide-react"
-import { APP_NAME, API } from "@/lib/constants"
+import { Shield, ExternalLink, Check, ShieldCheck, RefreshCw } from "lucide-react"
+import { APP_NAME, API, TERMS_UPDATED_AT } from "@/lib/constants"
 
 interface TosModalProps {
   onAccept: () => void
+  isUpdate?: boolean
 }
 
 const CHECKBOXES = [
@@ -66,7 +67,17 @@ const CHECKBOXES = [
   },
 ]
 
-export function TosModal({ onAccept }: TosModalProps) {
+// Format date nicely
+function formatDate(dateStr: string): string {
+  const date = new Date(dateStr)
+  return date.toLocaleDateString("en-US", { 
+    year: "numeric", 
+    month: "long", 
+    day: "numeric" 
+  })
+}
+
+export function TosModal({ onAccept, isUpdate = false }: TosModalProps) {
   const [accepting, setAccepting] = useState(false)
   const [mounted, setMounted] = useState(false)
   const [checked, setChecked] = useState({
@@ -171,18 +182,29 @@ export function TosModal({ onAccept }: TosModalProps) {
               <div className="flex items-center gap-4">
                 {/* Shield icon with pulse ring */}
                 <div
-                    className="shield-ring flex items-center justify-center rounded-xl bg-primary/10 border border-primary/20 shrink-0"
+                    className={`shield-ring flex items-center justify-center rounded-xl border shrink-0 ${
+                      isUpdate 
+                        ? "bg-amber-500/10 border-amber-500/20" 
+                        : "bg-primary/10 border-primary/20"
+                    }`}
                     style={{ width: 40, height: 40 }}
                 >
-                  <Shield style={{ width: 17, height: 17 }} className="text-primary" />
+                  {isUpdate ? (
+                    <RefreshCw style={{ width: 17, height: 17 }} className="text-amber-500" />
+                  ) : (
+                    <Shield style={{ width: 17, height: 17 }} className="text-primary" />
+                  )}
                 </div>
 
                 <div className="flex-1 min-w-0">
                   <h2 className="text-[14.5px] font-semibold text-foreground tracking-tight leading-snug">
-                    Terms of Service
+                    {isUpdate ? "Updated Terms of Service" : "Terms of Service"}
                   </h2>
                   <p className="text-[11.5px] text-muted-foreground mt-0.5">
-                    Review and confirm each item to continue
+                    {isUpdate 
+                      ? `Updated on ${formatDate(TERMS_UPDATED_AT)} - Please review and accept`
+                      : "Review and confirm each item to continue"
+                    }
                   </p>
                 </div>
 
@@ -193,7 +215,7 @@ export function TosModal({ onAccept }: TosModalProps) {
                     <circle
                         cx="19" cy="19" r="16"
                         fill="none"
-                        stroke="hsl(var(--primary))"
+                        stroke={isUpdate ? "hsl(45 93% 47%)" : "hsl(var(--primary))"}
                         strokeWidth="2"
                         strokeLinecap="round"
                         strokeDasharray={`${2 * Math.PI * 16}`}
@@ -201,20 +223,31 @@ export function TosModal({ onAccept }: TosModalProps) {
                         className="transition-all duration-500 ease-out"
                     />
                   </svg>
-                  <span className="absolute text-[11px] font-semibold tabular-nums" style={{ color: checkedCount === 4 ? "hsl(var(--primary))" : "hsl(var(--foreground))" }}>
+                  <span className="absolute text-[11px] font-semibold tabular-nums" style={{ color: checkedCount === 4 ? (isUpdate ? "hsl(45 93% 47%)" : "hsl(var(--primary))") : "hsl(var(--foreground))" }}>
                   {checkedCount}/4
                 </span>
                 </div>
               </div>
 
-              {/* Info callout */}
-              <div className="mt-4 rounded-xl border border-border/40 px-4 py-3 bg-muted/35">
-                <p className="text-[11.5px] text-muted-foreground leading-relaxed">
-                  {APP_NAME} is intended <span className="font-semibold text-foreground/80">exclusively</span> for
-                  authorized security testing, research, and educational use. Misuse may violate
-                  federal and international cybercrime laws, including the CFAA and its equivalents.
-                </p>
-              </div>
+              {/* Info callout - different for updates */}
+              {isUpdate ? (
+                <div className="mt-4 rounded-xl border border-amber-500/30 px-4 py-3 bg-amber-500/5">
+                  <p className="text-[11.5px] text-muted-foreground leading-relaxed">
+                    <span className="font-semibold text-amber-600 dark:text-amber-400">Our legal documents have been updated.</span>{" "}
+                    We&apos;ve made changes to improve clarity and compliance with applicable laws, including enhanced 
+                    privacy rights disclosures (CCPA/CPRA, state privacy laws), governing law provisions, 
+                    arbitration clauses, and liability limitations. Please review the updated terms below.
+                  </p>
+                </div>
+              ) : (
+                <div className="mt-4 rounded-xl border border-border/40 px-4 py-3 bg-muted/35">
+                  <p className="text-[11.5px] text-muted-foreground leading-relaxed">
+                    {APP_NAME} is intended <span className="font-semibold text-foreground/80">exclusively</span> for
+                    authorized security testing, research, and educational use. Misuse may violate
+                    federal and international cybercrime laws, including the CFAA and its equivalents.
+                  </p>
+                </div>
+              )}
             </div>
 
             {/* ── Checkboxes ── */}
@@ -223,7 +256,9 @@ export function TosModal({ onAccept }: TosModalProps) {
                   <label
                       key={key}
                       className={`tos-item-${i + 1} flex items-start gap-3.5 cursor-pointer rounded-xl px-3.5 py-3 -mx-3.5 transition-colors duration-150 ${
-                          checked[key] ? "bg-primary/[0.06]" : "hover:bg-muted/40"
+                          checked[key] 
+                            ? (isUpdate ? "bg-amber-500/[0.06]" : "bg-primary/[0.06]") 
+                            : "hover:bg-muted/40"
                       }`}
                       style={{ opacity: 0 }}
                       onClick={() => setChecked((p) => ({ ...p, [key]: !p[key] }))}
@@ -232,7 +267,7 @@ export function TosModal({ onAccept }: TosModalProps) {
                     <div
                         className={`mt-[3px] rounded-md flex items-center justify-center shrink-0 transition-all duration-200 ${
                             checked[key]
-                                ? "bg-primary border-transparent"
+                                ? (isUpdate ? "bg-amber-500 border-transparent" : "bg-primary border-transparent")
                                 : "border border-border/70 bg-background"
                         }`}
                         style={{
@@ -242,7 +277,7 @@ export function TosModal({ onAccept }: TosModalProps) {
                     >
                       {checked[key] && (
                           <span className="check-pop flex items-center justify-center">
-                      <Check strokeWidth={3.5} className="text-primary-foreground" style={{ width: 9, height: 9 }} />
+                      <Check strokeWidth={3.5} className={isUpdate ? "text-white" : "text-primary-foreground"} style={{ width: 9, height: 9 }} />
                     </span>
                       )}
                     </div>
@@ -250,7 +285,9 @@ export function TosModal({ onAccept }: TosModalProps) {
                     {/* Label */}
                     <div className="min-w-0">
                       <p className={`text-[10px] font-semibold uppercase tracking-[0.08em] mb-[5px] transition-colors duration-200 ${
-                          checked[key] ? "text-primary" : "text-muted-foreground/50"
+                          checked[key] 
+                            ? (isUpdate ? "text-amber-600 dark:text-amber-400" : "text-primary") 
+                            : "text-muted-foreground/50"
                       }`}>
                         {title}
                       </p>
@@ -268,8 +305,11 @@ export function TosModal({ onAccept }: TosModalProps) {
                   onClick={handleAccept}
                   disabled={!allChecked || accepting}
                   className={`w-full h-11 text-[13px] font-semibold tracking-tight transition-all duration-300 ${
-                      allChecked && !accepting ? "shadow-md shadow-primary/20" : ""
+                      allChecked && !accepting 
+                        ? (isUpdate ? "shadow-md shadow-amber-500/20 bg-amber-500 hover:bg-amber-600" : "shadow-md shadow-primary/20") 
+                        : ""
                   }`}
+                  variant={isUpdate && allChecked ? "default" : "default"}
               >
                 {accepting ? (
                     <span className="flex items-center gap-2">
@@ -282,7 +322,7 @@ export function TosModal({ onAccept }: TosModalProps) {
                 ) : allChecked ? (
                     <span className="flex items-center gap-2">
                   <ShieldCheck className="h-3.5 w-3.5" />
-                  I Agree - Continue to {APP_NAME}
+                  {isUpdate ? "Accept Updated Terms" : `I Agree - Continue to ${APP_NAME}`}
                 </span>
                 ) : (
                     `${checkedCount} of 4 items confirmed`
@@ -297,8 +337,10 @@ export function TosModal({ onAccept }: TosModalProps) {
               </p>
 
               <p className="text-[10px] text-muted-foreground/30 text-center leading-relaxed pt-1.5 border-t border-border/25">
-                Any use of this service, regardless of how access is obtained, is subject to these terms.
-                Bypassing this screen does not waive legal liability.
+                {isUpdate 
+                  ? "Continued use of this service requires acceptance of these updated terms."
+                  : "Any use of this service, regardless of how access is obtained, is subject to these terms. Bypassing this screen does not waive legal liability."
+                }
               </p>
             </div>
           </div>
