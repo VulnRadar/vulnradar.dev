@@ -19,6 +19,9 @@ export async function GET(
     if (!keyData) {
       return NextResponse.json({ error: "Invalid or revoked API key." }, { status: 401 })
     }
+    if (keyData.needsTermsAcceptance) {
+      return NextResponse.json({ error: "Please accept our updated Terms of Service. Log in to your account to review and accept the new terms before using the API." }, { status: 403 })
+    }
     authedUserId = keyData.userId
   } else {
     const session = await getSession()
@@ -103,6 +106,9 @@ export async function PATCH(
 
     if (!keyData) {
       return NextResponse.json({ error: "Invalid or revoked API key." }, { status: 401 })
+    }
+    if (keyData.needsTermsAcceptance) {
+      return NextResponse.json({ error: "Please accept our updated Terms of Service. Log in to your account to review and accept the new terms before using the API." }, { status: 403 })
     }
     authedUserId = keyData.userId
   } else {
