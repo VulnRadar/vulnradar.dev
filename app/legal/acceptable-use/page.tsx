@@ -39,6 +39,7 @@ export default function AcceptableUsePage() {
         <li>Perform reconnaissance for malicious purposes.</li>
         <li>Conduct denial-of-service attacks or attempt to disrupt any service.</li>
         <li>Bypass rate limits or abuse the API in any way.</li>
+        <li>Perform large-scale internet-wide scanning or systematically enumerate or profile large numbers of targets without explicit authorization for each target.</li>
         <li>Scan government, military, financial, healthcare, or critical infrastructure systems without explicit authorization.</li>
         <li>Share scan results publicly in a way that could enable exploitation of discovered vulnerabilities before the owner has had reasonable time to remediate.</li>
         <li>Use scan results to blackmail, extort, or otherwise coerce website owners.</li>
