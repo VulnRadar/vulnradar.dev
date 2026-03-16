@@ -18,7 +18,8 @@ export default function AccessibilityPage() {
         <p className="text-xs text-muted-foreground mb-6">Last updated: March 16, 2026</p>
 
         <p className="leading-relaxed text-foreground/90 mb-6">
-          {APP_NAME} is committed to ensuring digital accessibility for people with disabilities. 
+          {APP_NAME}{" "}
+          is committed to ensuring digital accessibility for people with disabilities. 
           We are continually improving the user experience for everyone and applying the relevant 
           accessibility standards to ensure we provide equal access to all users.
         </p>
@@ -47,7 +48,8 @@ export default function AccessibilityPage() {
 
         <h2 className="text-lg font-semibold text-foreground mt-8">3. Technologies Used</h2>
         <p className="leading-relaxed text-foreground/90">
-          Accessibility of {APP_NAME} relies on the following technologies to work with your web browser 
+          Accessibility of {APP_NAME}{" "} 
+          relies on the following technologies to work with your web browser 
           and any assistive technologies or plugins installed on your computer:
         </p>
         <ul className="list-disc pl-6 mt-3 space-y-2">
@@ -96,7 +98,8 @@ export default function AccessibilityPage() {
 
         <h2 className="text-lg font-semibold text-foreground mt-8">6. Compatibility</h2>
         <p className="leading-relaxed text-foreground/90">
-          {APP_NAME} is designed to be compatible with the following assistive technologies:
+          {APP_NAME}{" "} 
+          is designed to be compatible with the following assistive technologies:
         </p>
         <ul className="list-disc pl-6 mt-3 space-y-2">
           <li>Screen readers (NVDA, JAWS, VoiceOver, TalkBack)</li>
@@ -105,7 +108,8 @@ export default function AccessibilityPage() {
           <li>Keyboard-only navigation</li>
         </ul>
         <p className="leading-relaxed text-foreground/90 mt-3">
-          {APP_NAME} is not compatible with browsers older than 3 major versions or Internet Explorer.
+          {APP_NAME}{" "}} 
+          is not compatible with browsers older than 3 major versions or Internet Explorer.
         </p>
 
         <h2 className="text-lg font-semibold text-foreground mt-8">7. Assessment Approach</h2>

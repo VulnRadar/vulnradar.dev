@@ -9,10 +9,13 @@ export default function DisclaimerPage() {
       <div className="rounded-xl border-2 border-destructive/30 bg-destructive/5 p-6 my-6">
         <h2 className="text-lg font-bold text-destructive mt-0">Important Notice</h2>
         <p className="leading-relaxed text-foreground/90 mb-0">
-          {APP_NAME} is provided strictly for <strong>authorized security testing, research, and
-          educational purposes</strong>. The operators of {APP_NAME} are <strong>NOT responsible</strong> for
-          any misuse, damages, legal consequences, or any other outcome resulting from the use
-          of this tool. You use {APP_NAME} entirely at your own risk.
+          {APP_NAME}{" "}} 
+          is provided strictly for <strong>authorized security testing, research, and
+          educational purposes</strong>.         The operators of {APP_NAME}{" "}} 
+        are <strong>NOT responsible</strong> for
+        any misuse, damages, legal consequences, or any other outcome resulting from the use
+        of this tool. You use {APP_NAME}{" "}} 
+        entirely at your own risk.
         </p>
       </div>
 
@@ -33,7 +36,8 @@ export default function DisclaimerPage() {
 
       <h2 className="text-lg font-semibold text-foreground mt-8">2. Not Professional Security Advice</h2>
       <p className="leading-relaxed text-foreground/90">
-        {APP_NAME} scan results and remediation guidance do <strong>NOT</strong> constitute
+        {APP_NAME}{" "}} 
+        scan results and remediation guidance do <strong>NOT</strong> constitute
         professional security advice, a security audit, or a penetration test. The results
         should be used as a starting point for further investigation. For comprehensive
         security assessments, consult a qualified cybersecurity professional.
@@ -41,7 +45,8 @@ export default function DisclaimerPage() {
 
       <h2 className="text-lg font-semibold text-foreground mt-8">3. Accuracy of Results</h2>
       <p className="leading-relaxed text-foreground/90">
-        {APP_NAME} performs {TOTAL_CHECKS_LABEL} automated vulnerability checks based on publicly observable
+        {APP_NAME}{" "}} 
+        performs {TOTAL_CHECKS_LABEL} automated vulnerability checks based on publicly observable
         information (HTTP headers, HTML content, SSL/TLS configuration, JavaScript analysis,
         and more). Results may include:
       </p>
@@ -114,8 +119,8 @@ export default function DisclaimerPage() {
       </ul>
       <p className="leading-relaxed text-foreground/90">
         It is your responsibility to understand and comply with the laws applicable in your
-        jurisdiction and the jurisdiction where the target systems are located. {APP_NAME} does 
-        not provide legal advice and is not responsible for ensuring your compliance.
+        jurisdiction and the jurisdiction where the target systems are located. {APP_NAME}{" "}} 
+        does not provide legal advice and is not responsible for ensuring your compliance.
       </p>
 
       <h2 className="text-lg font-semibold text-foreground mt-8">8. Governing Law</h2>
@@ -148,7 +153,8 @@ export default function DisclaimerPage() {
         </a>.
       </p>
       <p className="leading-relaxed text-foreground/90 mt-3">
-        {APP_NAME} is operated from Missouri, United States.
+        {APP_NAME}{" "}} 
+        is operated from Missouri, United States.
       </p>
     </article>
   )
