@@ -20,6 +20,17 @@ export default function TermsPage() {
         potential vulnerabilities. The Service provides automated security assessments, detailed
         findings with severity ratings, and remediation guidance.
       </p>
+      <p className="leading-relaxed text-foreground/90 mt-3">
+        <strong>Security Tool Disclaimer:</strong> Scan results provided by {APP_NAME} are 
+        informational only and may contain false positives or false negatives. The Service does 
+        not guarantee the detection of all vulnerabilities or security issues. Results should 
+        not be relied upon as a complete or definitive security assessment.
+      </p>
+      <p className="leading-relaxed text-foreground/90 mt-3">
+        <strong>Service Availability Disclaimer:</strong> We do not guarantee that the Service 
+        will be uninterrupted, secure, or error-free. The Service may be temporarily unavailable 
+        due to maintenance, updates, or circumstances beyond our control.
+      </p>
 
       <h2 className="text-lg font-semibold text-foreground mt-8">2. Eligibility</h2>
       <p className="leading-relaxed text-foreground/90">
