@@ -3,16 +3,18 @@ import { getSession } from "@/lib/auth"
 import pool from "@/lib/db"
 import { ApiResponse, withErrorHandling } from "@/lib/api-utils"
 import { ERROR_MESSAGES, SUCCESS_MESSAGES, BEARER_PREFIX } from "@/lib/constants"
-import { validateApiKey } from "@/lib/api-keys"
+import { validateApiKey, checkRateLimit as checkApiKeyRateLimit, recordUsage } from "@/lib/api-keys"
 
 export const GET = withErrorHandling(async (request: NextRequest) => {
   // Auth: check API key first (Bearer token), then fall back to session cookie
   const authHeader = request.headers.get("authorization")
   let authedUserId: number | null = null
+  let apiKeyId: number | null = null
+  let keyData: any = null
 
   if (authHeader?.startsWith(BEARER_PREFIX)) {
     const token = authHeader.slice(7)
-    const keyData = await validateApiKey(token)
+    keyData = await validateApiKey(token)
 
     if (!keyData) {
       return ApiResponse.unauthorized("Invalid or revoked API key.")
@@ -20,6 +22,14 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
     if (keyData.needsTermsAcceptance) {
       return ApiResponse.error("Please accept our updated Terms of Service. Log in to your account to review and accept the new terms before using the API.", 403)
     }
+
+    // Check API key rate limit
+    const rateLimit = await checkApiKeyRateLimit(keyData.keyId, keyData.dailyLimit)
+    if (!rateLimit.allowed) {
+      return ApiResponse.error(`Rate limit exceeded. Daily limit reached. Resets at ${rateLimit.resetsAt}`, 429)
+    }
+
+    apiKeyId = keyData.keyId
     authedUserId = keyData.userId
   } else {
     const session = await getSession()
@@ -46,6 +56,11 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
     [authedUserId],
   )
 
+  // Record API key usage
+  if (apiKeyId) {
+    await recordUsage(apiKeyId)
+  }
+
   return ApiResponse.success({ scans: result.rows })
 })
 
@@ -53,10 +68,12 @@ export const DELETE = withErrorHandling(async (request: NextRequest) => {
   // Auth: check API key first (Bearer token), then fall back to session cookie
   const authHeader = request.headers.get("authorization")
   let authedUserId: number | null = null
+  let apiKeyId: number | null = null
+  let keyData: any = null
 
   if (authHeader?.startsWith(BEARER_PREFIX)) {
     const token = authHeader.slice(7)
-    const keyData = await validateApiKey(token)
+    keyData = await validateApiKey(token)
 
     if (!keyData) {
       return ApiResponse.unauthorized("Invalid or revoked API key.")
@@ -64,6 +81,14 @@ export const DELETE = withErrorHandling(async (request: NextRequest) => {
     if (keyData.needsTermsAcceptance) {
       return ApiResponse.error("Please accept our updated Terms of Service. Log in to your account to review and accept the new terms before using the API.", 403)
     }
+
+    // Check API key rate limit
+    const rateLimit = await checkApiKeyRateLimit(keyData.keyId, keyData.dailyLimit)
+    if (!rateLimit.allowed) {
+      return ApiResponse.error(`Rate limit exceeded. Daily limit reached. Resets at ${rateLimit.resetsAt}`, 429)
+    }
+
+    apiKeyId = keyData.keyId
     authedUserId = keyData.userId
   } else {
     const session = await getSession()
@@ -79,6 +104,11 @@ export const DELETE = withErrorHandling(async (request: NextRequest) => {
 
   await pool.query("DELETE FROM scan_tags WHERE user_id = $1", [authedUserId])
   await pool.query("DELETE FROM scan_history WHERE user_id = $1", [authedUserId])
+
+  // Record API key usage
+  if (apiKeyId) {
+    await recordUsage(apiKeyId)
+  }
 
   return ApiResponse.success({ message: SUCCESS_MESSAGES.DELETED })
 })
