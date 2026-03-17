@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getSession } from "@/lib/auth"
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
-import { APP_NAME } from "@/lib/constants"
+import { validateApiKey } from "@/lib/api-keys"
+import { APP_NAME, BEARER_PREFIX } from "@/lib/constants"
 
 const MAX_BODY_SIZE = 512 * 1024
 const MAX_PAGES = 20
@@ -28,10 +29,35 @@ async function safeReadBody(response: Response, maxBytes: number): Promise<strin
 }
 
 export async function POST(request: NextRequest) {
-  const session = await getSession()
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  // Allow either session-based auth or API key (Bearer)
+  let userId: number | null = null
+  let isApiKeyAuth = false
 
-  const rl = await checkRateLimit({ key: `crawl-discover:${session.userId}`, ...RATE_LIMITS.scan })
+  const session = await getSession()
+  if (session) {
+    userId = session.userId
+  } else {
+    const authHeader = request.headers.get("authorization")
+    if (authHeader?.startsWith(BEARER_PREFIX)) {
+      const token = authHeader.slice(BEARER_PREFIX.length)
+      const keyData = await validateApiKey(token)
+      if (!keyData) {
+        return NextResponse.json({ error: "Invalid or revoked API key." }, { status: 401 })
+      }
+      if (keyData.needsTermsAcceptance) {
+        return NextResponse.json(
+          { error: "Please accept our updated Terms of Service. Log in to your account to review and accept the new terms before using the API." },
+          { status: 403 },
+        )
+      }
+      userId = keyData.userId
+      isApiKeyAuth = true
+    } else {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    }
+  }
+
+  const rl = await checkRateLimit({ key: `crawl-discover:${userId}`, ...RATE_LIMITS.scan })
   if (!rl.allowed) {
     return NextResponse.json({ error: "Rate limit reached. Please wait before trying again." }, { status: 429 })
   }

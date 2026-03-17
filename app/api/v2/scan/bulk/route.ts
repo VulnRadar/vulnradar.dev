@@ -151,7 +151,8 @@ async function runSingleScan(url: string, userId: number, isApiKeyAuth: boolean)
     const insertResult = await pool.query(
       `INSERT INTO scan_history (user_id, url, summary, findings, findings_count, duration, scanned_at, source, response_headers, notes)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id`,
-      [userId, url, JSON.stringify(summary), JSON.stringify(findings), summary.total, duration, new Date().toISOString(), isApiKeyAuth ? "api-bulk" : "bulk", JSON.stringify(capturedHeaders), DEFAULT_SCAN_NOTE],
+      // source must be either 'api' or 'web'
+      [userId, url, JSON.stringify(summary), JSON.stringify(findings), summary.total, duration, new Date().toISOString(), isApiKeyAuth ? "api" : "web", JSON.stringify(capturedHeaders), DEFAULT_SCAN_NOTE],
     )
     scanHistoryId = insertResult.rows[0]?.id || null
   } catch (err) {
