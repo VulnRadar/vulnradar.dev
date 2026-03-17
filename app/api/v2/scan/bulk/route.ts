@@ -303,7 +303,7 @@ export async function POST(request: NextRequest) {
   // Record API key usage and add rate limit headers
   if (isApiKeyAuth && apiKeyId) {
     await recordUsage(apiKeyId)
-    const rateLimit = await checkApiKeyRateLimit(apiKeyId, 50)
+    const rateLimit = await checkApiKeyRateLimit(apiKeyId, keyData!.dailyLimit)
     return NextResponse.json(responseData, {
       headers: {
         "X-RateLimit-Limit": String(rateLimit.limit),
