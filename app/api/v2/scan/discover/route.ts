@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getSession } from "@/lib/auth"
-import { validateApiKey, checkRateLimit as checkApiKeyRateLimit, recordUsage } from "@/lib/api-keys"
+import { validateApiKey } from "@/lib/api-keys"
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 import dns from "dns/promises"
 import pool from "@/lib/db"
@@ -131,8 +131,6 @@ export async function POST(request: NextRequest) {
   try {
     let userId: number | null = null
     let isApiKeyAuth = false
-    let apiKeyId: number | null = null
-    let keyData: any = null
 
     // Try session auth first
     const session = await getSession()
@@ -143,7 +141,7 @@ export async function POST(request: NextRequest) {
       const authHeader = request.headers.get("authorization")
       if (authHeader?.startsWith("Bearer ")) {
         const apiKey = authHeader.slice(7)
-        keyData = await validateApiKey(apiKey)
+        const keyData = await validateApiKey(apiKey)
         if (!keyData) {
           return NextResponse.json({ error: "Invalid or revoked API key." }, { status: 401 })
         }
@@ -156,30 +154,7 @@ export async function POST(request: NextRequest) {
           )
         }
 
-        // Check API key rate limit
-        const rateLimit = await checkApiKeyRateLimit(keyData.keyId, keyData.dailyLimit)
-        if (!rateLimit.allowed) {
-          return NextResponse.json(
-            {
-              error: "Rate limit exceeded. Daily limit reached.",
-              limit: rateLimit.limit,
-              used: rateLimit.used,
-              remaining: rateLimit.remaining,
-              resets_at: rateLimit.resetsAt,
-            },
-            {
-              status: 429,
-              headers: {
-                "X-RateLimit-Limit": String(rateLimit.limit),
-                "X-RateLimit-Remaining": String(rateLimit.remaining),
-                "X-RateLimit-Reset": rateLimit.resetsAt,
-              },
-            },
-          )
-        }
-
         userId = keyData.userId
-        apiKeyId = keyData.keyId
         isApiKeyAuth = true
       } else {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
@@ -313,32 +288,6 @@ export async function POST(request: NextRequest) {
 
   // Cache results for 4 hours (fire and forget - don't block response)
   cacheSubdomains(rootDomain, results).catch(() => {})
-
-  // Record API key usage and add rate limit headers
-  if (isApiKeyAuth && apiKeyId) {
-    await recordUsage(apiKeyId)
-    const rateLimit = await checkApiKeyRateLimit(apiKeyId, keyData!.dailyLimit)
-    return NextResponse.json({
-      domain: rootDomain,
-      total: results.length,
-      reachable: results.filter((r) => r.reachable).length,
-      subdomains: results,
-      cached: false,
-      sources: {
-        "crt.sh": ctResults.length,
-        hackertarget: hackerTargetResults.length,
-        "subdomain.center": subdomainCenterResults.length,
-        rapiddns: rapidDnsResults.length,
-        "brute-force": bruteResults.size,
-      },
-    }, {
-      headers: {
-        "X-RateLimit-Limit": String(rateLimit.limit),
-        "X-RateLimit-Remaining": String(rateLimit.remaining),
-        "X-RateLimit-Reset": rateLimit.resetsAt,
-      },
-    })
-  }
 
   return NextResponse.json({
     domain: rootDomain,
