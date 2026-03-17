@@ -93,6 +93,25 @@ interface Release {
 
 const CHANGELOG: Release[] = [
   {
+    version: "2.0.5",
+    date: "March 16, 2026",
+    title: "API Rate Limiting Complete & Enhanced Legal Documentation",
+    highlights: true,
+    summary: "Comprehensive API rate limiting implementation across all documented endpoints with proper daily limit tracking, source tracking fixes for crawl/bulk operations, DELETE endpoint implementation, and enhanced accessibility documentation.",
+    changes: [
+      { icon: Key, label: "Complete API Rate Limiting", desc: "Implemented rate limit checks across all scan endpoints (scan, crawl, bulk, discover) and history endpoints (GET, POST, PATCH, DELETE). All rate-limited endpoints check the user's configured daily limit (typically 50), return 429 status when exceeded, and include proper rate limit headers (X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset).", category: "added" },
+      { icon: Gauge, label: "API Usage Tracking", desc: "All documented API endpoints now record usage via recordUsage() for proper daily limit accounting. Usage is tracked in api_usage table with proper rate limiting applied to all operations that count against the daily quota. Discover endpoint exempt from rate limits per documentation.", category: "added" },
+      { icon: Settings, label: "Dynamic Daily Limit per API Key", desc: "Replaced hardcoded 50-request limit with dynamic keyData.dailyLimit from API key configuration. All rate limit checks now use the configured daily limit from the user's specific API key, allowing different keys to have different quotas.", category: "changed" },
+      { icon: Radar, label: "Source Tracking Fix for Crawl/Bulk", desc: "Fixed crawl and bulk scan endpoints to correctly report source as 'api-crawl'/'api-bulk' vs 'deep-crawl'/'bulk' based on authentication method. Previously hardcoded 'web', now properly tracks API vs session-based scans in history.", category: "fixed" },
+      { icon: Trash2, label: "DELETE Handler for History", desc: "Implemented missing DELETE handler for /api/v2/history/[id] endpoint. Users can now delete individual scans via API with proper authentication and rate limiting applied.", category: "added" },
+      { icon: Shield, label: "Terms Acceptance Enforcement on API", desc: "All rate-limited API endpoints now check if user has accepted latest terms (tos_accepted_at). API requests from users who haven't accepted new terms receive 403 Forbidden with message directing them to log in and accept terms before using API.", category: "security" },
+      { icon: Link2, label: "Comprehensive History API Rate Limiting", desc: "Added rate limiting to all history endpoints: GET /history (list scans), DELETE /history (delete all), GET /history/[id] (get scan details), PATCH /history/[id] (update notes), DELETE /history/[id] (delete single scan). All endpoints properly validate API keys and track usage.", category: "added" },
+      { icon: AlertTriangle, label: "Rate Limit Exemption for Discovery", desc: "Discover endpoint (/api/v2/scan/crawl/discover) properly exempted from rate limiting per documentation. Users can perform unlimited discovery operations without consuming daily API quota.", category: "changed" },
+      { icon: FileText, label: "Enhanced Accessibility Documentation", desc: "Updated Accessibility Statement with better CAPTCHA alternatives (direct email contact), PDF accessibility notes with support contact, browser update recommendations, and disclaimer about response times during high volume periods.", category: "changed" },
+      { icon: Heart, label: "Improved Donate Page", desc: "Enhanced donate page with better visual design including gradient background, heart icon with glow effect, fallback donate button if redirect fails, and thank you message after redirect.", category: "changed" },
+    ],
+  },
+  {
     version: "2.0.4",
     date: "March 16, 2026",
     title: "Comprehensive Legal Overhaul & API Route Authentication Fix",
