@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { getSession } from "@/lib/auth"
 import pool from "@/lib/db"
 import { ERROR_MESSAGES, BEARER_PREFIX } from "@/lib/constants"
-import { validateApiKey } from "@/lib/api-keys"
+import { validateApiKey, checkRateLimit as checkApiKeyRateLimit, recordUsage } from "@/lib/api-keys"
 
 export async function GET(
   request: NextRequest,
@@ -11,10 +11,12 @@ export async function GET(
   // Auth: check API key first (Bearer token), then fall back to session cookie
   const authHeader = request.headers.get("authorization")
   let authedUserId: number | null = null
+  let apiKeyId: number | null = null
+  let keyData: any = null
 
   if (authHeader?.startsWith(BEARER_PREFIX)) {
     const token = authHeader.slice(7)
-    const keyData = await validateApiKey(token)
+    keyData = await validateApiKey(token)
 
     if (!keyData) {
       return NextResponse.json({ error: "Invalid or revoked API key." }, { status: 401 })
@@ -22,6 +24,14 @@ export async function GET(
     if (keyData.needsTermsAcceptance) {
       return NextResponse.json({ error: "Please accept our updated Terms of Service. Log in to your account to review and accept the new terms before using the API." }, { status: 403 })
     }
+
+    // Check API key rate limit
+    const rateLimit = await checkApiKeyRateLimit(keyData.keyId, keyData.dailyLimit)
+    if (!rateLimit.allowed) {
+      return NextResponse.json({ error: `Rate limit exceeded. Resets at ${rateLimit.resetsAt}` }, { status: 429 })
+    }
+
+    apiKeyId = keyData.keyId
     authedUserId = keyData.userId
   } else {
     const session = await getSession()
@@ -53,6 +63,11 @@ export async function GET(
 
   // Allow if it's the user's own scan
   if (scan.user_id === authedUserId) {
+    // Record API key usage
+    if (apiKeyId) {
+      await recordUsage(apiKeyId)
+    }
+
     return NextResponse.json({
       url: scan.url,
       scannedAt: scan.scanned_at,
@@ -75,6 +90,11 @@ export async function GET(
   )
 
   if (teamCheck.rows[0].team_count > 0) {
+    // Record API key usage
+    if (apiKeyId) {
+      await recordUsage(apiKeyId)
+    }
+
     // They're on the same team, allow access but don't show delete option
     return NextResponse.json({
       url: scan.url,
@@ -99,10 +119,12 @@ export async function PATCH(
   // Auth: check API key first (Bearer token), then fall back to session cookie
   const authHeader = request.headers.get("authorization")
   let authedUserId: number | null = null
+  let apiKeyId: number | null = null
+  let keyData: any = null
 
   if (authHeader?.startsWith(BEARER_PREFIX)) {
     const token = authHeader.slice(7)
-    const keyData = await validateApiKey(token)
+    keyData = await validateApiKey(token)
 
     if (!keyData) {
       return NextResponse.json({ error: "Invalid or revoked API key." }, { status: 401 })
@@ -110,6 +132,14 @@ export async function PATCH(
     if (keyData.needsTermsAcceptance) {
       return NextResponse.json({ error: "Please accept our updated Terms of Service. Log in to your account to review and accept the new terms before using the API." }, { status: 403 })
     }
+
+    // Check API key rate limit
+    const rateLimit = await checkApiKeyRateLimit(keyData.keyId, keyData.dailyLimit)
+    if (!rateLimit.allowed) {
+      return NextResponse.json({ error: `Rate limit exceeded. Resets at ${rateLimit.resetsAt}` }, { status: 429 })
+    }
+
+    apiKeyId = keyData.keyId
     authedUserId = keyData.userId
   } else {
     const session = await getSession()
@@ -141,6 +171,11 @@ export async function PATCH(
     return NextResponse.json({ error: "Scan not found" }, { status: 404 })
   }
 
+  // Record API key usage
+  if (apiKeyId) {
+    await recordUsage(apiKeyId)
+  }
+
   return NextResponse.json({ notes: result.rows[0].notes })
 }
 
@@ -151,10 +186,12 @@ export async function DELETE(
   // Auth: check API key first (Bearer token), then fall back to session cookie
   const authHeader = request.headers.get("authorization")
   let authedUserId: number | null = null
+  let apiKeyId: number | null = null
+  let keyData: any = null
 
   if (authHeader?.startsWith(BEARER_PREFIX)) {
     const token = authHeader.slice(7)
-    const keyData = await validateApiKey(token)
+    keyData = await validateApiKey(token)
 
     if (!keyData) {
       return NextResponse.json({ error: "Invalid or revoked API key." }, { status: 401 })
@@ -162,6 +199,14 @@ export async function DELETE(
     if (keyData.needsTermsAcceptance) {
       return NextResponse.json({ error: "Please accept our updated Terms of Service. Log in to your account to review and accept the new terms before using the API." }, { status: 403 })
     }
+
+    // Check API key rate limit
+    const rateLimit = await checkApiKeyRateLimit(keyData.keyId, keyData.dailyLimit)
+    if (!rateLimit.allowed) {
+      return NextResponse.json({ error: `Rate limit exceeded. Resets at ${rateLimit.resetsAt}` }, { status: 429 })
+    }
+
+    apiKeyId = keyData.keyId
     authedUserId = keyData.userId
   } else {
     const session = await getSession()
@@ -185,6 +230,11 @@ export async function DELETE(
 
   if (result.rows.length === 0) {
     return NextResponse.json({ error: "Scan not found" }, { status: 404 })
+  }
+
+  // Record API key usage
+  if (apiKeyId) {
+    await recordUsage(apiKeyId)
   }
 
   return NextResponse.json({ success: true })
