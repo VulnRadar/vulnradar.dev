@@ -38,7 +38,8 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   
   let isDiscordLogin = false
   let effectiveUserId = userId
-  let parsedDiscordPending: { userId: number; token: string; ts: number } | null = null
+  let discordRememberMe = false
+  let parsedDiscordPending: { userId: number; token: string; ts: number; rememberMe?: boolean } | null = null
   
   // Check for Discord pending login first (userId might be 0 from client)
   if (discordPending) {
@@ -47,6 +48,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
       if (parsedDiscordPending) {
         isDiscordLogin = true
         effectiveUserId = parsedDiscordPending.userId
+        discordRememberMe = parsedDiscordPending.rememberMe === true
         // Check if Discord pending token is expired (5 minutes)
         if (Date.now() - parsedDiscordPending.ts > 5 * 60 * 1000) {
           return ApiResponse.unauthorized("Discord login session expired. Please try again.")
@@ -160,7 +162,9 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   }
 
   // If user wants to remember this device, set device trust cookie
-  if (rememberDevice === true) {
+  // For Discord login, use the rememberMe preference from the OAuth state
+  const shouldRememberDevice = isDiscordLogin ? discordRememberMe : rememberDevice === true
+  if (shouldRememberDevice) {
     const deviceId = `${ip}-${userAgent}`.split("").reduce((a, b) => ((a << 5) - a) + b.charCodeAt(0), 0)
     response.cookies.set(DEVICE_TRUST_COOKIE_NAME, String(deviceId), {
       httpOnly: true,
