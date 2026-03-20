@@ -152,10 +152,28 @@ export const Validate = {
  */
 export async function parseBody<T>(request: Request): Promise<{ success: true; data: T } | { success: false; error: string }> {
   try {
-    const data = await request.json()
-    return { success: true, data }
-  } catch {
-    return { success: false, error: "Invalid JSON in request body" }
+    const contentType = request.headers.get("content-type") || ""
+    
+    // Only parse JSON if content-type indicates JSON
+    if (contentType.includes("application/json")) {
+      const data = await request.json()
+      return { success: true, data }
+    }
+    
+    // Fallback for missing content-type (assume JSON if not FormData)
+    if (!contentType.includes("multipart/form-data")) {
+      try {
+        const data = await request.json()
+        return { success: true, data }
+      } catch {
+        return { success: false, error: "Invalid JSON in request body" }
+      }
+    }
+    
+    return { success: false, error: "Unsupported content-type" }
+  } catch (error) {
+    console.error("[Parse Body Error]", error)
+    return { success: false, error: "Failed to parse request body" }
   }
 }
 
