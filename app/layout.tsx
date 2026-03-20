@@ -1,7 +1,6 @@
 import React from "react"
 import type { Metadata, Viewport } from 'next'
 import { Inter, JetBrains_Mono } from 'next/font/google'
-import Script from 'next/script'
 import { ThemeProvider } from '@/components/theme-provider'
 import { TosGate } from '@/components/tos-gate'
 import { BackupCodesModal } from '@/components/notification-center'
@@ -9,7 +8,7 @@ import { DiscordProfileModalWrapper } from '@/components/discord-profile-modal-w
 import { AuthProvider } from '@/components/auth-provider'
 import { StaffHeartbeat } from '@/components/staff-heartbeat'
 import { SiteNotificationsWrapper } from '@/components/site-notifications'
-import { APP_NAME, APP_DESCRIPTION, APP_URL, APP_VERSION, LOGO_URL, STAFF_ROLES } from '@/lib/constants'
+import { APP_NAME, APP_DESCRIPTION, APP_URL, STAFF_ROLES } from '@/lib/constants'
 
 import './globals.css'
 
@@ -28,7 +27,6 @@ export const metadata: Metadata = {
   icons: {
     icon: [
       { url: '/favicon.ico', sizes: 'any' },
-      { url: '/favicon.svg', type: 'image/svg+xml' },
       { url: '/favicon-dark.svg', type: 'image/svg+xml', media: '(prefers-color-scheme: dark)' },
       { url: '/favicon-light.svg', type: 'image/svg+xml', media: '(prefers-color-scheme: light)' },
     ],
@@ -43,7 +41,7 @@ export const metadata: Metadata = {
     locale: 'en_US',
     images: [
       {
-        url: `${APP_URL}/og-image-175.png`,
+        url: `${APP_URL}/og-image-310.png`,
         width: 1200,
         height: 630,
         alt: `${APP_NAME} - Web Vulnerability Scanner`,
@@ -55,7 +53,7 @@ export const metadata: Metadata = {
     title: `${APP_NAME} - Web Vulnerability Scanner`,
     description: APP_DESCRIPTION,
     site: '@' + APP_NAME,
-    images: [`${APP_URL}/og-image-175.png`],
+    images: [`${APP_URL}/og-image-310.png`],
   },
   robots: {
     index: true,
