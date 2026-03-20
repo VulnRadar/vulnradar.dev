@@ -8,7 +8,6 @@ import pool from "@/lib/db"
 import { cookies } from "next/headers"
 import crypto from "crypto"
 import { loadConfig } from "@/lib/config"
-import { DEVICE_TRUST_COOKIE_NAME, DEVICE_TRUST_MAX_AGE } from "@/lib/constants"
 import {
   sendDiscordEmail2FACode,
   updateDiscordTokens,
@@ -63,13 +62,11 @@ export async function GET(request: Request) {
     return NextResponse.redirect(`${baseUrl}/login?error=discord_not_configured`)
   }
 
-  // Parse state to get action and rememberMe preference
+  // Parse state to get action
   let action = "connect"
-  let rememberMe = false
   try {
     const stateData = JSON.parse(Buffer.from(state, "base64url").toString())
     action = stateData.action || "connect"
-    rememberMe = stateData.rememberMe === true
     // Check if state is too old (5 minutes)
     if (Date.now() - stateData.ts > 5 * 60 * 1000) {
       return NextResponse.redirect(`${baseUrl}/login?error=discord_expired`)
@@ -231,7 +228,6 @@ export async function GET(request: Request) {
             userId,
             method: user2FA.two_factor_method,
             email: user2FA.email,
-            rememberMe,
             ts: Date.now(),
           }),
           {
@@ -260,22 +256,7 @@ export async function GET(request: Request) {
       const userAgent = request.headers.get("user-agent") || "unknown"
       await createSession(userId, ip, userAgent)
 
-      // Create redirect response
-      const response = NextResponse.redirect(`${baseUrl}/dashboard`)
-
-      // If user wants to remember this device, set device trust cookie
-      if (rememberMe) {
-        const deviceId = `${ip}-${userAgent}`.split("").reduce((a, b) => ((a << 5) - a) + b.charCodeAt(0), 0)
-        response.cookies.set(DEVICE_TRUST_COOKIE_NAME, String(deviceId), {
-          httpOnly: true,
-          secure: process.env.NODE_ENV === "production",
-          sameSite: "lax",
-          path: "/",
-          maxAge: DEVICE_TRUST_MAX_AGE,
-        })
-      }
-
-      return response
+      return NextResponse.redirect(`${baseUrl}/dashboard`)
     }
   } catch (error) {
     console.error("[Discord] OAuth callback error:", error)

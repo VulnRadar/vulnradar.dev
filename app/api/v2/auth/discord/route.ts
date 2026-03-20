@@ -12,7 +12,6 @@ const DISCORD_CLIENT_ID = process.env.DISCORD_CLIENT_ID
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url)
   const action = searchParams.get("action") || "connect" // "connect" (link to existing) or "login" (sign in with Discord)
-  const rememberMe = searchParams.get("remember") === "true" // "remember me for 30 days" preference
   
   if (!DISCORD_CLIENT_ID) {
     return NextResponse.json({ error: "Discord integration not configured" }, { status: 500 })
@@ -33,7 +32,7 @@ export async function GET(request: Request) {
 
   // Build Discord OAuth URL
   const scopes = ["identify", "email", "guilds.join"]
-  const state = Buffer.from(JSON.stringify({ action, rememberMe, ts: Date.now() })).toString("base64url")
+  const state = Buffer.from(JSON.stringify({ action, ts: Date.now() })).toString("base64url")
   
   const discordAuthUrl = new URL("https://discord.com/api/oauth2/authorize")
   discordAuthUrl.searchParams.set("client_id", DISCORD_CLIENT_ID)
