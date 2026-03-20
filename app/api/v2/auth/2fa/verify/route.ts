@@ -160,6 +160,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   }
 
   // If user wants to remember this device, set device trust cookie
+  // Use the rememberDevice value from the form submission for both normal and Discord logins
   if (rememberDevice === true) {
     const deviceId = `${ip}-${userAgent}`.split("").reduce((a, b) => ((a << 5) - a) + b.charCodeAt(0), 0)
     response.cookies.set(DEVICE_TRUST_COOKIE_NAME, String(deviceId), {
