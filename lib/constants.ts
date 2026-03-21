@@ -113,33 +113,40 @@ export const COMMON_HEADERS = {
 // ============================================================================
 
 export const ERROR_MESSAGES = {
-  // Authentication
-  INVALID_CREDENTIALS: "Invalid email or password",
-  EMAIL_NOT_VERIFIED: "Please verify your email before logging in",
-  ACCOUNT_DISABLED: "This account has been suspended. Please contact support.",
-  SESSION_EXPIRED: "Your session has expired. Please log in again.",
-  INVALID_2FA: "Invalid 2FA code. Please try again.",
-  INVALID_2FA_SESSION: "Invalid or expired 2FA session. Please log in again.",
+  // Authentication - Professional, clear messages
+  INVALID_CREDENTIALS: "The email or password you entered is incorrect. Please try again.",
+  EMAIL_NOT_VERIFIED: "Please verify your email address before signing in.",
+  ACCOUNT_DISABLED: "Your account has been suspended. Please contact support for assistance.",
+  SESSION_EXPIRED: "Your session has expired. Please sign in again to continue.",
+  INVALID_2FA: "The verification code you entered is invalid. Please try again.",
+  INVALID_2FA_SESSION: "Your verification session has expired. Please sign in again.",
 
-  // Validation
-  REQUIRED_FIELD: (field: string) => `${field} is required`,
-  INVALID_EMAIL: "Invalid email address",
-  WEAK_PASSWORD: "Password must be at least 8 characters",
-  PASSWORDS_NOT_MATCH: "Passwords do not match",
+  // Validation - Clear, actionable messages
+  REQUIRED_FIELD: (field: string) => `${field} is required.`,
+  INVALID_EMAIL: "Please enter a valid email address.",
+  WEAK_PASSWORD: "Password must be at least 8 characters long.",
+  PASSWORDS_NOT_MATCH: "The passwords you entered do not match.",
 
-  // Rate limiting
+  // Rate limiting - Informative with timing
   TOO_MANY_ATTEMPTS: (resource: string, minutes: number) =>
-    `Too many ${resource} attempts. Try again in ${minutes} minute(s).`,
+    `Too many ${resource} attempts. Please wait ${minutes} minute${minutes > 1 ? 's' : ''} before trying again.`,
 
-  // Database
-  DATABASE_ERROR: "Database error occurred. Please try again.",
-  DUPLICATE_EMAIL: "Email already registered",
+  // Database - User-friendly errors
+  DATABASE_ERROR: "A temporary error occurred. Please try again in a moment.",
+  DUPLICATE_EMAIL: "An account with this email address already exists.",
 
-  // General
-  UNAUTHORIZED: "Unauthorized",
-  FORBIDDEN: "Forbidden",
-  NOT_FOUND: "Not found",
-  SERVER_ERROR: "Something went wrong. Please try again.",
+  // Authorization - Clear, professional responses
+  UNAUTHORIZED: "Authentication required. Please sign in to access this resource.",
+  FORBIDDEN: "You do not have permission to access this resource.",
+  NOT_FOUND: "The requested resource could not be found.",
+  SERVER_ERROR: "An unexpected error occurred. Please try again later.",
+  
+  // API-specific messages
+  INVALID_API_KEY: "The API key provided is invalid or has been revoked.",
+  API_KEY_REQUIRED: "An API key is required to access this endpoint.",
+  RATE_LIMIT_EXCEEDED: "Rate limit exceeded. Please slow down your requests.",
+  INVALID_REQUEST: "The request could not be processed. Please check your input.",
+  METHOD_NOT_ALLOWED: "This HTTP method is not supported for this endpoint.",
 }
 
 // ============================================================================
