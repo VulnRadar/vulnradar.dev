@@ -7,7 +7,7 @@ import { Header } from "@/components/scanner/header"
 import { Footer } from "@/components/scanner/footer"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent } from "@/components/ui/card"
 import { cn } from "@/lib/utils"
 import { PaginationControl, usePagination } from "@/components/ui/pagination-control"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
@@ -28,7 +28,17 @@ import {
   ChevronRight,
   ArrowLeft,
   Pencil,
+  Search,
+  MoreHorizontal,
+  ExternalLink,
 } from "lucide-react"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 
 interface Team {
   id: number
@@ -48,7 +58,6 @@ interface Member {
   staff_role?: string
 }
 
-
 interface Invite {
   id: number
   email: string
@@ -59,9 +68,22 @@ interface Invite {
 
 const ROLE_ICONS: Record<string, typeof Crown> = { owner: Crown, admin: Shield, viewer: Eye }
 const ROLE_COLORS: Record<string, string> = {
-  owner: "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20",
+  owner: "bg-amber-500/10 text-amber-500 border-amber-500/20",
   admin: "bg-primary/10 text-primary border-primary/20",
   viewer: "bg-muted text-muted-foreground border-border",
+}
+
+function formatRelativeTime(date: Date): string {
+  const now = new Date()
+  const diffMs = now.getTime() - date.getTime()
+  const diffMins = Math.floor(diffMs / 60000)
+  const diffHours = Math.floor(diffMs / 3600000)
+  const diffDays = Math.floor(diffMs / 86400000)
+  if (diffMins < 1) return "just now"
+  if (diffMins < 60) return `${diffMins}m ago`
+  if (diffHours < 24) return `${diffHours}h ago`
+  if (diffDays < 7) return `${diffDays}d ago`
+  return date.toLocaleDateString()
 }
 
 export default function TeamsPage() {
@@ -71,6 +93,7 @@ export default function TeamsPage() {
   const [creating, setCreating] = useState(false)
   const [newName, setNewName] = useState("")
   const [showCreate, setShowCreate] = useState(false)
+  const [searchQuery, setSearchQuery] = useState("")
 
   // Detail view
   const [selectedTeam, setSelectedTeam] = useState<Team | null>(null)
@@ -261,342 +284,394 @@ export default function TeamsPage() {
 
   const canManage = currentRole === TEAM_ROLES.OWNER || currentRole === TEAM_ROLES.ADMIN
 
+  // Filter teams by search
+  const filteredTeams = teams.filter((t) =>
+    t.name.toLowerCase().includes(searchQuery.toLowerCase())
+  )
+
   return (
     <div className="min-h-screen flex flex-col bg-background">
       <Header />
-      <main className="flex-1 w-full max-w-4xl mx-auto px-4 py-6 sm:py-8 flex flex-col gap-6">
-        {loading ? (
-          <div className="flex flex-col items-center gap-3 py-20">
-            <Loader2 className="h-6 w-6 animate-spin text-primary" />
-            <p className="text-sm text-muted-foreground">Loading teams...</p>
-          </div>
-        ) : selectedTeam ? (
-          /* Team Detail View */
-          <div className="flex flex-col gap-6">
-            <button type="button" onClick={() => setSelectedTeam(null)} className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors w-fit">
-              <ArrowLeft className="h-4 w-4" />Back to Teams
-            </button>
-
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <div className="flex items-center gap-3">
-                <div className="min-w-0">
-                  {editingName ? (
-                    <div className="flex items-center gap-2">
-                      <Input
-                        value={nameInput}
-                        onChange={(e) => setNameInput(e.target.value)}
-                        onKeyDown={(e) => { if (e.key === "Enter") handleRename(); if (e.key === "Escape") setEditingName(false) }}
-                        className="h-8 text-sm font-bold w-40 sm:w-56"
-                        autoFocus
-                        maxLength={50}
-                      />
-                      <Button size="sm" className="h-8 w-8 p-0" onClick={handleRename} disabled={savingName} aria-label="Save team name">
-                        {savingName ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
-                      </Button>
-                      <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => setEditingName(false)} aria-label="Cancel editing">
-                        <X className="h-3.5 w-3.5" />
-                      </Button>
-                    </div>
-                  ) : (
-                    <div className="flex items-center gap-1.5">
-                      <h2 className="text-lg font-bold text-foreground truncate">{selectedTeam.name}</h2>
-                      {canManage && (
-                        <button
-                          type="button"
-                          onClick={() => { setNameInput(selectedTeam.name); setEditingName(true) }}
-                          className="text-muted-foreground hover:text-foreground transition-colors p-1 rounded-md hover:bg-muted shrink-0"
-                          aria-label="Edit team name"
-                        >
-                          <Pencil className="h-3.5 w-3.5" />
-                        </button>
-                      )}
-                    </div>
-                  )}
-                  <p className="text-xs text-muted-foreground">{members.length} member{members.length !== 1 && "s"} | Your role: {currentRole}</p>
-                </div>
-              </div>
-              <TooltipProvider>
-                <div className="flex items-center gap-2 self-start sm:self-auto">
-                  {canManage && (
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button variant="outline" size="sm" className="bg-transparent gap-1.5" onClick={() => { setShowInvite(!showInvite); setInviteToken(null) }}>
-                          <UserPlus className="h-3.5 w-3.5" /><span className="hidden sm:inline">Invite</span>
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent className="sm:hidden">Invite</TooltipContent>
-                    </Tooltip>
-                  )}
-                  {currentRole === TEAM_ROLES.OWNER ? (
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button variant="outline" size="sm" className="bg-transparent text-destructive hover:text-destructive gap-1.5" onClick={() => handleDelete(selectedTeam.id)}>
-                          <Trash2 className="h-3.5 w-3.5" /><span className="hidden sm:inline">Delete Team</span>
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent className="sm:hidden">Delete Team</TooltipContent>
-                    </Tooltip>
-                  ) : (
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button variant="outline" size="sm" className="bg-transparent text-destructive hover:text-destructive gap-1.5" onClick={handleLeave}>
-                          <LogOut className="h-3.5 w-3.5" /><span className="hidden sm:inline">Leave</span>
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent className="sm:hidden">Leave</TooltipContent>
-                    </Tooltip>
-                  )}
-                </div>
-              </TooltipProvider>
+      <main className="flex-1 w-full max-w-5xl mx-auto px-4 py-8">
+        <div className="flex flex-col gap-6">
+          {loading ? (
+            <div className="flex flex-col items-center gap-3 py-20">
+              <Loader2 className="h-6 w-6 animate-spin text-primary" />
+              <p className="text-sm text-muted-foreground">Loading teams...</p>
             </div>
+          ) : selectedTeam ? (
+            /* Team Detail View */
+            <>
+              <button type="button" onClick={() => setSelectedTeam(null)} className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors w-fit">
+                <ArrowLeft className="h-4 w-4" />Back to Teams
+              </button>
 
-            {/* Invite form */}
-            {showInvite && (
+              {/* Team header card */}
               <Card className="bg-card border-border">
-                <CardContent className="pt-4 flex flex-col gap-3">
-                  <div className="flex items-center justify-between">
-                    <p className="text-sm font-medium text-foreground">Invite Team Member</p>
-                    <button type="button" onClick={() => { setShowInvite(false); setInviteToken(null) }} className="text-muted-foreground hover:text-foreground">
-                      <X className="h-4 w-4" />
-                    </button>
-                  </div>
-                  <div className="flex flex-col sm:flex-row gap-2">
-                    <Input placeholder="email@example.com" value={inviteEmail} onChange={(e) => setInviteEmail(e.target.value)} className="flex-1" />
-                    <select value={inviteRole} onChange={(e) => setInviteRole(e.target.value as "admin" | "viewer")} className="h-10 rounded-md border border-border bg-background px-3 text-sm text-foreground">
-                      <option value="viewer">Viewer</option>
-                      <option value="admin">Admin</option>
-                    </select>
-                    <Button onClick={handleInvite} disabled={inviting || !inviteEmail.trim()} size="sm" className="h-10">
-                      {inviting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Send Invite"}
-                    </Button>
-                  </div>
-                  {inviteToken && (
-                    <div className="bg-muted/30 border border-border rounded-lg p-3">
-                      <p className="text-xs text-muted-foreground mb-2">Share this invite link (expires in 7 days):</p>
-                      <div className="flex items-center gap-2">
-                        <code className="flex-1 text-[11px] text-foreground bg-background border border-border rounded px-2 py-1.5 font-mono break-all select-all">
-                          {`${typeof window !== "undefined" ? window.location.origin : ""}/teams/join?token=${inviteToken}`}
-                        </code>
-                        <Button variant="outline" size="sm" className="bg-transparent shrink-0 h-8 w-8 p-0" onClick={copyInviteLink}>
-                          {copied ? <Check className="h-3.5 w-3.5 text-emerald-500" /> : <Copy className="h-3.5 w-3.5" />}
-                        </Button>
-                      </div>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            )}
-
-            {/* Members list */}
-            {membersLoading ? (
-              <div className="flex items-center gap-2 py-8 justify-center">
-                <Loader2 className="h-4 w-4 animate-spin text-primary" />
-                <p className="text-sm text-muted-foreground">Loading members...</p>
-              </div>
-            ) : (
-              <div className="flex flex-col gap-2">
-                <TooltipProvider>
-                {members.map((m) => {
-                  const Icon = ROLE_ICONS[m.role] || Eye
-                  return (
-                    <div key={m.user_id} className="flex items-center gap-3 p-3 rounded-xl border border-border bg-card">
-                      {m.avatar_url ? (
-                        <img src={m.avatar_url} alt="" loading="lazy" className="w-9 h-9 rounded-full object-cover shrink-0" />
-                      ) : (
-                        <div className="flex items-center justify-center w-9 h-9 rounded-full bg-muted shrink-0">
-                          <span className="text-sm font-medium text-foreground">{(m.name || m.email)[0].toUpperCase()}</span>
+                <CardContent className="p-5">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                    <div className="flex-1 min-w-0">
+                      {editingName ? (
+                        <div className="flex items-center gap-2">
+                          <Input
+                            value={nameInput}
+                            onChange={(e) => setNameInput(e.target.value)}
+                            onKeyDown={(e) => { if (e.key === "Enter") handleRename(); if (e.key === "Escape") setEditingName(false) }}
+                            className="h-9 text-base font-semibold w-48 sm:w-64"
+                            autoFocus
+                            maxLength={50}
+                          />
+                          <Button size="sm" className="h-9 w-9 p-0" onClick={handleRename} disabled={savingName}>
+                            {savingName ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+                          </Button>
+                          <Button variant="ghost" size="sm" className="h-9 w-9 p-0" onClick={() => setEditingName(false)}>
+                            <X className="h-4 w-4" />
+                          </Button>
                         </div>
-                      )}
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-1.5">
-                          <p className="text-sm font-medium text-foreground truncate">{m.name || "Unnamed"}</p>
-                          {m.staff_role && m.staff_role !== STAFF_ROLES.USER && ROLE_BADGE_STYLES[m.staff_role] && (
-                            <span className={cn("inline-flex items-center px-1.5 py-0.5 rounded-full text-[9px] font-semibold uppercase tracking-wider border shrink-0", ROLE_BADGE_STYLES[m.staff_role])}>
-                              {STAFF_ROLE_LABELS[m.staff_role] || m.staff_role}
-                            </span>
+                      ) : (
+                        <div className="flex items-center gap-2">
+                          <h2 className="text-xl font-semibold tracking-tight truncate">{selectedTeam.name}</h2>
+                          {canManage && (
+                            <button
+                              type="button"
+                              onClick={() => { setNameInput(selectedTeam.name); setEditingName(true) }}
+                              className="text-muted-foreground hover:text-foreground transition-colors p-1.5 rounded-md hover:bg-muted shrink-0"
+                            >
+                              <Pencil className="h-3.5 w-3.5" />
+                            </button>
                           )}
                         </div>
-                        <p className="text-xs text-muted-foreground truncate">{m.email}</p>
-                      </div>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Button variant="ghost" size="sm" className="h-8 px-2 text-muted-foreground hover:text-foreground gap-1" onClick={() => handleViewMemberScans(m)}>
-                            <Eye className="h-3.5 w-3.5" />
-                            <span className="hidden sm:inline text-xs">View Scans</span>
-                            <ChevronRight className="h-3 w-3 hidden sm:block" />
-                          </Button>
-                        </TooltipTrigger>
-                        <TooltipContent className="sm:hidden">View Scans</TooltipContent>
-                      </Tooltip>
-                      <span className={cn("inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full border", ROLE_COLORS[m.role])}>
-                        <Icon className="h-3 w-3" /><span className="hidden sm:inline">{m.role}</span>
-                      </span>
-                      {canManage && m.role !== TEAM_ROLES.OWNER && (
-                        <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive" onClick={() => handleRemoveMember(m.user_id)} aria-label={`Remove ${m.name || m.email}`}>
-                          <X className="h-3.5 w-3.5" />
+                      )}
+                      <p className="text-sm text-muted-foreground mt-1">
+                        {members.length} member{members.length !== 1 && "s"} · Your role: <span className="capitalize">{currentRole}</span>
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2 self-start sm:self-auto">
+                      {canManage && (
+                        <Button variant="outline" size="sm" className="gap-1.5" onClick={() => { setShowInvite(!showInvite); setInviteToken(null) }}>
+                          <UserPlus className="h-4 w-4" />
+                          <span className="hidden sm:inline">Invite</span>
                         </Button>
                       )}
-                    </div>
-                  )
-                })}
-                </TooltipProvider>
-
-                {/* Pending invites */}
-                {invites.length > 0 && (
-                  <>
-                    <p className="text-xs text-muted-foreground font-semibold uppercase tracking-wider mt-4 mb-1">Pending Invites</p>
-                    {invites.map((inv) => (
-                      <div key={inv.id} className="flex items-center gap-3 p-3 rounded-xl border border-dashed border-border bg-card/50">
-                        <div className="flex items-center justify-center w-9 h-9 rounded-full bg-muted/50">
-                          <Mail className="h-4 w-4 text-muted-foreground" />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm text-muted-foreground truncate">{inv.email}</p>
-                          <p className="text-[10px] text-muted-foreground">Expires {new Date(inv.expires_at).toLocaleDateString()}</p>
-                        </div>
-                        <span className={cn("text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full border", ROLE_COLORS[inv.role])}>
-                          {inv.role}
-                        </span>
-                        {canManage && (
-                          <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive" onClick={() => handleCancelInvite(inv.id)}>
-                            <Trash2 className="h-3.5 w-3.5" />
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="outline" size="sm" className="h-9 w-9 p-0">
+                            <MoreHorizontal className="h-4 w-4" />
                           </Button>
-                        )}
-                      </div>
-                    ))}
-                  </>
-                )}
-              </div>
-            )}
-
-            {/* Member Scan History Modal */}
-            {viewingMember && (
-              <Card className="bg-card border-border">
-                <CardHeader className="pb-3">
-                  <div className="flex items-center justify-between">
-                    <CardTitle className="text-base">
-                      {viewingMember.name || viewingMember.email}{"'"}s Scan History
-                    </CardTitle>
-                    <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => setViewingMember(null)} aria-label="Close scan history">
-                      <X className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  {scansLoading ? (
-                    <div className="flex items-center gap-2 py-8 justify-center">
-                      <Loader2 className="h-4 w-4 animate-spin text-primary" />
-                      <p className="text-sm text-muted-foreground">Loading scans...</p>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="w-48">
+                          {currentRole === TEAM_ROLES.OWNER ? (
+                            <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => handleDelete(selectedTeam.id)}>
+                              <Trash2 className="h-4 w-4 mr-2" />Delete Team
+                            </DropdownMenuItem>
+                          ) : (
+                            <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={handleLeave}>
+                              <LogOut className="h-4 w-4 mr-2" />Leave Team
+                            </DropdownMenuItem>
+                          )}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     </div>
-                  ) : memberScans.length === 0 ? (
-                    <div className="py-8 text-center">
-                      <p className="text-sm text-muted-foreground">No scans found</p>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Invite form */}
+              {showInvite && (
+                <Card className="bg-card border-border">
+                  <CardContent className="p-5">
+                    <div className="flex items-center justify-between mb-4">
+                      <div>
+                        <p className="text-sm font-medium">Invite Team Member</p>
+                        <p className="text-xs text-muted-foreground mt-0.5">Send an invite link to add a new member</p>
+                      </div>
+                      <button type="button" onClick={() => { setShowInvite(false); setInviteToken(null) }} className="text-muted-foreground hover:text-foreground p-1">
+                        <X className="h-4 w-4" />
+                      </button>
+                    </div>
+                    <div className="flex flex-col sm:flex-row gap-2">
+                      <Input placeholder="email@example.com" value={inviteEmail} onChange={(e) => setInviteEmail(e.target.value)} className="flex-1" />
+                      <select value={inviteRole} onChange={(e) => setInviteRole(e.target.value as "admin" | "viewer")} className="h-10 rounded-md border border-border bg-background px-3 text-sm">
+                        <option value="viewer">Viewer</option>
+                        <option value="admin">Admin</option>
+                      </select>
+                      <Button onClick={handleInvite} disabled={inviting || !inviteEmail.trim()} className="h-10">
+                        {inviting ? <Loader2 className="h-4 w-4 animate-spin" /> : "Send Invite"}
+                      </Button>
+                    </div>
+                    {inviteToken && (
+                      <div className="mt-4 p-4 rounded-lg bg-muted/50 border border-border">
+                        <p className="text-xs text-muted-foreground mb-2">Share this invite link (expires in 7 days):</p>
+                        <div className="flex items-center gap-2">
+                          <code className="flex-1 text-xs bg-background border border-border rounded px-3 py-2 font-mono break-all select-all">
+                            {`${typeof window !== "undefined" ? window.location.origin : ""}/teams/join?token=${inviteToken}`}
+                          </code>
+                          <Button variant="outline" size="sm" className="shrink-0 h-9 w-9 p-0" onClick={copyInviteLink}>
+                            {copied ? <Check className="h-4 w-4 text-emerald-500" /> : <Copy className="h-4 w-4" />}
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Members list */}
+              <Card className="bg-card border-border">
+                <CardContent className="p-0">
+                  <div className="px-5 py-4 border-b border-border">
+                    <p className="text-sm font-medium">Members</p>
+                  </div>
+                  {membersLoading ? (
+                    <div className="flex items-center gap-2 py-12 justify-center">
+                      <Loader2 className="h-5 w-5 animate-spin text-primary" />
+                      <p className="text-sm text-muted-foreground">Loading members...</p>
                     </div>
                   ) : (
-                    <>
-                      <div className="flex flex-col gap-2">
-                        {paginatedScans.map((scan: any) => (
-                          <div key={scan.id} className="flex items-center justify-between p-3 rounded-lg border border-border bg-background hover:bg-muted/50 transition-colors">
+                    <div className="divide-y divide-border">
+                      {members.map((m) => {
+                        const Icon = ROLE_ICONS[m.role] || Eye
+                        return (
+                          <div key={m.user_id} className="flex items-center gap-3 px-5 py-3 hover:bg-muted/30 transition-colors">
+                            {m.avatar_url ? (
+                              <img src={m.avatar_url} alt="" loading="lazy" className="w-9 h-9 rounded-full object-cover shrink-0" />
+                            ) : (
+                              <div className="flex items-center justify-center w-9 h-9 rounded-full bg-muted shrink-0">
+                                <span className="text-sm font-medium">{(m.name || m.email)[0].toUpperCase()}</span>
+                              </div>
+                            )}
                             <div className="flex-1 min-w-0">
-                              <p className="text-sm font-medium text-foreground truncate">{scan.url}</p>
-                              <p className="text-xs text-muted-foreground">
-                                {new Date(scan.scanned_at).toLocaleDateString()} • {scan.findings_count} issue{scan.findings_count !== 1 ? 's' : ''}
-                              </p>
+                              <div className="flex items-center gap-2">
+                                <p className="text-sm font-medium truncate">{m.name || "Unnamed"}</p>
+                                {m.staff_role && m.staff_role !== STAFF_ROLES.USER && ROLE_BADGE_STYLES[m.staff_role] && (
+                                  <span className={cn("inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-semibold uppercase tracking-wider border shrink-0", ROLE_BADGE_STYLES[m.staff_role])}>
+                                    {STAFF_ROLE_LABELS[m.staff_role] || m.staff_role}
+                                  </span>
+                                )}
+                              </div>
+                              <p className="text-xs text-muted-foreground truncate">{m.email}</p>
                             </div>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="h-8 px-3 gap-1.5"
-                              asChild
-                            >
-                              <a href={`/history#${scan.id}`}>
-                                View
-                                <ChevronRight className="h-3 w-3" />
-                              </a>
-                            </Button>
+                            <span className={cn("inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full border shrink-0", ROLE_COLORS[m.role])}>
+                              <Icon className="h-3 w-3" /><span className="capitalize">{m.role}</span>
+                            </span>
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button variant="ghost" size="sm" className="h-8 w-8 p-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                                  <MoreHorizontal className="h-4 w-4" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end" className="w-40">
+                                <DropdownMenuItem onClick={() => handleViewMemberScans(m)}>
+                                  <Eye className="h-4 w-4 mr-2" />View Scans
+                                </DropdownMenuItem>
+                                {canManage && m.role !== TEAM_ROLES.OWNER && (
+                                  <>
+                                    <DropdownMenuSeparator />
+                                    <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => handleRemoveMember(m.user_id)}>
+                                      <X className="h-4 w-4 mr-2" />Remove
+                                    </DropdownMenuItem>
+                                  </>
+                                )}
+                              </DropdownMenuContent>
+                            </DropdownMenu>
                           </div>
-                        ))}
-                      </div>
-                      <div className="pt-3">
-                        <PaginationControl
-                          currentPage={scanPage}
-                          totalPages={scanTotalPages}
-                          onPageChange={setScanPage}
-                          pageSize={scansPageSize}
-                          onPageSizeChange={(s) => { setScansPageSize(s); setScanPage(1) }}
-                          totalItems={memberScans.length}
-                        />
-                      </div>
-                    </>
+                        )
+                      })}
+                    </div>
                   )}
                 </CardContent>
               </Card>
-            )}
-          </div>
-        ) : (
-          /* Teams List View */
-          <>
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+
+              {/* Pending invites */}
+              {invites.length > 0 && (
+                <Card className="bg-card border-border">
+                  <CardContent className="p-0">
+                    <div className="px-5 py-4 border-b border-border">
+                      <p className="text-sm font-medium">Pending Invites</p>
+                    </div>
+                    <div className="divide-y divide-border">
+                      {invites.map((inv) => (
+                        <div key={inv.id} className="flex items-center gap-3 px-5 py-3">
+                          <div className="flex items-center justify-center w-9 h-9 rounded-full bg-muted/50 shrink-0">
+                            <Mail className="h-4 w-4 text-muted-foreground" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm text-muted-foreground truncate">{inv.email}</p>
+                            <p className="text-xs text-muted-foreground/70">Expires {new Date(inv.expires_at).toLocaleDateString()}</p>
+                          </div>
+                          <span className={cn("text-xs font-medium px-2.5 py-1 rounded-full border capitalize", ROLE_COLORS[inv.role])}>
+                            {inv.role}
+                          </span>
+                          {canManage && (
+                            <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive" onClick={() => handleCancelInvite(inv.id)}>
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Member Scan History Modal */}
+              {viewingMember && (
+                <Card className="bg-card border-border">
+                  <CardContent className="p-0">
+                    <div className="flex items-center justify-between px-5 py-4 border-b border-border">
+                      <div>
+                        <p className="text-sm font-medium">{viewingMember.name || viewingMember.email}&apos;s Scan History</p>
+                        <p className="text-xs text-muted-foreground mt-0.5">{memberScans.length} scan{memberScans.length !== 1 && "s"} total</p>
+                      </div>
+                      <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => setViewingMember(null)}>
+                        <X className="h-4 w-4" />
+                      </Button>
+                    </div>
+                    {scansLoading ? (
+                      <div className="flex items-center gap-2 py-12 justify-center">
+                        <Loader2 className="h-5 w-5 animate-spin text-primary" />
+                        <p className="text-sm text-muted-foreground">Loading scans...</p>
+                      </div>
+                    ) : memberScans.length === 0 ? (
+                      <div className="py-12 text-center">
+                        <p className="text-sm text-muted-foreground">No scans found</p>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="divide-y divide-border">
+                          {paginatedScans.map((scan: any) => (
+                            <div key={scan.id} className="flex items-center justify-between px-5 py-3 hover:bg-muted/30 transition-colors">
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm font-medium truncate">{scan.url}</p>
+                                <p className="text-xs text-muted-foreground">
+                                  {formatRelativeTime(new Date(scan.scanned_at))} · {scan.findings_count} issue{scan.findings_count !== 1 ? "s" : ""}
+                                </p>
+                              </div>
+                              <Button variant="ghost" size="sm" className="gap-1.5" asChild>
+                                <a href={`/history#${scan.id}`}>
+                                  View<ExternalLink className="h-3 w-3" />
+                                </a>
+                              </Button>
+                            </div>
+                          ))}
+                        </div>
+                        <div className="p-4 border-t border-border">
+                          <PaginationControl
+                            currentPage={scanPage}
+                            totalPages={scanTotalPages}
+                            onPageChange={setScanPage}
+                            pageSize={scansPageSize}
+                            onPageSizeChange={(s) => { setScansPageSize(s); setScanPage(1) }}
+                            totalItems={memberScans.length}
+                          />
+                        </div>
+                      </>
+                    )}
+                  </CardContent>
+                </Card>
+              )}
+            </>
+          ) : (
+            /* Teams List View */
+            <>
               <div className="flex flex-col gap-1">
-                <h1 className="text-xl font-bold text-foreground">Teams</h1>
+                <h1 className="text-2xl font-semibold tracking-tight">Teams</h1>
                 <p className="text-sm text-muted-foreground">Collaborate with team members on security scans.</p>
               </div>
-              <Button size="sm" className="shrink-0 gap-1.5 self-start sm:self-auto" onClick={() => setShowCreate(!showCreate)}>
-                <Plus className="h-3.5 w-3.5" /><span className="hidden sm:inline">New Team</span>
-              </Button>
-            </div>
 
-            {showCreate && (
-              <Card className="bg-card border-border">
-                <CardContent className="pt-4 flex flex-col sm:flex-row gap-2">
-                  <Input placeholder="Team name" value={newName} onChange={(e) => setNewName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && handleCreate()} className="flex-1" autoFocus />
-                  <div className="flex gap-2">
-                    <Button onClick={handleCreate} disabled={creating || !newName.trim()} size="sm" className="h-10">
-                      {creating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Create"}
-                    </Button>
-                    <Button variant="outline" size="sm" className="h-10 bg-transparent" onClick={() => { setShowCreate(false); setNewName("") }}>Cancel</Button>
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-
-            {teams.length === 0 ? (
-              <div className="flex flex-col items-center gap-4 py-16 text-center rounded-xl border border-dashed border-border">
-                <Users className="h-10 w-10 text-muted-foreground/20" />
-                <div className="flex flex-col gap-1">
-                  <p className="text-sm font-medium text-foreground">No teams yet</p>
-                  <p className="text-xs text-muted-foreground">Create a team to collaborate on security scans with others.</p>
+              {/* Search and create */}
+              <div className="flex flex-col sm:flex-row gap-3">
+                <div className="relative flex-1">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Search teams..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="pl-9"
+                  />
                 </div>
-                <Button size="sm" onClick={() => setShowCreate(true)} className="gap-1.5">
-                  <Plus className="h-3.5 w-3.5" />Create Your First Team
+                <Button className="gap-1.5 shrink-0" onClick={() => setShowCreate(!showCreate)}>
+                  <Plus className="h-4 w-4" />New Team
                 </Button>
               </div>
-            ) : (
-              <div className="flex flex-col gap-2">
-                {teams.map((team) => {
-                  const Icon = ROLE_ICONS[team.role] || Eye
-                  return (
-                    <button
-                      key={team.id}
-                      type="button"
-                      onClick={() => openTeam(team)}
-                      className="group flex items-center gap-4 p-4 rounded-xl border border-border bg-card hover:bg-muted/50 hover:border-accent transition-all text-left"
-                    >
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-semibold text-foreground">{team.name}</p>
-                        <p className="text-xs text-muted-foreground mt-0.5">{team.member_count} member{team.member_count !== 1 && "s"}</p>
+
+              {/* Create form */}
+              {showCreate && (
+                <Card className="bg-card border-border">
+                  <CardContent className="p-5">
+                    <p className="text-sm font-medium mb-3">Create New Team</p>
+                    <div className="flex flex-col sm:flex-row gap-2">
+                      <Input placeholder="Team name" value={newName} onChange={(e) => setNewName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && handleCreate()} className="flex-1" autoFocus />
+                      <div className="flex gap-2">
+                        <Button onClick={handleCreate} disabled={creating || !newName.trim()} className="h-10">
+                          {creating ? <Loader2 className="h-4 w-4 animate-spin" /> : "Create"}
+                        </Button>
+                        <Button variant="outline" className="h-10" onClick={() => { setShowCreate(false); setNewName("") }}>Cancel</Button>
                       </div>
-                      <span className={cn("inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full border shrink-0", ROLE_COLORS[team.role])}>
-                        <Icon className="h-3 w-3" />{team.role}
-                      </span>
-                      <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0 transition-transform group-hover:translate-x-0.5" />
-                    </button>
-                  )
-                })}
-              </div>
-            )}
-          </>
-        )}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Teams list */}
+              {filteredTeams.length === 0 && !searchQuery ? (
+                <Card className="bg-card border-border border-dashed">
+                  <CardContent className="py-16 flex flex-col items-center gap-4 text-center">
+                    <div className="flex items-center justify-center w-12 h-12 rounded-full bg-muted">
+                      <Users className="h-6 w-6 text-muted-foreground" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium">No teams yet</p>
+                      <p className="text-xs text-muted-foreground mt-1">Create a team to collaborate on security scans with others.</p>
+                    </div>
+                    <Button size="sm" onClick={() => setShowCreate(true)} className="gap-1.5">
+                      <Plus className="h-4 w-4" />Create Your First Team
+                    </Button>
+                  </CardContent>
+                </Card>
+              ) : filteredTeams.length === 0 ? (
+                <div className="py-12 text-center">
+                  <p className="text-sm text-muted-foreground">No teams match &quot;{searchQuery}&quot;</p>
+                </div>
+              ) : (
+                <Card className="bg-card border-border">
+                  <CardContent className="p-0">
+                    {/* Table header */}
+                    <div className="hidden sm:grid grid-cols-[1fr_100px_100px_32px] gap-4 px-5 py-3 border-b border-border text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                      <span>Team</span>
+                      <span>Members</span>
+                      <span>Your Role</span>
+                      <span></span>
+                    </div>
+                    <div className="divide-y divide-border">
+                      {filteredTeams.map((team) => {
+                        const Icon = ROLE_ICONS[team.role] || Eye
+                        return (
+                          <button
+                            key={team.id}
+                            type="button"
+                            onClick={() => openTeam(team)}
+                            className="group w-full flex items-center sm:grid sm:grid-cols-[1fr_100px_100px_32px] gap-4 px-5 py-4 hover:bg-muted/30 transition-colors text-left"
+                          >
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-medium truncate">{team.name}</p>
+                              <p className="text-xs text-muted-foreground sm:hidden">{team.member_count} member{team.member_count !== 1 && "s"}</p>
+                            </div>
+                            <span className="hidden sm:block text-sm text-muted-foreground tabular-nums">{team.member_count}</span>
+                            <span className={cn("inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full border shrink-0", ROLE_COLORS[team.role])}>
+                              <Icon className="h-3 w-3" /><span className="capitalize">{team.role}</span>
+                            </span>
+                            <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0 transition-transform group-hover:translate-x-0.5" />
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+            </>
+          )}
+        </div>
       </main>
       <Footer />
     </div>
