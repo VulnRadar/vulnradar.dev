@@ -56,11 +56,22 @@ function StatCard({
   trend?: { value: number; label: string }
   color?: string
 }) {
+  // Map text color to background with opacity
+  const bgColorMap: Record<string, string> = {
+    "text-primary": "bg-primary/10",
+    "text-cyan-500": "bg-cyan-500/10",
+    "text-violet-500": "bg-violet-500/10",
+    "text-amber-500": "bg-amber-500/10",
+    "text-emerald-500": "bg-emerald-500/10",
+    "text-rose-500": "bg-rose-500/10",
+  }
+  const bgColor = bgColorMap[color] || "bg-primary/10"
+  
   return (
-    <div className="group relative flex flex-col gap-3 p-5 rounded-xl border border-border bg-card/50 hover:bg-card/80 transition-colors">
-      <div className="flex items-center justify-between">
-        <div className={cn("flex items-center justify-center w-10 h-10 rounded-lg bg-primary/5", color.replace("text-", "bg-").replace("primary", "primary/10"))}>
-          <Icon className={cn("h-5 w-5", color)} />
+  <div className="group relative flex flex-col gap-3 p-5 rounded-xl border border-border bg-card/50 hover:bg-card/80 transition-colors">
+  <div className="flex items-center justify-between">
+  <div className={cn("flex items-center justify-center w-10 h-10 rounded-lg", bgColor)}>
+  <Icon className={cn("h-5 w-5", color)} />
         </div>
         {trend && (
           <div className={cn(
