@@ -45,6 +45,21 @@ export function Header() {
               href={ROUTES.DASHBOARD}
               className="flex items-center gap-2.5 hover:opacity-80 transition-opacity shrink-0 z-10"
               aria-label="Go to scanner"
+              onClick={(e) => {
+                // If already on dashboard with a hash (viewing scan results), 
+                // clear the hash and dispatch hashchange event to reset state
+                if (pathname === ROUTES.DASHBOARD && window.location.hash) {
+                  e.preventDefault()
+                  // Clear hash first, then dispatch event
+                  const prevHash = window.location.hash
+                  window.history.pushState(null, "", ROUTES.DASHBOARD)
+                  // Dispatch hashchange so the dashboard component can reset
+                  window.dispatchEvent(new HashChangeEvent("hashchange", {
+                    oldURL: window.location.href.replace(ROUTES.DASHBOARD, ROUTES.DASHBOARD + prevHash),
+                    newURL: window.location.href
+                  }))
+                }
+              }}
           >
             <ThemedLogo width={24} height={24} className="h-6 w-6" alt={`${APP_NAME} logo`} />
             <span className="text-lg font-semibold text-foreground tracking-tight hidden sm:inline">
