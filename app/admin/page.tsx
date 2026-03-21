@@ -59,6 +59,8 @@ import {
   Dot,
   StickyNote,
   Send,
+  UsersRound,
+  MoreHorizontal,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -77,6 +79,7 @@ import {
   type AdminAction
 } from "@/lib/permissions-client"
 import { NotificationsManager } from "@/components/admin/notifications-manager"
+import { SaveConfirmationModal, type ChangeItem, type AffectedUser } from "@/components/save-confirmation-modal"
 
 interface AdminStats {
   total_users: string
@@ -383,7 +386,7 @@ function AdminContent() {
   const [searchQuery, setSearchQuery] = useState("")
   const [actionLoading, setActionLoading] = useState<string | null>(null)
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null)
-  const [activeTab, setActiveTab] = useState<"users" | "audit" | "admins" | "notifications">("users")
+  const [activeTab, setActiveTab] = useState<"users" | "audit" | "admins" | "notifications" | "teams">("users")
   const [selectedUser, setSelectedUser] = useState<UserDetail | null>(null)
   const [detailLoading, setDetailLoading] = useState(false)
   const [confirmDialog, setConfirmDialog] = useState<{
@@ -396,6 +399,16 @@ function AdminContent() {
   const [auditTotalPages, setAuditTotalPages] = useState(1)
   const [auditPageSize, setAuditPageSize] = useState(10)
   const [expandedLog, setExpandedLog] = useState<number | null>(null)
+  const [auditFilter, setAuditFilter] = useState<string>("all")
+  const [auditSearch, setAuditSearch] = useState("")
+  const [teams, setTeams] = useState<{ id: number; name: string; slug: string; created_at: string; owner_id: number; owner_email: string; owner_name: string | null; owner_avatar_url: string | null; member_count: number }[]>([])
+  const [teamsLoading, setTeamsLoading] = useState(false)
+  const [teamsPage, setTeamsPage] = useState(1)
+  const [teamsTotalPages, setTeamsTotalPages] = useState(1)
+  const [teamsSearch, setTeamsSearch] = useState("")
+  const [editingTeam, setEditingTeam] = useState<{ id: number; name: string } | null>(null)
+  const [teamMembers, setTeamMembers] = useState<{ team: { id: number; name: string; owner_email: string; owner_name: string | null }; members: { user_id: number; role: string; email: string; name: string | null; avatar_url: string | null }[] } | null>(null)
+  const [teamMembersLoading, setTeamMembersLoading] = useState(false)
   const [activeAdmins, setActiveAdmins] = useState<ActiveAdmin[]>([])
   const [adminsLoading, setAdminsLoading] = useState(false)
   const [staffPage, setStaffPage] = useState(1)
@@ -439,10 +452,11 @@ function AdminContent() {
     let foundUser = false
     for (const part of parts) {
       // Check if it's a tab
-      if (["users", "audit", "admins", "notifications"].includes(part)) {
-        setActiveTab(part as "users" | "audit" | "admins" | "notifications")
+      if (["users", "audit", "admins", "notifications", "teams"].includes(part)) {
+        setActiveTab(part as "users" | "audit" | "admins" | "notifications" | "teams")
         if (part === "audit") fetchAudit()
         if (part === "admins") fetchActiveAdmins()
+        if (part === "teams") fetchTeams()
       }
       // Check if it's a user ID
       if (part.startsWith("user-")) {
@@ -502,6 +516,70 @@ function AdminContent() {
       setActiveAdmins(data.admins || [])
     } catch { /* ignore */ }
     setAdminsLoading(false)
+  }
+
+  async function fetchTeams(p = 1, search = teamsSearch) {
+    setTeamsLoading(true)
+    try {
+      const params = new URLSearchParams({ page: String(p), limit: "10" })
+      if (search.trim()) params.set("search", search.trim())
+      const res = await fetch(`/api/v2/admin/teams?${params}`)
+      const data = await res.json()
+      setTeams(data.teams || [])
+      setTeamsPage(data.page || 1)
+      setTeamsTotalPages(data.totalPages || 1)
+    } catch { /* ignore */ }
+    setTeamsLoading(false)
+  }
+
+  async function fetchTeamMembers(teamId: number) {
+    setTeamMembersLoading(true)
+    try {
+      const res = await fetch(`/api/v2/admin/teams/${teamId}`)
+      const data = await res.json()
+      setTeamMembers(data)
+    } catch { showToast("Failed to load team members", "error") }
+    setTeamMembersLoading(false)
+  }
+
+  async function handleTeamRename(teamId: number, newName: string) {
+    setActionLoading(`team-rename-${teamId}`)
+    try {
+      const res = await fetch(`/api/v2/admin/teams`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ teamId, name: newName }),
+      })
+      if (res.ok) {
+        showToast("Team renamed successfully", "success")
+        setEditingTeam(null)
+        fetchTeams(teamsPage)
+      } else {
+        const data = await res.json()
+        showToast(data.error || "Failed to rename team", "error")
+      }
+    } catch { showToast("Failed to rename team", "error") }
+    setActionLoading(null)
+  }
+
+  async function handleTeamDelete(teamId: number) {
+    setActionLoading(`team-delete-${teamId}`)
+    try {
+      const res = await fetch(`/api/v2/admin/teams`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ teamId }),
+      })
+      if (res.ok) {
+        showToast("Team deleted successfully", "success")
+        setConfirmDialog(null)
+        fetchTeams(teamsPage)
+      } else {
+        const data = await res.json()
+        showToast(data.error || "Failed to delete team", "error")
+      }
+    } catch { showToast("Failed to delete team", "error") }
+    setActionLoading(null)
   }
 
   async function fetchUserDetail(userId: number, skipUrlUpdate = false) {
@@ -677,6 +755,7 @@ function AdminContent() {
             {(() => {
               const ADMIN_TABS = [
                 { key: "users" as const, label: "Users", icon: Users },
+                { key: "teams" as const, label: "Teams", icon: UsersRound },
                 { key: "notifications" as const, label: "Notifications", icon: Bell },
                 { key: "admins" as const, label: "Active Staff", icon: Shield },
                 { key: "audit" as const, label: "Audit Logs", icon: History },
@@ -697,6 +776,7 @@ function AdminContent() {
                             setActiveTab(tab.key)
                             if (tab.key === "audit") fetchAudit()
                             if (tab.key === "admins") fetchActiveAdmins()
+                            if (tab.key === "teams") fetchTeams()
                             setSelectedUser(null)
                             updateUrlWithUser(null, tab.key, false)
                           }
@@ -724,6 +804,7 @@ function AdminContent() {
                             setActiveTab(tab.key)
                             if (tab.key === "audit") fetchAudit()
                             if (tab.key === "admins") fetchActiveAdmins()
+                            if (tab.key === "teams") fetchTeams()
                             setSelectedUser(null)
                             updateUrlWithUser(null, tab.key, false)
                           }
@@ -968,165 +1049,405 @@ function AdminContent() {
               </Card>
             )}
 
-            {/* Audit log */}
-            {activeTab === "audit" && (
-              <Card className="bg-card border-border overflow-hidden">
-                <CardHeader className="pb-0 pt-5 px-5">
-                  <div className="flex items-center gap-2">
-                    <CardTitle className="text-base font-semibold">Audit Log</CardTitle>
-                    <Badge variant="secondary" className="text-[10px] font-medium">Recent Activity</Badge>
-                  </div>
-                  <p className="text-xs text-muted-foreground mt-1">All admin actions are logged here for accountability.</p>
-                </CardHeader>
-                <CardContent className="p-0 mt-4">
-                  {auditLogs.length === 0 ? (
-                    <div className="py-16 text-center">
-                      <div className="h-12 w-12 rounded-xl bg-muted/50 flex items-center justify-center mx-auto mb-3">
-                        <History className="h-6 w-6 text-muted-foreground/40" />
-                      </div>
-                      <p className="text-sm font-medium text-muted-foreground">No audit log entries yet.</p>
-                      <p className="text-xs text-muted-foreground mt-1">Admin actions will appear here as they occur.</p>
-                    </div>
-                  ) : (
-                    <>
-                      <div className={cn("flex flex-col transition-opacity duration-200", auditPaging && "opacity-40 pointer-events-none")}>
-                        {auditLogs.map((log, i) => {
-                          const isExpanded = expandedLog === log.id
-                          const actionMeta = ACTION_META[log.action]
-                          const logDate = new Date(log.created_at)
-                          
-                          return (
-                            <div key={log.id} className={cn(i < auditLogs.length - 1 && "border-b border-border")}>
+            {/* Audit log - Redesigned */}
+            {activeTab === "audit" && (() => {
+              // Filter categories for quick filtering
+              const filterCategories = [
+                { id: "all", label: "All Actions", icon: History },
+                { id: "security", label: "Security", icon: Shield },
+                { id: "user", label: "User Changes", icon: User },
+                { id: "plan", label: "Plan Changes", icon: CreditCard },
+                { id: "danger", label: "Destructive", icon: AlertTriangle },
+              ]
+              
+              // Filter logic
+              const filteredLogs = auditLogs.filter(log => {
+                // Search filter
+                if (auditSearch.trim()) {
+                  const search = auditSearch.toLowerCase()
+                  const matchesSearch = 
+                    log.admin_email?.toLowerCase().includes(search) ||
+                    log.admin_name?.toLowerCase().includes(search) ||
+                    log.target_email?.toLowerCase().includes(search) ||
+                    log.target_name?.toLowerCase().includes(search) ||
+                    log.action?.toLowerCase().includes(search) ||
+                    log.details?.toLowerCase().includes(search)
+                  if (!matchesSearch) return false
+                }
+                
+                // Category filter
+                if (auditFilter === "all") return true
+                if (auditFilter === "security") {
+                  return ["reset_password", "revoke_sessions", "revoke_api_keys", "reset_2fa", "force_logout_all", "reset_temp_password"].includes(log.action)
+                }
+                if (auditFilter === "user") {
+                  return ["set_role", "make_admin", "remove_admin", "change_email", "award_badge", "revoke_badge"].includes(log.action)
+                }
+                if (auditFilter === "plan") {
+                  return ["set_plan", "gift_plan", "remove_gift"].includes(log.action)
+                }
+                if (auditFilter === "danger") {
+                  return ["delete_user", "disable_user", "delete_scan", "delete_scans", "revoke_sessions", "revoke_api_keys"].includes(log.action)
+                }
+                return true
+              })
+              
+              return (
+                <div className="space-y-4">
+                  {/* Header Card with Search & Filters */}
+                  <Card className="bg-card border-border">
+                    <CardContent className="p-4 sm:p-5">
+                      <div className="flex flex-col gap-4">
+                        {/* Title row */}
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                          <div className="flex items-center gap-3">
+                            <div className="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center">
+                              <History className="h-5 w-5 text-primary" />
+                            </div>
+                            <div>
+                              <h2 className="text-lg font-semibold">Audit Log</h2>
+                              <p className="text-xs text-muted-foreground">Track all administrative actions</p>
+                            </div>
+                          </div>
+                          <Button variant="outline" size="sm" className="h-8 gap-1.5 text-xs self-start sm:self-auto" onClick={() => fetchAudit(1)}>
+                            <RefreshCw className={cn("h-3.5 w-3.5", auditPaging && "animate-spin")} />
+                            Refresh
+                          </Button>
+                        </div>
+                        
+                        {/* Search bar */}
+                        <div className="relative">
+                          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                          <Input
+                            placeholder="Search by admin, user, or action..."
+                            value={auditSearch}
+                            onChange={(e) => setAuditSearch(e.target.value)}
+                            className="pl-9 h-10 bg-background"
+                          />
+                          {auditSearch && (
+                            <button 
+                              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                              onClick={() => setAuditSearch("")}
+                            >
+                              <X className="h-4 w-4" />
+                            </button>
+                          )}
+                        </div>
+                        
+                        {/* Filter chips - horizontal scroll on mobile */}
+                        <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1 scrollbar-none">
+                          {filterCategories.map(cat => {
+                            const isActive = auditFilter === cat.id
+                            const Icon = cat.icon
+                            return (
                               <button
-                                className={cn("w-full flex items-start gap-4 px-5 py-4 transition-colors hover:bg-muted/20 text-left", isExpanded && "bg-muted/10")}
-                                onClick={() => setExpandedLog(isExpanded ? null : log.id)}
+                                key={cat.id}
+                                onClick={() => setAuditFilter(cat.id)}
+                                className={cn(
+                                  "flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-all shrink-0",
+                                  isActive 
+                                    ? "bg-primary text-primary-foreground" 
+                                    : "bg-muted/50 text-muted-foreground hover:bg-muted hover:text-foreground"
+                                )}
                               >
-                                {/* Avatar with action indicator */}
-                                <div className="relative">
-                                  <UserAvatar name={log.admin_name} email={log.admin_email} size="sm" avatarUrl={log.admin_avatar_url} />
-                                  <div className={cn(
-                                    "absolute -bottom-1 -right-1 h-4 w-4 rounded-full flex items-center justify-center ring-2 ring-card",
-                                    actionMeta?.cls || "bg-muted"
-                                  )}>
-                                    {log.action.includes("delete") || log.action.includes("disable") || log.action.includes("revoke") ? (
-                                      <XCircle className="h-2.5 w-2.5" />
-                                    ) : log.action.includes("enable") || log.action.includes("create") || log.action.includes("award") || log.action.includes("gift") ? (
-                                      <CheckCircle2 className="h-2.5 w-2.5" />
-                                    ) : (
-                                      <Settings className="h-2.5 w-2.5" />
-                                    )}
-                                  </div>
-                                </div>
-                                
-                                {/* Main content */}
-                                <div className="flex-1 min-w-0">
-                                  {/* Human-readable sentence */}
-                                  <p className="text-sm text-foreground leading-relaxed">
-                                    {getActionSentence(log)}
-                                  </p>
-                                  
-                                  {/* Meta row */}
-                                  <div className="flex flex-wrap items-center gap-2 mt-1.5">
-                                    <ActionBadge action={log.action} />
-                                    <span className="text-[10px] text-muted-foreground">
-                                      {formatRelativeTime(logDate)}
-                                    </span>
-                                    {log.ip_address && (
-                                      <span className="text-[10px] text-muted-foreground font-mono flex items-center gap-0.5">
-                                        <Globe className="h-2.5 w-2.5" /> {log.ip_address}
-                                      </span>
-                                    )}
-                                  </div>
-                                </div>
-                                
-                                <ChevronDown className={cn("h-4 w-4 text-muted-foreground shrink-0 transition-transform", isExpanded && "rotate-180")} />
+                                <Icon className="h-3 w-3" />
+                                {cat.label}
                               </button>
-
-                              {/* Expanded detail panel */}
-                              {isExpanded && (
-                                <div className="px-5 pb-4 pt-0 ml-12">
-                                  <div className="rounded-xl bg-gradient-to-br from-muted/30 to-muted/10 border border-border p-4 space-y-4">
-                                    {/* Action summary */}
-                                    <div className="flex items-center gap-3 pb-3 border-b border-border/50">
-                                      <ActionBadge action={log.action} />
-                                      <span className="text-sm text-muted-foreground">
-                                        {logDate.toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" })} at {logDate.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" })}
-                                      </span>
-                                    </div>
-                                    
-                                    {/* People involved */}
-                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                      <div className="flex items-center gap-3">
-                                        <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
-                                          <Shield className="h-5 w-5 text-primary" />
-                                        </div>
-                                        <div>
-                                          <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Admin</p>
-                                          <p className="text-sm font-medium text-foreground">{log.admin_name || log.admin_email.split("@")[0]}</p>
-                                          <p className="text-xs text-muted-foreground">{log.admin_email}</p>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                  
+                  {/* Results Card */}
+                  <Card className="bg-card border-border overflow-hidden">
+                    {filteredLogs.length === 0 ? (
+                      <div className="py-16 px-4 text-center">
+                        <div className="h-16 w-16 rounded-2xl bg-muted/30 flex items-center justify-center mx-auto mb-4">
+                          <History className="h-8 w-8 text-muted-foreground/40" />
+                        </div>
+                        <p className="text-base font-medium text-muted-foreground">
+                          {auditSearch || auditFilter !== "all" ? "No matching entries" : "No audit log entries yet"}
+                        </p>
+                        <p className="text-sm text-muted-foreground/70 mt-1 max-w-xs mx-auto">
+                          {auditSearch || auditFilter !== "all" 
+                            ? "Try adjusting your search or filters" 
+                            : "Admin actions will appear here as they occur"
+                          }
+                        </p>
+                        {(auditSearch || auditFilter !== "all") && (
+                          <Button 
+                            variant="outline" 
+                            size="sm" 
+                            className="mt-4"
+                            onClick={() => { setAuditSearch(""); setAuditFilter("all") }}
+                          >
+                            Clear Filters
+                          </Button>
+                        )}
+                      </div>
+                    ) : (
+                      <>
+                        {/* Results count */}
+                        <div className="px-4 sm:px-5 py-3 border-b border-border bg-muted/20">
+                          <p className="text-xs text-muted-foreground">
+                            Showing <span className="font-medium text-foreground">{filteredLogs.length}</span> {filteredLogs.length === 1 ? "entry" : "entries"}
+                            {(auditSearch || auditFilter !== "all") && " (filtered)"}
+                          </p>
+                        </div>
+                        
+                        {/* Desktop Table View */}
+                        <div className="hidden md:block">
+                          <div className={cn("transition-opacity duration-200", auditPaging && "opacity-40 pointer-events-none")}>
+                            <table className="w-full">
+                              <thead>
+                                <tr className="border-b border-border bg-muted/10">
+                                  <th className="text-left text-[10px] font-semibold text-muted-foreground uppercase tracking-wider px-5 py-3">Admin</th>
+                                  <th className="text-left text-[10px] font-semibold text-muted-foreground uppercase tracking-wider px-3 py-3">Action</th>
+                                  <th className="text-left text-[10px] font-semibold text-muted-foreground uppercase tracking-wider px-3 py-3">Target</th>
+                                  <th className="text-left text-[10px] font-semibold text-muted-foreground uppercase tracking-wider px-3 py-3">Time</th>
+                                  <th className="w-10"></th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {filteredLogs.map((log, i) => {
+                                  const isExpanded = expandedLog === log.id
+                                  const actionMeta = ACTION_META[log.action]
+                                  const logDate = new Date(log.created_at)
+                                  
+                                  return (
+                                    <React.Fragment key={log.id}>
+                                      <tr 
+                                        className={cn(
+                                          "group cursor-pointer transition-colors hover:bg-muted/30",
+                                          isExpanded && "bg-muted/20",
+                                          i < filteredLogs.length - 1 && !isExpanded && "border-b border-border/50"
+                                        )}
+                                        onClick={() => setExpandedLog(isExpanded ? null : log.id)}
+                                      >
+                                        {/* Admin */}
+                                        <td className="px-5 py-3.5">
+                                          <div className="flex items-center gap-3">
+                                            <UserAvatar name={log.admin_name} email={log.admin_email} size="sm" avatarUrl={log.admin_avatar_url} />
+                                            <div className="min-w-0">
+                                              <p className="text-sm font-medium text-foreground truncate max-w-[150px]">
+                                                {log.admin_name || log.admin_email.split("@")[0]}
+                                              </p>
+                                            </div>
+                                          </div>
+                                        </td>
+                                        
+                                        {/* Action */}
+                                        <td className="px-3 py-3.5">
+                                          <ActionBadge action={log.action} />
+                                        </td>
+                                        
+                                        {/* Target */}
+                                        <td className="px-3 py-3.5">
+                                          {log.target_email ? (
+                                            <div className="min-w-0">
+                                              <p className="text-sm text-foreground truncate max-w-[150px]">
+                                                {log.target_name || log.target_email.split("@")[0]}
+                                              </p>
+                                              <p className="text-[10px] text-muted-foreground truncate max-w-[150px]">
+                                                {log.target_email}
+                                              </p>
+                                            </div>
+                                          ) : (
+                                            <span className="text-xs text-muted-foreground">—</span>
+                                          )}
+                                        </td>
+                                        
+                                        {/* Time */}
+                                        <td className="px-3 py-3.5">
+                                          <div className="flex flex-col">
+                                            <span className="text-xs text-foreground">{formatRelativeTime(logDate)}</span>
+                                            <span className="text-[10px] text-muted-foreground">
+                                              {logDate.toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                                            </span>
+                                          </div>
+                                        </td>
+                                        
+                                        {/* Expand */}
+                                        <td className="px-3 py-3.5">
+                                          <ChevronDown className={cn(
+                                            "h-4 w-4 text-muted-foreground transition-transform",
+                                            isExpanded && "rotate-180"
+                                          )} />
+                                        </td>
+                                      </tr>
+                                      
+                                      {/* Expanded Row */}
+                                      {isExpanded && (
+                                        <tr>
+                                          <td colSpan={5} className="px-5 pb-4 pt-0 border-b border-border">
+                                            <div className="rounded-xl bg-gradient-to-br from-muted/40 to-muted/10 border border-border/60 p-4 mt-1">
+                                              <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                                                {/* Admin info */}
+                                                <div className="flex items-start gap-3">
+                                                  <div className="h-9 w-9 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+                                                    <Shield className="h-4 w-4 text-primary" />
+                                                  </div>
+                                                  <div className="min-w-0">
+                                                    <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Performed by</p>
+                                                    <p className="text-sm font-medium text-foreground truncate">{log.admin_name || log.admin_email.split("@")[0]}</p>
+                                                    <p className="text-xs text-muted-foreground truncate">{log.admin_email}</p>
+                                                  </div>
+                                                </div>
+                                                
+                                                {/* Target info */}
+                                                {log.target_email && (
+                                                  <div className="flex items-start gap-3">
+                                                    <div className="h-9 w-9 rounded-lg bg-muted flex items-center justify-center shrink-0">
+                                                      <User className="h-4 w-4 text-muted-foreground" />
+                                                    </div>
+                                                    <div className="min-w-0">
+                                                      <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Target user</p>
+                                                      <p className="text-sm font-medium text-foreground truncate">{log.target_name || log.target_email.split("@")[0]}</p>
+                                                      <p className="text-xs text-muted-foreground truncate">{log.target_email}</p>
+                                                    </div>
+                                                  </div>
+                                                )}
+                                                
+                                                {/* Technical details */}
+                                                <div className="flex items-start gap-3">
+                                                  <div className="h-9 w-9 rounded-lg bg-muted flex items-center justify-center shrink-0">
+                                                    <Clock className="h-4 w-4 text-muted-foreground" />
+                                                  </div>
+                                                  <div className="min-w-0">
+                                                    <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Timestamp</p>
+                                                    <p className="text-sm font-medium text-foreground">
+                                                      {logDate.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", year: "numeric" })}
+                                                    </p>
+                                                    <p className="text-xs text-muted-foreground">
+                                                      {logDate.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" })}
+                                                      {log.ip_address && <span className="ml-2 font-mono">IP: {log.ip_address}</span>}
+                                                    </p>
+                                                  </div>
+                                                </div>
+                                              </div>
+                                              
+                                              {/* Details */}
+                                              {log.details && (
+                                                <div className="mt-4 pt-4 border-t border-border/50">
+                                                  <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-2">Details</p>
+                                                  <div className="bg-card/60 rounded-lg p-3 border border-border/50">
+                                                    <p className="text-sm text-foreground leading-relaxed">{log.details}</p>
+                                                  </div>
+                                                </div>
+                                              )}
+                                            </div>
+                                          </td>
+                                        </tr>
+                                      )}
+                                    </React.Fragment>
+                                  )
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                        
+                        {/* Mobile Card View */}
+                        <div className="md:hidden">
+                          <div className={cn("divide-y divide-border transition-opacity duration-200", auditPaging && "opacity-40 pointer-events-none")}>
+                            {filteredLogs.map((log) => {
+                              const isExpanded = expandedLog === log.id
+                              const logDate = new Date(log.created_at)
+                              
+                              return (
+                                <div key={log.id} className="p-4">
+                                  <button
+                                    className="w-full text-left"
+                                    onClick={() => setExpandedLog(isExpanded ? null : log.id)}
+                                  >
+                                    {/* Header row */}
+                                    <div className="flex items-start justify-between gap-3 mb-3">
+                                      <div className="flex items-center gap-2.5">
+                                        <UserAvatar name={log.admin_name} email={log.admin_email} size="sm" avatarUrl={log.admin_avatar_url} />
+                                        <div className="min-w-0">
+                                          <p className="text-sm font-medium text-foreground">
+                                            {log.admin_name || log.admin_email.split("@")[0]}
+                                          </p>
+                                          <p className="text-[10px] text-muted-foreground">{formatRelativeTime(logDate)}</p>
                                         </div>
                                       </div>
-                                      
+                                      <ChevronDown className={cn(
+                                        "h-4 w-4 text-muted-foreground shrink-0 transition-transform mt-1",
+                                        isExpanded && "rotate-180"
+                                      )} />
+                                    </div>
+                                    
+                                    {/* Action + Target */}
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                      <ActionBadge action={log.action} />
                                       {log.target_email && (
-                                        <div className="flex items-center gap-3">
-                                          <div className="h-10 w-10 rounded-full bg-muted flex items-center justify-center">
-                                            <User className="h-5 w-5 text-muted-foreground" />
-                                          </div>
-                                          <div>
-                                            <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Target User</p>
-                                            <p className="text-sm font-medium text-foreground">{log.target_name || log.target_email.split("@")[0]}</p>
-                                            <p className="text-xs text-muted-foreground">{log.target_email}</p>
-                                          </div>
-                                        </div>
+                                        <>
+                                          <span className="text-muted-foreground">→</span>
+                                          <span className="text-xs text-muted-foreground truncate max-w-[140px]">
+                                            {log.target_name || log.target_email.split("@")[0]}
+                                          </span>
+                                        </>
                                       )}
                                     </div>
-                                    
-                                    {/* Details section */}
-                                    {log.details && (
-                                      <div className="pt-3 border-t border-border/50">
-                                        <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1.5">Details</p>
-                                        <div className="bg-card/50 rounded-lg p-3 border border-border/50">
-                                          <p className="text-sm text-foreground leading-relaxed">{log.details}</p>
+                                  </button>
+                                  
+                                  {/* Expanded content */}
+                                  {isExpanded && (
+                                    <div className="mt-4 pt-4 border-t border-border/50 space-y-3 animate-in slide-in-from-top-1">
+                                      {/* Full sentence */}
+                                      <p className="text-sm text-foreground leading-relaxed">
+                                        {getActionSentence(log)}
+                                      </p>
+                                      
+                                      {/* Details */}
+                                      {log.details && (
+                                        <div className="p-3 rounded-lg bg-muted/30 border border-border/50">
+                                          <p className="text-xs text-muted-foreground mb-1 font-medium">Details</p>
+                                          <p className="text-sm text-foreground">{log.details}</p>
                                         </div>
-                                      </div>
-                                    )}
-                                    
-                                    {/* Technical details */}
-                                    {log.ip_address && (
-                                      <div className="flex items-center gap-4 pt-3 border-t border-border/50 text-xs text-muted-foreground">
-                                        <span className="flex items-center gap-1.5">
-                                          <Globe className="h-3.5 w-3.5" />
-                                          <span className="font-mono">{log.ip_address}</span>
+                                      )}
+                                      
+                                      {/* Meta info */}
+                                      <div className="flex flex-wrap gap-3 text-[10px] text-muted-foreground">
+                                        <span className="flex items-center gap-1">
+                                          <Clock className="h-3 w-3" />
+                                          {logDate.toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" })}
                                         </span>
-                                        <span className="flex items-center gap-1.5">
-                                          <Clock className="h-3.5 w-3.5" />
-                                          <span>{logDate.toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" })}</span>
-                                        </span>
+                                        {log.ip_address && (
+                                          <span className="flex items-center gap-1 font-mono">
+                                            <Globe className="h-3 w-3" />
+                                            {log.ip_address}
+                                          </span>
+                                        )}
                                       </div>
-                                    )}
-                                  </div>
+                                    </div>
+                                  )}
                                 </div>
-                              )}
-                            </div>
-                          )
-                        })}
-                      </div>
-                      {auditTotalPages > 1 && (
-                        <div className="px-5 py-3 border-t border-border bg-muted/10">
-                          <PaginationControl
-                            currentPage={auditPage}
-                            totalPages={auditTotalPages}
-                            onPageChange={(p) => fetchAudit(p)}
-                            pageSize={auditPageSize}
-                            onPageSizeChange={(s) => { setAuditPageSize(s); fetchAudit(1, s) }}
-                          />
+                              )
+                            })}
+                          </div>
                         </div>
-                      )}
-                    </>
-                  )}
-                </CardContent>
-              </Card>
-            )}
+                        
+                        {/* Pagination */}
+                        {auditTotalPages > 1 && (
+                          <div className="px-4 sm:px-5 py-3 border-t border-border bg-muted/10">
+                            <PaginationControl
+                              currentPage={auditPage}
+                              totalPages={auditTotalPages}
+                              onPageChange={(p) => fetchAudit(p)}
+                              pageSize={auditPageSize}
+                              onPageSizeChange={(s) => { setAuditPageSize(s); fetchAudit(1, s) }}
+                            />
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </Card>
+                </div>
+              )
+            })()}
 
             {/* Active Admins tab */}
             {activeTab === "admins" && (
@@ -1274,6 +1595,269 @@ function AdminContent() {
               </Card>
             )}
 
+            {/* Teams Tab */}
+            {activeTab === "teams" && (
+              <div className="space-y-4">
+                {/* Header Card */}
+                <Card className="bg-card border-border">
+                  <CardContent className="p-4 sm:p-5">
+                    <div className="flex flex-col gap-4">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                        <div className="flex items-center gap-3">
+                          <div className="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center">
+                            <UsersRound className="h-5 w-5 text-primary" />
+                          </div>
+                          <div>
+                            <h2 className="text-lg font-semibold">Team Management</h2>
+                            <p className="text-xs text-muted-foreground">View and manage all platform teams</p>
+                          </div>
+                        </div>
+                        <Button variant="outline" size="sm" className="h-8 gap-1.5 text-xs self-start sm:self-auto" onClick={() => fetchTeams(1)}>
+                          <RefreshCw className={cn("h-3.5 w-3.5", teamsLoading && "animate-spin")} />
+                          Refresh
+                        </Button>
+                      </div>
+                      
+                      <div className="relative">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                        <Input
+                          placeholder="Search teams by name..."
+                          value={teamsSearch}
+                          onChange={(e) => setTeamsSearch(e.target.value)}
+                          onKeyDown={(e) => e.key === "Enter" && fetchTeams(1, teamsSearch)}
+                          className="pl-9 h-10 bg-background"
+                        />
+                        {teamsSearch && (
+                          <button 
+                            className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                            onClick={() => { setTeamsSearch(""); fetchTeams(1, "") }}
+                          >
+                            <X className="h-4 w-4" />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+                
+                {/* Team Members Modal */}
+                {teamMembers && (
+                  <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => setTeamMembers(null)}>
+                    <div className="bg-card border border-border rounded-xl p-6 w-full max-w-lg mx-4 shadow-2xl max-h-[80vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+                      <div className="flex items-center justify-between mb-4">
+                        <div>
+                          <h3 className="text-lg font-semibold text-foreground">{teamMembers.team.name}</h3>
+                          <p className="text-xs text-muted-foreground">{teamMembers.members.length} members</p>
+                        </div>
+                        <button onClick={() => setTeamMembers(null)} className="p-1 rounded hover:bg-muted">
+                          <X className="h-4 w-4" />
+                        </button>
+                      </div>
+                      
+                      {teamMembersLoading ? (
+                        <div className="flex items-center justify-center py-8">
+                          <Loader2 className="h-5 w-5 animate-spin text-primary" />
+                        </div>
+                      ) : (
+                        <div className="space-y-2">
+                          {teamMembers.members.map((member) => (
+                            <div key={member.user_id} className="flex items-center gap-3 p-3 rounded-lg bg-muted/30 border border-border/50">
+                              <UserAvatar name={member.name} email={member.email} size="sm" avatarUrl={member.avatar_url} />
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm font-medium text-foreground truncate">{member.name || member.email.split("@")[0]}</p>
+                                <p className="text-xs text-muted-foreground truncate">{member.email}</p>
+                              </div>
+                              <Badge variant="outline" className={cn(
+                                "text-[10px] capitalize",
+                                member.role === "owner" && "bg-primary/10 text-primary border-primary/20",
+                                member.role === "admin" && "bg-amber-500/10 text-amber-500 border-amber-500/20",
+                              )}>
+                                {member.role}
+                              </Badge>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+                
+                {/* Teams List */}
+                <Card className="bg-card border-border overflow-hidden">
+                  {teamsLoading ? (
+                    <div className="flex flex-col items-center justify-center py-16 gap-3">
+                      <Loader2 className="h-5 w-5 animate-spin text-primary" />
+                      <p className="text-xs text-muted-foreground">Loading teams...</p>
+                    </div>
+                  ) : teams.length === 0 ? (
+                    <div className="py-16 text-center px-4">
+                      <div className="h-16 w-16 rounded-2xl bg-muted/30 flex items-center justify-center mx-auto mb-4">
+                        <UsersRound className="h-8 w-8 text-muted-foreground/40" />
+                      </div>
+                      <p className="text-base font-medium text-muted-foreground">
+                        {teamsSearch ? "No teams found" : "No teams yet"}
+                      </p>
+                      <p className="text-sm text-muted-foreground/70 mt-1">
+                        {teamsSearch ? "Try a different search term" : "Teams created by users will appear here"}
+                      </p>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="px-4 sm:px-5 py-3 border-b border-border bg-muted/20">
+                        <p className="text-xs text-muted-foreground">
+                          <span className="font-medium text-foreground">{teams.length}</span> teams
+                        </p>
+                      </div>
+                      
+                      {/* Desktop Table */}
+                      <div className="hidden md:block">
+                        <table className="w-full">
+                          <thead>
+                            <tr className="border-b border-border bg-muted/10">
+                              <th className="text-left text-[10px] font-semibold text-muted-foreground uppercase tracking-wider px-5 py-3">Team</th>
+                              <th className="text-left text-[10px] font-semibold text-muted-foreground uppercase tracking-wider px-3 py-3">Owner</th>
+                              <th className="text-center text-[10px] font-semibold text-muted-foreground uppercase tracking-wider px-3 py-3">Members</th>
+                              <th className="text-left text-[10px] font-semibold text-muted-foreground uppercase tracking-wider px-3 py-3">Created</th>
+                              <th className="w-20"></th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {teams.map((team, i) => (
+                              <tr key={team.id} className={cn("hover:bg-muted/30 transition-colors", i < teams.length - 1 && "border-b border-border/50")}>
+                                <td className="px-5 py-3.5">
+                                  {editingTeam?.id === team.id ? (
+                                    <div className="flex items-center gap-2">
+                                      <Input
+                                        value={editingTeam.name}
+                                        onChange={(e) => setEditingTeam({ ...editingTeam, name: e.target.value })}
+                                        className="h-8 text-sm w-40"
+                                        autoFocus
+                                      />
+                                      <Button size="sm" className="h-8 px-2" onClick={() => handleTeamRename(team.id, editingTeam.name)} disabled={actionLoading === `team-rename-${team.id}`}>
+                                        {actionLoading === `team-rename-${team.id}` ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
+                                      </Button>
+                                      <Button size="sm" variant="ghost" className="h-8 px-2" onClick={() => setEditingTeam(null)}>
+                                        <X className="h-3 w-3" />
+                                      </Button>
+                                    </div>
+                                  ) : (
+                                    <div>
+                                      <p className="text-sm font-medium text-foreground">{team.name}</p>
+                                      <p className="text-[10px] text-muted-foreground font-mono">{team.slug}</p>
+                                    </div>
+                                  )}
+                                </td>
+                                <td className="px-3 py-3.5">
+                                  <div className="flex items-center gap-2">
+                                    <UserAvatar name={team.owner_name} email={team.owner_email} size="sm" avatarUrl={team.owner_avatar_url} />
+                                    <div className="min-w-0">
+                                      <p className="text-sm text-foreground truncate max-w-[120px]">{team.owner_name || team.owner_email.split("@")[0]}</p>
+                                    </div>
+                                  </div>
+                                </td>
+                                <td className="px-3 py-3.5 text-center">
+                                  <Badge variant="secondary" className="text-xs">{team.member_count}</Badge>
+                                </td>
+                                <td className="px-3 py-3.5">
+                                  <span className="text-xs text-muted-foreground">{new Date(team.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</span>
+                                </td>
+                                <td className="px-3 py-3.5">
+                                  <div className="flex items-center gap-1 justify-end">
+                                    <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => fetchTeamMembers(team.id)} title="View members">
+                                      <Eye className="h-3.5 w-3.5" />
+                                    </Button>
+                                    <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => setEditingTeam({ id: team.id, name: team.name })} title="Rename">
+                                      <Pencil className="h-3.5 w-3.5" />
+                                    </Button>
+                                    {hasStaffPermission(callerRole, STAFF_PERMISSIONS.DELETE_USER) && (
+                                      <Button 
+                                        variant="ghost" 
+                                        size="sm" 
+                                        className="h-7 w-7 p-0 text-destructive hover:text-destructive"
+                                        onClick={() => setConfirmDialog({
+                                          title: "Delete Team",
+                                          description: `This will permanently delete "${team.name}" and remove all ${team.member_count} members. This cannot be undone.`,
+                                          confirmLabel: "Delete Team",
+                                          danger: true,
+                                          action: () => handleTeamDelete(team.id)
+                                        })}
+                                        title="Delete team"
+                                      >
+                                        <Trash2 className="h-3.5 w-3.5" />
+                                      </Button>
+                                    )}
+                                  </div>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                      
+                      {/* Mobile Card View */}
+                      <div className="md:hidden divide-y divide-border">
+                        {teams.map((team) => (
+                          <div key={team.id} className="p-4">
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm font-medium text-foreground">{team.name}</p>
+                                <p className="text-[10px] text-muted-foreground font-mono">{team.slug}</p>
+                              </div>
+                              <Badge variant="secondary" className="text-xs shrink-0">{team.member_count} members</Badge>
+                            </div>
+                            
+                            <div className="flex items-center gap-2 mt-3">
+                              <UserAvatar name={team.owner_name} email={team.owner_email} size="sm" avatarUrl={team.owner_avatar_url} />
+                              <div className="flex-1 min-w-0">
+                                <p className="text-xs text-muted-foreground">Owner</p>
+                                <p className="text-sm text-foreground truncate">{team.owner_name || team.owner_email.split("@")[0]}</p>
+                              </div>
+                            </div>
+                            
+                            <div className="flex items-center gap-2 mt-3 pt-3 border-t border-border/50">
+                              <Button variant="outline" size="sm" className="flex-1 h-8 text-xs" onClick={() => fetchTeamMembers(team.id)}>
+                                <Eye className="h-3 w-3 mr-1.5" /> View Members
+                              </Button>
+                              <Button variant="outline" size="sm" className="h-8 w-8 p-0" onClick={() => setEditingTeam({ id: team.id, name: team.name })}>
+                                <Pencil className="h-3 w-3" />
+                              </Button>
+                              {hasStaffPermission(callerRole, STAFF_PERMISSIONS.DELETE_USER) && (
+                                <Button 
+                                  variant="outline" 
+                                  size="sm" 
+                                  className="h-8 w-8 p-0 text-destructive border-destructive/30 hover:bg-destructive/10"
+                                  onClick={() => setConfirmDialog({
+                                    title: "Delete Team",
+                                    description: `This will permanently delete "${team.name}" and remove all ${team.member_count} members.`,
+                                    confirmLabel: "Delete Team",
+                                    danger: true,
+                                    action: () => handleTeamDelete(team.id)
+                                  })}
+                                >
+                                  <Trash2 className="h-3 w-3" />
+                                </Button>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                      
+                      {/* Pagination */}
+                      {teamsTotalPages > 1 && (
+                        <div className="px-4 sm:px-5 py-3 border-t border-border bg-muted/10">
+                          <PaginationControl
+                            currentPage={teamsPage}
+                            totalPages={teamsTotalPages}
+                            onPageChange={(p) => fetchTeams(p)}
+                          />
+                        </div>
+                      )}
+                    </>
+                  )}
+                </Card>
+              </div>
+            )}
+
             {/* Notifications Tab */}
             {activeTab === "notifications" && (
               <Card>
@@ -1362,9 +1946,23 @@ function UserDetailPanel({
   const [confirmEmail, setConfirmEmail] = useState("")
   const [isSaving, setIsSaving] = useState(false)
   const [showGiftModal, setShowGiftModal] = useState(false)
+  const [showSaveModal, setShowSaveModal] = useState(false)
+  const [notifyUserOnSave, setNotifyUserOnSave] = useState(true)
 
   // Track if there are unsaved changes
   const hasChanges = Object.keys(pendingChanges).length > 0 || pendingBadgeAwards.length > 0 || pendingBadgeRevokes.length > 0
+  
+  // Build changes array for the modal
+  const modalChanges: ChangeItem[] = [
+    ...(pendingChanges.name !== undefined ? [{ field: "name", label: "Display Name", oldValue: u.name || "", newValue: pendingChanges.name as string }] : []),
+    ...(pendingChanges.email !== undefined ? [{ field: "email", label: "Email Address", oldValue: u.email, newValue: pendingChanges.email as string }] : []),
+    ...(pendingChanges.plan !== undefined ? [{ field: "plan", label: "Subscription Plan", oldValue: u.plan || "free", newValue: pendingChanges.plan as string }] : []),
+    ...(pendingChanges.role !== undefined ? [{ field: "role", label: "Staff Role", oldValue: u.role || "user", newValue: pendingChanges.role as string }] : []),
+    ...(pendingBadgeAwards.length > 0 ? [{ field: "badges", label: "Badges to Award", oldValue: "", newValue: `+${pendingBadgeAwards.length} badge${pendingBadgeAwards.length !== 1 ? "s" : ""}` }] : []),
+    ...(pendingBadgeRevokes.length > 0 ? [{ field: "badges", label: "Badges to Remove", oldValue: `${pendingBadgeRevokes.length} badge${pendingBadgeRevokes.length !== 1 ? "s" : ""}`, newValue: "" }] : []),
+  ]
+  
+  const affectedUser: AffectedUser = { id: u.id, email: u.email, name: u.name || undefined }
 
   // Reset pending changes when user changes
   useEffect(() => {
@@ -2520,27 +3118,36 @@ function UserDetailPanel({
                 </Button>
                 <Button
                   size="sm"
-                  onClick={saveAllChanges}
+                  onClick={() => setShowSaveModal(true)}
                   disabled={isSaving}
                   className="h-9 px-5 gap-2"
                 >
-                  {isSaving ? (
-                    <>
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      Saving...
-                    </>
-                  ) : (
-                    <>
-                      <Save className="h-3.5 w-3.5" />
-                      Save Changes
-                    </>
-                  )}
+                  <Save className="h-3.5 w-3.5" />
+                  Review & Save
                 </Button>
               </div>
             </div>
           </div>
         </div>
       )}
+      
+      {/* Save Confirmation Modal */}
+      <SaveConfirmationModal
+        isOpen={showSaveModal}
+        onClose={() => setShowSaveModal(false)}
+        onConfirm={async (notify) => {
+          setNotifyUserOnSave(notify ?? true)
+          await saveAllChanges()
+          setShowSaveModal(false)
+        }}
+        title="Confirm Changes"
+        description={`Review the changes you're about to apply to ${u.name || u.email}'s account.`}
+        changes={modalChanges}
+        loading={isSaving}
+        isAdminAction={true}
+        affectedUser={affectedUser}
+        confirmText="Apply Changes"
+      />
     </div>
   )
 }
