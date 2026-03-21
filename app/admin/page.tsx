@@ -677,7 +677,7 @@ function AdminContent() {
 
   const fetchAllBadges = async () => {
   try {
-  const res = await fetch("/api/v2/badges")
+  const res = await fetch("/api/v2/admin?section=badges")
       if (!res.ok) throw new Error()
       const data = await res.json()
       setAllBadges(data.badges || [])
@@ -1282,8 +1282,8 @@ function UserDetailPanel({
   const [showManageBadges, setShowManageBadges] = useState(false)
   const [copiedPassword, setCopiedPassword] = useState(false)
 
-  const awardedIds = new Set(detail.badges.map((b) => b.id))
-  const unawardedBadges = allBadges.filter((b) => !awardedIds.has(b.id))
+  const awardedIds = new Set((detail?.badges || []).map((b) => b.id))
+  const unawardedBadges = (allBadges || []).filter((b) => !awardedIds.has(b.id))
 
   const [pendingChanges, setPendingChanges] = useState<Record<string, unknown>>({})
   const [pendingBadgeAwards, setPendingBadgeAwards] = useState<number[]>([])
