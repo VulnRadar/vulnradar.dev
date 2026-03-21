@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>VulnRadar Icon Generator</title>
+  <style>
+    body { font-family: sans-serif; padding: 20px; background: #1a1a1a; color: #fff; }
+    .icons { display: flex; gap: 20px; flex-wrap: wrap; }
+    .icon-box { text-align: center; }
+    canvas { background: transparent; border: 1px solid #333; }
+    button { margin-top: 20px; padding: 10px 20px; cursor: pointer; }
+  </style>
+</head>
+<body>
+  <h1>VulnRadar Icon Generator</h1>
+  <p>Right-click each canvas and "Save image as" to create the icon files.</p>
+  
+  <div class="icons">
+    <div class="icon-box">
+      <canvas id="icon16" width="16" height="16"></canvas>
+      <p>icon16.png</p>
+    </div>
+    <div class="icon-box">
+      <canvas id="icon32" width="32" height="32"></canvas>
+      <p>icon32.png</p>
+    </div>
+    <div class="icon-box">
+      <canvas id="icon48" width="48" height="48"></canvas>
+      <p>icon48.png</p>
+    </div>
+    <div class="icon-box">
+      <canvas id="icon128" width="128" height="128"></canvas>
+      <p>icon128.png</p>
+    </div>
+  </div>
+
+  <script>
+    function drawIcon(canvas) {
+      const ctx = canvas.getContext('2d');
+      const size = canvas.width;
+      const padding = size * 0.1;
+      const center = size / 2;
+      
+      // Clear
+      ctx.clearRect(0, 0, size, size);
+      
+      // Draw shield
+      ctx.beginPath();
+      ctx.moveTo(center, padding);
+      ctx.lineTo(size - padding, padding + size * 0.15);
+      ctx.lineTo(size - padding, center);
+      ctx.quadraticCurveTo(size - padding, size - padding * 1.5, center, size - padding);
+      ctx.quadraticCurveTo(padding, size - padding * 1.5, padding, center);
+      ctx.lineTo(padding, padding + size * 0.15);
+      ctx.closePath();
+      
+      // Fill with gradient
+      const gradient = ctx.createLinearGradient(0, 0, size, size);
+      gradient.addColorStop(0, '#06b6d4');
+      gradient.addColorStop(1, '#0891b2');
+      ctx.fillStyle = gradient;
+      ctx.fill();
+      
+      // Draw radar lines
+      ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+      ctx.lineWidth = Math.max(1, size * 0.02);
+      
+      // Circles
+      for (let r = 1; r <= 3; r++) {
+        ctx.beginPath();
+        ctx.arc(center, center + size * 0.05, size * 0.12 * r, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+      
+      // Cross lines
+      ctx.beginPath();
+      ctx.moveTo(center, center - size * 0.3);
+      ctx.lineTo(center, center + size * 0.35);
+      ctx.moveTo(center - size * 0.3, center + size * 0.05);
+      ctx.lineTo(center + size * 0.3, center + size * 0.05);
+      ctx.stroke();
+      
+      // Radar sweep
+      ctx.beginPath();
+      ctx.moveTo(center, center + size * 0.05);
+      ctx.lineTo(center + size * 0.25, center - size * 0.15);
+      ctx.strokeStyle = '#fff';
+      ctx.lineWidth = Math.max(2, size * 0.04);
+      ctx.stroke();
+      
+      // Dot
+      ctx.beginPath();
+      ctx.arc(center + size * 0.15, center - size * 0.1, Math.max(2, size * 0.05), 0, Math.PI * 2);
+      ctx.fillStyle = '#fff';
+      ctx.fill();
+    }
+    
+    // Draw all icons
+    ['icon16', 'icon32', 'icon48', 'icon128'].forEach(id => {
+      drawIcon(document.getElementById(id));
+    });
+  </script>
+</body>
+</html>
