@@ -4,7 +4,19 @@ import { getSession } from "@/lib/auth"
 import pool from "@/lib/db"
 import { getClientIP } from "@/lib/rate-limit"
 import { ERROR_MESSAGES, STAFF_ROLES, STAFF_ROLE_HIERARCHY } from "@/lib/constants"
-import { sendEmail, adminNotificationEmail } from "@/lib/email"
+import { sendEmail, adminNotificationEmail, adminAccountChangeEmail } from "@/lib/email"
+
+// Helper to get admin name for emails
+async function getAdminName(adminId: number): Promise<string> {
+  const result = await pool.query("SELECT name, email FROM users WHERE id = $1", [adminId])
+  return result.rows[0]?.name || result.rows[0]?.email || "Administrator"
+}
+
+// Helper to get user name for emails
+async function getUserName(userId: number): Promise<string> {
+  const result = await pool.query("SELECT name, email FROM users WHERE id = $1", [userId])
+  return result.rows[0]?.name || result.rows[0]?.email || "User"
+}
 
 async function requireStaff() {
   const session = await getSession()
@@ -278,8 +290,22 @@ export async function PATCH(request: NextRequest) {
       if (!newRole || !validRoles.includes(newRole)) {
         return NextResponse.json({ error: "Invalid role" }, { status: 400 })
       }
+      const oldRole = targetUser.role || "user"
       await pool.query("UPDATE users SET role = $1 WHERE id = $2", [newRole, userId])
-      await logAction(session.userId, userId, "set_role", `Changed role of ${targetUser.email} from ${targetUser.role} to ${newRole}`, ip)
+      await logAction(session.userId, userId, "set_role", `Changed role of ${targetUser.email} from ${oldRole} to ${newRole}`, ip)
+      
+      // Send email notification
+      const [adminName, userName] = await Promise.all([getAdminName(session.userId), getUserName(userId)])
+      const roleLabels: Record<string, string> = { user: "User", support: "Support", moderator: "Moderator", admin: "Admin" }
+      const emailPayload = adminAccountChangeEmail({
+        userName,
+        adminName,
+        changes: [{ field: "Account Role", oldValue: roleLabels[oldRole] || oldRole, newValue: roleLabels[newRole] || newRole }],
+        timestamp: new Date(),
+        ipAddress: ip,
+      })
+      sendEmail({ to: targetUser.email, ...emailPayload }).catch(console.error)
+      
       return NextResponse.json({ success: true })
     }
 
@@ -324,12 +350,36 @@ export async function PATCH(request: NextRequest) {
       await pool.query("UPDATE users SET disabled_at = NOW() WHERE id = $1", [userId])
       await pool.query("DELETE FROM sessions WHERE user_id = $1", [userId])
       await logAction(session.userId, userId, "disable_user", `Disabled account for ${targetUser.email}`, ip)
+      
+      // Send email notification
+      const [adminName, userName] = await Promise.all([getAdminName(session.userId), getUserName(userId)])
+      const emailPayload = adminAccountChangeEmail({
+        userName,
+        adminName,
+        changes: [{ field: "Account Status", oldValue: "Active", newValue: "Disabled" }],
+        timestamp: new Date(),
+        ipAddress: ip,
+      })
+      sendEmail({ to: targetUser.email, ...emailPayload }).catch(console.error)
+      
       return NextResponse.json({ success: true })
     }
 
     case "enable": {
       await pool.query("UPDATE users SET disabled_at = NULL WHERE id = $1", [userId])
       await logAction(session.userId, userId, "enable_user", `Re-enabled account for ${targetUser.email}`, ip)
+      
+      // Send email notification
+      const [adminName, userName] = await Promise.all([getAdminName(session.userId), getUserName(userId)])
+      const emailPayload = adminAccountChangeEmail({
+        userName,
+        adminName,
+        changes: [{ field: "Account Status", oldValue: "Disabled", newValue: "Active" }],
+        timestamp: new Date(),
+        ipAddress: ip,
+      })
+      sendEmail({ to: targetUser.email, ...emailPayload }).catch(console.error)
+      
       return NextResponse.json({ success: true })
     }
 
@@ -345,15 +395,41 @@ export async function PATCH(request: NextRequest) {
         [userId, badgeId, session.userId]
       )
       const badge = await pool.query("SELECT display_name FROM badges WHERE id = $1", [badgeId])
-      await logAction(session.userId, userId, "award_badge", `Awarded badge "${badge.rows[0]?.display_name}" to ${targetUser.email}`, ip)
+      const badgeName = badge.rows[0]?.display_name || "Unknown Badge"
+      await logAction(session.userId, userId, "award_badge", `Awarded badge "${badgeName}" to ${targetUser.email}`, ip)
+      
+      // Send email notification
+      const [adminName, userName] = await Promise.all([getAdminName(session.userId), getUserName(userId)])
+      const emailPayload = adminAccountChangeEmail({
+        userName,
+        adminName,
+        changes: [{ field: "Badge Awarded", oldValue: "", newValue: badgeName }],
+        timestamp: new Date(),
+        ipAddress: ip,
+      })
+      sendEmail({ to: targetUser.email, ...emailPayload }).catch(console.error)
+      
       return NextResponse.json({ success: true })
     }
 
     case "revoke_badge": {
       if (!badgeId) return NextResponse.json({ error: "badgeId required" }, { status: 400 })
       const badge = await pool.query("SELECT display_name FROM badges WHERE id = $1", [badgeId])
+      const badgeName = badge.rows[0]?.display_name || "Unknown Badge"
       await pool.query("DELETE FROM user_badges WHERE user_id = $1 AND badge_id = $2", [userId, badgeId])
-      await logAction(session.userId, userId, "revoke_badge", `Revoked badge "${badge.rows[0]?.display_name}" from ${targetUser.email}`, ip)
+      await logAction(session.userId, userId, "revoke_badge", `Revoked badge "${badgeName}" from ${targetUser.email}`, ip)
+      
+      // Send email notification
+      const [adminName, userName] = await Promise.all([getAdminName(session.userId), getUserName(userId)])
+      const emailPayload = adminAccountChangeEmail({
+        userName,
+        adminName,
+        changes: [{ field: "Badge Revoked", oldValue: badgeName, newValue: "" }],
+        timestamp: new Date(),
+        ipAddress: ip,
+      })
+      sendEmail({ to: targetUser.email, ...emailPayload }).catch(console.error)
+      
       return NextResponse.json({ success: true })
     }
 
@@ -384,8 +460,21 @@ export async function PATCH(request: NextRequest) {
       if (!name || typeof name !== "string") return NextResponse.json({ error: "name required" }, { status: 400 })
       const safeName = name.trim().slice(0, 100)
       const oldName = await pool.query("SELECT name FROM users WHERE id = $1", [userId])
+      const previousName = oldName.rows[0]?.name || ""
       await pool.query("UPDATE users SET name = $1, updated_at = NOW() WHERE id = $2", [safeName, userId])
-      await logAction(session.userId, userId, "update_name", `Changed name for ${targetUser.email} from "${oldName.rows[0]?.name || ''}" to "${safeName}"`, ip)
+      await logAction(session.userId, userId, "update_name", `Changed name for ${targetUser.email} from "${previousName}" to "${safeName}"`, ip)
+      
+      // Send email notification
+      const adminName = await getAdminName(session.userId)
+      const emailPayload = adminAccountChangeEmail({
+        userName: safeName || targetUser.email,
+        adminName,
+        changes: [{ field: "Display Name", oldValue: previousName, newValue: safeName }],
+        timestamp: new Date(),
+        ipAddress: ip,
+      })
+      sendEmail({ to: targetUser.email, ...emailPayload }).catch(console.error)
+      
       return NextResponse.json({ success: true })
     }
 
@@ -401,6 +490,21 @@ export async function PATCH(request: NextRequest) {
       const oldEmail = targetUser.email
       await pool.query("UPDATE users SET email = $1, updated_at = NOW() WHERE id = $2", [safeEmail, userId])
       await logAction(session.userId, userId, "update_email", `Changed email from "${oldEmail}" to "${safeEmail}"`, ip)
+      
+      // Send email notification to BOTH old and new email addresses
+      const [adminName, userName] = await Promise.all([getAdminName(session.userId), getUserName(userId)])
+      const emailPayload = adminAccountChangeEmail({
+        userName,
+        adminName,
+        changes: [{ field: "Email Address", oldValue: oldEmail, newValue: safeEmail }],
+        timestamp: new Date(),
+        ipAddress: ip,
+      })
+      // Notify old email
+      sendEmail({ to: oldEmail, ...emailPayload }).catch(console.error)
+      // Notify new email
+      sendEmail({ to: safeEmail, ...emailPayload }).catch(console.error)
+      
       return NextResponse.json({ success: true })
     }
 
@@ -409,12 +513,33 @@ export async function PATCH(request: NextRequest) {
       if (!plan || !validPlans.includes(plan)) {
         return NextResponse.json({ error: "Invalid plan. Must be one of: " + validPlans.join(", ") }, { status: 400 })
       }
+      // Get current plan for comparison
+      const currentPlan = await pool.query("SELECT plan FROM users WHERE id = $1", [userId])
+      const oldPlan = currentPlan.rows[0]?.plan || "free"
       // Update user's plan directly in users table
       await pool.query(
         "UPDATE users SET plan = $1, subscription_status = $2, updated_at = NOW() WHERE id = $3",
         [plan, plan === "free" ? null : "active", userId]
       )
       await logAction(session.userId, userId, "update_plan", `Changed plan for ${targetUser.email} to "${plan}"`, ip)
+      
+      // Send email notification
+      const planLabels: Record<string, string> = {
+        free: "Free",
+        core_supporter: "Core Supporter",
+        pro_supporter: "Pro Supporter",
+        elite_supporter: "Elite Supporter",
+      }
+      const [adminName, userName] = await Promise.all([getAdminName(session.userId), getUserName(userId)])
+      const emailPayload = adminAccountChangeEmail({
+        userName,
+        adminName,
+        changes: [{ field: "Subscription Plan", oldValue: planLabels[oldPlan] || oldPlan, newValue: planLabels[plan] || plan }],
+        timestamp: new Date(),
+        ipAddress: ip,
+      })
+      sendEmail({ to: targetUser.email, ...emailPayload }).catch(console.error)
+      
       return NextResponse.json({ success: true })
     }
 
@@ -433,6 +558,18 @@ export async function PATCH(request: NextRequest) {
       // Remove 2FA from user
       await pool.query("UPDATE users SET totp_secret = NULL, totp_enabled = FALSE, backup_codes = NULL, updated_at = NOW() WHERE id = $1", [userId])
       await logAction(session.userId, userId, "reset_2fa", `Reset two-factor authentication for ${targetUser.email}`, ip)
+      
+      // Send email notification
+      const [adminName, userName] = await Promise.all([getAdminName(session.userId), getUserName(userId)])
+      const emailPayload = adminAccountChangeEmail({
+        userName,
+        adminName,
+        changes: [{ field: "Two-Factor Authentication", oldValue: "Enabled", newValue: "Disabled (Reset)" }],
+        timestamp: new Date(),
+        ipAddress: ip,
+      })
+      sendEmail({ to: targetUser.email, ...emailPayload }).catch(console.error)
+      
       return NextResponse.json({ success: true })
     }
 
