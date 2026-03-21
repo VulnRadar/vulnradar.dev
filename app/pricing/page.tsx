@@ -11,6 +11,7 @@ import { useAuth } from "@/components/auth-provider"
 import { PLANS as LIB_PLANS } from "@/lib/plans"
 import { ThemedLogo } from "@/components/themed-logo"
 import { Footer } from "@/components/scanner/footer"
+import { Header } from "@/components/scanner/header"
 import { StripeCheckout } from "@/components/stripe-checkout"
 
 // Generate pricing page plans from centralized config
@@ -92,35 +93,41 @@ export default function PricingPage() {
     )
   }
 
+  const isLoggedIn = !!me?.userId
+
   return (
     <div className="min-h-screen flex flex-col bg-background">
-      {/* Navigation */}
-      <nav className="sticky top-0 z-50 border-b border-border/50 bg-background/95 backdrop-blur-xl supports-[backdrop-filter]:bg-background/60">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 relative flex items-center">
-          <Link href="/" className="flex items-center gap-2.5 z-10 group">
-            <ThemedLogo width={28} height={28} className="h-7 w-7 transition-transform group-hover:scale-105" alt={`${APP_NAME} logo`} />
-            <span className="font-bold text-lg tracking-tight">{APP_NAME}</span>
-          </Link>
-          
-          <div className="hidden md:flex items-center gap-8 absolute left-1/2 -translate-x-1/2">
-            <Link href={ROUTES.PRICING} className="text-sm text-foreground font-medium">Pricing</Link>
-            <Link href={ROUTES.DOCS} className="text-sm text-muted-foreground hover:text-foreground transition-colors">Docs</Link>
-            <Link href="/demo" className="text-sm text-muted-foreground hover:text-foreground transition-colors">Demo</Link>
-          </div>
-          
-          <div className="flex items-center gap-3 ml-auto z-10">
-            <Link href={ROUTES.LOGIN}>
-              <Button variant="ghost" size="sm" className="hidden sm:inline-flex">Log in</Button>
+      {/* Navigation - show logged-in header when authenticated */}
+      {isLoggedIn ? (
+        <Header />
+      ) : (
+        <nav className="sticky top-0 z-50 border-b border-border/50 bg-background/95 backdrop-blur-xl supports-[backdrop-filter]:bg-background/60">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 relative flex items-center">
+            <Link href="/" className="flex items-center gap-2.5 z-10 group">
+              <ThemedLogo width={28} height={28} className="h-7 w-7 transition-transform group-hover:scale-105" alt={`${APP_NAME} logo`} />
+              <span className="font-bold text-lg tracking-tight">{APP_NAME}</span>
             </Link>
-            <Link href={ROUTES.SIGNUP}>
-              <Button size="sm" className="gap-1.5">
-                Get Started
-                <ArrowRight className="h-3.5 w-3.5" />
-              </Button>
-            </Link>
+            
+            <div className="hidden md:flex items-center gap-8 absolute left-1/2 -translate-x-1/2">
+              <Link href={ROUTES.PRICING} className="text-sm text-foreground font-medium">Pricing</Link>
+              <Link href={ROUTES.DOCS} className="text-sm text-muted-foreground hover:text-foreground transition-colors">Docs</Link>
+              <Link href="/demo" className="text-sm text-muted-foreground hover:text-foreground transition-colors">Demo</Link>
+            </div>
+            
+            <div className="flex items-center gap-3 ml-auto z-10">
+              <Link href={ROUTES.LOGIN}>
+                <Button variant="ghost" size="sm" className="hidden sm:inline-flex">Log in</Button>
+              </Link>
+              <Link href={ROUTES.SIGNUP}>
+                <Button size="sm" className="gap-1.5">
+                  Get Started
+                  <ArrowRight className="h-3.5 w-3.5" />
+                </Button>
+              </Link>
+            </div>
           </div>
-        </div>
-      </nav>
+        </nav>
+      )}
 
       <main className="flex-1">
         {/* Stripe Checkout Modal */}
