@@ -148,6 +148,13 @@ export default function SharesPage() {
             <p className="text-sm text-muted-foreground">Manage your active shared scan results. Revoke access anytime.</p>
           </div>
 
+          {loading ? (
+            <div className="flex flex-col items-center gap-3 py-20">
+              <Loader2 className="h-6 w-6 animate-spin text-primary" />
+              <p className="text-sm text-muted-foreground">Loading shares...</p>
+            </div>
+          ) : (
+          <>
           {/* Stats row */}
           {shares.length > 0 && (
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -310,6 +317,8 @@ export default function SharesPage() {
               onPageSizeChange={(s) => { setPageSize(s); setCurrentPage(1) }}
               totalItems={shares.length}
             />
+          )}
+          </>
           )}
         </div>
       </main>

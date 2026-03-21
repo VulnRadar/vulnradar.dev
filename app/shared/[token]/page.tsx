@@ -100,13 +100,8 @@ export default function SharedScanPage() {
     <PublicPageShell badge="Shared Report" maxWidth="max-w-5xl" padding="py-6 sm:py-8">
       <div className="flex flex-col gap-6">
         {loading && (
-          <div className="flex flex-col items-center gap-4 py-24">
-            <div className="relative">
-              <div className="absolute inset-0 rounded-full bg-primary/20 animate-ping" />
-              <div className="relative flex items-center justify-center w-12 h-12 rounded-full bg-card border border-border">
-                <Loader2 className="h-5 w-5 animate-spin text-primary" />
-              </div>
-            </div>
+          <div className="flex flex-col items-center gap-3 py-20">
+            <Loader2 className="h-6 w-6 animate-spin text-primary" />
             <p className="text-sm text-muted-foreground">Loading shared scan...</p>
           </div>
         )}
