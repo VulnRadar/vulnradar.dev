@@ -80,9 +80,10 @@ function HistoryPageContent() {
   const [clearing, setClearing] = useState(false)
   const [filter, setFilter] = useState("")
 
-  // Get retention days from centralized config (BILLING_HISTORY_RETENTION from config.yaml)
+  // Staff/admin always get unlimited retention regardless of plan
+  const isStaff = me?.role && ["admin", "moderator", "support"].includes(me.role)
   const userPlan = (me?.plan || "free") as keyof typeof BILLING_HISTORY_RETENTION
-  const retentionDays = BILLING_HISTORY_RETENTION[userPlan] ?? BILLING_HISTORY_RETENTION.free
+  const retentionDays = isStaff ? -1 : (BILLING_HISTORY_RETENTION[userPlan] ?? BILLING_HISTORY_RETENTION.free)
 
   const [selectedScanId, setSelectedScanId] = useState<number | null>(null)
   const [scanDetail, setScanDetail] = useState<ScanResult | null>(null)
