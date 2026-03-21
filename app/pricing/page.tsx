@@ -11,6 +11,7 @@ import { useAuth } from "@/components/auth-provider"
 import { PLANS as LIB_PLANS } from "@/lib/plans"
 import { ThemedLogo } from "@/components/themed-logo"
 import { PublicPageShell } from "@/components/public-page-shell"
+import { Footer } from "@/components/scanner/footer"
 import { StripeCheckout } from "@/components/stripe-checkout"
 import { X } from "lucide-react"
 
@@ -360,22 +361,7 @@ export default function PricingPage() {
         </div>
       </section>
 
-      {/* Footer */}
-      <footer className="border-t border-border">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-4 text-sm text-muted-foreground">
-            <div className="flex items-center gap-2">
-              <ThemedLogo width={20} height={20} className="h-5 w-5" alt={APP_NAME} />
-              <span>{APP_NAME}</span>
-            </div>
-            <div className="flex items-center gap-4">
-              <Link href="/docs" className="hover:text-foreground transition-colors">Docs</Link>
-              <Link href="/changelog" className="hover:text-foreground transition-colors">Changelog</Link>
-              <a href={`mailto:${SUPPORT_EMAIL}`} className="hover:text-foreground transition-colors">Support</a>
-            </div>
-          </div>
-        </div>
-      </footer>
+      <Footer />
       </div>
     </PublicPageShell>
   )

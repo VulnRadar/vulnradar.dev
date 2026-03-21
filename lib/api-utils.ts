@@ -20,38 +20,48 @@ export interface ApiSuccessResponse<T> {
 /**
  * JSON response helpers
  */
+/**
+ * Standardized API response helpers
+ * All responses follow a consistent format for professional, clear communication
+ */
 export const ApiResponse = {
+  // Success responses
   success: <T,>(data: T, status = 200) =>
     NextResponse.json(data, { status }),
 
+  // Client error responses (4xx)
   error: (message: string, status = 400) =>
-    NextResponse.json({ error: message }, { status }),
+    NextResponse.json({ error: message, status }, { status }),
 
-  badRequest: (message = ERROR_MESSAGES.UNAUTHORIZED || "Bad request") =>
-    NextResponse.json({ error: message }, { status: 400 }),
+  badRequest: (message = "The request could not be processed. Please check your input.") =>
+    NextResponse.json({ error: message, status: 400 }, { status: 400 }),
 
   unauthorized: (message = ERROR_MESSAGES.UNAUTHORIZED) =>
-    NextResponse.json({ error: message }, { status: 401 }),
+    NextResponse.json({ error: message, status: 401 }, { status: 401 }),
 
   forbidden: (message = ERROR_MESSAGES.FORBIDDEN) =>
-    NextResponse.json({ error: message }, { status: 403 }),
+    NextResponse.json({ error: message, status: 403 }, { status: 403 }),
 
   notFound: (message = ERROR_MESSAGES.NOT_FOUND) =>
-    NextResponse.json({ error: message }, { status: 404 }),
+    NextResponse.json({ error: message, status: 404 }, { status: 404 }),
 
-  conflict: (message = "Conflict") =>
-    NextResponse.json({ error: message }, { status: 409 }),
+  methodNotAllowed: (message = "This HTTP method is not supported for this endpoint.") =>
+    NextResponse.json({ error: message, status: 405 }, { status: 405 }),
 
-  tooManyRequests: (message = "Too many requests", retryAfter?: number) => {
-    const response = NextResponse.json({ error: message }, { status: 429 })
+  conflict: (message = "The request conflicts with the current state of the resource.") =>
+    NextResponse.json({ error: message, status: 409 }, { status: 409 }),
+
+  tooManyRequests: (message = "Rate limit exceeded. Please slow down your requests.", retryAfter?: number) => {
+    const response = NextResponse.json({ error: message, status: 429 }, { status: 429 })
     if (retryAfter) {
       response.headers.set("Retry-After", String(retryAfter))
     }
     return response
   },
 
+  // Server error responses (5xx)
   serverError: (message = ERROR_MESSAGES.SERVER_ERROR) =>
-    NextResponse.json({ error: message }, { status: 500 }),
+    NextResponse.json({ error: message, status: 500 }, { status: 500 }),
 }
 
 /**
