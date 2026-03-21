@@ -1270,7 +1270,17 @@ function UserDetailPanel({
   onRefreshBadges: () => void
   onBadgesChanged: (awardedIds: number[], revokedIds: number[]) => void
 }) {
-  const u = detail.user
+  const u = detail?.user
+  
+  // Guard against missing user data
+  if (!u) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <Loader2 className="h-6 w-6 animate-spin text-primary" />
+      </div>
+    )
+  }
+  
   const isLoading = (action: string) => actionLoading === `${u.id}-${action}`
   const [showBadgePicker, setShowBadgePicker] = useState(false)
   const [newNote, setNewNote] = useState("")
