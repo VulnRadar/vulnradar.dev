@@ -22,6 +22,12 @@ export interface PremiumFeature {
 
 // Define all premium features in one place
 export const PREMIUM_FEATURES: Record<string, PremiumFeature> = {
+  scan_limit: {
+    id: "scan_limit",
+    name: "Daily Scan Limit Reached",
+    description: "You've used all your free scans for today. Upgrade to get more daily scans and keep your security monitoring running.",
+    requiredPlan: "core_supporter",
+  },
   dns_refetch: {
     id: "dns_refetch",
     name: "DNS Re-fetch",
