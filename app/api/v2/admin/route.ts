@@ -4,6 +4,7 @@ import { getSession } from "@/lib/auth"
 import pool from "@/lib/db"
 import { getClientIP } from "@/lib/rate-limit"
 import { ERROR_MESSAGES, STAFF_ROLES, STAFF_ROLE_HIERARCHY } from "@/lib/constants"
+import { sendEmail, adminNotificationEmail } from "@/lib/email"
 
 async function requireStaff() {
   const session = await getSession()
@@ -486,7 +487,25 @@ export async function PATCH(request: NextRequest) {
     case "send_notification": {
       const { title, message: notifMessage, type: notifType } = await request.json()
       if (!title || !notifMessage) return NextResponse.json({ error: "title and message required" }, { status: 400 })
-      // This would integrate with a notification system - for now just log
+      
+      // Get admin name for the email
+      const adminResult = await pool.query("SELECT name, email FROM users WHERE id = $1", [session.userId])
+      const adminName = adminResult.rows[0]?.name || adminResult.rows[0]?.email || "Administrator"
+      
+      // Send the notification email
+      const emailPayload = adminNotificationEmail({
+        userName: targetUser.name || targetUser.email,
+        adminName,
+        title,
+        message: notifMessage,
+        type: notifType || "info",
+        timestamp: new Date(),
+      })
+      
+      sendEmail({ to: targetUser.email, ...emailPayload }).catch((err) => {
+        console.error("Failed to send admin notification email:", err)
+      })
+      
       await logAction(session.userId, userId, "send_notification", `Sent notification "${title}" to ${targetUser.email}`, ip)
       return NextResponse.json({ success: true })
     }
