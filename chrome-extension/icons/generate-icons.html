@@ -53,52 +53,76 @@
     const sizes = [16, 32, 48, 128];
     const container = document.getElementById('icons');
     
-    // Load the SVG
-    const img = new Image();
-    img.onload = function() {
-      sizes.forEach(size => {
-        // Create container
-        const box = document.createElement('div');
-        box.className = 'icon-box';
+    // Load the SVG as text first, then convert to data URL to avoid CORS issues
+    fetch('favicon-dark.svg')
+      .then(response => response.text())
+      .then(svgText => {
+        const img = new Image();
         
-        // Create canvas
-        const canvas = document.createElement('canvas');
-        canvas.width = size;
-        canvas.height = size;
-        
-        // Draw SVG to canvas
-        const ctx = canvas.getContext('2d');
-        ctx.drawImage(img, 0, 0, size, size);
-        
-        // Create filename label
-        const label = document.createElement('div');
-        label.className = 'filename';
-        label.textContent = `icon${size}.png`;
-        
-        // Create download button
-        const btn = document.createElement('button');
-        btn.className = 'download-btn';
-        btn.textContent = 'Download';
-        btn.onclick = function() {
-          const link = document.createElement('a');
-          link.download = `icon${size}.png`;
-          link.href = canvas.toDataURL('image/png');
-          link.click();
+        img.onload = function() {
+          sizes.forEach(size => {
+            // Create container
+            const box = document.createElement('div');
+            box.className = 'icon-box';
+            
+            // Create canvas
+            const canvas = document.createElement('canvas');
+            canvas.width = size;
+            canvas.height = size;
+            
+            // Draw SVG to canvas
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = '#0a0a0a'; // Match dark background
+            ctx.fillRect(0, 0, size, size);
+            ctx.drawImage(img, 0, 0, size, size);
+            
+            // Create filename label
+            const label = document.createElement('div');
+            label.className = 'filename';
+            label.textContent = `icon${size}.png`;
+            
+            // Create download button
+            const btn = document.createElement('button');
+            btn.className = 'download-btn';
+            btn.textContent = 'Download';
+            btn.onclick = function(e) {
+              e.preventDefault();
+              try {
+                const pngData = canvas.toDataURL('image/png');
+                const link = document.createElement('a');
+                link.href = pngData;
+                link.download = `icon${size}.png`;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                console.log('[v0] Downloaded icon' + size + '.png');
+              } catch (err) {
+                console.error('[v0] Download error:', err);
+                alert('Failed to download icon. Check browser console.');
+              }
+            };
+            
+            box.appendChild(canvas);
+            box.appendChild(label);
+            box.appendChild(btn);
+            container.appendChild(box);
+          });
         };
         
-        box.appendChild(canvas);
-        box.appendChild(label);
-        box.appendChild(btn);
-        container.appendChild(box);
+        img.onerror = function() {
+          console.error('[v0] Failed to load SVG image');
+          container.innerHTML = '<p style="color: #f87171;">Error loading favicon-dark.svg. Make sure the file exists.</p>';
+        };
+        
+        // Convert SVG text to blob URL to avoid CORS issues
+        const blob = new Blob([svgText], { type: 'image/svg+xml' });
+        const url = URL.createObjectURL(blob);
+        img.src = url;
+      })
+      .catch(err => {
+        console.error('[v0] Fetch error:', err);
+        container.innerHTML = '<p style="color: #f87171;">Error fetching favicon-dark.svg: ' + err.message + '</p>';
       });
-    };
-    
-    img.onerror = function() {
-      container.innerHTML = '<p style="color: #f87171;">Error loading favicon-dark.svg. Make sure the file exists in the icons folder.</p>';
-    };
-    
-    // Load the SVG from the same directory
-    img.src = 'favicon-dark.svg';
   </script>
 </body>
 </html>
