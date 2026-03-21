@@ -1996,18 +1996,18 @@ function UserDetailPanel({
     try {
       // Save field changes sequentially (each triggers its own toast + fetchUserDetail)
       for (const [key, value] of Object.entries(pendingChanges)) {
-        if (key === "name") await onAction(u.id, "update_name", { name: value as string })
-        else if (key === "email") await onAction(u.id, "update_email", { email: value as string })
-        else if (key === "plan") await onAction(u.id, "update_plan", { plan: value as string })
-        else if (key === "role") await onAction(u.id, "set_role", { role: value as string })
+        if (key === "name") await handleAction(u.id, "update_name", { name: value as string, notifyUser: notifyUserOnSave })
+        else if (key === "email") await handleAction(u.id, "update_email", { email: value as string, notifyUser: notifyUserOnSave })
+        else if (key === "plan") await handleAction(u.id, "update_plan", { plan: value as string, notifyUser: notifyUserOnSave })
+        else if (key === "role") await handleAction(u.id, "set_role", { role: value as string, notifyUser: notifyUserOnSave })
       }
-      // Fire badge API calls in parallel — onAction skips re-fetch for badge actions
+      // Fire badge API calls in parallel — handleAction skips re-fetch for badge actions
       const awardedThisSave = [...pendingBadgeAwards]
       const revokedThisSave = [...pendingBadgeRevokes]
       if (awardedThisSave.length > 0 || revokedThisSave.length > 0) {
         await Promise.all([
-          ...awardedThisSave.map((id) => onAction(u.id, "award_badge", { badgeId: String(id) })),
-          ...revokedThisSave.map((id) => onAction(u.id, "revoke_badge", { badgeId: String(id) })),
+          ...awardedThisSave.map((id) => handleAction(u.id, "award_badge", { badgeId: String(id), notifyUser: notifyUserOnSave })),
+          ...revokedThisSave.map((id) => handleAction(u.id, "revoke_badge", { badgeId: String(id), notifyUser: notifyUserOnSave })),
         ])
         // Patch the UI in one shot — no flicker, no re-fetch
         onBadgesChanged(awardedThisSave, revokedThisSave)
