@@ -533,7 +533,7 @@ function AdminContent() {
   const fetchUserDetail = async (userId: number) => {
     setDetailLoading(true)
     try {
-      const res = await fetch(`/api/v2/admin/${userId}`)
+      const res = await fetch(`/api/v2/admin?userId=${userId}`)
       if (!res.ok) throw new Error()
       const data = await res.json()
       setSelectedUser(data)
@@ -549,10 +549,10 @@ function AdminContent() {
     const key = `${userId}-${action}`
     setActionLoading(key)
     try {
-      const res = await fetch(`/api/v2/admin/${userId}`, {
+      const res = await fetch(`/api/v2/admin`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action, ...extra }),
+        body: JSON.stringify({ action, userId, ...extra }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || "Action failed")
@@ -676,8 +676,8 @@ function AdminContent() {
   }
 
   const fetchAllBadges = async () => {
-    try {
-      const res = await fetch("/api/v2/admin/badges")
+  try {
+  const res = await fetch("/api/v2/badges")
       if (!res.ok) throw new Error()
       const data = await res.json()
       setAllBadges(data.badges || [])
