@@ -5,7 +5,7 @@ import { Check, ArrowRight, Sparkles, Shield, Zap, Clock, Globe, Lock, Users, He
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
-import { APP_NAME, ROUTES, BILLING_ENABLED, ENTERPRISE_EMAIL, SUPPORT_EMAIL } from "@/lib/constants"
+import { APP_NAME, ROUTES, BILLING_ENABLED, SUPPORT_EMAIL } from "@/lib/constants"
 import Link from "next/link"
 import { useAuth } from "@/components/auth-provider"
 import { ThemedLogo } from "@/components/themed-logo"
@@ -318,37 +318,7 @@ export default function PricingPage() {
         </div>
       </section>
 
-      {/* Enterprise CTA */}
-      <section className="max-w-7xl mx-auto px-4 sm:px-6 pb-20">
-        <div className="rounded-2xl border border-border bg-card p-8 sm:p-12">
-          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
-            <div className="max-w-2xl">
-              <h2 className="text-2xl font-bold mb-2">Enterprise</h2>
-              <p className="text-muted-foreground">
-                For large companies that require additional security, custom integrations, and dedicated support. 
-                Contact us for custom pricing and SLA agreements.
-              </p>
-            </div>
-            <Button size="lg" variant="outline" className="shrink-0" asChild>
-              <a href={`mailto:${ENTERPRISE_EMAIL}`}>Contact Us</a>
-            </Button>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mt-8 pt-8 border-t border-border">
-            {[
-              "Unlimited scans",
-              "Custom integrations",
-              "SSO/SAML support",
-              "Dedicated support",
-              "SLA guarantee",
-            ].map((feature) => (
-              <div key={feature} className="flex items-center gap-2 text-sm">
-                <Check className="h-4 w-4 text-primary" />
-                <span>{feature}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
+
 
       {/* Features Grid */}
       <section className="border-t border-border bg-muted/30">

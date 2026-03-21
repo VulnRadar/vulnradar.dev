@@ -14,6 +14,7 @@ import {
   getDiscordUserConnection,
   getUserTwoFAConfig,
 } from "@/lib/discord-utils"
+import { DEVICE_TRUST_COOKIE_NAME } from "@/lib/constants"
 
 const DISCORD_CLIENT_ID = process.env.DISCORD_CLIENT_ID
 const DISCORD_CLIENT_SECRET = process.env.DISCORD_CLIENT_SECRET
@@ -216,8 +217,20 @@ export async function GET(request: Request) {
       const user2FA = await getUserTwoFAConfig(userId)
 
       if (user2FA?.totp_enabled) {
-        // User has 2FA enabled - store pending login and redirect to 2FA verification
+        // Check if device is trusted (skip 2FA for trusted devices)
         const cookieStore = await cookies()
+        const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown"
+        const userAgent = request.headers.get("user-agent") || "unknown"
+        const deviceId = `${ip}-${userAgent}`.split("").reduce((a, b) => ((a << 5) - a) + b.charCodeAt(0), 0)
+        const deviceCookie = cookieStore.get(DEVICE_TRUST_COOKIE_NAME)?.value
+        
+        if (deviceCookie && deviceCookie === String(deviceId)) {
+          // Device is trusted - create session directly without 2FA
+          await createSession(userId, ip, userAgent)
+          return NextResponse.redirect(`${baseUrl}/dashboard`)
+        }
+        
+        // User has 2FA enabled - store pending login and redirect to 2FA verification
         const pendingToken = crypto.randomBytes(32).toString("hex")
 
         // Store pending Discord login in a cookie (expires in 5 minutes)

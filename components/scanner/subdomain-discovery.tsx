@@ -2,10 +2,12 @@
 
 import { useState } from "react"
 import { useRouter } from "next/navigation"
-import { Globe, Loader2, Search, ExternalLink, ChevronDown, ChevronRight, Radar, RefreshCw, Clock } from "lucide-react"
+import { Globe, Loader2, Search, ExternalLink, ChevronDown, ChevronRight, Radar, RefreshCw, Clock, Crown } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { API } from "@/lib/constants"
+import { useAuth } from "@/components/auth-provider"
+import { PremiumUpgradeModal, PREMIUM_FEATURES, hasFeatureAccess } from "@/components/premium-upgrade-modal"
 
 interface DiscoveredSubdomain {
   subdomain: string
@@ -76,13 +78,24 @@ function formatTimeRemaining(expiresAt: string): string {
 
 export function SubdomainDiscovery({ url, onScanSubdomain }: SubdomainDiscoveryProps) {
   const router = useRouter()
+  const { me } = useAuth()
   const [loading, setLoading] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
   const [result, setResult] = useState<DiscoveryResult | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [expanded, setExpanded] = useState(false)
+  const [showUpgradeModal, setShowUpgradeModal] = useState(false)
+  
+  const userPlan = me?.plan || "free"
+  const canRefreshDNS = hasFeatureAccess(userPlan, PREMIUM_FEATURES.dns_refetch.requiredPlan)
 
   async function handleDiscover(forceRefresh = false) {
+    // Check if user has premium access for refresh
+    if (forceRefresh && !canRefreshDNS) {
+      setShowUpgradeModal(true)
+      return
+    }
+    
     if (forceRefresh) {
       setRefreshing(true)
     } else {
@@ -116,6 +129,13 @@ export function SubdomainDiscovery({ url, onScanSubdomain }: SubdomainDiscoveryP
 
   if (!result && !loading) {
     return (
+      <>
+      <PremiumUpgradeModal
+        open={showUpgradeModal}
+        onOpenChange={setShowUpgradeModal}
+        feature={PREMIUM_FEATURES.dns_refetch}
+        currentPlan={userPlan}
+      />
       <div className="rounded-xl border border-border bg-card p-4">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div className="flex items-center gap-3">
@@ -144,6 +164,7 @@ export function SubdomainDiscovery({ url, onScanSubdomain }: SubdomainDiscoveryP
           <p className="text-sm text-destructive mt-3">{error}</p>
         )}
       </div>
+      </>
     )
   }
 
@@ -169,6 +190,13 @@ export function SubdomainDiscovery({ url, onScanSubdomain }: SubdomainDiscoveryP
   const unreachable = result.subdomains.filter((s) => !s.reachable)
 
   return (
+    <>
+    <PremiumUpgradeModal
+      open={showUpgradeModal}
+      onOpenChange={setShowUpgradeModal}
+      feature={PREMIUM_FEATURES.dns_refetch}
+      currentPlan={userPlan}
+    />
     <div className="rounded-xl border border-border bg-card overflow-hidden">
       <button
         type="button"
@@ -215,15 +243,22 @@ export function SubdomainDiscovery({ url, onScanSubdomain }: SubdomainDiscoveryP
                 <button
                   onClick={() => handleDiscover(true)}
                   disabled={refreshing}
-                  className="inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium text-foreground hover:bg-muted disabled:opacity-50 transition-colors"
-                  title="Force refresh cache now"
+                  className={cn(
+                    "inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium transition-colors disabled:opacity-50",
+                    canRefreshDNS 
+                      ? "text-foreground hover:bg-muted" 
+                      : "text-primary hover:bg-primary/10"
+                  )}
+                  title={canRefreshDNS ? "Force refresh cache now" : "Premium feature - Upgrade to Pro"}
                 >
                   {refreshing ? (
                     <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  ) : (
+                  ) : canRefreshDNS ? (
                     <RefreshCw className="h-3.5 w-3.5" />
+                  ) : (
+                    <Crown className="h-3.5 w-3.5" />
                   )}
-                  <span className="hidden sm:inline">Refresh Now</span>
+                  <span className="hidden sm:inline">{canRefreshDNS ? "Refresh Now" : "Pro"}</span>
                 </button>
               </div>
             )}
@@ -271,6 +306,7 @@ export function SubdomainDiscovery({ url, onScanSubdomain }: SubdomainDiscoveryP
         </div>
       )}
     </div>
+    </>
   )
 }
 

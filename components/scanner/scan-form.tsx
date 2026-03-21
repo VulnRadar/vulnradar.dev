@@ -174,48 +174,51 @@ export function ScanForm({ onScan, onBulkScan, bulkStatus = "idle", bulkProgress
       </div>
 
       {/* Scan mode toggle */}
-      <div className="flex items-center gap-1.5 p-1 rounded-lg bg-muted/50 border border-border">
+      <div className="flex items-center gap-1 sm:gap-1.5 p-1 rounded-lg bg-muted/50 border border-border">
         <button
           type="button"
           onClick={() => setMode("quick")}
           className={cn(
-            "flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all",
+            "flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-3 py-2 sm:py-1.5 rounded-md text-xs font-medium transition-all min-h-[40px] sm:min-h-0",
             mode === "quick"
               ? "bg-background text-foreground shadow-sm border border-border"
-              : "text-muted-foreground hover:text-foreground",
+              : "text-muted-foreground hover:text-foreground active:bg-muted/80",
           )}
         >
-          <Zap className="h-3 w-3" />
-          Quick Scan
+          <Zap className="h-3.5 w-3.5 sm:h-3 sm:w-3" />
+          <span className="hidden xs:inline">Quick</span>
+          <span className="xs:hidden">Quick</span>
         </button>
         <button
           type="button"
           onClick={() => isHttpProtocol(protocol) && setMode("deep")}
           disabled={!isHttpProtocol(protocol)}
           className={cn(
-            "flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all",
+            "flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-3 py-2 sm:py-1.5 rounded-md text-xs font-medium transition-all min-h-[40px] sm:min-h-0",
             !isHttpProtocol(protocol) && "opacity-50 cursor-not-allowed",
             mode === "deep"
               ? "bg-background text-foreground shadow-sm border border-border"
-              : "text-muted-foreground hover:text-foreground",
+              : "text-muted-foreground hover:text-foreground active:bg-muted/80",
           )}
           title={!isHttpProtocol(protocol) ? "Deep crawl only available for HTTP/HTTPS" : undefined}
         >
-          <Globe className="h-3 w-3" />
-          Deep Crawl
+          <Globe className="h-3.5 w-3.5 sm:h-3 sm:w-3" />
+          <span className="hidden xs:inline">Deep</span>
+          <span className="xs:hidden">Deep</span>
         </button>
         <button
           type="button"
           onClick={() => setMode("bulk")}
           className={cn(
-            "flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all",
+            "flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-3 py-2 sm:py-1.5 rounded-md text-xs font-medium transition-all min-h-[40px] sm:min-h-0",
             mode === "bulk"
               ? "bg-background text-foreground shadow-sm border border-border"
-              : "text-muted-foreground hover:text-foreground",
+              : "text-muted-foreground hover:text-foreground active:bg-muted/80",
           )}
         >
-          <List className="h-3 w-3" />
-          Bulk Scan
+          <List className="h-3.5 w-3.5 sm:h-3 sm:w-3" />
+          <span className="hidden xs:inline">Bulk</span>
+          <span className="xs:hidden">Bulk</span>
         </button>
       </div>
       <p className="text-[10px] text-muted-foreground text-center -mt-2">
@@ -236,7 +239,7 @@ export function ScanForm({ onScan, onBulkScan, bulkStatus = "idle", bulkProgress
                     type="button"
                     disabled={isScanning}
                     className={cn(
-                      "flex items-center gap-1 px-3 h-11 rounded-l-md border border-r-0 border-border bg-muted/50 text-xs font-mono font-medium text-muted-foreground hover:bg-muted transition-colors shrink-0",
+                      "flex items-center gap-1 px-2.5 sm:px-3 h-12 sm:h-11 rounded-l-md border border-r-0 border-border bg-muted/50 text-xs font-mono font-medium text-muted-foreground hover:bg-muted active:bg-muted transition-colors shrink-0",
                       isScanning && "opacity-50 cursor-not-allowed"
                     )}
                   >
@@ -285,7 +288,7 @@ export function ScanForm({ onScan, onBulkScan, bulkStatus = "idle", bulkProgress
                     if (error) setError("")
                   }}
                   disabled={isScanning}
-                  className="pl-9 h-11 rounded-l-none bg-card border-border text-foreground placeholder:text-muted-foreground"
+                  className="pl-9 h-12 sm:h-11 rounded-l-none bg-card border-border text-foreground placeholder:text-muted-foreground text-base sm:text-sm"
                   aria-label="Domain or URL to scan"
                   aria-invalid={!!error}
                   aria-describedby={error ? "url-error" : undefined}
@@ -296,7 +299,7 @@ export function ScanForm({ onScan, onBulkScan, bulkStatus = "idle", bulkProgress
               <Button
                 type="submit"
                 disabled={isScanning || noneSelected}
-                className="h-11 px-6 font-medium shrink-0 flex-1 sm:flex-none"
+                className="h-12 sm:h-11 px-6 font-medium shrink-0 flex-1 sm:flex-none min-w-[100px]"
               >
                 {isScanning ? (
                   <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Scanning</>
@@ -311,7 +314,7 @@ export function ScanForm({ onScan, onBulkScan, bulkStatus = "idle", bulkProgress
                     variant="outline"
                     disabled={isScanning}
                     className={cn(
-                      "h-11 px-3 bg-transparent shrink-0",
+                      "h-12 sm:h-11 px-3 bg-transparent shrink-0",
                       !allSelected && "border-primary/50 text-primary",
                     )}
                     aria-label="Select scanners"
