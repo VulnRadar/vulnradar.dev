@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { X, Link2, Check, Copy, Mail, MessageCircle } from "lucide-react"
+import { Link2, Check, Copy, Mail, MessageCircle, Globe, Share2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -10,7 +10,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
 
 interface ShareModalProps {
@@ -20,10 +19,6 @@ interface ShareModalProps {
   title?: string
 }
 
-/**
- * Clipboard write with fallback for mobile browsers that don't support
- * navigator.clipboard (or block it outside secure user-gesture contexts).
- */
 async function copyText(text: string): Promise<boolean> {
   if (navigator.clipboard?.writeText) {
     try {
@@ -57,13 +52,11 @@ const SHARE_OPTIONS = [
     id: "x",
     label: "X",
     icon: () => (
-      <svg viewBox="0 0 24 24" className="h-5 w-5" fill="currentColor">
+      <svg viewBox="0 0 24 24" className="h-4 w-4" fill="currentColor">
         <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
       </svg>
     ),
-    bgColor: "bg-foreground",
-    textColor: "text-background",
-    hoverColor: "hover:bg-foreground/90",
+    color: "bg-foreground text-background hover:bg-foreground/90",
     getUrl: (url: string, title: string) =>
       `https://twitter.com/intent/tweet?url=${encodeURIComponent(url)}&text=${encodeURIComponent(title)}`,
   },
@@ -71,13 +64,11 @@ const SHARE_OPTIONS = [
     id: "facebook",
     label: "Facebook",
     icon: () => (
-      <svg viewBox="0 0 24 24" className="h-5 w-5" fill="currentColor">
+      <svg viewBox="0 0 24 24" className="h-4 w-4" fill="currentColor">
         <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" />
       </svg>
     ),
-    bgColor: "bg-[#1877F2]",
-    textColor: "text-white",
-    hoverColor: "hover:bg-[#1877F2]/90",
+    color: "bg-[#1877F2] text-white hover:bg-[#1877F2]/90",
     getUrl: (url: string) =>
       `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(url)}`,
   },
@@ -85,23 +76,19 @@ const SHARE_OPTIONS = [
     id: "linkedin",
     label: "LinkedIn",
     icon: () => (
-      <svg viewBox="0 0 24 24" className="h-5 w-5" fill="currentColor">
+      <svg viewBox="0 0 24 24" className="h-4 w-4" fill="currentColor">
         <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z" />
       </svg>
     ),
-    bgColor: "bg-[#0A66C2]",
-    textColor: "text-white",
-    hoverColor: "hover:bg-[#0A66C2]/90",
-    getUrl: (url: string, title: string) =>
+    color: "bg-[#0A66C2] text-white hover:bg-[#0A66C2]/90",
+    getUrl: (url: string) =>
       `https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(url)}`,
   },
   {
     id: "whatsapp",
     label: "WhatsApp",
     icon: MessageCircle,
-    bgColor: "bg-[#25D366]",
-    textColor: "text-white",
-    hoverColor: "hover:bg-[#25D366]/90",
+    color: "bg-[#25D366] text-white hover:bg-[#25D366]/90",
     getUrl: (url: string, title: string) =>
       `https://wa.me/?text=${encodeURIComponent(`${title} ${url}`)}`,
   },
@@ -109,9 +96,7 @@ const SHARE_OPTIONS = [
     id: "email",
     label: "Email",
     icon: Mail,
-    bgColor: "bg-muted",
-    textColor: "text-foreground",
-    hoverColor: "hover:bg-muted/80",
+    color: "bg-muted text-foreground hover:bg-muted/80",
     getUrl: (url: string, title: string) =>
       `mailto:?subject=${encodeURIComponent(title)}&body=${encodeURIComponent(`Check out this VulnRadar scan report:\n\n${url}`)}`,
   },
@@ -135,34 +120,92 @@ export function ShareModal({ open, onOpenChange, shareUrl, title = "VulnRadar Sc
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md gap-0 p-0 overflow-hidden">
-        <DialogHeader className="px-6 pt-6 pb-4">
-          <DialogTitle className="text-center text-lg font-semibold">Share</DialogTitle>
-          <DialogDescription className="sr-only">Share this scan report via social media or copy the link</DialogDescription>
+      <DialogContent className="sm:max-w-md p-0 gap-0 overflow-hidden bg-card border-border">
+        <DialogHeader className="p-6 pb-0">
+          <div className="flex items-center gap-3 mb-2">
+            <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-primary/10">
+              <Share2 className="h-5 w-5 text-primary" />
+            </div>
+            <div>
+              <DialogTitle className="text-lg font-semibold">Share Report</DialogTitle>
+              <DialogDescription className="text-sm text-muted-foreground">
+                Share this scan report with others
+              </DialogDescription>
+            </div>
+          </div>
         </DialogHeader>
 
-        <div className="px-6 pb-6 space-y-5">
-          {/* Share options grid */}
-          <div className="flex items-center justify-center gap-3 flex-wrap">
+        <div className="p-6 space-y-6">
+          {/* URL input with copy */}
+          <div className="space-y-2">
+            <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+              Share Link
+            </label>
+            <div className="flex items-center gap-2">
+              <div className="relative flex-1">
+                <div className="absolute left-3 top-1/2 -translate-y-1/2 flex items-center justify-center w-6 h-6 rounded bg-muted">
+                  <Link2 className="h-3.5 w-3.5 text-muted-foreground" />
+                </div>
+                <input
+                  readOnly
+                  value={shareUrl}
+                  className="w-full pl-12 pr-4 py-2.5 rounded-lg border border-border bg-muted/30 text-sm font-mono text-foreground truncate focus:outline-none focus:ring-2 focus:ring-primary/20"
+                  onClick={(e) => (e.target as HTMLInputElement).select()}
+                />
+              </div>
+              <Button
+                onClick={handleCopy}
+                className={cn(
+                  "min-w-[100px] gap-2 transition-all font-medium",
+                  copied
+                    ? "bg-emerald-500 hover:bg-emerald-500 text-white"
+                    : "bg-primary hover:bg-primary/90"
+                )}
+              >
+                {copied ? (
+                  <>
+                    <Check className="h-4 w-4" />
+                    Copied
+                  </>
+                ) : (
+                  <>
+                    <Copy className="h-4 w-4" />
+                    Copy
+                  </>
+                )}
+              </Button>
+            </div>
+          </div>
+
+          {/* Divider */}
+          <div className="relative">
+            <div className="absolute inset-0 flex items-center">
+              <div className="w-full border-t border-border" />
+            </div>
+            <div className="relative flex justify-center text-xs uppercase">
+              <span className="bg-card px-3 text-muted-foreground">or share via</span>
+            </div>
+          </div>
+
+          {/* Share buttons grid */}
+          <div className="grid grid-cols-5 gap-2">
             {SHARE_OPTIONS.map((option) => {
               const Icon = option.icon
               return (
                 <button
                   key={option.id}
                   onClick={() => handleShare(option)}
-                  className="flex flex-col items-center gap-1.5 group"
+                  className="group flex flex-col items-center gap-2 p-3 rounded-xl border border-transparent hover:border-border hover:bg-muted/30 transition-all"
                 >
                   <div
                     className={cn(
-                      "flex items-center justify-center h-12 w-12 rounded-full transition-all",
-                      option.bgColor,
-                      option.textColor,
-                      option.hoverColor
+                      "flex items-center justify-center h-10 w-10 rounded-xl transition-transform group-hover:scale-105",
+                      option.color
                     )}
                   >
                     <Icon />
                   </div>
-                  <span className="text-xs text-muted-foreground group-hover:text-foreground transition-colors">
+                  <span className="text-[11px] font-medium text-muted-foreground group-hover:text-foreground transition-colors">
                     {option.label}
                   </span>
                 </button>
@@ -170,40 +213,22 @@ export function ShareModal({ open, onOpenChange, shareUrl, title = "VulnRadar Sc
             })}
           </div>
 
-          {/* URL copy section */}
-          <div className="flex items-center gap-2">
-            <div className="relative flex-1">
-              <Link2 className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                readOnly
-                value={shareUrl}
-                className="pl-10 pr-3 bg-muted/50 border-border text-sm font-mono truncate"
-                onClick={(e) => (e.target as HTMLInputElement).select()}
-              />
-            </div>
+          {/* Web share API button (if available) */}
+          {typeof navigator !== "undefined" && navigator.share && (
             <Button
-              onClick={handleCopy}
-              size="sm"
-              className={cn(
-                "min-w-[80px] transition-all",
-                copied
-                  ? "bg-emerald-500 hover:bg-emerald-500 text-white"
-                  : "bg-primary hover:bg-primary/90"
-              )}
+              variant="outline"
+              className="w-full gap-2 bg-transparent"
+              onClick={() => {
+                navigator.share({
+                  title,
+                  url: shareUrl,
+                }).catch(() => {})
+              }}
             >
-              {copied ? (
-                <>
-                  <Check className="h-4 w-4 mr-1.5" />
-                  Copied
-                </>
-              ) : (
-                <>
-                  <Copy className="h-4 w-4 mr-1.5" />
-                  Copy
-                </>
-              )}
+              <Globe className="h-4 w-4" />
+              More sharing options
             </Button>
-          </div>
+          )}
         </div>
       </DialogContent>
     </Dialog>
