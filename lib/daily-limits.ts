@@ -9,13 +9,16 @@
 import pool from "./db"
 import { BILLING_ENABLED, BILLING_PLAN_LIMITS, BILLING_UNLIMITED_MODE_LIMIT } from "./constants"
 
+// Staff roles that get unlimited access
+const STAFF_ROLES = ["admin", "moderator", "support"]
+
 // Plan-based daily limits (from config.yaml when billing is enabled)
 export const PLAN_LIMITS = {
   free: BILLING_PLAN_LIMITS.free,
   core_supporter: BILLING_PLAN_LIMITS.core_supporter,
   pro_supporter: BILLING_PLAN_LIMITS.pro_supporter,
   elite_supporter: BILLING_PLAN_LIMITS.elite_supporter,
-  admin: Infinity, // Unlimited for admins always
+  staff: Infinity, // Unlimited for all staff (admin, moderator, support)
 } as const
 
 export type PlanType = keyof typeof PLAN_LIMITS
@@ -45,9 +48,9 @@ export async function getUserPlan(userId: number): Promise<PlanType> {
     )
     const row = result.rows[0]
     
-    // Admins get unlimited
-    if (row?.role === "admin") {
-      return "admin"
+    // Staff roles get unlimited
+    if (row?.role && STAFF_ROLES.includes(row.role)) {
+      return "staff"
     }
     
     // Gifted plan takes priority over regular plan

@@ -24,6 +24,8 @@ import { DEFAULT_SCAN_NOTE } from "@/lib/constants"
 import { API } from "@/lib/client-constants"
 import { AlertCircle, RotateCcw, MessageSquare, Pencil, Save, Loader2 as Loader2Icon, Globe, ChevronDown, ChevronRight, ExternalLink } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { PremiumUpgradeModal, PREMIUM_FEATURES } from "@/components/premium-upgrade-modal"
+import { useAuth } from "@/components/auth-provider"
 
 export default function DashboardPage() {
   return (
@@ -50,7 +52,9 @@ function DashboardLoading() {
 
 function DashboardContent() {
   const searchParams = useSearchParams()
+  const { me } = useAuth()
   const [status, setStatus] = useState<ScanStatus>("idle")
+  const [showLimitModal, setShowLimitModal] = useState(false)
   const [result, setResult] = useState<ScanResult | null>(null)
   const [scanHistoryId, setScanHistoryId] = useState<number | null>(null)
   
@@ -65,18 +69,44 @@ function DashboardContent() {
     }
   }, [])
 
-  // If user manually navigates to /dashboard#scan-{id}, redirect to history page
+  // Handle URL hash changes for navigation
+  // - If user manually navigates to /dashboard#scan-{id} while idle, redirect to history
+  // - If hash is cleared (e.g., clicking logo from /dashboard#scan-305 → /dashboard), reset view
   useEffect(() => {
     if (typeof window === "undefined") return
+    
+    // Track previous hash to detect when it's cleared
+    let prevHash = window.location.hash
+    
     const checkHash = () => {
       const hash = window.location.hash
+      
+      // Hash was cleared (went from #scan-X to no hash) - reset to idle dashboard
+      if (prevHash.startsWith("#scan-") && !hash && status === "done") {
+        prevHash = hash
+        // Reset the dashboard state
+        setStatus("idle")
+        setResult(null)
+        setScanHistoryId(null)
+        setError(null)
+        setSelectedIssue(null)
+        setScanNotes("")
+        setEditingNotes(false)
+        setCrawlInfo(null)
+        return
+      }
+      
+      // User navigated to #scan-{id} while idle - redirect to history
       if (hash.startsWith("#scan-") && status === "idle") {
         const id = hash.replace("#scan-", "")
         if (id && !isNaN(parseInt(id, 10))) {
           window.location.href = `/history#${id}`
         }
       }
+      
+      prevHash = hash
     }
+    
     checkHash()
     window.addEventListener("hashchange", checkHash)
     return () => window.removeEventListener("hashchange", checkHash)
@@ -166,6 +196,12 @@ function DashboardContent() {
       const data = await response.json()
 
       if (!response.ok) {
+        // Show upgrade modal for daily scan limit (429 with remaining: 0)
+        if (response.status === 429 && (data.remaining === 0 || data.error?.toLowerCase().includes("daily scan limit") || data.error?.toLowerCase().includes("scan limit"))) {
+          setStatus("idle")
+          setShowLimitModal(true)
+          return
+        }
         setError(data.error || "An unexpected error occurred.")
         setStatus("failed")
         return
@@ -244,8 +280,12 @@ function DashboardContent() {
         
         if (res.ok && !data.error) {
           successful++
-        } else if (data.error?.includes("limit") || data.error?.includes("Limit")) {
+        } else if (res.status === 429 || data.error?.toLowerCase().includes("daily scan limit") || data.error?.toLowerCase().includes("scan limit")) {
           skipped++
+          // Show upgrade modal on first limit hit during bulk scan
+          if (skipped === 1) {
+            setShowLimitModal(true)
+          }
         } else {
           failed++
         }
@@ -459,6 +499,14 @@ function DashboardContent() {
           onCancel={handleCrawlCancel}
         />
       )}
+
+      {/* Scan limit upgrade modal */}
+      <PremiumUpgradeModal
+        open={showLimitModal}
+        onOpenChange={setShowLimitModal}
+        feature={PREMIUM_FEATURES.scan_limit}
+        currentPlan={me?.plan || "free"}
+      />
     </div>
   )
 }

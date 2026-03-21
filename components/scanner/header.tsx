@@ -9,6 +9,7 @@ import Link from "next/link"
 import { useState } from "react"
 import { cn } from "@/lib/utils"
 import { APP_NAME, ROUTES, API } from "@/lib/constants"
+import { backdrops, transitions } from "@/lib/animations"
 import { ThemedLogo } from "@/components/themed-logo"
 import { NotificationBell } from "@/components/notification-center"
 import { useAuth, clearAuthCache } from "@/components/auth-provider"
@@ -38,13 +39,28 @@ export function Header() {
   }
 
   return (
-      <header className="sticky top-0 z-50 border-b border-border bg-background/80 backdrop-blur-lg">
+      <header className={`sticky top-0 z-50 border-b border-border/50 ${backdrops.header}`}>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 relative flex items-center">
           {/* Logo - left */}
           <Link
               href={ROUTES.DASHBOARD}
-              className="flex items-center gap-2.5 hover:opacity-80 transition-opacity shrink-0 z-10"
+              className={`flex items-center gap-2.5 hover:opacity-80 shrink-0 z-10 ${transitions.opacity}`}
               aria-label="Go to scanner"
+              onClick={(e) => {
+                // If already on dashboard with a hash (viewing scan results), 
+                // clear the hash and dispatch hashchange event to reset state
+                if (pathname === ROUTES.DASHBOARD && window.location.hash) {
+                  e.preventDefault()
+                  // Clear hash first, then dispatch event
+                  const prevHash = window.location.hash
+                  window.history.pushState(null, "", ROUTES.DASHBOARD)
+                  // Dispatch hashchange so the dashboard component can reset
+                  window.dispatchEvent(new HashChangeEvent("hashchange", {
+                    oldURL: window.location.href.replace(ROUTES.DASHBOARD, ROUTES.DASHBOARD + prevHash),
+                    newURL: window.location.href
+                  }))
+                }
+              }}
           >
             <ThemedLogo width={24} height={24} className="h-6 w-6" alt={`${APP_NAME} logo`} />
             <span className="text-lg font-semibold text-foreground tracking-tight hidden sm:inline">

@@ -131,7 +131,7 @@ export function StripeCheckout({ productId, userId, onSuccess }: {
   }
 
   return (
-    <div id="checkout">
+    <div id="checkout" className="w-full">
       <EmbeddedCheckoutProvider
         stripe={stripePromise}
         options={{ 

@@ -148,6 +148,14 @@ export interface BillingConfig {
     elite_supporter: number
   }
   
+  // History retention in days (-1 = unlimited)
+  history_retention: {
+    free: number
+    core_supporter: number
+    pro_supporter: number
+    elite_supporter: number
+  }
+  
   // When billing is disabled, this is the limit for all users (-1 = unlimited)
   unlimited_mode_limit: number
 }
@@ -278,6 +286,12 @@ export const DEFAULT_CONFIG: VulnRadarConfig = {
       core_supporter: 100,
       pro_supporter: 150,
       elite_supporter: 500,
+    },
+    history_retention: {
+      free: 30,
+      core_supporter: 90,
+      pro_supporter: -1,
+      elite_supporter: -1,
     },
     unlimited_mode_limit: -1, // -1 = unlimited when billing is disabled
   },
