@@ -533,7 +533,7 @@ function AdminContent() {
   const fetchUserDetail = async (userId: number) => {
     setDetailLoading(true)
     try {
-      const res = await fetch(`/api/v2/admin?userId=${userId}`)
+      const res = await fetch(`/api/v2/admin?section=user-detail&userId=${userId}`)
       if (!res.ok) throw new Error()
       const data = await res.json()
       setSelectedUser(data)
@@ -587,7 +587,7 @@ function AdminContent() {
       const params = new URLSearchParams({ page: String(p), limit: String(auditPageSize) })
       if (auditFilter !== "all") params.set("action", auditFilter)
       if (auditSearch.trim()) params.set("search", auditSearch.trim())
-      const res = await fetch(`/api/v2/admin/audit?${params}`)
+      const res = await fetch(`/api/v2/admin?section=audit&${params}`)
       if (!res.ok) throw new Error()
       const data = await res.json()
       setAuditLogs(data.logs)
@@ -603,7 +603,7 @@ function AdminContent() {
   const fetchActiveAdmins = async () => {
     setAdminsLoading(true)
     try {
-      const res = await fetch("/api/v2/admin/active")
+      const res = await fetch("/api/v2/admin/activity")
       if (!res.ok) throw new Error()
       const data = await res.json()
       setActiveAdmins(data.admins || [])
