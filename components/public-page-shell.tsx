@@ -58,16 +58,16 @@ export function PublicPageShell({
       {isLoggedIn ? (
         <Header />
       ) : (
-        <header className="sticky top-0 z-50 border-b border-border bg-background/80 backdrop-blur-lg">
+        <header className="sticky top-0 z-50 border-b border-border/50 bg-background/95 backdrop-blur-xl supports-[backdrop-filter]:bg-background/60">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 relative flex items-center">
             {/* Logo - left */}
-            <Link href="/" className="flex items-center gap-2.5 hover:opacity-80 transition-opacity z-10">
-              <ThemedLogo width={24} height={24} className="h-6 w-6" alt={`${APP_NAME} logo`} />
-              <span className="font-semibold text-lg tracking-tight">{APP_NAME}</span>
+            <Link href="/" className="flex items-center gap-2.5 z-10 group">
+              <ThemedLogo width={28} height={28} className="h-7 w-7 transition-transform group-hover:scale-105" alt={`${APP_NAME} logo`} />
+              <span className="font-bold text-lg tracking-tight">{APP_NAME}</span>
             </Link>
 
             {/* Center nav links - absolutely centered */}
-            <nav className="hidden md:flex items-center gap-6 absolute left-1/2 -translate-x-1/2">
+            <nav className="hidden md:flex items-center gap-8 absolute left-1/2 -translate-x-1/2">
               {BILLING_ENABLED && (
                 <Link href={ROUTES.PRICING} className="text-sm text-muted-foreground hover:text-foreground transition-colors">
                   Pricing
@@ -84,10 +84,15 @@ export function PublicPageShell({
             {/* CTA buttons - pushed to end */}
             <div className="flex items-center gap-3 ml-auto z-10">
               <Link href={ROUTES.LOGIN}>
-                <Button variant="ghost" size="sm">Log in</Button>
+                <Button variant="ghost" size="sm" className="hidden sm:inline-flex">Log in</Button>
               </Link>
-              <Link href={ROUTES.SIGNUP} className="hidden sm:block">
-                <Button size="sm">Get Started</Button>
+              <Link href={ROUTES.SIGNUP}>
+                <Button size="sm" className="gap-1.5">
+                  Get Started
+                  <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6" />
+                  </svg>
+                </Button>
               </Link>
             </div>
           </div>
