@@ -8,6 +8,7 @@ import { Footer } from "@/components/scanner/footer"
 import { useAuth } from "@/components/auth-provider"
 import { APP_NAME, ROUTES, BILLING_ENABLED } from "@/lib/constants"
 import { ThemedLogo } from "@/components/themed-logo"
+import { backdrops, transitions } from "@/lib/animations"
 
 interface PublicPageShellProps {
   children: React.ReactNode
@@ -58,7 +59,7 @@ export function PublicPageShell({
       {isLoggedIn ? (
         <Header />
       ) : (
-        <header className="sticky top-0 z-50 border-b border-border/50 bg-background/95 backdrop-blur-xl supports-[backdrop-filter]:bg-background/60">
+        <header className={`sticky top-0 z-50 border-b border-border/50 ${backdrops.header}`}>
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 relative flex items-center">
             {/* Logo - left */}
             <Link href="/" className="flex items-center gap-2.5 z-10 group">
@@ -69,14 +70,14 @@ export function PublicPageShell({
             {/* Center nav links - absolutely centered */}
             <nav className="hidden md:flex items-center gap-8 absolute left-1/2 -translate-x-1/2">
               {BILLING_ENABLED && (
-                <Link href={ROUTES.PRICING} className="text-sm text-muted-foreground hover:text-foreground transition-colors">
+                <Link href={ROUTES.PRICING} className={`text-sm text-muted-foreground hover:text-foreground ${transitions.colors}`}>
                   Pricing
                 </Link>
               )}
-              <Link href="/docs" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
+              <Link href="/docs" className={`text-sm text-muted-foreground hover:text-foreground ${transitions.colors}`}>
                 Docs
               </Link>
-              <Link href="/demo" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
+              <Link href="/demo" className={`text-sm text-muted-foreground hover:text-foreground ${transitions.colors}`}>
                 Demo
               </Link>
             </nav>

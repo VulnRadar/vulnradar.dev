@@ -11,6 +11,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { ArrowLeft, Mail, CheckCircle2, AlertTriangle, Loader2 } from "lucide-react"
 import { APP_NAME } from "@/lib/constants"
 import { API } from "@/lib/client-constants"
+import { transitions } from "@/lib/animations"
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState("")
@@ -39,13 +40,20 @@ export default function ForgotPasswordPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background px-4">
-      <Card className="w-full max-w-sm bg-card border-border">
-        <CardHeader className="text-center space-y-2 pb-6 pt-8">
-          <div className="flex items-center justify-center gap-2 mb-4">
-            <ThemedLogo width={32} height={32} className="h-8 w-8" alt={`${APP_NAME} logo`} />
-            <span className="text-2xl font-bold text-foreground font-mono tracking-tight">{APP_NAME}</span>
-          </div>
+    <div className="min-h-screen flex items-center justify-center bg-background px-4 relative overflow-hidden">
+      {/* Background glow orbs */}
+      <div className="absolute top-1/4 -left-32 w-96 h-96 bg-primary/20 rounded-full blur-3xl pointer-events-none" />
+      <div className="absolute bottom-1/4 -right-32 w-80 h-80 bg-blue-500/15 rounded-full blur-3xl pointer-events-none" />
+      
+      <div className="w-full max-w-sm relative z-10 animate-fade-in">
+        {/* Logo */}
+        <Link href="/" className={`flex items-center justify-center gap-2.5 mb-8 group ${transitions.default}`}>
+          <ThemedLogo width={28} height={28} className="h-7 w-7 transition-transform group-hover:scale-105" alt={`${APP_NAME} logo`} />
+          <span className="text-xl font-semibold text-foreground tracking-tight">{APP_NAME}</span>
+        </Link>
+        
+        <Card className="bg-card/95 backdrop-blur-sm border-border shadow-xl">
+          <CardHeader className="text-center space-y-2 pb-6 pt-8">
           {sent ? (
             <>
               <div className="flex justify-center mb-2">
@@ -128,7 +136,8 @@ export default function ForgotPasswordPage() {
             </div>
           )}
         </CardContent>
-      </Card>
+        </Card>
+      </div>
     </div>
   )
 }

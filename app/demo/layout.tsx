@@ -9,6 +9,7 @@ import { useAuth } from "@/components/auth-provider"
 import { APP_NAME, ROUTES, BILLING_ENABLED } from "@/lib/constants"
 import { ThemedLogo } from "@/components/themed-logo"
 import { ArrowRight } from "lucide-react"
+import { backdrops, transitions } from "@/lib/animations"
 
 export default function DemoLayout({ children }: { children: React.ReactNode }) {
   const { me } = useAuth()
@@ -19,23 +20,23 @@ export default function DemoLayout({ children }: { children: React.ReactNode }) 
       {isLoggedIn ? (
         <Header />
       ) : (
-        <nav className="sticky top-0 z-50 border-b border-border/50 bg-background/95 backdrop-blur-xl supports-[backdrop-filter]:bg-background/60">
+        <nav className={`sticky top-0 z-50 border-b border-border/50 ${backdrops.header}`}>
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 relative flex items-center">
-            <Link href="/" className="flex items-center gap-2.5 z-10 group">
+            <Link href="/" className={`flex items-center gap-2.5 z-10 group ${transitions.default}`}>
               <ThemedLogo width={28} height={28} className="h-7 w-7 transition-transform group-hover:scale-105" alt={`${APP_NAME} logo`} />
               <span className="font-bold text-lg tracking-tight">{APP_NAME}</span>
             </Link>
             
             <div className="hidden md:flex items-center gap-8 absolute left-1/2 -translate-x-1/2">
               {BILLING_ENABLED && (
-                <Link href={ROUTES.PRICING} className="text-sm text-muted-foreground hover:text-foreground transition-colors">
+                <Link href={ROUTES.PRICING} className={`text-sm text-muted-foreground hover:text-foreground ${transitions.colors}`}>
                   Pricing
                 </Link>
               )}
-              <Link href={ROUTES.DOCS} className="text-sm text-muted-foreground hover:text-foreground transition-colors">
+              <Link href={ROUTES.DOCS} className={`text-sm text-muted-foreground hover:text-foreground ${transitions.colors}`}>
                 Docs
               </Link>
-              <Link href="/demo" className="text-sm text-foreground font-medium transition-colors">
+              <Link href="/demo" className={`text-sm text-foreground font-medium ${transitions.colors}`}>
                 Demo
               </Link>
             </div>
