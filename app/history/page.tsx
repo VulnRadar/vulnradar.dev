@@ -81,14 +81,14 @@ function HistoryPageContent() {
   const [clearing, setClearing] = useState(false)
   const [filter, setFilter] = useState("")
 
-  // Calculate retention days based on user's plan
+  // Calculate retention days based on user's plan (matches pricing page)
   const userPlan = me?.plan || "free"
   const plan = PLANS.find(p => p.id === userPlan)
-  let retentionDays = 7 // Default free: 7 days
+  let retentionDays = 30 // Default free: 30 days per pricing page
   if (plan?.id === "core_supporter") {
-    retentionDays = 30
-  } else if (plan?.id === "pro_supporter") {
     retentionDays = 90
+  } else if (plan?.id === "pro_supporter") {
+    retentionDays = -1 // Unlimited
   } else if (plan?.id === "elite_supporter") {
     retentionDays = -1 // Unlimited
   }

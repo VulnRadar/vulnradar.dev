@@ -48,16 +48,15 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
   const userRes = await pool.query("SELECT plan FROM users WHERE id = $1", [authedUserId])
   const userPlan = userRes.rows[0]?.plan || "free"
   
-  // Get retention days based on plan
-  const plan = PLANS.find(p => p.id === userPlan)
-  let retentionDays = 7 // Default free plan: 7 days
+  // Get retention days based on plan (matches pricing page)
+  let retentionDays = 30 // Default free plan: 30 days per pricing page
   
-  if (plan?.id === "core_supporter") {
-    retentionDays = 30
-  } else if (plan?.id === "pro_supporter") {
-    retentionDays = 90
-  } else if (plan?.id === "elite_supporter") {
-    retentionDays = 0 // Unlimited (0 means no date filter)
+  if (userPlan === "core_supporter") {
+    retentionDays = 90 // Core: 90-day history
+  } else if (userPlan === "pro_supporter") {
+    retentionDays = 0 // Pro: Unlimited history
+  } else if (userPlan === "elite_supporter") {
+    retentionDays = 0 // Elite: Unlimited history
   }
 
   const result = await pool.query(
