@@ -88,7 +88,7 @@ export default function DocsLayout({ children }: { children: React.ReactNode }) 
                 {BILLING_ENABLED && (
                   <Link href={ROUTES.PRICING} className="text-sm text-muted-foreground hover:text-foreground transition-colors">Pricing</Link>
                 )}
-                <Link href="/docs" className="text-sm text-muted-foreground hover:text-foreground transition-colors">Docs</Link>
+                <Link href="/docs" className="text-sm text-foreground font-medium transition-colors">Docs</Link>
                 <Link href="/demo" className="text-sm text-muted-foreground hover:text-foreground transition-colors">Demo</Link>
               </nav>
               <div className="flex items-center gap-3 ml-auto z-10">
