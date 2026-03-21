@@ -4,6 +4,7 @@ import pool from "@/lib/db"
 import { ApiResponse, withErrorHandling } from "@/lib/api-utils"
 import { ERROR_MESSAGES, SUCCESS_MESSAGES, BEARER_PREFIX } from "@/lib/constants"
 import { validateApiKey, checkRateLimit as checkApiKeyRateLimit, recordUsage } from "@/lib/api-keys"
+import { PLANS } from "@/lib/plans"
 
 export const GET = withErrorHandling(async (request: NextRequest) => {
   // Auth: check API key first (Bearer token), then fall back to session cookie
@@ -43,16 +44,42 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
     return ApiResponse.unauthorized(ERROR_MESSAGES.UNAUTHORIZED)
   }
 
+  // Get user's plan to determine history retention
+  const userRes = await pool.query("SELECT plan FROM users WHERE id = $1", [authedUserId])
+  const userPlan = userRes.rows[0]?.plan || "free"
+  
+  // Get retention days based on plan
+  const plan = PLANS.find(p => p.id === userPlan)
+  let retentionDays = 7 // Default free plan: 7 days
+  
+  if (plan?.id === "core_supporter") {
+    retentionDays = 30
+  } else if (plan?.id === "pro_supporter") {
+    retentionDays = 90
+  } else if (plan?.id === "elite_supporter") {
+    retentionDays = 0 // Unlimited (0 means no date filter)
+  }
+
   const result = await pool.query(
-    `SELECT sh.id, sh.url, sh.summary, sh.findings_count, sh.duration, sh.scanned_at, sh.source,
-       COALESCE(
-         (SELECT json_agg(st.tag ORDER BY st.tag) FROM scan_tags st WHERE st.scan_id = sh.id AND st.user_id = $1),
-         '[]'::json
-       ) as tags
-     FROM scan_history sh
-     WHERE sh.user_id = $1
-     ORDER BY sh.scanned_at DESC
-     LIMIT 100`,
+    retentionDays === 0
+      ? `SELECT sh.id, sh.url, sh.summary, sh.findings_count, sh.duration, sh.scanned_at, sh.source,
+         COALESCE(
+           (SELECT json_agg(st.tag ORDER BY st.tag) FROM scan_tags st WHERE st.scan_id = sh.id AND st.user_id = $1),
+           '[]'::json
+         ) as tags
+       FROM scan_history sh
+       WHERE sh.user_id = $1
+       ORDER BY sh.scanned_at DESC
+       LIMIT 100`
+      : `SELECT sh.id, sh.url, sh.summary, sh.findings_count, sh.duration, sh.scanned_at, sh.source,
+         COALESCE(
+           (SELECT json_agg(st.tag ORDER BY st.tag) FROM scan_tags st WHERE st.scan_id = sh.id AND st.user_id = $1),
+           '[]'::json
+         ) as tags
+       FROM scan_history sh
+       WHERE sh.user_id = $1 AND sh.scanned_at > NOW() - INTERVAL '${retentionDays} days'
+       ORDER BY sh.scanned_at DESC
+       LIMIT 100`,
     [authedUserId],
   )
 
