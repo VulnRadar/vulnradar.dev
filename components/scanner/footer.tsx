@@ -5,6 +5,7 @@ import { Heart, Mail, Github } from "lucide-react"
 import { APP_VERSION, APP_NAME, APP_URL, APP_REPO, SUPPORT_EMAIL, ROUTES, BILLING_ENABLED } from "@/lib/constants"
 import { Button } from "@/components/ui/button"
 import { ThemedLogo } from "@/components/themed-logo"
+import { transitions } from "@/lib/animations"
 
 export function Footer() {
   return (

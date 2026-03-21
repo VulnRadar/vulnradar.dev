@@ -7,12 +7,13 @@ import { Footer } from "@/components/scanner/footer"
 import { APP_NAME, TOTAL_CHECKS_LABEL, BILLING_ENABLED, ROUTES } from "@/lib/constants"
 import { ThemedLogo } from "@/components/themed-logo"
 import { Badge } from "@/components/ui/badge"
+import { transitions, backdrops } from "@/lib/animations"
 
 export default function LandingPage() {
   return (
     <div className="min-h-screen flex flex-col bg-background">
       {/* Navigation */}
-      <nav className="sticky top-0 z-50 border-b border-border/50 bg-background/95 backdrop-blur-xl supports-[backdrop-filter]:bg-background/60">
+      <nav className={`sticky top-0 z-50 border-b border-border/50 ${backdrops.header}`}>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 relative flex items-center">
           {/* Logo - left */}
           <Link href="/" className="flex items-center gap-2.5 z-10 group">

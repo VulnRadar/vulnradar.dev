@@ -12,6 +12,7 @@ import { CheckCircle2, AlertTriangle, Eye, EyeOff, Loader2 } from "lucide-react"
 import { APP_NAME } from "@/lib/constants"
 import { API } from "@/lib/client-constants"
 import { getPasswordStrength } from "@/lib/password-strength"
+import { transitions } from "@/lib/animations"
 
 function ResetForm() {
   const searchParams = useSearchParams()
@@ -208,10 +209,16 @@ function ResetForm() {
 
 export default function ResetPasswordPage() {
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background px-4 py-8">
-      <Suspense fallback={null}>
-        <ResetForm />
-      </Suspense>
+    <div className="min-h-screen flex items-center justify-center bg-background px-4 py-8 relative overflow-hidden">
+      {/* Background glow orbs */}
+      <div className="absolute top-1/4 -left-32 w-96 h-96 bg-primary/20 rounded-full blur-3xl pointer-events-none" />
+      <div className="absolute bottom-1/4 -right-32 w-80 h-80 bg-blue-500/15 rounded-full blur-3xl pointer-events-none" />
+      
+      <div className="relative z-10 animate-fade-in">
+        <Suspense fallback={null}>
+          <ResetForm />
+        </Suspense>
+      </div>
     </div>
   )
 }

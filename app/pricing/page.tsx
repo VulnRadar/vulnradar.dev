@@ -13,6 +13,7 @@ import { ThemedLogo } from "@/components/themed-logo"
 import { Footer } from "@/components/scanner/footer"
 import { Header } from "@/components/scanner/header"
 import { StripeCheckout } from "@/components/stripe-checkout"
+import { backdrops, transitions } from "@/lib/animations"
 
 // Generate pricing page plans from centralized config
 function getRetentionLabel(planId: string): string {
@@ -101,17 +102,17 @@ export default function PricingPage() {
       {isLoggedIn ? (
         <Header />
       ) : (
-        <nav className="sticky top-0 z-50 border-b border-border/50 bg-background/95 backdrop-blur-xl supports-[backdrop-filter]:bg-background/60">
+        <nav className={`sticky top-0 z-50 border-b border-border/50 ${backdrops.header}`}>
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 relative flex items-center">
-            <Link href="/" className="flex items-center gap-2.5 z-10 group">
+            <Link href="/" className={`flex items-center gap-2.5 z-10 group ${transitions.default}`}>
               <ThemedLogo width={28} height={28} className="h-7 w-7 transition-transform group-hover:scale-105" alt={`${APP_NAME} logo`} />
               <span className="font-bold text-lg tracking-tight">{APP_NAME}</span>
             </Link>
             
             <div className="hidden md:flex items-center gap-8 absolute left-1/2 -translate-x-1/2">
-              <Link href={ROUTES.PRICING} className="text-sm text-foreground font-medium">Pricing</Link>
-              <Link href={ROUTES.DOCS} className="text-sm text-muted-foreground hover:text-foreground transition-colors">Docs</Link>
-              <Link href="/demo" className="text-sm text-muted-foreground hover:text-foreground transition-colors">Demo</Link>
+              <Link href={ROUTES.PRICING} className={`text-sm text-foreground font-medium ${transitions.colors}`}>Pricing</Link>
+              <Link href={ROUTES.DOCS} className={`text-sm text-muted-foreground hover:text-foreground ${transitions.colors}`}>Docs</Link>
+              <Link href="/demo" className={`text-sm text-muted-foreground hover:text-foreground ${transitions.colors}`}>Demo</Link>
             </div>
             
             <div className="flex items-center gap-3 ml-auto z-10">
