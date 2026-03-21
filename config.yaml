@@ -233,7 +233,7 @@ billing:
   
   # Plan limits (daily scans) - only applies when billing is enabled
   plan_limits:
-    free: 50
+    free: 25
     core_supporter: 100
     pro_supporter: 150
     elite_supporter: 500
