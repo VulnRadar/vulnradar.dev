@@ -35,7 +35,7 @@ export const PLANS: Plan[] = [
     description: "For individuals exploring security scanning",
     priceInCents: 0,
     features: [
-      "50 scans per day",
+      "25 scans per day",
       "Full vulnerability detection",
       "Security headers analysis",
       "SSL/TLS checks",
@@ -43,7 +43,7 @@ export const PLANS: Plan[] = [
       "30-day scan history",
     ],
     limits: {
-      dailyScans: 50,
+      dailyScans: 25,
       apiKeys: 1,
       teams: 0,
       teamMembers: 0,

@@ -321,9 +321,9 @@ export default function PricingPage() {
             {[
               { q: "Can I cancel my subscription anytime?", a: "Yes, you can cancel your subscription at any time. You'll continue to have access until the end of your billing period." },
               { q: "What payment methods do you accept?", a: "We accept all major credit cards through Stripe, including Visa, Mastercard, and American Express." },
-              { q: "Is there a free trial for paid plans?", a: "We offer a generous free tier instead of a trial. Start with 50 scans/day free, then upgrade when you need more." },
+              { q: "Is there a free trial for paid plans?", a: "We offer a generous free tier instead of a trial. Start with 25 scans/day free, then upgrade when you need more." },
               { q: "Can I switch plans later?", a: "Absolutely. You can upgrade or downgrade your plan at any time. Changes take effect immediately." },
-              { q: "Do you offer refunds?", a: "We offer a 14-day money-back guarantee on all paid plans. Contact support if you're not satisfied." },
+              { q: "Do you offer refunds?", a: "All purchases are final. Once a subscription is activated, we do not offer refunds. Please review your plan carefully before subscribing." },
               { q: "Is my data secure?", a: "Yes. We use industry-standard encryption and never store sensitive scan data longer than necessary." },
             ].map((faq, i) => (
               <div key={i} className="p-6 rounded-xl border border-border bg-card/50">
