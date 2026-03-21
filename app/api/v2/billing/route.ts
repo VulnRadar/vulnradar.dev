@@ -40,9 +40,12 @@ export async function GET() {
     // Get usage info (this already checks gifted subscriptions internally)
     const usageInfo = await canMakeRequest(session.userId)
     
-    // Determine plan type for limits - gifted plan takes priority
-    const effectivePlanType: PlanType = user.role === "admin" 
-      ? "admin" 
+    // Staff roles that get unlimited access
+    const STAFF_ROLES = ["admin", "moderator", "support"]
+    
+    // Determine plan type for limits - staff roles get unlimited, then gifted plan takes priority
+    const effectivePlanType: PlanType = STAFF_ROLES.includes(user.role)
+      ? "staff" 
       : (giftedSubscription?.plan || user.plan || "free")
     const dailyLimit = PLAN_LIMITS[effectivePlanType] || PLAN_LIMITS.free
 
