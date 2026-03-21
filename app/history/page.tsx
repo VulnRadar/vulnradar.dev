@@ -1,5 +1,7 @@
 "use client"
 import { SEVERITY_LEVELS, API } from "@/lib/constants"
+import { PLANS } from "@/lib/plans"
+import { useAuth } from "@/components/auth-provider"
 
 import { useState, useEffect, useCallback } from "react"
 import { useRouter } from "next/navigation"
@@ -73,10 +75,23 @@ function SeverityDot({ severity, count }: { severity: string; count: number }) {
 
 function HistoryPageContent() {
   const router = useRouter()
+  const { me } = useAuth()
   const [scans, setScans] = useState<ScanRecord[]>([])
   const [loading, setLoading] = useState(true)
   const [clearing, setClearing] = useState(false)
   const [filter, setFilter] = useState("")
+
+  // Calculate retention days based on user's plan
+  const userPlan = me?.plan || "free"
+  const plan = PLANS.find(p => p.id === userPlan)
+  let retentionDays = 7 // Default free: 7 days
+  if (plan?.id === "core_supporter") {
+    retentionDays = 30
+  } else if (plan?.id === "pro_supporter") {
+    retentionDays = 90
+  } else if (plan?.id === "elite_supporter") {
+    retentionDays = -1 // Unlimited
+  }
 
   const [selectedScanId, setSelectedScanId] = useState<number | null>(null)
   const [scanDetail, setScanDetail] = useState<ScanResult | null>(null)
@@ -485,7 +500,7 @@ function HistoryPageContent() {
               <div className="flex flex-col gap-1">
                 <h1 className="text-xl font-bold text-foreground">Scan History</h1>
                 <p className="text-sm text-muted-foreground">
-                  Click any scan to view full results. History kept for 90 days.
+                  Click any scan to view full results. History kept for {retentionDays === -1 ? "unlimited" : `${retentionDays}-day`} retention.
                 </p>
               </div>
               {scans.length > 0 && (
