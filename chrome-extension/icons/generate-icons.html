@@ -1,6 +1,8 @@
 <!DOCTYPE html>
 <html>
 <head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>VulnRadar Icon Generator</title>
   <style>
     body { font-family: system-ui, sans-serif; padding: 40px; background: #0a0a0a; color: #fff; }
@@ -8,22 +10,26 @@
     p { color: #888; margin-bottom: 30px; }
     .icons { display: flex; gap: 30px; flex-wrap: wrap; align-items: flex-end; }
     .icon-box { text-align: center; background: #1a1a1a; padding: 20px; border-radius: 12px; border: 1px solid #333; }
-    canvas { background: transparent; display: block; margin: 0 auto 10px; }
-    .filename { font-size: 12px; color: #06b6d4; font-family: monospace; }
+    canvas { background: #0a0a0a; display: block; margin: 0 auto 10px; border: 1px solid #333; border-radius: 4px; }
+    .filename { font-size: 12px; color: #06b6d4; font-family: monospace; margin-bottom: 8px; }
     .download-btn { 
-      margin-top: 10px; 
-      padding: 6px 12px; 
-      background: #06b6d4; 
+      padding: 8px 16px; 
+      background: linear-gradient(135deg, #06b6d4 0%, #0891b2 100%);
       color: #000; 
       border: none; 
       border-radius: 6px; 
       cursor: pointer; 
-      font-size: 12px;
-      font-weight: 500;
+      font-size: 13px;
+      font-weight: 600;
+      transition: all 0.2s;
     }
-    .download-btn:hover { background: #0891b2; }
+    .download-btn:hover { 
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(6, 182, 212, 0.3);
+    }
+    .download-btn:active { transform: translateY(0); }
     .instructions { 
-      margin-top: 30px; 
+      margin-top: 40px; 
       padding: 20px; 
       background: #1a1a1a; 
       border-radius: 12px; 
@@ -36,93 +42,73 @@
 </head>
 <body>
   <h1>VulnRadar Chrome Extension Icon Generator</h1>
-  <p>Generate icon PNGs from the official VulnRadar favicon SVG.</p>
+  <p>Generate icon PNGs for the Chrome extension. Click download to save each size.</p>
   
   <div class="icons" id="icons"></div>
 
   <div class="instructions">
     <h3>Instructions</h3>
     <ol>
-      <li>Click the <strong>Download</strong> button below each icon to save the PNG file</li>
-      <li>Save all 4 files to the <code>chrome-extension/icons/</code> folder</li>
-      <li>The icons will be named: <code>icon16.png</code>, <code>icon32.png</code>, <code>icon48.png</code>, <code>icon128.png</code></li>
+      <li>Click each <strong>Download</strong> button to save the PNG files</li>
+      <li>Save all files to the <code>chrome-extension/icons/</code> folder</li>
+      <li>Files will be named: <code>icon16.png</code>, <code>icon32.png</code>, <code>icon48.png</code>, <code>icon128.png</code></li>
     </ol>
   </div>
 
   <script>
+    // VulnRadar SVG icon as data URL - Shield with checkmark design
+    const SVG_DATA = `data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 200'%3E%3Cdefs%3E%3ClinearGradient id='grad' x1='0%25' y1='0%25' x2='100%25' y2='100%25'%3E%3Cstop offset='0%25' style='stop-color:%2300d9ff;stop-opacity:1' /%3E%3Cstop offset='100%25' style='stop-color:%230891b2;stop-opacity:1' /%3E%3C/linearGradient%3E%3C/defs%3E%3Crect fill='%230a0a0a' width='200' height='200'/%3E%3Cpath d='M 60 50 L 100 30 L 140 50 L 140 110 Q 100 150 100 150 Q 60 150 60 110 Z' fill='none' stroke='url(%23grad)' stroke-width='6' stroke-linejoin='round'/%3E%3Cpath d='M 75 105 L 95 125 L 130 75' fill='none' stroke='%2300d9ff' stroke-width='6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E`;
+
     const sizes = [16, 32, 48, 128];
     const container = document.getElementById('icons');
     
-    // Load the SVG as text first, then convert to data URL to avoid CORS issues
-    fetch('favicon-dark.svg')
-      .then(response => response.text())
-      .then(svgText => {
-        const img = new Image();
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    
+    img.onload = function() {
+      sizes.forEach(size => {
+        const box = document.createElement('div');
+        box.className = 'icon-box';
         
-        img.onload = function() {
-          sizes.forEach(size => {
-            // Create container
-            const box = document.createElement('div');
-            box.className = 'icon-box';
-            
-            // Create canvas
-            const canvas = document.createElement('canvas');
-            canvas.width = size;
-            canvas.height = size;
-            
-            // Draw SVG to canvas
-            const ctx = canvas.getContext('2d');
-            ctx.fillStyle = '#0a0a0a'; // Match dark background
-            ctx.fillRect(0, 0, size, size);
-            ctx.drawImage(img, 0, 0, size, size);
-            
-            // Create filename label
-            const label = document.createElement('div');
-            label.className = 'filename';
-            label.textContent = `icon${size}.png`;
-            
-            // Create download button
-            const btn = document.createElement('button');
-            btn.className = 'download-btn';
-            btn.textContent = 'Download';
-            btn.onclick = function(e) {
-              e.preventDefault();
-              try {
-                const pngData = canvas.toDataURL('image/png');
-                const link = document.createElement('a');
-                link.href = pngData;
-                link.download = `icon${size}.png`;
-                document.body.appendChild(link);
-                link.click();
-                document.body.removeChild(link);
-                console.log('[v0] Downloaded icon' + size + '.png');
-              } catch (err) {
-                console.error('[v0] Download error:', err);
-                alert('Failed to download icon. Check browser console.');
-              }
-            };
-            
-            box.appendChild(canvas);
-            box.appendChild(label);
-            box.appendChild(btn);
-            container.appendChild(box);
-          });
+        const canvas = document.createElement('canvas');
+        canvas.width = size;
+        canvas.height = size;
+        
+        const ctx = canvas.getContext('2d');
+        ctx.fillStyle = '#0a0a0a';
+        ctx.fillRect(0, 0, size, size);
+        ctx.drawImage(img, 0, 0, size, size);
+        
+        const label = document.createElement('div');
+        label.className = 'filename';
+        label.textContent = `icon${size}.png`;
+        
+        const btn = document.createElement('button');
+        btn.className = 'download-btn';
+        btn.textContent = 'Download';
+        btn.onclick = function(e) {
+          e.preventDefault();
+          const pngData = canvas.toDataURL('image/png');
+          const link = document.createElement('a');
+          link.href = pngData;
+          link.download = `icon${size}.png`;
+          link.click();
+          console.log('[v0] Downloaded icon' + size + '.png');
         };
         
-        img.onerror = function() {
-          console.error('[v0] Failed to load SVG image');
-          container.innerHTML = '<p style="color: #f87171;">Error loading favicon-dark.svg. Make sure the file exists.</p>';
-        };
-        
-        // Convert SVG text to blob URL to avoid CORS issues
-        const blob = new Blob([svgText], { type: 'image/svg+xml' });
-        const url = URL.createObjectURL(blob);
-        img.src = url;
-      })
-      .catch(err => {
-        console.error('[v0] Fetch error:', err);
-        container.innerHTML = '<p style="color: #f87171;">Error fetching favicon-dark.svg: ' + err.message + '</p>';
+        box.appendChild(canvas);
+        box.appendChild(label);
+        box.appendChild(btn);
+        container.appendChild(box);
       });
+    };
+    
+    img.onerror = function() {
+      console.error('[v0] Failed to load SVG');
+      container.innerHTML = '<p style="color: #f87171;">Error loading SVG</p>';
+    };
+    
+    img.src = SVG_DATA;
   </script>
 </body>
 </html>
