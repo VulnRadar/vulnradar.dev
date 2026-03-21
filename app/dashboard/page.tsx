@@ -24,6 +24,8 @@ import { DEFAULT_SCAN_NOTE } from "@/lib/constants"
 import { API } from "@/lib/client-constants"
 import { AlertCircle, RotateCcw, MessageSquare, Pencil, Save, Loader2 as Loader2Icon, Globe, ChevronDown, ChevronRight, ExternalLink } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { PremiumUpgradeModal, PREMIUM_FEATURES } from "@/components/premium-upgrade-modal"
+import { useAuth } from "@/components/auth-provider"
 
 export default function DashboardPage() {
   return (
@@ -50,7 +52,9 @@ function DashboardLoading() {
 
 function DashboardContent() {
   const searchParams = useSearchParams()
+  const { me } = useAuth()
   const [status, setStatus] = useState<ScanStatus>("idle")
+  const [showLimitModal, setShowLimitModal] = useState(false)
   const [result, setResult] = useState<ScanResult | null>(null)
   const [scanHistoryId, setScanHistoryId] = useState<number | null>(null)
   
@@ -192,6 +196,12 @@ function DashboardContent() {
       const data = await response.json()
 
       if (!response.ok) {
+        // Show upgrade modal for daily scan limit (429 with remaining: 0)
+        if (response.status === 429 && (data.remaining === 0 || data.error?.toLowerCase().includes("daily scan limit") || data.error?.toLowerCase().includes("scan limit"))) {
+          setStatus("idle")
+          setShowLimitModal(true)
+          return
+        }
         setError(data.error || "An unexpected error occurred.")
         setStatus("failed")
         return
@@ -270,8 +280,12 @@ function DashboardContent() {
         
         if (res.ok && !data.error) {
           successful++
-        } else if (data.error?.includes("limit") || data.error?.includes("Limit")) {
+        } else if (res.status === 429 || data.error?.toLowerCase().includes("daily scan limit") || data.error?.toLowerCase().includes("scan limit")) {
           skipped++
+          // Show upgrade modal on first limit hit during bulk scan
+          if (skipped === 1) {
+            setShowLimitModal(true)
+          }
         } else {
           failed++
         }
@@ -485,6 +499,14 @@ function DashboardContent() {
           onCancel={handleCrawlCancel}
         />
       )}
+
+      {/* Scan limit upgrade modal */}
+      <PremiumUpgradeModal
+        open={showLimitModal}
+        onOpenChange={setShowLimitModal}
+        feature={PREMIUM_FEATURES.scan_limit}
+        currentPlan={me?.plan || "free"}
+      />
     </div>
   )
 }
