@@ -135,25 +135,7 @@ export default function SharesPage() {
     return { label: "Clean", color: "text-emerald-500", bg: "bg-emerald-500/10", icon: CheckCircle2 }
   }
 
-  if (loading) {
-    return (
-      <div className="min-h-screen flex flex-col bg-background">
-        <Header />
-        <main className="flex-1 flex items-center justify-center">
-          <div className="flex flex-col items-center gap-4">
-            <div className="relative">
-              <div className="absolute inset-0 rounded-full bg-primary/20 animate-ping" />
-              <div className="relative flex items-center justify-center w-12 h-12 rounded-full bg-card border border-border">
-                <Loader2 className="h-5 w-5 animate-spin text-primary" />
-              </div>
-            </div>
-            <p className="text-sm text-muted-foreground">Loading shares...</p>
-          </div>
-        </main>
-        <Footer />
-      </div>
-    )
-  }
+
 
   return (
     <div className="min-h-screen flex flex-col bg-background">
