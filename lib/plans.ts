@@ -27,19 +27,23 @@ export interface Plan {
 }
 
 export const PLANS: Plan[] = [
+  // NOTE: Daily scan limits are controlled by config.yaml → BILLING_PLAN_LIMITS
+  // The limits here are defaults that get overridden by config.yaml values
   {
     id: "free",
     name: "Free",
-    description: "Basic scanning for individuals",
+    description: "For individuals exploring security scanning",
     priceInCents: 0,
     features: [
-      "10 scans per day",
-      "1 API key",
-      "Basic vulnerability reports",
-      "7-day scan history",
+      "50 scans per day",
+      "Full vulnerability detection",
+      "Security headers analysis",
+      "SSL/TLS checks",
+      "API access",
+      "30-day scan history",
     ],
     limits: {
-      dailyScans: 10,
+      dailyScans: 50,
       apiKeys: 1,
       teams: 0,
       teamMembers: 0,
@@ -51,18 +55,18 @@ export const PLANS: Plan[] = [
   {
     id: "core_supporter",
     name: "Core Supporter",
-    description: "Support VulnRadar development",
-    priceInCents: 300, // $3/month
+    description: "For developers who scan regularly",
+    priceInCents: 500, // $5/month
     features: [
-      "50 scans per day",
-      "3 API keys",
-      "PDF reports",
-      "30-day scan history",
-      "1 webhook",
-      "Discord supporter role",
+      "100 scans per day",
+      "Everything in Free",
+      "90-day scan history",
+      "Email support",
+      "Early access features",
+      "Supporter badge",
     ],
     limits: {
-      dailyScans: 50,
+      dailyScans: 100,
       apiKeys: 3,
       teams: 0,
       teamMembers: 0,
@@ -78,17 +82,15 @@ export const PLANS: Plan[] = [
   {
     id: "pro_supporter",
     name: "Pro Supporter",
-    description: "For security professionals",
-    priceInCents: 500, // $5/month
+    description: "For power users and small teams",
+    priceInCents: 1000, // $10/month
     features: [
       "150 scans per day",
-      "10 API keys",
-      "PDF reports",
-      "90-day scan history",
-      "5 webhooks",
-      "Scheduled scans",
-      "Bulk scanning (25 URLs)",
+      "Everything in Core",
+      "Unlimited scan history",
       "Priority support",
+      "5,000 API requests/day",
+      "Pro badge",
     ],
     limits: {
       dailyScans: 150,
@@ -107,19 +109,15 @@ export const PLANS: Plan[] = [
   {
     id: "elite_supporter",
     name: "Elite Supporter",
-    description: "Maximum power for teams",
-    priceInCents: 1000, // $10/month
+    description: "For teams and organizations",
+    priceInCents: 2000, // $20/month
     features: [
       "500 scans per day",
-      "Unlimited API keys",
-      "PDF reports",
-      "Unlimited scan history",
-      "Unlimited webhooks",
-      "Unlimited scheduled scans",
-      "Bulk scanning (100 URLs)",
-      "Team collaboration",
-      "Priority support",
-      "Early access to features",
+      "Everything in Pro",
+      "Unlimited API access",
+      "Dedicated support",
+      "Beta features access",
+      "Elite badge",
     ],
     limits: {
       dailyScans: 500,

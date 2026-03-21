@@ -250,6 +250,12 @@ export const BILLING_PLAN_LIMITS = config.billing?.plan_limits ?? {
   pro_supporter: 150,
   elite_supporter: 500,
 }
+export const BILLING_HISTORY_RETENTION = config.billing?.history_retention ?? {
+  free: 30,
+  core_supporter: 90,
+  pro_supporter: -1,
+  elite_supporter: -1,
+}
 export const BILLING_UNLIMITED_MODE_LIMIT = config.billing?.unlimited_mode_limit ?? -1
 
 // ============================================================================
@@ -342,6 +348,8 @@ export const DEMO_SCAN_WINDOW = 60 * 60 * config.demo.window_hours
 
 // ============================================================================
 // STAFF / ADMIN ROLES
+// NOTE: Also defined in client-constants.ts for client components
+// Keep these in sync if modified
 // ============================================================================
 export const STAFF_ROLES = {
   USER: "user",
@@ -383,6 +391,8 @@ export const ROLE_BADGE_STYLES: Record<string, string> = {
 
 // ============================================================================
 // APPLICATION ROUTES
+// NOTE: Also defined in client-constants.ts for client components
+// Keep these in sync if modified
 // ============================================================================
 
 export const ROUTES = {
@@ -420,14 +430,16 @@ export const ROUTES = {
 
 // ============================================================================
 // API VERSION CONSTANT
-// ============================================================================
-// Change this to switch ALL API calls between versions
+// NOTE: Also defined in client-constants.ts for client components
 // This is the single source of truth for the active API version
+// ============================================================================
 
 export const API_VERSION = "v2"
 
 // ============================================================================
 // API ENDPOINTS (dynamically versioned)
+// NOTE: Also defined in client-constants.ts for client components
+// Keep these in sync if modified
 // ============================================================================
 
 export const API = {

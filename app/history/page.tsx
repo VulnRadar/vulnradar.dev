@@ -1,6 +1,5 @@
 "use client"
-import { SEVERITY_LEVELS, API } from "@/lib/constants"
-import { PLANS } from "@/lib/plans"
+import { SEVERITY_LEVELS, API, BILLING_HISTORY_RETENTION } from "@/lib/constants"
 import { useAuth } from "@/components/auth-provider"
 
 import { useState, useEffect, useCallback } from "react"
@@ -81,17 +80,9 @@ function HistoryPageContent() {
   const [clearing, setClearing] = useState(false)
   const [filter, setFilter] = useState("")
 
-  // Calculate retention days based on user's plan (matches pricing page)
-  const userPlan = me?.plan || "free"
-  const plan = PLANS.find(p => p.id === userPlan)
-  let retentionDays = 30 // Default free: 30 days per pricing page
-  if (plan?.id === "core_supporter") {
-    retentionDays = 90
-  } else if (plan?.id === "pro_supporter") {
-    retentionDays = -1 // Unlimited
-  } else if (plan?.id === "elite_supporter") {
-    retentionDays = -1 // Unlimited
-  }
+  // Get retention days from centralized config (BILLING_HISTORY_RETENTION from config.yaml)
+  const userPlan = (me?.plan || "free") as keyof typeof BILLING_HISTORY_RETENTION
+  const retentionDays = BILLING_HISTORY_RETENTION[userPlan] ?? BILLING_HISTORY_RETENTION.free
 
   const [selectedScanId, setSelectedScanId] = useState<number | null>(null)
   const [scanDetail, setScanDetail] = useState<ScanResult | null>(null)

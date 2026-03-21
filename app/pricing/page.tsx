@@ -5,88 +5,55 @@ import { Check, ArrowRight, Sparkles, Shield, Zap, Clock, Globe, Lock, Users, He
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
-import { APP_NAME, ROUTES, BILLING_ENABLED, SUPPORT_EMAIL } from "@/lib/constants"
+import { APP_NAME, ROUTES, BILLING_ENABLED, SUPPORT_EMAIL, BILLING_PLAN_LIMITS, BILLING_HISTORY_RETENTION } from "@/lib/constants"
 import Link from "next/link"
 import { useAuth } from "@/components/auth-provider"
+import { PLANS as LIB_PLANS } from "@/lib/plans"
 import { ThemedLogo } from "@/components/themed-logo"
 import { PublicPageShell } from "@/components/public-page-shell"
 import { StripeCheckout } from "@/components/stripe-checkout"
 import { X } from "lucide-react"
 
-const PLANS = [
-  {
-    id: "free",
-    stripeId: null,
-    name: "Free",
-    description: "For individuals exploring security scanning.",
-    price: 0,
-    interval: "month",
-    scansPerDay: 50,
-    popular: false,
-    features: [
-      "50 scans per day",
-      "Full vulnerability detection",
-      "Security headers analysis",
-      "SSL/TLS checks",
-      "API access",
-      "30-day scan history",
-    ],
-  },
-  {
-    id: "core_supporter",
-    stripeId: "core_supporter",
-    name: "Core",
-    description: "For developers who scan regularly.",
-    price: 5,
-    interval: "month",
-    scansPerDay: 100,
-    popular: false,
-    features: [
-      "100 scans per day",
-      "Everything in Free",
-      "90-day scan history",
-      "Email support",
-      "Early access features",
-      "Supporter badge",
-    ],
-  },
-  {
-    id: "pro_supporter",
-    stripeId: "pro_supporter",
-    name: "Pro",
-    description: "For power users and small teams.",
-    price: 10,
-    interval: "month",
-    scansPerDay: 150,
-    popular: true,
-    features: [
-      "150 scans per day",
-      "Everything in Core",
-      "Unlimited scan history",
-      "Priority support",
-      "5,000 API requests/day",
-      "Pro badge",
-    ],
-  },
-  {
-    id: "elite_supporter",
-    stripeId: "elite_supporter",
-    name: "Elite",
-    description: "For teams and organizations.",
-    price: 20,
-    interval: "month",
-    scansPerDay: 500,
-    popular: false,
-    features: [
-      "500 scans per day",
-      "Everything in Pro",
-      "Unlimited API access",
-      "Dedicated support",
-      "Beta features access",
-      "Elite badge",
-    ],
-  },
-]
+// Generate pricing page plans from centralized config (lib/plans.ts + config.yaml)
+function getRetentionLabel(planId: string): string {
+  const retention = BILLING_HISTORY_RETENTION[planId as keyof typeof BILLING_HISTORY_RETENTION]
+  if (retention === -1) return "Unlimited scan history"
+  return `${retention}-day scan history`
+}
+
+const PLANS = LIB_PLANS.map((libPlan) => {
+  const scanLimit = BILLING_PLAN_LIMITS[libPlan.id as keyof typeof BILLING_PLAN_LIMITS] || libPlan.limits.dailyScans
+  
+  // Build features list dynamically from plan config
+  const features: string[] = [`${scanLimit} scans per day`]
+  
+  if (libPlan.id === "free") {
+    features.push("Full vulnerability detection", "Security headers analysis", "SSL/TLS checks", "API access")
+  } else if (libPlan.id === "core_supporter") {
+    features.push("Everything in Free", getRetentionLabel("core_supporter"), "Email support", "Early access features", "Supporter badge")
+  } else if (libPlan.id === "pro_supporter") {
+    features.push("Everything in Core", getRetentionLabel("pro_supporter"), "Priority support", "5,000 API requests/day", "Pro badge")
+  } else if (libPlan.id === "elite_supporter") {
+    features.push("Everything in Pro", "Unlimited API access", "Dedicated support", "Beta features access", "Elite badge")
+  }
+  
+  // Add retention for free plan
+  if (libPlan.id === "free") {
+    features.push(getRetentionLabel("free"))
+  }
+  
+  return {
+    id: libPlan.id,
+    stripeId: libPlan.id === "free" ? null : libPlan.id,
+    name: libPlan.name.replace(" Supporter", ""),
+    description: libPlan.description,
+    price: libPlan.priceInCents / 100,
+    interval: "month" as const,
+    scansPerDay: scanLimit,
+    popular: libPlan.id === "pro_supporter",
+    features,
+  }
+})
 
 const FEATURES = [
   {

@@ -1,8 +1,17 @@
 # ============================================================================
-# VulnRadar Configuration File
+# VulnRadar Configuration File (v2.0.6)
 # ============================================================================
 # This file contains all configurable settings for VulnRadar.
 # Self-hosters: Modify these values to customize your deployment.
+# 
+# CONFIGURATION ARCHITECTURE:
+#   config.yaml (this file)    → Source of truth for all values
+#   lib/config-values.ts       → Reads config.yaml (no dependencies)
+#   lib/config.ts              → Full config loader with YAML parser
+#   lib/types/config.ts        → TypeScript interfaces + defaults
+#   lib/constants.ts           → Exports derived values for server
+#   lib/client-constants.ts    → Client-safe subset for browser
+#   lib/plans.ts               → Plan definitions (uses config limits)
 # 
 # IMPORTANT: Security-sensitive values (secrets, API keys, database URLs)
 # should ALWAYS be set via environment variables, not in this file.
@@ -14,7 +23,7 @@
 app:
   name: "VulnRadar"
   slug: "vulnradar"
-  version: "2.0.5"
+  version: "2.0.6"
   engine_version: "2.1.0"
   description: "Scan websites for security vulnerabilities. Get instant reports with severity ratings, actionable fix guidance, and team collaboration tools."
   total_checks_label: "310+"
@@ -228,6 +237,13 @@ billing:
     core_supporter: 100
     pro_supporter: 150
     elite_supporter: 500
+  
+  # History retention (days) - -1 means unlimited
+  history_retention:
+    free: 30
+    core_supporter: 90
+    pro_supporter: -1
+    elite_supporter: -1
   
   # When billing is disabled, this is the daily limit for all users
   # Set to -1 for truly unlimited, or a number like 1000 for a high cap
