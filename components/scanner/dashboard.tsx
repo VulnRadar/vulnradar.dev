@@ -9,16 +9,13 @@ import {
   Globe,
   TrendingUp,
   AlertTriangle,
-  ExternalLink,
   Terminal,
   Monitor,
+  ArrowUpRight,
+  Activity,
+  Target,
+  ChevronRight,
 } from "lucide-react"
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card"
 import { cn } from "@/lib/utils"
 import { API } from "@/lib/constants"
 
@@ -46,15 +43,144 @@ interface DashboardData {
   sourceBreakdown: { source: string; count: number }[]
 }
 
-function SeverityBar({ label, count, total, color }: { label: string; count: number; total: number; color: string }) {
+function StatCard({ 
+  value, 
+  label, 
+  icon: Icon, 
+  trend, 
+  color = "text-primary" 
+}: { 
+  value: string | number
+  label: string
+  icon: React.ElementType
+  trend?: { value: number; label: string }
+  color?: string
+}) {
+  return (
+    <div className="group relative flex flex-col gap-3 p-5 rounded-xl border border-border bg-card/50 hover:bg-card/80 transition-colors">
+      <div className="flex items-center justify-between">
+        <div className={cn("flex items-center justify-center w-10 h-10 rounded-lg bg-primary/5", color.replace("text-", "bg-").replace("primary", "primary/10"))}>
+          <Icon className={cn("h-5 w-5", color)} />
+        </div>
+        {trend && (
+          <div className={cn(
+            "flex items-center gap-1 text-xs font-medium px-2 py-1 rounded-full",
+            trend.value >= 0 ? "text-emerald-500 bg-emerald-500/10" : "text-destructive bg-destructive/10"
+          )}>
+            <TrendingUp className={cn("h-3 w-3", trend.value < 0 && "rotate-180")} />
+            {Math.abs(trend.value)}%
+          </div>
+        )}
+      </div>
+      <div>
+        <p className="text-3xl font-bold tracking-tight text-foreground">{value}</p>
+        <p className="text-sm text-muted-foreground mt-0.5">{label}</p>
+      </div>
+    </div>
+  )
+}
+
+function MiniAreaChart({ data, color = "bg-primary" }: { data: number[]; color?: string }) {
+  const max = Math.max(...data, 1)
+  return (
+    <div className="flex items-end gap-[2px] h-12">
+      {data.map((value, i) => {
+        const height = (value / max) * 100
+        return (
+          <div
+            key={i}
+            className={cn("flex-1 rounded-sm transition-all", color, value === 0 && "bg-muted/30")}
+            style={{ height: `${Math.max(height, 4)}%`, opacity: 0.4 + (i / data.length) * 0.6 }}
+          />
+        )
+      })}
+    </div>
+  )
+}
+
+function SeverityBar({ label, count, total, color, icon: Icon }: { 
+  label: string
+  count: number
+  total: number
+  color: string
+  icon?: React.ElementType
+}) {
   const pct = total > 0 ? (count / total) * 100 : 0
   return (
-    <div className="flex items-center gap-3">
-      <span className="text-xs text-muted-foreground w-16 shrink-0 capitalize">{label}</span>
-      <div className="flex-1 h-2 rounded-full bg-muted overflow-hidden">
-        <div className={cn("h-full rounded-full transition-all duration-700", color)} style={{ width: `${pct}%` }} />
+    <div className="group flex items-center gap-4 py-2 px-3 -mx-3 rounded-lg hover:bg-muted/30 transition-colors">
+      <div className="flex items-center gap-2 w-20">
+        <span className={cn("w-2.5 h-2.5 rounded-full shrink-0", color)} />
+        <span className="text-sm text-muted-foreground capitalize">{label}</span>
       </div>
-      <span className="text-xs font-medium text-foreground w-8 text-right">{count}</span>
+      <div className="flex-1 h-2 rounded-full bg-muted/50 overflow-hidden">
+        <div 
+          className={cn("h-full rounded-full transition-all duration-700 ease-out", color)} 
+          style={{ width: `${pct}%` }} 
+        />
+      </div>
+      <span className="text-sm font-semibold text-foreground w-10 text-right tabular-nums">{count}</span>
+    </div>
+  )
+}
+
+function ActivityChart({ data }: { data: { day: string; scans: number; issues: number }[] }) {
+  const maxScans = Math.max(...data.map(d => d.scans), 1)
+  
+  return (
+    <div className="space-y-3">
+      <div className="flex items-end gap-1 h-28">
+        {data.map((d, i) => {
+          const height = (d.scans / maxScans) * 100
+          const dayDate = new Date(d.day + "T12:00:00")
+          const isToday = new Date().toDateString() === dayDate.toDateString()
+          
+          return (
+            <div key={i} className="flex-1 flex flex-col items-center justify-end h-full group relative">
+              {/* Tooltip */}
+              <div className="absolute -top-8 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10 whitespace-nowrap bg-popover border border-border rounded-lg px-3 py-2 shadow-xl">
+                <p className="text-xs font-medium text-foreground">{d.scans} scan{d.scans !== 1 ? "s" : ""}</p>
+                <p className="text-[10px] text-muted-foreground">{d.issues} issue{d.issues !== 1 ? "s" : ""}</p>
+              </div>
+              
+              {/* Bar */}
+              <div
+                className={cn(
+                  "w-full rounded-t-sm transition-all duration-300 cursor-pointer",
+                  d.scans > 0
+                    ? isToday 
+                      ? "bg-primary" 
+                      : "bg-primary/50 group-hover:bg-primary/70"
+                    : "bg-muted/30",
+                )}
+                style={{ height: d.scans > 0 ? `${Math.max(height, 8)}%` : "4%" }}
+              />
+            </div>
+          )
+        })}
+      </div>
+      
+      {/* X-axis labels */}
+      <div className="flex justify-between text-[10px] text-muted-foreground px-1">
+        <span>{new Date(data[0]?.day + "T12:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" })}</span>
+        <span>{new Date(data[data.length - 1]?.day + "T12:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" })}</span>
+      </div>
+      
+      {/* Legend */}
+      <div className="flex items-center justify-between pt-3 border-t border-border">
+        <div className="flex items-center gap-4 text-xs text-muted-foreground">
+          <span className="flex items-center gap-1.5">
+            <span className="w-2.5 h-2.5 rounded-sm bg-primary" />
+            Today
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="w-2.5 h-2.5 rounded-sm bg-primary/50" />
+            Previous
+          </span>
+        </div>
+        <span className="text-xs font-medium text-foreground">
+          {data.reduce((acc, d) => acc + d.scans, 0)} total scans
+        </span>
+      </div>
     </div>
   )
 }
@@ -80,56 +206,37 @@ export function Dashboard() {
         setLoading(false)
       })
       .catch(() => setLoading(false))
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   if (loading) {
-    const statLabels = ["Total Scans", "Unique Sites", "API Scans", "Web Scans"]
-    const statIcons = [BarChart3, Globe, Terminal, Monitor]
     return (
-      <div className="flex flex-col gap-4 pt-8">
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          {statLabels.map((label, i) => {
-            const Icon = statIcons[i]
-            return (
-              <Card key={i} className="bg-card border-border">
-                <CardContent className="pt-4 pb-4 px-4">
-                  <div className="flex items-center gap-3">
-                    <div className="flex items-center justify-center w-9 h-9 rounded-lg bg-primary/10">
-                      <Icon className="h-4 w-4 text-primary/40" />
-                    </div>
-                    <div>
-                      <div className="h-7 w-10 rounded bg-muted animate-pulse" />
-                      <p className="text-xs text-muted-foreground mt-1">{label}</p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            )
-          })}
+      <div className="flex flex-col gap-6 pt-8">
+        {/* Stats skeleton */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          {[...Array(4)].map((_, i) => (
+            <div key={i} className="flex flex-col gap-3 p-5 rounded-xl border border-border bg-card/50">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-lg bg-muted animate-pulse" />
+              </div>
+              <div className="space-y-2">
+                <div className="h-8 w-16 rounded bg-muted animate-pulse" />
+                <div className="h-4 w-24 rounded bg-muted animate-pulse" />
+              </div>
+            </div>
+          ))}
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          {([
-            { title: "Severity Breakdown", icon: Shield, color: "text-primary" },
-            { title: "Scan Activity", icon: TrendingUp, color: "text-primary" },
-            { title: "Top Issues", icon: AlertTriangle, color: "text-[hsl(var(--severity-high))]" },
-            { title: "Recent Scans", icon: Clock, color: "text-primary" },
-          ] as const).map(({ title, icon: CardIcon, color }, i) => (
-            <Card key={i} className="bg-card border-border">
-              <CardHeader className="pb-3 pt-4 px-4">
-                <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                  <CardIcon className={cn("h-4 w-4", color)} />
-                  {title}
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="px-4 pb-4">
-                <div className="flex flex-col gap-2.5">
-                  {[...Array(i === 1 ? 1 : i === 0 ? 5 : 4)].map((_, j) => (
-                    <div key={j} className={cn("rounded bg-muted animate-pulse", i === 1 ? "h-24" : "h-4")} style={{ width: i === 1 ? "100%" : `${85 - j * 10}%` }} />
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
+        
+        {/* Cards skeleton */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          {[...Array(4)].map((_, i) => (
+            <div key={i} className="p-5 rounded-xl border border-border bg-card/50">
+              <div className="h-5 w-32 rounded bg-muted animate-pulse mb-4" />
+              <div className="space-y-3">
+                {[...Array(i === 1 ? 1 : 4)].map((_, j) => (
+                  <div key={j} className={cn("rounded bg-muted animate-pulse", i === 1 ? "h-28" : "h-4")} style={{ width: i === 1 ? "100%" : `${90 - j * 10}%` }} />
+                ))}
+              </div>
+            </div>
           ))}
         </div>
       </div>
@@ -154,240 +261,182 @@ export function Dashboard() {
     try { return new URL(url).hostname } catch { return url }
   }
 
-  function formatDate(d: string) {
-    return new Date(d).toLocaleDateString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })
+  function formatRelativeTime(d: string) {
+    const diff = Date.now() - new Date(d).getTime()
+    const minutes = Math.floor(diff / 60000)
+    if (minutes < 60) return `${minutes}m ago`
+    const hours = Math.floor(minutes / 60)
+    if (hours < 24) return `${hours}h ago`
+    const days = Math.floor(hours / 24)
+    return `${days}d ago`
   }
 
-  // Build daily activity chart
-  const activity = data.dailyActivity.map((d) => ({ ...d, scans: Number(d.scans) || 0, issues: Number(d.issues) || 0 }))
-  const maxScans = Math.max(...activity.map((d) => d.scans), 1)
+  const activity = data.dailyActivity.map((d) => ({ 
+    ...d, 
+    scans: Number(d.scans) || 0, 
+    issues: Number(d.issues) || 0 
+  }))
 
   return (
-    <div className="flex flex-col gap-4 pt-6">
+    <div className="flex flex-col gap-6 pt-8">
       {/* Stats row */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <Card className="bg-card border-border">
-          <CardContent className="pt-4 pb-4 px-4">
-            <div className="flex items-center gap-3">
-              <div className="flex items-center justify-center w-9 h-9 rounded-lg bg-primary/10">
-                <BarChart3 className="h-4 w-4 text-primary" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold text-foreground">{data.totalScans}</p>
-                <p className="text-xs text-muted-foreground">Total Scans</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="bg-card border-border">
-          <CardContent className="pt-4 pb-4 px-4">
-            <div className="flex items-center gap-3">
-              <div className="flex items-center justify-center w-9 h-9 rounded-lg bg-primary/10">
-                <Globe className="h-4 w-4 text-primary" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold text-foreground">{data.uniqueSites}</p>
-                <p className="text-xs text-muted-foreground">Unique Sites</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="bg-card border-border">
-          <CardContent className="pt-4 pb-4 px-4">
-            <div className="flex items-center gap-3">
-              <div className="flex items-center justify-center w-9 h-9 rounded-lg bg-primary/10">
-                <Terminal className="h-4 w-4 text-primary" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold text-foreground">{apiCount}</p>
-                <p className="text-xs text-muted-foreground">API Scans</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="bg-card border-border">
-          <CardContent className="pt-4 pb-4 px-4">
-            <div className="flex items-center gap-3">
-              <div className="flex items-center justify-center w-9 h-9 rounded-lg bg-primary/10">
-                <Monitor className="h-4 w-4 text-primary" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold text-foreground">{webCount}</p>
-                <p className="text-xs text-muted-foreground">Web Scans</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <StatCard
+          value={data.totalScans}
+          label="Total Scans"
+          icon={BarChart3}
+          color="text-primary"
+        />
+        <StatCard
+          value={data.uniqueSites}
+          label="Unique Sites"
+          icon={Globe}
+          color="text-cyan-500"
+        />
+        <StatCard
+          value={apiCount}
+          label="API Scans"
+          icon={Terminal}
+          color="text-violet-500"
+        />
+        <StatCard
+          value={webCount}
+          label="Web Scans"
+          icon={Monitor}
+          color="text-amber-500"
+        />
       </div>
 
-      {/* Main grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+      {/* Main content grid */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* Severity breakdown */}
-        <Card className="bg-card border-border">
-          <CardHeader className="pb-3 pt-4 px-4">
-            <CardTitle className="text-sm font-semibold flex items-center gap-2">
+        <div className="p-5 rounded-xl border border-border bg-card/50">
+          <div className="flex items-center justify-between mb-5">
+            <div className="flex items-center gap-2">
               <Shield className="h-4 w-4 text-primary" />
-              Severity Breakdown
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="px-4 pb-4 flex flex-col gap-2.5">
+              <h3 className="text-sm font-semibold text-foreground">Severity Breakdown</h3>
+            </div>
+            <span className="text-xs text-muted-foreground">{totalIssues} total issues</span>
+          </div>
+          <div className="space-y-1">
             <SeverityBar label="Critical" count={sb.critical} total={totalIssues} color="bg-[hsl(var(--severity-critical))]" />
             <SeverityBar label="High" count={sb.high} total={totalIssues} color="bg-[hsl(var(--severity-high))]" />
             <SeverityBar label="Medium" count={sb.medium} total={totalIssues} color="bg-[hsl(var(--severity-medium))]" />
             <SeverityBar label="Low" count={sb.low} total={totalIssues} color="bg-[hsl(var(--severity-low))]" />
             <SeverityBar label="Info" count={sb.info} total={totalIssues} color="bg-muted-foreground/50" />
-          </CardContent>
-        </Card>
+          </div>
+        </div>
 
-        {/* Daily activity (last 14 days) */}
-        <Card className="bg-card border-border">
-          <CardHeader className="pb-3 pt-4 px-4">
-            <CardTitle className="text-sm font-semibold flex items-center gap-2">
-              <TrendingUp className="h-4 w-4 text-primary" />
-              Scan Activity
-              <span className="text-[10px] font-normal text-muted-foreground ml-auto">Last 14 days</span>
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="px-4 pb-4">
-            <div className="flex items-end gap-[3px] h-32">
-              {activity.map((d, i) => {
-                const height = maxScans > 0 ? (d.scans / maxScans) * 100 : 0
-                const dayDate = new Date(d.day + "T12:00:00")
-                const isToday = new Date().toDateString() === dayDate.toDateString()
-                const showLabel = i === 0 || i === activity.length - 1 || i === 6
+        {/* Scan Activity */}
+        <div className="p-5 rounded-xl border border-border bg-card/50">
+          <div className="flex items-center justify-between mb-5">
+            <div className="flex items-center gap-2">
+              <Activity className="h-4 w-4 text-primary" />
+              <h3 className="text-sm font-semibold text-foreground">Scan Activity</h3>
+            </div>
+            <span className="text-xs text-muted-foreground">Last 14 days</span>
+          </div>
+          <ActivityChart data={activity} />
+        </div>
 
+        {/* Top Issues */}
+        <div className="p-5 rounded-xl border border-border bg-card/50">
+          <div className="flex items-center justify-between mb-5">
+            <div className="flex items-center gap-2">
+              <AlertTriangle className="h-4 w-4 text-[hsl(var(--severity-high))]" />
+              <h3 className="text-sm font-semibold text-foreground">Top Issues</h3>
+            </div>
+            <span className="text-xs text-muted-foreground">{data.topVulnerabilities.length} types</span>
+          </div>
+          {data.topVulnerabilities.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-8 text-center">
+              <Target className="h-8 w-8 text-muted-foreground/30 mb-2" />
+              <p className="text-sm text-muted-foreground">No issues found yet</p>
+              <p className="text-xs text-muted-foreground/60">Run a scan to detect vulnerabilities</p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {data.topVulnerabilities.map((v, i) => {
+                const severityColors: Record<string, string> = {
+                  critical: "bg-[hsl(var(--severity-critical))]",
+                  high: "bg-[hsl(var(--severity-high))]",
+                  medium: "bg-[hsl(var(--severity-medium))]",
+                  low: "bg-[hsl(var(--severity-low))]",
+                  info: "bg-muted-foreground/50",
+                }
                 return (
-                  <div key={i} className="flex-1 flex flex-col items-center justify-end h-full gap-0.5 group relative">
-                    {/* Tooltip on hover */}
-                    <div className="absolute -top-6 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10 whitespace-nowrap bg-popover border border-border rounded px-2 py-1 shadow-lg">
-                      <p className="text-[10px] text-foreground font-medium">{d.scans} scan{d.scans !== 1 ? "s" : ""}</p>
-                      <p className="text-[9px] text-muted-foreground">{d.issues} issue{d.issues !== 1 ? "s" : ""}</p>
-                    </div>
-
-                    {/* Bar */}
-                    <div
-                      className={cn(
-                        "w-full rounded-sm transition-all duration-500",
-                        d.scans > 0
-                          ? isToday ? "bg-primary" : "bg-primary/60"
-                          : "bg-muted/60",
-                        "group-hover:bg-accent group-hover:opacity-90"
-                      )}
-                      style={{ height: d.scans > 0 ? `${Math.max(height, 8)}%` : "4%" }}
-                    />
-
-                    {/* Date label */}
-                    {showLabel && (
-                      <span className="text-[9px] text-muted-foreground mt-0.5">
-                        {dayDate.toLocaleDateString("en-US", { month: "short", day: "numeric" })}
-                      </span>
-                    )}
-                    {!showLabel && <span className="h-3" />}
+                  <div 
+                    key={i} 
+                    className="flex items-center gap-3 py-2 px-3 -mx-3 rounded-lg hover:bg-muted/30 transition-colors group"
+                  >
+                    <span className={cn("w-2 h-2 rounded-full shrink-0", severityColors[v.severity] || "bg-muted-foreground")} />
+                    <span className="text-sm text-foreground truncate flex-1">{v.title}</span>
+                    <span className="text-xs font-medium text-muted-foreground tabular-nums bg-muted/50 px-2 py-0.5 rounded-full">
+                      {v.count}x
+                    </span>
                   </div>
                 )
               })}
             </div>
-            <div className="flex items-center justify-between mt-2 pt-2 border-t border-border">
-              <div className="flex items-center gap-3 text-[10px] text-muted-foreground">
-                <span className="flex items-center gap-1">
-                  <span className="w-2 h-2 rounded-sm bg-primary" />
-                  Today
-                </span>
-                <span className="flex items-center gap-1">
-                  <span className="w-2 h-2 rounded-sm bg-primary/60" />
-                  Past
-                </span>
-                <span className="flex items-center gap-1">
-                  <span className="w-2 h-2 rounded-sm bg-muted/60" />
-                  No scans
-                </span>
-              </div>
-              <span className="text-[10px] text-muted-foreground">
-                {activity.reduce((acc, d) => acc + d.scans, 0)} total
-              </span>
-            </div>
-          </CardContent>
-        </Card>
+          )}
+        </div>
 
-        {/* Top vulnerabilities */}
-        <Card className="bg-card border-border">
-          <CardHeader className="pb-3 pt-4 px-4">
-            <CardTitle className="text-sm font-semibold flex items-center gap-2">
-              <AlertTriangle className="h-4 w-4 text-[hsl(var(--severity-high))]" />
-              Top Issues
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="px-4 pb-4">
-            {data.topVulnerabilities.length === 0 ? (
-              <p className="text-sm text-muted-foreground text-center py-6">No issues found yet</p>
-            ) : (
-              <div className="flex flex-col gap-2">
-                {data.topVulnerabilities.map((v, i) => {
-                  const severityColors: Record<string, string> = {
-                    critical: "bg-[hsl(var(--severity-critical))]",
-                    high: "bg-[hsl(var(--severity-high))]",
-                    medium: "bg-[hsl(var(--severity-medium))]",
-                    low: "bg-[hsl(var(--severity-low))]",
-                    info: "bg-muted-foreground/50",
-                  }
-                  return (
-                    <div key={i} className="flex items-center gap-2.5">
-                      <span className={cn("w-2 h-2 rounded-full shrink-0", severityColors[v.severity] || "bg-muted-foreground")} />
-                      <span className="text-xs text-foreground truncate flex-1">{v.title}</span>
-                      <span className="text-xs text-muted-foreground font-medium shrink-0">{v.count}x</span>
-                    </div>
-                  )
-                })}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Recent scans */}
-        <Card className="bg-card border-border">
-          <CardHeader className="pb-3 pt-4 px-4 flex flex-row items-center justify-between">
-            <CardTitle className="text-sm font-semibold flex items-center gap-2">
+        {/* Recent Scans */}
+        <div className="p-5 rounded-xl border border-border bg-card/50">
+          <div className="flex items-center justify-between mb-5">
+            <div className="flex items-center gap-2">
               <Clock className="h-4 w-4 text-primary" />
-              Recent Scans
-            </CardTitle>
-            <a href="/history" className="text-xs text-primary hover:underline">
+              <h3 className="text-sm font-semibold text-foreground">Recent Scans</h3>
+            </div>
+            <a 
+              href="/history" 
+              className="flex items-center gap-1 text-xs text-primary hover:text-primary/80 transition-colors font-medium"
+            >
               View all
+              <ArrowUpRight className="h-3 w-3" />
             </a>
-          </CardHeader>
-          <CardContent className="px-4 pb-4">
-            {data.recentScans.length === 0 ? (
-              <p className="text-sm text-muted-foreground text-center py-6">No scans yet. Start scanning above!</p>
-            ) : (
-              <div className="flex flex-col gap-1.5">
-                {data.recentScans.map((scan) => (
-                  <a
-                    key={scan.id}
-                    href={`/history#${scan.id}`}
-                    className="flex items-center gap-2.5 px-2.5 py-2 rounded-lg hover:bg-muted transition-colors text-left"
-                  >
-                    <Globe className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                    <span className="text-xs text-foreground truncate flex-1">{getHostname(scan.url)}</span>
+          </div>
+          {data.recentScans.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-8 text-center">
+              <Globe className="h-8 w-8 text-muted-foreground/30 mb-2" />
+              <p className="text-sm text-muted-foreground">No scans yet</p>
+              <p className="text-xs text-muted-foreground/60">Start scanning to see your history</p>
+            </div>
+          ) : (
+            <div className="space-y-1">
+              {data.recentScans.map((scan) => (
+                <a
+                  key={scan.id}
+                  href={`/history#${scan.id}`}
+                  className="flex items-center gap-3 py-2.5 px-3 -mx-3 rounded-lg hover:bg-muted/30 transition-colors group"
+                >
+                  <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-muted/50 shrink-0">
+                    {scan.source === "api" ? (
+                      <Terminal className="h-3.5 w-3.5 text-violet-500" />
+                    ) : (
+                      <Globe className="h-3.5 w-3.5 text-cyan-500" />
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-foreground truncate">{getHostname(scan.url)}</p>
+                    <p className="text-xs text-muted-foreground">{formatRelativeTime(scan.scanned_at)}</p>
+                  </div>
+                  <div className="flex items-center gap-2">
                     <span className={cn(
-                      "text-[10px] px-1.5 py-0.5 rounded font-medium uppercase",
-                      scan.source === "api" ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"
-                    )}>
-                      {scan.source === "api" ? "API" : "Web"}
-                    </span>
-                    <span className={cn(
-                      "text-xs font-medium shrink-0",
-                      scan.findings_count > 0 ? "text-[hsl(var(--severity-high))]" : "text-emerald-500"
+                      "text-xs font-medium px-2 py-1 rounded-full",
+                      scan.findings_count > 0 
+                        ? "text-[hsl(var(--severity-high))] bg-[hsl(var(--severity-high))]/10" 
+                        : "text-emerald-500 bg-emerald-500/10"
                     )}>
                       {scan.findings_count > 0 ? `${scan.findings_count} issues` : "Clean"}
                     </span>
-                  </a>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
+                    <ChevronRight className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+                  </div>
+                </a>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   )
