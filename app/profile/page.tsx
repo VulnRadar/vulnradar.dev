@@ -56,12 +56,6 @@ import {
   ExternalLink,
   Unlink,
   Play,
-  Search,
-  ChevronRight,
-  Settings,
-  User,
-  Code2,
-  ShieldCheck,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
@@ -111,9 +105,6 @@ interface User {
   avatarUrl?: string | null
   role?: string
   badges?: UserBadge[]
-  discordId?: string
-  discordUsername?: string
-  discordAvatar?: string
 }
 
 interface DataRequestInfo {
@@ -198,16 +189,6 @@ interface NotificationPrefs {
   email_tips_guides: boolean
 }
 
-const NAV_ITEMS: { id: Tab; label: string; icon: React.ElementType }[] = [
-  { id: "general", label: "General", icon: User },
-  { id: "security", label: "Security", icon: ShieldCheck },
-  { id: "social", label: "Connected Accounts", icon: Share2 },
-  { id: "billing", label: "Billing", icon: CreditCard },
-  { id: "developer", label: "Developer", icon: Code2 },
-  { id: "notifications", label: "Notifications", icon: Bell },
-  { id: "privacy", label: "Privacy", icon: Lock },
-]
-
 export default function ProfilePage() {
   return <ProfileContent />
 }
@@ -216,7 +197,6 @@ function ProfileContent() {
   const router = useRouter()
   const VALID_TABS: Tab[] = ["general", "security", "social", "billing", "developer", "notifications", "privacy"]
   const [activeTab, setActiveTab] = useState<Tab>("general")
-  const [sidebarSearch, setSidebarSearch] = useState("")
 
   // On mount, read hash and listen for back/forward hash changes
   useEffect(() => {
@@ -224,12 +204,14 @@ function ProfileContent() {
       const hash = window.location.hash.replace("#", "") as Tab
       return VALID_TABS.includes(hash) ? hash : "general"
     }
+    // Set default hash to #general if none provided
     if (!window.location.hash) {
       window.history.replaceState(null, "", "/profile#general")
     }
     setActiveTab(getTab())
     const onHashChange = () => {
       const newTab = getTab()
+      // Clear pending changes when hash changes (browser nav)
       setPendingChanges({})
       setShowSaveModal(false)
       setActiveTab(newTab)
@@ -239,20 +221,22 @@ function ProfileContent() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // Change tab — just update the hash, no page reload
   const handleTabChange = (tab: Tab) => {
+    // Clear any pending changes when switching tabs
     if (Object.keys(pendingChanges).length > 0 || showSaveModal) {
       setPendingChanges({})
       setShowSaveModal(false)
       setNameInput(user?.name || "")
       setEmailInput(user?.email || "")
     }
+    // Reset notification prefs to original if switching away from notifications
     if (activeTab === "notifications" && originalNotifPrefs) {
       setNotifPrefs(originalNotifPrefs)
     }
     setActiveTab(tab)
     window.location.hash = tab
   }
-
   const [user, setUser] = useState<User | null>(null)
   const [keys, setKeys] = useState<ApiKey[]>([])
   const [loading, setLoading] = useState(true)
@@ -268,6 +252,8 @@ function ProfileContent() {
   const [revokingId, setRevokingId] = useState<number | null>(null)
 
   // Profile editing state
+  const [editingName, setEditingName] = useState(false)
+  const [editingEmail, setEditingEmail] = useState(false)
   const [profileEditMode, setProfileEditMode] = useState(false)
   const [nameInput, setNameInput] = useState("")
   const [emailInput, setEmailInput] = useState("")
@@ -386,6 +372,7 @@ function ProfileContent() {
     const isGif = file.type === "image/gif"
     setIsGifUpload(isGif)
     if (isGif) {
+      // Skip crop dialog for GIFs to preserve animation
       const reader = new FileReader()
       reader.onload = () => handleCroppedAvatar(reader.result as string)
       reader.readAsDataURL(file)
@@ -470,11 +457,12 @@ function ProfileContent() {
       const notifData = notifRes.ok ? await notifRes.json() : null
       const billingData = billingRes.ok ? await billingRes.json() : null
       setUser(userData)
-      setNameInput(userData.name || "")
-      setEmailInput(userData.email || "")
+  setNameInput(userData.name || "")
+  setEmailInput(userData.email || "")
       if (billingData) {
         setBillingInfo(billingData)
       } else if (billingRes.status === 500) {
+        // Retry once on server error
         try {
           const retryRes = await fetch(API.BILLING)
           if (retryRes.ok) {
@@ -482,7 +470,7 @@ function ProfileContent() {
             setBillingInfo(retryData)
           }
         } catch {
-          // Silently fail
+          // Silently fail, user can see partial data
         }
       }
       setTotpEnabled(userData.totpEnabled || false)
@@ -500,7 +488,7 @@ function ProfileContent() {
           for (const key of Object.keys(prev) as (keyof NotificationPrefs)[]) {
             if (key in notifData) updated[key] = notifData[key] ?? true
           }
-          setOriginalNotifPrefs(updated)
+          setOriginalNotifPrefs(updated) // Store original for change detection
           return updated
         })
       }
@@ -515,6 +503,7 @@ function ProfileContent() {
     fetchData()
   }, [fetchData])
 
+  // Clear messages after 5 seconds
   useEffect(() => {
     if (success) {
       const t = setTimeout(() => setSuccess(null), 5000)
@@ -529,7 +518,7 @@ function ProfileContent() {
     }
   }, [error])
 
-  // Profile handlers
+  // ---- Profile handlers ----
   async function handleSaveName() {
     if (!nameInput.trim()) {
       setError("Name cannot be empty.")
@@ -549,6 +538,7 @@ function ProfileContent() {
         return
       }
       setUser((prev) => (prev ? { ...prev, name: data.name } : prev))
+      setEditingName(false)
       setSuccess("Name updated successfully.")
     } catch {
       setError("Failed to update name.")
@@ -576,6 +566,7 @@ function ProfileContent() {
         return
       }
       setUser((prev) => (prev ? { ...prev, email: data.email } : prev))
+      setEditingEmail(false)
       setSuccess("Email updated successfully.")
     } catch {
       setError("Failed to update email.")
@@ -622,7 +613,7 @@ function ProfileContent() {
     }
   }
 
-  // API key handlers
+  // ---- API key handlers ----
   async function handleGenerateKey() {
     setGeneratingKey(true)
     setError(null)
@@ -669,7 +660,7 @@ function ProfileContent() {
     }
   }
 
-  // Data request handlers
+  // ---- Data request handlers ----
   async function handleRequestData() {
     setRequestingData(true)
     setError(null)
@@ -677,34 +668,87 @@ function ProfileContent() {
       const res = await fetch(API.DATA_REQUEST, { method: "POST" })
       const data = await res.json()
       if (!res.ok) {
-        setError(data.error || "Failed to request data export.")
+        setError(data.error || "Failed to export data.")
         return
       }
-      setSuccess("Data export requested. You'll receive an email when ready.")
+      // Download the data
+      const blob = new Blob([JSON.stringify(data.data, null, 2)], { type: "application/json" })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = url
+      a.download = `vulnradar-data-export-${new Date().toISOString().split("T")[0]}.json`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
       await fetchData()
+      setSuccess("Data export downloaded successfully.")
     } catch {
-      setError("Failed to request data export.")
+      setError("Failed to export data.")
     } finally {
       setRequestingData(false)
     }
   }
 
-  // Delete account handlers
-  async function handleDeleteAccount() {
-    if (deleteConfirmText !== "DELETE") {
-      setError("Please type DELETE to confirm.")
-      return
-    }
-    setDeleting(true)
+  async function handleForceLogout() {
+    setForceLoggingOut(true)
     setError(null)
     try {
-      const res = await fetch(API.AUTH.DELETE, { method: "DELETE" })
+      const res = await fetch(API.AUTH.SESSIONS, { method: "DELETE" })
       if (!res.ok) {
         const data = await res.json()
-        setError(data.error || "Failed to delete account.")
+        setError(data.error || "Failed to log out of all devices.")
         return
       }
-      router.push("/")
+      setSuccess("Logged out of all devices. Redirecting...")
+      // Give time to see success message, then logout
+      setTimeout(() => {
+        router.push("/login?reason=forced_logout")
+      }, 1500)
+    } catch {
+      setError("Failed to log out of all devices.")
+    } finally {
+      setForceLoggingOut(false)
+    }
+  }
+
+  async function handleDownloadPreviousData() {
+    try {
+      const dlRes = await fetch(API.DATA_REQUEST)
+      if (!dlRes.ok) {
+        setError("Failed to download data.")
+        return
+      }
+      const dlData = await dlRes.json()
+      if (!dlData.data) {
+        setError("No previous export data available.")
+        return
+      }
+      const blob = new Blob([typeof dlData.data === "string" ? dlData.data : JSON.stringify(dlData.data, null, 2)], { type: "application/json" })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = url
+      a.download = `vulnradar-data-export-${new Date().toISOString().split("T")[0]}.json`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+      setSuccess("Previous export downloaded successfully.")
+    } catch {
+      setError("Failed to download previous export.")
+    }
+  }
+
+  // ---- Delete account ----
+  async function handleDeleteAccount() {
+    setDeleting(true)
+    try {
+      const res = await fetch(API.ACCOUNT_DELETE, { method: "POST" })
+      if (res.ok) {
+        router.push("/login")
+      } else {
+        setError("Failed to delete account.")
+      }
     } catch {
       setError("Failed to delete account.")
     } finally {
@@ -712,295 +756,171 @@ function ProfileContent() {
     }
   }
 
-  // 2FA handlers
-  async function handleEnable2FA() {
-    setSetting2FA(true)
-    setError(null)
-    try {
-      const res = await fetch(API.AUTH.TWO_FA.SETUP, { method: "POST" })
-      const data = await res.json()
-      if (!res.ok) {
-        setError(data.error)
-        return
-      }
-      setTotpUri(data.uri)
-      setTotpSecret(data.secret)
-    } catch {
-      setError("Failed to setup 2FA.")
-    } finally {
-      setSetting2FA(false)
-    }
-  }
-
-  async function handleVerify2FA() {
-    if (totpVerifyCode.length !== 6) {
-      setError("Enter a 6-digit code.")
-      return
-    }
-    setSetting2FA(true)
-    setError(null)
-    try {
-      const res = await fetch(API.AUTH.TWO_FA.VERIFY, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code: totpVerifyCode }),
-      })
-      const data = await res.json()
-      if (!res.ok) {
-        setError(data.error)
-        return
-      }
-      setTotpEnabled(true)
-      setTwoFactorMethod("app")
-      setTotpUri("")
-      setTotpSecret("")
-      setTotpVerifyCode("")
-      setBackupCodes(data.backupCodes || [])
-      setBackupCodesRemaining(data.backupCodes?.length || 0)
-      setSuccess("2FA enabled successfully.")
-    } catch {
-      setError("Failed to verify 2FA.")
-    } finally {
-      setSetting2FA(false)
-    }
-  }
-
-  async function handleDisable2FA() {
-    if (!disablePassword) {
-      setError("Password required.")
-      return
-    }
-    setSetting2FA(true)
-    setError(null)
-    try {
-      const res = await fetch(API.AUTH.TWO_FA.DISABLE, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ password: disablePassword }),
-      })
-      const data = await res.json()
-      if (!res.ok) {
-        setError(data.error)
-        return
-      }
-      setTotpEnabled(false)
-      setTwoFactorMethod(null)
-      setShowDisable2FA(false)
-      setDisablePassword("")
-      setSuccess("2FA disabled.")
-    } catch {
-      setError("Failed to disable 2FA.")
-    } finally {
-      setSetting2FA(false)
-    }
-  }
-
-  async function handleRegenerateBackupCodes() {
-    if (!regenPassword) {
-      setError("Password required.")
-      return
-    }
-    setSetting2FA(true)
-    setError(null)
-    try {
-      const res = await fetch(API.AUTH.TWO_FA.REGENERATE_BACKUP, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ password: regenPassword }),
-      })
-      const data = await res.json()
-      if (!res.ok) {
-        setError(data.error)
-        return
-      }
-      setBackupCodes(data.backupCodes || [])
-      setBackupCodesRemaining(data.backupCodes?.length || 0)
-      setShowRegenerateBackup(false)
-      setRegenPassword("")
-      setSuccess("Backup codes regenerated.")
-    } catch {
-      setError("Failed to regenerate backup codes.")
-    } finally {
-      setSetting2FA(false)
-    }
-  }
-
-  // Email 2FA handlers
-  async function handleToggleEmail2FA() {
-    if (!email2FAPassword) {
-      setError("Password required.")
-      return
-    }
-    setTogglingEmail2FA(true)
-    setError(null)
-    try {
-      const endpoint = twoFactorMethod === "email" ? API.AUTH.EMAIL_2FA.DISABLE : API.AUTH.EMAIL_2FA.ENABLE
-      const res = await fetch(endpoint, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ password: email2FAPassword }),
-      })
-      const data = await res.json()
-      if (!res.ok) {
-        setError(data.error)
-        return
-      }
-      setTwoFactorMethod(twoFactorMethod === "email" ? null : "email")
-      setEmail2FAPassword("")
-      setSuccess(twoFactorMethod === "email" ? "Email 2FA disabled." : "Email 2FA enabled.")
-    } catch {
-      setError("Failed to toggle email 2FA.")
-    } finally {
-      setTogglingEmail2FA(false)
-    }
-  }
-
-  // Webhook handlers
-  async function handleAddWebhook() {
-    if (!webhookUrl.trim()) {
-      setError("Webhook URL required.")
-      return
-    }
-    setAddingWebhook(true)
-    setError(null)
-    try {
-      const res = await fetch(API.WEBHOOKS, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url: webhookUrl.trim(), name: webhookName.trim() || "Webhook" }),
-      })
-      const data = await res.json()
-      if (!res.ok) {
-        setError(data.error)
-        return
-      }
-      setWebhookUrl("")
-      setWebhookName("")
-      await fetchData()
-      setSuccess("Webhook added.")
-    } catch {
-      setError("Failed to add webhook.")
-    } finally {
-      setAddingWebhook(false)
-    }
-  }
-
-  async function handleDeleteWebhook(id: number) {
-    try {
-      await fetch(`${API.WEBHOOKS}/${id}`, { method: "DELETE" })
-      await fetchData()
-    } catch {
-      setError("Failed to delete webhook.")
-    }
-  }
-
-  async function handleTestWebhook(id: number) {
-    setTestingWebhookId(id)
-    try {
-      const res = await fetch(`${API.WEBHOOKS}/${id}/test`, { method: "POST" })
-      const data = await res.json()
-      if (!res.ok) {
-        setError(data.error || "Webhook test failed.")
-      } else {
-        setSuccess("Webhook test sent.")
-      }
-    } catch {
-      setError("Failed to test webhook.")
-    } finally {
-      setTestingWebhookId(null)
-    }
-  }
-
-  // Schedule handlers
-  async function handleAddSchedule() {
-    if (!scheduleUrl.trim()) {
-      setError("Schedule URL required.")
-      return
-    }
-    setAddingSchedule(true)
-    setError(null)
-    try {
-      const res = await fetch(API.SCHEDULES, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url: scheduleUrl.trim(), frequency: scheduleFreq }),
-      })
-      const data = await res.json()
-      if (!res.ok) {
-        setError(data.error)
-        return
-      }
-      setScheduleUrl("")
-      await fetchData()
-      setSuccess("Schedule added.")
-    } catch {
-      setError("Failed to add schedule.")
-    } finally {
-      setAddingSchedule(false)
-    }
-  }
-
-  async function handleDeleteSchedule(id: number) {
-    try {
-      await fetch(`${API.SCHEDULES}/${id}`, { method: "DELETE" })
-      await fetchData()
-    } catch {
-      setError("Failed to delete schedule.")
-    }
-  }
-
-  // Force logout handler
-  async function handleForceLogout() {
-    setForceLoggingOut(true)
-    setError(null)
-    try {
-      const res = await fetch(API.AUTH.FORCE_LOGOUT, { method: "POST" })
-      if (!res.ok) {
-        const data = await res.json()
-        setError(data.error || "Failed to logout other sessions.")
-        return
-      }
-      setSuccess("All other sessions have been logged out.")
-    } catch {
-      setError("Failed to logout other sessions.")
-    } finally {
-      setForceLoggingOut(false)
-    }
-  }
-
-  // Notification prefs handlers
+  // ---- Notification preferences ----
   async function handleSaveNotifPrefs() {
     setSavingNotifPrefs(true)
     setError(null)
     try {
       const res = await fetch(API.ACCOUNT_NOTIFICATIONS, {
-        method: "PATCH",
+        method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(notifPrefs),
       })
+      const data = await res.json()
       if (!res.ok) {
-        const data = await res.json()
-        setError(data.error || "Failed to save preferences.")
+        setError(data.error || "Failed to save notification preferences.")
         return
       }
-      setOriginalNotifPrefs(notifPrefs)
+      setNotifPrefs((prev) => {
+        const updated = { ...prev }
+        for (const key of Object.keys(prev) as (keyof NotificationPrefs)[]) {
+          if (key in data) updated[key] = data[key]
+        }
+        setOriginalNotifPrefs(updated)
+        return updated
+      })
       setSuccess("Notification preferences saved.")
     } catch {
-      setError("Failed to save preferences.")
+      setError("Failed to save notification preferences.")
     } finally {
       setSavingNotifPrefs(false)
     }
   }
+  
+  // Unified save all changes
+  async function saveAllPendingChanges() {
+    setSavingProfile(true)
+    setError(null)
+    let savedCount = 0
+    
+    try {
+      // Save name if changed
+      if (pendingChanges.name !== undefined) {
+        const res = await fetch(API.ACCOUNT, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: pendingChanges.name }),
+        })
+        if (res.ok) {
+          const data = await res.json()
+          setUser((u) => u ? { ...u, name: data.name } : u)
+          savedCount++
+        }
+      }
+      
+      // Save email if changed
+      if (pendingChanges.email !== undefined) {
+        const res = await fetch(API.ACCOUNT, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email: pendingChanges.email }),
+        })
+        if (res.ok) {
+          const data = await res.json()
+          setUser((u) => u ? { ...u, email: data.email } : u)
+          savedCount++
+        }
+      }
+      
+      // Save notification prefs if changed
+      if (hasNotificationChanges) {
+        const res = await fetch(API.ACCOUNT_NOTIFICATIONS, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(notifPrefs),
+        })
+        if (res.ok) {
+          const data = await res.json()
+          setNotifPrefs((prev) => {
+            const updated = { ...prev }
+            for (const key of Object.keys(prev) as (keyof NotificationPrefs)[]) {
+              if (key in data) updated[key] = data[key]
+            }
+            setOriginalNotifPrefs(updated)
+            return updated
+          })
+          savedCount++
+        }
+      }
+      
+      setPendingChanges({})
+      setShowSaveModal(false)
+      setSuccess(`Changes saved successfully.`)
+    } catch {
+      setError("Failed to save some changes.")
+    } finally {
+      setSavingProfile(false)
+    }
+  }
+  
+// Notification pref labels for display
+  const NOTIF_LABELS: Record<keyof NotificationPrefs, string> = {
+    email_security: "Security Alerts",
+    email_new_login: "Login Alerts",
+    email_password_change: "Password Changes",
+    email_2fa_change: "2FA Changes",
+    email_session_revoked: "Session Revoked",
+    email_scan_complete: "Scan Complete",
+    email_critical_findings: "Critical Findings",
+    email_regression_alert: "Regression Alerts",
+    email_schedules: "Scheduled Scans",
+    email_api_keys: "API Key Activity",
+    email_api_limit_warning: "API Limit Warning",
+    email_webhooks: "Webhook Activity",
+    email_webhook_failure: "Webhook Failures",
+    email_data_requests: "Data Requests",
+    email_account_deletion: "Account Deletion",
+    email_team_invite: "Team Invites",
+    email_team_changes: "Team Changes",
+    email_product_updates: "Product Updates",
+    email_tips_guides: "Tips & Guides",
+  }
+  
+  // Check for notification changes and build list
+  const changedNotifications: { key: keyof NotificationPrefs; oldVal: boolean; newVal: boolean }[] = []
+  if (originalNotifPrefs) {
+    for (const key of Object.keys(notifPrefs) as (keyof NotificationPrefs)[]) {
+      if (notifPrefs[key] !== originalNotifPrefs[key]) {
+        changedNotifications.push({ key, oldVal: originalNotifPrefs[key], newVal: notifPrefs[key] })
+      }
+    }
+  }
+  const hasNotificationChanges = changedNotifications.length > 0
+  
+  // Check for any pending changes
+  const hasPendingChanges = Object.keys(pendingChanges).length > 0 || hasNotificationChanges
+  
+  // Build change items for modal
+  const pendingChangeItems: ChangeItem[] = [
+    ...(pendingChanges.name !== undefined ? [{
+      field: "name",
+      label: "Display Name",
+      oldValue: user?.name || "",
+      newValue: pendingChanges.name
+    }] : []),
+    ...(pendingChanges.email !== undefined ? [{
+      field: "email",
+      label: "Email Address",
+      oldValue: user?.email || "",
+      newValue: pendingChanges.email
+    }] : []),
+    ...changedNotifications.map(({ key, oldVal, newVal }) => ({
+      field: key,
+      label: NOTIF_LABELS[key] || key,
+      oldValue: oldVal ? "Enabled" : "Disabled",
+      newValue: newVal ? "Enabled" : "Disabled"
+    })),
+  ]
 
-  // Billing handlers
-  async function handleCancelSubscription() {
+  // ---- Billing handlers ----
+  async function handleCancelSubscription(immediate: boolean = false) {
     setCancelingSubscription(true)
     setError(null)
     try {
-      const res = await fetch(API.BILLING_CANCEL, {
+      const res = await fetch(API.BILLING, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ cancelType }),
+        body: JSON.stringify({ action: immediate ? "cancel_immediately" : "cancel" }),
       })
       const data = await res.json()
       if (!res.ok) {
@@ -1008,8 +928,11 @@ function ProfileContent() {
         return
       }
       setShowCancelDialog(false)
-      await fetchData()
-      setSuccess("Subscription canceled.")
+      setSuccess(immediate
+        ? "Subscription canceled. You've been moved to the free plan."
+        : "Subscription will be canceled at the end of your billing period."
+      )
+      await fetchData() // Refresh billing info
     } catch {
       setError("Failed to cancel subscription.")
     } finally {
@@ -1021,14 +944,18 @@ function ProfileContent() {
     setReactivatingSubscription(true)
     setError(null)
     try {
-      const res = await fetch(API.BILLING_REACTIVATE, { method: "POST" })
+      const res = await fetch(API.BILLING, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "reactivate" }),
+      })
       const data = await res.json()
       if (!res.ok) {
         setError(data.error || "Failed to reactivate subscription.")
         return
       }
-      await fetchData()
-      setSuccess("Subscription reactivated.")
+      setSuccess("Subscription reactivated successfully!")
+      await fetchData() // Refresh billing info
     } catch {
       setError("Failed to reactivate subscription.")
     } finally {
@@ -1036,234 +963,250 @@ function ProfileContent() {
     }
   }
 
-  // Build changes for save modal
-  const buildModalChanges = (): ChangeItem[] => {
-    const changes: ChangeItem[] = []
-    if (pendingChanges.name !== undefined && pendingChanges.name !== (user?.name || "")) {
-      changes.push({ field: "name", label: "Display Name", oldValue: user?.name || "Not set", newValue: pendingChanges.name })
-    }
-    if (pendingChanges.email !== undefined && pendingChanges.email !== user?.email) {
-      changes.push({ field: "email", label: "Email", oldValue: user?.email || "", newValue: pendingChanges.email })
-    }
-    return changes
+  // ---- Helpers ----
+  function formatDate(dateStr: string | null) {
+    if (!dateStr) return "Never"
+    return new Date(dateStr).toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    })
   }
 
-  const hasPendingChanges = Object.keys(pendingChanges).length > 0 && buildModalChanges().length > 0
-
-  // Filtered nav items
-  const filteredNavItems = NAV_ITEMS.filter(item => 
-    item.label.toLowerCase().includes(sidebarSearch.toLowerCase())
-  )
+  function getTimeRemaining(endDate: string) {
+    const diff = new Date(endDate).getTime() - Date.now()
+    if (diff <= 0) return null
+    const days = Math.floor(diff / (1000 * 60 * 60 * 24))
+    const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60))
+    const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60))
+    if (days > 0) return `${days}d ${hours}h ${minutes}m`
+    if (hours > 0) return `${hours}h ${minutes}m`
+    return `${minutes}m`
+  }
 
   if (loading) {
     return (
-      <div className="min-h-screen flex flex-col bg-background">
+      <div className="min-h-screen bg-background flex flex-col">
         <Header />
         <main className="flex-1 flex items-center justify-center">
-          <Loader2 className="h-6 w-6 animate-spin text-primary" />
+          <div className="flex flex-col items-center gap-3">
+            <Loader2 className="h-6 w-6 animate-spin text-primary" />
+            <p className="text-sm text-muted-foreground">Loading profile...</p>
+          </div>
         </main>
         <Footer />
       </div>
     )
   }
 
+  const activeKeys = keys.filter((k) => !k.revoked_at)
+  const revokedKeys = keys.filter((k) => k.revoked_at)
+
+  const TABS = [
+    { id: "general" as Tab, label: "General", icon: <UserCog className="h-4 w-4" /> },
+    { id: "security" as Tab, label: "Security", icon: <Lock className="h-4 w-4" /> },
+    { id: "social" as Tab, label: "Social", icon: <Share2 className="h-4 w-4" /> },
+    { id: "billing" as Tab, label: "Billing", icon: <CreditCard className="h-4 w-4" /> },
+    { id: "developer" as Tab, label: "Developer", icon: <Key className="h-4 w-4" /> },
+    { id: "notifications" as Tab, label: "Notifications", icon: <Bell className="h-4 w-4" /> },
+    { id: "privacy" as Tab, label: "Privacy", icon: <Shield className="h-4 w-4" /> },
+  ]
+
   return (
-    <div className="min-h-screen flex flex-col bg-background">
+    <div className="min-h-screen bg-background flex flex-col overflow-x-hidden">
       <Header />
-      
-      {/* Toast messages */}
-      {(error || success) && (
-        <div className="fixed top-20 right-4 z-50 max-w-sm">
-          {error && (
-            <div className="flex items-center gap-2 p-3 rounded-lg bg-destructive/10 border border-destructive/20 text-destructive text-sm mb-2">
-              <AlertTriangle className="h-4 w-4 shrink-0" />
-              <span>{error}</span>
-              <button onClick={() => setError(null)} className="ml-auto"><X className="h-4 w-4" /></button>
-            </div>
-          )}
-          {success && (
-            <div className="flex items-center gap-2 p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 text-sm">
-              <Check className="h-4 w-4 shrink-0" />
-              <span>{success}</span>
-              <button onClick={() => setSuccess(null)} className="ml-auto"><X className="h-4 w-4" /></button>
-            </div>
-          )}
-        </div>
-      )}
 
-      <main className="flex-1 w-full max-w-6xl mx-auto px-4 py-8">
+      <main className="flex-1 w-full max-w-6xl mx-auto px-4 sm:px-6 py-8 sm:py-12 flex flex-col gap-6 min-w-0">
+
         {/* Page Header */}
-        <div className="flex flex-col gap-1 mb-8">
-          <h1 className="text-2xl font-semibold tracking-tight">Account Settings</h1>
-          <p className="text-sm text-muted-foreground">Manage your account, security, and preferences</p>
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight mb-1">Settings</h1>
+          <p className="text-sm text-muted-foreground">Manage your account settings and preferences.</p>
         </div>
 
-        <div className="flex flex-col lg:flex-row gap-8">
-          {/* Sidebar Navigation */}
-          <aside className="lg:w-56 shrink-0">
-            <div className="lg:sticky lg:top-24 space-y-4">
-              {/* Search */}
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
-                  placeholder="Search..."
-                  value={sidebarSearch}
-                  onChange={(e) => setSidebarSearch(e.target.value)}
-                  className="pl-9 h-9 bg-card"
-                />
-              </div>
+        {/* Toast messages */}
+        {(error || success) && (
+          <div
+            className={cn(
+              "flex items-center gap-3 px-4 py-3 rounded-lg text-sm",
+              error ? "bg-destructive/10 text-destructive border border-destructive/20" : "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20"
+            )}
+          >
+            {error ? <AlertTriangle className="h-4 w-4 shrink-0" /> : <Check className="h-4 w-4 shrink-0" />}
+            <span className="flex-1">{error || success}</span>
+            <button onClick={() => { setError(null); setSuccess(null) }} className="text-xs hover:underline opacity-70 hover:opacity-100">
+              Dismiss
+            </button>
+          </div>
+        )}
 
-              {/* Nav items */}
-              <nav className="flex flex-col gap-1">
-                {filteredNavItems.map((item) => {
-                  const Icon = item.icon
-                  const isActive = activeTab === item.id
-                  return (
-                    <button
-                      key={item.id}
-                      onClick={() => handleTabChange(item.id)}
-                      className={cn(
-                        "flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors text-left",
-                        isActive
-                          ? "bg-secondary text-foreground"
-                          : "text-muted-foreground hover:text-foreground hover:bg-secondary/50"
-                      )}
-                    >
-                      <Icon className="h-4 w-4" />
-                      {item.label}
-                    </button>
-                  )
-                })}
-              </nav>
+        {/* Two-column layout: Sidebar + Content */}
+        <div className="flex flex-col lg:flex-row gap-6 lg:gap-10">
+
+          {/* Sidebar Navigation */}
+          <aside className="lg:w-52 lg:shrink-0">
+            {/* Mobile: Icons-only centered tab bar */}
+            <div className="lg:hidden">
+              <div className="flex justify-center gap-2 border-b border-border pb-2 pt-1">
+                {TABS.map((tab) => (
+                  <button
+                    key={tab.id}
+                    onClick={() => handleTabChange(tab.id)}
+                    title={tab.label}
+                    aria-label={tab.label}
+                    className={cn(
+                      "flex items-center justify-center w-10 h-10 rounded-md transition-all",
+                      activeTab === tab.id
+                        ? "bg-primary/10 text-primary"
+                        : "text-muted-foreground hover:text-foreground hover:bg-secondary/50"
+                    )}
+                  >
+                    {tab.icon}
+                  </button>
+                ))}
+              </div>
             </div>
+
+            {/* Desktop: Vertical sidebar */}
+            <nav className="hidden lg:flex flex-col gap-0.5 sticky top-24">
+              {TABS.map((tab) => (
+                <a
+                  key={tab.id}
+                  href={`/profile#${tab.id}`}
+                  onClick={(e) => {
+                    if (!e.ctrlKey && !e.metaKey) {
+                      e.preventDefault()
+                      handleTabChange(tab.id)
+                    }
+                  }}
+                  className={cn(
+                    "flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-md transition-all",
+                    activeTab === tab.id
+                      ? "bg-primary/10 text-primary"
+                      : "text-muted-foreground hover:text-foreground hover:bg-secondary/50"
+                  )}
+                >
+                  {tab.icon}
+                  <span>{tab.label}</span>
+                </a>
+              ))}
+            </nav>
           </aside>
 
-          {/* Main Content */}
+          {/* Main Content Area */}
           <div className="flex-1 min-w-0 space-y-6">
-            {/* Floating save bar */}
-            {hasPendingChanges && (
-              <div className="sticky top-20 z-40 flex items-center justify-between p-3 rounded-lg bg-card border border-border shadow-lg">
-                <div className="flex items-center gap-2 text-sm">
-                  <div className="h-2 w-2 rounded-full bg-amber-500 animate-pulse" />
-                  <span className="text-muted-foreground">You have unsaved changes</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Button variant="ghost" size="sm" onClick={() => {
-                    setPendingChanges({})
-                    setNameInput(user?.name || "")
-                    setEmailInput(user?.email || "")
-                    setProfileEditMode(false)
-                  }}>
-                    Discard
-                  </Button>
-                  <Button size="sm" onClick={() => setShowSaveModal(true)}>
-                    Review Changes
-                  </Button>
-                </div>
-              </div>
-            )}
 
             {/* ===================== GENERAL TAB ===================== */}
             {activeTab === "general" && (
-              <div className="space-y-6">
-                {/* Profile Card */}
+              <div className="flex flex-col gap-6">
+                {/* Personal Information */}
                 <Card>
-                  <CardContent className="p-6">
-                    <div className="flex flex-col sm:flex-row sm:items-start gap-6">
-                      {/* Avatar */}
-                      <div className="relative group">
-                        <div className="relative h-20 w-20 rounded-full overflow-hidden border-2 border-border bg-muted">
-                          {user?.avatarUrl ? (
-                            <img src={user.avatarUrl} alt="Avatar" className="h-full w-full object-cover" />
-                          ) : (
-                            <div className="h-full w-full flex items-center justify-center bg-primary/10">
-                              <span className="text-2xl font-semibold text-primary">
-                                {user?.name?.[0]?.toUpperCase() || user?.email?.[0]?.toUpperCase() || "?"}
+                  <CardHeader>
+                    <CardTitle className="text-lg">Personal Information</CardTitle>
+                    <CardDescription>Manage your profile picture, name, and email address.</CardDescription>
+                  </CardHeader>
+                  <CardContent className="flex flex-col gap-5">
+                    {/* Profile Picture */}
+                    <div className="flex flex-col gap-2">
+                      <Label className="text-sm font-medium text-muted-foreground">Profile Picture</Label>
+                      <div className="flex items-center gap-4">
+                        <div className="relative group">
+                          <div className="h-16 w-16 rounded-full border-2 border-border bg-secondary/40 flex items-center justify-center overflow-hidden">
+                            {user?.avatarUrl ? (
+                              <img src={user.avatarUrl} alt="Profile" className="h-full w-full object-cover" />
+                            ) : (
+                              <span className="text-xl font-bold text-muted-foreground">
+                                {user?.name?.charAt(0)?.toUpperCase() || user?.email?.charAt(0)?.toUpperCase() || "?"}
                               </span>
-                            </div>
-                          )}
-                          {uploadingAvatar && (
-                            <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
-                              <Loader2 className="h-5 w-5 animate-spin text-white" />
-                            </div>
-                          )}
+                            )}
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => avatarInputRef.current?.click()}
+                            disabled={uploadingAvatar}
+                            className="absolute inset-0 flex items-center justify-center rounded-full bg-background/70 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+                          >
+                            {uploadingAvatar ? (
+                              <Loader2 className="h-5 w-5 animate-spin text-foreground" />
+                            ) : (
+                              <Camera className="h-5 w-5 text-foreground" />
+                            )}
+                          </button>
+                        </div>
+                        <div className="flex flex-col gap-1.5">
+                          <div className="flex gap-2">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="bg-transparent text-xs"
+                              onClick={() => avatarInputRef.current?.click()}
+                              disabled={uploadingAvatar}
+                            >
+                              {uploadingAvatar ? "Uploading..." : "Upload"}
+                            </Button>
+                            {user?.avatarUrl && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="text-xs text-destructive hover:text-destructive"
+                                onClick={handleRemoveAvatar}
+                                disabled={uploadingAvatar}
+                              >
+                                Remove
+                              </Button>
+                            )}
+                          </div>
+                          <p className="text-[11px] text-muted-foreground">JPG, PNG, or GIF. Max 10MB.</p>
                         </div>
                         <input
                           ref={avatarInputRef}
                           type="file"
                           accept="image/*"
-                          className="hidden"
                           onChange={handleAvatarFileSelect}
+                          className="hidden"
                         />
-                        <button
-                          onClick={() => avatarInputRef.current?.click()}
-                          className="absolute inset-0 rounded-full bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"
-                        >
-                          <Camera className="h-5 w-5 text-white" />
-                        </button>
-                      </div>
-
-                      {/* User info */}
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-1">
-                          <h2 className="text-lg font-semibold truncate">{user?.name || "No name set"}</h2>
-                          {user?.role && user.role !== "user" && (
-                            <Badge variant="outline" className="text-xs capitalize">{user.role}</Badge>
-                          )}
-                        </div>
-                        <p className="text-sm text-muted-foreground truncate">{user?.email}</p>
-                        
-                        {/* Badges */}
-                        {user?.badges && user.badges.length > 0 && (
-                          <div className="flex flex-wrap gap-1.5 mt-3">
-                            {user.badges.map((badge) => (
-                              <Badge
-                                key={badge.id}
-                                variant="outline"
-                                className="text-xs"
-                                style={{
-                                  backgroundColor: badge.color ? `${badge.color}15` : undefined,
-                                  borderColor: badge.color ? `${badge.color}40` : undefined,
-                                  color: badge.color || undefined,
-                                }}
-                              >
-                                {badge.icon && <span className="mr-1">{badge.icon}</span>}
-                                {badge.display_name}
-                              </Badge>
-                            ))}
-                          </div>
-                        )}
-
-                        {/* Avatar actions */}
-                        <div className="flex items-center gap-2 mt-4">
-                          <Button variant="outline" size="sm" onClick={() => avatarInputRef.current?.click()}>
-                            <Camera className="mr-2 h-3.5 w-3.5" />
-                            Change Photo
-                          </Button>
-                          {user?.avatarUrl && (
-                            <Button variant="ghost" size="sm" onClick={handleRemoveAvatar}>
-                              Remove
-                            </Button>
-                          )}
-                        </div>
                       </div>
                     </div>
-                  </CardContent>
-                </Card>
 
-                {/* Personal Details */}
-                <Card>
-                  <CardHeader className="pb-4">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <CardTitle className="text-base">Personal Details</CardTitle>
-                        <CardDescription>Update your name and email address</CardDescription>
+                    {/* Badges section */}
+                    {user?.badges && user.badges.length > 0 && (
+                      <div className="flex flex-col gap-2">
+                        <Label className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                          <Award className="h-4 w-4" /> Badges
+                        </Label>
+                        <div className="flex flex-wrap gap-2 p-3 rounded-lg border border-border bg-secondary/20">
+                          {user.badges.map((badge) => (
+                            <div
+                              key={badge.id}
+                              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium"
+                              style={{
+                                backgroundColor: `${badge.color}15`,
+                                borderWidth: 1,
+                                borderColor: `${badge.color}40`,
+                                color: badge.color || undefined,
+                              }}
+                              title={badge.description || undefined}
+                            >
+                              <Tag className="h-3 w-3" />
+                              {badge.display_name}
+                            </div>
+                          ))}
+                        </div>
                       </div>
+                    )}
+
+                    {/* Name + Email with edit mode toggle */}
+                    <div className="flex items-center justify-between mb-1">
+                      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Personal Details</p>
                       <Button
                         variant="outline"
                         size="sm"
+                        className="h-7 text-xs gap-1.5"
                         onClick={() => {
                           if (profileEditMode) {
+                            // Cancel — revert pending profile changes
                             setNameInput(user?.name || "")
                             setEmailInput(user?.email || "")
                             setPendingChanges(prev => {
@@ -1276,27 +1219,40 @@ function ProfileContent() {
                           setProfileEditMode(m => !m)
                         }}
                       >
-                        {profileEditMode ? <><X className="mr-1.5 h-3.5 w-3.5" />Cancel</> : <><Pencil className="mr-1.5 h-3.5 w-3.5" />Edit</>}
+                        {profileEditMode ? (
+                          <><X className="h-3 w-3" />Cancel</>
+                        ) : (
+                          <><Pencil className="h-3 w-3" />Edit</>
+                        )}
                       </Button>
                     </div>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
+
                     {!profileEditMode ? (
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <div className="space-y-1.5">
-                          <Label className="text-xs text-muted-foreground">Display Name</Label>
-                          <p className="text-sm font-medium">{user?.name || <span className="text-muted-foreground italic">Not set</span>}</p>
+                      // Read-only view
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div className="flex flex-col gap-1 p-3 rounded-lg border bg-muted/20 border-border">
+                          <div className="flex items-center gap-2 mb-1">
+                            <UserCog className="h-3.5 w-3.5 text-muted-foreground" />
+                            <span className="text-[11px] text-muted-foreground font-medium">Display Name</span>
+                          </div>
+                          <span className="text-sm font-medium text-foreground truncate">
+                            {user?.name || <span className="text-muted-foreground italic">Not set</span>}
+                          </span>
                         </div>
-                        <div className="space-y-1.5">
-                          <Label className="text-xs text-muted-foreground">Email Address</Label>
-                          <p className="text-sm font-medium">{user?.email}</p>
+                        <div className="flex flex-col gap-1 p-3 rounded-lg border bg-muted/20 border-border">
+                          <div className="flex items-center gap-2 mb-1">
+                            <Mail className="h-3.5 w-3.5 text-muted-foreground" />
+                            <span className="text-[11px] text-muted-foreground font-medium">Email Address</span>
+                          </div>
+                          <span className="text-sm font-medium text-foreground truncate">{user?.email}</span>
                         </div>
                       </div>
                     ) : (
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <div className="space-y-2">
+                      // Edit mode
+                      <div className="flex flex-col gap-3">
+                        <div className="flex flex-col gap-1.5">
                           <div className="flex items-center justify-between">
-                            <Label className="text-xs text-muted-foreground">Display Name</Label>
+                            <Label className="text-xs font-medium text-muted-foreground">Display Name</Label>
                             {pendingChanges.name !== undefined && pendingChanges.name !== (user?.name || "") && (
                               <Badge variant="outline" className="text-[10px] bg-amber-500/10 text-amber-500 border-amber-500/20">Modified</Badge>
                             )}
@@ -1312,13 +1268,14 @@ function ProfileContent() {
                                 setPendingChanges(prev => { const { name: _, ...rest } = prev; return rest })
                               }
                             }}
-                            className="bg-card"
+                            className="bg-card h-10"
                             placeholder="Your display name"
+                            autoFocus
                           />
                         </div>
-                        <div className="space-y-2">
+                        <div className="flex flex-col gap-1.5">
                           <div className="flex items-center justify-between">
-                            <Label className="text-xs text-muted-foreground">Email Address</Label>
+                            <Label className="text-xs font-medium text-muted-foreground">Email Address</Label>
                             {pendingChanges.email !== undefined && pendingChanges.email !== user?.email && (
                               <Badge variant="outline" className="text-[10px] bg-amber-500/10 text-amber-500 border-amber-500/20">Modified</Badge>
                             )}
@@ -1335,7 +1292,7 @@ function ProfileContent() {
                                 setPendingChanges(prev => { const { email: _, ...rest } = prev; return rest })
                               }
                             }}
-                            className="bg-card"
+                            className="bg-card h-10"
                             placeholder="Your email address"
                           />
                         </div>
@@ -1344,312 +1301,39 @@ function ProfileContent() {
                   </CardContent>
                 </Card>
 
-                {/* Quick Links */}
+                {/* Quick Links to Other Settings */}
                 <Card>
-                  <CardHeader className="pb-4">
-                    <CardTitle className="text-base">Quick Settings</CardTitle>
-                    <CardDescription>Access commonly used settings</CardDescription>
+                  <CardHeader>
+                    <CardTitle className="text-lg">Quick Settings</CardTitle>
+                    <CardDescription>Manage other account settings.</CardDescription>
                   </CardHeader>
                   <CardContent>
                     <div className="grid gap-3 sm:grid-cols-2">
                       <button
-                        onClick={() => handleTabChange("security")}
-                        className="flex items-center gap-3 p-4 rounded-lg border border-border hover:bg-secondary/50 transition-colors text-left group"
+                        onClick={() => { setActiveTab("security" as Tab); window.location.hash = "security" }}
+                        className="flex items-center gap-3 p-4 rounded-lg border border-border hover:bg-secondary/50 transition-colors text-left"
                       >
                         <div className="flex items-center justify-center h-10 w-10 rounded-lg bg-primary/10">
                           <Lock className="h-5 w-5 text-primary" />
                         </div>
-                        <div className="flex-1 min-w-0">
+                        <div>
                           <p className="text-sm font-medium">Security</p>
                           <p className="text-xs text-muted-foreground">Password, 2FA, sessions</p>
                         </div>
-                        <ChevronRight className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
                       </button>
                       <button
-                        onClick={() => handleTabChange("developer")}
-                        className="flex items-center gap-3 p-4 rounded-lg border border-border hover:bg-secondary/50 transition-colors text-left group"
+                        onClick={() => { setActiveTab("social" as Tab); window.location.hash = "social" }}
+                        className="flex items-center gap-3 p-4 rounded-lg border border-border hover:bg-secondary/50 transition-colors text-left"
                       >
-                        <div className="flex items-center justify-center h-10 w-10 rounded-lg bg-violet-500/10">
-                          <Code2 className="h-5 w-5 text-violet-500" />
+                        <div className="flex items-center justify-center h-10 w-10 rounded-lg bg-[#5865F2]/10">
+                          <Share2 className="h-5 w-5 text-[#5865F2]" />
                         </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium">Developer</p>
-                          <p className="text-xs text-muted-foreground">API keys, webhooks</p>
+                        <div>
+                          <p className="text-sm font-medium">Connected Accounts</p>
+                          <p className="text-xs text-muted-foreground">Discord integration</p>
                         </div>
-                        <ChevronRight className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
                       </button>
                     </div>
-                  </CardContent>
-                </Card>
-              </div>
-            )}
-
-            {/* ===================== SECURITY TAB ===================== */}
-            {activeTab === "security" && (
-              <div className="space-y-6">
-                {/* Password Section */}
-                <Card>
-                  <CardHeader className="pb-4">
-                    <CardTitle className="text-base">Password</CardTitle>
-                    <CardDescription>Change your account password</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    {!showPasswordForm ? (
-                      <Button variant="outline" onClick={() => setShowPasswordForm(true)}>
-                        <KeyRound className="mr-2 h-4 w-4" />
-                        Change Password
-                      </Button>
-                    ) : (
-                      <div className="space-y-4 max-w-md">
-                        <div className="space-y-2">
-                          <Label className="text-xs text-muted-foreground">Current Password</Label>
-                          <Input
-                            type="password"
-                            value={currentPassword}
-                            onChange={(e) => setCurrentPassword(e.target.value)}
-                            className="bg-card"
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <Label className="text-xs text-muted-foreground">New Password</Label>
-                          <Input
-                            type="password"
-                            value={newPassword}
-                            onChange={(e) => setNewPassword(e.target.value)}
-                            className="bg-card"
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <Label className="text-xs text-muted-foreground">Confirm New Password</Label>
-                          <Input
-                            type="password"
-                            value={confirmNewPassword}
-                            onChange={(e) => setConfirmNewPassword(e.target.value)}
-                            className="bg-card"
-                          />
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <Button onClick={handleChangePassword} disabled={savingPassword}>
-                            {savingPassword ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                            Save Password
-                          </Button>
-                          <Button variant="ghost" onClick={() => {
-                            setShowPasswordForm(false)
-                            setCurrentPassword("")
-                            setNewPassword("")
-                            setConfirmNewPassword("")
-                          }}>
-                            Cancel
-                          </Button>
-                        </div>
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
-
-                {/* Two-Factor Authentication */}
-                <Card>
-                  <CardHeader className="pb-4">
-                    <CardTitle className="text-base">Two-Factor Authentication</CardTitle>
-                    <CardDescription>Add an extra layer of security to your account</CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    {/* App-based 2FA */}
-                    <div className="flex items-center justify-between p-4 rounded-lg border border-border">
-                      <div className="flex items-center gap-3">
-                        <div className={cn(
-                          "flex items-center justify-center h-10 w-10 rounded-lg",
-                          totpEnabled && twoFactorMethod === "app" ? "bg-emerald-500/10" : "bg-muted"
-                        )}>
-                          <Smartphone className={cn(
-                            "h-5 w-5",
-                            totpEnabled && twoFactorMethod === "app" ? "text-emerald-500" : "text-muted-foreground"
-                          )} />
-                        </div>
-                        <div>
-                          <p className="text-sm font-medium">Authenticator App</p>
-                          <p className="text-xs text-muted-foreground">Use an app like Google Authenticator</p>
-                        </div>
-                      </div>
-                      {totpEnabled && twoFactorMethod === "app" ? (
-                        <Badge className="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20">
-                          <Check className="mr-1 h-3 w-3" />
-                          Enabled
-                        </Badge>
-                      ) : (
-                        <Button variant="outline" size="sm" onClick={handleEnable2FA} disabled={setting2FA || twoFactorMethod === "email"}>
-                          {setting2FA ? <Loader2 className="h-4 w-4 animate-spin" /> : "Enable"}
-                        </Button>
-                      )}
-                    </div>
-
-                    {/* Setup flow */}
-                    {totpUri && (
-                      <div className="p-4 rounded-lg border border-primary/20 bg-primary/5 space-y-4">
-                        <div className="flex flex-col items-center gap-4">
-                          <p className="text-sm text-center text-muted-foreground">Scan this QR code with your authenticator app</p>
-                          <div className="p-4 bg-white rounded-lg">
-                            <img src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(totpUri)}`} alt="2FA QR Code" className="h-48 w-48" />
-                          </div>
-                          <div className="text-center">
-                            <p className="text-xs text-muted-foreground mb-1">Or enter this code manually:</p>
-                            <code className="text-sm font-mono bg-muted px-2 py-1 rounded">{totpSecret}</code>
-                          </div>
-                        </div>
-                        <div className="space-y-2">
-                          <Label className="text-xs text-muted-foreground">Enter the 6-digit code from your app</Label>
-                          <div className="flex gap-2">
-                            <Input
-                              value={totpVerifyCode}
-                              onChange={(e) => setTotpVerifyCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
-                              placeholder="000000"
-                              className="bg-card font-mono text-center max-w-32"
-                              maxLength={6}
-                            />
-                            <Button onClick={handleVerify2FA} disabled={setting2FA || totpVerifyCode.length !== 6}>
-                              {setting2FA ? <Loader2 className="h-4 w-4 animate-spin" /> : "Verify"}
-                            </Button>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Backup codes display */}
-                    {backupCodes.length > 0 && (
-                      <div className="p-4 rounded-lg border border-amber-500/20 bg-amber-500/5 space-y-3">
-                        <div className="flex items-center gap-2">
-                          <AlertTriangle className="h-4 w-4 text-amber-500" />
-                          <p className="text-sm font-medium text-amber-600 dark:text-amber-400">Save your backup codes</p>
-                        </div>
-                        <p className="text-xs text-muted-foreground">Store these codes in a safe place. You can use them to access your account if you lose your authenticator device.</p>
-                        <div className="grid grid-cols-2 gap-2 font-mono text-sm">
-                          {backupCodes.map((code, i) => (
-                            <div key={i} className="px-3 py-2 bg-muted rounded text-center">{code}</div>
-                          ))}
-                        </div>
-                        <Button variant="outline" size="sm" onClick={() => {
-                          navigator.clipboard.writeText(backupCodes.join("\n"))
-                          setSuccess("Backup codes copied to clipboard.")
-                        }}>
-                          <Copy className="mr-2 h-3.5 w-3.5" />
-                          Copy All
-                        </Button>
-                        <Button variant="ghost" size="sm" onClick={() => setBackupCodes([])}>
-                          Done
-                        </Button>
-                      </div>
-                    )}
-
-                    {/* Email 2FA */}
-                    <div className="flex items-center justify-between p-4 rounded-lg border border-border">
-                      <div className="flex items-center gap-3">
-                        <div className={cn(
-                          "flex items-center justify-center h-10 w-10 rounded-lg",
-                          twoFactorMethod === "email" ? "bg-emerald-500/10" : "bg-muted"
-                        )}>
-                          <Mail className={cn(
-                            "h-5 w-5",
-                            twoFactorMethod === "email" ? "text-emerald-500" : "text-muted-foreground"
-                          )} />
-                        </div>
-                        <div>
-                          <p className="text-sm font-medium">Email Verification</p>
-                          <p className="text-xs text-muted-foreground">Receive a code via email on login</p>
-                        </div>
-                      </div>
-                      {twoFactorMethod === "email" ? (
-                        <Badge className="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20">
-                          <Check className="mr-1 h-3 w-3" />
-                          Enabled
-                        </Badge>
-                      ) : (
-                        <Button variant="outline" size="sm" disabled={totpEnabled}>
-                          {totpEnabled ? "Disabled (App 2FA active)" : "Enable"}
-                        </Button>
-                      )}
-                    </div>
-
-                    {/* Disable 2FA / Manage options */}
-                    {(totpEnabled || twoFactorMethod === "email") && (
-                      <div className="pt-4 border-t border-border">
-                        <div className="flex flex-wrap gap-2">
-                          {totpEnabled && twoFactorMethod === "app" && (
-                            <>
-                              <Button variant="outline" size="sm" onClick={() => setShowRegenerateBackup(true)}>
-                                Regenerate Backup Codes
-                                {backupCodesRemaining > 0 && (
-                                  <Badge variant="secondary" className="ml-2 text-[10px]">{backupCodesRemaining} left</Badge>
-                                )}
-                              </Button>
-                              <Button variant="outline" size="sm" className="text-destructive hover:text-destructive" onClick={() => setShowDisable2FA(true)}>
-                                Disable 2FA
-                              </Button>
-                            </>
-                          )}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Disable 2FA dialog */}
-                    {showDisable2FA && (
-                      <div className="p-4 rounded-lg border border-destructive/20 bg-destructive/5 space-y-3">
-                        <p className="text-sm font-medium text-destructive">Disable Two-Factor Authentication</p>
-                        <p className="text-xs text-muted-foreground">Enter your password to disable 2FA. This will make your account less secure.</p>
-                        <div className="flex gap-2">
-                          <Input
-                            type="password"
-                            value={disablePassword}
-                            onChange={(e) => setDisablePassword(e.target.value)}
-                            placeholder="Your password"
-                            className="bg-card max-w-xs"
-                          />
-                          <Button variant="destructive" size="sm" onClick={handleDisable2FA} disabled={setting2FA}>
-                            {setting2FA ? <Loader2 className="h-4 w-4 animate-spin" /> : "Disable"}
-                          </Button>
-                          <Button variant="ghost" size="sm" onClick={() => { setShowDisable2FA(false); setDisablePassword("") }}>
-                            Cancel
-                          </Button>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Regenerate backup codes dialog */}
-                    {showRegenerateBackup && (
-                      <div className="p-4 rounded-lg border border-amber-500/20 bg-amber-500/5 space-y-3">
-                        <p className="text-sm font-medium text-amber-600 dark:text-amber-400">Regenerate Backup Codes</p>
-                        <p className="text-xs text-muted-foreground">This will invalidate all existing backup codes and generate new ones.</p>
-                        <div className="flex gap-2">
-                          <Input
-                            type="password"
-                            value={regenPassword}
-                            onChange={(e) => setRegenPassword(e.target.value)}
-                            placeholder="Your password"
-                            className="bg-card max-w-xs"
-                          />
-                          <Button variant="outline" size="sm" onClick={handleRegenerateBackupCodes} disabled={setting2FA}>
-                            {setting2FA ? <Loader2 className="h-4 w-4 animate-spin" /> : "Regenerate"}
-                          </Button>
-                          <Button variant="ghost" size="sm" onClick={() => { setShowRegenerateBackup(false); setRegenPassword("") }}>
-                            Cancel
-                          </Button>
-                        </div>
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
-
-                {/* Active Sessions */}
-                <Card>
-                  <CardHeader className="pb-4">
-                    <CardTitle className="text-base">Active Sessions</CardTitle>
-                    <CardDescription>Manage your logged-in devices</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <Button variant="outline" onClick={handleForceLogout} disabled={forceLoggingOut}>
-                      {forceLoggingOut ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <LogOut className="mr-2 h-4 w-4" />}
-                      Log Out Other Sessions
-                    </Button>
-                    <p className="text-xs text-muted-foreground mt-2">This will sign out all other devices except your current session.</p>
                   </CardContent>
                 </Card>
               </div>
@@ -1658,58 +1342,96 @@ function ProfileContent() {
             {/* ===================== SOCIAL TAB ===================== */}
             {activeTab === "social" && (
               <div className="space-y-6">
+                {/* Discord Integration */}
                 <Card>
-                  <CardHeader className="pb-4">
+                  <CardHeader>
                     <div className="flex items-center justify-between">
                       <div>
-                        <CardTitle className="text-base flex items-center gap-2">
+                        <CardTitle className="text-lg flex items-center gap-2">
                           <svg className="h-5 w-5 text-[#5865F2]" viewBox="0 0 24 24" fill="currentColor">
                             <path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028 14.09 14.09 0 0 0 1.226-1.994.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418z" />
                           </svg>
                           Discord
                         </CardTitle>
-                        <CardDescription>Connect your Discord account for quick sign-in</CardDescription>
+                        <CardDescription>Connect your Discord account to enable sign-in with Discord and auto-join our community server.</CardDescription>
                       </div>
                       {user?.discordId && (
                         <Badge className="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20">Connected</Badge>
                       )}
                     </div>
                   </CardHeader>
-                  <CardContent>
+                  <CardContent className="space-y-4">
                     {user?.discordId ? (
-                      <div className="space-y-4">
-                        <div className="flex items-center gap-4 p-4 rounded-lg bg-[#5865F2]/5 border border-[#5865F2]/20">
-                          {user.discordAvatar ? (
-                            <img
-                              src={`https://cdn.discordapp.com/avatars/${user.discordId}/${user.discordAvatar}.png?size=128`}
-                              alt="Discord avatar"
-                              className="h-12 w-12 rounded-full"
-                            />
-                          ) : (
-                            <div className="h-12 w-12 rounded-full bg-[#5865F2] flex items-center justify-center">
-                              <span className="text-white font-semibold">{user.discordUsername?.[0]?.toUpperCase() || "?"}</span>
+                      <>
+                        {/* Connected Account Card */}
+                        <div className="rounded-xl border border-[#5865F2]/20 bg-[#5865F2]/5 overflow-hidden">
+                          {/* Header with Discord branding */}
+                          <div className="bg-[#5865F2] px-4 py-3">
+                            <p className="text-sm font-medium text-white">Connected Account</p>
+                          </div>
+                          
+                          {/* Account details */}
+                          <div className="p-4 space-y-4">
+                            {/* User info row */}
+                            <div className="flex items-center gap-4">
+                              {user.discordAvatar ? (
+                                <img
+                                  src={`https://cdn.discordapp.com/avatars/${user.discordId}/${user.discordAvatar}.png?size=128`}
+                                  alt="Discord avatar"
+                                  className="h-14 w-14 rounded-full ring-2 ring-[#5865F2]/30 ring-offset-2 ring-offset-background"
+                                />
+                              ) : (
+                                <div className="h-14 w-14 rounded-full bg-[#5865F2] flex items-center justify-center ring-2 ring-[#5865F2]/30 ring-offset-2 ring-offset-background">
+                                  <span className="text-white text-lg font-semibold">
+                                    {user.discordUsername?.[0]?.toUpperCase() || "?"}
+                                  </span>
+                                </div>
+                              )}
+                              <div className="flex-1 min-w-0">
+                                <p className="font-semibold text-foreground truncate">
+                                  {user.discordUsername || "Unknown User"}
+                                </p>
+                                <p className="text-sm text-muted-foreground font-mono">
+                                  ID: {user.discordId}
+                                </p>
+                              </div>
                             </div>
-                          )}
-                          <div>
-                            <p className="font-medium">{user.discordUsername || "Unknown User"}</p>
-                            <p className="text-xs text-muted-foreground font-mono">ID: {user.discordId}</p>
+
+                            {/* Feature badges */}
+                            <div className="flex flex-wrap gap-2">
+                              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20">
+                                <Check className="h-3.5 w-3.5 text-emerald-500" />
+                                <span className="text-xs font-medium text-emerald-600 dark:text-emerald-400">Discord Sign-in Enabled</span>
+                              </div>
+                              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[#5865F2]/10 border border-[#5865F2]/20">
+                                <Users className="h-3.5 w-3.5 text-[#5865F2]" />
+                                <span className="text-xs font-medium text-[#5865F2]">Community Access</span>
+                              </div>
+                            </div>
                           </div>
                         </div>
-                        <div className="flex gap-2">
-                          <Button variant="outline" size="sm" onClick={() => window.location.href = "/api/v2/auth/discord?action=connect"}>
-                            <RefreshCw className="mr-2 h-3.5 w-3.5" />
-                            Reconnect
+
+                        {/* Actions */}
+                        <div className="flex flex-col sm:flex-row gap-3">
+                          <Button
+                            variant="outline"
+                            className="flex-1"
+                            onClick={() => window.location.href = "/api/v2/auth/discord?action=connect"}
+                          >
+                            <RefreshCw className="mr-2 h-4 w-4" />
+                            Reconnect Account
                           </Button>
                           <Button
                             variant="outline"
-                            size="sm"
-                            className="text-destructive hover:text-destructive"
+                            className="flex-1 text-destructive dark:text-red-400 border-destructive/30 hover:bg-destructive/10"
                             onClick={async () => {
                               try {
                                 const res = await fetch("/api/v2/account/discord", { method: "DELETE" })
                                 if (res.ok) {
                                   setSuccess("Discord account disconnected")
-                                  await fetchData()
+                                  const authRes = await fetch("/api/v2/auth/me")
+                                  const authData = await authRes.json()
+                                  setUser(authData.data)
                                 } else {
                                   setError("Failed to disconnect Discord account")
                                 }
@@ -1718,56 +1440,91 @@ function ProfileContent() {
                               }
                             }}
                           >
-                            <Unlink className="mr-2 h-3.5 w-3.5" />
+                            <Unlink className="mr-2 h-4 w-4" />
                             Disconnect
                           </Button>
                         </div>
-                      </div>
+
+                        {/* Info note */}
+                        <p className="text-xs text-muted-foreground">
+                          Disconnecting will disable Discord sign-in. You can reconnect at any time.
+                        </p>
+                      </>
                     ) : (
-                      <div className="space-y-4">
-                        <div className="flex flex-col items-center gap-4 p-6 rounded-lg border border-dashed border-border">
-                          <div className="h-16 w-16 rounded-full bg-[#5865F2]/10 flex items-center justify-center">
-                            <svg className="h-8 w-8 text-[#5865F2]/60" viewBox="0 0 24 24" fill="currentColor">
-                              <path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028 14.09 14.09 0 0 0 1.226-1.994.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418z" />
-                            </svg>
+                      <>
+                        {/* Not connected state */}
+                        <div className="rounded-xl border border-border bg-secondary/30 p-6 text-center space-y-4">
+                          <div className="flex justify-center">
+                            <div className="h-16 w-16 rounded-full bg-[#5865F2]/10 border-2 border-dashed border-[#5865F2]/30 flex items-center justify-center">
+                              <svg className="h-8 w-8 text-[#5865F2]/60" viewBox="0 0 24 24" fill="currentColor">
+                                <path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028 14.09 14.09 0 0 0 1.226-1.994.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418z" />
+                              </svg>
+                            </div>
                           </div>
-                          <div className="text-center">
-                            <p className="font-medium">No Discord account connected</p>
-                            <p className="text-sm text-muted-foreground mt-1">Link your Discord for faster sign-in</p>
+                          <div>
+                            <p className="font-medium text-foreground">No Discord account connected</p>
+                            <p className="text-sm text-muted-foreground mt-1">
+                              Link your Discord for faster sign-in and community features
+                            </p>
+                          </div>
+                          
+                          {/* Benefits list */}
+                          <div className="flex flex-col gap-2 text-left max-w-xs mx-auto">
+                            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                              <Check className="h-4 w-4 text-emerald-500 shrink-0" />
+                              <span>Sign in with one click</span>
+                            </div>
+                            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                              <Check className="h-4 w-4 text-emerald-500 shrink-0" />
+                              <span>Auto-join our Discord server</span>
+                            </div>
+                            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                              <Check className="h-4 w-4 text-emerald-500 shrink-0" />
+                              <span>Sync your profile picture</span>
+                            </div>
                           </div>
                         </div>
-                        <Button className="w-full bg-[#5865F2] hover:bg-[#4752C4] text-white" onClick={() => window.location.href = "/api/v2/auth/discord?action=connect"}>
-                          Connect Discord
+
+                        <Button 
+                          className="w-full bg-[#5865F2] hover:bg-[#4752C4] text-white"
+                          onClick={() => window.location.href = "/api/v2/auth/discord?action=connect"}
+                        >
+                          <svg className="mr-2 h-4 w-4" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028 14.09 14.09 0 0 0 1.226-1.994.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418z" />
+                          </svg>
+                          Connect Discord Account
                         </Button>
-                      </div>
+                      </>
                     )}
                   </CardContent>
                 </Card>
 
                 {/* Community Links */}
                 <Card>
-                  <CardHeader className="pb-4">
-                    <CardTitle className="text-base">Community</CardTitle>
-                    <CardDescription>Join our community and stay connected</CardDescription>
+                  <CardHeader>
+                    <CardTitle className="text-lg">Community</CardTitle>
+                    <CardDescription>Join our community and stay connected with the latest updates.</CardDescription>
                   </CardHeader>
                   <CardContent>
-                    <a
-                      href="https://discord.gg/Y7R6hdGbNe"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex items-center gap-3 p-4 rounded-lg border border-border hover:bg-secondary/50 transition-colors"
-                    >
-                      <div className="flex items-center justify-center h-10 w-10 rounded-lg bg-[#5865F2]/10">
-                        <svg className="h-5 w-5 text-[#5865F2]" viewBox="0 0 24 24" fill="currentColor">
-                          <path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028 14.09 14.09 0 0 0 1.226-1.994.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418z" />
-                        </svg>
-                      </div>
-                      <div className="flex-1">
-                        <p className="text-sm font-medium">Discord Server</p>
-                        <p className="text-xs text-muted-foreground">Join our community</p>
-                      </div>
-                      <ExternalLink className="h-4 w-4 text-muted-foreground" />
-                    </a>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <a
+                        href="https://discord.gg/Y7R6hdGbNe"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-3 p-4 rounded-lg border border-border hover:bg-secondary/50 transition-colors"
+                      >
+                        <div className="flex items-center justify-center h-10 w-10 rounded-lg bg-[#5865F2]/10">
+                          <svg className="h-5 w-5 text-[#5865F2]" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028 14.09 14.09 0 0 0 1.226-1.994.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418z" />
+                          </svg>
+                        </div>
+                        <div>
+                          <p className="text-sm font-medium">Discord Server</p>
+                          <p className="text-xs text-muted-foreground">Join our community</p>
+                        </div>
+                        <ExternalLink className="h-4 w-4 ml-auto text-muted-foreground" />
+                      </a>
+                    </div>
                   </CardContent>
                 </Card>
               </div>
@@ -1775,46 +1532,72 @@ function ProfileContent() {
 
             {/* ===================== BILLING TAB ===================== */}
             {activeTab === "billing" && (
-              <div className="space-y-6">
-                {/* Usage */}
+              <div className="flex flex-col gap-6">
+                {/* Usage Card */}
                 <Card>
-                  <CardHeader className="pb-4">
-                    <CardTitle className="text-base">Daily Usage</CardTitle>
-                    <CardDescription>Track your scan requests. Limits reset at midnight UTC.</CardDescription>
+                  <CardHeader>
+                    <CardTitle className="text-lg flex items-center gap-2">
+                      <Gauge className="h-4 w-4 text-muted-foreground" />
+                      Daily Usage
+                    </CardTitle>
+                    <CardDescription>
+                      Track your scan requests for today. Limits reset at midnight UTC.
+                    </CardDescription>
                   </CardHeader>
-                  <CardContent>
+                  <CardContent className="flex flex-col gap-4">
                     {billingInfo ? (
-                      billingInfo.usage.unlimited ? (
-                        <div className="flex items-center gap-3 p-4 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
-                          <Zap className="h-5 w-5 text-emerald-500" />
-                          <div>
-                            <p className="font-medium">Unlimited Access</p>
-                            <p className="text-sm text-muted-foreground">You have unlimited scans with your plan.</p>
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="space-y-4">
-                          <div className="flex items-center justify-between">
+                      <>
+                        {billingInfo.usage.unlimited ? (
+                          <div className="flex items-center gap-3 p-4 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
+                            <Zap className="h-5 w-5 text-emerald-500" />
                             <div>
-                              <p className="text-2xl font-bold tabular-nums">
-                                {billingInfo.usage.used} <span className="text-muted-foreground text-base font-normal">/ {billingInfo.usage.limit}</span>
+                              <p className="font-medium text-foreground">Unlimited Access</p>
+                              <p className="text-sm text-muted-foreground">
+                                You have unlimited scans{billingInfo.plan !== "free" && " with your " + billingInfo.plan.replace("_supporter", " Supporter").replace(/(^\w|\s\w)/g, (m: string) => m.toUpperCase()) + " plan"}.
                               </p>
-                              <p className="text-sm text-muted-foreground">scans used today</p>
-                            </div>
-                            <div className="text-right">
-                              <p className="text-lg font-semibold tabular-nums">{billingInfo.usage.remaining}</p>
-                              <p className="text-sm text-muted-foreground">remaining</p>
                             </div>
                           </div>
-                          <Progress value={(billingInfo.usage.used / billingInfo.usage.limit) * 100} className="h-2" />
-                          {billingInfo.usage.remaining === 0 && (
-                            <div className="flex items-center gap-2 p-3 rounded-lg bg-destructive/10 border border-destructive/20">
-                              <AlertTriangle className="h-4 w-4 text-destructive shrink-0" />
-                              <p className="text-sm text-destructive">Daily limit reached. Upgrade or wait for reset.</p>
+                        ) : (
+                          <>
+                            <div className="flex items-center justify-between">
+                              <div>
+                                <p className="text-2xl font-bold text-foreground">
+                                  {billingInfo.usage.used} <span className="text-muted-foreground text-base font-normal">/ {billingInfo.usage.limit}</span>
+                                </p>
+                                <p className="text-sm text-muted-foreground">scans used today</p>
+                              </div>
+                              <div className="text-right">
+                                <p className="text-lg font-semibold text-foreground">{billingInfo.usage.remaining}</p>
+                                <p className="text-sm text-muted-foreground">remaining</p>
+                              </div>
                             </div>
-                          )}
-                        </div>
-                      )
+                            <Progress
+                              value={(billingInfo.usage.used / billingInfo.usage.limit) * 100}
+                              className="h-2"
+                            />
+                            {billingInfo.usage.remaining === 0 && (
+                              <div className="flex items-center gap-2 p-3 rounded-lg bg-destructive/10 border border-destructive/20">
+                                <AlertTriangle className="h-4 w-4 text-destructive" />
+                                <p className="text-sm text-destructive">
+                                  Daily scan limit reached. Upgrade your plan or wait until midnight UTC for the limit to reset.
+                                </p>
+                              </div>
+                            )}
+                            {billingInfo.usage.remaining > 0 && billingInfo.usage.remaining <= 10 && (
+                              <div className="flex items-center gap-2 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20">
+                                <AlertTriangle className="h-4 w-4 text-amber-500" />
+                                <p className="text-sm text-amber-600 dark:text-amber-400">
+                                  Running low on scans. Consider upgrading for more capacity.
+                                </p>
+                              </div>
+                            )}
+                            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                              <RefreshCw className="h-3.5 w-3.5" />
+                              <span>Resets at {new Date(billingInfo.usage.resetsAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", timeZoneName: "short" })}</span>
+                            </div>
+                          </>
+                        )}
+                      </>
                     ) : (
                       <div className="flex items-center justify-center py-8">
                         <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
@@ -1823,20 +1606,27 @@ function ProfileContent() {
                   </CardContent>
                 </Card>
 
-                {/* Plan */}
+                {/* Plan Info Card */}
                 <Card>
-                  <CardHeader className="pb-4">
-                    <CardTitle className="text-base">Subscription Plan</CardTitle>
-                    <CardDescription>Manage your subscription and billing</CardDescription>
+                  <CardHeader>
+                    <CardTitle className="text-lg flex items-center gap-2">
+                      <CreditCard className="h-4 w-4 text-muted-foreground" />
+                      Subscription Plan
+                    </CardTitle>
+                    <CardDescription>
+                      Manage your subscription and billing.
+                    </CardDescription>
                   </CardHeader>
-                  <CardContent>
+                  <CardContent className="flex flex-col gap-4">
                     {billingInfo ? (
-                      <div className="space-y-4">
+                      <>
                         <div className="flex items-center justify-between p-4 rounded-lg bg-secondary/50 border border-border">
                           <div className="flex items-center gap-3">
                             <div className={cn(
                               "flex items-center justify-center h-10 w-10 rounded-lg",
-                              billingInfo.plan === "free" ? "bg-muted" : "bg-primary/10"
+                              billingInfo.plan === "free"
+                                ? "bg-muted"
+                                : "bg-primary/10 border border-primary/20"
                             )}>
                               {billingInfo.plan === "free" ? (
                                 <Users className="h-5 w-5 text-muted-foreground" />
@@ -1845,11 +1635,14 @@ function ProfileContent() {
                               )}
                             </div>
                             <div>
-                              <p className="font-semibold">
+                              <p className="font-semibold text-foreground">
                                 {billingInfo.plan === "free" ? "Free Plan" : billingInfo.plan.replace("_supporter", " Supporter").replace(/(^\w|\s\w)/g, (m: string) => m.toUpperCase())}
                               </p>
                               <p className="text-sm text-muted-foreground">
-                                {billingInfo.plan === "free" ? `${billingInfo.limits.free} scans/day` : `${billingInfo.limits[billingInfo.plan as keyof typeof billingInfo.limits]} scans/day`}
+                                {billingInfo.plan === "free"
+                                  ? `${billingInfo.limits.free} scans/day`
+                                  : `${billingInfo.limits[billingInfo.plan as keyof typeof billingInfo.limits]} scans/day`
+                                }
                               </p>
                             </div>
                           </div>
@@ -1860,65 +1653,118 @@ function ProfileContent() {
                           )}
                         </div>
 
+                        {/* Gifted subscription details */}
                         {billingInfo.giftedSubscription && (
-                          <div className="p-4 rounded-lg border border-primary/30 bg-primary/5 space-y-2">
-                            <div className="flex items-center gap-2">
-                              <Gift className="h-4 w-4 text-primary" />
-                              <span className="text-sm font-medium text-primary">Gifted Subscription</span>
+                          <div className="flex flex-col gap-3 p-4 rounded-lg border border-primary/30 bg-primary/5">
+                            <div className="flex items-center justify-between">
+                              <span className="text-sm text-muted-foreground">Status</span>
+                              <Badge className="bg-primary/10 text-primary border-primary/20">
+                                Gifted
+                              </Badge>
                             </div>
-                            <p className="text-sm text-muted-foreground">
-                              Valid until {new Date(billingInfo.giftedSubscription.expiresAt).toLocaleDateString()}
-                            </p>
+                            <div className="flex items-center justify-between">
+                              <span className="text-sm text-muted-foreground">Gift Period</span>
+                              <span className="text-sm font-medium text-foreground">
+                                {new Date(billingInfo.giftedSubscription.startedAt).toLocaleDateString()} - {new Date(billingInfo.giftedSubscription.expiresAt).toLocaleDateString()}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-2 p-3 rounded-lg bg-primary/10 border border-primary/20 mt-2">
+                              <Gift className="h-4 w-4 text-primary shrink-0" />
+                              <p className="text-sm text-primary">
+                                You have a gifted {billingInfo.giftedSubscription.plan.replace("_supporter", "").replace("_", " ")} subscription until {new Date(billingInfo.giftedSubscription.expiresAt).toLocaleDateString()}.
+                              </p>
+                            </div>
                           </div>
                         )}
 
+                        {/* Subscription details for paid Stripe plans */}
                         {billingInfo.subscription && !billingInfo.giftedSubscription && (
-                          <div className="space-y-3">
-                            <div className="flex items-center justify-between text-sm">
-                              <span className="text-muted-foreground">Status</span>
+                          <div className="flex flex-col gap-3 p-4 rounded-lg border border-border">
+                            <div className="flex items-center justify-between">
+                              <span className="text-sm text-muted-foreground">Status</span>
                               <Badge className={cn(
                                 billingInfo.subscription.cancelAtPeriodEnd
                                   ? "bg-amber-500/10 text-amber-500 border-amber-500/20"
-                                  : "bg-emerald-500/10 text-emerald-500 border-emerald-500/20"
+                                  : billingInfo.subscription.status === "active"
+                                    ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/20"
+                                    : "bg-muted text-muted-foreground"
                               )}>
-                                {billingInfo.subscription.cancelAtPeriodEnd ? "Canceling" : "Active"}
+                                {billingInfo.subscription.cancelAtPeriodEnd
+                                  ? "Canceling"
+                                  : billingInfo.subscription.status.charAt(0).toUpperCase() + billingInfo.subscription.status.slice(1)
+                                }
                               </Badge>
                             </div>
-                            {billingInfo.subscription.cancelAtPeriodEnd ? (
-                              <Button variant="outline" onClick={handleReactivateSubscription} disabled={reactivatingSubscription} className="w-full">
-                                {reactivatingSubscription ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
-                                Reactivate Subscription
+                            <div className="flex items-center justify-between">
+                              <span className="text-sm text-muted-foreground">Current Period</span>
+                              <span className="text-sm font-medium text-foreground">
+                                {billingInfo.subscription.currentPeriodStart && billingInfo.subscription.currentPeriodEnd
+                                  ? `${new Date(billingInfo.subscription.currentPeriodStart).toLocaleDateString()} - ${new Date(billingInfo.subscription.currentPeriodEnd).toLocaleDateString()}`
+                                  : "Not available"}
+                              </span>
+                            </div>
+                            {billingInfo.subscription.cancelAtPeriodEnd && (
+                              <div className="flex items-center gap-2 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20 mt-2">
+                                <Calendar className="h-4 w-4 text-amber-500 shrink-0" />
+                                <p className="text-sm text-amber-600 dark:text-amber-400">
+                                  Your subscription will end on {billingInfo.subscription.currentPeriodEnd ? new Date(billingInfo.subscription.currentPeriodEnd).toLocaleDateString() : "the end of your billing period"}. You&apos;ll keep access until then.
+                                </p>
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        {/* Actions for paid plans */}
+                        {billingInfo.plan !== "free" && !billingInfo.giftedSubscription && (
+                          <div className="flex flex-col gap-2 pt-2">
+                            {billingInfo.subscription?.cancelAtPeriodEnd ? (
+                              <Button
+                                variant="outline"
+                                onClick={handleReactivateSubscription}
+                                disabled={reactivatingSubscription}
+                                className="w-full"
+                              >
+                                {reactivatingSubscription ? (
+                                  <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Reactivating...</>
+                                ) : (
+                                  <><RefreshCw className="mr-2 h-4 w-4" />Reactivate Subscription</>
+                                )}
                               </Button>
                             ) : (
-                              <Button variant="outline" onClick={() => setShowCancelDialog(true)} className="w-full text-destructive hover:text-destructive">
+                              <Button
+                                variant="outline"
+                                onClick={() => setShowCancelDialog(true)}
+                                className="w-full text-destructive dark:text-red-400 hover:text-destructive dark:hover:text-red-400 hover:bg-destructive/10"
+                              >
                                 Cancel Subscription
                               </Button>
                             )}
                           </div>
                         )}
 
+                        {/* Plan Comparison */}
                         {billingInfo.plan === "free" && (
-                          <div className="pt-4 border-t border-border">
-                            <p className="text-sm font-medium text-muted-foreground mb-3">Available Plans</p>
+                          <div className="flex flex-col gap-3 pt-4 border-t border-border">
+                            <p className="text-sm font-medium text-muted-foreground">Available Plans</p>
                             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                              <div className="p-3 rounded-lg border border-border hover:bg-secondary/30 transition-colors">
-                                <p className="font-medium text-sm">Core</p>
+                              <div className="p-3 rounded-lg border border-border bg-card hover:bg-secondary/30 transition-colors">
+                                <p className="font-medium text-foreground text-sm">Core Supporter</p>
                                 <p className="text-xs text-muted-foreground">{billingInfo.limits.core_supporter} scans/day</p>
                                 <p className="text-sm font-semibold text-primary mt-1">$5/mo</p>
                               </div>
                               <div className="p-3 rounded-lg border border-primary/30 bg-primary/5 relative">
-                                <Badge className="absolute -top-2 right-2 text-[10px]">Popular</Badge>
-                                <p className="font-medium text-sm">Pro</p>
+                                <Badge className="absolute -top-2 right-2 text-[10px] bg-primary text-primary-foreground">Popular</Badge>
+                                <p className="font-medium text-foreground text-sm">Pro Supporter</p>
                                 <p className="text-xs text-muted-foreground">{billingInfo.limits.pro_supporter} scans/day</p>
                                 <p className="text-sm font-semibold text-primary mt-1">$10/mo</p>
                               </div>
-                              <div className="p-3 rounded-lg border border-border hover:bg-secondary/30 transition-colors">
-                                <p className="font-medium text-sm">Elite</p>
+                              <div className="p-3 rounded-lg border border-border bg-card hover:bg-secondary/30 transition-colors">
+                                <p className="font-medium text-foreground text-sm">Elite Supporter</p>
                                 <p className="text-xs text-muted-foreground">{billingInfo.limits.elite_supporter} scans/day</p>
                                 <p className="text-sm font-semibold text-primary mt-1">$20/mo</p>
                               </div>
                             </div>
-                            <Button asChild className="w-full mt-4">
+                            <Button asChild className="w-full mt-2">
                               <a href={ROUTES.PRICING}>
                                 <TrendingUp className="mr-2 h-4 w-4" />
                                 View All Plans
@@ -1926,7 +1772,7 @@ function ProfileContent() {
                             </Button>
                           </div>
                         )}
-                      </div>
+                      </>
                     ) : (
                       <div className="flex items-center justify-center py-8">
                         <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
@@ -1935,7 +1781,7 @@ function ProfileContent() {
                   </CardContent>
                 </Card>
 
-                {/* Cancel Dialog */}
+                {/* Cancel Subscription Dialog */}
                 {showCancelDialog && (
                   <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => setShowCancelDialog(false)}>
                     <div className="bg-card border border-border rounded-xl shadow-2xl w-full max-w-md p-6 mx-4" onClick={(e) => e.stopPropagation()}>
@@ -1944,39 +1790,83 @@ function ProfileContent() {
                           <XCircle className="h-5 w-5 text-destructive" />
                         </div>
                         <div>
-                          <h3 className="text-lg font-semibold">Cancel Subscription</h3>
-                          <p className="text-sm text-muted-foreground">Choose how to cancel</p>
+                          <h3 className="text-lg font-semibold text-foreground">Cancel Subscription</h3>
+                          <p className="text-sm text-muted-foreground">Choose how you&apos;d like to cancel</p>
                         </div>
                       </div>
-                      <div className="space-y-3 mb-6">
-                        <label className={cn(
-                          "flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors",
-                          cancelType === "period_end" ? "border-primary bg-primary/5" : "border-border hover:bg-secondary/50"
-                        )}>
-                          <input type="radio" name="cancelType" checked={cancelType === "period_end"} onChange={() => setCancelType("period_end")} className="mt-1" />
+
+                      <div className="flex flex-col gap-3 mb-6">
+                        <label
+                          className={cn(
+                            "flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors",
+                            cancelType === "period_end"
+                              ? "border-primary bg-primary/5"
+                              : "border-border hover:border-muted-foreground/50"
+                          )}
+                          onClick={() => setCancelType("period_end")}
+                        >
+                          <input
+                            type="radio"
+                            name="cancelType"
+                            checked={cancelType === "period_end"}
+                            onChange={() => setCancelType("period_end")}
+                            className="mt-1"
+                          />
                           <div>
-                            <p className="font-medium text-sm">Cancel at period end</p>
-                            <p className="text-xs text-muted-foreground">Keep access until your billing period ends</p>
+                            <p className="font-medium text-foreground">Cancel at period end</p>
+                            <p className="text-sm text-muted-foreground">
+                              Keep access until {billingInfo?.subscription?.currentPeriodEnd
+                                ? new Date(billingInfo.subscription.currentPeriodEnd).toLocaleDateString()
+                                : "your billing period ends"}
+                            </p>
                           </div>
                         </label>
-                        <label className={cn(
-                          "flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors",
-                          cancelType === "immediate" ? "border-primary bg-primary/5" : "border-border hover:bg-secondary/50"
-                        )}>
-                          <input type="radio" name="cancelType" checked={cancelType === "immediate"} onChange={() => setCancelType("immediate")} className="mt-1" />
+
+                        <label
+                          className={cn(
+                            "flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors",
+                            cancelType === "immediate"
+                              ? "border-destructive bg-destructive/5"
+                              : "border-border hover:border-muted-foreground/50"
+                          )}
+                          onClick={() => setCancelType("immediate")}
+                        >
+                          <input
+                            type="radio"
+                            name="cancelType"
+                            checked={cancelType === "immediate"}
+                            onChange={() => setCancelType("immediate")}
+                            className="mt-1"
+                          />
                           <div>
-                            <p className="font-medium text-sm">Cancel immediately</p>
-                            <p className="text-xs text-muted-foreground">Lose access right away</p>
+                            <p className="font-medium text-foreground">Cancel immediately</p>
+                            <p className="text-sm text-muted-foreground">
+                              Lose access now and move to the free plan. No refund will be issued.
+                            </p>
                           </div>
                         </label>
                       </div>
-                      <div className="flex gap-2">
-                        <Button variant="ghost" className="flex-1" onClick={() => setShowCancelDialog(false)}>
+
+                      <div className="flex gap-3">
+                        <Button
+                          variant="outline"
+                          onClick={() => setShowCancelDialog(false)}
+                          className="flex-1"
+                          disabled={cancelingSubscription}
+                        >
                           Keep Subscription
                         </Button>
-                        <Button variant="destructive" className="flex-1" onClick={handleCancelSubscription} disabled={cancelingSubscription}>
-                          {cancelingSubscription ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                          Cancel
+                        <Button
+                          variant={cancelType === "immediate" ? "destructive" : "default"}
+                          onClick={() => handleCancelSubscription(cancelType === "immediate")}
+                          disabled={cancelingSubscription}
+                          className="flex-1"
+                        >
+                          {cancelingSubscription ? (
+                            <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Canceling...</>
+                          ) : (
+                            cancelType === "immediate" ? "Cancel Now" : "Cancel at Period End"
+                          )}
                         </Button>
                       </div>
                     </div>
@@ -1985,302 +1875,996 @@ function ProfileContent() {
               </div>
             )}
 
-            {/* ===================== DEVELOPER TAB ===================== */}
-            {activeTab === "developer" && (
-              <div className="space-y-6">
-                {/* API Keys */}
+            {/* ===================== SECURITY TAB ===================== */}
+            {activeTab === "security" && (
+              <div className="flex flex-col gap-6">
+                {/* Password */}
                 <Card>
-                  <CardHeader className="pb-4">
-                    <CardTitle className="text-base">API Keys</CardTitle>
-                    <CardDescription>Generate keys to access the {APP_NAME} API</CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    {/* Create new key */}
-                    <div className="flex gap-2">
-                      <Input
-                        placeholder="Key name (optional)"
-                        value={newKeyName}
-                        onChange={(e) => setNewKeyName(e.target.value)}
-                        className="bg-card max-w-xs"
-                      />
-                      <Button onClick={handleGenerateKey} disabled={generatingKey}>
-                        {generatingKey ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Plus className="mr-2 h-4 w-4" />}
-                        Generate Key
-                      </Button>
+                  <CardHeader>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <CardTitle className="text-lg flex items-center gap-2">
+                          <Lock className="h-4 w-4 text-muted-foreground" />
+                          Password
+                        </CardTitle>
+                        <CardDescription>Update your account password.</CardDescription>
+                      </div>
+                      {!showPasswordForm && (
+                        <Button variant="outline" size="sm" onClick={() => setShowPasswordForm(true)}>
+                          Change Password
+                        </Button>
+                      )}
                     </div>
-
-                    {/* Newly created key */}
-                    {newlyCreatedKey && (
-                      <div className="p-4 rounded-lg border border-emerald-500/20 bg-emerald-500/5 space-y-3">
-                        <div className="flex items-center gap-2">
-                          <Check className="h-4 w-4 text-emerald-500" />
-                          <p className="text-sm font-medium text-emerald-600 dark:text-emerald-400">API Key Generated</p>
-                        </div>
-                        <p className="text-xs text-muted-foreground">Copy this key now. You won&apos;t be able to see it again.</p>
-                        <div className="flex items-center gap-2">
-                          <code className="flex-1 px-3 py-2 bg-muted rounded font-mono text-sm truncate">
-                            {showKey ? newlyCreatedKey : "•".repeat(40)}
-                          </code>
-                          <Button variant="ghost" size="icon" onClick={() => setShowKey(!showKey)}>
-                            {showKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                          </Button>
-                          <Button variant="ghost" size="icon" onClick={handleCopyKey}>
-                            {copiedKey ? <Check className="h-4 w-4 text-emerald-500" /> : <Copy className="h-4 w-4" />}
-                          </Button>
-                        </div>
-                        <Button variant="ghost" size="sm" onClick={() => setNewlyCreatedKey(null)}>
-                          Done
+                  </CardHeader>
+                  {showPasswordForm && (
+                    <CardContent className="flex flex-col gap-4">
+                      <div className="flex flex-col gap-2">
+                        <Label htmlFor="sec-current-pw" className="text-sm">Current Password</Label>
+                        <Input
+                          id="sec-current-pw"
+                          type="password"
+                          value={currentPassword}
+                          onChange={(e) => setCurrentPassword(e.target.value)}
+                          className="bg-card h-10"
+                          placeholder="Enter current password"
+                        />
+                      </div>
+                      <div className="flex flex-col gap-2">
+                        <Label htmlFor="sec-new-pw" className="text-sm">New Password</Label>
+                        <Input
+                          id="sec-new-pw"
+                          type="password"
+                          value={newPassword}
+                          onChange={(e) => setNewPassword(e.target.value)}
+                          className="bg-card h-10"
+                          placeholder="At least 8 characters"
+                        />
+                      </div>
+                      <div className="flex flex-col gap-2">
+                        <Label htmlFor="sec-confirm-new-pw" className="text-sm">Confirm New Password</Label>
+                        <Input
+                          id="sec-confirm-new-pw"
+                          type="password"
+                          value={confirmNewPassword}
+                          onChange={(e) => setConfirmNewPassword(e.target.value)}
+                          className="bg-card h-10"
+                          placeholder="Re-enter new password"
+                          onKeyDown={(e) => { if (e.key === "Enter") handleChangePassword() }}
+                        />
+                      </div>
+                      <div className="flex items-center gap-2 pt-1">
+                        <Button onClick={handleChangePassword} disabled={savingPassword}>
+                          <Save className="mr-2 h-4 w-4" />
+                          {savingPassword ? "Saving..." : "Update Password"}
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          onClick={() => {
+                            setShowPasswordForm(false)
+                            setCurrentPassword("")
+                            setNewPassword("")
+                            setConfirmNewPassword("")
+                          }}
+                        >
+                          Cancel
                         </Button>
                       </div>
-                    )}
-
-                    {/* Keys list */}
-                    {keys.length > 0 ? (
-                      <div className="rounded-lg border border-border overflow-hidden">
-                        <div className="divide-y divide-border">
-                          {keys.filter(k => !k.revoked_at).map((key) => (
-                            <div key={key.id} className="flex items-center justify-between p-4 hover:bg-secondary/30 transition-colors">
-                              <div className="flex items-center gap-3 min-w-0">
-                                <div className="flex items-center justify-center h-9 w-9 rounded-lg bg-muted">
-                                  <Key className="h-4 w-4 text-muted-foreground" />
-                                </div>
-                                <div className="min-w-0">
-                                  <p className="text-sm font-medium truncate">{key.name}</p>
-                                  <p className="text-xs text-muted-foreground font-mono">{key.key_prefix}...</p>
-                                </div>
-                              </div>
-                              <div className="flex items-center gap-3">
-                                <div className="text-right text-xs text-muted-foreground hidden sm:block">
-                                  <p>{key.usage_today} / {key.daily_limit} today</p>
-                                  <p>{key.last_used_at ? `Used ${new Date(key.last_used_at).toLocaleDateString()}` : "Never used"}</p>
-                                </div>
-                                <Button variant="ghost" size="icon" onClick={() => handleRevokeKey(key.id)} disabled={revokingId === key.id}>
-                                  {revokingId === key.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4 text-destructive" />}
-                                </Button>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    ) : (
-                      <p className="text-sm text-muted-foreground">No API keys yet. Generate one to get started.</p>
-                    )}
-                  </CardContent>
+                    </CardContent>
+                  )}
                 </Card>
 
-                {/* Webhooks */}
+                {/* Two-Factor Authentication */}
                 <Card>
-                  <CardHeader className="pb-4">
-                    <CardTitle className="text-base">Webhooks</CardTitle>
-                    <CardDescription>Receive notifications when scans complete</CardDescription>
+                  <CardHeader>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <CardTitle className="text-lg">Two-Factor Authentication</CardTitle>
+                        <CardDescription>
+                          {totpEnabled
+                            ? `2FA is active via ${twoFactorMethod === "email" ? "email" : "authenticator app"}.`
+                            : "Add an extra layer of security to your account."}
+                        </CardDescription>
+                      </div>
+                      {totpEnabled ? (
+                        <Badge className="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20">
+                          {twoFactorMethod === "email" ? "Email" : "App"} Enabled
+                        </Badge>
+                      ) : (
+                        <Badge variant="secondary">Disabled</Badge>
+                      )}
+                    </div>
                   </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div className="flex gap-2">
-                      <Input
-                        placeholder="Webhook URL"
-                        value={webhookUrl}
-                        onChange={(e) => setWebhookUrl(e.target.value)}
-                        className="bg-card flex-1"
-                      />
-                      <Input
-                        placeholder="Name (optional)"
-                        value={webhookName}
-                        onChange={(e) => setWebhookName(e.target.value)}
-                        className="bg-card max-w-32"
-                      />
-                      <Button onClick={handleAddWebhook} disabled={addingWebhook}>
-                        {addingWebhook ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
-                      </Button>
+                  <CardContent className="flex flex-col gap-4">
+
+                    {/* ── Authenticator App ── */}
+                    <div className="rounded-lg border border-border p-4 flex flex-col gap-4">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <div className="flex items-center justify-center h-9 w-9 rounded-lg bg-primary/10 border border-primary/20">
+                            <Smartphone className="h-4 w-4 text-primary" />
+                          </div>
+                          <div>
+                            <p className="text-sm font-semibold">Authenticator App</p>
+                            <p className="text-xs text-muted-foreground">Use Google Authenticator, Authy, or similar apps.</p>
+                          </div>
+                        </div>
+                        {twoFactorMethod === "app" && totpEnabled && (
+                          <Badge className="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20 shrink-0">Active</Badge>
+                        )}
+                      </div>
+
+                      {/* App 2FA enabled — show manage options */}
+                      {totpEnabled && twoFactorMethod === "app" && (
+                        <>
+                          {backupCodes.length > 0 && (
+                            <div className="flex flex-col gap-3 p-4 rounded-lg bg-amber-500/5 border border-amber-500/20">
+                              <div className="flex items-center gap-2">
+                                <KeyRound className="h-4 w-4 text-amber-500" />
+                                <p className="text-sm font-semibold">Save Your Backup Codes</p>
+                              </div>
+                              <p className="text-xs text-muted-foreground leading-relaxed">
+                                These codes can be used to sign in if you lose access to your authenticator app. Each code can only be used once.
+                              </p>
+                              <div className="grid grid-cols-2 gap-2 p-3 bg-card border border-border rounded-lg font-mono text-sm">
+                                {backupCodes.map((code, i) => (
+                                  <span key={i} className="text-foreground select-all text-center py-0.5">{code}</span>
+                                ))}
+                              </div>
+                              <div className="flex gap-2">
+                                <Button variant="outline" size="sm" onClick={() => { navigator.clipboard.writeText(backupCodes.join("\n")); setSuccess("Backup codes copied.") }}>
+                                  <Copy className="mr-1.5 h-3.5 w-3.5" />Copy All
+                                </Button>
+                                <Button variant="outline" size="sm" onClick={() => {
+                                  const blob = new Blob([`VulnRadar 2FA Backup Codes\n${"=".repeat(30)}\n\n${backupCodes.join("\n")}\n\nEach code can only be used once.`], { type: "text/plain" })
+                                  const url = URL.createObjectURL(blob); const a = document.createElement("a"); a.href = url; a.download = "vulnradar-backup-codes.txt"; a.click(); URL.revokeObjectURL(url)
+                                }}>
+                                  <Download className="mr-1.5 h-3.5 w-3.5" />Download
+                                </Button>
+                                <Button variant="ghost" size="sm" onClick={() => setBackupCodes([])} className="ml-auto text-muted-foreground">{"I've saved them"}</Button>
+                              </div>
+                            </div>
+                          )}
+
+                          {backupCodes.length === 0 && (
+                            <div className="flex items-center gap-3 p-3 rounded-lg bg-secondary/30 border border-border">
+                              <KeyRound className="h-4 w-4 text-muted-foreground shrink-0" />
+                              <div className="flex-1">
+                                <p className="text-sm font-medium">Backup Codes</p>
+                                <p className="text-xs text-muted-foreground">
+                                  {backupCodesRemaining} of 8 codes remaining.
+                                  {backupCodesRemaining <= 2 && backupCodesRemaining > 0 && " Consider regenerating soon."}
+                                  {backupCodesRemaining === 0 && " Regenerate to get new codes."}
+                                </p>
+                              </div>
+                              {!showRegenerateBackup && (
+                                <Button variant="outline" size="sm" onClick={() => setShowRegenerateBackup(true)}>Regenerate</Button>
+                              )}
+                            </div>
+                          )}
+
+                          {showRegenerateBackup && backupCodes.length === 0 && (
+                            <div className="flex flex-col gap-3 p-4 rounded-lg bg-secondary/30 border border-border">
+                              <p className="text-sm font-medium">Enter your password to regenerate backup codes</p>
+                              <p className="text-xs text-muted-foreground">This will invalidate all existing backup codes.</p>
+                              <Input type="password" placeholder="Current password" value={regenPassword} onChange={(e) => setRegenPassword(e.target.value)} className="bg-card h-10" />
+                              <div className="flex gap-2">
+                                <Button disabled={!regenPassword} onClick={async () => {
+                                  try {
+                                    const res = await fetch(API.AUTH.TWO_FA.BACKUP_CODES, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ password: regenPassword }) })
+                                    const data = await res.json()
+                                    if (res.ok) { setBackupCodes(data.backupCodes); setBackupCodesRemaining(data.backupCodes.length); setShowRegenerateBackup(false); setRegenPassword(""); setSuccess("New backup codes generated.") }
+                                    else setError(data.error || "Failed to regenerate codes.")
+                                  } catch { setError("Failed to regenerate codes.") }
+                                }}>Regenerate Codes</Button>
+                                <Button variant="ghost" onClick={() => { setShowRegenerateBackup(false); setRegenPassword("") }}>Cancel</Button>
+                              </div>
+                            </div>
+                          )}
+
+                          {!showDisable2FA ? (
+                            <Button variant="outline" className="self-start text-destructive dark:text-red-400 border-destructive/30 hover:bg-destructive/10" onClick={() => setShowDisable2FA(true)}>
+                              Disable Authenticator App
+                            </Button>
+                          ) : (
+                            <div className="flex flex-col gap-3 p-4 rounded-lg bg-destructive/5 border border-destructive/20">
+                              <p className="text-sm font-medium">Enter your password to disable authenticator app 2FA</p>
+                              <Input type="password" placeholder="Current password" value={disablePassword} onChange={(e) => setDisablePassword(e.target.value)} className="bg-card h-10" />
+                              <div className="flex gap-2">
+                                <Button variant="destructive" disabled={!disablePassword} onClick={async () => {
+                                  try {
+                                    const res = await fetch(API.AUTH.TWO_FA.DISABLE, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ password: disablePassword }) })
+                                    const data = await res.json()
+                                    if (res.ok) { setTotpEnabled(false); setTwoFactorMethod(null); setShowDisable2FA(false); setDisablePassword(""); setSuccess("Authenticator app 2FA has been disabled.") }
+                                    else setError(data.error || "Failed to disable 2FA.")
+                                  } catch { setError("Failed to disable 2FA.") }
+                                }}>Confirm Disable</Button>
+                                <Button variant="ghost" onClick={() => { setShowDisable2FA(false); setDisablePassword("") }}>Cancel</Button>
+                              </div>
+                            </div>
+                          )}
+                        </>
+                      )}
+
+                      {/* Setup app 2FA (when not enabled or email is active) */}
+                      {(!totpEnabled || twoFactorMethod === "email") && (
+                        <>
+                          {!setting2FA ? (
+                            <Button
+                              className="self-start"
+                              disabled={twoFactorMethod === "email" && totpEnabled}
+                              onClick={async () => {
+                                try {
+                                  const res = await fetch(API.AUTH.TWO_FA.SETUP)
+                                  const data = await res.json()
+                                  if (res.ok) { setTotpUri(data.uri); setTotpSecret(data.secret); setSetting2FA(true) }
+                                  else setError(data.error || "Failed to start 2FA setup.")
+                                } catch { setError("Failed to start 2FA setup.") }
+                              }}
+                            >
+                              {twoFactorMethod === "email" && totpEnabled ? "Disable email 2FA first" : "Enable Authenticator App"}
+                            </Button>
+                          ) : (
+                            <div className="flex flex-col gap-4">
+                              <div className="flex flex-col gap-3 p-4 rounded-lg bg-secondary/30 border border-border">
+                                <p className="text-sm font-medium">1. Scan this QR code with your authenticator app:</p>
+                                <div className="flex justify-center p-4 bg-background rounded-lg border border-border">
+                                  <img src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(totpUri)}`} alt="2FA QR Code" className="w-[200px] h-[200px]" crossOrigin="anonymous" />
+                                </div>
+                                <p className="text-sm text-muted-foreground">Or enter this secret manually:</p>
+                                <code className="text-xs bg-card border border-border px-3 py-2 rounded font-mono text-primary break-all select-all">{totpSecret}</code>
+                              </div>
+                              <div className="flex flex-col gap-3 p-4 rounded-lg bg-secondary/30 border border-border">
+                                <p className="text-sm font-medium">2. Enter the 6-digit code to verify:</p>
+                                <div className="flex gap-2">
+                                  <Input
+                                    type="text"
+                                    inputMode="numeric"
+                                    pattern="[0-9]{6}"
+                                    maxLength={6}
+                                    placeholder="000000"
+                                    value={totpVerifyCode}
+                                    onChange={(e) => setTotpVerifyCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                                    className="bg-card h-10 text-center text-lg tracking-[0.3em] font-mono max-w-[180px]"
+                                  />
+                                  <Button disabled={totpVerifyCode.length !== 6} onClick={async () => {
+                                    try {
+                                      const res = await fetch(API.AUTH.TWO_FA.SETUP, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ code: totpVerifyCode }) })
+                                      const data = await res.json()
+                                      if (res.ok) { setTotpEnabled(true); setTwoFactorMethod("app"); setSetting2FA(false); setTotpUri(""); setTotpSecret(""); setTotpVerifyCode(""); setBackupCodes(data.backupCodes || []); setBackupCodesRemaining(data.backupCodes?.length || 0); setSuccess("Authenticator app 2FA is now enabled! Save your backup codes.") }
+                                      else setError(data.error || "Verification failed.")
+                                    } catch { setError("Failed to verify code.") }
+                                  }}>Verify & Enable</Button>
+                                </div>
+                              </div>
+                              <Button variant="ghost" className="self-start text-muted-foreground" onClick={() => { setSetting2FA(false); setTotpUri(""); setTotpSecret(""); setTotpVerifyCode("") }}>Cancel Setup</Button>
+                            </div>
+                          )}
+                        </>
+                      )}
                     </div>
 
-                    {webhooks.length > 0 ? (
-                      <div className="rounded-lg border border-border overflow-hidden">
-                        <div className="divide-y divide-border">
-                          {webhooks.map((wh) => (
-                            <div key={wh.id} className="flex items-center justify-between p-4 hover:bg-secondary/30 transition-colors">
-                              <div className="flex items-center gap-3 min-w-0">
-                                <div className="flex items-center justify-center h-9 w-9 rounded-lg bg-muted">
-                                  <Webhook className="h-4 w-4 text-muted-foreground" />
-                                </div>
-                                <div className="min-w-0">
-                                  <p className="text-sm font-medium truncate">{wh.name}</p>
-                                  <p className="text-xs text-muted-foreground truncate">{wh.url}</p>
-                                </div>
-                              </div>
-                              <div className="flex items-center gap-1">
-                                <Button variant="ghost" size="icon" onClick={() => handleTestWebhook(wh.id)} disabled={testingWebhookId === wh.id}>
-                                  {testingWebhookId === wh.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
-                                </Button>
-                                <Button variant="ghost" size="icon" onClick={() => handleDeleteWebhook(wh.id)}>
-                                  <Trash2 className="h-4 w-4 text-destructive" />
-                                </Button>
+                    {/* ── Email 2FA ── */}
+                    <div className="rounded-lg border border-border p-4 flex flex-col gap-4">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <div className="flex items-center justify-center h-9 w-9 rounded-lg bg-primary/10 border border-primary/20">
+                            <Mail className="h-4 w-4 text-primary" />
+                          </div>
+                          <div>
+                            <p className="text-sm font-semibold">Email Verification</p>
+                            <p className="text-xs text-muted-foreground">Receive a 6-digit code via email each time you sign in.</p>
+                          </div>
+                        </div>
+                        {twoFactorMethod === "email" && totpEnabled && (
+                          <Badge className="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20 shrink-0">Active</Badge>
+                        )}
+                      </div>
+
+                      {/* Email 2FA enabled */}
+                      {totpEnabled && twoFactorMethod === "email" && (
+                        <>
+                          <div className="flex items-center gap-2 p-3 rounded-lg bg-emerald-500/5 border border-emerald-500/20">
+                            <Check className="h-4 w-4 text-emerald-500" />
+                            <p className="text-sm">A verification code will be sent to your email on each login.</p>
+                          </div>
+                          {!showDisable2FA ? (
+                            <Button variant="outline" className="self-start text-destructive dark:text-red-400 border-destructive/30 hover:bg-destructive/10" onClick={() => setShowDisable2FA(true)}>
+                              Disable Email 2FA
+                            </Button>
+                          ) : (
+                            <div className="flex flex-col gap-3 p-4 rounded-lg bg-destructive/5 border border-destructive/20">
+                              <p className="text-sm font-medium">Enter your password to disable email 2FA</p>
+                              <Input type="password" placeholder="Current password" value={disablePassword} onChange={(e) => setDisablePassword(e.target.value)} className="bg-card h-10" />
+                              <div className="flex gap-2">
+                                <Button variant="destructive" disabled={!disablePassword} onClick={async () => {
+                                  try {
+                                    const res = await fetch(API.AUTH.TWO_FA.EMAIL_SETUP, { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ password: disablePassword }) })
+                                    const data = await res.json()
+                                    if (res.ok) { setTotpEnabled(false); setTwoFactorMethod(null); setShowDisable2FA(false); setDisablePassword(""); setSuccess("Email 2FA has been disabled.") }
+                                    else setError(data.error || "Failed to disable email 2FA.")
+                                  } catch { setError("Failed to disable email 2FA.") }
+                                }}>Confirm Disable</Button>
+                                <Button variant="ghost" onClick={() => { setShowDisable2FA(false); setDisablePassword("") }}>Cancel</Button>
                               </div>
                             </div>
-                          ))}
+                          )}
+                        </>
+                      )}
+
+                      {/* Enable email 2FA (when disabled or app is active) */}
+                      {(!totpEnabled || twoFactorMethod === "app") && (
+                        <div className="flex flex-col gap-3">
+                          {!email2FAPassword ? (
+                            <Button
+                              className="self-start"
+                              variant="outline"
+                              disabled={twoFactorMethod === "app" && totpEnabled}
+                              onClick={() => {
+                                if (twoFactorMethod === "app" && totpEnabled) return
+                                setEmail2FAPassword(" ")
+                              }}
+                            >
+                              {twoFactorMethod === "app" && totpEnabled ? "Disable app 2FA first" : "Enable Email 2FA"}
+                            </Button>
+                          ) : (
+                            <div className="flex flex-col gap-3 p-4 rounded-lg bg-secondary/30 border border-border">
+                              <p className="text-sm font-medium">Enter your password to enable email 2FA</p>
+                              <p className="text-xs text-muted-foreground">A 6-digit code will be sent to your email every time you log in.</p>
+                              <Input
+                                type="password"
+                                placeholder="Current password"
+                                value={email2FAPassword.trim() === "" ? "" : email2FAPassword}
+                                onChange={(e) => setEmail2FAPassword(e.target.value)}
+                                className="bg-card h-10"
+                              />
+                              <div className="flex gap-2">
+                                <Button
+                                  disabled={!email2FAPassword.trim() || togglingEmail2FA}
+                                  onClick={async () => {
+                                    setTogglingEmail2FA(true)
+                                    try {
+                                      const res = await fetch(API.AUTH.TWO_FA.EMAIL_SETUP, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ password: email2FAPassword.trim() }) })
+                                      const data = await res.json()
+                                      if (res.ok) { setTotpEnabled(true); setTwoFactorMethod("email"); setEmail2FAPassword(""); setSuccess("Email 2FA is now enabled.") }
+                                      else setError(data.error || "Failed to enable email 2FA.")
+                                    } catch { setError("Failed to enable email 2FA.") } finally { setTogglingEmail2FA(false) }
+                                  }}
+                                >
+                                  {togglingEmail2FA ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Enabling...</> : "Enable Email 2FA"}
+                                </Button>
+                                <Button variant="ghost" onClick={() => setEmail2FAPassword("")}>Cancel</Button>
+                              </div>
+                            </div>
+                          )}
                         </div>
-                      </div>
-                    ) : (
-                      <p className="text-sm text-muted-foreground">No webhooks configured.</p>
-                    )}
+                      )}
+                    </div>
+
                   </CardContent>
                 </Card>
 
-                {/* Scheduled Scans */}
-                <Card>
-                  <CardHeader className="pb-4">
-                    <CardTitle className="text-base">Scheduled Scans</CardTitle>
-                    <CardDescription>Automatically scan URLs on a schedule</CardDescription>
+                {/* Active Sessions / Force Logout */}
+                <Card className="bg-card border-border">
+                  <CardHeader>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <CardTitle className="text-lg flex items-center gap-2">
+                          <MonitorSmartphone className="h-4 w-4 text-muted-foreground" />
+                          Active Sessions
+                        </CardTitle>
+                        <CardDescription>
+                          Log out of all devices and browsers at once.
+                        </CardDescription>
+                      </div>
+                    </div>
                   </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div className="flex gap-2">
-                      <Input
-                        placeholder="URL to scan"
-                        value={scheduleUrl}
-                        onChange={(e) => setScheduleUrl(e.target.value)}
-                        className="bg-card flex-1"
-                      />
-                      <select
-                        value={scheduleFreq}
-                        onChange={(e) => setScheduleFreq(e.target.value)}
-                        className="h-10 px-3 rounded-md border border-border bg-card text-sm"
+                  <CardContent>
+                    <div className="flex flex-col gap-4">
+                      <p className="text-sm text-muted-foreground">
+                        If you suspect unauthorized access to your account or want to sign out everywhere,
+                        use the button below. This will invalidate all active sessions including this one.
+                      </p>
+                      <Button
+                        variant="outline"
+                        className="self-start text-destructive dark:text-red-400 border-destructive/30 hover:bg-destructive/10"
+                        onClick={handleForceLogout}
+                        disabled={forceLoggingOut}
                       >
-                        <option value="daily">Daily</option>
-                        <option value="weekly">Weekly</option>
-                        <option value="monthly">Monthly</option>
-                      </select>
-                      <Button onClick={handleAddSchedule} disabled={addingSchedule}>
-                        {addingSchedule ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+                        {forceLoggingOut ? (
+                          <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Logging out...</>
+                        ) : (
+                          <><LogOut className="mr-2 h-4 w-4" />Log Out All Devices</>
+                        )}
                       </Button>
                     </div>
+                  </CardContent>
+                </Card>
 
-                    {schedules.length > 0 ? (
-                      <div className="rounded-lg border border-border overflow-hidden">
-                        <div className="divide-y divide-border">
-                          {schedules.map((sch) => (
-                            <div key={sch.id} className="flex items-center justify-between p-4 hover:bg-secondary/30 transition-colors">
-                              <div className="flex items-center gap-3 min-w-0">
-                                <div className="flex items-center justify-center h-9 w-9 rounded-lg bg-muted">
-                                  <CalendarClock className="h-4 w-4 text-muted-foreground" />
-                                </div>
-                                <div className="min-w-0">
-                                  <p className="text-sm font-medium truncate">{sch.url}</p>
-                                  <p className="text-xs text-muted-foreground capitalize">{sch.frequency}</p>
-                                </div>
+                {/* Security Notifications Quick Link */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-lg flex items-center gap-2">
+                      <Bell className="h-4 w-4 text-muted-foreground" />
+                      Security Notifications
+                    </CardTitle>
+                    <CardDescription>
+                      Configure which security-related email notifications you receive.
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        setActiveTab("notifications" as Tab)
+                        window.location.hash = "notifications"
+                      }}
+                    >
+                      Manage Notification Settings
+                    </Button>
+                  </CardContent>
+                </Card>
+              </div>
+            )}
+
+            {/* ===================== DEVELOPER TAB ===================== */}
+            {activeTab === "developer" && (
+              <div className="flex flex-col gap-6">
+                <Card>
+                  <CardHeader>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <CardTitle className="text-lg">API Keys</CardTitle>
+                        <CardDescription className="mt-1">
+                          Each key is rate-limited to 50 requests per 24 hours. Maximum 3 active keys.
+                        </CardDescription>
+                      </div>
+                      <Button variant="outline" size="sm" className="shrink-0" asChild>
+                        <a href="/docs">View Docs</a>
+                      </Button>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="flex flex-col gap-6">
+                    {/* Newly created key banner */}
+                    {newlyCreatedKey && (
+                      <div className="p-4 rounded-lg border border-primary/30 bg-primary/5">
+                        <div className="flex flex-col gap-3">
+                          <div className="flex items-center gap-2">
+                            <Key className="h-4 w-4 text-primary" />
+                            <span className="text-sm font-semibold text-foreground">New API Key Generated</span>
+                          </div>
+                          <p className="text-xs text-muted-foreground leading-relaxed">
+                            Copy this key now. You will not be able to see it again.
+                          </p>
+                          <div className="flex items-center gap-2">
+                            <code className="flex-1 text-xs bg-secondary px-3 py-2 rounded-md font-mono text-foreground overflow-x-auto">
+                              {showKey ? newlyCreatedKey : newlyCreatedKey.slice(0, 12) + "..." + "*".repeat(32)}
+                            </code>
+                            <Button variant="ghost" size="icon" onClick={() => setShowKey(!showKey)} className="shrink-0">
+                              {showKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                            </Button>
+                            <Button variant="ghost" size="icon" onClick={handleCopyKey} className="shrink-0">
+                              {copiedKey ? <Check className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Generate new key */}
+                    <div className="flex flex-col gap-3 p-4 rounded-lg border border-border bg-secondary/30">
+                      <Label htmlFor="key-name" className="text-sm font-medium">Generate New Key</Label>
+                      <div className="flex gap-2">
+                        <Input
+                          id="key-name"
+                          placeholder="Key name (e.g. Production, CI/CD)"
+                          value={newKeyName}
+                          onChange={(e) => setNewKeyName(e.target.value)}
+                          className="bg-card h-10"
+                          maxLength={100}
+                          onKeyDown={(e) => { if (e.key === "Enter" && activeKeys.length < 3) handleGenerateKey() }}
+                        />
+                        <Button onClick={handleGenerateKey} disabled={generatingKey || activeKeys.length >= 3} className="shrink-0 h-10">
+                          <Plus className="mr-2 h-4 w-4" />
+                          {generatingKey ? "Generating..." : "Generate"}
+                        </Button>
+                      </div>
+                      {activeKeys.length >= 3 && (
+                        <p className="text-xs text-muted-foreground">Maximum 3 active keys. Revoke an existing key to create a new one.</p>
+                      )}
+                    </div>
+
+                    {/* Active keys */}
+                    {activeKeys.length > 0 && (
+                      <div className="flex flex-col gap-3">
+                        <h3 className="text-sm font-semibold text-foreground">Active Keys ({activeKeys.length}/3)</h3>
+                        {activeKeys.map((key) => (
+                          <div key={key.id} className="flex flex-col gap-3 p-4 rounded-lg border border-border bg-card">
+                            <div className="flex items-center justify-between gap-2">
+                              <div className="flex items-center gap-2 min-w-0">
+                                <Key className="h-4 w-4 text-muted-foreground shrink-0" />
+                                <span className="text-sm font-mono font-medium text-foreground truncate">{key.prefix}...</span>
                               </div>
-                              <Button variant="ghost" size="icon" onClick={() => handleDeleteSchedule(sch.id)}>
-                                <Trash2 className="h-4 w-4 text-destructive" />
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => handleRevokeKey(key.id)}
+                                disabled={revokingId === key.id}
+                                className="text-muted-foreground hover:text-destructive h-8 w-8"
+                                aria-label="Revoke key"
+                              >
+                                <Trash2 className="h-4 w-4" />
                               </Button>
                             </div>
-                          ))}
-                        </div>
+                            <div className="flex flex-col gap-1.5">
+                              <div className="flex items-center justify-between text-xs text-muted-foreground">
+                                <span>Usage today</span>
+                                <span>{key.usage_today} / {key.daily_limit} requests</span>
+                              </div>
+                              <Progress value={(key.usage_today / key.daily_limit) * 100} className="h-2" />
+                            </div>
+                            <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-4 text-xs text-muted-foreground">
+                              <span className="flex items-center gap-1">
+                                <Clock className="h-3 w-3 shrink-0" />
+                                Created {formatDate(key.created_at)}
+                              </span>
+                              {key.last_used_at && <span>Last used {formatDate(key.last_used_at)}</span>}
+                            </div>
+                          </div>
+                        ))}
                       </div>
-                    ) : (
-                      <p className="text-sm text-muted-foreground">No scheduled scans.</p>
+                    )}
+
+                    {/* Empty state */}
+                    {activeKeys.length === 0 && !newlyCreatedKey && (
+                      <div className="flex flex-col items-center gap-3 py-8 text-center">
+                        <Key className="h-10 w-10 text-muted-foreground/50" />
+                        <p className="text-sm font-medium text-foreground">No API keys yet</p>
+                        <p className="text-xs text-muted-foreground">Generate a key above to start using the {APP_NAME} API.</p>
+                      </div>
+                    )}
+
+                    {/* Revoked keys */}
+                    {revokedKeys.length > 0 && (
+                      <div className="flex flex-col gap-3">
+                        <h3 className="text-sm font-semibold text-muted-foreground">Revoked Keys ({revokedKeys.length})</h3>
+                        {revokedKeys.map((key) => (
+                          <div key={key.id} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 p-3 rounded-lg border border-border bg-secondary/20 opacity-60">
+                            <div className="flex items-center gap-2 min-w-0">
+                              <Key className="h-4 w-4 text-muted-foreground shrink-0" />
+                              <span className="text-sm text-muted-foreground line-through truncate">{key.name}</span>
+                              <Badge variant="outline" className="text-xs font-mono text-muted-foreground shrink-0">{key.key_prefix}...</Badge>
+                            </div>
+                            <span className="text-xs text-muted-foreground shrink-0">Revoked {formatDate(key.revoked_at)}</span>
+                          </div>
+                        ))}
+                      </div>
                     )}
                   </CardContent>
                 </Card>
               </div>
             )}
 
+            {/* ===================== WEBHOOKS SECTION (renders in Developer tab) ===================== */}
+            {activeTab === "developer" && (
+              <>
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-lg">Webhooks</CardTitle>
+                    <CardDescription>
+                      Get notified when scans complete. Supports Discord, Slack, and generic JSON webhooks. Maximum 5 endpoints.
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    {/* Add webhook form */}
+                    <div className="flex flex-col gap-3 p-4 rounded-lg border border-border bg-secondary/30">
+                      <Label className="text-sm font-medium">Add Endpoint</Label>
+                      <div className="flex flex-col sm:flex-row gap-2">
+                        <Input
+                          placeholder="Name (e.g. Discord Alerts)"
+                          value={webhookName}
+                          onChange={(e) => setWebhookName(e.target.value)}
+                          className="sm:w-44 bg-card h-10"
+                        />
+                        <Input
+                          placeholder="https://discord.com/api/webhooks/..."
+                          value={webhookUrl}
+                          onChange={(e) => setWebhookUrl(e.target.value)}
+                          className="flex-1 bg-card h-10"
+                        />
+                        <Button
+                          disabled={!webhookUrl || addingWebhook}
+                          onClick={async () => {
+                            setAddingWebhook(true)
+                            try {
+                              const res = await fetch(API.WEBHOOKS, {
+                                method: "POST",
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify({ url: webhookUrl, name: webhookName || "Default", type: "auto" }),
+                              })
+                              const data = await res.json()
+                              if (res.ok) {
+                                setWebhooks((prev) => [data, ...prev])
+                                setWebhookUrl("")
+                                setWebhookName("")
+                                setSuccess(`Webhook added (detected as ${data.type}).`)
+                              } else {
+                                setError(data.error || "Failed to add webhook.")
+                              }
+                            } catch { setError("Failed to add webhook.") }
+                            setAddingWebhook(false)
+                          }}
+                          className="shrink-0"
+                        >
+                          {addingWebhook ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+                          <span className="ml-1.5">Add</span>
+                        </Button>
+                      </div>
+                    </div>
+
+                    {/* Webhook list */}
+                    {webhooks.length === 0 ? (
+                      <p className="text-sm text-muted-foreground text-center py-4">No webhooks configured yet.</p>
+                    ) : (
+                      <div className="flex flex-col gap-2">
+                        {webhooks.map((wh) => (
+                          <div key={wh.id} className="flex items-center gap-3 px-3 py-2.5 rounded-lg bg-secondary/30 border border-border">
+                            {wh.type === "discord" ? (
+                              <svg className="h-4 w-4 text-[#5865F2] shrink-0" viewBox="0 0 24 24" fill="currentColor"><path d="M20.317 4.37a19.791 19.791 0 00-4.885-1.515.074.074 0 00-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 00-5.487 0 12.64 12.64 0 00-.617-1.25.077.077 0 00-.079-.037A19.736 19.736 0 003.677 4.37a.07.07 0 00-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 00.031.057 19.9 19.9 0 005.993 3.03.078.078 0 00.084-.028c.462-.63.874-1.295 1.226-1.994a.076.076 0 00-.041-.106 13.107 13.107 0 01-1.872-.892.077.077 0 01-.008-.128 10.2 10.2 0 00.372-.292.074.074 0 01.077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 01.078.01c.12.098.246.198.373.292a.077.077 0 01-.006.127 12.299 12.299 0 01-1.873.892.077.077 0 00-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 00.084.028 19.839 19.839 0 006.002-3.03.077.077 0 00.032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 00-.031-.03zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418z" /></svg>
+                            ) : wh.type === "slack" ? (
+                              <svg className="h-4 w-4 text-[#E01E5A] shrink-0" viewBox="0 0 24 24" fill="currentColor"><path d="M5.042 15.165a2.528 2.528 0 01-2.52 2.523A2.528 2.528 0 010 15.165a2.527 2.527 0 012.522-2.52h2.52v2.52zm1.271 0a2.527 2.527 0 012.521-2.52 2.527 2.527 0 012.521 2.52v6.313A2.528 2.528 0 018.834 24a2.528 2.528 0 01-2.521-2.522v-6.313zM8.834 5.042a2.528 2.528 0 01-2.521-2.52A2.528 2.528 0 018.834 0a2.528 2.528 0 012.521 2.522v2.52H8.834zm0 1.271a2.528 2.528 0 012.521 2.521 2.528 2.528 0 01-2.521 2.521H2.522A2.528 2.528 0 010 8.834a2.528 2.528 0 012.522-2.521h6.312zm10.122 2.521a2.528 2.528 0 012.522-2.521A2.528 2.528 0 0124 8.834a2.528 2.528 0 01-2.522 2.521h-2.522V8.834zm-1.268 0a2.528 2.528 0 01-2.523 2.521 2.527 2.527 0 01-2.52-2.521V2.522A2.527 2.527 0 0115.165 0a2.528 2.528 0 012.523 2.522v6.312zm-2.523 10.122a2.528 2.528 0 012.523 2.522A2.528 2.528 0 0115.165 24a2.527 2.527 0 01-2.52-2.522v-2.522h2.52zm0-1.268a2.527 2.527 0 01-2.52-2.523 2.526 2.526 0 012.52-2.52h6.313A2.527 2.527 0 0124 15.165a2.528 2.528 0 01-2.522 2.523h-6.313z" /></svg>
+                            ) : (
+                              <Globe className="h-4 w-4 text-primary shrink-0" />
+                            )}
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2">
+                                <p className="text-sm font-medium text-foreground">{wh.name}</p>
+                                <span className={cn(
+                                  "inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider border",
+                                  wh.type === "discord" ? "bg-[#5865F2]/10 text-[#5865F2] border-[#5865F2]/20" :
+                                    wh.type === "slack" ? "bg-[#E01E5A]/10 text-[#E01E5A] border-[#E01E5A]/20" :
+                                      "bg-muted text-muted-foreground border-border"
+                                )}>
+                                  {wh.type}
+                                </span>
+                              </div>
+                              <p className="text-xs text-muted-foreground truncate">{wh.url}</p>
+                            </div>
+                            <div className="flex items-center gap-1 shrink-0">
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-7 w-7 text-primary hover:text-primary hover:bg-primary/10"
+                                disabled={testingWebhookId === wh.id}
+                                onClick={async () => {
+                                  setTestingWebhookId(wh.id)
+                                  try {
+                                    const res = await fetch(API.WEBHOOKS, {
+                                      method: "PATCH",
+                                      headers: { "Content-Type": "application/json" },
+                                      body: JSON.stringify({ id: wh.id }),
+                                    })
+                                    const data = await res.json()
+                                    if (res.ok) {
+                                      setSuccess("Test webhook sent successfully!")
+                                    } else {
+                                      setError(data.error || "Failed to test webhook")
+                                    }
+                                  } catch {
+                                    setError("Failed to test webhook")
+                                  }
+                                  setTestingWebhookId(null)
+                                }}
+                                title="Send test webhook"
+                              >
+                                {testingWebhookId === wh.id ? (
+                                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                ) : (
+                                  <Play className="h-3.5 w-3.5" />
+                                )}
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-7 w-7 text-destructive dark:text-red-400 hover:text-destructive dark:hover:text-red-400 hover:bg-destructive/10"
+                                onClick={async () => {
+                                  await fetch(API.WEBHOOKS, {
+                                    method: "DELETE",
+                                    headers: { "Content-Type": "application/json" },
+                                    body: JSON.stringify({ id: wh.id }),
+                                  })
+                                  setWebhooks((prev) => prev.filter((w) => w.id !== wh.id))
+                                }}
+                                title="Delete webhook"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </Button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-lg">Scheduled Scans</CardTitle>
+                    <CardDescription>
+                      Set URLs to auto-scan on a recurring schedule. Maximum 10 schedules.
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    {/* Add schedule form */}
+                    <div className="flex flex-col gap-3 p-4 rounded-lg border border-border bg-secondary/30">
+                      <Label className="text-sm font-medium">Add Schedule</Label>
+                      <div className="flex flex-col sm:flex-row gap-2">
+                        <Input
+                          placeholder="https://example.com"
+                          value={scheduleUrl}
+                          onChange={(e) => setScheduleUrl(e.target.value)}
+                          className="flex-1 bg-card h-10"
+                        />
+                        <select
+                          value={scheduleFreq}
+                          onChange={(e) => setScheduleFreq(e.target.value)}
+                          className="h-10 px-3 rounded-md border border-border bg-card text-foreground text-sm"
+                        >
+                          <option value="daily">Daily</option>
+                          <option value="weekly">Weekly</option>
+                          <option value="monthly">Monthly</option>
+                        </select>
+                        <Button
+                          disabled={!scheduleUrl || addingSchedule}
+                          onClick={async () => {
+                            setAddingSchedule(true)
+                            try {
+                              const res = await fetch(API.SCHEDULES, {
+                                method: "POST",
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify({ url: scheduleUrl, frequency: scheduleFreq }),
+                              })
+                              const data = await res.json()
+                              if (res.ok) {
+                                setSchedules((prev) => [data, ...prev])
+                                setScheduleUrl("")
+                                setSuccess("Schedule created successfully.")
+                              } else {
+                                setError(data.error || "Failed to create schedule.")
+                              }
+                            } catch { setError("Failed to create schedule.") }
+                            setAddingSchedule(false)
+                          }}
+                          className="shrink-0"
+                        >
+                          {addingSchedule ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+                          <span className="ml-1.5">Add</span>
+                        </Button>
+                      </div>
+                    </div>
+
+                    {/* Schedule list */}
+                    {schedules.length === 0 ? (
+                      <p className="text-sm text-muted-foreground text-center py-4">No scheduled scans configured yet.</p>
+                    ) : (
+                      <div className="flex flex-col gap-2">
+                        {schedules.map((sch) => (
+                          <div key={sch.id} className="flex items-center gap-3 px-3 py-2.5 rounded-lg bg-secondary/30 border border-border">
+                            <CalendarClock className="h-4 w-4 text-primary shrink-0" />
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-medium text-foreground truncate">{sch.url}</p>
+                              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                                <Badge variant="secondary" className="text-[10px] px-1.5 py-0 uppercase font-semibold">
+                                  {sch.frequency}
+                                </Badge>
+                                {sch.next_run && (
+                                  <span>Next: {new Date(sch.next_run).toLocaleDateString("en-US", { month: "short", day: "numeric" })}</span>
+                                )}
+                                {sch.last_run && (
+                                  <span>Last: {new Date(sch.last_run).toLocaleDateString("en-US", { month: "short", day: "numeric" })}</span>
+                                )}
+                              </div>
+                            </div>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7 text-destructive dark:text-red-400 hover:text-destructive dark:hover:text-red-400 hover:bg-destructive/10 shrink-0"
+                              onClick={async () => {
+                                await fetch(API.SCHEDULES, {
+                                  method: "DELETE",
+                                  headers: { "Content-Type": "application/json" },
+                                  body: JSON.stringify({ id: sch.id }),
+                                })
+                                setSchedules((prev) => prev.filter((s) => s.id !== sch.id))
+                              }}
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    <div className="rounded-lg bg-muted/50 border border-border p-3">
+                      <p className="text-xs text-muted-foreground leading-relaxed">
+                        Scheduled scans run automatically at the configured frequency. Results are saved to your scan history and any active webhooks will be notified. Schedules require an active API key.
+                      </p>
+                    </div>
+                  </CardContent>
+                </Card>
+              </>
+            )}
+
             {/* ===================== NOTIFICATIONS TAB ===================== */}
             {activeTab === "notifications" && (
-              <div className="space-y-6">
+              <div className="flex flex-col gap-6">
+                {/* --- SECURITY --- */}
                 <Card>
-                  <CardHeader className="pb-4">
-                    <CardTitle className="text-base">Email Notifications</CardTitle>
-                    <CardDescription>Choose which emails you want to receive</CardDescription>
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-base flex items-center gap-2">
+                      <Shield className="h-4 w-4 text-primary" />
+                      Security
+                    </CardTitle>
+                    <CardDescription>Critical alerts for account access and authentication events.</CardDescription>
                   </CardHeader>
-                  <CardContent className="space-y-6">
-                    {/* Security */}
-                    <div className="space-y-3">
-                      <p className="text-sm font-medium text-muted-foreground">Security</p>
-                      <div className="space-y-2">
-                        {[
-                          { key: "email_new_login" as const, label: "New login alerts" },
-                          { key: "email_password_change" as const, label: "Password changes" },
-                          { key: "email_2fa_change" as const, label: "2FA changes" },
-                          { key: "email_session_revoked" as const, label: "Session revocations" },
-                        ].map((item) => (
-                          <div key={item.key} className="flex items-center justify-between py-2">
-                            <span className="text-sm">{item.label}</span>
-                            <Switch checked={notifPrefs[item.key]} onCheckedChange={(val) => setNotifPrefs(prev => ({ ...prev, [item.key]: val }))} />
+                  <CardContent className="flex flex-col gap-2">
+                    {([
+                      { key: "email_security" as const, icon: Shield, label: "Security Alerts", desc: "Unusual activity, account compromise warnings, and critical security events.", badge: "Recommended" },
+                      { key: "email_new_login" as const, icon: LogIn, label: "Login Alerts", desc: "Notifications when someone signs into your account from a new device or location." },
+                      { key: "email_password_change" as const, icon: Lock, label: "Password Changes", desc: "Alerts when your password is changed or a reset is requested." },
+                      { key: "email_2fa_change" as const, icon: Fingerprint, label: "2FA Changes", desc: "Notifications when two-factor authentication is enabled, disabled, or modified." },
+                      { key: "email_session_revoked" as const, icon: MonitorSmartphone, label: "Session Alerts", desc: "Alerts about active sessions and session revocations." },
+                    ] as const).map(({ key, icon: Icon, label, desc, badge }) => (
+                      <div key={key} className="flex items-center justify-between p-3 rounded-lg border border-border bg-secondary/30">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2">
+                            <Icon className="h-3.5 w-3.5 text-muted-foreground" />
+                            <p className="text-sm font-medium text-foreground">{label}</p>
+                            {badge && <Badge variant="secondary" className="text-[10px] px-1.5 py-0 uppercase font-semibold">{badge}</Badge>}
                           </div>
-                        ))}
+                          <p className="text-xs text-muted-foreground mt-0.5 ml-5.5">{desc}</p>
+                        </div>
+                        <Switch checked={notifPrefs[key]} onCheckedChange={(checked) => setNotifPrefs(prev => ({ ...prev, [key]: checked }))} />
+                      </div>
+                    ))}
+                  </CardContent>
+                </Card>
+
+                {/* --- SCANNING --- */}
+                <Card>
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-base flex items-center gap-2">
+                      <Scan className="h-4 w-4 text-primary" />
+                      Scanning
+                    </CardTitle>
+                    <CardDescription>Notifications about scan results, failures, and scheduled scans.</CardDescription>
+                  </CardHeader>
+                  <CardContent className="flex flex-col gap-2">
+                    {([
+                      { key: "email_scan_complete" as const, icon: Check, label: "Scan Complete", desc: "Get notified when a scan finishes with a summary of findings." },
+                      { key: "email_critical_findings" as const, icon: XCircle, label: "Critical Findings", desc: "Alerts when critical or high-severity vulnerabilities are discovered in your scans." },
+                      { key: "email_regression_alert" as const, icon: AlertTriangle, label: "Regression Alerts", desc: "Notifications when previously resolved issues reappear in subsequent scans." },
+                      { key: "email_schedules" as const, icon: CalendarClock, label: "Scheduled Scan Reports", desc: "Email summaries when scheduled scans complete, including severity breakdowns." },
+                    ] as const).map(({ key, icon: Icon, label, desc }) => (
+                      <div key={key} className="flex items-center justify-between p-3 rounded-lg border border-border bg-secondary/30">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2">
+                            <Icon className="h-3.5 w-3.5 text-muted-foreground" />
+                            <p className="text-sm font-medium text-foreground">{label}</p>
+                          </div>
+                          <p className="text-xs text-muted-foreground mt-0.5 ml-5.5">{desc}</p>
+                        </div>
+                        <Switch checked={notifPrefs[key]} onCheckedChange={(checked) => setNotifPrefs(prev => ({ ...prev, [key]: checked }))} />
+                      </div>
+                    ))}
+                  </CardContent>
+                </Card>
+
+                {/* --- API & INTEGRATIONS --- */}
+                <Card>
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-base flex items-center gap-2">
+                      <Zap className="h-4 w-4 text-primary" />
+                      {"API & Integrations"}
+                    </CardTitle>
+                    <CardDescription>Notifications about API keys, usage limits, and webhook events.</CardDescription>
+                  </CardHeader>
+                  <CardContent className="flex flex-col gap-2">
+                    {([
+                      { key: "email_api_keys" as const, icon: Key, label: "API Key Activity", desc: "Alerts when API keys are created, revoked, or approaching expiration." },
+                      { key: "email_api_limit_warning" as const, icon: Gauge, label: "API Limit Warnings", desc: "Warnings when your API usage nears rate limits or daily quotas." },
+                      { key: "email_webhooks" as const, icon: Webhook, label: "Webhook Events", desc: "Notifications when webhooks are created, modified, or disabled." },
+                      { key: "email_webhook_failure" as const, icon: XCircle, label: "Webhook Failures", desc: "Alerts when webhook deliveries fail repeatedly." },
+                    ] as const).map(({ key, icon: Icon, label, desc }) => (
+                      <div key={key} className="flex items-center justify-between p-3 rounded-lg border border-border bg-secondary/30">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2">
+                            <Icon className="h-3.5 w-3.5 text-muted-foreground" />
+                            <p className="text-sm font-medium text-foreground">{label}</p>
+                          </div>
+                          <p className="text-xs text-muted-foreground mt-0.5 ml-5.5">{desc}</p>
+                        </div>
+                        <Switch checked={notifPrefs[key]} onCheckedChange={(checked) => setNotifPrefs(prev => ({ ...prev, [key]: checked }))} />
+                      </div>
+                    ))}
+                  </CardContent>
+                </Card>
+
+                {/* --- ACCOUNT --- */}
+                <Card>
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-base flex items-center gap-2">
+                      <UserCog className="h-4 w-4 text-primary" />
+                      Account
+                    </CardTitle>
+                    <CardDescription>Notifications about your account, data exports, and team activity.</CardDescription>
+                  </CardHeader>
+                  <CardContent className="flex flex-col gap-2">
+                    {([
+                      { key: "email_data_requests" as const, icon: Download, label: "Data Export Updates", desc: "Notifications when your data export is ready for download." },
+                      { key: "email_account_deletion" as const, icon: UserCog, label: "Account Deletion", desc: "Confirmations and alerts when account deletion is requested or processed." },
+                      { key: "email_team_invite" as const, icon: Users, label: "Team Invites", desc: "Notifications when you're invited to join a team or workspace." },
+                      { key: "email_team_changes" as const, icon: Users, label: "Team Changes", desc: "Alerts about team membership changes, role updates, and team activity." },
+                    ] as const).map(({ key, icon: Icon, label, desc }) => (
+                      <div key={key} className="flex items-center justify-between p-3 rounded-lg border border-border bg-secondary/30">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2">
+                            <Icon className="h-3.5 w-3.5 text-muted-foreground" />
+                            <p className="text-sm font-medium text-foreground">{label}</p>
+                          </div>
+                          <p className="text-xs text-muted-foreground mt-0.5 ml-5.5">{desc}</p>
+                        </div>
+                        <Switch checked={notifPrefs[key]} onCheckedChange={(checked) => setNotifPrefs(prev => ({ ...prev, [key]: checked }))} />
+                      </div>
+                    ))}
+                  </CardContent>
+                </Card>
+
+                {/* --- PRODUCT --- */}
+                <Card>
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-base flex items-center gap-2">
+                      <Megaphone className="h-4 w-4 text-primary" />
+                      Product
+                    </CardTitle>
+                    <CardDescription>Stay up to date with new features, tips, and platform updates.</CardDescription>
+                  </CardHeader>
+                  <CardContent className="flex flex-col gap-2">
+                    {([
+                      { key: "email_product_updates" as const, icon: Megaphone, label: "Product Updates", desc: "Major feature announcements, release notes, and platform improvements." },
+                      { key: "email_tips_guides" as const, icon: Lightbulb, label: "Tips & Guides", desc: `Helpful tips, best practices, and security guides to get the most out of ${APP_NAME}.` },
+                    ] as const).map(({ key, icon: Icon, label, desc }) => (
+                      <div key={key} className="flex items-center justify-between p-3 rounded-lg border border-border bg-secondary/30">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2">
+                            <Icon className="h-3.5 w-3.5 text-muted-foreground" />
+                            <p className="text-sm font-medium text-foreground">{label}</p>
+                          </div>
+                          <p className="text-xs text-muted-foreground mt-0.5 ml-5.5">{desc}</p>
+                        </div>
+                        <Switch checked={notifPrefs[key]} onCheckedChange={(checked) => setNotifPrefs(prev => ({ ...prev, [key]: checked }))} />
+                      </div>
+                    ))}
+                  </CardContent>
+                </Card>
+
+                
+
+                {/* Info card */}
+                <Card className="bg-muted/30 border-muted">
+                  <CardContent className="pt-4">
+                    <div className="flex gap-3">
+                      <Mail className="h-5 w-5 text-muted-foreground shrink-0 mt-0.5" />
+                      <div className="flex flex-col gap-1">
+                        <p className="text-sm font-medium text-foreground">About Email Notifications</p>
+                        <p className="text-xs text-muted-foreground leading-relaxed">
+                          We only send essential notifications related to your account activity.
+                          You will always receive critical security alerts for unusual activity regardless of your preferences.
+                          We never share your email or send marketing content.
+                        </p>
                       </div>
                     </div>
-
-                    {/* Scanning */}
-                    <div className="space-y-3 pt-4 border-t border-border">
-                      <p className="text-sm font-medium text-muted-foreground">Scanning</p>
-                      <div className="space-y-2">
-                        {[
-                          { key: "email_scan_complete" as const, label: "Scan completions" },
-                          { key: "email_critical_findings" as const, label: "Critical findings" },
-                          { key: "email_regression_alert" as const, label: "Regression alerts" },
-                          { key: "email_schedules" as const, label: "Scheduled scan updates" },
-                        ].map((item) => (
-                          <div key={item.key} className="flex items-center justify-between py-2">
-                            <span className="text-sm">{item.label}</span>
-                            <Switch checked={notifPrefs[item.key]} onCheckedChange={(val) => setNotifPrefs(prev => ({ ...prev, [item.key]: val }))} />
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* Developer */}
-                    <div className="space-y-3 pt-4 border-t border-border">
-                      <p className="text-sm font-medium text-muted-foreground">Developer</p>
-                      <div className="space-y-2">
-                        {[
-                          { key: "email_api_keys" as const, label: "API key changes" },
-                          { key: "email_api_limit_warning" as const, label: "API limit warnings" },
-                          { key: "email_webhooks" as const, label: "Webhook updates" },
-                          { key: "email_webhook_failure" as const, label: "Webhook failures" },
-                        ].map((item) => (
-                          <div key={item.key} className="flex items-center justify-between py-2">
-                            <span className="text-sm">{item.label}</span>
-                            <Switch checked={notifPrefs[item.key]} onCheckedChange={(val) => setNotifPrefs(prev => ({ ...prev, [item.key]: val }))} />
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* Teams */}
-                    <div className="space-y-3 pt-4 border-t border-border">
-                      <p className="text-sm font-medium text-muted-foreground">Teams</p>
-                      <div className="space-y-2">
-                        {[
-                          { key: "email_team_invite" as const, label: "Team invitations" },
-                          { key: "email_team_changes" as const, label: "Team changes" },
-                        ].map((item) => (
-                          <div key={item.key} className="flex items-center justify-between py-2">
-                            <span className="text-sm">{item.label}</span>
-                            <Switch checked={notifPrefs[item.key]} onCheckedChange={(val) => setNotifPrefs(prev => ({ ...prev, [item.key]: val }))} />
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* Marketing */}
-                    <div className="space-y-3 pt-4 border-t border-border">
-                      <p className="text-sm font-medium text-muted-foreground">Marketing</p>
-                      <div className="space-y-2">
-                        {[
-                          { key: "email_product_updates" as const, label: "Product updates" },
-                          { key: "email_tips_guides" as const, label: "Tips and guides" },
-                        ].map((item) => (
-                          <div key={item.key} className="flex items-center justify-between py-2">
-                            <span className="text-sm">{item.label}</span>
-                            <Switch checked={notifPrefs[item.key]} onCheckedChange={(val) => setNotifPrefs(prev => ({ ...prev, [item.key]: val }))} />
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-
-                    <Button onClick={handleSaveNotifPrefs} disabled={savingNotifPrefs} className="mt-4">
-                      {savingNotifPrefs ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
-                      Save Preferences
-                    </Button>
                   </CardContent>
                 </Card>
               </div>
@@ -2288,67 +2872,188 @@ function ProfileContent() {
 
             {/* ===================== PRIVACY TAB ===================== */}
             {activeTab === "privacy" && (
-              <div className="space-y-6">
-                {/* Data Export */}
-                <Card>
-                  <CardHeader className="pb-4">
-                    <CardTitle className="text-base">Export Your Data</CardTitle>
-                    <CardDescription>Download a copy of all your data</CardDescription>
+              <div className="flex flex-col gap-6">
+                {/* Privacy & Data Protection */}
+                <Card className="bg-blue-500/5 border-blue-500/20">
+                  <CardHeader>
+                    <CardTitle className="text-lg flex items-center gap-2">
+                      <Shield className="h-4 w-4 text-blue-500" />
+                      Privacy & Data Protection
+                    </CardTitle>
+                    <CardDescription>
+                      Your data is protected under GDPR and other privacy regulations. You have the right to request access to your data, request deletion, and manage your privacy settings.
+                    </CardDescription>
                   </CardHeader>
-                  <CardContent>
-                    {dataReqInfo?.canDownloadNew ? (
-                      <Button variant="outline" onClick={handleRequestData} disabled={requestingData}>
-                        {requestingData ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
-                        Request Data Export
-                      </Button>
-                    ) : dataReqInfo?.cooldownEndsAt ? (
-                      <div className="flex items-center gap-2 p-3 rounded-lg bg-muted">
-                        <Clock className="h-4 w-4 text-muted-foreground" />
-                        <p className="text-sm text-muted-foreground">
-                          You can request another export on {new Date(dataReqInfo.cooldownEndsAt).toLocaleDateString()}
-                        </p>
+                  <CardContent className="space-y-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div className="flex items-start gap-3 p-3 rounded-lg bg-card/50 border border-border">
+                        <Globe className="h-4 w-4 text-blue-500 shrink-0 mt-0.5" />
+                        <div>
+                          <p className="text-xs font-semibold text-foreground">GDPR Compliant</p>
+                          <p className="text-xs text-muted-foreground mt-0.5">Full compliance with EU data protection regulations</p>
+                        </div>
                       </div>
-                    ) : (
-                      <Button variant="outline" onClick={handleRequestData} disabled={requestingData}>
-                        {requestingData ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
-                        Request Data Export
-                      </Button>
-                    )}
-                    <p className="text-xs text-muted-foreground mt-2">We&apos;ll email you when your data is ready to download.</p>
+                      <div className="flex items-start gap-3 p-3 rounded-lg bg-card/50 border border-border">
+                        <Lock className="h-4 w-4 text-green-500 shrink-0 mt-0.5" />
+                        <div>
+                          <p className="text-xs font-semibold text-foreground">Encrypted Storage</p>
+                          <p className="text-xs text-muted-foreground mt-0.5">Your data is encrypted at rest and in transit</p>
+                        </div>
+                      </div>
+                    </div>
                   </CardContent>
                 </Card>
 
-                {/* Delete Account */}
-                <Card className="border-destructive/20">
-                  <CardHeader className="pb-4">
-                    <CardTitle className="text-base text-destructive">Delete Account</CardTitle>
-                    <CardDescription>Permanently delete your account and all data</CardDescription>
+                {/* Data Export */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-lg flex items-center gap-2">
+                      <Download className="h-4 w-4 text-primary" />
+                      Data Export
+                    </CardTitle>
+                    <CardDescription>
+                      Download your complete account data anytime. Fresh exports available once every 30 days.
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="flex flex-col gap-4">
+                      {/* Download Fresh Data Section */}
+                      <div className="flex flex-col gap-4 p-4 rounded-lg border border-border bg-secondary/30">
+                        {/* Can download fresh data - no cooldown or cooldown expired */}
+                        {dataReqInfo?.canDownloadNew && (
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <p className="text-sm font-medium text-foreground">Download Fresh Export</p>
+                              <p className="text-xs text-muted-foreground mt-0.5">
+                                {dataReqInfo?.lastDownloadAt
+                                  ? "Your 30-day cooldown has expired. Get a fresh export now."
+                                  : "Download your complete account data now."}
+                              </p>
+                            </div>
+                            <Button
+                              onClick={handleRequestData}
+                              disabled={requestingData}
+                              className="shrink-0"
+                            >
+                              <Download className="mr-2 h-4 w-4" />
+                              {requestingData ? "Downloading..." : "Download Now"}
+                            </Button>
+                          </div>
+                        )}
+
+                        {/* Cooldown active - can't get fresh data yet */}
+                        {!dataReqInfo?.canDownloadNew && dataReqInfo?.lastDownloadAt && (
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <p className="text-sm font-medium text-foreground">Fresh Export Cooldown</p>
+                              <p className="text-xs text-muted-foreground mt-0.5">
+                                Next fresh export available in{" "}
+                                <span className="font-mono text-foreground font-semibold">
+                                  {dataReqInfo.cooldownEndsAt ? getTimeRemaining(dataReqInfo.cooldownEndsAt) || "soon" : "soon"}
+                                </span>
+                              </p>
+                              <p className="text-xs text-muted-foreground mt-1">
+                                Last downloaded: {formatDate(dataReqInfo.lastDownloadAt)}
+                              </p>
+                            </div>
+                            <Button disabled className="shrink-0">
+                              <Clock className="mr-2 h-4 w-4" />
+                              On Cooldown
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Re-download Previous Export */}
+                      {dataReqInfo?.hasData && (
+                        <div className="flex flex-col gap-4 p-4 rounded-lg border border-border bg-muted/50">
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <p className="text-sm font-medium text-foreground">Previous Export Available</p>
+                              <p className="text-xs text-muted-foreground mt-0.5">
+                                Re-download your last export anytime. This data was last updated {dataReqInfo.lastDownloadAt ? formatDate(dataReqInfo.lastDownloadAt) : "recently"}.
+                              </p>
+                            </div>
+                            <Button
+                              onClick={handleDownloadPreviousData}
+                              variant="outline"
+                              className="shrink-0"
+                            >
+                              <Download className="mr-2 h-4 w-4" />
+                              Re-download
+                            </Button>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* How It Works Box */}
+                      <div className="flex gap-3 p-3 rounded-lg bg-muted/50 border border-border">
+                        <Download className="h-4 w-4 text-muted-foreground shrink-0 mt-0.5" />
+                        <div>
+                          <p className="text-xs font-semibold text-foreground">How It Works</p>
+                          <ul className="text-xs text-muted-foreground mt-1 space-y-1">
+                            <li>1. Click "Download Now" to get a fresh export</li>
+                            <li>2. Your data downloads as a JSON file</li>
+                            <li>3. Re-download anytime from "Previous Export"</li>
+                            <li>4. Request a new fresh export after 30 days</li>
+                          </ul>
+                        </div>
+                      </div>
+
+                      {/* What's Included Box */}
+                      <div className="flex gap-3 p-3 rounded-lg bg-muted/50 border border-border">
+                        <Shield className="h-4 w-4 text-muted-foreground shrink-0 mt-0.5" />
+                        <div>
+                          <p className="text-xs font-semibold text-foreground">{"What's Included"}</p>
+                          <ul className="text-xs text-muted-foreground mt-1 space-y-1">
+                            <li>Your profile information</li>
+                            <li>All API keys and metadata</li>
+                            <li>Complete scan history and results</li>
+                            <li>API usage logs and statistics</li>
+                          </ul>
+                        </div>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Danger Zone */}
+                <Card className="border-destructive/30">
+                  <CardHeader>
+                    <CardTitle className="text-lg flex items-center gap-2 text-destructive">
+                      <AlertTriangle className="h-4 w-4" />
+                      Danger Zone                </CardTitle>
+                    <CardDescription>Permanently delete your account and all associated data. This action cannot be undone.</CardDescription>
                   </CardHeader>
                   <CardContent>
                     {!showDeleteConfirm ? (
-                      <Button variant="destructive" onClick={() => setShowDeleteConfirm(true)}>
+                      <Button
+                        variant="outline"
+                        className="text-destructive dark:text-red-400 border-destructive/30 hover:bg-destructive/10 hover:text-destructive dark:hover:text-red-400 bg-transparent"
+                        onClick={() => setShowDeleteConfirm(true)}
+                      >
                         <Trash2 className="mr-2 h-4 w-4" />
-                        Delete My Account
+                        Delete Account
                       </Button>
                     ) : (
-                      <div className="space-y-4 max-w-md">
-                        <div className="p-4 rounded-lg bg-destructive/10 border border-destructive/20">
-                          <p className="text-sm text-destructive font-medium">This action cannot be undone.</p>
-                          <p className="text-xs text-muted-foreground mt-1">All your data including scans, API keys, and settings will be permanently deleted.</p>
+                      <div className="flex flex-col gap-4 p-4 rounded-lg border border-destructive/30 bg-destructive/5">
+                        <div>
+                          <p className="text-sm font-semibold text-foreground">Are you absolutely sure?</p>
+                          <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
+                            This will permanently delete your account, all API keys, scan history, and data exports.
+                            Type <span className="font-mono font-semibold text-destructive">DELETE</span> to confirm.
+                          </p>
                         </div>
-                        <div className="space-y-2">
-                          <Label className="text-xs text-muted-foreground">Type DELETE to confirm</Label>
-                          <Input
-                            value={deleteConfirmText}
-                            onChange={(e) => setDeleteConfirmText(e.target.value)}
-                            placeholder="DELETE"
-                            className="bg-card"
-                          />
-                        </div>
-                        <div className="flex gap-2">
-                          <Button variant="destructive" onClick={handleDeleteAccount} disabled={deleting || deleteConfirmText !== "DELETE"}>
-                            {deleting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                            Delete Account
+                        <Input
+                          placeholder="Type DELETE to confirm"
+                          value={deleteConfirmText}
+                          onChange={(e) => setDeleteConfirmText(e.target.value)}
+                          className="bg-card font-mono"
+                        />
+                        <div className="flex items-center gap-2">
+                          <Button variant="destructive" disabled={deleteConfirmText !== "DELETE" || deleting} onClick={handleDeleteAccount}>
+                            <Trash2 className="mr-2 h-4 w-4" />
+                            {deleting ? "Deleting..." : "Permanently Delete Account"}
                           </Button>
                           <Button variant="ghost" onClick={() => { setShowDeleteConfirm(false); setDeleteConfirmText("") }}>
                             Cancel
@@ -2360,40 +3065,76 @@ function ProfileContent() {
                 </Card>
               </div>
             )}
-          </div>
-        </div>
+          </div>{/* End Main Content Area */}
+        </div>{/* End Two-column layout */}
+        
+        {/* Bottom spacer for floating save bar */}
+        {hasPendingChanges && <div className="h-20" />}
       </main>
 
-      <Footer />
-
-      {/* Image Crop Dialog */}
-      <ImageCropDialog
-        open={cropDialogOpen}
-        imageSrc={cropImageSrc || ""}
-        onClose={() => { setCropDialogOpen(false); setCropImageSrc(null) }}
-        onCropComplete={handleCroppedAvatar}
-        loading={uploadingAvatar}
-      />
+      {/* Floating Save Bar - matches admin panel style */}
+      {hasPendingChanges && (
+        <div className="fixed bottom-0 left-0 right-0 z-50 p-4 pointer-events-none">
+          <div className="max-w-3xl mx-auto pointer-events-auto">
+            <div className="flex items-center justify-between gap-4 px-5 py-3.5 rounded-xl bg-card border border-primary/30 shadow-2xl shadow-primary/10 backdrop-blur-sm">
+              <div className="flex items-center gap-3">
+                <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center">
+                  <Save className="h-4 w-4 text-primary" />
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-foreground">Unsaved Changes</p>
+                  <p className="text-[11px] text-muted-foreground">
+                    {pendingChangeItems.length} field{pendingChangeItems.length !== 1 ? "s" : ""}
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  onClick={() => {
+                    setPendingChanges({})
+                    setNameInput(user?.name || "")
+                    setEmailInput(user?.email || "")
+                    if (originalNotifPrefs) setNotifPrefs(originalNotifPrefs)
+                  }}
+                  className="h-9 px-4"
+                >
+                  Discard
+                </Button>
+                <Button size="sm" onClick={() => setShowSaveModal(true)} className="h-9 px-5 gap-2">
+                  <Save className="h-3.5 w-3.5" />
+                  Review & Save
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Save Confirmation Modal */}
       <SaveConfirmationModal
         isOpen={showSaveModal}
         onClose={() => setShowSaveModal(false)}
         onConfirm={async () => {
-          if (pendingChanges.name !== undefined && pendingChanges.name !== (user?.name || "")) {
-            await handleSaveName()
-          }
-          if (pendingChanges.email !== undefined && pendingChanges.email !== user?.email) {
-            await handleSaveEmail()
-          }
-          setPendingChanges({})
-          setProfileEditMode(false)
+          await saveAllPendingChanges()
         }}
-        title="Confirm Changes"
-        description="Review the changes you're about to make to your account."
-        changes={buildModalChanges()}
+        title="Save Changes"
+        description="Review your pending changes before saving."
+        changes={pendingChangeItems}
         loading={savingProfile}
-        confirmText="Save Changes"
+        isAdminAction={false}
+        confirmText="Save All Changes"
+      />
+
+      <Footer />
+
+      <ImageCropDialog
+        open={cropDialogOpen}
+        imageSrc={cropImageSrc}
+        onClose={() => { setCropDialogOpen(false); setCropImageSrc(null) }}
+        onCrop={handleCroppedAvatar}
+        saving={uploadingAvatar}
       />
     </div>
   )
