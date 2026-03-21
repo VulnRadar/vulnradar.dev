@@ -27,15 +27,15 @@ export interface Plan {
 }
 
 export const PLANS: Plan[] = [
-  // NOTE: Daily scan limits are controlled by config.yaml → BILLING_PLAN_LIMITS
+  // NOTE: Daily scan limits and features are controlled by config.yaml → BILLING_PLAN_LIMITS
   // The limits here are defaults that get overridden by config.yaml values
+  // Feature strings should NOT include hardcoded scan limits - let pricing page compute them
   {
     id: "free",
     name: "Free",
     description: "For individuals exploring security scanning",
     priceInCents: 0,
     features: [
-      "25 scans per day",
       "Full vulnerability detection",
       "Security headers analysis",
       "SSL/TLS checks",
@@ -58,7 +58,6 @@ export const PLANS: Plan[] = [
     description: "For developers who scan regularly",
     priceInCents: 500, // $5/month
     features: [
-      "100 scans per day",
       "Everything in Free",
       "90-day scan history",
       "Email support",
@@ -85,7 +84,6 @@ export const PLANS: Plan[] = [
     description: "For power users and small teams",
     priceInCents: 1000, // $10/month
     features: [
-      "150 scans per day",
       "Everything in Core",
       "Unlimited scan history",
       "Priority support",
@@ -112,7 +110,6 @@ export const PLANS: Plan[] = [
     description: "For teams and organizations",
     priceInCents: 2000, // $20/month
     features: [
-      "500 scans per day",
       "Everything in Pro",
       "Unlimited API access",
       "Dedicated support",
