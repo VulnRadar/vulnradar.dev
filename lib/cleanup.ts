@@ -3,6 +3,7 @@
  * Handles automatic cleanup of expired records and old data
  */
 import pool from "@/lib/db"
+import { BILLING_HISTORY_RETENTION } from "@/lib/constants"
 
 export interface CleanupStats {
   expiredSessions: number
@@ -66,9 +67,34 @@ export async function performDatabaseCleanup(): Promise<CleanupStats> {
     )
     stats.oldDataRequests = dataReqRes.rowCount || 0
 
-    // Delete old scan history (> 90 days)
-    const scansRes = await pool.query("DELETE FROM scan_history WHERE scanned_at < NOW() - INTERVAL '90 days'")
-    stats.oldScans = scansRes.rowCount || 0
+    // Delete old scan history based on user's plan retention
+    // Users with unlimited retention (-1) are not affected
+    // Free users: 30 days, Core: 90 days, Pro/Elite: unlimited
+    let totalScansDeleted = 0
+    
+    // Delete scans for free users (30-day retention)
+    if (BILLING_HISTORY_RETENTION.free > 0) {
+      const freeScansRes = await pool.query(
+        `DELETE FROM scan_history 
+         WHERE scanned_at < NOW() - INTERVAL '${BILLING_HISTORY_RETENTION.free} days'
+         AND user_id IN (SELECT id FROM users WHERE plan = 'free' OR plan IS NULL)`
+      )
+      totalScansDeleted += freeScansRes.rowCount || 0
+    }
+    
+    // Delete scans for core_supporter users (90-day retention)
+    if (BILLING_HISTORY_RETENTION.core_supporter > 0) {
+      const coreScansRes = await pool.query(
+        `DELETE FROM scan_history 
+         WHERE scanned_at < NOW() - INTERVAL '${BILLING_HISTORY_RETENTION.core_supporter} days'
+         AND user_id IN (SELECT id FROM users WHERE plan = 'core_supporter')`
+      )
+      totalScansDeleted += coreScansRes.rowCount || 0
+    }
+    
+    // Pro and Elite have unlimited retention (-1), so no cleanup needed for them
+    
+    stats.oldScans = totalScansDeleted
 
     // Delete old rate limit records (> 1 day)
     const rateLimitsRes = await pool.query("DELETE FROM rate_limits WHERE window_start < NOW() - INTERVAL '1 day'")
