@@ -43,13 +43,14 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
     return ApiResponse.unauthorized(ERROR_MESSAGES.UNAUTHORIZED)
   }
 
-  // Get user's plan to determine history retention from centralized config
-  const userRes = await pool.query("SELECT plan FROM users WHERE id = $1", [authedUserId])
+  // Get user's plan and role to determine history retention from centralized config
+  const userRes = await pool.query("SELECT plan, role FROM users WHERE id = $1", [authedUserId])
   const userPlan = (userRes.rows[0]?.plan || "free") as keyof typeof BILLING_HISTORY_RETENTION
-  
-  // Get retention days from config.yaml (via BILLING_HISTORY_RETENTION)
-  // -1 means unlimited, 0 also treated as unlimited for backwards compatibility
-  const retentionDays = BILLING_HISTORY_RETENTION[userPlan] ?? BILLING_HISTORY_RETENTION.free
+  const userRole = userRes.rows[0]?.role || "user"
+
+  // Staff/admin always get unlimited retention regardless of plan
+  const isStaff = ["admin", "moderator", "support"].includes(userRole)
+  const retentionDays = isStaff ? -1 : (BILLING_HISTORY_RETENTION[userPlan] ?? BILLING_HISTORY_RETENTION.free)
 
   const result = await pool.query(
     retentionDays <= 0
