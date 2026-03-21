@@ -67,7 +67,6 @@
     "react-resizable-panels": "^2.1.7",
     "recharts": "^2.15.0",
     "server-only": "^0.0.1",
-    "sharp": "^0.34.5",
     "sonner": "^1.7.1",
     "stripe": "^20.4.1",
     "swr": "^2.3.0",
