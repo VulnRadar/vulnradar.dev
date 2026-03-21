@@ -43,6 +43,8 @@ export interface SaveConfirmationModalProps {
   confirmText?: string
   cancelText?: string
   variant?: "default" | "destructive"
+  /** Force email notification on with no toggle (for support actions) */
+  forceNotify?: boolean
 }
 
 function formatValue(value: string | number | boolean | null | undefined): string {
@@ -66,13 +68,16 @@ export function SaveConfirmationModal({
   confirmText = "Save Changes",
   cancelText = "Cancel",
   variant = "default",
+  forceNotify = false,
 }: SaveConfirmationModalProps) {
   const [notifyUser, setNotifyUser] = React.useState(true)
   const [success, setSuccess] = React.useState(false)
 
   const handleConfirm = async () => {
     try {
-      await onConfirm(isAdminAction ? notifyUser : undefined)
+      // forceNotify always sends true, otherwise use toggle state
+      const shouldNotify = forceNotify ? true : (isAdminAction ? notifyUser : undefined)
+      await onConfirm(shouldNotify)
       setSuccess(true)
       setTimeout(() => {
         setSuccess(false)
@@ -203,11 +208,17 @@ export function SaveConfirmationModal({
                     Notify user via email
                   </Label>
                 </div>
-                <Switch
-                  id="notify-user"
-                  checked={notifyUser}
-                  onCheckedChange={setNotifyUser}
-                />
+                {forceNotify ? (
+                  <Badge variant="outline" className="bg-blue-500/10 text-blue-500 border-blue-500/20 text-xs">
+                    Required
+                  </Badge>
+                ) : (
+                  <Switch
+                    id="notify-user"
+                    checked={notifyUser}
+                    onCheckedChange={setNotifyUser}
+                  />
+                )}
               </div>
             )}
 

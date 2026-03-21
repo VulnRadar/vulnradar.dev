@@ -1948,6 +1948,15 @@ function UserDetailPanel({
   const [showGiftModal, setShowGiftModal] = useState(false)
   const [showSaveModal, setShowSaveModal] = useState(false)
   const [notifyUserOnSave, setNotifyUserOnSave] = useState(true)
+  
+  // Support action confirmation state
+  const [pendingSupportAction, setPendingSupportAction] = useState<{
+    action: string
+    label: string
+    description: string
+    variant?: "default" | "destructive"
+    extraPayload?: Record<string, unknown>
+  } | null>(null)
 
   // Track if there are unsaved changes
   const hasChanges = Object.keys(pendingChanges).length > 0 || pendingBadgeAwards.length > 0 || pendingBadgeRevokes.length > 0
@@ -1988,6 +1997,21 @@ function UserDetailPanel({
     } else {
       setPendingChanges((prev) => ({ ...prev, [key]: value }))
     }
+  }
+
+  // Queue a support action for confirmation
+  const queueSupportAction = (action: string, label: string, description: string, variant?: "default" | "destructive", extraPayload?: Record<string, unknown>) => {
+    setPendingSupportAction({ action, label, description, variant, extraPayload })
+  }
+  
+  // Execute the pending support action
+  const executeSupportAction = async (notifyUser: boolean) => {
+    if (!pendingSupportAction) return
+    await handleAction(u.id, pendingSupportAction.action, { 
+      ...pendingSupportAction.extraPayload, 
+      notifyUser 
+    })
+    setPendingSupportAction(null)
   }
 
   // Save all pending changes
@@ -2746,14 +2770,14 @@ function UserDetailPanel({
                       description={`Revoke all ${u.session_count} active session(s)`}
                       color="text-primary" bg="bg-primary/10"
                       loading={isLoading("revoke_sessions")}
-                      onClick={() => onAction(u.id, "revoke_sessions")}
+                      onClick={() => queueSupportAction("revoke_sessions", "Force Logout", `Revoke all ${u.session_count} active session(s) for ${u.name || u.email}`)}
                     />
                     <ActionCard
                       icon={Key} label="Revoke API Keys"
                       description={`Invalidate all ${u.api_key_count} API key(s)`}
                       color="text-[hsl(var(--severity-medium))]" bg="bg-[hsl(var(--severity-medium))]/10"
                       loading={isLoading("revoke_api_keys")}
-                      onClick={() => onAction(u.id, "revoke_api_keys")}
+                      onClick={() => queueSupportAction("revoke_api_keys", "Revoke API Keys", `Invalidate all ${u.api_key_count} API key(s) for ${u.name || u.email}`)}
                     />
                     {hasStaffPermission(callerRole, STAFF_PERMISSIONS.RESET_USER_PASSWORD) && (
                       <ActionCard
@@ -2761,7 +2785,7 @@ function UserDetailPanel({
                         description={u.totp_enabled ? "Unavailable: 2FA enabled" : "Generate temp password"}
                         color="text-[hsl(var(--severity-medium))]" bg="bg-[hsl(var(--severity-medium))]/10"
                         disabled={u.totp_enabled} loading={isLoading("reset_password")}
-                        onClick={() => onAction(u.id, "reset_password")}
+                        onClick={() => queueSupportAction("reset_password", "Reset Password", `Generate a temporary password for ${u.name || u.email}`)}
                       />
                     )}
                     {hasStaffPermission(callerRole, STAFF_PERMISSIONS.RESET_USER_2FA) && u.totp_enabled && (
@@ -2770,7 +2794,7 @@ function UserDetailPanel({
                         description="Remove two-factor auth"
                         color="text-[hsl(var(--severity-medium))]" bg="bg-[hsl(var(--severity-medium))]/10"
                         loading={isLoading("reset_2fa")}
-                        onClick={() => onAction(u.id, "reset_2fa")}
+                        onClick={() => queueSupportAction("reset_2fa", "Reset 2FA", `Remove two-factor authentication for ${u.name || u.email}`)}
                       />
                     )}
                     {hasStaffPermission(callerRole, STAFF_PERMISSIONS.MANAGE_RATE_LIMITS) && (
@@ -2779,7 +2803,7 @@ function UserDetailPanel({
                         description="Reset rate limit counters"
                         color="text-primary" bg="bg-primary/10"
                         loading={isLoading("clear_rate_limits")}
-                        onClick={() => onAction(u.id, "clear_rate_limits")}
+                        onClick={() => queueSupportAction("clear_rate_limits", "Clear Rate Limits", `Reset rate limit counters for ${u.name || u.email}`)}
                       />
                     )}
                     <ActionCard
@@ -2787,7 +2811,7 @@ function UserDetailPanel({
                       description="Logout + revoke all API keys"
                       color="text-[hsl(var(--severity-medium))]" bg="bg-[hsl(var(--severity-medium))]/10"
                       loading={isLoading("force_logout_all")}
-                      onClick={() => onAction(u.id, "force_logout_all")}
+                      onClick={() => queueSupportAction("force_logout_all", "Force Logout All", `Logout and revoke all API keys for ${u.name || u.email}`)}
                     />
                   </div>
                 </div>
@@ -2802,7 +2826,7 @@ function UserDetailPanel({
                         description="Manually verify email address"
                         color="text-emerald-500" bg="bg-emerald-500/10"
                         loading={isLoading("verify_email")}
-                        onClick={() => onAction(u.id, "verify_email")}
+                        onClick={() => queueSupportAction("verify_email", "Verify Email", `Manually verify email address for ${u.name || u.email}`)}
                       />
                     ) : (
                       <ActionCard
@@ -2810,7 +2834,7 @@ function UserDetailPanel({
                         description="Remove email verification"
                         color="text-[hsl(var(--severity-medium))]" bg="bg-[hsl(var(--severity-medium))]/10"
                         loading={isLoading("unverify_email")}
-                        onClick={() => onAction(u.id, "unverify_email")}
+                        onClick={() => queueSupportAction("unverify_email", "Unverify Email", `Remove email verification for ${u.name || u.email}`)}
                       />
                     )}
                     <ActionCard
@@ -2818,7 +2842,7 @@ function UserDetailPanel({
                       description="Remove profile picture"
                       color="text-muted-foreground" bg="bg-muted/50"
                       loading={isLoading("clear_avatar")}
-                      onClick={() => onAction(u.id, "clear_avatar")}
+                      onClick={() => queueSupportAction("clear_avatar", "Clear Avatar", `Remove profile picture for ${u.name || u.email}`)}
                     />
                     {hasStaffPermission(callerRole, STAFF_PERMISSIONS.EDIT_USER_ROLE) && (
                       <ActionCard
@@ -2826,7 +2850,7 @@ function UserDetailPanel({
                         description="Enable/disable beta features"
                         color="text-primary" bg="bg-primary/10"
                         loading={isLoading("toggle_beta_access")}
-                        onClick={() => onAction(u.id, "toggle_beta_access")}
+                        onClick={() => queueSupportAction("toggle_beta_access", "Toggle Beta Access", `Enable/disable beta features for ${u.name || u.email}`)}
                       />
                     )}
                   </div>
@@ -2871,12 +2895,12 @@ function UserDetailPanel({
                         : null
                     }
                     onGift={(plan, endDate) => {
-                      onAction(u.id, "gift_subscription", { giftPlan: plan, giftEndDate: endDate })
                       setShowGiftModal(false)
+                      queueSupportAction("gift_subscription", "Gift Subscription", `Gift ${plan.replace("_", " ")} plan to ${u.name || u.email} until ${new Date(endDate).toLocaleDateString()}`, "default", { giftPlan: plan, giftEndDate: endDate })
                     }}
                     onRevoke={() => {
-                      onAction(u.id, "revoke_gift")
                       setShowGiftModal(false)
+                      queueSupportAction("revoke_gift", "Revoke Gift", `Remove gifted subscription from ${u.name || u.email}`, "destructive")
                     }}
                   />
                 )}
@@ -2892,7 +2916,12 @@ function UserDetailPanel({
                       color={u.disabled_at ? "text-emerald-500" : "text-destructive"}
                       bg={u.disabled_at ? "bg-emerald-500/10" : "bg-destructive/10"}
                       variant={u.disabled_at ? "success" : "danger"}
-                      onClick={() => onAction(u.id, u.disabled_at ? "enable" : "disable")}
+                      onClick={() => queueSupportAction(
+                        u.disabled_at ? "enable" : "disable",
+                        u.disabled_at ? "Re-enable Account" : "Disable Account",
+                        u.disabled_at ? `Allow ${u.name || u.email} to log in again` : `Suspend ${u.name || u.email} and force logout all sessions`,
+                        u.disabled_at ? "default" : "destructive"
+                      )}
                     />
                     {hasStaffPermission(callerRole, STAFF_PERMISSIONS.DELETE_ANY_SCAN) && (
                       <ActionCard
@@ -2900,7 +2929,7 @@ function UserDetailPanel({
                         description={`Remove all ${u.scan_count} scan(s)`}
                         color="text-destructive" bg="bg-destructive/10" variant="danger"
                         loading={isLoading("delete_scans")}
-                        onClick={() => onAction(u.id, "delete_scans")}
+                        onClick={() => queueSupportAction("delete_scans", "Delete All Scans", `Remove all ${u.scan_count} scan(s) for ${u.name || u.email}`, "destructive")}
                       />
                     )}
                     <ActionCard
@@ -2908,21 +2937,21 @@ function UserDetailPanel({
                       description="Remove all webhooks"
                       color="text-destructive" bg="bg-destructive/10" variant="danger"
                       loading={isLoading("delete_webhooks")}
-                      onClick={() => onAction(u.id, "delete_webhooks")}
+                      onClick={() => queueSupportAction("delete_webhooks", "Delete Webhooks", `Remove all webhooks for ${u.name || u.email}`, "destructive")}
                     />
                     <ActionCard
                       icon={CalendarOff} label="Delete Schedules"
                       description="Remove scheduled scans"
                       color="text-destructive" bg="bg-destructive/10" variant="danger"
                       loading={isLoading("delete_schedules")}
-                      onClick={() => onAction(u.id, "delete_schedules")}
+                      onClick={() => queueSupportAction("delete_schedules", "Delete Schedules", `Remove all scheduled scans for ${u.name || u.email}`, "destructive")}
                     />
                     {hasStaffPermission(callerRole, STAFF_PERMISSIONS.DELETE_USER) && (
                       <ActionCard
                         icon={Trash2} label="Delete Account"
                         description="Permanently remove user"
                         color="text-destructive" bg="bg-destructive/10" variant="danger"
-                        onClick={() => onAction(u.id, "delete")}
+                        onClick={() => queueSupportAction("delete", "Delete Account", `Permanently remove ${u.name || u.email}'s account. This cannot be undone.`, "destructive")}
                       />
                     )}
                   </div>
@@ -3131,23 +3160,46 @@ function UserDetailPanel({
         </div>
       )}
       
-      {/* Save Confirmation Modal */}
-      <SaveConfirmationModal
-        isOpen={showSaveModal}
-        onClose={() => setShowSaveModal(false)}
-        onConfirm={async (notify) => {
-          setNotifyUserOnSave(notify ?? true)
-          await saveAllChanges()
-          setShowSaveModal(false)
-        }}
-        title="Confirm Changes"
-        description={`Review the changes you're about to apply to ${u.name || u.email}'s account.`}
-        changes={modalChanges}
-        loading={isSaving}
-        isAdminAction={true}
-        affectedUser={affectedUser}
-        confirmText="Apply Changes"
-      />
+  {/* Save Confirmation Modal */}
+  <SaveConfirmationModal
+  isOpen={showSaveModal}
+  onClose={() => setShowSaveModal(false)}
+  onConfirm={async (notify) => {
+  setNotifyUserOnSave(notify ?? true)
+  await saveAllChanges()
+  setShowSaveModal(false)
+  }}
+  title="Confirm Changes"
+  description={`Review the changes you're about to apply to ${u.name || u.email}'s account.`}
+  changes={modalChanges}
+  loading={isSaving}
+  isAdminAction={true}
+  affectedUser={affectedUser}
+  confirmText="Apply Changes"
+  />
+  
+  {/* Support Action Confirmation Modal */}
+  <SaveConfirmationModal
+  isOpen={!!pendingSupportAction}
+  onClose={() => setPendingSupportAction(null)}
+  onConfirm={async (notify) => {
+  await executeSupportAction(notify ?? true)
+  }}
+  title={pendingSupportAction?.label || "Confirm Action"}
+  description={pendingSupportAction?.description || "Are you sure you want to perform this action?"}
+  changes={[{
+  field: "action",
+  label: "Action",
+  oldValue: "Current State",
+  newValue: pendingSupportAction?.label || "Execute Action"
+  }]}
+  loading={isLoading(pendingSupportAction?.action || "")}
+  isAdminAction={true}
+  affectedUser={affectedUser}
+  confirmText="Confirm"
+  variant={pendingSupportAction?.variant}
+  forceNotify={true}
+  />
     </div>
   )
 }
