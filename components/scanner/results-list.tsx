@@ -79,12 +79,13 @@ export function ResultsList({ findings, onSelectIssue }: ResultsListProps) {
           f.description.toLowerCase().includes(query)
       )
     }
-    if (sortAsc) {
-      return [...result].sort(
-        (a, b) => SEVERITY_ORDER[b.severity] - SEVERITY_ORDER[a.severity],
-      )
-    }
-    return result
+    // Always sort - sortAsc true = low to high, false = high to low
+    // SEVERITY_ORDER: critical=5, high=4, medium=3, low=2, info=1
+    return [...result].sort((a, b) => {
+      const orderA = SEVERITY_ORDER[a.severity] ?? 0
+      const orderB = SEVERITY_ORDER[b.severity] ?? 0
+      return sortAsc ? orderA - orderB : orderB - orderA
+    })
   }, [findings, activeSeverities, activeCategory, sortAsc, searchQuery])
 
   return (
