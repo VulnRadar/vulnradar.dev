@@ -145,75 +145,52 @@ export default function PricingPage() {
               <div className="absolute inset-0 bg-black/80 backdrop-blur-md" onClick={() => setCheckoutPlan(null)} />
               
               {/* Modal */}
-              <div className="relative bg-background border border-border rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden">
-                {/* Header - Fixed */}
-                <div className="flex-shrink-0 flex items-start justify-between p-6 border-b border-border bg-gradient-to-b from-muted/50 to-transparent">
-                  <div className="flex items-start gap-4">
-                    {/* Plan Icon */}
-                    <div 
-                      className="h-12 w-12 rounded-xl flex items-center justify-center"
-                      style={{ backgroundColor: `${planBadgeColor}15` }}
+              <div className="relative bg-background border border-border rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] flex flex-col overflow-hidden animate-scale-in">
+
+                {/* Header - plan identity strip */}
+                <div className="flex-shrink-0 flex items-center justify-between px-5 py-4 border-b border-border/60">
+                  <div className="flex items-center gap-3">
+                    <div
+                      className="h-9 w-9 rounded-lg flex items-center justify-center"
+                      style={{ backgroundColor: `${planBadgeColor}18` }}
                     >
-                      <Sparkles className="h-6 w-6" style={{ color: planBadgeColor }} />
+                      <Sparkles className="h-4 w-4" style={{ color: planBadgeColor }} />
                     </div>
-                    <div>
-                      <div className="flex items-center gap-2 mb-1">
-                        <h3 className="font-bold text-xl">{planName} Plan</h3>
-                        <Badge variant="outline" className="text-xs" style={{ borderColor: `${planBadgeColor}50`, color: planBadgeColor }}>
-                          {billing === "yearly" ? "Save 20%" : "Monthly"}
+                    <div className="flex items-center gap-2.5">
+                      <span className="font-semibold text-base">{planName} Supporter</span>
+                      <span className="text-muted-foreground text-sm">·</span>
+                      <span className="font-bold text-base">
+                        ${billing === "yearly" ? Math.round(planPrice * 0.8) : planPrice}
+                        <span className="text-sm font-normal text-muted-foreground">/{billing === "yearly" ? "mo" : "mo"}</span>
+                      </span>
+                      {billing === "yearly" && (
+                        <Badge variant="outline" className="text-[10px] px-1.5 py-0" style={{ borderColor: `${planBadgeColor}50`, color: planBadgeColor }}>
+                          20% off
                         </Badge>
-                      </div>
-                      <p className="text-muted-foreground text-sm">{selectedPlan?.description}</p>
-                      <div className="flex items-baseline gap-1 mt-2">
-                        <span className="text-3xl font-bold">${billing === "yearly" ? Math.round(planPrice * 0.8) : planPrice}</span>
-                        <span className="text-muted-foreground">/{billing === "yearly" ? "mo" : "month"}</span>
-                        {billing === "yearly" && (
-                          <span className="text-xs text-muted-foreground ml-2">billed annually</span>
-                        )}
-                      </div>
+                      )}
                     </div>
                   </div>
-                  <Button variant="ghost" size="icon" className="h-9 w-9 rounded-full hover:bg-muted flex-shrink-0" onClick={() => setCheckoutPlan(null)}>
+                  <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full hover:bg-muted flex-shrink-0" onClick={() => setCheckoutPlan(null)}>
                     <X className="h-4 w-4" />
                   </Button>
                 </div>
-                
-                {/* Scrollable Content */}
-                <div className="flex-1 overflow-y-auto">
-                  {/* Plan Features Summary */}
-                  <div className="p-6 border-b border-border bg-muted/20">
-                    <h4 className="text-sm font-medium text-muted-foreground mb-3">What you will get</h4>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                      {planFeatures.slice(0, 6).map((feature, i) => (
-                        <div key={i} className="flex items-center gap-2 text-sm">
-                          <div className="h-5 w-5 rounded-full flex items-center justify-center flex-shrink-0" style={{ backgroundColor: `${planBadgeColor}15` }}>
-                            <Check className="h-3 w-3" style={{ color: planBadgeColor }} />
-                          </div>
-                          <span>{feature}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                  
-                  {/* Stripe Checkout Form */}
-                  <div className="bg-white">
-                    <div className="p-6">
-                      {me?.userId && <StripeCheckout productId={checkoutPlan} userId={me.userId} onSuccess={() => setCheckoutPlan(null)} />}
-                    </div>
+
+                {/* Stripe Checkout Form - scrollable */}
+                <div className="flex-1 overflow-y-auto bg-white">
+                  <div className="p-5">
+                    {me?.userId && <StripeCheckout productId={checkoutPlan} userId={me.userId} onSuccess={() => setCheckoutPlan(null)} />}
                   </div>
                 </div>
-                
-                {/* Footer - Fixed */}
-                <div className="flex-shrink-0 px-6 py-4 border-t border-border bg-muted/30">
-                  <div className="flex items-center justify-between gap-4">
-                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                      <Shield className="h-4 w-4" />
-                      <span>Secure 256-bit SSL encryption</span>
-                    </div>
-                    <p className="text-xs text-muted-foreground">
-                      All purchases are final. <Link href="/legal/terms" className="underline hover:text-foreground">Terms apply</Link>.
-                    </p>
+
+                {/* Footer */}
+                <div className="flex-shrink-0 flex items-center justify-between gap-4 px-5 py-3 border-t border-border bg-muted/20">
+                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                    <Shield className="h-3.5 w-3.5" />
+                    <span>256-bit SSL encryption</span>
                   </div>
+                  <p className="text-xs text-muted-foreground">
+                    All purchases are final. <Link href="/legal/terms" className={`underline hover:text-foreground ${transitions.colors}`}>Terms</Link>.
+                  </p>
                 </div>
               </div>
             </div>
