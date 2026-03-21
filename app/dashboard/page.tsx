@@ -65,18 +65,44 @@ function DashboardContent() {
     }
   }, [])
 
-  // If user manually navigates to /dashboard#scan-{id}, redirect to history page
+  // Handle URL hash changes for navigation
+  // - If user manually navigates to /dashboard#scan-{id} while idle, redirect to history
+  // - If hash is cleared (e.g., clicking logo from /dashboard#scan-305 → /dashboard), reset view
   useEffect(() => {
     if (typeof window === "undefined") return
+    
+    // Track previous hash to detect when it's cleared
+    let prevHash = window.location.hash
+    
     const checkHash = () => {
       const hash = window.location.hash
+      
+      // Hash was cleared (went from #scan-X to no hash) - reset to idle dashboard
+      if (prevHash.startsWith("#scan-") && !hash && status === "done") {
+        prevHash = hash
+        // Reset the dashboard state
+        setStatus("idle")
+        setResult(null)
+        setScanHistoryId(null)
+        setError(null)
+        setSelectedIssue(null)
+        setScanNotes("")
+        setEditingNotes(false)
+        setCrawlInfo(null)
+        return
+      }
+      
+      // User navigated to #scan-{id} while idle - redirect to history
       if (hash.startsWith("#scan-") && status === "idle") {
         const id = hash.replace("#scan-", "")
         if (id && !isNaN(parseInt(id, 10))) {
           window.location.href = `/history#${id}`
         }
       }
+      
+      prevHash = hash
     }
+    
     checkHash()
     window.addEventListener("hashchange", checkHash)
     return () => window.removeEventListener("hashchange", checkHash)
