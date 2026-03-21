@@ -1,8 +1,12 @@
 // ============================================================================
-// CLIENT-ONLY CONSTANTS
+// CLIENT-ONLY CONSTANTS (Source of Truth for Client-Safe Values)
 // ============================================================================
 // These constants are safe to use in client components and don't depend
 // on server-only config loading. Role definitions, routes, and UI styles.
+// 
+// NOTE: constants.ts re-exports these values for convenience. If you need
+// client-safe constants in client components, import from here directly
+// to avoid potential bundling issues with server-only code.
 // ============================================================================
 
 // ============================================================================

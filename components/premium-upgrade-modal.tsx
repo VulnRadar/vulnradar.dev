@@ -11,7 +11,8 @@ import {
 } from "@/components/ui/dialog"
 import { Badge } from "@/components/ui/badge"
 import Link from "next/link"
-import { ROUTES } from "@/lib/constants"
+import { ROUTES, BILLING_PLAN_LIMITS, BILLING_HISTORY_RETENTION } from "@/lib/constants"
+import { PLANS } from "@/lib/plans"
 
 export interface PremiumFeature {
   id: string
@@ -66,16 +67,20 @@ export const PREMIUM_FEATURES: Record<string, PremiumFeature> = {
   },
 }
 
-const PLAN_LABELS: Record<string, string> = {
-  core_supporter: "Core",
-  pro_supporter: "Pro",
-  elite_supporter: "Elite",
-}
+// Derive plan labels and prices from centralized plans config
+const PLAN_LABELS: Record<string, string> = Object.fromEntries(
+  PLANS.map(p => [p.id, p.name.replace(" Supporter", "")])
+)
 
-const PLAN_PRICES: Record<string, number> = {
-  core_supporter: 5,
-  pro_supporter: 10,
-  elite_supporter: 20,
+const PLAN_PRICES: Record<string, number> = Object.fromEntries(
+  PLANS.map(p => [p.id, p.priceInCents / 100])
+)
+
+// Helper to get retention label
+function getRetentionLabel(planId: string): string {
+  const retention = BILLING_HISTORY_RETENTION[planId as keyof typeof BILLING_HISTORY_RETENTION]
+  if (retention === -1) return "Unlimited scan history"
+  return `${retention}-day scan history`
 }
 
 interface PremiumUpgradeModalProps {
@@ -94,31 +99,22 @@ export function PremiumUpgradeModal({
   const requiredPlanLabel = PLAN_LABELS[feature.requiredPlan]
   const requiredPlanPrice = PLAN_PRICES[feature.requiredPlan]
 
-  // Get benefits based on required plan
-  const planBenefits = {
-    core_supporter: [
-      "100 scans per day",
-      "90-day scan history",
-      "Email support",
-      "Early access features",
-    ],
-    pro_supporter: [
-      "150 scans per day",
-      "Unlimited scan history",
-      "Priority support",
-      "5,000 API requests/day",
-      "All Core features",
-    ],
-    elite_supporter: [
-      "500 scans per day",
-      "Unlimited API access",
-      "Dedicated support",
-      "Beta features access",
-      "All Pro features",
-    ],
+  // Get benefits dynamically from config
+  const getPlanBenefits = (planId: string): string[] => {
+    const scanLimit = BILLING_PLAN_LIMITS[planId as keyof typeof BILLING_PLAN_LIMITS]
+    const retention = getRetentionLabel(planId)
+    
+    if (planId === "core_supporter") {
+      return [`${scanLimit} scans per day`, retention, "Email support", "Early access features"]
+    } else if (planId === "pro_supporter") {
+      return [`${scanLimit} scans per day`, retention, "Priority support", "5,000 API requests/day", "All Core features"]
+    } else if (planId === "elite_supporter") {
+      return [`${scanLimit} scans per day`, "Unlimited API access", "Dedicated support", "Beta features access", "All Pro features"]
+    }
+    return []
   }
 
-  const benefits = planBenefits[feature.requiredPlan] || []
+  const benefits = getPlanBenefits(feature.requiredPlan)
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
