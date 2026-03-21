@@ -833,10 +833,39 @@ function ProfileContent() {
     }
   }
   
-  // Check for notification changes
-  const hasNotificationChanges = originalNotifPrefs && Object.keys(notifPrefs).some(
-    (key) => notifPrefs[key as keyof NotificationPrefs] !== originalNotifPrefs[key as keyof NotificationPrefs]
-  )
+// Notification pref labels for display
+  const NOTIF_LABELS: Record<keyof NotificationPrefs, string> = {
+    email_security: "Security Alerts",
+    email_new_login: "Login Alerts",
+    email_password_change: "Password Changes",
+    email_2fa_change: "2FA Changes",
+    email_session_revoked: "Session Revoked",
+    email_scan_complete: "Scan Complete",
+    email_critical_findings: "Critical Findings",
+    email_regression_alert: "Regression Alerts",
+    email_schedules: "Scheduled Scans",
+    email_api_keys: "API Key Activity",
+    email_api_limit_warning: "API Limit Warning",
+    email_webhooks: "Webhook Activity",
+    email_webhook_failure: "Webhook Failures",
+    email_data_requests: "Data Requests",
+    email_account_deletion: "Account Deletion",
+    email_team_invite: "Team Invites",
+    email_team_changes: "Team Changes",
+    email_product_updates: "Product Updates",
+    email_tips_guides: "Tips & Guides",
+  }
+  
+  // Check for notification changes and build list
+  const changedNotifications: { key: keyof NotificationPrefs; oldVal: boolean; newVal: boolean }[] = []
+  if (originalNotifPrefs) {
+    for (const key of Object.keys(notifPrefs) as (keyof NotificationPrefs)[]) {
+      if (notifPrefs[key] !== originalNotifPrefs[key]) {
+        changedNotifications.push({ key, oldVal: originalNotifPrefs[key], newVal: notifPrefs[key] })
+      }
+    }
+  }
+  const hasNotificationChanges = changedNotifications.length > 0
   
   // Check for any pending changes
   const hasPendingChanges = Object.keys(pendingChanges).length > 0 || hasNotificationChanges
@@ -850,17 +879,17 @@ function ProfileContent() {
       newValue: pendingChanges.name
     }] : []),
     ...(pendingChanges.email !== undefined ? [{
-      field: "email", 
+      field: "email",
       label: "Email Address",
       oldValue: user?.email || "",
       newValue: pendingChanges.email
     }] : []),
-    ...(hasNotificationChanges ? [{
-      field: "notifications",
-      label: "Notification Preferences",
-      oldValue: "Previous settings",
-      newValue: "Updated settings"
-    }] : []),
+    ...changedNotifications.map(({ key, oldVal, newVal }) => ({
+      field: key,
+      label: NOTIF_LABELS[key] || key,
+      oldValue: oldVal ? "Enabled" : "Disabled",
+      newValue: newVal ? "Enabled" : "Disabled"
+    })),
   ]
 
   // ---- Billing handlers ----
