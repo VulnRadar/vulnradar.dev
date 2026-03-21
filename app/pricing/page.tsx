@@ -126,16 +126,27 @@ export default function PricingPage() {
         {/* Stripe Checkout Modal */}
         {checkoutPlan && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setCheckoutPlan(null)} />
-            <div className="relative bg-card border border-border rounded-xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
-              <div className="sticky top-0 z-10 flex items-center justify-between p-4 border-b border-border bg-card">
-                <h3 className="font-semibold">Complete your subscription</h3>
-                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setCheckoutPlan(null)}>
+            <div className="absolute inset-0 bg-black/80 backdrop-blur-md" onClick={() => setCheckoutPlan(null)} />
+            <div className="relative bg-background border border-border rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-hidden">
+              {/* Header */}
+              <div className="sticky top-0 z-10 flex items-center justify-between px-6 py-4 border-b border-border bg-background/95 backdrop-blur">
+                <div>
+                  <h3 className="font-semibold text-lg">Subscribe to {checkoutPlan.includes('elite') ? 'Elite' : checkoutPlan.includes('pro') ? 'Pro' : 'Core'}</h3>
+                  <p className="text-sm text-muted-foreground">Secure payment powered by Stripe</p>
+                </div>
+                <Button variant="ghost" size="icon" className="h-9 w-9 rounded-full hover:bg-muted" onClick={() => setCheckoutPlan(null)}>
                   <X className="h-4 w-4" />
                 </Button>
               </div>
-              <div className="p-4 min-h-[400px]">
-                {me?.userId && <StripeCheckout productId={checkoutPlan} userId={me.userId} />}
+              {/* Checkout Form */}
+              <div className="p-6 min-h-[400px] bg-white">
+                {me?.userId && <StripeCheckout productId={checkoutPlan} userId={me.userId} onSuccess={() => setCheckoutPlan(null)} />}
+              </div>
+              {/* Footer note */}
+              <div className="px-6 py-4 border-t border-border bg-muted/30 text-center">
+                <p className="text-xs text-muted-foreground">
+                  By subscribing, you agree to our terms of service. All purchases are final.
+                </p>
               </div>
             </div>
           </div>

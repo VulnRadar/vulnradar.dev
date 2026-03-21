@@ -53,6 +53,12 @@ export async function startCheckoutSession(productId: string, userId?: number) {
         scansPerDay: product.scansPerDay.toString(),
       },
     },
+    // Custom appearance for dark theme matching our site
+    custom_text: {
+      submit: {
+        message: 'Your subscription will renew automatically each billing period.',
+      },
+    },
   })
 
   return session.client_secret
