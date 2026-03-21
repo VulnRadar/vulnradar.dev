@@ -16,6 +16,9 @@ async function sendNotificationIfEnabled(
     sendEmail({ to, ...emailPayload }).catch(console.error)
   }
 }
+
+// Helper to get admin name for emails
+async function getAdminName(adminId: number): Promise<string> {
   const result = await pool.query("SELECT name, email FROM users WHERE id = $1", [adminId])
   return result.rows[0]?.name || result.rows[0]?.email || "Administrator"
 }
