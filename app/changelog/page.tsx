@@ -93,6 +93,31 @@ interface Release {
 
 const CHANGELOG: Release[] = [
   {
+    version: "2.1.0",
+    date: "March 21, 2026",
+    title: "Complete UI/UX Redesign, Support Actions System & Admin Dashboard Overhaul",
+    highlights: true,
+    summary: "Comprehensive redesign of all user-facing pages using Vercel-inspired design patterns. New support action confirmation system with email notifications, fixed staff role detection for unlimited access, and complete admin panel modernization. All sorting functionality restored and working correctly.",
+    changes: [
+      { icon: Palette, label: "Complete UI/UX Redesign", desc: "Redesigned all major pages to match Vercel's professional dashboard aesthetic. Dashboard now features larger stat cards with colored icons, improved activity charts, severity breakdowns, and better visual hierarchy. All pages follow consistent rounded-xl card styling with proper spacing and borders.", category: "changed" },
+      { icon: Layout, label: "Dashboard Component Revamp", desc: "Redesigned dashboard with stat cards showing totals, unique sites, API scans, and web scans with proper icon backgrounds. Added activity charts with improved tooltips and better axis labels. Severity breakdown uses minimal cards with accent bars. Recent scans section shows relative timestamps and source icons.", category: "changed" },
+      { icon: List, label: "History Page Modernization", desc: "History page now displays a table-style list with proper column headers (URL, Source, Issues, Scanned, Actions). Added stats row showing totals, clean scans, issues count. Dropdown action menus on each row. Improved severity badges with colored dots and backgrounds.", category: "changed" },
+      { icon: FileSearch, label: "Scan Results Pages Update", desc: "Revamped scan-summary, results-list, and issue-detail components with cleaner card layouts, better typography hierarchy, and improved collapsible sections. Issue detail cards now show severity bars, animated evidence indicators, and better reference sections.", category: "changed" },
+      { icon: GitMerge, label: "Compare Page Redesign", desc: "Redesigned compare page with cleaner two-column layout, numbered selection steps, better visual diff indicators with green for fixed and red for new issues. Added 'No Changes' state when scans are identical.", category: "changed" },
+      { icon: Share2, label: "Shared & Shares Pages Revamp", desc: "Shared scan results page improved with hero header card and severity-based gradient accents. Shares list page now shows stats row with active shares breakdown, table-style layout with status badges, and dropdown menus for manage actions.", category: "changed" },
+      { icon: Users, label: "Teams Page Complete Redesign", desc: "Teams page now includes search input, table-style layout for teams with members and role columns. Team detail view uses cleaner cards with proper sections for members, pending invites, and member scan history. Join page simplified with better visual hierarchy and centered layout.", category: "changed" },
+      { icon: Palette, label: "Badge Page Modernization", desc: "Badge embed page redesigned with two-column layout. Left column shows scan selection list with search, severity badges, and timestamps. Right column displays badge preview with hover effects and clean snippet blocks with proper code formatting.", category: "changed" },
+      { icon: Pencil, label: "Profile Pages Restructure", desc: "Profile page redesigned with sidebar navigation on left and cleaner content cards on right. Sidebar shows all 7 tabs (General, Security, Connected Accounts, Billing, Developer, Notifications, Privacy) with proper styling. Each section uses improved form layouts with better visual hierarchy.", category: "changed" },
+      { icon: ShieldAlert, label: "Admin Panel Complete Overhaul", desc: "Admin page streamlined from 3400+ to 2000 lines with cleaner stat cards, improved tab navigation, and modernized data tables. Better user list UI with search, cleaner user detail panel with two-column layout. All sections use consistent styling and spacing.", category: "changed" },
+      { icon: Bell, label: "Support Actions System", desc: "New support action confirmation modal system. All support actions (Force Logout, Revoke API Keys, Reset Password, etc.) now queue through a SaveConfirmationModal with action review. Email notification toggle is always enabled for support actions with 'Required' badge instead of toggle.", category: "added" },
+      { icon: Mail, label: "Support Action Email Notifications", desc: "Added email notifications for support actions: revoke_sessions, revoke_api_keys, force_logout_all, and reset_password. All staff actions now send detailed email notification to affected user about the action taken, who performed it, and when.", category: "added" },
+      { icon: Shield, label: "Staff Role Unlimited Access Fix", desc: "Fixed billing and daily limits to properly recognize all staff roles (admin, moderator, support) as unlimited. Previously only 'admin' was marked unlimited. All staff roles now correctly show 'Unlimited Access' in billing section and get unlimited daily scans.", category: "fixed" },
+      { icon: RefreshCw, label: "Severity Sorting Fix", desc: "Fixed the High→Low and Low→High severity sorting which was completely broken. Sorting now works in both directions using proper SEVERITY_ORDER values. Results properly sort by severity level when toggled.", category: "fixed" },
+      { icon: Settings, label: "Consistent Token Loading", desc: "Standardized all loading states across share pages to use simple Loader2 spinner with text instead of fancy ping animations. Consistent loading UX across /shares and /shared/[token] pages.", category: "changed" },
+      { icon: ShieldCheck, label: "Form & Modal Improvements", desc: "Improved form layouts with better label styling, cleaner toggle switches for preferences, consistent textarea sizing, and better organized sections in modals. DeleteConfirmationModal now shows item details before deletion.", category: "changed" },
+    ],
+  },
+  {
     version: "2.0.6",
     date: "March 21, 2026",
     title: "parseBody Error Handling & Discord OAuth Device Trust Fix",
