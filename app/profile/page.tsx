@@ -1153,7 +1153,14 @@ function ProfileContent() {
                       <Label className="text-sm font-medium text-muted-foreground">Name</Label>
                       {!editingName ? (
                         <div className="flex items-center justify-between p-3 rounded-lg border border-border bg-secondary/20 gap-2">
-                          <span className="text-sm font-medium text-foreground truncate">{user?.name || "---"}</span>
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className="text-sm font-medium text-foreground truncate">
+                              {pendingChanges.name !== undefined ? pendingChanges.name : (user?.name || "---")}
+                            </span>
+                            {pendingChanges.name !== undefined && (
+                              <Badge variant="outline" className="text-[10px] bg-amber-500/10 text-amber-500 border-amber-500/20 shrink-0">Modified</Badge>
+                            )}
+                          </div>
                           <Button
                             variant="ghost"
                             size="sm"
@@ -1204,12 +1211,12 @@ function ProfileContent() {
                       <Label className="text-sm font-medium text-muted-foreground">Email</Label>
                       {!editingEmail ? (
                         <div className="flex items-center justify-between p-3 rounded-lg border border-border bg-secondary/20 gap-2">
-<div className="flex items-center gap-2 min-w-0">
-                            <UserCog className="h-4 w-4 text-muted-foreground shrink-0" />
+                          <div className="flex items-center gap-2 min-w-0">
+                            <Mail className="h-4 w-4 text-muted-foreground shrink-0" />
                             <span className="text-sm font-medium text-foreground truncate">
-                              {pendingChanges.name !== undefined ? pendingChanges.name : (user?.name || "(No name set)")}
+                              {pendingChanges.email !== undefined ? pendingChanges.email : user?.email}
                             </span>
-                            {pendingChanges.name !== undefined && (
+                            {pendingChanges.email !== undefined && (
                               <Badge variant="outline" className="text-[10px] bg-amber-500/10 text-amber-500 border-amber-500/20 shrink-0">Modified</Badge>
                             )}
                           </div>
@@ -2340,15 +2347,10 @@ function ProfileContent() {
                         {activeKeys.map((key) => (
                           <div key={key.id} className="flex flex-col gap-3 p-4 rounded-lg border border-border bg-card">
                             <div className="flex items-center justify-between gap-2">
-<div className="flex items-center gap-2 min-w-0">
-                            <Mail className="h-4 w-4 text-muted-foreground shrink-0" />
-                            <span className="text-sm font-medium text-foreground truncate">
-                              {pendingChanges.email !== undefined ? pendingChanges.email : user?.email}
-                            </span>
-                            {pendingChanges.email !== undefined && (
-                              <Badge variant="outline" className="text-[10px] bg-amber-500/10 text-amber-500 border-amber-500/20 shrink-0">Modified</Badge>
-                            )}
-                          </div>
+                              <div className="flex items-center gap-2 min-w-0">
+                                <Key className="h-4 w-4 text-muted-foreground shrink-0" />
+                                <span className="text-sm font-mono font-medium text-foreground truncate">{key.prefix}...</span>
+                              </div>
                               <Button
                                 variant="ghost"
                                 size="icon"
