@@ -3083,37 +3083,39 @@ function ProfileContent() {
         {hasPendingChanges && <div className="h-20" />}
       </main>
 
-      {/* Floating Save Bar */}
+      {/* Floating Save Bar - matches admin panel style */}
       {hasPendingChanges && (
-        <div className="fixed bottom-0 left-0 right-0 z-50 border-t border-border bg-card/95 backdrop-blur-sm shadow-lg animate-in slide-in-from-bottom-2">
-          <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between gap-4">
-            <div className="flex items-center gap-3 min-w-0">
-              <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
-                <Save className="h-4 w-4 text-primary" />
+        <div className="fixed bottom-0 left-0 right-0 z-50 p-4 pointer-events-none">
+          <div className="max-w-3xl mx-auto pointer-events-auto">
+            <div className="flex items-center justify-between gap-4 px-5 py-3.5 rounded-xl bg-card border border-primary/30 shadow-2xl shadow-primary/10 backdrop-blur-sm">
+              <div className="flex items-center gap-3">
+                <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center">
+                  <Save className="h-4 w-4 text-primary" />
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-foreground">Unsaved Changes</p>
+                  <p className="text-[11px] text-muted-foreground">
+                    {pendingChangeItems.length} field{pendingChangeItems.length !== 1 ? "s" : ""}
+                  </p>
+                </div>
               </div>
-              <div className="min-w-0">
-                <p className="text-sm font-medium text-foreground">Unsaved Changes</p>
-                <p className="text-xs text-muted-foreground truncate">
-                  {pendingChangeItems.length} pending change{pendingChangeItems.length !== 1 ? "s" : ""}
-                </p>
+              <div className="flex items-center gap-2">
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  onClick={() => {
+                    setPendingChanges({})
+                    if (originalNotifPrefs) setNotifPrefs(originalNotifPrefs)
+                  }}
+                  className="h-9 px-4"
+                >
+                  Discard
+                </Button>
+                <Button size="sm" onClick={() => setShowSaveModal(true)} className="h-9 px-5 gap-2">
+                  <Save className="h-3.5 w-3.5" />
+                  Review & Save
+                </Button>
               </div>
-            </div>
-            <div className="flex items-center gap-2 shrink-0">
-              <Button 
-                variant="ghost" 
-                size="sm" 
-                onClick={() => {
-                  setPendingChanges({})
-                  if (originalNotifPrefs) setNotifPrefs(originalNotifPrefs)
-                }}
-                className="text-muted-foreground"
-              >
-                Discard
-              </Button>
-              <Button size="sm" onClick={() => setShowSaveModal(true)} className="gap-1.5">
-                <Save className="h-3.5 w-3.5" />
-                Review & Save
-              </Button>
             </div>
           </div>
         </div>
