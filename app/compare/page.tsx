@@ -149,15 +149,8 @@ export default function ComparePage() {
         <div className="flex flex-col gap-8">
           {/* Header */}
           <div className="flex flex-col gap-1">
-            <div className="flex items-center gap-3">
-              <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-primary/10">
-                <GitCompareArrows className="h-5 w-5 text-primary" />
-              </div>
-              <div>
-                <h1 className="text-2xl font-semibold tracking-tight">Compare Scans</h1>
-                <p className="text-sm text-muted-foreground">Track security changes between scan results</p>
-              </div>
-            </div>
+            <h1 className="text-2xl font-semibold tracking-tight">Compare Scans</h1>
+            <p className="text-sm text-muted-foreground">Track security changes between scan results</p>
           </div>
 
           {/* Selection UI */}
