@@ -209,7 +209,13 @@ function ProfileContent() {
       window.history.replaceState(null, "", "/profile#general")
     }
     setActiveTab(getTab())
-    const onHashChange = () => setActiveTab(getTab())
+    const onHashChange = () => {
+      const newTab = getTab()
+      // Clear pending changes when hash changes (browser nav)
+      setPendingChanges({})
+      setShowSaveModal(false)
+      setActiveTab(newTab)
+    }
     window.addEventListener("hashchange", onHashChange)
     return () => window.removeEventListener("hashchange", onHashChange)
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -217,6 +223,15 @@ function ProfileContent() {
 
   // Change tab — just update the hash, no page reload
   const handleTabChange = (tab: Tab) => {
+    // Clear any pending changes when switching tabs
+    if (Object.keys(pendingChanges).length > 0 || showSaveModal) {
+      setPendingChanges({})
+      setShowSaveModal(false)
+    }
+    // Reset notification prefs to original if switching away from notifications
+    if (activeTab === "notifications" && originalNotifPrefs) {
+      setNotifPrefs(originalNotifPrefs)
+    }
     setActiveTab(tab)
     window.location.hash = tab
   }
