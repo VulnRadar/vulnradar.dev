@@ -491,7 +491,7 @@ function HistoryPageContent() {
               <div className="flex flex-col gap-1">
                 <h1 className="text-xl font-bold text-foreground">Scan History</h1>
                 <p className="text-sm text-muted-foreground">
-                  Click any scan to view full results. History kept for {retentionDays === -1 ? "unlimited" : `${retentionDays}-day`} retention.
+                  Click any scan to view full results. History kept for {retentionDays === -1 ? "unlimited time" : `${retentionDays} days`}.
                 </p>
               </div>
               {scans.length > 0 && (
