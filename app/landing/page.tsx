@@ -33,9 +33,6 @@ export default function LandingPage() {
             <Link href="/demo" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
               Demo
             </Link>
-            <Link href={ROUTES.CHANGELOG} className="text-sm text-muted-foreground hover:text-foreground transition-colors">
-              Changelog
-            </Link>
           </div>
           
           {/* Right side - pushed to end */}
