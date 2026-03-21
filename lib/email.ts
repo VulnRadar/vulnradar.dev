@@ -826,3 +826,158 @@ export function email2FADisabledEmail(details: SecurityAlertDetails) {
     `,
   }
 }
+
+// Admin notification to user (manual message)
+export interface AdminNotificationInput {
+  userName: string
+  adminName: string
+  title: string
+  message: string
+  type?: "info" | "warning" | "success" | "alert"
+  timestamp: Date
+}
+
+export function adminNotificationEmail(input: AdminNotificationInput) {
+  const userName = escapeHtml(input.userName)
+  const adminName = escapeHtml(input.adminName)
+  const title = escapeHtml(input.title)
+  const message = escapeHtml(input.message).replace(/\n/g, "<br>")
+  const timestamp = input.timestamp.toLocaleString("en-US", {
+    weekday: "long",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  })
+
+  // Color scheme based on type
+  const typeColors = {
+    info: { bg: COLORS.BG_INFO, border: COLORS.ACCENT_BLUE_LIGHT, text: COLORS.ACCENT_BLUE_PALE, icon: "ℹ️" },
+    warning: { bg: COLORS.BG_WARNING, border: COLORS.ACCENT_YELLOW, text: COLORS.ACCENT_YELLOW_PALE, icon: "⚠️" },
+    success: { bg: COLORS.BG_SUCCESS, border: COLORS.ACCENT_GREEN, text: COLORS.ACCENT_GREEN_PALE, icon: "✓" },
+    alert: { bg: COLORS.BG_DANGER, border: COLORS.ACCENT_RED, text: COLORS.ACCENT_RED_PALE, icon: "!" },
+  }
+  const colors = typeColors[input.type || "info"]
+
+  return {
+    subject: `${title} - ${APP_NAME}`,
+    text: `Hi ${input.userName},\n\nYou have received a notification from ${APP_NAME} administration.\n\n${input.title}\n\n${input.message}\n\n---\nSent by: ${input.adminName}\nTimestamp: ${timestamp}\n\nIf you have questions, contact support at ${SUPPORT_EMAIL}`,
+    html: `
+      <h1 style="margin: 0 0 8px 0; font-size: 20px; font-weight: 600; color: ${COLORS.TEXT_PRIMARY};">Message from ${APP_NAME}</h1>
+      <p style="margin: 0 0 24px 0; font-size: 14px; color: ${COLORS.TEXT_SECONDARY}; line-height: 1.6;">Hi ${userName}, you have received a notification from administration.</p>
+      
+      <div style="background-color: ${colors.bg}; border-left: 3px solid ${colors.border}; border-radius: 8px; padding: 20px; margin-bottom: 20px;">
+        <p style="margin: 0 0 12px 0; font-size: 16px; font-weight: 600; color: ${colors.text};">${title}</p>
+        <p style="margin: 0; font-size: 14px; color: ${COLORS.TEXT_PRIMARY}; line-height: 1.7;">${message}</p>
+      </div>
+      
+      <div style="background-color: ${COLORS.BG_SECTION}; border-radius: 8px; padding: 16px; margin-bottom: 20px;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="font-size: 13px; line-height: 1.8;">
+          <tr>
+            <td style="padding: 4px 0; width: 100px; color: ${COLORS.TEXT_SECONDARY};">From</td>
+            <td style="padding: 4px 0; color: ${COLORS.TEXT_PRIMARY};">${adminName} (${APP_NAME} Team)</td>
+          </tr>
+          <tr>
+            <td style="padding: 4px 0; width: 100px; color: ${COLORS.TEXT_SECONDARY};">Sent</td>
+            <td style="padding: 4px 0; color: ${COLORS.TEXT_PRIMARY};">${escapeHtml(timestamp)}</td>
+          </tr>
+        </table>
+      </div>
+      
+      <div style="background-color: ${COLORS.BG_INFO}; border-left: 3px solid ${COLORS.ACCENT_BLUE_LIGHT}; border-radius: 6px; padding: 14px 16px;">
+        <p style="margin: 0 0 4px 0; font-size: 13px; color: ${COLORS.ACCENT_BLUE_PALE}; font-weight: 600;">Need Help?</p>
+        <p style="margin: 0; font-size: 13px; color: #cbd5e1; line-height: 1.6;">
+          If you have questions, please contact support at 
+          <a href="mailto:${SUPPORT_EMAIL}" style="color: ${COLORS.ACCENT_BLUE_LIGHT}; text-decoration: none;">${SUPPORT_EMAIL}</a>
+        </p>
+      </div>
+    `,
+  }
+}
+
+// Admin account change notification
+export interface AdminChangeNotification {
+  userName: string
+  adminName: string
+  changes: { field: string; oldValue: string; newValue: string }[]
+  timestamp: Date
+  ipAddress?: string
+}
+
+export function adminAccountChangeEmail(input: AdminChangeNotification) {
+  const userName = escapeHtml(input.userName)
+  const adminName = escapeHtml(input.adminName)
+  const timestamp = input.timestamp.toLocaleString("en-US", {
+    weekday: "long",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  })
+
+  const changesHtml = input.changes
+    .map(
+      (c) => `
+      <tr>
+        <td style="padding: 10px 12px; border-bottom: 1px solid ${COLORS.BORDER_SECTION}; color: ${COLORS.TEXT_SECONDARY}; font-size: 13px; width: 120px;">${escapeHtml(c.field)}</td>
+        <td style="padding: 10px 12px; border-bottom: 1px solid ${COLORS.BORDER_SECTION};">
+          <span style="display: inline-block; padding: 3px 8px; background-color: ${COLORS.BG_DANGER}; border-radius: 4px; font-size: 12px; color: ${COLORS.ACCENT_RED_LIGHT}; text-decoration: line-through; margin-right: 8px;">${escapeHtml(c.oldValue || "—")}</span>
+          <span style="color: ${COLORS.TEXT_MUTED};">→</span>
+          <span style="display: inline-block; padding: 3px 8px; background-color: ${COLORS.BG_SUCCESS}; border-radius: 4px; font-size: 12px; color: ${COLORS.ACCENT_GREEN_LIGHT}; margin-left: 8px;">${escapeHtml(c.newValue || "—")}</span>
+        </td>
+      </tr>
+    `
+    )
+    .join("")
+
+  const changesText = input.changes
+    .map((c) => `  - ${c.field}: "${c.oldValue || "—"}" → "${c.newValue || "—"}"`)
+    .join("\n")
+
+  return {
+    subject: `Account Updated by Administrator - ${APP_NAME}`,
+    text: `Hi ${input.userName},\n\nAn administrator (${input.adminName}) has made changes to your ${APP_NAME} account.\n\nChanges:\n${changesText}\n\nTimestamp: ${timestamp}\n\nIf you have questions about these changes, please contact support at ${SUPPORT_EMAIL}`,
+    html: `
+      <h1 style="margin: 0 0 8px 0; font-size: 20px; font-weight: 600; color: ${COLORS.TEXT_PRIMARY};">Account Updated</h1>
+      <p style="margin: 0 0 24px 0; font-size: 14px; color: ${COLORS.TEXT_SECONDARY}; line-height: 1.6;">Hi ${userName}, an administrator has made changes to your account.</p>
+      
+      <div style="background-color: ${COLORS.BG_SECTION}; border-radius: 8px; padding: 16px; margin-bottom: 20px;">
+        <p style="margin: 0 0 12px 0; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: ${COLORS.TEXT_MUTED}; font-weight: 600;">Changes Made</p>
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse: collapse;">
+          ${changesHtml}
+        </table>
+      </div>
+      
+      <div style="background-color: ${COLORS.BG_SECTION}; border-radius: 8px; padding: 16px; margin-bottom: 20px;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="font-size: 13px; line-height: 1.8;">
+          <tr>
+            <td style="padding: 4px 0; width: 100px; color: ${COLORS.TEXT_SECONDARY};">Admin</td>
+            <td style="padding: 4px 0; color: ${COLORS.TEXT_PRIMARY};">${adminName}</td>
+          </tr>
+          <tr>
+            <td style="padding: 4px 0; width: 100px; color: ${COLORS.TEXT_SECONDARY};">Timestamp</td>
+            <td style="padding: 4px 0; color: ${COLORS.TEXT_PRIMARY};">${escapeHtml(timestamp)}</td>
+          </tr>
+          ${
+            input.ipAddress
+              ? `<tr>
+            <td style="padding: 4px 0; width: 100px; color: ${COLORS.TEXT_SECONDARY};">IP Address</td>
+            <td style="padding: 4px 0; color: ${COLORS.TEXT_PRIMARY}; font-family: monospace;">${escapeHtml(input.ipAddress)}</td>
+          </tr>`
+              : ""
+          }
+        </table>
+      </div>
+      
+      <div style="background-color: ${COLORS.BG_INFO}; border-left: 3px solid ${COLORS.ACCENT_BLUE_LIGHT}; border-radius: 6px; padding: 14px 16px;">
+        <p style="margin: 0 0 4px 0; font-size: 13px; color: ${COLORS.ACCENT_BLUE_PALE}; font-weight: 600;">Questions?</p>
+        <p style="margin: 0; font-size: 13px; color: #cbd5e1; line-height: 1.6;">
+          If you have questions about these changes, please contact support at 
+          <a href="mailto:${SUPPORT_EMAIL}" style="color: ${COLORS.ACCENT_BLUE_LIGHT}; text-decoration: none;">${SUPPORT_EMAIL}</a>
+        </p>
+      </div>
+    `,
+  }
+}

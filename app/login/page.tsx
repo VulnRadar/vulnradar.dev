@@ -12,6 +12,7 @@ import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { APP_NAME } from "@/lib/constants"
 import { API } from "@/lib/client-constants"
+import { transitions, backdrops } from "@/lib/animations"
 
 export default function LoginPage() {
   return (
@@ -171,15 +172,19 @@ function LoginForm() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background px-4">
-      <div className="w-full max-w-sm">
+    <div className="min-h-screen flex items-center justify-center bg-background px-4 relative overflow-hidden">
+      {/* Background glow orbs */}
+      <div className="absolute top-1/4 -left-32 w-96 h-96 bg-primary/20 rounded-full blur-3xl pointer-events-none" />
+      <div className="absolute bottom-1/4 -right-32 w-80 h-80 bg-blue-500/15 rounded-full blur-3xl pointer-events-none" />
+      
+      <div className="w-full max-w-sm relative z-10 animate-fade-in">
         {/* Logo */}
-        <div className="flex items-center justify-center gap-2.5 mb-8">
-            <ThemedLogo width={28} height={28} className="h-7 w-7" alt={`${APP_NAME} logo`} />
+        <Link href="/" className={`flex items-center justify-center gap-2.5 mb-8 group ${transitions.default}`}>
+          <ThemedLogo width={28} height={28} className="h-7 w-7 transition-transform group-hover:scale-105" alt={`${APP_NAME} logo`} />
           <span className="text-xl font-semibold text-foreground tracking-tight">{APP_NAME}</span>
-        </div>
+        </Link>
         
-        <Card className="bg-card border-border">
+        <Card className="bg-card/95 backdrop-blur-sm border-border shadow-xl">
           <CardHeader className="text-center pb-6 pt-8 px-6">
             <CardTitle className="text-xl font-semibold tracking-tight">
               {needs2FA
@@ -348,7 +353,7 @@ function LoginForm() {
                 <Label htmlFor="password">Password</Label>
                 <Link
                   href="/forgot-password"
-                  className="text-xs text-muted-foreground hover:text-primary transition-colors"
+                  className={`text-xs text-muted-foreground hover:text-primary ${transitions.colors}`}
                 >
                   Forgot password?
                 </Link>
