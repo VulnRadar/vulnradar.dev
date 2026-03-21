@@ -254,6 +254,7 @@ function ProfileContent() {
   // Profile editing state
   const [editingName, setEditingName] = useState(false)
   const [editingEmail, setEditingEmail] = useState(false)
+  const [profileEditMode, setProfileEditMode] = useState(false)
   const [nameInput, setNameInput] = useState("")
   const [emailInput, setEmailInput] = useState("")
   const [savingProfile, setSavingProfile] = useState(false)
@@ -1196,54 +1197,107 @@ function ProfileContent() {
                       </div>
                     )}
 
-                    {/* Name field */}
-                    <div className="flex flex-col gap-2">
-                      <div className="flex items-center justify-between">
-                        <Label className="text-sm font-medium text-muted-foreground">Name</Label>
-                        {pendingChanges.name !== undefined && pendingChanges.name !== (user?.name || "") && (
-                          <Badge variant="outline" className="text-[10px] bg-amber-500/10 text-amber-500 border-amber-500/20">Modified</Badge>
-                        )}
-                      </div>
-                      <Input
-                        value={pendingChanges.name !== undefined ? pendingChanges.name : (nameInput || user?.name || "")}
-                        onChange={(e) => {
-                          const val = e.target.value
-                          setNameInput(val)
-                          if (val !== (user?.name || "")) {
-                            setPendingChanges(prev => ({ ...prev, name: val }))
-                          } else {
-                            setPendingChanges(prev => { const { name: _, ...rest } = prev; return rest })
+                    {/* Name + Email with edit mode toggle */}
+                    <div className="flex items-center justify-between mb-1">
+                      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Personal Details</p>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-7 text-xs gap-1.5"
+                        onClick={() => {
+                          if (profileEditMode) {
+                            // Cancel — revert pending profile changes
+                            setNameInput(user?.name || "")
+                            setEmailInput(user?.email || "")
+                            setPendingChanges(prev => {
+                              const next = { ...prev }
+                              delete next.name
+                              delete next.email
+                              return next
+                            })
                           }
+                          setProfileEditMode(m => !m)
                         }}
-                        className="bg-card h-10"
-                        placeholder="Your display name"
-                      />
+                      >
+                        {profileEditMode ? (
+                          <><X className="h-3 w-3" />Cancel</>
+                        ) : (
+                          <><Pencil className="h-3 w-3" />Edit</>
+                        )}
+                      </Button>
                     </div>
 
-                    {/* Email field */}
-                    <div className="flex flex-col gap-2">
-                      <div className="flex items-center justify-between">
-                        <Label className="text-sm font-medium text-muted-foreground">Email</Label>
-                        {pendingChanges.email !== undefined && pendingChanges.email !== user?.email && (
-                          <Badge variant="outline" className="text-[10px] bg-amber-500/10 text-amber-500 border-amber-500/20">Modified</Badge>
-                        )}
+                    {!profileEditMode ? (
+                      // Read-only view
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div className="flex flex-col gap-1 p-3 rounded-lg border bg-muted/20 border-border">
+                          <div className="flex items-center gap-2 mb-1">
+                            <UserCog className="h-3.5 w-3.5 text-muted-foreground" />
+                            <span className="text-[11px] text-muted-foreground font-medium">Display Name</span>
+                          </div>
+                          <span className="text-sm font-medium text-foreground truncate">
+                            {user?.name || <span className="text-muted-foreground italic">Not set</span>}
+                          </span>
+                        </div>
+                        <div className="flex flex-col gap-1 p-3 rounded-lg border bg-muted/20 border-border">
+                          <div className="flex items-center gap-2 mb-1">
+                            <Mail className="h-3.5 w-3.5 text-muted-foreground" />
+                            <span className="text-[11px] text-muted-foreground font-medium">Email Address</span>
+                          </div>
+                          <span className="text-sm font-medium text-foreground truncate">{user?.email}</span>
+                        </div>
                       </div>
-                      <Input
-                        type="email"
-                        value={pendingChanges.email !== undefined ? pendingChanges.email : (emailInput || user?.email || "")}
-                        onChange={(e) => {
-                          const val = e.target.value
-                          setEmailInput(val)
-                          if (val !== user?.email) {
-                            setPendingChanges(prev => ({ ...prev, email: val }))
-                          } else {
-                            setPendingChanges(prev => { const { email: _, ...rest } = prev; return rest })
-                          }
-                        }}
-                        className="bg-card h-10"
-                        placeholder="Your email address"
-                      />
-                    </div>
+                    ) : (
+                      // Edit mode
+                      <div className="flex flex-col gap-3">
+                        <div className="flex flex-col gap-1.5">
+                          <div className="flex items-center justify-between">
+                            <Label className="text-xs font-medium text-muted-foreground">Display Name</Label>
+                            {pendingChanges.name !== undefined && pendingChanges.name !== (user?.name || "") && (
+                              <Badge variant="outline" className="text-[10px] bg-amber-500/10 text-amber-500 border-amber-500/20">Modified</Badge>
+                            )}
+                          </div>
+                          <Input
+                            value={nameInput}
+                            onChange={(e) => {
+                              const val = e.target.value
+                              setNameInput(val)
+                              if (val !== (user?.name || "")) {
+                                setPendingChanges(prev => ({ ...prev, name: val }))
+                              } else {
+                                setPendingChanges(prev => { const { name: _, ...rest } = prev; return rest })
+                              }
+                            }}
+                            className="bg-card h-10"
+                            placeholder="Your display name"
+                            autoFocus
+                          />
+                        </div>
+                        <div className="flex flex-col gap-1.5">
+                          <div className="flex items-center justify-between">
+                            <Label className="text-xs font-medium text-muted-foreground">Email Address</Label>
+                            {pendingChanges.email !== undefined && pendingChanges.email !== user?.email && (
+                              <Badge variant="outline" className="text-[10px] bg-amber-500/10 text-amber-500 border-amber-500/20">Modified</Badge>
+                            )}
+                          </div>
+                          <Input
+                            type="email"
+                            value={emailInput}
+                            onChange={(e) => {
+                              const val = e.target.value
+                              setEmailInput(val)
+                              if (val !== user?.email) {
+                                setPendingChanges(prev => ({ ...prev, email: val }))
+                              } else {
+                                setPendingChanges(prev => { const { email: _, ...rest } = prev; return rest })
+                              }
+                            }}
+                            className="bg-card h-10"
+                            placeholder="Your email address"
+                          />
+                        </div>
+                      </div>
+                    )}
                   </CardContent>
                 </Card>
 
