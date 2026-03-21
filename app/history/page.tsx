@@ -20,6 +20,12 @@ import {
   MessageSquare,
   Save,
   Pencil,
+  Filter,
+  Terminal,
+  Monitor,
+  AlertTriangle,
+  ShieldCheck,
+  MoreHorizontal,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -36,6 +42,12 @@ import { SubdomainDiscovery } from "@/components/scanner/subdomain-discovery"
 import type { ScanResult, Vulnerability } from "@/lib/scanner/types"
 import { cn } from "@/lib/utils"
 import { PaginationControl, usePagination } from "@/components/ui/pagination-control"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 
 interface ScanRecord {
   id: number
@@ -55,21 +67,52 @@ interface ScanRecord {
   tags?: string[]
 }
 
-function SeverityDot({ severity, count }: { severity: string; count: number }) {
+function SeverityPill({ severity, count }: { severity: string; count: number }) {
   if (count === 0) return null
-  const colors: Record<string, string> = {
-    critical: "bg-red-500",
-    high: "bg-orange-500",
-    medium: "bg-yellow-500",
-    low: "bg-blue-500",
-    info: "bg-muted-foreground/50",
+  const styles: Record<string, string> = {
+    critical: "bg-red-500/10 text-red-500 border-red-500/20",
+    high: "bg-orange-500/10 text-orange-500 border-orange-500/20",
+    medium: "bg-yellow-500/10 text-yellow-500 border-yellow-500/20",
+    low: "bg-blue-500/10 text-blue-500 border-blue-500/20",
+    info: "bg-muted text-muted-foreground border-border",
   }
   return (
-    <span className="flex items-center gap-1 text-xs text-muted-foreground">
-      <span className={cn("w-1.5 h-1.5 rounded-full", colors[severity] || "bg-muted-foreground")} />
+    <span className={cn("inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-medium border tabular-nums", styles[severity] || styles.info)}>
+      <span className={cn("w-1.5 h-1.5 rounded-full", {
+        "bg-red-500": severity === "critical",
+        "bg-orange-500": severity === "high",
+        "bg-yellow-500": severity === "medium",
+        "bg-blue-500": severity === "low",
+        "bg-muted-foreground": severity === "info",
+      })} />
       {count}
     </span>
   )
+}
+
+function formatRelativeTime(dateStr: string) {
+  const date = new Date(dateStr)
+  const now = new Date()
+  const diffMs = now.getTime() - date.getTime()
+  const diffMins = Math.floor(diffMs / 60000)
+  const diffHours = Math.floor(diffMs / 3600000)
+  const diffDays = Math.floor(diffMs / 86400000)
+
+  if (diffMins < 1) return "just now"
+  if (diffMins < 60) return `${diffMins}m ago`
+  if (diffHours < 24) return `${diffHours}h ago`
+  if (diffDays < 7) return `${diffDays}d ago`
+  return date.toLocaleDateString("en-US", { month: "short", day: "numeric" })
+}
+
+function formatDate(dateStr: string) {
+  return new Date(dateStr).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  })
 }
 
 function HistoryPageContent() {
@@ -103,7 +146,6 @@ function HistoryPageContent() {
   const [savingNotes, setSavingNotes] = useState(false)
 
   // Sync scan selection with URL hash
-  // pushState when opening a scan (so back button works), replaceState when closing
   const updateUrlWithScan = useCallback((id: number | null, replace = false) => {
     if (typeof window === "undefined") return
     const method = replace ? "replaceState" : "pushState"
@@ -133,7 +175,6 @@ function HistoryPageContent() {
     }
   }, [])
 
-  // Load from hash on mount and listen for hash changes
   useEffect(() => {
     handleHashChange()
     window.addEventListener("hashchange", handleHashChange)
@@ -193,15 +234,12 @@ function HistoryPageContent() {
       if (!res.ok) {
         if (res.status === 401 || res.status === 403) {
           router.push("/login")
-        } else {
-          console.error(`[v0] History API error: ${res.status}`)
         }
         return
       }
       const data = await res.json()
       setScans(Array.isArray(data.scans) ? data.scans : [])
-    } catch (err) {
-      console.error("[v0] Failed to fetch history:", err)
+    } catch {
       setScans([])
     } finally {
       setLoading(false)
@@ -211,7 +249,6 @@ function HistoryPageContent() {
   useEffect(() => {
     fetchHistory()
     fetch(API.SCAN_TAGS).then((r) => r.json()).then((d) => setAllTags(d.tags || [])).catch(() => { })
-    // Get current user ID
     fetch(API.AUTH.ME).then((r) => r.json()).then((d) => setCurrentUserId(d.userId || null)).catch(() => { })
   }, [fetchHistory])
 
@@ -258,7 +295,6 @@ function HistoryPageContent() {
     setRescanning(null)
   }
 
-  
   async function handleViewScan(scan: ScanRecord) {
     setSelectedScanId(scan.id)
     setSelectedIssue(null)
@@ -286,16 +322,6 @@ function HistoryPageContent() {
     }
   }
 
-  function formatDate(dateStr: string) {
-    return new Date(dateStr).toLocaleDateString("en-US", {
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    })
-  }
-
   function displayUrl(url: string) {
     try {
       const u = new URL(url)
@@ -316,18 +342,23 @@ function HistoryPageContent() {
     return matchesUrl && matchesTag
   })
 
-  // Reset to page 1 when filters change
   useEffect(() => { setCurrentPage(1) }, [filter, tagFilter])
 
   const PAGE_SIZE = pageSize
   const { totalPages, getPage } = usePagination(filtered, PAGE_SIZE)
   const paginatedScans = getPage(currentPage)
 
+  // Calculate stats
+  const totalScans = scans.length
+  const cleanScans = scans.filter(s => s.findings_count === 0).length
+  const issueScans = scans.filter(s => s.findings_count > 0).length
+  const totalIssues = scans.reduce((acc, s) => acc + (s.findings_count || 0), 0)
+
   return (
     <div className="min-h-screen flex flex-col bg-background">
       <Header />
 
-      <main className="flex-1 w-full max-w-6xl mx-auto px-4 sm:px-6 py-8 sm:py-12 flex flex-col gap-8">
+      <main className="flex-1 w-full max-w-6xl mx-auto px-4 sm:px-6 py-8 sm:py-12 flex flex-col gap-6">
         {loading ? (
           <div className="flex flex-col items-center gap-3 py-20">
             <Loader2 className="h-6 w-6 animate-spin text-primary" />
@@ -336,7 +367,6 @@ function HistoryPageContent() {
         ) : selectedScanId !== null ? (
           /* ── DETAIL VIEW ──────────────────────────── */
           <>
-
             {detailLoading && (
               <div className="flex flex-col items-center gap-3 py-16">
                 <Loader2 className="h-6 w-6 animate-spin text-primary" />
@@ -354,7 +384,7 @@ function HistoryPageContent() {
                 ) : (
                   <>
                     {/* Action buttons at top */}
-                    <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center sm:justify-between gap-3 p-4 rounded-xl border border-border/40 bg-card/30 backdrop-blur-sm">
+                    <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center sm:justify-between gap-3 p-4 rounded-xl border border-border bg-card">
                       <div className="min-w-0">
                         <p className="text-xs text-muted-foreground mb-1">Scanned URL</p>
                         <p className="text-sm font-medium text-foreground truncate">{scanDetail.url}</p>
@@ -380,16 +410,14 @@ function HistoryPageContent() {
 
                     <ScanSummary result={scanDetail} />
 
-                    {/* Response headers */}
                     {scanDetail.responseHeaders && Object.keys(scanDetail.responseHeaders).length > 0 && (
                       <ResponseHeaders headers={scanDetail.responseHeaders} />
                     )}
 
-                    {/* Subdomain discovery */}
                     <SubdomainDiscovery url={scanDetail.url} />
 
-                    {/* Scan Notes (visible to everyone, editable only by owner) */}
-                    <div className="rounded-xl border border-border/40 bg-card/30 backdrop-blur-sm p-4">
+                    {/* Scan Notes */}
+                    <div className="rounded-xl border border-border bg-card p-4">
                       <div className="flex items-center justify-between mb-3">
                         <div className="flex items-center gap-2">
                           <MessageSquare className="h-4 w-4 text-muted-foreground" />
@@ -438,7 +466,7 @@ function HistoryPageContent() {
                           onChange={(e) => setScanNotes(e.target.value)}
                           onKeyDown={(e) => e.stopPropagation()}
                           onKeyUp={(e) => e.stopPropagation()}
-                          placeholder="Add notes about this scan... (e.g., 'Fixed CSP issue, re-scan next week' or 'Known false positive')"
+                          placeholder="Add notes about this scan..."
                           maxLength={2000}
                           className="w-full min-h-[80px] rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring resize-y"
                         />
@@ -459,7 +487,7 @@ function HistoryPageContent() {
                     ) : (
                       <div className="flex flex-col items-center gap-3 py-8 text-center rounded-xl border border-dashed border-border">
                         <div className="w-10 h-10 rounded-lg bg-emerald-500/10 flex items-center justify-center">
-                          <Globe className="h-5 w-5 text-emerald-500" />
+                          <ShieldCheck className="h-5 w-5 text-emerald-500" />
                         </div>
                         <p className="text-sm font-medium text-foreground">No issues found</p>
                         <p className="text-xs text-muted-foreground max-w-xs">
@@ -467,7 +495,6 @@ function HistoryPageContent() {
                         </p>
                       </div>
                     )}
-
                   </>
                 )}
               </div>
@@ -488,74 +515,88 @@ function HistoryPageContent() {
           /* ── LIST VIEW ────────────────────────────── */
           <>
             {/* Page header */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-              <div className="flex flex-col gap-1">
-                <h1 className="text-xl font-bold text-foreground">Scan History</h1>
-                <p className="text-sm text-muted-foreground">
-                  Click any scan to view full results. History kept for {retentionDays === -1 ? "unlimited time" : `${retentionDays} days`}.
-                </p>
-              </div>
-              {scans.length > 0 && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleClearHistory}
-                  disabled={clearing}
-                  className="text-destructive hover:text-destructive shrink-0 bg-transparent self-start sm:self-auto"
-                >
-                  <Trash2 className="mr-2 h-3.5 w-3.5" />
-                  <span className="hidden sm:inline">{clearing ? "Clearing..." : "Clear All"}</span>
-                </Button>
-              )}
+            <div className="flex flex-col gap-1">
+              <h1 className="text-2xl font-semibold tracking-tight text-foreground">Scan History</h1>
+              <p className="text-sm text-muted-foreground">
+                View and manage your previous scans. History kept for {retentionDays === -1 ? "unlimited time" : `${retentionDays} days`}.
+              </p>
             </div>
 
-            {/* Search + Tag filter */}
+            {/* Stats row */}
             {scans.length > 0 && (
-              <div className="flex flex-col gap-3">
-                <div className="relative">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <div className="flex flex-col gap-1 p-4 rounded-xl border border-border bg-card">
+                  <span className="text-2xl font-semibold tabular-nums text-foreground">{totalScans}</span>
+                  <span className="text-xs text-muted-foreground">Total Scans</span>
+                </div>
+                <div className="flex flex-col gap-1 p-4 rounded-xl border border-border bg-card">
+                  <span className="text-2xl font-semibold tabular-nums text-emerald-500">{cleanScans}</span>
+                  <span className="text-xs text-muted-foreground">Clean</span>
+                </div>
+                <div className="flex flex-col gap-1 p-4 rounded-xl border border-border bg-card">
+                  <span className="text-2xl font-semibold tabular-nums text-amber-500">{issueScans}</span>
+                  <span className="text-xs text-muted-foreground">With Issues</span>
+                </div>
+                <div className="flex flex-col gap-1 p-4 rounded-xl border border-border bg-card">
+                  <span className="text-2xl font-semibold tabular-nums text-foreground">{totalIssues}</span>
+                  <span className="text-xs text-muted-foreground">Total Issues</span>
+                </div>
+              </div>
+            )}
+
+            {/* Search + Filters + Actions */}
+            {scans.length > 0 && (
+              <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                <div className="relative flex-1">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                   <Input
-                    placeholder="Filter by URL..."
+                    placeholder="Search by URL..."
                     value={filter}
                     onChange={(e) => setFilter(e.target.value)}
                     className="pl-9 bg-card h-10"
                   />
                 </div>
+                
                 {allTags.length > 0 && (
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    <Tag className="h-3 w-3 text-muted-foreground" />
-                    <button
-                      type="button"
-                      onClick={() => setTagFilter(null)}
-                      className={cn(
-                        "text-[11px] px-2 py-0.5 rounded-full border transition-colors",
-                        !tagFilter ? "bg-primary/10 text-primary border-primary/20" : "bg-muted text-muted-foreground border-border hover:border-accent"
-                      )}
-                    >
-                      All
-                    </button>
-                    {allTags.map((tag) => (
-                      <button
-                        key={tag}
-                        type="button"
-                        onClick={() => setTagFilter(tagFilter === tag ? null : tag)}
-                        className={cn(
-                          "text-[11px] px-2 py-0.5 rounded-full border transition-colors",
-                          tagFilter === tag ? "bg-primary/10 text-primary border-primary/20" : "bg-muted text-muted-foreground border-border hover:border-accent"
-                        )}
-                      >
-                        {tag}
-                      </button>
-                    ))}
-                  </div>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="outline" size="sm" className="gap-2 bg-transparent h-10 shrink-0">
+                        <Filter className="h-4 w-4" />
+                        {tagFilter ? tagFilter : "All Tags"}
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem onClick={() => setTagFilter(null)}>
+                        All Tags
+                      </DropdownMenuItem>
+                      {allTags.map((tag) => (
+                        <DropdownMenuItem key={tag} onClick={() => setTagFilter(tag)}>
+                          {tag}
+                        </DropdownMenuItem>
+                      ))}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 )}
+
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleClearHistory}
+                  disabled={clearing}
+                  className="text-destructive hover:text-destructive shrink-0 bg-transparent h-10"
+                >
+                  <Trash2 className="mr-2 h-4 w-4" />
+                  {clearing ? "Clearing..." : "Clear All"}
+                </Button>
               </div>
             )}
 
             {/* Empty state */}
             {scans.length === 0 && (
-              <div className="flex flex-col items-center gap-4 py-16 text-center rounded-xl border border-dashed border-border">
-                <Clock className="h-10 w-10 text-muted-foreground/20" />
+              <div className="flex flex-col items-center gap-4 py-16 text-center rounded-xl border border-dashed border-border bg-card/50">
+                <div className="w-12 h-12 rounded-xl bg-muted flex items-center justify-center">
+                  <Clock className="h-6 w-6 text-muted-foreground" />
+                </div>
                 <div className="flex flex-col gap-1">
                   <p className="text-sm font-medium text-foreground">No scan history yet</p>
                   <p className="text-xs text-muted-foreground">
@@ -570,151 +611,201 @@ function HistoryPageContent() {
 
             {/* Filtered empty */}
             {scans.length > 0 && filtered.length === 0 && (
-              <div className="flex flex-col items-center gap-2 py-12 text-center rounded-xl border border-dashed border-border">
-                <Search className="h-6 w-6 text-muted-foreground/20" />
+              <div className="flex flex-col items-center gap-3 py-12 text-center rounded-xl border border-dashed border-border">
+                <Search className="h-6 w-6 text-muted-foreground/30" />
                 <p className="text-sm text-muted-foreground">
-                  No scans match &quot;{filter}&quot;
+                  No scans match your search
                 </p>
+                <Button variant="ghost" size="sm" onClick={() => { setFilter(""); setTagFilter(null) }}>
+                  Clear filters
+                </Button>
               </div>
             )}
 
-            {/* Scan list */}
-            <div className="flex flex-col gap-2">
-              {paginatedScans.map((scan) => (
-                <a
-                  key={scan.id}
-                  href={`/history#${scan.id}`}
-                  onClick={(e) => {
-                    // Allow ctrl+click to open in new tab naturally
-                    if (!e.ctrlKey && !e.metaKey) {
-                      e.preventDefault()
-                      handleViewScan(scan)
-                    }
-                  }}
-                  className="group flex items-center gap-3 sm:gap-4 p-3 sm:p-4 rounded-xl border border-border bg-card hover:bg-muted/50 hover:border-accent transition-all text-left active:scale-[0.99] cursor-pointer"
-                >
-                  <div className="flex items-center justify-center w-9 h-9 sm:w-10 sm:h-10 rounded-lg bg-primary/10 shrink-0">
-                    <Globe className="h-4 w-4 sm:h-5 sm:w-5 text-primary" />
-                  </div>
+            {/* Scan list - Table style */}
+            {paginatedScans.length > 0 && (
+              <div className="rounded-xl border border-border bg-card overflow-hidden">
+                {/* Table header */}
+                <div className="hidden sm:grid sm:grid-cols-[1fr,auto,auto,auto,auto] gap-4 px-4 py-3 border-b border-border bg-muted/30 text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                  <span>URL</span>
+                  <span className="text-center w-20">Source</span>
+                  <span className="text-center w-32">Issues</span>
+                  <span className="text-right w-24">Scanned</span>
+                  <span className="w-10"></span>
+                </div>
 
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-medium text-foreground truncate">
-                        {displayUrl(scan.url)}
-                      </span>
-                      <span
-                        className={cn(
-                          "inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider shrink-0 border",
-                          scan.source === "api"
-                            ? "bg-primary/10 text-primary border-primary/20"
-                            : "bg-muted text-muted-foreground border-border"
-                        )}
-                      >
-                        {scan.source === "api" ? "API" : "Web"}
-                      </span>
-                      <button
-                        onClick={(e) => {
-                          e.preventDefault()
-                          e.stopPropagation()
-                          window.open(scan.url, "_blank", "noopener,noreferrer")
-                        }}
-                        className="text-muted-foreground hover:text-primary shrink-0"
-                        title="Open in new tab"
-                      >
-                        <ExternalLink className="h-3 w-3" />
-                      </button>
-                    </div>
-                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1">
-                      <span className="text-xs text-muted-foreground">
-                        {formatDate(scan.scanned_at)}
-                      </span>
-                      <span className="text-xs text-muted-foreground">
-                        {(scan.duration / 1000).toFixed(1)}s
-                      </span>
-                      {scan.tags && scan.tags.length > 0 && scan.tags.map((tag) => (
-                        <span key={tag} className="inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20">
-                          <Tag className="h-2.5 w-2.5" />{tag}
-                          <button type="button" className="ml-0.5 hover:text-destructive" onClick={(e) => { e.stopPropagation(); handleRemoveTag(scan.id, tag) }}>
-                            <X className="h-2.5 w-2.5" />
-                          </button>
-                        </span>
-                      ))}
-                      {addingTagFor === scan.id ? (
-                        <span className="inline-flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-                          <input
-                            type="text"
-                            value={newTag}
-                            onChange={(e) => setNewTag(e.target.value)}
-                            onKeyDown={(e) => {
+                {/* Table rows */}
+                <div className="divide-y divide-border">
+                  {paginatedScans.map((scan) => (
+                    <div
+                      key={scan.id}
+                      className="group flex flex-col sm:grid sm:grid-cols-[1fr,auto,auto,auto,auto] gap-2 sm:gap-4 p-4 hover:bg-muted/30 transition-colors cursor-pointer"
+                      onClick={() => handleViewScan(scan)}
+                    >
+                      {/* URL + Tags */}
+                      <div className="flex flex-col gap-1.5 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+                            {scan.source === "api" ? (
+                              <Terminal className="h-4 w-4 text-primary" />
+                            ) : (
+                              <Monitor className="h-4 w-4 text-primary" />
+                            )}
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <span className="text-sm font-medium text-foreground truncate block">
+                              {getDomain(scan.url)}
+                            </span>
+                            <span className="text-xs text-muted-foreground truncate block">
+                              {displayUrl(scan.url)}
+                            </span>
+                          </div>
+                          <button
+                            onClick={(e) => {
                               e.stopPropagation()
-                              if (e.key === "Enter") { e.preventDefault(); handleAddTag(scan.id, newTag) }
-                              if (e.key === "Escape") { e.preventDefault(); setAddingTagFor(null); setNewTag("") }
-                              if (e.key === " ") { e.stopPropagation() }
+                              window.open(scan.url, "_blank", "noopener,noreferrer")
                             }}
-                            onKeyUp={(e) => e.stopPropagation()}
-                            onKeyPress={(e) => e.stopPropagation()}
-                            placeholder="tag name"
-                            className="w-20 text-[10px] px-1.5 py-0.5 rounded-full border border-primary/30 bg-background text-foreground focus:outline-none"
-                            autoFocus
-                          />
+                            className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-primary transition-opacity shrink-0"
+                            title="Open in new tab"
+                          >
+                            <ExternalLink className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                        
+                        {/* Tags row */}
+                        <div className="flex flex-wrap items-center gap-1 ml-10">
+                          {scan.tags && scan.tags.length > 0 && scan.tags.map((tag) => (
+                            <span key={tag} className="inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded-md bg-primary/10 text-primary border border-primary/20">
+                              <Tag className="h-2.5 w-2.5" />{tag}
+                              <button 
+                                type="button" 
+                                className="ml-0.5 hover:text-destructive" 
+                                onClick={(e) => { e.stopPropagation(); handleRemoveTag(scan.id, tag) }}
+                              >
+                                <X className="h-2.5 w-2.5" />
+                              </button>
+                            </span>
+                          ))}
+                          {addingTagFor === scan.id ? (
+                            <span className="inline-flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                              <input
+                                type="text"
+                                value={newTag}
+                                onChange={(e) => setNewTag(e.target.value)}
+                                onKeyDown={(e) => {
+                                  e.stopPropagation()
+                                  if (e.key === "Enter") { e.preventDefault(); handleAddTag(scan.id, newTag) }
+                                  if (e.key === "Escape") { e.preventDefault(); setAddingTagFor(null); setNewTag("") }
+                                }}
+                                placeholder="tag"
+                                className="w-16 text-[10px] px-1.5 py-0.5 rounded-md border border-primary/30 bg-background text-foreground focus:outline-none"
+                                autoFocus
+                              />
+                            </span>
+                          ) : (
+                            <button
+                              type="button"
+                              className="inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded-md border border-dashed border-border text-muted-foreground hover:border-primary/50 hover:text-primary transition-colors opacity-0 group-hover:opacity-100"
+                              onClick={(e) => { e.stopPropagation(); setAddingTagFor(scan.id); setNewTag("") }}
+                            >
+                              <Plus className="h-2.5 w-2.5" />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Source badge */}
+                      <div className="hidden sm:flex items-center justify-center w-20">
+                        <span className={cn(
+                          "inline-flex items-center rounded-md px-2 py-1 text-[10px] font-medium uppercase tracking-wider border",
+                          scan.source === "api"
+                            ? "bg-violet-500/10 text-violet-500 border-violet-500/20"
+                            : "bg-cyan-500/10 text-cyan-500 border-cyan-500/20"
+                        )}>
+                          {scan.source === "api" ? "API" : "Web"}
                         </span>
-                      ) : (
-                        <button
-                          type="button"
-                          className="inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded-full border border-dashed border-border text-muted-foreground hover:border-accent hover:text-primary transition-colors"
-                          onClick={(e) => { e.stopPropagation(); setAddingTagFor(scan.id); setNewTag("") }}
-                        >
-                          <Plus className="h-2.5 w-2.5" />tag
-                        </button>
-                      )}
+                      </div>
+
+                      {/* Severity pills */}
+                      <div className="flex items-center justify-center gap-1 w-32">
+                        {scan.findings_count === 0 ? (
+                          <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-xs font-medium bg-emerald-500/10 text-emerald-500 border border-emerald-500/20">
+                            <ShieldCheck className="h-3 w-3" />
+                            Clean
+                          </span>
+                        ) : (
+                          <div className="flex items-center gap-1 flex-wrap justify-center">
+                            <SeverityPill severity={SEVERITY_LEVELS.CRITICAL} count={scan.summary?.critical || 0} />
+                            <SeverityPill severity={SEVERITY_LEVELS.HIGH} count={scan.summary?.high || 0} />
+                            <SeverityPill severity={SEVERITY_LEVELS.MEDIUM} count={scan.summary?.medium || 0} />
+                            <SeverityPill severity={SEVERITY_LEVELS.LOW} count={scan.summary?.low || 0} />
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Time */}
+                      <div className="hidden sm:flex items-center justify-end w-24">
+                        <span className="text-xs text-muted-foreground tabular-nums" title={formatDate(scan.scanned_at)}>
+                          {formatRelativeTime(scan.scanned_at)}
+                        </span>
+                      </div>
+
+                      {/* Actions */}
+                      <div className="hidden sm:flex items-center justify-center w-10">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+                            <Button variant="ghost" size="sm" className="h-8 w-8 p-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                              <MoreHorizontal className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem onClick={(e) => { e.stopPropagation(); handleViewScan(scan) }}>
+                              View Details
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={(e) => { e.stopPropagation(); handleRescan(scan) }}>
+                              <RefreshCw className={cn("h-3.5 w-3.5 mr-2", rescanning === scan.id && "animate-spin")} />
+                              Rescan
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={(e) => { e.stopPropagation(); window.open(scan.url, "_blank") }}>
+                              <ExternalLink className="h-3.5 w-3.5 mr-2" />
+                              Open URL
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </div>
+
+                      {/* Mobile: meta row */}
+                      <div className="flex sm:hidden items-center justify-between text-xs text-muted-foreground ml-10">
+                        <span className={cn(
+                          "inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-medium uppercase",
+                          scan.source === "api" ? "bg-violet-500/10 text-violet-500" : "bg-cyan-500/10 text-cyan-500"
+                        )}>
+                          {scan.source === "api" ? "API" : "Web"}
+                        </span>
+                        <span>{formatRelativeTime(scan.scanned_at)}</span>
+                        {scan.findings_count === 0 ? (
+                          <span className="text-emerald-500">Clean</span>
+                        ) : (
+                          <span>{scan.findings_count} issues</span>
+                        )}
+                      </div>
                     </div>
-                  </div>
-
-                  {/* Severity dots - desktop */}
-                  <div className="hidden sm:flex items-center gap-2 shrink-0">
-                    <SeverityDot severity={SEVERITY_LEVELS.CRITICAL} count={scan.summary?.critical || 0} />
-                    <SeverityDot severity={SEVERITY_LEVELS.HIGH} count={scan.summary?.high || 0} />
-                    <SeverityDot severity={SEVERITY_LEVELS.MEDIUM} count={scan.summary?.medium || 0} />
-                    <SeverityDot severity={SEVERITY_LEVELS.LOW} count={scan.summary?.low || 0} />
-                    <SeverityDot severity={SEVERITY_LEVELS.INFO} count={scan.summary?.info || 0} />
-                  </div>
-
-                  <span
-                    className={cn(
-                      "inline-flex items-center rounded-lg px-2 py-0.5 text-xs font-medium shrink-0 border",
-                      scan.findings_count === 0
-                        ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20"
-                        : "bg-muted text-muted-foreground border-border",
-                    )}
-                  >
-                    {scan.findings_count === 0 ? "Clean" : `${scan.findings_count} issues`}
-                  </span>
-
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-8 w-8 p-0 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity"
-                    onClick={(e) => { e.stopPropagation(); handleRescan(scan) }}
-                    disabled={rescanning === scan.id}
-                    title="Rescan this URL"
-                  >
-                    <RefreshCw className={cn("h-3.5 w-3.5", rescanning === scan.id && "animate-spin")} />
-                  </Button>
-
-                  <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0 transition-transform group-hover:translate-x-0.5" />
-                </a>
-              ))}
-            </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* Pagination */}
-            <PaginationControl
-              currentPage={currentPage}
-              totalPages={totalPages}
-              onPageChange={setCurrentPage}
-              pageSize={pageSize}
-              onPageSizeChange={(s) => { setPageSize(s); setCurrentPage(1) }}
-              totalItems={filtered.length}
-            />
+            {filtered.length > 0 && (
+              <PaginationControl
+                currentPage={currentPage}
+                totalPages={totalPages}
+                onPageChange={setCurrentPage}
+                pageSize={pageSize}
+                onPageSizeChange={(s) => { setPageSize(s); setCurrentPage(1) }}
+                totalItems={filtered.length}
+              />
+            )}
           </>
         )}
       </main>
@@ -727,4 +818,3 @@ function HistoryPageContent() {
 export default function HistoryPage() {
   return <HistoryPageContent />
 }
-
