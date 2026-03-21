@@ -72,6 +72,7 @@ import { Progress } from "@/components/ui/progress"
 import { Switch } from "@/components/ui/switch"
 import { Header } from "@/components/scanner/header"
 import { Footer } from "@/components/scanner/footer"
+import { SaveConfirmationModal, type ChangeItem } from "@/components/save-confirmation-modal"
 
 interface ApiKey {
   id: number
@@ -239,6 +240,15 @@ function ProfileContent() {
   const [nameInput, setNameInput] = useState("")
   const [emailInput, setEmailInput] = useState("")
   const [savingProfile, setSavingProfile] = useState(false)
+  
+  // Unified pending changes system
+  const [pendingChanges, setPendingChanges] = useState<{
+    name?: string
+    email?: string
+    notifications?: Partial<NotificationPrefs>
+  }>({})
+  const [showSaveModal, setShowSaveModal] = useState(false)
+  const [originalNotifPrefs, setOriginalNotifPrefs] = useState<NotificationPrefs | null>(null)
 
   // Password change state
   const [showPasswordForm, setShowPasswordForm] = useState(false)
@@ -458,6 +468,7 @@ function ProfileContent() {
           for (const key of Object.keys(prev) as (keyof NotificationPrefs)[]) {
             if (key in notifData) updated[key] = notifData[key] ?? true
           }
+          setOriginalNotifPrefs(updated) // Store original for change detection
           return updated
         })
       }
@@ -745,6 +756,7 @@ function ProfileContent() {
         for (const key of Object.keys(prev) as (keyof NotificationPrefs)[]) {
           if (key in data) updated[key] = data[key]
         }
+        setOriginalNotifPrefs(updated)
         return updated
       })
       setSuccess("Notification preferences saved.")
@@ -754,6 +766,102 @@ function ProfileContent() {
       setSavingNotifPrefs(false)
     }
   }
+  
+  // Unified save all changes
+  async function saveAllPendingChanges() {
+    setSavingProfile(true)
+    setError(null)
+    let savedCount = 0
+    
+    try {
+      // Save name if changed
+      if (pendingChanges.name !== undefined) {
+        const res = await fetch(API.ACCOUNT, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: pendingChanges.name }),
+        })
+        if (res.ok) {
+          const data = await res.json()
+          setUser((u) => u ? { ...u, name: data.name } : u)
+          savedCount++
+        }
+      }
+      
+      // Save email if changed
+      if (pendingChanges.email !== undefined) {
+        const res = await fetch(API.ACCOUNT, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email: pendingChanges.email }),
+        })
+        if (res.ok) {
+          const data = await res.json()
+          setUser((u) => u ? { ...u, email: data.email } : u)
+          savedCount++
+        }
+      }
+      
+      // Save notification prefs if changed
+      if (hasNotificationChanges) {
+        const res = await fetch(API.ACCOUNT_NOTIFICATIONS, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(notifPrefs),
+        })
+        if (res.ok) {
+          const data = await res.json()
+          setNotifPrefs((prev) => {
+            const updated = { ...prev }
+            for (const key of Object.keys(prev) as (keyof NotificationPrefs)[]) {
+              if (key in data) updated[key] = data[key]
+            }
+            setOriginalNotifPrefs(updated)
+            return updated
+          })
+          savedCount++
+        }
+      }
+      
+      setPendingChanges({})
+      setShowSaveModal(false)
+      setSuccess(`Changes saved successfully.`)
+    } catch {
+      setError("Failed to save some changes.")
+    } finally {
+      setSavingProfile(false)
+    }
+  }
+  
+  // Check for notification changes
+  const hasNotificationChanges = originalNotifPrefs && Object.keys(notifPrefs).some(
+    (key) => notifPrefs[key as keyof NotificationPrefs] !== originalNotifPrefs[key as keyof NotificationPrefs]
+  )
+  
+  // Check for any pending changes
+  const hasPendingChanges = Object.keys(pendingChanges).length > 0 || hasNotificationChanges
+  
+  // Build change items for modal
+  const pendingChangeItems: ChangeItem[] = [
+    ...(pendingChanges.name !== undefined ? [{
+      field: "name",
+      label: "Display Name",
+      oldValue: user?.name || "",
+      newValue: pendingChanges.name
+    }] : []),
+    ...(pendingChanges.email !== undefined ? [{
+      field: "email", 
+      label: "Email Address",
+      oldValue: user?.email || "",
+      newValue: pendingChanges.email
+    }] : []),
+    ...(hasNotificationChanges ? [{
+      field: "notifications",
+      label: "Notification Preferences",
+      oldValue: "Previous settings",
+      newValue: "Updated settings"
+    }] : []),
+  ]
 
   // ---- Billing handlers ----
   async function handleCancelSubscription(immediate: boolean = false) {
@@ -1066,10 +1174,23 @@ function ProfileContent() {
                             onChange={(e) => setNameInput(e.target.value)}
                             className="bg-card h-10"
                             autoFocus
-                            onKeyDown={(e) => { if (e.key === "Enter") handleSaveName(); if (e.key === "Escape") setEditingName(false) }}
+                            onKeyDown={(e) => { 
+                              if (e.key === "Enter") {
+                                if (nameInput.trim() !== (user?.name || "")) {
+                                  setPendingChanges(prev => ({ ...prev, name: nameInput.trim() }))
+                                }
+                                setEditingName(false)
+                              }
+                              if (e.key === "Escape") setEditingName(false) 
+                            }}
                           />
-                          <Button size="icon" className="shrink-0 h-10 w-10" onClick={handleSaveName} disabled={savingProfile}>
-                            <Save className="h-4 w-4" />
+                          <Button size="icon" className="shrink-0 h-10 w-10" onClick={() => {
+                            if (nameInput.trim() !== (user?.name || "")) {
+                              setPendingChanges(prev => ({ ...prev, name: nameInput.trim() }))
+                            }
+                            setEditingName(false)
+                          }}>
+                            <Check className="h-4 w-4" />
                           </Button>
                           <Button variant="ghost" size="icon" className="shrink-0 h-10 w-10" onClick={() => setEditingName(false)}>
                             <X className="h-4 w-4" />
@@ -1083,9 +1204,14 @@ function ProfileContent() {
                       <Label className="text-sm font-medium text-muted-foreground">Email</Label>
                       {!editingEmail ? (
                         <div className="flex items-center justify-between p-3 rounded-lg border border-border bg-secondary/20 gap-2">
-                          <div className="flex items-center gap-2 min-w-0">
-                            <Mail className="h-4 w-4 text-muted-foreground shrink-0" />
-                            <span className="text-sm font-medium text-foreground truncate">{user?.email}</span>
+<div className="flex items-center gap-2 min-w-0">
+                            <UserCog className="h-4 w-4 text-muted-foreground shrink-0" />
+                            <span className="text-sm font-medium text-foreground truncate">
+                              {pendingChanges.name !== undefined ? pendingChanges.name : (user?.name || "(No name set)")}
+                            </span>
+                            {pendingChanges.name !== undefined && (
+                              <Badge variant="outline" className="text-[10px] bg-amber-500/10 text-amber-500 border-amber-500/20 shrink-0">Modified</Badge>
+                            )}
                           </div>
                           <Button
                             variant="ghost"
@@ -1108,10 +1234,23 @@ function ProfileContent() {
                             onChange={(e) => setEmailInput(e.target.value)}
                             className="bg-card h-10"
                             autoFocus
-                            onKeyDown={(e) => { if (e.key === "Enter") handleSaveEmail(); if (e.key === "Escape") setEditingEmail(false) }}
+                            onKeyDown={(e) => { 
+                              if (e.key === "Enter") {
+                                if (emailInput.trim() !== user?.email) {
+                                  setPendingChanges(prev => ({ ...prev, email: emailInput.trim() }))
+                                }
+                                setEditingEmail(false)
+                              }
+                              if (e.key === "Escape") setEditingEmail(false) 
+                            }}
                           />
-                          <Button size="icon" className="shrink-0 h-10 w-10" onClick={handleSaveEmail} disabled={savingProfile}>
-                            <Save className="h-4 w-4" />
+                          <Button size="icon" className="shrink-0 h-10 w-10" onClick={() => {
+                            if (emailInput.trim() !== user?.email) {
+                              setPendingChanges(prev => ({ ...prev, email: emailInput.trim() }))
+                            }
+                            setEditingEmail(false)
+                          }}>
+                            <Check className="h-4 w-4" />
                           </Button>
                           <Button variant="ghost" size="icon" className="shrink-0 h-10 w-10" onClick={() => setEditingEmail(false)}>
                             <X className="h-4 w-4" />
@@ -2201,11 +2340,15 @@ function ProfileContent() {
                         {activeKeys.map((key) => (
                           <div key={key.id} className="flex flex-col gap-3 p-4 rounded-lg border border-border bg-card">
                             <div className="flex items-center justify-between gap-2">
-                              <div className="flex items-center gap-2 min-w-0">
-                                <Key className="h-4 w-4 text-muted-foreground shrink-0" />
-                                <span className="font-medium text-sm text-foreground truncate">{key.name}</span>
-                                <Badge variant="secondary" className="text-xs font-mono shrink-0">{key.key_prefix}...</Badge>
-                              </div>
+<div className="flex items-center gap-2 min-w-0">
+                            <Mail className="h-4 w-4 text-muted-foreground shrink-0" />
+                            <span className="text-sm font-medium text-foreground truncate">
+                              {pendingChanges.email !== undefined ? pendingChanges.email : user?.email}
+                            </span>
+                            {pendingChanges.email !== undefined && (
+                              <Badge variant="outline" className="text-[10px] bg-amber-500/10 text-amber-500 border-amber-500/20 shrink-0">Modified</Badge>
+                            )}
+                          </div>
                               <Button
                                 variant="ghost"
                                 size="icon"
@@ -2671,21 +2814,7 @@ function ProfileContent() {
                   </CardContent>
                 </Card>
 
-                {/* Save button card */}
-                <Card>
-                  <CardContent className="pt-6">
-                    <div className="flex items-center justify-between">
-                      <p className="text-xs text-muted-foreground">Changes are saved when you click the button.</p>
-                      <Button onClick={handleSaveNotifPrefs} disabled={savingNotifPrefs}>
-                        {savingNotifPrefs ? (
-                          <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Saving...</>
-                        ) : (
-                          <><Save className="mr-2 h-4 w-4" />Save Preferences</>
-                        )}
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
+                
 
                 {/* Info card */}
                 <Card className="bg-muted/30 border-muted">
@@ -2903,7 +3032,61 @@ function ProfileContent() {
             )}
           </div>{/* End Main Content Area */}
         </div>{/* End Two-column layout */}
+        
+        {/* Bottom spacer for floating save bar */}
+        {hasPendingChanges && <div className="h-20" />}
       </main>
+
+      {/* Floating Save Bar */}
+      {hasPendingChanges && (
+        <div className="fixed bottom-0 left-0 right-0 z-50 border-t border-border bg-card/95 backdrop-blur-sm shadow-lg animate-in slide-in-from-bottom-2">
+          <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between gap-4">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+                <Save className="h-4 w-4 text-primary" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-foreground">Unsaved Changes</p>
+                <p className="text-xs text-muted-foreground truncate">
+                  {pendingChangeItems.length} pending change{pendingChangeItems.length !== 1 ? "s" : ""}
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                onClick={() => {
+                  setPendingChanges({})
+                  if (originalNotifPrefs) setNotifPrefs(originalNotifPrefs)
+                }}
+                className="text-muted-foreground"
+              >
+                Discard
+              </Button>
+              <Button size="sm" onClick={() => setShowSaveModal(true)} className="gap-1.5">
+                <Save className="h-3.5 w-3.5" />
+                Review & Save
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Save Confirmation Modal */}
+      <SaveConfirmationModal
+        isOpen={showSaveModal}
+        onClose={() => setShowSaveModal(false)}
+        onConfirm={async () => {
+          await saveAllPendingChanges()
+        }}
+        title="Save Changes"
+        description="Review your pending changes before saving."
+        changes={pendingChangeItems}
+        loading={savingProfile}
+        isAdminAction={false}
+        confirmText="Save All Changes"
+      />
 
       <Footer />
 
