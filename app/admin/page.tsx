@@ -717,15 +717,9 @@ function AdminContent() {
       <main className="flex-1 w-full max-w-7xl mx-auto px-4 sm:px-6 py-8 sm:py-12 flex flex-col gap-8">
 
         {/* Page header */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div>
-            <h1 className="text-2xl font-semibold tracking-tight mb-1">Admin Panel</h1>
-            <p className="text-sm text-muted-foreground">Manage users, monitor activity, and provide support.</p>
-          </div>
-          <Button variant="outline" size="sm" className="gap-2 self-start sm:self-auto" onClick={() => { fetchData(page); if (activeTab === "audit") fetchAudit(auditPage); if (activeTab === "admins") fetchActiveAdmins(); }}>
-            <RefreshCw className="h-4 w-4" />
-            Refresh
-          </Button>
+        <div className="flex flex-col gap-1">
+          <h1 className="text-2xl font-semibold tracking-tight">Admin Panel</h1>
+          <p className="text-sm text-muted-foreground">Manage users, monitor activity, and provide support.</p>
         </div>
 
         {loading ? (
@@ -1100,14 +1094,9 @@ function AdminContent() {
                       <div className="flex flex-col gap-4">
                         {/* Title row */}
                         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                          <div className="flex items-center gap-3">
-                            <div className="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center">
-                              <History className="h-5 w-5 text-primary" />
-                            </div>
-                            <div>
-                              <h2 className="text-lg font-semibold">Audit Log</h2>
-                              <p className="text-xs text-muted-foreground">Track all administrative actions</p>
-                            </div>
+                          <div>
+                            <h2 className="text-lg font-semibold">Audit Log</h2>
+                            <p className="text-xs text-muted-foreground">Track all administrative actions</p>
                           </div>
                           <Button variant="outline" size="sm" className="h-8 gap-1.5 text-xs self-start sm:self-auto" onClick={() => fetchAudit(1)}>
                             <RefreshCw className={cn("h-3.5 w-3.5", auditPaging && "animate-spin")} />
@@ -1452,17 +1441,22 @@ function AdminContent() {
             {/* Active Admins tab */}
             {activeTab === "admins" && (
               <Card className="bg-card border-border overflow-hidden">
-                <CardHeader className="pb-0 pt-5 px-5">
-                  <div className="flex items-center gap-2">
-                    <CardTitle className="text-base font-semibold">Staff Members</CardTitle>
-                    <Badge variant="secondary" className="text-[10px] font-medium">{activeAdmins.length}</Badge>
-                    <Button variant="outline" size="sm" className="ml-auto h-7 bg-transparent gap-1 text-xs" onClick={fetchActiveAdmins}>
-                      <RefreshCw className={cn("h-3 w-3", adminsLoading && "animate-spin")} /> Refresh
+                <CardContent className="p-4 sm:p-5">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h2 className="text-lg font-semibold">Staff Members</h2>
+                        <Badge variant="secondary" className="text-[10px] font-medium">{activeAdmins.length}</Badge>
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-1">All staff members (admins, moderators, support) and their current activity status.</p>
+                    </div>
+                    <Button variant="outline" size="sm" className="h-8 gap-1.5 text-xs self-start sm:self-auto" onClick={fetchActiveAdmins}>
+                      <RefreshCw className={cn("h-3.5 w-3.5", adminsLoading && "animate-spin")} />
+                      Refresh
                     </Button>
                   </div>
-                  <p className="text-xs text-muted-foreground mt-1">All staff members (admins, moderators, support) and their current activity status.</p>
-                </CardHeader>
-                <CardContent className="p-0 mt-4">
+                </CardContent>
+                <CardContent className="p-0">
                   {adminsLoading ? (
                     <div className="flex flex-col items-center justify-center py-16 gap-3">
                       <Loader2 className="h-5 w-5 animate-spin text-primary" />
@@ -1603,14 +1597,9 @@ function AdminContent() {
                   <CardContent className="p-4 sm:p-5">
                     <div className="flex flex-col gap-4">
                       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                        <div className="flex items-center gap-3">
-                          <div className="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center">
-                            <UsersRound className="h-5 w-5 text-primary" />
-                          </div>
-                          <div>
-                            <h2 className="text-lg font-semibold">Team Management</h2>
-                            <p className="text-xs text-muted-foreground">View and manage all platform teams</p>
-                          </div>
+                        <div>
+                          <h2 className="text-lg font-semibold">Team Management</h2>
+                          <p className="text-xs text-muted-foreground">View and manage all platform teams</p>
                         </div>
                         <Button variant="outline" size="sm" className="h-8 gap-1.5 text-xs self-start sm:self-auto" onClick={() => fetchTeams(1)}>
                           <RefreshCw className={cn("h-3.5 w-3.5", teamsLoading && "animate-spin")} />
@@ -1860,14 +1849,14 @@ function AdminContent() {
 
             {/* Notifications Tab */}
             {activeTab === "notifications" && (
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Bell className="h-5 w-5" />
-                    Site Notifications
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
+              <Card className="bg-card border-border">
+                <CardContent className="p-4 sm:p-5">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+                    <div>
+                      <h2 className="text-lg font-semibold">Site Notifications</h2>
+                      <p className="text-xs text-muted-foreground">Manage platform-wide announcements and alerts</p>
+                    </div>
+                  </div>
                   <NotificationsManager />
                 </CardContent>
               </Card>
