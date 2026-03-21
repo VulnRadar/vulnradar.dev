@@ -282,7 +282,7 @@ export const DEFAULT_CONFIG: VulnRadarConfig = {
   billing: {
     enabled: true,
     plan_limits: {
-      free: 50,
+      free: 25,
       core_supporter: 100,
       pro_supporter: 150,
       elite_supporter: 500,
