@@ -227,6 +227,8 @@ function ProfileContent() {
     if (Object.keys(pendingChanges).length > 0 || showSaveModal) {
       setPendingChanges({})
       setShowSaveModal(false)
+      setNameInput(user?.name || "")
+      setEmailInput(user?.email || "")
     }
     // Reset notification prefs to original if switching away from notifications
     if (activeTab === "notifications" && originalNotifPrefs) {
@@ -454,6 +456,8 @@ function ProfileContent() {
       const notifData = notifRes.ok ? await notifRes.json() : null
       const billingData = billingRes.ok ? await billingRes.json() : null
       setUser(userData)
+  setNameInput(userData.name || "")
+  setEmailInput(userData.email || "")
       if (billingData) {
         setBillingInfo(billingData)
       } else if (billingRes.status === 500) {
@@ -1194,120 +1198,51 @@ function ProfileContent() {
 
                     {/* Name field */}
                     <div className="flex flex-col gap-2">
-                      <Label className="text-sm font-medium text-muted-foreground">Name</Label>
-                      {!editingName ? (
-                        <div className="flex items-center justify-between p-3 rounded-lg border border-border bg-secondary/20 gap-2">
-                          <div className="flex items-center gap-2 min-w-0">
-                            <span className="text-sm font-medium text-foreground truncate">
-                              {pendingChanges.name !== undefined ? pendingChanges.name : (user?.name || "---")}
-                            </span>
-                            {pendingChanges.name !== undefined && (
-                              <Badge variant="outline" className="text-[10px] bg-amber-500/10 text-amber-500 border-amber-500/20 shrink-0">Modified</Badge>
-                            )}
-                          </div>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => {
-                              setNameInput(user?.name || "")
-                              setEditingName(true)
-                            }}
-                            className="text-muted-foreground hover:text-foreground h-8 shrink-0"
-                          >
-                            <Pencil className="mr-1.5 h-3.5 w-3.5" />
-                            Edit
-                          </Button>
-                        </div>
-                      ) : (
-                        <div className="flex items-center gap-2">
-                          <Input
-                            value={nameInput}
-                            onChange={(e) => setNameInput(e.target.value)}
-                            className="bg-card h-10"
-                            autoFocus
-                            onKeyDown={(e) => { 
-                              if (e.key === "Enter") {
-                                if (nameInput.trim() !== (user?.name || "")) {
-                                  setPendingChanges(prev => ({ ...prev, name: nameInput.trim() }))
-                                }
-                                setEditingName(false)
-                              }
-                              if (e.key === "Escape") setEditingName(false) 
-                            }}
-                          />
-                          <Button size="icon" className="shrink-0 h-10 w-10" onClick={() => {
-                            if (nameInput.trim() !== (user?.name || "")) {
-                              setPendingChanges(prev => ({ ...prev, name: nameInput.trim() }))
-                            }
-                            setEditingName(false)
-                          }}>
-                            <Check className="h-4 w-4" />
-                          </Button>
-                          <Button variant="ghost" size="icon" className="shrink-0 h-10 w-10" onClick={() => setEditingName(false)}>
-                            <X className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      )}
+                      <div className="flex items-center justify-between">
+                        <Label className="text-sm font-medium text-muted-foreground">Name</Label>
+                        {pendingChanges.name !== undefined && pendingChanges.name !== (user?.name || "") && (
+                          <Badge variant="outline" className="text-[10px] bg-amber-500/10 text-amber-500 border-amber-500/20">Modified</Badge>
+                        )}
+                      </div>
+                      <Input
+                        value={pendingChanges.name !== undefined ? pendingChanges.name : (nameInput || user?.name || "")}
+                        onChange={(e) => {
+                          const val = e.target.value
+                          setNameInput(val)
+                          if (val !== (user?.name || "")) {
+                            setPendingChanges(prev => ({ ...prev, name: val }))
+                          } else {
+                            setPendingChanges(prev => { const { name: _, ...rest } = prev; return rest })
+                          }
+                        }}
+                        className="bg-card h-10"
+                        placeholder="Your display name"
+                      />
                     </div>
 
                     {/* Email field */}
                     <div className="flex flex-col gap-2">
-                      <Label className="text-sm font-medium text-muted-foreground">Email</Label>
-                      {!editingEmail ? (
-                        <div className="flex items-center justify-between p-3 rounded-lg border border-border bg-secondary/20 gap-2">
-                          <div className="flex items-center gap-2 min-w-0">
-                            <Mail className="h-4 w-4 text-muted-foreground shrink-0" />
-                            <span className="text-sm font-medium text-foreground truncate">
-                              {pendingChanges.email !== undefined ? pendingChanges.email : user?.email}
-                            </span>
-                            {pendingChanges.email !== undefined && (
-                              <Badge variant="outline" className="text-[10px] bg-amber-500/10 text-amber-500 border-amber-500/20 shrink-0">Modified</Badge>
-                            )}
-                          </div>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => {
-                              setEmailInput(user?.email || "")
-                              setEditingEmail(true)
-                            }}
-                            className="text-muted-foreground hover:text-foreground h-8 shrink-0"
-                          >
-                            <Pencil className="mr-1.5 h-3.5 w-3.5" />
-                            Edit
-                          </Button>
-                        </div>
-                      ) : (
-                        <div className="flex items-center gap-2">
-                          <Input
-                            type="email"
-                            value={emailInput}
-                            onChange={(e) => setEmailInput(e.target.value)}
-                            className="bg-card h-10"
-                            autoFocus
-                            onKeyDown={(e) => { 
-                              if (e.key === "Enter") {
-                                if (emailInput.trim() !== user?.email) {
-                                  setPendingChanges(prev => ({ ...prev, email: emailInput.trim() }))
-                                }
-                                setEditingEmail(false)
-                              }
-                              if (e.key === "Escape") setEditingEmail(false) 
-                            }}
-                          />
-                          <Button size="icon" className="shrink-0 h-10 w-10" onClick={() => {
-                            if (emailInput.trim() !== user?.email) {
-                              setPendingChanges(prev => ({ ...prev, email: emailInput.trim() }))
-                            }
-                            setEditingEmail(false)
-                          }}>
-                            <Check className="h-4 w-4" />
-                          </Button>
-                          <Button variant="ghost" size="icon" className="shrink-0 h-10 w-10" onClick={() => setEditingEmail(false)}>
-                            <X className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      )}
+                      <div className="flex items-center justify-between">
+                        <Label className="text-sm font-medium text-muted-foreground">Email</Label>
+                        {pendingChanges.email !== undefined && pendingChanges.email !== user?.email && (
+                          <Badge variant="outline" className="text-[10px] bg-amber-500/10 text-amber-500 border-amber-500/20">Modified</Badge>
+                        )}
+                      </div>
+                      <Input
+                        type="email"
+                        value={pendingChanges.email !== undefined ? pendingChanges.email : (emailInput || user?.email || "")}
+                        onChange={(e) => {
+                          const val = e.target.value
+                          setEmailInput(val)
+                          if (val !== user?.email) {
+                            setPendingChanges(prev => ({ ...prev, email: val }))
+                          } else {
+                            setPendingChanges(prev => { const { email: _, ...rest } = prev; return rest })
+                          }
+                        }}
+                        className="bg-card h-10"
+                        placeholder="Your email address"
+                      />
                     </div>
                   </CardContent>
                 </Card>
@@ -3105,6 +3040,8 @@ function ProfileContent() {
                   size="sm" 
                   onClick={() => {
                     setPendingChanges({})
+                    setNameInput(user?.name || "")
+                    setEmailInput(user?.email || "")
                     if (originalNotifPrefs) setNotifPrefs(originalNotifPrefs)
                   }}
                   className="h-9 px-4"
