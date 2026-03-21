@@ -115,15 +115,6 @@ const CHANGELOG: Release[] = [
       { icon: RefreshCw, label: "Severity Sorting Fix", desc: "Fixed the High→Low and Low→High severity sorting which was completely broken. Sorting now works in both directions using proper SEVERITY_ORDER values. Results properly sort by severity level when toggled.", category: "fixed" },
       { icon: Settings, label: "Consistent Token Loading", desc: "Standardized all loading states across share pages to use simple Loader2 spinner with text instead of fancy ping animations. Consistent loading UX across /shares and /shared/[token] pages.", category: "changed" },
       { icon: ShieldCheck, label: "Form & Modal Improvements", desc: "Improved form layouts with better label styling, cleaner toggle switches for preferences, consistent textarea sizing, and better organized sections in modals. DeleteConfirmationModal now shows item details before deletion.", category: "changed" },
-    ],
-  },
-  {
-    version: "2.0.6",
-    date: "March 21, 2026",
-    title: "parseBody Error Handling & Discord OAuth Device Trust Fix",
-    highlights: true,
-    summary: "Fixed critical bug preventing Discord OAuth logins from respecting 'Trust this device for 30 days' preference. Enhanced request body parsing error handling to properly validate content-type headers before attempting JSON/FormData parsing.",
-    changes: [
       { icon: Shield, label: "Discord Device Trust Fix", desc: "Fixed bug where checking 'Trust this device for 30 days' on 2FA verification page after Discord OAuth login wasn't actually setting the device trust cookie. The rememberDevice checkbox value from the 2FA verification form is now properly used for both standard login AND Discord OAuth flows.", category: "fixed" },
       { icon: Wrench, label: "Request Body Parsing Enhancement", desc: "Improved parseBody() utility function with better error handling and content-type validation. Now checks content-type header before attempting JSON parsing, gracefully falls back to JSON for missing/unspecified content-types, and provides clearer error messages for malformed requests.", category: "changed" },
     ],
