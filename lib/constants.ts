@@ -252,7 +252,7 @@ export const PAGINATION = {
 
 export const BILLING_ENABLED = config.billing?.enabled ?? true
 export const BILLING_PLAN_LIMITS = config.billing?.plan_limits ?? {
-  free: 50,
+  free: 25,
   core_supporter: 100,
   pro_supporter: 150,
   elite_supporter: 500,
