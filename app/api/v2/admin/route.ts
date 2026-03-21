@@ -340,17 +340,56 @@ export async function PATCH(request: NextRequest) {
       await pool.query("UPDATE users SET password_hash = $1 WHERE id = $2", [passwordHash, userId])
       await pool.query("DELETE FROM sessions WHERE user_id = $1", [userId])
       await logAction(session.userId, userId, "reset_password", `Reset password for ${targetUser.email}`, ip)
+      
+      // Send email notification with temp password
+      const [adminNamePwd, userNamePwd] = await Promise.all([getAdminName(session.userId), getUserName(userId)])
+      const emailPayloadPwd = adminAccountChangeEmail({
+        userName: userNamePwd,
+        adminName: adminNamePwd,
+        changes: [
+          { field: "Password", oldValue: "Previous password", newValue: "Reset (temporary password sent)" }
+        ],
+        timestamp: new Date(),
+        ipAddress: ip,
+      })
+      await sendNotificationIfEnabled(notifyUser, targetUser.email, emailPayloadPwd)
+      
       return NextResponse.json({ success: true, tempPassword })
     }
 
-    case "revoke_sessions":
+    case "revoke_sessions": {
       await pool.query("DELETE FROM sessions WHERE user_id = $1", [userId])
       await logAction(session.userId, userId, "revoke_sessions", `Revoked all sessions for ${targetUser.email}`, ip)
+      
+      // Send email notification
+      const [adminNameSess, userNameSess] = await Promise.all([getAdminName(session.userId), getUserName(userId)])
+      const emailPayloadSess = adminAccountChangeEmail({
+        userName: userNameSess,
+        adminName: adminNameSess,
+        changes: [{ field: "Active Sessions", oldValue: "All sessions", newValue: "Revoked" }],
+        timestamp: new Date(),
+        ipAddress: ip,
+      })
+      await sendNotificationIfEnabled(notifyUser, targetUser.email, emailPayloadSess)
+      
       return NextResponse.json({ success: true })
+    }
 
     case "revoke_api_keys": {
       await pool.query("UPDATE api_keys SET revoked_at = NOW() WHERE user_id = $1 AND revoked_at IS NULL", [userId])
       await logAction(session.userId, userId, "revoke_api_keys", `Revoked all API keys for ${targetUser.email}`, ip)
+      
+      // Send email notification
+      const [adminNameKeys, userNameKeys] = await Promise.all([getAdminName(session.userId), getUserName(userId)])
+      const emailPayloadKeys = adminAccountChangeEmail({
+        userName: userNameKeys,
+        adminName: adminNameKeys,
+        changes: [{ field: "API Keys", oldValue: "All keys", newValue: "Revoked" }],
+        timestamp: new Date(),
+        ipAddress: ip,
+      })
+      await sendNotificationIfEnabled(notifyUser, targetUser.email, emailPayloadKeys)
+      
       return NextResponse.json({ success: true })
     }
 
@@ -360,15 +399,15 @@ export async function PATCH(request: NextRequest) {
       await logAction(session.userId, userId, "disable_user", `Disabled account for ${targetUser.email}`, ip)
       
       // Send email notification
-      const [adminName, userName] = await Promise.all([getAdminName(session.userId), getUserName(userId)])
-      const emailPayload = adminAccountChangeEmail({
-        userName,
-        adminName,
-        changes: [{ field: "Account Status", oldValue: "Disabled", newValue: "Active" }],
+      const [adminNameDis, userNameDis] = await Promise.all([getAdminName(session.userId), getUserName(userId)])
+      const emailPayloadDis = adminAccountChangeEmail({
+        userName: userNameDis,
+        adminName: adminNameDis,
+        changes: [{ field: "Account Status", oldValue: "Active", newValue: "Disabled" }],
         timestamp: new Date(),
         ipAddress: ip,
       })
-      await sendNotificationIfEnabled(notifyUser, targetUser.email, emailPayload)
+      await sendNotificationIfEnabled(notifyUser, targetUser.email, emailPayloadDis)
       
       return NextResponse.json({ success: true })
     }
@@ -518,6 +557,21 @@ export async function PATCH(request: NextRequest) {
       await pool.query("DELETE FROM sessions WHERE user_id = $1", [userId])
       await pool.query("UPDATE api_keys SET revoked_at = NOW() WHERE user_id = $1 AND revoked_at IS NULL", [userId])
       await logAction(session.userId, userId, "force_logout_all", `Force logged out ${targetUser.email} and revoked all API keys`, ip)
+      
+      // Send email notification
+      const [adminNameLogout, userNameLogout] = await Promise.all([getAdminName(session.userId), getUserName(userId)])
+      const emailPayloadLogout = adminAccountChangeEmail({
+        userName: userNameLogout,
+        adminName: adminNameLogout,
+        changes: [
+          { field: "Active Sessions", oldValue: "All sessions", newValue: "Revoked" },
+          { field: "API Keys", oldValue: "All keys", newValue: "Revoked" }
+        ],
+        timestamp: new Date(),
+        ipAddress: ip,
+      })
+      await sendNotificationIfEnabled(notifyUser, targetUser.email, emailPayloadLogout)
+      
       return NextResponse.json({ success: true })
     }
 
