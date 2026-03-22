@@ -2382,7 +2382,8 @@ function ProfileContent() {
                             <div className="flex items-center justify-between gap-2">
                               <div className="flex items-center gap-2 min-w-0">
                                 <Key className="h-4 w-4 text-muted-foreground shrink-0" />
-                                <span className="text-sm font-mono font-medium text-foreground truncate">{key.prefix}...</span>
+                                <span className="text-sm font-medium text-foreground truncate">{key.name}</span>
+                                <Badge variant="outline" className="text-xs font-mono text-muted-foreground shrink-0">{key.key_prefix}...</Badge>
                               </div>
                               <Button
                                 variant="ghost"
