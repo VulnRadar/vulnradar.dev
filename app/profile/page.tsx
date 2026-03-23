@@ -2822,12 +2822,11 @@ function ProfileContent() {
                     </div>
                   </div>
                 <Card className="border-border/60">
-                  <CardContent className="pt-6 flex flex-col gap-2">
+                  <CardContent className="pt-6 flex flex-col gap-3">
                     {([
-                      { key: "email_scan_complete" as const, icon: Check, label: "Scan Complete", desc: "Get notified when a scan finishes with a summary of findings." },
-                      { key: "email_critical_findings" as const, icon: XCircle, label: "Critical Findings", desc: "Alerts when critical or high-severity vulnerabilities are discovered in your scans." },
-                      { key: "email_regression_alert" as const, icon: AlertTriangle, label: "Regression Alerts", desc: "Notifications when previously resolved issues reappear in subsequent scans." },
-                      { key: "email_schedules" as const, icon: CalendarClock, label: "Scheduled Scan Reports", desc: "Email summaries when scheduled scans complete, including severity breakdowns." },
+                      { key: "email_scan_completed" as const, icon: CheckCircle2, label: "Scan Completed", desc: "Alerts when vulnerability scans are finished." },
+                      { key: "email_scan_critical" as const, icon: AlertCircle, label: "Critical Issues Found", desc: "Immediate alerts when critical vulnerabilities are detected." },
+                      { key: "email_scheduled_completed" as const, icon: CalendarClock, label: "Scheduled Scans Completed", desc: "Alerts when your scheduled scans finish." },
                     ] as const).map(({ key, icon: Icon, label, desc }) => (
                       <div key={key} className="flex items-center justify-between p-3 rounded-lg border border-border bg-secondary/30">
                         <div className="flex-1">
@@ -2856,7 +2855,7 @@ function ProfileContent() {
                     </div>
                   </div>
                 <Card className="border-border/60">
-                  <CardContent className="pt-6 flex flex-col gap-2">
+                  <CardContent className="pt-6 flex flex-col gap-3">
                     {([
                       { key: "email_api_keys" as const, icon: Key, label: "API Key Activity", desc: "Alerts when API keys are created, revoked, or approaching expiration." },
                       { key: "email_api_limit_warning" as const, icon: Gauge, label: "API Limit Warnings", desc: "Warnings when your API usage nears rate limits or daily quotas." },
@@ -2890,7 +2889,7 @@ function ProfileContent() {
                     </div>
                   </div>
                 <Card className="border-border/60">
-                  <CardContent className="pt-6 flex flex-col gap-2">
+                  <CardContent className="pt-6 flex flex-col gap-3">
                     {([
                       { key: "email_data_requests" as const, icon: Download, label: "Data Export Updates", desc: "Notifications when your data export is ready for download." },
                       { key: "email_account_deletion" as const, icon: UserCog, label: "Account Deletion", desc: "Confirmations and alerts when account deletion is requested or processed." },
@@ -2920,7 +2919,7 @@ function ProfileContent() {
                     </CardTitle>
                     <CardDescription>Stay up to date with new features, tips, and platform updates.</CardDescription>
                   </CardHeader>
-                  <CardContent className="flex flex-col gap-2">
+                  <CardContent className="flex flex-col gap-3">
                     {([
                       { key: "email_product_updates" as const, icon: Megaphone, label: "Product Updates", desc: "Major feature announcements, release notes, and platform improvements." },
                       { key: "email_tips_guides" as const, icon: Lightbulb, label: "Tips & Guides", desc: `Helpful tips, best practices, and security guides to get the most out of ${APP_NAME}.` },

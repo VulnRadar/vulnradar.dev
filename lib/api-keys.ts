@@ -231,12 +231,12 @@ export async function revokeApiKey(keyId: number, userId: number) {
     return result.rows.length > 0
 }
 
-// Rotate an API key - revokes old key and creates new one with same name
+// Rotate an API key - deletes old key and creates new one with same name
 // Returns the new key details including raw_key (only shown once)
 export async function rotateApiKey(keyId: number, userId: number, dailyLimit?: number) {
     // Get the old key's name first
     const oldKeyResult = await pool.query(
-        "SELECT name, daily_limit FROM api_keys WHERE id = $1 AND user_id = $2 AND revoked_at IS NULL",
+        "SELECT name, daily_limit FROM api_keys WHERE id = $1 AND user_id = $2",
         [keyId, userId],
     )
     
@@ -246,9 +246,9 @@ export async function rotateApiKey(keyId: number, userId: number, dailyLimit?: n
     
     const { name, daily_limit: oldLimit } = oldKeyResult.rows[0]
     
-    // Revoke the old key
+    // Hard delete the old key - no trace
     await pool.query(
-        "UPDATE api_keys SET revoked_at = NOW() WHERE id = $1",
+        "DELETE FROM api_keys WHERE id = $1",
         [keyId],
     )
     
