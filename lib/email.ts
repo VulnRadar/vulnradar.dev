@@ -749,7 +749,7 @@ export function rateLimitedEmail(ipAddress: string, details: SecurityAlertDetail
       <div style="background-color: ${COLORS.BG_SECTION}; border-radius: 8px; padding: 16px; margin-bottom: 20px;">
         <p style="margin: 0 0 8px 0; font-size: 12px; color: ${COLORS.TEXT_MUTED}; text-transform: uppercase; font-weight: 600;">Details</p>
         <p style="margin: 0 0 4px 0; font-size: 14px; color: ${COLORS.TEXT_PRIMARY};">IP Address: <span style="font-family: monospace;">${escapeHtml(ipAddress)}</span></p>
-        <p style="margin: 0; font-size: 14px; color: ${COLORS.TEXT_PRIMARY};">Limit: 50 requests per 24 hours</p>
+        <p style="margin: 0; font-size: 14px; color: ${COLORS.TEXT_PRIMARY};">Limit based on your subscription plan</p>
       </div>
       <div style="background-color: ${COLORS.BG_INFO}; border-left: 3px solid ${COLORS.ACCENT_BLUE_LIGHT}; border-radius: 6px; padding: 14px 16px; margin-bottom: 20px;">
         <p style="margin: 0 0 4px 0; font-size: 13px; color: ${COLORS.ACCENT_BLUE_PALE}; font-weight: 600;">What happens next</p>

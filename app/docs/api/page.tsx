@@ -296,7 +296,7 @@ scan = response.json()`,
             <div className="text-[10px] sm:text-xs text-muted-foreground">API Version</div>
           </div>
           <div className="p-2.5 sm:p-4 rounded-lg bg-card border border-border/40">
-            <div className="text-lg sm:text-2xl font-bold text-primary mb-0.5 sm:mb-1">50/day</div>
+            <div className="text-lg sm:text-2xl font-bold text-primary mb-0.5 sm:mb-1">By Plan</div>
             <div className="text-[10px] sm:text-xs text-muted-foreground">Rate Limit per Key</div>
           </div>
           <div className="p-2.5 sm:p-4 rounded-lg bg-card border border-border/40">
@@ -387,7 +387,7 @@ scan = response.json()`,
               { code: 400, description: "Missing or invalid URL parameter" },
               { code: 401, description: "Invalid, missing, or revoked API key" },
               { code: 422, description: "Target URL unreachable or blocking requests" },
-              { code: 429, description: "Rate limit exceeded (50 requests per 24 hours)" },
+              { code: 429, description: "Rate limit exceeded (varies by plan: Free 25/day, Core 100/day, Pro 5,000/day, Elite unlimited)" },
             ]}
           />
 
@@ -659,15 +659,36 @@ scan = response.json()`,
         
         <Card className="p-6 border-border/40">
           <p className="text-muted-foreground mb-6">
-            Each API key is limited to <strong className="text-foreground">50 requests per 24 hours</strong>. 
-            Rate limit information is included in response headers.
+            API rate limits vary by subscription plan. Rate limit information is included in response headers.
           </p>
-          
+
           <div className="space-y-6">
             <div>
+              <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">Rate Limits by Plan</h4>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <div className="p-3 rounded-lg bg-secondary/30 border border-border/40 text-center">
+                  <div className="text-lg font-bold text-foreground">25</div>
+                  <div className="text-xs text-muted-foreground">Free</div>
+                </div>
+                <div className="p-3 rounded-lg bg-secondary/30 border border-border/40 text-center">
+                  <div className="text-lg font-bold text-foreground">100</div>
+                  <div className="text-xs text-muted-foreground">Core</div>
+                </div>
+                <div className="p-3 rounded-lg bg-secondary/30 border border-border/40 text-center">
+                  <div className="text-lg font-bold text-foreground">5,000</div>
+                  <div className="text-xs text-muted-foreground">Pro</div>
+                </div>
+                <div className="p-3 rounded-lg bg-secondary/30 border border-border/40 text-center">
+                  <div className="text-lg font-bold text-primary">Unlimited</div>
+                  <div className="text-xs text-muted-foreground">Elite</div>
+                </div>
+              </div>
+            </div>
+            
+            <div>
               <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">Response Headers</h4>
-              <CodeBlock code={`X-RateLimit-Limit: 50
-X-RateLimit-Remaining: 49
+              <CodeBlock code={`X-RateLimit-Limit: 100
+X-RateLimit-Remaining: 99
 X-RateLimit-Reset: 2026-03-11T15:30:00Z
 Retry-After: 86400`} language="http" />
             </div>
@@ -675,9 +696,9 @@ Retry-After: 86400`} language="http" />
             <div>
               <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">Rate Limit Exceeded Response</h4>
               <CodeBlock code={`{
-  "error": "Rate limit exceeded. 50 requests per 24 hours.",
-  "limit": 50,
-  "used": 50,
+  "error": "Rate limit exceeded",
+  "limit": 100,
+  "used": 100,
   "remaining": 0,
   "resets_at": "2026-03-11T15:30:00Z"
 }`} />
