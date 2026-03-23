@@ -2256,6 +2256,7 @@ function ProfileContent() {
                       <MonitorSmartphone className="h-4 w-4 text-primary" />
                       Active Sessions
                     </h2>
+                    <p className="text-sm text-muted-foreground mt-0.5">
                       Log out of all devices and browsers at once.
                     </p>
                   </div>
