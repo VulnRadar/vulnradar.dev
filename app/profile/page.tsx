@@ -640,13 +640,22 @@ function ProfileContent() {
     }
   }
 
-  async function handleRevokeKey(keyId: number) {
+  async function handleRotateKey(keyId: number) {
     setRevokingId(keyId)
     try {
-      await fetch(`${API.KEYS}/${keyId}/revoke`, { method: "POST" })
+      const res = await fetch(`${API.KEYS}/${keyId}/rotate`, { method: "POST" })
+      const data = await res.json()
+      if (!res.ok) {
+        setError(data.error || "Failed to rotate key.")
+        return
+      }
+      // Show the new key to the user
+      if (data.key?.raw_key) {
+        setNewlyCreatedKey(data.key.raw_key)
+      }
       await fetchData()
     } catch {
-      setError("Failed to revoke key.")
+      setError("Failed to rotate key.")
     } finally {
       setRevokingId(null)
     }
@@ -2322,7 +2331,7 @@ function ProfileContent() {
                         API Keys
                       </h2>
                       <p className="text-sm text-muted-foreground mt-0.5">
-                        Each key is rate-limited to 50 requests per 24 hours. Maximum 3 active keys.
+                        Rate limit based on your plan. Maximum 3 active keys.
                       </p>
                     </div>
                     <Button variant="outline" size="sm" className="shrink-0" asChild>
@@ -2394,13 +2403,14 @@ function ProfileContent() {
                               </div>
                               <Button
                                 variant="ghost"
-                                size="icon"
-                                onClick={() => handleRevokeKey(key.id)}
+                                size="sm"
+                                onClick={() => handleRotateKey(key.id)}
                                 disabled={revokingId === key.id}
-                                className="text-muted-foreground hover:text-destructive h-8 w-8"
-                                aria-label="Revoke key"
+                                className="text-muted-foreground hover:text-foreground h-8 gap-1.5"
+                                aria-label="Rotate key"
                               >
-                                <Trash2 className="h-4 w-4" />
+                                <RefreshCw className={cn("h-3.5 w-3.5", revokingId === key.id && "animate-spin")} />
+                                <span className="hidden sm:inline">Rotate</span>
                               </Button>
                             </div>
                             <div className="flex flex-col gap-1.5">
