@@ -60,6 +60,7 @@ import {
   Crosshair,
   CheckCircle,
   CalendarClock,
+  UserCog,
   type LucideIcon,
 } from "lucide-react"
 import { APP_NAME } from "@/lib/constants"
