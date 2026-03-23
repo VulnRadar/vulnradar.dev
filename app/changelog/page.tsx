@@ -59,6 +59,7 @@ import {
   Radar,
   Crosshair,
   CheckCircle,
+  CalendarClock,
   type LucideIcon,
 } from "lucide-react"
 import { APP_NAME } from "@/lib/constants"
