@@ -1021,9 +1021,9 @@ function ProfileContent() {
       <main className="flex-1 w-full max-w-6xl mx-auto px-4 sm:px-6 py-8 sm:py-12 flex flex-col gap-6 min-w-0">
 
         {/* Page Header */}
-        <div className="border-b border-border pb-6">
-          <h1 className="text-2xl font-semibold tracking-tight">Settings</h1>
-          <p className="text-sm text-muted-foreground mt-1">Manage your account settings and preferences.</p>
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight mb-1">Settings</h1>
+          <p className="text-sm text-muted-foreground">Manage your account settings and preferences.</p>
         </div>
 
         {/* Toast messages */}
@@ -1043,51 +1043,34 @@ function ProfileContent() {
         )}
 
         {/* Two-column layout: Sidebar + Content */}
-        <div className="flex flex-col lg:flex-row gap-6 lg:gap-8">
+        <div className="flex flex-col lg:flex-row gap-6 lg:gap-10">
 
           {/* Sidebar Navigation */}
-          <aside className="lg:w-56 lg:shrink-0">
-            {/* Mobile: Scrollable horizontal tab bar */}
-            <div className="lg:hidden overflow-x-auto scrollbar-none -mx-4 px-4">
-              <div className="flex gap-1 border-b border-border pb-3 min-w-max">
+          <aside className="lg:w-52 lg:shrink-0">
+            {/* Mobile: Icons-only centered tab bar */}
+            <div className="lg:hidden">
+              <div className="flex justify-center gap-2 border-b border-border pb-2 pt-1">
                 {TABS.map((tab) => (
                   <button
                     key={tab.id}
                     onClick={() => handleTabChange(tab.id)}
+                    title={tab.label}
+                    aria-label={tab.label}
                     className={cn(
-                      "flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-lg transition-all whitespace-nowrap",
+                      "flex items-center justify-center w-10 h-10 rounded-md transition-all",
                       activeTab === tab.id
-                        ? "bg-secondary text-foreground"
+                        ? "bg-primary/10 text-primary"
                         : "text-muted-foreground hover:text-foreground hover:bg-secondary/50"
                     )}
                   >
                     {tab.icon}
-                    <span>{tab.label}</span>
                   </button>
                 ))}
               </div>
             </div>
 
-            {/* Desktop: Vertical sidebar with search */}
-            <nav className="hidden lg:flex flex-col gap-1 sticky top-24">
-              <div className="mb-3">
-                <div className="relative">
-                  <svg className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                  </svg>
-                  <input
-                    type="text"
-                    placeholder="Search..."
-                    className="w-full h-9 pl-9 pr-3 text-sm bg-secondary/50 border border-border rounded-lg placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary/50 focus:border-primary/50"
-                    onChange={(e) => {
-                      const query = e.target.value.toLowerCase()
-                      if (!query) return
-                      const match = TABS.find(t => t.label.toLowerCase().includes(query))
-                      if (match) handleTabChange(match.id)
-                    }}
-                  />
-                </div>
-              </div>
+            {/* Desktop: Vertical sidebar */}
+            <nav className="hidden lg:flex flex-col gap-0.5 sticky top-24">
               {TABS.map((tab) => (
                 <a
                   key={tab.id}
@@ -1099,9 +1082,9 @@ function ProfileContent() {
                     }
                   }}
                   className={cn(
-                    "flex items-center gap-3 px-3 py-2.5 text-sm rounded-lg transition-all",
+                    "flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-md transition-all",
                     activeTab === tab.id
-                      ? "bg-secondary text-foreground font-medium"
+                      ? "bg-primary/10 text-primary"
                       : "text-muted-foreground hover:text-foreground hover:bg-secondary/50"
                   )}
                 >
@@ -1113,20 +1096,455 @@ function ProfileContent() {
           </aside>
 
           {/* Main Content Area */}
-          <div className="flex-1 min-w-0">
+          <div className="flex-1 min-w-0 space-y-6">
 
             {/* ===================== GENERAL TAB ===================== */}
             {activeTab === "general" && (
-              <div className="flex flex-col gap-8">
+              <div className="flex flex-col gap-6">
                 {/* Personal Information */}
-                <section>
-                  <div className="mb-4">
-                    <h2 className="text-base font-semibold text-foreground">Personal Information</h2>
-                    <p className="text-sm text-muted-foreground mt-0.5">Manage your profile picture, name, and email address.</p>
-                  </div>
-                <Card className="border-border/60">
-                  <CardContent className="pt-6">
-                    <div className="flex flex-col gap-4">
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-lg">Personal Information</CardTitle>
+                    <CardDescription>Manage your profile picture, name, and email address.</CardDescription>
+                  </CardHeader>
+                  <CardContent className="flex flex-col gap-5">
+                    {/* Profile Picture */}
+                    <div className="flex flex-col gap-2">
+                      <Label className="text-sm font-medium text-muted-foreground">Profile Picture</Label>
+                      <div className="flex items-center gap-4">
+                        <div className="relative group">
+                          <div className="h-16 w-16 rounded-full border-2 border-border bg-secondary/40 flex items-center justify-center overflow-hidden">
+                            {user?.avatarUrl ? (
+                              <img src={user.avatarUrl} alt="Profile" className="h-full w-full object-cover" />
+                            ) : (
+                              <span className="text-xl font-bold text-muted-foreground">
+                                {user?.name?.charAt(0)?.toUpperCase() || user?.email?.charAt(0)?.toUpperCase() || "?"}
+                              </span>
+                            )}
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => avatarInputRef.current?.click()}
+                            disabled={uploadingAvatar}
+                            className="absolute inset-0 flex items-center justify-center rounded-full bg-background/70 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+                          >
+                            {uploadingAvatar ? (
+                              <Loader2 className="h-5 w-5 animate-spin text-foreground" />
+                            ) : (
+                              <Camera className="h-5 w-5 text-foreground" />
+                            )}
+                          </button>
+                        </div>
+                        <div className="flex flex-col gap-1.5">
+                          <div className="flex gap-2">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="bg-transparent text-xs"
+                              onClick={() => avatarInputRef.current?.click()}
+                              disabled={uploadingAvatar}
+                            >
+                              {uploadingAvatar ? "Uploading..." : "Upload"}
+                            </Button>
+                            {user?.avatarUrl && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="text-xs text-destructive hover:text-destructive"
+                                onClick={handleRemoveAvatar}
+                                disabled={uploadingAvatar}
+                              >
+                                Remove
+                              </Button>
+                            )}
+                          </div>
+                          <p className="text-[11px] text-muted-foreground">JPG, PNG, or GIF. Max 10MB.</p>
+                        </div>
+                        <input
+                          ref={avatarInputRef}
+                          type="file"
+                          accept="image/*"
+                          onChange={handleAvatarFileSelect}
+                          className="hidden"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Badges section */}
+                    {user?.badges && user.badges.length > 0 && (
+                      <div className="flex flex-col gap-2">
+                        <Label className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                          <Award className="h-4 w-4" /> Badges
+                        </Label>
+                        <div className="flex flex-wrap gap-2 p-3 rounded-lg border border-border bg-secondary/20">
+                          {user.badges.map((badge) => (
+                            <div
+                              key={badge.id}
+                              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium"
+                              style={{
+                                backgroundColor: `${badge.color}15`,
+                                borderWidth: 1,
+                                borderColor: `${badge.color}40`,
+                                color: badge.color || undefined,
+                              }}
+                              title={badge.description || undefined}
+                            >
+                              <Tag className="h-3 w-3" />
+                              {badge.display_name}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Name + Email with edit mode toggle */}
+                    <div className="flex items-center justify-between mb-1">
+                      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Personal Details</p>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-7 text-xs gap-1.5"
+                        onClick={() => {
+                          if (profileEditMode) {
+                            // Cancel — revert pending profile changes
+                            setNameInput(user?.name || "")
+                            setEmailInput(user?.email || "")
+                            setPendingChanges(prev => {
+                              const next = { ...prev }
+                              delete next.name
+                              delete next.email
+                              return next
+                            })
+                          }
+                          setProfileEditMode(m => !m)
+                        }}
+                      >
+                        {profileEditMode ? (
+                          <><X className="h-3 w-3" />Cancel</>
+                        ) : (
+                          <><Pencil className="h-3 w-3" />Edit</>
+                        )}
+                      </Button>
+                    </div>
+
+                    {!profileEditMode ? (
+                      // Read-only view
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div className="flex flex-col gap-1 p-3 rounded-lg border bg-muted/20 border-border">
+                          <div className="flex items-center gap-2 mb-1">
+                            <UserCog className="h-3.5 w-3.5 text-muted-foreground" />
+                            <span className="text-[11px] text-muted-foreground font-medium">Display Name</span>
+                          </div>
+                          <span className="text-sm font-medium text-foreground truncate">
+                            {user?.name || <span className="text-muted-foreground italic">Not set</span>}
+                          </span>
+                        </div>
+                        <div className="flex flex-col gap-1 p-3 rounded-lg border bg-muted/20 border-border">
+                          <div className="flex items-center gap-2 mb-1">
+                            <Mail className="h-3.5 w-3.5 text-muted-foreground" />
+                            <span className="text-[11px] text-muted-foreground font-medium">Email Address</span>
+                          </div>
+                          <span className="text-sm font-medium text-foreground truncate">{user?.email}</span>
+                        </div>
+                      </div>
+                    ) : (
+                      // Edit mode
+                      <div className="flex flex-col gap-3">
+                        <div className="flex flex-col gap-1.5">
+                          <div className="flex items-center justify-between">
+                            <Label className="text-xs font-medium text-muted-foreground">Display Name</Label>
+                            {pendingChanges.name !== undefined && pendingChanges.name !== (user?.name || "") && (
+                              <Badge variant="outline" className="text-[10px] bg-amber-500/10 text-amber-500 border-amber-500/20">Modified</Badge>
+                            )}
+                          </div>
+                          <Input
+                            value={nameInput}
+                            onChange={(e) => {
+                              const val = e.target.value
+                              setNameInput(val)
+                              if (val !== (user?.name || "")) {
+                                setPendingChanges(prev => ({ ...prev, name: val }))
+                              } else {
+                                setPendingChanges(prev => { const { name: _, ...rest } = prev; return rest })
+                              }
+                            }}
+                            className="bg-card h-10"
+                            placeholder="Your display name"
+                            autoFocus
+                          />
+                        </div>
+                        <div className="flex flex-col gap-1.5">
+                          <div className="flex items-center justify-between">
+                            <Label className="text-xs font-medium text-muted-foreground">Email Address</Label>
+                            {pendingChanges.email !== undefined && pendingChanges.email !== user?.email && (
+                              <Badge variant="outline" className="text-[10px] bg-amber-500/10 text-amber-500 border-amber-500/20">Modified</Badge>
+                            )}
+                          </div>
+                          <Input
+                            type="email"
+                            value={emailInput}
+                            onChange={(e) => {
+                              const val = e.target.value
+                              setEmailInput(val)
+                              if (val !== user?.email) {
+                                setPendingChanges(prev => ({ ...prev, email: val }))
+                              } else {
+                                setPendingChanges(prev => { const { email: _, ...rest } = prev; return rest })
+                              }
+                            }}
+                            className="bg-card h-10"
+                            placeholder="Your email address"
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+
+                {/* Quick Links to Other Settings */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-lg">Quick Settings</CardTitle>
+                    <CardDescription>Manage other account settings.</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <button
+                        onClick={() => { setActiveTab("security" as Tab); window.location.hash = "security" }}
+                        className="flex items-center gap-3 p-4 rounded-lg border border-border hover:bg-secondary/50 transition-colors text-left"
+                      >
+                        <div className="flex items-center justify-center h-10 w-10 rounded-lg bg-primary/10">
+                          <Lock className="h-5 w-5 text-primary" />
+                        </div>
+                        <div>
+                          <p className="text-sm font-medium">Security</p>
+                          <p className="text-xs text-muted-foreground">Password, 2FA, sessions</p>
+                        </div>
+                      </button>
+                      <button
+                        onClick={() => { setActiveTab("social" as Tab); window.location.hash = "social" }}
+                        className="flex items-center gap-3 p-4 rounded-lg border border-border hover:bg-secondary/50 transition-colors text-left"
+                      >
+                        <div className="flex items-center justify-center h-10 w-10 rounded-lg bg-[#5865F2]/10">
+                          <Share2 className="h-5 w-5 text-[#5865F2]" />
+                        </div>
+                        <div>
+                          <p className="text-sm font-medium">Connected Accounts</p>
+                          <p className="text-xs text-muted-foreground">Discord integration</p>
+                        </div>
+                      </button>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+            )}
+
+            {/* ===================== SOCIAL TAB ===================== */}
+            {activeTab === "social" && (
+              <div className="space-y-6">
+                {/* Discord Integration */}
+                <Card>
+                  <CardHeader>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <CardTitle className="text-lg flex items-center gap-2">
+                          <svg className="h-5 w-5 text-[#5865F2]" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028 14.09 14.09 0 0 0 1.226-1.994.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418z" />
+                          </svg>
+                          Discord
+                        </CardTitle>
+                        <CardDescription>Connect your Discord account to enable sign-in with Discord and auto-join our community server.</CardDescription>
+                      </div>
+                      {user?.discordId && (
+                        <Badge className="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20">Connected</Badge>
+                      )}
+                    </div>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    {user?.discordId ? (
+                      <>
+                        {/* Connected Account Card */}
+                        <div className="rounded-xl border border-[#5865F2]/20 bg-[#5865F2]/5 overflow-hidden">
+                          {/* Header with Discord branding */}
+                          <div className="bg-[#5865F2] px-4 py-3">
+                            <p className="text-sm font-medium text-white">Connected Account</p>
+                          </div>
+                          
+                          {/* Account details */}
+                          <div className="p-4 space-y-4">
+                            {/* User info row */}
+                            <div className="flex items-center gap-4">
+                              {user.discordAvatar ? (
+                                <img
+                                  src={`https://cdn.discordapp.com/avatars/${user.discordId}/${user.discordAvatar}.png?size=128`}
+                                  alt="Discord avatar"
+                                  className="h-14 w-14 rounded-full ring-2 ring-[#5865F2]/30 ring-offset-2 ring-offset-background"
+                                />
+                              ) : (
+                                <div className="h-14 w-14 rounded-full bg-[#5865F2] flex items-center justify-center ring-2 ring-[#5865F2]/30 ring-offset-2 ring-offset-background">
+                                  <span className="text-white text-lg font-semibold">
+                                    {user.discordUsername?.[0]?.toUpperCase() || "?"}
+                                  </span>
+                                </div>
+                              )}
+                              <div className="flex-1 min-w-0">
+                                <p className="font-semibold text-foreground truncate">
+                                  {user.discordUsername || "Unknown User"}
+                                </p>
+                                <p className="text-sm text-muted-foreground font-mono">
+                                  ID: {user.discordId}
+                                </p>
+                              </div>
+                            </div>
+
+                            {/* Feature badges */}
+                            <div className="flex flex-wrap gap-2">
+                              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20">
+                                <Check className="h-3.5 w-3.5 text-emerald-500" />
+                                <span className="text-xs font-medium text-emerald-600 dark:text-emerald-400">Discord Sign-in Enabled</span>
+                              </div>
+                              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[#5865F2]/10 border border-[#5865F2]/20">
+                                <Users className="h-3.5 w-3.5 text-[#5865F2]" />
+                                <span className="text-xs font-medium text-[#5865F2]">Community Access</span>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Actions */}
+                        <div className="flex flex-col sm:flex-row gap-3">
+                          <Button
+                            variant="outline"
+                            className="flex-1"
+                            onClick={() => window.location.href = "/api/v2/auth/discord?action=connect"}
+                          >
+                            <RefreshCw className="mr-2 h-4 w-4" />
+                            Reconnect Account
+                          </Button>
+                          <Button
+                            variant="outline"
+                            className="flex-1 text-destructive dark:text-red-400 border-destructive/30 hover:bg-destructive/10"
+                            onClick={async () => {
+                              try {
+                                const res = await fetch("/api/v2/account/discord", { method: "DELETE" })
+                                if (res.ok) {
+                                  setSuccess("Discord account disconnected")
+                                  const authRes = await fetch("/api/v2/auth/me")
+                                  const authData = await authRes.json()
+                                  setUser(authData.data)
+                                } else {
+                                  setError("Failed to disconnect Discord account")
+                                }
+                              } catch {
+                                setError("Failed to disconnect Discord account")
+                              }
+                            }}
+                          >
+                            <Unlink className="mr-2 h-4 w-4" />
+                            Disconnect
+                          </Button>
+                        </div>
+
+                        {/* Info note */}
+                        <p className="text-xs text-muted-foreground">
+                          Disconnecting will disable Discord sign-in. You can reconnect at any time.
+                        </p>
+                      </>
+                    ) : (
+                      <>
+                        {/* Not connected state */}
+                        <div className="rounded-xl border border-border bg-secondary/30 p-6 text-center space-y-4">
+                          <div className="flex justify-center">
+                            <div className="h-16 w-16 rounded-full bg-[#5865F2]/10 border-2 border-dashed border-[#5865F2]/30 flex items-center justify-center">
+                              <svg className="h-8 w-8 text-[#5865F2]/60" viewBox="0 0 24 24" fill="currentColor">
+                                <path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028 14.09 14.09 0 0 0 1.226-1.994.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418z" />
+                              </svg>
+                            </div>
+                          </div>
+                          <div>
+                            <p className="font-medium text-foreground">No Discord account connected</p>
+                            <p className="text-sm text-muted-foreground mt-1">
+                              Link your Discord for faster sign-in and community features
+                            </p>
+                          </div>
+                          
+                          {/* Benefits list */}
+                          <div className="flex flex-col gap-2 text-left max-w-xs mx-auto">
+                            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                              <Check className="h-4 w-4 text-emerald-500 shrink-0" />
+                              <span>Sign in with one click</span>
+                            </div>
+                            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                              <Check className="h-4 w-4 text-emerald-500 shrink-0" />
+                              <span>Auto-join our Discord server</span>
+                            </div>
+                            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                              <Check className="h-4 w-4 text-emerald-500 shrink-0" />
+                              <span>Sync your profile picture</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        <Button 
+                          className="w-full bg-[#5865F2] hover:bg-[#4752C4] text-white"
+                          onClick={() => window.location.href = "/api/v2/auth/discord?action=connect"}
+                        >
+                          <svg className="mr-2 h-4 w-4" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028 14.09 14.09 0 0 0 1.226-1.994.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418z" />
+                          </svg>
+                          Connect Discord Account
+                        </Button>
+                      </>
+                    )}
+                  </CardContent>
+                </Card>
+
+                {/* Community Links */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-lg">Community</CardTitle>
+                    <CardDescription>Join our community and stay connected with the latest updates.</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <a
+                        href="https://discord.gg/Y7R6hdGbNe"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-3 p-4 rounded-lg border border-border hover:bg-secondary/50 transition-colors"
+                      >
+                        <div className="flex items-center justify-center h-10 w-10 rounded-lg bg-[#5865F2]/10">
+                          <svg className="h-5 w-5 text-[#5865F2]" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028 14.09 14.09 0 0 0 1.226-1.994.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418z" />
+                          </svg>
+                        </div>
+                        <div>
+                          <p className="text-sm font-medium">Discord Server</p>
+                          <p className="text-xs text-muted-foreground">Join our community</p>
+                        </div>
+                        <ExternalLink className="h-4 w-4 ml-auto text-muted-foreground" />
+                      </a>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+            )}
+
+            {/* ===================== BILLING TAB ===================== */}
+            {activeTab === "billing" && (
+              <div className="flex flex-col gap-6">
+                {/* Usage Card */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-lg flex items-center gap-2">
+                      <Gauge className="h-4 w-4 text-muted-foreground" />
+                      Daily Usage
+                    </CardTitle>
+                    <CardDescription>
+                      Track your scan requests for today. Limits reset at midnight UTC.
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="flex flex-col gap-4">
                     {billingInfo ? (
                       <>
                         {billingInfo.usage.unlimited ? (
@@ -1187,18 +1605,18 @@ function ProfileContent() {
                     )}
                   </CardContent>
                 </Card>
-                </section>
 
                 {/* Plan Info Card */}
-                <section>
-                  <div className="mb-4">
-                    <h2 className="text-base font-semibold text-foreground flex items-center gap-2">
-                      <CreditCard className="h-4 w-4 text-primary" />
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-lg flex items-center gap-2">
+                      <CreditCard className="h-4 w-4 text-muted-foreground" />
                       Subscription Plan
-                    </h2>
-                    <p className="text-sm text-muted-foreground mt-0.5">Manage your subscription and billing.</p>
-                  </div>
-                <Card className="border-border/60">
+                    </CardTitle>
+                    <CardDescription>
+                      Manage your subscription and billing.
+                    </CardDescription>
+                  </CardHeader>
                   <CardContent className="flex flex-col gap-4">
                     {billingInfo ? (
                       <>
@@ -1362,7 +1780,8 @@ function ProfileContent() {
                     )}
                   </CardContent>
                 </Card>
-                </section>
+
+                {/* Cancel Subscription Dialog */}
                 {showCancelDialog && (
                   <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => setShowCancelDialog(false)}>
                     <div className="bg-card border border-border rounded-xl shadow-2xl w-full max-w-md p-6 mx-4" onClick={(e) => e.stopPropagation()}>
@@ -1458,27 +1877,27 @@ function ProfileContent() {
 
             {/* ===================== SECURITY TAB ===================== */}
             {activeTab === "security" && (
-              <div className="flex flex-col gap-8">
+              <div className="flex flex-col gap-6">
                 {/* Password */}
-                <section>
-                  <div className="mb-4 flex items-center justify-between">
-                    <div>
-                      <h2 className="text-base font-semibold text-foreground flex items-center gap-2">
-                        <Lock className="h-4 w-4 text-primary" />
-                        Password
-                      </h2>
-                      <p className="text-sm text-muted-foreground mt-0.5">Update your account password.</p>
+                <Card>
+                  <CardHeader>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <CardTitle className="text-lg flex items-center gap-2">
+                          <Lock className="h-4 w-4 text-muted-foreground" />
+                          Password
+                        </CardTitle>
+                        <CardDescription>Update your account password.</CardDescription>
+                      </div>
+                      {!showPasswordForm && (
+                        <Button variant="outline" size="sm" onClick={() => setShowPasswordForm(true)}>
+                          Change Password
+                        </Button>
+                      )}
                     </div>
-                    {!showPasswordForm && (
-                      <Button variant="outline" size="sm" onClick={() => setShowPasswordForm(true)}>
-                        Change Password
-                      </Button>
-                    )}
-                  </div>
-                <Card className="border-border/60">
-                  <CardContent className="pt-6">
+                  </CardHeader>
                   {showPasswordForm && (
-                    <div className="flex flex-col gap-4">
+                    <CardContent className="flex flex-col gap-4">
                       <div className="flex flex-col gap-2">
                         <Label htmlFor="sec-current-pw" className="text-sm">Current Password</Label>
                         <Input
@@ -1530,34 +1949,31 @@ function ProfileContent() {
                           Cancel
                         </Button>
                       </div>
-                    </div>
+                    </CardContent>
                   )}
                 </Card>
-                </section>
 
                 {/* Two-Factor Authentication */}
-                <section>
-                  <div className="mb-4 flex items-center justify-between">
-                    <div>
-                      <h2 className="text-base font-semibold text-foreground flex items-center gap-2">
-                        <Fingerprint className="h-4 w-4 text-primary" />
-                        Two-Factor Authentication
-                      </h2>
-                      <p className="text-sm text-muted-foreground mt-0.5">
-                        {totpEnabled
-                          ? `2FA is active via ${twoFactorMethod === "email" ? "email" : "authenticator app"}.`
-                          : "Add an extra layer of security to your account."}
-                      </p>
+                <Card>
+                  <CardHeader>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <CardTitle className="text-lg">Two-Factor Authentication</CardTitle>
+                        <CardDescription>
+                          {totpEnabled
+                            ? `2FA is active via ${twoFactorMethod === "email" ? "email" : "authenticator app"}.`
+                            : "Add an extra layer of security to your account."}
+                        </CardDescription>
+                      </div>
+                      {totpEnabled ? (
+                        <Badge className="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20">
+                          {twoFactorMethod === "email" ? "Email" : "App"} Enabled
+                        </Badge>
+                      ) : (
+                        <Badge variant="secondary">Disabled</Badge>
+                      )}
                     </div>
-                    {totpEnabled ? (
-                      <Badge className="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20">
-                        {twoFactorMethod === "email" ? "Email" : "App"} Enabled
-                      </Badge>
-                    ) : (
-                      <Badge variant="secondary">Disabled</Badge>
-                    )}
-                  </div>
-                <Card className="border-border/60">
+                  </CardHeader>
                   <CardContent className="flex flex-col gap-4">
 
                     {/* ── Authenticator App ── */}
@@ -1892,23 +2308,21 @@ function ProfileContent() {
 
             {/* ===================== DEVELOPER TAB ===================== */}
             {activeTab === "developer" && (
-              <div className="flex flex-col gap-8">
-                <section>
-                  <div className="mb-4 flex items-center justify-between">
-                    <div>
-                      <h2 className="text-base font-semibold text-foreground flex items-center gap-2">
-                        <Key className="h-4 w-4 text-primary" />
-                        API Keys
-                      </h2>
-                      <p className="text-sm text-muted-foreground mt-0.5">
-                        Each key is rate-limited to 50 requests per 24 hours. Maximum 3 active keys.
-                      </p>
+              <div className="flex flex-col gap-6">
+                <Card>
+                  <CardHeader>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <CardTitle className="text-lg">API Keys</CardTitle>
+                        <CardDescription className="mt-1">
+                          Each key is rate-limited to 50 requests per 24 hours. Maximum 3 active keys.
+                        </CardDescription>
+                      </div>
+                      <Button variant="outline" size="sm" className="shrink-0" asChild>
+                        <a href="/docs">View Docs</a>
+                      </Button>
                     </div>
-                    <Button variant="outline" size="sm" className="shrink-0" asChild>
-                      <a href="/docs">View Docs</a>
-                    </Button>
-                  </div>
-                <Card className="border-border/60">
+                  </CardHeader>
                   <CardContent className="flex flex-col gap-6">
                     {/* Newly created key banner */}
                     {newlyCreatedKey && (
@@ -2028,20 +2442,19 @@ function ProfileContent() {
                     )}
                   </CardContent>
                 </Card>
-                </section>
+              </div>
+            )}
 
-                {/* ===================== WEBHOOKS SECTION ===================== */}
-                <section>
-                  <div className="mb-4">
-                    <h2 className="text-base font-semibold text-foreground flex items-center gap-2">
-                      <Webhook className="h-4 w-4 text-primary" />
-                      Webhooks
-                    </h2>
-                    <p className="text-sm text-muted-foreground mt-0.5">
-                      Get notified when scans complete. Supports Discord, Slack, and generic JSON webhooks.
-                    </p>
-                  </div>
-                <Card className="border-border/60">
+            {/* ===================== WEBHOOKS SECTION (renders in Developer tab) ===================== */}
+            {activeTab === "developer" && (
+              <>
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-lg">Webhooks</CardTitle>
+                    <CardDescription>
+                      Get notified when scans complete. Supports Discord, Slack, and generic JSON webhooks. Maximum 5 endpoints.
+                    </CardDescription>
+                  </CardHeader>
                   <CardContent className="space-y-4">
                     {/* Add webhook form */}
                     <div className="flex flex-col gap-3 p-4 rounded-lg border border-border bg-secondary/30">
@@ -2286,17 +2699,16 @@ function ProfileContent() {
 
             {/* ===================== NOTIFICATIONS TAB ===================== */}
             {activeTab === "notifications" && (
-              <div className="flex flex-col gap-8">
+              <div className="flex flex-col gap-6">
                 {/* --- SECURITY --- */}
-                <section>
-                  <div className="mb-4">
-                    <h2 className="text-base font-semibold text-foreground flex items-center gap-2">
+                <Card>
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-base flex items-center gap-2">
                       <Shield className="h-4 w-4 text-primary" />
-                      Security Notifications
-                    </h2>
-                    <p className="text-sm text-muted-foreground mt-0.5">Critical alerts for account access and authentication events.</p>
-                  </div>
-                <Card className="border-border/60">
+                      Security
+                    </CardTitle>
+                    <CardDescription>Critical alerts for account access and authentication events.</CardDescription>
+                  </CardHeader>
                   <CardContent className="flex flex-col gap-2">
                     {([
                       { key: "email_security" as const, icon: Shield, label: "Security Alerts", desc: "Unusual activity, account compromise warnings, and critical security events.", badge: "Recommended" },
@@ -2319,18 +2731,16 @@ function ProfileContent() {
                     ))}
                   </CardContent>
                 </Card>
-                </section>
 
                 {/* --- SCANNING --- */}
-                <section>
-                  <div className="mb-4">
-                    <h2 className="text-base font-semibold text-foreground flex items-center gap-2">
+                <Card>
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-base flex items-center gap-2">
                       <Scan className="h-4 w-4 text-primary" />
-                      Scanning Notifications
-                    </h2>
-                    <p className="text-sm text-muted-foreground mt-0.5">Notifications about scan results, failures, and scheduled scans.</p>
-                  </div>
-                <Card className="border-border/60">
+                      Scanning
+                    </CardTitle>
+                    <CardDescription>Notifications about scan results, failures, and scheduled scans.</CardDescription>
+                  </CardHeader>
                   <CardContent className="flex flex-col gap-2">
                     {([
                       { key: "email_scan_complete" as const, icon: Check, label: "Scan Complete", desc: "Get notified when a scan finishes with a summary of findings." },
@@ -2351,18 +2761,16 @@ function ProfileContent() {
                     ))}
                   </CardContent>
                 </Card>
-                </section>
 
                 {/* --- API & INTEGRATIONS --- */}
-                <section>
-                  <div className="mb-4">
-                    <h2 className="text-base font-semibold text-foreground flex items-center gap-2">
+                <Card>
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-base flex items-center gap-2">
                       <Zap className="h-4 w-4 text-primary" />
                       {"API & Integrations"}
-                    </h2>
-                    <p className="text-sm text-muted-foreground mt-0.5">Notifications about API keys, usage limits, and webhook events.</p>
-                  </div>
-                <Card className="border-border/60">
+                    </CardTitle>
+                    <CardDescription>Notifications about API keys, usage limits, and webhook events.</CardDescription>
+                  </CardHeader>
                   <CardContent className="flex flex-col gap-2">
                     {([
                       { key: "email_api_keys" as const, icon: Key, label: "API Key Activity", desc: "Alerts when API keys are created, revoked, or approaching expiration." },
@@ -2465,19 +2873,18 @@ function ProfileContent() {
 
             {/* ===================== PRIVACY TAB ===================== */}
             {activeTab === "privacy" && (
-              <div className="flex flex-col gap-8">
+              <div className="flex flex-col gap-6">
                 {/* Privacy & Data Protection */}
-                <section>
-                  <div className="mb-4">
-                    <h2 className="text-base font-semibold text-foreground flex items-center gap-2">
-                      <Shield className="h-4 w-4 text-primary" />
+                <Card className="bg-blue-500/5 border-blue-500/20">
+                  <CardHeader>
+                    <CardTitle className="text-lg flex items-center gap-2">
+                      <Shield className="h-4 w-4 text-blue-500" />
                       Privacy & Data Protection
-                    </h2>
-                    <p className="text-sm text-muted-foreground mt-0.5">
-                      Your data is protected under GDPR and other privacy regulations.
-                    </p>
-                  </div>
-                <Card className="border-border/60 bg-primary/5 border-primary/20">
+                    </CardTitle>
+                    <CardDescription>
+                      Your data is protected under GDPR and other privacy regulations. You have the right to request access to your data, request deletion, and manage your privacy settings.
+                    </CardDescription>
+                  </CardHeader>
                   <CardContent className="space-y-3">
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <div className="flex items-start gap-3 p-3 rounded-lg bg-card/50 border border-border">
@@ -2497,20 +2904,18 @@ function ProfileContent() {
                     </div>
                   </CardContent>
                 </Card>
-                </section>
 
                 {/* Data Export */}
-                <section>
-                  <div className="mb-4">
-                    <h2 className="text-base font-semibold text-foreground flex items-center gap-2">
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-lg flex items-center gap-2">
                       <Download className="h-4 w-4 text-primary" />
                       Data Export
-                    </h2>
-                    <p className="text-sm text-muted-foreground mt-0.5">
-                      Download your complete account data. Fresh exports available once every 30 days.
-                    </p>
-                  </div>
-                <Card className="border-border/60">
+                    </CardTitle>
+                    <CardDescription>
+                      Download your complete account data anytime. Fresh exports available once every 30 days.
+                    </CardDescription>
+                  </CardHeader>
                   <CardContent>
                     <div className="flex flex-col gap-4">
                       {/* Download Fresh Data Section */}
@@ -2612,18 +3017,15 @@ function ProfileContent() {
                     </div>
                   </CardContent>
                 </Card>
-                </section>
-                
+
                 {/* Danger Zone */}
-                <section>
-                  <div className="mb-4">
-                    <h2 className="text-base font-semibold text-destructive flex items-center gap-2">
-                      <AlertTriangle className="h-4 w-4" />
-                      Danger Zone
-                    </h2>
-                    <p className="text-sm text-muted-foreground mt-0.5">Permanently delete your account and all associated data.</p>
-                  </div>
                 <Card className="border-destructive/30">
+                  <CardHeader>
+                    <CardTitle className="text-lg flex items-center gap-2 text-destructive">
+                      <AlertTriangle className="h-4 w-4" />
+                      Danger Zone                </CardTitle>
+                    <CardDescription>Permanently delete your account and all associated data. This action cannot be undone.</CardDescription>
+                  </CardHeader>
                   <CardContent>
                     {!showDeleteConfirm ? (
                       <Button
@@ -2662,7 +3064,6 @@ function ProfileContent() {
                     )}
                   </CardContent>
                 </Card>
-                </section>
               </div>
             )}
           </div>{/* End Main Content Area */}
