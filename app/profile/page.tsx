@@ -38,6 +38,7 @@ import {
   MonitorSmartphone,
   Scan,
   XCircle,
+  AlertCircle,
   Gift,
   Gauge,
   Zap,
@@ -1030,28 +1031,9 @@ function ProfileContent() {
       <main className="flex-1 w-full max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-10 flex flex-col gap-8 min-w-0">
 
         {/* Page Header */}
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight text-foreground">Settings</h1>
-            <p className="text-sm text-muted-foreground mt-1.5">Manage your account settings and preferences</p>
-          </div>
-          {user && (
-            <div className="hidden md:flex items-center gap-3 px-4 py-2.5 rounded-xl bg-card border border-border/80 shadow-sm">
-              <div className="h-10 w-10 rounded-full border-2 border-border bg-secondary flex items-center justify-center overflow-hidden">
-                {user.avatarUrl ? (
-                  <img src={user.avatarUrl} alt="" className="h-full w-full object-cover" />
-                ) : (
-                  <span className="text-sm font-semibold text-muted-foreground">
-                    {user.name?.charAt(0)?.toUpperCase() || user.email?.charAt(0)?.toUpperCase() || "?"}
-                  </span>
-                )}
-              </div>
-              <div className="flex flex-col">
-                <span className="text-sm font-medium text-foreground leading-tight">{user.name || "User"}</span>
-                <span className="text-xs text-muted-foreground leading-tight">{user.email}</span>
-              </div>
-            </div>
-          )}
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight text-foreground">Settings</h1>
+          <p className="text-sm text-muted-foreground mt-1.5">Manage your account settings and preferences</p>
         </div>
 
         {/* Toast messages */}
