@@ -39,6 +39,7 @@ import {
   Scan,
   XCircle,
   AlertCircle,
+  CheckCircle2,
   Gift,
   Gauge,
   Zap,
@@ -1322,8 +1323,8 @@ function ProfileContent() {
                 {/* Quick Links to Other Settings */}
                 <section>
                   <div className="flex items-center gap-3 mb-4">
-                    <div className="flex items-center justify-center h-9 w-9 rounded-lg bg-secondary/80">
-                      <Zap className="h-4.5 w-4.5 text-muted-foreground" />
+                    <div className="flex items-center justify-center h-9 w-9 rounded-lg bg-primary/10">
+                      <Zap className="h-4.5 w-4.5 text-primary" />
                     </div>
                     <div>
                       <h2 className="text-base font-semibold text-foreground">Quick Settings</h2>
@@ -1529,8 +1530,8 @@ function ProfileContent() {
                 {/* Community Links */}
                 <section>
                   <div className="flex items-center gap-3 mb-4">
-                    <div className="flex items-center justify-center h-9 w-9 rounded-lg bg-secondary/80">
-                      <Users className="h-4.5 w-4.5 text-muted-foreground" />
+                    <div className="flex items-center justify-center h-9 w-9 rounded-lg bg-primary/10">
+                      <Users className="h-4.5 w-4.5 text-primary" />
                     </div>
                     <div>
                       <h2 className="text-base font-semibold text-foreground">Community</h2>
@@ -1643,8 +1644,8 @@ function ProfileContent() {
                 {/* Plan Info Card */}
                 <section>
                   <div className="flex items-center gap-3 mb-4">
-                    <div className="flex items-center justify-center h-9 w-9 rounded-lg bg-secondary/80">
-                      <CreditCard className="h-4.5 w-4.5 text-muted-foreground" />
+                    <div className="flex items-center justify-center h-9 w-9 rounded-lg bg-primary/10">
+                      <CreditCard className="h-4.5 w-4.5 text-primary" />
                     </div>
                     <div>
                       <h2 className="text-base font-semibold text-foreground">Subscription Plan</h2>
@@ -2289,8 +2290,8 @@ function ProfileContent() {
                 {/* Active Sessions / Force Logout */}
                 <section>
                   <div className="flex items-center gap-3 mb-4">
-                    <div className="flex items-center justify-center h-9 w-9 rounded-lg bg-secondary/80">
-                      <MonitorSmartphone className="h-4.5 w-4.5 text-muted-foreground" />
+                    <div className="flex items-center justify-center h-9 w-9 rounded-lg bg-primary/10">
+                      <MonitorSmartphone className="h-4.5 w-4.5 text-primary" />
                     </div>
                     <div>
                       <h2 className="text-base font-semibold text-foreground">Active Sessions</h2>
@@ -2323,8 +2324,8 @@ function ProfileContent() {
                 {/* Security Notifications Quick Link */}
                 <section>
                   <div className="flex items-center gap-3 mb-4">
-                    <div className="flex items-center justify-center h-9 w-9 rounded-lg bg-secondary/80">
-                      <Bell className="h-4.5 w-4.5 text-muted-foreground" />
+                    <div className="flex items-center justify-center h-9 w-9 rounded-lg bg-primary/10">
+                      <Bell className="h-4.5 w-4.5 text-primary" />
                     </div>
                     <div>
                       <h2 className="text-base font-semibold text-foreground">Security Notifications</h2>
@@ -2496,8 +2497,8 @@ function ProfileContent() {
               <div className="flex flex-col gap-10 mt-10">
                 <section>
                   <div className="flex items-center gap-3 mb-4">
-                    <div className="flex items-center justify-center h-9 w-9 rounded-lg bg-secondary/80">
-                      <Webhook className="h-4.5 w-4.5 text-muted-foreground" />
+                    <div className="flex items-center justify-center h-9 w-9 rounded-lg bg-primary/10">
+                      <Webhook className="h-4.5 w-4.5 text-primary" />
                     </div>
                     <div>
                       <h2 className="text-base font-semibold text-foreground">Webhooks</h2>
@@ -2642,8 +2643,8 @@ function ProfileContent() {
 
                 <section>
                   <div className="flex items-center gap-3 mb-4">
-                    <div className="flex items-center justify-center h-9 w-9 rounded-lg bg-secondary/80">
-                      <CalendarClock className="h-4.5 w-4.5 text-muted-foreground" />
+                    <div className="flex items-center justify-center h-9 w-9 rounded-lg bg-primary/10">
+                      <CalendarClock className="h-4.5 w-4.5 text-primary" />
                     </div>
                     <div>
                       <h2 className="text-base font-semibold text-foreground">Scheduled Scans</h2>
@@ -2795,8 +2796,8 @@ function ProfileContent() {
                 {/* --- SCANNING --- */}
                 <section>
                   <div className="flex items-center gap-3 mb-4">
-                    <div className="flex items-center justify-center h-9 w-9 rounded-lg bg-secondary/80">
-                      <Scan className="h-4.5 w-4.5 text-muted-foreground" />
+                    <div className="flex items-center justify-center h-9 w-9 rounded-lg bg-primary/10">
+                      <Scan className="h-4.5 w-4.5 text-primary" />
                     </div>
                     <div>
                       <h2 className="text-base font-semibold text-foreground">Scanning Notifications</h2>
@@ -2828,8 +2829,8 @@ function ProfileContent() {
                 {/* --- API & INTEGRATIONS --- */}
                 <section>
                   <div className="flex items-center gap-3 mb-4">
-                    <div className="flex items-center justify-center h-9 w-9 rounded-lg bg-secondary/80">
-                      <Zap className="h-4.5 w-4.5 text-muted-foreground" />
+                    <div className="flex items-center justify-center h-9 w-9 rounded-lg bg-primary/10">
+                      <Zap className="h-4.5 w-4.5 text-primary" />
                     </div>
                     <div>
                       <h2 className="text-base font-semibold text-foreground">{"API & Integrations"}</h2>
@@ -2862,8 +2863,8 @@ function ProfileContent() {
                 {/* --- ACCOUNT --- */}
                 <section>
                   <div className="flex items-center gap-3 mb-4">
-                    <div className="flex items-center justify-center h-9 w-9 rounded-lg bg-secondary/80">
-                      <UserCog className="h-4.5 w-4.5 text-muted-foreground" />
+                    <div className="flex items-center justify-center h-9 w-9 rounded-lg bg-primary/10">
+                      <UserCog className="h-4.5 w-4.5 text-primary" />
                     </div>
                     <div>
                       <h2 className="text-base font-semibold text-foreground">Account Notifications</h2>
@@ -2979,8 +2980,8 @@ function ProfileContent() {
                 {/* Data Export */}
                 <section>
                   <div className="flex items-center gap-3 mb-4">
-                    <div className="flex items-center justify-center h-9 w-9 rounded-lg bg-secondary/80">
-                      <Download className="h-4.5 w-4.5 text-muted-foreground" />
+                    <div className="flex items-center justify-center h-9 w-9 rounded-lg bg-primary/10">
+                      <Download className="h-4.5 w-4.5 text-primary" />
                     </div>
                     <div>
                       <h2 className="text-base font-semibold text-foreground">Data Export</h2>
