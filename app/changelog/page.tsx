@@ -59,6 +59,9 @@ import {
   Radar,
   Crosshair,
   CheckCircle,
+  CalendarClock,
+  UserCog,
+  CheckCircle2,
   type LucideIcon,
 } from "lucide-react"
 import { APP_NAME } from "@/lib/constants"
@@ -92,6 +95,27 @@ interface Release {
 }
 
 const CHANGELOG: Release[] = [
+  {
+    version: "2.1.1",
+    date: "March 23, 2026",
+    title: "Profile UI Redesign, Email Notifications for Scans & API Key Security Enhancement",
+    highlights: true,
+    summary: "Complete overhaul of the Settings/Profile page with modern sidebar navigation, consistent spacing, and unified icon styling. Added email notifications for scan completions and critical findings. Enhanced API key security by permanently deleting old keys on rotation instead of archiving them.",
+    changes: [
+      { icon: Palette, label: "Complete Profile/Settings Redesign", desc: "Redesigned the entire Settings page with modern sidebar navigation on desktop (sticky positioning), mobile-friendly horizontal tabs, and consistent card-based content layout. All sections now use unified spacing (gap-10 between sections, gap-4 between items), standardized icon badges with blue primary color, and clean typography hierarchy.", category: "changed" },
+      { icon: Layout, label: "Sidebar Navigation Overhaul", desc: "New two-column layout with left sidebar showing all 7 tabs (General, Billing, Security, Developer, Notifications, Privacy, Connected Accounts). Desktop sidebar is sticky with smooth hover states. Mobile uses horizontal scrollable tab bar. Navigation items use consistent styling with proper active states and visual feedback.", category: "changed" },
+      { icon: Bell, label: "Standardized Icon Styling", desc: "All section header icons now use consistent primary blue badge styling (bg-primary/10, text-primary) with 9x9 icon containers and rounded-lg styling. Removed inconsistent gray secondary styling. All 40+ section headers throughout all tabs now have uniform visual appearance.", category: "changed" },
+      { icon: Wrench, label: "Notification Card Spacing Fix", desc: "Increased CardContent spacing from gap-2/gap-3 to gap-4 with pb-4 bottom padding. Individual notification items now have p-4 padding instead of p-3 for better breathing room. Description text spacing improved from mt-0.5 to mt-1. All notification sections now have consistent, readable spacing.", category: "fixed" },
+      { icon: Zap, label: "Removed Unnecessary Product Section", desc: "Removed the 'Product' notification section containing 'Product Updates' and 'Tips & Guides' toggles. Cleaned up NotificationPrefs interface and state initialization to remove product-related email preference keys. Streamlined Notifications tab to focus on actionable alerts.", category: "changed" },
+      { icon: Mail, label: "Email Notifications for Scan Completion", desc: "Added automatic email notifications when scans complete. Users receive detailed summary email with findings breakdown (critical, high, medium, low, info counts), scan duration, and direct link to view full report. Respects user's email_scan_complete preference from settings.", category: "added" },
+      { icon: AlertTriangle, label: "Critical Findings Alert Emails", desc: "Added urgent email alerts when critical or high severity vulnerabilities are detected. Alert emails use warning styling with prominent severity counts and action-required messaging. Sent automatically after scan completion if thresholds are exceeded. Respects user's severity_alerts preference.", category: "added" },
+      { icon: CalendarClock, label: "Scheduled Scan Email Templates", desc: "Added email template infrastructure for scheduled scan completions with schedule name prominently displayed. Templates ready for integration with scheduled scan execution when available. Full summary formatting matching on-demand scan emails.", category: "added" },
+      { icon: Key, label: "API Key Rotation Security Enhancement", desc: "Changed API key rotation behavior from soft-delete (setting revoked_at) to hard-delete. Old keys are now permanently removed from database when rotated with no historical trace. Prevents potential bypass attempts where users could access archived keys.", category: "security" },
+      { icon: RefreshCw, label: "Scan Notification Key Mapping Fix", desc: "Fixed Scanning Notifications section toggle keys to properly map to state interface (email_scan_complete, email_critical_findings, email_schedules). Previously used mismatched keys causing toggles to display incorrect state. Toggles now correctly show as ON by default.", category: "fixed" },
+      { icon: UserCog, label: "Profile Header Simplification", desc: "Removed top-right user card display from Settings page header. Kept only the 'Settings' title and description for cleaner, more focused layout. Page header now takes up less visual space.", category: "changed" },
+      { icon: CheckCircle2, label: "Import Fix for CheckCircle2", desc: "Added missing CheckCircle2 icon import from lucide-react to fix ReferenceError in Notifications tab. All notification icons now properly import and render without errors.", category: "fixed" },
+    ],
+  },
   {
     version: "2.1.0",
     date: "March 21, 2026",

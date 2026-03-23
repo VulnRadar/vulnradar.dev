@@ -3,8 +3,6 @@ import pool from "./db"
 import { API_KEY_PREFIX, DEFAULT_API_KEY_DAILY_LIMIT, TERMS_UPDATED_AT } from "./constants"
 import { encryptApiKey, decryptApiKey, isEncryptionConfigured } from "./crypto"
 
-const DAILY_LIMIT = DEFAULT_API_KEY_DAILY_LIMIT
-
 // Helper function to generate a random deprecated placeholder string
 function generateDeprecatedPlaceholder(): string {
     // Generate 64 random bytes as hex (fully random, no predictable pattern)
@@ -12,7 +10,10 @@ function generateDeprecatedPlaceholder(): string {
 }
 
 // Generate a new API key - returns the raw key (only shown once) and metadata
-export async function generateApiKey(userId: number, name: string = "Default") {
+// dailyLimit defaults to DEFAULT_API_KEY_DAILY_LIMIT if not specified
+export async function generateApiKey(userId: number, name: string = "Default", dailyLimit?: number) {
+    const limit = dailyLimit ?? DEFAULT_API_KEY_DAILY_LIMIT
+    
     // Generate a random key: vr_live_<64 hex chars>
     const raw = `${API_KEY_PREFIX}${randomBytes(32).toString("hex")}`
     const prefix = raw.slice(0, API_KEY_PREFIX.length + 8) // show prefix + some chars
@@ -33,7 +34,7 @@ export async function generateApiKey(userId: number, name: string = "Default") {
         `INSERT INTO api_keys (user_id, key_hash, key_prefix, name, daily_limit, key_encrypted)
          VALUES ($1, $2, $3, $4, $5, $6)
              RETURNING id, key_prefix, name, daily_limit, created_at`,
-        [userId, keyHash, prefix, name, DAILY_LIMIT, keyEncrypted],
+        [userId, keyHash, prefix, name, limit, keyEncrypted],
     )
 
     return {
@@ -228,4 +229,31 @@ export async function revokeApiKey(keyId: number, userId: number) {
         [keyId, userId],
     )
     return result.rows.length > 0
+}
+
+// Rotate an API key - deletes old key and creates new one with same name
+// Returns the new key details including raw_key (only shown once)
+export async function rotateApiKey(keyId: number, userId: number, dailyLimit?: number) {
+    // Get the old key's name first
+    const oldKeyResult = await pool.query(
+        "SELECT name, daily_limit FROM api_keys WHERE id = $1 AND user_id = $2",
+        [keyId, userId],
+    )
+    
+    if (oldKeyResult.rows.length === 0) {
+        return null
+    }
+    
+    const { name, daily_limit: oldLimit } = oldKeyResult.rows[0]
+    
+    // Hard delete the old key - no trace
+    await pool.query(
+        "DELETE FROM api_keys WHERE id = $1",
+        [keyId],
+    )
+    
+    // Generate a new key with the same name and the provided limit (or old limit)
+    const newKey = await generateApiKey(userId, name, dailyLimit ?? oldLimit)
+    
+    return newKey
 }
