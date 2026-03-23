@@ -897,6 +897,171 @@ export function adminNotificationEmail(input: AdminNotificationInput) {
 }
 
 // Admin account change notification
+export interface ScanCompleteSummary {
+  critical: number
+  high: number
+  medium: number
+  low: number
+  info: number
+  total: number
+}
+
+export function scanCompleteEmail(url: string, summary: ScanCompleteSummary, duration: number, scanHistoryId?: number) {
+  const safeUrl = escapeHtml(url)
+  const durationSecs = (duration / 1000).toFixed(1)
+  const viewLink = scanHistoryId ? `${APP_URL}/history/${scanHistoryId}` : `${APP_URL}/history`
+  
+  const severityBadge = (label: string, count: number, bgColor: string, textColor: string) => count > 0 ? `
+    <td style="padding: 0 4px;">
+      <span style="display: inline-block; padding: 6px 12px; background-color: ${bgColor}; border-radius: 6px; font-size: 13px; font-weight: 600; color: ${textColor};">${count} ${label}</span>
+    </td>
+  ` : ""
+
+  return {
+    subject: `Scan Complete: ${summary.total} issue${summary.total !== 1 ? "s" : ""} found - ${APP_NAME}`,
+    text: `Your scan of ${url} has completed.\n\nResults:\n- Critical: ${summary.critical}\n- High: ${summary.high}\n- Medium: ${summary.medium}\n- Low: ${summary.low}\n- Info: ${summary.info}\n- Total: ${summary.total}\n\nDuration: ${durationSecs}s\n\nView full report: ${viewLink}`,
+    html: `
+      <h1 style="margin: 0 0 8px 0; font-size: 20px; font-weight: 600; color: ${COLORS.TEXT_PRIMARY};">Scan Complete</h1>
+      <p style="margin: 0 0 24px 0; font-size: 14px; color: ${COLORS.TEXT_SECONDARY}; line-height: 1.6;">Your vulnerability scan has finished.</p>
+      
+      <div style="background-color: ${COLORS.BG_SECTION}; border-radius: 8px; padding: 16px; margin-bottom: 20px;">
+        <p style="margin: 0 0 8px 0; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: ${COLORS.TEXT_MUTED}; font-weight: 600;">Target URL</p>
+        <p style="margin: 0; font-size: 14px; color: ${COLORS.ACCENT_BLUE_LIGHT}; word-break: break-all; font-family: monospace;">${safeUrl}</p>
+      </div>
+      
+      <div style="background-color: ${COLORS.BG_SECTION}; border-radius: 8px; padding: 16px; margin-bottom: 20px;">
+        <p style="margin: 0 0 12px 0; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: ${COLORS.TEXT_MUTED}; font-weight: 600;">Findings Summary</p>
+        <table role="presentation" cellpadding="0" cellspacing="0" style="margin-bottom: 12px;">
+          <tr>
+            ${severityBadge("Critical", summary.critical, COLORS.BG_DANGER, COLORS.ACCENT_RED_LIGHT)}
+            ${severityBadge("High", summary.high, "#7c2d12", COLORS.ACCENT_YELLOW_LIGHT)}
+            ${severityBadge("Medium", summary.medium, COLORS.BG_WARNING, COLORS.ACCENT_YELLOW_PALE)}
+            ${severityBadge("Low", summary.low, COLORS.BG_INFO, COLORS.ACCENT_BLUE_PALE)}
+            ${severityBadge("Info", summary.info, COLORS.BG_SECTION, COLORS.TEXT_SECONDARY)}
+          </tr>
+        </table>
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="font-size: 13px; line-height: 1.8; border-top: 1px solid ${COLORS.BORDER_SECTION}; padding-top: 12px;">
+          <tr>
+            <td style="padding: 4px 0; color: ${COLORS.TEXT_SECONDARY};">Total Issues</td>
+            <td style="padding: 4px 0; color: ${COLORS.TEXT_PRIMARY}; text-align: right; font-weight: 600;">${summary.total}</td>
+          </tr>
+          <tr>
+            <td style="padding: 4px 0; color: ${COLORS.TEXT_SECONDARY};">Scan Duration</td>
+            <td style="padding: 4px 0; color: ${COLORS.TEXT_PRIMARY}; text-align: right;">${durationSecs}s</td>
+          </tr>
+        </table>
+      </div>
+      
+      ${summary.critical > 0 || summary.high > 0 ? `
+      <div style="background-color: ${COLORS.BG_DANGER}; border-left: 3px solid ${COLORS.ACCENT_RED}; border-radius: 6px; padding: 14px 16px; margin-bottom: 20px;">
+        <p style="margin: 0 0 4px 0; font-size: 13px; color: ${COLORS.ACCENT_RED_LIGHT}; font-weight: 600;">Action Required</p>
+        <p style="margin: 0; font-size: 13px; color: ${COLORS.ACCENT_RED_PALE}; line-height: 1.6;">Critical or high severity issues were detected. Review the findings and address them promptly.</p>
+      </div>
+      ` : ""}
+      
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+        <tr>
+          <td align="center">
+            <a href="${viewLink}" style="display: inline-block; padding: 14px 40px; background-color: ${COLORS.ACCENT_BLUE}; color: ${COLORS.WHITE}; font-size: 15px; font-weight: 600; text-decoration: none; border-radius: 8px;">View Full Report</a>
+          </td>
+        </tr>
+      </table>
+    `,
+  }
+}
+
+export function criticalFindingsEmail(url: string, criticalCount: number, highCount: number, scanHistoryId?: number) {
+  const safeUrl = escapeHtml(url)
+  const viewLink = scanHistoryId ? `${APP_URL}/history/${scanHistoryId}` : `${APP_URL}/history`
+
+  return {
+    subject: `ALERT: ${criticalCount} Critical + ${highCount} High severity issues found - ${APP_NAME}`,
+    text: `URGENT: Critical vulnerabilities detected!\n\nURL: ${url}\nCritical Issues: ${criticalCount}\nHigh Issues: ${highCount}\n\nImmediate action recommended. View report: ${viewLink}`,
+    html: `
+      <div style="background-color: ${COLORS.BG_DANGER}; border-radius: 8px; padding: 20px; margin-bottom: 20px; text-align: center;">
+        <p style="margin: 0 0 8px 0; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: ${COLORS.ACCENT_RED_LIGHT}; font-weight: 700;">Security Alert</p>
+        <h1 style="margin: 0; font-size: 24px; font-weight: 700; color: ${COLORS.ACCENT_RED_PALE};">Critical Vulnerabilities Detected</h1>
+      </div>
+      
+      <div style="background-color: ${COLORS.BG_SECTION}; border-radius: 8px; padding: 16px; margin-bottom: 20px;">
+        <p style="margin: 0 0 8px 0; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: ${COLORS.TEXT_MUTED}; font-weight: 600;">Target URL</p>
+        <p style="margin: 0; font-size: 14px; color: ${COLORS.ACCENT_BLUE_LIGHT}; word-break: break-all; font-family: monospace;">${safeUrl}</p>
+      </div>
+      
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom: 20px;">
+        <tr>
+          <td width="50%" style="padding-right: 8px;">
+            <div style="background-color: ${COLORS.BG_DANGER}; border-radius: 8px; padding: 16px; text-align: center;">
+              <p style="margin: 0 0 4px 0; font-size: 32px; font-weight: 700; color: ${COLORS.ACCENT_RED_PALE};">${criticalCount}</p>
+              <p style="margin: 0; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; color: ${COLORS.ACCENT_RED_LIGHT};">Critical</p>
+            </div>
+          </td>
+          <td width="50%" style="padding-left: 8px;">
+            <div style="background-color: #7c2d12; border-radius: 8px; padding: 16px; text-align: center;">
+              <p style="margin: 0 0 4px 0; font-size: 32px; font-weight: 700; color: ${COLORS.ACCENT_YELLOW_PALE};">${highCount}</p>
+              <p style="margin: 0; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; color: ${COLORS.ACCENT_YELLOW_LIGHT};">High</p>
+            </div>
+          </td>
+        </tr>
+      </table>
+      
+      <div style="background-color: ${COLORS.BG_DANGER}; border-left: 3px solid ${COLORS.ACCENT_RED}; border-radius: 6px; padding: 14px 16px; margin-bottom: 24px;">
+        <p style="margin: 0 0 4px 0; font-size: 13px; color: ${COLORS.ACCENT_RED_LIGHT}; font-weight: 600;">Immediate Action Required</p>
+        <p style="margin: 0; font-size: 13px; color: ${COLORS.ACCENT_RED_PALE}; line-height: 1.6;">These vulnerabilities pose significant security risks. Review and remediate them as soon as possible.</p>
+      </div>
+      
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+        <tr>
+          <td align="center">
+            <a href="${viewLink}" style="display: inline-block; padding: 14px 40px; background-color: ${COLORS.ACCENT_RED}; color: ${COLORS.WHITE}; font-size: 15px; font-weight: 600; text-decoration: none; border-radius: 8px;">View Security Report</a>
+          </td>
+        </tr>
+      </table>
+    `,
+  }
+}
+
+export function scheduledScanCompleteEmail(scheduleName: string, url: string, summary: ScanCompleteSummary, duration: number, scanHistoryId?: number) {
+  const safeName = escapeHtml(scheduleName)
+  const safeUrl = escapeHtml(url)
+  const durationSecs = (duration / 1000).toFixed(1)
+  const viewLink = scanHistoryId ? `${APP_URL}/history/${scanHistoryId}` : `${APP_URL}/history`
+
+  return {
+    subject: `Scheduled Scan "${scheduleName}" Complete - ${APP_NAME}`,
+    text: `Your scheduled scan "${scheduleName}" has completed.\n\nURL: ${url}\nResults: ${summary.total} issues (${summary.critical} critical, ${summary.high} high)\nDuration: ${durationSecs}s\n\nView report: ${viewLink}`,
+    html: `
+      <h1 style="margin: 0 0 8px 0; font-size: 20px; font-weight: 600; color: ${COLORS.TEXT_PRIMARY};">Scheduled Scan Complete</h1>
+      <p style="margin: 0 0 24px 0; font-size: 14px; color: ${COLORS.TEXT_SECONDARY}; line-height: 1.6;">Your scheduled scan <strong style="color: ${COLORS.TEXT_PRIMARY};">"${safeName}"</strong> has finished.</p>
+      
+      <div style="background-color: ${COLORS.BG_SECTION}; border-radius: 8px; padding: 16px; margin-bottom: 20px;">
+        <p style="margin: 0 0 8px 0; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: ${COLORS.TEXT_MUTED}; font-weight: 600;">Target URL</p>
+        <p style="margin: 0; font-size: 14px; color: ${COLORS.ACCENT_BLUE_LIGHT}; word-break: break-all; font-family: monospace;">${safeUrl}</p>
+      </div>
+      
+      <div style="background-color: ${COLORS.BG_SECTION}; border-radius: 8px; padding: 16px; margin-bottom: 20px;">
+        <p style="margin: 0 0 12px 0; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: ${COLORS.TEXT_MUTED}; font-weight: 600;">Results</p>
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="font-size: 13px; line-height: 1.8;">
+          <tr><td style="padding: 4px 0; color: ${COLORS.TEXT_SECONDARY};">Critical</td><td style="padding: 4px 0; color: ${summary.critical > 0 ? COLORS.ACCENT_RED_LIGHT : COLORS.TEXT_PRIMARY}; text-align: right; font-weight: 600;">${summary.critical}</td></tr>
+          <tr><td style="padding: 4px 0; color: ${COLORS.TEXT_SECONDARY};">High</td><td style="padding: 4px 0; color: ${summary.high > 0 ? COLORS.ACCENT_YELLOW_LIGHT : COLORS.TEXT_PRIMARY}; text-align: right; font-weight: 600;">${summary.high}</td></tr>
+          <tr><td style="padding: 4px 0; color: ${COLORS.TEXT_SECONDARY};">Medium</td><td style="padding: 4px 0; color: ${COLORS.TEXT_PRIMARY}; text-align: right;">${summary.medium}</td></tr>
+          <tr><td style="padding: 4px 0; color: ${COLORS.TEXT_SECONDARY};">Low</td><td style="padding: 4px 0; color: ${COLORS.TEXT_PRIMARY}; text-align: right;">${summary.low}</td></tr>
+          <tr><td style="padding: 4px 0; color: ${COLORS.TEXT_SECONDARY};">Info</td><td style="padding: 4px 0; color: ${COLORS.TEXT_PRIMARY}; text-align: right;">${summary.info}</td></tr>
+          <tr style="border-top: 1px solid ${COLORS.BORDER_SECTION};"><td style="padding: 8px 0 4px 0; color: ${COLORS.TEXT_PRIMARY}; font-weight: 600;">Total</td><td style="padding: 8px 0 4px 0; color: ${COLORS.TEXT_PRIMARY}; text-align: right; font-weight: 600;">${summary.total}</td></tr>
+        </table>
+      </div>
+      
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+        <tr>
+          <td align="center">
+            <a href="${viewLink}" style="display: inline-block; padding: 14px 40px; background-color: ${COLORS.ACCENT_BLUE}; color: ${COLORS.WHITE}; font-size: 15px; font-weight: 600; text-decoration: none; border-radius: 8px;">View Full Report</a>
+          </td>
+        </tr>
+      </table>
+    `,
+  }
+}
+
 export interface AdminChangeNotification {
   userName: string
   adminName: string
