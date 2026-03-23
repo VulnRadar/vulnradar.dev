@@ -61,6 +61,7 @@ import {
   CheckCircle,
   CalendarClock,
   UserCog,
+  CheckCircle2,
   type LucideIcon,
 } from "lucide-react"
 import { APP_NAME } from "@/lib/constants"
