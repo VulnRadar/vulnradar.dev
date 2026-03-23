@@ -187,8 +187,6 @@ interface NotificationPrefs {
   email_account_deletion: boolean
   email_team_invite: boolean
   email_team_changes: boolean
-  email_product_updates: boolean
-  email_tips_guides: boolean
 }
 
 export default function ProfilePage() {
@@ -337,10 +335,8 @@ function ProfileContent() {
     email_webhook_failure: true,
     email_data_requests: true,
     email_account_deletion: true,
-    email_team_invite: true,
-    email_team_changes: true,
-    email_product_updates: true,
-    email_tips_guides: false,
+  email_team_invite: true,
+  email_team_changes: true,
   })
   const [savingNotifPrefs, setSavingNotifPrefs] = useState(false)
 
@@ -883,8 +879,8 @@ function ProfileContent() {
     email_account_deletion: "Account Deletion",
     email_team_invite: "Team Invites",
     email_team_changes: "Team Changes",
-    email_product_updates: "Product Updates",
-    email_tips_guides: "Tips & Guides",
+  
+  
   }
   
   // Check for notification changes and build list
@@ -2807,9 +2803,9 @@ function ProfileContent() {
                 <Card className="border-border/60">
                   <CardContent className="pt-6 pb-4 flex flex-col gap-4">
                     {([
-                      { key: "email_scan_completed" as const, icon: CheckCircle2, label: "Scan Completed", desc: "Alerts when vulnerability scans are finished." },
-                      { key: "email_scan_critical" as const, icon: AlertCircle, label: "Critical Issues Found", desc: "Immediate alerts when critical vulnerabilities are detected." },
-                      { key: "email_scheduled_completed" as const, icon: CalendarClock, label: "Scheduled Scans Completed", desc: "Alerts when your scheduled scans finish." },
+                      { key: "email_scan_complete" as const, icon: CheckCircle2, label: "Scan Completed", desc: "Alerts when vulnerability scans are finished." },
+                      { key: "email_critical_findings" as const, icon: AlertCircle, label: "Critical Issues Found", desc: "Immediate alerts when critical vulnerabilities are detected." },
+                      { key: "email_schedules" as const, icon: CalendarClock, label: "Scheduled Scans Completed", desc: "Alerts when your scheduled scans finish." },
                     ] as const).map(({ key, icon: Icon, label, desc }) => (
                       <div key={key} className="flex items-center justify-between p-4 rounded-lg border border-border bg-secondary/30">
                         <div className="flex-1">
@@ -2893,33 +2889,6 @@ function ProfileContent() {
                   </CardContent>
                 </Card>
 
-                {/* --- PRODUCT --- */}
-                <Card>
-                  <CardHeader className="pb-3">
-                    <CardTitle className="text-base flex items-center gap-2">
-                      <Megaphone className="h-4 w-4 text-primary" />
-                      Product
-                    </CardTitle>
-                    <CardDescription>Stay up to date with new features, tips, and platform updates.</CardDescription>
-                  </CardHeader>
-                  <CardContent className="pt-6 pb-4 flex flex-col gap-4">
-                    {([
-                      { key: "email_product_updates" as const, icon: Megaphone, label: "Product Updates", desc: "Major feature announcements, release notes, and platform improvements." },
-                      { key: "email_tips_guides" as const, icon: Lightbulb, label: "Tips & Guides", desc: `Helpful tips, best practices, and security guides to get the most out of ${APP_NAME}.` },
-                    ] as const).map(({ key, icon: Icon, label, desc }) => (
-                      <div key={key} className="flex items-center justify-between p-4 rounded-lg border border-border bg-secondary/30">
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2">
-                            <Icon className="h-3.5 w-3.5 text-muted-foreground" />
-                            <p className="text-sm font-medium text-foreground">{label}</p>
-                          </div>
-                          <p className="text-xs text-muted-foreground mt-1 ml-5.5">{desc}</p>
-                        </div>
-                        <Switch checked={notifPrefs[key]} onCheckedChange={(checked) => setNotifPrefs(prev => ({ ...prev, [key]: checked }))} />
-                      </div>
-                    ))}
-                  </CardContent>
-                </Card>
                 </section>
 
                 {/* Info card */}
