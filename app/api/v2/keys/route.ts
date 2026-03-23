@@ -6,6 +6,8 @@ import { apiKeyCreatedEmail } from "@/lib/email"
 import { ApiResponse, parseBody, Validate, withErrorHandling } from "@/lib/api-utils"
 import { getClientIp, getUserAgent } from "@/lib/request-utils"
 import { ERROR_MESSAGES, SUCCESS_MESSAGES } from "@/lib/constants"
+import { getApiLimitForPlan } from "@/lib/plans"
+import pool from "@/lib/db"
 
 export const GET = withErrorHandling(async () => {
   const session = await getSession()
@@ -34,10 +36,18 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   const existing = await getUserApiKeys(session.userId)
   const activeKeys = existing.filter((k: { revoked_at: string | null }) => !k.revoked_at)
   if (activeKeys.length >= 3) {
-    return ApiResponse.badRequest("Maximum of 3 active API keys allowed. Revoke an existing key first.")
+    return ApiResponse.badRequest("Maximum of 3 active API keys allowed. Rotate an existing key instead.")
   }
 
-  const key = await generateApiKey(session.userId, name)
+  // Get user's plan to set the correct daily limit
+  const userResult = await pool.query(
+    "SELECT plan FROM users WHERE id = $1",
+    [session.userId]
+  )
+  const userPlan = userResult.rows[0]?.plan || "free"
+  const dailyLimit = getApiLimitForPlan(userPlan)
+
+  const key = await generateApiKey(session.userId, name, dailyLimit === -1 ? 999999 : dailyLimit)
 
   // Send notification email in background
   const ip = await getClientIp()

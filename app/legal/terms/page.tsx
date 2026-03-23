@@ -87,8 +87,8 @@ export default function TermsPage() {
 
       <h2 className="text-lg font-semibold text-foreground mt-8">6. API Usage</h2>
       <p className="leading-relaxed text-foreground/90">
-        Access to the {APP_NAME} API is subject to rate limits (50 requests per API key per day,
-        maximum 3 keys per account). We reserve the right to modify rate limits at any time.
+        Access to the {APP_NAME} API is subject to rate limits based on your subscription plan
+        (maximum 3 keys per account). We reserve the right to modify rate limits at any time.
         Abuse of the API may result in immediate suspension of your account and API access.
       </p>
 

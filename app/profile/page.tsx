@@ -38,6 +38,8 @@ import {
   MonitorSmartphone,
   Scan,
   XCircle,
+  AlertCircle,
+  CheckCircle2,
   Gift,
   Gauge,
   Zap,
@@ -185,8 +187,6 @@ interface NotificationPrefs {
   email_account_deletion: boolean
   email_team_invite: boolean
   email_team_changes: boolean
-  email_product_updates: boolean
-  email_tips_guides: boolean
 }
 
 export default function ProfilePage() {
@@ -335,10 +335,8 @@ function ProfileContent() {
     email_webhook_failure: true,
     email_data_requests: true,
     email_account_deletion: true,
-    email_team_invite: true,
-    email_team_changes: true,
-    email_product_updates: true,
-    email_tips_guides: false,
+  email_team_invite: true,
+  email_team_changes: true,
   })
   const [savingNotifPrefs, setSavingNotifPrefs] = useState(false)
 
@@ -640,13 +638,22 @@ function ProfileContent() {
     }
   }
 
-  async function handleRevokeKey(keyId: number) {
+  async function handleRotateKey(keyId: number) {
     setRevokingId(keyId)
     try {
-      await fetch(`${API.KEYS}/${keyId}/revoke`, { method: "POST" })
+      const res = await fetch(`${API.KEYS}/${keyId}/rotate`, { method: "POST" })
+      const data = await res.json()
+      if (!res.ok) {
+        setError(data.error || "Failed to rotate key.")
+        return
+      }
+      // Show the new key to the user
+      if (data.key?.raw_key) {
+        setNewlyCreatedKey(data.key.raw_key)
+      }
       await fetchData()
     } catch {
-      setError("Failed to revoke key.")
+      setError("Failed to rotate key.")
     } finally {
       setRevokingId(null)
     }
@@ -872,8 +879,8 @@ function ProfileContent() {
     email_account_deletion: "Account Deletion",
     email_team_invite: "Team Invites",
     email_team_changes: "Team Changes",
-    email_product_updates: "Product Updates",
-    email_tips_guides: "Tips & Guides",
+  
+  
   }
   
   // Check for notification changes and build list
@@ -1018,12 +1025,12 @@ function ProfileContent() {
     <div className="min-h-screen bg-background flex flex-col overflow-x-hidden">
       <Header />
 
-      <main className="flex-1 w-full max-w-6xl mx-auto px-4 sm:px-6 py-8 sm:py-12 flex flex-col gap-6 min-w-0">
+      <main className="flex-1 w-full max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-10 flex flex-col gap-8 min-w-0">
 
         {/* Page Header */}
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight mb-1">Settings</h1>
-          <p className="text-sm text-muted-foreground">Manage your account settings and preferences.</p>
+          <h1 className="text-2xl font-bold tracking-tight text-foreground">Settings</h1>
+          <p className="text-sm text-muted-foreground mt-1.5">Manage your account settings and preferences</p>
         </div>
 
         {/* Toast messages */}
@@ -1043,71 +1050,78 @@ function ProfileContent() {
         )}
 
         {/* Two-column layout: Sidebar + Content */}
-        <div className="flex flex-col lg:flex-row gap-6 lg:gap-10">
+        <div className="flex flex-col lg:flex-row gap-6 lg:gap-8">
 
           {/* Sidebar Navigation */}
-          <aside className="lg:w-52 lg:shrink-0">
-            {/* Mobile: Icons-only centered tab bar */}
-            <div className="lg:hidden">
-              <div className="flex justify-center gap-2 border-b border-border pb-2 pt-1">
+          <aside className="lg:w-48 lg:shrink-0">
+            {/* Mobile: Scrollable horizontal tab bar */}
+            <div className="lg:hidden overflow-x-auto scrollbar-hide -mx-4 px-4 border-b border-border/80">
+              <div className="flex gap-0.5 min-w-max">
                 {TABS.map((tab) => (
                   <button
                     key={tab.id}
                     onClick={() => handleTabChange(tab.id)}
-                    title={tab.label}
-                    aria-label={tab.label}
                     className={cn(
-                      "flex items-center justify-center w-10 h-10 rounded-md transition-all",
+                      "flex items-center gap-2 px-3.5 py-3 text-sm font-medium transition-all whitespace-nowrap border-b-2 -mb-px",
                       activeTab === tab.id
-                        ? "bg-primary/10 text-primary"
-                        : "text-muted-foreground hover:text-foreground hover:bg-secondary/50"
+                        ? "border-primary text-foreground"
+                        : "border-transparent text-muted-foreground hover:text-foreground"
                     )}
                   >
                     {tab.icon}
+                    <span>{tab.label}</span>
                   </button>
                 ))}
               </div>
             </div>
 
             {/* Desktop: Vertical sidebar */}
-            <nav className="hidden lg:flex flex-col gap-0.5 sticky top-24">
-              {TABS.map((tab) => (
-                <a
-                  key={tab.id}
-                  href={`/profile#${tab.id}`}
-                  onClick={(e) => {
-                    if (!e.ctrlKey && !e.metaKey) {
-                      e.preventDefault()
-                      handleTabChange(tab.id)
-                    }
-                  }}
-                  className={cn(
-                    "flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-md transition-all",
-                    activeTab === tab.id
-                      ? "bg-primary/10 text-primary"
-                      : "text-muted-foreground hover:text-foreground hover:bg-secondary/50"
-                  )}
-                >
-                  {tab.icon}
-                  <span>{tab.label}</span>
-                </a>
-              ))}
+            <nav className="hidden lg:block sticky top-24">
+              <div className="flex flex-col gap-1">
+                {TABS.map((tab) => (
+                  <a
+                    key={tab.id}
+                    href={`/profile#${tab.id}`}
+                    onClick={(e) => {
+                      if (!e.ctrlKey && !e.metaKey) {
+                        e.preventDefault()
+                        handleTabChange(tab.id)
+                      }
+                    }}
+                    className={cn(
+                      "flex items-center gap-2.5 px-3 py-2 text-sm rounded-lg transition-all",
+                      activeTab === tab.id
+                        ? "bg-secondary text-foreground font-medium"
+                        : "text-muted-foreground hover:text-foreground hover:bg-secondary/50"
+                    )}
+                  >
+                    {tab.icon}
+                    <span>{tab.label}</span>
+                  </a>
+                ))}
+              </div>
             </nav>
           </aside>
 
           {/* Main Content Area */}
-          <div className="flex-1 min-w-0 space-y-6">
+          <div className="flex-1 min-w-0">
 
             {/* ===================== GENERAL TAB ===================== */}
             {activeTab === "general" && (
-              <div className="flex flex-col gap-6">
+              <div className="flex flex-col gap-10">
                 {/* Personal Information */}
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="text-lg">Personal Information</CardTitle>
-                    <CardDescription>Manage your profile picture, name, and email address.</CardDescription>
-                  </CardHeader>
-                  <CardContent className="flex flex-col gap-5">
+                <section>
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="flex items-center justify-center h-9 w-9 rounded-lg bg-primary/10">
+                      <UserCog className="h-4.5 w-4.5 text-primary" />
+                    </div>
+                    <div>
+                      <h2 className="text-base font-semibold text-foreground">Personal Information</h2>
+                      <p className="text-sm text-muted-foreground">Manage your profile picture, name, and email</p>
+                    </div>
+                  </div>
+                <Card className="border-border/60">
+                  <CardContent className="pt-6 flex flex-col gap-5">
                     {/* Profile Picture */}
                     <div className="flex flex-col gap-2">
                       <Label className="text-sm font-medium text-muted-foreground">Profile Picture</Label>
@@ -1300,14 +1314,21 @@ function ProfileContent() {
                     )}
                   </CardContent>
                 </Card>
+                </section>
 
                 {/* Quick Links to Other Settings */}
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="text-lg">Quick Settings</CardTitle>
-                    <CardDescription>Manage other account settings.</CardDescription>
-                  </CardHeader>
-                  <CardContent>
+                <section>
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="flex items-center justify-center h-9 w-9 rounded-lg bg-primary/10">
+                      <Zap className="h-4.5 w-4.5 text-primary" />
+                    </div>
+                    <div>
+                      <h2 className="text-base font-semibold text-foreground">Quick Settings</h2>
+                      <p className="text-sm text-muted-foreground">Shortcuts to other account settings</p>
+                    </div>
+                  </div>
+                <Card className="border-border/60">
+                  <CardContent className="pt-6">
                     <div className="grid gap-3 sm:grid-cols-2">
                       <button
                         onClick={() => { setActiveTab("security" as Tab); window.location.hash = "security" }}
@@ -1336,31 +1357,33 @@ function ProfileContent() {
                     </div>
                   </CardContent>
                 </Card>
+                </section>
               </div>
             )}
 
             {/* ===================== SOCIAL TAB ===================== */}
             {activeTab === "social" && (
-              <div className="space-y-6">
+              <div className="flex flex-col gap-10">
                 {/* Discord Integration */}
-                <Card>
-                  <CardHeader>
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <CardTitle className="text-lg flex items-center gap-2">
-                          <svg className="h-5 w-5 text-[#5865F2]" viewBox="0 0 24 24" fill="currentColor">
-                            <path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028 14.09 14.09 0 0 0 1.226-1.994.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418z" />
-                          </svg>
-                          Discord
-                        </CardTitle>
-                        <CardDescription>Connect your Discord account to enable sign-in with Discord and auto-join our community server.</CardDescription>
+                <section>
+                  <div className="flex items-center justify-between gap-3 mb-4">
+                    <div className="flex items-center gap-3">
+                      <div className="flex items-center justify-center h-9 w-9 rounded-lg bg-[#5865F2]/10">
+                        <svg className="h-4.5 w-4.5 text-[#5865F2]" viewBox="0 0 24 24" fill="currentColor">
+                          <path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028 14.09 14.09 0 0 0 1.226-1.994.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418z" />
+                        </svg>
                       </div>
-                      {user?.discordId && (
-                        <Badge className="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20">Connected</Badge>
-                      )}
+                      <div>
+                        <h2 className="text-base font-semibold text-foreground">Discord Integration</h2>
+                        <p className="text-sm text-muted-foreground">Connect for sign-in and community features</p>
+                      </div>
                     </div>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
+                    {user?.discordId && (
+                      <Badge className="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20">Connected</Badge>
+                    )}
+                  </div>
+                <Card className="border-border/60">
+                  <CardContent className="pt-6 space-y-4">
                     {user?.discordId ? (
                       <>
                         {/* Connected Account Card */}
@@ -1498,53 +1521,60 @@ function ProfileContent() {
                     )}
                   </CardContent>
                 </Card>
+                </section>
 
                 {/* Community Links */}
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="text-lg">Community</CardTitle>
-                    <CardDescription>Join our community and stay connected with the latest updates.</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="grid gap-3 sm:grid-cols-2">
-                      <a
-                        href="https://discord.gg/Y7R6hdGbNe"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex items-center gap-3 p-4 rounded-lg border border-border hover:bg-secondary/50 transition-colors"
-                      >
-                        <div className="flex items-center justify-center h-10 w-10 rounded-lg bg-[#5865F2]/10">
-                          <svg className="h-5 w-5 text-[#5865F2]" viewBox="0 0 24 24" fill="currentColor">
-                            <path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028 14.09 14.09 0 0 0 1.226-1.994.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418z" />
-                          </svg>
-                        </div>
-                        <div>
-                          <p className="text-sm font-medium">Discord Server</p>
-                          <p className="text-xs text-muted-foreground">Join our community</p>
-                        </div>
-                        <ExternalLink className="h-4 w-4 ml-auto text-muted-foreground" />
-                      </a>
+                <section>
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="flex items-center justify-center h-9 w-9 rounded-lg bg-primary/10">
+                      <Users className="h-4.5 w-4.5 text-primary" />
                     </div>
+                    <div>
+                      <h2 className="text-base font-semibold text-foreground">Community</h2>
+                      <p className="text-sm text-muted-foreground">Join our community and stay connected</p>
+                    </div>
+                  </div>
+                <Card className="border-border/60">
+                  <CardContent className="pt-6">
+                    <a
+                      href="https://discord.gg/Y7R6hdGbNe"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-4 p-4 rounded-xl border border-[#5865F2]/20 bg-[#5865F2]/5 hover:bg-[#5865F2]/10 transition-colors"
+                    >
+                      <div className="flex items-center justify-center h-12 w-12 rounded-xl bg-[#5865F2]">
+                        <svg className="h-6 w-6 text-white" viewBox="0 0 24 24" fill="currentColor">
+                          <path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028 14.09 14.09 0 0 0 1.226-1.994.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418z" />
+                        </svg>
+                      </div>
+                      <div className="flex-1">
+                        <p className="font-medium text-foreground">Discord Server</p>
+                        <p className="text-sm text-muted-foreground">Join our community for updates and support</p>
+                      </div>
+                      <ExternalLink className="h-4 w-4 text-muted-foreground" />
+                    </a>
                   </CardContent>
                 </Card>
+                </section>
               </div>
             )}
 
             {/* ===================== BILLING TAB ===================== */}
             {activeTab === "billing" && (
-              <div className="flex flex-col gap-6">
+              <div className="flex flex-col gap-10">
                 {/* Usage Card */}
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="text-lg flex items-center gap-2">
-                      <Gauge className="h-4 w-4 text-muted-foreground" />
-                      Daily Usage
-                    </CardTitle>
-                    <CardDescription>
-                      Track your scan requests for today. Limits reset at midnight UTC.
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent className="flex flex-col gap-4">
+                <section>
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="flex items-center justify-center h-9 w-9 rounded-lg bg-primary/10">
+                      <Gauge className="h-4.5 w-4.5 text-primary" />
+                    </div>
+                    <div>
+                      <h2 className="text-base font-semibold text-foreground">Daily Usage</h2>
+                      <p className="text-sm text-muted-foreground">Track scan requests, resets at midnight UTC</p>
+                    </div>
+                  </div>
+                <Card className="border-border/60">
+                  <CardContent className="pt-6 flex flex-col gap-4">
                     {billingInfo ? (
                       <>
                         {billingInfo.usage.unlimited ? (
@@ -1605,19 +1635,21 @@ function ProfileContent() {
                     )}
                   </CardContent>
                 </Card>
+                </section>
 
                 {/* Plan Info Card */}
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="text-lg flex items-center gap-2">
-                      <CreditCard className="h-4 w-4 text-muted-foreground" />
-                      Subscription Plan
-                    </CardTitle>
-                    <CardDescription>
-                      Manage your subscription and billing.
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent className="flex flex-col gap-4">
+                <section>
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="flex items-center justify-center h-9 w-9 rounded-lg bg-primary/10">
+                      <CreditCard className="h-4.5 w-4.5 text-primary" />
+                    </div>
+                    <div>
+                      <h2 className="text-base font-semibold text-foreground">Subscription Plan</h2>
+                      <p className="text-sm text-muted-foreground">Manage your subscription and billing</p>
+                    </div>
+                  </div>
+                <Card className="border-border/60">
+                  <CardContent className="pt-6 flex flex-col gap-4">
                     {billingInfo ? (
                       <>
                         <div className="flex items-center justify-between p-4 rounded-lg bg-secondary/50 border border-border">
@@ -1780,6 +1812,7 @@ function ProfileContent() {
                     )}
                   </CardContent>
                 </Card>
+                </section>
 
                 {/* Cancel Subscription Dialog */}
                 {showCancelDialog && (
@@ -1877,27 +1910,28 @@ function ProfileContent() {
 
             {/* ===================== SECURITY TAB ===================== */}
             {activeTab === "security" && (
-              <div className="flex flex-col gap-6">
+              <div className="flex flex-col gap-10">
                 {/* Password */}
-                <Card>
-                  <CardHeader>
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <CardTitle className="text-lg flex items-center gap-2">
-                          <Lock className="h-4 w-4 text-muted-foreground" />
-                          Password
-                        </CardTitle>
-                        <CardDescription>Update your account password.</CardDescription>
+                <section>
+                  <div className="flex items-center justify-between gap-3 mb-4">
+                    <div className="flex items-center gap-3">
+                      <div className="flex items-center justify-center h-9 w-9 rounded-lg bg-primary/10">
+                        <Lock className="h-4.5 w-4.5 text-primary" />
                       </div>
-                      {!showPasswordForm && (
-                        <Button variant="outline" size="sm" onClick={() => setShowPasswordForm(true)}>
-                          Change Password
-                        </Button>
-                      )}
+                      <div>
+                        <h2 className="text-base font-semibold text-foreground">Password</h2>
+                        <p className="text-sm text-muted-foreground">Update your account password</p>
+                      </div>
                     </div>
-                  </CardHeader>
-                  {showPasswordForm && (
-                    <CardContent className="flex flex-col gap-4">
+                    {!showPasswordForm && (
+                      <Button variant="outline" size="sm" onClick={() => setShowPasswordForm(true)}>
+                        Change Password
+                      </Button>
+                    )}
+                  </div>
+                {showPasswordForm && (
+                <Card className="border-border/60">
+                  <CardContent className="pt-6 flex flex-col gap-4">
                       <div className="flex flex-col gap-2">
                         <Label htmlFor="sec-current-pw" className="text-sm">Current Password</Label>
                         <Input
@@ -1950,31 +1984,36 @@ function ProfileContent() {
                         </Button>
                       </div>
                     </CardContent>
-                  )}
                 </Card>
+                )}
+                </section>
 
                 {/* Two-Factor Authentication */}
-                <Card>
-                  <CardHeader>
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <CardTitle className="text-lg">Two-Factor Authentication</CardTitle>
-                        <CardDescription>
-                          {totpEnabled
-                            ? `2FA is active via ${twoFactorMethod === "email" ? "email" : "authenticator app"}.`
-                            : "Add an extra layer of security to your account."}
-                        </CardDescription>
+                <section>
+                  <div className="flex items-center justify-between gap-3 mb-4">
+                    <div className="flex items-center gap-3">
+                      <div className="flex items-center justify-center h-9 w-9 rounded-lg bg-emerald-500/10">
+                        <Shield className="h-4.5 w-4.5 text-emerald-600 dark:text-emerald-400" />
                       </div>
-                      {totpEnabled ? (
-                        <Badge className="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20">
-                          {twoFactorMethod === "email" ? "Email" : "App"} Enabled
-                        </Badge>
-                      ) : (
-                        <Badge variant="secondary">Disabled</Badge>
-                      )}
+                      <div>
+                        <h2 className="text-base font-semibold text-foreground">Two-Factor Authentication</h2>
+                        <p className="text-sm text-muted-foreground">
+                          {totpEnabled
+                            ? `Active via ${twoFactorMethod === "email" ? "email" : "authenticator app"}`
+                            : "Add an extra layer of security"}
+                        </p>
+                      </div>
                     </div>
-                  </CardHeader>
-                  <CardContent className="flex flex-col gap-4">
+                    {totpEnabled ? (
+                      <Badge className="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20">
+                        {twoFactorMethod === "email" ? "Email" : "App"} Enabled
+                      </Badge>
+                    ) : (
+                      <Badge variant="secondary">Disabled</Badge>
+                    )}
+                  </div>
+                <Card className="border-border/60">
+                  <CardContent className="pt-6 flex flex-col gap-4">
 
                     {/* ── Authenticator App ── */}
                     <div className="rounded-lg border border-border p-4 flex flex-col gap-4">
@@ -2242,27 +2281,24 @@ function ProfileContent() {
 
                   </CardContent>
                 </Card>
+                </section>
 
                 {/* Active Sessions / Force Logout */}
-                <Card className="bg-card border-border">
-                  <CardHeader>
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <CardTitle className="text-lg flex items-center gap-2">
-                          <MonitorSmartphone className="h-4 w-4 text-muted-foreground" />
-                          Active Sessions
-                        </CardTitle>
-                        <CardDescription>
-                          Log out of all devices and browsers at once.
-                        </CardDescription>
-                      </div>
+                <section>
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="flex items-center justify-center h-9 w-9 rounded-lg bg-primary/10">
+                      <MonitorSmartphone className="h-4.5 w-4.5 text-primary" />
                     </div>
-                  </CardHeader>
-                  <CardContent>
+                    <div>
+                      <h2 className="text-base font-semibold text-foreground">Active Sessions</h2>
+                      <p className="text-sm text-muted-foreground">Log out of all devices at once</p>
+                    </div>
+                  </div>
+                <Card className="border-border/60">
+                  <CardContent className="pt-6">
                     <div className="flex flex-col gap-4">
                       <p className="text-sm text-muted-foreground">
-                        If you suspect unauthorized access to your account or want to sign out everywhere,
-                        use the button below. This will invalidate all active sessions including this one.
+                        If you suspect unauthorized access or want to sign out everywhere, this will invalidate all active sessions including this one.
                       </p>
                       <Button
                         variant="outline"
@@ -2279,19 +2315,21 @@ function ProfileContent() {
                     </div>
                   </CardContent>
                 </Card>
+                </section>
 
                 {/* Security Notifications Quick Link */}
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="text-lg flex items-center gap-2">
-                      <Bell className="h-4 w-4 text-muted-foreground" />
-                      Security Notifications
-                    </CardTitle>
-                    <CardDescription>
-                      Configure which security-related email notifications you receive.
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
+                <section>
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="flex items-center justify-center h-9 w-9 rounded-lg bg-primary/10">
+                      <Bell className="h-4.5 w-4.5 text-primary" />
+                    </div>
+                    <div>
+                      <h2 className="text-base font-semibold text-foreground">Security Notifications</h2>
+                      <p className="text-sm text-muted-foreground">Configure security-related email notifications</p>
+                    </div>
+                  </div>
+                <Card className="border-border/60">
+                  <CardContent className="pt-6">
                     <Button
                       variant="outline"
                       onClick={() => {
@@ -2303,27 +2341,30 @@ function ProfileContent() {
                     </Button>
                   </CardContent>
                 </Card>
+                </section>
               </div>
             )}
 
             {/* ===================== DEVELOPER TAB ===================== */}
             {activeTab === "developer" && (
-              <div className="flex flex-col gap-6">
-                <Card>
-                  <CardHeader>
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <CardTitle className="text-lg">API Keys</CardTitle>
-                        <CardDescription className="mt-1">
-                          Each key is rate-limited to 50 requests per 24 hours. Maximum 3 active keys.
-                        </CardDescription>
+              <div className="flex flex-col gap-10">
+                <section>
+                  <div className="flex items-center justify-between gap-3 mb-4">
+                    <div className="flex items-center gap-3">
+                      <div className="flex items-center justify-center h-9 w-9 rounded-lg bg-primary/10">
+                        <Key className="h-4.5 w-4.5 text-primary" />
                       </div>
-                      <Button variant="outline" size="sm" className="shrink-0" asChild>
-                        <a href="/docs">View Docs</a>
-                      </Button>
+                      <div>
+                        <h2 className="text-base font-semibold text-foreground">API Keys</h2>
+                        <p className="text-sm text-muted-foreground">Rate limit based on your plan, max 3 keys</p>
+                      </div>
                     </div>
-                  </CardHeader>
-                  <CardContent className="flex flex-col gap-6">
+                    <Button variant="outline" size="sm" className="shrink-0" asChild>
+                      <a href="/docs">View Docs</a>
+                    </Button>
+                  </div>
+                <Card className="border-border/60">
+                  <CardContent className="pt-6 flex flex-col gap-6">
                     {/* Newly created key banner */}
                     {newlyCreatedKey && (
                       <div className="p-4 rounded-lg border border-primary/30 bg-primary/5">
@@ -2387,13 +2428,14 @@ function ProfileContent() {
                               </div>
                               <Button
                                 variant="ghost"
-                                size="icon"
-                                onClick={() => handleRevokeKey(key.id)}
+                                size="sm"
+                                onClick={() => handleRotateKey(key.id)}
                                 disabled={revokingId === key.id}
-                                className="text-muted-foreground hover:text-destructive h-8 w-8"
-                                aria-label="Revoke key"
+                                className="text-muted-foreground hover:text-foreground h-8 gap-1.5"
+                                aria-label="Rotate key"
                               >
-                                <Trash2 className="h-4 w-4" />
+                                <RefreshCw className={cn("h-3.5 w-3.5", revokingId === key.id && "animate-spin")} />
+                                <span className="hidden sm:inline">Rotate</span>
                               </Button>
                             </div>
                             <div className="flex flex-col gap-1.5">
@@ -2442,20 +2484,25 @@ function ProfileContent() {
                     )}
                   </CardContent>
                 </Card>
+                </section>
               </div>
             )}
 
             {/* ===================== WEBHOOKS SECTION (renders in Developer tab) ===================== */}
             {activeTab === "developer" && (
-              <>
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="text-lg">Webhooks</CardTitle>
-                    <CardDescription>
-                      Get notified when scans complete. Supports Discord, Slack, and generic JSON webhooks. Maximum 5 endpoints.
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
+              <div className="flex flex-col gap-10 mt-10">
+                <section>
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="flex items-center justify-center h-9 w-9 rounded-lg bg-primary/10">
+                      <Webhook className="h-4.5 w-4.5 text-primary" />
+                    </div>
+                    <div>
+                      <h2 className="text-base font-semibold text-foreground">Webhooks</h2>
+                      <p className="text-sm text-muted-foreground">Discord, Slack, and JSON webhook notifications</p>
+                    </div>
+                  </div>
+                <Card className="border-border/60">
+                  <CardContent className="pt-6 space-y-4">
                     {/* Add webhook form */}
                     <div className="flex flex-col gap-3 p-4 rounded-lg border border-border bg-secondary/30">
                       <Label className="text-sm font-medium">Add Endpoint</Label>
@@ -2588,15 +2635,20 @@ function ProfileContent() {
 
                   </CardContent>
                 </Card>
+                </section>
 
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="text-lg">Scheduled Scans</CardTitle>
-                    <CardDescription>
-                      Set URLs to auto-scan on a recurring schedule. Maximum 10 schedules.
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
+                <section>
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="flex items-center justify-center h-9 w-9 rounded-lg bg-primary/10">
+                      <CalendarClock className="h-4.5 w-4.5 text-primary" />
+                    </div>
+                    <div>
+                      <h2 className="text-base font-semibold text-foreground">Scheduled Scans</h2>
+                      <p className="text-sm text-muted-foreground">Auto-scan URLs on a recurring schedule</p>
+                    </div>
+                  </div>
+                <Card className="border-border/60">
+                  <CardContent className="pt-6 space-y-4">
                     {/* Add schedule form */}
                     <div className="flex flex-col gap-3 p-4 rounded-lg border border-border bg-secondary/30">
                       <Label className="text-sm font-medium">Add Schedule</Label>
@@ -2694,22 +2746,26 @@ function ProfileContent() {
                     </div>
                   </CardContent>
                 </Card>
-              </>
+                </section>
+              </div>
             )}
 
             {/* ===================== NOTIFICATIONS TAB ===================== */}
             {activeTab === "notifications" && (
-              <div className="flex flex-col gap-6">
+              <div className="flex flex-col gap-10">
                 {/* --- SECURITY --- */}
-                <Card>
-                  <CardHeader className="pb-3">
-                    <CardTitle className="text-base flex items-center gap-2">
-                      <Shield className="h-4 w-4 text-primary" />
-                      Security
-                    </CardTitle>
-                    <CardDescription>Critical alerts for account access and authentication events.</CardDescription>
-                  </CardHeader>
-                  <CardContent className="flex flex-col gap-2">
+                <section>
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="flex items-center justify-center h-9 w-9 rounded-lg bg-primary/10">
+                      <Shield className="h-4.5 w-4.5 text-primary" />
+                    </div>
+                    <div>
+                      <h2 className="text-base font-semibold text-foreground">Security Notifications</h2>
+                      <p className="text-sm text-muted-foreground">Critical alerts for account access and auth</p>
+                    </div>
+                  </div>
+                <Card className="border-border/60">
+                  <CardContent className="pt-6 pb-4 flex flex-col gap-4">
                     {([
                       { key: "email_security" as const, icon: Shield, label: "Security Alerts", desc: "Unusual activity, account compromise warnings, and critical security events.", badge: "Recommended" },
                       { key: "email_new_login" as const, icon: LogIn, label: "Login Alerts", desc: "Notifications when someone signs into your account from a new device or location." },
@@ -2717,104 +2773,115 @@ function ProfileContent() {
                       { key: "email_2fa_change" as const, icon: Fingerprint, label: "2FA Changes", desc: "Notifications when two-factor authentication is enabled, disabled, or modified." },
                       { key: "email_session_revoked" as const, icon: MonitorSmartphone, label: "Session Alerts", desc: "Alerts about active sessions and session revocations." },
                     ] as const).map(({ key, icon: Icon, label, desc, badge }) => (
-                      <div key={key} className="flex items-center justify-between p-3 rounded-lg border border-border bg-secondary/30">
+                      <div key={key} className="flex items-center justify-between p-4 rounded-lg border border-border bg-secondary/30">
                         <div className="flex-1">
                           <div className="flex items-center gap-2">
                             <Icon className="h-3.5 w-3.5 text-muted-foreground" />
                             <p className="text-sm font-medium text-foreground">{label}</p>
                             {badge && <Badge variant="secondary" className="text-[10px] px-1.5 py-0 uppercase font-semibold">{badge}</Badge>}
                           </div>
-                          <p className="text-xs text-muted-foreground mt-0.5 ml-5.5">{desc}</p>
+                          <p className="text-xs text-muted-foreground mt-1 ml-5.5">{desc}</p>
                         </div>
                         <Switch checked={notifPrefs[key]} onCheckedChange={(checked) => setNotifPrefs(prev => ({ ...prev, [key]: checked }))} />
                       </div>
                     ))}
                   </CardContent>
                 </Card>
+                </section>
 
                 {/* --- SCANNING --- */}
-                <Card>
-                  <CardHeader className="pb-3">
-                    <CardTitle className="text-base flex items-center gap-2">
-                      <Scan className="h-4 w-4 text-primary" />
-                      Scanning
-                    </CardTitle>
-                    <CardDescription>Notifications about scan results, failures, and scheduled scans.</CardDescription>
-                  </CardHeader>
-                  <CardContent className="flex flex-col gap-2">
+                <section>
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="flex items-center justify-center h-9 w-9 rounded-lg bg-primary/10">
+                      <Scan className="h-4.5 w-4.5 text-primary" />
+                    </div>
+                    <div>
+                      <h2 className="text-base font-semibold text-foreground">Scanning Notifications</h2>
+                      <p className="text-sm text-muted-foreground">Results and scheduled scan alerts</p>
+                    </div>
+                  </div>
+                <Card className="border-border/60">
+                  <CardContent className="pt-6 pb-4 flex flex-col gap-4">
                     {([
-                      { key: "email_scan_complete" as const, icon: Check, label: "Scan Complete", desc: "Get notified when a scan finishes with a summary of findings." },
-                      { key: "email_critical_findings" as const, icon: XCircle, label: "Critical Findings", desc: "Alerts when critical or high-severity vulnerabilities are discovered in your scans." },
-                      { key: "email_regression_alert" as const, icon: AlertTriangle, label: "Regression Alerts", desc: "Notifications when previously resolved issues reappear in subsequent scans." },
-                      { key: "email_schedules" as const, icon: CalendarClock, label: "Scheduled Scan Reports", desc: "Email summaries when scheduled scans complete, including severity breakdowns." },
+                      { key: "email_scan_complete" as const, icon: CheckCircle2, label: "Scan Completed", desc: "Alerts when vulnerability scans are finished." },
+                      { key: "email_critical_findings" as const, icon: AlertCircle, label: "Critical Issues Found", desc: "Immediate alerts when critical vulnerabilities are detected." },
+                      { key: "email_schedules" as const, icon: CalendarClock, label: "Scheduled Scans Completed", desc: "Alerts when your scheduled scans finish." },
                     ] as const).map(({ key, icon: Icon, label, desc }) => (
-                      <div key={key} className="flex items-center justify-between p-3 rounded-lg border border-border bg-secondary/30">
+                      <div key={key} className="flex items-center justify-between p-4 rounded-lg border border-border bg-secondary/30">
                         <div className="flex-1">
                           <div className="flex items-center gap-2">
                             <Icon className="h-3.5 w-3.5 text-muted-foreground" />
                             <p className="text-sm font-medium text-foreground">{label}</p>
                           </div>
-                          <p className="text-xs text-muted-foreground mt-0.5 ml-5.5">{desc}</p>
+                          <p className="text-xs text-muted-foreground mt-1 ml-5.5">{desc}</p>
                         </div>
                         <Switch checked={notifPrefs[key]} onCheckedChange={(checked) => setNotifPrefs(prev => ({ ...prev, [key]: checked }))} />
                       </div>
                     ))}
                   </CardContent>
                 </Card>
+                </section>
 
                 {/* --- API & INTEGRATIONS --- */}
-                <Card>
-                  <CardHeader className="pb-3">
-                    <CardTitle className="text-base flex items-center gap-2">
-                      <Zap className="h-4 w-4 text-primary" />
-                      {"API & Integrations"}
-                    </CardTitle>
-                    <CardDescription>Notifications about API keys, usage limits, and webhook events.</CardDescription>
-                  </CardHeader>
-                  <CardContent className="flex flex-col gap-2">
+                <section>
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="flex items-center justify-center h-9 w-9 rounded-lg bg-primary/10">
+                      <Zap className="h-4.5 w-4.5 text-primary" />
+                    </div>
+                    <div>
+                      <h2 className="text-base font-semibold text-foreground">{"API & Integrations"}</h2>
+                      <p className="text-sm text-muted-foreground">API keys, limits, and webhook alerts</p>
+                    </div>
+                  </div>
+                <Card className="border-border/60">
+                  <CardContent className="pt-6 pb-4 flex flex-col gap-4">
                     {([
                       { key: "email_api_keys" as const, icon: Key, label: "API Key Activity", desc: "Alerts when API keys are created, revoked, or approaching expiration." },
                       { key: "email_api_limit_warning" as const, icon: Gauge, label: "API Limit Warnings", desc: "Warnings when your API usage nears rate limits or daily quotas." },
                       { key: "email_webhooks" as const, icon: Webhook, label: "Webhook Events", desc: "Notifications when webhooks are created, modified, or disabled." },
                       { key: "email_webhook_failure" as const, icon: XCircle, label: "Webhook Failures", desc: "Alerts when webhook deliveries fail repeatedly." },
                     ] as const).map(({ key, icon: Icon, label, desc }) => (
-                      <div key={key} className="flex items-center justify-between p-3 rounded-lg border border-border bg-secondary/30">
+                      <div key={key} className="flex items-center justify-between p-4 rounded-lg border border-border bg-secondary/30">
                         <div className="flex-1">
                           <div className="flex items-center gap-2">
                             <Icon className="h-3.5 w-3.5 text-muted-foreground" />
                             <p className="text-sm font-medium text-foreground">{label}</p>
                           </div>
-                          <p className="text-xs text-muted-foreground mt-0.5 ml-5.5">{desc}</p>
+                          <p className="text-xs text-muted-foreground mt-1 ml-5.5">{desc}</p>
                         </div>
                         <Switch checked={notifPrefs[key]} onCheckedChange={(checked) => setNotifPrefs(prev => ({ ...prev, [key]: checked }))} />
                       </div>
                     ))}
                   </CardContent>
                 </Card>
+                </section>
 
                 {/* --- ACCOUNT --- */}
-                <Card>
-                  <CardHeader className="pb-3">
-                    <CardTitle className="text-base flex items-center gap-2">
-                      <UserCog className="h-4 w-4 text-primary" />
-                      Account
-                    </CardTitle>
-                    <CardDescription>Notifications about your account, data exports, and team activity.</CardDescription>
-                  </CardHeader>
-                  <CardContent className="flex flex-col gap-2">
+                <section>
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="flex items-center justify-center h-9 w-9 rounded-lg bg-primary/10">
+                      <UserCog className="h-4.5 w-4.5 text-primary" />
+                    </div>
+                    <div>
+                      <h2 className="text-base font-semibold text-foreground">Account Notifications</h2>
+                      <p className="text-sm text-muted-foreground">Account and team activity alerts</p>
+                    </div>
+                  </div>
+                <Card className="border-border/60">
+                  <CardContent className="pt-6 pb-4 flex flex-col gap-4">
                     {([
                       { key: "email_data_requests" as const, icon: Download, label: "Data Export Updates", desc: "Notifications when your data export is ready for download." },
                       { key: "email_account_deletion" as const, icon: UserCog, label: "Account Deletion", desc: "Confirmations and alerts when account deletion is requested or processed." },
                       { key: "email_team_invite" as const, icon: Users, label: "Team Invites", desc: "Notifications when you're invited to join a team or workspace." },
                       { key: "email_team_changes" as const, icon: Users, label: "Team Changes", desc: "Alerts about team membership changes, role updates, and team activity." },
                     ] as const).map(({ key, icon: Icon, label, desc }) => (
-                      <div key={key} className="flex items-center justify-between p-3 rounded-lg border border-border bg-secondary/30">
+                      <div key={key} className="flex items-center justify-between p-4 rounded-lg border border-border bg-secondary/30">
                         <div className="flex-1">
                           <div className="flex items-center gap-2">
                             <Icon className="h-3.5 w-3.5 text-muted-foreground" />
                             <p className="text-sm font-medium text-foreground">{label}</p>
                           </div>
-                          <p className="text-xs text-muted-foreground mt-0.5 ml-5.5">{desc}</p>
+                          <p className="text-xs text-muted-foreground mt-1 ml-5.5">{desc}</p>
                         </div>
                         <Switch checked={notifPrefs[key]} onCheckedChange={(checked) => setNotifPrefs(prev => ({ ...prev, [key]: checked }))} />
                       </div>
@@ -2822,70 +2889,43 @@ function ProfileContent() {
                   </CardContent>
                 </Card>
 
-                {/* --- PRODUCT --- */}
-                <Card>
-                  <CardHeader className="pb-3">
-                    <CardTitle className="text-base flex items-center gap-2">
-                      <Megaphone className="h-4 w-4 text-primary" />
-                      Product
-                    </CardTitle>
-                    <CardDescription>Stay up to date with new features, tips, and platform updates.</CardDescription>
-                  </CardHeader>
-                  <CardContent className="flex flex-col gap-2">
-                    {([
-                      { key: "email_product_updates" as const, icon: Megaphone, label: "Product Updates", desc: "Major feature announcements, release notes, and platform improvements." },
-                      { key: "email_tips_guides" as const, icon: Lightbulb, label: "Tips & Guides", desc: `Helpful tips, best practices, and security guides to get the most out of ${APP_NAME}.` },
-                    ] as const).map(({ key, icon: Icon, label, desc }) => (
-                      <div key={key} className="flex items-center justify-between p-3 rounded-lg border border-border bg-secondary/30">
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2">
-                            <Icon className="h-3.5 w-3.5 text-muted-foreground" />
-                            <p className="text-sm font-medium text-foreground">{label}</p>
-                          </div>
-                          <p className="text-xs text-muted-foreground mt-0.5 ml-5.5">{desc}</p>
-                        </div>
-                        <Switch checked={notifPrefs[key]} onCheckedChange={(checked) => setNotifPrefs(prev => ({ ...prev, [key]: checked }))} />
-                      </div>
-                    ))}
-                  </CardContent>
-                </Card>
-
-                
+                </section>
 
                 {/* Info card */}
-                <Card className="bg-muted/30 border-muted">
-                  <CardContent className="pt-4">
-                    <div className="flex gap-3">
-                      <Mail className="h-5 w-5 text-muted-foreground shrink-0 mt-0.5" />
-                      <div className="flex flex-col gap-1">
-                        <p className="text-sm font-medium text-foreground">About Email Notifications</p>
-                        <p className="text-xs text-muted-foreground leading-relaxed">
-                          We only send essential notifications related to your account activity.
-                          You will always receive critical security alerts for unusual activity regardless of your preferences.
-                          We never share your email or send marketing content.
-                        </p>
+                <section>
+                  <Card className="bg-muted/30 border-muted">
+                    <CardContent className="pt-6">
+                      <div className="flex gap-3">
+                        <Mail className="h-5 w-5 text-muted-foreground shrink-0 mt-0.5" />
+                        <div className="flex flex-col gap-1">
+                          <p className="text-sm font-medium text-foreground">About Email Notifications</p>
+                          <p className="text-xs text-muted-foreground leading-relaxed">
+                            We only send essential notifications. Critical security alerts are always sent regardless of your preferences.
+                          </p>
+                        </div>
                       </div>
-                    </div>
-                  </CardContent>
-                </Card>
+                    </CardContent>
+                  </Card>
+                </section>
               </div>
             )}
 
             {/* ===================== PRIVACY TAB ===================== */}
             {activeTab === "privacy" && (
-              <div className="flex flex-col gap-6">
+              <div className="flex flex-col gap-10">
                 {/* Privacy & Data Protection */}
-                <Card className="bg-blue-500/5 border-blue-500/20">
-                  <CardHeader>
-                    <CardTitle className="text-lg flex items-center gap-2">
-                      <Shield className="h-4 w-4 text-blue-500" />
-                      Privacy & Data Protection
-                    </CardTitle>
-                    <CardDescription>
-                      Your data is protected under GDPR and other privacy regulations. You have the right to request access to your data, request deletion, and manage your privacy settings.
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-3">
+                <section>
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="flex items-center justify-center h-9 w-9 rounded-lg bg-primary/10">
+                      <Shield className="h-4.5 w-4.5 text-primary" />
+                    </div>
+                    <div>
+                      <h2 className="text-base font-semibold text-foreground">Privacy & Data Protection</h2>
+                      <p className="text-sm text-muted-foreground">Protected under GDPR and privacy regulations</p>
+                    </div>
+                  </div>
+                <Card className="border-primary/20 bg-primary/5">
+                  <CardContent className="pt-6 space-y-3">
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <div className="flex items-start gap-3 p-3 rounded-lg bg-card/50 border border-border">
                         <Globe className="h-4 w-4 text-blue-500 shrink-0 mt-0.5" />
@@ -2904,19 +2944,21 @@ function ProfileContent() {
                     </div>
                   </CardContent>
                 </Card>
+                </section>
 
                 {/* Data Export */}
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="text-lg flex items-center gap-2">
-                      <Download className="h-4 w-4 text-primary" />
-                      Data Export
-                    </CardTitle>
-                    <CardDescription>
-                      Download your complete account data anytime. Fresh exports available once every 30 days.
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
+                <section>
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="flex items-center justify-center h-9 w-9 rounded-lg bg-primary/10">
+                      <Download className="h-4.5 w-4.5 text-primary" />
+                    </div>
+                    <div>
+                      <h2 className="text-base font-semibold text-foreground">Data Export</h2>
+                      <p className="text-sm text-muted-foreground">Download your data, available every 30 days</p>
+                    </div>
+                  </div>
+                <Card className="border-border/60">
+                  <CardContent className="pt-6">
                     <div className="flex flex-col gap-4">
                       {/* Download Fresh Data Section */}
                       <div className="flex flex-col gap-4 p-4 rounded-lg border border-border bg-secondary/30">
@@ -3017,16 +3059,21 @@ function ProfileContent() {
                     </div>
                   </CardContent>
                 </Card>
+                </section>
 
                 {/* Danger Zone */}
+                <section>
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="flex items-center justify-center h-9 w-9 rounded-lg bg-destructive/10">
+                      <AlertTriangle className="h-4.5 w-4.5 text-destructive" />
+                    </div>
+                    <div>
+                      <h2 className="text-base font-semibold text-destructive">Danger Zone</h2>
+                      <p className="text-sm text-muted-foreground">Permanent account deletion, cannot be undone</p>
+                    </div>
+                  </div>
                 <Card className="border-destructive/30">
-                  <CardHeader>
-                    <CardTitle className="text-lg flex items-center gap-2 text-destructive">
-                      <AlertTriangle className="h-4 w-4" />
-                      Danger Zone                </CardTitle>
-                    <CardDescription>Permanently delete your account and all associated data. This action cannot be undone.</CardDescription>
-                  </CardHeader>
-                  <CardContent>
+                  <CardContent className="pt-6">
                     {!showDeleteConfirm ? (
                       <Button
                         variant="outline"
@@ -3064,6 +3111,7 @@ function ProfileContent() {
                     )}
                   </CardContent>
                 </Card>
+                </section>
               </div>
             )}
           </div>{/* End Main Content Area */}
@@ -3073,21 +3121,16 @@ function ProfileContent() {
         {hasPendingChanges && <div className="h-20" />}
       </main>
 
-      {/* Floating Save Bar - matches admin panel style */}
+      {/* Floating Save Bar */}
       {hasPendingChanges && (
         <div className="fixed bottom-0 left-0 right-0 z-50 p-4 pointer-events-none">
-          <div className="max-w-3xl mx-auto pointer-events-auto">
-            <div className="flex items-center justify-between gap-4 px-5 py-3.5 rounded-xl bg-card border border-primary/30 shadow-2xl shadow-primary/10 backdrop-blur-sm">
+          <div className="max-w-lg mx-auto pointer-events-auto">
+            <div className="flex items-center justify-between gap-4 px-4 py-3 rounded-lg bg-card border border-border shadow-lg">
               <div className="flex items-center gap-3">
-                <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center">
-                  <Save className="h-4 w-4 text-primary" />
-                </div>
-                <div>
-                  <p className="text-sm font-medium text-foreground">Unsaved Changes</p>
-                  <p className="text-[11px] text-muted-foreground">
-                    {pendingChangeItems.length} field{pendingChangeItems.length !== 1 ? "s" : ""}
-                  </p>
-                </div>
+                <Save className="h-4 w-4 text-primary" />
+                <p className="text-sm font-medium text-foreground">
+                  {pendingChangeItems.length} unsaved change{pendingChangeItems.length !== 1 ? "s" : ""}
+                </p>
               </div>
               <div className="flex items-center gap-2">
                 <Button 
@@ -3099,13 +3142,11 @@ function ProfileContent() {
                     setEmailInput(user?.email || "")
                     if (originalNotifPrefs) setNotifPrefs(originalNotifPrefs)
                   }}
-                  className="h-9 px-4"
                 >
                   Discard
                 </Button>
-                <Button size="sm" onClick={() => setShowSaveModal(true)} className="h-9 px-5 gap-2">
-                  <Save className="h-3.5 w-3.5" />
-                  Review & Save
+                <Button size="sm" onClick={() => setShowSaveModal(true)}>
+                  Save Changes
                 </Button>
               </div>
             </div>

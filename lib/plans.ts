@@ -14,6 +14,7 @@ export interface Plan {
   limits: {
     dailyScans: number
     apiKeys: number
+    apiRequestsPerDay: number  // API rate limit per day
     teams: number
     teamMembers: number
     webhooks: number
@@ -45,6 +46,7 @@ export const PLANS: Plan[] = [
     limits: {
       dailyScans: 25,
       apiKeys: 1,
+      apiRequestsPerDay: 25,  // Free: 25 requests/day
       teams: 0,
       teamMembers: 0,
       webhooks: 0,
@@ -67,6 +69,7 @@ export const PLANS: Plan[] = [
     limits: {
       dailyScans: 100,
       apiKeys: 3,
+      apiRequestsPerDay: 100,  // Core: 100 requests/day
       teams: 0,
       teamMembers: 0,
       webhooks: 1,
@@ -93,6 +96,7 @@ export const PLANS: Plan[] = [
     limits: {
       dailyScans: 150,
       apiKeys: 10,
+      apiRequestsPerDay: 5000,  // Pro: 5,000 requests/day
       teams: 1,
       teamMembers: 3,
       webhooks: 5,
@@ -119,6 +123,7 @@ export const PLANS: Plan[] = [
     limits: {
       dailyScans: 500,
       apiKeys: -1, // Unlimited
+      apiRequestsPerDay: -1,  // Elite: Unlimited
       teams: 3,
       teamMembers: 10,
       webhooks: -1, // Unlimited
@@ -159,4 +164,13 @@ export function isPaidPlan(planId: string): boolean {
  */
 export function getPaidPlans(): Plan[] {
   return PLANS.filter((p) => p.priceInCents > 0)
+}
+
+/**
+ * Get API request limit for a plan
+ * Returns -1 for unlimited
+ */
+export function getApiLimitForPlan(planId: string): number {
+  const plan = getPlanById(planId)
+  return plan?.limits.apiRequestsPerDay ?? 25 // Default to free plan limit
 }
