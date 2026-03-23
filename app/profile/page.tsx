@@ -1027,17 +1027,17 @@ function ProfileContent() {
     <div className="min-h-screen bg-background flex flex-col overflow-x-hidden">
       <Header />
 
-      <main className="flex-1 w-full max-w-6xl mx-auto px-4 sm:px-6 py-8 sm:py-12 flex flex-col gap-6 min-w-0">
+      <main className="flex-1 w-full max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-10 flex flex-col gap-8 min-w-0">
 
         {/* Page Header */}
-        <div className="flex items-start justify-between gap-4 pb-2">
+        <div className="flex items-start justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-semibold tracking-tight text-foreground">Settings</h1>
-            <p className="text-sm text-muted-foreground mt-1">Manage your account settings and preferences.</p>
+            <h1 className="text-2xl font-bold tracking-tight text-foreground">Settings</h1>
+            <p className="text-sm text-muted-foreground mt-1.5">Manage your account settings and preferences</p>
           </div>
           {user && (
-            <div className="hidden sm:flex items-center gap-3 px-4 py-2.5 rounded-xl bg-secondary/50 border border-border/60">
-              <div className="h-9 w-9 rounded-full border border-border bg-card flex items-center justify-center overflow-hidden">
+            <div className="hidden md:flex items-center gap-3 px-4 py-2.5 rounded-xl bg-card border border-border/80 shadow-sm">
+              <div className="h-10 w-10 rounded-full border-2 border-border bg-secondary flex items-center justify-center overflow-hidden">
                 {user.avatarUrl ? (
                   <img src={user.avatarUrl} alt="" className="h-full w-full object-cover" />
                 ) : (
@@ -1071,19 +1071,19 @@ function ProfileContent() {
         )}
 
         {/* Two-column layout: Sidebar + Content */}
-        <div className="flex flex-col lg:flex-row gap-6 lg:gap-10">
+        <div className="flex flex-col lg:flex-row gap-6 lg:gap-8">
 
           {/* Sidebar Navigation */}
-          <aside className="lg:w-52 lg:shrink-0">
+          <aside className="lg:w-48 lg:shrink-0">
             {/* Mobile: Scrollable horizontal tab bar */}
-            <div className="lg:hidden overflow-x-auto scrollbar-hide -mx-4 px-4 border-b border-border">
-              <div className="flex gap-0.5 pb-0 min-w-max">
+            <div className="lg:hidden overflow-x-auto scrollbar-hide -mx-4 px-4 border-b border-border/80">
+              <div className="flex gap-0.5 min-w-max">
                 {TABS.map((tab) => (
                   <button
                     key={tab.id}
                     onClick={() => handleTabChange(tab.id)}
                     className={cn(
-                      "flex items-center gap-2 px-3 py-3 text-sm font-medium transition-all whitespace-nowrap border-b-2 -mb-px",
+                      "flex items-center gap-2 px-3.5 py-3 text-sm font-medium transition-all whitespace-nowrap border-b-2 -mb-px",
                       activeTab === tab.id
                         ? "border-primary text-foreground"
                         : "border-transparent text-muted-foreground hover:text-foreground"
@@ -1098,7 +1098,7 @@ function ProfileContent() {
 
             {/* Desktop: Vertical sidebar */}
             <nav className="hidden lg:block sticky top-24">
-              <div className="flex flex-col gap-0.5 p-1.5 rounded-xl bg-secondary/30 border border-border/60">
+              <div className="flex flex-col gap-1">
                 {TABS.map((tab) => (
                   <a
                     key={tab.id}
@@ -1112,8 +1112,8 @@ function ProfileContent() {
                     className={cn(
                       "flex items-center gap-2.5 px-3 py-2 text-sm rounded-lg transition-all",
                       activeTab === tab.id
-                        ? "bg-card text-foreground font-medium shadow-sm border border-border/60"
-                        : "text-muted-foreground hover:text-foreground hover:bg-card/50"
+                        ? "bg-secondary text-foreground font-medium"
+                        : "text-muted-foreground hover:text-foreground hover:bg-secondary/50"
                     )}
                   >
                     {tab.icon}
@@ -1132,16 +1132,16 @@ function ProfileContent() {
               <div className="flex flex-col gap-10">
                 {/* Personal Information */}
                 <section>
-                  <div className="flex items-center gap-3 mb-5">
-                    <div className="flex items-center justify-center h-8 w-8 rounded-lg bg-primary/10 border border-primary/20">
-                      <UserCog className="h-4 w-4 text-primary" />
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="flex items-center justify-center h-9 w-9 rounded-lg bg-primary/10">
+                      <UserCog className="h-4.5 w-4.5 text-primary" />
                     </div>
                     <div>
                       <h2 className="text-base font-semibold text-foreground">Personal Information</h2>
-                      <p className="text-xs text-muted-foreground">Manage your profile picture, name, and email</p>
+                      <p className="text-sm text-muted-foreground">Manage your profile picture, name, and email</p>
                     </div>
                   </div>
-                <Card className="border-border/50 shadow-sm">
+                <Card className="border-border/60">
                   <CardContent className="pt-6 flex flex-col gap-5">
                     {/* Profile Picture */}
                     <div className="flex flex-col gap-2">
@@ -1339,16 +1339,16 @@ function ProfileContent() {
 
                 {/* Quick Links to Other Settings */}
                 <section>
-                  <div className="flex items-center gap-3 mb-5">
-                    <div className="flex items-center justify-center h-8 w-8 rounded-lg bg-secondary border border-border/60">
-                      <Zap className="h-4 w-4 text-muted-foreground" />
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="flex items-center justify-center h-9 w-9 rounded-lg bg-secondary/80">
+                      <Zap className="h-4.5 w-4.5 text-muted-foreground" />
                     </div>
                     <div>
                       <h2 className="text-base font-semibold text-foreground">Quick Settings</h2>
-                      <p className="text-xs text-muted-foreground">Shortcuts to other account settings</p>
+                      <p className="text-sm text-muted-foreground">Shortcuts to other account settings</p>
                     </div>
                   </div>
-                <Card className="border-border/50 shadow-sm">
+                <Card className="border-border/60">
                   <CardContent className="pt-6">
                     <div className="grid gap-3 sm:grid-cols-2">
                       <button
@@ -1387,23 +1387,23 @@ function ProfileContent() {
               <div className="flex flex-col gap-10">
                 {/* Discord Integration */}
                 <section>
-                  <div className="flex items-center justify-between gap-3 mb-5">
+                  <div className="flex items-center justify-between gap-3 mb-4">
                     <div className="flex items-center gap-3">
-                      <div className="flex items-center justify-center h-8 w-8 rounded-lg bg-[#5865F2]/10 border border-[#5865F2]/20">
-                        <svg className="h-4 w-4 text-[#5865F2]" viewBox="0 0 24 24" fill="currentColor">
+                      <div className="flex items-center justify-center h-9 w-9 rounded-lg bg-[#5865F2]/10">
+                        <svg className="h-4.5 w-4.5 text-[#5865F2]" viewBox="0 0 24 24" fill="currentColor">
                           <path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028 14.09 14.09 0 0 0 1.226-1.994.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418z" />
                         </svg>
                       </div>
                       <div>
                         <h2 className="text-base font-semibold text-foreground">Discord Integration</h2>
-                        <p className="text-xs text-muted-foreground">Connect for sign-in and community features</p>
+                        <p className="text-sm text-muted-foreground">Connect for sign-in and community features</p>
                       </div>
                     </div>
                     {user?.discordId && (
                       <Badge className="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20">Connected</Badge>
                     )}
                   </div>
-                <Card className="border-border/50 shadow-sm">
+                <Card className="border-border/60">
                   <CardContent className="pt-6 space-y-4">
                     {user?.discordId ? (
                       <>
@@ -1546,16 +1546,16 @@ function ProfileContent() {
 
                 {/* Community Links */}
                 <section>
-                  <div className="flex items-center gap-3 mb-5">
-                    <div className="flex items-center justify-center h-8 w-8 rounded-lg bg-secondary border border-border/60">
-                      <Users className="h-4 w-4 text-muted-foreground" />
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="flex items-center justify-center h-9 w-9 rounded-lg bg-secondary/80">
+                      <Users className="h-4.5 w-4.5 text-muted-foreground" />
                     </div>
                     <div>
                       <h2 className="text-base font-semibold text-foreground">Community</h2>
-                      <p className="text-xs text-muted-foreground">Join our community and stay connected</p>
+                      <p className="text-sm text-muted-foreground">Join our community and stay connected</p>
                     </div>
                   </div>
-                <Card className="border-border/50 shadow-sm">
+                <Card className="border-border/60">
                   <CardContent className="pt-6">
                     <a
                       href="https://discord.gg/Y7R6hdGbNe"
@@ -1585,16 +1585,16 @@ function ProfileContent() {
               <div className="flex flex-col gap-10">
                 {/* Usage Card */}
                 <section>
-                  <div className="flex items-center gap-3 mb-5">
-                    <div className="flex items-center justify-center h-8 w-8 rounded-lg bg-primary/10 border border-primary/20">
-                      <Gauge className="h-4 w-4 text-primary" />
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="flex items-center justify-center h-9 w-9 rounded-lg bg-primary/10">
+                      <Gauge className="h-4.5 w-4.5 text-primary" />
                     </div>
                     <div>
                       <h2 className="text-base font-semibold text-foreground">Daily Usage</h2>
-                      <p className="text-xs text-muted-foreground">Track scan requests, resets at midnight UTC</p>
+                      <p className="text-sm text-muted-foreground">Track scan requests, resets at midnight UTC</p>
                     </div>
                   </div>
-                <Card className="border-border/50 shadow-sm">
+                <Card className="border-border/60">
                   <CardContent className="pt-6 flex flex-col gap-4">
                     {billingInfo ? (
                       <>
@@ -1660,16 +1660,16 @@ function ProfileContent() {
 
                 {/* Plan Info Card */}
                 <section>
-                  <div className="flex items-center gap-3 mb-5">
-                    <div className="flex items-center justify-center h-8 w-8 rounded-lg bg-secondary border border-border/60">
-                      <CreditCard className="h-4 w-4 text-muted-foreground" />
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="flex items-center justify-center h-9 w-9 rounded-lg bg-secondary/80">
+                      <CreditCard className="h-4.5 w-4.5 text-muted-foreground" />
                     </div>
                     <div>
                       <h2 className="text-base font-semibold text-foreground">Subscription Plan</h2>
-                      <p className="text-xs text-muted-foreground">Manage your subscription and billing</p>
+                      <p className="text-sm text-muted-foreground">Manage your subscription and billing</p>
                     </div>
                   </div>
-                <Card className="border-border/50 shadow-sm">
+                <Card className="border-border/60">
                   <CardContent className="pt-6 flex flex-col gap-4">
                     {billingInfo ? (
                       <>
@@ -1934,14 +1934,14 @@ function ProfileContent() {
               <div className="flex flex-col gap-10">
                 {/* Password */}
                 <section>
-                  <div className="flex items-center justify-between gap-3 mb-5">
+                  <div className="flex items-center justify-between gap-3 mb-4">
                     <div className="flex items-center gap-3">
-                      <div className="flex items-center justify-center h-8 w-8 rounded-lg bg-primary/10 border border-primary/20">
-                        <Lock className="h-4 w-4 text-primary" />
+                      <div className="flex items-center justify-center h-9 w-9 rounded-lg bg-primary/10">
+                        <Lock className="h-4.5 w-4.5 text-primary" />
                       </div>
                       <div>
                         <h2 className="text-base font-semibold text-foreground">Password</h2>
-                        <p className="text-xs text-muted-foreground">Update your account password</p>
+                        <p className="text-sm text-muted-foreground">Update your account password</p>
                       </div>
                     </div>
                     {!showPasswordForm && (
@@ -1951,7 +1951,7 @@ function ProfileContent() {
                     )}
                   </div>
                 {showPasswordForm && (
-                <Card className="border-border/50 shadow-sm">
+                <Card className="border-border/60">
                   <CardContent className="pt-6 flex flex-col gap-4">
                       <div className="flex flex-col gap-2">
                         <Label htmlFor="sec-current-pw" className="text-sm">Current Password</Label>
@@ -2011,14 +2011,14 @@ function ProfileContent() {
 
                 {/* Two-Factor Authentication */}
                 <section>
-                  <div className="flex items-center justify-between gap-3 mb-5">
+                  <div className="flex items-center justify-between gap-3 mb-4">
                     <div className="flex items-center gap-3">
-                      <div className="flex items-center justify-center h-8 w-8 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
-                        <Shield className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+                      <div className="flex items-center justify-center h-9 w-9 rounded-lg bg-emerald-500/10">
+                        <Shield className="h-4.5 w-4.5 text-emerald-600 dark:text-emerald-400" />
                       </div>
                       <div>
                         <h2 className="text-base font-semibold text-foreground">Two-Factor Authentication</h2>
-                        <p className="text-xs text-muted-foreground">
+                        <p className="text-sm text-muted-foreground">
                           {totpEnabled
                             ? `Active via ${twoFactorMethod === "email" ? "email" : "authenticator app"}`
                             : "Add an extra layer of security"}
@@ -2033,7 +2033,7 @@ function ProfileContent() {
                       <Badge variant="secondary">Disabled</Badge>
                     )}
                   </div>
-                <Card className="border-border/50 shadow-sm">
+                <Card className="border-border/60">
                   <CardContent className="pt-6 flex flex-col gap-4">
 
                     {/* ── Authenticator App ── */}
@@ -2306,16 +2306,16 @@ function ProfileContent() {
 
                 {/* Active Sessions / Force Logout */}
                 <section>
-                  <div className="flex items-center gap-3 mb-5">
-                    <div className="flex items-center justify-center h-8 w-8 rounded-lg bg-secondary border border-border/60">
-                      <MonitorSmartphone className="h-4 w-4 text-muted-foreground" />
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="flex items-center justify-center h-9 w-9 rounded-lg bg-secondary/80">
+                      <MonitorSmartphone className="h-4.5 w-4.5 text-muted-foreground" />
                     </div>
                     <div>
                       <h2 className="text-base font-semibold text-foreground">Active Sessions</h2>
-                      <p className="text-xs text-muted-foreground">Log out of all devices at once</p>
+                      <p className="text-sm text-muted-foreground">Log out of all devices at once</p>
                     </div>
                   </div>
-                <Card className="border-border/50 shadow-sm">
+                <Card className="border-border/60">
                   <CardContent className="pt-6">
                     <div className="flex flex-col gap-4">
                       <p className="text-sm text-muted-foreground">
@@ -2340,16 +2340,16 @@ function ProfileContent() {
 
                 {/* Security Notifications Quick Link */}
                 <section>
-                  <div className="flex items-center gap-3 mb-5">
-                    <div className="flex items-center justify-center h-8 w-8 rounded-lg bg-secondary border border-border/60">
-                      <Bell className="h-4 w-4 text-muted-foreground" />
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="flex items-center justify-center h-9 w-9 rounded-lg bg-secondary/80">
+                      <Bell className="h-4.5 w-4.5 text-muted-foreground" />
                     </div>
                     <div>
                       <h2 className="text-base font-semibold text-foreground">Security Notifications</h2>
-                      <p className="text-xs text-muted-foreground">Configure security-related email notifications</p>
+                      <p className="text-sm text-muted-foreground">Configure security-related email notifications</p>
                     </div>
                   </div>
-                <Card className="border-border/50 shadow-sm">
+                <Card className="border-border/60">
                   <CardContent className="pt-6">
                     <Button
                       variant="outline"
@@ -2370,21 +2370,21 @@ function ProfileContent() {
             {activeTab === "developer" && (
               <div className="flex flex-col gap-10">
                 <section>
-                  <div className="flex items-center justify-between gap-3 mb-5">
+                  <div className="flex items-center justify-between gap-3 mb-4">
                     <div className="flex items-center gap-3">
-                      <div className="flex items-center justify-center h-8 w-8 rounded-lg bg-primary/10 border border-primary/20">
-                        <Key className="h-4 w-4 text-primary" />
+                      <div className="flex items-center justify-center h-9 w-9 rounded-lg bg-primary/10">
+                        <Key className="h-4.5 w-4.5 text-primary" />
                       </div>
                       <div>
                         <h2 className="text-base font-semibold text-foreground">API Keys</h2>
-                        <p className="text-xs text-muted-foreground">Rate limit based on your plan, max 3 keys</p>
+                        <p className="text-sm text-muted-foreground">Rate limit based on your plan, max 3 keys</p>
                       </div>
                     </div>
                     <Button variant="outline" size="sm" className="shrink-0" asChild>
                       <a href="/docs">View Docs</a>
                     </Button>
                   </div>
-                <Card className="border-border/50 shadow-sm">
+                <Card className="border-border/60">
                   <CardContent className="pt-6 flex flex-col gap-6">
                     {/* Newly created key banner */}
                     {newlyCreatedKey && (
@@ -2511,18 +2511,18 @@ function ProfileContent() {
 
             {/* ===================== WEBHOOKS SECTION (renders in Developer tab) ===================== */}
             {activeTab === "developer" && (
-              <div className="flex flex-col gap-8">
+              <div className="flex flex-col gap-10 mt-10">
                 <section>
-                  <div className="flex items-center gap-3 mb-5">
-                    <div className="flex items-center justify-center h-8 w-8 rounded-lg bg-secondary border border-border/60">
-                      <Webhook className="h-4 w-4 text-muted-foreground" />
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="flex items-center justify-center h-9 w-9 rounded-lg bg-secondary/80">
+                      <Webhook className="h-4.5 w-4.5 text-muted-foreground" />
                     </div>
                     <div>
                       <h2 className="text-base font-semibold text-foreground">Webhooks</h2>
-                      <p className="text-xs text-muted-foreground">Discord, Slack, and JSON webhook notifications</p>
+                      <p className="text-sm text-muted-foreground">Discord, Slack, and JSON webhook notifications</p>
                     </div>
                   </div>
-                <Card className="border-border/50 shadow-sm">
+                <Card className="border-border/60">
                   <CardContent className="pt-6 space-y-4">
                     {/* Add webhook form */}
                     <div className="flex flex-col gap-3 p-4 rounded-lg border border-border bg-secondary/30">
@@ -2659,16 +2659,16 @@ function ProfileContent() {
                 </section>
 
                 <section>
-                  <div className="flex items-center gap-3 mb-5">
-                    <div className="flex items-center justify-center h-8 w-8 rounded-lg bg-secondary border border-border/60">
-                      <CalendarClock className="h-4 w-4 text-muted-foreground" />
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="flex items-center justify-center h-9 w-9 rounded-lg bg-secondary/80">
+                      <CalendarClock className="h-4.5 w-4.5 text-muted-foreground" />
                     </div>
                     <div>
                       <h2 className="text-base font-semibold text-foreground">Scheduled Scans</h2>
-                      <p className="text-xs text-muted-foreground">Auto-scan URLs on a recurring schedule</p>
+                      <p className="text-sm text-muted-foreground">Auto-scan URLs on a recurring schedule</p>
                     </div>
                   </div>
-                <Card className="border-border/50 shadow-sm">
+                <Card className="border-border/60">
                   <CardContent className="pt-6 space-y-4">
                     {/* Add schedule form */}
                     <div className="flex flex-col gap-3 p-4 rounded-lg border border-border bg-secondary/30">
@@ -2776,16 +2776,16 @@ function ProfileContent() {
               <div className="flex flex-col gap-10">
                 {/* --- SECURITY --- */}
                 <section>
-                  <div className="flex items-center gap-3 mb-5">
-                    <div className="flex items-center justify-center h-8 w-8 rounded-lg bg-primary/10 border border-primary/20">
-                      <Shield className="h-4 w-4 text-primary" />
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="flex items-center justify-center h-9 w-9 rounded-lg bg-primary/10">
+                      <Shield className="h-4.5 w-4.5 text-primary" />
                     </div>
                     <div>
                       <h2 className="text-base font-semibold text-foreground">Security Notifications</h2>
-                      <p className="text-xs text-muted-foreground">Critical alerts for account access and auth</p>
+                      <p className="text-sm text-muted-foreground">Critical alerts for account access and auth</p>
                     </div>
                   </div>
-                <Card className="border-border/50 shadow-sm">
+                <Card className="border-border/60">
                   <CardContent className="pt-6 flex flex-col gap-2">
                     {([
                       { key: "email_security" as const, icon: Shield, label: "Security Alerts", desc: "Unusual activity, account compromise warnings, and critical security events.", badge: "Recommended" },
@@ -2812,16 +2812,16 @@ function ProfileContent() {
 
                 {/* --- SCANNING --- */}
                 <section>
-                  <div className="flex items-center gap-3 mb-5">
-                    <div className="flex items-center justify-center h-8 w-8 rounded-lg bg-secondary border border-border/60">
-                      <Scan className="h-4 w-4 text-muted-foreground" />
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="flex items-center justify-center h-9 w-9 rounded-lg bg-secondary/80">
+                      <Scan className="h-4.5 w-4.5 text-muted-foreground" />
                     </div>
                     <div>
                       <h2 className="text-base font-semibold text-foreground">Scanning Notifications</h2>
-                      <p className="text-xs text-muted-foreground">Results and scheduled scan alerts</p>
+                      <p className="text-sm text-muted-foreground">Results and scheduled scan alerts</p>
                     </div>
                   </div>
-                <Card className="border-border/50 shadow-sm">
+                <Card className="border-border/60">
                   <CardContent className="pt-6 flex flex-col gap-2">
                     {([
                       { key: "email_scan_complete" as const, icon: Check, label: "Scan Complete", desc: "Get notified when a scan finishes with a summary of findings." },
@@ -2846,16 +2846,16 @@ function ProfileContent() {
 
                 {/* --- API & INTEGRATIONS --- */}
                 <section>
-                  <div className="flex items-center gap-3 mb-5">
-                    <div className="flex items-center justify-center h-8 w-8 rounded-lg bg-secondary border border-border/60">
-                      <Zap className="h-4 w-4 text-muted-foreground" />
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="flex items-center justify-center h-9 w-9 rounded-lg bg-secondary/80">
+                      <Zap className="h-4.5 w-4.5 text-muted-foreground" />
                     </div>
                     <div>
                       <h2 className="text-base font-semibold text-foreground">{"API & Integrations"}</h2>
-                      <p className="text-xs text-muted-foreground">API keys, limits, and webhook alerts</p>
+                      <p className="text-sm text-muted-foreground">API keys, limits, and webhook alerts</p>
                     </div>
                   </div>
-                <Card className="border-border/50 shadow-sm">
+                <Card className="border-border/60">
                   <CardContent className="pt-6 flex flex-col gap-2">
                     {([
                       { key: "email_api_keys" as const, icon: Key, label: "API Key Activity", desc: "Alerts when API keys are created, revoked, or approaching expiration." },
@@ -2880,16 +2880,16 @@ function ProfileContent() {
 
                 {/* --- ACCOUNT --- */}
                 <section>
-                  <div className="flex items-center gap-3 mb-5">
-                    <div className="flex items-center justify-center h-8 w-8 rounded-lg bg-secondary border border-border/60">
-                      <UserCog className="h-4 w-4 text-muted-foreground" />
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="flex items-center justify-center h-9 w-9 rounded-lg bg-secondary/80">
+                      <UserCog className="h-4.5 w-4.5 text-muted-foreground" />
                     </div>
                     <div>
                       <h2 className="text-base font-semibold text-foreground">Account Notifications</h2>
-                      <p className="text-xs text-muted-foreground">Account and team activity alerts</p>
+                      <p className="text-sm text-muted-foreground">Account and team activity alerts</p>
                     </div>
                   </div>
-                <Card className="border-border/50 shadow-sm">
+                <Card className="border-border/60">
                   <CardContent className="pt-6 flex flex-col gap-2">
                     {([
                       { key: "email_data_requests" as const, icon: Download, label: "Data Export Updates", desc: "Notifications when your data export is ready for download." },
@@ -2964,16 +2964,16 @@ function ProfileContent() {
               <div className="flex flex-col gap-10">
                 {/* Privacy & Data Protection */}
                 <section>
-                  <div className="flex items-center gap-3 mb-5">
-                    <div className="flex items-center justify-center h-8 w-8 rounded-lg bg-primary/10 border border-primary/20">
-                      <Shield className="h-4 w-4 text-primary" />
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="flex items-center justify-center h-9 w-9 rounded-lg bg-primary/10">
+                      <Shield className="h-4.5 w-4.5 text-primary" />
                     </div>
                     <div>
                       <h2 className="text-base font-semibold text-foreground">Privacy & Data Protection</h2>
-                      <p className="text-xs text-muted-foreground">Protected under GDPR and privacy regulations</p>
+                      <p className="text-sm text-muted-foreground">Protected under GDPR and privacy regulations</p>
                     </div>
                   </div>
-                <Card className="border-primary/20 bg-primary/5 shadow-sm">
+                <Card className="border-primary/20 bg-primary/5">
                   <CardContent className="pt-6 space-y-3">
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <div className="flex items-start gap-3 p-3 rounded-lg bg-card/50 border border-border">
@@ -2997,16 +2997,16 @@ function ProfileContent() {
 
                 {/* Data Export */}
                 <section>
-                  <div className="flex items-center gap-3 mb-5">
-                    <div className="flex items-center justify-center h-8 w-8 rounded-lg bg-secondary border border-border/60">
-                      <Download className="h-4 w-4 text-muted-foreground" />
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="flex items-center justify-center h-9 w-9 rounded-lg bg-secondary/80">
+                      <Download className="h-4.5 w-4.5 text-muted-foreground" />
                     </div>
                     <div>
                       <h2 className="text-base font-semibold text-foreground">Data Export</h2>
-                      <p className="text-xs text-muted-foreground">Download your data, available every 30 days</p>
+                      <p className="text-sm text-muted-foreground">Download your data, available every 30 days</p>
                     </div>
                   </div>
-                <Card className="border-border/50 shadow-sm">
+                <Card className="border-border/60">
                   <CardContent className="pt-6">
                     <div className="flex flex-col gap-4">
                       {/* Download Fresh Data Section */}
@@ -3112,16 +3112,16 @@ function ProfileContent() {
 
                 {/* Danger Zone */}
                 <section>
-                  <div className="flex items-center gap-3 mb-5">
-                    <div className="flex items-center justify-center h-8 w-8 rounded-lg bg-destructive/10 border border-destructive/20">
-                      <AlertTriangle className="h-4 w-4 text-destructive" />
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="flex items-center justify-center h-9 w-9 rounded-lg bg-destructive/10">
+                      <AlertTriangle className="h-4.5 w-4.5 text-destructive" />
                     </div>
                     <div>
                       <h2 className="text-base font-semibold text-destructive">Danger Zone</h2>
-                      <p className="text-xs text-muted-foreground">Permanent account deletion, cannot be undone</p>
+                      <p className="text-sm text-muted-foreground">Permanent account deletion, cannot be undone</p>
                     </div>
                   </div>
-                <Card className="border-destructive/30 shadow-sm">
+                <Card className="border-destructive/30">
                   <CardContent className="pt-6">
                     {!showDeleteConfirm ? (
                       <Button
@@ -3173,16 +3173,13 @@ function ProfileContent() {
       {/* Floating Save Bar */}
       {hasPendingChanges && (
         <div className="fixed bottom-0 left-0 right-0 z-50 p-4 pointer-events-none">
-          <div className="max-w-xl mx-auto pointer-events-auto">
-            <div className="flex items-center justify-between gap-4 px-5 py-3 rounded-xl bg-card border border-primary/30 shadow-xl shadow-primary/5 backdrop-blur-sm">
+          <div className="max-w-lg mx-auto pointer-events-auto">
+            <div className="flex items-center justify-between gap-4 px-4 py-3 rounded-lg bg-card border border-border shadow-lg">
               <div className="flex items-center gap-3">
-                <div className="flex items-center justify-center h-8 w-8 rounded-lg bg-primary/10">
-                  <Save className="h-4 w-4 text-primary" />
-                </div>
-                <div>
-                  <p className="text-sm font-medium text-foreground">Unsaved changes</p>
-                  <p className="text-xs text-muted-foreground">{pendingChangeItems.length} field{pendingChangeItems.length !== 1 ? "s" : ""} modified</p>
-                </div>
+                <Save className="h-4 w-4 text-primary" />
+                <p className="text-sm font-medium text-foreground">
+                  {pendingChangeItems.length} unsaved change{pendingChangeItems.length !== 1 ? "s" : ""}
+                </p>
               </div>
               <div className="flex items-center gap-2">
                 <Button 
@@ -3198,7 +3195,7 @@ function ProfileContent() {
                   Discard
                 </Button>
                 <Button size="sm" onClick={() => setShowSaveModal(true)}>
-                  Review & Save
+                  Save Changes
                 </Button>
               </div>
             </div>
