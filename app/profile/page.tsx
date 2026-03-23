@@ -2769,7 +2769,7 @@ function ProfileContent() {
                     </div>
                   </div>
                 <Card className="border-border/60">
-                  <CardContent className="pt-6 flex flex-col gap-2">
+                  <CardContent className="pt-6 pb-4 flex flex-col gap-4">
                     {([
                       { key: "email_security" as const, icon: Shield, label: "Security Alerts", desc: "Unusual activity, account compromise warnings, and critical security events.", badge: "Recommended" },
                       { key: "email_new_login" as const, icon: LogIn, label: "Login Alerts", desc: "Notifications when someone signs into your account from a new device or location." },
@@ -2777,14 +2777,14 @@ function ProfileContent() {
                       { key: "email_2fa_change" as const, icon: Fingerprint, label: "2FA Changes", desc: "Notifications when two-factor authentication is enabled, disabled, or modified." },
                       { key: "email_session_revoked" as const, icon: MonitorSmartphone, label: "Session Alerts", desc: "Alerts about active sessions and session revocations." },
                     ] as const).map(({ key, icon: Icon, label, desc, badge }) => (
-                      <div key={key} className="flex items-center justify-between p-3 rounded-lg border border-border bg-secondary/30">
+                      <div key={key} className="flex items-center justify-between p-4 rounded-lg border border-border bg-secondary/30">
                         <div className="flex-1">
                           <div className="flex items-center gap-2">
                             <Icon className="h-3.5 w-3.5 text-muted-foreground" />
                             <p className="text-sm font-medium text-foreground">{label}</p>
                             {badge && <Badge variant="secondary" className="text-[10px] px-1.5 py-0 uppercase font-semibold">{badge}</Badge>}
                           </div>
-                          <p className="text-xs text-muted-foreground mt-0.5 ml-5.5">{desc}</p>
+                          <p className="text-xs text-muted-foreground mt-1 ml-5.5">{desc}</p>
                         </div>
                         <Switch checked={notifPrefs[key]} onCheckedChange={(checked) => setNotifPrefs(prev => ({ ...prev, [key]: checked }))} />
                       </div>
@@ -2805,19 +2805,19 @@ function ProfileContent() {
                     </div>
                   </div>
                 <Card className="border-border/60">
-                  <CardContent className="pt-6 flex flex-col gap-3">
+                  <CardContent className="pt-6 pb-4 flex flex-col gap-4">
                     {([
                       { key: "email_scan_completed" as const, icon: CheckCircle2, label: "Scan Completed", desc: "Alerts when vulnerability scans are finished." },
                       { key: "email_scan_critical" as const, icon: AlertCircle, label: "Critical Issues Found", desc: "Immediate alerts when critical vulnerabilities are detected." },
                       { key: "email_scheduled_completed" as const, icon: CalendarClock, label: "Scheduled Scans Completed", desc: "Alerts when your scheduled scans finish." },
                     ] as const).map(({ key, icon: Icon, label, desc }) => (
-                      <div key={key} className="flex items-center justify-between p-3 rounded-lg border border-border bg-secondary/30">
+                      <div key={key} className="flex items-center justify-between p-4 rounded-lg border border-border bg-secondary/30">
                         <div className="flex-1">
                           <div className="flex items-center gap-2">
                             <Icon className="h-3.5 w-3.5 text-muted-foreground" />
                             <p className="text-sm font-medium text-foreground">{label}</p>
                           </div>
-                          <p className="text-xs text-muted-foreground mt-0.5 ml-5.5">{desc}</p>
+                          <p className="text-xs text-muted-foreground mt-1 ml-5.5">{desc}</p>
                         </div>
                         <Switch checked={notifPrefs[key]} onCheckedChange={(checked) => setNotifPrefs(prev => ({ ...prev, [key]: checked }))} />
                       </div>
@@ -2838,20 +2838,20 @@ function ProfileContent() {
                     </div>
                   </div>
                 <Card className="border-border/60">
-                  <CardContent className="pt-6 flex flex-col gap-3">
+                  <CardContent className="pt-6 pb-4 flex flex-col gap-4">
                     {([
                       { key: "email_api_keys" as const, icon: Key, label: "API Key Activity", desc: "Alerts when API keys are created, revoked, or approaching expiration." },
                       { key: "email_api_limit_warning" as const, icon: Gauge, label: "API Limit Warnings", desc: "Warnings when your API usage nears rate limits or daily quotas." },
                       { key: "email_webhooks" as const, icon: Webhook, label: "Webhook Events", desc: "Notifications when webhooks are created, modified, or disabled." },
                       { key: "email_webhook_failure" as const, icon: XCircle, label: "Webhook Failures", desc: "Alerts when webhook deliveries fail repeatedly." },
                     ] as const).map(({ key, icon: Icon, label, desc }) => (
-                      <div key={key} className="flex items-center justify-between p-3 rounded-lg border border-border bg-secondary/30">
+                      <div key={key} className="flex items-center justify-between p-4 rounded-lg border border-border bg-secondary/30">
                         <div className="flex-1">
                           <div className="flex items-center gap-2">
                             <Icon className="h-3.5 w-3.5 text-muted-foreground" />
                             <p className="text-sm font-medium text-foreground">{label}</p>
                           </div>
-                          <p className="text-xs text-muted-foreground mt-0.5 ml-5.5">{desc}</p>
+                          <p className="text-xs text-muted-foreground mt-1 ml-5.5">{desc}</p>
                         </div>
                         <Switch checked={notifPrefs[key]} onCheckedChange={(checked) => setNotifPrefs(prev => ({ ...prev, [key]: checked }))} />
                       </div>
@@ -2872,20 +2872,20 @@ function ProfileContent() {
                     </div>
                   </div>
                 <Card className="border-border/60">
-                  <CardContent className="pt-6 flex flex-col gap-3">
+                  <CardContent className="pt-6 pb-4 flex flex-col gap-4">
                     {([
                       { key: "email_data_requests" as const, icon: Download, label: "Data Export Updates", desc: "Notifications when your data export is ready for download." },
                       { key: "email_account_deletion" as const, icon: UserCog, label: "Account Deletion", desc: "Confirmations and alerts when account deletion is requested or processed." },
                       { key: "email_team_invite" as const, icon: Users, label: "Team Invites", desc: "Notifications when you're invited to join a team or workspace." },
                       { key: "email_team_changes" as const, icon: Users, label: "Team Changes", desc: "Alerts about team membership changes, role updates, and team activity." },
                     ] as const).map(({ key, icon: Icon, label, desc }) => (
-                      <div key={key} className="flex items-center justify-between p-3 rounded-lg border border-border bg-secondary/30">
+                      <div key={key} className="flex items-center justify-between p-4 rounded-lg border border-border bg-secondary/30">
                         <div className="flex-1">
                           <div className="flex items-center gap-2">
                             <Icon className="h-3.5 w-3.5 text-muted-foreground" />
                             <p className="text-sm font-medium text-foreground">{label}</p>
                           </div>
-                          <p className="text-xs text-muted-foreground mt-0.5 ml-5.5">{desc}</p>
+                          <p className="text-xs text-muted-foreground mt-1 ml-5.5">{desc}</p>
                         </div>
                         <Switch checked={notifPrefs[key]} onCheckedChange={(checked) => setNotifPrefs(prev => ({ ...prev, [key]: checked }))} />
                       </div>
@@ -2902,18 +2902,18 @@ function ProfileContent() {
                     </CardTitle>
                     <CardDescription>Stay up to date with new features, tips, and platform updates.</CardDescription>
                   </CardHeader>
-                  <CardContent className="flex flex-col gap-3">
+                  <CardContent className="pt-6 pb-4 flex flex-col gap-4">
                     {([
                       { key: "email_product_updates" as const, icon: Megaphone, label: "Product Updates", desc: "Major feature announcements, release notes, and platform improvements." },
                       { key: "email_tips_guides" as const, icon: Lightbulb, label: "Tips & Guides", desc: `Helpful tips, best practices, and security guides to get the most out of ${APP_NAME}.` },
                     ] as const).map(({ key, icon: Icon, label, desc }) => (
-                      <div key={key} className="flex items-center justify-between p-3 rounded-lg border border-border bg-secondary/30">
+                      <div key={key} className="flex items-center justify-between p-4 rounded-lg border border-border bg-secondary/30">
                         <div className="flex-1">
                           <div className="flex items-center gap-2">
                             <Icon className="h-3.5 w-3.5 text-muted-foreground" />
                             <p className="text-sm font-medium text-foreground">{label}</p>
                           </div>
-                          <p className="text-xs text-muted-foreground mt-0.5 ml-5.5">{desc}</p>
+                          <p className="text-xs text-muted-foreground mt-1 ml-5.5">{desc}</p>
                         </div>
                         <Switch checked={notifPrefs[key]} onCheckedChange={(checked) => setNotifPrefs(prev => ({ ...prev, [key]: checked }))} />
                       </div>
