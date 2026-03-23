@@ -12,6 +12,8 @@ import { getProtocolFromUrl, getProtocolFindings, type SupportedProtocol } from 
 import { runWebSocketChecks } from "@/lib/scanner/protocols/websocket"
 import { runFtpChecks } from "@/lib/scanner/protocols/ftp"
 import { validateScanTarget } from "@/lib/scanner/safe-fetch"
+import { sendNotificationEmail } from "@/lib/notifications"
+import { scanCompleteEmail, criticalFindingsEmail } from "@/lib/email"
 
 const SEVERITY_ORDER: Record<Severity, number> = {
   critical: 0,
@@ -331,6 +333,36 @@ export async function POST(request: NextRequest) {
         // Non-fatal: don't fail the scan if history save fails
         console.error("[VulnRadar] Failed to save scan history:", err instanceof Error ? err.message : err)
       }
+    }
+
+    // Send email notifications (non-blocking)
+    if (authedUserId) {
+      pool.query("SELECT email FROM users WHERE id = $1", [authedUserId])
+        .then(async ({ rows }) => {
+          if (rows.length === 0) return
+          const userEmail = rows[0].email
+
+          // Send scan complete notification
+          const scanEmail = scanCompleteEmail(url, summary, duration, scanHistoryId ?? undefined)
+          await sendNotificationEmail({
+            userId: authedUserId,
+            userEmail,
+            type: "scan_complete",
+            emailContent: scanEmail,
+          }).catch(() => {})
+
+          // Send critical findings alert if applicable
+          if (summary.critical > 0 || summary.high > 0) {
+            const criticalEmail = criticalFindingsEmail(url, summary.critical, summary.high, scanHistoryId ?? undefined)
+            await sendNotificationEmail({
+              userId: authedUserId,
+              userEmail,
+              type: "severity_alerts",
+              emailContent: criticalEmail,
+            }).catch(() => {})
+          }
+        })
+        .catch(() => {})
     }
 
     // Fire webhooks for all scans (non-blocking)
