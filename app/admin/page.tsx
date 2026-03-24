@@ -210,9 +210,23 @@ function Toast({ message, type, onClose }: { message: string; type: "success" | 
 // --- Confirm dialog ---
 function ConfirmDialog({ open, title, description, confirmLabel, danger, onConfirm, onCancel, children }: {
   open: boolean; title: string; description: string; confirmLabel: string; danger?: boolean
-  onConfirm: () => void; onCancel: () => void; children?: React.ReactNode
+  onConfirm: () => void | Promise<void>; onCancel: () => void; children?: React.ReactNode
 }) {
+  const [isLoading, setIsLoading] = useState(false)
+  
   if (!open) return null
+  
+  const handleConfirm = async () => {
+    setIsLoading(true)
+    try {
+      await onConfirm()
+    } catch {
+      // Error handling is done in the action itself
+    } finally {
+      setIsLoading(false)
+    }
+  }
+  
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in">
       <div className="bg-card border border-border rounded-xl p-6 w-full max-w-md mx-4 shadow-2xl animate-in zoom-in-95">
@@ -227,11 +241,13 @@ function ConfirmDialog({ open, title, description, confirmLabel, danger, onConfi
         </div>
         {children}
         <div className="flex items-center justify-end gap-2 mt-5 pt-4 border-t border-border">
-          <Button variant="ghost" onClick={onCancel}>Cancel</Button>
+          <Button variant="ghost" onClick={onCancel} disabled={isLoading}>Cancel</Button>
           <Button
             className={danger ? "bg-destructive hover:bg-destructive/90 text-destructive-foreground" : ""}
-            onClick={onConfirm}
+            onClick={handleConfirm}
+            disabled={isLoading}
           >
+            {isLoading && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
             {confirmLabel}
           </Button>
         </div>
