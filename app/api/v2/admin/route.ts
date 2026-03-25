@@ -736,10 +736,95 @@ export async function PATCH(request: NextRequest) {
       await pool.query("DELETE FROM gifted_subscriptions WHERE user_id = $1", [userId])
       await pool.query("DELETE FROM users WHERE id = $1", [userId])
       await logAction(session.userId, userId, "delete_user", `Permanently deleted user ${targetUser.email}`, ip)
+  return NextResponse.json({ success: true })
+  }
+
+    case "update_name": {
+      if (!name || typeof name !== "string") {
+        return NextResponse.json({ error: "Name required" }, { status: 400 })
+      }
+      const oldName = targetUser.name || "(not set)"
+      await pool.query("UPDATE users SET name = $1 WHERE id = $2", [name.trim(), userId])
+      await logAction(session.userId, userId, "update_name", `Changed name from "${oldName}" to "${name.trim()}"`, ip)
+      
+      const [adminN, userN] = await Promise.all([getAdminName(session.userId), getUserName(userId)])
+      const emailPayloadN = adminAccountChangeEmail({
+        userName: userN,
+        adminName: adminN,
+        changes: [{ field: "Display Name", oldValue: oldName, newValue: name.trim() }],
+        timestamp: new Date(),
+        ipAddress: ip,
+      })
+      await sendNotificationIfEnabled(notifyUser, targetUser.email, emailPayloadN)
+      
       return NextResponse.json({ success: true })
     }
 
-    default:
-      return NextResponse.json({ error: "Unknown action" }, { status: 400 })
+    case "update_email": {
+      if (!email || typeof email !== "string") {
+        return NextResponse.json({ error: "Email required" }, { status: 400 })
+      }
+      const newEmail = email.trim().toLowerCase()
+      // Check for duplicate email
+      const existingEmail = await pool.query("SELECT id FROM users WHERE email = $1 AND id != $2", [newEmail, userId])
+      if (existingEmail.rows.length > 0) {
+        return NextResponse.json({ error: "Email already in use" }, { status: 400 })
+      }
+      const oldEmail = targetUser.email
+      await pool.query("UPDATE users SET email = $1, email_verified_at = NULL WHERE id = $2", [newEmail, userId])
+      await logAction(session.userId, userId, "update_email", `Changed email from "${oldEmail}" to "${newEmail}"`, ip)
+      
+      const adminE = await getAdminName(session.userId)
+      const emailPayloadE = adminAccountChangeEmail({
+        userName: targetUser.name || newEmail,
+        adminName: adminE,
+        changes: [{ field: "Email Address", oldValue: oldEmail, newValue: newEmail }],
+        timestamp: new Date(),
+        ipAddress: ip,
+      })
+      // Send to both old and new email
+      await Promise.all([
+        sendNotificationIfEnabled(notifyUser, oldEmail, emailPayloadE),
+        sendNotificationIfEnabled(notifyUser, newEmail, emailPayloadE),
+      ])
+      
+      return NextResponse.json({ success: true })
+    }
+
+    case "update_plan": {
+      if (!plan || typeof plan !== "string") {
+        return NextResponse.json({ error: "Plan required" }, { status: 400 })
+      }
+      const validPlans = ["free", "core_supporter", "pro_supporter", "elite_supporter"]
+      if (!validPlans.includes(plan)) {
+        return NextResponse.json({ error: "Invalid plan. Must be one of: " + validPlans.join(", ") }, { status: 400 })
+      }
+      // Check if user has active gifted subscription
+      const activeGift = await pool.query(
+        "SELECT 1 FROM gifted_subscriptions WHERE user_id = $1 AND revoked_at IS NULL AND expires_at > NOW()",
+        [userId]
+      )
+      if (activeGift.rows.length > 0) {
+        return NextResponse.json({ error: "Cannot change plan while user has an active gifted subscription. Revoke the gift first." }, { status: 400 })
+      }
+      const oldPlan = targetUser.plan || "free"
+      await pool.query("UPDATE users SET plan = $1 WHERE id = $2", [plan, userId])
+      await logAction(session.userId, userId, "update_plan", `Changed plan from "${oldPlan}" to "${plan}"`, ip)
+      
+      const [adminP, userP] = await Promise.all([getAdminName(session.userId), getUserName(userId)])
+      const emailPayloadP = adminAccountChangeEmail({
+        userName: userP,
+        adminName: adminP,
+        changes: [{ field: "Subscription Plan", oldValue: oldPlan, newValue: plan }],
+        timestamp: new Date(),
+        ipAddress: ip,
+      })
+      await sendNotificationIfEnabled(notifyUser, targetUser.email, emailPayloadP)
+      
+      return NextResponse.json({ success: true })
+    }
+  
+  default:
+  return NextResponse.json({ error: "Unknown action" }, { status: 400 })
   }
-}
+  }
