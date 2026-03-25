@@ -10,44 +10,18 @@ interface AdminTabsProps {
 }
 
 const TABS = [
-  { key: "users" as const, label: "Users", icon: Users },
-  { key: "teams" as const, label: "Teams", icon: UsersRound },
-  { key: "notifications" as const, label: "Notifications", icon: Bell },
-  { key: "admins" as const, label: "Active Staff", icon: Shield },
-  { key: "audit" as const, label: "Audit Logs", icon: History },
+  { key: "users" as const, label: "Users", icon: Users, description: "Manage user accounts" },
+  { key: "teams" as const, label: "Teams", icon: UsersRound, description: "View team data" },
+  { key: "notifications" as const, label: "Alerts", icon: Bell, description: "Site notifications" },
+  { key: "admins" as const, label: "Staff", icon: Shield, description: "Active staff" },
+  { key: "audit" as const, label: "Audit", icon: History, description: "Activity logs" },
 ]
 
 export function AdminTabs({ activeTab, onTabChange }: AdminTabsProps) {
   return (
-    <>
-      {/* Mobile: icons-only centered */}
-      <div className="flex sm:hidden justify-center gap-2 border-b border-border pb-2 pt-1">
-        {TABS.map((tab) => (
-          <a
-            key={tab.key}
-            href={`/admin#${tab.key}`}
-            title={tab.label}
-            aria-label={tab.label}
-            onClick={(e) => {
-              if (!e.ctrlKey && !e.metaKey) {
-                e.preventDefault()
-                onTabChange(tab.key)
-              }
-            }}
-            className={cn(
-              "flex items-center justify-center w-10 h-10 rounded-md transition-all",
-              activeTab === tab.key
-                ? "bg-primary/10 text-primary"
-                : "text-muted-foreground hover:text-foreground hover:bg-secondary/50"
-            )}
-          >
-            <tab.icon className="h-4 w-4" />
-          </a>
-        ))}
-      </div>
-      
-      {/* Desktop: text + icon underline tabs */}
-      <div className="hidden sm:flex items-center gap-1 border-b border-border -mb-px">
+    <div className="w-full">
+      {/* Mobile: Horizontal scrollable pills */}
+      <div className="flex sm:hidden overflow-x-auto scrollbar-hide gap-2 pb-2 -mx-1 px-1">
         {TABS.map((tab) => (
           <a
             key={tab.key}
@@ -59,10 +33,10 @@ export function AdminTabs({ activeTab, onTabChange }: AdminTabsProps) {
               }
             }}
             className={cn(
-              "flex items-center gap-2 px-4 py-3 text-sm font-medium transition-colors border-b-2 -mb-px",
+              "flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium whitespace-nowrap transition-all",
               activeTab === tab.key
-                ? "text-primary border-primary"
-                : "text-muted-foreground border-transparent hover:text-foreground hover:border-border",
+                ? "bg-primary text-primary-foreground shadow-sm"
+                : "bg-card border border-border text-muted-foreground hover:text-foreground hover:border-primary/30"
             )}
           >
             <tab.icon className="h-4 w-4" />
@@ -70,6 +44,35 @@ export function AdminTabs({ activeTab, onTabChange }: AdminTabsProps) {
           </a>
         ))}
       </div>
-    </>
+      
+      {/* Desktop: Underline tabs with descriptions on hover */}
+      <div className="hidden sm:flex items-center gap-1 border-b border-border">
+        {TABS.map((tab) => (
+          <a
+            key={tab.key}
+            href={`/admin#${tab.key}`}
+            onClick={(e) => {
+              if (!e.ctrlKey && !e.metaKey) {
+                e.preventDefault()
+                onTabChange(tab.key)
+              }
+            }}
+            title={tab.description}
+            className={cn(
+              "group relative flex items-center gap-2 px-4 py-3 text-sm font-medium transition-all border-b-2 -mb-px",
+              activeTab === tab.key
+                ? "text-primary border-primary"
+                : "text-muted-foreground border-transparent hover:text-foreground hover:border-border/60",
+            )}
+          >
+            <tab.icon className={cn(
+              "h-4 w-4 transition-colors",
+              activeTab === tab.key ? "text-primary" : "text-muted-foreground group-hover:text-foreground"
+            )} />
+            {tab.label}
+          </a>
+        ))}
+      </div>
+    </div>
   )
 }
