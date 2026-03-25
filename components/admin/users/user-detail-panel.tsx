@@ -17,7 +17,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog"
 import { cn } from "@/lib/utils"
-import { ROLE_BADGE_STYLES, PLAN_BADGE_STYLES } from "@/lib/constants"
+import { ROLE_BADGE_STYLES, PLAN_BADGE_STYLES, formatPlanName } from "@/lib/constants"
 import { SaveConfirmationModal, type ChangeItem, type AffectedUser } from "@/components/save-confirmation-modal"
 import type { UserDetail, BadgeDef, AdminNote } from "../types"
 
@@ -298,8 +298,8 @@ export function UserDetailPanel({
               <Badge variant="outline" className={cn("text-xs", ROLE_BADGE_STYLES[u.role || "user"])}>
                 {(u.role || "user").charAt(0).toUpperCase() + (u.role || "user").slice(1)}
               </Badge>
-              <Badge variant="outline" className={cn("text-xs", PLAN_BADGE_STYLES[u.plan || "free"])}>
-                {(u.plan || "free").charAt(0).toUpperCase() + (u.plan || "free").slice(1)}
+              <Badge variant="outline" className={cn("text-xs", PLAN_BADGE_STYLES[u.gifted_plan || u.plan || "free"])}>
+                {formatPlanName(u.gifted_plan || u.plan || "free")}
               </Badge>
               {u.totp_enabled && (
                 <Badge variant="outline" className="bg-emerald-500/10 text-emerald-500 border-emerald-500/20 text-xs">

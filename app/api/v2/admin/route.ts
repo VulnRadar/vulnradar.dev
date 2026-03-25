@@ -707,6 +707,21 @@ export async function PATCH(request: NextRequest) {
         "INSERT INTO gifted_subscriptions (user_id, plan, expires_at, gifted_by) VALUES ($1, $2, $3, $4)",
         [userId, giftPlan, expiresAt, session.userId]
       )
+      // Also award premium badge if they don't have it
+      const premiumBadge = await pool.query("SELECT id FROM badges WHERE name = 'premium'")
+      if (premiumBadge.rows.length > 0) {
+        const badgeId = premiumBadge.rows[0].id
+        const existingBadge = await pool.query(
+          "SELECT 1 FROM user_badges WHERE user_id = $1 AND badge_id = $2",
+          [userId, badgeId]
+        )
+        if (existingBadge.rows.length === 0) {
+          await pool.query(
+            "INSERT INTO user_badges (user_id, badge_id, awarded_by, awarded_at) VALUES ($1, $2, $3, NOW())",
+            [userId, badgeId, session.userId]
+          )
+        }
+      }
       await logAction(session.userId, userId, "gift_subscription", `Gifted ${giftPlan} plan until ${expiresAt.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}`, ip)
       return NextResponse.json({ success: true })
     }
@@ -795,9 +810,9 @@ export async function PATCH(request: NextRequest) {
       if (!plan || typeof plan !== "string") {
         return NextResponse.json({ error: "Plan required" }, { status: 400 })
       }
-      const validPlans = ["free", "core_supporter", "pro_supporter", "elite_supporter"]
-      if (!validPlans.includes(plan)) {
-        return NextResponse.json({ error: "Invalid plan. Must be one of: " + validPlans.join(", ") }, { status: 400 })
+      const validPlansUpd = ["free", "core_supporter", "pro_supporter", "elite_supporter"]
+      if (!validPlansUpd.includes(plan)) {
+        return NextResponse.json({ error: "Invalid plan. Must be one of: " + validPlansUpd.join(", ") }, { status: 400 })
       }
       // Check if user has active gifted subscription
       const activeGift = await pool.query(
@@ -809,6 +824,25 @@ export async function PATCH(request: NextRequest) {
       }
       const oldPlan = targetUser.plan || "free"
       await pool.query("UPDATE users SET plan = $1 WHERE id = $2", [plan, userId])
+      
+      // Award premium badge if upgrading to a supporter plan
+      if (plan !== "free") {
+        const premiumBadgeUpd = await pool.query("SELECT id FROM badges WHERE name = 'premium'")
+        if (premiumBadgeUpd.rows.length > 0) {
+          const badgeIdUpd = premiumBadgeUpd.rows[0].id
+          const existingBadgeUpd = await pool.query(
+            "SELECT 1 FROM user_badges WHERE user_id = $1 AND badge_id = $2",
+            [userId, badgeIdUpd]
+          )
+          if (existingBadgeUpd.rows.length === 0) {
+            await pool.query(
+              "INSERT INTO user_badges (user_id, badge_id, awarded_by, awarded_at) VALUES ($1, $2, $3, NOW())",
+              [userId, badgeIdUpd, session.userId]
+            )
+          }
+        }
+      }
+      
       await logAction(session.userId, userId, "update_plan", `Changed plan from "${oldPlan}" to "${plan}"`, ip)
       
       const [adminP, userP] = await Promise.all([getAdminName(session.userId), getUserName(userId)])
