@@ -238,9 +238,10 @@ export function UserDetailPanel({
     if (editedRole !== (u.role || "user")) {
       changes.push({ field: "role", label: "Role", oldValue: u.role || "user", newValue: editedRole })
     }
-    if (editedPlan !== (u.plan || "free")) {
-      changes.push({ field: "plan", label: "Plan", oldValue: u.plan || "free", newValue: editedPlan })
-    }
+  // Only track plan changes if there's no active gift (gifted plan overrides)
+  if (!u.gifted_plan && editedPlan !== (u.plan || "free")) {
+  changes.push({ field: "plan", label: "Plan", oldValue: u.plan || "free", newValue: editedPlan })
+  }
     if (pendingBadgeAwards.length > 0) {
       const badgeNames = pendingBadgeAwards.map(id => allBadges.find(b => b.id === id)?.display_name || "Unknown").join(", ")
       changes.push({ field: "badges", label: "Award Badges", oldValue: "—", newValue: badgeNames })
@@ -387,18 +388,29 @@ export function UserDetailPanel({
                       </Select>
                     </div>
                     <div className="space-y-1.5">
-                      <label className="text-xs text-muted-foreground">Plan</label>
-                      <Select value={editedPlan} onValueChange={setEditedPlan}>
+                      <label className="text-xs text-muted-foreground">
+                        Plan {u.gifted_plan && <span className="text-amber-500">(Gifted)</span>}
+                      </label>
+                      <Select 
+                        value={u.gifted_plan || editedPlan} 
+                        onValueChange={setEditedPlan}
+                        disabled={!!u.gifted_plan}
+                      >
                         <SelectTrigger className="h-9">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="free">Free</SelectItem>
-                          <SelectItem value="pro">Pro</SelectItem>
-                          <SelectItem value="team">Team</SelectItem>
-                          <SelectItem value="enterprise">Enterprise</SelectItem>
+                          <SelectItem value="core_supporter">Core Supporter</SelectItem>
+                          <SelectItem value="pro_supporter">Pro Supporter</SelectItem>
+                          <SelectItem value="elite_supporter">Elite Supporter</SelectItem>
                         </SelectContent>
                       </Select>
+                      {u.gifted_plan && u.gift_end_date && (
+                        <p className="text-xs text-muted-foreground">
+                          Gifted until {new Date(u.gift_end_date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                        </p>
+                      )}
                     </div>
                   </div>
                 </div>
