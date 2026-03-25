@@ -196,10 +196,10 @@ export function UserDetailPanel({
     }
     // Handle badge changes
     for (const badgeId of pendingBadgeAwards) {
-      await onAction(u.id, "award_badge", { badgeId: String(badgeId), notifyUser })
+      await onAction(u.id, "award_badge", { badgeId, notifyUser })
     }
     for (const badgeId of pendingBadgeRevokes) {
-      await onAction(u.id, "revoke_badge", { badgeId: String(badgeId), notifyUser })
+      await onAction(u.id, "revoke_badge", { badgeId, notifyUser })
     }
     onBadgesChanged(pendingBadgeAwards, pendingBadgeRevokes)
     setPendingBadgeAwards([])
@@ -990,7 +990,7 @@ export function UserDetailPanel({
           isAdminAction={true}
           affectedUser={{ id: u.id, email: u.email, name: u.name || undefined }}
           confirmText="Confirm"
-          variant={["delete", "disable", "delete_scans"].includes(pendingSupportAction.action) ? "destructive" : "default"}
+          variant={["delete_user", "disable", "delete_scans", "delete_webhooks", "delete_schedules", "force_logout_all"].includes(pendingSupportAction.action) ? "destructive" : "default"}
           forceNotify={true}
         />
       )}

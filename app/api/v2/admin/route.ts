@@ -264,7 +264,9 @@ export async function PATCH(request: NextRequest) {
   if (!session) return NextResponse.json({ error: ERROR_MESSAGES.FORBIDDEN }, { status: 403 })
 
   const ip = await getClientIP()
-  const { action, userId, role: newRole, badgeId, name: badgeName, displayName, color: badgeColor, name, email, plan, giftPlan, giftEndDate, note, noteId, notifyUser } = await request.json()
+  const body = await request.json()
+  const { action, userId, role: newRole, badgeId, displayName, name, email, plan, giftPlan, giftEndDate, note, noteId, notifyUser, description, icon } = body
+  const badgeColor = body.color // For create_badge action
 
   if (!userId || !action) {
     return NextResponse.json({ error: "Missing action or userId" }, { status: 400 })
@@ -464,11 +466,10 @@ export async function PATCH(request: NextRequest) {
     }
 
     case "create_badge": {
-      const { name, description, icon, color } = body
       if (!name) return NextResponse.json({ error: "Badge name required" }, { status: 400 })
       const result = await pool.query(
         "INSERT INTO badges (name, description, icon, color, created_at) VALUES ($1, $2, $3, $4, NOW()) RETURNING id",
-        [name, description || null, icon || "award", color || "#6366f1"]
+        [name, description || null, icon || "award", badgeColor || "#6366f1"]
       )
       await logAction(session.userId, null, "create_badge", `Created badge "${name}"`, ip)
       return NextResponse.json({ success: true, badgeId: result.rows[0].id })
@@ -636,7 +637,7 @@ export async function PATCH(request: NextRequest) {
     }
 
     case "set_scan_limit": {
-      const { limit: scanLimit } = await request.json()
+      const scanLimit = body.limit
       if (typeof scanLimit !== "number" || scanLimit < 0 || scanLimit > 10000) {
         return NextResponse.json({ error: "Invalid scan limit (0-10000)" }, { status: 400 })
       }
