@@ -3,7 +3,7 @@
 import { useState } from "react"
 import { 
   Search, ChevronUp, ChevronDown, ChevronLeft, ChevronRight,
-  Shield, ShieldCheck, Ban, Loader2, User, Mail, Calendar, ExternalLink
+  Shield, ShieldCheck, Ban, Loader2, User, Mail, Calendar, ExternalLink, RefreshCw
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -21,6 +21,7 @@ interface UsersTableProps {
   searchQuery: string
   onSearchChange: (query: string) => void
   onUserSelect: (userId: number) => void
+  onRefresh: () => void
   page: number
   totalPages: number
   pageSize: number
@@ -39,6 +40,7 @@ export function UsersTable({
   searchQuery,
   onSearchChange,
   onUserSelect,
+  onRefresh,
   page,
   totalPages,
   pageSize,
@@ -65,7 +67,7 @@ export function UsersTable({
 
   return (
     <div className="rounded-xl border border-border bg-card overflow-hidden">
-      {/* Header with search */}
+      {/* Header with search and refresh */}
       <div className="p-4 border-b border-border bg-muted/30">
         <div className="flex flex-col sm:flex-row gap-3 sm:items-center justify-between">
           <div className="flex items-center gap-3">
@@ -74,17 +76,29 @@ export function UsersTable({
               {totalCount.toLocaleString()} total
             </Badge>
           </div>
-          <div className="relative w-full sm:w-64">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Search users..."
-              value={searchQuery}
-              onChange={(e) => onSearchChange(e.target.value)}
-              className="pl-9 h-9 bg-background"
-            />
-            {searchLoading && (
-              <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 animate-spin text-muted-foreground" />
-            )}
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={onRefresh}
+              disabled={loading}
+              className="h-9 px-3"
+            >
+              <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
+              <span className="ml-2 hidden sm:inline">Refresh</span>
+            </Button>
+            <div className="relative w-full sm:w-64">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search users..."
+                value={searchQuery}
+                onChange={(e) => onSearchChange(e.target.value)}
+                className="pl-9 h-9 bg-background"
+              />
+              {searchLoading && (
+                <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 animate-spin text-muted-foreground" />
+              )}
+            </div>
           </div>
         </div>
       </div>

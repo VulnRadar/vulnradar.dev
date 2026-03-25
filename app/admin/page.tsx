@@ -261,6 +261,41 @@ function AdminContent() {
     setActionLoading(null)
   }
 
+  // Action labels for success messages
+  const actionLabels: Record<string, string> = {
+    set_role: "User role updated.",
+    make_admin: "User promoted to admin.",
+    remove_admin: "Admin privileges removed.",
+    reset_password: "Password has been reset.",
+    revoke_sessions: "All sessions revoked.",
+    revoke_api_keys: "All API keys revoked.",
+    disable: "Account disabled.",
+    enable: "Account re-enabled.",
+    delete_user: "User permanently deleted.",
+    award_badge: "Badge awarded.",
+    revoke_badge: "Badge removed from user.",
+    create_badge: "Badge created.",
+    delete_badge: "Badge deleted permanently.",
+    update_name: "Name updated.",
+    update_email: "Email updated.",
+    update_plan: "Plan updated.",
+    reset_2fa: "Two-factor authentication reset.",
+    delete_scans: "All scans deleted.",
+    clear_rate_limits: "Rate limits cleared.",
+    gift_subscription: "Subscription gifted successfully.",
+    revoke_gift: "Gifted subscription revoked.",
+    force_logout_all: "All sessions and API keys revoked.",
+    verify_email: "Email verified.",
+    unverify_email: "Email verification removed.",
+    clear_avatar: "Avatar cleared.",
+    toggle_beta_access: "Beta access toggled.",
+    delete_webhooks: "All webhooks deleted.",
+    delete_schedules: "All scheduled scans deleted.",
+    add_note: "Note added.",
+    edit_note: "Note updated.",
+    delete_note: "Note deleted.",
+  }
+
   // User action handler
   async function handleAction(userId: number, action: string, extra?: Record<string, unknown>) {
     setActionLoading(`${userId}-${action}`)
@@ -273,41 +308,8 @@ function AdminContent() {
       const data = await res.json()
       if (res.ok) {
         if (action === "reset_password" && data.tempPassword) setTempPassword(data.tempPassword)
-  const labels: Record<string, string> = {
-  set_role: "User role updated.",
-  make_admin: "User promoted to admin.",
-  remove_admin: "Admin privileges removed.",
-  reset_password: "Password has been reset.",
-  revoke_sessions: "All sessions revoked.",
-  revoke_api_keys: "All API keys revoked.",
-  disable: "Account disabled.",
-  enable: "Account re-enabled.",
-  delete_user: "User permanently deleted.",
-  award_badge: "Badge awarded.",
-  revoke_badge: "Badge removed from user.",
-  create_badge: "Badge created.",
-  delete_badge: "Badge deleted permanently.",
-  update_name: "Name updated.",
-  update_email: "Email updated.",
-  update_plan: "Plan updated.",
-  reset_2fa: "Two-factor authentication reset.",
-  delete_scans: "All scans deleted.",
-  clear_rate_limits: "Rate limits cleared.",
-  gift_subscription: "Subscription gifted successfully.",
-  revoke_gift: "Gifted subscription revoked.",
-  force_logout_all: "All sessions and API keys revoked.",
-  verify_email: "Email verified.",
-  unverify_email: "Email verification removed.",
-  clear_avatar: "Avatar cleared.",
-  toggle_beta_access: "Beta access toggled.",
-  delete_webhooks: "All webhooks deleted.",
-  delete_schedules: "All scheduled scans deleted.",
-  add_note: "Note added.",
-  edit_note: "Note updated.",
-  delete_note: "Note deleted.",
-  }
         if (action === "create_badge" || action === "delete_badge") { fetchAllBadges() }
-        showToast(labels[action] || "Action completed.", "success")
+        showToast(actionLabels[action] || "Action completed.", "success")
         const skipRefetch = action === "award_badge" || action === "revoke_badge"
         if (!skipRefetch) {
           await fetchData(page)
@@ -463,6 +465,7 @@ function AdminContent() {
                 searchQuery={searchQuery}
                 onSearchChange={setSearchQuery}
                 onUserSelect={fetchUserDetail}
+                onRefresh={() => fetchData(page, searchQuery)}
                 page={page}
                 totalPages={totalPages}
                 pageSize={usersPageSize}
@@ -497,19 +500,22 @@ function AdminContent() {
                   if (extra && Object.keys(extra).length > 0) {
                     return handleAction(userId, action, extra)
                   }
-                  if (["set_role", "award_badge", "revoke_badge", "create_badge", "delete_badge", "update_name", "update_email", "update_plan", "enable", "clear_rate_limits", "gift_subscription", "revoke_gift", "add_note", "edit_note", "delete_note"].includes(action)) {
+                  if (["set_role", "award_badge", "revoke_badge", "create_badge", "delete_badge", "update_name", "update_email", "update_plan", "enable", "clear_rate_limits", "gift_subscription", "revoke_gift", "add_note", "edit_note", "delete_note", "verify_email", "unverify_email", "clear_avatar", "toggle_beta_access"].includes(action)) {
                     return handleAction(userId, action, extra)
                   }
-                  const confirmActions = ["delete", "disable", "reset_password", "revoke_sessions", "revoke_api_keys", "reset_2fa", "delete_scans"]
+                  const confirmActions = ["delete_user", "disable", "reset_password", "revoke_sessions", "revoke_api_keys", "reset_2fa", "delete_scans", "delete_webhooks", "delete_schedules", "force_logout_all"]
                   if (confirmActions.includes(action)) {
                     const messages: Record<string, { title: string; desc: string; label: string; danger?: boolean }> = {
-                      delete: { title: "Delete User", desc: `This will permanently delete ${selectedUser.user.email} and all their data. This cannot be undone.`, label: "Delete User", danger: true },
+                      delete_user: { title: "Delete User", desc: `This will permanently delete ${selectedUser.user.email} and all their data. This cannot be undone.`, label: "Delete User", danger: true },
                       disable: { title: "Disable Account", desc: `This will suspend ${selectedUser.user.email}'s account and log them out of all sessions. They will not be able to log in until re-enabled.`, label: "Disable Account", danger: true },
                       reset_password: { title: "Reset Password", desc: `This will generate a temporary password for ${selectedUser.user.email}. All sessions will be invalidated. Share the temporary password securely.`, label: "Reset Password" },
                       revoke_sessions: { title: "Revoke All Sessions", desc: `This will force-logout ${selectedUser.user.email} from all devices and browsers.`, label: "Revoke Sessions" },
                       revoke_api_keys: { title: "Revoke All API Keys", desc: `This will immediately revoke all active API keys for ${selectedUser.user.email}.`, label: "Revoke Keys" },
                       reset_2fa: { title: "Reset Two-Factor Authentication", desc: `This will remove 2FA from ${selectedUser.user.email}'s account. They will need to set it up again.`, label: "Reset 2FA", danger: true },
                       delete_scans: { title: "Delete All Scans", desc: `This will permanently delete all scan history for ${selectedUser.user.email}. This cannot be undone.`, label: "Delete Scans", danger: true },
+                      delete_webhooks: { title: "Delete All Webhooks", desc: `This will permanently delete all webhooks for ${selectedUser.user.email}. This cannot be undone.`, label: "Delete Webhooks", danger: true },
+                      delete_schedules: { title: "Delete All Schedules", desc: `This will permanently delete all scheduled scans for ${selectedUser.user.email}. This cannot be undone.`, label: "Delete Schedules", danger: true },
+                      force_logout_all: { title: "Force Logout All", desc: `This will revoke all sessions AND all API keys for ${selectedUser.user.email}.`, label: "Logout All", danger: true },
                     }
                     const m = messages[action]
                     setConfirmDialog({ title: m.title, description: m.desc, confirmLabel: m.label, danger: m.danger ?? false, action: () => handleAction(userId, action) })
