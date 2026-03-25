@@ -19,7 +19,7 @@ interface UsersTableProps {
   searchQuery: string
   onSearchChange: (query: string) => void
   onUserSelect: (userId: number) => void
-  onAction: (userId: number, action: string) => void
+  onAction: (userId: number, action: string) => Promise<void>
   onConfirmAction: (config: { title: string; description: string; confirmLabel: string; danger: boolean; action: () => Promise<void> }) => void
   actionLoading: string | null
   callerRole: string
@@ -187,7 +187,7 @@ export function UsersTable({
                           size="icon"
                           className="h-8 w-8 text-emerald-500 hover:text-emerald-500 hover:bg-emerald-500/10"
                           title="Re-enable"
-                          onClick={() => onAction(u.id, "enable")}
+                          onClick={async () => await onAction(u.id, "enable")}
                           disabled={isLoading(u.id, "enable")}
                         >
                           {isLoading(u.id, "enable") ? (
@@ -207,7 +207,7 @@ export function UsersTable({
                             description: `Suspend ${u.email}? They will be logged out and unable to sign in.`,
                             confirmLabel: "Disable",
                             danger: true,
-                            action: () => onAction(u.id, "disable") as unknown as Promise<void>,
+                            action: async () => await onAction(u.id, "disable"),
                           })}
                         >
                           <Ban className="h-4 w-4" />

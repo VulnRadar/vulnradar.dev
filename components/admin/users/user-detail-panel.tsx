@@ -1,8 +1,8 @@
 "use client"
 
 import { useState } from "react"
-import { User, Shield, Award, StickyNote, Settings, Loader2 } from "lucide-react"
-import { Card, CardContent } from "@/components/ui/card"
+import { User, Shield, Award, StickyNote, Settings, Loader2, X, ArrowLeft } from "lucide-react"
+import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { UserHeader } from "./user-header"
 import { UserOverview } from "./user-overview"
@@ -58,50 +58,67 @@ export function UserDetailPanel({
 
   if (loading || !detail) {
     return (
-      <Card className="bg-card border-border overflow-hidden">
-        <div className="flex items-center justify-center py-20">
-          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      <div className="rounded-xl border border-border/50 bg-gradient-to-br from-card to-card/80 overflow-hidden">
+        <div className="flex items-center justify-center py-24">
+          <div className="flex flex-col items-center gap-3">
+            <Loader2 className="h-6 w-6 animate-spin text-primary" />
+            <p className="text-sm text-muted-foreground">Loading user details...</p>
+          </div>
         </div>
-      </Card>
+      </div>
     )
   }
 
   const u = detail.user
 
   return (
-    <Card className="bg-card border-border overflow-hidden">
-      {/* Header */}
-      <UserHeader
-        user={u}
-        onClose={onClose}
-        onAction={(action) => onAction(u.id, action)}
-        actionLoading={actionLoading}
-        canDisable={canDisable}
-      />
-
-      {/* Tab Navigation */}
-      <div className="border-b border-border px-5">
-        <nav className="flex gap-1 -mb-px overflow-x-auto scrollbar-none">
-          {TABS.map(({ id, label, icon: Icon }) => (
-            <button
-              key={id}
-              onClick={() => setActiveTab(id)}
-              className={cn(
-                "flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-all whitespace-nowrap",
-                activeTab === id
-                  ? "border-primary text-primary"
-                  : "border-transparent text-muted-foreground hover:text-foreground hover:border-border"
-              )}
+    <div className="rounded-xl border border-border/50 bg-gradient-to-br from-card to-card/80 overflow-hidden shadow-xl shadow-black/5">
+      {/* Header with user info */}
+      <div className="border-b border-border/50 bg-muted/20">
+        <div className="p-5">
+          <div className="flex items-start justify-between gap-4">
+            <UserHeader
+              user={u}
+              onClose={onClose}
+              onAction={(action) => onAction(u.id, action)}
+              actionLoading={actionLoading}
+              canDisable={canDisable}
+            />
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={onClose}
+              className="h-8 w-8 shrink-0 text-muted-foreground hover:text-foreground"
             >
-              <Icon className="h-4 w-4" />
-              {label}
-            </button>
-          ))}
-        </nav>
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+
+        {/* Tab Navigation */}
+        <div className="px-5">
+          <nav className="flex gap-1 -mb-px overflow-x-auto scrollbar-none">
+            {TABS.map(({ id, label, icon: Icon }) => (
+              <button
+                key={id}
+                onClick={() => setActiveTab(id)}
+                className={cn(
+                  "flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-all whitespace-nowrap",
+                  activeTab === id
+                    ? "border-primary text-primary"
+                    : "border-transparent text-muted-foreground hover:text-foreground hover:border-border"
+                )}
+              >
+                <Icon className="h-4 w-4" />
+                {label}
+              </button>
+            ))}
+          </nav>
+        </div>
       </div>
 
       {/* Tab Content */}
-      <CardContent className="p-5">
+      <div className="p-5">
         {activeTab === "overview" && (
           <UserOverview user={u} />
         )}
@@ -146,7 +163,7 @@ export function UserDetailPanel({
             availableActions={availableActions}
           />
         )}
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   )
 }

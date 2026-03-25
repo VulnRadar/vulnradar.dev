@@ -372,13 +372,20 @@ function AdminContent() {
         {/* Main Content */}
         <main className="flex-1 p-6 lg:p-8 pb-20 lg:pb-8 overflow-auto">
           <div className="max-w-7xl mx-auto space-y-6">
-            {/* Page Header */}
-            <AdminHeader
-              title="Admin Dashboard"
-              subtitle="Manage users, monitor activity, and provide support"
-              onRefresh={() => fetchData(page, searchQuery)}
-              refreshing={loading}
-            />
+            {/* Page Header - Only show on non-overview tabs */}
+            {activeTab !== "overview" && (
+              <AdminHeader
+                title={activeTab === "users" ? "User Management" : activeTab === "audit" ? "Audit Log" : activeTab === "teams" ? "Team Management" : "Staff Directory"}
+                subtitle={activeTab === "users" ? "View and manage user accounts" : activeTab === "audit" ? "Track administrative actions" : activeTab === "teams" ? "Monitor teams and organizations" : "View active staff members"}
+                onRefresh={() => {
+                  if (activeTab === "users") fetchData(page, searchQuery)
+                  if (activeTab === "audit") fetchAudit()
+                  if (activeTab === "teams") fetchTeams()
+                  if (activeTab === "staff") fetchActiveAdmins()
+                }}
+                refreshing={activeTab === "users" ? loading : activeTab === "audit" ? auditLoading : activeTab === "teams" ? teamsLoading : adminsLoading}
+              />
+            )}
 
             {loading ? (
               <div className="flex flex-col items-center justify-center py-24 gap-3">
@@ -404,10 +411,18 @@ function AdminContent() {
                           setSelectedUser(null)
                           updateUrlWithUser(null, activeTab)
                         }}
-                        onAction={handleAction}
+                        onAction={async (userId, action, extra) => {
+                          await handleAction(userId, action, extra)
+                        }}
                         onConfirmAction={(config) => setConfirmDialog({
-                          ...config,
-                          action: config.action,
+                          title: config.title,
+                          description: config.description,
+                          confirmLabel: config.confirmLabel,
+                          danger: config.danger,
+                          action: async () => {
+                            await config.action()
+                            setConfirmDialog(null)
+                          },
                         })}
                         actionLoading={actionLoading}
                         allBadges={allBadges}
@@ -429,10 +444,18 @@ function AdminContent() {
                         searchQuery={searchQuery}
                         onSearchChange={setSearchQuery}
                         onUserSelect={(userId) => fetchUserDetail(userId)}
-                        onAction={(userId, action) => handleAction(userId, action)}
+                        onAction={async (userId, action) => {
+                          await handleAction(userId, action)
+                        }}
                         onConfirmAction={(config) => setConfirmDialog({
-                          ...config,
-                          action: config.action,
+                          title: config.title,
+                          description: config.description,
+                          confirmLabel: config.confirmLabel,
+                          danger: config.danger,
+                          action: async () => {
+                            await config.action()
+                            setConfirmDialog(null)
+                          },
                         })}
                         actionLoading={actionLoading}
                         callerRole={callerRole}
