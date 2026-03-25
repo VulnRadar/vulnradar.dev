@@ -250,7 +250,7 @@ export function UserDetailPanel({
   const [showSaveModal, setShowSaveModal] = useState(false)
 
   return (
-    <Card className="bg-card border-border overflow-hidden">
+    <Card className="bg-card border-border">
       {/* Header */}
       <CardHeader className="border-b border-border bg-muted/30 pb-4">
         <div className="flex items-start justify-between gap-4">
@@ -815,7 +815,7 @@ export function UserDetailPanel({
                   icon={Gauge}
                   label="Clear Rate Limits"
                   description="Reset rate limit counters"
-                  onClick={() => onAction(u.id, "clear_rate_limits")}
+                  onClick={() => queueSupportAction("clear_rate_limits", "Clear Rate Limits", `Reset all rate limit counters for ${u.email}.`)}
                   loading={isLoading("clear_rate_limits")}
                 />
                 <ActionCard
@@ -837,21 +837,33 @@ export function UserDetailPanel({
                   icon={Mail}
                   label={u.email_verified_at ? "Unverify Email" : "Verify Email"}
                   description={u.email_verified_at ? "Remove email verification" : "Manually verify email address"}
-                  onClick={() => onAction(u.id, u.email_verified_at ? "unverify_email" : "verify_email")}
+                  onClick={() => queueSupportAction(
+                    u.email_verified_at ? "unverify_email" : "verify_email",
+                    u.email_verified_at ? "Unverify Email" : "Verify Email",
+                    u.email_verified_at 
+                      ? `Remove email verification from ${u.email}.`
+                      : `Manually verify the email address for ${u.email}.`
+                  )}
                   loading={isLoading("verify_email") || isLoading("unverify_email")}
                 />
                 <ActionCard
                   icon={User}
                   label="Clear Avatar"
                   description="Remove profile picture"
-                  onClick={() => onAction(u.id, "clear_avatar")}
+                  onClick={() => queueSupportAction("clear_avatar", "Clear Avatar", `Remove the profile picture for ${u.email}.`)}
                   loading={isLoading("clear_avatar")}
                 />
                 <ActionCard
                   icon={Shield}
                   label="Toggle Beta Access"
                   description={u.beta_access ? "Disable beta features" : "Enable beta features"}
-                  onClick={() => onAction(u.id, "toggle_beta_access")}
+                  onClick={() => queueSupportAction(
+                    "toggle_beta_access",
+                    "Toggle Beta Access",
+                    u.beta_access 
+                      ? `Disable beta features for ${u.email}.`
+                      : `Enable beta features for ${u.email}.`
+                  )}
                   loading={isLoading("toggle_beta_access")}
                   variant={u.beta_access ? "warning" : "default"}
                 />
