@@ -415,6 +415,24 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ success: true })
     }
 
+    case "enable": {
+      await pool.query("UPDATE users SET disabled_at = NULL WHERE id = $1", [userId])
+      await logAction(session.userId, userId, "enable_user", `Re-enabled account for ${targetUser.email}`, ip)
+      
+      // Send email notification
+      const [adminNameEn, userNameEn] = await Promise.all([getAdminName(session.userId), getUserName(userId)])
+      const emailPayloadEn = adminAccountChangeEmail({
+        userName: userNameEn,
+        adminName: adminNameEn,
+        changes: [{ field: "Account Status", oldValue: "Disabled", newValue: "Active" }],
+        timestamp: new Date(),
+        ipAddress: ip,
+      })
+      await sendNotificationIfEnabled(notifyUser, targetUser.email, emailPayloadEn)
+      
+      return NextResponse.json({ success: true })
+    }
+
     case "delete_badge": {
       if (!badgeId) return NextResponse.json({ error: "badgeId required" }, { status: 400 })
       // First get badge info for logging
