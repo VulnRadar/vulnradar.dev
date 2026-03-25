@@ -78,6 +78,7 @@ function AdminContent() {
   const [sortBy, setSortBy] = useState("created_at")
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc")
   const searchInitRef = useRef(false)
+  const initialLoadRef = useRef(false)
 
   const showToast = useCallback((message: string, type: "success" | "error") => {
     setToast({ message, type })
@@ -93,6 +94,21 @@ function AdminContent() {
     }
   }, [])
 
+  // Parse URL hash
+  const parseUrlHash = useCallback(() => {
+    if (typeof window === "undefined") return { tab: "users" as AdminTab, userId: null }
+    const hash = window.location.hash.slice(1)
+    if (!hash) return { tab: "users" as AdminTab, userId: null }
+    const parts = hash.split("/")
+    const tab = (parts[0] || "users") as AdminTab
+    let userId: number | null = null
+    if (parts[1]?.startsWith("user-")) {
+      userId = parseInt(parts[1].replace("user-", ""), 10)
+      if (isNaN(userId)) userId = null
+    }
+    return { tab, userId }
+  }, [])
+
   // Data fetching functions
   async function fetchData(p = 1, search = searchQuery, isInitial = false, limit = usersPageSize) {
     if (isInitial) setLoading(true)
@@ -102,13 +118,19 @@ function AdminContent() {
       if (search.trim()) params.set("search", search.trim())
       const res = await fetch(`${API.ADMIN}?${params}`)
       if (res.status === 403) { setForbidden(true); setLoading(false); setSearchLoading(false); return }
-      const data = await res.json()
+      if (!res.ok) { setLoading(false); setSearchLoading(false); return }
+      const text = await res.text()
+      if (!text) { setLoading(false); setSearchLoading(false); return }
+      const data = JSON.parse(text)
       setStats(data.stats)
-      setUsers(data.users)
-      setPage(data.page)
-      setTotalPages(data.totalPages)
+      setUsers(data.users || [])
+      setPage(data.page || 1)
+      setTotalPages(data.totalPages || 1)
       if (data.callerRole) setCallerRole(data.callerRole)
-    } catch { setForbidden(true) }
+    } catch (e) { 
+      console.error("[Admin] fetchData error:", e)
+      if (isInitial) setForbidden(true)
+    }
     setLoading(false)
     setSearchLoading(false)
   }
@@ -163,10 +185,29 @@ function AdminContent() {
     setDetailLoading(true)
     try {
       const res = await fetch(`${API.ADMIN}?section=user-detail&userId=${userId}`)
-      const data = await res.json()
+      if (!res.ok) { 
+        showToast("Failed to load user details.", "error")
+        setDetailLoading(false)
+        return 
+      }
+      const text = await res.text()
+      if (!text) {
+        showToast("Empty response from server.", "error")
+        setDetailLoading(false)
+        return
+      }
+      const data = JSON.parse(text)
+      if (data.error) {
+        showToast(data.error, "error")
+        setDetailLoading(false)
+        return
+      }
       setSelectedUser(data)
-      if (!skipUrlUpdate) updateUrlWithUser(userId, activeTab, false)
-    } catch { showToast("Failed to load user details.", "error") }
+      if (!skipUrlUpdate) updateUrlWithUser(userId, activeTab, true)
+    } catch (e) { 
+      console.error("[Admin] fetchUserDetail error:", e)
+      showToast("Failed to load user details.", "error") 
+    }
     setDetailLoading(false)
   }
 
@@ -232,36 +273,46 @@ function AdminContent() {
       const data = await res.json()
       if (res.ok) {
         if (action === "reset_password" && data.tempPassword) setTempPassword(data.tempPassword)
-        const labels: Record<string, string> = {
-          set_role: "User role updated.",
-          make_admin: "User promoted to admin.",
-          remove_admin: "Admin privileges removed.",
-          reset_password: "Password has been reset.",
-          revoke_sessions: "All sessions revoked.",
-          revoke_api_keys: "All API keys revoked.",
-          disable: "Account disabled.",
-          enable: "Account re-enabled.",
-          delete: "User deleted.",
-          award_badge: "Badge awarded.",
-          revoke_badge: "Badge removed from user.",
-          create_badge: "Badge created.",
-          delete_badge: "Badge deleted permanently.",
-          update_name: "Name updated.",
-          update_email: "Email updated.",
-          update_plan: "Plan updated.",
-          reset_2fa: "Two-factor authentication reset.",
-          delete_scans: "All scans deleted.",
-          clear_rate_limits: "Rate limits cleared.",
-          gift_subscription: "Subscription gifted successfully.",
-          revoke_gift: "Gifted subscription revoked.",
-        }
+  const labels: Record<string, string> = {
+  set_role: "User role updated.",
+  make_admin: "User promoted to admin.",
+  remove_admin: "Admin privileges removed.",
+  reset_password: "Password has been reset.",
+  revoke_sessions: "All sessions revoked.",
+  revoke_api_keys: "All API keys revoked.",
+  disable: "Account disabled.",
+  enable: "Account re-enabled.",
+  delete_user: "User permanently deleted.",
+  award_badge: "Badge awarded.",
+  revoke_badge: "Badge removed from user.",
+  create_badge: "Badge created.",
+  delete_badge: "Badge deleted permanently.",
+  update_name: "Name updated.",
+  update_email: "Email updated.",
+  update_plan: "Plan updated.",
+  reset_2fa: "Two-factor authentication reset.",
+  delete_scans: "All scans deleted.",
+  clear_rate_limits: "Rate limits cleared.",
+  gift_subscription: "Subscription gifted successfully.",
+  revoke_gift: "Gifted subscription revoked.",
+  force_logout_all: "All sessions and API keys revoked.",
+  verify_email: "Email verified.",
+  unverify_email: "Email verification removed.",
+  clear_avatar: "Avatar cleared.",
+  toggle_beta_access: "Beta access toggled.",
+  delete_webhooks: "All webhooks deleted.",
+  delete_schedules: "All scheduled scans deleted.",
+  add_note: "Note added.",
+  edit_note: "Note updated.",
+  delete_note: "Note deleted.",
+  }
         if (action === "create_badge" || action === "delete_badge") { fetchAllBadges() }
         showToast(labels[action] || "Action completed.", "success")
         const skipRefetch = action === "award_badge" || action === "revoke_badge"
         if (!skipRefetch) {
           await fetchData(page)
           if (selectedUser && selectedUser.user.id === userId) {
-            if (action === "delete") { setSelectedUser(null); updateUrlWithUser(null, activeTab) }
+            if (action === "delete_user") { setSelectedUser(null); updateUrlWithUser(null, activeTab) }
             else await fetchUserDetail(userId)
           }
         }
@@ -293,8 +344,39 @@ function AdminContent() {
     updateUrlWithUser(null, tab, false)
   }
 
-  // Initial data load
-  useEffect(() => { fetchData(1, "", true); fetchAllBadges() }, [])
+  // Initial data load with URL hash support
+  useEffect(() => {
+    if (initialLoadRef.current) return
+    initialLoadRef.current = true
+    
+    const { tab, userId } = parseUrlHash()
+    setActiveTab(tab)
+    
+    fetchData(1, "", true).then(() => {
+      if (userId) {
+        fetchUserDetail(userId, true)
+      }
+    })
+    fetchAllBadges()
+    
+    // Handle browser back/forward
+    const handleHashChange = () => {
+      const { tab: newTab, userId: newUserId } = parseUrlHash()
+      setActiveTab(newTab)
+      if (newUserId) {
+        fetchUserDetail(newUserId, true)
+      } else {
+        setSelectedUser(null)
+      }
+    }
+    
+    window.addEventListener("hashchange", handleHashChange)
+    window.addEventListener("popstate", handleHashChange)
+    return () => {
+      window.removeEventListener("hashchange", handleHashChange)
+      window.removeEventListener("popstate", handleHashChange)
+    }
+  }, [parseUrlHash])
 
   useEffect(() => {
     if (activeTab === "audit") fetchAudit()
@@ -314,12 +396,15 @@ function AdminContent() {
         if (searchQuery.trim()) params.set("search", searchQuery.trim())
         const res = await fetch(`${API.ADMIN}?${params}`)
         if (res.ok) {
-          const data = await res.json()
-          setUsers(data.users)
-          setPage(data.page)
-          setTotalPages(data.totalPages)
+          const text = await res.text()
+          if (text) {
+            const data = JSON.parse(text)
+            setUsers(data.users || [])
+            setPage(data.page || 1)
+            setTotalPages(data.totalPages || 1)
+          }
         }
-      } catch { /* ignore */ }
+      } catch (e) { console.error("[Admin] search error:", e) }
       setSearchLoading(false)
     }, 300)
     return () => { clearTimeout(timeout); setSearchLoading(false) }

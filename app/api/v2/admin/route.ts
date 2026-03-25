@@ -67,7 +67,7 @@ export async function GET(request: NextRequest) {
 
     const [userRes, scansRes, keysRes, webhooksRes, schedulesRes, sessionsRes, badgesRes, notesRes] = await Promise.all([
       pool.query(
-        `SELECT u.id, u.email, u.name, u.role, u.avatar_url, u.totp_enabled, u.tos_accepted_at, u.created_at, u.disabled_at,
+        `SELECT u.id, u.email, u.name, u.role, u.avatar_url, u.totp_enabled, u.tos_accepted_at, u.created_at, u.disabled_at, u.email_verified_at,
           u.plan, u.stripe_customer_id, u.subscription_status, u.beta_access,
           (SELECT COUNT(*) FROM scan_history WHERE user_id = $1)::int as scan_count,
           (SELECT COUNT(*) FROM api_keys WHERE user_id = $1 AND revoked_at IS NULL)::int as api_key_count,
@@ -281,7 +281,7 @@ export async function PATCH(request: NextRequest) {
   }
 
   // Prevent self-modification for dangerous actions
-  if (userId === session.userId && ["remove_admin", "delete", "disable", "reset_password", "set_role"].includes(action)) {
+  if (userId === session.userId && ["remove_admin", "delete_user", "disable", "reset_password", "set_role"].includes(action)) {
     return NextResponse.json({ error: "Cannot perform this action on your own account." }, { status: 400 })
   }
 
@@ -677,6 +677,25 @@ export async function PATCH(request: NextRequest) {
         [userId, session.userId]
       )
       await logAction(session.userId, userId, "revoke_gift", `Revoked gifted subscription from ${targetUser.email}`, ip)
+      return NextResponse.json({ success: true })
+    }
+
+    case "delete_user": {
+      // Only admins can delete users
+      if (callerRole !== "admin") {
+        return NextResponse.json({ error: "Only admins can delete users" }, { status: 403 })
+      }
+      // Delete all related data first (cascade should handle most, but be explicit)
+      await pool.query("DELETE FROM sessions WHERE user_id = $1", [userId])
+      await pool.query("DELETE FROM api_keys WHERE user_id = $1", [userId])
+      await pool.query("DELETE FROM scan_history WHERE user_id = $1", [userId])
+      await pool.query("DELETE FROM webhooks WHERE user_id = $1", [userId])
+      await pool.query("DELETE FROM scheduled_scans WHERE user_id = $1", [userId])
+      await pool.query("DELETE FROM user_badges WHERE user_id = $1", [userId])
+      await pool.query("DELETE FROM admin_user_notes WHERE user_id = $1", [userId])
+      await pool.query("DELETE FROM gifted_subscriptions WHERE user_id = $1", [userId])
+      await pool.query("DELETE FROM users WHERE id = $1", [userId])
+      await logAction(session.userId, userId, "delete_user", `Permanently deleted user ${targetUser.email}`, ip)
       return NextResponse.json({ success: true })
     }
 

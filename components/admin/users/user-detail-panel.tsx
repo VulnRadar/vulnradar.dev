@@ -795,57 +795,83 @@ export function UserDetailPanel({
           
           {/* Actions Tab */}
           <TabsContent value="actions" className="p-4 sm:p-6 space-y-6 m-0">
-            {/* Quick Actions */}
+            {/* Session & Security */}
             <div className="space-y-3">
-              <h3 className="text-sm font-semibold">Quick Actions</h3>
+              <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Session & Security</h3>
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                <ActionCard
+                  icon={LogOut}
+                  label="Force Logout"
+                  description={`Revoke all ${u.session_count} active session(s)`}
+                  onClick={() => queueSupportAction("revoke_sessions", "Force Logout", `Force logout ${u.email} from all ${u.session_count} active sessions.`)}
+                  loading={isLoading("revoke_sessions")}
+                />
+                <ActionCard
+                  icon={Key}
+                  label="Revoke API Keys"
+                  description={`Invalidate all ${u.api_key_count} API key(s)`}
+                  onClick={() => queueSupportAction("revoke_api_keys", "Revoke API Keys", `Immediately revoke all ${u.api_key_count} active API keys for ${u.email}.`)}
+                  loading={isLoading("revoke_api_keys")}
+                  variant="warning"
+                />
                 <ActionCard
                   icon={Key}
                   label="Reset Password"
-                  description="Generate a temporary password"
+                  description="Generate temp password"
                   onClick={() => queueSupportAction("reset_password", "Reset Password", `Generate a temporary password for ${u.email}. All sessions will be invalidated.`)}
                   loading={isLoading("reset_password")}
-                />
-                <ActionCard
-                  icon={LogOut}
-                  label="Revoke Sessions"
-                  description="Force logout from all devices"
-                  onClick={() => queueSupportAction("revoke_sessions", "Revoke Sessions", `Force logout ${u.email} from all active sessions.`)}
-                  loading={isLoading("revoke_sessions")}
                   variant="warning"
                 />
                 <ActionCard
                   icon={Gauge}
                   label="Clear Rate Limits"
-                  description="Reset API rate limiting"
+                  description="Reset rate limit counters"
                   onClick={() => onAction(u.id, "clear_rate_limits")}
                   loading={isLoading("clear_rate_limits")}
                 />
-                {u.disabled_at ? (
-                  <ActionCard
-                    icon={CheckCircle2}
-                    label="Enable Account"
-                    description="Re-enable this user account"
-                    onClick={() => onAction(u.id, "enable")}
-                    loading={isLoading("enable")}
-                    variant="success"
-                  />
-                ) : (
-                  <ActionCard
-                    icon={Ban}
-                    label="Disable Account"
-                    description="Suspend and logout user"
-                    onClick={() => queueSupportAction("disable", "Disable Account", `Suspend ${u.email}'s account and force logout all sessions. They will not be able to log in until re-enabled.`)}
-                    loading={isLoading("disable")}
-                    variant="danger"
-                  />
-                )}
+                <ActionCard
+                  icon={LogOut}
+                  label="Force Logout All"
+                  description="Logout + revoke all API keys"
+                  onClick={() => queueSupportAction("force_logout_all", "Force Logout All", `Force logout ${u.email} from all sessions AND revoke all API keys.`)}
+                  loading={isLoading("force_logout_all")}
+                  variant="warning"
+                />
               </div>
             </div>
             
-            {/* Subscription Actions */}
+            {/* Account Management */}
             <div className="space-y-3">
-              <h3 className="text-sm font-semibold">Subscription</h3>
+              <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Account Management</h3>
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                <ActionCard
+                  icon={Mail}
+                  label={u.email_verified_at ? "Unverify Email" : "Verify Email"}
+                  description={u.email_verified_at ? "Remove email verification" : "Manually verify email address"}
+                  onClick={() => onAction(u.id, u.email_verified_at ? "unverify_email" : "verify_email")}
+                  loading={isLoading("verify_email") || isLoading("unverify_email")}
+                />
+                <ActionCard
+                  icon={User}
+                  label="Clear Avatar"
+                  description="Remove profile picture"
+                  onClick={() => onAction(u.id, "clear_avatar")}
+                  loading={isLoading("clear_avatar")}
+                />
+                <ActionCard
+                  icon={Shield}
+                  label="Toggle Beta Access"
+                  description={u.beta_access ? "Disable beta features" : "Enable beta features"}
+                  onClick={() => onAction(u.id, "toggle_beta_access")}
+                  loading={isLoading("toggle_beta_access")}
+                  variant={u.beta_access ? "warning" : "default"}
+                />
+              </div>
+            </div>
+            
+            {/* Gifted Subscription */}
+            <div className="space-y-3">
+              <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Gifted Subscription</h3>
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                 {u.gifted_plan ? (
                   <ActionCard
@@ -859,10 +885,18 @@ export function UserDetailPanel({
                 ) : (
                   <ActionCard
                     icon={Gift}
-                    label="Gift Subscription"
-                    description="Gift a Pro subscription"
-                    onClick={() => queueSupportAction("gift_subscription", "Gift Subscription", `Gift a Pro subscription to ${u.email}.`, { plan: "pro", duration: 30 })}
+                    label="Gift a Subscription"
+                    description="Grant temporary premium access"
+                    onClick={() => {
+                      const endDate = new Date()
+                      endDate.setDate(endDate.getDate() + 30)
+                      queueSupportAction("gift_subscription", "Gift Subscription", `Gift a pro supporter subscription to ${u.email} for 30 days.`, { 
+                        giftPlan: "pro_supporter", 
+                        giftEndDate: endDate.toISOString() 
+                      })
+                    }}
                     loading={isLoading("gift_subscription")}
+                    variant="warning"
                   />
                 )}
               </div>
@@ -872,29 +906,63 @@ export function UserDetailPanel({
             <div className="space-y-3">
               <button
                 onClick={() => setShowDangerZone(!showDangerZone)}
-                className="flex items-center gap-2 text-sm font-semibold text-destructive"
+                className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-destructive"
               >
-                <AlertTriangle className="h-4 w-4" />
                 Danger Zone
                 {showDangerZone ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
               </button>
               
               {showDangerZone && (
                 <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 p-4 rounded-lg border border-destructive/30 bg-destructive/5">
+                  {u.disabled_at ? (
+                    <ActionCard
+                      icon={CheckCircle2}
+                      label="Enable Account"
+                      description="Re-enable this user account"
+                      onClick={() => onAction(u.id, "enable")}
+                      loading={isLoading("enable")}
+                      variant="success"
+                    />
+                  ) : (
+                    <ActionCard
+                      icon={Ban}
+                      label="Disable Account"
+                      description="Suspend and force-logout"
+                      onClick={() => queueSupportAction("disable", "Disable Account", `Suspend ${u.email}'s account and force logout all sessions. They will not be able to log in until re-enabled.`)}
+                      loading={isLoading("disable")}
+                      variant="danger"
+                    />
+                  )}
                   <ActionCard
                     icon={Trash2}
                     label="Delete All Scans"
-                    description="Permanently delete scan history"
-                    onClick={() => queueSupportAction("delete_scans", "Delete All Scans", `Permanently delete all scan history for ${u.email}. This cannot be undone.`)}
+                    description={`Remove all ${u.scan_count} scan(s)`}
+                    onClick={() => queueSupportAction("delete_scans", "Delete All Scans", `Permanently delete all ${u.scan_count} scans for ${u.email}. This cannot be undone.`)}
                     loading={isLoading("delete_scans")}
                     variant="danger"
                   />
                   <ActionCard
+                    icon={ExternalLink}
+                    label="Delete Webhooks"
+                    description="Remove all webhooks"
+                    onClick={() => queueSupportAction("delete_webhooks", "Delete Webhooks", `Permanently delete all webhooks for ${u.email}. This cannot be undone.`)}
+                    loading={isLoading("delete_webhooks")}
+                    variant="danger"
+                  />
+                  <ActionCard
+                    icon={Calendar}
+                    label="Delete Schedules"
+                    description="Remove scheduled scans"
+                    onClick={() => queueSupportAction("delete_schedules", "Delete Schedules", `Permanently delete all scheduled scans for ${u.email}. This cannot be undone.`)}
+                    loading={isLoading("delete_schedules")}
+                    variant="danger"
+                  />
+                  <ActionCard
                     icon={Trash2}
-                    label="Delete User"
-                    description="Permanently delete account"
-                    onClick={() => queueSupportAction("delete", "Delete User", `Permanently delete ${u.email} and all their data. This cannot be undone.`)}
-                    loading={isLoading("delete")}
+                    label="Delete Account"
+                    description="Permanently remove user"
+                    onClick={() => queueSupportAction("delete_user", "Delete Account", `Permanently delete ${u.email} and all their data. This action cannot be undone.`)}
+                    loading={isLoading("delete_user")}
                     variant="danger"
                   />
                 </div>

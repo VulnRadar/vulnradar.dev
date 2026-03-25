@@ -23,12 +23,15 @@ export interface AdminUser {
   tos_accepted_at: string | null
   created_at: string
   disabled_at: string | null
+  email_verified_at?: string | null
   scan_count: number
   api_key_count: number
   plan: string
   subscription_status: string | null
   gifted_plan?: string | null
   gift_end_date?: string | null
+  beta_access?: boolean
+  session_count?: number
 }
 
 export interface BadgeDef {
@@ -58,9 +61,7 @@ export interface AdminNote {
 
 export interface UserDetail {
   user: AdminUser & {
-    session_count: number
     has_backup_codes: boolean
-    email_verified_at?: string | null
   }
   recentScans: { id: number; url: string; findings_count: number; source: string; scanned_at: string }[]
   apiKeys: { id: number; key_prefix: string; name: string; daily_limit: number; created_at: string; last_used_at: string | null; revoked_at: string | null }[]
