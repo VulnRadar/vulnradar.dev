@@ -402,9 +402,14 @@ export const ROLE_BADGE_STYLES: Record<string, string> = {
 
 export const PLAN_BADGE_STYLES: Record<string, string> = {
   free: "bg-muted text-muted-foreground border-border",
-  pro: "bg-primary/10 text-primary border-primary/20",
-  enterprise: "bg-amber-500/10 text-amber-500 border-amber-500/20",
-  team: "bg-blue-500/10 text-blue-500 border-blue-500/20",
+  core_supporter: "bg-blue-500/10 text-blue-500 border-blue-500/20",
+  pro_supporter: "bg-purple-500/10 text-purple-500 border-purple-500/20",
+  elite_supporter: "bg-amber-500/10 text-amber-500 border-amber-500/20",
+}
+
+// Format plan name for display (e.g., "elite_supporter" -> "Elite Supporter")
+export function formatPlanName(plan: string): string {
+  return plan.split("_").map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(" ")
 }
 
 // ============================================================================
