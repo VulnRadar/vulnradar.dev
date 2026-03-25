@@ -6,7 +6,7 @@ import {
   Smartphone, Trash2, Ban, CheckCircle2, Mail, User, Calendar,
   Clock, Globe, Activity, CreditCard, Award, StickyNote, AlertTriangle,
   MoreHorizontal, Send, Gift, Gauge, Eye, EyeOff, RefreshCw, X,
-  ChevronDown, ChevronRight, Loader2, Plus, Edit2, ExternalLink
+  ChevronDown, ChevronRight, Loader2, Plus, Edit2, ExternalLink, Save
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -970,7 +970,53 @@ export function UserDetailPanel({
             </div>
           </TabsContent>
         </Tabs>
+        
+        {/* Bottom spacer for floating save bar */}
+        {hasChanges && <div className="h-20" />}
       </CardContent>
+      
+      {/* Floating Save Bar - appears when there are unsaved changes */}
+      {hasChanges && (
+        <div className="fixed bottom-0 left-0 right-0 z-[90] p-4 pointer-events-none">
+          <div className="max-w-lg mx-auto pointer-events-auto">
+            <div className="flex items-center justify-between gap-4 px-4 py-3 rounded-lg bg-card border border-border shadow-xl">
+              <div className="flex items-center gap-3">
+                <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center">
+                  <Save className="h-4 w-4 text-primary" />
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-foreground">
+                    {buildChanges().length} unsaved change{buildChanges().length !== 1 ? "s" : ""}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    Changes to {u.email}
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  onClick={() => {
+                    // Reset all edits
+                    setEditedName(u.name || "")
+                    setEditedEmail(u.email)
+                    setEditedRole(u.role || "user")
+                    setEditedPlan(u.plan || "free")
+                    setPendingBadgeAwards([])
+                    setPendingBadgeRevokes([])
+                  }}
+                >
+                  Discard
+                </Button>
+                <Button size="sm" onClick={() => setShowSaveModal(true)}>
+                  Save Changes
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
       
       {/* Support Action Confirmation Modal */}
       {pendingSupportAction && (
