@@ -628,19 +628,14 @@ function AdminContent() {
   }, [activeTab])
 
   async function handleAction(userId: number, action: string, extra?: Record<string, unknown>) {
-    console.log("[v0] handleAction called", { userId, action, extra, url: API.ADMIN })
     setActionLoading(`${userId}-${action}`)
     try {
-      const payload = JSON.stringify({ userId, action, ...extra })
-      console.log("[v0] PATCH payload:", payload)
       const res = await fetch(API.ADMIN, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: payload,
+        body: JSON.stringify({ userId, action, ...extra }),
       })
-      console.log("[v0] PATCH response status:", res.status)
       const data = await res.json()
-      console.log("[v0] PATCH response data:", data)
       if (res.ok) {
         if (action === "reset_password" && data.tempPassword) setTempPassword(data.tempPassword)
         const labels: Record<string, string> = {
@@ -862,10 +857,8 @@ function AdminContent() {
                 }}
                 onClose={() => { setSelectedUser(null); setTempPassword(null); updateUrlWithUser(null, activeTab) }}
                 onAction={async (userId, action, extra) => {
-                  console.log("[v0] onAction called", { userId, action, extra })
                   // If extra params are provided, it's from support action flow - already confirmed, execute directly
                   if (extra && Object.keys(extra).length > 0) {
-                    console.log("[v0] executing directly via handleAction (has extra)")
                     return handleAction(userId, action, extra)
                   }
                   // Actions that don't need confirmation
@@ -2021,18 +2014,11 @@ function UserDetailPanel({
   
   // Execute the pending support action
   const executeSupportAction = async (notifyUser: boolean) => {
-    console.log("[v0] executeSupportAction called", { pendingSupportAction, notifyUser })
-    if (!pendingSupportAction) { console.log("[v0] early return - no pendingSupportAction"); return }
-    try {
-      console.log("[v0] calling onAction with", { userId: u.id, action: pendingSupportAction.action, extra: { ...pendingSupportAction.extraPayload, notifyUser } })
-      await onAction(u.id, pendingSupportAction.action, { 
-        ...pendingSupportAction.extraPayload, 
-        notifyUser 
-      })
-      console.log("[v0] onAction completed successfully")
-    } catch (err) {
-      console.log("[v0] onAction threw error", err)
-    }
+    if (!pendingSupportAction) return
+    await onAction(u.id, pendingSupportAction.action, { 
+      ...pendingSupportAction.extraPayload, 
+      notifyUser 
+    })
     setPendingSupportAction(null)
   }
 
