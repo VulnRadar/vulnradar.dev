@@ -433,14 +433,53 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ success: true })
     }
 
+    case "award_badge": {
+      const { badgeId } = body
+      if (!badgeId) return NextResponse.json({ error: "Badge ID required" }, { status: 400 })
+      // Check if user already has this badge
+      const existing = await pool.query(
+        "SELECT 1 FROM user_badges WHERE user_id = $1 AND badge_id = $2",
+        [userId, badgeId]
+      )
+      if (existing.rows.length > 0) {
+        return NextResponse.json({ error: "User already has this badge" }, { status: 400 })
+      }
+      await pool.query(
+        "INSERT INTO user_badges (user_id, badge_id, awarded_by, awarded_at) VALUES ($1, $2, $3, NOW())",
+        [userId, badgeId, session.userId]
+      )
+      await logAction(session.userId, userId, "award_badge", `Awarded badge #${badgeId} to ${targetUser.email}`, ip)
+      return NextResponse.json({ success: true })
+    }
+
+    case "revoke_badge": {
+      const { badgeId } = body
+      if (!badgeId) return NextResponse.json({ error: "Badge ID required" }, { status: 400 })
+      await pool.query(
+        "DELETE FROM user_badges WHERE user_id = $1 AND badge_id = $2",
+        [userId, badgeId]
+      )
+      await logAction(session.userId, userId, "revoke_badge", `Revoked badge #${badgeId} from ${targetUser.email}`, ip)
+      return NextResponse.json({ success: true })
+    }
+
+    case "create_badge": {
+      const { name, description, icon, color } = body
+      if (!name) return NextResponse.json({ error: "Badge name required" }, { status: 400 })
+      const result = await pool.query(
+        "INSERT INTO badges (name, description, icon, color, created_at) VALUES ($1, $2, $3, $4, NOW()) RETURNING id",
+        [name, description || null, icon || "award", color || "#6366f1"]
+      )
+      await logAction(session.userId, null, "create_badge", `Created badge "${name}"`, ip)
+      return NextResponse.json({ success: true, badgeId: result.rows[0].id })
+    }
+
     case "delete_badge": {
-      if (!badgeId) return NextResponse.json({ error: "badgeId required" }, { status: 400 })
-      // First get badge info for logging
-      const badge = await pool.query("SELECT name, display_name FROM badges WHERE id = $1", [badgeId])
-      if (badge.rows.length === 0) return NextResponse.json({ error: "Badge not found" }, { status: 404 })
-      // Delete badge (cascades to user_badges)
+      const { badgeId } = body
+      if (!badgeId) return NextResponse.json({ error: "Badge ID required" }, { status: 400 })
+      await pool.query("DELETE FROM user_badges WHERE badge_id = $1", [badgeId])
       await pool.query("DELETE FROM badges WHERE id = $1", [badgeId])
-      await logAction(session.userId, userId, "delete_badge", `Deleted badge "${badge.rows[0].display_name}" permanently`, ip)
+      await logAction(session.userId, null, "delete_badge", `Deleted badge #${badgeId}`, ip)
       return NextResponse.json({ success: true })
     }
 
