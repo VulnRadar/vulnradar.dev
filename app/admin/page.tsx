@@ -856,13 +856,16 @@ function AdminContent() {
                   })
                 }}
                 onClose={() => { setSelectedUser(null); setTempPassword(null); updateUrlWithUser(null, activeTab) }}
-                onAction={(userId, action, extra) => {
+                onAction={async (userId, action, extra) => {
+                  // If extra params are provided, it's from support action flow - already confirmed, execute directly
+                  if (extra && Object.keys(extra).length > 0) {
+                    return handleAction(userId, action, extra)
+                  }
                   // Actions that don't need confirmation
                   if (["set_role", "award_badge", "revoke_badge", "create_badge", "delete_badge", "update_name", "update_email", "update_plan", "enable", "clear_rate_limits", "gift_subscription", "revoke_gift", "add_note", "edit_note", "delete_note"].includes(action)) {
-                    handleAction(userId, action, extra)
-                    return
+                    return handleAction(userId, action, extra)
                   }
-                  // Actions that need confirmation
+                  // Actions that need confirmation (handled by parent ConfirmDialog) - only for direct calls without extra
                   const confirmActions = ["delete", "disable", "reset_password", "revoke_sessions", "revoke_api_keys", "reset_2fa", "delete_scans"]
                   if (confirmActions.includes(action)) {
                     const messages: Record<string, { title: string; desc: string; label: string; danger?: boolean }> = {
@@ -878,7 +881,7 @@ function AdminContent() {
                     const m = messages[action]
                     setConfirmDialog({ title: m.title, description: m.desc, confirmLabel: m.label, danger: m.danger ?? false, action: () => handleAction(userId, action) })
                   } else {
-                    handleAction(userId, action)
+                    return handleAction(userId, action)
                   }
                 }}
                 tempPassword={tempPassword}
@@ -1917,7 +1920,7 @@ function UserDetailPanel({
   detailLoading: boolean
   actionLoading: string | null
   onClose: () => void
-  onAction: (userId: number, action: string, extra?: Record<string, unknown>) => void
+  onAction: (userId: number, action: string, extra?: Record<string, unknown>) => Promise<void>
   tempPassword: string | null
   onClearTempPassword: () => void
   callerRole: string
@@ -2012,7 +2015,7 @@ function UserDetailPanel({
   // Execute the pending support action
   const executeSupportAction = async (notifyUser: boolean) => {
     if (!pendingSupportAction) return
-    await handleAction(u.id, pendingSupportAction.action, { 
+    await onAction(u.id, pendingSupportAction.action, { 
       ...pendingSupportAction.extraPayload, 
       notifyUser 
     })
@@ -2025,18 +2028,18 @@ function UserDetailPanel({
     try {
       // Save field changes sequentially (each triggers its own toast + fetchUserDetail)
       for (const [key, value] of Object.entries(pendingChanges)) {
-        if (key === "name") await handleAction(u.id, "update_name", { name: value as string, notifyUser: notifyUserOnSave })
-        else if (key === "email") await handleAction(u.id, "update_email", { email: value as string, notifyUser: notifyUserOnSave })
-        else if (key === "plan") await handleAction(u.id, "update_plan", { plan: value as string, notifyUser: notifyUserOnSave })
-        else if (key === "role") await handleAction(u.id, "set_role", { role: value as string, notifyUser: notifyUserOnSave })
+        if (key === "name") await onAction(u.id, "update_name", { name: value as string, notifyUser: notifyUserOnSave })
+        else if (key === "email") await onAction(u.id, "update_email", { email: value as string, notifyUser: notifyUserOnSave })
+        else if (key === "plan") await onAction(u.id, "update_plan", { plan: value as string, notifyUser: notifyUserOnSave })
+        else if (key === "role") await onAction(u.id, "set_role", { role: value as string, notifyUser: notifyUserOnSave })
       }
-      // Fire badge API calls in parallel — handleAction skips re-fetch for badge actions
+      // Fire badge API calls in parallel — onAction skips re-fetch for badge actions
       const awardedThisSave = [...pendingBadgeAwards]
       const revokedThisSave = [...pendingBadgeRevokes]
       if (awardedThisSave.length > 0 || revokedThisSave.length > 0) {
         await Promise.all([
-          ...awardedThisSave.map((id) => handleAction(u.id, "award_badge", { badgeId: String(id), notifyUser: notifyUserOnSave })),
-          ...revokedThisSave.map((id) => handleAction(u.id, "revoke_badge", { badgeId: String(id), notifyUser: notifyUserOnSave })),
+          ...awardedThisSave.map((id) => onAction(u.id, "award_badge", { badgeId: String(id), notifyUser: notifyUserOnSave })),
+          ...revokedThisSave.map((id) => onAction(u.id, "revoke_badge", { badgeId: String(id), notifyUser: notifyUserOnSave })),
         ])
         // Patch the UI in one shot — no flicker, no re-fetch
         onBadgesChanged(awardedThisSave, revokedThisSave)
