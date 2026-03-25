@@ -825,11 +825,12 @@ export async function PATCH(request: NextRequest) {
       const oldPlan = targetUser.plan || "free"
       await pool.query("UPDATE users SET plan = $1 WHERE id = $2", [plan, userId])
       
-      // Award premium badge if upgrading to a supporter plan
-      if (plan !== "free") {
-        const premiumBadgeUpd = await pool.query("SELECT id FROM badges WHERE name = 'premium'")
-        if (premiumBadgeUpd.rows.length > 0) {
-          const badgeIdUpd = premiumBadgeUpd.rows[0].id
+      // Award or revoke premium badge based on plan
+      const premiumBadgeUpd = await pool.query("SELECT id FROM badges WHERE name = 'premium'")
+      if (premiumBadgeUpd.rows.length > 0) {
+        const badgeIdUpd = premiumBadgeUpd.rows[0].id
+        if (plan !== "free") {
+          // Award premium badge if upgrading to a supporter plan
           const existingBadgeUpd = await pool.query(
             "SELECT 1 FROM user_badges WHERE user_id = $1 AND badge_id = $2",
             [userId, badgeIdUpd]
@@ -840,6 +841,12 @@ export async function PATCH(request: NextRequest) {
               [userId, badgeIdUpd, session.userId]
             )
           }
+        } else {
+          // Remove premium badge when downgrading to free
+          await pool.query(
+            "DELETE FROM user_badges WHERE user_id = $1 AND badge_id = $2",
+            [userId, badgeIdUpd]
+          )
         }
       }
       
