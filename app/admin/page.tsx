@@ -3,10 +3,9 @@
 import React from "react"
 import { useState, useEffect, useCallback, useRef } from "react"
 import { useRouter } from "next/navigation"
-import { ShieldOff, Loader2, ArrowLeft } from "lucide-react"
+import { ShieldOff, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
 import { Header } from "@/components/scanner/header"
 import { Footer } from "@/components/scanner/footer"
 import { API } from "@/lib/constants"
@@ -29,12 +28,12 @@ import type {
 import { Toast, ConfirmDialog } from "@/components/admin/shared"
 import { StatsGrid } from "@/components/admin/stats"
 import { AdminHeader, AdminTabs } from "@/components/admin/navigation"
-import { UsersTable } from "@/components/admin/users"
+import { UsersTable, UserDetailPanel } from "@/components/admin/users"
 import { AuditLog } from "@/components/admin/audit"
 import { TeamsList } from "@/components/admin/teams"
 import { ActiveStaff } from "@/components/admin/staff"
 
-// UserDetailPanel is kept inline due to its complexity - will be modularized in a future update
+
 
 export default function AdminPage() {
   return <AdminContent />
@@ -528,57 +527,4 @@ function AdminContent() {
   )
 }
 
-// UserDetailPanel - Displays detailed user information and actions
-// This component needs to be fully implemented - placeholder for now
-function UserDetailPanel({
-  detail,
-  detailLoading,
-  actionLoading,
-  callerRole,
-  allBadges,
-  onRefreshBadges,
-  onBadgesChanged,
-  onClose,
-  onAction,
-  tempPassword,
-  onClearTempPassword,
-}: {
-  detail: UserDetail
-  detailLoading: boolean
-  actionLoading: string | null
-  callerRole: string
-  allBadges: BadgeDef[]
-  onRefreshBadges: () => void
-  onBadgesChanged: (awardedIds: number[], revokedIds: number[]) => void
-  onClose: () => void
-  onAction: (userId: number, action: string, extra?: Record<string, unknown>) => Promise<void>
-  tempPassword: string | null
-  onClearTempPassword: () => void
-}) {
-  // This is a placeholder - the full UserDetailPanel needs to be restored
-  // For now, show a basic view with the user info
-  const u = detail.user
-  
-  return (
-    <Card className="bg-card border-border">
-      <CardContent className="p-6">
-        <div className="flex items-center justify-between mb-6">
-          <Button variant="ghost" size="sm" onClick={onClose} className="gap-2">
-            <ArrowLeft className="h-4 w-4" />
-            Back to Users
-          </Button>
-        </div>
-        <div className="text-center py-12">
-          <Loader2 className="h-8 w-8 animate-spin text-primary mx-auto mb-4" />
-          <h2 className="text-lg font-semibold">User Detail View</h2>
-          <p className="text-sm text-muted-foreground mt-2">
-            Viewing: {u.name || u.email}
-          </p>
-          <p className="text-xs text-muted-foreground mt-1">
-            The full UserDetailPanel component is being restored...
-          </p>
-        </div>
-      </CardContent>
-    </Card>
-  )
-}
+
