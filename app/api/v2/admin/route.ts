@@ -67,7 +67,7 @@ export async function GET(request: NextRequest) {
 
     const [userRes, scansRes, keysRes, webhooksRes, schedulesRes, sessionsRes, badgesRes, notesRes] = await Promise.all([
       pool.query(
-        `SELECT u.id, u.email, u.name, u.role, u.avatar_url, u.totp_enabled, u.tos_accepted_at, u.created_at, u.disabled_at,
+        `SELECT u.id, u.email, u.name, u.role, u.avatar_url, u.totp_enabled, u.tos_accepted_at, u.created_at, u.disabled_at, u.email_verified_at,
           u.plan, u.stripe_customer_id, u.subscription_status, u.beta_access,
           (SELECT COUNT(*) FROM scan_history WHERE user_id = $1)::int as scan_count,
           (SELECT COUNT(*) FROM api_keys WHERE user_id = $1 AND revoked_at IS NULL)::int as api_key_count,
@@ -264,7 +264,9 @@ export async function PATCH(request: NextRequest) {
   if (!session) return NextResponse.json({ error: ERROR_MESSAGES.FORBIDDEN }, { status: 403 })
 
   const ip = await getClientIP()
-  const { action, userId, role: newRole, badgeId, name: badgeName, displayName, color: badgeColor, name, email, plan, giftPlan, giftEndDate, note, noteId, notifyUser } = await request.json()
+  const body = await request.json()
+  const { action, userId, role: newRole, badgeId, displayName, name, email, plan, giftPlan, giftEndDate, note, noteId, notifyUser, description, icon } = body
+  const badgeColor = body.color // For create_badge action
 
   if (!userId || !action) {
     return NextResponse.json({ error: "Missing action or userId" }, { status: 400 })
@@ -281,7 +283,7 @@ export async function PATCH(request: NextRequest) {
   }
 
   // Prevent self-modification for dangerous actions
-  if (userId === session.userId && ["remove_admin", "delete", "disable", "reset_password", "set_role"].includes(action)) {
+  if (userId === session.userId && ["remove_admin", "delete_user", "disable", "reset_password", "set_role"].includes(action)) {
     return NextResponse.json({ error: "Cannot perform this action on your own account." }, { status: 400 })
   }
 
@@ -415,14 +417,70 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ success: true })
     }
 
+    case "enable": {
+      await pool.query("UPDATE users SET disabled_at = NULL WHERE id = $1", [userId])
+      await logAction(session.userId, userId, "enable_user", `Re-enabled account for ${targetUser.email}`, ip)
+      
+      // Send email notification
+      const [adminNameEn, userNameEn] = await Promise.all([getAdminName(session.userId), getUserName(userId)])
+      const emailPayloadEn = adminAccountChangeEmail({
+        userName: userNameEn,
+        adminName: adminNameEn,
+        changes: [{ field: "Account Status", oldValue: "Disabled", newValue: "Active" }],
+        timestamp: new Date(),
+        ipAddress: ip,
+      })
+      await sendNotificationIfEnabled(notifyUser, targetUser.email, emailPayloadEn)
+      
+      return NextResponse.json({ success: true })
+    }
+
+    case "award_badge": {
+      const { badgeId } = body
+      if (!badgeId) return NextResponse.json({ error: "Badge ID required" }, { status: 400 })
+      // Check if user already has this badge
+      const existing = await pool.query(
+        "SELECT 1 FROM user_badges WHERE user_id = $1 AND badge_id = $2",
+        [userId, badgeId]
+      )
+      if (existing.rows.length > 0) {
+        return NextResponse.json({ error: "User already has this badge" }, { status: 400 })
+      }
+      await pool.query(
+        "INSERT INTO user_badges (user_id, badge_id, awarded_by, awarded_at) VALUES ($1, $2, $3, NOW())",
+        [userId, badgeId, session.userId]
+      )
+      await logAction(session.userId, userId, "award_badge", `Awarded badge #${badgeId} to ${targetUser.email}`, ip)
+      return NextResponse.json({ success: true })
+    }
+
+    case "revoke_badge": {
+      const { badgeId } = body
+      if (!badgeId) return NextResponse.json({ error: "Badge ID required" }, { status: 400 })
+      await pool.query(
+        "DELETE FROM user_badges WHERE user_id = $1 AND badge_id = $2",
+        [userId, badgeId]
+      )
+      await logAction(session.userId, userId, "revoke_badge", `Revoked badge #${badgeId} from ${targetUser.email}`, ip)
+      return NextResponse.json({ success: true })
+    }
+
+    case "create_badge": {
+      if (!name) return NextResponse.json({ error: "Badge name required" }, { status: 400 })
+      const result = await pool.query(
+        "INSERT INTO badges (name, description, icon, color, created_at) VALUES ($1, $2, $3, $4, NOW()) RETURNING id",
+        [name, description || null, icon || "award", badgeColor || "#6366f1"]
+      )
+      await logAction(session.userId, null, "create_badge", `Created badge "${name}"`, ip)
+      return NextResponse.json({ success: true, badgeId: result.rows[0].id })
+    }
+
     case "delete_badge": {
-      if (!badgeId) return NextResponse.json({ error: "badgeId required" }, { status: 400 })
-      // First get badge info for logging
-      const badge = await pool.query("SELECT name, display_name FROM badges WHERE id = $1", [badgeId])
-      if (badge.rows.length === 0) return NextResponse.json({ error: "Badge not found" }, { status: 404 })
-      // Delete badge (cascades to user_badges)
+      const { badgeId } = body
+      if (!badgeId) return NextResponse.json({ error: "Badge ID required" }, { status: 400 })
+      await pool.query("DELETE FROM user_badges WHERE badge_id = $1", [badgeId])
       await pool.query("DELETE FROM badges WHERE id = $1", [badgeId])
-      await logAction(session.userId, userId, "delete_badge", `Deleted badge "${badge.rows[0].display_name}" permanently`, ip)
+      await logAction(session.userId, null, "delete_badge", `Deleted badge #${badgeId}`, ip)
       return NextResponse.json({ success: true })
     }
 
@@ -579,7 +637,7 @@ export async function PATCH(request: NextRequest) {
     }
 
     case "set_scan_limit": {
-      const { limit: scanLimit } = await request.json()
+      const scanLimit = body.limit
       if (typeof scanLimit !== "number" || scanLimit < 0 || scanLimit > 10000) {
         return NextResponse.json({ error: "Invalid scan limit (0-10000)" }, { status: 400 })
       }
@@ -649,6 +707,21 @@ export async function PATCH(request: NextRequest) {
         "INSERT INTO gifted_subscriptions (user_id, plan, expires_at, gifted_by) VALUES ($1, $2, $3, $4)",
         [userId, giftPlan, expiresAt, session.userId]
       )
+      // Also award premium badge if they don't have it
+      const premiumBadge = await pool.query("SELECT id FROM badges WHERE name = 'premium'")
+      if (premiumBadge.rows.length > 0) {
+        const badgeId = premiumBadge.rows[0].id
+        const existingBadge = await pool.query(
+          "SELECT 1 FROM user_badges WHERE user_id = $1 AND badge_id = $2",
+          [userId, badgeId]
+        )
+        if (existingBadge.rows.length === 0) {
+          await pool.query(
+            "INSERT INTO user_badges (user_id, badge_id, awarded_by, awarded_at) VALUES ($1, $2, $3, NOW())",
+            [userId, badgeId, session.userId]
+          )
+        }
+      }
       await logAction(session.userId, userId, "gift_subscription", `Gifted ${giftPlan} plan until ${expiresAt.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}`, ip)
       return NextResponse.json({ success: true })
     }
@@ -662,7 +735,137 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ success: true })
     }
 
-    default:
-      return NextResponse.json({ error: "Unknown action" }, { status: 400 })
+    case "delete_user": {
+      // Only admins can delete users
+      if (callerRole !== "admin") {
+        return NextResponse.json({ error: "Only admins can delete users" }, { status: 403 })
+      }
+      // Delete all related data first (cascade should handle most, but be explicit)
+      await pool.query("DELETE FROM sessions WHERE user_id = $1", [userId])
+      await pool.query("DELETE FROM api_keys WHERE user_id = $1", [userId])
+      await pool.query("DELETE FROM scan_history WHERE user_id = $1", [userId])
+      await pool.query("DELETE FROM webhooks WHERE user_id = $1", [userId])
+      await pool.query("DELETE FROM scheduled_scans WHERE user_id = $1", [userId])
+      await pool.query("DELETE FROM user_badges WHERE user_id = $1", [userId])
+      await pool.query("DELETE FROM admin_user_notes WHERE user_id = $1", [userId])
+      await pool.query("DELETE FROM gifted_subscriptions WHERE user_id = $1", [userId])
+      await pool.query("DELETE FROM users WHERE id = $1", [userId])
+      await logAction(session.userId, userId, "delete_user", `Permanently deleted user ${targetUser.email}`, ip)
+  return NextResponse.json({ success: true })
   }
-}
+
+    case "update_name": {
+      if (!name || typeof name !== "string") {
+        return NextResponse.json({ error: "Name required" }, { status: 400 })
+      }
+      const oldName = targetUser.name || "(not set)"
+      await pool.query("UPDATE users SET name = $1 WHERE id = $2", [name.trim(), userId])
+      await logAction(session.userId, userId, "update_name", `Changed name from "${oldName}" to "${name.trim()}"`, ip)
+      
+      const [adminN, userN] = await Promise.all([getAdminName(session.userId), getUserName(userId)])
+      const emailPayloadN = adminAccountChangeEmail({
+        userName: userN,
+        adminName: adminN,
+        changes: [{ field: "Display Name", oldValue: oldName, newValue: name.trim() }],
+        timestamp: new Date(),
+        ipAddress: ip,
+      })
+      await sendNotificationIfEnabled(notifyUser, targetUser.email, emailPayloadN)
+      
+      return NextResponse.json({ success: true })
+    }
+
+    case "update_email": {
+      if (!email || typeof email !== "string") {
+        return NextResponse.json({ error: "Email required" }, { status: 400 })
+      }
+      const newEmail = email.trim().toLowerCase()
+      // Check for duplicate email
+      const existingEmail = await pool.query("SELECT id FROM users WHERE email = $1 AND id != $2", [newEmail, userId])
+      if (existingEmail.rows.length > 0) {
+        return NextResponse.json({ error: "Email already in use" }, { status: 400 })
+      }
+      const oldEmail = targetUser.email
+      await pool.query("UPDATE users SET email = $1, email_verified_at = NULL WHERE id = $2", [newEmail, userId])
+      await logAction(session.userId, userId, "update_email", `Changed email from "${oldEmail}" to "${newEmail}"`, ip)
+      
+      const adminE = await getAdminName(session.userId)
+      const emailPayloadE = adminAccountChangeEmail({
+        userName: targetUser.name || newEmail,
+        adminName: adminE,
+        changes: [{ field: "Email Address", oldValue: oldEmail, newValue: newEmail }],
+        timestamp: new Date(),
+        ipAddress: ip,
+      })
+      // Send to both old and new email
+      await Promise.all([
+        sendNotificationIfEnabled(notifyUser, oldEmail, emailPayloadE),
+        sendNotificationIfEnabled(notifyUser, newEmail, emailPayloadE),
+      ])
+      
+      return NextResponse.json({ success: true })
+    }
+
+    case "update_plan": {
+      if (!plan || typeof plan !== "string") {
+        return NextResponse.json({ error: "Plan required" }, { status: 400 })
+      }
+      const validPlansUpd = ["free", "core_supporter", "pro_supporter", "elite_supporter"]
+      if (!validPlansUpd.includes(plan)) {
+        return NextResponse.json({ error: "Invalid plan. Must be one of: " + validPlansUpd.join(", ") }, { status: 400 })
+      }
+      // Check if user has active gifted subscription
+      const activeGift = await pool.query(
+        "SELECT 1 FROM gifted_subscriptions WHERE user_id = $1 AND revoked_at IS NULL AND expires_at > NOW()",
+        [userId]
+      )
+      if (activeGift.rows.length > 0) {
+        return NextResponse.json({ error: "Cannot change plan while user has an active gifted subscription. Revoke the gift first." }, { status: 400 })
+      }
+      const oldPlan = targetUser.plan || "free"
+      await pool.query("UPDATE users SET plan = $1 WHERE id = $2", [plan, userId])
+      
+      // Award or revoke premium badge based on plan
+      const premiumBadgeUpd = await pool.query("SELECT id FROM badges WHERE name = 'premium'")
+      if (premiumBadgeUpd.rows.length > 0) {
+        const badgeIdUpd = premiumBadgeUpd.rows[0].id
+        if (plan !== "free") {
+          // Award premium badge if upgrading to a supporter plan
+          const existingBadgeUpd = await pool.query(
+            "SELECT 1 FROM user_badges WHERE user_id = $1 AND badge_id = $2",
+            [userId, badgeIdUpd]
+          )
+          if (existingBadgeUpd.rows.length === 0) {
+            await pool.query(
+              "INSERT INTO user_badges (user_id, badge_id, awarded_by, awarded_at) VALUES ($1, $2, $3, NOW())",
+              [userId, badgeIdUpd, session.userId]
+            )
+          }
+        } else {
+          // Remove premium badge when downgrading to free
+          await pool.query(
+            "DELETE FROM user_badges WHERE user_id = $1 AND badge_id = $2",
+            [userId, badgeIdUpd]
+          )
+        }
+      }
+      
+      await logAction(session.userId, userId, "update_plan", `Changed plan from "${oldPlan}" to "${plan}"`, ip)
+      
+      const [adminP, userP] = await Promise.all([getAdminName(session.userId), getUserName(userId)])
+      const emailPayloadP = adminAccountChangeEmail({
+        userName: userP,
+        adminName: adminP,
+        changes: [{ field: "Subscription Plan", oldValue: oldPlan, newValue: plan }],
+        timestamp: new Date(),
+        ipAddress: ip,
+      })
+      await sendNotificationIfEnabled(notifyUser, targetUser.email, emailPayloadP)
+      
+      return NextResponse.json({ success: true })
+    }
+  
+  default:
+  return NextResponse.json({ error: "Unknown action" }, { status: 400 })
+  }
+  }
