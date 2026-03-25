@@ -258,17 +258,6 @@ export function UserDetailPanel({
             <ArrowLeft className="h-4 w-4" />
             Back to Users
           </Button>
-          
-          {hasChanges && (
-            <Button 
-              onClick={() => setShowSaveModal(true)}
-              className="gap-2"
-              disabled={!!actionLoading}
-            >
-              {actionLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
-              Save Changes
-            </Button>
-          )}
         </div>
         
         {/* User Info Header */}
