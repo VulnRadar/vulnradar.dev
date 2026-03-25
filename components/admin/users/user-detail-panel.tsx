@@ -15,6 +15,7 @@ import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog"
 import { cn } from "@/lib/utils"
 import { ROLE_BADGE_STYLES, PLAN_BADGE_STYLES } from "@/lib/constants"
 import { SaveConfirmationModal, type ChangeItem, type AffectedUser } from "@/components/save-confirmation-modal"
@@ -135,6 +136,11 @@ export function UserDetailPanel({
   const [pendingNote, setPendingNote] = useState("")
   const [editingNote, setEditingNote] = useState<AdminNote | null>(null)
   const [editNoteText, setEditNoteText] = useState("")
+  
+  // Gift subscription dialog state
+  const [showGiftDialog, setShowGiftDialog] = useState(false)
+  const [giftPlan, setGiftPlan] = useState<string>("pro_supporter")
+  const [giftDuration, setGiftDuration] = useState<string>("30")
   
   // Support action modal state
   const [pendingSupportAction, setPendingSupportAction] = useState<{
@@ -888,14 +894,7 @@ export function UserDetailPanel({
                     icon={Gift}
                     label="Gift a Subscription"
                     description="Grant temporary premium access"
-                    onClick={() => {
-                      const endDate = new Date()
-                      endDate.setDate(endDate.getDate() + 30)
-                      queueSupportAction("gift_subscription", "Gift Subscription", `Gift a pro supporter subscription to ${u.email} for 30 days.`, { 
-                        giftPlan: "pro_supporter", 
-                        giftEndDate: endDate.toISOString() 
-                      })
-                    }}
+                    onClick={() => setShowGiftDialog(true)}
                     loading={isLoading("gift_subscription")}
                     variant="warning"
                   />
@@ -1018,6 +1017,67 @@ export function UserDetailPanel({
           </div>
         </div>
       )}
+      
+      {/* Gift Subscription Dialog */}
+      <AlertDialog open={showGiftDialog} onOpenChange={setShowGiftDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Gift a Subscription</AlertDialogTitle>
+            <AlertDialogDescription>
+              Grant temporary premium access to {u.email}. Select the plan and duration below.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Plan</label>
+              <Select value={giftPlan} onValueChange={setGiftPlan}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="core_supporter">Core Supporter</SelectItem>
+                  <SelectItem value="pro_supporter">Pro Supporter</SelectItem>
+                  <SelectItem value="elite_supporter">Elite Supporter</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Duration</label>
+              <Select value={giftDuration} onValueChange={setGiftDuration}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="7">7 Days</SelectItem>
+                  <SelectItem value="14">14 Days</SelectItem>
+                  <SelectItem value="30">30 Days</SelectItem>
+                  <SelectItem value="60">60 Days</SelectItem>
+                  <SelectItem value="90">90 Days</SelectItem>
+                  <SelectItem value="180">180 Days</SelectItem>
+                  <SelectItem value="365">1 Year</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={() => {
+              const endDate = new Date()
+              endDate.setDate(endDate.getDate() + parseInt(giftDuration))
+              const planLabel = giftPlan.replace("_", " ").replace(/\b\w/g, l => l.toUpperCase())
+              setShowGiftDialog(false)
+              queueSupportAction(
+                "gift_subscription",
+                "Gift Subscription",
+                `Gift ${planLabel} plan to ${u.email} for ${giftDuration} days (expires ${endDate.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}).`,
+                { giftPlan, giftEndDate: endDate.toISOString() }
+              )
+            }}>
+              Continue
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       
       {/* Support Action Confirmation Modal */}
       {pendingSupportAction && (
