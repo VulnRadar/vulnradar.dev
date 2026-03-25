@@ -14,7 +14,6 @@ import {
   getAvailableActions,
   STAFF_PERMISSIONS,
 } from "@/lib/permissions-client"
-import { NotificationsManager } from "@/components/admin/notifications-manager"
 import { SaveConfirmationModal, type ChangeItem, type AffectedUser } from "@/components/save-confirmation-modal"
 
 // New modular components
