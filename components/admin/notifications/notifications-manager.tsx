@@ -4,24 +4,8 @@ import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
-import { Switch } from "@/components/ui/switch"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog"
 import {
   Bell,
   Plus,
@@ -39,6 +23,8 @@ import {
   Clock,
   Users,
   Layers,
+  ChevronRight,
+  X,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
@@ -104,6 +90,11 @@ export function NotificationsManager() {
   const [editingNotification, setEditingNotification] = useState<AdminNotification | null>(null)
   const [isCreating, setIsCreating] = useState(false)
   const [saving, setSaving] = useState(false)
+  
+  // Modal dropdown states
+  const [showTypeModal, setShowTypeModal] = useState(false)
+  const [showVariantModal, setShowVariantModal] = useState(false)
+  const [showAudienceModal, setShowAudienceModal] = useState(false)
 
   const [formData, setFormData] = useState({
     title: "",
@@ -362,175 +353,212 @@ export function NotificationsManager() {
         </div>
       )}
 
-      {/* Create / Edit Dialog */}
-      <Dialog open={isCreating} onOpenChange={(open) => !open && closeDialog()} modal={true}>
-        <DialogContent className="w-full max-w-2xl max-h-[95dvh] sm:max-h-[85vh] overflow-y-auto gap-0 p-0 rounded-xl">
-          {/* Dialog header with variant color stripe */}
-          <div className={cn("px-5 py-4 border-b border-border rounded-t-xl", activeVariant.bg)}>
-            <DialogHeader>
-              <DialogTitle className={cn("flex items-center gap-2 text-base", activeVariant.text)}>
-                <activeVariant.icon className="h-5 w-5" />
-                {editingNotification ? "Edit Notification" : "Create Notification"}
-              </DialogTitle>
-              <DialogDescription className="sr-only">
-                {editingNotification ? "Edit an existing notification" : "Create a new site-wide notification"}
-              </DialogDescription>
-            </DialogHeader>
-          </div>
-
-          <div className="p-4 sm:p-6 space-y-5">
-            {/* Content */}
-            <div>
-              <SectionHeader icon={Megaphone} label="Content" />
-              <div className="space-y-3 p-4 rounded-xl border border-border bg-muted/20">
-                <div className="space-y-1.5">
-                  <Label htmlFor="title" className="text-xs font-medium">Title</Label>
-                  <Input id="title" value={formData.title} onChange={(e) => set({ title: e.target.value })} placeholder="Notification title" className="bg-background h-9" />
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="message" className="text-xs font-medium">Message</Label>
-                  <Textarea id="message" value={formData.message} onChange={(e) => set({ message: e.target.value })} placeholder="Notification message…" rows={3} className="bg-background resize-none" />
-                </div>
+      {/* Create / Edit Modal - Fixed positioning */}
+      {isCreating && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" onClick={() => !saving && closeDialog()}>
+          <div className="bg-card border border-border rounded-xl w-full max-w-2xl max-h-[95dvh] sm:max-h-[85vh] overflow-y-auto shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            {/* Modal header with variant color stripe */}
+            <div className={cn("px-5 py-4 border-b border-border rounded-t-xl flex items-center justify-between", activeVariant.bg)}>
+              <div className="flex items-center gap-2">
+                <activeVariant.icon className={cn("h-5 w-5", activeVariant.text)} />
+                <h2 className={cn("text-base font-semibold", activeVariant.text)}>
+                  {editingNotification ? "Edit Notification" : "Create Notification"}
+                </h2>
               </div>
+              <button onClick={closeDialog} disabled={saving} className="p-1 rounded hover:bg-muted disabled:opacity-50">
+                <X className="h-4 w-4" />
+              </button>
             </div>
 
-            {/* Display */}
-            <div>
-              <SectionHeader icon={Layers} label="Display" />
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-4 rounded-xl border border-border bg-muted/20">
-                <div className="space-y-1.5">
-                  <Label className="text-xs font-medium">Type</Label>
-                  <Select value={formData.type} onValueChange={(v) => set({ type: v as AdminNotification["type"] })}>
-                    <SelectTrigger className="bg-background h-10"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="bell">Bell Notification</SelectItem>
-                      <SelectItem value="banner">Banner</SelectItem>
-                      <SelectItem value="modal">Modal</SelectItem>
-                      <SelectItem value="toast">Toast</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-1.5">
-                  <Label className="text-xs font-medium">Variant</Label>
-                  <Select value={formData.variant} onValueChange={(v) => set({ variant: v as AdminNotification["variant"] })}>
-                    <SelectTrigger className={cn("h-10 font-medium border", activeVariant.bg, activeVariant.text, activeVariant.border)}>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {(Object.entries(VARIANT_CONFIG) as [AdminNotification["variant"], typeof VARIANT_CONFIG.info][]).map(([key, cfg]) => (
-                        <SelectItem key={key} value={key}>
-                          <div className="flex items-center gap-2">
-                            <cfg.icon className={cn("h-3.5 w-3.5", cfg.text)} />
-                            {cfg.label}
-                          </div>
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+            <div className="p-4 sm:p-6 space-y-5">
+              {/* Content */}
+              <div>
+                <SectionHeader icon={Megaphone} label="Content" />
+                <div className="space-y-3 p-4 rounded-xl border border-border bg-muted/20">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-medium">Title</Label>
+                    <Input value={formData.title} onChange={(e) => set({ title: e.target.value })} placeholder="Notification title" className="bg-background h-9" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-medium">Message</Label>
+                    <Textarea value={formData.message} onChange={(e) => set({ message: e.target.value })} placeholder="Notification message…" rows={3} className="bg-background resize-none" />
+                  </div>
                 </div>
               </div>
-            </div>
 
-            {/* Targeting */}
-            <div>
-              <SectionHeader icon={Users} label="Targeting" />
-              <div className="space-y-3 p-4 rounded-xl border border-border bg-muted/20">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {/* Display */}
+              <div>
+                <SectionHeader icon={Layers} label="Display" />
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-4 rounded-xl border border-border bg-muted/20">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-medium">Type</Label>
+                    <Button 
+                      variant="outline" 
+                      className="h-10 w-full justify-between"
+                      onClick={() => setShowTypeModal(true)}
+                    >
+                      <span>{TYPE_CONFIG[formData.type].label}</span>
+                      <ChevronRight className="h-4 w-4 opacity-50" />
+                    </Button>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-medium">Variant</Label>
+                    <Button 
+                      variant="outline" 
+                      className={cn("h-10 w-full justify-between font-medium border", activeVariant.bg, activeVariant.text, activeVariant.border)}
+                      onClick={() => setShowVariantModal(true)}
+                    >
+                      <span>{activeVariant.label}</span>
+                      <ChevronRight className="h-4 w-4 opacity-50" />
+                    </Button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Targeting */}
+              <div>
+                <SectionHeader icon={Users} label="Targeting" />
+                <div className="space-y-3 p-4 rounded-xl border border-border bg-muted/20">
                   <div className="space-y-1.5">
                     <Label className="text-xs font-medium">Audience</Label>
-                    <Select value={formData.audience} onValueChange={(v) => set({ audience: v as AdminNotification["audience"] })}>
-                      <SelectTrigger className="bg-background h-10"><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">Everyone</SelectItem>
-                        <SelectItem value="authenticated">Logged In Users</SelectItem>
-                        <SelectItem value="unauthenticated">Guests Only</SelectItem>
-                        <SelectItem value="admin">Admins Only</SelectItem>
-                        <SelectItem value="staff">Staff Only</SelectItem>
-                      </SelectContent>
-                    </Select>
+                    <Button 
+                      variant="outline" 
+                      className="h-10 w-full justify-between"
+                      onClick={() => setShowAudienceModal(true)}
+                    >
+                      <span>{AUDIENCE_LABELS[formData.audience]}</span>
+                      <ChevronRight className="h-4 w-4 opacity-50" />
+                    </Button>
                   </div>
                   <div className="space-y-1.5">
-                    <Label htmlFor="priority" className="text-xs font-medium">Priority</Label>
-                    <Input id="priority" type="number" value={formData.priority} onChange={(e) => set({ priority: e.target.value })} placeholder="0 = default" className="bg-background h-10" />
+                    <Label className="text-xs font-medium">Path Pattern (optional)</Label>
+                    <Input value={formData.path_pattern} onChange={(e) => set({ path_pattern: e.target.value })} placeholder="/admin/*, /dashboard" className="bg-background h-9 text-xs" />
                   </div>
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="path_pattern" className="text-xs font-medium">Page Filter <span className="text-muted-foreground font-normal">(optional)</span></Label>
-                  <Input id="path_pattern" value={formData.path_pattern} onChange={(e) => set({ path_pattern: e.target.value })} placeholder="/dashboard* — leave empty for all pages" className="bg-background h-10" />
                 </div>
               </div>
-            </div>
 
-            {/* Scheduling */}
-            <div>
-              <SectionHeader icon={Clock} label="Scheduling & Behavior" />
-              <div className="space-y-4 p-4 rounded-xl border border-border bg-muted/20">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div className="space-y-1.5">
-                    <Label htmlFor="starts_at" className="text-xs font-medium">Starts At</Label>
-                    <Input id="starts_at" type="datetime-local" value={formData.starts_at} onChange={(e) => set({ starts_at: e.target.value })} className="bg-background h-10" />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label htmlFor="ends_at" className="text-xs font-medium">Ends At <span className="text-muted-foreground font-normal">(optional)</span></Label>
-                    <Input id="ends_at" type="datetime-local" value={formData.ends_at} onChange={(e) => set({ ends_at: e.target.value })} className="bg-background h-10" />
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="flex items-center gap-3 p-3 rounded-lg bg-background border border-border">
-                    <Switch id="is_active" checked={formData.is_active} onCheckedChange={(v) => set({ is_active: v })} />
-                    <Label htmlFor="is_active" className="text-sm cursor-pointer font-medium">Active</Label>
-                  </div>
-                  <div className="flex items-center gap-3 p-3 rounded-lg bg-background border border-border">
-                    <Switch id="is_dismissible" checked={formData.is_dismissible} onCheckedChange={(v) => set({ is_dismissible: v })} />
-                    <Label htmlFor="is_dismissible" className="text-sm cursor-pointer font-medium">Dismissible</Label>
+              {/* Scheduling */}
+              <div>
+                <SectionHeader icon={Clock} label="Scheduling" />
+                <div className="space-y-3 p-4 rounded-xl border border-border bg-muted/20">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-medium">Start Date & Time</Label>
+                      <Input type="datetime-local" value={formData.starts_at} onChange={(e) => set({ starts_at: e.target.value })} className="bg-background h-9 text-xs" />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-medium">End Date & Time (optional)</Label>
+                      <Input type="datetime-local" value={formData.ends_at} onChange={(e) => set({ ends_at: e.target.value })} className="bg-background h-9 text-xs" />
+                    </div>
                   </div>
                 </div>
-                {formData.is_dismissible && (
-                  <div className="space-y-1.5">
-                    <Label htmlFor="dismiss_duration_hours" className="text-xs font-medium">Re-show after dismiss (hours)</Label>
-                    <Input id="dismiss_duration_hours" type="number" value={formData.dismiss_duration_hours} onChange={(e) => set({ dismiss_duration_hours: e.target.value })} placeholder="Leave empty for permanent dismiss" className="bg-background h-10" />
-                  </div>
-                )}
               </div>
-            </div>
 
-            {/* Action button */}
-            <div>
-              <SectionHeader icon={ExternalLink} label="Action Button (optional)" />
-              <div className="space-y-3 p-4 rounded-xl border border-border bg-muted/20">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div className="space-y-1.5">
-                    <Label className="text-xs font-medium">Button Label</Label>
-                    <Input value={formData.action_label} onChange={(e) => set({ action_label: e.target.value })} placeholder="e.g. Learn more" className="bg-background h-10" />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label className="text-xs font-medium">URL / Path</Label>
-                    <Input value={formData.action_url} onChange={(e) => set({ action_url: e.target.value })} placeholder="https:// or /path" className="bg-background h-10" />
-                  </div>
+              {/* Behavior */}
+              <div>
+                <SectionHeader icon={Bell} label="Behavior" />
+                <div className="space-y-3 p-4 rounded-xl border border-border bg-muted/20">
+                  <label className="flex items-center gap-3 cursor-pointer group">
+                    <input type="checkbox" checked={formData.is_active} onChange={(e) => set({ is_active: e.target.checked })} className="w-4 h-4 rounded cursor-pointer" />
+                    <span className="text-xs font-medium group-hover:text-foreground text-muted-foreground transition-colors">Active</span>
+                  </label>
+                  <label className="flex items-center gap-3 cursor-pointer group">
+                    <input type="checkbox" checked={formData.is_dismissible} onChange={(e) => set({ is_dismissible: e.target.checked })} className="w-4 h-4 rounded cursor-pointer" />
+                    <span className="text-xs font-medium group-hover:text-foreground text-muted-foreground transition-colors">Dismissible</span>
+                  </label>
                 </div>
-                {formData.action_url && (
-                  <div className="flex items-center gap-3 p-3 rounded-lg bg-background border border-border w-fit">
-                    <Switch id="action_external" checked={formData.action_external} onCheckedChange={(v) => set({ action_external: v })} />
-                    <Label htmlFor="action_external" className="text-sm cursor-pointer font-medium">Open in new tab</Label>
-                  </div>
-                )}
+              </div>
+
+              {/* Actions */}
+              <div className="flex items-center gap-3 justify-end pt-4">
+                <Button variant="outline" onClick={closeDialog} disabled={saving}>
+                  Cancel
+                </Button>
+                <Button onClick={handleSave} disabled={saving || !formData.title.trim()}>
+                  {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : "Save"}
+                </Button>
               </div>
             </div>
           </div>
+        </div>
+      )}
 
-          <DialogFooter className="flex-row px-4 sm:px-6 py-4 border-t border-border bg-muted/20 rounded-b-xl gap-2">
-            <Button variant="outline" onClick={closeDialog} className="flex-1 sm:flex-none">Cancel</Button>
-            <Button
-              onClick={handleSave}
-              disabled={saving || !formData.title || !formData.message}
-              className={cn(activeVariant.bg, activeVariant.text, activeVariant.border, "border hover:opacity-90 flex-1 sm:flex-none")}
-            >
-              {saving && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
-              {editingNotification ? "Save Changes" : "Create Notification"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {/* Type Selection Modal */}
+      {showTypeModal && isCreating && (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => setShowTypeModal(false)}>
+          <div className="bg-card border border-border rounded-xl p-6 w-full max-w-sm mx-4 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-lg font-semibold text-foreground mb-4">Select Type</h3>
+            <div className="space-y-2">
+              {(Object.entries(TYPE_CONFIG) as [AdminNotification["type"], typeof TYPE_CONFIG.bell][]).map(([type, cfg]) => (
+                <button
+                  key={type}
+                  onClick={() => { set({ type }); setShowTypeModal(false) }}
+                  className={cn(
+                    "w-full text-left px-4 py-3 rounded-lg border transition-colors flex items-center gap-3",
+                    formData.type === type
+                      ? "bg-primary/10 border-primary text-primary"
+                      : "bg-muted/30 border-border hover:bg-muted/50"
+                  )}
+                >
+                  <cfg.icon className="h-4 w-4" />
+                  <span className="text-sm font-medium">{cfg.label}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Variant Selection Modal */}
+      {showVariantModal && isCreating && (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => setShowVariantModal(false)}>
+          <div className="bg-card border border-border rounded-xl p-6 w-full max-w-sm mx-4 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-lg font-semibold text-foreground mb-4">Select Variant</h3>
+            <div className="space-y-2">
+              {(Object.entries(VARIANT_CONFIG) as [AdminNotification["variant"], typeof VARIANT_CONFIG.info][]).map(([variant, cfg]) => (
+                <button
+                  key={variant}
+                  onClick={() => { set({ variant }); setShowVariantModal(false) }}
+                  className={cn(
+                    "w-full text-left px-4 py-3 rounded-lg border transition-colors flex items-center gap-3",
+                    formData.variant === variant
+                      ? cn("border", cfg.border, cfg.bg, cfg.text)
+                      : "bg-muted/30 border-border hover:bg-muted/50"
+                  )}
+                >
+                  <cfg.icon className="h-4 w-4" />
+                  <span className="text-sm font-medium">{cfg.label}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Audience Selection Modal */}
+      {showAudienceModal && isCreating && (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => setShowAudienceModal(false)}>
+          <div className="bg-card border border-border rounded-xl p-6 w-full max-w-sm mx-4 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-lg font-semibold text-foreground mb-4">Select Audience</h3>
+            <div className="space-y-2">
+              {(Object.entries(AUDIENCE_LABELS) as [AdminNotification["audience"], string][]).map(([audience, label]) => (
+                <button
+                  key={audience}
+                  onClick={() => { set({ audience }); setShowAudienceModal(false) }}
+                  className={cn(
+                    "w-full text-left px-4 py-3 rounded-lg border transition-colors",
+                    formData.audience === audience
+                      ? "bg-primary/10 border-primary text-primary"
+                      : "bg-muted/30 border-border hover:bg-muted/50"
+                  )}
+                >
+                  <p className="text-sm font-medium">{label}</p>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
