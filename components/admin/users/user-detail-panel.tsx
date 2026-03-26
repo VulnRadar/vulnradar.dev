@@ -353,8 +353,7 @@ export function UserDetailPanel({
             <div className="grid gap-6 md:grid-cols-2">
               {/* Account Information */}
               <div className="space-y-4">
-                <h3 className="text-sm font-semibold flex items-center gap-2">
-                  <User className="h-4 w-4 text-primary" />
+                <h3 className="text-sm font-semibold">
                   Account Information
                 </h3>
                 <div className="space-y-3 bg-muted/30 rounded-lg p-4 border border-border">
@@ -413,8 +412,7 @@ export function UserDetailPanel({
               
               {/* Account Stats */}
               <div className="space-y-4">
-                <h3 className="text-sm font-semibold flex items-center gap-2">
-                  <Activity className="h-4 w-4 text-primary" />
+                <h3 className="text-sm font-semibold">
                   Activity Stats
                 </h3>
                 <div className="space-y-1 bg-muted/30 rounded-lg p-4 border border-border">
@@ -978,8 +976,8 @@ export function UserDetailPanel({
           </TabsContent>
         </Tabs>
         
-        {/* Bottom spacer for floating save bar */}
-        {hasChanges && <div className="h-20" />}
+        {/* Bottom spacer for floating save bar - reduced height */}
+        {hasChanges && <div className="h-12" />}
       </CardContent>
       
       {/* Floating Save Bar - appears when there are unsaved changes */}
