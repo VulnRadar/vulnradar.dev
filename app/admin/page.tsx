@@ -9,7 +9,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Header } from "@/components/scanner/header"
 import { Footer } from "@/components/scanner/footer"
 import { API } from "@/lib/constants"
-import { NotificationsManager } from "@/components/admin/notifications-manager"
+import { NotificationsManager } from "@/components/admin/notifications/notifications-manager"
 
 // Import modular admin components
 import type {
