@@ -142,6 +142,10 @@ export function UserDetailPanel({
   const [giftPlan, setGiftPlan] = useState<string>("pro_supporter")
   const [giftDuration, setGiftDuration] = useState<string>("30")
   
+  // Role and Plan selection modals
+  const [showRoleModal, setShowRoleModal] = useState(false)
+  const [showPlanModal, setShowPlanModal] = useState(false)
+  
   // Support action modal state
   const [pendingSupportAction, setPendingSupportAction] = useState<{
     action: string
@@ -375,37 +379,28 @@ export function UserDetailPanel({
                   <div className="grid grid-cols-2 gap-3">
                     <div className="space-y-1.5">
                       <label className="text-xs text-muted-foreground">Role</label>
-                      <Select value={editedRole} onValueChange={setEditedRole}>
-                        <SelectTrigger className="h-9">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="user">User</SelectItem>
-                          <SelectItem value="support">Support</SelectItem>
-                          <SelectItem value="moderator">Moderator</SelectItem>
-                          <SelectItem value="admin">Admin</SelectItem>
-                        </SelectContent>
-                      </Select>
+                      <Button 
+                        variant="outline" 
+                        className="h-9 w-full justify-between"
+                        onClick={() => setShowRoleModal(true)}
+                      >
+                        <span className="capitalize">{editedRole}</span>
+                        <ChevronRight className="h-4 w-4 opacity-50" />
+                      </Button>
                     </div>
                     <div className="space-y-1.5">
                       <label className="text-xs text-muted-foreground">
                         Plan {u.gifted_plan && <span className="text-amber-500">(Gifted)</span>}
                       </label>
-                      <Select 
-                        value={u.gifted_plan || editedPlan} 
-                        onValueChange={setEditedPlan}
+                      <Button 
+                        variant="outline" 
+                        className="h-9 w-full justify-between"
+                        onClick={() => setShowPlanModal(true)}
                         disabled={!!u.gifted_plan}
                       >
-                        <SelectTrigger className="h-9">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="free">Free</SelectItem>
-                          <SelectItem value="core_supporter">Core Supporter</SelectItem>
-                          <SelectItem value="pro_supporter">Pro Supporter</SelectItem>
-                          <SelectItem value="elite_supporter">Elite Supporter</SelectItem>
-                        </SelectContent>
-                      </Select>
+                        <span>{formatPlanName(u.gifted_plan || editedPlan)}</span>
+                        <ChevronRight className="h-4 w-4 opacity-50" />
+                      </Button>
                       {u.gifted_plan && u.gift_end_date && (
                         <p className="text-xs text-muted-foreground">
                           Gifted until {new Date(u.gift_end_date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
@@ -1025,6 +1020,78 @@ export function UserDetailPanel({
                   Save Changes
                 </Button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+      
+      {/* Role Selection Modal */}
+      {showRoleModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => setShowRoleModal(false)}>
+          <div className="bg-card border border-border rounded-xl p-6 w-full max-w-sm mx-4 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h3 className="text-lg font-semibold text-foreground">Select Role</h3>
+                <p className="text-xs text-muted-foreground">Choose a role for {u.email}</p>
+              </div>
+              <button onClick={() => setShowRoleModal(false)} className="p-1 rounded hover:bg-muted">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="space-y-2">
+              {["user", "support", "moderator", "admin"].map((role) => (
+                <button
+                  key={role}
+                  onClick={() => {
+                    setEditedRole(role)
+                    setShowRoleModal(false)
+                  }}
+                  className={cn(
+                    "w-full text-left px-4 py-3 rounded-lg border transition-colors",
+                    editedRole === role
+                      ? "bg-primary/10 border-primary text-primary"
+                      : "bg-muted/30 border-border hover:bg-muted/50"
+                  )}
+                >
+                  <p className="text-sm font-medium capitalize">{role}</p>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+      
+      {/* Plan Selection Modal */}
+      {showPlanModal && !u.gifted_plan && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => setShowPlanModal(false)}>
+          <div className="bg-card border border-border rounded-xl p-6 w-full max-w-sm mx-4 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h3 className="text-lg font-semibold text-foreground">Select Plan</h3>
+                <p className="text-xs text-muted-foreground">Choose a plan for {u.email}</p>
+              </div>
+              <button onClick={() => setShowPlanModal(false)} className="p-1 rounded hover:bg-muted">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="space-y-2">
+              {["free", "core_supporter", "pro_supporter", "elite_supporter"].map((plan) => (
+                <button
+                  key={plan}
+                  onClick={() => {
+                    setEditedPlan(plan)
+                    setShowPlanModal(false)
+                  }}
+                  className={cn(
+                    "w-full text-left px-4 py-3 rounded-lg border transition-colors",
+                    editedPlan === plan
+                      ? "bg-primary/10 border-primary text-primary"
+                      : "bg-muted/30 border-border hover:bg-muted/50"
+                  )}
+                >
+                  <p className="text-sm font-medium">{formatPlanName(plan)}</p>
+                </button>
+              ))}
             </div>
           </div>
         </div>
