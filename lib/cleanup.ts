@@ -127,6 +127,41 @@ export async function performDatabaseCleanup(): Promise<CleanupStats> {
     )
     stats.expiredNotifications = notificationsRes.rowCount || 0
 
+    // Revoke premium badges for users whose gifted subscriptions just expired
+    // Only revoke if user doesn't have a paid plan (free plan only)
+    try {
+      const premiumBadge = await pool.query("SELECT id FROM badges WHERE name = 'premium' LIMIT 1")
+      if (premiumBadge.rows.length > 0) {
+        const badgeId = premiumBadge.rows[0].id
+        // Find users with expired gifts who are on free plan and remove their premium badge
+        const revokeResult = await pool.query(
+          `DELETE FROM user_badges 
+           WHERE badge_id = $1 
+           AND user_id IN (
+             SELECT DISTINCT gs.user_id 
+             FROM gifted_subscriptions gs
+             JOIN users u ON gs.user_id = u.id
+             WHERE gs.expires_at < NOW() 
+             AND gs.expires_at > NOW() - INTERVAL '1 day'
+             AND gs.revoked_at IS NULL
+             AND (u.plan = 'free' OR u.plan IS NULL)
+             AND NOT EXISTS (
+               SELECT 1 FROM gifted_subscriptions gs2 
+               WHERE gs2.user_id = gs.user_id 
+               AND gs2.expires_at > NOW() 
+               AND gs2.revoked_at IS NULL
+             )
+           )`,
+          [badgeId]
+        )
+        if (revokeResult.rowCount && revokeResult.rowCount > 0) {
+          console.log(`[Database Cleanup] Revoked ${revokeResult.rowCount} premium badges from users with expired gifts`)
+        }
+      }
+    } catch (badgeErr) {
+      console.error("[Database Cleanup] Error revoking badges for expired gifts:", badgeErr)
+    }
+
     // Delete expired gifted subscriptions that ended more than 90 days ago
     const giftedSubsRes = await pool.query(
       "DELETE FROM gifted_subscriptions WHERE expires_at < NOW() - INTERVAL '90 days'"
