@@ -667,6 +667,23 @@ export async function PATCH(request: NextRequest) {
         "INSERT INTO gifted_subscriptions (user_id, plan, expires_at, gifted_by) VALUES ($1, $2, $3, $4)",
         [userId, giftPlan, expiresAt, session.userId]
       )
+      
+      // Award premium badge if they don't already have it
+      const premiumBadgeGift = await pool.query("SELECT id FROM badges WHERE name = 'premium' LIMIT 1")
+      if (premiumBadgeGift.rows.length > 0) {
+        const badgeIdGift = premiumBadgeGift.rows[0].id
+        const existingBadgeGift = await pool.query(
+          "SELECT 1 FROM user_badges WHERE user_id = $1 AND badge_id = $2",
+          [userId, badgeIdGift]
+        )
+        if (existingBadgeGift.rows.length === 0) {
+          await pool.query(
+            "INSERT INTO user_badges (user_id, badge_id, awarded_by, awarded_at) VALUES ($1, $2, $3, NOW())",
+            [userId, badgeIdGift, session.userId]
+          )
+        }
+      }
+      
       await logAction(session.userId, userId, "gift_subscription", `Gifted ${giftPlan} plan until ${expiresAt.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}`, ip)
       return NextResponse.json({ success: true })
     }
@@ -676,6 +693,18 @@ export async function PATCH(request: NextRequest) {
         "UPDATE gifted_subscriptions SET revoked_at = NOW(), revoked_by = $2 WHERE user_id = $1 AND revoked_at IS NULL",
         [userId, session.userId]
       )
+      
+      // Revoke premium badge if user is on free plan (no paid subscription)
+      if (targetUser.plan === "free" || !targetUser.plan) {
+        const premiumBadgeRevoke = await pool.query("SELECT id FROM badges WHERE name = 'premium' LIMIT 1")
+        if (premiumBadgeRevoke.rows.length > 0) {
+          await pool.query(
+            "DELETE FROM user_badges WHERE user_id = $1 AND badge_id = $2",
+            [userId, premiumBadgeRevoke.rows[0].id]
+          )
+        }
+      }
+      
       await logAction(session.userId, userId, "revoke_gift", `Revoked gifted subscription from ${targetUser.email}`, ip)
       return NextResponse.json({ success: true })
     }
