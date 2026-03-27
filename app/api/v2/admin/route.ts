@@ -415,6 +415,24 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ success: true })
     }
 
+    case "enable": {
+      await pool.query("UPDATE users SET disabled_at = NULL WHERE id = $1", [userId])
+      await logAction(session.userId, userId, "enable_user", `Re-enabled account for ${targetUser.email}`, ip)
+      
+      // Send email notification
+      const [adminNameEn, userNameEn] = await Promise.all([getAdminName(session.userId), getUserName(userId)])
+      const emailPayloadEn = adminAccountChangeEmail({
+        userName: userNameEn,
+        adminName: adminNameEn,
+        changes: [{ field: "Account Status", oldValue: "Disabled", newValue: "Active" }],
+        timestamp: new Date(),
+        ipAddress: ip,
+      })
+      await sendNotificationIfEnabled(notifyUser, targetUser.email, emailPayloadEn)
+      
+      return NextResponse.json({ success: true })
+    }
+
     case "delete_badge": {
       if (!badgeId) return NextResponse.json({ error: "badgeId required" }, { status: 400 })
       // First get badge info for logging
@@ -659,6 +677,38 @@ export async function PATCH(request: NextRequest) {
         [userId, session.userId]
       )
       await logAction(session.userId, userId, "revoke_gift", `Revoked gifted subscription from ${targetUser.email}`, ip)
+      return NextResponse.json({ success: true })
+    }
+
+    case "delete_account": {
+      // This permanently deletes a user account - use with caution!
+      const userEmail = targetUser.email
+      const userName = targetUser.name || userEmail
+      
+      // Delete in order respecting foreign key constraints
+      await pool.query("DELETE FROM sessions WHERE user_id = $1", [userId])
+      await pool.query("DELETE FROM api_keys WHERE user_id = $1", [userId])
+      await pool.query("DELETE FROM user_badges WHERE user_id = $1", [userId])
+      await pool.query("DELETE FROM gifted_subscriptions WHERE user_id = $1", [userId])
+      await pool.query("DELETE FROM scan_schedules WHERE user_id = $1", [userId])
+      await pool.query("DELETE FROM webhooks WHERE user_id = $1", [userId])
+      await pool.query("DELETE FROM user_notes WHERE user_id = $1", [userId])
+      await pool.query("DELETE FROM scans WHERE user_id = $1", [userId])
+      await pool.query("DELETE FROM users WHERE id = $1", [userId])
+      
+      await logAction(session.userId, userId, "delete_account", `Permanently deleted account for ${userEmail}`, ip)
+      
+      // Send final notification to user's email
+      const adminNameDel = await getAdminName(session.userId)
+      const emailPayloadDel = adminAccountChangeEmail({
+        userName: userName,
+        adminName: adminNameDel,
+        changes: [{ field: "Account", oldValue: "Active", newValue: "Permanently Deleted" }],
+        timestamp: new Date(),
+        ipAddress: ip,
+      })
+      await sendNotificationIfEnabled(notifyUser, userEmail, emailPayloadDel)
+      
       return NextResponse.json({ success: true })
     }
 
