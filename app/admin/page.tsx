@@ -976,20 +976,6 @@ function AdminContent() {
                                     <Eye className="h-4 w-4 text-muted-foreground" />
                                   </a>
                                 </Button>
-                                {hasStaffPermission(callerRole, STAFF_PERMISSIONS.VIEW_AUDIT_LOG) && (
-                                  <>
-                                    {u.disabled_at ? (
-                                      <Button variant="ghost" size="icon" className="h-8 w-8 text-emerald-500 hover:text-emerald-500 hover:bg-emerald-500/10" title="Re-enable" onClick={() => handleAction(u.id, "enable")}>
-                                        <CheckCircle2 className="h-4 w-4" />
-                                      </Button>
-                                    ) : (
-                                      <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10" title="Disable"
-                                        onClick={() => setConfirmDialog({ title: "Disable Account", description: `Suspend ${u.email}? They will be logged out and unable to sign in.`, confirmLabel: "Disable", danger: true, action: () => handleAction(u.id, "disable") })}>
-                                        <Ban className="h-4 w-4" />
-                                      </Button>
-                                    )}
-                                  </>
-                                )}
                               </div>
                             </td>
                           </tr>
