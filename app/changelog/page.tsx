@@ -96,6 +96,24 @@ interface Release {
 
 const CHANGELOG: Release[] = [
   {
+    version: "2.1.2",
+    date: "March 27, 2026",
+    title: "Admin Panel UX Improvements, Gift Subscriptions & Support Role Fixes",
+    highlights: true,
+    summary: "Major improvements to the admin panel user management including gift subscription system with plan/duration selection, fixed modal z-index issues causing header disappearance, proper support role badge coloring, and streamlined user list actions.",
+    changes: [
+      { icon: Crown, label: "Gift Subscription System", desc: "New gift subscription dialog allows admins to grant temporary premium access with selectable plan tiers (Core, Pro, Elite Supporter) and customizable durations (7 days to 1 year). Gift subscription automatically awards Premium badge to recipients.", category: "added" },
+      { icon: Tag, label: "Plan Name Formatting", desc: "Added formatPlanName() helper to properly display plan names with spaces (e.g., 'elite_supporter' displays as 'Elite Supporter'). Plan badges now show correct styling for all supporter tiers.", category: "fixed" },
+      { icon: Shield, label: "Support Role Badge Color", desc: "Fixed Support role badge which had no visible color due to CSS variable issues. Now displays proper blue styling (bg-blue-500/10 text-blue-500) matching other role badges.", category: "fixed" },
+      { icon: Layout, label: "Modal Z-Index Fixes", desc: "Replaced Select dropdowns for Role and Plan with modal dialogs using fixed positioning (z-[100]) to prevent header from disappearing when selections are open. All modals now properly layer above page content.", category: "fixed" },
+      { icon: Bell, label: "Notifications Manager Modal Fix", desc: "Moved notifications-manager to dedicated folder and replaced Dialog/Select components with fixed-position modals. Type, Variant, and Audience selections now use modal dialogs that don't cause navbar issues.", category: "fixed" },
+      { icon: Key, label: "Premium Badge Auto-Award", desc: "Gifting a subscription or changing a user's plan to any supporter tier now automatically awards the Premium badge. Downgrading to Free plan automatically removes the Premium badge.", category: "added" },
+      { icon: UserCog, label: "Update Plan/Name/Email API", desc: "Added missing update_plan, update_name, and update_email API cases to admin route. All changes now properly send email notifications and log actions. Plan changes blocked while user has active gift.", category: "added" },
+      { icon: Eye, label: "Removed Disable Button from User List", desc: "Removed the Disable/Enable (Ban) button from the users list table. Account disable functionality is now only available in the user detail panel's Actions tab for better UX.", category: "changed" },
+      { icon: CheckCircle, label: "All Actions Use Confirmation Modal", desc: "All support actions (Clear Rate Limits, Verify/Unverify Email, Clear Avatar, Toggle Beta Access) now route through the SaveConfirmationModal with required email notification instead of executing directly.", category: "changed" },
+    ],
+  },
+  {
     version: "2.1.1",
     date: "March 23, 2026",
     title: "Profile UI Redesign, Email Notifications for Scans & API Key Security Enhancement",
