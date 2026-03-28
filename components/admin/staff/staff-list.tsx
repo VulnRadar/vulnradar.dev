@@ -43,7 +43,7 @@ export function StaffList({
 
   return (
     <Card className="bg-card border-border overflow-hidden">
-      <CardContent className="p-4 sm:p-5">
+      <CardContent className="p-4 sm:p-5 pb-0">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
           <div>
             <div className="flex items-center gap-2">
@@ -58,7 +58,7 @@ export function StaffList({
           </Button>
         </div>
       </CardContent>
-      <CardContent className="p-0">
+      <div className="px-0">
         {adminsLoading ? (
           <div className="flex flex-col items-center justify-center py-16 gap-3">
             <Loader2 className="h-5 w-5 animate-spin text-primary" />
@@ -180,7 +180,7 @@ export function StaffList({
             )}
           </>
         )}
-      </CardContent>
+      </div>
     </Card>
   )
 }
