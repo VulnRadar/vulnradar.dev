@@ -6,7 +6,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Mail, Send, Eye, Trash2, RefreshCw } from "lucide-react"
+import { Mail, Send, Eye, Trash2, RefreshCw, Loader2 } from "lucide-react"
+import { cn } from "@/lib/utils"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 
 interface Broadcast {
@@ -285,8 +286,11 @@ export function MassEmailManager() {
       </Card>
 
       <Card>
-        <CardHeader>
+        <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle>Broadcasts</CardTitle>
+          <Button variant="outline" size="icon" className="h-8 w-8" onClick={fetchMessages}>
+            <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
+          </Button>
         </CardHeader>
         <CardContent>
           <div className="space-y-2">

@@ -27,6 +27,7 @@ import {
   Eye,
   Download,
   StickyNote,
+  RefreshCw,
 } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -81,9 +82,8 @@ export function AuditLog({
               <h2 className="text-lg font-semibold">Audit Log</h2>
               <p className="text-xs text-muted-foreground">All admin actions across the platform.</p>
             </div>
-            <Button variant="outline" size="sm" className="h-8 gap-1.5 text-xs" onClick={() => fetchAudit(1)}>
-              <Activity className={cn("h-3.5 w-3.5", auditPaging && "animate-spin")} />
-              Refresh
+            <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => fetchAudit(1)}>
+              <RefreshCw className={cn("h-4 w-4", auditPaging && "animate-spin")} />
             </Button>
           </div>
           
