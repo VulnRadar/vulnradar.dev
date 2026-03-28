@@ -147,6 +147,8 @@ export async function POST(req: NextRequest) {
           `SELECT 
              bm.id, 
              bm.title, 
+             bm.content,
+             bm.segment_filter,
              bm.message_type, 
              bm.status, 
              COUNT(br.id) as recipient_count,
@@ -154,7 +156,7 @@ export async function POST(req: NextRequest) {
              bm.created_at
            FROM broadcast_messages bm
            LEFT JOIN broadcast_recipients br ON bm.id = br.message_id
-           GROUP BY bm.id, bm.title, bm.message_type, bm.status, bm.created_at
+           GROUP BY bm.id, bm.title, bm.content, bm.segment_filter, bm.message_type, bm.status, bm.created_at
            ORDER BY bm.created_at DESC`
         )
         return NextResponse.json({ messages: result.rows })
