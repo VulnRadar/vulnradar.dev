@@ -29,12 +29,9 @@ import {
   Mail,
   User,
   CreditCard,
-  MailCheck,
-  MailX,
   CalendarOff,
   ImageOff,
   UserX,
-  Beaker,
   Gift,
   StickyNote,
   Send,
@@ -980,23 +977,6 @@ export function UserDetailPanel({
                 <div>
                   <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium mb-2">Account Management</p>
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-                    {!u.email_verified_at ? (
-                      <ActionCard
-                        icon={MailCheck} label="Verify Email"
-                        description="Manually verify email address"
-                        color="text-emerald-500" bg="bg-emerald-500/10"
-                        loading={isLoading("verify_email")}
-                        onClick={() => queueSupportAction("verify_email", "Verify Email", `Manually verify email address for ${u.name || u.email}`)}
-                      />
-                    ) : (
-                      <ActionCard
-                        icon={MailX} label="Unverify Email"
-                        description="Remove email verification"
-                        color="text-[hsl(var(--severity-medium))]" bg="bg-[hsl(var(--severity-medium))]/10"
-                        loading={isLoading("unverify_email")}
-                        onClick={() => queueSupportAction("unverify_email", "Unverify Email", `Remove email verification for ${u.name || u.email}`)}
-                      />
-                    )}
                     <ActionCard
                       icon={ImageOff} label="Clear Avatar"
                       description="Remove profile picture"
@@ -1004,15 +984,6 @@ export function UserDetailPanel({
                       loading={isLoading("clear_avatar")}
                       onClick={() => queueSupportAction("clear_avatar", "Clear Avatar", `Remove profile picture for ${u.name || u.email}`)}
                     />
-                    {hasStaffPermission(callerRole, STAFF_PERMISSIONS.EDIT_USER_ROLE) && (
-                      <ActionCard
-                        icon={Beaker} label="Toggle Beta Access"
-                        description="Enable/disable beta features"
-                        color="text-primary" bg="bg-primary/10"
-                        loading={isLoading("toggle_beta_access")}
-                        onClick={() => queueSupportAction("toggle_beta_access", "Toggle Beta Access", `Enable/disable beta features for ${u.name || u.email}`)}
-                      />
-                    )}
                   </div>
                 </div>
 
