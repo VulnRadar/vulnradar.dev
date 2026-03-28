@@ -425,11 +425,11 @@ function AdminContent() {
     { key: "teams" as const, label: "Teams", icon: UsersRound, description: "Team management" },
     { key: "notifications" as const, label: "Notifications", icon: Bell, description: "Admin notifications" },
     { key: "admins" as const, label: "Active Staff", icon: Shield, description: "Online staff members" },
-    { key: "audit" as const, label: "Audit Logs", icon: History, description: "Activity history" },
-    { key: "ip-rules" as const, label: "IP Rules", icon: Globe, description: "Whitelist & blacklist" },
+    { key: "ip-rules" as const, label: "Access Rules", icon: Globe, description: "IP & URL rules" },
     { key: "security-alerts" as const, label: "Security", icon: ShieldCheck, description: "Security alerts" },
     { key: "settings" as const, label: "Settings", icon: Settings, description: "System settings" },
-    { key: "broadcast" as const, label: "Broadcast", icon: Send, description: "Mass communication" },
+    { key: "broadcast" as const, label: "Broadcast", icon: Send, description: "Mass email" },
+    { key: "audit" as const, label: "Audit Logs", icon: History, description: "Activity history" },
   ]
 
   const handleTabChange = (tabKey: string) => {
@@ -460,22 +460,22 @@ function AdminContent() {
           <div className="flex flex-col lg:flex-row gap-8">
             {/* Sidebar Navigation - Desktop */}
             <aside className="lg:w-56 shrink-0">
-              {/* Mobile: Horizontal scrollable tabs */}
+              {/* Mobile: Icons only horizontal tabs */}
               <div className="lg:hidden overflow-x-auto -mx-4 px-4 pb-4">
-                <div className="flex items-center gap-1 border-b border-border min-w-max">
+                <div className="flex items-center justify-center gap-1 border-b border-border">
                   {ALL_ADMIN_TABS.map((tab) => (
                     <button
                       key={tab.key}
                       onClick={() => handleTabChange(tab.key)}
+                      title={tab.label}
                       className={cn(
-                        "flex items-center gap-2 px-3.5 py-3 text-sm font-medium transition-all whitespace-nowrap border-b-2 -mb-px",
+                        "flex items-center justify-center w-10 h-10 rounded-md transition-all",
                         activeTab === tab.key
-                          ? "border-primary text-foreground"
-                          : "border-transparent text-muted-foreground hover:text-foreground"
+                          ? "bg-primary/10 text-primary"
+                          : "text-muted-foreground hover:text-foreground hover:bg-secondary/50"
                       )}
                     >
                       <tab.icon className="h-4 w-4" />
-                      <span>{tab.label}</span>
                     </button>
                   ))}
                 </div>
