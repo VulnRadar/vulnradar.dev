@@ -99,9 +99,8 @@ export function TeamsList({
                 <h2 className="text-lg font-semibold">Team Management</h2>
                 <p className="text-xs text-muted-foreground">View and manage all platform teams</p>
               </div>
-              <Button variant="outline" size="sm" className="h-8 gap-1.5 text-xs self-start sm:self-auto" onClick={() => fetchTeams(1)}>
-                <RefreshCw className={cn("h-3.5 w-3.5", teamsLoading && "animate-spin")} />
-                Refresh
+              <Button variant="outline" size="icon" className="h-8 w-8 self-start sm:self-auto" onClick={() => fetchTeams(1)}>
+                <RefreshCw className={cn("h-4 w-4", teamsLoading && "animate-spin")} />
               </Button>
             </div>
             
