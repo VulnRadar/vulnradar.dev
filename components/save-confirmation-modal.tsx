@@ -73,6 +73,13 @@ export function SaveConfirmationModal({
   const [notifyUser, setNotifyUser] = React.useState(true)
   const [success, setSuccess] = React.useState(false)
 
+  // Reset success state when modal opens
+  React.useEffect(() => {
+    if (isOpen) {
+      setSuccess(false)
+    }
+  }, [isOpen])
+
   const handleConfirm = async () => {
     try {
       // forceNotify always sends true, otherwise use toggle state

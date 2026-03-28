@@ -304,15 +304,12 @@ function AdminContent() {
 
   async function fetchAllBadges() {
     try {
-      console.log("[v0] fetchAllBadges - fetching badges...")
       const res = await fetch(`${API.ADMIN}?section=badges`)
-      console.log("[v0] fetchAllBadges - response status:", res.status, res.ok)
       if (res.ok) {
         const data = await res.json()
-        console.log("[v0] fetchAllBadges - data received:", data)
         setAllBadges(data.badges || [])
       }
-    } catch (e) { console.log("[v0] fetchAllBadges - error:", e) }
+    } catch { /* ignore */ }
   }
 
   useEffect(() => { fetchData(1, "", true); fetchAllBadges() }, [])
