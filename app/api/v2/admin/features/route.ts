@@ -144,9 +144,18 @@ export async function POST(req: NextRequest) {
 
       if (action === "list") {
         const result = await pool.query(
-          `SELECT id, title, message_type, status, recipient_count, opened_count, created_at 
-           FROM broadcast_messages 
-           ORDER BY created_at DESC`
+          `SELECT 
+             bm.id, 
+             bm.title, 
+             bm.message_type, 
+             bm.status, 
+             COUNT(br.id) as recipient_count,
+             COUNT(CASE WHEN br.opened_at IS NOT NULL THEN 1 END) as opened_count,
+             bm.created_at
+           FROM broadcast_messages bm
+           LEFT JOIN broadcast_recipients br ON bm.id = br.message_id
+           GROUP BY bm.id, bm.title, bm.message_type, bm.status, bm.created_at
+           ORDER BY bm.created_at DESC`
         )
         return NextResponse.json({ messages: result.rows })
       }
