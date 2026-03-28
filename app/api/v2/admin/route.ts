@@ -315,7 +315,6 @@ export async function PATCH(request: NextRequest) {
         adminName,
         changes: [{ field: "Account Role", oldValue: roleLabels[oldRole] || oldRole, newValue: roleLabels[newRole] || newRole }],
         timestamp: new Date(),
-        ipAddress: ip,
       })
       await sendNotificationIfEnabled(notifyUser, targetUser.email, emailPayload)
       
@@ -355,7 +354,7 @@ export async function PATCH(request: NextRequest) {
           { field: "Password", oldValue: "Previous password", newValue: "Reset (temporary password sent)" }
         ],
         timestamp: new Date(),
-        ipAddress: ip,
+        
       })
       await sendNotificationIfEnabled(notifyUser, targetUser.email, emailPayloadPwd)
       
@@ -373,7 +372,7 @@ export async function PATCH(request: NextRequest) {
         adminName: adminNameSess,
         changes: [{ field: "Active Sessions", oldValue: "All sessions", newValue: "Revoked" }],
         timestamp: new Date(),
-        ipAddress: ip,
+        
       })
       await sendNotificationIfEnabled(notifyUser, targetUser.email, emailPayloadSess)
       
@@ -391,7 +390,7 @@ export async function PATCH(request: NextRequest) {
         adminName: adminNameKeys,
         changes: [{ field: "API Keys", oldValue: "All keys", newValue: "Revoked" }],
         timestamp: new Date(),
-        ipAddress: ip,
+        
       })
       await sendNotificationIfEnabled(notifyUser, targetUser.email, emailPayloadKeys)
       
@@ -410,7 +409,7 @@ export async function PATCH(request: NextRequest) {
         adminName: adminNameDis,
         changes: [{ field: "Account Status", oldValue: "Active", newValue: "Disabled" }],
         timestamp: new Date(),
-        ipAddress: ip,
+        
       })
       await sendNotificationIfEnabled(notifyUser, targetUser.email, emailPayloadDis)
       
@@ -429,7 +428,7 @@ export async function PATCH(request: NextRequest) {
         adminName: adminNameEn,
         changes: [{ field: "Account Status", oldValue: "Disabled", newValue: "Active" }],
         timestamp: new Date(),
-        ipAddress: ip,
+        
       })
       await sendNotificationIfEnabled(notifyUser, targetUser.email, emailPayloadEn)
       
@@ -457,7 +456,7 @@ export async function PATCH(request: NextRequest) {
           adminName,
           changes: [{ field: "Badge Awarded", oldValue: "—", newValue: badgeInfo.rows[0].display_name }],
           timestamp: new Date(),
-          ipAddress: ip,
+          
         })
         await sendNotificationIfEnabled(true, targetUser.email, emailPayload)
       }
@@ -509,7 +508,7 @@ export async function PATCH(request: NextRequest) {
         adminName,
         changes: [{ field: "Two-Factor Authentication", oldValue: "Enabled", newValue: "Disabled (Reset)" }],
         timestamp: new Date(),
-        ipAddress: ip,
+        
       })
       await sendNotificationIfEnabled(notifyUser, targetUser.email, emailPayload)
       
@@ -642,7 +641,7 @@ export async function PATCH(request: NextRequest) {
           { field: "API Keys", oldValue: "All keys", newValue: "Revoked" }
         ],
         timestamp: new Date(),
-        ipAddress: ip,
+        
       })
       await sendNotificationIfEnabled(notifyUser, targetUser.email, emailPayloadLogout)
       
@@ -789,7 +788,7 @@ export async function PATCH(request: NextRequest) {
         adminName: adminNameDel,
         changes: [{ field: "Account", oldValue: "Active", newValue: "Permanently Deleted" }],
         timestamp: new Date(),
-        ipAddress: ip,
+        
       })
       await sendNotificationIfEnabled(notifyUser, userEmail, emailPayloadDel)
       

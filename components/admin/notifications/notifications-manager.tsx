@@ -39,6 +39,7 @@ import {
   Clock,
   Users,
   Layers,
+  RefreshCw,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
@@ -244,10 +245,15 @@ export function NotificationsManager() {
         <p className="text-sm text-muted-foreground">
           {notifications.length} notification{notifications.length !== 1 ? "s" : ""} configured
         </p>
-        <Button size="sm" onClick={openCreateDialog} className="gap-1.5">
-          <Plus className="h-4 w-4" />
-          Create
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="icon" className="h-8 w-8" onClick={fetchNotifications}>
+            <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
+          </Button>
+          <Button size="sm" onClick={openCreateDialog} className="gap-1.5">
+            <Plus className="h-4 w-4" />
+            Create
+          </Button>
+        </div>
       </div>
 
       {/* List */}

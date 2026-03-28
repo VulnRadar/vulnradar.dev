@@ -1067,7 +1067,6 @@ export interface AdminChangeNotification {
   adminName: string
   changes: { field: string; oldValue: string; newValue: string }[]
   timestamp: Date
-  ipAddress?: string
 }
 
 export function adminAccountChangeEmail(input: AdminChangeNotification) {
@@ -1125,14 +1124,6 @@ export function adminAccountChangeEmail(input: AdminChangeNotification) {
             <td style="padding: 4px 0; width: 100px; color: ${COLORS.TEXT_SECONDARY};">Timestamp</td>
             <td style="padding: 4px 0; color: ${COLORS.TEXT_PRIMARY};">${escapeHtml(timestamp)}</td>
           </tr>
-          ${
-            input.ipAddress
-              ? `<tr>
-            <td style="padding: 4px 0; width: 100px; color: ${COLORS.TEXT_SECONDARY};">IP Address</td>
-            <td style="padding: 4px 0; color: ${COLORS.TEXT_PRIMARY}; font-family: monospace;">${escapeHtml(input.ipAddress)}</td>
-          </tr>`
-              : ""
-          }
         </table>
       </div>
       

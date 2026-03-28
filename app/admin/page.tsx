@@ -53,6 +53,7 @@ import {
   StickyNote,
   Send,
   MoreHorizontal,
+  RefreshCw,
 } from "lucide-react"
 import { IPRulesManager } from "@/components/admin/features/ip-rules-manager"
 import { SecurityAlertsManager } from "@/components/admin/features/security-alerts-manager"
@@ -594,14 +595,19 @@ function AdminContent() {
                       <CardTitle className="text-base font-semibold">All Users</CardTitle>
                       <Badge variant="secondary" className="text-[10px] font-medium">{stats ? Number(stats.total_users).toLocaleString() : 0}</Badge>
                     </div>
-                    <div className="relative w-full sm:w-72">
-                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-                      <Input
-                        placeholder="Search by name or email..."
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                        className="pl-9 h-9 bg-background"
-                      />
+                    <div className="flex items-center gap-2 w-full sm:w-auto">
+                      <div className="relative w-full sm:w-72">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+                        <Input
+                          placeholder="Search by name or email..."
+                          value={searchQuery}
+                          onChange={(e) => setSearchQuery(e.target.value)}
+                          className="pl-9 h-9 bg-background"
+                        />
+                      </div>
+                      <Button variant="outline" size="icon" className="h-9 w-9 shrink-0" onClick={() => fetchData(page, searchQuery)}>
+                        <RefreshCw className={cn("h-4 w-4", searchLoading && "animate-spin")} />
+                      </Button>
                     </div>
                   </div>
                 </CardHeader>
