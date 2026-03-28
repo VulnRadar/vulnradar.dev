@@ -1,118 +1,115 @@
--- IP Rules Table for Whitelisting/Blacklisting
+-- Admin Feature Tables Migration
+-- IP Rules for whitelisting and blacklisting
+
 CREATE TABLE IF NOT EXISTS ip_rules (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  ip_address INET NOT NULL,
+  id SERIAL PRIMARY KEY,
   rule_type VARCHAR(10) NOT NULL CHECK (rule_type IN ('whitelist', 'blacklist')),
-  reason TEXT,
-  created_by UUID NOT NULL REFERENCES auth.users(id),
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
+  ip_address INET NOT NULL,
+  description TEXT,
+  reason VARCHAR(100),
+  hit_count INTEGER NOT NULL DEFAULT 0,
+  last_hit_at TIMESTAMP WITH TIME ZONE,
+  created_by INTEGER NOT NULL REFERENCES users(id),
+  created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
   expires_at TIMESTAMP WITH TIME ZONE,
-  is_active BOOLEAN DEFAULT true,
-  notes TEXT,
-  hit_count INTEGER DEFAULT 0,
-  last_hit TIMESTAMP WITH TIME ZONE,
-  UNIQUE(ip_address, rule_type)
+  is_active BOOLEAN NOT NULL DEFAULT true,
+  UNIQUE(rule_type, ip_address)
 );
 
-CREATE INDEX IF NOT EXISTS idx_ip_rules_active ON ip_rules(is_active, rule_type);
-CREATE INDEX IF NOT EXISTS idx_ip_rules_ip ON ip_rules(ip_address);
-CREATE INDEX IF NOT EXISTS idx_ip_rules_expires ON ip_rules(expires_at) WHERE expires_at IS NOT NULL;
+-- Security Alerts for monitoring suspicious activity
 
--- Security Alerts Table
 CREATE TABLE IF NOT EXISTS security_alerts (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id UUID NOT NULL REFERENCES auth.users(id),
-  alert_type VARCHAR(50) NOT NULL CHECK (alert_type IN ('failed_login', 'suspicious_activity', 'unusual_location', 'multiple_ips', 'api_abuse', 'brute_force')),
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  alert_type VARCHAR(50) NOT NULL,
+  severity VARCHAR(20) NOT NULL CHECK (severity IN ('low', 'medium', 'high', 'critical')),
   description TEXT NOT NULL,
-  severity VARCHAR(10) NOT NULL CHECK (severity IN ('low', 'medium', 'high', 'critical')),
+  details JSONB,
   ip_address INET,
   user_agent TEXT,
-  location_data JSONB,
-  is_resolved BOOLEAN DEFAULT false,
-  resolved_by UUID REFERENCES auth.users(id),
   resolved_at TIMESTAMP WITH TIME ZONE,
-  action_taken TEXT,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
-  metadata JSONB DEFAULT '{}'
+  resolved_by INTEGER REFERENCES users(id),
+  created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+  action_taken VARCHAR(100)
 );
 
-CREATE INDEX IF NOT EXISTS idx_security_alerts_user ON security_alerts(user_id, is_resolved);
+CREATE INDEX IF NOT EXISTS idx_security_alerts_user ON security_alerts(user_id);
 CREATE INDEX IF NOT EXISTS idx_security_alerts_severity ON security_alerts(severity);
-CREATE INDEX IF NOT EXISTS idx_security_alerts_created ON security_alerts(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_security_alerts_created_at ON security_alerts(created_at DESC);
 
--- System Settings Table
+-- System Settings
+
 CREATE TABLE IF NOT EXISTS system_settings (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  setting_key VARCHAR(100) NOT NULL UNIQUE,
-  setting_value JSONB NOT NULL,
+  id SERIAL PRIMARY KEY,
+  key VARCHAR(100) NOT NULL UNIQUE,
+  value TEXT NOT NULL,
   description TEXT,
-  updated_by UUID NOT NULL REFERENCES auth.users(id),
-  updated_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
-  updated_at_prev TIMESTAMP WITH TIME ZONE
+  setting_type VARCHAR(50) DEFAULT 'string',
+  updated_by INTEGER REFERENCES users(id),
+  updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX IF NOT EXISTS idx_system_settings_key ON system_settings(setting_key);
+-- Broadcast Messages for mass communication
 
--- Broadcast Messages Table
 CREATE TABLE IF NOT EXISTS broadcast_messages (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  id SERIAL PRIMARY KEY,
   title VARCHAR(255) NOT NULL,
   content TEXT NOT NULL,
-  message_type VARCHAR(20) NOT NULL CHECK (message_type IN ('email', 'in_app', 'both')),
-  target_segment VARCHAR(50) NOT NULL CHECK (target_segment IN ('all', 'free', 'trial', 'paid', 'staff', 'custom')),
-  custom_filter JSONB,
-  status VARCHAR(20) NOT NULL CHECK (status IN ('draft', 'scheduled', 'sent', 'failed', 'cancelled')) DEFAULT 'draft',
-  created_by UUID NOT NULL REFERENCES auth.users(id),
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
-  scheduled_for TIMESTAMP WITH TIME ZONE,
+  message_type VARCHAR(50) NOT NULL CHECK (message_type IN ('email', 'in_app', 'announcement')),
+  segment_filter JSONB,
+  scheduled_at TIMESTAMP WITH TIME ZONE,
   sent_at TIMESTAMP WITH TIME ZONE,
-  recipient_count INTEGER,
-  opened_count INTEGER DEFAULT 0,
-  clicked_count INTEGER DEFAULT 0,
-  failed_count INTEGER DEFAULT 0,
-  metadata JSONB DEFAULT '{}'
+  created_by INTEGER NOT NULL REFERENCES users(id),
+  created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+  status VARCHAR(50) DEFAULT 'draft' CHECK (status IN ('draft', 'scheduled', 'sent', 'cancelled'))
 );
 
-CREATE INDEX IF NOT EXISTS idx_broadcast_status ON broadcast_messages(status);
-CREATE INDEX IF NOT EXISTS idx_broadcast_created ON broadcast_messages(created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_broadcast_scheduled ON broadcast_messages(scheduled_for) WHERE scheduled_for IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_broadcast_messages_status ON broadcast_messages(status);
+CREATE INDEX IF NOT EXISTS idx_broadcast_messages_created_at ON broadcast_messages(created_at DESC);
 
--- Broadcast Recipients Log (for tracking)
+-- Broadcast Recipients tracking
+
 CREATE TABLE IF NOT EXISTS broadcast_recipients (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  broadcast_id UUID NOT NULL REFERENCES broadcast_messages(id) ON DELETE CASCADE,
-  user_id UUID NOT NULL REFERENCES auth.users(id),
-  sent_at TIMESTAMP WITH TIME ZONE,
+  id SERIAL PRIMARY KEY,
+  message_id INTEGER NOT NULL REFERENCES broadcast_messages(id) ON DELETE CASCADE,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   opened_at TIMESTAMP WITH TIME ZONE,
   clicked_at TIMESTAMP WITH TIME ZONE,
-  failed_reason TEXT,
-  metadata JSONB DEFAULT '{}'
+  status VARCHAR(50) DEFAULT 'pending' CHECK (status IN ('pending', 'sent', 'failed', 'opened', 'clicked')),
+  created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX IF NOT EXISTS idx_broadcast_recipients_broadcast ON broadcast_recipients(broadcast_id);
+CREATE INDEX IF NOT EXISTS idx_broadcast_recipients_message ON broadcast_recipients(message_id);
 CREATE INDEX IF NOT EXISTS idx_broadcast_recipients_user ON broadcast_recipients(user_id);
 
--- Password Rotation Policy Table
+-- Password Rotation Policies
+
 CREATE TABLE IF NOT EXISTS password_rotation_policies (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  id SERIAL PRIMARY KEY,
   policy_name VARCHAR(100) NOT NULL UNIQUE,
-  days_until_expiry INTEGER NOT NULL DEFAULT 90,
-  days_warning INTEGER NOT NULL DEFAULT 14,
-  is_active BOOLEAN DEFAULT true,
-  apply_to_all_users BOOLEAN DEFAULT false,
-  created_by UUID NOT NULL REFERENCES auth.users(id),
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
-  updated_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+  rotation_days INTEGER NOT NULL CHECK (rotation_days > 0),
+  grace_period_days INTEGER NOT NULL DEFAULT 7 CHECK (grace_period_days >= 0),
+  enforce_complexity BOOLEAN NOT NULL DEFAULT true,
+  minimum_length INTEGER NOT NULL DEFAULT 8,
+  require_uppercase BOOLEAN NOT NULL DEFAULT true,
+  require_numbers BOOLEAN NOT NULL DEFAULT true,
+  require_special BOOLEAN NOT NULL DEFAULT true,
+  created_by INTEGER NOT NULL REFERENCES users(id),
+  created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+  is_active BOOLEAN NOT NULL DEFAULT true
 );
 
--- User Password Change Requirements
+-- User Password Requirements tracking
+
 CREATE TABLE IF NOT EXISTS user_password_requirements (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id UUID NOT NULL UNIQUE REFERENCES auth.users(id),
-  last_password_change TIMESTAMP WITH TIME ZONE DEFAULT now(),
-  next_password_change_due TIMESTAMP WITH TIME ZONE,
-  force_change_on_next_login BOOLEAN DEFAULT false,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+  policy_id INTEGER NOT NULL REFERENCES password_rotation_policies(id),
+  last_password_change TIMESTAMP WITH TIME ZONE,
+  next_required_change TIMESTAMP WITH TIME ZONE,
+  change_reminder_sent_at TIMESTAMP WITH TIME ZONE,
+  created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX IF NOT EXISTS idx_user_password_requirements_due ON user_password_requirements(next_password_change_due) WHERE force_change_on_next_login = true;
+CREATE INDEX IF NOT EXISTS idx_user_password_requirements_policy ON user_password_requirements(policy_id);
+CREATE INDEX IF NOT EXISTS idx_user_password_requirements_next_change ON user_password_requirements(next_required_change);

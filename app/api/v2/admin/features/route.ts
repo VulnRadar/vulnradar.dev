@@ -1,0 +1,184 @@
+import { NextRequest, NextResponse } from "next/server"
+import pool from "@/lib/db"
+import { authenticateAdmin } from "@/lib/auth"
+
+/**
+ * IP Rules Management API
+ * POST /api/v2/admin/ip-rules - Create IP rule
+ * GET /api/v2/admin/ip-rules - List IP rules
+ * PATCH /api/v2/admin/ip-rules/:id - Update IP rule
+ * DELETE /api/v2/admin/ip-rules/:id - Delete IP rule
+ */
+export async function POST(req: NextRequest) {
+  try {
+    const user = await authenticateAdmin(req, ["admin"])
+    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+
+    const body = await req.json()
+    const { action, section } = body
+
+    if (section === "ip_rules") {
+      if (action === "create") {
+        const { rule_type, ip_address, description, reason, expires_at } = body
+        
+        const result = await pool.query(
+          `INSERT INTO ip_rules (rule_type, ip_address, description, reason, created_by, expires_at) 
+           VALUES ($1, $2, $3, $4, $5, $6) 
+           RETURNING id, rule_type, ip_address, description, is_active, created_at`,
+          [rule_type, ip_address, description, reason, user.id, expires_at]
+        )
+        
+        return NextResponse.json({ rule: result.rows[0], success: true })
+      }
+
+      if (action === "list") {
+        const result = await pool.query(
+          `SELECT id, rule_type, ip_address, description, reason, hit_count, is_active, created_at, expires_at 
+           FROM ip_rules 
+           WHERE is_active = true 
+           ORDER BY created_at DESC`
+        )
+        return NextResponse.json({ rules: result.rows })
+      }
+
+      if (action === "delete") {
+        const { id } = body
+        await pool.query(`UPDATE ip_rules SET is_active = false WHERE id = $1`, [id])
+        return NextResponse.json({ success: true })
+      }
+
+      if (action === "update") {
+        const { id, ...updates } = body
+        const fields = Object.keys(updates)
+          .map((k, i) => `${k} = $${i + 2}`)
+          .join(", ")
+        
+        await pool.query(
+          `UPDATE ip_rules SET ${fields} WHERE id = $1`,
+          [id, ...Object.values(updates)]
+        )
+        return NextResponse.json({ success: true })
+      }
+    }
+
+    if (section === "security_alerts") {
+      if (action === "list") {
+        const { limit = 50, offset = 0, severity, user_id } = body
+        
+        let query = `SELECT * FROM security_alerts WHERE 1=1`
+        const params: any[] = []
+        
+        if (severity) {
+          query += ` AND severity = $${params.length + 1}`
+          params.push(severity)
+        }
+        
+        if (user_id) {
+          query += ` AND user_id = $${params.length + 1}`
+          params.push(user_id)
+        }
+        
+        query += ` ORDER BY created_at DESC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`
+        params.push(limit, offset)
+        
+        const result = await pool.query(query, params)
+        return NextResponse.json({ alerts: result.rows })
+      }
+
+      if (action === "resolve") {
+        const { id, action_taken } = body
+        await pool.query(
+          `UPDATE security_alerts SET resolved_at = NOW(), resolved_by = $1, action_taken = $2 WHERE id = $3`,
+          [user.id, action_taken, id]
+        )
+        return NextResponse.json({ success: true })
+      }
+    }
+
+    if (section === "system_settings") {
+      if (action === "get") {
+        const { key } = body
+        const result = await pool.query(`SELECT value FROM system_settings WHERE key = $1`, [key])
+        return NextResponse.json({ value: result.rows[0]?.value })
+      }
+
+      if (action === "set") {
+        const { key, value, description } = body
+        await pool.query(
+          `INSERT INTO system_settings (key, value, description, updated_by) 
+           VALUES ($1, $2, $3, $4)
+           ON CONFLICT (key) DO UPDATE SET value = $2, updated_by = $4, updated_at = NOW()`,
+          [key, value, description, user.id]
+        )
+        return NextResponse.json({ success: true })
+      }
+
+      if (action === "list") {
+        const result = await pool.query(`SELECT key, value, description, updated_at FROM system_settings`)
+        return NextResponse.json({ settings: result.rows })
+      }
+    }
+
+    if (section === "broadcast") {
+      if (action === "create") {
+        const { title, content, message_type, segment_filter, scheduled_at } = body
+        
+        const result = await pool.query(
+          `INSERT INTO broadcast_messages (title, content, message_type, segment_filter, created_by, scheduled_at, status)
+           VALUES ($1, $2, $3, $4, $5, $6, $7)
+           RETURNING id, title, status, created_at`,
+          [title, content, message_type, segment_filter, user.id, scheduled_at, "draft"]
+        )
+        
+        return NextResponse.json({ message: result.rows[0], success: true })
+      }
+
+      if (action === "list") {
+        const result = await pool.query(
+          `SELECT id, title, message_type, status, recipient_count, opened_count, created_at 
+           FROM broadcast_messages 
+           ORDER BY created_at DESC`
+        )
+        return NextResponse.json({ messages: result.rows })
+      }
+
+      if (action === "send") {
+        const { id } = body
+        await pool.query(
+          `UPDATE broadcast_messages SET status = 'sent', sent_at = NOW() WHERE id = $1`,
+          [id]
+        )
+        return NextResponse.json({ success: true })
+      }
+    }
+
+    if (section === "password_policies") {
+      if (action === "list") {
+        const result = await pool.query(
+          `SELECT id, policy_name, rotation_days, grace_period_days, is_active 
+           FROM password_rotation_policies 
+           ORDER BY created_at DESC`
+        )
+        return NextResponse.json({ policies: result.rows })
+      }
+
+      if (action === "create") {
+        const { policy_name, rotation_days, grace_period_days, enforce_complexity } = body
+        
+        const result = await pool.query(
+          `INSERT INTO password_rotation_policies (policy_name, rotation_days, grace_period_days, enforce_complexity, created_by)
+           VALUES ($1, $2, $3, $4, $5)
+           RETURNING id, policy_name, rotation_days, is_active`,
+          [policy_name, rotation_days, grace_period_days, enforce_complexity, user.id]
+        )
+        
+        return NextResponse.json({ policy: result.rows[0], success: true })
+      }
+    }
+
+    return NextResponse.json({ error: "Unknown section" }, { status: 400 })
+  } catch (error) {
+    console.error("[Admin API] Error:", error)
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
+  }
+}
