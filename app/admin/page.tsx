@@ -118,6 +118,7 @@ function AdminContent() {
   const [teamsLoading, setTeamsLoading] = useState(false)
   const [teamsPage, setTeamsPage] = useState(1)
   const [teamsTotalPages, setTeamsTotalPages] = useState(1)
+  const [teamsPageSize, setTeamsPageSize] = useState(10)
   const [teamsSearch, setTeamsSearch] = useState("")
   const [editingTeam, setEditingTeam] = useState<{ id: number; name: string } | null>(null)
   const [teamMembers, setTeamMembers] = useState<{ team: { id: number; name: string; owner_email: string; owner_name: string | null }; members: { user_id: number; role: string; email: string; name: string | null; avatar_url: string | null }[] } | null>(null)
