@@ -40,6 +40,8 @@ import {
   Send,
   Webhook,
   Activity,
+  CalendarClock,
+  Save,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
@@ -1125,6 +1127,145 @@ export function UserDetailPanel({
             )}
           </CardContent>
         </Card>
+      )}
+
+      {/* Info section - Recent Scans, API Keys, Webhooks, Active Sessions */}
+      {!detailLoading && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          {/* Recent Scans */}
+          <Card className="bg-card border-border">
+            <CardHeader className="pb-0 pt-4 px-5">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Activity className="h-4 w-4 text-muted-foreground" />
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Recent Scans</p>
+                </div>
+                <Badge variant="secondary" className="text-[10px]">{detail.recentScans?.length || 0}</Badge>
+              </div>
+            </CardHeader>
+            <CardContent className="p-5 pt-3">
+              {detail.recentScans && detail.recentScans.length > 0 ? (
+                <div className="flex flex-col gap-2 max-h-64 overflow-y-auto">
+                  {detail.recentScans.map((scan) => (
+                    <div key={scan.id} className="flex items-center gap-3 p-2.5 rounded-lg bg-muted/30 border border-border">
+                      <Globe className="h-4 w-4 text-muted-foreground shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-medium text-foreground truncate">{scan.url}</p>
+                        <p className="text-[10px] text-muted-foreground">{scan.findings_count} findings via {scan.source}</p>
+                      </div>
+                      <span className="text-[10px] text-muted-foreground shrink-0">
+                        {new Date(scan.scanned_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground text-center py-4">No recent scans.</p>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* API Keys */}
+          <Card className="bg-card border-border">
+            <CardHeader className="pb-0 pt-4 px-5">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Key className="h-4 w-4 text-muted-foreground" />
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">API Keys</p>
+                </div>
+                <Badge variant="secondary" className="text-[10px]">{detail.apiKeys?.filter(k => !k.revoked_at)?.length || 0}</Badge>
+              </div>
+            </CardHeader>
+            <CardContent className="p-5 pt-3">
+              {detail.apiKeys && detail.apiKeys.filter(k => !k.revoked_at).length > 0 ? (
+                <div className="flex flex-col gap-2 max-h-64 overflow-y-auto">
+                  {detail.apiKeys.filter(k => !k.revoked_at).map((key) => (
+                    <div key={key.id} className="flex items-center gap-3 p-2.5 rounded-lg bg-muted/30 border border-border">
+                      <Key className="h-4 w-4 text-muted-foreground shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-medium text-foreground">{key.name || "Unnamed Key"}</p>
+                        <p className="text-[10px] text-muted-foreground font-mono">{key.key_prefix}...</p>
+                      </div>
+                      <span className="text-[10px] text-muted-foreground shrink-0">
+                        {key.last_used_at ? formatRelativeTime(new Date(key.last_used_at)) : "Never used"}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground text-center py-4">No API keys.</p>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Webhooks */}
+          <Card className="bg-card border-border">
+            <CardHeader className="pb-0 pt-4 px-5">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Webhook className="h-4 w-4 text-muted-foreground" />
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Webhooks</p>
+                </div>
+                <Badge variant="secondary" className="text-[10px]">{detail.webhooks?.length || 0}</Badge>
+              </div>
+            </CardHeader>
+            <CardContent className="p-5 pt-3">
+              {detail.webhooks && detail.webhooks.length > 0 ? (
+                <div className="flex flex-col gap-2 max-h-64 overflow-y-auto">
+                  {detail.webhooks.map((webhook) => (
+                    <div key={webhook.id} className="flex items-center gap-3 p-2.5 rounded-lg bg-muted/30 border border-border">
+                      <Webhook className="h-4 w-4 text-muted-foreground shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-medium text-foreground">{webhook.name}</p>
+                        <p className="text-[10px] text-muted-foreground truncate">{webhook.url}</p>
+                      </div>
+                      <Badge variant={webhook.active ? "default" : "secondary"} className="text-[9px]">
+                        {webhook.active ? "Active" : "Inactive"}
+                      </Badge>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground text-center py-4">No webhooks configured.</p>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Active Sessions */}
+          <Card className="bg-card border-border">
+            <CardHeader className="pb-0 pt-4 px-5">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Globe className="h-4 w-4 text-muted-foreground" />
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Active Sessions</p>
+                </div>
+                <Badge variant="secondary" className="text-[10px]">{detail.activeSessions?.length || 0}</Badge>
+              </div>
+            </CardHeader>
+            <CardContent className="p-5 pt-3">
+              {detail.activeSessions && detail.activeSessions.length > 0 ? (
+                <div className="flex flex-col gap-2 max-h-64 overflow-y-auto">
+                  {detail.activeSessions.map((session) => (
+                    <div key={session.id} className="flex items-center gap-3 p-2.5 rounded-lg bg-muted/30 border border-border">
+                      <Globe className="h-4 w-4 text-muted-foreground shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-medium text-foreground font-mono">{session.id.slice(0, 12)}...</p>
+                        <p className="text-[10px] text-muted-foreground truncate">
+                          {session.ip_address || "Unknown IP"} &middot; {session.user_agent?.slice(0, 40) || "Unknown device"}...
+                        </p>
+                      </div>
+                      <span className="text-[10px] text-muted-foreground shrink-0">
+                        expires {new Date(session.expires_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground text-center py-4">No active sessions.</p>
+              )}
+            </CardContent>
+          </Card>
+        </div>
       )}
 
       {/* Floating save bar */}
