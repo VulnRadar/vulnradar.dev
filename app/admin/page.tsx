@@ -808,6 +808,8 @@ function AdminContent() {
             )}
           </>
         )}
+          </div>
+        </div>
       </main>
       <Footer />
 
