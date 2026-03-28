@@ -1,8 +1,16 @@
 import { NextRequest, NextResponse } from "next/server"
 import pool from "@/lib/db"
 import { getSession } from "@/lib/auth"
+import { getClientIP } from "@/lib/rate-limit"
 import { STAFF_ROLE_HIERARCHY } from "@/lib/constants"
 import { sendEmail } from "@/lib/email"
+
+async function logAction(adminId: number, targetUserId: number | null, action: string, details?: string, ip?: string) {
+  await pool.query(
+    "INSERT INTO admin_audit_log (admin_id, target_user_id, action, details, ip_address) VALUES ($1, $2, $3, $4, $5)",
+    [adminId, targetUserId, action, details || null, ip || null],
+  )
+}
 
 async function requireAdmin() {
   const session = await getSession()
@@ -26,6 +34,7 @@ export async function POST(req: NextRequest) {
 
     const body = await req.json()
     const { action, section } = body
+    const ip = getClientIP(req)
 
     if (section === "ip_rules") {
       if (action === "create") {
@@ -140,6 +149,8 @@ export async function POST(req: NextRequest) {
           [title, content, message_type, segment_filter, user.id, scheduled_at, "draft"]
         )
         
+        await logAction(user.id, null, "broadcast_created", `Created broadcast draft: ${title}`, ip)
+        
         return NextResponse.json({ message: result.rows[0], success: true })
       }
 
@@ -170,11 +181,17 @@ export async function POST(req: NextRequest) {
           return NextResponse.json({ error: "Broadcast not found or already sent" }, { status: 404 })
         }
         
+        // Get broadcast title for audit
+        const titleResult = await pool.query(`SELECT title FROM broadcast_messages WHERE id = $1`, [id])
+        const broadcastTitle = titleResult.rows[0]?.title || "Unknown"
+        
         // Update status to sent immediately (no 'sending' state due to constraint)
         await pool.query(
           `UPDATE broadcast_messages SET status = 'sent', sent_by = $1, sent_at = NOW() WHERE id = $2`,
           [user.id, id]
         )
+        
+        await logAction(user.id, null, "broadcast_sent", `Sent broadcast: ${broadcastTitle}`, ip)
         
         // Queue background job to send emails
         setTimeout(async () => {
@@ -236,6 +253,10 @@ export async function POST(req: NextRequest) {
 
       if (action === "delete") {
         const { id } = body
+        // Get title for audit before deleting
+        const titleResult = await pool.query(`SELECT title FROM broadcast_messages WHERE id = $1`, [id])
+        const broadcastTitle = titleResult.rows[0]?.title || "Unknown"
+        
         // Only allow deleting drafts
         const result = await pool.query(
           `DELETE FROM broadcast_messages WHERE id = $1 AND status = 'draft' RETURNING id`,
@@ -244,6 +265,9 @@ export async function POST(req: NextRequest) {
         if (result.rows.length === 0) {
           return NextResponse.json({ error: "Cannot delete sent broadcasts" }, { status: 400 })
         }
+        
+        await logAction(user.id, null, "broadcast_deleted", `Deleted broadcast draft: ${broadcastTitle}`, ip)
+        
         return NextResponse.json({ success: true })
       }
 
@@ -251,16 +275,19 @@ export async function POST(req: NextRequest) {
         const { id } = body
         
         // Get message and check if it's been sent
-        const check = await pool.query(`SELECT id FROM broadcast_messages WHERE id = $1 AND status = 'sent'`, [id])
+        const check = await pool.query(`SELECT id, title FROM broadcast_messages WHERE id = $1 AND status = 'sent'`, [id])
         if (check.rows.length === 0) {
           return NextResponse.json({ error: "Can only resend sent broadcasts" }, { status: 400 })
         }
+        const broadcastTitle = check.rows[0]?.title || "Unknown"
         
         // Update sent_at and sent_by for audit trail
         await pool.query(
           `UPDATE broadcast_messages SET sent_by = $1, sent_at = NOW() WHERE id = $2`,
           [user.id, id]
         )
+        
+        await logAction(user.id, null, "broadcast_resent", `Resent broadcast: ${broadcastTitle}`, ip)
         
         // Queue background job to send emails again
         setTimeout(async () => {
