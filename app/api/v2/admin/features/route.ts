@@ -181,15 +181,18 @@ export async function POST(req: NextRequest) {
             if (!message) return
             
             let userQuery = `SELECT id, email FROM users WHERE email_verified_at IS NOT NULL`
+            const queryParams: string[] = []
             if (message.segment_filter && message.segment_filter !== "all") {
               if (message.segment_filter === "premium") {
                 userQuery += ` AND subscription_tier != 'free'`
-              } else if (message.segment_filter === "free") {
-                userQuery += ` AND subscription_tier = 'free'`
+              } else if (message.segment_filter.startsWith("email:")) {
+                const specificEmail = message.segment_filter.replace("email:", "")
+                userQuery += ` AND email = $1`
+                queryParams.push(specificEmail)
               }
             }
             
-            const usersResult = await pool.query(userQuery)
+            const usersResult = await pool.query(userQuery, queryParams)
             for (const recipient of usersResult.rows) {
               try {
                 await sendEmail({
