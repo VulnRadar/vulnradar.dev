@@ -215,6 +215,11 @@ export function UserDetailPanel({
     setConfirmEmail("")
   }
 
+  // Handle save button click - open confirmation modal
+  const handleSaveClick = () => {
+    setShowSaveModal(true)
+  }
+
   return (
     <div className="flex flex-col gap-4">
       {/* Back + header card */}
@@ -1283,7 +1288,7 @@ export function UserDetailPanel({
             </div>
             <div className="flex items-center gap-2">
               <Button variant="ghost" size="sm" onClick={discardChanges} disabled={isSaving}>Discard</Button>
-              <Button size="sm" className="gap-1.5" onClick={() => setShowSaveModal(true)} disabled={isSaving}>
+              <Button size="sm" className="gap-1.5" onClick={handleSaveClick} disabled={isSaving}>
                 {isSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
                 Save Changes
               </Button>
