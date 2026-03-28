@@ -415,7 +415,8 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ success: true })
     }
 
-    case "enable": {
+    case "enable":
+    case "enable_user": {
       await pool.query("UPDATE users SET disabled_at = NULL WHERE id = $1", [userId])
       await logAction(session.userId, userId, "enable_user", `Re-enabled account for ${targetUser.email}`, ip)
       
@@ -709,6 +710,8 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ success: true })
     }
 
+    case "delete":
+    case "delete_user":
     case "delete_account": {
       // This permanently deletes a user account - use with caution!
       const userEmail = targetUser.email
