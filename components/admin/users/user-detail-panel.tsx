@@ -1294,7 +1294,7 @@ export function UserDetailPanel({
 
       {/* Save confirmation modal */}
       <SaveConfirmationModal
-        open={showSaveModal}
+        isOpen={showSaveModal}
         onClose={() => setShowSaveModal(false)}
         onConfirm={async (notify) => {
           setNotifyUserOnSave(notify ?? true)
@@ -1312,7 +1312,7 @@ export function UserDetailPanel({
 
       {/* Support action confirmation modal */}
       <SaveConfirmationModal
-        open={!!pendingSupportAction}
+        isOpen={!!pendingSupportAction}
         onClose={() => setPendingSupportAction(null)}
         onConfirm={async (notify) => {
           await executeSupportAction(notify ?? true)
