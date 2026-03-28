@@ -1,17 +1,26 @@
 import { NextRequest, NextResponse } from "next/server"
 import pool from "@/lib/db"
-import { authenticateAdmin } from "@/lib/auth"
+import { getSession } from "@/lib/auth"
+import { STAFF_ROLE_HIERARCHY } from "@/lib/constants"
+
+async function requireAdmin() {
+  const session = await getSession()
+  if (!session) return null
+  const result = await pool.query("SELECT id, role FROM users WHERE id = $1", [session.userId])
+  const user = result.rows[0]
+  if (!user) return null
+  const role = user.role || "user"
+  if ((STAFF_ROLE_HIERARCHY[role] || 0) < (STAFF_ROLE_HIERARCHY.admin || 3)) return null
+  return { ...session, id: user.id, role }
+}
 
 /**
- * IP Rules Management API
- * POST /api/v2/admin/ip-rules - Create IP rule
- * GET /api/v2/admin/ip-rules - List IP rules
- * PATCH /api/v2/admin/ip-rules/:id - Update IP rule
- * DELETE /api/v2/admin/ip-rules/:id - Delete IP rule
+ * Admin Features API
+ * POST /api/v2/admin/features - Manage IP rules, security alerts, system settings, broadcasts, password policies
  */
 export async function POST(req: NextRequest) {
   try {
-    const user = await authenticateAdmin(req, ["admin"])
+    const user = await requireAdmin()
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
     const body = await req.json()
