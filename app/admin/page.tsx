@@ -802,8 +802,6 @@ function AdminContent() {
                 </CardContent>
               </Card>
             )}
-            </>
-          )}
             </div>
           </div>
         )}
