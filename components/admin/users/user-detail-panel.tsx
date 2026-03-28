@@ -1275,23 +1275,22 @@ export function UserDetailPanel({
 
       {/* Floating save bar */}
       {hasChanges && (
-        <div className="fixed bottom-0 left-0 right-0 z-50 p-4 bg-background/80 backdrop-blur-sm border-t border-border">
-          <div className="max-w-4xl mx-auto flex items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
-              <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center">
+        <div className="fixed bottom-0 left-0 right-0 z-50 p-4 pointer-events-none">
+          <div className="max-w-lg mx-auto pointer-events-auto">
+            <div className="flex items-center justify-between gap-4 px-4 py-3 rounded-lg bg-card border border-border shadow-lg">
+              <div className="flex items-center gap-3">
                 <Save className="h-4 w-4 text-primary" />
+                <p className="text-sm font-medium text-foreground">
+                  {modalChanges.length} unsaved change{modalChanges.length !== 1 ? "s" : ""}
+                </p>
               </div>
-              <div>
-                <p className="text-sm font-medium text-foreground">{modalChanges.length} unsaved change{modalChanges.length !== 1 ? "s" : ""}</p>
-                <p className="text-[11px] text-muted-foreground">Changes to {u.email}</p>
+              <div className="flex items-center gap-2">
+                <Button variant="ghost" size="sm" onClick={discardChanges} disabled={isSaving}>Discard</Button>
+                <Button size="sm" className="gap-1.5" onClick={handleSaveClick} disabled={isSaving}>
+                  {isSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
+                  Save Changes
+                </Button>
               </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <Button variant="ghost" size="sm" onClick={discardChanges} disabled={isSaving}>Discard</Button>
-              <Button size="sm" className="gap-1.5" onClick={handleSaveClick} disabled={isSaving}>
-                {isSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
-                Save Changes
-              </Button>
             </div>
           </div>
         </div>
