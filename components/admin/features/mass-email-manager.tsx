@@ -262,13 +262,13 @@ export function MassEmailManager() {
                   Preview
                 </Button>
               </DialogTrigger>
-              <DialogContent className="max-w-3xl max-h-[80vh] overflow-auto">
+              <DialogContent className="max-w-5xl max-h-[90vh] overflow-auto">
                 <DialogHeader>
                   <DialogTitle>Email Preview</DialogTitle>
                 </DialogHeader>
                 <iframe
                   srcDoc={generatePreviewHtml(title, content)}
-                  className="w-full h-[600px] border rounded-lg"
+                  className="w-full h-[700px] border rounded-lg"
                   title="Email Preview"
                 />
               </DialogContent>
