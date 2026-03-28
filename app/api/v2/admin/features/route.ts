@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import pool from "@/lib/db"
 import { getSession } from "@/lib/auth"
 import { STAFF_ROLE_HIERARCHY } from "@/lib/constants"
+import { sendEmail } from "@/lib/email"
 
 async function requireAdmin() {
   const session = await getSession()
@@ -164,11 +165,62 @@ export async function POST(req: NextRequest) {
 
       if (action === "send") {
         const { id } = body
+        
+        // Get the broadcast message
+        const messageResult = await pool.query(
+          `SELECT id, title, content, message_type, segment_filter FROM broadcast_messages WHERE id = $1`,
+          [id]
+        )
+        const message = messageResult.rows[0]
+        if (!message) {
+          return NextResponse.json({ error: "Broadcast message not found" }, { status: 404 })
+        }
+        
+        // Get recipient users based on segment filter
+        let userQuery = `SELECT id, email, display_name FROM users WHERE email_verified = true`
+        const queryParams: any[] = []
+        
+        if (message.segment_filter && message.segment_filter !== "all") {
+          if (message.segment_filter === "premium") {
+            userQuery += ` AND subscription_tier != 'free'`
+          } else if (message.segment_filter === "free") {
+            userQuery += ` AND subscription_tier = 'free'`
+          }
+        }
+        
+        const usersResult = await pool.query(userQuery, queryParams)
+        const users = usersResult.rows
+        
+        // Send emails to all users
+        let sentCount = 0
+        for (const recipient of users) {
+          try {
+            await sendEmail({
+              to: recipient.email,
+              subject: message.title,
+              text: message.content.replace(/<[^>]*>/g, ''),
+              html: message.content,
+              skipLayout: false
+            })
+            
+            // Record recipient
+            await pool.query(
+              `INSERT INTO broadcast_recipients (message_id, user_id, sent_at) VALUES ($1, $2, NOW())`,
+              [id, recipient.id]
+            )
+            sentCount++
+          } catch (emailError) {
+            console.error(`[Broadcast] Failed to send to ${recipient.email}:`, emailError)
+          }
+        }
+        
+        // Update broadcast status
         await pool.query(
           `UPDATE broadcast_messages SET status = 'sent', sent_at = NOW() WHERE id = $1`,
           [id]
         )
-        return NextResponse.json({ success: true })
+        
+        return NextResponse.json({ success: true, sent_count: sentCount })
       }
     }
 
