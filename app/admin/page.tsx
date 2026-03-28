@@ -359,8 +359,12 @@ function AdminContent() {
         }
         if (action === "create_badge" || action === "delete_badge") { fetchAllBadges() }
         showToast(labels[action] || "Action completed.", "success")
-        const skipRefetch = action === "award_badge" || action === "revoke_badge"
-        if (!skipRefetch) {
+        // For badge award/revoke, refresh user detail so badge list updates
+        if (action === "award_badge" || action === "revoke_badge") {
+          if (selectedUser && selectedUser.user.id === userId) {
+            await fetchUserDetail(userId)
+          }
+        } else {
           await fetchData(page)
           if (selectedUser && selectedUser.user.id === userId) {
             if (action === "delete") { setSelectedUser(null); updateUrlWithUser(null, activeTab) }

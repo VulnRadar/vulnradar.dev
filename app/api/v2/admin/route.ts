@@ -264,7 +264,9 @@ export async function PATCH(request: NextRequest) {
   if (!session) return NextResponse.json({ error: ERROR_MESSAGES.FORBIDDEN }, { status: 403 })
 
   const ip = await getClientIP()
-  const { action, userId, role: newRole, badgeId, name: badgeName, displayName, color: badgeColor, name, email, plan, giftPlan, giftEndDate, note, noteId, notifyUser } = await request.json()
+  const { action, userId, role: newRole, badgeId: rawBadgeId, name: badgeName, displayName, color: badgeColor, name, email, plan, giftPlan, giftEndDate, note, noteId, notifyUser } = await request.json()
+  // Normalize badgeId to number (client may send as string)
+  const badgeId = rawBadgeId != null ? Number(rawBadgeId) : undefined
 
   if (!userId || !action) {
     return NextResponse.json({ error: "Missing action or userId" }, { status: 400 })
@@ -432,6 +434,56 @@ export async function PATCH(request: NextRequest) {
       await sendNotificationIfEnabled(notifyUser, targetUser.email, emailPayloadEn)
       
       return NextResponse.json({ success: true })
+    }
+
+    case "award_badge": {
+      if (!badgeId) return NextResponse.json({ error: "badgeId required" }, { status: 400 })
+      const badgeInfo = await pool.query("SELECT name, display_name FROM badges WHERE id = $1", [badgeId])
+      if (badgeInfo.rows.length === 0) return NextResponse.json({ error: "Badge not found" }, { status: 404 })
+      // Check if already awarded
+      const existing = await pool.query("SELECT 1 FROM user_badges WHERE user_id = $1 AND badge_id = $2", [userId, badgeId])
+      if (existing.rows.length > 0) return NextResponse.json({ error: "Badge already awarded to this user" }, { status: 409 })
+      await pool.query(
+        "INSERT INTO user_badges (user_id, badge_id, awarded_by, awarded_at) VALUES ($1, $2, $3, NOW())",
+        [userId, badgeId, session.userId]
+      )
+      await logAction(session.userId, userId, "award_badge", `Awarded badge "${badgeInfo.rows[0].display_name}" to ${targetUser.email}`, ip)
+      
+      // Send email notification
+      if (notifyUser) {
+        const [adminName, userName] = await Promise.all([getAdminName(session.userId), getUserName(userId)])
+        const emailPayload = adminAccountChangeEmail({
+          userName,
+          adminName,
+          changes: [{ field: "Badge Awarded", oldValue: "—", newValue: badgeInfo.rows[0].display_name }],
+          timestamp: new Date(),
+          ipAddress: ip,
+        })
+        await sendNotificationIfEnabled(true, targetUser.email, emailPayload)
+      }
+      return NextResponse.json({ success: true })
+    }
+
+    case "revoke_badge": {
+      if (!badgeId) return NextResponse.json({ error: "badgeId required" }, { status: 400 })
+      const badgeInfoRevoke = await pool.query("SELECT name, display_name FROM badges WHERE id = $1", [badgeId])
+      if (badgeInfoRevoke.rows.length === 0) return NextResponse.json({ error: "Badge not found" }, { status: 404 })
+      await pool.query("DELETE FROM user_badges WHERE user_id = $1 AND badge_id = $2", [userId, badgeId])
+      await logAction(session.userId, userId, "revoke_badge", `Revoked badge "${badgeInfoRevoke.rows[0].display_name}" from ${targetUser.email}`, ip)
+      return NextResponse.json({ success: true })
+    }
+
+    case "create_badge": {
+      if (!badgeName || !displayName) return NextResponse.json({ error: "name and displayName required" }, { status: 400 })
+      // Check uniqueness
+      const dupCheck = await pool.query("SELECT 1 FROM badges WHERE name = $1", [badgeName])
+      if (dupCheck.rows.length > 0) return NextResponse.json({ error: "Badge name already exists" }, { status: 409 })
+      const newBadge = await pool.query(
+        "INSERT INTO badges (name, display_name, description, color, is_limited, created_at) VALUES ($1, $2, $3, $4, false, NOW()) RETURNING id",
+        [badgeName, displayName, "", badgeColor || "#6366f1"]
+      )
+      await logAction(session.userId, userId, "create_badge", `Created new badge "${displayName}" (${badgeName})`, ip)
+      return NextResponse.json({ success: true, badgeId: newBadge.rows[0].id })
     }
 
     case "delete_badge": {
