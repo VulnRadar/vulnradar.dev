@@ -61,7 +61,7 @@ import { Badge } from "@/components/ui/badge"
 import { Header } from "@/components/scanner/header"
 import { Footer } from "@/components/scanner/footer"
 import { cn } from "@/lib/utils"
-import { usePagination } from "@/components/ui/pagination-control"
+import { PaginationControl, usePagination } from "@/components/ui/pagination-control"
 import { STAFF_ROLES, STAFF_ROLE_LABELS, STAFF_ROLE_HIERARCHY, ROLE_BADGE_STYLES, API } from "@/lib/constants"
 import {
   hasStaffPermission,
