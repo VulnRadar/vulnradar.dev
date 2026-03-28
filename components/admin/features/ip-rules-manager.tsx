@@ -7,7 +7,8 @@ import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Plus, Trash2, RefreshCw, Globe, Network } from "lucide-react"
+import { Plus, Trash2, RefreshCw, Globe, Network, Loader2, CheckCircle2, Save, X } from "lucide-react"
+import { SaveConfirmationModal, type ChangeItem } from "@/components/save-confirmation-modal"
 import { cn } from "@/lib/utils"
 
 interface AccessRule {
@@ -26,11 +27,15 @@ interface AccessRule {
 export function IPRulesManager() {
   const [rules, setRules] = useState<AccessRule[]>([])
   const [loading, setLoading] = useState(false)
+  const [adding, setAdding] = useState(false)
   const [newValue, setNewValue] = useState("")
   const [valueType, setValueType] = useState<"ip" | "url">("ip")
   const [ruleType, setRuleType] = useState<"whitelist" | "blacklist">("blacklist")
   const [description, setDescription] = useState("")
   const [reason, setReason] = useState("")
+  const [showAddModal, setShowAddModal] = useState(false)
+  const [pendingDelete, setPendingDelete] = useState<AccessRule | null>(null)
+  const [deleting, setDeleting] = useState(false)
 
   const fetchRules = async () => {
     setLoading(true)
@@ -53,10 +58,14 @@ export function IPRulesManager() {
     fetchRules()
   }, [])
 
-  const handleAddRule = async (e: React.FormEvent) => {
+  const handleFormSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     if (!newValue) return
+    setShowAddModal(true)
+  }
 
+  const handleAddRule = async () => {
+    setAdding(true)
     try {
       const res = await fetch("/api/v2/admin/features", {
         method: "POST",
@@ -80,10 +89,14 @@ export function IPRulesManager() {
       }
     } catch (error) {
       console.error("Error adding rule:", error)
+    } finally {
+      setAdding(false)
     }
   }
 
-  const handleDeleteRule = async (id: number) => {
+  const handleDeleteRule = async () => {
+    if (!pendingDelete) return
+    setDeleting(true)
     try {
       await fetch("/api/v2/admin/features", {
         method: "POST",
@@ -91,14 +104,24 @@ export function IPRulesManager() {
         body: JSON.stringify({
           action: "delete",
           section: "ip_rules",
-          id,
+          id: pendingDelete.id,
         }),
       })
       await fetchRules()
     } catch (error) {
-      console.error("Error deleting IP rule:", error)
+      console.error("Error deleting rule:", error)
+    } finally {
+      setDeleting(false)
+      setPendingDelete(null)
     }
   }
+
+  // Build change items for add modal
+  const addChangeItems: ChangeItem[] = newValue ? [
+    { field: "value", label: valueType === "ip" ? "IP Address" : "URL/Domain", oldValue: "—", newValue },
+    { field: "rule_type", label: "Action", oldValue: "—", newValue: ruleType === "whitelist" ? "Allow (Whitelist)" : "Block (Blacklist)" },
+    ...(description ? [{ field: "description", label: "Description", oldValue: "—", newValue: description }] : []),
+  ] : []
 
   return (
     <div className="space-y-6">
@@ -109,7 +132,7 @@ export function IPRulesManager() {
           <CardDescription>Create whitelist or blacklist rules for IP addresses or URLs</CardDescription>
         </CardHeader>
         <CardContent>
-          <form onSubmit={handleAddRule} className="space-y-4">
+          <form onSubmit={handleFormSubmit} className="space-y-4">
             {/* Type Toggle */}
             <div>
               <label className="text-sm font-medium mb-2 block">Rule Target</label>
@@ -216,7 +239,7 @@ export function IPRulesManager() {
                   <Button
                     variant="ghost"
                     size="sm"
-                    onClick={() => handleDeleteRule(rule.id)}
+                    onClick={() => setPendingDelete(rule)}
                     className="text-destructive hover:text-destructive"
                   >
                     <Trash2 className="h-4 w-4" />
@@ -227,6 +250,37 @@ export function IPRulesManager() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Add Rule Confirmation Modal */}
+      <SaveConfirmationModal
+        isOpen={showAddModal}
+        onClose={() => setShowAddModal(false)}
+        onConfirm={async () => {
+          await handleAddRule()
+          setShowAddModal(false)
+        }}
+        title="Add Access Rule"
+        description={`Create a new ${ruleType} rule for ${valueType === "ip" ? "IP address" : "URL/domain"}.`}
+        changes={addChangeItems}
+        loading={adding}
+        confirmText="Add Rule"
+      />
+
+      {/* Delete Confirmation Modal */}
+      <SaveConfirmationModal
+        isOpen={!!pendingDelete}
+        onClose={() => setPendingDelete(null)}
+        onConfirm={handleDeleteRule}
+        title="Delete Access Rule"
+        description="This action cannot be undone."
+        changes={pendingDelete ? [
+          { field: "value", label: pendingDelete.value_type === "url" ? "URL/Domain" : "IP Address", oldValue: pendingDelete.ip_address, newValue: "Removed" },
+          { field: "rule_type", label: "Rule Type", oldValue: pendingDelete.rule_type, newValue: "Deleted" },
+        ] : []}
+        loading={deleting}
+        confirmText="Delete Rule"
+        variant="destructive"
+      />
     </div>
   )
 }
