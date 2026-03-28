@@ -30,6 +30,7 @@ import {
   XCircle,
   X,
   UserCog,
+  Globe,
   ChevronDown,
   Award,
   Plus,
