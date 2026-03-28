@@ -1,21 +1,40 @@
 import { NextRequest, NextResponse } from "next/server"
 import pool from "@/lib/db"
-import { authenticateAdmin } from "@/lib/auth"
+import { getSession } from "@/lib/auth"
+import { getClientIP } from "@/lib/rate-limit"
+import { STAFF_ROLE_HIERARCHY } from "@/lib/constants"
+import { sendEmail } from "@/lib/email"
+
+async function logAction(adminId: number, targetUserId: number | null, action: string, details?: string, ip?: string) {
+  await pool.query(
+    "INSERT INTO admin_audit_log (admin_id, target_user_id, action, details, ip_address) VALUES ($1, $2, $3, $4, $5)",
+    [adminId, targetUserId, action, details || null, ip || null],
+  )
+}
+
+async function requireAdmin() {
+  const session = await getSession()
+  if (!session) return null
+  const result = await pool.query("SELECT id, role FROM users WHERE id = $1", [session.userId])
+  const user = result.rows[0]
+  if (!user) return null
+  const role = user.role || "user"
+  if ((STAFF_ROLE_HIERARCHY[role] || 0) < (STAFF_ROLE_HIERARCHY.admin || 3)) return null
+  return { ...session, id: user.id, role }
+}
 
 /**
- * IP Rules Management API
- * POST /api/v2/admin/ip-rules - Create IP rule
- * GET /api/v2/admin/ip-rules - List IP rules
- * PATCH /api/v2/admin/ip-rules/:id - Update IP rule
- * DELETE /api/v2/admin/ip-rules/:id - Delete IP rule
+ * Admin Features API
+ * POST /api/v2/admin/features - Manage IP rules, security alerts, system settings, broadcasts, password policies
  */
 export async function POST(req: NextRequest) {
   try {
-    const user = await authenticateAdmin(req, ["admin"])
+    const user = await requireAdmin()
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
     const body = await req.json()
     const { action, section } = body
+    const ip = getClientIP(req)
 
     if (section === "ip_rules") {
       if (action === "create") {
@@ -130,25 +149,202 @@ export async function POST(req: NextRequest) {
           [title, content, message_type, segment_filter, user.id, scheduled_at, "draft"]
         )
         
+        await logAction(user.id, null, "broadcast_created", `Created broadcast draft: ${title}`, ip)
+        
         return NextResponse.json({ message: result.rows[0], success: true })
       }
 
       if (action === "list") {
         const result = await pool.query(
-          `SELECT id, title, message_type, status, recipient_count, opened_count, created_at 
-           FROM broadcast_messages 
-           ORDER BY created_at DESC`
+          `SELECT 
+             bm.id, 
+             bm.title,
+             bm.status,
+             bm.created_at,
+             bm.sent_at,
+             cu.name as created_by_name,
+             su.name as sent_by_name
+           FROM broadcast_messages bm
+           LEFT JOIN users cu ON bm.created_by = cu.id
+           LEFT JOIN users su ON bm.sent_by = su.id
+           ORDER BY bm.created_at DESC`
         )
         return NextResponse.json({ messages: result.rows })
       }
 
       if (action === "send") {
         const { id } = body
+        
+        // Get message first to validate it exists
+        const check = await pool.query(`SELECT id FROM broadcast_messages WHERE id = $1 AND status = 'draft'`, [id])
+        if (check.rows.length === 0) {
+          return NextResponse.json({ error: "Broadcast not found or already sent" }, { status: 404 })
+        }
+        
+        // Get broadcast title for audit
+        const titleResult = await pool.query(`SELECT title FROM broadcast_messages WHERE id = $1`, [id])
+        const broadcastTitle = titleResult.rows[0]?.title || "Unknown"
+        
+        // Update status to sent immediately (no 'sending' state due to constraint)
         await pool.query(
-          `UPDATE broadcast_messages SET status = 'sent', sent_at = NOW() WHERE id = $1`,
+          `UPDATE broadcast_messages SET status = 'sent', sent_by = $1, sent_at = NOW() WHERE id = $2`,
+          [user.id, id]
+        )
+        
+        await logAction(user.id, null, "broadcast_sent", `Sent broadcast: ${broadcastTitle}`, ip)
+        
+        // Queue background job to send emails
+        setTimeout(async () => {
+          try {
+            const messageResult = await pool.query(
+              `SELECT id, title, content, segment_filter FROM broadcast_messages WHERE id = $1`,
+              [id]
+            )
+            const message = messageResult.rows[0]
+            if (!message) return
+            
+            let userQuery = `SELECT id, email FROM users WHERE email_verified_at IS NOT NULL`
+            const queryParams: string[] = []
+            const segment = message.segment_filter?.segment || message.segment_filter
+            
+            if (segment && segment !== "all") {
+              if (segment === "premium") {
+                userQuery += ` AND subscription_tier != 'free'`
+              } else if (segment === "free") {
+                userQuery += ` AND subscription_tier = 'free'`
+              } else if (segment === "core_supporter") {
+                userQuery += ` AND subscription_tier = 'core_supporter'`
+              } else if (segment === "pro_supporter") {
+                userQuery += ` AND subscription_tier = 'pro_supporter'`
+              } else if (segment === "elite_supporter") {
+                userQuery += ` AND subscription_tier = 'elite_supporter'`
+              } else if (typeof segment === "string" && segment.startsWith("email:")) {
+                const specificEmail = segment.replace("email:", "")
+                userQuery += ` AND email = $1`
+                queryParams.push(specificEmail)
+              }
+            }
+            
+            const usersResult = await pool.query(userQuery, queryParams)
+            for (const recipient of usersResult.rows) {
+              try {
+                await sendEmail({
+                  to: recipient.email,
+                  subject: message.title,
+                  text: message.content.replace(/<[^>]*>/g, ''),
+                  html: message.content,
+                  skipLayout: false
+                })
+                await pool.query(
+                  `INSERT INTO broadcast_recipients (message_id, user_id, status) VALUES ($1, $2, 'sent')`,
+                  [id, recipient.id]
+                )
+              } catch (err) {
+                console.error(`[Broadcast] Failed to send to ${recipient.email}:`, err)
+              }
+            }
+          } catch (err) {
+            console.error("[Broadcast] Background job failed:", err)
+          }
+        }, 100)
+        
+        return NextResponse.json({ success: true, message: "Broadcast queued for sending" })
+      }
+
+      if (action === "delete") {
+        const { id } = body
+        // Get title for audit before deleting
+        const titleResult = await pool.query(`SELECT title FROM broadcast_messages WHERE id = $1`, [id])
+        const broadcastTitle = titleResult.rows[0]?.title || "Unknown"
+        
+        // Only allow deleting drafts
+        const result = await pool.query(
+          `DELETE FROM broadcast_messages WHERE id = $1 AND status = 'draft' RETURNING id`,
           [id]
         )
+        if (result.rows.length === 0) {
+          return NextResponse.json({ error: "Cannot delete sent broadcasts" }, { status: 400 })
+        }
+        
+        await logAction(user.id, null, "broadcast_deleted", `Deleted broadcast draft: ${broadcastTitle}`, ip)
+        
         return NextResponse.json({ success: true })
+      }
+
+      if (action === "resend") {
+        const { id } = body
+        
+        // Get message and check if it's been sent
+        const check = await pool.query(`SELECT id, title FROM broadcast_messages WHERE id = $1 AND status = 'sent'`, [id])
+        if (check.rows.length === 0) {
+          return NextResponse.json({ error: "Can only resend sent broadcasts" }, { status: 400 })
+        }
+        const broadcastTitle = check.rows[0]?.title || "Unknown"
+        
+        // Update sent_at and sent_by for audit trail
+        await pool.query(
+          `UPDATE broadcast_messages SET sent_by = $1, sent_at = NOW() WHERE id = $2`,
+          [user.id, id]
+        )
+        
+        await logAction(user.id, null, "broadcast_resent", `Resent broadcast: ${broadcastTitle}`, ip)
+        
+        // Queue background job to send emails again
+        setTimeout(async () => {
+          try {
+            const messageResult = await pool.query(
+              `SELECT id, title, content, segment_filter FROM broadcast_messages WHERE id = $1`,
+              [id]
+            )
+            const message = messageResult.rows[0]
+            if (!message) return
+            
+            let userQuery = `SELECT id, email FROM users WHERE email_verified_at IS NOT NULL`
+            const queryParams: string[] = []
+            const segment = message.segment_filter?.segment || message.segment_filter
+            
+            if (segment && segment !== "all") {
+              if (segment === "premium") {
+                userQuery += ` AND subscription_tier != 'free'`
+              } else if (segment === "free") {
+                userQuery += ` AND subscription_tier = 'free'`
+              } else if (segment === "core_supporter") {
+                userQuery += ` AND subscription_tier = 'core_supporter'`
+              } else if (segment === "pro_supporter") {
+                userQuery += ` AND subscription_tier = 'pro_supporter'`
+              } else if (segment === "elite_supporter") {
+                userQuery += ` AND subscription_tier = 'elite_supporter'`
+              } else if (typeof segment === "string" && segment.startsWith("email:")) {
+                const specificEmail = segment.replace("email:", "")
+                userQuery += ` AND email = $1`
+                queryParams.push(specificEmail)
+              }
+            }
+            
+            const usersResult = await pool.query(userQuery, queryParams)
+            for (const recipient of usersResult.rows) {
+              try {
+                await sendEmail({
+                  to: recipient.email,
+                  subject: message.title,
+                  text: message.content.replace(/<[^>]*>/g, ''),
+                  html: message.content,
+                  skipLayout: false
+                })
+                await pool.query(
+                  `INSERT INTO broadcast_recipients (message_id, user_id, status) VALUES ($1, $2, 'sent')`,
+                  [id, recipient.id]
+                )
+              } catch (err) {
+                console.error(`[Broadcast] Failed to send to ${recipient.email}:`, err)
+              }
+            }
+          } catch (err) {
+            console.error("[Broadcast] Background job failed:", err)
+          }
+        }, 100)
+        
+        return NextResponse.json({ success: true, message: "Broadcast resent" })
       }
     }
 

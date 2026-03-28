@@ -1,90 +1,137 @@
 "use client"
 
-import React, { useState, useEffect } from "react"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
-import { Badge } from "@/components/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Mail, Send, BarChart3, RefreshCw, Users, Loader2, CheckCircle2, Save, X } from "lucide-react"
-import { SaveConfirmationModal, type ChangeItem } from "@/components/save-confirmation-modal"
+import { Mail, Send, Eye, Trash2, RefreshCw, Loader2 } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 
-interface BroadcastMessage {
-  id: number
+interface Broadcast {
+  id: string
   title: string
-  content: string
-  message_type: string
-  status: "draft" | "scheduled" | "sent" | "cancelled"
-  recipient_count?: number
-  opened_count?: number
+  status: string
   created_at: string
   sent_at?: string
-  segment_filter?: { segment: string }
+  created_by_name?: string
+  sent_by_name?: string
 }
 
-const statusColors: Record<string, string> = {
-  draft: "bg-muted text-muted-foreground border-border",
-  scheduled: "bg-blue-500/10 text-blue-700 border-blue-500/20",
-  sent: "bg-green-500/10 text-green-700 border-green-500/20",
-  cancelled: "bg-red-500/10 text-red-700 border-red-500/20",
+const EMAIL_COLORS = {
+  BG_DARK: "#0a0e13",
+  BG_CARD: "#0f172a",
+  BORDER: "#1e293b",
+  TEXT_PRIMARY: "#f8fafc",
+  TEXT_SECONDARY: "#94a3b8",
+  TEXT_MUTED: "#64748b",
+  TEXT_DARK: "#475569",
+  ACCENT_BLUE: "#2563eb",
+  ACCENT_BLUE_LIGHT: "#3b82f6",
 }
 
-const segmentLabels: Record<string, string> = {
-  all: "All Users",
-  free: "Free Plan",
-  core_supporter: "Core Supporters",
-  pro_supporter: "Pro Supporters",
-  elite_supporter: "Elite Supporters",
-  paid: "All Paid Users",
+function generatePreviewHtml(title: string, content: string): string {
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <style>body { margin: 0; }</style>
+</head>
+<body style="margin: 0; padding: 0; background-color: ${EMAIL_COLORS.BG_DARK}; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; color: #e5e7eb;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color: ${EMAIL_COLORS.BG_DARK}; padding: 40px 20px;">
+    <tr>
+      <td align="center">
+        <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="max-width: 600px; width: 100%;">
+          <tr>
+            <td style="padding: 0 0 20px 0; text-align: center;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                <tr>
+                  <td align="center" style="padding-bottom: 12px;">
+                    <img src="https://vulnradar.dev/favicon-dark.svg" alt="VulnRadar" width="48" height="48" style="display: block; margin: 0 auto;" />
+                  </td>
+                </tr>
+                <tr>
+                  <td align="center">
+                    <h1 style="margin: 0; font-size: 24px; font-weight: 700; color: ${EMAIL_COLORS.TEXT_PRIMARY}; letter-spacing: -0.3px;">VulnRadar</h1>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding: 0 0 24px 0;">
+              <div style="height: 2px; background: linear-gradient(90deg, ${EMAIL_COLORS.ACCENT_BLUE}, ${EMAIL_COLORS.ACCENT_BLUE_LIGHT}); border-radius: 999px;"></div>
+            </td>
+          </tr>
+          <tr>
+            <td style="background-color: ${EMAIL_COLORS.BG_CARD}; border: 1px solid ${EMAIL_COLORS.BORDER}; border-radius: 12px; padding: 32px 28px;">
+              <h2 style="margin: 0 0 16px 0; font-size: 20px; font-weight: 600; color: ${EMAIL_COLORS.TEXT_PRIMARY};">${title || "Subject"}</h2>
+              <div style="font-size: 14px; color: ${EMAIL_COLORS.TEXT_SECONDARY}; line-height: 1.6;">${content || "<p>Email content will appear here...</p>"}</div>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding: 28px 20px 0 20px;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                <tr>
+                  <td style="text-align: center;">
+                    <p style="margin: 0 0 8px 0; font-size: 12px; color: ${EMAIL_COLORS.TEXT_MUTED}; line-height: 1.6;">
+                      <a href="https://vulnradar.dev" style="color: ${EMAIL_COLORS.ACCENT_BLUE_LIGHT}; text-decoration: none;">vulnradar.dev</a>
+                    </p>
+                    <p style="margin: 0; font-size: 11px; color: ${EMAIL_COLORS.TEXT_DARK}; line-height: 1.5;">
+                      VulnRadar - Web Vulnerability Scanner<br />
+                      This is an automated message. Please do not reply directly.
+                    </p>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`
 }
 
 export function MassEmailManager() {
-  const [messages, setMessages] = useState<BroadcastMessage[]>([])
+  const [messages, setMessages] = useState<Broadcast[]>([])
   const [loading, setLoading] = useState(false)
-  const [creating, setCreating] = useState(false)
-
-  // Form state
   const [title, setTitle] = useState("")
   const [content, setContent] = useState("")
-  const [targetSegment, setTargetSegment] = useState("all")
-  
-  // Modal state
-  const [showCreateModal, setShowCreateModal] = useState(false)
-  const [pendingSend, setPendingSend] = useState<BroadcastMessage | null>(null)
-  const [sending, setSending] = useState(false)
-
-  const fetchMessages = async () => {
-    setLoading(true)
-    try {
-      const res = await fetch("/api/v2/admin/features", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "list", section: "broadcast" }),
-      })
-      const data = await res.json()
-      setMessages(data.messages || [])
-    } catch (error) {
-      console.error("Error fetching messages:", error)
-    } finally {
-      setLoading(false)
-    }
-  }
+  const [segment, setSegment] = useState("all")
+  const [specificEmail, setSpecificEmail] = useState("")
+  const [previewOpen, setPreviewOpen] = useState(false)
 
   useEffect(() => {
     fetchMessages()
   }, [])
 
-  const handleFormSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!title || !content) return
-    setShowCreateModal(true)
+  async function fetchMessages() {
+    try {
+      const res = await fetch("/api/v2/admin/features", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "list", section: "broadcast" })
+      })
+      const data = await res.json()
+      setMessages(data.messages || [])
+    } catch (err) {
+      console.error("Error fetching messages:", err)
+    }
   }
 
-  const handleCreateMessage = async () => {
-    setCreating(true)
+  async function handleCreate() {
+    if (!title || !content) return
+    if (segment === "specific" && !specificEmail) return
+    setLoading(true)
     try {
+      const segmentFilter = segment === "specific" 
+        ? { segment: `email:${specificEmail}` }
+        : { segment }
+      
       const res = await fetch("/api/v2/admin/features", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -94,235 +141,217 @@ export function MassEmailManager() {
           title,
           content,
           message_type: "email",
-          segment_filter: { segment: targetSegment },
-        }),
+          segment_filter: segmentFilter
+        })
       })
-
       if (res.ok) {
         setTitle("")
         setContent("")
-        setTargetSegment("all")
-        await fetchMessages()
+        setSegment("all")
+        setSpecificEmail("")
+        fetchMessages()
       }
-    } catch (error) {
-      console.error("Error creating message:", error)
+    } catch (err) {
+      console.error("Error creating message:", err)
     } finally {
-      setCreating(false)
+      setLoading(false)
     }
   }
 
-  const handleSendMessage = async () => {
-    if (!pendingSend) return
-    setSending(true)
+  async function handleSend(id: string) {
+    setLoading(true)
     try {
       await fetch("/api/v2/admin/features", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "send",
-          section: "broadcast",
-          id: pendingSend.id,
-        }),
+        body: JSON.stringify({ action: "send", section: "broadcast", id })
       })
-      await fetchMessages()
-    } catch (error) {
-      console.error("Error sending message:", error)
+      fetchMessages()
+    } catch (err) {
+      console.error("Error sending:", err)
     } finally {
-      setSending(false)
-      setPendingSend(null)
+      setLoading(false)
     }
   }
 
-  // Build change items for create modal
-  const createChangeItems: ChangeItem[] = title ? [
-    { field: "subject", label: "Subject", oldValue: "—", newValue: title },
-    { field: "audience", label: "Target Audience", oldValue: "—", newValue: segmentLabels[targetSegment] },
-    { field: "content", label: "Content Preview", oldValue: "—", newValue: content.replace(/<[^>]*>/g, "").substring(0, 100) + "..." },
-  ] : []
+  async function handleResend(id: string) {
+    setLoading(true)
+    try {
+      await fetch("/api/v2/admin/features", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "resend", section: "broadcast", id })
+      })
+      fetchMessages()
+    } catch (err) {
+      console.error("Error resending:", err)
+    } finally {
+      setLoading(false)
+    }
+  }
 
-  const draftMessages = messages.filter((m) => m.status === "draft")
-  const sentMessages = messages.filter((m) => m.status === "sent")
+  async function handleDelete(id: string) {
+    if (!confirm("Delete this draft?")) return
+    setLoading(true)
+    try {
+      await fetch("/api/v2/admin/features", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "delete", section: "broadcast", id })
+      })
+      fetchMessages()
+    } catch (err) {
+      console.error("Error deleting:", err)
+    } finally {
+      setLoading(false)
+    }
+  }
 
   return (
     <div className="space-y-6">
-      {/* Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <Card>
-          <CardContent className="pt-6">
-            <Mail className="h-8 w-8 text-blue-500 mb-2" />
-            <div className="text-3xl font-bold">{draftMessages.length}</div>
-            <p className="text-sm text-muted-foreground mt-1">Draft Messages</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <Send className="h-8 w-8 text-green-500 mb-2" />
-            <div className="text-3xl font-bold">{sentMessages.length}</div>
-            <p className="text-sm text-muted-foreground mt-1">Sent Messages</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <BarChart3 className="h-8 w-8 text-purple-500 mb-2" />
-            <div className="text-3xl font-bold">
-              {sentMessages.reduce((acc, m) => acc + (m.opened_count || 0), 0)}
-            </div>
-            <p className="text-sm text-muted-foreground mt-1">Total Opens</p>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Create Message */}
       <Card>
         <CardHeader>
-          <CardTitle>Compose Email</CardTitle>
-          <CardDescription>Create and send email broadcasts to users</CardDescription>
+          <CardTitle className="flex items-center gap-2">
+            <Mail className="w-5 h-5" />
+            Create Broadcast
+          </CardTitle>
         </CardHeader>
-        <CardContent>
-          <form onSubmit={handleFormSubmit} className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="text-sm font-medium mb-2 block">Subject Line</label>
-                <Input
-                  placeholder="Email subject"
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value)}
-                  required
+        <CardContent className="space-y-4">
+          <Input
+            placeholder="Subject"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+          />
+          
+          <Textarea
+            placeholder="Email content (HTML supported)"
+            value={content}
+            onChange={(e) => setContent(e.target.value)}
+            className="min-h-32"
+          />
+
+          <Select value={segment} onValueChange={setSegment}>
+            <SelectTrigger>
+              <SelectValue placeholder="Recipients" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Users</SelectItem>
+              <SelectItem value="premium">All Premium Users</SelectItem>
+              <SelectItem value="free">Free Users</SelectItem>
+              <SelectItem value="core_supporter">Core Supporter</SelectItem>
+              <SelectItem value="pro_supporter">Pro Supporter</SelectItem>
+              <SelectItem value="elite_supporter">Elite Supporter</SelectItem>
+              <SelectItem value="specific">Specific Email</SelectItem>
+            </SelectContent>
+          </Select>
+
+          {segment === "specific" && (
+            <Input
+              type="email"
+              placeholder="Enter email address"
+              value={specificEmail}
+              onChange={(e) => setSpecificEmail(e.target.value)}
+            />
+          )}
+
+          <div className="flex gap-2">
+            <Dialog open={previewOpen} onOpenChange={setPreviewOpen}>
+              <DialogTrigger asChild>
+                <Button variant="outline" className="flex-1">
+                  <Eye className="w-4 h-4 mr-2" />
+                  Preview
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="max-w-3xl max-h-[80vh] overflow-auto">
+                <DialogHeader>
+                  <DialogTitle>Email Preview</DialogTitle>
+                </DialogHeader>
+                <iframe
+                  srcDoc={generatePreviewHtml(title, content)}
+                  className="w-full h-[600px] border rounded-lg"
+                  title="Email Preview"
                 />
-              </div>
-              <div>
-                <label className="text-sm font-medium mb-2 block">Target Audience</label>
-                <Select value={targetSegment} onValueChange={setTargetSegment}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Users</SelectItem>
-                    <SelectItem value="free">Free Plan Only</SelectItem>
-                    <SelectItem value="paid">All Paid Users</SelectItem>
-                    <SelectItem value="core_supporter">Core Supporters</SelectItem>
-                    <SelectItem value="pro_supporter">Pro Supporters</SelectItem>
-                    <SelectItem value="elite_supporter">Elite Supporters</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
+              </DialogContent>
+            </Dialog>
 
-            <div>
-              <label className="text-sm font-medium mb-2 block">Email Body</label>
-              <Textarea
-                placeholder="Write your email content here... You can use basic HTML for formatting."
-                value={content}
-                onChange={(e) => setContent(e.target.value)}
-                rows={8}
-                required
-                className="font-mono text-sm"
-              />
-              <p className="text-xs text-muted-foreground mt-2">
-                Tip: Use HTML tags like {"<b>"}, {"<i>"}, {"<a href='...'>"} for formatting
-              </p>
-            </div>
-
-            <Button type="submit" disabled={creating} className="w-full">
-              <Mail className="h-4 w-4 mr-2" />
-              {creating ? "Creating..." : "Create Email Draft"}
+            <Button 
+              onClick={handleCreate} 
+              disabled={loading || !title || !content || (segment === "specific" && !specificEmail)} 
+              className="flex-1"
+            >
+              Save as Draft
             </Button>
-          </form>
+          </div>
         </CardContent>
       </Card>
 
-      {/* Messages List */}
       <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <div>
-              <CardTitle>Email History</CardTitle>
-              <CardDescription>All broadcast emails</CardDescription>
-            </div>
-            <Button variant="outline" size="sm" onClick={fetchMessages} disabled={loading}>
-              <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
-            </Button>
-          </div>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <CardTitle>Broadcasts</CardTitle>
+          <Button variant="outline" size="icon" className="h-8 w-8" onClick={fetchMessages}>
+            <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
+          </Button>
         </CardHeader>
         <CardContent>
-          <div className="space-y-3">
-            {messages.length === 0 ? (
-              <p className="text-sm text-muted-foreground py-8 text-center">No emails sent yet</p>
-            ) : (
-              messages.map((message) => (
-                <div
-                  key={message.id}
-                  className="p-4 border border-border rounded-lg hover:bg-muted/50 transition-colors"
-                >
-                  <div className="flex items-start justify-between gap-4 mb-3">
-                    <div className="flex-1 min-w-0">
-                      <h3 className="font-semibold truncate">{message.title}</h3>
-                      <p className="text-sm text-muted-foreground mt-1 line-clamp-2">
-                        {message.content.replace(/<[^>]*>/g, "").substring(0, 150)}...
-                      </p>
-                    </div>
-                    <Badge className={statusColors[message.status]}>
-                      {message.status}
-                    </Badge>
-                  </div>
-                  <div className="flex items-center justify-between pt-3 border-t border-border">
-                    <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                      <span className="flex items-center gap-1">
-                        <Users className="h-3 w-3" />
-                        {segmentLabels[message.segment_filter?.segment || "all"]}
-                      </span>
-                      {message.recipient_count !== undefined && (
-                        <span>{message.recipient_count} recipients</span>
-                      )}
-                      <span>{new Date(message.created_at).toLocaleDateString()}</span>
-                    </div>
-                    {message.status === "draft" && (
+          <div className="space-y-2">
+            {messages.length === 0 && (
+              <p className="text-sm text-muted-foreground text-center py-4">No broadcasts yet</p>
+            )}
+            {messages.map((msg) => (
+              <div key={msg.id} className="flex items-center justify-between p-3 border rounded-lg">
+                <div className="flex-1">
+                  <p className="font-medium">{msg.title}</p>
+                  <p className="text-sm text-muted-foreground">
+                    Created by {msg.created_by_name || "Unknown"} - {new Date(msg.created_at).toLocaleDateString()}
+                  </p>
+                  {msg.status === "sent" && (
+                    <p className="text-sm text-muted-foreground">
+                      {msg.sent_by_name ? `Last sent by ${msg.sent_by_name}` : "Sent"} - {msg.sent_at ? new Date(msg.sent_at).toLocaleString() : ""}
+                    </p>
+                  )}
+                  <span className={`text-xs px-2 py-1 rounded mt-1 inline-block ${msg.status === "sent" ? "bg-green-500/20 text-green-400" : "bg-secondary"}`}>
+                    {msg.status}
+                  </span>
+                </div>
+
+                <div className="flex gap-2">
+                  {msg.status === "draft" && (
+                    <>
                       <Button
                         size="sm"
-                        onClick={() => setPendingSend(message)}
+                        onClick={() => handleSend(msg.id)}
+                        disabled={loading}
                       >
-                        <Send className="h-3 w-3 mr-1" />
-                        Send Now
+                        <Send className="w-4 h-4 mr-1" />
+                        Send
                       </Button>
-                    )}
-                  </div>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => handleDelete(msg.id)}
+                        disabled={loading}
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                    </>
+                  )}
+                  {msg.status === "sent" && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => handleResend(msg.id)}
+                      disabled={loading}
+                    >
+                      <RefreshCw className="w-4 h-4 mr-1" />
+                      Resend
+                    </Button>
+                  )}
                 </div>
-              ))
-            )}
+              </div>
+            ))}
           </div>
         </CardContent>
       </Card>
-
-      {/* Create Draft Confirmation Modal */}
-      <SaveConfirmationModal
-        isOpen={showCreateModal}
-        onClose={() => setShowCreateModal(false)}
-        onConfirm={async () => {
-          await handleCreateMessage()
-          setShowCreateModal(false)
-        }}
-        title="Create Email Draft"
-        description="This will save the email as a draft. You can send it later."
-        changes={createChangeItems}
-        loading={creating}
-        confirmText="Create Draft"
-      />
-
-      {/* Send Email Confirmation Modal */}
-      <SaveConfirmationModal
-        isOpen={!!pendingSend}
-        onClose={() => setPendingSend(null)}
-        onConfirm={handleSendMessage}
-        title="Send Email Broadcast"
-        description={pendingSend ? `This will send "${pendingSend.title}" to ${segmentLabels[pendingSend.segment_filter?.segment || "all"]}.` : ""}
-        changes={pendingSend ? [
-          { field: "subject", label: "Subject", oldValue: "Draft", newValue: pendingSend.title },
-          { field: "audience", label: "Audience", oldValue: "—", newValue: segmentLabels[pendingSend.segment_filter?.segment || "all"] },
-          { field: "status", label: "Status", oldValue: "Draft", newValue: "Sent" },
-        ] : []}
-        loading={sending}
-        confirmText="Send Email"
-      />
     </div>
   )
 }

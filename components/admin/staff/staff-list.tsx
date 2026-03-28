@@ -48,9 +48,8 @@ export function StaffList({
             </div>
             <p className="text-xs text-muted-foreground mt-1">All staff members and their current activity status.</p>
           </div>
-          <Button variant="outline" size="sm" className="h-8 gap-1.5 text-xs self-start sm:self-auto" onClick={fetchActiveAdmins}>
-            <RefreshCw className={cn("h-3.5 w-3.5", adminsLoading && "animate-spin")} />
-            Refresh
+          <Button variant="outline" size="icon" className="h-8 w-8 self-start sm:self-auto" onClick={fetchActiveAdmins}>
+            <RefreshCw className={cn("h-4 w-4", adminsLoading && "animate-spin")} />
           </Button>
         </div>
       </CardContent>
