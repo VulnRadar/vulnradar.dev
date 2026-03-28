@@ -1,7 +1,27 @@
 // Admin panel utility functions
 
+import {
+  Activity,
+  Shield,
+  Key,
+  Award,
+  Users,
+  Bell,
+} from "lucide-react"
 import { ACTION_META } from "./config"
 import type { AuditEntry } from "./types"
+
+/**
+ * Audit log filter categories
+ */
+export const AUDIT_FILTER_CATEGORIES = [
+  { id: "all", label: "All", icon: Activity },
+  { id: "roles", label: "Roles", icon: Shield, actions: ["set_role", "make_admin", "remove_admin"] },
+  { id: "security", label: "Security", icon: Key, actions: ["reset_password", "revoke_sessions", "revoke_api_keys", "reset_2fa", "force_logout_all"] },
+  { id: "status", label: "Status", icon: Users, actions: ["disable_user", "disable", "enable_user", "enable", "delete_user", "delete", "delete_account"] },
+  { id: "badges", label: "Badges", icon: Award, actions: ["award_badge", "revoke_badge", "create_badge", "delete_badge"] },
+  { id: "notifications", label: "Notifications", icon: Bell, actions: ["send_notification"] },
+]
 
 /**
  * Format a date as relative time (e.g., "2h ago", "3d ago")
