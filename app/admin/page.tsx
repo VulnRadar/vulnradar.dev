@@ -54,7 +54,6 @@ import {
   Send,
   MoreHorizontal,
 } from "lucide-react"
-import { AdminSidebar } from "@/components/admin/layout/admin-sidebar"
 import { IPRulesManager } from "@/components/admin/features/ip-rules-manager"
 import { SecurityAlertsManager } from "@/components/admin/features/security-alerts-manager"
 import { SystemSettingsManager } from "@/components/admin/features/system-settings-manager"
@@ -420,124 +419,121 @@ function AdminContent() {
     )
   }
 
+  // Define all admin tabs including new feature tabs
+  const ALL_ADMIN_TABS = [
+    { key: "users" as const, label: "Users", icon: Users, description: "Manage user accounts" },
+    { key: "teams" as const, label: "Teams", icon: UsersRound, description: "Team management" },
+    { key: "notifications" as const, label: "Notifications", icon: Bell, description: "Admin notifications" },
+    { key: "admins" as const, label: "Active Staff", icon: Shield, description: "Online staff members" },
+    { key: "audit" as const, label: "Audit Logs", icon: History, description: "Activity history" },
+    { key: "ip-rules" as const, label: "IP Rules", icon: Globe, description: "Whitelist & blacklist" },
+    { key: "security-alerts" as const, label: "Security", icon: ShieldCheck, description: "Security alerts" },
+    { key: "settings" as const, label: "Settings", icon: Settings, description: "System settings" },
+    { key: "broadcast" as const, label: "Broadcast", icon: Send, description: "Mass communication" },
+  ]
+
+  const handleTabChange = (tabKey: string) => {
+    setActiveTab(tabKey as typeof activeTab)
+    if (tabKey === "audit") fetchAudit()
+    if (tabKey === "admins") fetchActiveAdmins()
+    if (tabKey === "teams") fetchTeams()
+    setSelectedUser(null)
+    updateUrlWithUser(null, tabKey, false)
+  }
+
   return (
     <div className="min-h-screen bg-background flex flex-col">
       <Header />
-      <main className="flex-1 w-full flex">
-        {/* New Sidebar Navigation */}
-        <AdminSidebar activeTab={activeTab} onTabChange={setActiveTab} />
+      <main className="flex-1 w-full max-w-7xl mx-auto px-4 sm:px-6 py-8 sm:py-12">
+        {/* Page Header */}
+        <div className="flex flex-col gap-1 mb-8">
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">Admin Panel</h1>
+          <p className="text-sm text-muted-foreground">Manage users, monitor activity, and control system settings.</p>
+        </div>
 
-        {/* Main Content Area */}
-        <div className="flex-1 overflow-auto md:pl-0">
-          <div className="max-w-6xl mx-auto px-4 sm:px-6 py-8 sm:py-12">
-            {/* Page header */}
-            <div className="flex flex-col gap-1 mb-8 md:ml-0">
-              <h1 className="text-3xl font-bold tracking-tight">Admin Panel</h1>
-              <p className="text-sm text-muted-foreground">Manage users, monitor activity, and provide support.</p>
-            </div>
-
-            {loading ? (
-              <div className="flex flex-col items-center justify-center py-24 gap-3">
-                <Loader2 className="h-6 w-6 animate-spin text-primary" />
-                <p className="text-sm text-muted-foreground">Loading admin data...</p>
+        {loading ? (
+          <div className="flex flex-col items-center justify-center py-24 gap-3">
+            <Loader2 className="h-6 w-6 animate-spin text-primary" />
+            <p className="text-sm text-muted-foreground">Loading admin data...</p>
+          </div>
+        ) : (
+          <div className="flex flex-col lg:flex-row gap-8">
+            {/* Sidebar Navigation - Desktop */}
+            <aside className="lg:w-56 shrink-0">
+              {/* Mobile: Horizontal scrollable tabs */}
+              <div className="lg:hidden overflow-x-auto -mx-4 px-4 pb-4">
+                <div className="flex items-center gap-1 border-b border-border min-w-max">
+                  {ALL_ADMIN_TABS.map((tab) => (
+                    <button
+                      key={tab.key}
+                      onClick={() => handleTabChange(tab.key)}
+                      className={cn(
+                        "flex items-center gap-2 px-3.5 py-3 text-sm font-medium transition-all whitespace-nowrap border-b-2 -mb-px",
+                        activeTab === tab.key
+                          ? "border-primary text-foreground"
+                          : "border-transparent text-muted-foreground hover:text-foreground"
+                      )}
+                    >
+                      <tab.icon className="h-4 w-4" />
+                      <span>{tab.label}</span>
+                    </button>
+                  ))}
+                </div>
               </div>
-            ) : (
-              <>
-                {/* Stat cards */}
-                {stats && (
-                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 mb-8">
-                    <StatCard label="Total Users" value={stats.total_users} icon={Users} color="text-primary" accent="bg-primary" />
-                    <StatCard label="Total Scans" value={stats.total_scans} icon={Activity} color="text-primary" accent="bg-primary" />
-                    <StatCard label="Scans (24h)" value={stats.scans_24h} icon={BarChart3} color="text-primary" accent="bg-primary" />
-                    <StatCard label="New Users (7d)" value={stats.new_users_7d} icon={Users} color="text-primary" accent="bg-primary" />
-                    <StatCard label="Shared Scans" value={stats.shared_scans} icon={Globe} color="text-primary" accent="bg-primary/70" />
-                    <StatCard label="API Keys" value={stats.active_api_keys} icon={Key} color="text-[hsl(var(--severity-medium))]" accent="bg-[hsl(var(--severity-medium))]" />
-                    <StatCard label="Schedules" value={stats.active_schedules} icon={CalendarClock} color="text-[hsl(var(--severity-low))]" accent="bg-[hsl(var(--severity-low))]" />
-                    <StatCard label="Webhooks" value={stats.active_webhooks} icon={Webhook} color="text-muted-foreground" accent="bg-muted-foreground/50" />
-                    <StatCard label="2FA Users" value={stats.users_with_2fa} icon={ShieldCheck} color="text-primary" accent="bg-primary/50" />
-                    <StatCard label="Disabled" value={stats.disabled_users} icon={Ban} color="text-destructive" accent="bg-destructive" />
-                  </div>
-                )}
 
-                {/* Render New Feature Sections */}
-                {activeTab === "ip-rules" && <IPRulesManager />}
-                {activeTab === "security-alerts" && <SecurityAlertsManager />}
-                {activeTab === "settings" && <SystemSettingsManager />}
-                {activeTab === "broadcast" && <MassEmailManager />}
+              {/* Desktop: Vertical sidebar */}
+              <nav className="hidden lg:block sticky top-24">
+                <div className="flex flex-col gap-1">
+                  {ALL_ADMIN_TABS.map((tab) => (
+                    <a
+                      key={tab.key}
+                      href={`/admin#${tab.key}`}
+                      onClick={(e) => {
+                        if (!e.ctrlKey && !e.metaKey) {
+                          e.preventDefault()
+                          handleTabChange(tab.key)
+                        }
+                      }}
+                      className={cn(
+                        "flex items-center gap-2.5 px-3 py-2 text-sm rounded-lg transition-all",
+                        activeTab === tab.key
+                          ? "bg-secondary text-foreground font-medium"
+                          : "text-muted-foreground hover:text-foreground hover:bg-secondary/50"
+                      )}
+                    >
+                      <tab.icon className="h-4 w-4" />
+                      <span>{tab.label}</span>
+                    </a>
+                  ))}
+                </div>
+              </nav>
+            </aside>
 
-                {/* Render Existing Sections */}
-            {(() => {
-              const ADMIN_TABS = [
-                { key: "users" as const, label: "Users", icon: Users },
-                { key: "teams" as const, label: "Teams", icon: UsersRound },
-                { key: "notifications" as const, label: "Notifications", icon: Bell },
-                { key: "admins" as const, label: "Active Staff", icon: Shield },
-                { key: "audit" as const, label: "Audit Logs", icon: History },
-              ]
-              return (
-                <>
-                  {/* Mobile: icons-only centered */}
-                  <div className="flex sm:hidden justify-center gap-2 border-b border-border pb-2 pt-1">
-                    {ADMIN_TABS.map((tab) => (
-                      <a
-                        key={tab.key}
-                        href={`/admin#${tab.key}`}
-                        title={tab.label}
-                        aria-label={tab.label}
-                        onClick={(e) => {
-                          if (!e.ctrlKey && !e.metaKey) {
-                            e.preventDefault()
-                            setActiveTab(tab.key)
-                            if (tab.key === "audit") fetchAudit()
-                            if (tab.key === "admins") fetchActiveAdmins()
-                            if (tab.key === "teams") fetchTeams()
-                            setSelectedUser(null)
-                            updateUrlWithUser(null, tab.key, false)
-                          }
-                        }}
-                        className={cn(
-                          "flex items-center justify-center w-10 h-10 rounded-md transition-all",
-                          activeTab === tab.key
-                            ? "bg-primary/10 text-primary"
-                            : "text-muted-foreground hover:text-foreground hover:bg-secondary/50"
-                        )}
-                      >
-                        <tab.icon className="h-4 w-4" />
-                      </a>
-                    ))}
-                  </div>
-                  {/* Desktop: text + icon underline tabs */}
-                  <div className="hidden sm:flex items-center gap-1 border-b border-border -mb-px">
-                    {ADMIN_TABS.map((tab) => (
-                      <a
-                        key={tab.key}
-                        href={`/admin#${tab.key}`}
-                        onClick={(e) => {
-                          if (!e.ctrlKey && !e.metaKey) {
-                            e.preventDefault()
-                            setActiveTab(tab.key)
-                            if (tab.key === "audit") fetchAudit()
-                            if (tab.key === "admins") fetchActiveAdmins()
-                            if (tab.key === "teams") fetchTeams()
-                            setSelectedUser(null)
-                            updateUrlWithUser(null, tab.key, false)
-                          }
-                        }}
-                        className={cn(
-                          "flex items-center gap-2 px-4 py-3 text-sm font-medium transition-colors border-b-2 -mb-px",
-                          activeTab === tab.key
-                            ? "text-primary border-primary"
-                            : "text-muted-foreground border-transparent hover:text-foreground hover:border-border",
-                        )}
-                      >
-                        <tab.icon className="h-4 w-4" />
-                        {tab.label}
-                      </a>
-                    ))}
-                  </div>
-                </>
-              )
-            })()}
+            {/* Main Content Area */}
+            <div className="flex-1 min-w-0">
+              {/* Stats Overview - Show on Users tab */}
+              {activeTab === "users" && stats && (
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3 mb-8">
+                  <StatCard label="Total Users" value={stats.total_users} icon={Users} color="text-primary" accent="bg-primary" />
+                  <StatCard label="Total Scans" value={stats.total_scans} icon={Activity} color="text-primary" accent="bg-primary" />
+                  <StatCard label="Scans (24h)" value={stats.scans_24h} icon={BarChart3} color="text-primary" accent="bg-primary" />
+                  <StatCard label="New Users (7d)" value={stats.new_users_7d} icon={Users} color="text-primary" accent="bg-primary" />
+                  <StatCard label="Shared Scans" value={stats.shared_scans} icon={Globe} color="text-primary" accent="bg-primary/70" />
+                  <StatCard label="API Keys" value={stats.active_api_keys} icon={Key} color="text-[hsl(var(--severity-medium))]" accent="bg-[hsl(var(--severity-medium))]" />
+                  <StatCard label="Schedules" value={stats.active_schedules} icon={CalendarClock} color="text-[hsl(var(--severity-low))]" accent="bg-[hsl(var(--severity-low))]" />
+                  <StatCard label="Webhooks" value={stats.active_webhooks} icon={Webhook} color="text-muted-foreground" accent="bg-muted-foreground/50" />
+                  <StatCard label="2FA Users" value={stats.users_with_2fa} icon={ShieldCheck} color="text-primary" accent="bg-primary/50" />
+                  <StatCard label="Disabled" value={stats.disabled_users} icon={Ban} color="text-destructive" accent="bg-destructive" />
+                </div>
+              )}
+
+              {/* New Feature Sections */}
+              {activeTab === "ip-rules" && <IPRulesManager />}
+              {activeTab === "security-alerts" && <SecurityAlertsManager />}
+              {activeTab === "settings" && <SystemSettingsManager />}
+              {activeTab === "broadcast" && <MassEmailManager />}
+
+              {/* Existing Sections */}
 
             {/* User detail */}
             {selectedUser && activeTab === "users" && (
@@ -806,10 +802,11 @@ function AdminContent() {
                 </CardContent>
               </Card>
             )}
-          </>
-        )}
+            </>
+          )}
+            </div>
           </div>
-        </div>
+        )}
       </main>
       <Footer />
 
