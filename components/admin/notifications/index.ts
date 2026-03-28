@@ -1,3 +1,2 @@
-// Admin notifications components barrel export
-
+// Admin notifications barrel export
 export * from "./notifications-manager"
