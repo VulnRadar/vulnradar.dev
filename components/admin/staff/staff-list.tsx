@@ -1,6 +1,6 @@
 "use client"
 
-import React from "react"
+import React, { useState } from "react"
 import {
   Shield,
   Loader2,
@@ -31,19 +31,11 @@ export function StaffList({
   adminsLoading,
   fetchActiveAdmins,
 }: StaffListProps) {
-  console.log("[v0] StaffList - activeAdmins:", activeAdmins?.length, "adminsLoading:", adminsLoading)
-  console.log("[v0] StaffList - activeAdmins data:", activeAdmins)
+  const [staffPage, setStaffPage] = useState(1)
+  const [staffPageSize, setStaffPageSize] = useState(10)
   
-  const { currentPage: staffPage, setCurrentPage: setStaffPage, pageSize: staffPageSize, setPageSize: setStaffPageSize } = usePagination({ defaultPageSize: 10 })
-  
-  const staffPagination = {
-    totalPages: Math.ceil(activeAdmins.length / staffPageSize),
-    startIndex: (staffPage - 1) * staffPageSize,
-    endIndex: staffPage * staffPageSize,
-  }
-  
-  const pagedStaff = activeAdmins.slice(staffPagination.startIndex, staffPagination.endIndex)
-  console.log("[v0] StaffList - pagedStaff:", pagedStaff?.length, pagedStaff)
+  const { totalPages, getPage } = usePagination(activeAdmins, staffPageSize)
+  const pagedStaff = getPage(staffPage)
 
   return (
     <Card className="bg-card border-border overflow-hidden">
@@ -170,11 +162,11 @@ export function StaffList({
                 )
               })}
             </div>
-            {staffPagination.totalPages > 1 && (
+            {totalPages > 1 && (
               <div className="px-5 py-3 border-t border-border bg-muted/10">
                 <PaginationControl
                   currentPage={staffPage}
-                  totalPages={staffPagination.totalPages}
+                  totalPages={totalPages}
                   onPageChange={setStaffPage}
                   pageSize={staffPageSize}
                   onPageSizeChange={(s) => { setStaffPageSize(s); setStaffPage(1) }}
