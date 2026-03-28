@@ -177,7 +177,7 @@ export async function POST(req: NextRequest) {
         }
         
         // Get recipient users based on segment filter
-        let userQuery = `SELECT id, email, display_name FROM users WHERE email_verified = true`
+        let userQuery = `SELECT id, email, name FROM users WHERE email_verified_at IS NOT NULL`
         const queryParams: any[] = []
         
         if (message.segment_filter && message.segment_filter !== "all") {
