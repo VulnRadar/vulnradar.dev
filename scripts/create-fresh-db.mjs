@@ -159,6 +159,13 @@ const MIGRATE_TABLES = [
   "user_badges",
   "gifted_subscriptions",
   "admin_notifications",
+  "ip_rules",
+  "security_alerts",
+  "system_settings",
+  "broadcast_messages",
+  "broadcast_recipients",
+  "password_rotation_policies",
+  "user_password_requirements",
 ]
 
 // ── Main ────────────────────────────────────────────────────────────────────
