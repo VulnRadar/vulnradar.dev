@@ -555,30 +555,26 @@ export function UserDetailPanel({
                   {detail.badges.map((badge) => {
                     const isPendingRevoke = pendingBadgeRevokes.includes(badge.id)
                     return (
-                      <div
+                      <button
                         key={badge.id}
+                        onClick={() => {
+                          if (isPendingRevoke) {
+                            setPendingBadgeRevokes((p) => p.filter((id) => id !== badge.id))
+                          } else {
+                            setPendingBadgeRevokes((p) => [...p, badge.id])
+                          }
+                        }}
+                        title={isPendingRevoke ? "Click to undo remove" : "Click to remove badge"}
                         className={cn(
-                          "group flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-xs font-medium transition-all hover:pr-1",
+                          "flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-xs font-medium transition-all cursor-pointer hover:scale-105",
                           isPendingRevoke && "opacity-50 line-through"
                         )}
                         style={{ borderColor: `${badge.color}40`, backgroundColor: `${badge.color}15`, color: badge.color || undefined }}
                       >
                         <Tag className="h-3 w-3 shrink-0" />
                         {badge.display_name}
-                        <button
-                          className="w-0 overflow-hidden group-hover:w-4 group-hover:ml-0.5 transition-all duration-200 hover:scale-110 flex-shrink-0"
-                          onClick={() => {
-                            if (isPendingRevoke) {
-                              setPendingBadgeRevokes((p) => p.filter((id) => id !== badge.id))
-                            } else {
-                              setPendingBadgeRevokes((p) => [...p, badge.id])
-                            }
-                          }}
-                          title={isPendingRevoke ? "Undo remove" : "Remove badge from user"}
-                        >
-                          {isPendingRevoke ? <RefreshCw className="h-3 w-3" /> : <X className="h-3 w-3" />}
-                        </button>
-                      </div>
+                        {isPendingRevoke && <RefreshCw className="h-3 w-3 ml-0.5" />}
+                      </button>
                     )
                   })}
                 </div>
