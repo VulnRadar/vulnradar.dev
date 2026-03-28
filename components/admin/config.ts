@@ -43,11 +43,6 @@ export const ACTION_META: Record<string, ActionMeta> = {
   update_email: { label: "Email Changed", verb: "updated the email of", icon: "mail", cls: "bg-muted text-foreground border-border" },
   update_plan: { label: "Plan Changed", verb: "changed the subscription plan for", icon: "credit-card", cls: "bg-primary/10 text-primary border-primary/20" },
   clear_avatar: { label: "Avatar Cleared", verb: "cleared the avatar of", icon: "image-off", cls: "bg-muted text-muted-foreground border-border" },
-  // Email verification
-  verify_email: { label: "Email Verified", verb: "verified the email of", icon: "mail-check", cls: "bg-emerald-500/10 text-emerald-500 border-emerald-500/20" },
-  unverify_email: { label: "Email Unverified", verb: "unverified the email of", icon: "mail-x", cls: "bg-amber-500/10 text-amber-500 border-amber-500/20" },
-  // Beta & Premium
-  toggle_beta_access: { label: "Beta Access", verb: "toggled beta access for", icon: "flask", cls: "bg-primary/10 text-primary border-primary/20" },
   // Gift subscriptions
   gift_subscription: { label: "Gifted Plan", verb: "gifted a subscription to", icon: "gift", cls: "bg-amber-500/10 text-amber-500 border-amber-500/20" },
   revoke_gift: { label: "Revoked Gift", verb: "revoked gifted subscription from", icon: "gift-off", cls: "bg-destructive/10 text-destructive border-destructive/20" },
