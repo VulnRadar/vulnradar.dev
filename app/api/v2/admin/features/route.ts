@@ -147,17 +147,15 @@ export async function POST(req: NextRequest) {
         const result = await pool.query(
           `SELECT 
              bm.id, 
-             bm.title, 
-             bm.content,
-             bm.segment_filter,
-             bm.message_type, 
-             bm.status, 
-             COUNT(br.id) as recipient_count,
-             COUNT(CASE WHEN br.opened_at IS NOT NULL THEN 1 END) as opened_count,
-             bm.created_at
+             bm.title,
+             bm.status,
+             bm.created_at,
+             bm.sent_at,
+             cu.name as created_by_name,
+             su.name as sent_by_name
            FROM broadcast_messages bm
-           LEFT JOIN broadcast_recipients br ON bm.id = br.message_id
-           GROUP BY bm.id, bm.title, bm.content, bm.segment_filter, bm.message_type, bm.status, bm.created_at
+           LEFT JOIN users cu ON bm.created_by = cu.id
+           LEFT JOIN users su ON bm.sent_by = su.id
            ORDER BY bm.created_at DESC`
         )
         return NextResponse.json({ messages: result.rows })
@@ -166,61 +164,81 @@ export async function POST(req: NextRequest) {
       if (action === "send") {
         const { id } = body
         
-        // Get the broadcast message
-        const messageResult = await pool.query(
-          `SELECT id, title, content, message_type, segment_filter FROM broadcast_messages WHERE id = $1`,
-          [id]
-        )
-        const message = messageResult.rows[0]
-        if (!message) {
-          return NextResponse.json({ error: "Broadcast message not found" }, { status: 404 })
-        }
-        
-        // Get recipient users based on segment filter
-        let userQuery = `SELECT id, email, name FROM users WHERE email_verified_at IS NOT NULL`
-        const queryParams: any[] = []
-        
-        if (message.segment_filter && message.segment_filter !== "all") {
-          if (message.segment_filter === "premium") {
-            userQuery += ` AND subscription_tier != 'free'`
-          } else if (message.segment_filter === "free") {
-            userQuery += ` AND subscription_tier = 'free'`
-          }
-        }
-        
-        const usersResult = await pool.query(userQuery, queryParams)
-        const users = usersResult.rows
-        
-        // Send emails to all users
-        let sentCount = 0
-        for (const recipient of users) {
-          try {
-            await sendEmail({
-              to: recipient.email,
-              subject: message.title,
-              text: message.content.replace(/<[^>]*>/g, ''),
-              html: message.content,
-              skipLayout: false
-            })
-            
-            // Record recipient
-            await pool.query(
-              `INSERT INTO broadcast_recipients (message_id, user_id, sent_at) VALUES ($1, $2, NOW())`,
-              [id, recipient.id]
-            )
-            sentCount++
-          } catch (emailError) {
-            console.error(`[Broadcast] Failed to send to ${recipient.email}:`, emailError)
-          }
-        }
-        
-        // Update broadcast status
+        // Update status to 'sending' and record who sent it
         await pool.query(
-          `UPDATE broadcast_messages SET status = 'sent', sent_at = NOW() WHERE id = $1`,
-          [id]
+          `UPDATE broadcast_messages SET status = 'sending', sent_by = $1, sent_at = NOW() WHERE id = $2`,
+          [user.id, id]
         )
         
-        return NextResponse.json({ success: true, sent_count: sentCount })
+        // Queue background job to send emails
+        setTimeout(async () => {
+          try {
+            const messageResult = await pool.query(
+              `SELECT id, title, content, segment_filter FROM broadcast_messages WHERE id = $1`,
+              [id]
+            )
+            const message = messageResult.rows[0]
+            if (!message) return
+            
+            let userQuery = `SELECT id, email FROM users WHERE email_verified_at IS NOT NULL`
+            if (message.segment_filter && message.segment_filter !== "all") {
+              if (message.segment_filter === "premium") {
+                userQuery += ` AND subscription_tier != 'free'`
+              } else if (message.segment_filter === "free") {
+                userQuery += ` AND subscription_tier = 'free'`
+              }
+            }
+            
+            const usersResult = await pool.query(userQuery)
+            for (const recipient of usersResult.rows) {
+              try {
+                await sendEmail({
+                  to: recipient.email,
+                  subject: message.title,
+                  text: message.content.replace(/<[^>]*>/g, ''),
+                  html: message.content,
+                  skipLayout: false
+                })
+                await pool.query(
+                  `INSERT INTO broadcast_recipients (message_id, user_id, sent_at) VALUES ($1, $2, NOW())`,
+                  [id, recipient.id]
+                )
+              } catch (err) {
+                console.error(`[Broadcast] Failed to send to ${recipient.email}:`, err)
+              }
+            }
+            
+            await pool.query(`UPDATE broadcast_messages SET status = 'sent' WHERE id = $1`, [id])
+          } catch (err) {
+            console.error("[Broadcast] Background job failed:", err)
+            await pool.query(`UPDATE broadcast_messages SET status = 'failed' WHERE id = $1`, [id])
+          }
+        }, 100)
+        
+        return NextResponse.json({ success: true, message: "Broadcast queued for sending" })
+      }
+
+      if (action === "resend") {
+        const { id } = body
+        
+        // Create a new broadcast from template
+        const templateResult = await pool.query(
+          `SELECT title, content, message_type, segment_filter FROM broadcast_messages WHERE id = $1`,
+          [id]
+        )
+        const template = templateResult.rows[0]
+        if (!template) {
+          return NextResponse.json({ error: "Template not found" }, { status: 404 })
+        }
+        
+        const result = await pool.query(
+          `INSERT INTO broadcast_messages (title, content, message_type, segment_filter, created_by, status)
+           VALUES ($1, $2, $3, $4, $5, 'draft')
+           RETURNING id, title, status, created_at`,
+          [template.title, template.content, template.message_type, template.segment_filter, user.id]
+        )
+        
+        return NextResponse.json({ message: result.rows[0], success: true })
       }
     }
 
