@@ -31,6 +31,9 @@ export function StaffList({
   adminsLoading,
   fetchActiveAdmins,
 }: StaffListProps) {
+  console.log("[v0] StaffList - activeAdmins:", activeAdmins?.length, "adminsLoading:", adminsLoading)
+  console.log("[v0] StaffList - activeAdmins data:", activeAdmins)
+  
   const { currentPage: staffPage, setCurrentPage: setStaffPage, pageSize: staffPageSize, setPageSize: setStaffPageSize } = usePagination({ defaultPageSize: 10 })
   
   const staffPagination = {
@@ -40,6 +43,7 @@ export function StaffList({
   }
   
   const pagedStaff = activeAdmins.slice(staffPagination.startIndex, staffPagination.endIndex)
+  console.log("[v0] StaffList - pagedStaff:", pagedStaff?.length, pagedStaff)
 
   return (
     <Card className="bg-card border-border overflow-hidden">
