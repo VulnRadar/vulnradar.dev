@@ -20,32 +20,14 @@ const defaultSettings = [
   {
     key: "maintenance_mode",
     label: "Maintenance Mode",
-    description: "Disable access for regular users",
+    description: "Disable access for regular users while maintenance is in progress",
     type: "toggle",
-  },
-  {
-    key: "signup_enabled",
-    label: "Signups Enabled",
-    description: "Allow new user registrations",
-    type: "toggle",
-  },
-  {
-    key: "max_scans_per_hour",
-    label: "Max Scans Per Hour",
-    description: "Rate limit for scan operations",
-    type: "number",
   },
   {
     key: "maintenance_message",
     label: "Maintenance Message",
-    description: "Message shown during maintenance mode",
+    description: "Message displayed to users during maintenance mode",
     type: "text",
-  },
-  {
-    key: "api_rate_limit",
-    label: "API Rate Limit",
-    description: "Requests per minute for API endpoints",
-    type: "number",
   },
 ]
 
