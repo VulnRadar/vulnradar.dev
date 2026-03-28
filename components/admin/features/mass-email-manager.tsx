@@ -7,7 +7,8 @@ import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Mail, Send, BarChart3, RefreshCw, Users } from "lucide-react"
+import { Mail, Send, BarChart3, RefreshCw, Users, Loader2, CheckCircle2, Save, X } from "lucide-react"
+import { SaveConfirmationModal, type ChangeItem } from "@/components/save-confirmation-modal"
 import { cn } from "@/lib/utils"
 
 interface BroadcastMessage {
@@ -48,6 +49,11 @@ export function MassEmailManager() {
   const [title, setTitle] = useState("")
   const [content, setContent] = useState("")
   const [targetSegment, setTargetSegment] = useState("all")
+  
+  // Modal state
+  const [showCreateModal, setShowCreateModal] = useState(false)
+  const [pendingSend, setPendingSend] = useState<BroadcastMessage | null>(null)
+  const [sending, setSending] = useState(false)
 
   const fetchMessages = async () => {
     setLoading(true)
@@ -70,10 +76,13 @@ export function MassEmailManager() {
     fetchMessages()
   }, [])
 
-  const handleCreateMessage = async (e: React.FormEvent) => {
+  const handleFormSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     if (!title || !content) return
+    setShowCreateModal(true)
+  }
 
+  const handleCreateMessage = async () => {
     setCreating(true)
     try {
       const res = await fetch("/api/v2/admin/features", {
@@ -102,7 +111,9 @@ export function MassEmailManager() {
     }
   }
 
-  const handleSendMessage = async (id: number) => {
+  const handleSendMessage = async () => {
+    if (!pendingSend) return
+    setSending(true)
     try {
       await fetch("/api/v2/admin/features", {
         method: "POST",
@@ -110,14 +121,24 @@ export function MassEmailManager() {
         body: JSON.stringify({
           action: "send",
           section: "broadcast",
-          id,
+          id: pendingSend.id,
         }),
       })
       await fetchMessages()
     } catch (error) {
       console.error("Error sending message:", error)
+    } finally {
+      setSending(false)
+      setPendingSend(null)
     }
   }
+
+  // Build change items for create modal
+  const createChangeItems: ChangeItem[] = title ? [
+    { field: "subject", label: "Subject", oldValue: "—", newValue: title },
+    { field: "audience", label: "Target Audience", oldValue: "—", newValue: segmentLabels[targetSegment] },
+    { field: "content", label: "Content Preview", oldValue: "—", newValue: content.replace(/<[^>]*>/g, "").substring(0, 100) + "..." },
+  ] : []
 
   const draftMessages = messages.filter((m) => m.status === "draft")
   const sentMessages = messages.filter((m) => m.status === "sent")
@@ -158,7 +179,7 @@ export function MassEmailManager() {
           <CardDescription>Create and send email broadcasts to users</CardDescription>
         </CardHeader>
         <CardContent>
-          <form onSubmit={handleCreateMessage} className="space-y-4">
+          <form onSubmit={handleFormSubmit} className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="text-sm font-medium mb-2 block">Subject Line</label>
@@ -258,7 +279,7 @@ export function MassEmailManager() {
                     {message.status === "draft" && (
                       <Button
                         size="sm"
-                        onClick={() => handleSendMessage(message.id)}
+                        onClick={() => setPendingSend(message)}
                       >
                         <Send className="h-3 w-3 mr-1" />
                         Send Now
@@ -271,6 +292,37 @@ export function MassEmailManager() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Create Draft Confirmation Modal */}
+      <SaveConfirmationModal
+        isOpen={showCreateModal}
+        onClose={() => setShowCreateModal(false)}
+        onConfirm={async () => {
+          await handleCreateMessage()
+          setShowCreateModal(false)
+        }}
+        title="Create Email Draft"
+        description="This will save the email as a draft. You can send it later."
+        changes={createChangeItems}
+        loading={creating}
+        confirmText="Create Draft"
+      />
+
+      {/* Send Email Confirmation Modal */}
+      <SaveConfirmationModal
+        isOpen={!!pendingSend}
+        onClose={() => setPendingSend(null)}
+        onConfirm={handleSendMessage}
+        title="Send Email Broadcast"
+        description={pendingSend ? `This will send "${pendingSend.title}" to ${segmentLabels[pendingSend.segment_filter?.segment || "all"]}.` : ""}
+        changes={pendingSend ? [
+          { field: "subject", label: "Subject", oldValue: "Draft", newValue: pendingSend.title },
+          { field: "audience", label: "Audience", oldValue: "—", newValue: segmentLabels[pendingSend.segment_filter?.segment || "all"] },
+          { field: "status", label: "Status", oldValue: "Draft", newValue: "Sent" },
+        ] : []}
+        loading={sending}
+        confirmText="Send Email"
+      />
     </div>
   )
 }

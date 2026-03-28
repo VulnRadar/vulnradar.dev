@@ -4,7 +4,8 @@ import React, { useState, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { AlertTriangle, CheckCircle, RefreshCw } from "lucide-react"
+import { AlertTriangle, CheckCircle, RefreshCw, Ban } from "lucide-react"
+import { SaveConfirmationModal, type ChangeItem } from "@/components/save-confirmation-modal"
 import { cn } from "@/lib/utils"
 
 interface SecurityAlert {
@@ -31,6 +32,8 @@ export function SecurityAlertsManager() {
   const [alerts, setAlerts] = useState<SecurityAlert[]>([])
   const [loading, setLoading] = useState(false)
   const [selectedSeverity, setSelectedSeverity] = useState<string>("all")
+  const [pendingResolve, setPendingResolve] = useState<{ alert: SecurityAlert; action: string } | null>(null)
+  const [resolving, setResolving] = useState(false)
 
   const fetchAlerts = async () => {
     setLoading(true)
@@ -58,7 +61,9 @@ export function SecurityAlertsManager() {
     fetchAlerts()
   }, [selectedSeverity])
 
-  const handleResolveAlert = async (id: number, action: string) => {
+  const handleResolveAlert = async () => {
+    if (!pendingResolve) return
+    setResolving(true)
     try {
       await fetch("/api/v2/admin/features", {
         method: "POST",
@@ -66,13 +71,16 @@ export function SecurityAlertsManager() {
         body: JSON.stringify({
           action: "resolve",
           section: "security_alerts",
-          id,
-          action_taken: action,
+          id: pendingResolve.alert.id,
+          action_taken: pendingResolve.action,
         }),
       })
       await fetchAlerts()
     } catch (error) {
       console.error("Error resolving alert:", error)
+    } finally {
+      setResolving(false)
+      setPendingResolve(null)
     }
   }
 
@@ -139,7 +147,7 @@ export function SecurityAlertsManager() {
                     <Button
                       size="sm"
                       variant="outline"
-                      onClick={() => handleResolveAlert(alert.id, "manual_review")}
+                      onClick={() => setPendingResolve({ alert, action: "manual_review" })}
                     >
                       <CheckCircle className="h-3 w-3 mr-1" />
                       Resolve
@@ -147,9 +155,10 @@ export function SecurityAlertsManager() {
                     <Button
                       size="sm"
                       variant="outline"
-                      onClick={() => handleResolveAlert(alert.id, "block_user")}
+                      onClick={() => setPendingResolve({ alert, action: "block_user" })}
                       className="text-destructive"
                     >
+                      <Ban className="h-3 w-3 mr-1" />
                       Block User
                     </Button>
                   </div>
@@ -159,6 +168,27 @@ export function SecurityAlertsManager() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Resolve Alert Confirmation Modal */}
+      <SaveConfirmationModal
+        isOpen={!!pendingResolve}
+        onClose={() => setPendingResolve(null)}
+        onConfirm={handleResolveAlert}
+        title={pendingResolve?.action === "block_user" ? "Block User & Resolve Alert" : "Resolve Security Alert"}
+        description={
+          pendingResolve?.action === "block_user"
+            ? "This will block the user and mark the alert as resolved."
+            : "Mark this alert as resolved after manual review."
+        }
+        changes={pendingResolve ? [
+          { field: "alert_type", label: "Alert Type", oldValue: pendingResolve.alert.alert_type, newValue: "Resolved" },
+          { field: "severity", label: "Severity", oldValue: pendingResolve.alert.severity, newValue: "—" },
+          { field: "action", label: "Action Taken", oldValue: "Pending", newValue: pendingResolve.action === "block_user" ? "User Blocked" : "Manual Review" },
+        ] : []}
+        loading={resolving}
+        confirmText={pendingResolve?.action === "block_user" ? "Block & Resolve" : "Mark Resolved"}
+        variant={pendingResolve?.action === "block_user" ? "destructive" : "default"}
+      />
     </div>
   )
 }

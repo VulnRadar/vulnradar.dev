@@ -4,9 +4,9 @@ import React, { useState, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Badge } from "@/components/ui/badge"
 import { Switch } from "@/components/ui/switch"
-import { AlertCircle, Save, RefreshCw } from "lucide-react"
+import { AlertCircle, Save, RefreshCw, Loader2, CheckCircle2, X } from "lucide-react"
+import { SaveConfirmationModal, type ChangeItem } from "@/components/save-confirmation-modal"
 import { cn } from "@/lib/utils"
 
 interface SystemSetting {
@@ -36,6 +36,7 @@ export function SystemSettingsManager() {
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [changes, setChanges] = useState<Record<string, string>>({})
+  const [showSaveModal, setShowSaveModal] = useState(false)
 
   const fetchSettings = async () => {
     setLoading(true)
@@ -97,7 +98,23 @@ export function SystemSettingsManager() {
     }
   }
 
+  const discardChanges = () => {
+    setChanges({})
+  }
+
   const hasChanges = Object.keys(changes).length > 0
+
+  // Build change items for modal
+  const modalChanges: ChangeItem[] = Object.entries(changes).map(([key, value]) => {
+    const setting = defaultSettings.find((s) => s.key === key)
+    const oldValue = settings[key] || ""
+    return {
+      field: key,
+      label: setting?.label || key,
+      oldValue: setting?.type === "toggle" ? (oldValue === "true" ? "Enabled" : "Disabled") : oldValue,
+      newValue: setting?.type === "toggle" ? (value === "true" ? "Enabled" : "Disabled") : value,
+    }
+  })
 
   return (
     <div className="space-y-6">
@@ -179,16 +196,49 @@ export function SystemSettingsManager() {
             })}
           </div>
 
-          {hasChanges && (
-            <div className="mt-6 pt-6 border-t border-border">
-              <Button onClick={handleSave} disabled={saving} className="w-full">
-                <Save className="h-4 w-4 mr-2" />
-                {saving ? "Saving..." : "Save Changes"}
-              </Button>
-            </div>
-          )}
         </CardContent>
       </Card>
+
+      {/* Floating save bar */}
+      {hasChanges && (
+        <div className="fixed bottom-0 left-0 right-0 z-50 p-4 pointer-events-none">
+          <div className="max-w-lg mx-auto pointer-events-auto">
+            <div className="flex items-center justify-between gap-4 px-4 py-3 rounded-lg bg-card border border-border shadow-lg">
+              <div className="flex items-center gap-3">
+                <Save className="h-4 w-4 text-primary" />
+                <p className="text-sm font-medium text-foreground">
+                  {modalChanges.length} unsaved change{modalChanges.length !== 1 ? "s" : ""}
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button variant="ghost" size="sm" onClick={discardChanges} disabled={saving}>
+                  <X className="h-3.5 w-3.5 mr-1" />
+                  Discard
+                </Button>
+                <Button size="sm" className="gap-1.5" onClick={() => setShowSaveModal(true)} disabled={saving}>
+                  {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
+                  Save Changes
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Save confirmation modal */}
+      <SaveConfirmationModal
+        isOpen={showSaveModal}
+        onClose={() => setShowSaveModal(false)}
+        onConfirm={async () => {
+          await handleSave()
+          setShowSaveModal(false)
+        }}
+        title="Save System Settings"
+        description="Review and confirm changes to system configuration."
+        changes={modalChanges}
+        loading={saving}
+        confirmText="Save Settings"
+      />
     </div>
   )
 }
