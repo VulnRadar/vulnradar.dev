@@ -103,7 +103,7 @@ function AdminContent() {
   const [searchQuery, setSearchQuery] = useState("")
   const [actionLoading, setActionLoading] = useState<string | null>(null)
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null)
-  const [activeTab, setActiveTab] = useState<"users" | "audit" | "admins" | "notifications" | "teams">("users")
+  const [activeTab, setActiveTab] = useState<"users" | "audit" | "admins" | "notifications" | "teams" | "ip-rules" | "security-alerts" | "settings" | "broadcast">("users")
   const [selectedUser, setSelectedUser] = useState<UserDetail | null>(null)
   const [detailLoading, setDetailLoading] = useState(false)
   const [confirmDialog, setConfirmDialog] = useState<{
@@ -166,9 +166,10 @@ function AdminContent() {
 
     const parts = hash.split("/")
     let foundUser = false
+    const validTabs = ["users", "audit", "admins", "notifications", "teams", "ip-rules", "security-alerts", "settings", "broadcast"]
     for (const part of parts) {
-      if (["users", "audit", "admins", "notifications", "teams"].includes(part)) {
-        setActiveTab(part as "users" | "audit" | "admins" | "notifications" | "teams")
+      if (validTabs.includes(part)) {
+        setActiveTab(part as typeof activeTab)
         if (part === "audit") fetchAudit()
         if (part === "admins") fetchActiveAdmins()
         if (part === "teams") fetchTeams()
