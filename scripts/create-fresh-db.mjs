@@ -2,6 +2,7 @@
 
 /**
  * VulnRadar Safe Database Migration Script
+ * Database Schema Version: v2.2.0 with admin features
  * 
  * Creates a NEW database with fresh schema, then optionally migrates data
  * from the original database. Never touches or erases the original DB.
@@ -48,8 +49,9 @@ function error(msg) { log(`${c.red}[ERR]${c.reset}  ${msg}`) }
 function banner() {
   log("")
   log(`${c.bold}${c.cyan}  ╔══════════════════════════════════════════════╗${c.reset}`)
-  log(`${c.bold}${c.cyan}  ║   VulnRadar Safe Database Migration          ║${c.reset}`)
-  log(`${c.bold}${c.cyan}  ║   Creates new DB, preserves original data    ║${c.reset}`)
+  log(`${c.bold}${c.cyan}  ║   VulnRadar Database Setup - v2.2.0           ║${c.reset}`)
+  log(`${c.bold}${c.cyan}  ║   Creates new DB with admin features         ║${c.reset}`)
+  log(`${c.bold}${c.cyan}  ║   Preserves original data during migration    ║${c.reset}`)
   log(`${c.bold}${c.cyan}  ╚══════════════════════════════════════════════╝${c.reset}`)
   log("")
 }
@@ -159,6 +161,13 @@ const MIGRATE_TABLES = [
   "user_badges",
   "gifted_subscriptions",
   "admin_notifications",
+  "ip_rules",
+  "security_alerts",
+  "system_settings",
+  "broadcast_messages",
+  "broadcast_recipients",
+  "password_rotation_policies",
+  "user_password_requirements",
 ]
 
 // ── Main ────────────────────────────────────────────────────────────────────
