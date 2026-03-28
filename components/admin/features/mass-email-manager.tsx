@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Mail, Copy, Send, Eye } from "lucide-react"
+import { Mail, Send, Eye, Trash2, RefreshCw } from "lucide-react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 
 interface Broadcast {
@@ -48,7 +48,7 @@ function generatePreviewHtml(title: string, content: string): string {
               <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
                 <tr>
                   <td align="center" style="padding-bottom: 12px;">
-                    <img src="https://vulnradar.dev/logo.svg" alt="VulnRadar" width="48" height="48" style="display: block; margin: 0 auto;" />
+                    <img src="https://vulnradar.dev/favicon-dark.svg" alt="VulnRadar" width="48" height="48" style="display: block; margin: 0 auto;" />
                   </td>
                 </tr>
                 <tr>
@@ -127,6 +127,10 @@ export function MassEmailManager() {
     if (segment === "specific" && !specificEmail) return
     setLoading(true)
     try {
+      const segmentFilter = segment === "specific" 
+        ? { segment: `email:${specificEmail}` }
+        : { segment }
+      
       const res = await fetch("/api/v2/admin/features", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -135,8 +139,8 @@ export function MassEmailManager() {
           section: "broadcast",
           title,
           content,
-          message_type: "broadcast",
-          segment_filter: segment === "specific" ? `email:${specificEmail}` : segment
+          message_type: "email",
+          segment_filter: segmentFilter
         })
       })
       if (res.ok) {
@@ -185,6 +189,23 @@ export function MassEmailManager() {
     }
   }
 
+  async function handleDelete(id: string) {
+    if (!confirm("Delete this draft?")) return
+    setLoading(true)
+    try {
+      await fetch("/api/v2/admin/features", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "delete", section: "broadcast", id })
+      })
+      fetchMessages()
+    } catch (err) {
+      console.error("Error deleting:", err)
+    } finally {
+      setLoading(false)
+    }
+  }
+
   return (
     <div className="space-y-6">
       <Card>
@@ -214,7 +235,11 @@ export function MassEmailManager() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Users</SelectItem>
-              <SelectItem value="premium">Premium Users</SelectItem>
+              <SelectItem value="premium">All Premium Users</SelectItem>
+              <SelectItem value="free">Free Users</SelectItem>
+              <SelectItem value="core_supporter">Core Supporter</SelectItem>
+              <SelectItem value="pro_supporter">Pro Supporter</SelectItem>
+              <SelectItem value="elite_supporter">Elite Supporter</SelectItem>
               <SelectItem value="specific">Specific Email</SelectItem>
             </SelectContent>
           </Select>
@@ -275,12 +300,12 @@ export function MassEmailManager() {
                   <p className="text-sm text-muted-foreground">
                     Created by {msg.created_by_name || "Unknown"} - {new Date(msg.created_at).toLocaleDateString()}
                   </p>
-                  {msg.status === "sent" && msg.sent_by_name && (
+                  {msg.status === "sent" && (
                     <p className="text-sm text-muted-foreground">
-                      Sent by {msg.sent_by_name}
+                      {msg.sent_by_name ? `Last sent by ${msg.sent_by_name}` : "Sent"} - {msg.sent_at ? new Date(msg.sent_at).toLocaleString() : ""}
                     </p>
                   )}
-                  <span className="text-xs bg-secondary px-2 py-1 rounded mt-1 inline-block">
+                  <span className={`text-xs px-2 py-1 rounded mt-1 inline-block ${msg.status === "sent" ? "bg-green-500/20 text-green-400" : "bg-secondary"}`}>
                     {msg.status}
                   </span>
                 </div>
@@ -299,11 +324,10 @@ export function MassEmailManager() {
                       <Button
                         size="sm"
                         variant="outline"
-                        onClick={() => handleResend(msg.id)}
+                        onClick={() => handleDelete(msg.id)}
                         disabled={loading}
                       >
-                        <Copy className="w-4 h-4 mr-1" />
-                        Duplicate
+                        <Trash2 className="w-4 h-4" />
                       </Button>
                     </>
                   )}
@@ -314,7 +338,7 @@ export function MassEmailManager() {
                       onClick={() => handleResend(msg.id)}
                       disabled={loading}
                     >
-                      <Copy className="w-4 h-4 mr-1" />
+                      <RefreshCw className="w-4 h-4 mr-1" />
                       Resend
                     </Button>
                   )}

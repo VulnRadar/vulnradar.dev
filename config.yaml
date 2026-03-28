@@ -49,7 +49,7 @@ app:
 # ----------------------------------------------------------------------------
 branding:
   # Logo URL - can be relative path or absolute URL
-  logo_url: "/favicon.png"
+  logo_url: "/favicon-dark.svg"
   
   # Primary color (used in emails, PDFs, etc.)
   primary_color: "#6366f1"

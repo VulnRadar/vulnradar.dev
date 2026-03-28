@@ -164,9 +164,15 @@ export async function POST(req: NextRequest) {
       if (action === "send") {
         const { id } = body
         
-        // Update status to 'sending' and record who sent it
+        // Get message first to validate it exists
+        const check = await pool.query(`SELECT id FROM broadcast_messages WHERE id = $1 AND status = 'draft'`, [id])
+        if (check.rows.length === 0) {
+          return NextResponse.json({ error: "Broadcast not found or already sent" }, { status: 404 })
+        }
+        
+        // Update status to sent immediately (no 'sending' state due to constraint)
         await pool.query(
-          `UPDATE broadcast_messages SET status = 'sending', sent_by = $1, sent_at = NOW() WHERE id = $2`,
+          `UPDATE broadcast_messages SET status = 'sent', sent_by = $1, sent_at = NOW() WHERE id = $2`,
           [user.id, id]
         )
         
@@ -182,11 +188,21 @@ export async function POST(req: NextRequest) {
             
             let userQuery = `SELECT id, email FROM users WHERE email_verified_at IS NOT NULL`
             const queryParams: string[] = []
-            if (message.segment_filter && message.segment_filter !== "all") {
-              if (message.segment_filter === "premium") {
+            const segment = message.segment_filter?.segment || message.segment_filter
+            
+            if (segment && segment !== "all") {
+              if (segment === "premium") {
                 userQuery += ` AND subscription_tier != 'free'`
-              } else if (message.segment_filter.startsWith("email:")) {
-                const specificEmail = message.segment_filter.replace("email:", "")
+              } else if (segment === "free") {
+                userQuery += ` AND subscription_tier = 'free'`
+              } else if (segment === "core_supporter") {
+                userQuery += ` AND subscription_tier = 'core_supporter'`
+              } else if (segment === "pro_supporter") {
+                userQuery += ` AND subscription_tier = 'pro_supporter'`
+              } else if (segment === "elite_supporter") {
+                userQuery += ` AND subscription_tier = 'elite_supporter'`
+              } else if (typeof segment === "string" && segment.startsWith("email:")) {
+                const specificEmail = segment.replace("email:", "")
                 userQuery += ` AND email = $1`
                 queryParams.push(specificEmail)
               }
@@ -203,45 +219,105 @@ export async function POST(req: NextRequest) {
                   skipLayout: false
                 })
                 await pool.query(
-                  `INSERT INTO broadcast_recipients (message_id, user_id, sent_at) VALUES ($1, $2, NOW())`,
+                  `INSERT INTO broadcast_recipients (message_id, user_id, status) VALUES ($1, $2, 'sent')`,
                   [id, recipient.id]
                 )
               } catch (err) {
                 console.error(`[Broadcast] Failed to send to ${recipient.email}:`, err)
               }
             }
-            
-            await pool.query(`UPDATE broadcast_messages SET status = 'sent' WHERE id = $1`, [id])
           } catch (err) {
             console.error("[Broadcast] Background job failed:", err)
-            await pool.query(`UPDATE broadcast_messages SET status = 'failed' WHERE id = $1`, [id])
           }
         }, 100)
         
         return NextResponse.json({ success: true, message: "Broadcast queued for sending" })
       }
 
+      if (action === "delete") {
+        const { id } = body
+        // Only allow deleting drafts
+        const result = await pool.query(
+          `DELETE FROM broadcast_messages WHERE id = $1 AND status = 'draft' RETURNING id`,
+          [id]
+        )
+        if (result.rows.length === 0) {
+          return NextResponse.json({ error: "Cannot delete sent broadcasts" }, { status: 400 })
+        }
+        return NextResponse.json({ success: true })
+      }
+
       if (action === "resend") {
         const { id } = body
         
-        // Create a new broadcast from template
-        const templateResult = await pool.query(
-          `SELECT title, content, message_type, segment_filter FROM broadcast_messages WHERE id = $1`,
-          [id]
-        )
-        const template = templateResult.rows[0]
-        if (!template) {
-          return NextResponse.json({ error: "Template not found" }, { status: 404 })
+        // Get message and check if it's been sent
+        const check = await pool.query(`SELECT id FROM broadcast_messages WHERE id = $1 AND status = 'sent'`, [id])
+        if (check.rows.length === 0) {
+          return NextResponse.json({ error: "Can only resend sent broadcasts" }, { status: 400 })
         }
         
-        const result = await pool.query(
-          `INSERT INTO broadcast_messages (title, content, message_type, segment_filter, created_by, status)
-           VALUES ($1, $2, $3, $4, $5, 'draft')
-           RETURNING id, title, status, created_at`,
-          [template.title, template.content, template.message_type, template.segment_filter, user.id]
+        // Update sent_at and sent_by for audit trail
+        await pool.query(
+          `UPDATE broadcast_messages SET sent_by = $1, sent_at = NOW() WHERE id = $2`,
+          [user.id, id]
         )
         
-        return NextResponse.json({ message: result.rows[0], success: true })
+        // Queue background job to send emails again
+        setTimeout(async () => {
+          try {
+            const messageResult = await pool.query(
+              `SELECT id, title, content, segment_filter FROM broadcast_messages WHERE id = $1`,
+              [id]
+            )
+            const message = messageResult.rows[0]
+            if (!message) return
+            
+            let userQuery = `SELECT id, email FROM users WHERE email_verified_at IS NOT NULL`
+            const queryParams: string[] = []
+            const segment = message.segment_filter?.segment || message.segment_filter
+            
+            if (segment && segment !== "all") {
+              if (segment === "premium") {
+                userQuery += ` AND subscription_tier != 'free'`
+              } else if (segment === "free") {
+                userQuery += ` AND subscription_tier = 'free'`
+              } else if (segment === "core_supporter") {
+                userQuery += ` AND subscription_tier = 'core_supporter'`
+              } else if (segment === "pro_supporter") {
+                userQuery += ` AND subscription_tier = 'pro_supporter'`
+              } else if (segment === "elite_supporter") {
+                userQuery += ` AND subscription_tier = 'elite_supporter'`
+              } else if (typeof segment === "string" && segment.startsWith("email:")) {
+                const specificEmail = segment.replace("email:", "")
+                userQuery += ` AND email = $1`
+                queryParams.push(specificEmail)
+              }
+            }
+            
+            const usersResult = await pool.query(userQuery, queryParams)
+            for (const recipient of usersResult.rows) {
+              try {
+                await sendEmail({
+                  to: recipient.email,
+                  subject: message.title,
+                  text: message.content.replace(/<[^>]*>/g, ''),
+                  html: message.content,
+                  skipLayout: false
+                })
+                await pool.query(
+                  `INSERT INTO broadcast_recipients (message_id, user_id, status) VALUES ($1, $2, 'sent')`,
+                  [id, recipient.id]
+                )
+              } catch (err) {
+                console.error(`[Broadcast] Failed to send to ${recipient.email}:`, err)
+              }
+            }
+          } catch (err) {
+            console.error("[Broadcast] Background job failed:", err)
+          }
+        }, 100)
+        
+        return NextResponse.json({ success: true, message: "Broadcast resent" })
       }
     }
 
