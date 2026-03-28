@@ -165,7 +165,7 @@ export function MassEmailManager() {
           <CardContent className="pt-6">
             <BarChart3 className="h-8 w-8 text-purple-500 mb-2" />
             <div className="text-3xl font-bold">
-              {sentMessages.reduce((acc, m) => acc + (m.opened_count || 0), 0)}
+              {sentMessages.reduce((acc, m) => acc + parseInt(String(m.opened_count || 0), 10), 0)}
             </div>
             <p className="text-sm text-muted-foreground mt-1">Total Opens</p>
           </CardContent>
