@@ -39,7 +39,6 @@ import type { AuditEntry } from "@/components/admin/types"
 
 interface AuditLogProps {
   auditLogs: AuditEntry[]
-  auditLoading: boolean
   auditPaging: boolean
   auditPage: number
   auditTotalPages: number
@@ -50,7 +49,6 @@ interface AuditLogProps {
 
 export function AuditLog({
   auditLogs,
-  auditLoading,
   auditPaging,
   auditPage,
   auditTotalPages,

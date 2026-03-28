@@ -735,7 +735,6 @@ function AdminContent() {
             {activeTab === "audit" && (
               <AuditLog
                 auditLogs={auditLogs}
-                auditLoading={auditLoading}
                 auditPaging={auditPaging}
                 auditPage={auditPage}
                 auditTotalPages={auditTotalPages}
