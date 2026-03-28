@@ -266,32 +266,193 @@ async function getActualSchema(pool) {
   return tables
 }
 
-// ── Check if this is a v1 database that needs v2 migration ──────────────────
-// v1 is detected by: has v1 core tables, but MISSING v2 tables and v2 user columns
-function detectV1Database(actual) {
-  // Check if users table exists
-  if (!actual["users"]) return { isV1: false, reason: "No users table found" }
+// ── Check if this is a v2 database missing v2.2.0 tables (admin features) ────
+function detectV220MissingTables(actual) {
+  const v220Tables = ["broadcast_messages", "system_settings", "ip_rules", "security_alerts"]
+  const missingTables = v220Tables.filter(t => !actual[t])
   
-  const userColumns = actual["users"] || []
+  if (missingTables.length === 0) {
+    return { isV220Upgrade: false }
+  }
   
-  // Check if v2 tables are missing
-  const missingV2Tables = V2_NEW_TABLES.filter(t => !actual[t])
-  
-  // Check if v2 user columns are missing
-  const missingV2Columns = V2_USER_COLUMNS.filter(col => !userColumns.includes(col))
-  
-  // It's v1 if it's MISSING v2 tables (core infrastructure)
-  // Missing a few columns is OK - those can be added incrementally
-  // But if v2 tables don't exist, it's definitely v1
-  const isV1 = missingV2Tables.length > 0
+  // Check that core v2 tables exist (badges, user_badges, etc)
+  const coreV2Tables = ["badges", "user_badges", "billing_history"]
+  const hasCoreV2 = coreV2Tables.every(t => actual[t])
   
   return {
-    isV1,
-    missingTables: missingV2Tables,
-    missingColumns: missingV2Columns,
-    hasV1CoreTables: V1_CORE_TABLES.filter(t => actual[t]).length,
+    isV220Upgrade: hasCoreV2 && missingTables.length > 0,
+    missingTables,
   }
 }
+
+// ── V2.2.0 Migration: Add admin feature tables to v2 database ────────────────
+async function runV220Migration(pool, actual, v220Info) {
+  log("")
+  log(`${c.bold}${c.bgCyan}${c.white} V2 -> V2.2.0 MIGRATION DETECTED ${c.reset}`)
+  log("")
+  log(`${c.yellow}Your database is running VulnRadar v2 schema.${c.reset}`)
+  log(`${c.yellow}This migration will upgrade it to v2.2.0 with admin features.${c.reset}`)
+  log("")
+  
+  log(`${c.cyan}New tables to create:${c.reset}`)
+  for (const t of v220Info.missingTables) {
+    log(`  + ${c.bold}${t}${c.reset}`)
+  }
+  log("")
+  
+  log(`${c.cyan}What this migration will do:${c.reset}`)
+  log(`  1. Create ${c.bold}broadcast_messages${c.reset} & ${c.bold}broadcast_recipients${c.reset} for email campaigns`)
+  log(`  2. Create ${c.bold}system_settings${c.reset} for maintenance mode & system config`)
+  log(`  3. Create ${c.bold}ip_rules${c.reset} for IP/URL whitelist & blacklist`)
+  log(`  4. Create ${c.bold}security_alerts${c.reset} for admin security monitoring`)
+  log("")
+  log(`${c.green}This is a safe migration - no data will be lost.${c.reset}`)
+  log("")
+
+  const shouldProceed = await askReview("Proceed with v2.2.0 migration?")
+  if (!shouldProceed) {
+    info("Migration cancelled. Your database was not modified.")
+    return false
+  }
+
+  log("")
+  info("Starting v2.2.0 migration...")
+  log("")
+
+  // Create broadcast_messages table
+  if (!actual["broadcast_messages"]) {
+    info("Creating broadcast_messages table...")
+    try {
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS broadcast_messages (
+          id SERIAL PRIMARY KEY,
+          title VARCHAR(255) NOT NULL,
+          content TEXT NOT NULL,
+          message_type VARCHAR(50) NOT NULL CHECK (message_type IN ('email', 'in_app', 'announcement')),
+          segment_filter JSONB,
+          scheduled_at TIMESTAMP WITH TIME ZONE,
+          sent_at TIMESTAMP WITH TIME ZONE,
+          created_by INTEGER NOT NULL REFERENCES users(id),
+          created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+          status VARCHAR(50) DEFAULT 'draft' CHECK (status IN ('draft', 'scheduled', 'sent', 'cancelled'))
+        )
+      `)
+      await pool.query(`CREATE INDEX IF NOT EXISTS idx_broadcast_messages_status ON broadcast_messages(status)`)
+      await pool.query(`CREATE INDEX IF NOT EXISTS idx_broadcast_messages_created ON broadcast_messages(created_at DESC)`)
+      success("  Created broadcast_messages table")
+    } catch (err) {
+      error(`  Failed to create broadcast_messages table: ${err.message}`)
+    }
+  }
+
+  // Create broadcast_recipients table
+  if (!actual["broadcast_recipients"]) {
+    info("Creating broadcast_recipients table...")
+    try {
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS broadcast_recipients (
+          id SERIAL PRIMARY KEY,
+          message_id INTEGER NOT NULL REFERENCES broadcast_messages(id) ON DELETE CASCADE,
+          user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          opened_at TIMESTAMP WITH TIME ZONE,
+          clicked_at TIMESTAMP WITH TIME ZONE,
+          status VARCHAR(50) DEFAULT 'pending' CHECK (status IN ('pending', 'sent', 'failed', 'opened', 'clicked')),
+          created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+        )
+      `)
+      await pool.query(`CREATE INDEX IF NOT EXISTS idx_broadcast_recipients_message ON broadcast_recipients(message_id)`)
+      await pool.query(`CREATE INDEX IF NOT EXISTS idx_broadcast_recipients_user ON broadcast_recipients(user_id)`)
+      success("  Created broadcast_recipients table")
+    } catch (err) {
+      error(`  Failed to create broadcast_recipients table: ${err.message}`)
+    }
+  }
+
+  // Create system_settings table
+  if (!actual["system_settings"]) {
+    info("Creating system_settings table...")
+    try {
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS system_settings (
+          id SERIAL PRIMARY KEY,
+          key VARCHAR(100) NOT NULL UNIQUE,
+          value TEXT NOT NULL,
+          description TEXT,
+          setting_type VARCHAR(50) DEFAULT 'string',
+          updated_by INTEGER REFERENCES users(id),
+          updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+        )
+      `)
+      success("  Created system_settings table")
+    } catch (err) {
+      error(`  Failed to create system_settings table: ${err.message}`)
+    }
+  }
+
+  // Create ip_rules table
+  if (!actual["ip_rules"]) {
+    info("Creating ip_rules table...")
+    try {
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS ip_rules (
+          id SERIAL PRIMARY KEY,
+          rule_type VARCHAR(10) NOT NULL CHECK (rule_type IN ('whitelist', 'blacklist')),
+          value_type VARCHAR(10) NOT NULL DEFAULT 'ip' CHECK (value_type IN ('ip', 'url')),
+          ip_address VARCHAR(500) NOT NULL,
+          description TEXT,
+          reason VARCHAR(100),
+          hit_count INTEGER NOT NULL DEFAULT 0,
+          last_hit_at TIMESTAMP WITH TIME ZONE,
+          created_by INTEGER NOT NULL REFERENCES users(id),
+          created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+          expires_at TIMESTAMP WITH TIME ZONE,
+          is_active BOOLEAN NOT NULL DEFAULT true,
+          UNIQUE(rule_type, ip_address)
+        )
+      `)
+      await pool.query(`CREATE INDEX IF NOT EXISTS idx_ip_rules_active ON ip_rules(is_active, rule_type)`)
+      await pool.query(`CREATE INDEX IF NOT EXISTS idx_ip_rules_value ON ip_rules(ip_address)`)
+      success("  Created ip_rules table")
+    } catch (err) {
+      error(`  Failed to create ip_rules table: ${err.message}`)
+    }
+  }
+
+  // Create security_alerts table
+  if (!actual["security_alerts"]) {
+    info("Creating security_alerts table...")
+    try {
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS security_alerts (
+          id SERIAL PRIMARY KEY,
+          user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          alert_type VARCHAR(50) NOT NULL,
+          severity VARCHAR(20) NOT NULL CHECK (severity IN ('low', 'medium', 'high', 'critical')),
+          description TEXT NOT NULL,
+          details JSONB,
+          ip_address INET,
+          user_agent TEXT,
+          resolved_at TIMESTAMP WITH TIME ZONE,
+          resolved_by INTEGER REFERENCES users(id),
+          created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+          action_taken VARCHAR(100)
+        )
+      `)
+      await pool.query(`CREATE INDEX IF NOT EXISTS idx_security_alerts_user ON security_alerts(user_id)`)
+      await pool.query(`CREATE INDEX IF NOT EXISTS idx_security_alerts_severity ON security_alerts(severity)`)
+      await pool.query(`CREATE INDEX IF NOT EXISTS idx_security_alerts_created ON security_alerts(created_at DESC)`)
+      success("  Created security_alerts table")
+    } catch (err) {
+      error(`  Failed to create security_alerts table: ${err.message}`)
+    }
+  }
+
+  log("")
+  success("v2.2.0 migration completed successfully!")
+  log("")
+  return true
+}
+
 
 // ── V2 Migration: Add v2 tables and columns to v1 database ──────────────────
 async function runV2Migration(pool, actual, v1Info) {
@@ -915,6 +1076,31 @@ async function main() {
       }
     } else if (forceV2) {
       info("Your database already has all v2 tables and columns.")
+    }
+  }
+
+  // Check for v2 -> v2.2.0 migration (admin features)
+  const v220Info = detectV220MissingTables(actual)
+  if (v220Info.isV220Upgrade) {
+    log("")
+    log(`${c.bold}${c.bgCyan}${c.white} V2.2.0 UPGRADE AVAILABLE ${c.reset}`)
+    log("")
+    log(`${c.yellow}Your database is missing v2.2.0 admin feature tables:${c.reset}`)
+    for (const t of v220Info.missingTables) {
+      log(`  - ${c.bold}${t}${c.reset}`)
+    }
+    log("")
+    
+    const upgradeV220 = await askReview("Upgrade to v2.2.0 with admin features?")
+    if (upgradeV220) {
+      const migrated = await runV220Migration(pool, actual, v220Info)
+      if (migrated) {
+        // Re-read schema after migration
+        info("Re-reading database schema after migration...")
+        const newActual = await getActualSchema(pool)
+        Object.keys(actual).forEach(k => delete actual[k])
+        Object.assign(actual, newActual)
+      }
     }
   }
 
