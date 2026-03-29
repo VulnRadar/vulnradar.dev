@@ -23,6 +23,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import { SaveConfirmationModal, type ChangeItem } from "@/components/save-confirmation-modal"
 import {
   Bell,
   Plus,
@@ -106,6 +107,8 @@ export function NotificationsManager() {
   const [editingNotification, setEditingNotification] = useState<AdminNotification | null>(null)
   const [isCreating, setIsCreating] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [pendingDelete, setPendingDelete] = useState<AdminNotification | null>(null)
+  const [deleting, setDeleting] = useState(false)
 
   const [formData, setFormData] = useState({
     title: "",
@@ -198,14 +201,18 @@ export function NotificationsManager() {
     }
   }
 
-  const handleDelete = async (id: number) => {
-    if (!confirm("Are you sure you want to delete this notification?")) return
+  const handleDelete = async () => {
+    if (!pendingDelete) return
+    setDeleting(true)
     try {
-      const res = await fetch(`/api/v2/admin/notifications/${id}`, { method: "DELETE" })
+      const res = await fetch(`/api/v2/admin/notifications/${pendingDelete.id}`, { method: "DELETE" })
       if (!res.ok) throw new Error("Failed to delete")
       await fetchNotifications()
+      setPendingDelete(null)
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to delete")
+    } finally {
+      setDeleting(false)
     }
   }
 
@@ -410,7 +417,7 @@ export function NotificationsManager() {
                         <Pencil className="h-4 w-4" />
                       </button>
                       <button
-                        onClick={() => handleDelete(notif.id)}
+                        onClick={() => setPendingDelete(notif)}
                         className="flex items-center justify-center h-8 w-8 rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
                       >
                         <Trash2 className="h-4 w-4" />
@@ -593,6 +600,23 @@ export function NotificationsManager() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Delete Confirmation Modal */}
+      <SaveConfirmationModal
+        isOpen={!!pendingDelete}
+        onClose={() => setPendingDelete(null)}
+        onConfirm={handleDelete}
+        title="Delete Notification"
+        description="This will permanently delete this notification. This action cannot be undone."
+        changes={pendingDelete ? [
+          { field: "title", label: "Title", oldValue: pendingDelete.title, newValue: "Deleted" },
+          { field: "type", label: "Type", oldValue: pendingDelete.type, newValue: "—" },
+          { field: "audience", label: "Audience", oldValue: AUDIENCE_LABELS[pendingDelete.audience], newValue: "—" },
+        ] : []}
+        loading={deleting}
+        confirmText="Delete"
+        variant="destructive"
+      />
     </div>
   )
 }
