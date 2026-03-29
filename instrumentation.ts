@@ -572,19 +572,19 @@ export async function register() {
           id SERIAL PRIMARY KEY,
           rule_type VARCHAR(10) NOT NULL CHECK (rule_type IN ('whitelist', 'blacklist')),
           value_type VARCHAR(10) NOT NULL DEFAULT 'ip' CHECK (value_type IN ('ip', 'url')),
-          ip_address VARCHAR(500) NOT NULL,
+          value TEXT NOT NULL,
           description TEXT,
-          reason VARCHAR(100),
+          reason VARCHAR(255),
           hit_count INTEGER NOT NULL DEFAULT 0,
           last_hit_at TIMESTAMP WITH TIME ZONE,
           created_by INTEGER NOT NULL REFERENCES users(id),
           created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
           expires_at TIMESTAMP WITH TIME ZONE,
           is_active BOOLEAN NOT NULL DEFAULT true,
-          UNIQUE(rule_type, value_type, ip_address)
+          UNIQUE(rule_type, value_type, value)
         );
         CREATE INDEX IF NOT EXISTS idx_access_rules_active ON access_rules(is_active, rule_type);
-        CREATE INDEX IF NOT EXISTS idx_access_rules_value ON access_rules(ip_address);
+        CREATE INDEX IF NOT EXISTS idx_access_rules_value ON access_rules(value);
         CREATE INDEX IF NOT EXISTS idx_access_rules_type ON access_rules(value_type);
       `)
 
