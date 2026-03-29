@@ -1,7 +1,7 @@
 import { randomBytes, createHash } from "node:crypto"
-import pool from "./db"
-import { API_KEY_PREFIX, DEFAULT_API_KEY_DAILY_LIMIT, TERMS_UPDATED_AT } from "./constants"
-import { encryptApiKey, decryptApiKey, isEncryptionConfigured } from "./crypto"
+import pool from "@/lib/database/db"
+import { API_KEY_PREFIX, DEFAULT_API_KEY_DAILY_LIMIT, TERMS_UPDATED_AT } from "@/lib/config/constants"
+import { encryptApiKey, decryptApiKey, isEncryptionConfigured } from "@/lib/security/crypto"
 
 // Helper function to generate a random deprecated placeholder string
 function generateDeprecatedPlaceholder(): string {

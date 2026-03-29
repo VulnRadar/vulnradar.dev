@@ -6,8 +6,8 @@
 // When billing is disabled (config.yaml), all users get unlimited access
 // ============================================================================
 
-import pool from "./db"
-import { BILLING_ENABLED, BILLING_PLAN_LIMITS, BILLING_UNLIMITED_MODE_LIMIT } from "./constants"
+import pool from "@/lib/database/db"
+import { BILLING_ENABLED, BILLING_PLAN_LIMITS, BILLING_UNLIMITED_MODE_LIMIT } from "@/lib/config/constants"
 
 // Staff roles that get unlimited access
 const STAFF_ROLES = ["admin", "moderator", "support"]
