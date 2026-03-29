@@ -1,15 +1,15 @@
 "use client"
 
 import React, { useState, useEffect } from "react"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
 import { Plus, Trash2, RefreshCw, Network, Globe, Loader2, AlertTriangle, CheckCircle2, Eye } from "lucide-react"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { SaveConfirmationModal, type ChangeItem } from "@/components/save-confirmation-modal"
-import { cn } from "@/lib/utils"
+import { SaveConfirmationModal, type ChangeItem } from "@/components/shared/save-confirmation-modal"
+import { cn } from "@/lib/ui/utils"
 
 interface AccessRule {
   id: number

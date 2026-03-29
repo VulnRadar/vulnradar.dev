@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server"
 import crypto from "crypto"
 import { getSession } from "@/lib/auth"
-import pool from "@/lib/db"
-import { sendEmail, teamInviteEmail } from "@/lib/email"
-import { ERROR_MESSAGES, TEAM_ROLES, APP_URL } from "@/lib/constants"
+import pool from "@/lib/database/db"
+import { sendEmail, teamInviteEmail } from "@/lib/email/email"
+import { ERROR_MESSAGES, TEAM_ROLES, APP_URL } from "@/lib/config/constants"
 
 // Get team members
 export async function GET(request: Request) {

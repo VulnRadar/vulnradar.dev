@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server"
-import pool from "@/lib/db"
+import pool from "@/lib/database/db"
 import { getSession } from "@/lib/auth"
-import { getClientIP } from "@/lib/rate-limit"
-import { STAFF_ROLE_HIERARCHY } from "@/lib/constants"
-import { sendEmail } from "@/lib/email"
+import { getClientIP } from "@/lib/rate-limiting/rate-limit"
+import { STAFF_ROLE_HIERARCHY } from "@/lib/config/constants"
+import { sendEmail } from "@/lib/email/email"
 
 async function logAction(adminId: number, targetUserId: number | null, action: string, details?: string, ip?: string) {
   await pool.query(
@@ -89,51 +89,7 @@ export async function POST(req: NextRequest) {
           `UPDATE access_rules SET ${fields} WHERE id = $1`,
           [id, ...Object.values(mappedUpdates)]
         )
-        return NextResponse.json({ success: true })
-      }
-    }
-
-    // Legacy ip_rules support (deprecated, maps to access_rules)
-    if (section === "ip_rules") {
-      if (action === "create") {
-        const { rule_type, ip_address, description, reason, expires_at } = body
-        
-        const result = await pool.query(
-          `INSERT INTO access_rules (rule_type, value_type, value, description, reason, created_by, expires_at) 
-           VALUES ($1, $2, $3, $4, $5, $6, $7) 
-           RETURNING id, rule_type, value_type, value as ip_address, description, is_active, created_at`,
-          [rule_type, "ip", ip_address, description, reason, user.id, expires_at]
-        )
-        
-        return NextResponse.json({ rule: result.rows[0], success: true })
-      }
-
-      if (action === "list") {
-        const result = await pool.query(
-          `SELECT id, rule_type, value_type, value as ip_address, description, reason, hit_count, is_active, created_at, expires_at 
-           FROM access_rules 
-           WHERE is_active = true AND value_type = 'ip'
-           ORDER BY created_at DESC`
-        )
-        return NextResponse.json({ rules: result.rows })
-      }
-
-      if (action === "delete") {
-        const { id } = body
-        await pool.query(`UPDATE access_rules SET is_active = false WHERE id = $1`, [id])
-        return NextResponse.json({ success: true })
-      }
-
-      if (action === "update") {
-        const { id, ...updates } = body
-        const fields = Object.keys(updates)
-          .map((k, i) => `${k} = $${i + 2}`)
-          .join(", ")
-        
-        await pool.query(
-          `UPDATE access_rules SET ${fields} WHERE id = $1`,
-          [id, ...Object.values(updates)]
-        )
+        await logAction(user.id, null, "access_rule_updated", `Updated access rule ID: ${id}`, ip)
         return NextResponse.json({ success: true })
       }
     }
@@ -164,10 +120,14 @@ export async function POST(req: NextRequest) {
 
       if (action === "resolve") {
         const { id, action_taken } = body
+        const alertResult = await pool.query(`SELECT alert_type, severity FROM security_alerts WHERE id = $1`, [id])
+        const alertType = alertResult.rows[0]?.alert_type || "Unknown"
+        const severity = alertResult.rows[0]?.severity || "Unknown"
         await pool.query(
           `UPDATE security_alerts SET resolved_at = NOW(), resolved_by = $1, action_taken = $2 WHERE id = $3`,
           [user.id, action_taken, id]
         )
+        await logAction(user.id, null, "security_alert_resolved", `Resolved ${severity} ${alertType} alert (ID: ${id}). Action: ${action_taken || "None specified"}`, ip)
         return NextResponse.json({ success: true })
       }
     }
@@ -181,12 +141,15 @@ export async function POST(req: NextRequest) {
 
       if (action === "set") {
         const { key, value, description } = body
+        const oldResult = await pool.query(`SELECT value FROM system_settings WHERE key = $1`, [key])
+        const oldValue = oldResult.rows[0]?.value
         await pool.query(
           `INSERT INTO system_settings (key, value, description, updated_by) 
            VALUES ($1, $2, $3, $4)
            ON CONFLICT (key) DO UPDATE SET value = $2, updated_by = $4, updated_at = NOW()`,
           [key, value, description, user.id]
         )
+        await logAction(user.id, null, "system_setting_changed", `Changed "${key}" from "${oldValue || "(not set)"}" to "${value}"`, ip)
         return NextResponse.json({ success: true })
       }
 
@@ -403,30 +366,6 @@ export async function POST(req: NextRequest) {
         }, 100)
         
         return NextResponse.json({ success: true, message: "Broadcast resent" })
-      }
-    }
-
-    if (section === "password_policies") {
-      if (action === "list") {
-        const result = await pool.query(
-          `SELECT id, policy_name, rotation_days, grace_period_days, is_active 
-           FROM password_rotation_policies 
-           ORDER BY created_at DESC`
-        )
-        return NextResponse.json({ policies: result.rows })
-      }
-
-      if (action === "create") {
-        const { policy_name, rotation_days, grace_period_days, enforce_complexity } = body
-        
-        const result = await pool.query(
-          `INSERT INTO password_rotation_policies (policy_name, rotation_days, grace_period_days, enforce_complexity, created_by)
-           VALUES ($1, $2, $3, $4, $5)
-           RETURNING id, policy_name, rotation_days, is_active`,
-          [policy_name, rotation_days, grace_period_days, enforce_complexity, user.id]
-        )
-        
-        return NextResponse.json({ policy: result.rows[0], success: true })
       }
     }
 

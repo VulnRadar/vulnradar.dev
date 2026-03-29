@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getSession, hashPassword, verifyPassword } from "@/lib/auth"
-import { profileNameChangedEmail, profileEmailChangedEmail, profilePasswordChangedEmail } from "@/lib/email"
-import { sendNotificationEmail } from "@/lib/notifications"
-import pool from "@/lib/db"
-import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
-import { getClientIp } from "@/lib/request-utils"
-import { ERROR_MESSAGES } from "@/lib/constants"
+import { profileNameChangedEmail, profileEmailChangedEmail, profilePasswordChangedEmail } from "@/lib/email/email"
+import { sendNotificationEmail } from "@/lib/notifications/notifications"
+import pool from "@/lib/database/db"
+import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit"
+import { getClientIp } from "@/lib/api/request-utils"
+import { ERROR_MESSAGES } from "@/lib/config/constants"
 
 export async function PATCH(request: NextRequest) {
   const session = await getSession()

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
-import { checkRateLimit, getClientIP, RATE_LIMITS } from "@/lib/rate-limit"
-import { sendEmail, landingContactEmail, landingContactConfirmationEmail } from "@/lib/email"
-import { NOREPLY_EMAIL } from "@/lib/constants"
+import { checkRateLimit, getClientIP, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit"
+import { sendEmail, landingContactEmail, landingContactConfirmationEmail } from "@/lib/email/email"
+import { NOREPLY_EMAIL } from "@/lib/config/constants"
 
 function asTrimmedString(value: unknown): string | null {
   if (typeof value !== "string") {

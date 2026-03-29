@@ -3,10 +3,10 @@
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { AlertCircle, Home, ArrowLeft } from "lucide-react"
-import { ThemedLogo } from "@/components/themed-logo"
+import { ThemedLogo } from "@/components/shared/themed-logo"
 import { Button } from "@/components/ui/button"
-import { APP_NAME } from "@/lib/constants"
-import { transitions } from "@/lib/animations"
+import { APP_NAME } from "@/lib/config/constants"
+import { transitions } from "@/lib/ui/animations"
 
 export default function NotFound() {
   const router = useRouter()

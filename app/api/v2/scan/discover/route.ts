@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getSession } from "@/lib/auth"
-import { validateApiKey } from "@/lib/api-keys"
-import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
+import { validateApiKey } from "@/lib/api/api-keys"
+import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit"
 import dns from "dns/promises"
-import pool from "@/lib/db"
+import pool from "@/lib/database/db"
 
 // ============================================================================
 // Subdomain Cache - 4 hour TTL using database for persistence across instances

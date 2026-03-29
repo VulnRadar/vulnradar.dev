@@ -1,5 +1,5 @@
 "use client"
-import { TEAM_ROLES, STAFF_ROLE_LABELS, ROLE_BADGE_STYLES, STAFF_ROLES, API } from "@/lib/constants"
+import { TEAM_ROLES, STAFF_ROLE_LABELS, ROLE_BADGE_STYLES, STAFF_ROLES, API } from "@/lib/config/constants"
 
 import { useState, useEffect, useCallback } from "react"
 import { useRouter } from "next/navigation"
@@ -8,7 +8,7 @@ import { Footer } from "@/components/scanner/footer"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent } from "@/components/ui/card"
-import { cn } from "@/lib/utils"
+import { cn } from "@/lib/ui/utils"
 import { PaginationControl, usePagination } from "@/components/ui/pagination-control"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import {

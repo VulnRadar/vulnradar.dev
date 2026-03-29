@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
-import { stripe } from "@/lib/stripe"
-import { getPlanFromProductId } from "@/lib/products"
-import pool from "@/lib/db"
+import { stripe } from "@/lib/billing/stripe"
+import { getPlanFromProductId } from "@/lib/billing/products"
+import pool from "@/lib/database/db"
 import Stripe from "stripe"
 
 const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET!

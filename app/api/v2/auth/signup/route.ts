@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createUser, getUserByEmail } from "@/lib/auth"
-import { sendEmail, emailVerificationEmail } from "@/lib/email"
-import { ApiResponse, Validate, parseBody, withErrorHandling } from "@/lib/api-utils"
-import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
-import { getClientIp } from "@/lib/request-utils"
-import pool from "@/lib/db"
+import { sendEmail, emailVerificationEmail } from "@/lib/email/email"
+import { ApiResponse, Validate, parseBody, withErrorHandling } from "@/lib/api/api-utils"
+import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit"
+import { getClientIp } from "@/lib/api/request-utils"
+import pool from "@/lib/database/db"
 import crypto from "crypto"
-import { APP_URL, ERROR_MESSAGES, SUCCESS_MESSAGES, EMAIL_VERIFICATION_TOKEN_LIFETIME, PATTERNS, TURNSTILE_ENABLED } from "@/lib/constants"
+import { APP_URL, ERROR_MESSAGES, SUCCESS_MESSAGES, EMAIL_VERIFICATION_TOKEN_LIFETIME, PATTERNS, TURNSTILE_ENABLED } from "@/lib/config/constants"
 
 export const POST = withErrorHandling(async (request: NextRequest) => {
   const parsed = await parseBody<{ email: string; password: string; name: string; turnstileToken?: string }>(request)

@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import Link from "next/link"
 import { BookOpen, Zap, Code2, Shield, Globe, Clock, Key, Terminal, FileCode, Layers, ArrowRight, CheckCircle, Copy, Check } from "lucide-react"
-import { APP_NAME, APP_URL, APP_VERSION, ENGINE_VERSION, TOTAL_CHECKS_LABEL } from "@/lib/constants"
+import { APP_NAME, APP_URL, APP_VERSION, ENGINE_VERSION, TOTAL_CHECKS_LABEL } from "@/lib/config/constants"
 import { useEffect, useRef, useState } from "react"
 import { useDocsContext, type TocItem } from "./layout"
 

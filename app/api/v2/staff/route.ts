@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server"
-import pool from "@/lib/db"
+import pool from "@/lib/database/db"
 
 // Only show actual staff roles on staff page
 // beta_tester is now a badge, not a staff role

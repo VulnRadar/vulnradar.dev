@@ -1,4 +1,4 @@
-import { SEVERITY_LEVELS } from "@/lib/constants"
+import { SEVERITY_LEVELS } from "@/lib/config/constants"
 
 // ════════════════════════════════════════════════════════════════════════════
 // SMART SAFETY RATING ENGINE

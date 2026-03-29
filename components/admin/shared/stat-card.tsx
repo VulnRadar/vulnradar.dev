@@ -1,4 +1,4 @@
-import { cn } from "@/lib/utils"
+import { cn } from "@/lib/ui/utils"
 
 interface StatCardProps {
   label: string
@@ -9,21 +9,20 @@ interface StatCardProps {
 }
 
 /**
- * Dashboard stat card component
+ * Dashboard stat card component - follows VulnRadar design system
  */
 export function StatCard({ label, value, icon: Icon, color, accent }: StatCardProps) {
   return (
-    <div className="relative overflow-hidden rounded-xl border border-border bg-card p-4 flex flex-col gap-2">
-      <div className={cn("absolute top-0 left-0 w-full h-0.5", accent)} />
-      <div className="flex items-center justify-between">
-        <span className="text-xs font-medium text-muted-foreground">{label}</span>
-        <div className="h-8 w-8 rounded-lg flex items-center justify-center bg-muted/50">
-          <Icon className={cn("h-4 w-4", color)} />
-        </div>
+    <div className="flex items-center gap-3 p-4 rounded-xl border border-border/40 bg-card/30 hover:bg-card/50 hover:border-border/60 transition-colors">
+      <div className={cn("p-2.5 rounded-lg shrink-0", accent)}>
+        <Icon className={cn("h-4 w-4", color)} />
       </div>
-      <span className="text-2xl font-bold text-foreground tracking-tight">
-        {Number(value).toLocaleString()}
-      </span>
+      <div className="min-w-0">
+        <p className="text-2xl font-bold tracking-tight">
+          {Number(value).toLocaleString()}
+        </p>
+        <p className="text-[11px] text-muted-foreground truncate">{label}</p>
+      </div>
     </div>
   )
 }

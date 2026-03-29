@@ -3,10 +3,10 @@
 import React, { useState, useEffect, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import dynamic from "next/dynamic"
-import { cn } from "@/lib/utils"
-import { APP_NAME, API, ROUTES } from "@/lib/constants"
+import { cn } from "@/lib/ui/utils"
+import { APP_NAME, API, ROUTES } from "@/lib/config/constants"
 
-const ImageCropDialog = dynamic(() => import("@/components/image-crop-dialog").then(m => ({ default: m.ImageCropDialog })), { ssr: false })
+const ImageCropDialog = dynamic(() => import("@/components/modals/image-crop-dialog").then(m => ({ default: m.ImageCropDialog })), { ssr: false })
 import {
   Plus,
   Copy,
@@ -74,7 +74,7 @@ import { Progress } from "@/components/ui/progress"
 import { Switch } from "@/components/ui/switch"
 import { Header } from "@/components/scanner/header"
 import { Footer } from "@/components/scanner/footer"
-import { SaveConfirmationModal, type ChangeItem } from "@/components/save-confirmation-modal"
+import { SaveConfirmationModal, type ChangeItem } from "@/components/shared/save-confirmation-modal"
 
 interface ApiKey {
   id: number

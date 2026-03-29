@@ -2,16 +2,16 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { cn } from "@/lib/utils"
+import { cn } from "@/lib/ui/utils"
 import { BookOpen, Zap, Code2, ChevronRight } from "lucide-react"
 import { Header } from "@/components/scanner/header"
 import { Footer } from "@/components/scanner/footer"
-import { APP_NAME, ROUTES, BILLING_ENABLED } from "@/lib/constants"
-import { backdrops, transitions } from "@/lib/animations"
+import { APP_NAME, ROUTES, BILLING_ENABLED } from "@/lib/config/constants"
+import { backdrops, transitions } from "@/lib/ui/animations"
 import { useState, useEffect, createContext, useContext } from "react"
 import { Button } from "@/components/ui/button"
-import { useAuth } from "@/components/auth-provider"
-import { ThemedLogo } from "@/components/themed-logo"
+import { useAuth } from "@/components/providers/auth-provider"
+import { ThemedLogo } from "@/components/shared/themed-logo"
 
 // Context for sharing active section state between layout and pages
 interface DocsContextType {

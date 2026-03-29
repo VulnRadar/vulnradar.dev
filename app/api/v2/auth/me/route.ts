@@ -1,7 +1,7 @@
 import { getSession } from "@/lib/auth"
-import pool from "@/lib/db"
-import { ApiResponse, withErrorHandling } from "@/lib/api-utils"
-import { ERROR_MESSAGES, STAFF_ROLES } from "@/lib/constants"
+import pool from "@/lib/database/db"
+import { ApiResponse, withErrorHandling } from "@/lib/api/api-utils"
+import { ERROR_MESSAGES, STAFF_ROLES } from "@/lib/config/constants"
 
 export const GET = withErrorHandling(async () => {
   const session = await getSession()

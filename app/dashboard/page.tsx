@@ -18,14 +18,14 @@ const ShareButton = dynamic(() => import("@/components/scanner/share-button").th
 const ResponseHeaders = dynamic(() => import("@/components/scanner/response-headers").then(m => ({ default: m.ResponseHeaders })))
 const SubdomainDiscovery = dynamic(() => import("@/components/scanner/subdomain-discovery").then(m => ({ default: m.SubdomainDiscovery })))
 const CrawlUrlSelector = dynamic(() => import("@/components/scanner/crawl-url-selector").then(m => ({ default: m.CrawlUrlSelector })))
-const OnboardingTour = dynamic(() => import("@/components/onboarding-tour").then(m => ({ default: m.OnboardingTour })), { ssr: false })
+const OnboardingTour = dynamic(() => import("@/components/shared/onboarding-tour").then(m => ({ default: m.OnboardingTour })), { ssr: false })
 import type { ScanResult, ScanStatus, Vulnerability } from "@/lib/scanner/types"
-import { DEFAULT_SCAN_NOTE } from "@/lib/constants"
-import { API } from "@/lib/client-constants"
+import { DEFAULT_SCAN_NOTE } from "@/lib/config/constants"
+import { API } from "@/lib/config/client-constants"
 import { AlertCircle, RotateCcw, MessageSquare, Pencil, Save, Loader2 as Loader2Icon, Globe, ChevronDown, ChevronRight, ExternalLink } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { PremiumUpgradeModal, PREMIUM_FEATURES } from "@/components/premium-upgrade-modal"
-import { useAuth } from "@/components/auth-provider"
+import { PremiumUpgradeModal, PREMIUM_FEATURES } from "@/components/modals/premium-upgrade-modal"
+import { useAuth } from "@/components/providers/auth-provider"
 
 export default function DashboardPage() {
   return (

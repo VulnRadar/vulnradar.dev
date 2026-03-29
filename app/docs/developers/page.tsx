@@ -2,12 +2,12 @@
 
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { APP_NAME, APP_URL, APP_VERSION, ENGINE_VERSION, TOTAL_CHECKS_LABEL } from "@/lib/constants"
+import { APP_NAME, APP_URL, APP_VERSION, ENGINE_VERSION, TOTAL_CHECKS_LABEL } from "@/lib/config/constants"
 import { Code2, Package, Github, ExternalLink, Zap, FileJson, Terminal, Copy, Check, BookOpen, Lightbulb } from "lucide-react"
 import Link from "next/link"
 import { useEffect, useRef, useState } from "react"
 import { useDocsContext, type TocItem } from "../layout"
-import { cn } from "@/lib/utils"
+import { cn } from "@/lib/ui/utils"
 
 const tocItems: TocItem[] = [
   { id: "overview", label: "Overview" },

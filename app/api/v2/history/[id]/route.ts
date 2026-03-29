@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getSession } from "@/lib/auth"
-import pool from "@/lib/db"
-import { ERROR_MESSAGES, BEARER_PREFIX } from "@/lib/constants"
-import { validateApiKey, checkRateLimit as checkApiKeyRateLimit, recordUsage } from "@/lib/api-keys"
+import pool from "@/lib/database/db"
+import { ERROR_MESSAGES, BEARER_PREFIX } from "@/lib/config/constants"
+import { validateApiKey, checkRateLimit as checkApiKeyRateLimit, recordUsage } from "@/lib/api/api-keys"
 
 export async function GET(
   request: NextRequest,

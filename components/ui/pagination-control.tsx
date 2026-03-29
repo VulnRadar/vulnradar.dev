@@ -1,8 +1,7 @@
 "use client"
 
-import { ChevronLeft, ChevronRight } from "lucide-react"
-import { Button } from "@/components/ui/button"
-import { cn } from "@/lib/utils"
+import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from "lucide-react"
+import { cn } from "@/lib/ui/utils"
 
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100]
 
@@ -59,80 +58,122 @@ export function PaginationControl({
   if (totalPages <= 1 && !showSizeSelector) return null
 
   return (
-    <div className={cn("flex flex-wrap items-center justify-between gap-3", className)}>
-      {/* Left: label + per-page selector */}
-      <div className="flex items-center gap-3">
-        <span className="text-xs text-muted-foreground whitespace-nowrap">{rangeLabel}</span>
-        {showSizeSelector && (
-          <div className="flex items-center gap-1.5">
-            <span className="text-xs text-muted-foreground hidden sm:inline">Per page:</span>
-            <div className="flex items-center gap-0.5">
-              {PAGE_SIZE_OPTIONS.map((size) => (
-                <button
-                  key={size}
-                  onClick={() => {
-                    if (size !== pageSize) onPageSizeChange(size)
-                  }}
-                  className={cn(
-                    "h-7 min-w-[2rem] px-2 rounded text-xs font-medium transition-colors",
-                    size === pageSize
-                      ? "bg-primary text-primary-foreground"
-                      : "text-muted-foreground hover:text-foreground hover:bg-muted"
-                  )}
-                  aria-pressed={size === pageSize}
-                >
-                  {size}
-                </button>
-              ))}
-            </div>
+    <div className={cn("flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3", className)}>
+      {/* Left: per-page selector */}
+      {showSizeSelector && (
+        <div className="flex items-center gap-2">
+          <span className="text-[11px] text-muted-foreground font-medium uppercase tracking-wider">Show</span>
+          <div className="flex items-center rounded-lg border border-border/40 bg-muted/20 p-0.5">
+            {PAGE_SIZE_OPTIONS.map((size) => (
+              <button
+                key={size}
+                onClick={() => {
+                  if (size !== pageSize) onPageSizeChange(size)
+                }}
+                className={cn(
+                  "h-7 min-w-[2.25rem] px-2 rounded-md text-xs font-medium transition-all",
+                  size === pageSize
+                    ? "bg-primary text-primary-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+                )}
+                aria-pressed={size === pageSize}
+              >
+                {size}
+              </button>
+            ))}
           </div>
-        )}
-      </div>
+          <span className="text-[11px] text-muted-foreground">{rangeLabel}</span>
+        </div>
+      )}
 
-      {/* Right: page buttons */}
+      {/* Right: page navigation */}
       {totalPages > 1 && (
         <div className="flex items-center gap-1">
-          <Button
-            variant="outline"
-            size="icon"
-            className="h-8 w-8 bg-transparent"
+          {/* First page */}
+          <button
+            className={cn(
+              "h-8 w-8 rounded-lg flex items-center justify-center transition-colors border border-border/40",
+              currentPage <= 1
+                ? "text-muted-foreground/30 cursor-not-allowed bg-muted/10"
+                : "text-muted-foreground hover:text-foreground hover:bg-muted/50 hover:border-border/60"
+            )}
+            disabled={currentPage <= 1}
+            onClick={() => onPageChange(1)}
+            aria-label="First page"
+          >
+            <ChevronsLeft className="h-4 w-4" />
+          </button>
+          
+          {/* Previous page */}
+          <button
+            className={cn(
+              "h-8 w-8 rounded-lg flex items-center justify-center transition-colors border border-border/40",
+              currentPage <= 1
+                ? "text-muted-foreground/30 cursor-not-allowed bg-muted/10"
+                : "text-muted-foreground hover:text-foreground hover:bg-muted/50 hover:border-border/60"
+            )}
             disabled={currentPage <= 1}
             onClick={() => onPageChange(currentPage - 1)}
             aria-label="Previous page"
           >
             <ChevronLeft className="h-4 w-4" />
-          </Button>
+          </button>
 
-          {visiblePages.map((p, i) =>
-            p === "ellipsis" ? (
-              <span key={`ellipsis-${i}`} className="px-1 text-xs text-muted-foreground select-none">
-                ...
-              </span>
-            ) : (
-              <Button
-                key={p}
-                variant={p === currentPage ? "default" : "outline"}
-                size="icon"
-                className={cn("h-8 w-8 text-xs", p !== currentPage && "bg-transparent")}
-                onClick={() => onPageChange(p)}
-                aria-label={`Page ${p}`}
-                aria-current={p === currentPage ? "page" : undefined}
-              >
-                {p}
-              </Button>
-            )
-          )}
+          {/* Page numbers */}
+          <div className="flex items-center gap-0.5 mx-1">
+            {visiblePages.map((p, i) =>
+              p === "ellipsis" ? (
+                <span key={`ellipsis-${i}`} className="w-8 text-center text-xs text-muted-foreground/50 select-none">
+                  ...
+                </span>
+              ) : (
+                <button
+                  key={p}
+                  className={cn(
+                    "h-8 min-w-[2rem] px-2 rounded-lg text-xs font-medium transition-all",
+                    p === currentPage
+                      ? "bg-primary text-primary-foreground shadow-sm"
+                      : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+                  )}
+                  onClick={() => onPageChange(p)}
+                  aria-label={`Page ${p}`}
+                  aria-current={p === currentPage ? "page" : undefined}
+                >
+                  {p}
+                </button>
+              )
+            )}
+          </div>
 
-          <Button
-            variant="outline"
-            size="icon"
-            className="h-8 w-8 bg-transparent"
+          {/* Next page */}
+          <button
+            className={cn(
+              "h-8 w-8 rounded-lg flex items-center justify-center transition-colors border border-border/40",
+              currentPage >= totalPages
+                ? "text-muted-foreground/30 cursor-not-allowed bg-muted/10"
+                : "text-muted-foreground hover:text-foreground hover:bg-muted/50 hover:border-border/60"
+            )}
             disabled={currentPage >= totalPages}
             onClick={() => onPageChange(currentPage + 1)}
             aria-label="Next page"
           >
             <ChevronRight className="h-4 w-4" />
-          </Button>
+          </button>
+          
+          {/* Last page */}
+          <button
+            className={cn(
+              "h-8 w-8 rounded-lg flex items-center justify-center transition-colors border border-border/40",
+              currentPage >= totalPages
+                ? "text-muted-foreground/30 cursor-not-allowed bg-muted/10"
+                : "text-muted-foreground hover:text-foreground hover:bg-muted/50 hover:border-border/60"
+            )}
+            disabled={currentPage >= totalPages}
+            onClick={() => onPageChange(totalPages)}
+            aria-label="Last page"
+          >
+            <ChevronsRight className="h-4 w-4" />
+          </button>
         </div>
       )}
     </div>

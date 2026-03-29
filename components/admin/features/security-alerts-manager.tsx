@@ -5,8 +5,8 @@ import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { AlertTriangle, CheckCircle2, RefreshCw, Ban, AlertCircle, Clock } from "lucide-react"
-import { SaveConfirmationModal, type ChangeItem } from "@/components/save-confirmation-modal"
-import { cn } from "@/lib/utils"
+import { SaveConfirmationModal, type ChangeItem } from "@/components/shared/save-confirmation-modal"
+import { cn } from "@/lib/ui/utils"
 
 interface SecurityAlert {
   id: number
@@ -95,7 +95,7 @@ export function SecurityAlertsManager() {
   return (
     <>
       {/* Stats Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
         {(["critical", "high", "medium", "low"] as const).map((severity) => {
           const config = severityConfig[severity]
           const Icon = config.icon

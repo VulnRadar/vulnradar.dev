@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server"
-import { APP_VERSION, ENGINE_VERSION, VERSION_CHECK_URL, RELEASES_URL } from "@/lib/constants"
+import { APP_VERSION, ENGINE_VERSION, VERSION_CHECK_URL, RELEASES_URL } from "@/lib/config/constants"
 
 // Fun messages for people somehow running a version from the future
 const TIME_TRAVELER_MESSAGES = [

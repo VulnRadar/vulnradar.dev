@@ -17,15 +17,15 @@ import {
   ArrowLeft,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { PublicPageShell } from "@/components/public-page-shell"
+import { PublicPageShell } from "@/components/shared/public-page-shell"
 import { ScanSummary } from "@/components/scanner/scan-summary"
 import { ResultsList } from "@/components/scanner/results-list"
 import { IssueDetail } from "@/components/scanner/issue-detail"
 import { ExportButton } from "@/components/scanner/export-button"
 import { ResponseHeaders } from "@/components/scanner/response-headers"
 import { SubdomainDiscovery } from "@/components/scanner/subdomain-discovery"
-import { STAFF_ROLES, STAFF_ROLE_LABELS, ROLE_BADGE_STYLES, API, APP_NAME } from "@/lib/constants"
-import { cn } from "@/lib/utils"
+import { STAFF_ROLES, STAFF_ROLE_LABELS, ROLE_BADGE_STYLES, API, APP_NAME } from "@/lib/config/constants"
+import { cn } from "@/lib/ui/utils"
 import type { ScanResult, Vulnerability } from "@/lib/scanner/types"
 
 function formatRelativeTime(date: Date): string {

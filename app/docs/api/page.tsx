@@ -3,9 +3,9 @@
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { AlertTriangle, CheckCircle, Copy, Check } from "lucide-react"
-import { APP_URL, APP_NAME, APP_VERSION, ENGINE_VERSION, TOTAL_CHECKS_LABEL } from "@/lib/constants"
+import { APP_URL, APP_NAME, APP_VERSION, ENGINE_VERSION, TOTAL_CHECKS_LABEL } from "@/lib/config/constants"
 import { useState, useEffect, useRef } from "react"
-import { cn } from "@/lib/utils"
+import { cn } from "@/lib/ui/utils"
 import { useDocsContext, type TocItem } from "../layout"
 
 // Define all endpoints for the sidebar

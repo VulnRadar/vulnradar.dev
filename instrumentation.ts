@@ -9,8 +9,8 @@
  */
 export async function register() {
   if (process.env.NEXT_RUNTIME === "nodejs") {
-    const { default: pool } = await import("./lib/db")
-    const { APP_NAME, APP_VERSION, ENGINE_VERSION, VERSION_CHECK_URL, RELEASES_URL } = await import("./lib/constants")
+    const { default: pool } = await import("./lib/database/db")
+    const { APP_NAME, APP_VERSION, ENGINE_VERSION, VERSION_CHECK_URL, RELEASES_URL } = await import("./lib/config/constants")
 
     // ── Startup version check ───────────────────────────────────────
     console.log(`\x1b[36m[${APP_NAME}]\x1b[0m Starting ${APP_NAME} v${APP_VERSION} (Detection Engine v${ENGINE_VERSION})`)
@@ -148,7 +148,7 @@ export async function register() {
         CREATE INDEX IF NOT EXISTS idx_api_keys_key_hash ON api_keys(key_hash);
       `)
 
-      // ══════════════����════════════════════════════════════�����════════════
+      // ════════════════════════════════════════════════════════════════
       // API USAGE - Tracks API key usage for rate limiting
       // ════════════════════════════════════════════════════════════════
       await pool.query(`
@@ -284,7 +284,7 @@ export async function register() {
         CREATE INDEX IF NOT EXISTS idx_billing_history_user ON billing_history(user_id);
       `)
 
-      // ═════════════��═══════════════���══════════════════════════════════
+      // ════════════════════════════════════════════════════════════════
       // ADMIN AUDIT LOG - Admin action audit trail
       // ════════════════════════════════════════════════════════════════
       await pool.query(`
@@ -444,7 +444,7 @@ export async function register() {
 
       // ════════════════════════════════════════════════════════════════
       // DEVICE TRUST - Trusted devices for 2FA
-      // ═══════════════════════════════════════���════════════════════════
+      // ════════════════════════════════════════════════════════════════
       await pool.query(`
         CREATE TABLE IF NOT EXISTS device_trust (
           id SERIAL PRIMARY KEY,
@@ -479,7 +479,7 @@ export async function register() {
 
       // ════════════════════════════════════════════════════════════════
       // TEAMS
-      // ═══════════════════════════════════════════════════════════���════
+      // ════════════════════════════════════════════════════════════════
       await pool.query(`
         CREATE TABLE IF NOT EXISTS teams (
           id SERIAL PRIMARY KEY,
@@ -714,7 +714,7 @@ export async function register() {
 
       console.log(`[${APP_NAME}] Database schema verified successfully.`)
 
-      // ── Seed Default Badges ──────────────────────��────────────────
+      // ── Seed Default Badges ─────────────────────────────────────
       try {
         await pool.query(`
           INSERT INTO badges (name, display_name, description, icon, color, priority, is_limited)
@@ -736,16 +736,16 @@ export async function register() {
 
       // ── Run initial cleanup ───────────────────────────────────────
       try {
-        const { performDatabaseCleanup, formatCleanupStats } = await import("./lib/cleanup")
+        const { performDatabaseCleanup, formatCleanupStats } = await import("./lib/database/cleanup")
         const stats = await performDatabaseCleanup()
         console.log(`[${APP_NAME}] Initial cleanup completed: ${formatCleanupStats(stats)}`)
       } catch (cleanupError) {
         console.error(`[${APP_NAME}] Initial cleanup failed (non-fatal):`, cleanupError)
       }
 
-      // ── Schedule periodic cleanup ─�����───────────────────────────────
+      // ── Schedule periodic cleanup ─────────────────────────────────
       try {
-        const { schedulePeriodicCleanup } = await import("./lib/cleanup")
+        const { schedulePeriodicCleanup } = await import("./lib/database/cleanup")
         schedulePeriodicCleanup(5000)
         console.log(`[${APP_NAME}] Scheduled periodic database cleanup.`)
       } catch (scheduleError) {

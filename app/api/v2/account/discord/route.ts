@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server"
 import { getSession } from "@/lib/auth"
-import pool from "@/lib/db"
+import pool from "@/lib/database/db"
 
 // GET /api/v2/account/discord - Get Discord connection status
 export async function GET() {

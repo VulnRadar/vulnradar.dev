@@ -1,9 +1,9 @@
 import { NextRequest } from "next/server"
 import { getSession } from "@/lib/auth"
-import pool from "@/lib/db"
-import { ApiResponse, withErrorHandling } from "@/lib/api-utils"
-import { ERROR_MESSAGES, SUCCESS_MESSAGES, BEARER_PREFIX, BILLING_HISTORY_RETENTION } from "@/lib/constants"
-import { validateApiKey, checkRateLimit as checkApiKeyRateLimit, recordUsage } from "@/lib/api-keys"
+import pool from "@/lib/database/db"
+import { ApiResponse, withErrorHandling } from "@/lib/api/api-utils"
+import { ERROR_MESSAGES, SUCCESS_MESSAGES, BEARER_PREFIX, BILLING_HISTORY_RETENTION } from "@/lib/config/constants"
+import { validateApiKey, checkRateLimit as checkApiKeyRateLimit, recordUsage } from "@/lib/api/api-keys"
 
 export const GET = withErrorHandling(async (request: NextRequest) => {
   // Auth: check API key first (Bearer token), then fall back to session cookie

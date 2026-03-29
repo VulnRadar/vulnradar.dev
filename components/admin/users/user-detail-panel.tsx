@@ -46,10 +46,10 @@ import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
-import { cn } from "@/lib/utils"
-import { STAFF_ROLE_LABELS, ROLE_BADGE_STYLES } from "@/lib/constants"
-import { hasStaffPermission, STAFF_PERMISSIONS } from "@/lib/permissions-client"
-import { SaveConfirmationModal, type ChangeItem, type AffectedUser } from "@/components/save-confirmation-modal"
+import { cn } from "@/lib/ui/utils"
+import { STAFF_ROLE_LABELS, ROLE_BADGE_STYLES } from "@/lib/config/constants"
+import { hasStaffPermission, STAFF_PERMISSIONS } from "@/lib/auth/permissions-client"
+import { SaveConfirmationModal, type ChangeItem, type AffectedUser } from "@/components/shared/save-confirmation-modal"
 import type { UserDetail, BadgeDef } from "@/components/admin/types"
 import { formatRelativeTime } from "@/components/admin/utils"
 import { UserAvatar, ActionCard } from "@/components/admin/shared"
@@ -93,6 +93,7 @@ export function UserDetailPanel({
   const [newBadgeDisplay, setNewBadgeDisplay] = useState("")
   const [newBadgeColor, setNewBadgeColor] = useState("#6366f1")
   const [pendingDeleteBadge, setPendingDeleteBadge] = useState<BadgeDef | null>(null)
+  const [pendingDeleteNote, setPendingDeleteNote] = useState<{ id: number; text: string } | null>(null)
 
   const awardedIds = new Set(detail.badges.map((b) => b.id))
   const unawardedBadges = allBadges.filter((b) => !awardedIds.has(b.id))
@@ -123,6 +124,10 @@ export function UserDetailPanel({
 
   // Track if there are unsaved changes
   const hasChanges = Object.keys(pendingChanges).length > 0 || pendingBadgeAwards.length > 0 || pendingBadgeRevokes.length > 0
+  
+  // Validation: email cannot be empty if it's being changed
+  const hasEmailError = pendingChanges.email !== undefined && (pendingChanges.email as string).trim() === ""
+  const canSave = hasChanges && !hasEmailError
   
   // Build changes array for the modal
   const modalChanges: ChangeItem[] = [
@@ -411,8 +416,12 @@ export function UserDetailPanel({
                           addPendingChange("email", e.target.value.trim().toLowerCase(), u.email)
                         }}
                         placeholder="Email address"
-                        className="h-8 text-xs"
+                        className={cn("h-8 text-xs", hasEmailError && "border-destructive focus-visible:ring-destructive")}
+                        required
                       />
+                      {hasEmailError && (
+                        <p className="text-[10px] text-destructive">Email is required</p>
+                      )}
                     </div>
                   )}
 
@@ -943,7 +952,7 @@ export function UserDetailPanel({
                           <Pencil className="h-3.5 w-3.5" />
                         </button>
                         <button
-                          onClick={() => onAction(u.id, "delete_note", { noteId: note.id })}
+                          onClick={() => setPendingDeleteNote({ id: note.id, text: note.note })}
                           className="flex items-center justify-center h-7 w-7 rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
                         >
                           <Trash2 className="h-3.5 w-3.5" />
@@ -1315,13 +1324,18 @@ export function UserDetailPanel({
                 <div className="p-1.5 rounded-lg bg-primary/10">
                   <Save className="h-3.5 w-3.5 text-primary" />
                 </div>
-                <p className="text-sm font-medium">
-                  {modalChanges.length} unsaved change{modalChanges.length !== 1 ? "s" : ""}
-                </p>
+                <div>
+                  <p className="text-sm font-medium">
+                    {modalChanges.length} unsaved change{modalChanges.length !== 1 ? "s" : ""}
+                  </p>
+                  {hasEmailError && (
+                    <p className="text-[10px] text-destructive">Email address is required</p>
+                  )}
+                </div>
               </div>
               <div className="flex items-center gap-2">
                 <Button variant="ghost" size="sm" onClick={discardChanges} disabled={isSaving}>Discard</Button>
-                <Button size="sm" className="gap-1.5" onClick={handleSaveClick} disabled={isSaving}>
+                <Button size="sm" className="gap-1.5" onClick={handleSaveClick} disabled={isSaving || !canSave}>
                   {isSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
                   Save Changes
                 </Button>
@@ -1370,6 +1384,26 @@ export function UserDetailPanel({
         confirmText="Confirm"
         variant={pendingSupportAction?.variant}
         forceNotify={true}
+      />
+
+      {/* Delete Note Confirmation Modal */}
+      <SaveConfirmationModal
+        isOpen={!!pendingDeleteNote}
+        onClose={() => setPendingDeleteNote(null)}
+        onConfirm={async () => {
+          if (pendingDeleteNote) {
+            await onAction(u.id, "delete_note", { noteId: pendingDeleteNote.id })
+            setPendingDeleteNote(null)
+          }
+        }}
+        title="Delete Note"
+        description="This will permanently delete this admin note. This action cannot be undone."
+        changes={pendingDeleteNote ? [
+          { field: "note", label: "Note", oldValue: pendingDeleteNote.text.substring(0, 50) + (pendingDeleteNote.text.length > 50 ? "..." : ""), newValue: "Deleted" },
+        ] : []}
+        loading={isLoading("delete_note")}
+        confirmText="Delete"
+        variant="destructive"
       />
     </div>
   )

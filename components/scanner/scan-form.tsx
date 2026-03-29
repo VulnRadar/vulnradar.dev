@@ -7,8 +7,8 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
-import { TOTAL_CHECKS_LABEL } from "@/lib/constants"
-import { cn } from "@/lib/utils"
+import { TOTAL_CHECKS_LABEL } from "@/lib/config/constants"
+import { cn } from "@/lib/ui/utils"
 import type { ScanStatus } from "@/lib/scanner/types"
 
 // Protocol definitions with their applicable scanner categories
