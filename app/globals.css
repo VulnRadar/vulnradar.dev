@@ -56,6 +56,14 @@ html[data-scroll-locked] body {
   padding-right: 0 !important;
 }
 
+/* Badges: preserve custom colors on hover.
+   Custom-colored badges (e.g. role/plan badges with inline Tailwind color classes)
+   get a subtle opacity dim on hover instead of being overridden by accent colors. */
+[class*="bg-"][class*="/10"].inline-flex:hover,
+[class*="bg-"][class*="/15"].inline-flex:hover {
+  filter: brightness(1.15);
+}
+
 /* Reduce motion for users who prefer it */
 @media (prefers-reduced-motion: reduce) {
   html {
