@@ -19,6 +19,7 @@ import {
   Send,
   RefreshCw,
   History,
+  Ban,
 } from "lucide-react"
 import { IPRulesManager } from "@/components/admin/features/ip-rules-manager"
 import { SecurityAlertsManager } from "@/components/admin/features/security-alerts-manager"
