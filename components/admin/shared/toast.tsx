@@ -2,7 +2,7 @@
 
 import { useEffect } from "react"
 import { CheckCircle2, XCircle, X } from "lucide-react"
-import { cn } from "@/lib/utils"
+import { cn } from "@/lib/ui/utils"
 import type { ToastState } from "../types"
 
 interface ToastProps {

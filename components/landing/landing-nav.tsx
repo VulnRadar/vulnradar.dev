@@ -1,10 +1,10 @@
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { ArrowRight } from "lucide-react"
-import { APP_NAME, BILLING_ENABLED, ROUTES } from "@/lib/constants"
+import { APP_NAME, BILLING_ENABLED, ROUTES } from "@/lib/config/constants"
 import { ThemedLogo } from "@/components/shared/themed-logo"
-import { backdrops } from "@/lib/animations"
-import { cn } from "@/lib/utils"
+import { backdrops } from "@/lib/ui/animations"
+import { cn } from "@/lib/ui/utils"
 
 export function LandingNav() {
   return (

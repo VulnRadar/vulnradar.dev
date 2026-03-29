@@ -2,8 +2,8 @@
 
 import { useEffect, useState } from "react"
 import { Shield, ShieldCheck, Headset, Users, FlaskConical } from "lucide-react"
-import { cn } from "@/lib/utils"
-import { APP_NAME, STAFF_ROLES, STAFF_ROLE_LABELS, API, STAFF_ROLE_HIERARCHY } from "@/lib/constants"
+import { cn } from "@/lib/ui/utils"
+import { APP_NAME, STAFF_ROLES, STAFF_ROLE_LABELS, API, STAFF_ROLE_HIERARCHY } from "@/lib/config/constants"
 import { isStaffRole } from "@/lib/permissions-client"
 
 // Staff roles that should appear on the staff page (excluding regular users and badge-only roles)

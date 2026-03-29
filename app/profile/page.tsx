@@ -3,8 +3,8 @@
 import React, { useState, useEffect, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import dynamic from "next/dynamic"
-import { cn } from "@/lib/utils"
-import { APP_NAME, API, ROUTES } from "@/lib/constants"
+import { cn } from "@/lib/ui/utils"
+import { APP_NAME, API, ROUTES } from "@/lib/config/constants"
 
 const ImageCropDialog = dynamic(() => import("@/components/modals/image-crop-dialog").then(m => ({ default: m.ImageCropDialog })), { ssr: false })
 import {

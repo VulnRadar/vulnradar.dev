@@ -10,9 +10,9 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { APP_NAME } from "@/lib/constants"
-import { API } from "@/lib/client-constants"
-import { transitions, backdrops } from "@/lib/animations"
+import { APP_NAME } from "@/lib/config/constants"
+import { API } from "@/lib/config/client-constants"
+import { transitions, backdrops } from "@/lib/ui/animations"
 
 export default function LoginPage() {
   return (

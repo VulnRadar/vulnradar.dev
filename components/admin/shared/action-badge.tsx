@@ -1,5 +1,5 @@
 import { Badge } from "@/components/ui/badge"
-import { cn } from "@/lib/utils"
+import { cn } from "@/lib/ui/utils"
 import { ACTION_META } from "../config"
 import { getActionFallbackLabel } from "../utils"
 

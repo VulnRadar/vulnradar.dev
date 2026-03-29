@@ -12,7 +12,7 @@ import {
   CheckCircle2,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { cn } from "@/lib/utils"
+import { cn } from "@/lib/ui/utils"
 import { PUBLIC_PATHS } from "@/lib/public-paths"
 import { useAuth } from "@/components/auth-provider"
 import { STAFF_ROLES, APP_VERSION, APP_NAME, VERSION_COOKIE_NAME } from "@/lib/constants"

@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useCallback } from "react"
 import { X, ExternalLink, AlertCircle, CheckCircle2, AlertTriangle, Info, Megaphone } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { cn } from "@/lib/utils"
+import { cn } from "@/lib/ui/utils"
 
 interface Notification {
   id: number

@@ -2,7 +2,7 @@
 
 import { Moon, Sun } from "lucide-react"
 import { useTheme } from "next-themes"
-import { cn } from "@/lib/utils"
+import { cn } from "@/lib/ui/utils"
 
 export function ThemeToggle() {
   const { setTheme, resolvedTheme } = useTheme()

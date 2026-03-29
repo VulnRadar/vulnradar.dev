@@ -43,7 +43,7 @@ import {
   Layers,
   RefreshCw,
 } from "lucide-react"
-import { cn } from "@/lib/utils"
+import { cn } from "@/lib/ui/utils"
 
 interface AdminNotification {
   id: number

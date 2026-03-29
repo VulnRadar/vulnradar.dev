@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { AlertTriangle, CheckCircle2, RefreshCw, Ban, AlertCircle, Clock } from "lucide-react"
 import { SaveConfirmationModal, type ChangeItem } from "@/components/shared/save-confirmation-modal"
-import { cn } from "@/lib/utils"
+import { cn } from "@/lib/ui/utils"
 
 interface SecurityAlert {
   id: number

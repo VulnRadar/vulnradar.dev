@@ -1,5 +1,5 @@
 "use client"
-import { SEVERITY_LEVELS, API, BILLING_HISTORY_RETENTION } from "@/lib/constants"
+import { SEVERITY_LEVELS, API, BILLING_HISTORY_RETENTION } from "@/lib/config/constants"
 import { useAuth } from "@/components/providers/auth-provider"
 
 import { useState, useEffect, useCallback } from "react"
@@ -40,7 +40,7 @@ import { DeleteScanButton } from "@/components/scanner/delete-scan-button"
 import { ResponseHeaders } from "@/components/scanner/response-headers"
 import { SubdomainDiscovery } from "@/components/scanner/subdomain-discovery"
 import type { ScanResult, Vulnerability } from "@/lib/scanner/types"
-import { cn } from "@/lib/utils"
+import { cn } from "@/lib/ui/utils"
 import { PaginationControl, usePagination } from "@/components/ui/pagination-control"
 import {
   DropdownMenu,

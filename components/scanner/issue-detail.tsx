@@ -17,7 +17,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { SeverityBadge } from "@/components/scanner/severity-badge"
 import type { Vulnerability } from "@/lib/scanner/types"
-import { cn } from "@/lib/utils"
+import { cn } from "@/lib/ui/utils"
 
 interface IssueDetailProps {
   issue: Vulnerability

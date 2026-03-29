@@ -1,4 +1,4 @@
-import { cn } from "@/lib/utils"
+import { cn } from "@/lib/ui/utils"
 
 interface SkeletonProps {
   className?: string

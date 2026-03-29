@@ -30,9 +30,9 @@ import { Footer } from "@/components/scanner/footer"
 import { getSafetyRating } from "@/lib/scanner/safety-rating"
 import { PaginationControl, usePagination } from "@/components/ui/pagination-control"
 import type { Vulnerability } from "@/lib/scanner/types"
-import { API } from "@/lib/constants"
+import { API } from "@/lib/config/constants"
 import { ShareModal } from "@/components/scanner/share-modal"
-import { cn } from "@/lib/utils"
+import { cn } from "@/lib/ui/utils"
 
 interface Share {
   id: number

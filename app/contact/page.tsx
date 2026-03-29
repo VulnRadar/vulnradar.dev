@@ -22,8 +22,8 @@ import {
   Users,
 } from "lucide-react"
 import Link from "next/link"
-import { cn } from "@/lib/utils"
-import { SUPPORT_EMAIL, TURNSTILE_ENABLED, API } from "@/lib/constants"
+import { cn } from "@/lib/ui/utils"
+import { SUPPORT_EMAIL, TURNSTILE_ENABLED, API } from "@/lib/config/constants"
 
 const CATEGORIES = [
   { id: "bug", label: "Bug Report", icon: Bug, desc: "Something is broken or not working as expected" },
