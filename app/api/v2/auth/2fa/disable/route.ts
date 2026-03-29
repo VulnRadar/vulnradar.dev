@@ -1,11 +1,11 @@
 import { NextRequest } from "next/server"
 import { getSession, verifyPassword } from "@/lib/auth"
-import { twoFactorDisabledEmail } from "@/lib/email"
-import { sendNotificationEmail } from "@/lib/notifications"
-import pool from "@/lib/db"
-import { ApiResponse, parseBody, Validate, withErrorHandling } from "@/lib/api-utils"
-import { getClientIp, getUserAgent } from "@/lib/request-utils"
-import { ERROR_MESSAGES, SUCCESS_MESSAGES } from "@/lib/constants"
+import { twoFactorDisabledEmail } from "@/lib/email/email"
+import { sendNotificationEmail } from "@/lib/notifications/notifications"
+import pool from "@/lib/database/db"
+import { ApiResponse, parseBody, Validate, withErrorHandling } from "@/lib/api/api-utils"
+import { getClientIp, getUserAgent } from "@/lib/api/request-utils"
+import { ERROR_MESSAGES, SUCCESS_MESSAGES } from "@/lib/config/constants"
 
 export const POST = withErrorHandling(async (request: NextRequest) => {
   const session = await getSession()

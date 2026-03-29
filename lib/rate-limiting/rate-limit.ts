@@ -1,6 +1,6 @@
-import pool from "@/lib/db"
-import { getClientIp } from "./request-utils"
-import { RATE_LIMITS as RATE_LIMIT_CONFIGS } from "./constants"
+import pool from "@/lib/database/db"
+import { getClientIp } from "@/lib/api/request-utils"
+import { RATE_LIMITS as RATE_LIMIT_CONFIGS } from "@/lib/config/constants"
 
 interface RateLimitConfig {
   key: string

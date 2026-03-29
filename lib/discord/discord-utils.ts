@@ -1,5 +1,5 @@
-import pool from "@/lib/db"
-import { email2FACodeEmail, sendEmail } from "@/lib/email"
+import pool from "@/lib/database/db"
+import { email2FACodeEmail, sendEmail } from "@/lib/email/email"
 import { randomInt } from "node:crypto"
 
 /**

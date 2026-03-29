@@ -1,7 +1,7 @@
 'use server'
 
-import { stripe } from '@/lib/stripe'
-import { PRODUCTS, getPlanFromProductId } from '@/lib/products'
+import { stripe } from '@/lib/billing/stripe'
+import { PRODUCTS, getPlanFromProductId } from '@/lib/billing/products'
 
 export async function startCheckoutSession(productId: string, userId?: number) {
   const product = PRODUCTS.find((p) => p.id === productId)

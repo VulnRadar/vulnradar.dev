@@ -6,10 +6,10 @@ import { Button } from "@/components/ui/button"
 import { Footer } from "@/components/scanner/footer"
 import { Header } from "@/components/scanner/header"
 import { useAuth } from "@/components/providers/auth-provider"
-import { APP_NAME, ROUTES, BILLING_ENABLED } from "@/lib/constants"
+import { APP_NAME, ROUTES, BILLING_ENABLED } from "@/lib/config/constants"
 import { ThemedLogo } from "@/components/shared/themed-logo"
 import { ArrowRight } from "lucide-react"
-import { backdrops, transitions } from "@/lib/animations"
+import { backdrops, transitions } from "@/lib/ui/animations"
 
 export default function DemoLayout({ children }: { children: React.ReactNode }) {
   const { me } = useAuth()

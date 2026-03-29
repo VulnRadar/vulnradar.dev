@@ -1,7 +1,6 @@
-import type { ScanResult, Severity } from "./scanner/types"
-import { APP_NAME, APP_URL, TOTAL_CHECKS_LABEL } from "./constants"
-import { SEVERITY_LEVELS } from "@/lib/constants"
-import { getSafetyRating } from "./scanner/safety-rating"
+import type { ScanResult, Severity } from "@/lib/scanner/types"
+import { APP_NAME, APP_URL, TOTAL_CHECKS_LABEL, SEVERITY_LEVELS } from "@/lib/config/constants"
+import { getSafetyRating } from "@/lib/scanner/safety-rating"
 
 // Lightweight multi-page PDF generation using raw PDF syntax (no external deps)
 export function generatePdfReport(result: ScanResult): Uint8Array {

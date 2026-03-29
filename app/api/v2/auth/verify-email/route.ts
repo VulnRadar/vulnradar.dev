@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server"
-import pool from "@/lib/db"
+import pool from "@/lib/database/db"
 import { createSession } from "@/lib/auth"
-import { ApiResponse, parseBody, withErrorHandling } from "@/lib/api-utils"
-import { getClientIp, getUserAgent } from "@/lib/request-utils"
-import { SUCCESS_MESSAGES, ERROR_MESSAGES } from "@/lib/constants"
+import { ApiResponse, parseBody, withErrorHandling } from "@/lib/api/api-utils"
+import { getClientIp, getUserAgent } from "@/lib/api/request-utils"
+import { SUCCESS_MESSAGES, ERROR_MESSAGES } from "@/lib/config/constants"
 
 export const POST = withErrorHandling(async (request: NextRequest) => {
   const parsed = await parseBody<{ token: string }>(request)

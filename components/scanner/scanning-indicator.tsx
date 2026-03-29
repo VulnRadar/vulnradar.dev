@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { Loader2, Shield } from "lucide-react"
-import { TOTAL_CHECKS_LABEL } from "@/lib/constants"
+import { TOTAL_CHECKS_LABEL } from "@/lib/config/constants"
 
 const SCAN_STEPS = [
   "Connecting to target...",

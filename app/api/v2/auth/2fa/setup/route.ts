@@ -2,12 +2,12 @@ import { NextRequest } from "next/server"
 import crypto from "crypto"
 import { getSession, hashPassword } from "@/lib/auth"
 import { generateSecret, verifyTOTP, generateOtpAuthUri } from "@/lib/totp"
-import { twoFactorEnabledEmail } from "@/lib/email"
-import { sendNotificationEmail } from "@/lib/notifications"
-import pool from "@/lib/db"
-import { ApiResponse, parseBody, withErrorHandling } from "@/lib/api-utils"
-import { getClientIp, getUserAgent } from "@/lib/request-utils"
-import { ERROR_MESSAGES, SUCCESS_MESSAGES } from "@/lib/constants"
+import { twoFactorEnabledEmail } from "@/lib/email/email"
+import { sendNotificationEmail } from "@/lib/notifications/notifications"
+import pool from "@/lib/database/db"
+import { ApiResponse, parseBody, withErrorHandling } from "@/lib/api/api-utils"
+import { getClientIp, getUserAgent } from "@/lib/api/request-utils"
+import { ERROR_MESSAGES, SUCCESS_MESSAGES } from "@/lib/config/constants"
 
 function generateBackupCodes(count = 8): string[] {
   const codes: string[] = []

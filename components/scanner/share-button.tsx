@@ -3,7 +3,7 @@
 import { useState } from "react"
 import { Share2, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { API } from "@/lib/constants"
+import { API } from "@/lib/config/constants"
 import { ShareModal } from "./share-modal"
 
 interface ShareButtonProps {

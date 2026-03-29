@@ -5,7 +5,7 @@
  * Import these constants to ensure consistency across all pages.
  * 
  * Usage:
- *   import { transitions, animations } from "@/lib/animations"
+ *   import { transitions, animations } from "@/lib/ui/animations"
  *   <div className={transitions.default}>...</div>
  */
 

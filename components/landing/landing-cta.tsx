@@ -1,7 +1,7 @@
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { ArrowRight } from "lucide-react"
-import { APP_NAME, BILLING_ENABLED, ROUTES } from "@/lib/constants"
+import { APP_NAME, BILLING_ENABLED, ROUTES } from "@/lib/config/constants"
 
 export function LandingCta() {
   return (

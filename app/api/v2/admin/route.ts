@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from "next/server"
 import { randomBytes, scryptSync } from "node:crypto"
 import { getSession } from "@/lib/auth"
-import pool from "@/lib/db"
-import { getClientIP } from "@/lib/rate-limit"
-import { ERROR_MESSAGES, STAFF_ROLES, STAFF_ROLE_HIERARCHY } from "@/lib/constants"
-import { sendEmail, adminNotificationEmail, adminAccountChangeEmail } from "@/lib/email"
+import pool from "@/lib/database/db"
+import { getClientIP } from "@/lib/rate-limiting/rate-limit"
+import { ERROR_MESSAGES, STAFF_ROLES, STAFF_ROLE_HIERARCHY } from "@/lib/config/constants"
+import { sendEmail, adminNotificationEmail, adminAccountChangeEmail } from "@/lib/email/email"
 
 // Helper to send email only if user notification is enabled
 async function sendNotificationIfEnabled(

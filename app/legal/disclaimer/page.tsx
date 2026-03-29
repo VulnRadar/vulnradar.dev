@@ -1,4 +1,4 @@
-import { TOTAL_CHECKS_LABEL, LEGAL_EMAIL, APP_NAME } from "@/lib/constants"
+import { TOTAL_CHECKS_LABEL, LEGAL_EMAIL, APP_NAME } from "@/lib/config/constants"
 
 export default function DisclaimerPage() {
   return (

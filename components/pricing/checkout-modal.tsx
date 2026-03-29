@@ -4,7 +4,7 @@ import { Sparkles, Shield, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { StripeCheckout } from "@/components/billing/stripe-checkout"
-import { PLANS } from "@/lib/plans"
+import { PLANS } from "@/lib/billing/plans"
 import Link from "next/link"
 
 interface CheckoutModalProps {

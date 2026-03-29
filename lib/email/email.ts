@@ -1,5 +1,5 @@
 import nodemailer from "nodemailer"
-import { APP_NAME, APP_URL, SUPPORT_EMAIL, LOGO_URL, SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, SMTP_FROM } from "@/lib/constants"
+import { APP_NAME, APP_URL, SUPPORT_EMAIL, LOGO_URL, SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, SMTP_FROM } from "@/lib/config/constants"
 
 const COLORS = {
   BG_DARK: "#0a0e13",

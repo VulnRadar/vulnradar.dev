@@ -1,9 +1,9 @@
 import { NextRequest } from "next/server"
 import { randomInt } from "node:crypto"
-import pool from "@/lib/db"
-import { email2FACodeEmail, sendEmail } from "@/lib/email"
-import { ApiResponse, withErrorHandling } from "@/lib/api-utils"
-import { AUTH_2FA_PENDING_COOKIE } from "@/lib/constants"
+import pool from "@/lib/database/db"
+import { email2FACodeEmail, sendEmail } from "@/lib/email/email"
+import { ApiResponse, withErrorHandling } from "@/lib/api/api-utils"
+import { AUTH_2FA_PENDING_COOKIE } from "@/lib/config/constants"
 
 export const POST = withErrorHandling(async (request: NextRequest) => {
   // Validate the pending 2FA cookie (check both normal login and Discord login)

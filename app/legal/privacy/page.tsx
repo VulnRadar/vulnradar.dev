@@ -1,4 +1,4 @@
-import { LEGAL_EMAIL, APP_NAME, APP_URL } from "@/lib/constants"
+import { LEGAL_EMAIL, APP_NAME, APP_URL } from "@/lib/config/constants"
 
 export default function PrivacyPage() {
   return (
