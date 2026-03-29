@@ -1,3 +1,5 @@
+"use client"
+
 import { Footer } from "@/components/scanner/footer"
 import { LandingNav } from "@/components/landing/landing-nav"
 import { LandingHero } from "@/components/landing/landing-hero"
