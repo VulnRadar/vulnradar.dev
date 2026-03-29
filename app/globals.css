@@ -26,15 +26,17 @@ html {
   overflow-y: scroll;
 }
 
-/* Prevent Radix UI scroll-lock from jumping the page.
-   Radix sets position:fixed + overflow:hidden on body when a modal/select/sheet opens,
-   which causes the page to visually scroll to top. Since the header is now `fixed`,
+/* Prevent Radix UI scroll-lock from jumping the page or shifting content.
+   Radix sets position:fixed + overflow:hidden + padding-right on body when a modal/select/sheet opens.
+   Since the header is now `fixed` and html always has overflow-y: scroll,
    we don't need Radix's scroll lock at all — override it completely. */
+body,
 body[data-scroll-locked] {
   position: static !important;
-  overflow-y: scroll !important;
+  overflow: visible !important;
   padding-right: 0 !important;
   margin-right: 0 !important;
+  width: 100% !important;
 }
 
 /* Reduce motion for users who prefer it */
