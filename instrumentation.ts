@@ -565,25 +565,27 @@ export async function register() {
       `)
 
       // ════════════════════════════════════════════════════════════════
-      // IP RULES - IP Whitelisting and Blacklisting
+      // ACCESS RULES - IP and URL Whitelisting/Blacklisting
       // ════════════════════════════════════════════════════════════════
       await pool.query(`
-        CREATE TABLE IF NOT EXISTS ip_rules (
+        CREATE TABLE IF NOT EXISTS access_rules (
           id SERIAL PRIMARY KEY,
           rule_type VARCHAR(10) NOT NULL CHECK (rule_type IN ('whitelist', 'blacklist')),
-          ip_address INET NOT NULL,
+          value_type VARCHAR(10) NOT NULL DEFAULT 'ip' CHECK (value_type IN ('ip', 'url')),
+          value TEXT NOT NULL,
           description TEXT,
-          reason VARCHAR(100),
+          reason VARCHAR(255),
           hit_count INTEGER NOT NULL DEFAULT 0,
           last_hit_at TIMESTAMP WITH TIME ZONE,
           created_by INTEGER NOT NULL REFERENCES users(id),
           created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
           expires_at TIMESTAMP WITH TIME ZONE,
           is_active BOOLEAN NOT NULL DEFAULT true,
-          UNIQUE(rule_type, ip_address)
+          UNIQUE(rule_type, value_type, value)
         );
-        CREATE INDEX IF NOT EXISTS idx_ip_rules_active ON ip_rules(is_active, rule_type);
-        CREATE INDEX IF NOT EXISTS idx_ip_rules_ip ON ip_rules(ip_address);
+        CREATE INDEX IF NOT EXISTS idx_access_rules_active ON access_rules(is_active, rule_type);
+        CREATE INDEX IF NOT EXISTS idx_access_rules_value ON access_rules(value);
+        CREATE INDEX IF NOT EXISTS idx_access_rules_type ON access_rules(value_type);
       `)
 
       // ════════════════════════════════════════════════════════════════

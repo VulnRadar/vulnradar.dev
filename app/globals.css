@@ -22,8 +22,44 @@
 /* Smooth scroll behavior for anchor links */
 html {
   scroll-behavior: smooth;
-  /* Always show scrollbar to prevent layout shift when navigating between pages */
+  /* Always show scrollbar to prevent layout shift. overflow-y: scroll means
+     the scrollbar gutter is always reserved — Radix has nothing to compensate for. */
   overflow-y: scroll;
+}
+
+/* Prevent Radix UI (react-remove-scroll) from manipulating the body when
+   any modal, dialog, select, sheet, or popover opens.
+   Radix sets `position: fixed; top: -${scrollY}px` on <body> which:
+     1. Visually snaps the page to the top
+     2. Breaks sticky sidebar positioning
+     3. Shifts all fixed/sticky elements
+   We use `html body` selector for higher specificity to override inline styles. */
+html body[data-scroll-locked] {
+  --removed-body-scroll-bar-size: 0px !important;
+  position: static !important;
+  overflow: visible !important;
+  top: unset !important;
+  left: unset !important;
+  right: unset !important;
+  bottom: unset !important;
+  padding-right: 0 !important;
+  margin-right: 0 !important;
+  width: auto !important;
+  height: auto !important;
+}
+
+/* Also target the scrollbar-gutter style Radix may inject */
+html[data-scroll-locked],
+html[data-scroll-locked] body {
+  overflow: visible !important;
+  margin-right: 0 !important;
+  padding-right: 0 !important;
+}
+
+/* Badges: preserve custom colors on hover.
+   All badges maintain their current color but brighten and saturate slightly on hover. */
+[class*="bg-"][class*="text-"][class*="rounded-full"]:hover {
+  filter: brightness(1.2) saturate(1.1);
 }
 
 /* Reduce motion for users who prefer it */
@@ -110,7 +146,7 @@ html {
     --muted-foreground: 220 8% 55%;
     --accent: 220 8% 22%;
     --accent-foreground: 220 10% 92%;
-    --destructive: 0 72% 50%;
+    --destructive: 0 91% 71%;
     --destructive-foreground: 0 0% 100%;
     --border: 224 15% 16%;
     --input: 224 15% 16%;

@@ -44,6 +44,8 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { cn } from "@/lib/utils"
 import { STAFF_ROLE_LABELS, ROLE_BADGE_STYLES } from "@/lib/constants"
 import { hasStaffPermission, STAFF_PERMISSIONS } from "@/lib/permissions-client"
@@ -83,13 +85,14 @@ export function UserDetailPanel({
   const u = detail.user
   const isLoading = (action: string) => actionLoading === `${u.id}-${action}`
   const [showBadgePicker, setShowBadgePicker] = useState(false)
+  const [showCreateBadge, setShowCreateBadge] = useState(false)
+  const [showManageBadges, setShowManageBadges] = useState(false)
   const [newNote, setNewNote] = useState("")
   const [editingNote, setEditingNote] = useState<{ id: number; text: string } | null>(null)
   const [newBadgeName, setNewBadgeName] = useState("")
   const [newBadgeDisplay, setNewBadgeDisplay] = useState("")
   const [newBadgeColor, setNewBadgeColor] = useState("#6366f1")
-  const [showCreateBadge, setShowCreateBadge] = useState(false)
-  const [showManageBadges, setShowManageBadges] = useState(false)
+  const [pendingDeleteBadge, setPendingDeleteBadge] = useState<BadgeDef | null>(null)
 
   const awardedIds = new Set(detail.badges.map((b) => b.id))
   const unawardedBadges = allBadges.filter((b) => !awardedIds.has(b.id))
@@ -218,10 +221,9 @@ export function UserDetailPanel({
   }
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-6">
       {/* Back + header card */}
-      <Card className="bg-card border-border overflow-hidden">
-        <div className="h-1 w-full bg-primary" />
+      <Card className="border-border/50 bg-card/50 overflow-hidden">
         <CardContent className="p-5">
           <div className="flex items-start gap-4">
             <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0 -ml-1 -mt-0.5" onClick={onClose}>
@@ -230,7 +232,7 @@ export function UserDetailPanel({
             <UserAvatar name={u.name} email={u.email} avatarUrl={u.avatar_url} />
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
-                <h2 className="text-lg font-bold text-foreground">{u.name || "Unnamed User"}</h2>
+                <h2 className="text-lg font-semibold tracking-tight">{u.name || "Unnamed User"}</h2>
                 {u.role && u.role !== "user" && ROLE_BADGE_STYLES[u.role] && (
                   <Badge className={cn(ROLE_BADGE_STYLES[u.role], "text-[10px] font-medium")}>{STAFF_ROLE_LABELS[u.role] || u.role}</Badge>
                 )}
@@ -242,43 +244,45 @@ export function UserDetailPanel({
 
           {detailLoading ? (
             <div className="flex items-center justify-center py-10">
-              <Loader2 className="h-5 w-5 animate-spin text-primary" />
+              <Loader2 className="h-4 w-4 animate-spin text-primary" />
             </div>
           ) : (
             <>
               {/* Quick stats */}
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-5">
                 {[
-                  { label: "Scans", value: u.scan_count, icon: Activity, color: "text-primary" },
-                  { label: "API Keys", value: u.api_key_count, icon: Key, color: "text-[hsl(var(--severity-medium))]" },
-                  { label: "Sessions", value: String(u.session_count), icon: Globe, color: "text-emerald-500" },
-                  { label: "Joined", value: new Date(u.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }), icon: Clock, color: "text-muted-foreground" },
+                  { label: "Scans", value: u.scan_count, icon: Activity, color: "text-primary", bg: "bg-primary/10" },
+                  { label: "API Keys", value: u.api_key_count, icon: Key, color: "text-[hsl(var(--severity-medium))]", bg: "bg-[hsl(var(--severity-medium))]/10" },
+                  { label: "Sessions", value: String(u.session_count), icon: Globe, color: "text-emerald-500", bg: "bg-emerald-500/10" },
+                  { label: "Joined", value: new Date(u.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }), icon: Clock, color: "text-muted-foreground", bg: "bg-muted/50" },
                 ].map((item) => (
-                  <div key={item.label} className="flex items-center gap-2.5 p-3 rounded-lg bg-muted/30 border border-border">
-                    <item.icon className={cn("h-4 w-4 shrink-0", item.color)} />
+                  <div key={item.label} className="flex items-center gap-3 p-3 rounded-xl border border-border/40 bg-card/30">
+                    <div className={cn("p-1.5 rounded-lg shrink-0", item.bg)}>
+                      <item.icon className={cn("h-3.5 w-3.5", item.color)} />
+                    </div>
                     <div className="min-w-0">
-                      <p className="text-[10px] text-muted-foreground">{item.label}</p>
-                      <p className="text-sm font-semibold text-foreground truncate">{item.value}</p>
+                      <p className="text-[10px] text-muted-foreground uppercase tracking-wide">{item.label}</p>
+                      <p className="text-sm font-semibold truncate">{item.value}</p>
                     </div>
                   </div>
                 ))}
               </div>
 
-              {/* Security badges */}
-              <div className="mt-4 pt-4 border-t border-border">
-                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2.5">Security</p>
+              {/* Security status */}
+              <div className="mt-4 pt-4 border-t border-border/50">
+                <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest mb-2.5">Security</p>
                 <div className="flex flex-wrap gap-2">
-                  <div className={cn("flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border", u.totp_enabled ? "bg-emerald-500/5 border-emerald-500/20 text-emerald-500" : "bg-muted/50 border-border text-muted-foreground")}>
+                  <div className={cn("flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border", u.totp_enabled ? "bg-emerald-500/5 border-emerald-500/20 text-emerald-500" : "bg-muted/50 border-border/50 text-muted-foreground")}>
                     {u.totp_enabled ? <ShieldCheck className="h-3 w-3" /> : <ShieldOff className="h-3 w-3" />}
                     {u.totp_enabled ? "2FA Enabled" : "No 2FA"}
                   </div>
                   {u.totp_enabled && (
-                    <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-muted/50 border border-border text-muted-foreground">
+                    <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-muted/50 border border-border/50 text-muted-foreground">
                       <KeyRound className="h-3 w-3" />
                       {u.has_backup_codes ? "Has backup codes" : "No backup codes"}
                     </div>
                   )}
-                  <div className={cn("flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border", u.tos_accepted_at ? "bg-muted/50 border-border text-muted-foreground" : "bg-[hsl(var(--severity-medium))]/5 border-[hsl(var(--severity-medium))]/20 text-[hsl(var(--severity-medium))]")}>
+                  <div className={cn("flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border", u.tos_accepted_at ? "bg-muted/50 border-border/50 text-muted-foreground" : "bg-[hsl(var(--severity-medium))]/5 border-[hsl(var(--severity-medium))]/20 text-[hsl(var(--severity-medium))]")}>
                     <FileText className="h-3 w-3" />
                     {u.tos_accepted_at ? "TOS Accepted" : "TOS Not Accepted"}
                   </div>
@@ -291,12 +295,12 @@ export function UserDetailPanel({
 
       {/* Account Management - admin/mod can edit */}
       {!detailLoading && hasStaffPermission(callerRole, STAFF_PERMISSIONS.DISABLE_USER) && (
-        <Card className="bg-card border-border">
-          <CardHeader className="pb-0 pt-4 px-5">
+        <Card className="border-border/50 bg-card/50">
+          <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <UserCog className="h-4 w-4 text-muted-foreground" />
-                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Account Management</p>
+                <UserCog className="h-4 w-4 text-primary" />
+                <p className="text-sm font-medium">Account Management</p>
               </div>
               <Button
                 variant="outline"
@@ -326,30 +330,30 @@ export function UserDetailPanel({
               </Button>
             </div>
           </CardHeader>
-          <CardContent className="p-5 pt-3">
+          <CardContent className="p-4 pt-0">
             {!accountEditMode ? (
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                <div className="flex flex-col gap-1 p-3 rounded-lg border bg-muted/20 border-border">
+                <div className="flex flex-col gap-1 p-3 rounded-lg border border-border/40 bg-card/30">
                   <div className="flex items-center gap-2 mb-1">
                     <User className="h-3.5 w-3.5 text-muted-foreground" />
-                    <span className="text-[11px] text-muted-foreground font-medium">Display Name</span>
+                    <span className="text-xs text-muted-foreground uppercase tracking-wide">Display Name</span>
                   </div>
-                  <span className="text-xs font-medium text-foreground truncate">{u.name || <span className="text-muted-foreground italic">Not set</span>}</span>
+                  <span className="text-sm font-medium truncate">{u.name || <span className="text-muted-foreground italic">Not set</span>}</span>
                 </div>
                 {hasStaffPermission(callerRole, STAFF_PERMISSIONS.EDIT_USER_ROLE) && (
-                  <div className="flex flex-col gap-1 p-3 rounded-lg border bg-muted/20 border-border">
+                  <div className="flex flex-col gap-1 p-3 rounded-lg border border-border/40 bg-card/30">
                     <div className="flex items-center gap-2 mb-1">
                       <Mail className="h-3.5 w-3.5 text-muted-foreground" />
-                      <span className="text-[11px] text-muted-foreground font-medium">Email Address</span>
+                      <span className="text-xs text-muted-foreground uppercase tracking-wide">Email Address</span>
                     </div>
-                    <span className="text-xs font-medium text-foreground truncate">{u.email}</span>
+                    <span className="text-sm font-medium truncate">{u.email}</span>
                   </div>
                 )}
                 {hasStaffPermission(callerRole, STAFF_PERMISSIONS.EDIT_USER_ROLE) && (
-                  <div className="flex flex-col gap-1 p-3 rounded-lg border bg-muted/20 border-border">
+                  <div className="flex flex-col gap-1 p-3 rounded-lg border border-border/40 bg-card/30">
                     <div className="flex items-center gap-2 mb-1">
                       <CreditCard className="h-3.5 w-3.5 text-muted-foreground" />
-                      <span className="text-[11px] text-muted-foreground font-medium">Subscription Plan</span>
+                      <span className="text-xs text-muted-foreground uppercase tracking-wide">Subscription Plan</span>
                     </div>
                     <span className="text-xs font-medium text-foreground flex items-center gap-2">
                       {(() => {
@@ -374,10 +378,10 @@ export function UserDetailPanel({
               <>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                   {/* Edit Name */}
-                  <div className={cn("flex flex-col gap-2 p-3 rounded-lg border transition-colors", pendingChanges.name ? "bg-primary/5 border-primary/30" : "bg-muted/20 border-border")}>
+                  <div className={cn("flex flex-col gap-2 p-3 rounded-lg border transition-colors", pendingChanges.name ? "bg-primary/5 border-primary/30" : "bg-card/30 border-border/40")}>
                     <div className="flex items-center gap-2">
                       <User className="h-3.5 w-3.5 text-muted-foreground" />
-                      <span className="text-[11px] text-muted-foreground font-medium">Display Name</span>
+                      <span className="text-xs text-muted-foreground uppercase tracking-wide">Display Name</span>
                       {pendingChanges.name && <span className="text-[9px] text-primary font-medium px-1.5 py-0.5 rounded bg-primary/10">Modified</span>}
                     </div>
                     <Input
@@ -393,10 +397,10 @@ export function UserDetailPanel({
 
                   {/* Edit Email - admin only */}
                   {hasStaffPermission(callerRole, STAFF_PERMISSIONS.EDIT_USER_ROLE) && (
-                    <div className={cn("flex flex-col gap-2 p-3 rounded-lg border transition-colors", pendingChanges.email ? "bg-primary/5 border-primary/30" : "bg-muted/20 border-border")}>
+                    <div className={cn("flex flex-col gap-2 p-3 rounded-lg border transition-colors", pendingChanges.email ? "bg-primary/5 border-primary/30" : "bg-card/30 border-border/40")}>
                       <div className="flex items-center gap-2">
                         <Mail className="h-3.5 w-3.5 text-muted-foreground" />
-                        <span className="text-[11px] text-muted-foreground font-medium">Email Address</span>
+                        <span className="text-xs text-muted-foreground uppercase tracking-wide">Email Address</span>
                         {pendingChanges.email && <span className="text-[9px] text-primary font-medium px-1.5 py-0.5 rounded bg-primary/10">Modified</span>}
                       </div>
                       <Input
@@ -416,11 +420,11 @@ export function UserDetailPanel({
                   {hasStaffPermission(callerRole, STAFF_PERMISSIONS.EDIT_USER_ROLE) && (
                     <div className={cn("flex flex-col gap-2 p-3 rounded-lg border transition-colors", 
                       u.gifted_plan ? "bg-amber-500/5 border-amber-500/30" : 
-                      pendingChanges.plan ? "bg-primary/5 border-primary/30" : "bg-muted/20 border-border"
+                      pendingChanges.plan ? "bg-primary/5 border-primary/30" : "bg-card/30 border-border/40"
                     )}>
                       <div className="flex items-center gap-2">
                         <CreditCard className="h-3.5 w-3.5 text-muted-foreground" />
-                        <span className="text-[11px] text-muted-foreground font-medium">Subscription Plan</span>
+                        <span className="text-xs text-muted-foreground uppercase tracking-wide">Subscription Plan</span>
                         {u.gifted_plan && <span className="text-[9px] text-amber-500 font-medium px-1.5 py-0.5 rounded bg-amber-500/10">Gifted</span>}
                         {pendingChanges.plan && !u.gifted_plan && <span className="text-[9px] text-primary font-medium px-1.5 py-0.5 rounded bg-primary/10">Modified</span>}
                       </div>
@@ -454,9 +458,9 @@ export function UserDetailPanel({
                 </div>
 
                 {/* Safety note */}
-                <div className="flex items-start gap-2 mt-3 p-2.5 rounded-lg bg-muted/20 border border-border">
+                <div className="flex items-start gap-2 mt-3 p-3 rounded-lg bg-muted/30 border border-border/40">
                   <AlertTriangle className="h-3.5 w-3.5 text-muted-foreground shrink-0 mt-0.5" />
-                  <p className="text-[10px] text-muted-foreground leading-relaxed">
+                  <p className="text-xs text-muted-foreground leading-relaxed">
                     Changes are logged in the audit log. Email changes require confirmation input to prevent accidents. Plan changes take effect immediately.
                   </p>
                 </div>
@@ -488,67 +492,55 @@ export function UserDetailPanel({
       {!detailLoading && hasStaffPermission(callerRole, STAFF_PERMISSIONS.DELETE_USER) && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
 
-          {/* Staff Role - single select */}
-          <Card className={cn("bg-card border-border transition-colors", pendingChanges.role && "border-primary/30")}>
-            <CardHeader className="pb-0 pt-4 px-5">
+          {/* Staff Role - dropdown */}
+          <Card className={cn("border-border/50 bg-card/50 transition-colors", pendingChanges.role && "border-primary/30")}>
+            <CardHeader className="pb-3">
               <div className="flex items-center gap-2">
-                <Shield className="h-4 w-4 text-muted-foreground" />
-                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Staff Role</p>
+                <Shield className="h-4 w-4 text-primary" />
+                <p className="text-sm font-medium">Staff Role</p>
                 {pendingChanges.role && <span className="text-[9px] text-primary font-medium px-1.5 py-0.5 rounded bg-primary/10">Modified</span>}
               </div>
-              <p className="text-[11px] text-muted-foreground mt-1">Select one permission level for this user.</p>
+              <p className="text-xs text-muted-foreground">Select a permission level for this user.</p>
             </CardHeader>
-            <CardContent className="p-5 pt-3">
-              <div className="flex flex-col gap-2">
-                {(["user", "support", "moderator", "admin"] as const).map((role) => {
-                  const isSelected = editRole === role
-                  const isOriginal = (u.role || "user") === role
-                  const roleColors: Record<string, string> = {
-                    user: "border-border hover:border-accent",
-                    support: "border-blue-500/30 hover:border-accent",
-                    moderator: "border-[hsl(var(--severity-medium))]/30 hover:border-accent",
-                    admin: "border-primary/30 hover:border-accent",
-                  }
-                  const activeColors: Record<string, string> = {
-                    user: "bg-muted/50 border-border",
-                    support: "bg-blue-500/10 border-blue-500/50",
-                    moderator: "bg-[hsl(var(--severity-medium))]/10 border-[hsl(var(--severity-medium))]/50",
-                    admin: "bg-primary/10 border-primary/50",
-                  }
-                  return (
-                    <button
-                      key={role}
-                      onClick={() => {
-                        setEditRole(role)
-                        addPendingChange("role", role, u.role || "user")
-                      }}
-                      className={cn(
-                        "flex items-center justify-between px-4 py-2.5 rounded-lg border text-sm font-medium transition-all text-left",
-                        isSelected ? activeColors[role] : `bg-transparent ${roleColors[role]} text-muted-foreground`,
-                        "hover:text-foreground cursor-pointer"
-                      )}
-                    >
-                      <span>{STAFF_ROLE_LABELS[role] || role}</span>
-                      {isSelected && <CheckCircle2 className="h-4 w-4 text-primary shrink-0" />}
-                      {isSelected && !isOriginal && <span className="text-[9px] text-primary ml-1">(pending)</span>}
-                    </button>
-                  )
-                })}
-              </div>
+            <CardContent className="p-4 pt-0">
+              <Select
+                value={editRole}
+                onValueChange={(value) => {
+                  setEditRole(value)
+                  addPendingChange("role", value, u.role || "user")
+                }}
+              >
+                <SelectTrigger className="w-full h-10 border-border/40 bg-card/30">
+                  <SelectValue placeholder="Select role" />
+                </SelectTrigger>
+                <SelectContent>
+                  {(["user", "support", "moderator", "admin"] as const).map((role) => {
+                    const isOriginal = (u.role || "user") === role
+                    return (
+                      <SelectItem key={role} value={role}>
+                        <span className="flex items-center gap-2">
+                          {STAFF_ROLE_LABELS[role] || role}
+                          {isOriginal && <span className="text-[10px] text-muted-foreground">(current)</span>}
+                        </span>
+                      </SelectItem>
+                    )
+                  })}
+                </SelectContent>
+              </Select>
             </CardContent>
           </Card>
 
           {/* Badges - multi select */}
-          <Card className="bg-card border-border">
-            <CardHeader className="pb-0 pt-4 px-5">
+          <Card className="border-border/50 bg-card/50">
+            <CardHeader className="pb-3">
               <div className="flex items-center gap-2">
-                <Award className="h-4 w-4 text-muted-foreground" />
-                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Badges</p>
-                <span className="ml-auto text-[10px] text-muted-foreground">{detail.badges.length} awarded</span>
+                <Award className="h-4 w-4 text-primary" />
+                <p className="text-sm font-medium">Badges</p>
+                <Badge variant="secondary" className="text-[10px] h-5 ml-auto">{detail.badges.length} awarded</Badge>
               </div>
-              <p className="text-[11px] text-muted-foreground mt-1">Cosmetic badges shown on the user&apos;s profile.</p>
+              <p className="text-xs text-muted-foreground">Cosmetic badges shown on the user&apos;s profile.</p>
             </CardHeader>
-            <CardContent className="p-5 pt-3 flex flex-col gap-3">
+            <CardContent className="p-4 pt-0 flex flex-col gap-3">
               {/* Awarded badges */}
               {detail.badges.length > 0 ? (
                 <div className="flex flex-wrap gap-1.5">
@@ -585,132 +577,186 @@ export function UserDetailPanel({
                 <p className="text-[10px] text-destructive">{pendingBadgeRevokes.length} badge(s) will be removed on save</p>
               )}
 
-              {/* Award badge picker */}
-              {showBadgePicker && unawardedBadges.length > 0 && (
-                <div className="flex flex-col gap-1.5 p-3 rounded-lg bg-muted/20 border border-border">
-                  <p className="text-[11px] text-muted-foreground font-medium">Select badges to award (click to toggle):</p>
-                  <div className="flex flex-wrap gap-1.5">
-                    {unawardedBadges.map((badge) => {
-                      const isPending = pendingBadgeAwards.includes(badge.id)
-                      return (
-                        <button
-                          key={badge.id}
-                          onClick={() => {
-                            if (isPending) {
-                              setPendingBadgeAwards((p) => p.filter((id) => id !== badge.id))
-                            } else {
-                              setPendingBadgeAwards((p) => [...p, badge.id])
-                            }
-                          }}
-                          className={cn(
-                            "flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-xs font-medium transition-all",
-                            isPending ? "ring-2 ring-primary scale-105" : "hover:scale-105"
-                          )}
-                          style={{ borderColor: `${badge.color}40`, backgroundColor: `${badge.color}15`, color: badge.color || undefined }}
-                        >
-                          <Tag className="h-3 w-3 shrink-0" />
-                          {badge.display_name}
-                          {isPending && <CheckCircle2 className="h-3 w-3 ml-0.5" />}
-                        </button>
-                      )
-                    })}
-                  </div>
-                  {pendingBadgeAwards.length > 0 && (
-                    <p className="text-[10px] text-primary">{pendingBadgeAwards.length} badge(s) will be awarded on save</p>
-                  )}
-                </div>
-              )}
+              {/* Action buttons */}
+              <div className="flex items-center gap-2 mt-1 flex-wrap">
+                {unawardedBadges.length > 0 && (
+                  <Button size="sm" variant="outline" className="h-7 text-xs gap-1 bg-transparent flex-1" onClick={() => setShowBadgePicker(true)}>
+                    <Award className="h-3.5 w-3.5" /> Award Badge
+                  </Button>
+                )}
+                <Button size="sm" variant="outline" className="h-7 text-xs gap-1 bg-transparent flex-1" onClick={() => setShowCreateBadge(true)}>
+                  <Plus className="h-3.5 w-3.5" /> Create Badge
+                </Button>
+                {hasStaffPermission(callerRole, STAFF_PERMISSIONS.DELETE_BADGE) && allBadges.length > 0 && (
+                  <Button size="sm" variant="outline" className="h-7 text-xs gap-1 bg-transparent text-destructive border-destructive/30 hover:bg-destructive/10 flex-1" onClick={() => setShowManageBadges(true)}>
+                    <Trash2 className="h-3.5 w-3.5" /> Manage Badges
+                  </Button>
+                )}
+              </div>
 
-              {/* Create custom badge */}
-              {showCreateBadge && (
-                <div className="flex flex-col gap-2.5 p-3 rounded-lg bg-muted/20 border border-border">
-                  <p className="text-[11px] text-muted-foreground font-medium">Create new badge:</p>
-                  <Input
-                    placeholder="Badge name (e.g. power_user)"
-                    value={newBadgeName}
-                    onChange={(e) => setNewBadgeName(e.target.value.toLowerCase().replace(/\s+/g, "_"))}
-                    className="h-8 text-xs"
-                  />
-                  <Input
-                    placeholder="Display name (e.g. Power User)"
-                    value={newBadgeDisplay}
-                    onChange={(e) => setNewBadgeDisplay(e.target.value)}
-                    className="h-8 text-xs"
-                  />
-                  {/* Color picker */}
-                  <div className="flex flex-col gap-2">
-                    <div className="flex items-center justify-between">
-                      <label className="text-[11px] text-muted-foreground">Color:</label>
-                      {(newBadgeName || newBadgeDisplay) && (
+              {/* Award Badge Modal */}
+              <Dialog open={showBadgePicker} onOpenChange={setShowBadgePicker}>
+                <DialogContent className="max-w-md">
+                  <DialogHeader>
+                    <DialogTitle className="flex items-center gap-2 text-base">
+                      <Award className="h-4 w-4 text-primary" /> Award Badge
+                    </DialogTitle>
+                  </DialogHeader>
+                  <div className="flex flex-col gap-3">
+                    <p className="text-xs text-muted-foreground">Select badges to award. Changes will apply when you save.</p>
+                    {unawardedBadges.length > 0 ? (
+                      <div className="flex flex-wrap gap-2">
+                        {unawardedBadges.map((badge) => {
+                          const isPending = pendingBadgeAwards.includes(badge.id)
+                          return (
+                            <button
+                              key={badge.id}
+                              onClick={() => {
+                                if (isPending) {
+                                  setPendingBadgeAwards((p) => p.filter((id) => id !== badge.id))
+                                } else {
+                                  setPendingBadgeAwards((p) => [...p, badge.id])
+                                }
+                              }}
+                              className={cn(
+                                "flex items-center gap-1.5 px-2.5 py-1.5 rounded-full border text-xs font-medium transition-all",
+                                isPending ? "ring-2 ring-primary scale-105" : "hover:scale-105 hover:opacity-80"
+                              )}
+                              style={{ borderColor: `${badge.color}40`, backgroundColor: `${badge.color}15`, color: badge.color || undefined }}
+                            >
+                              <Tag className="h-3 w-3 shrink-0" />
+                              {badge.display_name}
+                              {isPending && <CheckCircle2 className="h-3 w-3 ml-0.5" />}
+                            </button>
+                          )
+                        })}
+                      </div>
+                    ) : (
+                      <p className="text-xs text-muted-foreground py-4 text-center">All badges have already been awarded.</p>
+                    )}
+                    {pendingBadgeAwards.length > 0 && (
+                      <p className="text-[10px] text-primary">{pendingBadgeAwards.length} badge(s) queued to award on save</p>
+                    )}
+                  </div>
+                  <DialogFooter>
+                    <Button variant="outline" size="sm" onClick={() => setShowBadgePicker(false)}>Done</Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
+
+              {/* Create Badge Modal */}
+              <Dialog open={showCreateBadge} onOpenChange={(open) => {
+                setShowCreateBadge(open)
+                if (!open) { setNewBadgeName(""); setNewBadgeDisplay(""); setNewBadgeColor("#6366f1") }
+              }}>
+                <DialogContent className="max-w-md">
+                  <DialogHeader>
+                    <DialogTitle className="flex items-center gap-2 text-base">
+                      <Plus className="h-4 w-4 text-primary" /> Create New Badge
+                    </DialogTitle>
+                  </DialogHeader>
+                  <div className="flex flex-col gap-4">
+                    {/* Preview */}
+                    {(newBadgeName || newBadgeDisplay) && (
+                      <div className="flex items-center gap-2">
+                        <p className="text-xs text-muted-foreground">Preview:</p>
                         <div
-                          className="flex items-center gap-1 px-2 py-0.5 rounded-full border text-[10px] font-medium"
+                          className="flex items-center gap-1 px-2.5 py-1 rounded-full border text-xs font-medium"
                           style={{ borderColor: `${newBadgeColor}40`, backgroundColor: `${newBadgeColor}15`, color: newBadgeColor }}
                         >
-                          <Tag className="h-2.5 w-2.5 shrink-0" />
+                          <Tag className="h-3 w-3 shrink-0" />
                           {newBadgeDisplay || newBadgeName}
                         </div>
-                      )}
-                    </div>
-                    {/* Preset swatches */}
-                    <div className="flex flex-wrap gap-1.5">
-                      {[
-                        { color: "#ef4444", name: "Red" },
-                        { color: "#f97316", name: "Orange" },
-                        { color: "#eab308", name: "Yellow" },
-                        { color: "#22c55e", name: "Green" },
-                        { color: "#10b981", name: "Emerald" },
-                        { color: "#14b8a6", name: "Teal" },
-                        { color: "#06b6d4", name: "Cyan" },
-                        { color: "#3b82f6", name: "Blue" },
-                        { color: "#6366f1", name: "Indigo" },
-                        { color: "#8b5cf6", name: "Violet" },
-                        { color: "#a855f7", name: "Purple" },
-                        { color: "#ec4899", name: "Pink" },
-                        { color: "#f43f5e", name: "Rose" },
-                        { color: "#64748b", name: "Slate" },
-                      ].map((c) => (
-                        <button
-                          key={c.color}
-                          type="button"
-                          onClick={() => setNewBadgeColor(c.color)}
-                          className={cn(
-                            "w-6 h-6 rounded-full transition-all border-2",
-                            newBadgeColor === c.color ? "border-foreground scale-110" : "border-transparent hover:scale-105"
-                          )}
-                          style={{ backgroundColor: c.color }}
-                          title={c.name}
-                        />
-                      ))}
-                    </div>
-                    {/* Custom hex input */}
-                    <div className="flex items-center gap-2">
-                      <div
-                        className="w-6 h-6 rounded-full border-2 border-border shrink-0"
-                        style={{ backgroundColor: newBadgeColor }}
-                      />
+                      </div>
+                    )}
+                    <div className="flex flex-col gap-2">
+                      <label className="text-xs font-medium">Badge ID <span className="text-muted-foreground">(internal name)</span></label>
                       <Input
-                        value={newBadgeColor}
-                        onChange={(e) => {
-                          const v = e.target.value
-                          setNewBadgeColor(v.startsWith("#") ? v : `#${v}`)
-                        }}
-                        placeholder="#6366f1"
-                        className="h-7 text-xs font-mono w-28"
-                        maxLength={7}
+                        placeholder="e.g. power_user"
+                        value={newBadgeName}
+                        onChange={(e) => setNewBadgeName(e.target.value.toLowerCase().replace(/\s+/g, "_"))}
+                        className="h-9 border-border/40"
                       />
+                    </div>
+                    <div className="flex flex-col gap-2">
+                      <label className="text-xs font-medium">Display Name</label>
+                      <Input
+                        placeholder="e.g. Power User"
+                        value={newBadgeDisplay}
+                        onChange={(e) => setNewBadgeDisplay(e.target.value)}
+                        className="h-9 border-border/40"
+                      />
+                    </div>
+                    {/* Color picker */}
+                    <div className="flex flex-col gap-2">
+                      <label className="text-xs font-medium">Color</label>
+                      <div className="flex flex-wrap gap-2">
+                        {[
+                          { color: "#ef4444", name: "Red" },
+                          { color: "#f97316", name: "Orange" },
+                          { color: "#eab308", name: "Yellow" },
+                          { color: "#22c55e", name: "Green" },
+                          { color: "#10b981", name: "Emerald" },
+                          { color: "#14b8a6", name: "Teal" },
+                          { color: "#06b6d4", name: "Cyan" },
+                          { color: "#3b82f6", name: "Blue" },
+                          { color: "#6366f1", name: "Indigo" },
+                          { color: "#8b5cf6", name: "Violet" },
+                          { color: "#a855f7", name: "Purple" },
+                          { color: "#ec4899", name: "Pink" },
+                          { color: "#f43f5e", name: "Rose" },
+                          { color: "#64748b", name: "Slate" },
+                        ].map((c) => (
+                          <button
+                            key={c.color}
+                            type="button"
+                            onClick={() => setNewBadgeColor(c.color)}
+                            className={cn(
+                              "w-7 h-7 rounded-full transition-all border-2",
+                              newBadgeColor === c.color ? "border-foreground scale-110 shadow-sm" : "border-transparent hover:scale-105"
+                            )}
+                            style={{ backgroundColor: c.color }}
+                            title={c.name}
+                          />
+                        ))}
+                      </div>
+                      <div className="flex items-center gap-2 mt-1">
+                        {/* Native color picker — full color spectrum */}
+                        <label className="relative cursor-pointer" title="Open color picker">
+                          <div
+                            className="w-7 h-7 rounded-full border-2 border-border/50 shrink-0 transition-all hover:scale-110 hover:border-border"
+                            style={{ backgroundColor: newBadgeColor }}
+                          />
+                          <input
+                            type="color"
+                            value={newBadgeColor}
+                            onChange={(e) => setNewBadgeColor(e.target.value)}
+                            className="absolute inset-0 opacity-0 w-full h-full cursor-pointer"
+                          />
+                        </label>
+                        <Input
+                          value={newBadgeColor}
+                          onChange={(e) => {
+                            const v = e.target.value
+                            setNewBadgeColor(v.startsWith("#") ? v : `#${v}`)
+                          }}
+                          placeholder="#6366f1"
+                          className="h-8 text-xs font-mono w-32 border-border/40"
+                          maxLength={7}
+                        />
+                        <p className="text-xs text-muted-foreground">Click swatch for full picker</p>
+                      </div>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2 mt-1">
+                  <DialogFooter>
+                    <Button variant="outline" size="sm" onClick={() => { setShowCreateBadge(false); setNewBadgeName(""); setNewBadgeDisplay(""); setNewBadgeColor("#6366f1") }}>
+                      Cancel
+                    </Button>
                     <Button
                       size="sm"
-                      className="h-7 text-xs flex-1"
                       disabled={!newBadgeName.trim() || !newBadgeDisplay.trim()}
                       onClick={() => {
-                        onAction(u.id, "create_badge", {
-                          name: newBadgeName.trim(),
-                          displayName: newBadgeDisplay.trim(),
-                          color: newBadgeColor,
-                        })
+                        onAction(u.id, "create_badge", { name: newBadgeName.trim(), displayName: newBadgeDisplay.trim(), color: newBadgeColor })
                         setShowCreateBadge(false)
                         setNewBadgeName("")
                         setNewBadgeDisplay("")
@@ -719,71 +765,86 @@ export function UserDetailPanel({
                     >
                       Create &amp; Award
                     </Button>
-                    <Button
-                      size="sm" variant="ghost" className="h-7 text-xs"
-                      onClick={() => { setShowCreateBadge(false); setNewBadgeName(""); setNewBadgeDisplay(""); setNewBadgeColor("#6366f1") }}
-                    >
-                      Cancel
-                    </Button>
-                  </div>
-                </div>
-              )}
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
 
-              {/* Manage all badges (delete) */}
-              {showManageBadges && hasStaffPermission(callerRole, STAFF_PERMISSIONS.DELETE_BADGE) && (
-                <div className="flex flex-col gap-2 p-3 rounded-lg bg-muted/20 border border-border">
-                  <div className="flex items-center justify-between">
-                    <p className="text-[11px] text-muted-foreground font-medium">Manage All Badges ({allBadges.length})</p>
-                    <p className="text-[10px] text-destructive">Click to delete permanently</p>
-                  </div>
-                  {allBadges.length > 0 ? (
-                    <div className="flex flex-wrap gap-1.5">
-                      {allBadges.map((badge) => (
-                        <div
-                          key={badge.id}
-                          className="group flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-xs font-medium transition-all"
-                          style={{ borderColor: `${badge.color}40`, backgroundColor: `${badge.color}15`, color: badge.color || undefined }}
-                        >
-                          <Tag className="h-3 w-3 shrink-0" />
-                          <span>{badge.display_name}</span>
-                          <button
-                            onClick={() => onAction(u.id, "delete_badge", { badgeId: String(badge.id) })}
-                            className="w-0 overflow-hidden group-hover:w-4 transition-all duration-200 flex-shrink-0 flex items-center justify-center hover:scale-110"
-                            title={`Delete "${badge.display_name}" permanently`}
-                          >
-                            <Trash2 className="h-3 w-3 text-destructive" />
-                          </button>
+              {/* Manage/Delete Badges Modal */}
+              {hasStaffPermission(callerRole, STAFF_PERMISSIONS.DELETE_BADGE) && (
+                <Dialog open={showManageBadges} onOpenChange={(open) => { setShowManageBadges(open); if (!open) setPendingDeleteBadge(null) }}>
+                  <DialogContent className="max-w-md">
+                    <DialogHeader>
+                      <DialogTitle className="flex items-center gap-2 text-base">
+                        <Trash2 className="h-4 w-4 text-destructive" /> Manage All Badges
+                      </DialogTitle>
+                    </DialogHeader>
+                    <div className="flex flex-col gap-3">
+                      {/* Inline delete confirmation */}
+                      {pendingDeleteBadge ? (
+                        <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-4 flex flex-col gap-3">
+                          <div className="flex items-start gap-3">
+                            <AlertTriangle className="h-4 w-4 text-destructive shrink-0 mt-0.5" />
+                            <div>
+                              <p className="text-sm font-medium text-foreground">Delete &quot;{pendingDeleteBadge.display_name}&quot;?</p>
+                              <p className="text-xs text-muted-foreground mt-1">This will permanently remove the badge from the system and revoke it from all users who currently hold it.</p>
+                            </div>
+                          </div>
+                          <div className="flex gap-2 justify-end">
+                            <Button variant="outline" size="sm" onClick={() => setPendingDeleteBadge(null)}>Cancel</Button>
+                            <Button
+                              variant="destructive"
+                              size="sm"
+                              onClick={() => {
+                                onAction(u.id, "delete_badge", { badgeId: String(pendingDeleteBadge.id) })
+                                setPendingDeleteBadge(null)
+                                setShowManageBadges(false)
+                              }}
+                            >
+                              <Trash2 className="h-3.5 w-3.5 mr-1.5" />
+                              Delete Permanently
+                            </Button>
+                          </div>
                         </div>
-                      ))}
+                      ) : (
+                        <>
+                          <p className="text-xs text-muted-foreground">Click the trash icon to permanently delete a badge from the system.</p>
+                          {allBadges.length > 0 ? (
+                            <div className="flex flex-col gap-2 max-h-72 overflow-y-auto">
+                              {allBadges.map((badge) => (
+                                <div
+                                  key={badge.id}
+                                  className="flex items-center justify-between p-2.5 rounded-lg border border-border/40 bg-card/30 hover:bg-muted/40 transition-colors"
+                                >
+                                  <div
+                                    className="flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-xs font-medium"
+                                    style={{ borderColor: `${badge.color}40`, backgroundColor: `${badge.color}15`, color: badge.color || undefined }}
+                                  >
+                                    <Tag className="h-3 w-3 shrink-0" />
+                                    {badge.display_name}
+                                  </div>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-7 w-7 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                                    onClick={() => setPendingDeleteBadge(badge)}
+                                    title={`Delete "${badge.display_name}" permanently`}
+                                  >
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                  </Button>
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <p className="text-xs text-muted-foreground text-center py-4">No badges exist yet.</p>
+                          )}
+                        </>
+                      )}
                     </div>
-                  ) : (
-                    <p className="text-xs text-muted-foreground">No badges exist yet.</p>
-                  )}
-                </div>
-              )}
-
-              {/* Action buttons */}
-              {!showBadgePicker && !showCreateBadge && !showManageBadges && (
-                <div className="flex items-center gap-2 mt-1 flex-wrap">
-                  {unawardedBadges.length > 0 && (
-                    <Button size="sm" variant="outline" className="h-7 text-xs gap-1 bg-transparent flex-1" onClick={() => setShowBadgePicker(true)}>
-                      <Award className="h-3.5 w-3.5" /> Award Badge
-                    </Button>
-                  )}
-                  <Button size="sm" variant="outline" className="h-7 text-xs gap-1 bg-transparent flex-1" onClick={() => setShowCreateBadge(true)}>
-                    <Plus className="h-3.5 w-3.5" /> Create Badge
-                  </Button>
-                  {hasStaffPermission(callerRole, STAFF_PERMISSIONS.DELETE_BADGE) && allBadges.length > 0 && (
-                    <Button size="sm" variant="outline" className="h-7 text-xs gap-1 bg-transparent text-destructive dark:text-red-400 border-destructive/30 hover:bg-destructive/10 flex-1" onClick={() => setShowManageBadges(true)}>
-                      <Trash2 className="h-3.5 w-3.5" /> Delete Badges
-                    </Button>
-                  )}
-                </div>
-              )}
-              {(showBadgePicker || showManageBadges) && (
-                <Button size="sm" variant="ghost" className="h-7 text-xs self-start" onClick={() => { setShowBadgePicker(false); setShowManageBadges(false) }}>
-                  Cancel
-                </Button>
+                    <DialogFooter>
+                      <Button variant="outline" size="sm" onClick={() => { setShowManageBadges(false); setPendingDeleteBadge(null) }}>Close</Button>
+                    </DialogFooter>
+                  </DialogContent>
+                </Dialog>
               )}
             </CardContent>
           </Card>
@@ -792,18 +853,16 @@ export function UserDetailPanel({
 
       {/* Admin Notes */}
       {!detailLoading && (
-        <Card className="bg-card border-border">
-          <CardHeader className="pb-0 pt-4 px-5">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <StickyNote className="h-4 w-4 text-muted-foreground" />
-                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Admin Notes</p>
-                <span className="text-[10px] text-muted-foreground">({detail.notes?.length || 0})</span>
-              </div>
+        <Card className="border-border/50 bg-card/50">
+          <CardHeader className="pb-3">
+            <div className="flex items-center gap-2">
+              <StickyNote className="h-4 w-4 text-primary" />
+              <p className="text-sm font-medium">Admin Notes</p>
+              <Badge variant="secondary" className="text-[10px] h-5 ml-auto">{detail.notes?.length || 0}</Badge>
             </div>
-            <p className="text-[11px] text-muted-foreground mt-1">Internal notes about this user. Only visible to staff.</p>
+            <p className="text-xs text-muted-foreground">Admin-only notes. Only visible when extracting user data. Not shown to the user unless they request a data export.</p>
           </CardHeader>
-          <CardContent className="p-5 pt-3 flex flex-col gap-3">
+          <CardContent className="p-4 pt-0 flex flex-col gap-3">
             {/* Add note form */}
             <div className="flex gap-2">
               <Input
@@ -838,7 +897,7 @@ export function UserDetailPanel({
             {detail.notes && detail.notes.length > 0 ? (
               <div className="flex flex-col gap-2 max-h-64 overflow-y-auto">
                 {detail.notes.map((note) => (
-                  <div key={note.id} className="group flex items-start gap-3 p-3 rounded-lg bg-muted/30 border border-border">
+                  <div key={note.id} className="group flex items-start gap-3 p-3 rounded-lg bg-muted/30 border border-border/40 hover:bg-muted/50 transition-colors">
                     <UserAvatar
                       name={note.admin_name}
                       email={note.admin_email}
@@ -903,13 +962,16 @@ export function UserDetailPanel({
 
       {/* Support actions */}
       {!detailLoading && (
-        <Card className="bg-card border-border">
-          <CardHeader className="pb-0 pt-4 px-5">
-            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-              {!hasStaffPermission(callerRole, STAFF_PERMISSIONS.DISABLE_USER) ? "Account Information" : "Support Actions"}
-            </p>
+        <Card className="border-border/50 bg-card/50">
+          <CardHeader className="pb-3">
+            <div className="flex items-center gap-2">
+              <UserCog className="h-4 w-4 text-primary" />
+              <p className="text-sm font-medium">
+                {!hasStaffPermission(callerRole, STAFF_PERMISSIONS.DISABLE_USER) ? "Account Information" : "Support Actions"}
+              </p>
+            </div>
           </CardHeader>
-          <CardContent className="p-5 pt-3">
+          <CardContent className="p-4 pt-0">
             {!hasStaffPermission(callerRole, STAFF_PERMISSIONS.DISABLE_USER) ? (
               <p className="text-xs text-muted-foreground">You have view-only access. Contact an admin or moderator to perform actions on this user.</p>
             ) : (
@@ -1085,11 +1147,11 @@ export function UserDetailPanel({
                 </div>
 
                 {u.totp_enabled && hasStaffPermission(callerRole, STAFF_PERMISSIONS.RESET_USER_2FA) && (
-                  <div className="flex items-start gap-2.5 p-3.5 rounded-lg bg-[hsl(var(--severity-medium))]/5 border border-[hsl(var(--severity-medium))]/20">
+                  <div className="flex items-start gap-2.5 p-3 rounded-lg bg-[hsl(var(--severity-medium))]/5 border border-[hsl(var(--severity-medium))]/20">
                     <AlertTriangle className="h-4 w-4 text-[hsl(var(--severity-medium))] shrink-0 mt-0.5" />
                     <div>
-                      <p className="text-xs font-medium text-foreground">Password reset is unavailable for this user</p>
-                      <p className="text-[11px] text-muted-foreground leading-relaxed mt-1">
+                      <p className="text-sm font-medium">Password reset is unavailable for this user</p>
+                      <p className="text-xs text-muted-foreground leading-relaxed mt-1">
                         This user has two-factor authentication enabled. If they need account recovery, you can reset their 2FA — they will then be able to request a password reset themselves.
                       </p>
                     </div>
@@ -1105,24 +1167,22 @@ export function UserDetailPanel({
       {!detailLoading && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           {/* Recent Scans */}
-          <Card className="bg-card border-border">
-            <CardHeader className="pb-0 pt-4 px-5">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Activity className="h-4 w-4 text-muted-foreground" />
-                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Recent Scans</p>
-                </div>
-                <Badge variant="secondary" className="text-[10px]">{detail.recentScans?.length || 0}</Badge>
+          <Card className="border-border/50 bg-card/50">
+            <CardHeader className="pb-3">
+              <div className="flex items-center gap-2">
+                <Activity className="h-4 w-4 text-primary" />
+                <p className="text-sm font-medium">Recent Scans</p>
+                <Badge variant="secondary" className="text-[10px] h-5 ml-auto">{detail.recentScans?.length || 0}</Badge>
               </div>
             </CardHeader>
-            <CardContent className="p-5 pt-3">
+            <CardContent className="p-4 pt-0">
               {detail.recentScans && detail.recentScans.length > 0 ? (
-                <div className="flex flex-col gap-2 max-h-64 overflow-y-auto">
+                <div className="flex flex-col max-h-64 overflow-y-auto">
                   {detail.recentScans.map((scan) => (
-                    <div key={scan.id} className="flex items-center gap-3 p-2.5 rounded-lg bg-muted/30 border border-border">
-                      <Globe className="h-4 w-4 text-muted-foreground shrink-0" />
+                    <div key={scan.id} className="flex items-center gap-3 py-3 px-2 border-b border-border/50 last:border-0 hover:bg-muted/50 transition-colors rounded-md">
+                      <Globe className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
                       <div className="flex-1 min-w-0">
-                        <p className="text-xs font-medium text-foreground truncate">{scan.url}</p>
+                        <p className="text-xs font-medium truncate">{scan.url}</p>
                         <p className="text-[10px] text-muted-foreground">{scan.findings_count} findings via {scan.source}</p>
                       </div>
                       <span className="text-[10px] text-muted-foreground shrink-0">
@@ -1132,30 +1192,31 @@ export function UserDetailPanel({
                   ))}
                 </div>
               ) : (
-                <p className="text-xs text-muted-foreground text-center py-4">No recent scans.</p>
+                <div className="flex flex-col items-center justify-center py-8">
+                  <Activity className="h-8 w-8 text-muted-foreground/30 mb-2" />
+                  <p className="text-xs text-muted-foreground">No recent scans.</p>
+                </div>
               )}
             </CardContent>
           </Card>
 
           {/* API Keys */}
-          <Card className="bg-card border-border">
-            <CardHeader className="pb-0 pt-4 px-5">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Key className="h-4 w-4 text-muted-foreground" />
-                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">API Keys</p>
-                </div>
-                <Badge variant="secondary" className="text-[10px]">{detail.apiKeys?.filter(k => !k.revoked_at)?.length || 0}</Badge>
+          <Card className="border-border/50 bg-card/50">
+            <CardHeader className="pb-3">
+              <div className="flex items-center gap-2">
+                <Key className="h-4 w-4 text-primary" />
+                <p className="text-sm font-medium">API Keys</p>
+                <Badge variant="secondary" className="text-[10px] h-5 ml-auto">{detail.apiKeys?.filter(k => !k.revoked_at)?.length || 0}</Badge>
               </div>
             </CardHeader>
-            <CardContent className="p-5 pt-3">
+            <CardContent className="p-4 pt-0">
               {detail.apiKeys && detail.apiKeys.filter(k => !k.revoked_at).length > 0 ? (
-                <div className="flex flex-col gap-2 max-h-64 overflow-y-auto">
+                <div className="flex flex-col max-h-64 overflow-y-auto">
                   {detail.apiKeys.filter(k => !k.revoked_at).map((key) => (
-                    <div key={key.id} className="flex items-center gap-3 p-2.5 rounded-lg bg-muted/30 border border-border">
-                      <Key className="h-4 w-4 text-muted-foreground shrink-0" />
+                    <div key={key.id} className="flex items-center gap-3 py-3 px-2 border-b border-border/50 last:border-0 hover:bg-muted/50 transition-colors rounded-md">
+                      <Key className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
                       <div className="flex-1 min-w-0">
-                        <p className="text-xs font-medium text-foreground">{key.name || "Unnamed Key"}</p>
+                        <p className="text-xs font-medium">{key.name || "Unnamed Key"}</p>
                         <p className="text-[10px] text-muted-foreground font-mono">{key.key_prefix}...</p>
                       </div>
                       <span className="text-[10px] text-muted-foreground shrink-0">
@@ -1165,30 +1226,31 @@ export function UserDetailPanel({
                   ))}
                 </div>
               ) : (
-                <p className="text-xs text-muted-foreground text-center py-4">No API keys.</p>
+                <div className="flex flex-col items-center justify-center py-8">
+                  <Key className="h-8 w-8 text-muted-foreground/30 mb-2" />
+                  <p className="text-xs text-muted-foreground">No API keys.</p>
+                </div>
               )}
             </CardContent>
           </Card>
 
           {/* Webhooks */}
-          <Card className="bg-card border-border">
-            <CardHeader className="pb-0 pt-4 px-5">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Webhook className="h-4 w-4 text-muted-foreground" />
-                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Webhooks</p>
-                </div>
-                <Badge variant="secondary" className="text-[10px]">{detail.webhooks?.length || 0}</Badge>
+          <Card className="border-border/50 bg-card/50">
+            <CardHeader className="pb-3">
+              <div className="flex items-center gap-2">
+                <Webhook className="h-4 w-4 text-primary" />
+                <p className="text-sm font-medium">Webhooks</p>
+                <Badge variant="secondary" className="text-[10px] h-5 ml-auto">{detail.webhooks?.length || 0}</Badge>
               </div>
             </CardHeader>
-            <CardContent className="p-5 pt-3">
+            <CardContent className="p-4 pt-0">
               {detail.webhooks && detail.webhooks.length > 0 ? (
-                <div className="flex flex-col gap-2 max-h-64 overflow-y-auto">
+                <div className="flex flex-col max-h-64 overflow-y-auto">
                   {detail.webhooks.map((webhook) => (
-                    <div key={webhook.id} className="flex items-center gap-3 p-2.5 rounded-lg bg-muted/30 border border-border">
-                      <Webhook className="h-4 w-4 text-muted-foreground shrink-0" />
+                    <div key={webhook.id} className="flex items-center gap-3 py-3 px-2 border-b border-border/50 last:border-0 hover:bg-muted/50 transition-colors rounded-md">
+                      <Webhook className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
                       <div className="flex-1 min-w-0">
-                        <p className="text-xs font-medium text-foreground">{webhook.name}</p>
+                        <p className="text-xs font-medium">{webhook.name}</p>
                         <p className="text-[10px] text-muted-foreground truncate">{webhook.url}</p>
                       </div>
                       <Badge variant={webhook.active ? "default" : "secondary"} className="text-[9px]">
@@ -1198,30 +1260,31 @@ export function UserDetailPanel({
                   ))}
                 </div>
               ) : (
-                <p className="text-xs text-muted-foreground text-center py-4">No webhooks configured.</p>
+                <div className="flex flex-col items-center justify-center py-8">
+                  <Webhook className="h-8 w-8 text-muted-foreground/30 mb-2" />
+                  <p className="text-xs text-muted-foreground">No webhooks configured.</p>
+                </div>
               )}
             </CardContent>
           </Card>
 
           {/* Active Sessions */}
-          <Card className="bg-card border-border">
-            <CardHeader className="pb-0 pt-4 px-5">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Globe className="h-4 w-4 text-muted-foreground" />
-                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Active Sessions</p>
-                </div>
-                <Badge variant="secondary" className="text-[10px]">{detail.activeSessions?.length || 0}</Badge>
+          <Card className="border-border/50 bg-card/50">
+            <CardHeader className="pb-3">
+              <div className="flex items-center gap-2">
+                <Globe className="h-4 w-4 text-primary" />
+                <p className="text-sm font-medium">Active Sessions</p>
+                <Badge variant="secondary" className="text-[10px] h-5 ml-auto">{detail.activeSessions?.length || 0}</Badge>
               </div>
             </CardHeader>
-            <CardContent className="p-5 pt-3">
+            <CardContent className="p-4 pt-0">
               {detail.activeSessions && detail.activeSessions.length > 0 ? (
-                <div className="flex flex-col gap-2 max-h-64 overflow-y-auto">
+                <div className="flex flex-col max-h-64 overflow-y-auto">
                   {detail.activeSessions.map((session) => (
-                    <div key={session.id} className="flex items-center gap-3 p-2.5 rounded-lg bg-muted/30 border border-border">
-                      <Globe className="h-4 w-4 text-muted-foreground shrink-0" />
+                    <div key={session.id} className="flex items-center gap-3 py-3 px-2 border-b border-border/50 last:border-0 hover:bg-muted/50 transition-colors rounded-md">
+                      <Globe className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
                       <div className="flex-1 min-w-0">
-                        <p className="text-xs font-medium text-foreground font-mono">{session.id.slice(0, 12)}...</p>
+                        <p className="text-xs font-medium font-mono">{session.id.slice(0, 12)}...</p>
                         <p className="text-[10px] text-muted-foreground truncate">
                           {session.ip_address || "Unknown IP"} &middot; {session.user_agent?.slice(0, 40) || "Unknown device"}...
                         </p>
@@ -1233,7 +1296,10 @@ export function UserDetailPanel({
                   ))}
                 </div>
               ) : (
-                <p className="text-xs text-muted-foreground text-center py-4">No active sessions.</p>
+                <div className="flex flex-col items-center justify-center py-8">
+                  <Globe className="h-8 w-8 text-muted-foreground/30 mb-2" />
+                  <p className="text-xs text-muted-foreground">No active sessions.</p>
+                </div>
               )}
             </CardContent>
           </Card>
@@ -1244,10 +1310,12 @@ export function UserDetailPanel({
       {hasChanges && (
         <div className="fixed bottom-0 left-0 right-0 z-50 p-4 pointer-events-none">
           <div className="max-w-lg mx-auto pointer-events-auto">
-            <div className="flex items-center justify-between gap-4 px-4 py-3 rounded-lg bg-card border border-border shadow-lg">
+            <div className="flex items-center justify-between gap-4 px-4 py-3 rounded-xl bg-card/95 border border-border/50 shadow-xl backdrop-blur-sm">
               <div className="flex items-center gap-3">
-                <Save className="h-4 w-4 text-primary" />
-                <p className="text-sm font-medium text-foreground">
+                <div className="p-1.5 rounded-lg bg-primary/10">
+                  <Save className="h-3.5 w-3.5 text-primary" />
+                </div>
+                <p className="text-sm font-medium">
                   {modalChanges.length} unsaved change{modalChanges.length !== 1 ? "s" : ""}
                 </p>
               </div>
