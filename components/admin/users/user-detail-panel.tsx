@@ -92,6 +92,7 @@ export function UserDetailPanel({
   const [newBadgeName, setNewBadgeName] = useState("")
   const [newBadgeDisplay, setNewBadgeDisplay] = useState("")
   const [newBadgeColor, setNewBadgeColor] = useState("#6366f1")
+  const [pendingDeleteBadge, setPendingDeleteBadge] = useState<BadgeDef | null>(null)
 
   const awardedIds = new Set(detail.badges.map((b) => b.id))
   const unawardedBadges = allBadges.filter((b) => !awardedIds.has(b.id))
@@ -720,7 +721,19 @@ export function UserDetailPanel({
                         ))}
                       </div>
                       <div className="flex items-center gap-2 mt-1">
-                        <div className="w-7 h-7 rounded-full border-2 border-border/50 shrink-0" style={{ backgroundColor: newBadgeColor }} />
+                        {/* Native color picker — full color spectrum */}
+                        <label className="relative cursor-pointer" title="Open color picker">
+                          <div
+                            className="w-7 h-7 rounded-full border-2 border-border/50 shrink-0 transition-all hover:scale-110 hover:border-border"
+                            style={{ backgroundColor: newBadgeColor }}
+                          />
+                          <input
+                            type="color"
+                            value={newBadgeColor}
+                            onChange={(e) => setNewBadgeColor(e.target.value)}
+                            className="absolute inset-0 opacity-0 w-full h-full cursor-pointer"
+                          />
+                        </label>
                         <Input
                           value={newBadgeColor}
                           onChange={(e) => {
@@ -731,7 +744,7 @@ export function UserDetailPanel({
                           className="h-8 text-xs font-mono w-32 border-border/40"
                           maxLength={7}
                         />
-                        <p className="text-xs text-muted-foreground">Custom hex</p>
+                        <p className="text-xs text-muted-foreground">Click swatch for full picker</p>
                       </div>
                     </div>
                   </div>
@@ -758,7 +771,7 @@ export function UserDetailPanel({
 
               {/* Manage/Delete Badges Modal */}
               {hasStaffPermission(callerRole, STAFF_PERMISSIONS.DELETE_BADGE) && (
-                <Dialog open={showManageBadges} onOpenChange={setShowManageBadges}>
+                <Dialog open={showManageBadges} onOpenChange={(open) => { setShowManageBadges(open); if (!open) setPendingDeleteBadge(null) }}>
                   <DialogContent className="max-w-md">
                     <DialogHeader>
                       <DialogTitle className="flex items-center gap-2 text-base">
@@ -766,39 +779,69 @@ export function UserDetailPanel({
                       </DialogTitle>
                     </DialogHeader>
                     <div className="flex flex-col gap-3">
-                      <p className="text-xs text-muted-foreground">Click the trash icon to permanently delete a badge from the system.</p>
-                      {allBadges.length > 0 ? (
-                        <div className="flex flex-col gap-2 max-h-72 overflow-y-auto">
-                          {allBadges.map((badge) => (
-                            <div
-                              key={badge.id}
-                              className="flex items-center justify-between p-2.5 rounded-lg border border-border/40 bg-card/30 hover:bg-muted/40 transition-colors"
-                            >
-                              <div
-                                className="flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-xs font-medium"
-                                style={{ borderColor: `${badge.color}40`, backgroundColor: `${badge.color}15`, color: badge.color || undefined }}
-                              >
-                                <Tag className="h-3 w-3 shrink-0" />
-                                {badge.display_name}
-                              </div>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-7 w-7 text-destructive hover:bg-destructive/10 hover:text-destructive"
-                                onClick={() => onAction(u.id, "delete_badge", { badgeId: String(badge.id) })}
-                                title={`Delete "${badge.display_name}" permanently`}
-                              >
-                                <Trash2 className="h-3.5 w-3.5" />
-                              </Button>
+                      {/* Inline delete confirmation */}
+                      {pendingDeleteBadge ? (
+                        <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-4 flex flex-col gap-3">
+                          <div className="flex items-start gap-3">
+                            <AlertTriangle className="h-4 w-4 text-destructive shrink-0 mt-0.5" />
+                            <div>
+                              <p className="text-sm font-medium text-foreground">Delete &quot;{pendingDeleteBadge.display_name}&quot;?</p>
+                              <p className="text-xs text-muted-foreground mt-1">This will permanently remove the badge from the system and revoke it from all users who currently hold it.</p>
                             </div>
-                          ))}
+                          </div>
+                          <div className="flex gap-2 justify-end">
+                            <Button variant="outline" size="sm" onClick={() => setPendingDeleteBadge(null)}>Cancel</Button>
+                            <Button
+                              variant="destructive"
+                              size="sm"
+                              onClick={() => {
+                                onAction(u.id, "delete_badge", { badgeId: String(pendingDeleteBadge.id) })
+                                setPendingDeleteBadge(null)
+                                setShowManageBadges(false)
+                              }}
+                            >
+                              <Trash2 className="h-3.5 w-3.5 mr-1.5" />
+                              Delete Permanently
+                            </Button>
+                          </div>
                         </div>
                       ) : (
-                        <p className="text-xs text-muted-foreground text-center py-4">No badges exist yet.</p>
+                        <>
+                          <p className="text-xs text-muted-foreground">Click the trash icon to permanently delete a badge from the system.</p>
+                          {allBadges.length > 0 ? (
+                            <div className="flex flex-col gap-2 max-h-72 overflow-y-auto">
+                              {allBadges.map((badge) => (
+                                <div
+                                  key={badge.id}
+                                  className="flex items-center justify-between p-2.5 rounded-lg border border-border/40 bg-card/30 hover:bg-muted/40 transition-colors"
+                                >
+                                  <div
+                                    className="flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-xs font-medium"
+                                    style={{ borderColor: `${badge.color}40`, backgroundColor: `${badge.color}15`, color: badge.color || undefined }}
+                                  >
+                                    <Tag className="h-3 w-3 shrink-0" />
+                                    {badge.display_name}
+                                  </div>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-7 w-7 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                                    onClick={() => setPendingDeleteBadge(badge)}
+                                    title={`Delete "${badge.display_name}" permanently`}
+                                  >
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                  </Button>
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <p className="text-xs text-muted-foreground text-center py-4">No badges exist yet.</p>
+                          )}
+                        </>
                       )}
                     </div>
                     <DialogFooter>
-                      <Button variant="outline" size="sm" onClick={() => setShowManageBadges(false)}>Close</Button>
+                      <Button variant="outline" size="sm" onClick={() => { setShowManageBadges(false); setPendingDeleteBadge(null) }}>Close</Button>
                     </DialogFooter>
                   </DialogContent>
                 </Dialog>
