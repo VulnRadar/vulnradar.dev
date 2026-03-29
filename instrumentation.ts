@@ -736,7 +736,7 @@ export async function register() {
 
       // ── Run initial cleanup ───────────────────────────────────────
       try {
-        const { performDatabaseCleanup, formatCleanupStats } = await import("./lib/cleanup")
+        const { performDatabaseCleanup, formatCleanupStats } = await import("./lib/database/cleanup")
         const stats = await performDatabaseCleanup()
         console.log(`[${APP_NAME}] Initial cleanup completed: ${formatCleanupStats(stats)}`)
       } catch (cleanupError) {
@@ -745,7 +745,7 @@ export async function register() {
 
       // ── Schedule periodic cleanup ─�����───────────────────────────────
       try {
-        const { schedulePeriodicCleanup } = await import("./lib/cleanup")
+        const { schedulePeriodicCleanup } = await import("./lib/database/cleanup")
         schedulePeriodicCleanup(5000)
         console.log(`[${APP_NAME}] Scheduled periodic database cleanup.`)
       } catch (scheduleError) {

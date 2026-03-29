@@ -116,11 +116,13 @@ export function SubdomainDiscovery({ url, onScanSubdomain }: SubdomainDiscoveryP
     setError(null)
 
     try {
+      console.log("[v0] Starting subdomain discovery for:", url)
       const res = await fetch(API.SCAN_DISCOVER, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ url, forceRefresh }),
       })
+      console.log("[v0] Response status:", res.status, "ok:", res.ok, "hasBody:", !!res.body)
 
       // Non-SSE error (auth, rate limit, etc.)
       if (!res.ok || !res.body) {
@@ -130,6 +132,8 @@ export function SubdomainDiscovery({ url, onScanSubdomain }: SubdomainDiscoveryP
         } else {
           setError(data.error || "Discovery failed")
         }
+        setLoading(false)
+        setRefreshing(false)
         return
       }
 
@@ -158,15 +162,18 @@ export function SubdomainDiscovery({ url, onScanSubdomain }: SubdomainDiscoveryP
               error?: string
             } & DiscoveryResult
 
+            console.log("[v0] SSE event:", event.type, event)
             if (event.type === "progress") {
               setProgress(event.percent ?? 0)
               setProgressMessage(event.message ?? "")
               if (event.found !== undefined) setFoundCount(event.found)
             } else if (event.type === "done") {
+              console.log("[v0] Discovery complete, total:", event.total)
               setProgress(100)
               setResult(event as unknown as DiscoveryResult)
               setExpanded(true)
             } else if (event.type === "error") {
+              console.log("[v0] Discovery error:", event.error)
               setError(event.error || "Discovery failed")
             }
           } catch { /* malformed event */ }
