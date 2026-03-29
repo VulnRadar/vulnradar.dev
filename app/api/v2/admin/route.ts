@@ -761,6 +761,101 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ success: true })
     }
 
+    case "update_name": {
+      if (name === undefined) return NextResponse.json({ error: "name required" }, { status: 400 })
+      const safeName = (name || "").trim().slice(0, 100)
+      const oldName = targetUser.name || ""
+      await pool.query("UPDATE users SET name = $1, updated_at = NOW() WHERE id = $2", [safeName || null, userId])
+      await logAction(session.userId, userId, "update_name", `Changed display name from "${oldName}" to "${safeName}" for ${targetUser.email}`, ip)
+      
+      // Send email notification
+      const [adminNameN, userNameN] = await Promise.all([getAdminName(session.userId), getUserName(userId)])
+      const emailPayloadN = adminAccountChangeEmail({
+        userName: userNameN,
+        adminName: adminNameN,
+        changes: [{ field: "Display Name", oldValue: oldName || "(not set)", newValue: safeName || "(cleared)" }],
+        timestamp: new Date(),
+      })
+      await sendNotificationIfEnabled(notifyUser, targetUser.email, emailPayloadN)
+      
+      return NextResponse.json({ success: true })
+    }
+
+    case "update_email": {
+      if (!email || typeof email !== "string" || !email.trim()) {
+        return NextResponse.json({ error: "Email address is required" }, { status: 400 })
+      }
+      const newEmail = email.trim().toLowerCase()
+      const oldEmail = targetUser.email
+      
+      // Validate email format
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+      if (!emailRegex.test(newEmail)) {
+        return NextResponse.json({ error: "Invalid email format" }, { status: 400 })
+      }
+      
+      // Check if email is already taken
+      if (newEmail !== oldEmail) {
+        const existing = await pool.query("SELECT 1 FROM users WHERE LOWER(email) = $1 AND id != $2", [newEmail, userId])
+        if (existing.rows.length > 0) {
+          return NextResponse.json({ error: "Email address is already in use" }, { status: 409 })
+        }
+      }
+      
+      await pool.query("UPDATE users SET email = $1, email_verified_at = NULL, updated_at = NOW() WHERE id = $2", [newEmail, userId])
+      await logAction(session.userId, userId, "update_email", `Changed email from "${oldEmail}" to "${newEmail}"`, ip)
+      
+      // Send email notification to BOTH old and new email addresses
+      const adminNameE = await getAdminName(session.userId)
+      const userNameE = targetUser.name || oldEmail
+      
+      // Notification to OLD email (security alert)
+      const emailPayloadOld = adminAccountChangeEmail({
+        userName: userNameE,
+        adminName: adminNameE,
+        changes: [{ field: "Email Address", oldValue: oldEmail, newValue: newEmail }],
+        timestamp: new Date(),
+      })
+      await sendNotificationIfEnabled(notifyUser, oldEmail, emailPayloadOld)
+      
+      // Notification to NEW email (welcome/verification)
+      const emailPayloadNew = adminAccountChangeEmail({
+        userName: userNameE,
+        adminName: adminNameE,
+        changes: [{ field: "Email Address", oldValue: oldEmail, newValue: `${newEmail} (Please verify this email)` }],
+        timestamp: new Date(),
+      })
+      await sendNotificationIfEnabled(notifyUser, newEmail, emailPayloadNew)
+      
+      return NextResponse.json({ success: true })
+    }
+
+    case "update_plan": {
+      if (!plan || typeof plan !== "string") {
+        return NextResponse.json({ error: "plan required" }, { status: 400 })
+      }
+      const validPlans = ["free", "core_supporter", "pro_supporter", "elite_supporter"]
+      if (!validPlans.includes(plan)) {
+        return NextResponse.json({ error: "Invalid plan. Must be one of: " + validPlans.join(", ") }, { status: 400 })
+      }
+      const oldPlan = targetUser.plan || "free"
+      await pool.query("UPDATE users SET plan = $1, updated_at = NOW() WHERE id = $2", [plan, userId])
+      await logAction(session.userId, userId, "update_plan", `Changed subscription plan from "${oldPlan}" to "${plan}" for ${targetUser.email}`, ip)
+      
+      // Send email notification
+      const formatPlan = (p: string) => p === "free" ? "Free" : p.replace("_supporter", " Supporter").replace(/(^\w|\s\w)/g, (m: string) => m.toUpperCase())
+      const [adminNameP, userNameP] = await Promise.all([getAdminName(session.userId), getUserName(userId)])
+      const emailPayloadP = adminAccountChangeEmail({
+        userName: userNameP,
+        adminName: adminNameP,
+        changes: [{ field: "Subscription Plan", oldValue: formatPlan(oldPlan), newValue: formatPlan(plan) }],
+        timestamp: new Date(),
+      })
+      await sendNotificationIfEnabled(notifyUser, targetUser.email, emailPayloadP)
+      
+      return NextResponse.json({ success: true })
+    }
+
     case "delete":
     case "delete_user":
     case "delete_account": {
