@@ -7,20 +7,28 @@ import {
   Award,
   Users,
   Bell,
+  Settings,
+  Mail,
+  Gift,
+  ShieldAlert,
 } from "lucide-react"
 import { ACTION_META } from "./config"
 import type { AuditEntry } from "./types"
 
 /**
- * Audit log filter categories
+ * Audit log filter categories with comprehensive action mappings
  */
 export const AUDIT_FILTER_CATEGORIES = [
   { id: "all", label: "All", icon: Activity },
   { id: "roles", label: "Roles", icon: Shield, actions: ["set_role", "make_admin", "remove_admin"] },
-  { id: "security", label: "Security", icon: Key, actions: ["reset_password", "revoke_sessions", "revoke_api_keys", "reset_2fa", "force_logout_all"] },
-  { id: "status", label: "Status", icon: Users, actions: ["disable_user", "disable", "enable_user", "enable", "delete_user", "delete", "delete_account"] },
+  { id: "security", label: "Security", icon: Key, actions: ["reset_password", "revoke_sessions", "revoke_api_keys", "reset_2fa", "force_logout_all", "impersonate", "verify_email", "unverify_email"] },
+  { id: "status", label: "Status", icon: Users, actions: ["disable_user", "enable_user", "delete_account", "toggle_beta_access", "set_scan_limit", "clear_rate_limits"] },
   { id: "badges", label: "Badges", icon: Award, actions: ["award_badge", "revoke_badge", "create_badge", "delete_badge"] },
-  { id: "notifications", label: "Notifications", icon: Bell, actions: ["send_notification"] },
+  { id: "subscriptions", label: "Subscriptions", icon: Gift, actions: ["gift_subscription", "revoke_gift"] },
+  { id: "notifications", label: "Notifications", icon: Bell, actions: ["send_notification", "notification_created", "notification_updated", "notification_deleted"] },
+  { id: "broadcasts", label: "Broadcasts", icon: Mail, actions: ["broadcast_created", "broadcast_sent", "broadcast_deleted", "broadcast_resent"] },
+  { id: "system", label: "System", icon: Settings, actions: ["system_setting_changed", "access_rule_created", "access_rule_deleted", "access_rule_updated", "security_alert_resolved"] },
+  { id: "data", label: "Data", icon: ShieldAlert, actions: ["delete_scans", "export_data", "delete_webhooks", "delete_schedules", "clear_avatar", "add_note", "edit_note", "delete_note"] },
 ]
 
 /**
