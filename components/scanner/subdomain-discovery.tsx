@@ -77,6 +77,16 @@ function formatTimeRemaining(expiresAt: string): string {
   return remainingMins > 0 ? `${diffHours}h ${remainingMins}m` : `${diffHours}h`
 }
 
+// Progress simulation stages for discovery
+const DISCOVERY_STAGES = [
+  { progress: 10, message: "Querying Certificate Transparency logs..." },
+  { progress: 25, message: "Checking passive DNS records..." },
+  { progress: 45, message: "Scanning RapidDNS database..." },
+  { progress: 60, message: "Querying subdomain.center..." },
+  { progress: 75, message: "Running common prefix brute-force..." },
+  { progress: 90, message: "Verifying reachability..." },
+]
+
 export function SubdomainDiscovery({ url, onScanSubdomain }: SubdomainDiscoveryProps) {
   const router = useRouter()
   const { me, isStaff } = useAuth()
@@ -88,101 +98,81 @@ export function SubdomainDiscovery({ url, onScanSubdomain }: SubdomainDiscoveryP
   const [showUpgradeModal, setShowUpgradeModal] = useState(false)
   const [progress, setProgress] = useState(0)
   const [progressMessage, setProgressMessage] = useState("")
-  const [foundCount, setFoundCount] = useState(0)
-  const readerRef = useRef<ReadableStreamDefaultReader<Uint8Array> | null>(null)
-
+  const progressInterval = useRef<NodeJS.Timeout | null>(null)
+  
   const userPlan = me?.plan || "free"
+  // Staff members have access to all premium features
   const canRefreshDNS = isStaff || hasFeatureAccess(userPlan, PREMIUM_FEATURES.dns_refetch.requiredPlan)
-
-  // Abort stream on unmount
+  
+  // Cleanup progress interval on unmount
   useEffect(() => {
-    return () => { readerRef.current?.cancel() }
+    return () => {
+      if (progressInterval.current) {
+        clearInterval(progressInterval.current)
+      }
+    }
   }, [])
 
+  function startProgressSimulation() {
+    setProgress(0)
+    setProgressMessage(DISCOVERY_STAGES[0].message)
+    let stageIndex = 0
+    
+    progressInterval.current = setInterval(() => {
+      stageIndex++
+      if (stageIndex < DISCOVERY_STAGES.length) {
+        setProgress(DISCOVERY_STAGES[stageIndex].progress)
+        setProgressMessage(DISCOVERY_STAGES[stageIndex].message)
+      } else {
+        setProgress(95)
+        setProgressMessage("Finalizing results...")
+      }
+    }, 1500)
+  }
+  
+  function stopProgressSimulation() {
+    if (progressInterval.current) {
+      clearInterval(progressInterval.current)
+      progressInterval.current = null
+    }
+    setProgress(100)
+  }
+
   async function handleDiscover(forceRefresh = false) {
+    // Check if user has premium access for refresh
     if (forceRefresh && !canRefreshDNS) {
       setShowUpgradeModal(true)
       return
     }
-
+    
     if (forceRefresh) {
       setRefreshing(true)
     } else {
       setLoading(true)
-      setProgress(0)
-      setProgressMessage("Starting discovery...")
-      setFoundCount(0)
+      startProgressSimulation()
     }
     setError(null)
-
     try {
-      console.log("[v0] Starting subdomain discovery for:", url)
       const res = await fetch(API.SCAN_DISCOVER, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ url, forceRefresh }),
       })
-      console.log("[v0] Response status:", res.status, "ok:", res.ok, "hasBody:", !!res.body)
-
-      // Non-SSE error (auth, rate limit, etc.)
-      if (!res.ok || !res.body) {
-        const data = await res.json().catch(() => ({}))
+      const data = await res.json()
+      if (!res.ok) {
         if (res.status === 401) {
-          setError("You need to be logged in to use Subdomain Discovery.")
+          setError("You need to be logged in to use Subdomain Discovery. Create a free account to unlock this feature.")
         } else {
           setError(data.error || "Discovery failed")
         }
-        setLoading(false)
-        setRefreshing(false)
-        return
-      }
-
-      // Read the SSE stream
-      const reader = res.body.getReader()
-      readerRef.current = reader
-      const decoder = new TextDecoder()
-      let buffer = ""
-
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-        buffer += decoder.decode(value, { stream: true })
-        const lines = buffer.split("\n\n")
-        buffer = lines.pop() ?? ""
-
-        for (const chunk of lines) {
-          const dataLine = chunk.split("\n").find(l => l.startsWith("data: "))
-          if (!dataLine) continue
-          try {
-            const event = JSON.parse(dataLine.slice(6)) as {
-              type: string
-              message?: string
-              percent?: number
-              found?: number
-              error?: string
-            } & DiscoveryResult
-
-            console.log("[v0] SSE event:", event.type, event)
-            if (event.type === "progress") {
-              setProgress(event.percent ?? 0)
-              setProgressMessage(event.message ?? "")
-              if (event.found !== undefined) setFoundCount(event.found)
-            } else if (event.type === "done") {
-              console.log("[v0] Discovery complete, total:", event.total)
-              setProgress(100)
-              setResult(event as unknown as DiscoveryResult)
-              setExpanded(true)
-            } else if (event.type === "error") {
-              console.log("[v0] Discovery error:", event.error)
-              setError(event.error || "Discovery failed")
-            }
-          } catch { /* malformed event */ }
-        }
+      } else {
+        setResult(data)
+        setExpanded(true)
       }
     } catch {
-      setError("Connection lost during discovery")
+      setError("Failed to discover subdomains")
     } finally {
-      readerRef.current = null
+      stopProgressSimulation()
       setLoading(false)
       setRefreshing(false)
     }
@@ -239,13 +229,10 @@ export function SubdomainDiscovery({ url, onScanSubdomain }: SubdomainDiscoveryP
           <div className="text-center">
             <p className="text-sm font-medium text-foreground">Discovering subdomains...</p>
             <p className="text-xs text-muted-foreground mt-1">{progressMessage}</p>
-            {foundCount > 0 && (
-              <p className="text-xs text-primary mt-1 font-medium">{foundCount} found so far</p>
-            )}
           </div>
           <div className="w-full max-w-xs">
             <Progress value={progress} className="h-2" />
-            <p className="text-[10px] text-muted-foreground text-center mt-1.5">{progress}%</p>
+            <p className="text-[10px] text-muted-foreground text-center mt-1.5">{progress}% complete</p>
           </div>
         </div>
       </div>
