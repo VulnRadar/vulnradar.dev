@@ -46,7 +46,7 @@ export function ConfirmDialog({
   
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in">
-      <div className="bg-card border border-border rounded-xl p-6 w-full max-w-md mx-4 shadow-2xl animate-in zoom-in-95">
+      <div className="bg-card border border-border/50 rounded-xl p-6 w-full max-w-md mx-4 shadow-2xl animate-in zoom-in-95">
         <div className="flex items-start gap-3 mb-3">
           <div className={cn(
             "h-10 w-10 rounded-lg flex items-center justify-center shrink-0", 
@@ -63,7 +63,7 @@ export function ConfirmDialog({
           </div>
         </div>
         {children}
-        <div className="flex items-center justify-end gap-2 mt-5 pt-4 border-t border-border">
+        <div className="flex items-center justify-end gap-2 mt-5 pt-4 border-t border-border/50">
           <Button variant="ghost" onClick={onCancel} disabled={isLoading}>
             Cancel
           </Button>

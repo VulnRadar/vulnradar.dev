@@ -34,12 +34,12 @@ export function ActionCard({
       className={cn(
         "flex items-center gap-3 p-3.5 rounded-xl border transition-all text-left",
         disabled
-          ? "border-border bg-muted/20 opacity-50 cursor-not-allowed"
+          ? "border-border/40 bg-muted/20 opacity-50 cursor-not-allowed"
           : variant === "danger"
-            ? "border-destructive/15 bg-card hover:bg-destructive/5 cursor-pointer"
+            ? "border-destructive/20 bg-card/30 hover:bg-destructive/5 hover:border-destructive/30 cursor-pointer"
             : variant === "success"
-              ? "border-emerald-500/15 bg-card hover:bg-emerald-500/5 cursor-pointer"
-              : "border-border bg-card hover:bg-muted/30 cursor-pointer",
+              ? "border-emerald-500/20 bg-card/30 hover:bg-emerald-500/5 hover:border-emerald-500/30 cursor-pointer"
+              : "border-border/40 bg-card/30 hover:bg-card/50 hover:border-border/60 cursor-pointer",
       )}
       disabled={disabled || loading}
       onClick={onClick}
