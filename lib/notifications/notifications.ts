@@ -1,5 +1,5 @@
-import pool from "./db"
-import { sendEmail } from "./email"
+import pool from "@/lib/database/db"
+import { sendEmail } from "@/lib/email/email"
 
 export type NotificationType =
   | "security"
