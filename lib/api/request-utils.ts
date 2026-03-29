@@ -1,5 +1,5 @@
 import { headers } from "next/headers"
-import { AUTH_HEADER, BEARER_PREFIX } from "./constants"
+import { AUTH_HEADER, BEARER_PREFIX } from "@/lib/config/constants"
 
 /**
  * Client information helpers

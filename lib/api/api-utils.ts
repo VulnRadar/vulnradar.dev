@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
-import { getSession } from "./auth"
-import pool from "./db"
-import { ERROR_MESSAGES } from "./constants"
+import { getSession } from "@/lib/auth/auth"
+import pool from "@/lib/database/db"
+import { ERROR_MESSAGES } from "@/lib/config/constants"
 
 /**
  * Standard API response helpers to reduce boilerplate across routes
