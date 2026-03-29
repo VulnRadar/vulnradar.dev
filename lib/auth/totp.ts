@@ -1,5 +1,5 @@
 import { createHmac, randomBytes } from "node:crypto"
-import { TOTP_ISSUER } from "./constants"
+import { TOTP_ISSUER } from "@/lib/config/constants"
 
 // Generate a random base32 secret
 export function generateSecret(): string {

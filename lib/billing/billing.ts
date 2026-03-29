@@ -6,7 +6,7 @@
 // ============================================================================
 
 import { stripe, isStripeEnabled } from "./stripe"
-import pool from "./db"
+import pool from "@/lib/database/db"
 import { getPlanById, getFreePlan } from "./plans"
 import type { Plan } from "./plans"
 

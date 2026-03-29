@@ -1,6 +1,6 @@
-import pool from "./db"
-import { ApiResponse } from "./api-utils"
-import { TEAM_ROLES } from "./constants"
+import pool from "@/lib/database/db"
+import { ApiResponse } from "@/lib/api/api-utils"
+import { TEAM_ROLES } from "@/lib/config/constants"
 
 /**
  * Common authorization checks for resource ownership

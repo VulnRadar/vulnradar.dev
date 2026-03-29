@@ -1,7 +1,7 @@
 import "server-only"
 
 import { stripe } from "./stripe"
-import { BILLING_ENABLED } from "./constants"
+import { BILLING_ENABLED } from "@/lib/config/constants"
 
 // Events we need for billing
 const REQUIRED_EVENTS = [

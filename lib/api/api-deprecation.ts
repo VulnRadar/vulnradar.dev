@@ -5,7 +5,7 @@
 // ============================================================================
 
 import { NextResponse } from "next/server"
-import { APP_URL } from "./constants"
+import { APP_URL } from "@/lib/config/constants"
 
 // Deprecation date for v1 API (6 months from v2 release)
 export const V1_DEPRECATION_DATE = "2026-09-01"
