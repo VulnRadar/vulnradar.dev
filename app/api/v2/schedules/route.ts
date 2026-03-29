@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getSession } from "@/lib/auth"
-import pool from "@/lib/db"
-import { sendNotificationEmail } from "@/lib/notifications"
-import { scheduleCreatedEmail, scheduleDeletedEmail } from "@/lib/email"
-import { ERROR_MESSAGES } from "@/lib/constants"
+import pool from "@/lib/database/db"
+import { sendNotificationEmail } from "@/lib/notifications/notifications"
+import { scheduleCreatedEmail, scheduleDeletedEmail } from "@/lib/email/email"
+import { ERROR_MESSAGES } from "@/lib/config/constants"
 
 const FREQ_INTERVALS: Record<string, string> = {
   daily: "1 day",

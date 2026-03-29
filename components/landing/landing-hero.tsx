@@ -2,7 +2,7 @@ import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { ArrowRight, Terminal, CheckCircle, Activity } from "lucide-react"
-import { APP_NAME, TOTAL_CHECKS_LABEL, ROUTES } from "@/lib/constants"
+import { APP_NAME, TOTAL_CHECKS_LABEL, ROUTES } from "@/lib/config/constants"
 
 export function LandingHero() {
   return (

@@ -1,6 +1,6 @@
 import { Metadata } from "next"
 import Link from "next/link"
-import { APP_NAME, LEGAL_EMAIL } from "@/lib/constants"
+import { APP_NAME, LEGAL_EMAIL } from "@/lib/config/constants"
 
 export const metadata: Metadata = {
   title: `DMCA & Copyright Policy | ${APP_NAME}`,

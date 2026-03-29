@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getSession } from "@/lib/auth"
-import pool from "@/lib/db"
-import { ERROR_MESSAGES } from "@/lib/constants"
+import pool from "@/lib/database/db"
+import { ERROR_MESSAGES } from "@/lib/config/constants"
 
 // Get all tags for the user
 export async function GET() {

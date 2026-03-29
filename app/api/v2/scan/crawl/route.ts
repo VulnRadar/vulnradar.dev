@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getSession } from "@/lib/auth"
-import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
-import { canMakeRequest, incrementDailyCount, getRateLimitHeaders } from "@/lib/daily-limits"
-import { validateApiKey, checkRateLimit as checkApiKeyRateLimit, recordUsage } from "@/lib/api-keys"
+import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit"
+import { canMakeRequest, incrementDailyCount, getRateLimitHeaders } from "@/lib/rate-limiting/daily-limits"
+import { validateApiKey, checkRateLimit as checkApiKeyRateLimit, recordUsage } from "@/lib/api/api-keys"
 import { allChecks, getFilteredChecks } from "@/lib/scanner/checks"
 import { runAsyncChecks } from "@/lib/scanner/async-checks"
-import pool from "@/lib/db"
-import { APP_NAME, SEVERITY_LEVELS, BEARER_PREFIX } from "@/lib/constants"
+import pool from "@/lib/database/db"
+import { APP_NAME, SEVERITY_LEVELS, BEARER_PREFIX } from "@/lib/config/constants"
 import type { Vulnerability, Severity, ScanResult } from "@/lib/scanner/types"
 
 const SEVERITY_ORDER: Record<Severity, number> = { critical: 0, high: 1, medium: 2, low: 3, info: 4 }

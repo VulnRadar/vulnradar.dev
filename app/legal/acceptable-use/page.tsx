@@ -1,4 +1,4 @@
-import { SECURITY_EMAIL, APP_NAME, LEGAL_EMAIL } from "@/lib/constants"
+import { SECURITY_EMAIL, APP_NAME, LEGAL_EMAIL } from "@/lib/config/constants"
 
 export default function AcceptableUsePage() {
   return (

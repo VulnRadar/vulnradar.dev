@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Shield, ExternalLink, Check, ShieldCheck, RefreshCw } from "lucide-react"
-import { APP_NAME, API, TERMS_UPDATED_AT } from "@/lib/constants"
+import { APP_NAME, API, TERMS_UPDATED_AT } from "@/lib/config/constants"
 
 interface TosModalProps {
   onAccept: () => void

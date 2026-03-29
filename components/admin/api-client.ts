@@ -1,6 +1,6 @@
 // Centralized API client for admin endpoints
 
-import { API } from "@/lib/constants"
+import { API } from "@/lib/config/constants"
 
 export class ApiError extends Error {
   status: number

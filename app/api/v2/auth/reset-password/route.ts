@@ -1,10 +1,10 @@
 import { NextRequest } from "next/server"
-import pool from "@/lib/db"
+import pool from "@/lib/database/db"
 import { hashPassword } from "@/lib/auth"
-import { passwordChangedEmail } from "@/lib/email"
-import { sendNotificationEmail } from "@/lib/notifications"
-import { getClientIp, getUserAgent } from "@/lib/request-utils"
-import { ApiResponse, parseBody, Validate, withErrorHandling } from "@/lib/api-utils"
+import { passwordChangedEmail } from "@/lib/email/email"
+import { sendNotificationEmail } from "@/lib/notifications/notifications"
+import { getClientIp, getUserAgent } from "@/lib/api/request-utils"
+import { ApiResponse, parseBody, Validate, withErrorHandling } from "@/lib/api/api-utils"
 
 export const POST = withErrorHandling(async (request: NextRequest) => {
   const ip = await getClientIp()

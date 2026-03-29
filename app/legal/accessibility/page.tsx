@@ -1,6 +1,6 @@
 import { Metadata } from "next"
 import Link from "next/link"
-import { APP_NAME, SUPPORT_EMAIL } from "@/lib/constants"
+import { APP_NAME, SUPPORT_EMAIL } from "@/lib/config/constants"
 
 export const metadata: Metadata = {
   title: `Accessibility Statement | ${APP_NAME}`,

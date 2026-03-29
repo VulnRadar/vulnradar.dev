@@ -1,18 +1,18 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createSession, verifyPassword } from "@/lib/auth"
 import { verifyTOTP } from "@/lib/totp"
-import pool from "@/lib/db"
-import { sendNotificationEmail } from "@/lib/notifications"
-import { newLoginEmail } from "@/lib/email"
-import { ApiResponse, parseBody, Validate, withErrorHandling } from "@/lib/api-utils"
-import { getClientIp, getUserAgent } from "@/lib/request-utils"
+import pool from "@/lib/database/db"
+import { sendNotificationEmail } from "@/lib/notifications/notifications"
+import { newLoginEmail } from "@/lib/email/email"
+import { ApiResponse, parseBody, Validate, withErrorHandling } from "@/lib/api/api-utils"
+import { getClientIp, getUserAgent } from "@/lib/api/request-utils"
 import {
   AUTH_2FA_PENDING_COOKIE,
   AUTH_2FA_PENDING_MAX_AGE,
   DEVICE_TRUST_COOKIE_NAME,
   DEVICE_TRUST_MAX_AGE,
   ERROR_MESSAGES,
-} from "@/lib/constants"
+} from "@/lib/config/constants"
 
 export const POST = withErrorHandling(async (request: NextRequest) => {
   const ip = await getClientIp()

@@ -25,7 +25,7 @@ import {
   Clock,
   ExternalLink,
 } from "lucide-react"
-import { API } from "@/lib/constants"
+import { API } from "@/lib/config/constants"
 
 interface ScanOption {
   id: number

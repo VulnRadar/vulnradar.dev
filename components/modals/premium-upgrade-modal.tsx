@@ -11,8 +11,8 @@ import {
 } from "@/components/ui/dialog"
 import { Badge } from "@/components/ui/badge"
 import Link from "next/link"
-import { ROUTES, BILLING_PLAN_LIMITS, BILLING_HISTORY_RETENTION } from "@/lib/constants"
-import { PLANS } from "@/lib/plans"
+import { ROUTES, BILLING_PLAN_LIMITS, BILLING_HISTORY_RETENTION } from "@/lib/config/constants"
+import { PLANS } from "@/lib/billing/plans"
 
 export interface PremiumFeature {
   id: string

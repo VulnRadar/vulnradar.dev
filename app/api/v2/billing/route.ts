@@ -4,10 +4,10 @@
 
 import { NextResponse } from "next/server"
 import { getSession } from "@/lib/auth"
-import pool from "@/lib/db"
-import { stripe } from "@/lib/stripe"
-import { canMakeRequest, PLAN_LIMITS, type PlanType } from "@/lib/daily-limits"
-import { BILLING_ENABLED } from "@/lib/constants"
+import pool from "@/lib/database/db"
+import { stripe } from "@/lib/billing/stripe"
+import { canMakeRequest, PLAN_LIMITS, type PlanType } from "@/lib/rate-limiting/daily-limits"
+import { BILLING_ENABLED } from "@/lib/config/constants"
 
 // GET /api/v2/billing - Get user's billing info and usage
 export async function GET() {

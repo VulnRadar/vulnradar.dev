@@ -1,12 +1,12 @@
 import { NextResponse, NextRequest } from "next/server"
 import { getSession } from "@/lib/auth"
-import { rotateApiKey, getUserApiKeys } from "@/lib/api-keys"
-import { sendNotificationEmail } from "@/lib/notifications"
-import { apiKeyCreatedEmail } from "@/lib/email"
-import { ERROR_MESSAGES } from "@/lib/constants"
-import { getClientIp, getUserAgent } from "@/lib/request-utils"
-import { getApiLimitForPlan } from "@/lib/plans"
-import pool from "@/lib/db"
+import { rotateApiKey, getUserApiKeys } from "@/lib/api/api-keys"
+import { sendNotificationEmail } from "@/lib/notifications/notifications"
+import { apiKeyCreatedEmail } from "@/lib/email/email"
+import { ERROR_MESSAGES } from "@/lib/config/constants"
+import { getClientIp, getUserAgent } from "@/lib/api/request-utils"
+import { getApiLimitForPlan } from "@/lib/billing/plans"
+import pool from "@/lib/database/db"
 
 export async function POST(
   _request: NextRequest,

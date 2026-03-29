@@ -1,13 +1,13 @@
 import { NextResponse } from "next/server"
 import { randomInt } from "node:crypto"
 import { getUserByEmail, verifyPassword, createSession } from "@/lib/auth"
-import pool from "@/lib/db"
-import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
-import { ApiResponse, Validate, parseBody, withErrorHandling } from "@/lib/api-utils"
-import { getClientIp, getUserAgent } from "@/lib/request-utils"
-import { AUTH_2FA_PENDING_COOKIE, AUTH_2FA_PENDING_MAX_AGE, DEVICE_TRUST_COOKIE_NAME, ERROR_MESSAGES } from "@/lib/constants"
-import { email2FACodeEmail, sendEmail, newLoginEmail } from "@/lib/email"
-import { sendNotificationEmail } from "@/lib/notifications"
+import pool from "@/lib/database/db"
+import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit"
+import { ApiResponse, Validate, parseBody, withErrorHandling } from "@/lib/api/api-utils"
+import { getClientIp, getUserAgent } from "@/lib/api/request-utils"
+import { AUTH_2FA_PENDING_COOKIE, AUTH_2FA_PENDING_MAX_AGE, DEVICE_TRUST_COOKIE_NAME, ERROR_MESSAGES } from "@/lib/config/constants"
+import { email2FACodeEmail, sendEmail, newLoginEmail } from "@/lib/email/email"
+import { sendNotificationEmail } from "@/lib/notifications/notifications"
 
 export const POST = withErrorHandling(async (request: Request) => {
   // Parse body

@@ -2,7 +2,7 @@
 
 import { createContext, useContext, ReactNode, useEffect, useMemo } from "react"
 import useSWR from "swr"
-import { API, STAFF_ROLES } from "@/lib/constants"
+import { API, STAFF_ROLES } from "@/lib/config/constants"
 import { 
   isStaffRole, 
   hasStaffPermission, 

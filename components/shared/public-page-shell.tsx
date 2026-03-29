@@ -6,9 +6,9 @@ import { Button } from "@/components/ui/button"
 import { Header } from "@/components/scanner/header"
 import { Footer } from "@/components/scanner/footer"
 import { useAuth } from "@/components/providers/auth-provider"
-import { APP_NAME, ROUTES, BILLING_ENABLED } from "@/lib/constants"
+import { APP_NAME, ROUTES, BILLING_ENABLED } from "@/lib/config/constants"
 import { ThemedLogo } from "@/components/shared/themed-logo"
-import { backdrops, transitions } from "@/lib/animations"
+import { backdrops, transitions } from "@/lib/ui/animations"
 
 interface PublicPageShellProps {
   children: React.ReactNode

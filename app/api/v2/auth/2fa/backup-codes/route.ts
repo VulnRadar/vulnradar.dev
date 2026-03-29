@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from "next/server"
 import crypto from "crypto"
 import { getSession, verifyPassword, hashPassword } from "@/lib/auth"
-import { backupCodesRegeneratedEmail } from "@/lib/email"
-import { sendNotificationEmail } from "@/lib/notifications"
-import pool from "@/lib/db"
-import { ERROR_MESSAGES } from "@/lib/constants"
-import { getClientIp, getUserAgent } from "@/lib/request-utils"
+import { backupCodesRegeneratedEmail } from "@/lib/email/email"
+import { sendNotificationEmail } from "@/lib/notifications/notifications"
+import pool from "@/lib/database/db"
+import { ERROR_MESSAGES } from "@/lib/config/constants"
+import { getClientIp, getUserAgent } from "@/lib/api/request-utils"
 
 function generateBackupCodes(count = 8): string[] {
   const codes: string[] = []

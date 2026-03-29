@@ -2,8 +2,8 @@
  * Database cleanup utilities
  * Handles automatic cleanup of expired records and old data
  */
-import pool from "@/lib/db"
-import { BILLING_HISTORY_RETENTION } from "@/lib/constants"
+import pool from "@/lib/database/db"
+import { BILLING_HISTORY_RETENTION } from "@/lib/config/constants"
 
 export interface CleanupStats {
   expiredSessions: number

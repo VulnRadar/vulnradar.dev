@@ -9,9 +9,9 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { ArrowLeft, Mail, CheckCircle2, AlertTriangle, Loader2 } from "lucide-react"
-import { APP_NAME } from "@/lib/constants"
-import { API } from "@/lib/client-constants"
-import { transitions } from "@/lib/animations"
+import { APP_NAME } from "@/lib/config/constants"
+import { API } from "@/lib/config/client-constants"
+import { transitions } from "@/lib/ui/animations"
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState("")

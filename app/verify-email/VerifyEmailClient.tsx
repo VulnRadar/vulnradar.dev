@@ -7,8 +7,8 @@ import { Loader2, CheckCircle2, XCircle, Mail } from "lucide-react"
 import { ThemedLogo } from "@/components/shared/themed-logo"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { APP_NAME } from "@/lib/constants"
-import { API } from "@/lib/client-constants"
+import { APP_NAME } from "@/lib/config/constants"
+import { API } from "@/lib/config/client-constants"
 
 export default function VerifyEmailClient() {
   const router = useRouter()

@@ -9,10 +9,10 @@ import { loadStripe } from '@stripe/stripe-js'
 import { Check, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import Link from 'next/link'
-import { ROUTES } from '@/lib/constants'
+import { ROUTES } from '@/lib/config/constants'
 
 import { startCheckoutSession } from '@/app/actions/stripe'
-import { getPlanFromProductId } from '@/lib/products'
+import { getPlanFromProductId } from '@/lib/billing/products'
 
 const stripePromise = loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY!)
 

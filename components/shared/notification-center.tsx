@@ -13,9 +13,9 @@ import {
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/ui/utils"
-import { PUBLIC_PATHS } from "@/lib/public-paths"
-import { useAuth } from "@/components/auth-provider"
-import { STAFF_ROLES, APP_VERSION, APP_NAME, VERSION_COOKIE_NAME } from "@/lib/constants"
+import { PUBLIC_PATHS } from "@/lib/config/public-paths"
+import { useAuth } from "@/components/providers/auth-provider"
+import { STAFF_ROLES, APP_VERSION, APP_NAME, VERSION_COOKIE_NAME } from "@/lib/config/constants"
 import { Sparkles } from "lucide-react"
 
 const STAFF_ROLE_VALUES = Object.values(STAFF_ROLES)

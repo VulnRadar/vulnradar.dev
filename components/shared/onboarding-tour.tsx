@@ -16,7 +16,7 @@ import {
   X,
   Sparkles,
 } from "lucide-react"
-import { APP_NAME, TOTAL_CHECKS_LABEL, API } from "@/lib/constants"
+import { APP_NAME, TOTAL_CHECKS_LABEL, API } from "@/lib/config/constants"
 
 const STEPS = [
   {
