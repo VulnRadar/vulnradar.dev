@@ -817,7 +817,7 @@ export function UserDetailPanel({
               <p className="text-sm font-medium">Admin Notes</p>
               <Badge variant="secondary" className="text-[10px] h-5 ml-auto">{detail.notes?.length || 0}</Badge>
             </div>
-            <p className="text-xs text-muted-foreground">Internal notes about this user. Only visible to staff.</p>
+            <p className="text-xs text-muted-foreground">Admin-only notes. Only visible when extracting user data. Not shown to the user unless they request a data export.</p>
           </CardHeader>
           <CardContent className="p-4 pt-0 flex flex-col gap-3">
             {/* Add note form */}
