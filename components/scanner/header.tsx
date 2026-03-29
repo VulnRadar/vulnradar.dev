@@ -1,7 +1,7 @@
 "use client"
 
 import { LogOut, Menu, ShieldAlert } from "lucide-react"
-import { ThemeToggle } from "@/components/theme-toggle"
+import { ThemeToggle } from "@/components/shared/theme-toggle"
 import { Button } from "@/components/ui/button"
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet"
 import { useRouter, usePathname } from "next/navigation"
@@ -10,9 +10,9 @@ import { useState } from "react"
 import { cn } from "@/lib/utils"
 import { APP_NAME, ROUTES, API } from "@/lib/constants"
 import { backdrops, transitions } from "@/lib/animations"
-import { ThemedLogo } from "@/components/themed-logo"
-import { NotificationBell } from "@/components/notification-center"
-import { useAuth, clearAuthCache } from "@/components/auth-provider"
+import { ThemedLogo } from "@/components/shared/themed-logo"
+import { NotificationBell } from "@/components/shared/notification-center"
+import { useAuth, clearAuthCache } from "@/components/providers/auth-provider"
 
 const NAV_LINKS = [
   { href: ROUTES.DASHBOARD, label: "Scanner" },

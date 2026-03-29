@@ -6,8 +6,8 @@ import { Globe, Loader2, Search, ExternalLink, ChevronDown, ChevronRight, Radar,
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { API } from "@/lib/constants"
-import { useAuth } from "@/components/auth-provider"
-import { PremiumUpgradeModal, PREMIUM_FEATURES, hasFeatureAccess } from "@/components/premium-upgrade-modal"
+import { useAuth } from "@/components/providers/auth-provider"
+import { PremiumUpgradeModal, PREMIUM_FEATURES, hasFeatureAccess } from "@/components/modals/premium-upgrade-modal"
 
 interface DiscoveredSubdomain {
   subdomain: string

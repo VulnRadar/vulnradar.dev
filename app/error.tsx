@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react"
 import Link from "next/link"
 import { AlertTriangle, Home, RotateCcw, Terminal, Copy, Check } from "lucide-react"
-import { ThemedLogo } from "@/components/themed-logo"
+import { ThemedLogo } from "@/components/shared/themed-logo"
 import { Button } from "@/components/ui/button"
 import { APP_NAME } from "@/lib/constants"
 

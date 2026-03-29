@@ -13,7 +13,7 @@ import {
   FileEdit, CheckCircle2, Clock, Users, MailOpen,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { SaveConfirmationModal } from "@/components/save-confirmation-modal"
+import { SaveConfirmationModal } from "@/components/shared/save-confirmation-modal"
 
 interface Broadcast {
   id: string

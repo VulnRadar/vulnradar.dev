@@ -1,7 +1,7 @@
 "use client"
 
 import React from "react"
-import { PublicPageShell } from "@/components/public-page-shell"
+import { PublicPageShell } from "@/components/shared/public-page-shell"
 
 export default function LegalLayout({ children }: { children: React.ReactNode }) {
   return (

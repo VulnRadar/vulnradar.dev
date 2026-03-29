@@ -2,7 +2,7 @@ import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { ArrowRight } from "lucide-react"
 import { APP_NAME, BILLING_ENABLED, ROUTES } from "@/lib/constants"
-import { ThemedLogo } from "@/components/themed-logo"
+import { ThemedLogo } from "@/components/shared/themed-logo"
 import { backdrops } from "@/lib/animations"
 import { cn } from "@/lib/utils"
 

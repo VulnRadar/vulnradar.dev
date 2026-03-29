@@ -3,7 +3,7 @@
 import React, { useEffect, useRef } from "react"
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { CopyCodeBlock } from "@/components/copy-code-block"
+import { CopyCodeBlock } from "@/components/shared/copy-code-block"
 import { AlertTriangle, CheckCircle, Info, Settings } from "lucide-react"
 import { APP_NAME, APP_URL, APP_VERSION, ENGINE_VERSION, APP_REPO, APP_SLUG } from "@/lib/constants"
 import { useDocsContext, type TocItem } from "../layout"
@@ -256,7 +256,7 @@ CONTACT_EMAIL=support@yourdomain.com
 
 # ─────────────────────────────────────────────────────────────────────────
 # STRIPE BILLING (Server-side - Optional)
-# ─────────────────────────────────────────────────────────────────────────
+# ────────────────────────────────────────────────────────────────────────��
 STRIPE_SECRET_KEY=sk_test_xxxxxxxxxxxxxxxxxxxxxxxxxxxx
 STRIPE_PUBLISHABLE_KEY=pk_test_xxxxxxxxxxxxxxxxxxxxxxxxxxxx
 NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=pk_test_xxxxxxxxxxxxxxxxxxxxxxxxxxxx
@@ -746,7 +746,7 @@ DATABASE_SSL=false
 # Public URL where your app is accessible. Used in emails, redirects, and client-side code.
 NEXT_PUBLIC_APP_URL=https://yourdomain.com
 
-# ─────────────────────────────────────────────────────────────────────────
+# ──────────────────────────────────��──────────────────────────────────────
 # API KEY ENCRYPTION (Server-side - Required for enhanced security)
 # ─────────────────────────────────────────────────────────────────────────
 # 32-byte hex string for AES-256 encryption of stored API keys.

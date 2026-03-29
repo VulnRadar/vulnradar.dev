@@ -10,8 +10,8 @@ import { APP_NAME, ROUTES, BILLING_ENABLED } from "@/lib/constants"
 import { backdrops, transitions } from "@/lib/animations"
 import { useState, useEffect, createContext, useContext } from "react"
 import { Button } from "@/components/ui/button"
-import { useAuth } from "@/components/auth-provider"
-import { ThemedLogo } from "@/components/themed-logo"
+import { useAuth } from "@/components/providers/auth-provider"
+import { ThemedLogo } from "@/components/shared/themed-logo"
 
 // Context for sharing active section state between layout and pages
 interface DocsContextType {

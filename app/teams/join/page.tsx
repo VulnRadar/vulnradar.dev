@@ -3,7 +3,7 @@
 import { useState, Suspense } from "react"
 import { useSearchParams, useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
-import { ThemedLogo } from "@/components/themed-logo"
+import { ThemedLogo } from "@/components/shared/themed-logo"
 import { Card, CardContent } from "@/components/ui/card"
 import { Users, Loader2, CheckCircle2, AlertTriangle, ArrowRight } from "lucide-react"
 import Link from "next/link"

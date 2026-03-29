@@ -1,6 +1,6 @@
 "use client"
 import { SEVERITY_LEVELS, API, BILLING_HISTORY_RETENTION } from "@/lib/constants"
-import { useAuth } from "@/components/auth-provider"
+import { useAuth } from "@/components/providers/auth-provider"
 
 import { useState, useEffect, useCallback } from "react"
 import { useRouter } from "next/navigation"
