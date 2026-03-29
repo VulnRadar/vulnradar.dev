@@ -36,24 +36,26 @@ export async function POST(req: NextRequest) {
     const { action, section } = body
     const ip = getClientIP(req)
 
-    if (section === "ip_rules") {
+    if (section === "access_rules") {
       if (action === "create") {
-        const { rule_type, ip_address, description, reason, expires_at } = body
+        const { rule_type, value_type, ip_address, description, reason, expires_at } = body
         
         const result = await pool.query(
-          `INSERT INTO ip_rules (rule_type, ip_address, description, reason, created_by, expires_at) 
-           VALUES ($1, $2, $3, $4, $5, $6) 
-           RETURNING id, rule_type, ip_address, description, is_active, created_at`,
-          [rule_type, ip_address, description, reason, user.id, expires_at]
+          `INSERT INTO access_rules (rule_type, value_type, ip_address, description, reason, created_by, expires_at) 
+           VALUES ($1, $2, $3, $4, $5, $6, $7) 
+           RETURNING id, rule_type, value_type, ip_address, description, is_active, created_at`,
+          [rule_type, value_type, ip_address, description, reason, user.id, expires_at]
         )
+        
+        await logAction(user.id, null, "access_rule_created", `Created ${value_type} ${rule_type} rule: ${ip_address}`, ip)
         
         return NextResponse.json({ rule: result.rows[0], success: true })
       }
 
       if (action === "list") {
         const result = await pool.query(
-          `SELECT id, rule_type, ip_address, description, reason, hit_count, is_active, created_at, expires_at 
-           FROM ip_rules 
+          `SELECT id, rule_type, value_type, ip_address, description, reason, hit_count, is_active, created_at, expires_at 
+           FROM access_rules 
            WHERE is_active = true 
            ORDER BY created_at DESC`
         )
@@ -62,7 +64,12 @@ export async function POST(req: NextRequest) {
 
       if (action === "delete") {
         const { id } = body
-        await pool.query(`UPDATE ip_rules SET is_active = false WHERE id = $1`, [id])
+        const result = await pool.query(`SELECT ip_address, value_type FROM access_rules WHERE id = $1`, [id])
+        if (result.rows.length > 0) {
+          const { ip_address, value_type } = result.rows[0]
+          await logAction(user.id, null, "access_rule_deleted", `Deleted ${value_type} rule: ${ip_address}`, ip)
+        }
+        await pool.query(`UPDATE access_rules SET is_active = false WHERE id = $1`, [id])
         return NextResponse.json({ success: true })
       }
 
@@ -73,7 +80,52 @@ export async function POST(req: NextRequest) {
           .join(", ")
         
         await pool.query(
-          `UPDATE ip_rules SET ${fields} WHERE id = $1`,
+          `UPDATE access_rules SET ${fields} WHERE id = $1`,
+          [id, ...Object.values(updates)]
+        )
+        return NextResponse.json({ success: true })
+      }
+    }
+
+    // Legacy ip_rules support (deprecated, maps to access_rules)
+    if (section === "ip_rules") {
+      if (action === "create") {
+        const { rule_type, ip_address, description, reason, expires_at } = body
+        
+        const result = await pool.query(
+          `INSERT INTO access_rules (rule_type, value_type, ip_address, description, reason, created_by, expires_at) 
+           VALUES ($1, $2, $3, $4, $5, $6, $7) 
+           RETURNING id, rule_type, value_type, ip_address, description, is_active, created_at`,
+          [rule_type, "ip", ip_address, description, reason, user.id, expires_at]
+        )
+        
+        return NextResponse.json({ rule: result.rows[0], success: true })
+      }
+
+      if (action === "list") {
+        const result = await pool.query(
+          `SELECT id, rule_type, value_type, ip_address, description, reason, hit_count, is_active, created_at, expires_at 
+           FROM access_rules 
+           WHERE is_active = true AND value_type = 'ip'
+           ORDER BY created_at DESC`
+        )
+        return NextResponse.json({ rules: result.rows })
+      }
+
+      if (action === "delete") {
+        const { id } = body
+        await pool.query(`UPDATE access_rules SET is_active = false WHERE id = $1`, [id])
+        return NextResponse.json({ success: true })
+      }
+
+      if (action === "update") {
+        const { id, ...updates } = body
+        const fields = Object.keys(updates)
+          .map((k, i) => `${k} = $${i + 2}`)
+          .join(", ")
+        
+        await pool.query(
+          `UPDATE access_rules SET ${fields} WHERE id = $1`,
           [id, ...Object.values(updates)]
         )
         return NextResponse.json({ success: true })

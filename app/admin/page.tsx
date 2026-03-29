@@ -104,7 +104,7 @@ function AdminContent() {
   const [searchQuery, setSearchQuery] = useState("")
   const [actionLoading, setActionLoading] = useState<string | null>(null)
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null)
-  const [activeTab, setActiveTab] = useState<"users" | "audit" | "admins" | "notifications" | "teams" | "ip-rules" | "security-alerts" | "settings" | "broadcast">("users")
+  const [activeTab, setActiveTab] = useState<"users" | "audit" | "admins" | "notifications" | "teams" | "access-rules" | "security-alerts" | "settings" | "broadcast">("users")
   const [selectedUser, setSelectedUser] = useState<UserDetail | null>(null)
   const [detailLoading, setDetailLoading] = useState(false)
   const [confirmDialog, setConfirmDialog] = useState<{
@@ -168,7 +168,7 @@ function AdminContent() {
 
     const parts = hash.split("/")
     let foundUser = false
-    const validTabs = ["users", "audit", "admins", "notifications", "teams", "ip-rules", "security-alerts", "settings", "broadcast"]
+    const validTabs = ["users", "audit", "admins", "notifications", "teams", "access-rules", "security-alerts", "settings", "broadcast"]
     for (const part of parts) {
       if (validTabs.includes(part)) {
         setActiveTab(part as typeof activeTab)
@@ -449,7 +449,7 @@ function AdminContent() {
     {
       label: "Security",
       items: [
-        { key: "ip-rules" as const, label: "Access Rules", icon: Globe },
+        { key: "access-rules" as const, label: "Access Rules", icon: Globe },
         { key: "security-alerts" as const, label: "Alerts", icon: ShieldCheck },
         { key: "audit" as const, label: "Audit Log", icon: History },
       ],
@@ -587,7 +587,7 @@ function AdminContent() {
               )}
 
               {/* Feature sections */}
-              {activeTab === "ip-rules" && <IPRulesManager />}
+              {activeTab === "access-rules" && <IPRulesManager />}
               {activeTab === "security-alerts" && <SecurityAlertsManager />}
               {activeTab === "settings" && <SystemSettingsManager />}
               {activeTab === "broadcast" && <MassEmailManager />}
