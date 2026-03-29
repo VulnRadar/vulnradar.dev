@@ -258,23 +258,15 @@ export function SaveConfirmationModal({
                   )}
                 </div>
                 
-                {/* Account change notification info */}
-                {requireNotification && (
+                {/* Account change notification info - only for email changes */}
+                {requireNotification && isEmailChanging && (
                   <div className="text-xs text-muted-foreground p-3 rounded-lg bg-muted/50 border border-border/40">
-                    {isEmailChanging ? (
-                      <>
-                        <p className="font-medium text-foreground mb-1">Email notification will be sent to:</p>
-                        <ul className="space-y-1 ml-4">
-                          <li>- <span className="text-destructive">{emailChange?.oldValue}</span> (old email)</li>
-                          <li>- <span className="text-primary">{emailChange?.newValue}</span> (new email)</li>
-                        </ul>
-                        <p className="mt-2 text-[11px] italic">Both addresses will be notified for security purposes.</p>
-                      </>
-                    ) : (
-                      <p>
-                        The user will be notified at <span className="text-foreground font-medium">{affectedUser?.email}</span> about these account changes.
-                      </p>
-                    )}
+                    <p className="font-medium text-foreground mb-1">Email notification will be sent to:</p>
+                    <ul className="space-y-1 ml-4">
+                      <li>- <span className="text-destructive">{emailChange?.oldValue}</span> (old email)</li>
+                      <li>- <span className="text-primary">{emailChange?.newValue}</span> (new email)</li>
+                    </ul>
+                    <p className="mt-2 text-[11px] italic">Both addresses will be notified for security purposes.</p>
                   </div>
                 )}
               </div>
