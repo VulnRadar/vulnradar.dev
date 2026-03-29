@@ -9,11 +9,9 @@ import { APP_NAME, ROUTES, BILLING_ENABLED, BILLING_PLAN_LIMITS, BILLING_HISTORY
 import Link from "next/link"
 import { useAuth } from "@/components/auth-provider"
 import { PLANS as LIB_PLANS } from "@/lib/plans"
-import { ThemedLogo } from "@/components/themed-logo"
 import { Footer } from "@/components/scanner/footer"
-import { Header } from "@/components/scanner/header"
+import { LandingNav } from "@/components/landing/landing-nav"
 import { StripeCheckout } from "@/components/stripe-checkout"
-import { backdrops, transitions } from "@/lib/animations"
 
 // Generate pricing page plans from centralized config
 function getRetentionLabel(planId: string): string {
@@ -98,37 +96,8 @@ export default function PricingPage() {
 
   return (
     <div className="min-h-screen flex flex-col bg-background">
-      {/* Navigation - show logged-in header when authenticated */}
-      {isLoggedIn ? (
-        <Header />
-      ) : (
-        <nav className={`sticky top-0 z-50 border-b border-border/50 ${backdrops.header}`}>
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 relative flex items-center">
-            <Link href="/" className={`flex items-center gap-2.5 z-10 group ${transitions.default}`}>
-              <ThemedLogo width={28} height={28} className="h-7 w-7 transition-transform group-hover:scale-105" alt={`${APP_NAME} logo`} />
-              <span className="font-bold text-lg tracking-tight">{APP_NAME}</span>
-            </Link>
-            
-            <div className="hidden md:flex items-center gap-8 absolute left-1/2 -translate-x-1/2">
-              <Link href={ROUTES.PRICING} className={`text-sm text-foreground font-medium ${transitions.colors}`}>Pricing</Link>
-              <Link href={ROUTES.DOCS} className={`text-sm text-muted-foreground hover:text-foreground ${transitions.colors}`}>Docs</Link>
-              <Link href="/demo" className={`text-sm text-muted-foreground hover:text-foreground ${transitions.colors}`}>Demo</Link>
-            </div>
-            
-            <div className="flex items-center gap-3 ml-auto z-10">
-              <Link href={ROUTES.LOGIN}>
-                <Button variant="ghost" size="sm" className="hidden sm:inline-flex">Log in</Button>
-              </Link>
-              <Link href={ROUTES.SIGNUP}>
-                <Button size="sm" className="gap-1.5">
-                  Get Started
-                  <ArrowRight className="h-3.5 w-3.5" />
-                </Button>
-              </Link>
-            </div>
-          </div>
-        </nav>
-      )}
+      {/* Static navigation - same for logged in or not */}
+      <LandingNav />
 
       <main className="flex-1">
         {/* Stripe Checkout Modal */}
@@ -189,7 +158,7 @@ export default function PricingPage() {
                     <span>256-bit SSL encryption</span>
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    All purchases are final. <Link href="/legal/terms" className={`underline hover:text-foreground ${transitions.colors}`}>Terms</Link>.
+                    All purchases are final. <Link href="/legal/terms" className="underline hover:text-foreground transition-colors">Terms</Link>.
                   </p>
                 </div>
               </div>
@@ -197,35 +166,30 @@ export default function PricingPage() {
           )
         })()}
 
-        {/* Hero Section with Glowing Orb */}
-        <section className="relative overflow-hidden">
-          {/* Glowing orb background - matches landing page */}
-          <div className="absolute inset-0 overflow-hidden pointer-events-none">
-            <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[600px] bg-primary/5 rounded-full blur-3xl" />
-          </div>
-          
-          <div className="relative max-w-7xl mx-auto px-4 sm:px-6 pt-16 sm:pt-24 pb-12">
-            <div className="text-center max-w-3xl mx-auto">
-              <Badge variant="outline" className="mb-6 gap-2 py-1.5 px-4 border-primary/30 bg-primary/5">
-                <Sparkles className="h-3.5 w-3.5 text-primary" />
-                <span className="text-sm">Simple, transparent pricing</span>
+        {/* Hero Section */}
+        <section className="relative">
+          <div className="max-w-6xl mx-auto px-4 sm:px-6 pt-16 pb-12 sm:pt-20">
+            <div className="text-center max-w-2xl mx-auto">
+              <Badge variant="outline" className="mb-5 gap-1.5 py-1 px-3 border-primary/30 bg-primary/5 text-xs">
+                <Sparkles className="h-3 w-3 text-primary" />
+                Simple, transparent pricing
               </Badge>
               
-              <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight mb-6 text-balance leading-[1.1]">
+              <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold tracking-tight mb-5 text-balance">
                 Plans that scale{" "}
                 <span className="text-muted-foreground">with you</span>
               </h1>
               
-              <p className="text-lg sm:text-xl text-muted-foreground max-w-2xl mx-auto mb-10 leading-relaxed text-pretty">
+              <p className="text-base sm:text-lg text-muted-foreground max-w-xl mx-auto mb-8 text-pretty">
                 Start free, upgrade when you need more. All plans include our full vulnerability detection suite.
               </p>
 
               {/* Billing Toggle */}
-              <div className="inline-flex items-center gap-1 p-1.5 rounded-full bg-muted/50 border border-border">
+              <div className="inline-flex items-center gap-0.5 p-1 rounded-lg bg-muted/50 border border-border/50">
                 <button
                   onClick={() => setBilling("monthly")}
                   className={cn(
-                    "px-5 py-2.5 rounded-full text-sm font-medium transition-all",
+                    "px-4 py-2 rounded-md text-sm font-medium transition-all",
                     billing === "monthly" 
                       ? "bg-background text-foreground shadow-sm" 
                       : "text-muted-foreground hover:text-foreground"
@@ -236,14 +200,14 @@ export default function PricingPage() {
                 <button
                   onClick={() => setBilling("yearly")}
                   className={cn(
-                    "px-5 py-2.5 rounded-full text-sm font-medium transition-all flex items-center gap-2",
+                    "px-4 py-2 rounded-md text-sm font-medium transition-all flex items-center gap-2",
                     billing === "yearly" 
                       ? "bg-background text-foreground shadow-sm" 
                       : "text-muted-foreground hover:text-foreground"
                   )}
                 >
                   Yearly
-                  <span className="text-xs bg-primary/10 text-primary font-semibold px-2 py-0.5 rounded-full">Save 20%</span>
+                  <span className="text-[10px] bg-primary/10 text-primary font-semibold px-1.5 py-0.5 rounded">-20%</span>
                 </button>
               </div>
             </div>
@@ -251,8 +215,8 @@ export default function PricingPage() {
         </section>
 
         {/* Pricing Cards */}
-        <section className="max-w-7xl mx-auto px-4 sm:px-6 pb-24">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <section className="max-w-6xl mx-auto px-4 sm:px-6 pb-20">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             {PLANS.map((plan) => {
               const price = getPrice(plan.price)
               const isCurrentPlan = currentPlan === plan.id
@@ -261,61 +225,61 @@ export default function PricingPage() {
                 <div
                   key={plan.id}
                   className={cn(
-                    "relative flex flex-col rounded-2xl border p-6 lg:p-8 transition-all duration-300",
+                    "relative flex flex-col rounded-xl border p-5 lg:p-6 transition-all",
                     plan.popular 
-                      ? "border-primary bg-card shadow-xl shadow-primary/10 ring-1 ring-primary scale-[1.02]" 
-                      : "border-border bg-card/50 hover:bg-card hover:border-border/80"
+                      ? "border-primary bg-card shadow-lg shadow-primary/10 ring-1 ring-primary" 
+                      : "border-border/50 bg-card/50 hover:bg-card hover:border-border/60"
                   )}
                 >
                   {plan.popular && (
-                    <div className="absolute -top-3.5 left-1/2 -translate-x-1/2">
-                      <Badge className="bg-primary text-primary-foreground shadow-lg px-4 py-1">
-                        Most Popular
+                    <div className="absolute -top-3 left-1/2 -translate-x-1/2">
+                      <Badge className="bg-primary text-primary-foreground shadow-md px-3 py-0.5 text-xs">
+                        Popular
                       </Badge>
                     </div>
                   )}
 
-                  <div className="mb-6">
-                    <h3 className="text-xl font-bold mb-2">{plan.name}</h3>
-                    <p className="text-sm text-muted-foreground">{plan.description}</p>
+                  <div className="mb-5">
+                    <h3 className="text-lg font-semibold mb-1">{plan.name}</h3>
+                    <p className="text-xs text-muted-foreground">{plan.description}</p>
                   </div>
 
-                  <div className="mb-8">
+                  <div className="mb-6">
                     <div className="flex items-baseline gap-1">
-                      <span className="text-5xl font-bold tracking-tight">${price}</span>
+                      <span className="text-4xl font-bold tracking-tight">${price}</span>
                       {plan.price > 0 && (
-                        <span className="text-muted-foreground text-lg">/{billing === "yearly" ? "yr" : "mo"}</span>
+                        <span className="text-muted-foreground text-sm">/{billing === "yearly" ? "yr" : "mo"}</span>
                       )}
                     </div>
                     {plan.price === 0 && (
-                      <p className="text-sm text-muted-foreground mt-2">Free forever</p>
+                      <p className="text-xs text-muted-foreground mt-1">Free forever</p>
                     )}
                     {plan.price > 0 && billing === "yearly" && (
-                      <p className="text-sm text-primary mt-2 font-medium">
+                      <p className="text-xs text-primary mt-1 font-medium">
                         ${Math.round(price / 12)}/mo billed annually
                       </p>
                     )}
                   </div>
 
-                  <div className="flex-1 mb-8">
-                    <ul className="space-y-4">
+                  <div className="flex-1 mb-6">
+                    <ul className="space-y-3">
                       {plan.features.map((feature, i) => (
-                        <li key={i} className="flex items-start gap-3 text-sm">
-                          <div className="mt-0.5 w-5 h-5 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
-                            <Check className="h-3 w-3 text-primary" />
+                        <li key={i} className="flex items-start gap-2 text-sm">
+                          <div className="mt-0.5 w-4 h-4 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                            <Check className="h-2.5 w-2.5 text-primary" />
                           </div>
-                          <span>{feature}</span>
+                          <span className="text-sm">{feature}</span>
                         </li>
                       ))}
                     </ul>
                   </div>
 
                   {isCurrentPlan ? (
-                    <Button variant="outline" className={cn("w-full h-12", isGifted && "border-amber-500/50 text-amber-500")} disabled>
+                    <Button variant="outline" className={cn("w-full h-10", isGifted && "border-amber-500/50 text-amber-500")} disabled>
                       {isGifted ? "Gifted Plan" : "Current Plan"}
                     </Button>
                   ) : plan.price === 0 ? (
-                    <Button variant={plan.popular ? "default" : "outline"} className="w-full h-12" asChild>
+                    <Button variant={plan.popular ? "default" : "outline"} className="w-full h-10" asChild>
                       <Link href={me ? ROUTES.DASHBOARD : ROUTES.SIGNUP}>
                         {me ? "Go to Scanner" : "Start Free"}
                       </Link>
@@ -323,13 +287,13 @@ export default function PricingPage() {
                   ) : me ? (
                     <Button
                       variant={plan.popular ? "default" : "outline"}
-                      className={cn("w-full h-12", plan.popular && "shadow-lg shadow-primary/25")}
+                      className={cn("w-full h-10", plan.popular && "shadow-md shadow-primary/20")}
                       onClick={() => setCheckoutPlan(getStripeProductId(plan.stripeId!))}
                     >
                       Upgrade to {plan.name}
                     </Button>
                   ) : (
-                    <Button variant={plan.popular ? "default" : "outline"} className={cn("w-full h-12", plan.popular && "shadow-lg shadow-primary/25")} asChild>
+                    <Button variant={plan.popular ? "default" : "outline"} className={cn("w-full h-10", plan.popular && "shadow-md shadow-primary/20")} asChild>
                       <Link href={ROUTES.SIGNUP}>Get Started</Link>
                     </Button>
                   )}
@@ -340,26 +304,26 @@ export default function PricingPage() {
         </section>
 
         {/* Features Grid */}
-        <section className="border-y border-border bg-muted/30">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 py-20 sm:py-28">
-            <div className="text-center mb-16">
-              <Badge variant="secondary" className="mb-4">Features</Badge>
-              <h2 className="text-3xl sm:text-4xl font-bold mb-4 tracking-tight">
+        <section className="border-y border-border/50 bg-muted/20">
+          <div className="max-w-6xl mx-auto px-4 sm:px-6 py-16 sm:py-20">
+            <div className="text-center mb-12">
+              <p className="text-xs font-medium text-primary uppercase tracking-wider mb-2">Features</p>
+              <h2 className="text-2xl sm:text-3xl font-bold mb-3 tracking-tight">
                 Everything you need for web security
               </h2>
-              <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
-                All plans include our core security scanning features. Upgrade for more capacity and support.
+              <p className="text-muted-foreground max-w-xl mx-auto">
+                All plans include our core security scanning features.
               </p>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {FEATURES.map((feature) => (
-                <div key={feature.title} className="flex gap-4 p-6 rounded-xl border border-border/50 bg-card/30 hover:bg-card transition-colors">
-                  <div className="shrink-0 w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center">
-                    <feature.icon className="h-6 w-6 text-primary" />
+                <div key={feature.title} className="flex gap-4 p-5 rounded-xl border border-border/50 bg-card/30 hover:bg-card/50 transition-colors">
+                  <div className="shrink-0 w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                    <feature.icon className="h-5 w-5 text-primary" />
                   </div>
                   <div>
-                    <h3 className="font-semibold mb-2">{feature.title}</h3>
-                    <p className="text-sm text-muted-foreground leading-relaxed">{feature.description}</p>
+                    <h3 className="font-semibold mb-1 text-sm">{feature.title}</h3>
+                    <p className="text-xs text-muted-foreground leading-relaxed">{feature.description}</p>
                   </div>
                 </div>
               ))}
@@ -368,46 +332,43 @@ export default function PricingPage() {
         </section>
 
         {/* FAQ Section */}
-        <section className="max-w-4xl mx-auto px-4 sm:px-6 py-20 sm:py-28">
-          <div className="text-center mb-12">
-            <Badge variant="secondary" className="mb-4">FAQ</Badge>
-            <h2 className="text-3xl font-bold tracking-tight">Frequently asked questions</h2>
+        <section className="max-w-3xl mx-auto px-4 sm:px-6 py-16 sm:py-20">
+          <div className="text-center mb-10">
+            <p className="text-xs font-medium text-primary uppercase tracking-wider mb-2">FAQ</p>
+            <h2 className="text-2xl sm:text-3xl font-bold tracking-tight">Frequently asked questions</h2>
           </div>
-          <div className="grid gap-6 md:grid-cols-2">
+          <div className="grid gap-4 md:grid-cols-2">
             {[
-              { q: "Can I cancel my subscription anytime?", a: "Yes, you can cancel your subscription at any time. You'll continue to have access until the end of your billing period." },
+              { q: "Can I cancel my subscription anytime?", a: "Yes, you can cancel at any time. You'll have access until the end of your billing period." },
               { q: "What payment methods do you accept?", a: "We accept all major credit cards through Stripe, including Visa, Mastercard, and American Express." },
               { q: "Is there a free trial for paid plans?", a: "We offer a generous free tier instead of a trial. Start with 25 scans/day free, then upgrade when you need more." },
               { q: "Can I switch plans later?", a: "Absolutely. You can upgrade or downgrade your plan at any time. Changes take effect immediately." },
-              { q: "Do you offer refunds?", a: "All purchases are final. Once a subscription is activated, we do not offer refunds. Please review your plan carefully before subscribing." },
+              { q: "Do you offer refunds?", a: "All purchases are final. Please review your plan carefully before subscribing." },
               { q: "Is my data secure?", a: "Yes. We use industry-standard encryption and never store sensitive scan data longer than necessary." },
             ].map((faq, i) => (
-              <div key={i} className="p-6 rounded-xl border border-border bg-card/50">
-                <h3 className="font-semibold mb-2">{faq.q}</h3>
-                <p className="text-sm text-muted-foreground leading-relaxed">{faq.a}</p>
+              <div key={i} className="p-4 rounded-xl border border-border/50 bg-card/30">
+                <h3 className="font-medium text-sm mb-1.5">{faq.q}</h3>
+                <p className="text-xs text-muted-foreground leading-relaxed">{faq.a}</p>
               </div>
             ))}
           </div>
         </section>
 
         {/* Final CTA */}
-        <section className="relative overflow-hidden border-t border-border">
-          <div className="absolute inset-0 overflow-hidden pointer-events-none">
-            <div className="absolute bottom-0 left-1/2 -translate-x-1/2 translate-y-1/2 w-[600px] h-[400px] bg-primary/5 rounded-full blur-3xl" />
-          </div>
-          <div className="relative max-w-7xl mx-auto px-4 sm:px-6 py-20 sm:py-28 text-center">
-            <h2 className="text-3xl sm:text-4xl font-bold mb-4 tracking-tight">Ready to secure your applications?</h2>
-            <p className="text-lg text-muted-foreground mb-8 max-w-xl mx-auto">Start scanning for free today. No credit card required.</p>
-            <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+        <section className="border-t border-border/50 bg-muted/20">
+          <div className="max-w-6xl mx-auto px-4 sm:px-6 py-16 sm:py-20 text-center">
+            <h2 className="text-2xl sm:text-3xl font-bold mb-4 tracking-tight">Ready to secure your applications?</h2>
+            <p className="text-muted-foreground mb-8 max-w-lg mx-auto">Start scanning for free today. No credit card required.</p>
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
               <Link href={me ? ROUTES.DASHBOARD : ROUTES.SIGNUP}>
-                <Button size="lg" className="h-12 px-8 text-base gap-2 shadow-lg shadow-primary/25">
+                <Button size="lg" className="h-11 px-6 gap-2">
                   {me ? "Go to Scanner" : "Get Started Free"}
                   <ArrowRight className="h-4 w-4" />
                 </Button>
               </Link>
               <Link href={ROUTES.DOCS}>
-                <Button size="lg" variant="outline" className="h-12 px-8 text-base">
-                  Read Documentation
+                <Button size="lg" variant="outline" className="h-11 px-6">
+                  Documentation
                 </Button>
               </Link>
             </div>
