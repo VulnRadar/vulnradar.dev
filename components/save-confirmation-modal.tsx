@@ -73,23 +73,29 @@ export function SaveConfirmationModal({
   const [notifyUser, setNotifyUser] = React.useState(true)
   const [success, setSuccess] = React.useState(false)
 
-  // Detect if email is being changed
+  // Detect if account-related fields are being changed
   const emailChange = changes.find(c => c.field === "Email Address" || c.field === "email" || c.label?.toLowerCase().includes("email"))
   const isEmailChanging = emailChange && formatValue(emailChange.oldValue) !== formatValue(emailChange.newValue)
   
-  // Email changes require notification
-  const requireNotification = isEmailChanging
+  const nameChange = changes.find(c => c.field === "Display Name" || c.field === "name" || c.label?.toLowerCase().includes("name"))
+  const isNameChanging = nameChange && formatValue(nameChange.oldValue) !== formatValue(nameChange.newValue)
+  
+  const planChange = changes.find(c => c.field === "Subscription Plan" || c.field === "plan" || c.label?.toLowerCase().includes("plan") || c.label?.toLowerCase().includes("subscription"))
+  const isPlanChanging = planChange && formatValue(planChange.oldValue) !== formatValue(planChange.newValue)
+  
+  // All account changes (email, name, plan) require notification when admin action
+  const requireNotification = isAdminAction && (isEmailChanging || isNameChanging || isPlanChanging)
 
   // Reset success state when modal opens
   React.useEffect(() => {
     if (isOpen) {
       setSuccess(false)
-      // Auto-enable notification if email is changing
-      if (isEmailChanging) {
+      // Auto-enable notification for account changes
+      if (requireNotification) {
         setNotifyUser(true)
       }
     }
-  }, [isOpen, isEmailChanging])
+  }, [isOpen, requireNotification])
 
   const handleConfirm = async () => {
     try {
@@ -252,15 +258,23 @@ export function SaveConfirmationModal({
                   )}
                 </div>
                 
-                {/* Email change notification info */}
-                {isEmailChanging && (
+                {/* Account change notification info */}
+                {requireNotification && (
                   <div className="text-xs text-muted-foreground p-3 rounded-lg bg-muted/50 border border-border/40">
-                    <p className="font-medium text-foreground mb-1">📧 Email notification will be sent to:</p>
-                    <ul className="space-y-1 ml-4">
-                      <li>• <span className="text-destructive">{emailChange?.oldValue}</span> (old email)</li>
-                      <li>• <span className="text-primary">{emailChange?.newValue}</span> (new email)</li>
-                    </ul>
-                    <p className="mt-2 text-[11px] italic">Both addresses will be notified for security purposes.</p>
+                    {isEmailChanging ? (
+                      <>
+                        <p className="font-medium text-foreground mb-1">Email notification will be sent to:</p>
+                        <ul className="space-y-1 ml-4">
+                          <li>- <span className="text-destructive">{emailChange?.oldValue}</span> (old email)</li>
+                          <li>- <span className="text-primary">{emailChange?.newValue}</span> (new email)</li>
+                        </ul>
+                        <p className="mt-2 text-[11px] italic">Both addresses will be notified for security purposes.</p>
+                      </>
+                    ) : (
+                      <p>
+                        The user will be notified at <span className="text-foreground font-medium">{affectedUser?.email}</span> about these account changes.
+                      </p>
+                    )}
                   </div>
                 )}
               </div>
