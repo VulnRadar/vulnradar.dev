@@ -1,9 +1,10 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { Globe, Loader2, Search, ExternalLink, ChevronDown, ChevronRight, Radar, RefreshCw, Clock, Crown } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { Progress } from "@/components/ui/progress"
 import { cn } from "@/lib/ui/utils"
 import { API } from "@/lib/config/constants"
 import { useAuth } from "@/components/providers/auth-provider"
@@ -76,18 +77,66 @@ function formatTimeRemaining(expiresAt: string): string {
   return remainingMins > 0 ? `${diffHours}h ${remainingMins}m` : `${diffHours}h`
 }
 
+// Progress simulation stages for discovery
+const DISCOVERY_STAGES = [
+  { progress: 10, message: "Querying Certificate Transparency logs..." },
+  { progress: 25, message: "Checking passive DNS records..." },
+  { progress: 45, message: "Scanning RapidDNS database..." },
+  { progress: 60, message: "Querying subdomain.center..." },
+  { progress: 75, message: "Running common prefix brute-force..." },
+  { progress: 90, message: "Verifying reachability..." },
+]
+
 export function SubdomainDiscovery({ url, onScanSubdomain }: SubdomainDiscoveryProps) {
   const router = useRouter()
-  const { me } = useAuth()
+  const { me, isStaff } = useAuth()
   const [loading, setLoading] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
   const [result, setResult] = useState<DiscoveryResult | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [expanded, setExpanded] = useState(false)
   const [showUpgradeModal, setShowUpgradeModal] = useState(false)
+  const [progress, setProgress] = useState(0)
+  const [progressMessage, setProgressMessage] = useState("")
+  const progressInterval = useRef<NodeJS.Timeout | null>(null)
   
   const userPlan = me?.plan || "free"
-  const canRefreshDNS = hasFeatureAccess(userPlan, PREMIUM_FEATURES.dns_refetch.requiredPlan)
+  // Staff members have access to all premium features
+  const canRefreshDNS = isStaff || hasFeatureAccess(userPlan, PREMIUM_FEATURES.dns_refetch.requiredPlan)
+  
+  // Cleanup progress interval on unmount
+  useEffect(() => {
+    return () => {
+      if (progressInterval.current) {
+        clearInterval(progressInterval.current)
+      }
+    }
+  }, [])
+
+  function startProgressSimulation() {
+    setProgress(0)
+    setProgressMessage(DISCOVERY_STAGES[0].message)
+    let stageIndex = 0
+    
+    progressInterval.current = setInterval(() => {
+      stageIndex++
+      if (stageIndex < DISCOVERY_STAGES.length) {
+        setProgress(DISCOVERY_STAGES[stageIndex].progress)
+        setProgressMessage(DISCOVERY_STAGES[stageIndex].message)
+      } else {
+        setProgress(95)
+        setProgressMessage("Finalizing results...")
+      }
+    }, 1500)
+  }
+  
+  function stopProgressSimulation() {
+    if (progressInterval.current) {
+      clearInterval(progressInterval.current)
+      progressInterval.current = null
+    }
+    setProgress(100)
+  }
 
   async function handleDiscover(forceRefresh = false) {
     // Check if user has premium access for refresh
@@ -100,6 +149,7 @@ export function SubdomainDiscovery({ url, onScanSubdomain }: SubdomainDiscoveryP
       setRefreshing(true)
     } else {
       setLoading(true)
+      startProgressSimulation()
     }
     setError(null)
     try {
@@ -122,6 +172,7 @@ export function SubdomainDiscovery({ url, onScanSubdomain }: SubdomainDiscoveryP
     } catch {
       setError("Failed to discover subdomains")
     } finally {
+      stopProgressSimulation()
       setLoading(false)
       setRefreshing(false)
     }
@@ -171,13 +222,17 @@ export function SubdomainDiscovery({ url, onScanSubdomain }: SubdomainDiscoveryP
   if (loading) {
     return (
       <div className="rounded-xl border border-border bg-card p-6">
-        <div className="flex flex-col items-center gap-3">
-          <Loader2 className="h-5 w-5 animate-spin text-primary" />
+        <div className="flex flex-col items-center gap-4">
+          <div className="flex items-center justify-center w-10 h-10 rounded-full bg-primary/10">
+            <Loader2 className="h-5 w-5 animate-spin text-primary" />
+          </div>
           <div className="text-center">
             <p className="text-sm font-medium text-foreground">Discovering subdomains...</p>
-            <p className="text-xs text-muted-foreground mt-1">
-              Querying crt.sh, HackerTarget, RapidDNS, subdomain.center, and 150+ common prefixes
-            </p>
+            <p className="text-xs text-muted-foreground mt-1">{progressMessage}</p>
+          </div>
+          <div className="w-full max-w-xs">
+            <Progress value={progress} className="h-2" />
+            <p className="text-[10px] text-muted-foreground text-center mt-1.5">{progress}% complete</p>
           </div>
         </div>
       </div>
