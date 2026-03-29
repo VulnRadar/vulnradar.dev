@@ -18,6 +18,7 @@ import {
   Bell,
   Send,
   RefreshCw,
+  History,
 } from "lucide-react"
 import { IPRulesManager } from "@/components/admin/features/ip-rules-manager"
 import { SecurityAlertsManager } from "@/components/admin/features/security-alerts-manager"
