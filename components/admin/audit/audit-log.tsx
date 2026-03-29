@@ -189,12 +189,6 @@ export function AuditLog({
           </div>
         ) : (
           <>
-            <div className="px-4 sm:px-5 py-3 border-b border-border/50 bg-muted/30">
-              <p className="text-xs text-muted-foreground">
-                Showing <span className="font-medium text-foreground">{filteredLogs.length}</span> of {auditLogs.length} actions
-              </p>
-            </div>
-            
             {/* Desktop table */}
             <div className="hidden md:block">
               <div className={cn("overflow-x-auto transition-opacity duration-200", auditPaging && "opacity-40 pointer-events-none")}>
