@@ -137,6 +137,7 @@ function AdminContent() {
   const [auditPaging, setAuditPaging] = useState(false)
   const [allBadges, setAllBadges] = useState<BadgeDef[]>([])
   const searchInitRef = useRef(false)
+  const teamsSearchInitRef = useRef(false)
   
   const staffPagination = usePagination(activeAdmins, staffPageSize)
   const pagedStaff = staffPagination.getPage(staffPage)
@@ -400,6 +401,19 @@ function AdminContent() {
     }, 300)
     return () => { clearTimeout(timeout); setSearchLoading(false) }
   }, [searchQuery])
+
+  // Debounced teams search
+  useEffect(() => {
+    if (!teamsSearchInitRef.current) {
+      teamsSearchInitRef.current = true
+      return
+    }
+    setTeamsLoading(true)
+    const timeout = setTimeout(() => {
+      fetchTeams(1, teamsSearch)
+    }, 300)
+    return () => { clearTimeout(timeout); setTeamsLoading(false) }
+  }, [teamsSearch])
 
   // Forbidden screen
   if (forbidden) {
