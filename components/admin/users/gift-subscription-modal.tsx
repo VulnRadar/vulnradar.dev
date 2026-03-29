@@ -93,7 +93,7 @@ export function GiftSubscriptionModal({
               <select
                 value={giftPlan}
                 onChange={(e) => setGiftPlan(e.target.value)}
-                className="h-9 rounded-md border border-border bg-background px-2.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
+                className="h-9 rounded-md border border-border/40 bg-background/50 px-2.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/50"
               >
                 <option value="core_supporter">Core Supporter</option>
                 <option value="pro_supporter">Pro Supporter</option>
@@ -106,7 +106,7 @@ export function GiftSubscriptionModal({
                 type="datetime-local"
                 value={giftEndDate}
                 onChange={(e) => setGiftEndDate(e.target.value)}
-                className="h-9 rounded-md border border-border bg-background px-2.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
+                className="h-9 rounded-md border border-border/40 bg-background/50 px-2.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/50"
               />
             </div>
           </div>
