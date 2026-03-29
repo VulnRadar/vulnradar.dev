@@ -88,35 +88,57 @@ export function TeamsList({
     danger?: boolean
     onConfirm: () => void
   } | null>(null)
+  // Track which team was clicked so modal opens instantly before data loads
+  const [modalTeam, setModalTeam] = useState<Team | null>(null)
+
+  const openTeamModal = (team: Team) => {
+    setModalTeam(team)
+    fetchTeamMembers(team.id)
+  }
+
+  const closeTeamModal = () => {
+    setModalTeam(null)
+    setTeamMembers(null)
+  }
 
   return (
-    <div className="space-y-4">
-      {/* Team members modal */}
-      {teamMembers && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => setTeamMembers(null)}>
-          <div className="bg-card border border-border rounded-xl p-6 w-full max-w-lg mx-4 shadow-2xl max-h-[80vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+    <>
+      {/* Team members modal — rendered outside card flow to prevent layout shift */}
+      {modalTeam && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+          onClick={closeTeamModal}
+        >
+          <div
+            className="bg-card border border-border rounded-xl p-6 w-full max-w-lg mx-4 shadow-2xl max-h-[80vh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-3">
                 <div className="p-2 rounded-lg bg-primary/10">
                   <UsersRound className="h-4 w-4 text-primary" />
                 </div>
                 <div>
-                  <h3 className="text-base font-semibold text-foreground">{teamMembers.team.name}</h3>
-                  <p className="text-xs text-muted-foreground">{teamMembers.members.length} member{teamMembers.members.length !== 1 ? "s" : ""}</p>
+                  <h3 className="text-base font-semibold text-foreground">{modalTeam.name}</h3>
+                  <p className="text-xs text-muted-foreground">
+                    {teamMembersLoading
+                      ? "Loading members..."
+                      : `${teamMembers?.members.length ?? 0} member${(teamMembers?.members.length ?? 0) !== 1 ? "s" : ""}`}
+                  </p>
                 </div>
               </div>
-              <button onClick={() => setTeamMembers(null)} className="p-2 rounded-lg hover:bg-muted transition-colors">
+              <button onClick={closeTeamModal} className="p-2 rounded-lg hover:bg-muted transition-colors">
                 <X className="h-4 w-4" />
               </button>
             </div>
-            
+
             {teamMembersLoading ? (
               <div className="flex items-center justify-center py-12">
                 <Loader2 className="h-5 w-5 animate-spin text-primary" />
               </div>
             ) : (
               <div className="space-y-2">
-                {teamMembers.members.map((member) => (
+                {(teamMembers?.members ?? []).map((member) => (
                   <div key={member.user_id} className="flex items-center gap-3 p-3 rounded-lg bg-muted/30 border border-border/50 hover:bg-muted/50 transition-colors">
                     <UserAvatar name={member.name} email={member.email} size="sm" avatarUrl={member.avatar_url} />
                     <div className="flex-1 min-w-0">
@@ -139,6 +161,7 @@ export function TeamsList({
         </div>
       )}
       
+      <div className="space-y-4">
       {/* Teams table */}
       <Card className="border-border/50 bg-card/50 overflow-hidden">
         <CardHeader className="pb-4 pt-5 px-5">
@@ -260,7 +283,7 @@ export function TeamsList({
                         </td>
                         <td className="px-5 py-4">
                           <div className="flex items-center gap-1 justify-end">
-                            <Button variant="ghost" size="sm" className="h-8 gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity" onClick={() => fetchTeamMembers(team.id)} title="View members">
+                            <Button variant="ghost" size="sm" className="h-8 gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity" onClick={() => openTeamModal(team)} title="View members">
                               <Eye className="h-3.5 w-3.5" />
                               <span className="text-xs">View</span>
                             </Button>
@@ -314,7 +337,7 @@ export function TeamsList({
                       <span>Created {new Date(team.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}</span>
                     </div>
                     <div className="flex items-center gap-2">
-                      <Button variant="outline" size="sm" className="h-8 text-xs flex-1 border-border/40" onClick={() => fetchTeamMembers(team.id)}>
+                      <Button variant="outline" size="sm" className="h-8 text-xs flex-1 border-border/40" onClick={() => openTeamModal(team)}>
                         <Eye className="h-3 w-3 mr-1.5" /> View Members
                       </Button>
                       <Button variant="outline" size="sm" className="h-8 w-8 p-0 border-border/40" onClick={() => setEditingTeam({ id: team.id, name: team.name })}>
@@ -368,6 +391,7 @@ export function TeamsList({
         onConfirm={confirmDialog?.onConfirm || (() => {})}
         onCancel={() => setConfirmDialog(null)}
       />
-    </div>
+      </div>
+    </>
   )
 }
