@@ -474,7 +474,7 @@ function AdminContent() {
       <main className="flex-1 w-full max-w-7xl mx-auto px-4 sm:px-6 py-8">
 
         {/* Page Header */}
-        <div className="mb-6 lg:ml-52">
+        <div className="mb-6">
           <h1 className="text-2xl font-semibold tracking-tight">Admin Panel</h1>
           <p className="text-sm text-muted-foreground mt-1">Manage users, monitor activity, and control system settings.</p>
         </div>
@@ -485,11 +485,34 @@ function AdminContent() {
             <p className="text-sm text-muted-foreground">Loading...</p>
           </div>
         ) : (
-          <div className="flex flex-col lg:flex-row gap-6 lg:ml-52">
+          <div className="flex flex-col lg:flex-row gap-6">
 
-            {/* Sidebar nav - fixed above */}
-            {/* Desktop: grouped vertical nav - fixed so it's immune to Radix scroll lock */}
-            <nav className="hidden lg:flex flex-col gap-5 fixed top-24 left-0 z-40 w-52 h-[calc(100vh-theme(spacing.24))] overflow-y-auto border-r border-border/50 px-3 py-4">
+            {/* Sidebar */}
+            <aside className="lg:w-52 shrink-0">
+
+              {/* Mobile: horizontal icon strip */}
+              <div className="lg:hidden overflow-x-auto -mx-4 px-4 mb-4">
+                <div className="flex items-center gap-1 border-b border-border pb-3">
+                  {ALL_ADMIN_TABS.map((tab) => (
+                    <button
+                      key={tab.key}
+                      onClick={() => handleTabChange(tab.key)}
+                      title={tab.label}
+                      className={cn(
+                        "flex items-center justify-center w-9 h-9 rounded-lg transition-all shrink-0",
+                        activeTab === tab.key
+                          ? "bg-primary/10 text-primary"
+                          : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+                      )}
+                    >
+                      <tab.icon className="h-4 w-4" />
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Desktop: grouped vertical nav */}
+              <nav className="hidden lg:flex flex-col gap-5 sticky top-24">
                 {NAV_GROUPS.map((group) => (
                   <div key={group.label}>
                     <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest px-2 mb-1.5">
@@ -521,27 +544,7 @@ function AdminContent() {
                   </div>
                 ))}
               </nav>
-
-            {/* Mobile: horizontal icon strip */}
-            <div className="lg:hidden overflow-x-auto -mx-4 px-4 mb-4">
-              <div className="flex items-center gap-1 border-b border-border pb-3">
-                {ALL_ADMIN_TABS.map((tab) => (
-                  <button
-                    key={tab.key}
-                    onClick={() => handleTabChange(tab.key)}
-                    title={tab.label}
-                    className={cn(
-                      "flex items-center justify-center w-9 h-9 rounded-lg transition-all shrink-0",
-                      activeTab === tab.key
-                        ? "bg-primary/10 text-primary"
-                        : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
-                    )}
-                  >
-                    <tab.icon className="h-4 w-4" />
-                  </button>
-                ))}
-              </div>
-            </div>
+            </aside>
 
             {/* Main content */}
             <div className="flex-1 min-w-0 flex flex-col gap-6">
