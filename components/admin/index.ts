@@ -25,3 +25,6 @@ export * from "./shared"
 // Feature Components
 export * from "./users"
 export * from "./notifications"
+
+// Core Admin Components
+export { StaffHeartbeat } from './staff-heartbeat'
