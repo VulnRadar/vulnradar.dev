@@ -6,53 +6,17 @@ import { useRouter } from "next/navigation"
 import {
   Users,
   Activity,
-  Key,
-  CalendarClock,
-  Webhook,
   ShieldCheck,
   ShieldOff,
-  Trash2,
-  CrownIcon,
   Loader2,
   Search,
   BarChart3,
-  KeyRound,
-  LogOut,
-  Ban,
-  CheckCircle2,
-  ClipboardCopy,
-  Eye,
-  ArrowLeft,
-  FileText,
-  History,
   Shield,
-  FileDown,
-  XCircle,
-  X,
-  UserCog,
   Globe,
-  ChevronDown,
-  Award,
-  Plus,
-  Tag,
-  Pencil,
-  Mail,
-  User,
-  CreditCard,
-  Download,
-  MailCheck,
-  MailX,
-  CalendarOff,
-  ImageOff,
-  UserX,
-  Beaker,
   Settings,
-  Gift,
   UsersRound,
   Bell,
-  StickyNote,
   Send,
-  MoreHorizontal,
   RefreshCw,
 } from "lucide-react"
 import { IPRulesManager } from "@/components/admin/features/ip-rules-manager"
@@ -68,21 +32,14 @@ import { Footer } from "@/components/scanner/footer"
 import { cn } from "@/lib/utils"
 import { PaginationControl, usePagination } from "@/components/ui/pagination-control"
 import { STAFF_ROLES, STAFF_ROLE_LABELS, STAFF_ROLE_HIERARCHY, ROLE_BADGE_STYLES, API } from "@/lib/constants"
-import {
-  hasStaffPermission,
-  canManageRole,
-  getAvailableActions,
-  STAFF_PERMISSIONS,
-  type AdminAction
-} from "@/lib/permissions-client"
+import { hasStaffPermission, STAFF_PERMISSIONS } from "@/lib/permissions-client"
 import { NotificationsManager } from "@/components/admin/notifications"
-import { SaveConfirmationModal, type ChangeItem, type AffectedUser } from "@/components/save-confirmation-modal"
 
 // Import from new admin architecture
-import type { AdminStats, AdminUser, UserDetail, AuditEntry, ActiveAdmin, BadgeDef, AdminNote, UserBadge } from "@/components/admin/types"
+import type { AdminStats, AdminUser, UserDetail, AuditEntry, ActiveAdmin, BadgeDef } from "@/components/admin/types"
 import { ACTION_META, ADMIN_TABS } from "@/components/admin/config"
-import { formatRelativeTime, getAvatarColorIndex } from "@/components/admin/utils"
-import { StatCard, UserAvatar, ActionBadge, Toast as AdminToast, ConfirmDialog, ActionCard } from "@/components/admin/shared"
+import { formatRelativeTime } from "@/components/admin/utils"
+import { UserAvatar, Toast as AdminToast, ConfirmDialog } from "@/components/admin/shared"
 import { GiftSubscriptionModal, UserDetailPanel } from "@/components/admin/users"
 import { AuditLog } from "@/components/admin/audit"
 import { StaffList } from "@/components/admin/staff"
