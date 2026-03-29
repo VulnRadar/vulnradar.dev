@@ -126,46 +126,6 @@ export function SystemSettingsManager() {
 
   return (
     <div className="space-y-6">
-      {/* Stats grid */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <div className="flex items-center gap-3 p-4 rounded-xl border border-border/40 bg-card/30 hover:bg-card/50 hover:border-border/60 transition-colors">
-          <div className="p-2 rounded-lg bg-primary/10">
-            <Settings className="h-4 w-4 text-primary" />
-          </div>
-          <div>
-            <p className="text-2xl font-bold">{totalSettings}</p>
-            <p className="text-xs text-muted-foreground">Total Settings</p>
-          </div>
-        </div>
-        <div className="flex items-center gap-3 p-4 rounded-xl border border-border/40 bg-card/30 hover:bg-card/50 hover:border-border/60 transition-colors">
-          <div className="p-2 rounded-lg bg-emerald-500/10">
-            <CheckCircle2 className="h-4 w-4 text-emerald-500" />
-          </div>
-          <div>
-            <p className="text-2xl font-bold">{configuredSettings}</p>
-            <p className="text-xs text-muted-foreground">Configured</p>
-          </div>
-        </div>
-        <div className="flex items-center gap-3 p-4 rounded-xl border border-border/40 bg-card/30 hover:bg-card/50 hover:border-border/60 transition-colors">
-          <div className="p-2 rounded-lg bg-amber-500/10">
-            <Clock className="h-4 w-4 text-amber-500" />
-          </div>
-          <div>
-            <p className="text-2xl font-bold">{pendingChanges}</p>
-            <p className="text-xs text-muted-foreground">Pending Changes</p>
-          </div>
-        </div>
-        <div className="flex items-center gap-3 p-4 rounded-xl border border-border/40 bg-card/30 hover:bg-card/50 hover:border-border/60 transition-colors">
-          <div className={cn("p-2 rounded-lg", maintenanceActive ? "bg-destructive/10" : "bg-muted")}>
-            <ToggleLeft className={cn("h-4 w-4", maintenanceActive ? "text-destructive" : "text-muted-foreground")} />
-          </div>
-          <div>
-            <p className="text-2xl font-bold">{maintenanceActive ? "On" : "Off"}</p>
-            <p className="text-xs text-muted-foreground">Maintenance</p>
-          </div>
-        </div>
-      </div>
-
       {/* Maintenance Mode Alert */}
       {maintenanceActive && (
         <div className="flex items-center gap-3 p-4 rounded-xl border border-amber-500/30 bg-amber-500/10">
