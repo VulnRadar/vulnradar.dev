@@ -1,11 +1,11 @@
 "use client"
 
 import React, { useState, useEffect } from "react"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Switch } from "@/components/ui/switch"
-import { AlertCircle, Save, RefreshCw, Loader2, CheckCircle2, X } from "lucide-react"
+import { Settings, AlertTriangle, Save, RefreshCw, Loader2, CheckCircle2, X, ToggleLeft, MessageSquare, Shield, Clock } from "lucide-react"
 import { SaveConfirmationModal, type ChangeItem } from "@/components/save-confirmation-modal"
 import { cn } from "@/lib/utils"
 
@@ -22,12 +22,14 @@ const defaultSettings = [
     label: "Maintenance Mode",
     description: "Disable access for regular users while maintenance is in progress",
     type: "toggle",
+    icon: Shield,
   },
   {
     key: "maintenance_message",
     label: "Maintenance Message",
     description: "Message displayed to users during maintenance mode",
     type: "text",
+    icon: MessageSquare,
   },
 ]
 
@@ -116,86 +118,112 @@ export function SystemSettingsManager() {
     }
   })
 
+  // Stats
+  const totalSettings = defaultSettings.length
+  const configuredSettings = Object.keys(settings).length
+  const pendingChanges = Object.keys(changes).length
+  const maintenanceActive = (changes.maintenance_mode ?? settings.maintenance_mode) === "true"
+
   return (
     <div className="space-y-6">
       {/* Maintenance Mode Alert */}
-      {settings.maintenance_mode === "true" && (
-        <Card className="border-yellow-500/20 bg-yellow-500/10">
-          <CardContent className="pt-6">
-            <div className="flex items-center gap-3">
-              <AlertCircle className="h-5 w-5 text-yellow-600 flex-shrink-0" />
-              <div>
-                <p className="font-semibold text-yellow-900">Maintenance Mode Active</p>
-                <p className="text-sm text-yellow-800 mt-1">
-                  Regular users cannot access the application
-                </p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+      {maintenanceActive && (
+        <div className="flex items-center gap-3 p-4 rounded-xl border border-amber-500/30 bg-amber-500/10">
+          <div className="p-2 rounded-lg bg-amber-500/20">
+            <AlertTriangle className="h-4 w-4 text-amber-600" />
+          </div>
+          <div className="flex-1">
+            <p className="text-sm font-medium text-amber-900 dark:text-amber-200">Maintenance Mode Active</p>
+            <p className="text-xs text-amber-800/80 dark:text-amber-300/80 mt-0.5">
+              Regular users cannot access the application
+            </p>
+          </div>
+        </div>
       )}
 
       {/* Settings Card */}
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <div>
-              <CardTitle>System Settings</CardTitle>
-              <CardDescription>Configure global system behavior</CardDescription>
+      <Card className="border-border/50 bg-card/50 overflow-hidden">
+        <div className="px-4 sm:px-5 py-4 border-b border-border/50">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-primary/10">
+                <Settings className="h-4 w-4 text-primary" />
+              </div>
+              <div>
+                <h3 className="text-base font-semibold text-foreground">System Settings</h3>
+                <p className="text-xs text-muted-foreground mt-0.5">Configure global system behavior</p>
+              </div>
             </div>
             <Button
               variant="outline"
               size="sm"
+              className="gap-2 border-border/40 shrink-0"
               onClick={fetchSettings}
               disabled={loading}
             >
               <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
+              <span className="hidden sm:inline">Refresh</span>
             </Button>
           </div>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-6">
+        </div>
+
+        <CardContent className="p-0">
+          <div className="divide-y divide-border/40">
             {defaultSettings.map((setting) => {
               const value = changes[setting.key] ?? settings[setting.key] ?? ""
+              const Icon = setting.icon
 
               return (
-                <div key={setting.key} className="border-b border-border pb-6 last:border-0">
-                  <div className="flex items-start justify-between mb-3">
-                    <div>
-                      <label className="font-medium text-sm">{setting.label}</label>
-                      {setting.description && (
-                        <p className="text-xs text-muted-foreground mt-1">
-                          {setting.description}
-                        </p>
+                <div key={setting.key} className="px-4 sm:px-5 py-4 hover:bg-muted/20 transition-colors">
+                  <div className="flex items-start gap-3">
+                    <div className="p-2 rounded-lg bg-muted/50 shrink-0 mt-0.5">
+                      <Icon className="h-4 w-4 text-muted-foreground" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="flex-1">
+                          <label className="text-sm font-medium text-foreground">{setting.label}</label>
+                          {setting.description && (
+                            <p className="text-xs text-muted-foreground mt-1">
+                              {setting.description}
+                            </p>
+                          )}
+                        </div>
+                        {setting.type === "toggle" && (
+                          <div className="flex items-center gap-2 shrink-0">
+                            <span className={cn(
+                              "text-xs font-medium",
+                              value === "true" ? "text-emerald-500" : "text-muted-foreground"
+                            )}>
+                              {value === "true" ? "Enabled" : "Disabled"}
+                            </span>
+                            <Switch
+                              checked={value === "true"}
+                              onCheckedChange={(checked) =>
+                                handleChange(setting.key, checked ? "true" : "false")
+                              }
+                            />
+                          </div>
+                        )}
+                      </div>
+
+                      {setting.type !== "toggle" && (
+                        <div className="mt-3">
+                          <Input
+                            type={setting.type}
+                            value={value}
+                            onChange={(e) => handleChange(setting.key, e.target.value)}
+                            placeholder={`Enter ${setting.label.toLowerCase()}`}
+                            className="h-10 bg-background/50 border-border/40 focus:border-primary/50"
+                          />
+                        </div>
                       )}
                     </div>
                   </div>
-
-                  {setting.type === "toggle" ? (
-                    <div className="flex items-center gap-3">
-                      <Switch
-                        checked={value === "true"}
-                        onCheckedChange={(checked) =>
-                          handleChange(setting.key, checked ? "true" : "false")
-                        }
-                      />
-                      <span className="text-sm text-muted-foreground">
-                        {value === "true" ? "Enabled" : "Disabled"}
-                      </span>
-                    </div>
-                  ) : (
-                    <Input
-                      type={setting.type}
-                      value={value}
-                      onChange={(e) => handleChange(setting.key, e.target.value)}
-                      placeholder={`Enter ${setting.label.toLowerCase()}`}
-                    />
-                  )}
                 </div>
               )
             })}
           </div>
-
         </CardContent>
       </Card>
 
@@ -203,21 +231,24 @@ export function SystemSettingsManager() {
       {hasChanges && (
         <div className="fixed bottom-0 left-0 right-0 z-50 p-4 pointer-events-none">
           <div className="max-w-lg mx-auto pointer-events-auto">
-            <div className="flex items-center justify-between gap-4 px-4 py-3 rounded-lg bg-card border border-border shadow-lg">
+            <div className="flex items-center justify-between gap-4 px-4 py-3 rounded-xl bg-card border border-border/50 shadow-lg backdrop-blur-sm">
               <div className="flex items-center gap-3">
-                <Save className="h-4 w-4 text-primary" />
+                <div className="p-1.5 rounded-lg bg-primary/10">
+                  <Save className="h-3.5 w-3.5 text-primary" />
+                </div>
                 <p className="text-sm font-medium text-foreground">
                   {modalChanges.length} unsaved change{modalChanges.length !== 1 ? "s" : ""}
                 </p>
               </div>
               <div className="flex items-center gap-2">
-                <Button variant="ghost" size="sm" onClick={discardChanges} disabled={saving}>
-                  <X className="h-3.5 w-3.5 mr-1" />
-                  Discard
+                <Button variant="ghost" size="sm" onClick={discardChanges} disabled={saving} className="gap-1.5">
+                  <X className="h-3.5 w-3.5" />
+                  <span className="hidden sm:inline">Discard</span>
                 </Button>
                 <Button size="sm" className="gap-1.5" onClick={() => setShowSaveModal(true)} disabled={saving}>
                   {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
-                  Save Changes
+                  <span className="hidden sm:inline">Save Changes</span>
+                  <span className="sm:hidden">Save</span>
                 </Button>
               </div>
             </div>
