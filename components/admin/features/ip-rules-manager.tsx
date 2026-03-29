@@ -95,6 +95,31 @@ export function IPRulesManager() {
     }
   }
 
+  const handleDeleteRule = async () => {
+    if (!pendingDelete) return
+    setDeleting(true)
+    try {
+      const res = await fetch("/api/v2/admin/features", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "delete",
+          section: "access_rules",
+          id: pendingDelete.id,
+        }),
+      })
+
+      if (res.ok) {
+        setPendingDelete(null)
+        await fetchRules()
+      }
+    } catch (error) {
+      console.error("Error deleting rule:", error)
+    } finally {
+      setDeleting(false)
+    }
+  }
+
   const addChangeItems: ChangeItem[] = newValue ? [
     { field: "value", label: valueType === "ip" ? "IP Address" : "URL/Domain", oldValue: "—", newValue },
     { field: "rule_type", label: "Action", oldValue: "—", newValue: ruleType === "whitelist" ? "Allow (Whitelist)" : "Block (Blacklist)" },
