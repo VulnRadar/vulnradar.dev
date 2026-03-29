@@ -26,13 +26,15 @@ html {
   overflow-y: scroll;
 }
 
-/* Prevent Radix UI scroll-lock from shifting the sticky header.
-   Radix sets overflow:hidden + padding-right on body when a modal/select/sheet opens,
-   which collapses the scrollbar gutter and shifts fixed/sticky elements.
-   We force the scrollbar to always be present so nothing shifts. */
+/* Prevent Radix UI scroll-lock from jumping the page.
+   Radix sets position:fixed + overflow:hidden on body when a modal/select/sheet opens,
+   which causes the page to visually scroll to top. Since the header is now `fixed`,
+   we don't need Radix's scroll lock at all — override it completely. */
 body[data-scroll-locked] {
+  position: static !important;
   overflow-y: scroll !important;
   padding-right: 0 !important;
+  margin-right: 0 !important;
 }
 
 /* Reduce motion for users who prefer it */
