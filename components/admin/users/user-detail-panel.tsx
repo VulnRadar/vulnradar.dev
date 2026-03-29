@@ -218,10 +218,9 @@ export function UserDetailPanel({
   }
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-6">
       {/* Back + header card */}
-      <Card className="bg-card border-border overflow-hidden">
-        <div className="h-1 w-full bg-primary" />
+      <Card className="border-border/50 bg-card/50 overflow-hidden">
         <CardContent className="p-5">
           <div className="flex items-start gap-4">
             <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0 -ml-1 -mt-0.5" onClick={onClose}>
@@ -230,7 +229,7 @@ export function UserDetailPanel({
             <UserAvatar name={u.name} email={u.email} avatarUrl={u.avatar_url} />
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
-                <h2 className="text-lg font-bold text-foreground">{u.name || "Unnamed User"}</h2>
+                <h2 className="text-lg font-semibold tracking-tight">{u.name || "Unnamed User"}</h2>
                 {u.role && u.role !== "user" && ROLE_BADGE_STYLES[u.role] && (
                   <Badge className={cn(ROLE_BADGE_STYLES[u.role], "text-[10px] font-medium")}>{STAFF_ROLE_LABELS[u.role] || u.role}</Badge>
                 )}
@@ -242,43 +241,45 @@ export function UserDetailPanel({
 
           {detailLoading ? (
             <div className="flex items-center justify-center py-10">
-              <Loader2 className="h-5 w-5 animate-spin text-primary" />
+              <Loader2 className="h-4 w-4 animate-spin text-primary" />
             </div>
           ) : (
             <>
               {/* Quick stats */}
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-5">
                 {[
-                  { label: "Scans", value: u.scan_count, icon: Activity, color: "text-primary" },
-                  { label: "API Keys", value: u.api_key_count, icon: Key, color: "text-[hsl(var(--severity-medium))]" },
-                  { label: "Sessions", value: String(u.session_count), icon: Globe, color: "text-emerald-500" },
-                  { label: "Joined", value: new Date(u.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }), icon: Clock, color: "text-muted-foreground" },
+                  { label: "Scans", value: u.scan_count, icon: Activity, color: "text-primary", bg: "bg-primary/10" },
+                  { label: "API Keys", value: u.api_key_count, icon: Key, color: "text-[hsl(var(--severity-medium))]", bg: "bg-[hsl(var(--severity-medium))]/10" },
+                  { label: "Sessions", value: String(u.session_count), icon: Globe, color: "text-emerald-500", bg: "bg-emerald-500/10" },
+                  { label: "Joined", value: new Date(u.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }), icon: Clock, color: "text-muted-foreground", bg: "bg-muted/50" },
                 ].map((item) => (
-                  <div key={item.label} className="flex items-center gap-2.5 p-3 rounded-lg bg-muted/30 border border-border">
-                    <item.icon className={cn("h-4 w-4 shrink-0", item.color)} />
+                  <div key={item.label} className="flex items-center gap-3 p-3 rounded-xl border border-border/40 bg-card/30">
+                    <div className={cn("p-1.5 rounded-lg shrink-0", item.bg)}>
+                      <item.icon className={cn("h-3.5 w-3.5", item.color)} />
+                    </div>
                     <div className="min-w-0">
-                      <p className="text-[10px] text-muted-foreground">{item.label}</p>
-                      <p className="text-sm font-semibold text-foreground truncate">{item.value}</p>
+                      <p className="text-[10px] text-muted-foreground uppercase tracking-wide">{item.label}</p>
+                      <p className="text-sm font-semibold truncate">{item.value}</p>
                     </div>
                   </div>
                 ))}
               </div>
 
-              {/* Security badges */}
-              <div className="mt-4 pt-4 border-t border-border">
-                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2.5">Security</p>
+              {/* Security status */}
+              <div className="mt-4 pt-4 border-t border-border/50">
+                <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest mb-2.5">Security</p>
                 <div className="flex flex-wrap gap-2">
-                  <div className={cn("flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border", u.totp_enabled ? "bg-emerald-500/5 border-emerald-500/20 text-emerald-500" : "bg-muted/50 border-border text-muted-foreground")}>
+                  <div className={cn("flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border", u.totp_enabled ? "bg-emerald-500/5 border-emerald-500/20 text-emerald-500" : "bg-muted/50 border-border/50 text-muted-foreground")}>
                     {u.totp_enabled ? <ShieldCheck className="h-3 w-3" /> : <ShieldOff className="h-3 w-3" />}
                     {u.totp_enabled ? "2FA Enabled" : "No 2FA"}
                   </div>
                   {u.totp_enabled && (
-                    <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-muted/50 border border-border text-muted-foreground">
+                    <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-muted/50 border border-border/50 text-muted-foreground">
                       <KeyRound className="h-3 w-3" />
                       {u.has_backup_codes ? "Has backup codes" : "No backup codes"}
                     </div>
                   )}
-                  <div className={cn("flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border", u.tos_accepted_at ? "bg-muted/50 border-border text-muted-foreground" : "bg-[hsl(var(--severity-medium))]/5 border-[hsl(var(--severity-medium))]/20 text-[hsl(var(--severity-medium))]")}>
+                  <div className={cn("flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border", u.tos_accepted_at ? "bg-muted/50 border-border/50 text-muted-foreground" : "bg-[hsl(var(--severity-medium))]/5 border-[hsl(var(--severity-medium))]/20 text-[hsl(var(--severity-medium))]")}>
                     <FileText className="h-3 w-3" />
                     {u.tos_accepted_at ? "TOS Accepted" : "TOS Not Accepted"}
                   </div>
@@ -291,12 +292,12 @@ export function UserDetailPanel({
 
       {/* Account Management - admin/mod can edit */}
       {!detailLoading && hasStaffPermission(callerRole, STAFF_PERMISSIONS.DISABLE_USER) && (
-        <Card className="bg-card border-border">
-          <CardHeader className="pb-0 pt-4 px-5">
+        <Card className="border-border/50 bg-card/50">
+          <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <UserCog className="h-4 w-4 text-muted-foreground" />
-                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Account Management</p>
+                <UserCog className="h-4 w-4 text-primary" />
+                <p className="text-sm font-medium">Account Management</p>
               </div>
               <Button
                 variant="outline"
@@ -326,30 +327,30 @@ export function UserDetailPanel({
               </Button>
             </div>
           </CardHeader>
-          <CardContent className="p-5 pt-3">
+          <CardContent className="p-4 pt-0">
             {!accountEditMode ? (
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                <div className="flex flex-col gap-1 p-3 rounded-lg border bg-muted/20 border-border">
+                <div className="flex flex-col gap-1 p-3 rounded-lg border border-border/40 bg-card/30">
                   <div className="flex items-center gap-2 mb-1">
                     <User className="h-3.5 w-3.5 text-muted-foreground" />
-                    <span className="text-[11px] text-muted-foreground font-medium">Display Name</span>
+                    <span className="text-xs text-muted-foreground uppercase tracking-wide">Display Name</span>
                   </div>
-                  <span className="text-xs font-medium text-foreground truncate">{u.name || <span className="text-muted-foreground italic">Not set</span>}</span>
+                  <span className="text-sm font-medium truncate">{u.name || <span className="text-muted-foreground italic">Not set</span>}</span>
                 </div>
                 {hasStaffPermission(callerRole, STAFF_PERMISSIONS.EDIT_USER_ROLE) && (
-                  <div className="flex flex-col gap-1 p-3 rounded-lg border bg-muted/20 border-border">
+                  <div className="flex flex-col gap-1 p-3 rounded-lg border border-border/40 bg-card/30">
                     <div className="flex items-center gap-2 mb-1">
                       <Mail className="h-3.5 w-3.5 text-muted-foreground" />
-                      <span className="text-[11px] text-muted-foreground font-medium">Email Address</span>
+                      <span className="text-xs text-muted-foreground uppercase tracking-wide">Email Address</span>
                     </div>
-                    <span className="text-xs font-medium text-foreground truncate">{u.email}</span>
+                    <span className="text-sm font-medium truncate">{u.email}</span>
                   </div>
                 )}
                 {hasStaffPermission(callerRole, STAFF_PERMISSIONS.EDIT_USER_ROLE) && (
-                  <div className="flex flex-col gap-1 p-3 rounded-lg border bg-muted/20 border-border">
+                  <div className="flex flex-col gap-1 p-3 rounded-lg border border-border/40 bg-card/30">
                     <div className="flex items-center gap-2 mb-1">
                       <CreditCard className="h-3.5 w-3.5 text-muted-foreground" />
-                      <span className="text-[11px] text-muted-foreground font-medium">Subscription Plan</span>
+                      <span className="text-xs text-muted-foreground uppercase tracking-wide">Subscription Plan</span>
                     </div>
                     <span className="text-xs font-medium text-foreground flex items-center gap-2">
                       {(() => {
@@ -374,10 +375,10 @@ export function UserDetailPanel({
               <>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                   {/* Edit Name */}
-                  <div className={cn("flex flex-col gap-2 p-3 rounded-lg border transition-colors", pendingChanges.name ? "bg-primary/5 border-primary/30" : "bg-muted/20 border-border")}>
+                  <div className={cn("flex flex-col gap-2 p-3 rounded-lg border transition-colors", pendingChanges.name ? "bg-primary/5 border-primary/30" : "bg-card/30 border-border/40")}>
                     <div className="flex items-center gap-2">
                       <User className="h-3.5 w-3.5 text-muted-foreground" />
-                      <span className="text-[11px] text-muted-foreground font-medium">Display Name</span>
+                      <span className="text-xs text-muted-foreground uppercase tracking-wide">Display Name</span>
                       {pendingChanges.name && <span className="text-[9px] text-primary font-medium px-1.5 py-0.5 rounded bg-primary/10">Modified</span>}
                     </div>
                     <Input
@@ -393,10 +394,10 @@ export function UserDetailPanel({
 
                   {/* Edit Email - admin only */}
                   {hasStaffPermission(callerRole, STAFF_PERMISSIONS.EDIT_USER_ROLE) && (
-                    <div className={cn("flex flex-col gap-2 p-3 rounded-lg border transition-colors", pendingChanges.email ? "bg-primary/5 border-primary/30" : "bg-muted/20 border-border")}>
+                    <div className={cn("flex flex-col gap-2 p-3 rounded-lg border transition-colors", pendingChanges.email ? "bg-primary/5 border-primary/30" : "bg-card/30 border-border/40")}>
                       <div className="flex items-center gap-2">
                         <Mail className="h-3.5 w-3.5 text-muted-foreground" />
-                        <span className="text-[11px] text-muted-foreground font-medium">Email Address</span>
+                        <span className="text-xs text-muted-foreground uppercase tracking-wide">Email Address</span>
                         {pendingChanges.email && <span className="text-[9px] text-primary font-medium px-1.5 py-0.5 rounded bg-primary/10">Modified</span>}
                       </div>
                       <Input
@@ -416,11 +417,11 @@ export function UserDetailPanel({
                   {hasStaffPermission(callerRole, STAFF_PERMISSIONS.EDIT_USER_ROLE) && (
                     <div className={cn("flex flex-col gap-2 p-3 rounded-lg border transition-colors", 
                       u.gifted_plan ? "bg-amber-500/5 border-amber-500/30" : 
-                      pendingChanges.plan ? "bg-primary/5 border-primary/30" : "bg-muted/20 border-border"
+                      pendingChanges.plan ? "bg-primary/5 border-primary/30" : "bg-card/30 border-border/40"
                     )}>
                       <div className="flex items-center gap-2">
                         <CreditCard className="h-3.5 w-3.5 text-muted-foreground" />
-                        <span className="text-[11px] text-muted-foreground font-medium">Subscription Plan</span>
+                        <span className="text-xs text-muted-foreground uppercase tracking-wide">Subscription Plan</span>
                         {u.gifted_plan && <span className="text-[9px] text-amber-500 font-medium px-1.5 py-0.5 rounded bg-amber-500/10">Gifted</span>}
                         {pendingChanges.plan && !u.gifted_plan && <span className="text-[9px] text-primary font-medium px-1.5 py-0.5 rounded bg-primary/10">Modified</span>}
                       </div>
@@ -454,9 +455,9 @@ export function UserDetailPanel({
                 </div>
 
                 {/* Safety note */}
-                <div className="flex items-start gap-2 mt-3 p-2.5 rounded-lg bg-muted/20 border border-border">
+                <div className="flex items-start gap-2 mt-3 p-3 rounded-lg bg-muted/30 border border-border/40">
                   <AlertTriangle className="h-3.5 w-3.5 text-muted-foreground shrink-0 mt-0.5" />
-                  <p className="text-[10px] text-muted-foreground leading-relaxed">
+                  <p className="text-xs text-muted-foreground leading-relaxed">
                     Changes are logged in the audit log. Email changes require confirmation input to prevent accidents. Plan changes take effect immediately.
                   </p>
                 </div>
@@ -489,16 +490,16 @@ export function UserDetailPanel({
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
 
           {/* Staff Role - single select */}
-          <Card className={cn("bg-card border-border transition-colors", pendingChanges.role && "border-primary/30")}>
-            <CardHeader className="pb-0 pt-4 px-5">
+          <Card className={cn("border-border/50 bg-card/50 transition-colors", pendingChanges.role && "border-primary/30")}>
+            <CardHeader className="pb-3">
               <div className="flex items-center gap-2">
-                <Shield className="h-4 w-4 text-muted-foreground" />
-                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Staff Role</p>
+                <Shield className="h-4 w-4 text-primary" />
+                <p className="text-sm font-medium">Staff Role</p>
                 {pendingChanges.role && <span className="text-[9px] text-primary font-medium px-1.5 py-0.5 rounded bg-primary/10">Modified</span>}
               </div>
-              <p className="text-[11px] text-muted-foreground mt-1">Select one permission level for this user.</p>
+              <p className="text-xs text-muted-foreground">Select one permission level for this user.</p>
             </CardHeader>
-            <CardContent className="p-5 pt-3">
+            <CardContent className="p-4 pt-0">
               <div className="flex flex-col gap-2">
                 {(["user", "support", "moderator", "admin"] as const).map((role) => {
                   const isSelected = editRole === role
@@ -539,16 +540,16 @@ export function UserDetailPanel({
           </Card>
 
           {/* Badges - multi select */}
-          <Card className="bg-card border-border">
-            <CardHeader className="pb-0 pt-4 px-5">
+          <Card className="border-border/50 bg-card/50">
+            <CardHeader className="pb-3">
               <div className="flex items-center gap-2">
-                <Award className="h-4 w-4 text-muted-foreground" />
-                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Badges</p>
-                <span className="ml-auto text-[10px] text-muted-foreground">{detail.badges.length} awarded</span>
+                <Award className="h-4 w-4 text-primary" />
+                <p className="text-sm font-medium">Badges</p>
+                <Badge variant="secondary" className="text-[10px] h-5 ml-auto">{detail.badges.length} awarded</Badge>
               </div>
-              <p className="text-[11px] text-muted-foreground mt-1">Cosmetic badges shown on the user&apos;s profile.</p>
+              <p className="text-xs text-muted-foreground">Cosmetic badges shown on the user&apos;s profile.</p>
             </CardHeader>
-            <CardContent className="p-5 pt-3 flex flex-col gap-3">
+            <CardContent className="p-4 pt-0 flex flex-col gap-3">
               {/* Awarded badges */}
               {detail.badges.length > 0 ? (
                 <div className="flex flex-wrap gap-1.5">
@@ -587,8 +588,8 @@ export function UserDetailPanel({
 
               {/* Award badge picker */}
               {showBadgePicker && unawardedBadges.length > 0 && (
-                <div className="flex flex-col gap-1.5 p-3 rounded-lg bg-muted/20 border border-border">
-                  <p className="text-[11px] text-muted-foreground font-medium">Select badges to award (click to toggle):</p>
+                <div className="flex flex-col gap-1.5 p-3 rounded-lg bg-muted/30 border border-border/40">
+                  <p className="text-xs text-muted-foreground font-medium">Select badges to award (click to toggle):</p>
                   <div className="flex flex-wrap gap-1.5">
                     {unawardedBadges.map((badge) => {
                       const isPending = pendingBadgeAwards.includes(badge.id)
@@ -623,8 +624,8 @@ export function UserDetailPanel({
 
               {/* Create custom badge */}
               {showCreateBadge && (
-                <div className="flex flex-col gap-2.5 p-3 rounded-lg bg-muted/20 border border-border">
-                  <p className="text-[11px] text-muted-foreground font-medium">Create new badge:</p>
+                <div className="flex flex-col gap-2.5 p-3 rounded-lg bg-muted/30 border border-border/40">
+                  <p className="text-xs text-muted-foreground font-medium">Create new badge:</p>
                   <Input
                     placeholder="Badge name (e.g. power_user)"
                     value={newBadgeName}
@@ -731,7 +732,7 @@ export function UserDetailPanel({
 
               {/* Manage all badges (delete) */}
               {showManageBadges && hasStaffPermission(callerRole, STAFF_PERMISSIONS.DELETE_BADGE) && (
-                <div className="flex flex-col gap-2 p-3 rounded-lg bg-muted/20 border border-border">
+                <div className="flex flex-col gap-2 p-3 rounded-lg bg-muted/30 border border-border/40">
                   <div className="flex items-center justify-between">
                     <p className="text-[11px] text-muted-foreground font-medium">Manage All Badges ({allBadges.length})</p>
                     <p className="text-[10px] text-destructive">Click to delete permanently</p>
@@ -792,18 +793,16 @@ export function UserDetailPanel({
 
       {/* Admin Notes */}
       {!detailLoading && (
-        <Card className="bg-card border-border">
-          <CardHeader className="pb-0 pt-4 px-5">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <StickyNote className="h-4 w-4 text-muted-foreground" />
-                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Admin Notes</p>
-                <span className="text-[10px] text-muted-foreground">({detail.notes?.length || 0})</span>
-              </div>
+        <Card className="border-border/50 bg-card/50">
+          <CardHeader className="pb-3">
+            <div className="flex items-center gap-2">
+              <StickyNote className="h-4 w-4 text-primary" />
+              <p className="text-sm font-medium">Admin Notes</p>
+              <Badge variant="secondary" className="text-[10px] h-5 ml-auto">{detail.notes?.length || 0}</Badge>
             </div>
-            <p className="text-[11px] text-muted-foreground mt-1">Internal notes about this user. Only visible to staff.</p>
+            <p className="text-xs text-muted-foreground">Internal notes about this user. Only visible to staff.</p>
           </CardHeader>
-          <CardContent className="p-5 pt-3 flex flex-col gap-3">
+          <CardContent className="p-4 pt-0 flex flex-col gap-3">
             {/* Add note form */}
             <div className="flex gap-2">
               <Input
@@ -838,7 +837,7 @@ export function UserDetailPanel({
             {detail.notes && detail.notes.length > 0 ? (
               <div className="flex flex-col gap-2 max-h-64 overflow-y-auto">
                 {detail.notes.map((note) => (
-                  <div key={note.id} className="group flex items-start gap-3 p-3 rounded-lg bg-muted/30 border border-border">
+                  <div key={note.id} className="group flex items-start gap-3 p-3 rounded-lg bg-muted/30 border border-border/40 hover:bg-muted/50 transition-colors">
                     <UserAvatar
                       name={note.admin_name}
                       email={note.admin_email}
@@ -903,13 +902,16 @@ export function UserDetailPanel({
 
       {/* Support actions */}
       {!detailLoading && (
-        <Card className="bg-card border-border">
-          <CardHeader className="pb-0 pt-4 px-5">
-            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-              {!hasStaffPermission(callerRole, STAFF_PERMISSIONS.DISABLE_USER) ? "Account Information" : "Support Actions"}
-            </p>
+        <Card className="border-border/50 bg-card/50">
+          <CardHeader className="pb-3">
+            <div className="flex items-center gap-2">
+              <UserCog className="h-4 w-4 text-primary" />
+              <p className="text-sm font-medium">
+                {!hasStaffPermission(callerRole, STAFF_PERMISSIONS.DISABLE_USER) ? "Account Information" : "Support Actions"}
+              </p>
+            </div>
           </CardHeader>
-          <CardContent className="p-5 pt-3">
+          <CardContent className="p-4 pt-0">
             {!hasStaffPermission(callerRole, STAFF_PERMISSIONS.DISABLE_USER) ? (
               <p className="text-xs text-muted-foreground">You have view-only access. Contact an admin or moderator to perform actions on this user.</p>
             ) : (
@@ -1085,11 +1087,11 @@ export function UserDetailPanel({
                 </div>
 
                 {u.totp_enabled && hasStaffPermission(callerRole, STAFF_PERMISSIONS.RESET_USER_2FA) && (
-                  <div className="flex items-start gap-2.5 p-3.5 rounded-lg bg-[hsl(var(--severity-medium))]/5 border border-[hsl(var(--severity-medium))]/20">
+                  <div className="flex items-start gap-2.5 p-3 rounded-lg bg-[hsl(var(--severity-medium))]/5 border border-[hsl(var(--severity-medium))]/20">
                     <AlertTriangle className="h-4 w-4 text-[hsl(var(--severity-medium))] shrink-0 mt-0.5" />
                     <div>
-                      <p className="text-xs font-medium text-foreground">Password reset is unavailable for this user</p>
-                      <p className="text-[11px] text-muted-foreground leading-relaxed mt-1">
+                      <p className="text-sm font-medium">Password reset is unavailable for this user</p>
+                      <p className="text-xs text-muted-foreground leading-relaxed mt-1">
                         This user has two-factor authentication enabled. If they need account recovery, you can reset their 2FA — they will then be able to request a password reset themselves.
                       </p>
                     </div>
@@ -1105,24 +1107,22 @@ export function UserDetailPanel({
       {!detailLoading && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           {/* Recent Scans */}
-          <Card className="bg-card border-border">
-            <CardHeader className="pb-0 pt-4 px-5">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Activity className="h-4 w-4 text-muted-foreground" />
-                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Recent Scans</p>
-                </div>
-                <Badge variant="secondary" className="text-[10px]">{detail.recentScans?.length || 0}</Badge>
+          <Card className="border-border/50 bg-card/50">
+            <CardHeader className="pb-3">
+              <div className="flex items-center gap-2">
+                <Activity className="h-4 w-4 text-primary" />
+                <p className="text-sm font-medium">Recent Scans</p>
+                <Badge variant="secondary" className="text-[10px] h-5 ml-auto">{detail.recentScans?.length || 0}</Badge>
               </div>
             </CardHeader>
-            <CardContent className="p-5 pt-3">
+            <CardContent className="p-4 pt-0">
               {detail.recentScans && detail.recentScans.length > 0 ? (
-                <div className="flex flex-col gap-2 max-h-64 overflow-y-auto">
+                <div className="flex flex-col max-h-64 overflow-y-auto">
                   {detail.recentScans.map((scan) => (
-                    <div key={scan.id} className="flex items-center gap-3 p-2.5 rounded-lg bg-muted/30 border border-border">
-                      <Globe className="h-4 w-4 text-muted-foreground shrink-0" />
+                    <div key={scan.id} className="flex items-center gap-3 py-3 px-2 border-b border-border/50 last:border-0 hover:bg-muted/50 transition-colors rounded-md">
+                      <Globe className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
                       <div className="flex-1 min-w-0">
-                        <p className="text-xs font-medium text-foreground truncate">{scan.url}</p>
+                        <p className="text-xs font-medium truncate">{scan.url}</p>
                         <p className="text-[10px] text-muted-foreground">{scan.findings_count} findings via {scan.source}</p>
                       </div>
                       <span className="text-[10px] text-muted-foreground shrink-0">
@@ -1132,30 +1132,31 @@ export function UserDetailPanel({
                   ))}
                 </div>
               ) : (
-                <p className="text-xs text-muted-foreground text-center py-4">No recent scans.</p>
+                <div className="flex flex-col items-center justify-center py-8">
+                  <Activity className="h-8 w-8 text-muted-foreground/30 mb-2" />
+                  <p className="text-xs text-muted-foreground">No recent scans.</p>
+                </div>
               )}
             </CardContent>
           </Card>
 
           {/* API Keys */}
-          <Card className="bg-card border-border">
-            <CardHeader className="pb-0 pt-4 px-5">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Key className="h-4 w-4 text-muted-foreground" />
-                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">API Keys</p>
-                </div>
-                <Badge variant="secondary" className="text-[10px]">{detail.apiKeys?.filter(k => !k.revoked_at)?.length || 0}</Badge>
+          <Card className="border-border/50 bg-card/50">
+            <CardHeader className="pb-3">
+              <div className="flex items-center gap-2">
+                <Key className="h-4 w-4 text-primary" />
+                <p className="text-sm font-medium">API Keys</p>
+                <Badge variant="secondary" className="text-[10px] h-5 ml-auto">{detail.apiKeys?.filter(k => !k.revoked_at)?.length || 0}</Badge>
               </div>
             </CardHeader>
-            <CardContent className="p-5 pt-3">
+            <CardContent className="p-4 pt-0">
               {detail.apiKeys && detail.apiKeys.filter(k => !k.revoked_at).length > 0 ? (
-                <div className="flex flex-col gap-2 max-h-64 overflow-y-auto">
+                <div className="flex flex-col max-h-64 overflow-y-auto">
                   {detail.apiKeys.filter(k => !k.revoked_at).map((key) => (
-                    <div key={key.id} className="flex items-center gap-3 p-2.5 rounded-lg bg-muted/30 border border-border">
-                      <Key className="h-4 w-4 text-muted-foreground shrink-0" />
+                    <div key={key.id} className="flex items-center gap-3 py-3 px-2 border-b border-border/50 last:border-0 hover:bg-muted/50 transition-colors rounded-md">
+                      <Key className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
                       <div className="flex-1 min-w-0">
-                        <p className="text-xs font-medium text-foreground">{key.name || "Unnamed Key"}</p>
+                        <p className="text-xs font-medium">{key.name || "Unnamed Key"}</p>
                         <p className="text-[10px] text-muted-foreground font-mono">{key.key_prefix}...</p>
                       </div>
                       <span className="text-[10px] text-muted-foreground shrink-0">
@@ -1165,30 +1166,31 @@ export function UserDetailPanel({
                   ))}
                 </div>
               ) : (
-                <p className="text-xs text-muted-foreground text-center py-4">No API keys.</p>
+                <div className="flex flex-col items-center justify-center py-8">
+                  <Key className="h-8 w-8 text-muted-foreground/30 mb-2" />
+                  <p className="text-xs text-muted-foreground">No API keys.</p>
+                </div>
               )}
             </CardContent>
           </Card>
 
           {/* Webhooks */}
-          <Card className="bg-card border-border">
-            <CardHeader className="pb-0 pt-4 px-5">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Webhook className="h-4 w-4 text-muted-foreground" />
-                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Webhooks</p>
-                </div>
-                <Badge variant="secondary" className="text-[10px]">{detail.webhooks?.length || 0}</Badge>
+          <Card className="border-border/50 bg-card/50">
+            <CardHeader className="pb-3">
+              <div className="flex items-center gap-2">
+                <Webhook className="h-4 w-4 text-primary" />
+                <p className="text-sm font-medium">Webhooks</p>
+                <Badge variant="secondary" className="text-[10px] h-5 ml-auto">{detail.webhooks?.length || 0}</Badge>
               </div>
             </CardHeader>
-            <CardContent className="p-5 pt-3">
+            <CardContent className="p-4 pt-0">
               {detail.webhooks && detail.webhooks.length > 0 ? (
-                <div className="flex flex-col gap-2 max-h-64 overflow-y-auto">
+                <div className="flex flex-col max-h-64 overflow-y-auto">
                   {detail.webhooks.map((webhook) => (
-                    <div key={webhook.id} className="flex items-center gap-3 p-2.5 rounded-lg bg-muted/30 border border-border">
-                      <Webhook className="h-4 w-4 text-muted-foreground shrink-0" />
+                    <div key={webhook.id} className="flex items-center gap-3 py-3 px-2 border-b border-border/50 last:border-0 hover:bg-muted/50 transition-colors rounded-md">
+                      <Webhook className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
                       <div className="flex-1 min-w-0">
-                        <p className="text-xs font-medium text-foreground">{webhook.name}</p>
+                        <p className="text-xs font-medium">{webhook.name}</p>
                         <p className="text-[10px] text-muted-foreground truncate">{webhook.url}</p>
                       </div>
                       <Badge variant={webhook.active ? "default" : "secondary"} className="text-[9px]">
@@ -1198,30 +1200,31 @@ export function UserDetailPanel({
                   ))}
                 </div>
               ) : (
-                <p className="text-xs text-muted-foreground text-center py-4">No webhooks configured.</p>
+                <div className="flex flex-col items-center justify-center py-8">
+                  <Webhook className="h-8 w-8 text-muted-foreground/30 mb-2" />
+                  <p className="text-xs text-muted-foreground">No webhooks configured.</p>
+                </div>
               )}
             </CardContent>
           </Card>
 
           {/* Active Sessions */}
-          <Card className="bg-card border-border">
-            <CardHeader className="pb-0 pt-4 px-5">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Globe className="h-4 w-4 text-muted-foreground" />
-                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Active Sessions</p>
-                </div>
-                <Badge variant="secondary" className="text-[10px]">{detail.activeSessions?.length || 0}</Badge>
+          <Card className="border-border/50 bg-card/50">
+            <CardHeader className="pb-3">
+              <div className="flex items-center gap-2">
+                <Globe className="h-4 w-4 text-primary" />
+                <p className="text-sm font-medium">Active Sessions</p>
+                <Badge variant="secondary" className="text-[10px] h-5 ml-auto">{detail.activeSessions?.length || 0}</Badge>
               </div>
             </CardHeader>
-            <CardContent className="p-5 pt-3">
+            <CardContent className="p-4 pt-0">
               {detail.activeSessions && detail.activeSessions.length > 0 ? (
-                <div className="flex flex-col gap-2 max-h-64 overflow-y-auto">
+                <div className="flex flex-col max-h-64 overflow-y-auto">
                   {detail.activeSessions.map((session) => (
-                    <div key={session.id} className="flex items-center gap-3 p-2.5 rounded-lg bg-muted/30 border border-border">
-                      <Globe className="h-4 w-4 text-muted-foreground shrink-0" />
+                    <div key={session.id} className="flex items-center gap-3 py-3 px-2 border-b border-border/50 last:border-0 hover:bg-muted/50 transition-colors rounded-md">
+                      <Globe className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
                       <div className="flex-1 min-w-0">
-                        <p className="text-xs font-medium text-foreground font-mono">{session.id.slice(0, 12)}...</p>
+                        <p className="text-xs font-medium font-mono">{session.id.slice(0, 12)}...</p>
                         <p className="text-[10px] text-muted-foreground truncate">
                           {session.ip_address || "Unknown IP"} &middot; {session.user_agent?.slice(0, 40) || "Unknown device"}...
                         </p>
@@ -1233,7 +1236,10 @@ export function UserDetailPanel({
                   ))}
                 </div>
               ) : (
-                <p className="text-xs text-muted-foreground text-center py-4">No active sessions.</p>
+                <div className="flex flex-col items-center justify-center py-8">
+                  <Globe className="h-8 w-8 text-muted-foreground/30 mb-2" />
+                  <p className="text-xs text-muted-foreground">No active sessions.</p>
+                </div>
               )}
             </CardContent>
           </Card>
@@ -1244,10 +1250,12 @@ export function UserDetailPanel({
       {hasChanges && (
         <div className="fixed bottom-0 left-0 right-0 z-50 p-4 pointer-events-none">
           <div className="max-w-lg mx-auto pointer-events-auto">
-            <div className="flex items-center justify-between gap-4 px-4 py-3 rounded-lg bg-card border border-border shadow-lg">
+            <div className="flex items-center justify-between gap-4 px-4 py-3 rounded-xl bg-card/95 border border-border/50 shadow-xl backdrop-blur-sm">
               <div className="flex items-center gap-3">
-                <Save className="h-4 w-4 text-primary" />
-                <p className="text-sm font-medium text-foreground">
+                <div className="p-1.5 rounded-lg bg-primary/10">
+                  <Save className="h-3.5 w-3.5 text-primary" />
+                </div>
+                <p className="text-sm font-medium">
                   {modalChanges.length} unsaved change{modalChanges.length !== 1 ? "s" : ""}
                 </p>
               </div>
