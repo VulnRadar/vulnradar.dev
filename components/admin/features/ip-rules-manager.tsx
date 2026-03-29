@@ -6,15 +6,13 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Plus, Trash2, RefreshCw, Globe, Network, Loader2, AlertTriangle, CheckCircle2, Eye } from "lucide-react"
+import { Plus, Trash2, RefreshCw, Network, Loader2, AlertTriangle, CheckCircle2, Eye } from "lucide-react"
 import { SaveConfirmationModal, type ChangeItem } from "@/components/save-confirmation-modal"
 import { cn } from "@/lib/utils"
 
 interface AccessRule {
   id: number
   rule_type: "whitelist" | "blacklist"
-  value_type: "ip" | "url"
   ip_address: string
   description?: string
   reason?: string
@@ -28,8 +26,7 @@ export function IPRulesManager() {
   const [rules, setRules] = useState<AccessRule[]>([])
   const [loading, setLoading] = useState(false)
   const [adding, setAdding] = useState(false)
-  const [newValue, setNewValue] = useState("")
-  const [valueType, setValueType] = useState<"ip" | "url">("ip")
+  const [newIP, setNewIP] = useState("")
   const [ruleType, setRuleType] = useState<"whitelist" | "blacklist">("blacklist")
   const [description, setDescription] = useState("")
   const [reason, setReason] = useState("")
@@ -61,7 +58,7 @@ export function IPRulesManager() {
 
   const handleFormSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    if (!newValue) return
+    if (!newIP) return
     setShowAddModal(true)
   }
 
@@ -75,15 +72,14 @@ export function IPRulesManager() {
           action: "create",
           section: "ip_rules",
           rule_type: ruleType,
-          value_type: valueType,
-          ip_address: newValue,
-          description: description || (valueType === "url" ? "URL Rule" : "IP Rule"),
+          ip_address: newIP,
+          description: description || "IP Rule",
           reason,
         }),
       })
 
       if (res.ok) {
-        setNewValue("")
+        setNewIP("")
         setDescription("")
         setReason("")
         await fetchRules()
@@ -117,8 +113,8 @@ export function IPRulesManager() {
     }
   }
 
-  const addChangeItems: ChangeItem[] = newValue ? [
-    { field: "value", label: valueType === "ip" ? "IP Address" : "URL/Domain", oldValue: "—", newValue },
+  const addChangeItems: ChangeItem[] = newIP ? [
+    { field: "ip_address", label: "IP Address / CIDR", oldValue: "—", newValue: newIP },
     { field: "rule_type", label: "Action", oldValue: "—", newValue: ruleType === "whitelist" ? "Allow (Whitelist)" : "Block (Blacklist)" },
     ...(description ? [{ field: "description", label: "Description", oldValue: "—", newValue: description }] : []),
   ] : []
@@ -142,16 +138,12 @@ export function IPRulesManager() {
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-3">
                 <div className={cn("p-2 rounded-lg", selectedRule.rule_type === "whitelist" ? "bg-emerald-500/10" : "bg-destructive/10")}>
-                  {selectedRule.value_type === "url" ? (
-                    <Globe className={cn("h-4 w-4", selectedRule.rule_type === "whitelist" ? "text-emerald-500" : "text-destructive")} />
-                  ) : (
-                    <Network className={cn("h-4 w-4", selectedRule.rule_type === "whitelist" ? "text-emerald-500" : "text-destructive")} />
-                  )}
+                  <Network className={cn("h-4 w-4", selectedRule.rule_type === "whitelist" ? "text-emerald-500" : "text-destructive")} />
                 </div>
                 <div>
                   <h3 className="text-base font-semibold text-foreground">Rule Details</h3>
                   <p className="text-xs text-muted-foreground mt-0.5">
-                    {selectedRule.rule_type === "whitelist" ? "Whitelist" : "Blacklist"} {selectedRule.value_type === "ip" ? "IP" : "URL"}
+                    {selectedRule.rule_type === "whitelist" ? "Whitelist" : "Blacklist"} IP Rule
                   </p>
                 </div>
               </div>
@@ -163,7 +155,7 @@ export function IPRulesManager() {
             {/* Rule value */}
             <div className="mb-4 p-3 rounded-lg bg-muted/30 border border-border/50">
               <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-1">
-                {selectedRule.value_type === "ip" ? "IP Address" : "URL / Domain"}
+                IP Address / CIDR
               </p>
               <p className="text-sm font-mono text-foreground break-all">{selectedRule.ip_address}</p>
             </div>
@@ -259,40 +251,21 @@ export function IPRulesManager() {
               </div>
               <div>
                 <CardTitle className="text-base font-semibold">Add Access Rule</CardTitle>
-                <p className="text-xs text-muted-foreground mt-0.5">Create whitelist or blacklist rules for IP addresses or URLs</p>
+                <p className="text-xs text-muted-foreground mt-0.5">Create whitelist or blacklist rules for IP addresses</p>
               </div>
             </div>
           </CardHeader>
           <CardContent>
             <form onSubmit={handleFormSubmit} className="space-y-4">
-              {/* Type Toggle */}
-              <div>
-                <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2 block">Rule Target</label>
-                <Tabs value={valueType} onValueChange={(v) => setValueType(v as "ip" | "url")}>
-                  <TabsList className="grid w-full grid-cols-2">
-                    <TabsTrigger value="ip" className="gap-2">
-                      <Network className="h-4 w-4" />
-                      <span className="hidden sm:inline">IP Address</span>
-                      <span className="sm:hidden">IP</span>
-                    </TabsTrigger>
-                    <TabsTrigger value="url" className="gap-2">
-                      <Globe className="h-4 w-4" />
-                      <span className="hidden sm:inline">URL / Domain</span>
-                      <span className="sm:hidden">URL</span>
-                    </TabsTrigger>
-                  </TabsList>
-                </Tabs>
-              </div>
-
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2 block">
-                    {valueType === "ip" ? "IP Address" : "URL / Domain"}
+                    IP Address / CIDR
                   </label>
                   <Input
-                    placeholder={valueType === "ip" ? "192.168.1.0/24 or 10.0.0.1" : "example.com or https://example.com/*"}
-                    value={newValue}
-                    onChange={(e) => setNewValue(e.target.value)}
+                    placeholder="192.168.1.0/24 or 10.0.0.1"
+                    value={newIP}
+                    onChange={(e) => setNewIP(e.target.value)}
                     className="bg-background/50 border-border/40"
                   />
                 </div>
@@ -313,7 +286,7 @@ export function IPRulesManager() {
               <div>
                 <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2 block">Description (optional)</label>
                 <Input
-                  placeholder={valueType === "ip" ? "e.g., Office network" : "e.g., Blocked competitor site"}
+                  placeholder="e.g., Office network"
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
                   className="bg-background/50 border-border/40"
@@ -330,7 +303,7 @@ export function IPRulesManager() {
                 />
               </div>
 
-              <Button type="submit" className="w-full" disabled={!newValue}>
+              <Button type="submit" className="w-full" disabled={!newIP}>
                 <Plus className="h-4 w-4 mr-2" />
                 Add Rule
               </Button>
@@ -348,7 +321,7 @@ export function IPRulesManager() {
                 </div>
                 <div>
                   <CardTitle className="text-base font-semibold">Access Rules</CardTitle>
-                  <p className="text-xs text-muted-foreground mt-0.5">Whitelist and blacklist rules for IPs and URLs</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">Manage whitelist and blacklist rules for IP addresses</p>
                 </div>
               </div>
               <Badge variant="secondary" className="text-xs font-medium h-6 px-2.5">
@@ -390,11 +363,7 @@ export function IPRulesManager() {
                       <td className="px-5 py-4">
                         <div className="flex items-center gap-3">
                           <div className="p-2 rounded-lg bg-muted/50">
-                            {rule.value_type === "url" ? (
-                              <Globe className="h-4 w-4 text-muted-foreground" />
-                            ) : (
-                              <Network className="h-4 w-4 text-muted-foreground" />
-                            )}
+                            <Network className="h-4 w-4 text-muted-foreground" />
                           </div>
                           <div className="min-w-0">
                             <p className="text-sm font-mono text-foreground truncate">{rule.ip_address}</p>
@@ -471,11 +440,7 @@ export function IPRulesManager() {
                   onClick={() => setSelectedRule(rule)}
                 >
                   <div className="p-2 rounded-lg bg-muted/50 shrink-0">
-                    {rule.value_type === "url" ? (
-                      <Globe className="h-4 w-4 text-muted-foreground" />
-                    ) : (
-                      <Network className="h-4 w-4 text-muted-foreground" />
-                    )}
+                    <Network className="h-4 w-4 text-muted-foreground" />
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-0.5">
@@ -519,7 +484,7 @@ export function IPRulesManager() {
             setShowAddModal(false)
           }}
           title="Add Access Rule"
-          description={`Create a new ${ruleType} rule for ${valueType === "ip" ? "IP address" : "URL/domain"}.`}
+          description={`Create a new ${ruleType} rule for IP address.`}
           changes={addChangeItems}
           loading={adding}
           confirmText="Add Rule"
@@ -533,7 +498,7 @@ export function IPRulesManager() {
           title="Delete Access Rule"
           description="This action cannot be undone."
           changes={pendingDelete ? [
-            { field: "value", label: pendingDelete.value_type === "url" ? "URL/Domain" : "IP Address", oldValue: pendingDelete.ip_address, newValue: "Removed" },
+            { field: "value", label: "IP Address", oldValue: pendingDelete.ip_address, newValue: "Removed" },
             { field: "rule_type", label: "Rule Type", oldValue: pendingDelete.rule_type, newValue: "Deleted" },
           ] : []}
           loading={deleting}
