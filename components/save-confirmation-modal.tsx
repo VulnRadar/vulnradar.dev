@@ -73,17 +73,32 @@ export function SaveConfirmationModal({
   const [notifyUser, setNotifyUser] = React.useState(true)
   const [success, setSuccess] = React.useState(false)
 
+  // Detect if email is being changed
+  const emailChange = changes.find(c => c.field === "Email Address" || c.field === "email" || c.label?.toLowerCase().includes("email"))
+  const isEmailChanging = emailChange && formatValue(emailChange.oldValue) !== formatValue(emailChange.newValue)
+  
+  // Email changes require notification
+  const requireNotification = isEmailChanging
+
   // Reset success state when modal opens
   React.useEffect(() => {
     if (isOpen) {
       setSuccess(false)
+      // Auto-enable notification if email is changing
+      if (isEmailChanging) {
+        setNotifyUser(true)
+      }
     }
-  }, [isOpen])
+  }, [isOpen, isEmailChanging])
 
   const handleConfirm = async () => {
     try {
+      // Email changes require notification
+      if (requireNotification && !notifyUser) {
+        return // Don't allow save without notification for email changes
+      }
       // forceNotify always sends true, otherwise use toggle state
-      const shouldNotify = forceNotify ? true : (isAdminAction ? notifyUser : undefined)
+      const shouldNotify = forceNotify || requireNotification ? true : (isAdminAction ? notifyUser : undefined)
       await onConfirm(shouldNotify)
       setSuccess(true)
       setTimeout(() => {
@@ -121,9 +136,17 @@ export function SaveConfirmationModal({
             </div>
             <p className="text-lg font-medium">Changes Saved</p>
             {isAdminAction && notifyUser && affectedUser && (
-              <p className="text-sm text-muted-foreground mt-1">
-                Notification sent to {affectedUser.email}
-              </p>
+              <div className="text-sm text-muted-foreground mt-2 text-center space-y-1">
+                {isEmailChanging ? (
+                  <>
+                    <p>Notifications sent to:</p>
+                    <p><span className="text-destructive">{emailChange?.oldValue}</span> (old)</p>
+                    <p><span className="text-primary">{emailChange?.newValue}</span> (new)</p>
+                  </>
+                ) : (
+                  <p>Notification sent to {affectedUser.email}</p>
+                )}
+              </div>
             )}
           </div>
         ) : (
@@ -208,23 +231,37 @@ export function SaveConfirmationModal({
 
             {/* Notify User Toggle (Admin Actions) */}
             {isAdminAction && affectedUser && (
-              <div className="flex items-center justify-between p-3 rounded-lg bg-blue-500/5 border border-blue-500/20">
-                <div className="flex items-center gap-2">
-                  <Mail className="h-4 w-4 text-blue-500" />
-                  <Label htmlFor="notify-user" className="text-sm cursor-pointer">
-                    Notify user via email
-                  </Label>
+              <div className="space-y-2">
+                <div className="flex items-center justify-between p-3 rounded-lg bg-blue-500/5 border border-blue-500/20">
+                  <div className="flex items-center gap-2">
+                    <Mail className="h-4 w-4 text-blue-500" />
+                    <Label htmlFor="notify-user" className="text-sm cursor-pointer">
+                      Notify user via email
+                    </Label>
+                  </div>
+                  {forceNotify || requireNotification ? (
+                    <Badge variant="outline" className="bg-blue-500/10 text-blue-500 border-blue-500/20 text-xs">
+                      Required
+                    </Badge>
+                  ) : (
+                    <Switch
+                      id="notify-user"
+                      checked={notifyUser}
+                      onCheckedChange={setNotifyUser}
+                    />
+                  )}
                 </div>
-                {forceNotify ? (
-                  <Badge variant="outline" className="bg-blue-500/10 text-blue-500 border-blue-500/20 text-xs">
-                    Required
-                  </Badge>
-                ) : (
-                  <Switch
-                    id="notify-user"
-                    checked={notifyUser}
-                    onCheckedChange={setNotifyUser}
-                  />
+                
+                {/* Email change notification info */}
+                {isEmailChanging && (
+                  <div className="text-xs text-muted-foreground p-3 rounded-lg bg-muted/50 border border-border/40">
+                    <p className="font-medium text-foreground mb-1">📧 Email notification will be sent to:</p>
+                    <ul className="space-y-1 ml-4">
+                      <li>• <span className="text-destructive">{emailChange?.oldValue}</span> (old email)</li>
+                      <li>• <span className="text-primary">{emailChange?.newValue}</span> (new email)</li>
+                    </ul>
+                    <p className="mt-2 text-[11px] italic">Both addresses will be notified for security purposes.</p>
+                  </div>
                 )}
               </div>
             )}
@@ -241,7 +278,7 @@ export function SaveConfirmationModal({
               <Button
                 variant={variant === "destructive" ? "destructive" : "default"}
                 onClick={handleConfirm}
-                disabled={loading || actualChanges.length === 0}
+                disabled={loading || actualChanges.length === 0 || (requireNotification && !notifyUser)}
                 className={cn("min-w-[120px]", transitions.fast)}
               >
                 {loading ? (
