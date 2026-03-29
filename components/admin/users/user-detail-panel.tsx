@@ -93,6 +93,7 @@ export function UserDetailPanel({
   const [newBadgeDisplay, setNewBadgeDisplay] = useState("")
   const [newBadgeColor, setNewBadgeColor] = useState("#6366f1")
   const [pendingDeleteBadge, setPendingDeleteBadge] = useState<BadgeDef | null>(null)
+  const [pendingDeleteNote, setPendingDeleteNote] = useState<{ id: number; text: string } | null>(null)
 
   const awardedIds = new Set(detail.badges.map((b) => b.id))
   const unawardedBadges = allBadges.filter((b) => !awardedIds.has(b.id))
@@ -943,7 +944,7 @@ export function UserDetailPanel({
                           <Pencil className="h-3.5 w-3.5" />
                         </button>
                         <button
-                          onClick={() => onAction(u.id, "delete_note", { noteId: note.id })}
+                          onClick={() => setPendingDeleteNote({ id: note.id, text: note.note })}
                           className="flex items-center justify-center h-7 w-7 rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
                         >
                           <Trash2 className="h-3.5 w-3.5" />
@@ -1370,6 +1371,26 @@ export function UserDetailPanel({
         confirmText="Confirm"
         variant={pendingSupportAction?.variant}
         forceNotify={true}
+      />
+
+      {/* Delete Note Confirmation Modal */}
+      <SaveConfirmationModal
+        isOpen={!!pendingDeleteNote}
+        onClose={() => setPendingDeleteNote(null)}
+        onConfirm={async () => {
+          if (pendingDeleteNote) {
+            await onAction(u.id, "delete_note", { noteId: pendingDeleteNote.id })
+            setPendingDeleteNote(null)
+          }
+        }}
+        title="Delete Note"
+        description="This will permanently delete this admin note. This action cannot be undone."
+        changes={pendingDeleteNote ? [
+          { field: "note", label: "Note", oldValue: pendingDeleteNote.text.substring(0, 50) + (pendingDeleteNote.text.length > 50 ? "..." : ""), newValue: "Deleted" },
+        ] : []}
+        loading={isLoading("delete_note")}
+        confirmText="Delete"
+        variant="destructive"
       />
     </div>
   )
