@@ -19,7 +19,7 @@ import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/ui/utils"
 import { PaginationControl } from "@/components/ui/pagination-control"
 import { UserAvatar, ConfirmDialog } from "@/components/admin/shared"
-import { hasStaffPermission, STAFF_PERMISSIONS } from "@/lib/permissions-client"
+import { hasStaffPermission, STAFF_PERMISSIONS } from "@/lib/auth/permissions-client"
 
 interface Team {
   id: number

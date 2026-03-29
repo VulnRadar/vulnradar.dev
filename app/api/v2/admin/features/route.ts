@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server"
-import pool from "@/lib/db"
+import pool from "@/lib/database/db"
 import { getSession } from "@/lib/auth"
-import { getClientIP } from "@/lib/rate-limit"
-import { STAFF_ROLE_HIERARCHY } from "@/lib/constants"
-import { sendEmail } from "@/lib/email"
+import { getClientIP } from "@/lib/rate-limiting/rate-limit"
+import { STAFF_ROLE_HIERARCHY } from "@/lib/config/constants"
+import { sendEmail } from "@/lib/email/email"
 
 async function logAction(adminId: number, targetUserId: number | null, action: string, details?: string, ip?: string) {
   await pool.query(

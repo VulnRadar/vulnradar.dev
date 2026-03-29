@@ -48,7 +48,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { cn } from "@/lib/ui/utils"
 import { STAFF_ROLE_LABELS, ROLE_BADGE_STYLES } from "@/lib/config/constants"
-import { hasStaffPermission, STAFF_PERMISSIONS } from "@/lib/permissions-client"
+import { hasStaffPermission, STAFF_PERMISSIONS } from "@/lib/auth/permissions-client"
 import { SaveConfirmationModal, type ChangeItem, type AffectedUser } from "@/components/shared/save-confirmation-modal"
 import type { UserDetail, BadgeDef } from "@/components/admin/types"
 import { formatRelativeTime } from "@/components/admin/utils"

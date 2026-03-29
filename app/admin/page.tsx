@@ -35,7 +35,7 @@ import { Footer } from "@/components/scanner/footer"
 import { cn } from "@/lib/ui/utils"
 import { PaginationControl, usePagination } from "@/components/ui/pagination-control"
 import { STAFF_ROLES, STAFF_ROLE_LABELS, STAFF_ROLE_HIERARCHY, ROLE_BADGE_STYLES, API } from "@/lib/config/constants"
-import { hasStaffPermission, STAFF_PERMISSIONS } from "@/lib/permissions-client"
+import { hasStaffPermission, STAFF_PERMISSIONS } from "@/lib/auth/permissions-client"
 import { NotificationsManager } from "@/components/admin/notifications"
 
 // Import from new admin architecture

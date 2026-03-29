@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { getSession } from "@/lib/auth"
-import pool from "@/lib/db"
-import { ERROR_MESSAGES } from "@/lib/constants"
+import pool from "@/lib/database/db"
+import { ERROR_MESSAGES } from "@/lib/config/constants"
 
 export async function GET() {
   const session = await getSession()

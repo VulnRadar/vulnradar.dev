@@ -1,6 +1,6 @@
 "use client"
 
-import { useAuth } from "@/components/auth-provider"
+import { useAuth } from "@/components/providers/auth-provider"
 import { useAdminHeartbeat } from "@/lib/hooks/use-admin-heartbeat"
 
 /**

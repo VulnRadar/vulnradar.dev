@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
-import pool from "@/lib/db"
+import pool from "@/lib/database/db"
 import { getSession } from "@/lib/auth"
-import { hasStaffPermission, STAFF_PERMISSIONS } from "@/lib/permissions-client"
+import { hasStaffPermission, STAFF_PERMISSIONS } from "@/lib/auth/permissions-client"
 
 async function logAction(adminId: number, action: string, details?: string, ip?: string) {
   await pool.query(
