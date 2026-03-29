@@ -896,18 +896,7 @@ function AdminContent() {
 
               {/* Notifications */}
               {activeTab === "notifications" && (
-                <Card className="border-border/50 bg-card/50">
-                  <CardHeader className="pb-3">
-                    <CardTitle className="text-sm font-medium flex items-center gap-2">
-                      <Bell className="h-4 w-4 text-primary" />
-                      Site Notifications
-                    </CardTitle>
-                    <p className="text-xs text-muted-foreground">Manage platform-wide announcements and alerts</p>
-                  </CardHeader>
-                  <CardContent>
-                    <NotificationsManager />
-                  </CardContent>
-                </Card>
+                <NotificationsManager />
               )}
 
             </div>
