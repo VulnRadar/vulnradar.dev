@@ -22,21 +22,34 @@
 /* Smooth scroll behavior for anchor links */
 html {
   scroll-behavior: smooth;
-  /* Always show scrollbar to prevent layout shift when navigating between pages */
+  /* Always show scrollbar to prevent layout shift. overflow-y: scroll means
+     the scrollbar gutter is always reserved — Radix has nothing to compensate for. */
   overflow-y: scroll;
 }
 
-/* Prevent Radix UI scroll-lock from jumping the page or shifting content.
-   Radix sets position:fixed + overflow:hidden + padding-right on body when a modal/select/sheet opens.
-   Since the header is now `fixed` and html always has overflow-y: scroll,
-   we don't need Radix's scroll lock at all — override it completely. */
-body,
+/* Prevent Radix UI (react-remove-scroll) from manipulating the body when
+   any modal, dialog, select, sheet, or popover opens.
+   Radix sets `position: fixed; top: -${scrollY}px` on <body> which:
+     1. Visually snaps the page to the top
+     2. Breaks sticky sidebar positioning
+     3. Shifts all fixed/sticky elements
+   We kill all of those side-effects here. Scrolling is already locked visually
+   because the overlay covers the page, so this is safe. */
+body[data-scroll-locked],
+body[data-scroll-locked] * {
+  /* Do NOT let Radix set position:fixed or overflow:hidden on body */
+}
 body[data-scroll-locked] {
   position: static !important;
-  overflow: visible !important;
+  overflow-y: scroll !important;
+  overflow-x: hidden !important;
+  top: auto !important;
+  left: auto !important;
+  right: auto !important;
   padding-right: 0 !important;
   margin-right: 0 !important;
   width: 100% !important;
+  height: auto !important;
 }
 
 /* Reduce motion for users who prefer it */

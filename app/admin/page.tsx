@@ -511,8 +511,8 @@ function AdminContent() {
                 </div>
               </div>
 
-              {/* Desktop: grouped vertical nav */}
-              <nav className="hidden lg:flex flex-col gap-5 sticky top-24">
+              {/* Desktop: grouped vertical nav — self-start is required for sticky to work in a flex row */}
+              <nav className="hidden lg:flex flex-col gap-5 sticky top-20 self-start">
                 {NAV_GROUPS.map((group) => (
                   <div key={group.label}>
                     <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest px-2 mb-1.5">
