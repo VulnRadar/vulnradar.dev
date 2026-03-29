@@ -947,7 +947,7 @@ export function UserDetailPanel({
                     <ActionCard
                       icon={Key} label="Revoke API Keys"
                       description={`Invalidate all ${u.api_key_count} API key(s)`}
-                      color="text-[hsl(var(--severity-medium))]" bg="bg-[hsl(var(--severity-medium))]/10"
+                      color="text-destructive" bg="bg-destructive/10"
                       loading={isLoading("revoke_api_keys")}
                       onClick={() => queueSupportAction("revoke_api_keys", "Revoke API Keys", `Invalidate all ${u.api_key_count} API key(s) for ${u.name || u.email}`)}
                     />
@@ -955,7 +955,7 @@ export function UserDetailPanel({
                       <ActionCard
                         icon={KeyRound} label="Reset Password"
                         description={u.totp_enabled ? "Unavailable: 2FA enabled" : "Generate temp password"}
-                        color="text-[hsl(var(--severity-medium))]" bg="bg-[hsl(var(--severity-medium))]/10"
+                        color="text-destructive" bg="bg-destructive/10"
                         disabled={u.totp_enabled} loading={isLoading("reset_password")}
                         onClick={() => queueSupportAction("reset_password", "Reset Password", `Generate a temporary password for ${u.name || u.email}`)}
                       />
@@ -964,7 +964,7 @@ export function UserDetailPanel({
                       <ActionCard
                         icon={ShieldOff} label="Reset 2FA"
                         description="Remove two-factor auth"
-                        color="text-[hsl(var(--severity-medium))]" bg="bg-[hsl(var(--severity-medium))]/10"
+                        color="text-destructive" bg="bg-destructive/10"
                         loading={isLoading("reset_2fa")}
                         onClick={() => queueSupportAction("reset_2fa", "Reset 2FA", `Remove two-factor authentication for ${u.name || u.email}`)}
                       />
@@ -981,7 +981,7 @@ export function UserDetailPanel({
                     <ActionCard
                       icon={UserX} label="Force Logout All"
                       description="Logout + revoke all API keys"
-                      color="text-[hsl(var(--severity-medium))]" bg="bg-[hsl(var(--severity-medium))]/10"
+                      color="text-destructive" bg="bg-destructive/10"
                       loading={isLoading("force_logout_all")}
                       onClick={() => queueSupportAction("force_logout_all", "Force Logout All", `Logout and revoke all API keys for ${u.name || u.email}`)}
                     />
@@ -1104,8 +1104,8 @@ export function UserDetailPanel({
                 </div>
 
                 {u.totp_enabled && hasStaffPermission(callerRole, STAFF_PERMISSIONS.RESET_USER_2FA) && (
-                  <div className="flex items-start gap-2.5 p-3 rounded-lg bg-[hsl(var(--severity-medium))]/5 border border-[hsl(var(--severity-medium))]/20">
-                    <AlertTriangle className="h-4 w-4 text-[hsl(var(--severity-medium))] shrink-0 mt-0.5" />
+                  <div className="flex items-start gap-2.5 p-3 rounded-lg bg-destructive/5 border border-destructive/20">
+                    <AlertTriangle className="h-4 w-4 text-destructive shrink-0 mt-0.5" />
                     <div>
                       <p className="text-sm font-medium">Password reset is unavailable for this user</p>
                       <p className="text-xs text-muted-foreground leading-relaxed mt-1">
