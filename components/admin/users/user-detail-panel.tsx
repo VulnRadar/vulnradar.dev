@@ -587,7 +587,7 @@ export function UserDetailPanel({
                   <Plus className="h-3.5 w-3.5" /> Create Badge
                 </Button>
                 {hasStaffPermission(callerRole, STAFF_PERMISSIONS.DELETE_BADGE) && allBadges.length > 0 && (
-                  <Button size="sm" variant="outline" className="h-7 text-xs gap-1 bg-transparent text-destructive dark:text-red-400 border-destructive/30 hover:bg-destructive/10 flex-1" onClick={() => setShowManageBadges(true)}>
+                  <Button size="sm" variant="outline" className="h-7 text-xs gap-1 bg-transparent text-destructive border-destructive/30 hover:bg-destructive/10 flex-1" onClick={() => setShowManageBadges(true)}>
                     <Trash2 className="h-3.5 w-3.5" /> Manage Badges
                   </Button>
                 )}
