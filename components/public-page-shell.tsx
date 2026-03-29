@@ -59,7 +59,9 @@ export function PublicPageShell({
       {isLoggedIn ? (
         <Header />
       ) : (
-        <header className={`sticky top-0 z-50 border-b border-border/50 ${backdrops.header}`}>
+        <>
+        <div className="h-16 shrink-0" aria-hidden="true" />
+        <header className={`fixed top-0 left-0 right-0 z-50 border-b border-border/50 ${backdrops.header}`}>
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 relative flex items-center">
             {/* Logo - left */}
             <Link href="/" className="flex items-center gap-2.5 z-10 group">
@@ -98,6 +100,7 @@ export function PublicPageShell({
             </div>
           </div>
         </header>
+        </>
       )}
 
       <main className={`flex-1 ${maxWidth} w-full mx-auto px-4 ${padding}`}>
