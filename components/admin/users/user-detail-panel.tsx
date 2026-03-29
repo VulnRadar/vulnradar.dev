@@ -1233,10 +1233,6 @@ export function UserDetailPanel({
                 <p className="text-sm font-medium">Active Sessions</p>
                 <Badge variant="secondary" className="text-[10px] h-5 ml-auto">{detail.activeSessions?.length || 0}</Badge>
               </div>
-              <p className="text-[11px] text-muted-foreground mt-2 flex items-start gap-1.5">
-                <AlertTriangle className="h-3 w-3 mt-0.5 shrink-0 text-amber-500/60" />
-                <span>Admin-only data. Only visible when extracting user data. Not shown to the user unless they request a data export.</span>
-              </p>
             </CardHeader>
             <CardContent className="p-4 pt-0">
               {detail.activeSessions && detail.activeSessions.length > 0 ? (
