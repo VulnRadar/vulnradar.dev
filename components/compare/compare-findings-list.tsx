@@ -28,10 +28,11 @@ function FindingRow({
       />
       <span
         className={cn(
-          "flex-1 text-sm",
+          "flex-1 min-w-0 text-sm truncate",
           variant === "removed" && "line-through opacity-60",
           variant === "unchanged" && "text-muted-foreground"
         )}
+        title={title}
       >
         {title}
       </span>

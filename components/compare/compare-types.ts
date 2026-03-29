@@ -33,14 +33,30 @@ export const severityTextColors: Record<string, string> = {
   info: "text-muted-foreground",
 }
 
-export function displayUrl(url: string) {
+export interface ParsedUrl {
+  subdomain: string | null
+  host: string
+  path: string
+  full: string
+}
+
+export function parseUrl(url: string): ParsedUrl {
   try {
     const u = new URL(url)
-    const path = u.pathname === "/" ? "" : u.pathname + u.search
-    return u.hostname + path
+    const path = u.pathname === "/" ? "" : u.pathname + (u.search || "")
+    const parts = u.hostname.split(".")
+    // Treat as subdomain only if there are 3+ parts (e.g. sub.example.com)
+    const subdomain = parts.length > 2 ? parts[0] : null
+    const host = subdomain ? parts.slice(1).join(".") : u.hostname
+    return { subdomain, host, path, full: u.hostname + path }
   } catch {
-    return url
+    return { subdomain: null, host: url, path: "", full: url }
   }
+}
+
+export function displayUrl(url: string) {
+  const { full } = parseUrl(url)
+  return full
 }
 
 export function getDomain(url: string) {

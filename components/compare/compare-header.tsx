@@ -1,7 +1,8 @@
 "use client"
 
 import { ArrowRight, Clock, TrendingDown, TrendingUp, Equal } from "lucide-react"
-import { type DiffResult, displayUrl, formatDate, formatTime, getRelativeTime } from "./compare-types"
+import { type DiffResult, formatDate, formatTime, getRelativeTime } from "./compare-types"
+import { UrlDisplay } from "./compare-url-display"
 
 interface CompareHeaderProps {
   result: DiffResult
@@ -22,7 +23,7 @@ export function CompareHeader({ result }: CompareHeaderProps) {
             <Clock className="h-3 w-3 text-muted-foreground" />
             <span className="text-xs text-muted-foreground">{getRelativeTime(result.scanA.scanned_at)}</span>
           </div>
-          <p className="text-sm font-medium font-mono truncate mb-2">{displayUrl(result.scanA.url)}</p>
+          <UrlDisplay url={result.scanA.url} size="md" className="mb-2 max-w-full" />
           <div className="flex items-baseline gap-2">
             <span className="text-3xl font-bold tabular-nums">{result.scanA.findings_count}</span>
             <span className="text-sm text-muted-foreground">issues</span>
@@ -64,7 +65,7 @@ export function CompareHeader({ result }: CompareHeaderProps) {
             <Clock className="h-3 w-3 text-muted-foreground" />
             <span className="text-xs text-muted-foreground">{getRelativeTime(result.scanB.scanned_at)}</span>
           </div>
-          <p className="text-sm font-medium font-mono truncate mb-2">{displayUrl(result.scanB.url)}</p>
+          <UrlDisplay url={result.scanB.url} size="md" className="mb-2 max-w-full" />
           <div className="flex items-baseline gap-2">
             <span className="text-3xl font-bold tabular-nums">{result.scanB.findings_count}</span>
             <span className="text-sm text-muted-foreground">issues</span>

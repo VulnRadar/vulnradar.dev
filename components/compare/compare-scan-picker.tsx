@@ -2,7 +2,8 @@
 
 import { Loader2, Globe, CheckCircle2, ChevronRight } from "lucide-react"
 import { cn } from "@/lib/ui/utils"
-import { type ScanOption, displayUrl, getRelativeTime } from "./compare-types"
+import { type ScanOption, getRelativeTime } from "./compare-types"
+import { UrlDisplay } from "./compare-url-display"
 
 interface CompareScanPickerProps {
   title: string
@@ -67,7 +68,7 @@ export function CompareScanPicker({
                 )}
               >
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium truncate font-mono">{displayUrl(scan.url)}</p>
+                  <UrlDisplay url={scan.url} className="block w-full" />
                   <div className="flex items-center gap-2 mt-0.5">
                     <span className="text-xs text-muted-foreground">{getRelativeTime(scan.scanned_at)}</span>
                     <span className="text-xs text-muted-foreground">·</span>
