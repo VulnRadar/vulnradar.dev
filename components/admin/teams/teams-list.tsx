@@ -189,19 +189,10 @@ export function TeamsList({
                   placeholder="Search teams by name..."
                   value={teamsSearch}
                   onChange={(e) => setTeamsSearch(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && fetchTeams(1, teamsSearch)}
                   className="pl-9 h-10 bg-background/50 border-border/40 focus:border-primary/50"
                 />
-                {teamsSearch && (
-                  <button 
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
-                    onClick={() => { setTeamsSearch(""); fetchTeams(1, "") }}
-                  >
-                    <X className="h-4 w-4" />
-                  </button>
-                )}
               </div>
-              <Button variant="outline" size="sm" className="h-10 px-3 gap-2 border-border/40 shrink-0" onClick={() => fetchTeams(1)}>
+              <Button variant="outline" size="sm" className="h-10 px-3 gap-2 border-border/40 shrink-0" onClick={() => fetchTeams(teamsPage, teamsSearch)}>
                 <RefreshCw className={cn("h-4 w-4", teamsLoading && "animate-spin")} />
                 <span className="hidden sm:inline">Refresh</span>
               </Button>
