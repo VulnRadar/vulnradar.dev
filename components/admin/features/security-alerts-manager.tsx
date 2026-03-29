@@ -101,17 +101,15 @@ export function SecurityAlertsManager() {
           const Icon = config.icon
           const count = severityStats[severity]
           return (
-            <Card key={severity} className="border-border/50 bg-card/50 overflow-hidden">
-              <div className="p-4 flex items-start gap-3">
-                <div className={cn("p-2 rounded-lg", config.bgColor)}>
-                  <Icon className={cn("h-4 w-4", config.color)} />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-2xl font-bold text-foreground">{count}</p>
-                  <p className="text-xs text-muted-foreground mt-1 capitalize">{severity} Alerts</p>
-                </div>
+            <div key={severity} className="flex items-center gap-3 p-4 rounded-xl border border-border/40 bg-card/30 hover:bg-card/50 hover:border-border/60 transition-colors">
+              <div className={cn("p-2 rounded-lg", config.bgColor)}>
+                <Icon className={cn("h-4 w-4", config.color)} />
               </div>
-            </Card>
+              <div className="flex-1 min-w-0">
+                <p className="text-2xl font-bold text-foreground">{count}</p>
+                <p className="text-xs text-muted-foreground capitalize">{severity} Alerts</p>
+              </div>
+            </div>
           )
         })}
       </div>
@@ -126,6 +124,7 @@ export function SecurityAlertsManager() {
             </div>
             <Button variant="outline" size="sm" onClick={fetchAlerts} disabled={loading} className="gap-2 border-border/40 shrink-0">
               <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
+              <span className="hidden sm:inline">Refresh</span>
             </Button>
           </div>
         </div>

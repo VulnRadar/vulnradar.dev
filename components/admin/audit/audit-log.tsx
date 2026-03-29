@@ -78,7 +78,7 @@ export function AuditLog({
     <div className="space-y-4">
       {/* Stats grid */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <div className="flex items-center gap-3 p-4 rounded-xl border border-border/40 bg-card/30">
+        <div className="flex items-center gap-3 p-4 rounded-xl border border-border/40 bg-card/30 hover:bg-card/50 hover:border-border/60 transition-colors">
           <div className="p-2 rounded-lg bg-primary/10">
             <Activity className="h-4 w-4 text-primary" />
           </div>
@@ -87,7 +87,7 @@ export function AuditLog({
             <p className="text-xs text-muted-foreground">Today</p>
           </div>
         </div>
-        <div className="flex items-center gap-3 p-4 rounded-xl border border-border/40 bg-card/30">
+        <div className="flex items-center gap-3 p-4 rounded-xl border border-border/40 bg-card/30 hover:bg-card/50 hover:border-border/60 transition-colors">
           <div className="p-2 rounded-lg bg-blue-500/10">
             <FileText className="h-4 w-4 text-blue-500" />
           </div>
@@ -96,7 +96,7 @@ export function AuditLog({
             <p className="text-xs text-muted-foreground">This Week</p>
           </div>
         </div>
-        <div className="flex items-center gap-3 p-4 rounded-xl border border-border/40 bg-card/30">
+        <div className="flex items-center gap-3 p-4 rounded-xl border border-border/40 bg-card/30 hover:bg-card/50 hover:border-border/60 transition-colors">
           <div className="p-2 rounded-lg bg-amber-500/10">
             <Shield className="h-4 w-4 text-amber-500" />
           </div>
@@ -105,7 +105,7 @@ export function AuditLog({
             <p className="text-xs text-muted-foreground">Active Admins</p>
           </div>
         </div>
-        <div className="flex items-center gap-3 p-4 rounded-xl border border-border/40 bg-card/30">
+        <div className="flex items-center gap-3 p-4 rounded-xl border border-border/40 bg-card/30 hover:bg-card/50 hover:border-border/60 transition-colors">
           <div className="p-2 rounded-lg bg-emerald-500/10">
             <Users className="h-4 w-4 text-emerald-500" />
           </div>
@@ -129,8 +129,9 @@ export function AuditLog({
                 <p className="text-xs text-muted-foreground mt-0.5">All admin actions across the platform</p>
               </div>
             </div>
-            <Button variant="outline" size="icon" className="h-8 w-8 border-border/40" onClick={() => fetchAudit(1)}>
+            <Button variant="outline" size="sm" className="gap-2 border-border/40" onClick={() => fetchAudit(1)}>
               <RefreshCw className={cn("h-4 w-4", auditPaging && "animate-spin")} />
+              <span className="hidden sm:inline">Refresh</span>
             </Button>
           </div>
         </CardHeader>
