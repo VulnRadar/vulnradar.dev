@@ -43,7 +43,7 @@ function getNodeFs(): {
   }
 }
 
-import { VulnRadarConfig, DEFAULT_CONFIG } from "./types/config"
+import { VulnRadarConfig, DEFAULT_CONFIG } from "../types/config"
 
 // YAML parser - simple implementation for our config structure
 function parseYaml(content: string): Record<string, unknown> {

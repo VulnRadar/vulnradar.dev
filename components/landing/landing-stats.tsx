@@ -1,6 +1,6 @@
 import { Shield, Zap, Target, Clock } from "lucide-react"
-import { TOTAL_CHECKS_LABEL } from "@/lib/constants"
-import { cn } from "@/lib/utils"
+import { TOTAL_CHECKS_LABEL } from "@/lib/config/constants"
+import { cn } from "@/lib/ui/utils"
 
 const STATS = [
   { icon: Shield, value: TOTAL_CHECKS_LABEL, label: "Security Checks", color: "primary" },

@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge"
 import { Plus, Trash2, RefreshCw, Network, Globe, Loader2, AlertTriangle, CheckCircle2, Eye } from "lucide-react"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { SaveConfirmationModal, type ChangeItem } from "@/components/shared/save-confirmation-modal"
-import { cn } from "@/lib/utils"
+import { cn } from "@/lib/ui/utils"
 
 interface AccessRule {
   id: number

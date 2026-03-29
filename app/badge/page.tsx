@@ -5,10 +5,10 @@ import { Header } from "@/components/scanner/header"
 import { Footer } from "@/components/scanner/footer"
 import { Button } from "@/components/ui/button"
 import { Copy, Check, Code2, Loader2, ImageIcon, ShieldCheck, AlertTriangle, Search, ExternalLink, ChevronRight } from "lucide-react"
-import { cn } from "@/lib/utils"
+import { cn } from "@/lib/ui/utils"
 import { getSafetyRating } from "@/lib/scanner/safety-rating"
 import type { Vulnerability } from "@/lib/scanner/types"
-import { API } from "@/lib/constants"
+import { API } from "@/lib/config/constants"
 
 interface ScanEntry {
   id: number

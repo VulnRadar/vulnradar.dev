@@ -12,7 +12,7 @@ import {
   Mail, Send, Eye, Trash2, RefreshCw, Loader2,
   FileEdit, CheckCircle2, Clock, Users, MailOpen,
 } from "lucide-react"
-import { cn } from "@/lib/utils"
+import { cn } from "@/lib/ui/utils"
 import { SaveConfirmationModal } from "@/components/shared/save-confirmation-modal"
 
 interface Broadcast {

@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input"
 import { Switch } from "@/components/ui/switch"
 import { Settings, AlertTriangle, Save, RefreshCw, Loader2, CheckCircle2, X, MessageSquare, Shield } from "lucide-react"
 import { SaveConfirmationModal, type ChangeItem } from "@/components/shared/save-confirmation-modal"
-import { cn } from "@/lib/utils"
+import { cn } from "@/lib/ui/utils"
 
 interface SystemSetting {
   key: string

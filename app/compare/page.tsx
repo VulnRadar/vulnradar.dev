@@ -5,7 +5,7 @@ import { Header } from "@/components/scanner/header"
 import { Footer } from "@/components/scanner/footer"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { cn } from "@/lib/utils"
+import { cn } from "@/lib/ui/utils"
 import {
   GitCompareArrows,
   Plus,

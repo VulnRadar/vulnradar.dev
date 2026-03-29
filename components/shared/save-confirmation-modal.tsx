@@ -14,8 +14,8 @@ import { Switch } from "@/components/ui/switch"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
 import { Loader2, Check, AlertTriangle, ArrowRight, Mail, Clock, User } from "lucide-react"
-import { cn } from "@/lib/utils"
-import { transitions, backdrops } from "@/lib/animations"
+import { cn } from "@/lib/ui/utils"
+import { transitions, backdrops } from "@/lib/ui/animations"
 
 export interface ChangeItem {
   field: string

@@ -21,10 +21,10 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { cn } from "@/lib/utils"
+import { cn } from "@/lib/ui/utils"
 import { PaginationControl, usePagination } from "@/components/ui/pagination-control"
 import { UserAvatar, ActionBadge } from "@/components/admin/shared"
-import { STAFF_ROLE_LABELS, ROLE_BADGE_STYLES } from "@/lib/constants"
+import { STAFF_ROLE_LABELS, ROLE_BADGE_STYLES } from "@/lib/config/constants"
 import type { ActiveAdmin } from "@/components/admin/types"
 
 interface StaffListProps {

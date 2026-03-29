@@ -18,7 +18,7 @@ import {
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
-import { cn } from "@/lib/utils"
+import { cn } from "@/lib/ui/utils"
 import { PaginationControl } from "@/components/ui/pagination-control"
 import { UserAvatar, ActionBadge } from "@/components/admin/shared"
 import { formatRelativeTime, getActionSentence, AUDIT_FILTER_CATEGORIES } from "@/components/admin/utils"

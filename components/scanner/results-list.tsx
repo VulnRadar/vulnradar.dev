@@ -4,8 +4,8 @@ import { useState, useMemo } from "react"
 import { ChevronRight, Filter, ArrowUpDown, Search, X } from "lucide-react"
 import { SeverityBadge } from "@/components/scanner/severity-badge"
 import type { Severity, Vulnerability, Category } from "@/lib/scanner/types"
-import { cn } from "@/lib/utils"
-import { SEVERITY_LEVELS, SEVERITY_PRIORITY } from "@/lib/constants"
+import { cn } from "@/lib/ui/utils"
+import { SEVERITY_LEVELS, SEVERITY_PRIORITY } from "@/lib/config/constants"
 
 const ALL_SEVERITIES: Severity[] = [
   SEVERITY_LEVELS.CRITICAL,

@@ -1,7 +1,7 @@
 "use client"
 
 import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from "lucide-react"
-import { cn } from "@/lib/utils"
+import { cn } from "@/lib/ui/utils"
 
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100]
 

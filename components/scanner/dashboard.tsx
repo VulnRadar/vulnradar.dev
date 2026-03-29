@@ -16,8 +16,8 @@ import {
   Target,
   ChevronRight,
 } from "lucide-react"
-import { cn } from "@/lib/utils"
-import { API } from "@/lib/constants"
+import { cn } from "@/lib/ui/utils"
+import { API } from "@/lib/config/constants"
 
 interface DashboardData {
   totalScans: number

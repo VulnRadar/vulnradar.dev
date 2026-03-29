@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Check, Loader2, Image, User, Mail } from "lucide-react"
-import { cn } from "@/lib/utils"
+import { cn } from "@/lib/ui/utils"
 
 const AUTH_UPDATE_ENDPOINT = "/api/v2/auth/update"
 
