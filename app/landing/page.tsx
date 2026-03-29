@@ -2,27 +2,26 @@
 
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
-import { Shield, Zap, Users, Code, CheckCircle, Globe, BarChart3, ArrowRight, Terminal, Lock, Eye, Cpu, Sparkles, ExternalLink } from "lucide-react"
+import { Shield, Zap, Users, Code, CheckCircle, Globe, BarChart3, ArrowRight, Terminal, Lock, Eye, Cpu, Activity, Clock, Target } from "lucide-react"
 import { Footer } from "@/components/scanner/footer"
 import { APP_NAME, TOTAL_CHECKS_LABEL, BILLING_ENABLED, ROUTES } from "@/lib/constants"
 import { ThemedLogo } from "@/components/themed-logo"
 import { Badge } from "@/components/ui/badge"
-import { transitions, backdrops } from "@/lib/animations"
+import { backdrops } from "@/lib/animations"
+import { cn } from "@/lib/utils"
 
 export default function LandingPage() {
   return (
     <div className="min-h-screen flex flex-col bg-background">
       {/* Navigation */}
-      <nav className={`sticky top-0 z-50 border-b border-border/50 ${backdrops.header}`}>
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 relative flex items-center">
-          {/* Logo - left */}
-          <Link href="/" className="flex items-center gap-2.5 z-10 group">
-            <ThemedLogo width={28} height={28} className="h-7 w-7 transition-transform group-hover:scale-105" alt={`${APP_NAME} logo`} />
-            <span className="font-bold text-lg tracking-tight">{APP_NAME}</span>
+      <nav className={cn("sticky top-0 z-50 border-b border-border/50", backdrops.header)}>
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between">
+          <Link href="/" className="flex items-center gap-2.5 group">
+            <ThemedLogo width={26} height={26} className="h-6 w-6 transition-transform group-hover:scale-105" alt={`${APP_NAME} logo`} />
+            <span className="font-semibold text-base tracking-tight">{APP_NAME}</span>
           </Link>
           
-          {/* Center nav - absolutely centered */}
-          <div className="hidden md:flex items-center gap-8 absolute left-1/2 -translate-x-1/2">
+          <div className="hidden md:flex items-center gap-6">
             {BILLING_ENABLED && (
               <Link href={ROUTES.PRICING} className="text-sm text-muted-foreground hover:text-foreground transition-colors">
                 Pricing
@@ -36,13 +35,12 @@ export default function LandingPage() {
             </Link>
           </div>
           
-          {/* Right side - pushed to end */}
-          <div className="flex items-center gap-3 ml-auto z-10">
+          <div className="flex items-center gap-2">
             <Link href={ROUTES.LOGIN}>
-              <Button variant="ghost" size="sm" className="hidden sm:inline-flex">Log in</Button>
+              <Button variant="ghost" size="sm" className="hidden sm:inline-flex h-8">Log in</Button>
             </Link>
             <Link href={ROUTES.SIGNUP}>
-              <Button size="sm" className="gap-1.5">
+              <Button size="sm" className="h-8 gap-1.5">
                 Get Started
                 <ArrowRight className="h-3.5 w-3.5" />
               </Button>
@@ -52,80 +50,74 @@ export default function LandingPage() {
       </nav>
 
       <main className="flex-1">
-        {/* Hero Section - Clean, bold, minimal */}
-        <section className="relative overflow-hidden">
-          {/* Subtle gradient orb background */}
-          <div className="absolute inset-0 overflow-hidden pointer-events-none">
-            <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[600px] bg-primary/5 rounded-full blur-3xl" />
-          </div>
-          
-          <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-20 pb-24 sm:pt-28 sm:pb-32">
-            <div className="max-w-4xl mx-auto text-center">
-              {/* Badge */}
-              <Badge variant="outline" className="mb-6 gap-2 py-1.5 px-4 border-primary/30 bg-primary/5">
-                <Sparkles className="h-3.5 w-3.5 text-primary" />
-                <span className="text-sm">{TOTAL_CHECKS_LABEL} vulnerability checks</span>
+        {/* Hero Section */}
+        <section className="relative">
+          <div className="max-w-6xl mx-auto px-4 sm:px-6 pt-16 pb-20 sm:pt-24 sm:pb-28">
+            <div className="max-w-3xl mx-auto text-center">
+              <Badge variant="outline" className="mb-5 gap-1.5 py-1 px-3 border-primary/30 bg-primary/5 text-xs">
+                <Activity className="h-3 w-3 text-primary" />
+                {TOTAL_CHECKS_LABEL} vulnerability checks
               </Badge>
               
-              <h1 className="text-4xl sm:text-5xl lg:text-6xl xl:text-7xl font-bold tracking-tight mb-6 text-balance leading-[1.1]">
+              <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold tracking-tight mb-5 text-balance">
                 The complete platform for{" "}
                 <span className="text-muted-foreground">web security</span>
               </h1>
               
-              <p className="text-lg sm:text-xl text-muted-foreground max-w-2xl mx-auto mb-10 leading-relaxed text-pretty">
-                Detect vulnerabilities in seconds. Get actionable insights. 
-                Ship secure code with confidence.
+              <p className="text-base sm:text-lg text-muted-foreground max-w-xl mx-auto mb-8 text-pretty">
+                Detect vulnerabilities in seconds. Get actionable insights. Ship secure code with confidence.
               </p>
               
-              <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+              <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
                 <Link href={ROUTES.SIGNUP}>
-                  <Button size="lg" className="h-12 px-8 text-base gap-2 shadow-lg shadow-primary/25">
+                  <Button size="lg" className="h-11 px-6 gap-2">
                     Start Scanning Free
                     <ArrowRight className="h-4 w-4" />
                   </Button>
                 </Link>
                 <Link href="/demo">
-                  <Button size="lg" variant="outline" className="h-12 px-8 text-base gap-2">
+                  <Button size="lg" variant="outline" className="h-11 px-6 gap-2">
                     <Terminal className="h-4 w-4" />
-                    Try Live Demo
+                    Live Demo
                   </Button>
                 </Link>
               </div>
 
-              {/* Trust indicators */}
-              <div className="mt-14 flex flex-wrap items-center justify-center gap-x-8 gap-y-4 text-sm text-muted-foreground">
-                <div className="flex items-center gap-2">
-                  <CheckCircle className="h-4 w-4 text-primary" />
-                  <span>No credit card required</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <CheckCircle className="h-4 w-4 text-primary" />
-                  <span>Free forever tier</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <CheckCircle className="h-4 w-4 text-primary" />
-                  <span>Open source</span>
-                </div>
+              <div className="mt-10 flex flex-wrap items-center justify-center gap-x-6 gap-y-3 text-sm text-muted-foreground">
+                {["No credit card required", "Free forever tier", "Open source"].map((item, i) => (
+                  <div key={i} className="flex items-center gap-1.5">
+                    <CheckCircle className="h-3.5 w-3.5 text-primary" />
+                    <span>{item}</span>
+                  </div>
+                ))}
               </div>
             </div>
           </div>
         </section>
 
-        {/* Stats Section - Refined cards */}
-        <section className="border-y border-border bg-muted/30">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 sm:py-16">
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-6 lg:gap-8">
+        {/* Stats Section - Using admin UI pattern */}
+        <section className="border-y border-border/50 bg-muted/20">
+          <div className="max-w-6xl mx-auto px-4 sm:px-6 py-10 sm:py-12">
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
               {[
-                { value: TOTAL_CHECKS_LABEL, label: "Security Checks", desc: "Comprehensive coverage" },
-                { value: "<3s", label: "Scan Time", desc: "Lightning fast results" },
-                { value: "99.9%", label: "Accuracy", desc: "Minimal false positives" },
-                { value: "24/7", label: "Monitoring", desc: "Always watching" },
+                { icon: Shield, value: TOTAL_CHECKS_LABEL, label: "Security Checks", color: "primary" },
+                { icon: Zap, value: "<3s", label: "Scan Time", color: "primary" },
+                { icon: Target, value: "99.9%", label: "Accuracy", color: "emerald" },
+                { icon: Clock, value: "24/7", label: "Monitoring", color: "primary" },
               ].map((stat, i) => (
-                <div key={i} className="relative group">
-                  <div className="text-center p-6 rounded-xl border border-border/50 bg-card/50 transition-all duration-300 hover:border-primary/30 hover:bg-card">
-                    <div className="text-3xl sm:text-4xl font-bold mb-1 text-foreground">{stat.value}</div>
-                    <p className="text-sm font-medium text-foreground/80">{stat.label}</p>
-                    <p className="text-xs text-muted-foreground mt-1">{stat.desc}</p>
+                <div key={i} className="flex items-center gap-3 p-4 rounded-xl border border-border/40 bg-card/30 hover:bg-card/50 hover:border-border/60 transition-colors">
+                  <div className={cn(
+                    "p-2.5 rounded-lg shrink-0",
+                    stat.color === "primary" ? "bg-primary/10" : "bg-emerald-500/10"
+                  )}>
+                    <stat.icon className={cn(
+                      "h-4 w-4",
+                      stat.color === "primary" ? "text-primary" : "text-emerald-500"
+                    )} />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-xl sm:text-2xl font-bold tracking-tight">{stat.value}</p>
+                    <p className="text-[11px] sm:text-xs text-muted-foreground truncate">{stat.label}</p>
                   </div>
                 </div>
               ))}
@@ -133,33 +125,33 @@ export default function LandingPage() {
           </div>
         </section>
 
-        {/* Features Grid - Clean, modern cards */}
-        <section className="py-20 sm:py-28">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="max-w-2xl mb-12">
-              <Badge variant="secondary" className="mb-4">Features</Badge>
-              <h2 className="text-3xl sm:text-4xl font-bold mb-4 tracking-tight">
+        {/* Features Grid */}
+        <section className="py-16 sm:py-20">
+          <div className="max-w-6xl mx-auto px-4 sm:px-6">
+            <div className="mb-10">
+              <p className="text-xs font-medium text-primary uppercase tracking-wider mb-2">Features</p>
+              <h2 className="text-2xl sm:text-3xl font-bold mb-3 tracking-tight">
                 Everything you need to ship secure
               </h2>
-              <p className="text-lg text-muted-foreground">
+              <p className="text-muted-foreground max-w-xl">
                 A complete toolkit for identifying, understanding, and fixing security vulnerabilities.
               </p>
             </div>
             
-            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4 lg:gap-6">
+            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
               {[
                 { icon: Zap, title: "Lightning Fast", desc: "Complete security scans in under 3 seconds with our optimized engine." },
-                { icon: Eye, title: "Deep Analysis", desc: "Detect XSS, SQL injection, CSRF, misconfigurations, and 50+ types." },
-                { icon: Code, title: "Developer First", desc: "API access, CI/CD integration, and webhooks for automation." },
+                { icon: Eye, title: "Deep Analysis", desc: "Detect XSS, SQL injection, CSRF, misconfigurations, and 50+ vulnerability types." },
+                { icon: Code, title: "Developer First", desc: "API access, CI/CD integration, and webhooks for seamless automation." },
                 { icon: Users, title: "Team Collaboration", desc: "Invite members, assign issues, and track remediation together." },
-                { icon: Cpu, title: "Scheduled Scans", desc: "Automated monitoring with notifications for new vulnerabilities." },
+                { icon: Cpu, title: "Scheduled Scans", desc: "Automated monitoring with instant notifications for new vulnerabilities." },
                 { icon: Lock, title: "Privacy Focused", desc: "Your data stays yours. We never store sensitive scan information." },
               ].map((feature, i) => (
-                <div key={i} className="group p-6 rounded-xl border border-border/50 bg-card/30 hover:bg-card hover:border-border transition-all duration-300">
-                  <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center mb-4 group-hover:bg-primary/15 transition-colors">
-                    <feature.icon className="h-5 w-5 text-primary" />
+                <div key={i} className="group p-5 rounded-xl border border-border/50 bg-card/30 hover:bg-card/50 hover:border-border/60 transition-all">
+                  <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center mb-4 group-hover:bg-primary/15 transition-colors">
+                    <feature.icon className="h-4 w-4 text-primary" />
                   </div>
-                  <h3 className="text-lg font-semibold mb-2">{feature.title}</h3>
+                  <h3 className="text-base font-semibold mb-1.5">{feature.title}</h3>
                   <p className="text-sm text-muted-foreground leading-relaxed">{feature.desc}</p>
                 </div>
               ))}
@@ -167,34 +159,33 @@ export default function LandingPage() {
           </div>
         </section>
 
-        {/* How It Works - Horizontal flow */}
-        <section className="py-20 sm:py-28 border-y border-border bg-muted/20">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="text-center mb-16">
-              <Badge variant="secondary" className="mb-4">How it works</Badge>
-              <h2 className="text-3xl sm:text-4xl font-bold mb-4 tracking-tight">
+        {/* How It Works */}
+        <section className="py-16 sm:py-20 border-y border-border/50 bg-muted/20">
+          <div className="max-w-6xl mx-auto px-4 sm:px-6">
+            <div className="text-center mb-12">
+              <p className="text-xs font-medium text-primary uppercase tracking-wider mb-2">How it works</p>
+              <h2 className="text-2xl sm:text-3xl font-bold mb-3 tracking-tight">
                 Get started in minutes
               </h2>
-              <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
+              <p className="text-muted-foreground max-w-lg mx-auto">
                 No complex setup required. Start scanning immediately.
               </p>
             </div>
 
-            <div className="grid md:grid-cols-3 gap-8 lg:gap-12">
+            <div className="grid md:grid-cols-3 gap-6 lg:gap-10">
               {[
-                { step: 1, title: "Enter your URL", desc: "Simply paste the URL of the website or application you want to scan." },
+                { step: 1, title: "Enter your URL", desc: "Paste the URL of the website or application you want to scan." },
                 { step: 2, title: "We analyze", desc: "Our engine performs comprehensive security checks across multiple categories." },
                 { step: 3, title: "Get results", desc: "Review detailed findings with severity ratings and fix recommendations." },
               ].map((item, i) => (
                 <div key={i} className="relative text-center">
-                  <div className="inline-flex items-center justify-center w-14 h-14 rounded-full bg-primary text-primary-foreground text-xl font-bold mb-6 shadow-lg shadow-primary/25">
+                  <div className="inline-flex items-center justify-center w-11 h-11 rounded-full bg-primary text-primary-foreground text-lg font-bold mb-5">
                     {item.step}
                   </div>
-                  <h3 className="text-xl font-semibold mb-3">{item.title}</h3>
-                  <p className="text-muted-foreground leading-relaxed">{item.desc}</p>
-                  {/* Connector line - hidden on mobile */}
+                  <h3 className="text-lg font-semibold mb-2">{item.title}</h3>
+                  <p className="text-sm text-muted-foreground leading-relaxed">{item.desc}</p>
                   {i < 2 && (
-                    <div className="hidden md:block absolute top-7 left-[60%] w-[80%] h-px bg-border" />
+                    <div className="hidden md:block absolute top-5 left-[58%] w-[84%] h-px bg-border/60" />
                   )}
                 </div>
               ))}
@@ -202,48 +193,50 @@ export default function LandingPage() {
           </div>
         </section>
 
-        {/* Use Cases - Clean cards */}
-        <section className="py-20 sm:py-28">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="max-w-2xl mb-12">
-              <Badge variant="secondary" className="mb-4">Use Cases</Badge>
-              <h2 className="text-3xl sm:text-4xl font-bold mb-4 tracking-tight">
+        {/* Use Cases */}
+        <section className="py-16 sm:py-20">
+          <div className="max-w-6xl mx-auto px-4 sm:px-6">
+            <div className="mb-10">
+              <p className="text-xs font-medium text-primary uppercase tracking-wider mb-2">Use Cases</p>
+              <h2 className="text-2xl sm:text-3xl font-bold mb-3 tracking-tight">
                 Built for teams of all sizes
               </h2>
-              <p className="text-lg text-muted-foreground">
+              <p className="text-muted-foreground">
                 From solo developers to enterprise security teams.
               </p>
             </div>
 
-            <div className="grid md:grid-cols-3 gap-6">
+            <div className="grid md:grid-cols-3 gap-4">
               {[
                 {
                   icon: Globe,
                   title: "Developers",
-                  desc: "Catch vulnerabilities before they reach production. Integrate into your workflow.",
+                  desc: "Catch vulnerabilities before they reach production.",
                   features: ["Quick single-page scans", "API & CLI access", "Code fix suggestions"],
                 },
                 {
                   icon: Shield,
                   title: "Security Teams",
-                  desc: "Comprehensive visibility across all your applications and domains.",
+                  desc: "Comprehensive visibility across all your applications.",
                   features: ["Bulk scanning", "Compliance reports", "Trend analysis"],
                 },
                 {
                   icon: BarChart3,
                   title: "DevOps",
-                  desc: "Automate security as part of your deployment pipeline.",
+                  desc: "Automate security in your deployment pipeline.",
                   features: ["CI/CD integration", "Webhook notifications", "Scheduled monitoring"],
                 },
               ].map((useCase, i) => (
-                <div key={i} className="p-8 rounded-2xl border border-border bg-card">
-                  <useCase.icon className="h-8 w-8 mb-6 text-primary" />
-                  <h3 className="text-xl font-semibold mb-3">{useCase.title}</h3>
-                  <p className="text-muted-foreground leading-relaxed mb-6">{useCase.desc}</p>
-                  <ul className="space-y-2.5">
+                <div key={i} className="p-6 rounded-xl border border-border/50 bg-card/50 hover:bg-card hover:border-border/60 transition-all">
+                  <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center mb-5">
+                    <useCase.icon className="h-5 w-5 text-primary" />
+                  </div>
+                  <h3 className="text-lg font-semibold mb-2">{useCase.title}</h3>
+                  <p className="text-sm text-muted-foreground mb-5">{useCase.desc}</p>
+                  <ul className="space-y-2">
                     {useCase.features.map((feature, j) => (
-                      <li key={j} className="flex items-center gap-2.5 text-sm">
-                        <CheckCircle className="h-4 w-4 text-primary shrink-0" />
+                      <li key={j} className="flex items-center gap-2 text-sm">
+                        <CheckCircle className="h-3.5 w-3.5 text-primary shrink-0" />
                         {feature}
                       </li>
                     ))}
@@ -254,26 +247,26 @@ export default function LandingPage() {
           </div>
         </section>
 
-        {/* CTA Section - Bold, clean */}
-        <section className="border-t border-border bg-muted/30">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20 sm:py-28">
-            <div className="max-w-3xl mx-auto text-center">
-              <h2 className="text-3xl sm:text-4xl font-bold mb-6 tracking-tight">
+        {/* CTA Section */}
+        <section className="border-t border-border/50 bg-muted/20">
+          <div className="max-w-6xl mx-auto px-4 sm:px-6 py-16 sm:py-20">
+            <div className="max-w-2xl mx-auto text-center">
+              <h2 className="text-2xl sm:text-3xl font-bold mb-4 tracking-tight">
                 Ready to secure your applications?
               </h2>
-              <p className="text-xl text-muted-foreground mb-10 leading-relaxed">
+              <p className="text-muted-foreground mb-8">
                 Join thousands of developers shipping secure code with {APP_NAME}.
               </p>
-              <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+              <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
                 <Link href={ROUTES.SIGNUP}>
-                  <Button size="lg" className="h-12 px-8 text-base gap-2 shadow-lg shadow-primary/25">
+                  <Button size="lg" className="h-11 px-6 gap-2">
                     Get Started Free
                     <ArrowRight className="h-4 w-4" />
                   </Button>
                 </Link>
                 {BILLING_ENABLED && (
                   <Link href={ROUTES.PRICING}>
-                    <Button size="lg" variant="outline" className="h-12 px-8 text-base">
+                    <Button size="lg" variant="outline" className="h-11 px-6">
                       View Pricing
                     </Button>
                   </Link>
