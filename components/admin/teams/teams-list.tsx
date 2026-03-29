@@ -167,19 +167,19 @@ export function TeamsList({
         <CardHeader className="pb-4 pt-5 px-5">
           <div className="flex flex-col gap-4">
             {/* Title row */}
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="p-2 rounded-lg bg-primary/10">
-                  <UsersRound className="h-4 w-4 text-primary" />
-                </div>
-                <div>
-                  <CardTitle className="text-base font-semibold">Team Directory</CardTitle>
-                  <p className="text-xs text-muted-foreground mt-0.5">View and manage all platform teams</p>
-                </div>
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="p-2 rounded-lg bg-primary/10 shrink-0">
+                <UsersRound className="h-4 w-4 text-primary" />
               </div>
-              <Badge variant="secondary" className="text-xs font-medium h-6 px-2.5">
-                {teams.length} team{teams.length !== 1 ? "s" : ""}
-              </Badge>
+              <div className="min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <CardTitle className="text-base font-semibold">Team Directory</CardTitle>
+                  <Badge variant="secondary" className="text-[11px] font-medium h-5 px-2">
+                    {teams.length}
+                  </Badge>
+                </div>
+                <p className="text-xs text-muted-foreground mt-0.5">View and manage all platform teams</p>
+              </div>
             </div>
             {/* Search and actions row */}
             <div className="flex flex-col sm:flex-row sm:items-center gap-3">
