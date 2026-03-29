@@ -148,7 +148,7 @@ export async function register() {
         CREATE INDEX IF NOT EXISTS idx_api_keys_key_hash ON api_keys(key_hash);
       `)
 
-      // ══════════════����════════════════════════════════════�����════════════
+      // ════════════════════════════════════════════════════════════════
       // API USAGE - Tracks API key usage for rate limiting
       // ════════════════════════════════════════════════════════════════
       await pool.query(`
@@ -284,7 +284,7 @@ export async function register() {
         CREATE INDEX IF NOT EXISTS idx_billing_history_user ON billing_history(user_id);
       `)
 
-      // ═════════════��═══════════════���══════════════════════════════════
+      // ════════════════════════════════════════════════════════════════
       // ADMIN AUDIT LOG - Admin action audit trail
       // ════════════════════════════════════════════════════════════════
       await pool.query(`
@@ -444,7 +444,7 @@ export async function register() {
 
       // ════════════════════════════════════════════════════════════════
       // DEVICE TRUST - Trusted devices for 2FA
-      // ═══════════════════════════════════════�����════════════════════════
+      // ════════════════════════════════════════════════════════════════
       await pool.query(`
         CREATE TABLE IF NOT EXISTS device_trust (
           id SERIAL PRIMARY KEY,
@@ -479,7 +479,7 @@ export async function register() {
 
       // ════════════════════════════════════════════════════════════════
       // TEAMS
-      // ═══════════════════════════════════════════════════════════���════
+      // ════════════════════════════════════════════════════════════════
       await pool.query(`
         CREATE TABLE IF NOT EXISTS teams (
           id SERIAL PRIMARY KEY,
@@ -714,7 +714,7 @@ export async function register() {
 
       console.log(`[${APP_NAME}] Database schema verified successfully.`)
 
-      // ── Seed Default Badges ──────────────────────��────────────────
+      // ── Seed Default Badges ─────────────────────────────────────
       try {
         await pool.query(`
           INSERT INTO badges (name, display_name, description, icon, color, priority, is_limited)
@@ -743,7 +743,7 @@ export async function register() {
         console.error(`[${APP_NAME}] Initial cleanup failed (non-fatal):`, cleanupError)
       }
 
-      // ── Schedule periodic cleanup ─�����───────────────────────────────
+      // ── Schedule periodic cleanup ─────────────────────────────────
       try {
         const { schedulePeriodicCleanup } = await import("./lib/database/cleanup")
         schedulePeriodicCleanup(5000)
