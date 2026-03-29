@@ -44,6 +44,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { cn } from "@/lib/utils"
 import { STAFF_ROLE_LABELS, ROLE_BADGE_STYLES } from "@/lib/constants"
 import { hasStaffPermission, STAFF_PERMISSIONS } from "@/lib/permissions-client"
@@ -489,7 +490,7 @@ export function UserDetailPanel({
       {!detailLoading && hasStaffPermission(callerRole, STAFF_PERMISSIONS.DELETE_USER) && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
 
-          {/* Staff Role - single select */}
+          {/* Staff Role - dropdown */}
           <Card className={cn("border-border/50 bg-card/50 transition-colors", pendingChanges.role && "border-primary/30")}>
             <CardHeader className="pb-3">
               <div className="flex items-center gap-2">
@@ -497,45 +498,33 @@ export function UserDetailPanel({
                 <p className="text-sm font-medium">Staff Role</p>
                 {pendingChanges.role && <span className="text-[9px] text-primary font-medium px-1.5 py-0.5 rounded bg-primary/10">Modified</span>}
               </div>
-              <p className="text-xs text-muted-foreground">Select one permission level for this user.</p>
+              <p className="text-xs text-muted-foreground">Select a permission level for this user.</p>
             </CardHeader>
             <CardContent className="p-4 pt-0">
-              <div className="flex flex-col gap-2">
-                {(["user", "support", "moderator", "admin"] as const).map((role) => {
-                  const isSelected = editRole === role
-                  const isOriginal = (u.role || "user") === role
-                  const roleColors: Record<string, string> = {
-                    user: "border-border hover:border-accent",
-                    support: "border-blue-500/30 hover:border-accent",
-                    moderator: "border-[hsl(var(--severity-medium))]/30 hover:border-accent",
-                    admin: "border-primary/30 hover:border-accent",
-                  }
-                  const activeColors: Record<string, string> = {
-                    user: "bg-muted/50 border-border",
-                    support: "bg-blue-500/10 border-blue-500/50",
-                    moderator: "bg-[hsl(var(--severity-medium))]/10 border-[hsl(var(--severity-medium))]/50",
-                    admin: "bg-primary/10 border-primary/50",
-                  }
-                  return (
-                    <button
-                      key={role}
-                      onClick={() => {
-                        setEditRole(role)
-                        addPendingChange("role", role, u.role || "user")
-                      }}
-                      className={cn(
-                        "flex items-center justify-between px-4 py-2.5 rounded-lg border text-sm font-medium transition-all text-left",
-                        isSelected ? activeColors[role] : `bg-transparent ${roleColors[role]} text-muted-foreground`,
-                        "hover:text-foreground cursor-pointer"
-                      )}
-                    >
-                      <span>{STAFF_ROLE_LABELS[role] || role}</span>
-                      {isSelected && <CheckCircle2 className="h-4 w-4 text-primary shrink-0" />}
-                      {isSelected && !isOriginal && <span className="text-[9px] text-primary ml-1">(pending)</span>}
-                    </button>
-                  )
-                })}
-              </div>
+              <Select
+                value={editRole}
+                onValueChange={(value) => {
+                  setEditRole(value)
+                  addPendingChange("role", value, u.role || "user")
+                }}
+              >
+                <SelectTrigger className="w-full h-10 border-border/40 bg-card/30">
+                  <SelectValue placeholder="Select role" />
+                </SelectTrigger>
+                <SelectContent>
+                  {(["user", "support", "moderator", "admin"] as const).map((role) => {
+                    const isOriginal = (u.role || "user") === role
+                    return (
+                      <SelectItem key={role} value={role}>
+                        <span className="flex items-center gap-2">
+                          {STAFF_ROLE_LABELS[role] || role}
+                          {isOriginal && <span className="text-[10px] text-muted-foreground">(current)</span>}
+                        </span>
+                      </SelectItem>
+                    )
+                  })}
+                </SelectContent>
+              </Select>
             </CardContent>
           </Card>
 
