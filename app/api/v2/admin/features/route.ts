@@ -41,9 +41,9 @@ export async function POST(req: NextRequest) {
         const { rule_type, value_type, ip_address, description, reason, expires_at } = body
         
         const result = await pool.query(
-          `INSERT INTO access_rules (rule_type, value_type, ip_address, description, reason, created_by, expires_at) 
+          `INSERT INTO access_rules (rule_type, value_type, value, description, reason, created_by, expires_at) 
            VALUES ($1, $2, $3, $4, $5, $6, $7) 
-           RETURNING id, rule_type, value_type, ip_address, description, is_active, created_at`,
+           RETURNING id, rule_type, value_type, value as ip_address, description, is_active, created_at`,
           [rule_type, value_type, ip_address, description, reason, user.id, expires_at]
         )
         
@@ -54,7 +54,7 @@ export async function POST(req: NextRequest) {
 
       if (action === "list") {
         const result = await pool.query(
-          `SELECT id, rule_type, value_type, ip_address, description, reason, hit_count, is_active, created_at, expires_at 
+          `SELECT id, rule_type, value_type, value as ip_address, description, reason, hit_count, is_active, created_at, expires_at 
            FROM access_rules 
            WHERE is_active = true 
            ORDER BY created_at DESC`
@@ -64,7 +64,7 @@ export async function POST(req: NextRequest) {
 
       if (action === "delete") {
         const { id } = body
-        const result = await pool.query(`SELECT ip_address, value_type FROM access_rules WHERE id = $1`, [id])
+        const result = await pool.query(`SELECT value as ip_address, value_type FROM access_rules WHERE id = $1`, [id])
         if (result.rows.length > 0) {
           const { ip_address, value_type } = result.rows[0]
           await logAction(user.id, null, "access_rule_deleted", `Deleted ${value_type} rule: ${ip_address}`, ip)
@@ -75,13 +75,19 @@ export async function POST(req: NextRequest) {
 
       if (action === "update") {
         const { id, ...updates } = body
-        const fields = Object.keys(updates)
+        // Map ip_address to value for the database
+        const mappedUpdates = { ...updates }
+        if (mappedUpdates.ip_address) {
+          mappedUpdates.value = mappedUpdates.ip_address
+          delete mappedUpdates.ip_address
+        }
+        const fields = Object.keys(mappedUpdates)
           .map((k, i) => `${k} = $${i + 2}`)
           .join(", ")
         
         await pool.query(
           `UPDATE access_rules SET ${fields} WHERE id = $1`,
-          [id, ...Object.values(updates)]
+          [id, ...Object.values(mappedUpdates)]
         )
         return NextResponse.json({ success: true })
       }
@@ -93,9 +99,9 @@ export async function POST(req: NextRequest) {
         const { rule_type, ip_address, description, reason, expires_at } = body
         
         const result = await pool.query(
-          `INSERT INTO access_rules (rule_type, value_type, ip_address, description, reason, created_by, expires_at) 
+          `INSERT INTO access_rules (rule_type, value_type, value, description, reason, created_by, expires_at) 
            VALUES ($1, $2, $3, $4, $5, $6, $7) 
-           RETURNING id, rule_type, value_type, ip_address, description, is_active, created_at`,
+           RETURNING id, rule_type, value_type, value as ip_address, description, is_active, created_at`,
           [rule_type, "ip", ip_address, description, reason, user.id, expires_at]
         )
         
@@ -104,7 +110,7 @@ export async function POST(req: NextRequest) {
 
       if (action === "list") {
         const result = await pool.query(
-          `SELECT id, rule_type, value_type, ip_address, description, reason, hit_count, is_active, created_at, expires_at 
+          `SELECT id, rule_type, value_type, value as ip_address, description, reason, hit_count, is_active, created_at, expires_at 
            FROM access_rules 
            WHERE is_active = true AND value_type = 'ip'
            ORDER BY created_at DESC`
