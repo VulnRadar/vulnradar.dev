@@ -347,7 +347,7 @@ export function NotificationsManager() {
                     )}
                   >
                     {/* Colored accent bar */}
-                    <div className={cn("absolute inset-y-0 left-0 w-1", notif.is_active ? v.bg.replace("/10", "") : "bg-muted")} />
+                    <div className={cn("absolute inset-y-0 left-0 w-1 rounded-r-full", notif.is_active ? v.border.replace("border-", "bg-").replace("/20", "/60") : "bg-muted")} />
                     
                     {/* Variant icon */}
                     <div className={cn("flex items-center justify-center h-10 w-10 rounded-lg shrink-0 ml-1", v.bg)}>
