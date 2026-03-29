@@ -8,7 +8,7 @@ import { DiscordProfileModalWrapper } from '@/components/modals/discord-profile-
 import { AuthProvider } from '@/components/providers/auth-provider'
 import { StaffHeartbeat } from '@/components/admin/staff-heartbeat'
 import { SiteNotificationsWrapper } from '@/components/shared/site-notifications'
-import { APP_NAME, APP_DESCRIPTION, APP_URL, STAFF_ROLES } from '@/lib/constants'
+import { APP_NAME, APP_DESCRIPTION, APP_URL, STAFF_ROLES } from '@/lib/config/constants'
 
 import './globals.css'
 

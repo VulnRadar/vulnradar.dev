@@ -3,8 +3,8 @@
 import { Check } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { cn } from "@/lib/utils"
-import { ROUTES } from "@/lib/constants"
+import { cn } from "@/lib/ui/utils"
+import { ROUTES } from "@/lib/config/constants"
 import Link from "next/link"
 
 interface Plan {
