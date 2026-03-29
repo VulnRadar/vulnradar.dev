@@ -33,23 +33,27 @@ html {
      1. Visually snaps the page to the top
      2. Breaks sticky sidebar positioning
      3. Shifts all fixed/sticky elements
-   We kill all of those side-effects here. Scrolling is already locked visually
-   because the overlay covers the page, so this is safe. */
-body[data-scroll-locked],
-body[data-scroll-locked] * {
-  /* Do NOT let Radix set position:fixed or overflow:hidden on body */
-}
-body[data-scroll-locked] {
+   We use `html body` selector for higher specificity to override inline styles. */
+html body[data-scroll-locked] {
+  --removed-body-scroll-bar-size: 0px !important;
   position: static !important;
-  overflow-y: scroll !important;
-  overflow-x: hidden !important;
-  top: auto !important;
-  left: auto !important;
-  right: auto !important;
+  overflow: visible !important;
+  top: unset !important;
+  left: unset !important;
+  right: unset !important;
+  bottom: unset !important;
   padding-right: 0 !important;
   margin-right: 0 !important;
-  width: 100% !important;
+  width: auto !important;
   height: auto !important;
+}
+
+/* Also target the scrollbar-gutter style Radix may inject */
+html[data-scroll-locked],
+html[data-scroll-locked] body {
+  overflow: visible !important;
+  margin-right: 0 !important;
+  padding-right: 0 !important;
 }
 
 /* Reduce motion for users who prefer it */
