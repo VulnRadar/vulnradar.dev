@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge"
 import { Switch } from "@/components/ui/switch"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
+import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import {
   Select,
   SelectContent,
@@ -223,6 +224,14 @@ export function NotificationsManager() {
 
   const activeVariant = VARIANT_CONFIG[formData.variant]
 
+  // Calculate stats
+  const stats = {
+    total: notifications.length,
+    active: notifications.filter(n => n.is_active).length,
+    inactive: notifications.filter(n => !n.is_active).length,
+    expiring: notifications.filter(n => n.ends_at && new Date(n.ends_at) > new Date() && new Date(n.ends_at) < new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)).length,
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -232,7 +241,7 @@ export function NotificationsManager() {
   }
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-4">
       {error && (
         <div className="flex items-center gap-2 p-3 rounded-lg bg-destructive/10 border border-destructive/20 text-destructive text-sm">
           <AlertTriangle className="h-4 w-4 shrink-0" />
@@ -240,133 +249,180 @@ export function NotificationsManager() {
         </div>
       )}
 
-      {/* Header row */}
-      <div className="flex items-center justify-between">
-        <p className="text-sm text-muted-foreground">
-          {notifications.length} notification{notifications.length !== 1 ? "s" : ""} configured
-        </p>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" size="icon" className="h-8 w-8" onClick={fetchNotifications}>
-            <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
-          </Button>
-          <Button size="sm" onClick={openCreateDialog} className="gap-1.5">
-            <Plus className="h-4 w-4" />
-            Create
-          </Button>
+      {/* Stats grid */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <div className="flex items-center gap-3 p-4 rounded-xl border border-border/40 bg-card/30 hover:bg-card/50 hover:border-border/60 transition-colors">
+          <div className="p-2 rounded-lg bg-primary/10">
+            <Bell className="h-4 w-4 text-primary" />
+          </div>
+          <div>
+            <p className="text-2xl font-bold">{stats.total}</p>
+            <p className="text-xs text-muted-foreground">Total</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-3 p-4 rounded-xl border border-border/40 bg-card/30 hover:bg-card/50 hover:border-border/60 transition-colors">
+          <div className="p-2 rounded-lg bg-emerald-500/10">
+            <Eye className="h-4 w-4 text-emerald-500" />
+          </div>
+          <div>
+            <p className="text-2xl font-bold">{stats.active}</p>
+            <p className="text-xs text-muted-foreground">Active</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-3 p-4 rounded-xl border border-border/40 bg-card/30 hover:bg-card/50 hover:border-border/60 transition-colors">
+          <div className="p-2 rounded-lg bg-muted">
+            <EyeOff className="h-4 w-4 text-muted-foreground" />
+          </div>
+          <div>
+            <p className="text-2xl font-bold">{stats.inactive}</p>
+            <p className="text-xs text-muted-foreground">Inactive</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-3 p-4 rounded-xl border border-border/40 bg-card/30 hover:bg-card/50 hover:border-border/60 transition-colors">
+          <div className="p-2 rounded-lg bg-amber-500/10">
+            <Clock className="h-4 w-4 text-amber-500" />
+          </div>
+          <div>
+            <p className="text-2xl font-bold">{stats.expiring}</p>
+            <p className="text-xs text-muted-foreground">Expiring Soon</p>
+          </div>
         </div>
       </div>
 
-      {/* List */}
-      {notifications.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-16 gap-3 text-muted-foreground">
-          <div className="flex items-center justify-center h-14 w-14 rounded-2xl bg-muted">
-            <Bell className="h-7 w-7 opacity-40" />
-          </div>
-          <div className="text-center">
-            <p className="font-medium text-sm">No notifications yet</p>
-            <p className="text-xs mt-0.5">Click &quot;Create&quot; to add a site-wide notification.</p>
-          </div>
-        </div>
-      ) : (
-        <div className="space-y-2">
-          {notifications.map((notif) => {
-            const v = VARIANT_CONFIG[notif.variant]
-            const Icon = v.icon
-            const TypeIcon = TYPE_CONFIG[notif.type].icon
-            return (
-              <div
-                key={notif.id}
-                className={cn(
-                  "group relative rounded-lg border bg-card transition-all overflow-hidden",
-                  notif.is_active
-                    ? "border-border hover:border-border/80"
-                    : "border-border/50 opacity-60 hover:opacity-80"
-                )}
-              >
-                {/* Colored accent bar */}
-                <div className={cn("absolute inset-y-0 left-0 w-1", notif.is_active ? v.bg.replace("/10", "") : "bg-muted")} />
-                
-                <div className="flex items-start gap-3 p-4 pl-5">
-                  {/* Variant icon */}
-                  <div className={cn("flex items-center justify-center h-10 w-10 rounded-lg shrink-0", v.bg)}>
-                    <Icon className={cn("h-5 w-5", v.text)} />
-                  </div>
-
-                  <div className="flex-1 min-w-0 space-y-2">
-                    {/* Title and status row */}
-                    <div className="flex items-center gap-2">
-                      <span className="font-semibold text-sm text-foreground truncate">{notif.title}</span>
-                      {!notif.is_active && (
-                        <Badge variant="secondary" className="text-[10px] px-1.5 py-0 shrink-0">Inactive</Badge>
-                      )}
-                    </div>
-                    
-                    {/* Badges row */}
-                    <div className="flex items-center gap-1.5 flex-wrap">
-                      <Badge variant="outline" className="text-[10px] px-2 py-0.5 gap-1 border-border bg-muted/50 text-foreground">
-                        <TypeIcon className="h-3 w-3" />
-                        {TYPE_CONFIG[notif.type].label}
-                      </Badge>
-                      <Badge variant="outline" className="text-[10px] px-2 py-0.5 gap-1 border-border bg-muted/50 text-foreground">
-                        <Users className="h-3 w-3" />
-                        {AUDIENCE_LABELS[notif.audience]}
-                      </Badge>
-                      {notif.ends_at && (
-                        <Badge variant="outline" className="text-[10px] px-2 py-0.5 gap-1 border-border bg-muted/50 text-foreground">
-                          <Clock className="h-3 w-3" />
-                          Expires {new Date(notif.ends_at).toLocaleDateString()}
-                        </Badge>
-                      )}
-                    </div>
-
-                    {/* Message */}
-                    <p className="text-sm text-muted-foreground line-clamp-2 leading-relaxed whitespace-pre-wrap">{notif.message}</p>
-                    
-                    {/* Footer row */}
-                    <div className="flex items-center gap-3 pt-1">
-                      <span className="text-[11px] text-muted-foreground/70 font-mono">ID: {notif.cookie_id}</span>
-                      {notif.action_url && (
-                        <div className="flex items-center gap-1 text-xs text-primary font-medium">
-                          <ExternalLink className="h-3 w-3" />
-                          {notif.action_label || "Action"}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Actions - always visible for better UX */}
-                  <div className="flex items-center gap-0.5 shrink-0">
-                    <button
-                      onClick={() => handleToggleActive(notif)}
-                      title={notif.is_active ? "Deactivate" : "Activate"}
-                      className={cn(
-                        "flex items-center justify-center h-8 w-8 rounded-md transition-colors",
-                        notif.is_active
-                          ? "text-emerald-500 hover:bg-emerald-500/10"
-                          : "text-muted-foreground hover:bg-muted"
-                      )}
-                    >
-                      {notif.is_active ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
-                    </button>
-                    <button
-                      onClick={() => openEditDialog(notif)}
-                      className="flex items-center justify-center h-8 w-8 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
-                    >
-                      <Pencil className="h-4 w-4" />
-                    </button>
-                    <button
-                      onClick={() => handleDelete(notif.id)}
-                      className="flex items-center justify-center h-8 w-8 rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
-                  </div>
-                </div>
+      {/* Notifications list card */}
+      <Card className="border-border/50 bg-card/50 overflow-hidden">
+        <CardHeader className="pb-0">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-primary/10">
+                <Bell className="h-4 w-4 text-primary" />
               </div>
-            )
-          })}
-        </div>
-      )}
+              <div>
+                <h3 className="text-sm font-semibold text-foreground">Site Notifications</h3>
+                <p className="text-xs text-muted-foreground mt-0.5">Manage banners, modals, toasts, and bell notifications</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button variant="outline" size="sm" className="gap-2 border-border/40" onClick={fetchNotifications}>
+                <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
+                <span className="hidden sm:inline">Refresh</span>
+              </Button>
+              <Button size="sm" onClick={openCreateDialog} className="gap-1.5">
+                <Plus className="h-4 w-4" />
+                Create
+              </Button>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="p-0 mt-4">
+          {notifications.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-16 gap-3 text-muted-foreground">
+              <div className="flex items-center justify-center h-14 w-14 rounded-2xl bg-muted">
+                <Bell className="h-7 w-7 opacity-40" />
+              </div>
+              <div className="text-center">
+                <p className="font-medium text-sm">No notifications yet</p>
+                <p className="text-xs mt-0.5">Click &quot;Create&quot; to add a site-wide notification.</p>
+              </div>
+            </div>
+          ) : (
+            <div className="divide-y divide-border/40">
+              {notifications.map((notif) => {
+                const v = VARIANT_CONFIG[notif.variant]
+                const Icon = v.icon
+                const TypeIcon = TYPE_CONFIG[notif.type].icon
+                return (
+                  <div
+                    key={notif.id}
+                    className={cn(
+                      "group relative flex items-start gap-3 p-4 transition-colors hover:bg-muted/20",
+                      !notif.is_active && "opacity-60"
+                    )}
+                  >
+                    {/* Colored accent bar */}
+                    <div className={cn("absolute inset-y-0 left-0 w-1", notif.is_active ? v.bg.replace("/10", "") : "bg-muted")} />
+                    
+                    {/* Variant icon */}
+                    <div className={cn("flex items-center justify-center h-10 w-10 rounded-lg shrink-0 ml-1", v.bg)}>
+                      <Icon className={cn("h-5 w-5", v.text)} />
+                    </div>
+
+                    <div className="flex-1 min-w-0 space-y-2">
+                      {/* Title and status row */}
+                      <div className="flex items-center gap-2">
+                        <span className="font-semibold text-sm text-foreground truncate">{notif.title}</span>
+                        {!notif.is_active && (
+                          <Badge variant="secondary" className="text-[10px] px-1.5 py-0 shrink-0">Inactive</Badge>
+                        )}
+                      </div>
+                      
+                      {/* Badges row */}
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <Badge variant="outline" className="text-[10px] px-2 py-0.5 gap-1 border-border bg-muted/50 text-foreground">
+                          <TypeIcon className="h-3 w-3" />
+                          {TYPE_CONFIG[notif.type].label}
+                        </Badge>
+                        <Badge variant="outline" className="text-[10px] px-2 py-0.5 gap-1 border-border bg-muted/50 text-foreground">
+                          <Users className="h-3 w-3" />
+                          {AUDIENCE_LABELS[notif.audience]}
+                        </Badge>
+                        {notif.ends_at && (
+                          <Badge variant="outline" className="text-[10px] px-2 py-0.5 gap-1 border-border bg-muted/50 text-foreground">
+                            <Clock className="h-3 w-3" />
+                            Expires {new Date(notif.ends_at).toLocaleDateString()}
+                          </Badge>
+                        )}
+                      </div>
+
+                      {/* Message */}
+                      <p className="text-sm text-muted-foreground line-clamp-2 leading-relaxed whitespace-pre-wrap">{notif.message}</p>
+                      
+                      {/* Footer row */}
+                      <div className="flex items-center gap-3 pt-1">
+                        <span className="text-[11px] text-muted-foreground/70 font-mono">ID: {notif.cookie_id}</span>
+                        {notif.action_url && (
+                          <div className="flex items-center gap-1 text-xs text-primary font-medium">
+                            <ExternalLink className="h-3 w-3" />
+                            {notif.action_label || "Action"}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Actions */}
+                    <div className="flex items-center gap-0.5 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button
+                        onClick={() => handleToggleActive(notif)}
+                        title={notif.is_active ? "Deactivate" : "Activate"}
+                        className={cn(
+                          "flex items-center justify-center h-8 w-8 rounded-md transition-colors",
+                          notif.is_active
+                            ? "text-emerald-500 hover:bg-emerald-500/10"
+                            : "text-muted-foreground hover:bg-muted"
+                        )}
+                      >
+                        {notif.is_active ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
+                      </button>
+                      <button
+                        onClick={() => openEditDialog(notif)}
+                        className="flex items-center justify-center h-8 w-8 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </button>
+                      <button
+                        onClick={() => handleDelete(notif.id)}
+                        className="flex items-center justify-center h-8 w-8 rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Create / Edit Dialog */}
       <Dialog open={isCreating} onOpenChange={(open) => !open && closeDialog()} modal={true}>
