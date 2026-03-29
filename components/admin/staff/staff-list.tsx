@@ -247,28 +247,28 @@ export function StaffList({
 
       <div className="space-y-4">
         {/* Stats row */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           {[
             { icon: Shield, value: activeAdmins.length, label: "Total Staff", color: "primary" },
             { icon: Zap, value: activeNow, label: "Active Now", color: "accent" },
             { icon: Clock, value: recentlyActive, label: "Recently Active", color: "emerald" },
             { icon: ShieldCheck, value: with2FA, label: "2FA Enabled", color: "emerald" },
           ].map((stat, i) => (
-            <div key={i} className="flex items-center gap-3 p-4 rounded-xl border border-border/40 bg-card/30 hover:bg-card/50 hover:border-border/60 transition-colors">
-              <div className={cn("p-2.5 rounded-lg shrink-0", 
-                stat.color === "primary" ? "bg-primary/10" : 
-                stat.color === "accent" ? "bg-accent/20" : 
+            <div key={i} className="flex items-center gap-3 p-3 sm:p-4 rounded-xl border border-border/40 bg-card/30 hover:bg-card/50 hover:border-border/60 transition-colors">
+              <div className={cn("p-2 sm:p-2.5 rounded-lg shrink-0",
+                stat.color === "primary" ? "bg-primary/10" :
+                stat.color === "accent" ? "bg-accent/20" :
                 "bg-emerald-500/10"
               )}>
-                <stat.icon className={cn("h-4 w-4", 
-                  stat.color === "primary" ? "text-primary" : 
-                  stat.color === "accent" ? "text-accent-foreground" : 
+                <stat.icon className={cn("h-3.5 w-3.5 sm:h-4 sm:w-4",
+                  stat.color === "primary" ? "text-primary" :
+                  stat.color === "accent" ? "text-accent-foreground" :
                   "text-emerald-500"
                 )} />
               </div>
               <div className="min-w-0">
-                <p className="text-2xl font-bold tracking-tight">{stat.value}</p>
-                <p className="text-[11px] text-muted-foreground truncate">{stat.label}</p>
+                <p className="text-xl sm:text-2xl font-bold tracking-tight">{stat.value}</p>
+                <p className="text-[10px] sm:text-[11px] text-muted-foreground truncate">{stat.label}</p>
               </div>
             </div>
           ))}
@@ -277,28 +277,24 @@ export function StaffList({
         {/* Staff table */}
         <Card className="border-border/50 bg-card/50 overflow-hidden">
           <CardHeader className="pb-4 pt-5 px-5">
-            <div className="flex flex-col gap-4">
-              {/* Title row */}
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 rounded-lg bg-primary/10">
-                    <Shield className="h-4 w-4 text-primary" />
-                  </div>
-                  <div>
-                    <CardTitle className="text-base font-semibold">Staff Directory</CardTitle>
-                    <p className="text-xs text-muted-foreground mt-0.5">All staff members and their current activity</p>
-                  </div>
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="p-2 rounded-lg bg-primary/10 shrink-0">
+                  <Shield className="h-4 w-4 text-primary" />
                 </div>
-                <div className="flex items-center gap-2">
-                  <Badge variant="secondary" className="text-xs font-medium h-6 px-2.5">
-                    {activeAdmins.length} members
-                  </Badge>
-                  <Button variant="outline" size="sm" className="h-9 gap-2 border-border/40" onClick={fetchActiveAdmins}>
-                    <RefreshCw className={cn("h-4 w-4", adminsLoading && "animate-spin")} />
-                    <span className="hidden sm:inline">Refresh</span>
-                  </Button>
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <CardTitle className="text-base font-semibold">Staff Directory</CardTitle>
+                    <Badge variant="secondary" className="text-[11px] font-medium h-5 px-2">
+                      {activeAdmins.length}
+                    </Badge>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-0.5">All staff members and their current activity</p>
                 </div>
               </div>
+              <Button variant="outline" size="sm" className="h-8 w-8 p-0 shrink-0 border-border/40" onClick={fetchActiveAdmins} title="Refresh">
+                <RefreshCw className={cn("h-4 w-4", adminsLoading && "animate-spin")} />
+              </Button>
             </div>
           </CardHeader>
           <CardContent className="p-0">
