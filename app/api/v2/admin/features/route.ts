@@ -89,6 +89,7 @@ export async function POST(req: NextRequest) {
           `UPDATE access_rules SET ${fields} WHERE id = $1`,
           [id, ...Object.values(mappedUpdates)]
         )
+        await logAction(user.id, null, "access_rule_updated", `Updated access rule ID: ${id}`, ip)
         return NextResponse.json({ success: true })
       }
     }
@@ -105,6 +106,8 @@ export async function POST(req: NextRequest) {
           [rule_type, "ip", ip_address, description, reason, user.id, expires_at]
         )
         
+        await logAction(user.id, null, "ip_rule_created", `Created IP ${rule_type} rule: ${ip_address}`, ip)
+        
         return NextResponse.json({ rule: result.rows[0], success: true })
       }
 
@@ -120,7 +123,10 @@ export async function POST(req: NextRequest) {
 
       if (action === "delete") {
         const { id } = body
+        const ruleResult = await pool.query(`SELECT value as ip_address FROM access_rules WHERE id = $1`, [id])
+        const ruleValue = ruleResult.rows[0]?.ip_address || "Unknown"
         await pool.query(`UPDATE access_rules SET is_active = false WHERE id = $1`, [id])
+        await logAction(user.id, null, "ip_rule_deleted", `Deleted IP rule: ${ruleValue}`, ip)
         return NextResponse.json({ success: true })
       }
 
@@ -134,6 +140,7 @@ export async function POST(req: NextRequest) {
           `UPDATE access_rules SET ${fields} WHERE id = $1`,
           [id, ...Object.values(updates)]
         )
+        await logAction(user.id, null, "ip_rule_updated", `Updated IP rule ID: ${id}`, ip)
         return NextResponse.json({ success: true })
       }
     }
@@ -164,10 +171,14 @@ export async function POST(req: NextRequest) {
 
       if (action === "resolve") {
         const { id, action_taken } = body
+        const alertResult = await pool.query(`SELECT alert_type, severity FROM security_alerts WHERE id = $1`, [id])
+        const alertType = alertResult.rows[0]?.alert_type || "Unknown"
+        const severity = alertResult.rows[0]?.severity || "Unknown"
         await pool.query(
           `UPDATE security_alerts SET resolved_at = NOW(), resolved_by = $1, action_taken = $2 WHERE id = $3`,
           [user.id, action_taken, id]
         )
+        await logAction(user.id, null, "security_alert_resolved", `Resolved ${severity} ${alertType} alert (ID: ${id}). Action: ${action_taken || "None specified"}`, ip)
         return NextResponse.json({ success: true })
       }
     }
@@ -181,12 +192,15 @@ export async function POST(req: NextRequest) {
 
       if (action === "set") {
         const { key, value, description } = body
+        const oldResult = await pool.query(`SELECT value FROM system_settings WHERE key = $1`, [key])
+        const oldValue = oldResult.rows[0]?.value
         await pool.query(
           `INSERT INTO system_settings (key, value, description, updated_by) 
            VALUES ($1, $2, $3, $4)
            ON CONFLICT (key) DO UPDATE SET value = $2, updated_by = $4, updated_at = NOW()`,
           [key, value, description, user.id]
         )
+        await logAction(user.id, null, "system_setting_changed", `Changed "${key}" from "${oldValue || "(not set)"}" to "${value}"`, ip)
         return NextResponse.json({ success: true })
       }
 
@@ -425,6 +439,8 @@ export async function POST(req: NextRequest) {
            RETURNING id, policy_name, rotation_days, is_active`,
           [policy_name, rotation_days, grace_period_days, enforce_complexity, user.id]
         )
+        
+        await logAction(user.id, null, "password_policy_created", `Created password policy: "${policy_name}" (${rotation_days} day rotation)`, ip)
         
         return NextResponse.json({ policy: result.rows[0], success: true })
       }
