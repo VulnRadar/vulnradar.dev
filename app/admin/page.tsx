@@ -542,37 +542,6 @@ function AdminContent() {
                 ))}
               </div>
             </div>
-                {NAV_GROUPS.map((group) => (
-                  <div key={group.label}>
-                    <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest px-2 mb-1.5">
-                      {group.label}
-                    </p>
-                    <div className="flex flex-col gap-0.5">
-                      {group.items.map((tab) => (
-                        <a
-                          key={tab.key}
-                          href={`/admin#${tab.key}`}
-                          onClick={(e) => {
-                            if (!e.ctrlKey && !e.metaKey) {
-                              e.preventDefault()
-                              handleTabChange(tab.key)
-                            }
-                          }}
-                          className={cn(
-                            "flex items-center gap-2.5 px-2.5 py-2 text-sm rounded-lg transition-all",
-                            activeTab === tab.key
-                              ? "bg-primary/10 text-primary font-medium"
-                              : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
-                          )}
-                        >
-                          <tab.icon className="h-4 w-4 shrink-0" />
-                          <span>{tab.label}</span>
-                        </a>
-                      ))}
-                    </div>
-                  </div>
-                ))}
-              </nav>
 
             {/* Main content */}
             <div className="flex-1 min-w-0 flex flex-col gap-6">
