@@ -12,7 +12,7 @@ import {
   Save,
   Trash2,
 } from "lucide-react"
-import { Card, CardContent } from "@/components/ui/card"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -91,72 +91,43 @@ export function TeamsList({
 
   return (
     <div className="space-y-4">
-      <Card className="bg-card border-border">
-        <CardContent className="p-4 sm:p-5">
-          <div className="flex flex-col gap-4">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <div>
-                <h2 className="text-lg font-semibold">Team Management</h2>
-                <p className="text-xs text-muted-foreground">View and manage all platform teams</p>
-              </div>
-              <Button variant="outline" size="icon" className="h-8 w-8 self-start sm:self-auto" onClick={() => fetchTeams(1)}>
-                <RefreshCw className={cn("h-4 w-4", teamsLoading && "animate-spin")} />
-              </Button>
-            </div>
-            
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Search teams by name..."
-                value={teamsSearch}
-                onChange={(e) => setTeamsSearch(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && fetchTeams(1, teamsSearch)}
-                className="pl-9 h-10 bg-background"
-              />
-              {teamsSearch && (
-                <button 
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                  onClick={() => { setTeamsSearch(""); fetchTeams(1, "") }}
-                >
-                  <X className="h-4 w-4" />
-                </button>
-              )}
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-      
       {/* Team members modal */}
       {teamMembers && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => setTeamMembers(null)}>
           <div className="bg-card border border-border rounded-xl p-6 w-full max-w-lg mx-4 shadow-2xl max-h-[80vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4">
-              <div>
-                <h3 className="text-lg font-semibold text-foreground">{teamMembers.team.name}</h3>
-                <p className="text-xs text-muted-foreground">{teamMembers.members.length} members</p>
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-primary/10">
+                  <UsersRound className="h-4 w-4 text-primary" />
+                </div>
+                <div>
+                  <h3 className="text-base font-semibold text-foreground">{teamMembers.team.name}</h3>
+                  <p className="text-xs text-muted-foreground">{teamMembers.members.length} member{teamMembers.members.length !== 1 ? "s" : ""}</p>
+                </div>
               </div>
-              <button onClick={() => setTeamMembers(null)} className="p-1 rounded hover:bg-muted">
+              <button onClick={() => setTeamMembers(null)} className="p-2 rounded-lg hover:bg-muted transition-colors">
                 <X className="h-4 w-4" />
               </button>
             </div>
             
             {teamMembersLoading ? (
-              <div className="flex items-center justify-center py-8">
+              <div className="flex items-center justify-center py-12">
                 <Loader2 className="h-5 w-5 animate-spin text-primary" />
               </div>
             ) : (
               <div className="space-y-2">
                 {teamMembers.members.map((member) => (
-                  <div key={member.user_id} className="flex items-center gap-3 p-3 rounded-lg bg-muted/30 border border-border/50">
+                  <div key={member.user_id} className="flex items-center gap-3 p-3 rounded-lg bg-muted/30 border border-border/50 hover:bg-muted/50 transition-colors">
                     <UserAvatar name={member.name} email={member.email} size="sm" avatarUrl={member.avatar_url} />
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium text-foreground truncate">{member.name || member.email.split("@")[0]}</p>
-                      <p className="text-xs text-muted-foreground truncate">{member.email}</p>
+                      <p className="text-xs text-muted-foreground truncate font-mono">{member.email}</p>
                     </div>
                     <Badge variant="outline" className={cn(
-                      "text-[10px] capitalize",
+                      "text-[10px] px-2 py-0.5 font-medium capitalize",
                       member.role === "owner" && "bg-primary/10 text-primary border-primary/20",
                       member.role === "admin" && "bg-amber-500/10 text-amber-500 border-amber-500/20",
+                      member.role === "member" && "bg-muted text-muted-foreground border-border",
                     )}>
                       {member.role}
                     </Badge>
@@ -169,157 +140,222 @@ export function TeamsList({
       )}
       
       {/* Teams table */}
-      <Card className="bg-card border-border overflow-hidden">
-        {teamsLoading ? (
-          <div className="flex flex-col items-center justify-center py-16 gap-3">
-            <Loader2 className="h-5 w-5 animate-spin text-primary" />
-            <p className="text-xs text-muted-foreground">Loading teams...</p>
-          </div>
-        ) : teams.length === 0 ? (
-          <div className="py-16 text-center px-4">
-            <div className="h-16 w-16 rounded-2xl bg-muted/30 flex items-center justify-center mx-auto mb-4">
-              <UsersRound className="h-8 w-8 text-muted-foreground/40" />
+      <Card className="border-border/50 bg-card/50 overflow-hidden">
+        <CardHeader className="pb-4 pt-5 px-5">
+          <div className="flex flex-col gap-4">
+            {/* Title row */}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-primary/10">
+                  <UsersRound className="h-4 w-4 text-primary" />
+                </div>
+                <div>
+                  <CardTitle className="text-base font-semibold">Team Directory</CardTitle>
+                  <p className="text-xs text-muted-foreground mt-0.5">View and manage all platform teams</p>
+                </div>
+              </div>
+              <Badge variant="secondary" className="text-xs font-medium h-6 px-2.5">
+                {teams.length} team{teams.length !== 1 ? "s" : ""}
+              </Badge>
             </div>
-            <p className="text-base font-medium text-muted-foreground">
-              {teamsSearch ? "No teams found" : "No teams yet"}
-            </p>
-            <p className="text-sm text-muted-foreground/70 mt-1">
-              {teamsSearch ? "Try a different search term" : "Teams created by users will appear here"}
-            </p>
+            {/* Search and actions row */}
+            <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+                <Input
+                  placeholder="Search teams by name..."
+                  value={teamsSearch}
+                  onChange={(e) => setTeamsSearch(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && fetchTeams(1, teamsSearch)}
+                  className="pl-9 h-10 bg-background/50 border-border/40 focus:border-primary/50"
+                />
+                {teamsSearch && (
+                  <button 
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                    onClick={() => { setTeamsSearch(""); fetchTeams(1, "") }}
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                )}
+              </div>
+              <Button variant="outline" size="sm" className="h-10 px-3 gap-2 border-border/40 shrink-0" onClick={() => fetchTeams(1)}>
+                <RefreshCw className={cn("h-4 w-4", teamsLoading && "animate-spin")} />
+                <span className="hidden sm:inline">Refresh</span>
+              </Button>
+            </div>
           </div>
-        ) : (
-          <>
-            <div className="px-4 sm:px-5 py-3 border-b border-border bg-muted/20">
-              <p className="text-xs text-muted-foreground">
-                <span className="font-medium text-foreground">{teams.length}</span> teams
+        </CardHeader>
+        <CardContent className="p-0">
+          {teamsLoading ? (
+            <div className="flex flex-col items-center justify-center py-20 gap-3">
+              <Loader2 className="h-5 w-5 animate-spin text-primary" />
+              <p className="text-sm text-muted-foreground">Loading teams...</p>
+            </div>
+          ) : teams.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-20 px-4">
+              <div className="p-4 rounded-full bg-muted/50 mb-4">
+                <UsersRound className="h-8 w-8 text-muted-foreground/40" />
+              </div>
+              <p className="text-sm font-medium text-foreground mb-1">
+                {teamsSearch ? "No teams found" : "No teams yet"}
+              </p>
+              <p className="text-xs text-muted-foreground max-w-sm text-center">
+                {teamsSearch ? `No results for "${teamsSearch}". Try a different search term.` : "Teams created by users will appear here."}
               </p>
             </div>
-            
-            {/* Desktop table */}
-            <div className="hidden md:block">
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b border-border bg-muted/10">
-                    <th className="text-left text-[10px] font-semibold text-muted-foreground uppercase tracking-wider px-5 py-3">Team</th>
-                    <th className="text-left text-[10px] font-semibold text-muted-foreground uppercase tracking-wider px-3 py-3">Owner</th>
-                    <th className="text-center text-[10px] font-semibold text-muted-foreground uppercase tracking-wider px-3 py-3">Members</th>
-                    <th className="text-left text-[10px] font-semibold text-muted-foreground uppercase tracking-wider px-3 py-3">Created</th>
-                    <th className="w-20"></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {teams.map((team, i) => (
-                    <tr key={team.id} className={cn("hover:bg-muted/30 transition-colors", i < teams.length - 1 && "border-b border-border/50")}>
-                      <td className="px-5 py-3.5">
-                        {editingTeam?.id === team.id ? (
-                          <div className="flex items-center gap-2">
-                            <Input
-                              value={editingTeam.name}
-                              onChange={(e) => setEditingTeam({ ...editingTeam, name: e.target.value })}
-                              className="h-8 text-sm w-40"
-                              autoFocus
-                            />
-                            <Button size="sm" className="h-8 px-2" onClick={() => { handleTeamRename(team.id, editingTeam.name); setEditingTeam(null); }} disabled={actionLoading === `team-rename-${team.id}`}>
-                              {actionLoading === `team-rename-${team.id}` ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
-                            </Button>
-                            <Button size="sm" variant="ghost" className="h-8 px-2" onClick={() => setEditingTeam(null)}>
-                              <X className="h-3 w-3" />
-                            </Button>
-                          </div>
-                        ) : (
-                          <div>
-                            <p className="text-sm font-medium text-foreground">{team.name}</p>
-                            <p className="text-[10px] text-muted-foreground font-mono">{team.slug}</p>
-                          </div>
-                        )}
-                      </td>
-                      <td className="px-3 py-3.5">
-                        <div className="flex items-center gap-2">
-                          <UserAvatar name={team.owner_name} email={team.owner_email} size="sm" avatarUrl={team.owner_avatar_url} />
-                          <div className="min-w-0">
-                            <p className="text-sm text-foreground truncate max-w-[120px]">{team.owner_name || team.owner_email.split("@")[0]}</p>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-3 py-3.5 text-center">
-                        <Badge variant="secondary" className="text-xs">{team.member_count}</Badge>
-                      </td>
-                      <td className="px-3 py-3.5">
-                        <span className="text-xs text-muted-foreground">{new Date(team.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</span>
-                      </td>
-                      <td className="px-3 py-3.5">
-                        <div className="flex items-center gap-1 justify-end">
-                          <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => fetchTeamMembers(team.id)} title="View members">
-                            <Eye className="h-3.5 w-3.5" />
-                          </Button>
-                          <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => setEditingTeam({ id: team.id, name: team.name })} title="Rename">
-                            <Pencil className="h-3.5 w-3.5" />
-                          </Button>
-                          {hasStaffPermission(callerRole, STAFF_PERMISSIONS.DELETE_USER) && (
-                            <Button 
-                              variant="ghost" 
-                              size="sm" 
-                              className="h-7 w-7 p-0 text-destructive hover:text-destructive"
-                              onClick={() => setConfirmDialog({
-                                title: "Delete Team",
-                                description: `This will permanently delete "${team.name}" and remove all ${team.member_count} members. This cannot be undone.`,
-                                confirmLabel: "Delete Team",
-                                danger: true,
-                                onConfirm: () => { handleTeamDelete(team.id); setConfirmDialog(null); }
-                              })}
-                              title="Delete"
-                            >
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </Button>
-                          )}
-                        </div>
-                      </td>
+          ) : (
+            <>
+              {/* Desktop table */}
+              <div className="hidden md:block overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-y border-border/50 bg-muted/30">
+                      <th className="px-5 py-3 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider text-left">Team</th>
+                      <th className="px-4 py-3 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider text-left">Owner</th>
+                      <th className="px-4 py-3 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider text-center">Members</th>
+                      <th className="px-4 py-3 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider text-left">Created</th>
+                      <th className="px-5 py-3 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider text-right">Actions</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            
-            {/* Mobile view */}
-            <div className="md:hidden divide-y divide-border">
-              {teams.map((team) => (
-                <div key={team.id} className="p-4">
-                  <div className="flex items-start justify-between gap-3 mb-2">
-                    <div>
-                      <p className="text-sm font-medium text-foreground">{team.name}</p>
-                      <p className="text-[10px] text-muted-foreground font-mono">{team.slug}</p>
-                    </div>
-                    <Badge variant="secondary" className="text-xs">{team.member_count}</Badge>
-                  </div>
-                  <div className="flex items-center gap-2 mt-2">
-                    <UserAvatar name={team.owner_name} email={team.owner_email} size="sm" avatarUrl={team.owner_avatar_url} />
-                    <span className="text-xs text-muted-foreground">{team.owner_name || team.owner_email.split("@")[0]}</span>
-                  </div>
-                  <div className="flex items-center gap-2 mt-3">
-                    <Button variant="outline" size="sm" className="h-7 text-xs flex-1" onClick={() => fetchTeamMembers(team.id)}>
-                      <Eye className="h-3 w-3 mr-1" /> View
-                    </Button>
-                    <Button variant="outline" size="sm" className="h-7 text-xs flex-1" onClick={() => setEditingTeam({ id: team.id, name: team.name })}>
-                      <Pencil className="h-3 w-3 mr-1" /> Edit
-                    </Button>
-                  </div>
-                </div>
-              ))}
-            </div>
-            
-            {teamsTotalPages > 1 && (
-              <div className="px-4 sm:px-5 py-3 border-t border-border bg-muted/10">
-                <PaginationControl
-                  currentPage={teamsPage}
-                  totalPages={teamsTotalPages}
-                  onPageChange={(p) => fetchTeams(p)}
-                  pageSize={teamsPageSize}
-                  onPageSizeChange={(s) => { setTeamsPageSize(s); fetchTeams(1) }}
-                />
+                  </thead>
+                  <tbody>
+                    {teams.map((team) => (
+                      <tr key={team.id} className="border-b border-border/40 last:border-0 hover:bg-muted/20 transition-colors group">
+                        <td className="px-5 py-4">
+                          {editingTeam?.id === team.id ? (
+                            <div className="flex items-center gap-2">
+                              <Input
+                                value={editingTeam.name}
+                                onChange={(e) => setEditingTeam({ ...editingTeam, name: e.target.value })}
+                                className="h-8 text-sm w-40 bg-background/50"
+                                autoFocus
+                              />
+                              <Button size="sm" className="h-8 px-2" onClick={() => { handleTeamRename(team.id, editingTeam.name); setEditingTeam(null); }} disabled={actionLoading === `team-rename-${team.id}`}>
+                                {actionLoading === `team-rename-${team.id}` ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
+                              </Button>
+                              <Button size="sm" variant="ghost" className="h-8 px-2" onClick={() => setEditingTeam(null)}>
+                                <X className="h-3 w-3" />
+                              </Button>
+                            </div>
+                          ) : (
+                            <div>
+                              <p className="text-sm font-medium text-foreground">{team.name}</p>
+                              <p className="text-xs text-muted-foreground font-mono">{team.slug}</p>
+                            </div>
+                          )}
+                        </td>
+                        <td className="px-4 py-4">
+                          <div className="flex items-center gap-3">
+                            <UserAvatar name={team.owner_name} email={team.owner_email} size="sm" avatarUrl={team.owner_avatar_url} />
+                            <div className="min-w-0">
+                              <p className="text-sm font-medium truncate max-w-[140px]">{team.owner_name || team.owner_email.split("@")[0]}</p>
+                              <p className="text-xs text-muted-foreground truncate max-w-[140px] font-mono">{team.owner_email}</p>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-4 py-4 text-center">
+                          <Badge variant="secondary" className="text-xs font-medium">{team.member_count}</Badge>
+                        </td>
+                        <td className="px-4 py-4 text-sm text-muted-foreground whitespace-nowrap">
+                          {new Date(team.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                        </td>
+                        <td className="px-5 py-4">
+                          <div className="flex items-center gap-1 justify-end">
+                            <Button variant="ghost" size="sm" className="h-8 gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity" onClick={() => fetchTeamMembers(team.id)} title="View members">
+                              <Eye className="h-3.5 w-3.5" />
+                              <span className="text-xs">View</span>
+                            </Button>
+                            <Button variant="ghost" size="sm" className="h-8 w-8 p-0 opacity-0 group-hover:opacity-100 transition-opacity" onClick={() => setEditingTeam({ id: team.id, name: team.name })} title="Rename">
+                              <Pencil className="h-3.5 w-3.5" />
+                            </Button>
+                            {hasStaffPermission(callerRole, STAFF_PERMISSIONS.DELETE_USER) && (
+                              <Button 
+                                variant="ghost" 
+                                size="sm" 
+                                className="h-8 w-8 p-0 text-destructive hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity"
+                                onClick={() => setConfirmDialog({
+                                  title: "Delete Team",
+                                  description: `This will permanently delete "${team.name}" and remove all ${team.member_count} members. This cannot be undone.`,
+                                  confirmLabel: "Delete Team",
+                                  danger: true,
+                                  onConfirm: () => { handleTeamDelete(team.id); setConfirmDialog(null); }
+                                })}
+                                title="Delete"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </Button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
-            )}
-          </>
-        )}
+              
+              {/* Mobile view */}
+              <div className="md:hidden">
+                {teams.map((team) => (
+                  <div key={team.id} className="px-5 py-4 border-b border-border/40 last:border-0 hover:bg-muted/20 transition-colors">
+                    <div className="flex items-start justify-between gap-3 mb-3">
+                      <div>
+                        <p className="text-sm font-medium text-foreground">{team.name}</p>
+                        <p className="text-xs text-muted-foreground font-mono">{team.slug}</p>
+                      </div>
+                      <Badge variant="secondary" className="text-xs font-medium shrink-0">{team.member_count} members</Badge>
+                    </div>
+                    <div className="flex items-center gap-3 mb-3">
+                      <UserAvatar name={team.owner_name} email={team.owner_email} size="sm" avatarUrl={team.owner_avatar_url} />
+                      <div className="min-w-0">
+                        <p className="text-sm truncate">{team.owner_name || team.owner_email.split("@")[0]}</p>
+                        <p className="text-xs text-muted-foreground truncate font-mono">{team.owner_email}</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-3 text-xs text-muted-foreground mb-3">
+                      <span>Created {new Date(team.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Button variant="outline" size="sm" className="h-8 text-xs flex-1 border-border/40" onClick={() => fetchTeamMembers(team.id)}>
+                        <Eye className="h-3 w-3 mr-1.5" /> View Members
+                      </Button>
+                      <Button variant="outline" size="sm" className="h-8 w-8 p-0 border-border/40" onClick={() => setEditingTeam({ id: team.id, name: team.name })}>
+                        <Pencil className="h-3 w-3" />
+                      </Button>
+                      {hasStaffPermission(callerRole, STAFF_PERMISSIONS.DELETE_USER) && (
+                        <Button 
+                          variant="outline" 
+                          size="sm" 
+                          className="h-8 w-8 p-0 border-destructive/30 text-destructive hover:bg-destructive/10"
+                          onClick={() => setConfirmDialog({
+                            title: "Delete Team",
+                            description: `This will permanently delete "${team.name}" and remove all ${team.member_count} members. This cannot be undone.`,
+                            confirmLabel: "Delete Team",
+                            danger: true,
+                            onConfirm: () => { handleTeamDelete(team.id); setConfirmDialog(null); }
+                          })}
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+              
+              {/* Pagination */}
+              {teams.length > 0 && (
+                <div className="px-5 py-4 border-t border-border/40 bg-muted/20">
+                  <PaginationControl
+                    currentPage={teamsPage}
+                    totalPages={teamsTotalPages}
+                    onPageChange={(p) => fetchTeams(p)}
+                    pageSize={teamsPageSize}
+                    onPageSizeChange={(s) => { setTeamsPageSize(s); fetchTeams(1) }}
+                  />
+                </div>
+              )}
+            </>
+          )}
+        </CardContent>
       </Card>
       
       {/* Confirm dialog */}
