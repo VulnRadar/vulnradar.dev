@@ -1,11 +1,11 @@
 import { NextRequest } from "next/server"
-import pool from "@/lib/db"
-import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
-import { getClientIp } from "@/lib/request-utils"
-import { PASSWORD_RESET_TOKEN_LIFETIME, ERROR_MESSAGES, APP_URL } from "@/lib/constants"
+import pool from "@/lib/database/db"
+import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit"
+import { getClientIp } from "@/lib/api/request-utils"
+import { PASSWORD_RESET_TOKEN_LIFETIME, ERROR_MESSAGES, APP_URL } from "@/lib/config/constants"
 import crypto from "crypto"
-import { sendEmail, passwordResetEmail } from "@/lib/email"
-import { ApiResponse, parseBody, withErrorHandling, Validate } from "@/lib/api-utils"
+import { sendEmail, passwordResetEmail } from "@/lib/email/email"
+import { ApiResponse, parseBody, withErrorHandling, Validate } from "@/lib/api/api-utils"
 
 export const POST = withErrorHandling(async (request: NextRequest) => {
   const ip = await getClientIp()

@@ -13,13 +13,12 @@ import {
   RefreshCw,
   Activity,
   Users,
-  AlertTriangle,
   FileText,
 } from "lucide-react"
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
-import { cn } from "@/lib/utils"
+import { cn } from "@/lib/ui/utils"
 import { PaginationControl } from "@/components/ui/pagination-control"
 import { UserAvatar, ActionBadge } from "@/components/admin/shared"
 import { formatRelativeTime, getActionSentence, AUDIT_FILTER_CATEGORIES } from "@/components/admin/utils"
@@ -78,42 +77,32 @@ export function AuditLog({
     <div className="space-y-4">
       {/* Stats grid */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <div className="flex items-center gap-3 p-4 rounded-xl border border-border/40 bg-card/30 hover:bg-card/50 hover:border-border/60 transition-colors">
-          <div className="p-2 rounded-lg bg-primary/10">
-            <Activity className="h-4 w-4 text-primary" />
+        {[
+          { icon: Activity, value: stats.todayCount, label: "Today", color: "primary" },
+          { icon: FileText, value: stats.weekCount, label: "This Week", color: "blue" },
+          { icon: Shield, value: stats.uniqueAdmins, label: "Active Admins", color: "amber" },
+          { icon: Users, value: stats.userActions, label: "User Actions", color: "emerald" },
+        ].map((stat, i) => (
+          <div key={i} className="flex items-center gap-2.5 sm:gap-3 p-3 sm:p-4 rounded-xl border border-border/40 bg-card/30 hover:bg-card/50 hover:border-border/60 transition-colors">
+            <div className={cn("p-2 sm:p-2.5 rounded-lg shrink-0",
+              stat.color === "primary" ? "bg-primary/10" :
+              stat.color === "blue" ? "bg-blue-500/10" :
+              stat.color === "amber" ? "bg-amber-500/10" :
+              "bg-emerald-500/10"
+            )}>
+              <stat.icon className={cn("h-3.5 w-3.5 sm:h-4 sm:w-4",
+                stat.color === "primary" ? "text-primary" :
+                stat.color === "blue" ? "text-blue-500" :
+                stat.color === "amber" ? "text-amber-500" :
+                "text-emerald-500"
+              )} />
+            </div>
+            <div className="min-w-0">
+              <p className="text-lg sm:text-2xl font-bold">{stat.value}</p>
+              <p className="text-[10px] sm:text-xs text-muted-foreground truncate">{stat.label}</p>
+            </div>
           </div>
-          <div>
-            <p className="text-2xl font-bold">{stats.todayCount}</p>
-            <p className="text-xs text-muted-foreground">Today</p>
-          </div>
-        </div>
-        <div className="flex items-center gap-3 p-4 rounded-xl border border-border/40 bg-card/30 hover:bg-card/50 hover:border-border/60 transition-colors">
-          <div className="p-2 rounded-lg bg-blue-500/10">
-            <FileText className="h-4 w-4 text-blue-500" />
-          </div>
-          <div>
-            <p className="text-2xl font-bold">{stats.weekCount}</p>
-            <p className="text-xs text-muted-foreground">This Week</p>
-          </div>
-        </div>
-        <div className="flex items-center gap-3 p-4 rounded-xl border border-border/40 bg-card/30 hover:bg-card/50 hover:border-border/60 transition-colors">
-          <div className="p-2 rounded-lg bg-amber-500/10">
-            <Shield className="h-4 w-4 text-amber-500" />
-          </div>
-          <div>
-            <p className="text-2xl font-bold">{stats.uniqueAdmins}</p>
-            <p className="text-xs text-muted-foreground">Active Admins</p>
-          </div>
-        </div>
-        <div className="flex items-center gap-3 p-4 rounded-xl border border-border/40 bg-card/30 hover:bg-card/50 hover:border-border/60 transition-colors">
-          <div className="p-2 rounded-lg bg-emerald-500/10">
-            <Users className="h-4 w-4 text-emerald-500" />
-          </div>
-          <div>
-            <p className="text-2xl font-bold">{stats.userActions}</p>
-            <p className="text-xs text-muted-foreground">User Actions</p>
-          </div>
-        </div>
+        ))}
       </div>
 
       {/* Filters */}
@@ -136,23 +125,25 @@ export function AuditLog({
           </div>
         </CardHeader>
         <CardContent className="pt-0 space-y-4">
-          {/* Category filters */}
-          <div className="flex flex-wrap gap-2">
-            {AUDIT_FILTER_CATEGORIES.map((cat) => (
-              <button
-                key={cat.id}
-                onClick={() => setAuditFilter(cat.id)}
-                className={cn(
-                  "flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-colors border",
-                  auditFilter === cat.id
-                    ? "bg-primary text-primary-foreground border-primary"
-                    : "bg-muted/50 text-muted-foreground hover:text-foreground hover:bg-muted border-border/40"
-                )}
-              >
-                <cat.icon className="h-3 w-3" />
-                {cat.label}
-              </button>
-            ))}
+          {/* Category filters - scrollable on mobile */}
+          <div className="-mx-4 px-4 sm:mx-0 sm:px-0">
+            <div className="flex gap-2 overflow-x-auto pb-2 sm:pb-0 sm:flex-wrap scrollbar-hide">
+              {AUDIT_FILTER_CATEGORIES.map((cat) => (
+                <button
+                  key={cat.id}
+                  onClick={() => setAuditFilter(cat.id)}
+                  className={cn(
+                    "flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-colors border whitespace-nowrap shrink-0",
+                    auditFilter === cat.id
+                      ? "bg-primary text-primary-foreground border-primary"
+                      : "bg-muted/50 text-muted-foreground hover:text-foreground hover:bg-muted border-border/40"
+                  )}
+                >
+                  <cat.icon className="h-3 w-3" />
+                  {cat.label}
+                </button>
+              ))}
+            </div>
           </div>
           
           {/* Search */}
@@ -395,7 +386,7 @@ export function AuditLog({
             </div>
             
             {auditTotalPages > 1 && (
-              <div className="px-4 sm:px-5 py-3 border-t border-border/50 bg-muted/20">
+              <div className="px-4 sm:px-5 py-4 border-t border-border/40 bg-muted/20">
                 <PaginationControl
                   currentPage={auditPage}
                   totalPages={auditTotalPages}

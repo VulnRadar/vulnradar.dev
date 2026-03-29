@@ -4,7 +4,7 @@
 
 import { NextResponse } from "next/server"
 import { getSession } from "@/lib/auth"
-import { loadConfig } from "@/lib/config"
+import { loadConfig } from "@/lib/config/config"
 
 const DISCORD_CLIENT_ID = process.env.DISCORD_CLIENT_ID
 

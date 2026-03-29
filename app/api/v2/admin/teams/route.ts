@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { getSession } from "@/lib/auth"
-import pool from "@/lib/db"
-import { STAFF_ROLES, ERROR_MESSAGES } from "@/lib/constants"
+import pool from "@/lib/database/db"
+import { STAFF_ROLES, ERROR_MESSAGES } from "@/lib/config/constants"
 
 // Check if user has admin/moderator role
 async function checkAdminAccess(userId: number): Promise<{ allowed: boolean; role: string }> {

@@ -1,7 +1,14 @@
 import { NextResponse } from "next/server"
-import pool from "@/lib/db"
+import pool from "@/lib/database/db"
 import { getSession } from "@/lib/auth"
-import { hasStaffPermission, STAFF_PERMISSIONS } from "@/lib/permissions-client"
+import { hasStaffPermission, STAFF_PERMISSIONS } from "@/lib/auth/permissions-client"
+
+async function logAction(adminId: number, action: string, details?: string, ip?: string) {
+  await pool.query(
+    "INSERT INTO admin_audit_log (admin_id, target_user_id, action, details, ip_address) VALUES ($1, $2, $3, $4, $5)",
+    [adminId, null, action, details || null, ip || null],
+  )
+}
 
 export async function GET() {
   try {
@@ -28,6 +35,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
+    const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || null
     const body = await req.json()
     const {
       title,
@@ -81,6 +89,8 @@ export async function POST(req: Request) {
         session.userId,
       ]
     )
+
+    await logAction(session.userId, "notification_created", `Created ${type} notification: "${title}" (audience: ${audience})`, ip)
 
     return NextResponse.json({ notification: result.rows[0] })
   } catch (error) {

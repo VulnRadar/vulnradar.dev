@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server"
-import { ensureStripeWebhook } from "@/lib/stripe-webhook-setup"
-import { BILLING_ENABLED } from "@/lib/constants"
+import { ensureStripeWebhook } from "@/lib/billing/stripe-webhook-setup"
+import { BILLING_ENABLED } from "@/lib/config/constants"
 import { getSession } from "@/lib/auth"
-import pool from "@/lib/db"
+import pool from "@/lib/database/db"
 
 export const dynamic = "force-dynamic"
 

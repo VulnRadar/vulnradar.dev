@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getSession } from "@/lib/auth"
-import pool from "@/lib/db"
-import { sendNotificationEmail } from "@/lib/notifications"
-import { webhookCreatedEmail, webhookDeletedEmail } from "@/lib/email"
-import { ERROR_MESSAGES } from "@/lib/constants"
+import pool from "@/lib/database/db"
+import { sendNotificationEmail } from "@/lib/notifications/notifications"
+import { webhookCreatedEmail, webhookDeletedEmail } from "@/lib/email/email"
+import { ERROR_MESSAGES } from "@/lib/config/constants"
 
 function detectWebhookType(url: string): string {
   if (/discord\.com\/api\/webhooks/i.test(url) || /discordapp\.com\/api\/webhooks/i.test(url)) return "discord"

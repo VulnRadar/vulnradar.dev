@@ -12,7 +12,8 @@ import {
   Mail, Send, Eye, Trash2, RefreshCw, Loader2,
   FileEdit, CheckCircle2, Clock, Users, MailOpen,
 } from "lucide-react"
-import { cn } from "@/lib/utils"
+import { cn } from "@/lib/ui/utils"
+import { SaveConfirmationModal } from "@/components/shared/save-confirmation-modal"
 
 interface Broadcast {
   id: string
@@ -115,6 +116,7 @@ export function MassEmailManager() {
   const [loading, setLoading] = useState(false)
   const [sending, setSending] = useState<string | null>(null)
   const [deleting, setDeleting] = useState<string | null>(null)
+  const [pendingDelete, setPendingDelete] = useState<Broadcast | null>(null)
   const [title, setTitle] = useState("")
   const [content, setContent] = useState("")
   const [segment, setSegment] = useState("all")
@@ -209,15 +211,17 @@ export function MassEmailManager() {
     }
   }
 
-  async function handleDelete(id: string) {
-    setDeleting(id)
+  async function handleDelete() {
+    if (!pendingDelete) return
+    setDeleting(pendingDelete.id)
     try {
       await fetch("/api/v2/admin/features", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "delete", section: "broadcast", id }),
+        body: JSON.stringify({ action: "delete", section: "broadcast", id: pendingDelete.id }),
       })
       fetchMessages()
+      setPendingDelete(null)
     } catch (err) {
       console.error("Error deleting:", err)
     } finally {
@@ -469,7 +473,7 @@ export function MassEmailManager() {
                           size="sm"
                           variant="outline"
                           className="h-8 w-8 p-0 border-border/40 text-destructive hover:text-destructive hover:bg-destructive/10"
-                          onClick={() => handleDelete(msg.id)}
+                          onClick={() => setPendingDelete(msg)}
                           disabled={isSending || isDeleting}
                           title="Delete draft"
                         >
@@ -495,6 +499,23 @@ export function MassEmailManager() {
           </div>
         )}
       </Card>
+
+      {/* Delete Confirmation Modal */}
+      <SaveConfirmationModal
+        isOpen={!!pendingDelete}
+        onClose={() => setPendingDelete(null)}
+        onConfirm={handleDelete}
+        title="Delete Broadcast"
+        description="This will permanently delete this broadcast draft. This action cannot be undone."
+        changes={pendingDelete ? [
+          { field: "title", label: "Subject", oldValue: pendingDelete.title, newValue: "Deleted" },
+          { field: "status", label: "Status", oldValue: pendingDelete.status, newValue: "—" },
+          { field: "created_at", label: "Created", oldValue: new Date(pendingDelete.created_at).toLocaleDateString(), newValue: "—" },
+        ] : []}
+        loading={deleting === pendingDelete?.id}
+        confirmText="Delete"
+        variant="destructive"
+      />
     </div>
   )
 }

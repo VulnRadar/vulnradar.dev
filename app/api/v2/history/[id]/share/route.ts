@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getSession } from "@/lib/auth"
-import pool from "@/lib/db"
+import pool from "@/lib/database/db"
 import crypto from "crypto"
-import { ERROR_MESSAGES } from "@/lib/constants"
+import { ERROR_MESSAGES } from "@/lib/config/constants"
 
 export async function POST(
   _request: NextRequest,

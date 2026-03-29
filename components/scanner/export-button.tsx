@@ -4,8 +4,8 @@ import { useState } from "react"
 import { Check, FileJson, FileText, FileSpreadsheet } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import type { ScanResult } from "@/lib/scanner/types"
-import { generatePdfReport } from "@/lib/pdf-report"
-import { APP_VERSION, APP_SLUG, APP_NAME } from "@/lib/constants"
+import { generatePdfReport } from "@/lib/reports/pdf-report"
+import { APP_VERSION, APP_SLUG, APP_NAME } from "@/lib/config/constants"
 
 
 interface ExportButtonProps {

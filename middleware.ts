@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
-import { PUBLIC_PATHS } from "./lib/public-paths"
-import { AUTH_SESSION_COOKIE_NAME, ROUTES } from "./lib/constants"
+import { PUBLIC_PATHS } from "./lib/config/public-paths"
+import { AUTH_SESSION_COOKIE_NAME, ROUTES } from "./lib/config/constants"
 
 const SECURITY_HEADERS: Record<string, string> = {
   "Content-Security-Policy": [

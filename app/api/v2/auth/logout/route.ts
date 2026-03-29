@@ -1,6 +1,6 @@
 import { destroySession } from "@/lib/auth"
-import { ApiResponse, withErrorHandling } from "@/lib/api-utils"
-import { SUCCESS_MESSAGES } from "@/lib/constants"
+import { ApiResponse, withErrorHandling } from "@/lib/api/api-utils"
+import { SUCCESS_MESSAGES } from "@/lib/config/constants"
 
 export const POST = withErrorHandling(async () => {
   await destroySession()

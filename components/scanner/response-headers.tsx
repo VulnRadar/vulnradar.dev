@@ -2,7 +2,7 @@
 
 import { useState } from "react"
 import { ChevronDown, ChevronRight, Server, ShieldCheck, ShieldX } from "lucide-react"
-import { cn } from "@/lib/utils"
+import { cn } from "@/lib/ui/utils"
 
 interface ResponseHeadersProps {
   headers: Record<string, string>

@@ -64,7 +64,7 @@ import {
   CheckCircle2,
   type LucideIcon,
 } from "lucide-react"
-import { APP_NAME } from "@/lib/constants"
+import { APP_NAME } from "@/lib/config/constants"
 
 // Change categories with colors
 const CHANGE_CATEGORIES = {

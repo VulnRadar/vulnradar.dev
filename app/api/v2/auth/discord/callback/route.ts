@@ -4,17 +4,17 @@
 
 import { NextResponse } from "next/server"
 import { getSession, createSession } from "@/lib/auth"
-import pool from "@/lib/db"
+import pool from "@/lib/database/db"
 import { cookies } from "next/headers"
 import crypto from "crypto"
-import { loadConfig } from "@/lib/config"
+import { loadConfig } from "@/lib/config/config"
 import {
   sendDiscordEmail2FACode,
   updateDiscordTokens,
   getDiscordUserConnection,
   getUserTwoFAConfig,
-} from "@/lib/discord-utils"
-import { DEVICE_TRUST_COOKIE_NAME } from "@/lib/constants"
+} from "@/lib/discord/discord-utils"
+import { DEVICE_TRUST_COOKIE_NAME } from "@/lib/config/constants"
 
 const DISCORD_CLIENT_ID = process.env.DISCORD_CLIENT_ID
 const DISCORD_CLIENT_SECRET = process.env.DISCORD_CLIENT_SECRET

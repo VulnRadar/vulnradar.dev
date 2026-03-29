@@ -17,7 +17,7 @@ import {
   CONFIG_SECURITY_EMAIL,
   CONFIG_ENTERPRISE_EMAIL,
   CONFIG_NOREPLY_EMAIL,
-} from "../config-values"
+} from "../config/config-values"
 
 export interface AppConfig {
   name: string

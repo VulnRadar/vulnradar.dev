@@ -1,7 +1,14 @@
 import { NextResponse } from "next/server"
-import pool from "@/lib/db"
+import pool from "@/lib/database/db"
 import { getSession } from "@/lib/auth"
-import { hasStaffPermission, STAFF_PERMISSIONS } from "@/lib/permissions-client"
+import { hasStaffPermission, STAFF_PERMISSIONS } from "@/lib/auth/permissions-client"
+
+async function logAction(adminId: number, action: string, details?: string, ip?: string) {
+  await pool.query(
+    "INSERT INTO admin_audit_log (admin_id, target_user_id, action, details, ip_address) VALUES ($1, $2, $3, $4, $5)",
+    [adminId, null, action, details || null, ip || null],
+  )
+}
 
 export async function PUT(
   req: Request,
@@ -13,6 +20,7 @@ export async function PUT(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
+    const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || null
     const { id } = await params
     const body = await req.json()
     const {
@@ -77,6 +85,9 @@ export async function PUT(
       return NextResponse.json({ error: "Notification not found" }, { status: 404 })
     }
 
+    const updatedNotif = result.rows[0]
+    await logAction(session.userId, "notification_updated", `Updated notification: "${updatedNotif.title}" (ID: ${id})`, ip)
+
     return NextResponse.json({ notification: result.rows[0] })
   } catch (error) {
     console.error("Error updating notification:", error)
@@ -94,7 +105,13 @@ export async function DELETE(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
+    const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || null
     const { id } = await params
+
+    // Get notification title before deleting for audit
+    const notifResult = await pool.query(`SELECT title FROM admin_notifications WHERE id = $1`, [id])
+    const notifTitle = notifResult.rows[0]?.title || "Unknown"
+
     const result = await pool.query(
       `DELETE FROM admin_notifications WHERE id = $1 RETURNING id`,
       [id]
@@ -103,6 +120,8 @@ export async function DELETE(
     if (result.rows.length === 0) {
       return NextResponse.json({ error: "Notification not found" }, { status: 404 })
     }
+
+    await logAction(session.userId, "notification_deleted", `Deleted notification: "${notifTitle}" (ID: ${id})`, ip)
 
     return NextResponse.json({ success: true })
   } catch (error) {

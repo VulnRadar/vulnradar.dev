@@ -1,11 +1,11 @@
 import { NextRequest } from "next/server"
 import { getSession, verifyPassword } from "@/lib/auth"
-import { email2FAEnabledEmail, email2FADisabledEmail } from "@/lib/email"
-import { sendNotificationEmail } from "@/lib/notifications"
-import pool from "@/lib/db"
-import { ApiResponse, withErrorHandling } from "@/lib/api-utils"
-import { ERROR_MESSAGES } from "@/lib/constants"
-import { getClientIp, getUserAgent } from "@/lib/request-utils"
+import { email2FAEnabledEmail, email2FADisabledEmail } from "@/lib/email/email"
+import { sendNotificationEmail } from "@/lib/notifications/notifications"
+import pool from "@/lib/database/db"
+import { ApiResponse, withErrorHandling } from "@/lib/api/api-utils"
+import { ERROR_MESSAGES } from "@/lib/config/constants"
+import { getClientIp, getUserAgent } from "@/lib/api/request-utils"
 
 // POST - Enable email 2FA
 export const POST = withErrorHandling(async (request: NextRequest) => {

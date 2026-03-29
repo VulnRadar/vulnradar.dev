@@ -16,8 +16,8 @@ import {
 } from "lucide-react"
 import { useState } from "react"
 import type { ScanResult } from "@/lib/scanner/types"
-import { cn } from "@/lib/utils"
-import { SEVERITY_LEVELS, TOTAL_CHECKS_LABEL } from "@/lib/constants"
+import { cn } from "@/lib/ui/utils"
+import { SEVERITY_LEVELS, TOTAL_CHECKS_LABEL } from "@/lib/config/constants"
 import { getSafetyRating } from "@/lib/scanner/safety-rating"
 
 interface ScanSummaryProps {

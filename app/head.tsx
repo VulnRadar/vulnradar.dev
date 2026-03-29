@@ -1,4 +1,4 @@
-import { APP_NAME, APP_DESCRIPTION, APP_URL } from '@/lib/constants'
+import { APP_NAME, APP_DESCRIPTION, APP_URL } from '@/lib/config/constants'
 
 export default function Head() {
   const title = `${APP_NAME} - Web Vulnerability Scanner`

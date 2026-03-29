@@ -1,10 +1,10 @@
 import { NextResponse, NextRequest } from "next/server"
 import { getSession } from "@/lib/auth"
-import { revokeApiKey, getUserApiKeys } from "@/lib/api-keys"
-import { sendNotificationEmail } from "@/lib/notifications"
-import { apiKeyDeletedEmail } from "@/lib/email"
-import { ERROR_MESSAGES } from "@/lib/constants"
-import { getClientIp, getUserAgent } from "@/lib/request-utils";
+import { revokeApiKey, getUserApiKeys } from "@/lib/api/api-keys"
+import { sendNotificationEmail } from "@/lib/notifications/notifications"
+import { apiKeyDeletedEmail } from "@/lib/email/email"
+import { ERROR_MESSAGES } from "@/lib/config/constants"
+import { getClientIp, getUserAgent } from "@/lib/api/request-utils";
 
 export async function POST(
   _request: NextRequest,

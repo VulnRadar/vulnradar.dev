@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { getSession } from "@/lib/auth"
-import pool from "@/lib/db"
-import { ERROR_MESSAGES, TEAM_ROLES } from "@/lib/constants"
+import pool from "@/lib/database/db"
+import { ERROR_MESSAGES, TEAM_ROLES } from "@/lib/config/constants"
 
 // List user's teams
 export async function GET() {

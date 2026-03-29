@@ -1,13 +1,13 @@
 import { NextRequest } from "next/server"
 import { getSession } from "@/lib/auth"
-import { generateApiKey, getUserApiKeys } from "@/lib/api-keys"
-import { sendNotificationEmail } from "@/lib/notifications"
-import { apiKeyCreatedEmail } from "@/lib/email"
-import { ApiResponse, parseBody, Validate, withErrorHandling } from "@/lib/api-utils"
-import { getClientIp, getUserAgent } from "@/lib/request-utils"
-import { ERROR_MESSAGES, SUCCESS_MESSAGES } from "@/lib/constants"
-import { getApiLimitForPlan } from "@/lib/plans"
-import pool from "@/lib/db"
+import { generateApiKey, getUserApiKeys } from "@/lib/api/api-keys"
+import { sendNotificationEmail } from "@/lib/notifications/notifications"
+import { apiKeyCreatedEmail } from "@/lib/email/email"
+import { ApiResponse, parseBody, Validate, withErrorHandling } from "@/lib/api/api-utils"
+import { getClientIp, getUserAgent } from "@/lib/api/request-utils"
+import { ERROR_MESSAGES, SUCCESS_MESSAGES } from "@/lib/config/constants"
+import { getApiLimitForPlan } from "@/lib/billing/plans"
+import pool from "@/lib/database/db"
 
 export const GET = withErrorHandling(async () => {
   const session = await getSession()

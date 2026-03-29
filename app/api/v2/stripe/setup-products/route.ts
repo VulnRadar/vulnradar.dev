@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
-import { stripe } from "@/lib/stripe"
-import { PRODUCTS } from "@/lib/products"
-import { BILLING_ENABLED } from "@/lib/constants"
+import { stripe } from "@/lib/billing/stripe"
+import { PRODUCTS } from "@/lib/billing/products"
+import { BILLING_ENABLED } from "@/lib/config/constants"
 
 /**
  * GET /api/v2/stripe/setup-products

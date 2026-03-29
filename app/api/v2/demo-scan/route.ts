@@ -2,9 +2,9 @@ import { NextRequest, NextResponse } from "next/server"
 import { allChecks } from "@/lib/scanner/checks"
 import { runAsyncChecks } from "@/lib/scanner/async-checks"
 import type { ScanResult, Severity, Vulnerability } from "@/lib/scanner/types"
-import { APP_NAME, DEMO_SCAN_LIMIT, DEMO_SCAN_WINDOW, SEVERITY_LEVELS } from "@/lib/constants"
-import { checkRateLimit } from "@/lib/rate-limit"
-import { getClientIp } from "@/lib/request-utils"
+import { APP_NAME, DEMO_SCAN_LIMIT, DEMO_SCAN_WINDOW, SEVERITY_LEVELS } from "@/lib/config/constants"
+import { checkRateLimit } from "@/lib/rate-limiting/rate-limit"
+import { getClientIp } from "@/lib/api/request-utils"
 
 const SEVERITY_ORDER: Record<Severity, number> = {
   critical: 0,

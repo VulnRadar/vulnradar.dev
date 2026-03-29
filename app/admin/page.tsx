@@ -6,54 +6,21 @@ import { useRouter } from "next/navigation"
 import {
   Users,
   Activity,
-  Key,
-  CalendarClock,
-  Webhook,
   ShieldCheck,
   ShieldOff,
-  Trash2,
-  CrownIcon,
   Loader2,
   Search,
   BarChart3,
-  KeyRound,
-  LogOut,
-  Ban,
-  CheckCircle2,
-  ClipboardCopy,
-  Eye,
-  ArrowLeft,
-  FileText,
-  History,
   Shield,
-  FileDown,
-  XCircle,
-  X,
-  UserCog,
   Globe,
-  ChevronDown,
-  Award,
-  Plus,
-  Tag,
-  Pencil,
-  Mail,
-  User,
-  CreditCard,
-  Download,
-  MailCheck,
-  MailX,
-  CalendarOff,
-  ImageOff,
-  UserX,
-  Beaker,
   Settings,
-  Gift,
   UsersRound,
   Bell,
-  StickyNote,
   Send,
-  MoreHorizontal,
   RefreshCw,
+  History,
+  Ban,
+  Eye,
 } from "lucide-react"
 import { IPRulesManager } from "@/components/admin/features/ip-rules-manager"
 import { SecurityAlertsManager } from "@/components/admin/features/security-alerts-manager"
@@ -65,24 +32,17 @@ import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Header } from "@/components/scanner/header"
 import { Footer } from "@/components/scanner/footer"
-import { cn } from "@/lib/utils"
+import { cn } from "@/lib/ui/utils"
 import { PaginationControl, usePagination } from "@/components/ui/pagination-control"
-import { STAFF_ROLES, STAFF_ROLE_LABELS, STAFF_ROLE_HIERARCHY, ROLE_BADGE_STYLES, API } from "@/lib/constants"
-import {
-  hasStaffPermission,
-  canManageRole,
-  getAvailableActions,
-  STAFF_PERMISSIONS,
-  type AdminAction
-} from "@/lib/permissions-client"
+import { STAFF_ROLES, STAFF_ROLE_LABELS, STAFF_ROLE_HIERARCHY, ROLE_BADGE_STYLES, API } from "@/lib/config/constants"
+import { hasStaffPermission, STAFF_PERMISSIONS } from "@/lib/auth/permissions-client"
 import { NotificationsManager } from "@/components/admin/notifications"
-import { SaveConfirmationModal, type ChangeItem, type AffectedUser } from "@/components/save-confirmation-modal"
 
 // Import from new admin architecture
-import type { AdminStats, AdminUser, UserDetail, AuditEntry, ActiveAdmin, BadgeDef, AdminNote, UserBadge } from "@/components/admin/types"
+import type { AdminStats, AdminUser, UserDetail, AuditEntry, ActiveAdmin, BadgeDef } from "@/components/admin/types"
 import { ACTION_META, ADMIN_TABS } from "@/components/admin/config"
-import { formatRelativeTime, getAvatarColorIndex } from "@/components/admin/utils"
-import { StatCard, UserAvatar, ActionBadge, Toast as AdminToast, ConfirmDialog, ActionCard } from "@/components/admin/shared"
+import { formatRelativeTime } from "@/components/admin/utils"
+import { UserAvatar, Toast as AdminToast, ConfirmDialog } from "@/components/admin/shared"
 import { GiftSubscriptionModal, UserDetailPanel } from "@/components/admin/users"
 import { AuditLog } from "@/components/admin/audit"
 import { StaffList } from "@/components/admin/staff"
@@ -505,24 +465,33 @@ function AdminContent() {
             <aside className="lg:w-52 shrink-0">
 
               {/* Mobile: horizontal icon strip */}
-              <div className="lg:hidden overflow-x-auto -mx-4 px-4 mb-4">
-                <div className="flex items-center gap-1 border-b border-border pb-3">
-                  {ALL_ADMIN_TABS.map((tab) => (
-                    <button
-                      key={tab.key}
-                      onClick={() => handleTabChange(tab.key)}
-                      title={tab.label}
-                      className={cn(
-                        "flex items-center justify-center w-9 h-9 rounded-lg transition-all shrink-0",
-                        activeTab === tab.key
-                          ? "bg-primary/10 text-primary"
-                          : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
-                      )}
-                    >
-                      <tab.icon className="h-4 w-4" />
-                    </button>
-                  ))}
+              <div className="lg:hidden -mx-4 px-4 mb-4">
+                <div className="overflow-x-auto scrollbar-hide">
+                  <div className="flex items-center gap-1 border-b border-border pb-3 min-w-max">
+                    {ALL_ADMIN_TABS.map((tab) => (
+                      <button
+                        key={tab.key}
+                        onClick={() => handleTabChange(tab.key)}
+                        title={tab.label}
+                        className={cn(
+                          "flex items-center justify-center w-9 h-9 rounded-lg transition-all shrink-0",
+                          activeTab === tab.key
+                            ? "bg-primary/10 text-primary"
+                            : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+                        )}
+                      >
+                        <tab.icon className="h-4 w-4" />
+                      </button>
+                    ))}
+                  </div>
                 </div>
+                {/* Active tab label */}
+                {activeTabMeta && (
+                  <div className="flex items-center gap-2 pt-3">
+                    <activeTabMeta.icon className="h-4 w-4 text-primary" />
+                    <span className="text-sm font-medium text-foreground">{activeTabMeta.label}</span>
+                  </div>
+                )}
               </div>
 
               {/* Desktop: grouped vertical nav — self-start is required for sticky to work in a flex row */}
@@ -573,13 +542,13 @@ function AdminContent() {
                     { icon: ShieldCheck, value: stats.users_with_2fa, label: "2FA Enabled", color: "emerald" },
                     { icon: Ban, value: stats.disabled_users, label: "Disabled", color: "destructive" },
                   ].map((stat, i) => (
-                    <div key={i} className="flex items-center gap-3 p-4 rounded-xl border border-border/40 bg-card/30 hover:bg-card/50 hover:border-border/60 transition-colors">
-                      <div className={cn("p-2.5 rounded-lg shrink-0", stat.color === "primary" ? "bg-primary/10" : stat.color === "emerald" ? "bg-emerald-500/10" : "bg-destructive/10")}>
-                        <stat.icon className={cn("h-4 w-4", stat.color === "primary" ? "text-primary" : stat.color === "emerald" ? "text-emerald-500" : "text-destructive")} />
+                    <div key={i} className="flex items-center gap-2.5 sm:gap-3 p-3 sm:p-4 rounded-xl border border-border/40 bg-card/30 hover:bg-card/50 hover:border-border/60 transition-colors">
+                      <div className={cn("p-2 sm:p-2.5 rounded-lg shrink-0", stat.color === "primary" ? "bg-primary/10" : stat.color === "emerald" ? "bg-emerald-500/10" : "bg-destructive/10")}>
+                        <stat.icon className={cn("h-3.5 w-3.5 sm:h-4 sm:w-4", stat.color === "primary" ? "text-primary" : stat.color === "emerald" ? "text-emerald-500" : "text-destructive")} />
                       </div>
                       <div className="min-w-0">
-                        <p className="text-2xl font-bold tracking-tight">{Number(stat.value).toLocaleString()}</p>
-                        <p className="text-[11px] text-muted-foreground truncate">{stat.label}</p>
+                        <p className="text-lg sm:text-2xl font-bold tracking-tight">{Number(stat.value).toLocaleString()}</p>
+                        <p className="text-[10px] sm:text-[11px] text-muted-foreground truncate">{stat.label}</p>
                       </div>
                     </div>
                   ))}
@@ -896,18 +865,7 @@ function AdminContent() {
 
               {/* Notifications */}
               {activeTab === "notifications" && (
-                <Card className="border-border/50 bg-card/50">
-                  <CardHeader className="pb-3">
-                    <CardTitle className="text-sm font-medium flex items-center gap-2">
-                      <Bell className="h-4 w-4 text-primary" />
-                      Site Notifications
-                    </CardTitle>
-                    <p className="text-xs text-muted-foreground">Manage platform-wide announcements and alerts</p>
-                  </CardHeader>
-                  <CardContent>
-                    <NotificationsManager />
-                  </CardContent>
-                </Card>
+                <NotificationsManager />
               )}
 
             </div>

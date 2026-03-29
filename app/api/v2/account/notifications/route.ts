@@ -1,9 +1,9 @@
 import { NextRequest } from "next/server"
 import { getSession } from "@/lib/auth"
-import pool from "@/lib/db"
-import { ApiResponse, parseBody, withErrorHandling } from "@/lib/api-utils"
-import { ERROR_MESSAGES } from "@/lib/constants"
-import { getNotificationPreferences } from "@/lib/notifications"
+import pool from "@/lib/database/db"
+import { ApiResponse, parseBody, withErrorHandling } from "@/lib/api/api-utils"
+import { ERROR_MESSAGES } from "@/lib/config/constants"
+import { getNotificationPreferences } from "@/lib/notifications/notifications"
 
 const ALL_PREF_COLUMNS = [
   // Security
