@@ -17,7 +17,7 @@ import {
   ArrowLeft,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { PublicPageShell } from "@/components/public-page-shell"
+import { PublicPageShell } from "@/components/shared/public-page-shell"
 import { ScanSummary } from "@/components/scanner/scan-summary"
 import { ResultsList } from "@/components/scanner/results-list"
 import { IssueDetail } from "@/components/scanner/issue-detail"

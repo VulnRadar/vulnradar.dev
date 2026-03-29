@@ -5,9 +5,9 @@ import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Header } from "@/components/scanner/header"
 import { Footer } from "@/components/scanner/footer"
-import { useAuth } from "@/components/auth-provider"
+import { useAuth } from "@/components/providers/auth-provider"
 import { APP_NAME, ROUTES, BILLING_ENABLED } from "@/lib/constants"
-import { ThemedLogo } from "@/components/themed-logo"
+import { ThemedLogo } from "@/components/shared/themed-logo"
 import { backdrops, transitions } from "@/lib/animations"
 
 interface PublicPageShellProps {

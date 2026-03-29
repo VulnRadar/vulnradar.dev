@@ -4,7 +4,7 @@ import React from "react"
 
 import { useEffect, useState } from "react"
 import { usePathname } from "next/navigation"
-import { TosModal } from "@/components/tos-modal"
+import { TosModal } from "@/components/modals/tos-modal"
 import { API, TERMS_UPDATED_AT } from "@/lib/constants"
 
 const SKIP_TOS_PATHS = ["/login", "/signup", "/legal"]
