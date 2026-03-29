@@ -125,6 +125,10 @@ export function UserDetailPanel({
   // Track if there are unsaved changes
   const hasChanges = Object.keys(pendingChanges).length > 0 || pendingBadgeAwards.length > 0 || pendingBadgeRevokes.length > 0
   
+  // Validation: email cannot be empty if it's being changed
+  const hasEmailError = pendingChanges.email !== undefined && (pendingChanges.email as string).trim() === ""
+  const canSave = hasChanges && !hasEmailError
+  
   // Build changes array for the modal
   const modalChanges: ChangeItem[] = [
     ...(pendingChanges.name !== undefined ? [{ field: "name", label: "Display Name", oldValue: u.name || "", newValue: pendingChanges.name as string }] : []),
@@ -412,8 +416,12 @@ export function UserDetailPanel({
                           addPendingChange("email", e.target.value.trim().toLowerCase(), u.email)
                         }}
                         placeholder="Email address"
-                        className="h-8 text-xs"
+                        className={cn("h-8 text-xs", hasEmailError && "border-destructive focus-visible:ring-destructive")}
+                        required
                       />
+                      {hasEmailError && (
+                        <p className="text-[10px] text-destructive">Email is required</p>
+                      )}
                     </div>
                   )}
 
@@ -1316,13 +1324,18 @@ export function UserDetailPanel({
                 <div className="p-1.5 rounded-lg bg-primary/10">
                   <Save className="h-3.5 w-3.5 text-primary" />
                 </div>
-                <p className="text-sm font-medium">
-                  {modalChanges.length} unsaved change{modalChanges.length !== 1 ? "s" : ""}
-                </p>
+                <div>
+                  <p className="text-sm font-medium">
+                    {modalChanges.length} unsaved change{modalChanges.length !== 1 ? "s" : ""}
+                  </p>
+                  {hasEmailError && (
+                    <p className="text-[10px] text-destructive">Email address is required</p>
+                  )}
+                </div>
               </div>
               <div className="flex items-center gap-2">
                 <Button variant="ghost" size="sm" onClick={discardChanges} disabled={isSaving}>Discard</Button>
-                <Button size="sm" className="gap-1.5" onClick={handleSaveClick} disabled={isSaving}>
+                <Button size="sm" className="gap-1.5" onClick={handleSaveClick} disabled={isSaving || !canSave}>
                   {isSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
                   Save Changes
                 </Button>
