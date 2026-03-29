@@ -45,6 +45,7 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { cn } from "@/lib/utils"
 import { STAFF_ROLE_LABELS, ROLE_BADGE_STYLES } from "@/lib/constants"
 import { hasStaffPermission, STAFF_PERMISSIONS } from "@/lib/permissions-client"
@@ -84,13 +85,13 @@ export function UserDetailPanel({
   const u = detail.user
   const isLoading = (action: string) => actionLoading === `${u.id}-${action}`
   const [showBadgePicker, setShowBadgePicker] = useState(false)
+  const [showCreateBadge, setShowCreateBadge] = useState(false)
+  const [showManageBadges, setShowManageBadges] = useState(false)
   const [newNote, setNewNote] = useState("")
   const [editingNote, setEditingNote] = useState<{ id: number; text: string } | null>(null)
   const [newBadgeName, setNewBadgeName] = useState("")
   const [newBadgeDisplay, setNewBadgeDisplay] = useState("")
   const [newBadgeColor, setNewBadgeColor] = useState("#6366f1")
-  const [showCreateBadge, setShowCreateBadge] = useState(false)
-  const [showManageBadges, setShowManageBadges] = useState(false)
 
   const awardedIds = new Set(detail.badges.map((b) => b.id))
   const unawardedBadges = allBadges.filter((b) => !awardedIds.has(b.id))
@@ -575,132 +576,174 @@ export function UserDetailPanel({
                 <p className="text-[10px] text-destructive">{pendingBadgeRevokes.length} badge(s) will be removed on save</p>
               )}
 
-              {/* Award badge picker */}
-              {showBadgePicker && unawardedBadges.length > 0 && (
-                <div className="flex flex-col gap-1.5 p-3 rounded-lg bg-muted/30 border border-border/40">
-                  <p className="text-xs text-muted-foreground font-medium">Select badges to award (click to toggle):</p>
-                  <div className="flex flex-wrap gap-1.5">
-                    {unawardedBadges.map((badge) => {
-                      const isPending = pendingBadgeAwards.includes(badge.id)
-                      return (
-                        <button
-                          key={badge.id}
-                          onClick={() => {
-                            if (isPending) {
-                              setPendingBadgeAwards((p) => p.filter((id) => id !== badge.id))
-                            } else {
-                              setPendingBadgeAwards((p) => [...p, badge.id])
-                            }
-                          }}
-                          className={cn(
-                            "flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-xs font-medium transition-all",
-                            isPending ? "ring-2 ring-primary scale-105" : "hover:scale-105"
-                          )}
-                          style={{ borderColor: `${badge.color}40`, backgroundColor: `${badge.color}15`, color: badge.color || undefined }}
-                        >
-                          <Tag className="h-3 w-3 shrink-0" />
-                          {badge.display_name}
-                          {isPending && <CheckCircle2 className="h-3 w-3 ml-0.5" />}
-                        </button>
-                      )
-                    })}
-                  </div>
-                  {pendingBadgeAwards.length > 0 && (
-                    <p className="text-[10px] text-primary">{pendingBadgeAwards.length} badge(s) will be awarded on save</p>
-                  )}
-                </div>
-              )}
+              {/* Action buttons */}
+              <div className="flex items-center gap-2 mt-1 flex-wrap">
+                {unawardedBadges.length > 0 && (
+                  <Button size="sm" variant="outline" className="h-7 text-xs gap-1 bg-transparent flex-1" onClick={() => setShowBadgePicker(true)}>
+                    <Award className="h-3.5 w-3.5" /> Award Badge
+                  </Button>
+                )}
+                <Button size="sm" variant="outline" className="h-7 text-xs gap-1 bg-transparent flex-1" onClick={() => setShowCreateBadge(true)}>
+                  <Plus className="h-3.5 w-3.5" /> Create Badge
+                </Button>
+                {hasStaffPermission(callerRole, STAFF_PERMISSIONS.DELETE_BADGE) && allBadges.length > 0 && (
+                  <Button size="sm" variant="outline" className="h-7 text-xs gap-1 bg-transparent text-destructive dark:text-red-400 border-destructive/30 hover:bg-destructive/10 flex-1" onClick={() => setShowManageBadges(true)}>
+                    <Trash2 className="h-3.5 w-3.5" /> Manage Badges
+                  </Button>
+                )}
+              </div>
 
-              {/* Create custom badge */}
-              {showCreateBadge && (
-                <div className="flex flex-col gap-2.5 p-3 rounded-lg bg-muted/30 border border-border/40">
-                  <p className="text-xs text-muted-foreground font-medium">Create new badge:</p>
-                  <Input
-                    placeholder="Badge name (e.g. power_user)"
-                    value={newBadgeName}
-                    onChange={(e) => setNewBadgeName(e.target.value.toLowerCase().replace(/\s+/g, "_"))}
-                    className="h-8 text-xs"
-                  />
-                  <Input
-                    placeholder="Display name (e.g. Power User)"
-                    value={newBadgeDisplay}
-                    onChange={(e) => setNewBadgeDisplay(e.target.value)}
-                    className="h-8 text-xs"
-                  />
-                  {/* Color picker */}
-                  <div className="flex flex-col gap-2">
-                    <div className="flex items-center justify-between">
-                      <label className="text-[11px] text-muted-foreground">Color:</label>
-                      {(newBadgeName || newBadgeDisplay) && (
+              {/* Award Badge Modal */}
+              <Dialog open={showBadgePicker} onOpenChange={setShowBadgePicker}>
+                <DialogContent className="max-w-md">
+                  <DialogHeader>
+                    <DialogTitle className="flex items-center gap-2 text-base">
+                      <Award className="h-4 w-4 text-primary" /> Award Badge
+                    </DialogTitle>
+                  </DialogHeader>
+                  <div className="flex flex-col gap-3">
+                    <p className="text-xs text-muted-foreground">Select badges to award. Changes will apply when you save.</p>
+                    {unawardedBadges.length > 0 ? (
+                      <div className="flex flex-wrap gap-2">
+                        {unawardedBadges.map((badge) => {
+                          const isPending = pendingBadgeAwards.includes(badge.id)
+                          return (
+                            <button
+                              key={badge.id}
+                              onClick={() => {
+                                if (isPending) {
+                                  setPendingBadgeAwards((p) => p.filter((id) => id !== badge.id))
+                                } else {
+                                  setPendingBadgeAwards((p) => [...p, badge.id])
+                                }
+                              }}
+                              className={cn(
+                                "flex items-center gap-1.5 px-2.5 py-1.5 rounded-full border text-xs font-medium transition-all",
+                                isPending ? "ring-2 ring-primary scale-105" : "hover:scale-105 hover:opacity-80"
+                              )}
+                              style={{ borderColor: `${badge.color}40`, backgroundColor: `${badge.color}15`, color: badge.color || undefined }}
+                            >
+                              <Tag className="h-3 w-3 shrink-0" />
+                              {badge.display_name}
+                              {isPending && <CheckCircle2 className="h-3 w-3 ml-0.5" />}
+                            </button>
+                          )
+                        })}
+                      </div>
+                    ) : (
+                      <p className="text-xs text-muted-foreground py-4 text-center">All badges have already been awarded.</p>
+                    )}
+                    {pendingBadgeAwards.length > 0 && (
+                      <p className="text-[10px] text-primary">{pendingBadgeAwards.length} badge(s) queued to award on save</p>
+                    )}
+                  </div>
+                  <DialogFooter>
+                    <Button variant="outline" size="sm" onClick={() => setShowBadgePicker(false)}>Done</Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
+
+              {/* Create Badge Modal */}
+              <Dialog open={showCreateBadge} onOpenChange={(open) => {
+                setShowCreateBadge(open)
+                if (!open) { setNewBadgeName(""); setNewBadgeDisplay(""); setNewBadgeColor("#6366f1") }
+              }}>
+                <DialogContent className="max-w-md">
+                  <DialogHeader>
+                    <DialogTitle className="flex items-center gap-2 text-base">
+                      <Plus className="h-4 w-4 text-primary" /> Create New Badge
+                    </DialogTitle>
+                  </DialogHeader>
+                  <div className="flex flex-col gap-4">
+                    {/* Preview */}
+                    {(newBadgeName || newBadgeDisplay) && (
+                      <div className="flex items-center gap-2">
+                        <p className="text-xs text-muted-foreground">Preview:</p>
                         <div
-                          className="flex items-center gap-1 px-2 py-0.5 rounded-full border text-[10px] font-medium"
+                          className="flex items-center gap-1 px-2.5 py-1 rounded-full border text-xs font-medium"
                           style={{ borderColor: `${newBadgeColor}40`, backgroundColor: `${newBadgeColor}15`, color: newBadgeColor }}
                         >
-                          <Tag className="h-2.5 w-2.5 shrink-0" />
+                          <Tag className="h-3 w-3 shrink-0" />
                           {newBadgeDisplay || newBadgeName}
                         </div>
-                      )}
-                    </div>
-                    {/* Preset swatches */}
-                    <div className="flex flex-wrap gap-1.5">
-                      {[
-                        { color: "#ef4444", name: "Red" },
-                        { color: "#f97316", name: "Orange" },
-                        { color: "#eab308", name: "Yellow" },
-                        { color: "#22c55e", name: "Green" },
-                        { color: "#10b981", name: "Emerald" },
-                        { color: "#14b8a6", name: "Teal" },
-                        { color: "#06b6d4", name: "Cyan" },
-                        { color: "#3b82f6", name: "Blue" },
-                        { color: "#6366f1", name: "Indigo" },
-                        { color: "#8b5cf6", name: "Violet" },
-                        { color: "#a855f7", name: "Purple" },
-                        { color: "#ec4899", name: "Pink" },
-                        { color: "#f43f5e", name: "Rose" },
-                        { color: "#64748b", name: "Slate" },
-                      ].map((c) => (
-                        <button
-                          key={c.color}
-                          type="button"
-                          onClick={() => setNewBadgeColor(c.color)}
-                          className={cn(
-                            "w-6 h-6 rounded-full transition-all border-2",
-                            newBadgeColor === c.color ? "border-foreground scale-110" : "border-transparent hover:scale-105"
-                          )}
-                          style={{ backgroundColor: c.color }}
-                          title={c.name}
-                        />
-                      ))}
-                    </div>
-                    {/* Custom hex input */}
-                    <div className="flex items-center gap-2">
-                      <div
-                        className="w-6 h-6 rounded-full border-2 border-border shrink-0"
-                        style={{ backgroundColor: newBadgeColor }}
-                      />
+                      </div>
+                    )}
+                    <div className="flex flex-col gap-2">
+                      <label className="text-xs font-medium">Badge ID <span className="text-muted-foreground">(internal name)</span></label>
                       <Input
-                        value={newBadgeColor}
-                        onChange={(e) => {
-                          const v = e.target.value
-                          setNewBadgeColor(v.startsWith("#") ? v : `#${v}`)
-                        }}
-                        placeholder="#6366f1"
-                        className="h-7 text-xs font-mono w-28"
-                        maxLength={7}
+                        placeholder="e.g. power_user"
+                        value={newBadgeName}
+                        onChange={(e) => setNewBadgeName(e.target.value.toLowerCase().replace(/\s+/g, "_"))}
+                        className="h-9 border-border/40"
                       />
+                    </div>
+                    <div className="flex flex-col gap-2">
+                      <label className="text-xs font-medium">Display Name</label>
+                      <Input
+                        placeholder="e.g. Power User"
+                        value={newBadgeDisplay}
+                        onChange={(e) => setNewBadgeDisplay(e.target.value)}
+                        className="h-9 border-border/40"
+                      />
+                    </div>
+                    {/* Color picker */}
+                    <div className="flex flex-col gap-2">
+                      <label className="text-xs font-medium">Color</label>
+                      <div className="flex flex-wrap gap-2">
+                        {[
+                          { color: "#ef4444", name: "Red" },
+                          { color: "#f97316", name: "Orange" },
+                          { color: "#eab308", name: "Yellow" },
+                          { color: "#22c55e", name: "Green" },
+                          { color: "#10b981", name: "Emerald" },
+                          { color: "#14b8a6", name: "Teal" },
+                          { color: "#06b6d4", name: "Cyan" },
+                          { color: "#3b82f6", name: "Blue" },
+                          { color: "#6366f1", name: "Indigo" },
+                          { color: "#8b5cf6", name: "Violet" },
+                          { color: "#a855f7", name: "Purple" },
+                          { color: "#ec4899", name: "Pink" },
+                          { color: "#f43f5e", name: "Rose" },
+                          { color: "#64748b", name: "Slate" },
+                        ].map((c) => (
+                          <button
+                            key={c.color}
+                            type="button"
+                            onClick={() => setNewBadgeColor(c.color)}
+                            className={cn(
+                              "w-7 h-7 rounded-full transition-all border-2",
+                              newBadgeColor === c.color ? "border-foreground scale-110 shadow-sm" : "border-transparent hover:scale-105"
+                            )}
+                            style={{ backgroundColor: c.color }}
+                            title={c.name}
+                          />
+                        ))}
+                      </div>
+                      <div className="flex items-center gap-2 mt-1">
+                        <div className="w-7 h-7 rounded-full border-2 border-border/50 shrink-0" style={{ backgroundColor: newBadgeColor }} />
+                        <Input
+                          value={newBadgeColor}
+                          onChange={(e) => {
+                            const v = e.target.value
+                            setNewBadgeColor(v.startsWith("#") ? v : `#${v}`)
+                          }}
+                          placeholder="#6366f1"
+                          className="h-8 text-xs font-mono w-32 border-border/40"
+                          maxLength={7}
+                        />
+                        <p className="text-xs text-muted-foreground">Custom hex</p>
+                      </div>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2 mt-1">
+                  <DialogFooter>
+                    <Button variant="outline" size="sm" onClick={() => { setShowCreateBadge(false); setNewBadgeName(""); setNewBadgeDisplay(""); setNewBadgeColor("#6366f1") }}>
+                      Cancel
+                    </Button>
                     <Button
                       size="sm"
-                      className="h-7 text-xs flex-1"
                       disabled={!newBadgeName.trim() || !newBadgeDisplay.trim()}
                       onClick={() => {
-                        onAction(u.id, "create_badge", {
-                          name: newBadgeName.trim(),
-                          displayName: newBadgeDisplay.trim(),
-                          color: newBadgeColor,
-                        })
+                        onAction(u.id, "create_badge", { name: newBadgeName.trim(), displayName: newBadgeDisplay.trim(), color: newBadgeColor })
                         setShowCreateBadge(false)
                         setNewBadgeName("")
                         setNewBadgeDisplay("")
@@ -709,71 +752,56 @@ export function UserDetailPanel({
                     >
                       Create &amp; Award
                     </Button>
-                    <Button
-                      size="sm" variant="ghost" className="h-7 text-xs"
-                      onClick={() => { setShowCreateBadge(false); setNewBadgeName(""); setNewBadgeDisplay(""); setNewBadgeColor("#6366f1") }}
-                    >
-                      Cancel
-                    </Button>
-                  </div>
-                </div>
-              )}
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
 
-              {/* Manage all badges (delete) */}
-              {showManageBadges && hasStaffPermission(callerRole, STAFF_PERMISSIONS.DELETE_BADGE) && (
-                <div className="flex flex-col gap-2 p-3 rounded-lg bg-muted/30 border border-border/40">
-                  <div className="flex items-center justify-between">
-                    <p className="text-[11px] text-muted-foreground font-medium">Manage All Badges ({allBadges.length})</p>
-                    <p className="text-[10px] text-destructive">Click to delete permanently</p>
-                  </div>
-                  {allBadges.length > 0 ? (
-                    <div className="flex flex-wrap gap-1.5">
-                      {allBadges.map((badge) => (
-                        <div
-                          key={badge.id}
-                          className="group flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-xs font-medium transition-all"
-                          style={{ borderColor: `${badge.color}40`, backgroundColor: `${badge.color}15`, color: badge.color || undefined }}
-                        >
-                          <Tag className="h-3 w-3 shrink-0" />
-                          <span>{badge.display_name}</span>
-                          <button
-                            onClick={() => onAction(u.id, "delete_badge", { badgeId: String(badge.id) })}
-                            className="w-0 overflow-hidden group-hover:w-4 transition-all duration-200 flex-shrink-0 flex items-center justify-center hover:scale-110"
-                            title={`Delete "${badge.display_name}" permanently`}
-                          >
-                            <Trash2 className="h-3 w-3 text-destructive" />
-                          </button>
+              {/* Manage/Delete Badges Modal */}
+              {hasStaffPermission(callerRole, STAFF_PERMISSIONS.DELETE_BADGE) && (
+                <Dialog open={showManageBadges} onOpenChange={setShowManageBadges}>
+                  <DialogContent className="max-w-md">
+                    <DialogHeader>
+                      <DialogTitle className="flex items-center gap-2 text-base">
+                        <Trash2 className="h-4 w-4 text-destructive" /> Manage All Badges
+                      </DialogTitle>
+                    </DialogHeader>
+                    <div className="flex flex-col gap-3">
+                      <p className="text-xs text-muted-foreground">Click the trash icon to permanently delete a badge from the system.</p>
+                      {allBadges.length > 0 ? (
+                        <div className="flex flex-col gap-2 max-h-72 overflow-y-auto">
+                          {allBadges.map((badge) => (
+                            <div
+                              key={badge.id}
+                              className="flex items-center justify-between p-2.5 rounded-lg border border-border/40 bg-card/30 hover:bg-muted/40 transition-colors"
+                            >
+                              <div
+                                className="flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-xs font-medium"
+                                style={{ borderColor: `${badge.color}40`, backgroundColor: `${badge.color}15`, color: badge.color || undefined }}
+                              >
+                                <Tag className="h-3 w-3 shrink-0" />
+                                {badge.display_name}
+                              </div>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-7 w-7 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                                onClick={() => onAction(u.id, "delete_badge", { badgeId: String(badge.id) })}
+                                title={`Delete "${badge.display_name}" permanently`}
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </Button>
+                            </div>
+                          ))}
                         </div>
-                      ))}
+                      ) : (
+                        <p className="text-xs text-muted-foreground text-center py-4">No badges exist yet.</p>
+                      )}
                     </div>
-                  ) : (
-                    <p className="text-xs text-muted-foreground">No badges exist yet.</p>
-                  )}
-                </div>
-              )}
-
-              {/* Action buttons */}
-              {!showBadgePicker && !showCreateBadge && !showManageBadges && (
-                <div className="flex items-center gap-2 mt-1 flex-wrap">
-                  {unawardedBadges.length > 0 && (
-                    <Button size="sm" variant="outline" className="h-7 text-xs gap-1 bg-transparent flex-1" onClick={() => setShowBadgePicker(true)}>
-                      <Award className="h-3.5 w-3.5" /> Award Badge
-                    </Button>
-                  )}
-                  <Button size="sm" variant="outline" className="h-7 text-xs gap-1 bg-transparent flex-1" onClick={() => setShowCreateBadge(true)}>
-                    <Plus className="h-3.5 w-3.5" /> Create Badge
-                  </Button>
-                  {hasStaffPermission(callerRole, STAFF_PERMISSIONS.DELETE_BADGE) && allBadges.length > 0 && (
-                    <Button size="sm" variant="outline" className="h-7 text-xs gap-1 bg-transparent text-destructive dark:text-red-400 border-destructive/30 hover:bg-destructive/10 flex-1" onClick={() => setShowManageBadges(true)}>
-                      <Trash2 className="h-3.5 w-3.5" /> Delete Badges
-                    </Button>
-                  )}
-                </div>
-              )}
-              {(showBadgePicker || showManageBadges) && (
-                <Button size="sm" variant="ghost" className="h-7 text-xs self-start" onClick={() => { setShowBadgePicker(false); setShowManageBadges(false) }}>
-                  Cancel
-                </Button>
+                    <DialogFooter>
+                      <Button variant="outline" size="sm" onClick={() => setShowManageBadges(false)}>Close</Button>
+                    </DialogFooter>
+                  </DialogContent>
+                </Dialog>
               )}
             </CardContent>
           </Card>
