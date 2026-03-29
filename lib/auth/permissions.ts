@@ -5,7 +5,7 @@
 // Roles: 'user', 'beta_tester', 'support', 'moderator', 'admin'
 // ============================================================================
 
-import pool from "./db"
+import pool from "@/lib/database/db"
 
 // Define available roles and their properties
 export const ROLES = {
