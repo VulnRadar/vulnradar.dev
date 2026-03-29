@@ -1,10 +1,16 @@
+"use client"
+
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { ArrowRight, Terminal, CheckCircle, Activity } from "lucide-react"
+import { ArrowRight, Terminal, CheckCircle, Activity, LayoutDashboard } from "lucide-react"
 import { APP_NAME, TOTAL_CHECKS_LABEL, ROUTES } from "@/lib/config/constants"
+import { useAuth } from "@/components/providers/auth-provider"
 
 export function LandingHero() {
+  const { me } = useAuth()
+  const isLoggedIn = !!me?.userId
+
   return (
     <section className="relative">
       <div className="max-w-6xl mx-auto px-4 sm:px-6 pt-16 pb-20 sm:pt-24 sm:pb-28">
@@ -24,12 +30,21 @@ export function LandingHero() {
           </p>
 
           <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
-            <Link href={ROUTES.SIGNUP}>
-              <Button size="lg" className="h-11 px-6 gap-2">
-                Start Scanning Free
-                <ArrowRight className="h-4 w-4" />
-              </Button>
-            </Link>
+            {isLoggedIn ? (
+              <Link href={ROUTES.DASHBOARD}>
+                <Button size="lg" className="h-11 px-6 gap-2">
+                  <LayoutDashboard className="h-4 w-4" />
+                  Go to Dashboard
+                </Button>
+              </Link>
+            ) : (
+              <Link href={ROUTES.SIGNUP}>
+                <Button size="lg" className="h-11 px-6 gap-2">
+                  Start Scanning Free
+                  <ArrowRight className="h-4 w-4" />
+                </Button>
+              </Link>
+            )}
             <Link href="/demo">
               <Button size="lg" variant="outline" className="h-11 px-6 gap-2">
                 <Terminal className="h-4 w-4" />
@@ -38,14 +53,16 @@ export function LandingHero() {
             </Link>
           </div>
 
-          <div className="mt-10 flex flex-wrap items-center justify-center gap-x-6 gap-y-3 text-sm text-muted-foreground">
-            {["No credit card required", "Free forever tier", "Open source"].map((item, i) => (
-              <div key={i} className="flex items-center gap-1.5">
-                <CheckCircle className="h-3.5 w-3.5 text-primary" />
-                <span>{item}</span>
-              </div>
-            ))}
-          </div>
+          {!isLoggedIn && (
+            <div className="mt-10 flex flex-wrap items-center justify-center gap-x-6 gap-y-3 text-sm text-muted-foreground">
+              {["No credit card required", "Free forever tier", "Open source"].map((item, i) => (
+                <div key={i} className="flex items-center gap-1.5">
+                  <CheckCircle className="h-3.5 w-3.5 text-primary" />
+                  <span>{item}</span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </section>

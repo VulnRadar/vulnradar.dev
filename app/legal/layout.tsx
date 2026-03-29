@@ -1,12 +1,19 @@
 "use client"
 
 import React from "react"
-import { PublicPageShell } from "@/components/shared/public-page-shell"
+import { LandingNav } from "@/components/landing/landing-nav"
+import { Footer } from "@/components/scanner/footer"
+import { LegalNav } from "@/components/legal"
 
 export default function LegalLayout({ children }: { children: React.ReactNode }) {
   return (
-    <PublicPageShell badge="Legal" maxWidth="max-w-4xl" padding="py-10">
-      {children}
-    </PublicPageShell>
+    <div className="min-h-screen flex flex-col bg-background">
+      <LandingNav />
+      <main className="flex-1 max-w-4xl w-full mx-auto px-4 py-8">
+        <LegalNav />
+        {children}
+      </main>
+      <Footer />
+    </div>
   )
 }
