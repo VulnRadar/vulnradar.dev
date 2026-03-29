@@ -1,7 +1,7 @@
-'use client'
+"use client"
 
-import { AlertTriangle, RotateCcw } from 'lucide-react'
-import { Button } from '@/components/ui/button'
+import { AlertTriangle, RefreshCw } from "lucide-react"
+import { Button } from "@/components/ui/button"
 
 interface DemoErrorProps {
   error: string
@@ -10,20 +10,31 @@ interface DemoErrorProps {
 
 export function DemoError({ error, onRetry }: DemoErrorProps) {
   return (
-    <section className="relative overflow-hidden -mx-4 px-4 -mt-8 pt-8 pb-16">
-      <div className="relative text-center max-w-md mx-auto">
-        <div className="p-8 rounded-2xl border border-destructive/30 bg-card shadow-xl">
-          <div className="w-20 h-20 mx-auto mb-6 rounded-2xl bg-destructive/10 flex items-center justify-center">
-            <AlertTriangle className="h-10 w-10 text-destructive" />
+    <section className="relative">
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 pt-16 pb-20 sm:pt-24">
+        <div className="text-center max-w-lg mx-auto">
+          <div className="w-16 h-16 rounded-2xl bg-destructive/10 flex items-center justify-center mx-auto mb-6">
+            <AlertTriangle className="h-8 w-8 text-destructive" />
           </div>
 
-          <h2 className="text-xl font-semibold mb-2">Scan failed</h2>
-          <p className="text-sm text-muted-foreground mb-6">{error}</p>
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight mb-3">
+            Scan failed
+          </h1>
 
-          <Button variant="outline" className="gap-2" onClick={onRetry}>
-            <RotateCcw className="h-4 w-4" />
-            Try Again
-          </Button>
+          <p className="text-muted-foreground mb-4">
+            Something went wrong while scanning this site
+          </p>
+
+          <p className="text-sm text-destructive bg-destructive/10 px-4 py-2 rounded-lg inline-block mb-8">
+            {error}
+          </p>
+
+          <div>
+            <Button onClick={onRetry} className="gap-2">
+              <RefreshCw className="h-4 w-4" />
+              Try Again
+            </Button>
+          </div>
         </div>
       </div>
     </section>
