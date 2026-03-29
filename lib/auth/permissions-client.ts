@@ -3,7 +3,7 @@
  * No database imports - safe for client-side usage
  */
 
-import { STAFF_ROLES, STAFF_ROLE_HIERARCHY } from "./constants"
+import { STAFF_ROLES, STAFF_ROLE_HIERARCHY } from "@/lib/config/constants"
 
 // Staff role permission definitions (client-side, no DB needed)
 export const STAFF_PERMISSIONS = {
