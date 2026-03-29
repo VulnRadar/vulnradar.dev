@@ -550,28 +550,25 @@ function AdminContent() {
             <div className="flex-1 min-w-0 flex flex-col gap-6">
 
               {/* Stats row — Users tab only */}
-              {activeTab === "users" && stats && (
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
-                  <div className="flex items-center gap-3 p-4 rounded-xl border border-border/40 bg-card/30">
-                    <div className="p-2 rounded-lg bg-primary/10 shrink-0"><Users className="h-4 w-4 text-primary" /></div>
-                    <div><p className="text-xl font-bold">{Number(stats.total_users).toLocaleString()}</p><p className="text-[11px] text-muted-foreground">Users</p></div>
-                  </div>
-                  <div className="flex items-center gap-3 p-4 rounded-xl border border-border/40 bg-card/30">
-                    <div className="p-2 rounded-lg bg-primary/10 shrink-0"><Activity className="h-4 w-4 text-primary" /></div>
-                    <div><p className="text-xl font-bold">{Number(stats.total_scans).toLocaleString()}</p><p className="text-[11px] text-muted-foreground">Scans</p></div>
-                  </div>
-                  <div className="flex items-center gap-3 p-4 rounded-xl border border-border/40 bg-card/30">
-                    <div className="p-2 rounded-lg bg-primary/10 shrink-0"><BarChart3 className="h-4 w-4 text-primary" /></div>
-                    <div><p className="text-xl font-bold">{Number(stats.scans_24h).toLocaleString()}</p><p className="text-[11px] text-muted-foreground">Scans (24h)</p></div>
-                  </div>
-                  <div className="flex items-center gap-3 p-4 rounded-xl border border-border/40 bg-card/30">
-                    <div className="p-2 rounded-lg bg-primary/10 shrink-0"><ShieldCheck className="h-4 w-4 text-primary" /></div>
-                    <div><p className="text-xl font-bold">{Number(stats.users_with_2fa).toLocaleString()}</p><p className="text-[11px] text-muted-foreground">2FA Users</p></div>
-                  </div>
-                  <div className="flex items-center gap-3 p-4 rounded-xl border border-border/40 bg-card/30">
-                    <div className="p-2 rounded-lg bg-destructive/10 shrink-0"><Ban className="h-4 w-4 text-destructive" /></div>
-                    <div><p className="text-xl font-bold">{Number(stats.disabled_users).toLocaleString()}</p><p className="text-[11px] text-muted-foreground">Disabled</p></div>
-                  </div>
+              {activeTab === "users" && stats && !selectedUser && (
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+                  {[
+                    { icon: Users, value: stats.total_users, label: "Total Users", color: "primary" },
+                    { icon: Activity, value: stats.total_scans, label: "Total Scans", color: "primary" },
+                    { icon: BarChart3, value: stats.scans_24h, label: "Scans (24h)", color: "primary" },
+                    { icon: ShieldCheck, value: stats.users_with_2fa, label: "2FA Enabled", color: "emerald" },
+                    { icon: Ban, value: stats.disabled_users, label: "Disabled", color: "destructive" },
+                  ].map((stat, i) => (
+                    <div key={i} className="flex items-center gap-3 p-4 rounded-xl border border-border/40 bg-card/30 hover:bg-card/50 hover:border-border/60 transition-colors">
+                      <div className={cn("p-2.5 rounded-lg shrink-0", stat.color === "primary" ? "bg-primary/10" : stat.color === "emerald" ? "bg-emerald-500/10" : "bg-destructive/10")}>
+                        <stat.icon className={cn("h-4 w-4", stat.color === "primary" ? "text-primary" : stat.color === "emerald" ? "text-emerald-500" : "text-destructive")} />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-2xl font-bold tracking-tight">{Number(stat.value).toLocaleString()}</p>
+                        <p className="text-[11px] text-muted-foreground truncate">{stat.label}</p>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               )}
 
@@ -631,83 +628,99 @@ function AdminContent() {
               {/* Users table */}
               {activeTab === "users" && !selectedUser && (
                 <Card className="border-border/50 bg-card/50 overflow-hidden">
-                  <CardHeader className="pb-0 pt-4 px-4 sm:px-5">
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                      <div className="flex items-center gap-2">
-                        <CardTitle className="text-sm font-medium">All Users</CardTitle>
-                        <Badge variant="secondary" className="text-[10px] font-medium h-5">{stats ? Number(stats.total_users).toLocaleString() : 0}</Badge>
+                  <CardHeader className="pb-4 pt-5 px-5">
+                    <div className="flex flex-col gap-4">
+                      {/* Title row */}
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <div className="p-2 rounded-lg bg-primary/10">
+                            <Users className="h-4 w-4 text-primary" />
+                          </div>
+                          <div>
+                            <CardTitle className="text-base font-semibold">User Directory</CardTitle>
+                            <p className="text-xs text-muted-foreground mt-0.5">Manage and view all registered users</p>
+                          </div>
+                        </div>
+                        <Badge variant="secondary" className="text-xs font-medium h-6 px-2.5">
+                          {stats ? Number(stats.total_users).toLocaleString() : 0} users
+                        </Badge>
                       </div>
-                      <div className="flex items-center gap-2 w-full sm:w-auto">
-                        <div className="relative w-full sm:w-64">
+                      {/* Search and actions row */}
+                      <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                        <div className="relative flex-1">
                           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
                           <Input
                             placeholder="Search by name or email..."
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
-                            className="pl-9 h-9 bg-background border-border/40"
+                            className="pl-9 h-10 bg-background/50 border-border/40 focus:border-primary/50"
                           />
                         </div>
-                        <Button variant="outline" size="icon" className="h-9 w-9 shrink-0 border-border/40" onClick={() => fetchData(page, searchQuery)}>
+                        <Button variant="outline" size="sm" className="h-10 px-3 gap-2 border-border/40 shrink-0" onClick={() => fetchData(page, searchQuery)}>
                           <RefreshCw className={cn("h-4 w-4", searchLoading && "animate-spin")} />
+                          <span className="hidden sm:inline">Refresh</span>
                         </Button>
                       </div>
                     </div>
                   </CardHeader>
-                  <CardContent className="p-0 mt-4">
+                  <CardContent className="p-0">
                     {/* Desktop table */}
                     <div className="hidden md:block overflow-x-auto">
                       <table className="w-full">
                         <thead>
-                          <tr className="border-y border-border/50 bg-muted/50">
-                            <th className="px-5 py-2.5 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider text-left">User</th>
-                            <th className="px-4 py-2.5 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider text-left">Scans</th>
-                            <th className="px-4 py-2.5 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider text-left">API Keys</th>
-                            <th className="px-4 py-2.5 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider text-left">Status</th>
-                            <th className="px-4 py-2.5 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider text-left">Joined</th>
-                            <th className="px-5 py-2.5 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider text-right">Actions</th>
+                          <tr className="border-y border-border/50 bg-muted/30">
+                            <th className="px-5 py-3 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider text-left">User</th>
+                            <th className="px-4 py-3 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider text-left">Activity</th>
+                            <th className="px-4 py-3 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider text-left">Status</th>
+                            <th className="px-4 py-3 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider text-left">Joined</th>
+                            <th className="px-5 py-3 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider text-right">Actions</th>
                           </tr>
                         </thead>
                         <tbody className={cn("transition-opacity duration-200", searchLoading && "opacity-40 pointer-events-none")}>
                           {users.map((u) => (
-                            <tr key={u.id} className="border-b border-border/50 last:border-0 hover:bg-muted/30 transition-colors group">
-                              <td className="px-5 py-3">
+                            <tr key={u.id} className="border-b border-border/40 last:border-0 hover:bg-muted/20 transition-colors group cursor-pointer" onClick={() => fetchUserDetail(u.id)}>
+                              <td className="px-5 py-4">
                                 <div className="flex items-center gap-3">
                                   <UserAvatar name={u.name} email={u.email} avatarUrl={u.avatar_url} />
                                   <div className="min-w-0">
                                     <p className="text-sm font-medium truncate">{u.name || "Unnamed"}</p>
-                                    <p className="text-xs text-muted-foreground truncate">{u.email}</p>
+                                    <p className="text-xs text-muted-foreground truncate font-mono">{u.email}</p>
                                   </div>
                                 </div>
                               </td>
-                              <td className="px-4 py-3">
-                                <span className="text-sm font-medium">{u.scan_count}</span>
+                              <td className="px-4 py-4">
+                                <div className="flex flex-col gap-0.5">
+                                  <span className="text-sm font-medium">{u.scan_count} <span className="text-muted-foreground font-normal">scans</span></span>
+                                  <span className="text-xs text-muted-foreground">{u.api_key_count} API keys</span>
+                                </div>
                               </td>
-                              <td className="px-4 py-3">
-                                <span className="text-sm font-medium">{u.api_key_count}</span>
+                              <td className="px-4 py-4">
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  {u.disabled_at ? (
+                                    <Badge className="bg-destructive/10 text-destructive border-destructive/20 text-[10px] px-2 py-0.5 font-medium">Disabled</Badge>
+                                  ) : (
+                                    <Badge className="bg-emerald-500/10 text-emerald-500 border-emerald-500/20 text-[10px] px-2 py-0.5 font-medium">Active</Badge>
+                                  )}
+                                  {u.role && u.role !== STAFF_ROLES.USER && ROLE_BADGE_STYLES[u.role] && (
+                                    <Badge className={cn(ROLE_BADGE_STYLES[u.role], "text-[10px] px-2 py-0.5 font-medium")}>{STAFF_ROLE_LABELS[u.role] || u.role}</Badge>
+                                  )}
+                                  {(() => {
+                                    const effectivePlan = u.gifted_plan || u.plan
+                                    if (effectivePlan && effectivePlan !== "free") {
+                                      const planLabel = effectivePlan.replace("_supporter", "").charAt(0).toUpperCase() + effectivePlan.replace("_supporter", "").slice(1)
+                                      return <Badge className={cn("text-[10px] px-2 py-0.5 font-medium", u.gifted_plan ? "bg-amber-500/10 text-amber-500 border-amber-500/20" : "bg-primary/10 text-primary border-primary/20")}>{planLabel}{u.gifted_plan ? " (Gift)" : ""}</Badge>
+                                    }
+                                    return null
+                                  })()}
+                                  {u.totp_enabled && <Badge className="bg-emerald-500/10 text-emerald-500 border-emerald-500/20 text-[10px] px-2 py-0.5 font-medium">2FA</Badge>}
+                                </div>
                               </td>
-                              <td className="px-4 py-3">
-                                {(() => {
-                                  const badges: React.ReactNode[] = []
-                                  if (u.disabled_at) badges.push(<Badge key="disabled" className="bg-destructive/10 text-destructive border-destructive/20 text-[10px] px-1.5 font-medium">Disabled</Badge>)
-                                  if (u.role && u.role !== STAFF_ROLES.USER && ROLE_BADGE_STYLES[u.role]) {
-                                    badges.push(<Badge key="role" className={cn(ROLE_BADGE_STYLES[u.role], "text-[10px] px-1.5 font-medium")}>{STAFF_ROLE_LABELS[u.role] || u.role}</Badge>)
-                                  }
-                                  const effectivePlan = u.gifted_plan || u.plan
-                                  if (effectivePlan && effectivePlan !== "free") {
-                                    const planLabel = effectivePlan.replace("_supporter", "").charAt(0).toUpperCase() + effectivePlan.replace("_supporter", "").slice(1)
-                                    badges.push(<Badge key="plan" className={cn("text-[10px] px-1.5 font-medium", u.gifted_plan ? "bg-amber-500/10 text-amber-500 border-amber-500/20" : "bg-primary/10 text-primary border-primary/20")}>{planLabel}{u.gifted_plan ? " (Gift)" : ""}</Badge>)
-                                  }
-                                  if (u.totp_enabled) badges.push(<Badge key="2fa" className="bg-emerald-500/10 text-emerald-500 border-emerald-500/20 text-[10px] px-1.5 font-medium">2FA</Badge>)
-                                  if (badges.length === 0) return <span className="text-xs text-muted-foreground">Active</span>
-                                  return <div className="flex items-center gap-1.5 flex-wrap">{badges}</div>
-                                })()}
-                              </td>
-                              <td className="px-4 py-3 text-xs text-muted-foreground whitespace-nowrap">
+                              <td className="px-4 py-4 text-sm text-muted-foreground whitespace-nowrap">
                                 {new Date(u.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
                               </td>
-                              <td className="px-5 py-3">
-                                <div className="flex items-center justify-end opacity-0 group-hover:opacity-100 transition-opacity">
-                                  <Button variant="ghost" size="icon" className="h-8 w-8" title="View details" asChild>
+                              <td className="px-5 py-4">
+                                <div className="flex items-center justify-end">
+                                  <Button variant="ghost" size="sm" className="h-8 gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity" asChild onClick={(e) => e.stopPropagation()}>
                                     <a
                                       href={`/admin#users/user-${u.id}`}
                                       onClick={(e) => {
@@ -717,7 +730,8 @@ function AdminContent() {
                                         }
                                       }}
                                     >
-                                      <Eye className="h-4 w-4 text-muted-foreground" />
+                                      <Eye className="h-3.5 w-3.5" />
+                                      <span className="text-xs">View</span>
                                     </a>
                                   </Button>
                                 </div>
@@ -726,9 +740,16 @@ function AdminContent() {
                           ))}
                           {users.length === 0 && (
                             <tr>
-                              <td colSpan={6} className="px-5 py-16 text-center">
-                                <Search className="h-8 w-8 text-muted-foreground/30 mx-auto mb-3" />
-                                <p className="text-sm text-muted-foreground">No users found matching your search.</p>
+                              <td colSpan={5} className="px-5 py-20 text-center">
+                                <div className="flex flex-col items-center justify-center">
+                                  <div className="p-4 rounded-full bg-muted/50 mb-4">
+                                    <Search className="h-8 w-8 text-muted-foreground/40" />
+                                  </div>
+                                  <p className="text-sm font-medium text-foreground mb-1">No users found</p>
+                                  <p className="text-xs text-muted-foreground max-w-sm">
+                                    {searchQuery ? `No results for "${searchQuery}". Try a different search term.` : "No users have registered yet."}
+                                  </p>
+                                </div>
                               </td>
                             </tr>
                           )}
@@ -738,6 +759,17 @@ function AdminContent() {
 
                     {/* Mobile list */}
                     <div className={cn("md:hidden flex flex-col transition-opacity duration-200", searchLoading && "opacity-40 pointer-events-none")}>
+                      {users.length === 0 && (
+                        <div className="flex flex-col items-center justify-center py-16 px-4">
+                          <div className="p-4 rounded-full bg-muted/50 mb-4">
+                            <Search className="h-8 w-8 text-muted-foreground/40" />
+                          </div>
+                          <p className="text-sm font-medium text-foreground mb-1">No users found</p>
+                          <p className="text-xs text-muted-foreground text-center">
+                            {searchQuery ? `No results for "${searchQuery}".` : "No users have registered yet."}
+                          </p>
+                        </div>
+                      )}
                       {users.map((u) => (
                         <a
                           key={u.id}
@@ -748,46 +780,57 @@ function AdminContent() {
                               fetchUserDetail(u.id)
                             }
                           }}
-                          className="flex items-center gap-3 px-4 py-3.5 border-b border-border/50 last:border-0 hover:bg-muted/30 text-left transition-colors w-full"
+                          className="flex items-center gap-3 px-5 py-4 border-b border-border/40 last:border-0 hover:bg-muted/20 transition-colors"
                         >
                           <UserAvatar name={u.name} email={u.email} size="sm" avatarUrl={u.avatar_url} />
                           <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium truncate">{u.name || "Unnamed"}</p>
-                            <p className="text-xs text-muted-foreground truncate">{u.email}</p>
-                            <div className="flex items-center gap-1.5 mt-1 flex-wrap">
-                              <span className="text-[10px] text-muted-foreground">{u.scan_count} scans</span>
-                              {u.disabled_at && <Badge className="bg-destructive/10 text-destructive border-destructive/20 text-[10px] px-1.5">Disabled</Badge>}
-                              {u.role && u.role !== STAFF_ROLES.USER && ROLE_BADGE_STYLES[u.role] && (
-                                <Badge className={cn(ROLE_BADGE_STYLES[u.role], "text-[10px] px-1.5")}>{STAFF_ROLE_LABELS[u.role] || u.role}</Badge>
-                              )}
+                            <div className="flex items-center gap-2 mb-0.5">
+                              <p className="text-sm font-medium truncate">{u.name || "Unnamed"}</p>
+                              {u.disabled_at ? (
+                                <Badge className="bg-destructive/10 text-destructive border-destructive/20 text-[10px] px-1.5 shrink-0">Disabled</Badge>
+                              ) : u.role && u.role !== STAFF_ROLES.USER && ROLE_BADGE_STYLES[u.role] ? (
+                                <Badge className={cn(ROLE_BADGE_STYLES[u.role], "text-[10px] px-1.5 shrink-0")}>{STAFF_ROLE_LABELS[u.role]}</Badge>
+                              ) : null}
+                            </div>
+                            <p className="text-xs text-muted-foreground truncate font-mono">{u.email}</p>
+                            <div className="flex items-center gap-3 mt-1.5 text-[11px] text-muted-foreground">
+                              <span>{u.scan_count} scans</span>
+                              <span className="text-border">|</span>
+                              <span>{new Date(u.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}</span>
                               {(() => {
                                 const effectivePlan = u.gifted_plan || u.plan
-                                if (!effectivePlan || effectivePlan === "free") return null
-                                const label = effectivePlan.replace("_supporter", "").charAt(0).toUpperCase() + effectivePlan.replace("_supporter", "").slice(1)
-                                return (
-                                  <Badge className={cn("text-[10px] px-1.5", u.gifted_plan ? "bg-amber-500/10 text-amber-500 border-amber-500/20" : "bg-primary/10 text-primary border-primary/20")}>
-                                    {label}{u.gifted_plan ? " (Gift)" : ""}
-                                  </Badge>
-                                )
+                                if (effectivePlan && effectivePlan !== "free") {
+                                  const label = effectivePlan.replace("_supporter", "").charAt(0).toUpperCase() + effectivePlan.replace("_supporter", "").slice(1)
+                                  return (
+                                    <>
+                                      <span className="text-border">|</span>
+                                      <Badge className={cn("text-[10px] px-1.5 py-0", u.gifted_plan ? "bg-amber-500/10 text-amber-500 border-amber-500/20" : "bg-primary/10 text-primary border-primary/20")}>
+                                        {label}
+                                      </Badge>
+                                    </>
+                                  )
+                                }
+                                return null
                               })()}
-                              {u.totp_enabled && <Badge className="bg-emerald-500/10 text-emerald-500 border-emerald-500/20 text-[10px] px-1.5">2FA</Badge>}
                             </div>
                           </div>
-                          <Eye className="h-4 w-4 text-muted-foreground shrink-0" />
+                          <Eye className="h-4 w-4 text-muted-foreground/50 shrink-0" />
                         </a>
                       ))}
                     </div>
 
                     {/* Pagination */}
-                    <div className="px-4 py-3 border-t border-border/50">
-                      <PaginationControl
-                        currentPage={page}
-                        totalPages={totalPages}
-                        onPageChange={(p) => fetchData(p)}
-                        pageSize={usersPageSize}
-                        onPageSizeChange={(s) => { setUsersPageSize(s); fetchData(1, searchQuery, false, s) }}
-                      />
-                    </div>
+                    {users.length > 0 && (
+                      <div className="px-5 py-4 border-t border-border/40 bg-muted/20">
+                        <PaginationControl
+                          currentPage={page}
+                          totalPages={totalPages}
+                          onPageChange={(p) => fetchData(p)}
+                          pageSize={usersPageSize}
+                          onPageSizeChange={(s) => { setUsersPageSize(s); fetchData(1, searchQuery, false, s) }}
+                        />
+                      </div>
+                    )}
                   </CardContent>
                 </Card>
               )}
