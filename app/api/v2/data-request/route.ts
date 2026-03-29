@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getSession } from "@/lib/auth"
-import pool from "@/lib/db"
-import { ERROR_MESSAGES, APP_VERSION } from "@/lib/constants"
+import pool from "@/lib/database/db"
+import { ERROR_MESSAGES, APP_VERSION } from "@/lib/config/constants"
 
 const COOLDOWN_DAYS = 30
 

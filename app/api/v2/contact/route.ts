@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
-import { checkRateLimit, getClientIP, RATE_LIMITS } from "@/lib/rate-limit"
-import { contactConfirmationEmail, contactEmail, sendEmail } from "@/lib/email"
-import { TURNSTILE_ENABLED, NOREPLY_EMAIL } from "@/lib/constants"
+import { checkRateLimit, getClientIP, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit"
+import { contactConfirmationEmail, contactEmail, sendEmail } from "@/lib/email/email"
+import { TURNSTILE_ENABLED, NOREPLY_EMAIL } from "@/lib/config/constants"
 
 const CATEGORY_LABELS: Record<string, string> = {
   bug: "Bug Report",

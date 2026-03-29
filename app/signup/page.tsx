@@ -13,7 +13,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { APP_NAME, TURNSTILE_ENABLED } from "@/lib/config/constants"
 import { API } from "@/lib/config/client-constants"
 import { getPasswordStrength } from "@/lib/password-strength"
-import { transitions } from "@/lib/animations"
+import { transitions } from "@/lib/ui/animations"
 
 export default function SignupPage() {
   const [name, setName] = useState("")

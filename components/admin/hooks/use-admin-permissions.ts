@@ -1,7 +1,7 @@
 "use client"
 
 import { useMemo } from "react"
-import { hasStaffPermission, canManageRole, getAvailableActions, STAFF_PERMISSIONS } from "@/lib/permissions-client"
+import { hasStaffPermission, canManageRole, getAvailableActions, STAFF_PERMISSIONS } from "@/lib/auth/permissions-client"
 
 /**
  * Admin permissions hook - centralizes permission checks

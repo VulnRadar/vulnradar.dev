@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getSession } from "@/lib/auth"
-import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
-import { validateApiKey } from "@/lib/api-keys"
-import { APP_NAME, BEARER_PREFIX } from "@/lib/constants"
+import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit"
+import { validateApiKey } from "@/lib/api/api-keys"
+import { APP_NAME, BEARER_PREFIX } from "@/lib/config/constants"
 
 const MAX_BODY_SIZE = 512 * 1024
 const MAX_PAGES = 20

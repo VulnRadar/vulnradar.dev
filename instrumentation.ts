@@ -9,8 +9,8 @@
  */
 export async function register() {
   if (process.env.NEXT_RUNTIME === "nodejs") {
-    const { default: pool } = await import("./lib/db")
-    const { APP_NAME, APP_VERSION, ENGINE_VERSION, VERSION_CHECK_URL, RELEASES_URL } = await import("./lib/constants")
+    const { default: pool } = await import("./lib/database/db")
+    const { APP_NAME, APP_VERSION, ENGINE_VERSION, VERSION_CHECK_URL, RELEASES_URL } = await import("./lib/config/constants")
 
     // ── Startup version check ───────────────────────────────────────
     console.log(`\x1b[36m[${APP_NAME}]\x1b[0m Starting ${APP_NAME} v${APP_VERSION} (Detection Engine v${ENGINE_VERSION})`)
@@ -444,7 +444,7 @@ export async function register() {
 
       // ════════════════════════════════════════════════════════════════
       // DEVICE TRUST - Trusted devices for 2FA
-      // ═══════════════════════════════════════���════════════════════════
+      // ═══════════════════════════════════════�����════════════════════════
       await pool.query(`
         CREATE TABLE IF NOT EXISTS device_trust (
           id SERIAL PRIMARY KEY,

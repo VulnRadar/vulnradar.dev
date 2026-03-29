@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getSession } from "@/lib/auth"
-import pool from "@/lib/db"
-import { STAFF_ROLE_HIERARCHY } from "@/lib/constants"
-import { getClientIP } from "@/lib/rate-limit"
+import pool from "@/lib/database/db"
+import { STAFF_ROLE_HIERARCHY } from "@/lib/config/constants"
+import { getClientIP } from "@/lib/rate-limiting/rate-limit"
 
 // POST - Update staff member's activity heartbeat
 export async function POST(request: NextRequest) {
