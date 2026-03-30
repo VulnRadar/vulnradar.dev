@@ -13,6 +13,7 @@ import { ProfileSocialTab } from "@/components/profile/tabs/profile-social-tab"
 import { ProfileBillingTab } from "@/components/profile/tabs/profile-billing-tab"
 import { ProfileDeveloperTab } from "@/components/profile/tabs/profile-developer-tab"
 import { ProfileNotificationsTab } from "@/components/profile/tabs/profile-notifications-tab"
+import { ProfilePrivacyTab } from "@/components/profile/tabs/profile-privacy-tab"
 import type { ProfileUser, ApiKey, BillingInfo, DataRequestInfo, WebhookItem, ScheduleItem, NotificationPrefs, ProfileTab, PendingChanges } from "@/components/profile/types"
 import {
   Plus,
@@ -149,14 +150,7 @@ function ProfileContent() {
   const [pendingChanges, setPendingChanges] = useState<PendingChanges>({})
   const [showSaveModal, setShowSaveModal] = useState(false)
 
-  // Data request state
-  const [dataReqInfo, setDataReqInfo] = useState<DataRequestInfo | null>(null)
-  const [requestingData, setRequestingData] = useState(false)
-
-  // Delete account state
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
-  const [deleteConfirmText, setDeleteConfirmText] = useState("")
-  const [deleting, setDeleting] = useState(false)
+  // Data request and delete state are now managed in ProfilePrivacyTab component
 
   // Billing state is now managed in ProfileBillingTab component
 
@@ -347,110 +341,8 @@ function ProfileContent() {
     }
   }
 
-  // ---- Data request handlers ----
-  async function handleRequestData() {
-    setRequestingData(true)
-    setError(null)
-    try {
-      const res = await fetch(API.DATA_REQUEST, { method: "POST" })
-      const data = await res.json()
-      if (!res.ok) {
-        setError(data.error || "Failed to export data.")
-        return
-      }
-      // Download the data
-      const blob = new Blob([JSON.stringify(data.data, null, 2)], { type: "application/json" })
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement("a")
-      a.href = url
-      a.download = `vulnradar-data-export-${new Date().toISOString().split("T")[0]}.json`
-      document.body.appendChild(a)
-      a.click()
-      document.body.removeChild(a)
-      URL.revokeObjectURL(url)
-      await fetchData()
-      setSuccess("Data export downloaded successfully.")
-    } catch {
-      setError("Failed to export data.")
-    } finally {
-      setRequestingData(false)
-    }
-  }
-
-  async function handleDownloadPreviousData() {
-    try {
-      const dlRes = await fetch(API.DATA_REQUEST)
-      if (!dlRes.ok) {
-        setError("Failed to download data.")
-        return
-      }
-      const dlData = await dlRes.json()
-      if (!dlData.data) {
-        setError("No previous export data available.")
-        return
-      }
-      const blob = new Blob([typeof dlData.data === "string" ? dlData.data : JSON.stringify(dlData.data, null, 2)], { type: "application/json" })
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement("a")
-      a.href = url
-      a.download = `vulnradar-data-export-${new Date().toISOString().split("T")[0]}.json`
-      document.body.appendChild(a)
-      a.click()
-      document.body.removeChild(a)
-      URL.revokeObjectURL(url)
-      setSuccess("Previous export downloaded successfully.")
-    } catch {
-      setError("Failed to download previous export.")
-    }
-  }
-
-  // ---- Delete account ----
-  async function handleDeleteAccount() {
-    setDeleting(true)
-    try {
-      const res = await fetch(API.ACCOUNT_DELETE, { method: "POST" })
-      if (res.ok) {
-        router.push("/login")
-      } else {
-        setError("Failed to delete account.")
-      }
-    } catch {
-      setError("Failed to delete account.")
-    } finally {
-      setDeleting(false)
-    }
-  }
-
-  // ---- Notification preferences ----
-  async function handleSaveNotifPrefs() {
-    setSavingNotifPrefs(true)
-    setError(null)
-    try {
-      const res = await fetch(API.ACCOUNT_NOTIFICATIONS, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(notifPrefs),
-      })
-      const data = await res.json()
-      if (!res.ok) {
-        setError(data.error || "Failed to save notification preferences.")
-        return
-      }
-      setNotifPrefs((prev) => {
-        const updated = { ...prev }
-        for (const key of Object.keys(prev) as (keyof NotificationPrefs)[]) {
-          if (key in data) updated[key] = data[key]
-        }
-        setOriginalNotifPrefs(updated)
-        return updated
-      })
-      setSuccess("Notification preferences saved.")
-    } catch {
-      setError("Failed to save notification preferences.")
-    } finally {
-      setSavingNotifPrefs(false)
-    }
-  }
+  // ---- Account handlers ----
+  // Data request and delete handlers are now managed in ProfilePrivacyTab component
 
   // Unified save all changes
   async function saveAllPendingChanges() {
@@ -487,27 +379,6 @@ function ProfileContent() {
         }
       }
 
-      // Save notification prefs if changed
-      if (hasNotificationChanges) {
-        const res = await fetch(API.ACCOUNT_NOTIFICATIONS, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(notifPrefs),
-        })
-        if (res.ok) {
-          const data = await res.json()
-          setNotifPrefs((prev) => {
-            const updated = { ...prev }
-            for (const key of Object.keys(prev) as (keyof NotificationPrefs)[]) {
-              if (key in data) updated[key] = data[key]
-            }
-            setOriginalNotifPrefs(updated)
-            return updated
-          })
-          savedCount++
-        }
-      }
-
       setPendingChanges({})
       setShowSaveModal(false)
       setSuccess(`Changes saved successfully.`)
@@ -518,30 +389,7 @@ function ProfileContent() {
     }
   }
 
-  // Notification pref labels for display
-  const NOTIF_LABELS: Record<keyof NotificationPrefs, string> = {
-    email_security: "Security Alerts",
-    email_new_login: "Login Alerts",
-    email_password_change: "Password Changes",
-    email_2fa_change: "2FA Changes",
-    email_session_revoked: "Session Revoked",
-    email_scan_complete: "Scan Complete",
-    email_critical_findings: "Critical Findings",
-    email_regression_alert: "Regression Alerts",
-    email_schedules: "Scheduled Scans",
-    email_api_keys: "API Key Activity",
-    email_api_limit_warning: "API Limit Warning",
-    email_webhooks: "Webhook Activity",
-    email_webhook_failure: "Webhook Failures",
-    email_data_requests: "Data Requests",
-    email_account_deletion: "Account Deletion",
-    email_team_invite: "Team Invites",
-    email_team_changes: "Team Changes",
-
-
-  }
-
-  // Check for pending changes (notification changes are now managed in ProfileNotificationsTab)
+  // Check for pending changes
   const hasPendingChanges = Object.keys(pendingChanges).length > 0
 
   // Build change items for modal
@@ -561,27 +409,6 @@ function ProfileContent() {
   ]
 
   // ---- Helpers ----
-  function formatDate(dateStr: string | null) {
-    if (!dateStr) return "Never"
-    return new Date(dateStr).toLocaleDateString("en-US", {
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    })
-  }
-
-  function getTimeRemaining(endDate: string) {
-    const diff = new Date(endDate).getTime() - Date.now()
-    if (diff <= 0) return null
-    const days = Math.floor(diff / (1000 * 60 * 60 * 24))
-    const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60))
-    const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60))
-    if (days > 0) return `${days}d ${hours}h ${minutes}m`
-    if (hours > 0) return `${hours}h ${minutes}m`
-    return `${minutes}m`
-  }
 
   if (loading) {
     return (
@@ -790,207 +617,17 @@ function ProfileContent() {
 
             {/* ===================== PRIVACY TAB ===================== */}
             {activeProfileTab === "privacy" && (
-              <div className="flex flex-col gap-10">
-                {/* Privacy & Data Protection */}
-                <section>
-                  <div className="flex items-center gap-3 mb-4">
-                    <div className="flex items-center justify-center h-9 w-9 rounded-lg bg-primary/10">
-                      <Shield className="h-4.5 w-4.5 text-primary" />
-                    </div>
-                    <div>
-                      <h2 className="text-base font-semibold text-foreground">Privacy & Data Protection</h2>
-                      <p className="text-sm text-muted-foreground">Protected under GDPR and privacy regulations</p>
-                    </div>
-                  </div>
-                  <Card className="border-primary/20 bg-primary/5">
-                    <CardContent className="pt-6 space-y-3">
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        <div className="flex items-start gap-3 p-3 rounded-lg bg-card/50 border border-border">
-                          <Globe className="h-4 w-4 text-blue-500 shrink-0 mt-0.5" />
-                          <div>
-                            <p className="text-xs font-semibold text-foreground">GDPR Compliant</p>
-                            <p className="text-xs text-muted-foreground mt-0.5">Full compliance with EU data protection regulations</p>
-                          </div>
-                        </div>
-                        <div className="flex items-start gap-3 p-3 rounded-lg bg-card/50 border border-border">
-                          <Lock className="h-4 w-4 text-green-500 shrink-0 mt-0.5" />
-                          <div>
-                            <p className="text-xs font-semibold text-foreground">Encrypted Storage</p>
-                            <p className="text-xs text-muted-foreground mt-0.5">Your data is encrypted at rest and in transit</p>
-                          </div>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                </section>
-
-                {/* Data Export */}
-                <section>
-                  <div className="flex items-center gap-3 mb-4">
-                    <div className="flex items-center justify-center h-9 w-9 rounded-lg bg-primary/10">
-                      <Download className="h-4.5 w-4.5 text-primary" />
-                    </div>
-                    <div>
-                      <h2 className="text-base font-semibold text-foreground">Data Export</h2>
-                      <p className="text-sm text-muted-foreground">Download your data, available every 30 days</p>
-                    </div>
-                  </div>
-                  <Card className="border-border/60">
-                    <CardContent className="pt-6">
-                      <div className="flex flex-col gap-4">
-                        {/* Download Fresh Data Section */}
-                        <div className="flex flex-col gap-4 p-4 rounded-lg border border-border bg-secondary/30">
-                          {/* Can download fresh data - no cooldown or cooldown expired */}
-                          {dataReqInfo?.canDownloadNew && (
-                            <div className="flex items-center justify-between">
-                              <div>
-                                <p className="text-sm font-medium text-foreground">Download Fresh Export</p>
-                                <p className="text-xs text-muted-foreground mt-0.5">
-                                  {dataReqInfo?.lastDownloadAt
-                                    ? "Your 30-day cooldown has expired. Get a fresh export now."
-                                    : "Download your complete account data now."}
-                                </p>
-                              </div>
-                              <Button
-                                onClick={handleRequestData}
-                                disabled={requestingData}
-                                className="shrink-0"
-                              >
-                                <Download className="mr-2 h-4 w-4" />
-                                {requestingData ? "Downloading..." : "Download Now"}
-                              </Button>
-                            </div>
-                          )}
-
-                          {/* Cooldown active - can't get fresh data yet */}
-                          {!dataReqInfo?.canDownloadNew && dataReqInfo?.lastDownloadAt && (
-                            <div className="flex items-center justify-between">
-                              <div>
-                                <p className="text-sm font-medium text-foreground">Fresh Export Cooldown</p>
-                                <p className="text-xs text-muted-foreground mt-0.5">
-                                  Next fresh export available in{" "}
-                                  <span className="font-mono text-foreground font-semibold">
-                                    {dataReqInfo.cooldownEndsAt ? getTimeRemaining(dataReqInfo.cooldownEndsAt) || "soon" : "soon"}
-                                  </span>
-                                </p>
-                                <p className="text-xs text-muted-foreground mt-1">
-                                  Last downloaded: {formatDate(dataReqInfo.lastDownloadAt)}
-                                </p>
-                              </div>
-                              <Button disabled className="shrink-0">
-                                <Clock className="mr-2 h-4 w-4" />
-                                On Cooldown
-                              </Button>
-                            </div>
-                          )}
-                        </div>
-
-                        {/* Re-download Previous Export */}
-                        {dataReqInfo?.hasData && (
-                          <div className="flex flex-col gap-4 p-4 rounded-lg border border-border bg-muted/50">
-                            <div className="flex items-center justify-between">
-                              <div>
-                                <p className="text-sm font-medium text-foreground">Previous Export Available</p>
-                                <p className="text-xs text-muted-foreground mt-0.5">
-                                  Re-download your last export anytime. This data was last updated {dataReqInfo.lastDownloadAt ? formatDate(dataReqInfo.lastDownloadAt) : "recently"}.
-                                </p>
-                              </div>
-                              <Button
-                                onClick={handleDownloadPreviousData}
-                                variant="outline"
-                                className="shrink-0"
-                              >
-                                <Download className="mr-2 h-4 w-4" />
-                                Re-download
-                              </Button>
-                            </div>
-                          </div>
-                        )}
-
-                        {/* How It Works Box */}
-                        <div className="flex gap-3 p-3 rounded-lg bg-muted/50 border border-border">
-                          <Download className="h-4 w-4 text-muted-foreground shrink-0 mt-0.5" />
-                          <div>
-                            <p className="text-xs font-semibold text-foreground">How It Works</p>
-                            <ul className="text-xs text-muted-foreground mt-1 space-y-1">
-                              <li>1. Click "Download Now" to get a fresh export</li>
-                              <li>2. Your data downloads as a JSON file</li>
-                              <li>3. Re-download anytime from "Previous Export"</li>
-                              <li>4. Request a new fresh export after 30 days</li>
-                            </ul>
-                          </div>
-                        </div>
-
-                        {/* What's Included Box */}
-                        <div className="flex gap-3 p-3 rounded-lg bg-muted/50 border border-border">
-                          <Shield className="h-4 w-4 text-muted-foreground shrink-0 mt-0.5" />
-                          <div>
-                            <p className="text-xs font-semibold text-foreground">{"What's Included"}</p>
-                            <ul className="text-xs text-muted-foreground mt-1 space-y-1">
-                              <li>Your profile information</li>
-                              <li>All API keys and metadata</li>
-                              <li>Complete scan history and results</li>
-                              <li>API usage logs and statistics</li>
-                            </ul>
-                          </div>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                </section>
-
-                {/* Danger Zone */}
-                <section>
-                  <div className="flex items-center gap-3 mb-4">
-                    <div className="flex items-center justify-center h-9 w-9 rounded-lg bg-destructive/10">
-                      <AlertTriangle className="h-4.5 w-4.5 text-destructive" />
-                    </div>
-                    <div>
-                      <h2 className="text-base font-semibold text-destructive">Danger Zone</h2>
-                      <p className="text-sm text-muted-foreground">Permanent account deletion, cannot be undone</p>
-                    </div>
-                  </div>
-                  <Card className="border-destructive/30">
-                    <CardContent className="pt-6">
-                      {!showDeleteConfirm ? (
-                        <Button
-                          variant="outline"
-                          className="text-destructive dark:text-red-400 border-destructive/30 hover:bg-destructive/10 hover:text-destructive dark:hover:text-red-400 bg-transparent"
-                          onClick={() => setShowDeleteConfirm(true)}
-                        >
-                          <Trash2 className="mr-2 h-4 w-4" />
-                          Delete Account
-                        </Button>
-                      ) : (
-                        <div className="flex flex-col gap-4 p-4 rounded-lg border border-destructive/30 bg-destructive/5">
-                          <div>
-                            <p className="text-sm font-semibold text-foreground">Are you absolutely sure?</p>
-                            <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
-                              This will permanently delete your account, all API keys, scan history, and data exports.
-                              Type <span className="font-mono font-semibold text-destructive">DELETE</span> to confirm.
-                            </p>
-                          </div>
-                          <Input
-                            placeholder="Type DELETE to confirm"
-                            value={deleteConfirmText}
-                            onChange={(e) => setDeleteConfirmText(e.target.value)}
-                            className="bg-card font-mono"
-                          />
-                          <div className="flex items-center gap-2">
-                            <Button variant="destructive" disabled={deleteConfirmText !== "DELETE" || deleting} onClick={handleDeleteAccount}>
-                              <Trash2 className="mr-2 h-4 w-4" />
-                              {deleting ? "Deleting..." : "Permanently Delete Account"}
-                            </Button>
-                            <Button variant="ghost" onClick={() => { setShowDeleteConfirm(false); setDeleteConfirmText("") }}>
-                              Cancel
-                            </Button>
-                          </div>
-                        </div>
-                      )}
-                    </CardContent>
-                  </Card>
-                </section>
-              </div>
+              <ProfilePrivacyTab
+                user={user}
+                loading={loading}
+                error={error}
+                success={success}
+                setError={setError}
+                setSuccess={setSuccess}
+                onTabChange={handleProfileTabChange}
+                pendingChanges={pendingChanges}
+                setPendingChanges={setPendingChanges}
+              />
             )}
           </div>{/* End Main Content Area */}
         </div>{/* End Two-column layout */}
