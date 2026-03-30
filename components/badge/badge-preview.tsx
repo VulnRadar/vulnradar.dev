@@ -61,7 +61,7 @@ export function BadgePreview({ selected, token, generating }: BadgePreviewProps)
   const badgeUrl = token ? `${origin}${API.BADGE}/${token}` : ""
   const shareUrl = token ? `${origin}/shared/${token}` : ""
   const htmlSnippet = token
-    ? `<a href="${shareUrl}" target="_blank" rel="noopener noreferrer">\n  <img src="${badgeUrl}" alt="Secured by VulnRadar" />\n</a>`
+    ? `<a href="${shareUrl}" target="_blank" rel="noopener noreferrer" style="display: inline-block;"><img src="${badgeUrl}" alt="Secured by VulnRadar" style="border: 0;"/></a>`
     : ""
   const markdownSnippet = token ? `[![Secured by VulnRadar](${badgeUrl})](${shareUrl})` : ""
 
