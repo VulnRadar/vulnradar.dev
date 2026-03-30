@@ -60,10 +60,6 @@ export function ProfileDeveloperTab({
   const revokedKeys = apiKeys.filter((k) => k && typeof k === 'object' && k.revoked_at)
 
   const fetchData = useCallback(async () => {
-    console.log("[v0] fetchData called")
-    console.log("[v0] API.KEYS:", API.KEYS)
-    console.log("[v0] API.WEBHOOKS:", API.WEBHOOKS)
-    console.log("[v0] API.SCHEDULES:", API.SCHEDULES)
     try {
       const [keysRes, webhooksRes, schedulesRes] = await Promise.all([
         fetch(API.KEYS),
@@ -71,29 +67,19 @@ export function ProfileDeveloperTab({
         fetch(API.SCHEDULES),
       ])
 
-      console.log("[v0] keysRes.ok:", keysRes.ok, "status:", keysRes.status)
-      console.log("[v0] webhooksRes.ok:", webhooksRes.ok, "status:", webhooksRes.status)
-      console.log("[v0] schedulesRes.ok:", schedulesRes.ok, "status:", schedulesRes.status)
-
       const keysData = keysRes.ok ? await keysRes.json() : { keys: [] }
       const webhooksData = webhooksRes.ok ? await webhooksRes.json() : { webhooks: [] }
       const schedulesData = schedulesRes.ok ? await schedulesRes.json() : { schedules: [] }
-
-      console.log("[v0] keysData:", JSON.stringify(keysData))
-      console.log("[v0] webhooksData:", JSON.stringify(webhooksData))
-      console.log("[v0] schedulesData:", JSON.stringify(schedulesData))
 
       // API returns { keys: [...] }, { webhooks: [...] }, { schedules: [...] }
       const keys = Array.isArray(keysData) ? keysData : (keysData.keys || [])
       const hooks = Array.isArray(webhooksData) ? webhooksData : (webhooksData.webhooks || [])
       const scheds = Array.isArray(schedulesData) ? schedulesData : (schedulesData.schedules || [])
 
-      console.log("[v0] Setting apiKeys to:", JSON.stringify(keys))
       setApiKeys(keys)
       setWebhooks(hooks)
       setSchedules(scheds)
-    } catch (err) {
-      console.log("[v0] fetchData error:", err)
+    } catch {
       setError("Failed to load developer settings.")
     } finally {
       setLoading(false)
@@ -106,20 +92,14 @@ export function ProfileDeveloperTab({
 
   // API Key handlers
   async function handleGenerateKey() {
-    console.log("[v0] handleGenerateKey called")
-    console.log("[v0] activeKeys.length:", activeKeys.length)
-    console.log("[v0] API.KEYS:", API.KEYS)
-    
     if (activeKeys.length >= 3) {
-      console.log("[v0] Max keys reached, aborting")
       setError("Maximum 3 active keys allowed.")
       return
     }
     setGeneratingKey(true)
     setError(null)
     try {
-      const body = { name: newKeyName || "Unnamed Key" }
-      console.log("[v0] POST body:", JSON.stringify(body))
+      const body = { name: newKeyName || "Default" }
       
       const res = await fetch(API.KEYS, {
         method: "POST",
@@ -127,26 +107,20 @@ export function ProfileDeveloperTab({
         body: JSON.stringify(body),
       })
       
-      console.log("[v0] POST response status:", res.status)
       const data = await res.json()
-      console.log("[v0] POST response data:", JSON.stringify(data))
       
       if (!res.ok) {
-        console.log("[v0] POST failed with error:", data.error)
         setError(data.error || "Failed to generate key.")
         return
       }
       // API returns { key: { id, key_prefix, name, daily_limit, created_at, raw_key } }
       const keyRecord = data.key
-      console.log("[v0] keyRecord:", JSON.stringify(keyRecord))
-      console.log("[v0] raw_key:", keyRecord?.raw_key)
       
       setNewlyCreatedKey(keyRecord.raw_key)
       setApiKeys((prev) => [keyRecord, ...prev])
       setNewKeyName("")
       setSuccess("API key generated successfully!")
-    } catch (err) {
-      console.log("[v0] handleGenerateKey error:", err)
+    } catch {
       setError("Failed to generate key.")
     } finally {
       setGeneratingKey(false)
