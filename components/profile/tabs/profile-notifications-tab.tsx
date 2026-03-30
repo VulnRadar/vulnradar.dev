@@ -1,11 +1,32 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { Shield, LogIn, Lock, Fingerprint, MonitorSmartphone, Scan, CheckCircle2, AlertCircle, CalendarClock, Zap, Key, Gauge, Webhook, XCircle, UserCog, Download, Users, Mail } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Switch } from '@/components/ui/switch'
 import { Badge } from '@/components/ui/badge'
+import { API } from '@/lib/config/constants'
 import type { ProfileTabProps, NotificationPrefs } from '../types'
+
+const DEFAULT_PREFS: NotificationPrefs = {
+  email_security: true,
+  email_new_login: true,
+  email_password_change: true,
+  email_2fa_change: true,
+  email_session_revoked: true,
+  email_scan_complete: true,
+  email_critical_findings: true,
+  email_regression_alert: true,
+  email_schedules: true,
+  email_api_keys: true,
+  email_api_limit_warning: true,
+  email_webhooks: true,
+  email_webhook_failure: true,
+  email_data_requests: true,
+  email_account_deletion: true,
+  email_team_invite: true,
+  email_team_changes: true,
+}
 
 export function ProfileNotificationsTab({
   user,
@@ -17,33 +38,72 @@ export function ProfileNotificationsTab({
   onTabChange,
   pendingChanges,
   setPendingChanges,
+  discardKey,
+  saveKey,
 }: ProfileTabProps) {
-  const [notifPrefs, setNotifPrefs] = useState<NotificationPrefs>({
-    email_security: true,
-    email_new_login: true,
-    email_password_change: true,
-    email_2fa_change: true,
-    email_session_revoked: true,
-    email_scan_complete: true,
-    email_critical_findings: true,
-    email_regression_alert: true,
-    email_schedules: true,
-    email_api_keys: true,
-    email_api_limit_warning: true,
-    email_webhooks: true,
-    email_webhook_failure: true,
-    email_data_requests: true,
-    email_account_deletion: true,
-    email_team_invite: true,
-    email_team_changes: true,
-  })
+  const [notifPrefs, setNotifPrefs] = useState<NotificationPrefs>(DEFAULT_PREFS)
+  const [originalPrefs, setOriginalPrefs] = useState<NotificationPrefs>(DEFAULT_PREFS)
+
+  // Fetch actual notification preferences from API
+  const fetchNotificationPrefs = useCallback(async () => {
+    try {
+      const res = await fetch(API.ACCOUNT_NOTIFICATIONS)
+      if (res.ok) {
+        const data = await res.json()
+        const prefs = { ...DEFAULT_PREFS }
+        for (const key of Object.keys(DEFAULT_PREFS) as (keyof NotificationPrefs)[]) {
+          if (key in data) prefs[key] = data[key] ?? true
+        }
+        setNotifPrefs(prefs)
+        setOriginalPrefs(prefs)
+      }
+    } catch {
+      // Use defaults on error
+    }
+  }, [])
+
+  // Fetch on mount
+  useEffect(() => {
+    fetchNotificationPrefs()
+  }, [fetchNotificationPrefs])
+
+  // Reset to original values when discardKey changes (discard was clicked)
+  useEffect(() => {
+    if (discardKey && discardKey > 0) {
+      setNotifPrefs(originalPrefs)
+    }
+  }, [discardKey, originalPrefs])
+
+  // Update original values when saveKey changes (save was successful)
+  useEffect(() => {
+    if (saveKey && saveKey > 0) {
+      setOriginalPrefs(notifPrefs)
+    }
+  }, [saveKey]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleToggle = (key: keyof NotificationPrefs, checked: boolean) => {
     setNotifPrefs((prev) => ({ ...prev, [key]: checked }))
-    setPendingChanges((prev) => ({
-      ...prev,
-      notifications: { ...((prev.notifications as Record<string, unknown>) || {}), [key]: checked },
-    }))
+    // Track changes relative to original values
+    const isChanged = checked !== originalPrefs[key]
+    setPendingChanges((prev) => {
+      const currentNotifs = (prev.notifications as Record<string, boolean>) || {}
+      if (isChanged) {
+        return {
+          ...prev,
+          notifications: { ...currentNotifs, [key]: checked },
+        }
+      } else {
+        // Remove from pending if it's back to original
+        const { [key]: _, ...rest } = currentNotifs
+        const hasChanges = Object.keys(rest).length > 0
+        if (hasChanges) {
+          return { ...prev, notifications: rest }
+        } else {
+          const { notifications: __, ...otherChanges } = prev
+          return otherChanges
+        }
+      }
+    })
   }
 
   return (

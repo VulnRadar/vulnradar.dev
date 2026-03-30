@@ -34,6 +34,7 @@ export function ProfileGeneralTab({
   onTabChange,
   pendingChanges,
   setPendingChanges,
+  discardKey,
   onAvatarCrop,
   onSetCropDialog,
 }: ProfileGeneralTabProps) {
@@ -43,10 +44,20 @@ export function ProfileGeneralTab({
   const [uploadingAvatar, setUploadingAvatar] = useState(false)
   const avatarInputRef = useRef<HTMLInputElement>(null)
 
+  // Reset inputs when user changes
   useEffect(() => {
     setNameInput(user?.name || "")
     setEmailInput(user?.email || "")
   }, [user])
+
+  // Reset inputs when discard is clicked
+  useEffect(() => {
+    if (discardKey && discardKey > 0) {
+      setNameInput(user?.name || "")
+      setEmailInput(user?.email || "")
+      setProfileEditMode(false)
+    }
+  }, [discardKey, user])
 
   function handleAvatarFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
