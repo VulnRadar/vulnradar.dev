@@ -309,6 +309,8 @@ export function ProfileDeveloperTab({
                 ))}
               </div>
             )}
+              </>
+            )}
           </CardContent>
         </Card>
       </section>
