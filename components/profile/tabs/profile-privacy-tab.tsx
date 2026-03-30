@@ -25,33 +25,26 @@ export function ProfilePrivacyTab({
   setSuccess,
   pendingChanges,
   setPendingChanges,
+  preloadedDataReqInfo,
 }: ProfileTabProps) {
+  // Use preloaded data if available
   const [dataReqInfo, setDataReqInfo] = useState<{
     hasData: boolean
     canDownloadNew: boolean
     cooldownEndsAt?: string
     lastDownloadAt?: string
-  } | null>(null)
+  } | null>(preloadedDataReqInfo ?? null)
   const [requestingData, setRequestingData] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [deleteConfirmText, setDeleteConfirmText] = useState('')
   const [deleting, setDeleting] = useState(false)
 
-  // Fetch data export info on mount
+  // Update state when preloaded data changes
   useEffect(() => {
-    const fetchDataReqInfo = async () => {
-      try {
-        const res = await fetch(API.DATA_REQUEST)
-        if (res.ok) {
-          const data = await res.json()
-          setDataReqInfo(data)
-        }
-      } catch {
-        // Silently fail
-      }
+    if (preloadedDataReqInfo) {
+      setDataReqInfo(preloadedDataReqInfo)
     }
-    fetchDataReqInfo()
-  }, [])
+  }, [preloadedDataReqInfo])
 
   async function handleRequestData() {
     setRequestingData(true)
