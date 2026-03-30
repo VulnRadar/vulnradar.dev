@@ -7,7 +7,8 @@ import { cn } from "@/lib/ui/utils"
 import { APP_NAME, API, ROUTES } from "@/lib/config/constants"
 
 const ImageCropDialog = dynamic(() => import("@/components/modals/image-crop-dialog").then(m => ({ default: m.ImageCropDialog })), { ssr: false })
-import { ProfileGeneralTab } from "@/components/profile/profile-general-tab"
+import { ProfileGeneralProfileTab } from "@/components/profile/tabs/profile-general-tab"
+import type { ProfileUser, ApiKey, BillingInfo, DataRequestInfo, WebhookItem, ScheduleItem, NotificationPrefs, ProfileTab, PendingChanges } from "@/components/profile/types"
 import {
   Plus,
   Copy,
@@ -77,118 +78,7 @@ import { Header } from "@/components/scanner/header"
 import { Footer } from "@/components/scanner/footer"
 import { SaveConfirmationModal, type ChangeItem } from "@/components/shared/save-confirmation-modal"
 
-interface ApiKey {
-  id: number
-  key_prefix: string
-  name: string
-  daily_limit: number
-  created_at: string
-  last_used_at: string | null
-  revoked_at: string | null
-  usage_today: number
-}
-
-interface UserBadge {
-  id: number
-  name: string
-  display_name: string
-  description: string | null
-  icon: string | null
-  color: string | null
-  priority: number
-  awarded_at: string
-}
-
-interface User {
-  userId: number
-  email: string
-  name: string | null
-  totpEnabled?: boolean
-  twoFactorMethod?: string | null
-  avatarUrl?: string | null
-  role?: string
-  badges?: UserBadge[]
-}
-
-interface DataRequestInfo {
-  hasData: boolean
-  canDownloadNew: boolean
-  cooldownEndsAt?: string
-  lastDownloadAt?: string
-}
-
-interface BillingInfo {
-  billingEnabled: boolean
-  plan: string
-  subscriptionStatus: string | null
-  stripeCustomerId: string | null
-  subscription: {
-    id: string
-    status: string
-    currentPeriodStart: string | null
-    currentPeriodEnd: string | null
-    cancelAtPeriodEnd: boolean
-    cancelAt: string | null
-  } | null
-  giftedSubscription: {
-    plan: string
-    expiresAt: string
-    startedAt: string
-  } | null
-  usage: {
-    used: number
-    limit: number
-    remaining: number
-    resetsAt: string
-    unlimited: boolean
-  }
-  limits: {
-    free: number
-    core_supporter: number
-    pro_supporter: number
-    elite_supporter: number
-  }
-}
-
-type Tab = "general" | "security" | "social" | "billing" | "developer" | "notifications" | "privacy"
-
-interface WebhookItem {
-  id: number
-  url: string
-  name: string
-  type: string
-  active: boolean
-  created_at: string
-}
-
-interface ScheduleItem {
-  id: number
-  url: string
-  frequency: string
-  created_at: string
-  last_run: string | null
-  next_run: string | null
-}
-
-interface NotificationPrefs {
-  email_security: boolean
-  email_new_login: boolean
-  email_password_change: boolean
-  email_2fa_change: boolean
-  email_session_revoked: boolean
-  email_scan_complete: boolean
-  email_critical_findings: boolean
-  email_regression_alert: boolean
-  email_schedules: boolean
-  email_api_keys: boolean
-  email_api_limit_warning: boolean
-  email_webhooks: boolean
-  email_webhook_failure: boolean
-  email_data_requests: boolean
-  email_account_deletion: boolean
-  email_team_invite: boolean
-  email_team_changes: boolean
-}
+// Types imported from @/components/profile/types
 
 export default function ProfilePage() {
   return <ProfileContent />
@@ -197,26 +87,26 @@ export default function ProfilePage() {
 function ProfileContent() {
 
   const router = useRouter()
-  const VALID_TABS: Tab[] = ["general", "security", "social", "billing", "developer", "notifications", "privacy"]
-  const [activeTab, setActiveTab] = useState<Tab>("general")
+  const VALID_TABS: ProfileTab[] = ["general", "security", "social", "billing", "developer", "notifications", "privacy"]
+  const [activeProfileTab, setActiveProfileTab] = useState<ProfileTab>("general")
 
   // On mount, read hash and listen for back/forward hash changes
   useEffect(() => {
-    const getTab = (): Tab => {
-      const hash = window.location.hash.replace("#", "") as Tab
+    const getProfileTab = (): ProfileTab => {
+      const hash = window.location.hash.replace("#", "") as ProfileTab
       return VALID_TABS.includes(hash) ? hash : "general"
     }
     // Set default hash to #general if none provided
     if (!window.location.hash) {
       window.history.replaceState(null, "", "/profile#general")
     }
-    setActiveTab(getTab())
+    setActiveProfileTab(getProfileTab())
     const onHashChange = () => {
-      const newTab = getTab()
+      const newProfileTab = getProfileTab()
       // Clear pending changes when hash changes (browser nav)
       setPendingChanges({})
       setShowSaveModal(false)
-      setActiveTab(newTab)
+      setActiveProfileTab(newProfileTab)
     }
     window.addEventListener("hashchange", onHashChange)
     return () => window.removeEventListener("hashchange", onHashChange)
@@ -224,7 +114,7 @@ function ProfileContent() {
   }, [])
 
   // Change tab — just update the hash, no page reload
-  const handleTabChange = (tab: Tab) => {
+  const handleProfileTabChange = (tab: ProfileTab) => {
     // Clear any pending changes when switching tabs
     if (Object.keys(pendingChanges).length > 0 || showSaveModal) {
       setPendingChanges({})
@@ -233,13 +123,13 @@ function ProfileContent() {
       setEmailInput(user?.email || "")
     }
     // Reset notification prefs to original if switching away from notifications
-    if (activeTab === "notifications" && originalNotifPrefs) {
+    if (activeProfileTab === "notifications" && originalNotifPrefs) {
       setNotifPrefs(originalNotifPrefs)
     }
-    setActiveTab(tab)
+    setActiveProfileTab(tab)
     window.location.hash = tab
   }
-  const [user, setUser] = useState<User | null>(null)
+  const [user, setUser] = useState<ProfileUser | null>(null)
   const [keys, setKeys] = useState<ApiKey[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -262,11 +152,7 @@ function ProfileContent() {
   const [savingProfile, setSavingProfile] = useState(false)
 
   // Unified pending changes system
-  const [pendingChanges, setPendingChanges] = useState<{
-    name?: string
-    email?: string
-    notifications?: Partial<NotificationPrefs>
-  }>({})
+  const [pendingChanges, setPendingChanges] = useState<PendingChanges>({})
   const [showSaveModal, setShowSaveModal] = useState(false)
   const [originalNotifPrefs, setOriginalNotifPrefs] = useState<NotificationPrefs | null>(null)
 
@@ -1014,13 +900,13 @@ function ProfileContent() {
   const revokedKeys = keys.filter((k) => k.revoked_at)
 
   const TABS = [
-    { id: "general" as Tab, label: "General", icon: <UserCog className="h-4 w-4" /> },
-    { id: "security" as Tab, label: "Security", icon: <Lock className="h-4 w-4" /> },
-    { id: "social" as Tab, label: "Social", icon: <Share2 className="h-4 w-4" /> },
-    { id: "billing" as Tab, label: "Billing", icon: <CreditCard className="h-4 w-4" /> },
-    { id: "developer" as Tab, label: "Developer", icon: <Key className="h-4 w-4" /> },
-    { id: "notifications" as Tab, label: "Notifications", icon: <Bell className="h-4 w-4" /> },
-    { id: "privacy" as Tab, label: "Privacy", icon: <Shield className="h-4 w-4" /> },
+    { id: "general" as ProfileTab, label: "General", icon: <UserCog className="h-4 w-4" /> },
+    { id: "security" as ProfileTab, label: "Security", icon: <Lock className="h-4 w-4" /> },
+    { id: "social" as ProfileTab, label: "Social", icon: <Share2 className="h-4 w-4" /> },
+    { id: "billing" as ProfileTab, label: "Billing", icon: <CreditCard className="h-4 w-4" /> },
+    { id: "developer" as ProfileTab, label: "Developer", icon: <Key className="h-4 w-4" /> },
+    { id: "notifications" as ProfileTab, label: "Notifications", icon: <Bell className="h-4 w-4" /> },
+    { id: "privacy" as ProfileTab, label: "Privacy", icon: <Shield className="h-4 w-4" /> },
   ]
 
   return (
@@ -1062,10 +948,10 @@ function ProfileContent() {
                 {TABS.map((tab) => (
                   <button
                     key={tab.id}
-                    onClick={() => handleTabChange(tab.id)}
+                    onClick={() => handleProfileTabChange(tab.id)}
                     className={cn(
                       "flex items-center gap-2 px-3.5 py-3 text-sm font-medium transition-all whitespace-nowrap border-b-2 -mb-px",
-                      activeTab === tab.id
+                      activeProfileTab === tab.id
                         ? "border-primary text-foreground"
                         : "border-transparent text-muted-foreground hover:text-foreground"
                     )}
@@ -1087,12 +973,12 @@ function ProfileContent() {
                     onClick={(e) => {
                       if (!e.ctrlKey && !e.metaKey) {
                         e.preventDefault()
-                        handleTabChange(tab.id)
+                        handleProfileTabChange(tab.id)
                       }
                     }}
                     className={cn(
                       "flex items-center gap-2.5 px-3 py-2 text-sm rounded-lg transition-all",
-                      activeTab === tab.id
+                      activeProfileTab === tab.id
                         ? "bg-secondary text-foreground font-medium"
                         : "text-muted-foreground hover:text-foreground hover:bg-secondary/50"
                     )}
@@ -1109,15 +995,15 @@ function ProfileContent() {
           <div className="flex-1 min-w-0">
 
             {/* ===================== GENERAL TAB ===================== */}
-            {activeTab === "general" && (
-              <ProfileGeneralTab
+            {activeProfileTab === "general" && (
+              <ProfileGeneralProfileTab
                 user={user}
                 loading={loading}
                 error={error}
                 success={success}
                 setError={setError}
                 setSuccess={setSuccess}
-                onTabChange={handleTabChange}
+                onProfileTabChange={handleProfileTabChange}
                 pendingChanges={pendingChanges}
                 setPendingChanges={setPendingChanges}
                 onAvatarCrop={handleCroppedAvatar}
@@ -1129,7 +1015,7 @@ function ProfileContent() {
             )}
 
             {/* ===================== SOCIAL TAB ===================== */}
-            {activeTab === "social" && (
+            {activeProfileTab === "social" && (
               <div className="flex flex-col gap-10">
                 {/* Discord Integration */}
                 <section>
@@ -1327,7 +1213,7 @@ function ProfileContent() {
             )}
 
             {/* ===================== BILLING TAB ===================== */}
-            {activeTab === "billing" && (
+            {activeProfileTab === "billing" && (
               <div className="flex flex-col gap-10">
                 {/* Usage Card */}
                 <section>
@@ -1676,7 +1562,7 @@ function ProfileContent() {
             )}
 
             {/* ===================== SECURITY TAB ===================== */}
-            {activeTab === "security" && (
+            {activeProfileTab === "security" && (
               <div className="flex flex-col gap-10">
                 {/* Password */}
                 <section>
@@ -2100,7 +1986,7 @@ function ProfileContent() {
                       <Button
                         variant="outline"
                         onClick={() => {
-                          setActiveTab("notifications" as Tab)
+                          setActiveProfileTab("notifications" as ProfileTab)
                           window.location.hash = "notifications"
                         }}
                       >
@@ -2113,7 +1999,7 @@ function ProfileContent() {
             )}
 
             {/* ===================== DEVELOPER TAB ===================== */}
-            {activeTab === "developer" && (
+            {activeProfileTab === "developer" && (
               <div className="flex flex-col gap-10">
                 <section>
                   <div className="flex items-center justify-between gap-3 mb-4">
@@ -2256,7 +2142,7 @@ function ProfileContent() {
             )}
 
             {/* ===================== WEBHOOKS SECTION (renders in Developer tab) ===================== */}
-            {activeTab === "developer" && (
+            {activeProfileTab === "developer" && (
               <div className="flex flex-col gap-10 mt-10">
                 <section>
                   <div className="flex items-center gap-3 mb-4">
@@ -2518,7 +2404,7 @@ function ProfileContent() {
             )}
 
             {/* ===================== NOTIFICATIONS TAB ===================== */}
-            {activeTab === "notifications" && (
+            {activeProfileTab === "notifications" && (
               <div className="flex flex-col gap-10">
                 {/* --- SECURITY --- */}
                 <section>
@@ -2678,7 +2564,7 @@ function ProfileContent() {
             )}
 
             {/* ===================== PRIVACY TAB ===================== */}
-            {activeTab === "privacy" && (
+            {activeProfileTab === "privacy" && (
               <div className="flex flex-col gap-10">
                 {/* Privacy & Data Protection */}
                 <section>

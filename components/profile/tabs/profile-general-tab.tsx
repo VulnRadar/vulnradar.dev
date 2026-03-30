@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState } from "react"
+import React, { useState, useRef, useEffect } from "react"
 import {
   UserCog,
   Award,
@@ -15,60 +15,20 @@ import {
   Tag,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import {
-  Card,
-  CardContent,
-} from "@/components/ui/card"
+import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
 import { API } from "@/lib/config/constants"
+import type { ProfileTabProps } from "../types"
 
-interface UserBadge {
-  id: number
-  name: string
-  display_name: string
-  description: string | null
-  icon: string | null
-  color: string | null
-  priority: number
-  awarded_at: string
-}
-
-interface User {
-  userId: number
-  email: string
-  name: string | null
-  totpEnabled?: boolean
-  twoFactorMethod?: string | null
-  avatarUrl?: string | null
-  role?: string
-  badges?: UserBadge[]
-}
-
-interface ProfileGeneralTabProps {
-  user: User | null
-  loading: boolean
-  error: string | null
-  success: string | null
-  setError: (error: string | null) => void
-  setSuccess: (success: string | null) => void
-  onTabChange: (tab: string) => void
-  pendingChanges: {
-    name?: string
-    email?: string
-    notifications?: Record<string, unknown>
-  }
-  setPendingChanges: (changes: Record<string, unknown>) => void
+interface ProfileGeneralTabProps extends ProfileTabProps {
   onAvatarCrop?: (croppedDataUrl: string) => void
   onSetCropDialog?: (open: boolean, imageSrc: string | null) => void
 }
 
 export function ProfileGeneralTab({
   user,
-  loading,
-  error,
-  success,
   setError,
   setSuccess,
   onTabChange,
@@ -81,9 +41,9 @@ export function ProfileGeneralTab({
   const [nameInput, setNameInput] = useState(user?.name || "")
   const [emailInput, setEmailInput] = useState(user?.email || "")
   const [uploadingAvatar, setUploadingAvatar] = useState(false)
-  const avatarInputRef = React.useRef<HTMLInputElement>(null)
+  const avatarInputRef = useRef<HTMLInputElement>(null)
 
-  React.useEffect(() => {
+  useEffect(() => {
     setNameInput(user?.name || "")
     setEmailInput(user?.email || "")
   }, [user])
@@ -102,40 +62,15 @@ export function ProfileGeneralTab({
     setError(null)
     const isGif = file.type === "image/gif"
     if (isGif) {
-      // Skip crop dialog for GIFs to preserve animation
       const reader = new FileReader()
       reader.onload = () => onAvatarCrop?.(reader.result as string)
       reader.readAsDataURL(file)
     } else {
       const reader = new FileReader()
-      reader.onload = () => {
-        onSetCropDialog?.(true, reader.result as string)
-      }
+      reader.onload = () => onSetCropDialog?.(true, reader.result as string)
       reader.readAsDataURL(file)
     }
     if (avatarInputRef.current) avatarInputRef.current.value = ""
-  }
-
-  async function handleCroppedAvatar(croppedDataUrl: string) {
-    setUploadingAvatar(true)
-    setError(null)
-    try {
-      const res = await fetch(API.AUTH.UPDATE, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ avatarUrl: croppedDataUrl }),
-      })
-      const data = await res.json()
-      if (!res.ok) {
-        setError(data.error)
-      } else {
-        setSuccess("Profile picture updated.")
-      }
-    } catch {
-      setError("Failed to upload profile picture.")
-    } finally {
-      setUploadingAvatar(false)
-    }
   }
 
   async function handleRemoveAvatar() {
@@ -154,6 +89,40 @@ export function ProfileGeneralTab({
       setError("Failed to remove profile picture.")
     } finally {
       setUploadingAvatar(false)
+    }
+  }
+
+  function handleCancelEdit() {
+    setNameInput(user?.name || "")
+    setEmailInput(user?.email || "")
+    setPendingChanges(prev => {
+      const { name: _, email: __, ...rest } = prev
+      return rest
+    })
+    setProfileEditMode(false)
+  }
+
+  function handleNameChange(val: string) {
+    setNameInput(val)
+    if (val !== (user?.name || "")) {
+      setPendingChanges(prev => ({ ...prev, name: val }))
+    } else {
+      setPendingChanges(prev => {
+        const { name: _, ...rest } = prev
+        return rest
+      })
+    }
+  }
+
+  function handleEmailChange(val: string) {
+    setEmailInput(val)
+    if (val !== user?.email) {
+      setPendingChanges(prev => ({ ...prev, email: val }))
+    } else {
+      setPendingChanges(prev => {
+        const { email: _, ...rest } = prev
+        return rest
+      })
     }
   }
 
@@ -268,14 +237,7 @@ export function ProfileGeneralTab({
                 variant="outline"
                 size="sm"
                 className="h-7 text-xs gap-1.5"
-                onClick={() => {
-                  if (profileEditMode) {
-                    setNameInput(user?.name || "")
-                    setEmailInput(user?.email || "")
-                    setPendingChanges({})
-                  }
-                  setProfileEditMode(m => !m)
-                }}
+                onClick={() => profileEditMode ? handleCancelEdit() : setProfileEditMode(true)}
               >
                 {profileEditMode ? (
                   <><X className="h-3 w-3" />Cancel</>
@@ -286,7 +248,6 @@ export function ProfileGeneralTab({
             </div>
 
             {!profileEditMode ? (
-              // Read-only view
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="flex flex-col gap-1 p-3 rounded-lg border bg-muted/20 border-border">
                   <div className="flex items-center gap-2 mb-1">
@@ -306,7 +267,6 @@ export function ProfileGeneralTab({
                 </div>
               </div>
             ) : (
-              // Edit mode
               <div className="flex flex-col gap-3">
                 <div className="flex flex-col gap-1.5">
                   <div className="flex items-center justify-between">
@@ -317,16 +277,7 @@ export function ProfileGeneralTab({
                   </div>
                   <Input
                     value={nameInput}
-                    onChange={(e) => {
-                      const val = e.target.value
-                      setNameInput(val)
-                      if (val !== (user?.name || "")) {
-                        setPendingChanges({ ...pendingChanges, name: val })
-                      } else {
-                        const { name: _, ...rest } = pendingChanges
-                        setPendingChanges(rest)
-                      }
-                    }}
+                    onChange={(e) => handleNameChange(e.target.value)}
                     className="bg-card h-10"
                     placeholder="Your display name"
                     autoFocus
@@ -342,16 +293,7 @@ export function ProfileGeneralTab({
                   <Input
                     type="email"
                     value={emailInput}
-                    onChange={(e) => {
-                      const val = e.target.value
-                      setEmailInput(val)
-                      if (val !== user?.email) {
-                        setPendingChanges({ ...pendingChanges, email: val })
-                      } else {
-                        const { email: _, ...rest } = pendingChanges
-                        setPendingChanges(rest)
-                      }
-                    }}
+                    onChange={(e) => handleEmailChange(e.target.value)}
                     className="bg-card h-10"
                     placeholder="Your email address"
                   />
