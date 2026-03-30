@@ -91,7 +91,7 @@ export default function IntegrationsPage() {
 
         <div className="mt-8">
           <h3 className="text-sm font-semibold text-foreground mb-4">Webhook Payload</h3>
-          <DocsCodeBlock
+          <CodeBlock
             language="json"
             code={`{
   "event": "scan.completed",
@@ -113,7 +113,7 @@ export default function IntegrationsPage() {
           <p className="text-sm text-muted-foreground mb-4">
             All webhook requests include an <code className="text-xs font-mono bg-muted px-1 py-0.5 rounded">X-VulnRadar-Signature</code> header for verification.
           </p>
-          <DocsCodeBlock
+          <CodeBlock
             language="python"
             code={`import hmac
 import hashlib
@@ -168,7 +168,7 @@ def verify_webhook(payload: bytes, signature: str, secret: str) -> bool:
 
         <div className="mt-6">
           <h3 className="text-sm font-semibold text-foreground mb-4">Example: Automated Daily Scan</h3>
-          <DocsCodeBlock
+          <CodeBlock
             language="python"
             code={`import requests
 from datetime import datetime
