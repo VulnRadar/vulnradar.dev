@@ -460,22 +460,22 @@ function ProfileContent() {
       <main className="flex-1 w-full max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-10 flex flex-col gap-8 min-w-0">
 
         {/* Page Header */}
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight text-foreground">Settings</h1>
-          <p className="text-sm text-muted-foreground mt-1.5">Manage your account settings and preferences</p>
+        <div className="mb-2">
+          <h1 className="text-2xl font-semibold tracking-tight text-foreground">Settings</h1>
+          <p className="text-sm text-muted-foreground mt-1">Manage your account settings and preferences</p>
         </div>
 
         {/* Toast messages */}
         {(error || success) && (
           <div
             className={cn(
-              "flex items-center gap-3 px-4 py-3 rounded-lg text-sm",
-              error ? "bg-destructive/10 text-destructive border border-destructive/20" : "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20"
+              "flex items-center gap-3 px-4 py-3 rounded-xl text-sm border",
+              error ? "bg-destructive/10 text-destructive border-destructive/20" : "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20"
             )}
           >
             {error ? <AlertTriangle className="h-4 w-4 shrink-0" /> : <Check className="h-4 w-4 shrink-0" />}
             <span className="flex-1">{error || success}</span>
-            <button onClick={() => { setError(null); setSuccess(null) }} className="text-xs hover:underline opacity-70 hover:opacity-100">
+            <button onClick={() => { setError(null); setSuccess(null) }} className="text-xs font-medium hover:underline opacity-70 hover:opacity-100 transition-opacity">
               Dismiss
             </button>
           </div>
@@ -508,7 +508,7 @@ function ProfileContent() {
             </div>
 
             {/* Desktop: Vertical sidebar — self-start is required for sticky to work in a flex row */}
-            <nav className="hidden lg:flex flex-col gap-1 sticky top-20 self-start">
+            <nav className="hidden lg:flex flex-col gap-0.5 sticky top-20 self-start">
               {TABS.map((tab) => (
                 <a
                   key={tab.id}
@@ -520,7 +520,7 @@ function ProfileContent() {
                     }
                   }}
                   className={cn(
-                    "flex items-center gap-2.5 px-3 py-2 text-sm rounded-lg transition-all",
+                    "flex items-center gap-2.5 px-3 py-2.5 text-sm rounded-lg transition-colors",
                     activeProfileTab === tab.id
                       ? "bg-primary/10 text-primary font-medium"
                       : "text-muted-foreground hover:text-foreground hover:bg-muted/50"

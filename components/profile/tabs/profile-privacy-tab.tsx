@@ -155,19 +155,19 @@ export function ProfilePrivacyTab({
   }
 
   return (
-    <div className="flex flex-col gap-10">
+    <div className="flex flex-col gap-8">
       {/* Privacy & Data Protection */}
       <section>
         <div className="flex items-center gap-3 mb-4">
-          <div className="flex items-center justify-center h-9 w-9 rounded-lg bg-primary/10">
-            <Shield className="h-4.5 w-4.5 text-primary" />
+          <div className="p-2 rounded-lg bg-primary/10">
+            <Shield className="h-4 w-4 text-primary" />
           </div>
           <div>
-            <h2 className="text-base font-semibold text-foreground">Privacy & Data Protection</h2>
+            <h2 className="text-lg font-semibold text-foreground">Privacy & Data Protection</h2>
             <p className="text-sm text-muted-foreground">Protected under GDPR and privacy regulations</p>
           </div>
         </div>
-        <Card className="border-primary/20 bg-primary/5">
+        <Card className="border-primary/30 bg-primary/5">
           <CardContent className="pt-6 space-y-3">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="flex items-start gap-3 p-3 rounded-lg bg-card/50 border border-border">
@@ -192,15 +192,15 @@ export function ProfilePrivacyTab({
       {/* Data Export */}
       <section>
         <div className="flex items-center gap-3 mb-4">
-          <div className="flex items-center justify-center h-9 w-9 rounded-lg bg-primary/10">
-            <Download className="h-4.5 w-4.5 text-primary" />
+          <div className="p-2 rounded-lg bg-primary/10">
+            <Download className="h-4 w-4 text-primary" />
           </div>
           <div>
-            <h2 className="text-base font-semibold text-foreground">Data Export</h2>
+            <h2 className="text-lg font-semibold text-foreground">Data Export</h2>
             <p className="text-sm text-muted-foreground">Download your data, available every 30 days</p>
           </div>
         </div>
-        <Card className="border-border/60">
+        <Card className="border-border/50 bg-card/50">
           <CardContent className="pt-6">
             <div className="flex flex-col gap-4">
               {/* Download Fresh Data Section */}
@@ -307,15 +307,15 @@ export function ProfilePrivacyTab({
       {/* Danger Zone */}
       <section>
         <div className="flex items-center gap-3 mb-4">
-          <div className="flex items-center justify-center h-9 w-9 rounded-lg bg-destructive/10">
-            <AlertTriangle className="h-4.5 w-4.5 text-destructive" />
+          <div className="p-2 rounded-lg bg-destructive/10">
+            <AlertTriangle className="h-4 w-4 text-destructive" />
           </div>
           <div>
-            <h2 className="text-base font-semibold text-destructive">Danger Zone</h2>
+            <h2 className="text-lg font-semibold text-destructive">Danger Zone</h2>
             <p className="text-sm text-muted-foreground">Permanent account deletion, cannot be undone</p>
           </div>
         </div>
-        <Card className="border-destructive/30">
+        <Card className="border-destructive/30 bg-destructive/5">
           <CardContent className="pt-6">
             {!showDeleteConfirm ? (
               <Button

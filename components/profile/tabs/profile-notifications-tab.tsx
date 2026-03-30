@@ -47,19 +47,19 @@ export function ProfileNotificationsTab({
   }
 
   return (
-    <div className="flex flex-col gap-10">
+    <div className="flex flex-col gap-8">
       {/* --- SECURITY --- */}
       <section>
         <div className="flex items-center gap-3 mb-4">
-          <div className="flex items-center justify-center h-9 w-9 rounded-lg bg-primary/10">
-            <Shield className="h-4.5 w-4.5 text-primary" />
+          <div className="p-2 rounded-lg bg-primary/10">
+            <Shield className="h-4 w-4 text-primary" />
           </div>
           <div>
-            <h2 className="text-base font-semibold text-foreground">Security Notifications</h2>
+            <h2 className="text-lg font-semibold text-foreground">Security Notifications</h2>
             <p className="text-sm text-muted-foreground">Critical alerts for account access and auth</p>
           </div>
         </div>
-        <Card className="border-border/60">
+        <Card className="border-border/50 bg-card/50">
           <CardContent className="pt-6 pb-4 flex flex-col gap-4">
             {([
               { key: "email_security" as const, icon: Shield, label: "Security Alerts", desc: "Unusual activity, account compromise warnings, and critical security events.", badge: "Recommended" },
@@ -87,15 +87,15 @@ export function ProfileNotificationsTab({
       {/* --- SCANNING --- */}
       <section>
         <div className="flex items-center gap-3 mb-4">
-          <div className="flex items-center justify-center h-9 w-9 rounded-lg bg-primary/10">
-            <Scan className="h-4.5 w-4.5 text-primary" />
+          <div className="p-2 rounded-lg bg-primary/10">
+            <Scan className="h-4 w-4 text-primary" />
           </div>
           <div>
-            <h2 className="text-base font-semibold text-foreground">Scanning Notifications</h2>
+            <h2 className="text-lg font-semibold text-foreground">Scanning Notifications</h2>
             <p className="text-sm text-muted-foreground">Results and scheduled scan alerts</p>
           </div>
         </div>
-        <Card className="border-border/60">
+        <Card className="border-border/50 bg-card/50">
           <CardContent className="pt-6 pb-4 flex flex-col gap-4">
             {([
               { key: "email_scan_complete" as const, icon: CheckCircle2, label: "Scan Completed", desc: "Alerts when vulnerability scans are finished." },
@@ -120,15 +120,15 @@ export function ProfileNotificationsTab({
       {/* --- API & INTEGRATIONS --- */}
       <section>
         <div className="flex items-center gap-3 mb-4">
-          <div className="flex items-center justify-center h-9 w-9 rounded-lg bg-primary/10">
-            <Zap className="h-4.5 w-4.5 text-primary" />
+          <div className="p-2 rounded-lg bg-primary/10">
+            <Zap className="h-4 w-4 text-primary" />
           </div>
           <div>
-            <h2 className="text-base font-semibold text-foreground">{"API & Integrations"}</h2>
+            <h2 className="text-lg font-semibold text-foreground">{"API & Integrations"}</h2>
             <p className="text-sm text-muted-foreground">API keys, limits, and webhook alerts</p>
           </div>
         </div>
-        <Card className="border-border/60">
+        <Card className="border-border/50 bg-card/50">
           <CardContent className="pt-6 pb-4 flex flex-col gap-4">
             {([
               { key: "email_api_keys" as const, icon: Key, label: "API Key Activity", desc: "Alerts when API keys are created, revoked, or approaching expiration." },
@@ -154,15 +154,15 @@ export function ProfileNotificationsTab({
       {/* --- ACCOUNT --- */}
       <section>
         <div className="flex items-center gap-3 mb-4">
-          <div className="flex items-center justify-center h-9 w-9 rounded-lg bg-primary/10">
-            <UserCog className="h-4.5 w-4.5 text-primary" />
+          <div className="p-2 rounded-lg bg-primary/10">
+            <UserCog className="h-4 w-4 text-primary" />
           </div>
           <div>
-            <h2 className="text-base font-semibold text-foreground">Account Notifications</h2>
+            <h2 className="text-lg font-semibold text-foreground">Account Notifications</h2>
             <p className="text-sm text-muted-foreground">Account and team activity alerts</p>
           </div>
         </div>
-        <Card className="border-border/60">
+        <Card className="border-border/50 bg-card/50">
           <CardContent className="pt-6 pb-4 flex flex-col gap-4">
             {([
               { key: "email_data_requests" as const, icon: Download, label: "Data Export Updates", desc: "Notifications when your data export is ready for download." },
@@ -187,10 +187,12 @@ export function ProfileNotificationsTab({
 
       {/* Info card */}
       <section>
-        <Card className="bg-muted/30 border-muted">
-          <CardContent className="pt-6">
+        <Card className="border-border/40 bg-card/30">
+          <CardContent className="pt-5 pb-5">
             <div className="flex gap-3">
-              <Mail className="h-5 w-5 text-muted-foreground shrink-0 mt-0.5" />
+              <div className="p-2 rounded-lg bg-muted/50">
+                <Mail className="h-4 w-4 text-muted-foreground" />
+              </div>
               <div className="flex flex-col gap-1">
                 <p className="text-sm font-medium text-foreground">About Email Notifications</p>
                 <p className="text-xs text-muted-foreground leading-relaxed">
