@@ -1,373 +1,370 @@
-"use client"
+'use client'
 
-import { useState, useEffect } from "react"
-import { Lock, Eye, Database, Trash2, Download, Loader2, AlertTriangle } from "lucide-react"
-import { Button } from "@/components/ui/button"
-import { Card } from "@/components/ui/card"
-import { Switch } from "@/components/ui/switch"
+import { useState, useEffect } from 'react'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { toast } from "sonner"
-import { API } from "@/lib/config/constants"
-import { useProfile } from "../profile-context"
-import { useRouter } from "next/navigation"
+  AlertTriangle,
+  Clock,
+  Download,
+  Globe,
+  Lock,
+  Shield,
+  Trash2,
+} from 'lucide-react'
+import { API } from '@/lib/config/constants'
+import type { ProfileTabProps } from '@/components/profile/types'
 
-interface PrivacySetting {
-  id: string
-  label: string
-  description: string
-  key: keyof PrivacySettings
-  icon: typeof Eye
-}
+export function ProfilePrivacyTab({
+  user,
+  loading,
+  error,
+  success,
+  setError,
+  setSuccess,
+  pendingChanges,
+  setPendingChanges,
+  preloadedDataReqInfo,
+}: ProfileTabProps) {
+  // Use preloaded data if available
+  const [dataReqInfo, setDataReqInfo] = useState<{
+    hasData: boolean
+    canDownloadNew: boolean
+    cooldownEndsAt?: string
+    lastDownloadAt?: string
+  } | null>(preloadedDataReqInfo ?? null)
+  const [requestingData, setRequestingData] = useState(false)
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [deleteConfirmText, setDeleteConfirmText] = useState('')
+  const [deleting, setDeleting] = useState(false)
 
-interface PrivacySettings {
-  profilePublic: boolean
-  showEmail: boolean
-  showSocialLinks: boolean
-  allowDataCollection: boolean
-  shareAnonymousData: boolean
-}
-
-const defaultSettings: PrivacySettings = {
-  profilePublic: false,
-  showEmail: false,
-  showSocialLinks: true,
-  allowDataCollection: true,
-  shareAnonymousData: true,
-}
-
-const PRIVACY_SETTINGS: PrivacySetting[] = [
-  {
-    id: "profile-public",
-    label: "Public Profile",
-    description: "Allow others to view your profile",
-    key: "profilePublic",
-    icon: Eye,
-  },
-  {
-    id: "show-email",
-    label: "Show Email",
-    description: "Display your email on your public profile",
-    key: "showEmail",
-    icon: Eye,
-  },
-  {
-    id: "show-social",
-    label: "Show Social Links",
-    description: "Display your social links on your public profile",
-    key: "showSocialLinks",
-    icon: Eye,
-  },
-]
-
-const DATA_SETTINGS: PrivacySetting[] = [
-  {
-    id: "data-collection",
-    label: "Usage Analytics",
-    description: "Help us improve by sharing usage data",
-    key: "allowDataCollection",
-    icon: Database,
-  },
-  {
-    id: "anonymous-data",
-    label: "Anonymous Statistics",
-    description: "Share anonymous security statistics",
-    key: "shareAnonymousData",
-    icon: Database,
-  },
-]
-
-export function ProfilePrivacyTab() {
-  const router = useRouter()
-  const { privacySettings, setPrivacySettings } = useProfile()
-
-  const [isLoading, setIsLoading] = useState(true)
-  const [showDeleteDialog, setShowDeleteDialog] = useState(false)
-  const [deleteConfirmation, setDeleteConfirmation] = useState("")
-  const [isDeleting, setIsDeleting] = useState(false)
-  const [isExporting, setIsExporting] = useState(false)
-
+  // Update state when preloaded data changes
   useEffect(() => {
-    fetchSettings()
-  }, [])
-
-  const fetchSettings = async () => {
-    try {
-      setIsLoading(true)
-      const res = await fetch(`${API.ME}/privacy`, { credentials: "include" })
-      if (res.ok) {
-        const data = await res.json()
-        setPrivacySettings(data)
-      }
-    } catch (error) {
-      console.error("Failed to fetch privacy settings:", error)
-    } finally {
-      setIsLoading(false)
+    if (preloadedDataReqInfo) {
+      setDataReqInfo(preloadedDataReqInfo)
     }
-  }
+  }, [preloadedDataReqInfo])
 
-  const updateSetting = async (key: string, value: boolean) => {
-    const newSettings = { ...privacySettings, [key]: value }
-    setPrivacySettings(newSettings)
-
+  async function handleRequestData() {
+    setRequestingData(true)
+    setError(null)
     try {
-      const res = await fetch(`${API.ME}/privacy`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ [key]: value }),
-      })
-
-      if (!res.ok) {
-        setPrivacySettings(privacySettings)
-        toast.error("Failed to update setting")
-      }
-    } catch (error) {
-      setPrivacySettings(privacySettings)
-      toast.error("Failed to update setting")
-    }
-  }
-
-  const handleExportData = async () => {
-    setIsExporting(true)
-    try {
-      const res = await fetch(`${API.ME}/export`, {
-        method: "POST",
-        credentials: "include",
-      })
-
-      if (res.ok) {
-        const blob = await res.blob()
-        const url = window.URL.createObjectURL(blob)
-        const a = document.createElement("a")
+      const res = await fetch(API.DATA_REQUEST, { method: 'POST' })
+      const data = await res.json()
+      if (res.ok && data.data) {
+        // Immediately download the data as JSON
+        const jsonString = JSON.stringify(data.data, null, 2)
+        const blob = new Blob([jsonString], { type: 'application/json' })
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement('a')
         a.href = url
-        a.download = "vulnradar-data-export.json"
+        a.download = `vulnradar-data-export-${new Date().toISOString().split('T')[0]}.json`
         document.body.appendChild(a)
         a.click()
-        window.URL.revokeObjectURL(url)
         document.body.removeChild(a)
-        toast.success("Data exported successfully")
+        URL.revokeObjectURL(url)
+        setSuccess('Data export downloaded successfully.')
+        setDataReqInfo({ hasData: true, lastDownloadAt: new Date().toISOString(), canDownloadNew: false })
       } else {
-        toast.error("Failed to export data")
+        setError(data.error || 'Failed to request data export.')
       }
-    } catch (error) {
-      toast.error("Failed to export data")
+    } catch {
+      setError('Failed to request data export.')
     } finally {
-      setIsExporting(false)
+      setRequestingData(false)
     }
   }
 
-  const handleDeleteAccount = async () => {
-    if (deleteConfirmation !== "DELETE") {
-      toast.error("Please type DELETE to confirm")
-      return
-    }
-
-    setIsDeleting(true)
+  async function handleDownloadPreviousData() {
+    setRequestingData(true)
+    setError(null)
     try {
-      const res = await fetch(API.ME, {
-        method: "DELETE",
-        credentials: "include",
-      })
-
+      const res = await fetch(API.DATA_REQUEST, { method: 'GET' })
       if (res.ok) {
-        toast.success("Account deleted")
-        router.push("/")
+        const data = await res.json()
+        if (data.data) {
+          const jsonString = JSON.stringify(data.data, null, 2)
+          const blob = new Blob([jsonString], { type: 'application/json' })
+          const url = URL.createObjectURL(blob)
+          const a = document.createElement('a')
+          a.href = url
+          a.download = `vulnradar-data-export-${new Date().toISOString().split('T')[0]}.json`
+          document.body.appendChild(a)
+          a.click()
+          document.body.removeChild(a)
+          URL.revokeObjectURL(url)
+          setSuccess('Data export downloaded successfully.')
+        } else {
+          setError('No previous export data found.')
+        }
       } else {
-        toast.error("Failed to delete account")
+        setError('Failed to download data export.')
       }
-    } catch (error) {
-      toast.error("Failed to delete account")
+    } catch {
+      setError('Failed to download data export.')
     } finally {
-      setIsDeleting(false)
+      setRequestingData(false)
     }
   }
 
-  if (isLoading) {
+  async function handleDeleteAccount() {
+    setDeleting(true)
+    setError(null)
+    try {
+      const res = await fetch(API.ACCOUNT, { method: 'DELETE' })
+      const data = await res.json()
+      if (res.ok) {
+        setSuccess('Account deletion initiated. Redirecting to login...')
+        setTimeout(() => {
+          window.location.href = '/login'
+        }, 1500)
+      } else {
+        setError(data.error || 'Failed to delete account.')
+      }
+    } catch {
+      setError('Failed to delete account.')
+    } finally {
+      setDeleting(false)
+    }
+  }
+
+  function formatDate(date: string) {
+    return new Date(date).toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+    })
+  }
+
+  function getTimeRemaining(endDate: string) {
+    const now = new Date()
+    const end = new Date(endDate)
+    const diff = end.getTime() - now.getTime()
+
+    if (diff <= 0) return 'now'
+
+    const days = Math.floor(diff / (1000 * 60 * 60 * 24))
+    const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60))
+    const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60))
+
+    if (days > 0) return `${days}d ${hours}h`
+    if (hours > 0) return `${hours}h ${minutes}m`
+    return `${minutes}m`
+  }
+
+  if (loading) {
     return (
-      <div className="flex items-center justify-center py-16">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      <div className="flex items-center justify-center py-12">
+        <div className="text-center">
+          <div className="h-6 w-6 animate-spin rounded-full border-2 border-muted border-t-primary mx-auto mb-3" />
+          <p className="text-sm text-muted-foreground">Loading privacy settings...</p>
+        </div>
       </div>
     )
   }
 
   return (
-    <div className="space-y-6">
-      {/* Profile Privacy */}
-      <Card className="p-4 sm:p-6 border-border/50 bg-card/50">
+    <div className="flex flex-col gap-8">
+      {/* Privacy & Data Protection */}
+      <section>
         <div className="flex items-center gap-3 mb-4">
           <div className="p-2 rounded-lg bg-primary/10">
-            <Eye className="h-4 w-4 text-primary" />
+            <Shield className="h-4 w-4 text-primary" />
           </div>
           <div>
-            <h3 className="text-sm font-medium text-foreground">Profile Privacy</h3>
-            <p className="text-xs text-muted-foreground">Control who can see your information</p>
+            <h2 className="text-lg font-semibold text-foreground">Privacy & Data Protection</h2>
+            <p className="text-sm text-muted-foreground">Protected under GDPR and privacy regulations</p>
           </div>
         </div>
-
-        <div className="space-y-3">
-          {PRIVACY_SETTINGS.map((setting) => (
-            <div
-              key={setting.id}
-              className="flex items-center justify-between p-3 rounded-lg bg-muted/30 border border-border/50"
-            >
-              <div>
-                <p className="text-sm font-medium text-foreground">{setting.label}</p>
-                <p className="text-xs text-muted-foreground">{setting.description}</p>
+        <Card className="border-primary/30 bg-primary/5">
+          <CardContent className="pt-6 space-y-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="flex items-start gap-3 p-3 rounded-lg bg-card/50 border border-border">
+                <Globe className="h-4 w-4 text-blue-500 shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-xs font-semibold text-foreground">GDPR Compliant</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">Full compliance with EU data protection regulations</p>
+                </div>
               </div>
-              <Switch
-                checked={privacySettings[setting.key] as boolean}
-                onCheckedChange={(checked) => updateSetting(setting.key, checked)}
-              />
+              <div className="flex items-start gap-3 p-3 rounded-lg bg-card/50 border border-border">
+                <Lock className="h-4 w-4 text-green-500 shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-xs font-semibold text-foreground">Encrypted Storage</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">Your data is encrypted at rest and in transit</p>
+                </div>
+              </div>
             </div>
-          ))}
-        </div>
-      </Card>
+          </CardContent>
+        </Card>
+      </section>
 
-      {/* Data & Analytics */}
-      <Card className="p-4 sm:p-6 border-border/50 bg-card/50">
+      {/* Data Export */}
+      <section>
         <div className="flex items-center gap-3 mb-4">
           <div className="p-2 rounded-lg bg-primary/10">
-            <Database className="h-4 w-4 text-primary" />
+            <Download className="h-4 w-4 text-primary" />
           </div>
           <div>
-            <h3 className="text-sm font-medium text-foreground">Data & Analytics</h3>
-            <p className="text-xs text-muted-foreground">Control how your data is used</p>
+            <h2 className="text-lg font-semibold text-foreground">Data Export</h2>
+            <p className="text-sm text-muted-foreground">Download your data, available every 30 days</p>
           </div>
         </div>
+        <Card className="border-border/50 bg-card/50">
+          <CardContent className="pt-6">
+            <div className="flex flex-col gap-4">
+              {/* Download Fresh Data Section */}
+              <div className="flex flex-col gap-4 p-4 rounded-lg border border-border bg-secondary/30">
+                {/* Can download fresh data - no cooldown or cooldown expired */}
+                {dataReqInfo?.canDownloadNew && (
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium text-foreground">Download Fresh Export</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        {dataReqInfo?.lastDownloadAt
+                          ? 'Your 30-day cooldown has expired. Get a fresh export now.'
+                          : 'Download your complete account data now.'}
+                      </p>
+                    </div>
+                    <Button
+                      onClick={handleRequestData}
+                      disabled={requestingData}
+                      className="shrink-0"
+                    >
+                      <Download className="mr-2 h-4 w-4" />
+                      {requestingData ? 'Downloading...' : 'Download Now'}
+                    </Button>
+                  </div>
+                )}
 
-        <div className="space-y-3">
-          {DATA_SETTINGS.map((setting) => (
-            <div
-              key={setting.id}
-              className="flex items-center justify-between p-3 rounded-lg bg-muted/30 border border-border/50"
-            >
-              <div>
-                <p className="text-sm font-medium text-foreground">{setting.label}</p>
-                <p className="text-xs text-muted-foreground">{setting.description}</p>
+                {/* Cooldown active - can't get fresh data yet */}
+                {!dataReqInfo?.canDownloadNew && dataReqInfo?.lastDownloadAt && (
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium text-foreground">Fresh Export Cooldown</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        Next fresh export available in{' '}
+                        <span className="font-mono text-foreground font-semibold">
+                          {dataReqInfo.cooldownEndsAt ? getTimeRemaining(dataReqInfo.cooldownEndsAt) || 'soon' : 'soon'}
+                        </span>
+                      </p>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Last downloaded: {formatDate(dataReqInfo.lastDownloadAt)}
+                      </p>
+                    </div>
+                    <Button disabled className="shrink-0">
+                      <Clock className="mr-2 h-4 w-4" />
+                      On Cooldown
+                    </Button>
+                  </div>
+                )}
               </div>
-              <Switch
-                checked={privacySettings[setting.key] as boolean}
-                onCheckedChange={(checked) => updateSetting(setting.key, checked)}
-              />
-            </div>
-          ))}
-        </div>
-      </Card>
 
-      {/* Export Data */}
-      <Card className="p-4 sm:p-6 border-border/50 bg-card/50">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-primary/10">
-              <Download className="h-4 w-4 text-primary" />
-            </div>
-            <div>
-              <h3 className="text-sm font-medium text-foreground">Export Your Data</h3>
-              <p className="text-xs text-muted-foreground">Download all your data in JSON format</p>
-            </div>
-          </div>
-          <Button variant="outline" size="sm" onClick={handleExportData} disabled={isExporting}>
-            {isExporting ? (
-              <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
-            ) : (
-              <Download className="h-3.5 w-3.5 mr-1.5" />
-            )}
-            Export
-          </Button>
-        </div>
-      </Card>
-
-      {/* Delete Account */}
-      <Card className="p-4 sm:p-6 border-destructive/50 bg-destructive/5">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-destructive/10">
-              <Trash2 className="h-4 w-4 text-destructive" />
-            </div>
-            <div>
-              <h3 className="text-sm font-medium text-destructive">Delete Account</h3>
-              <p className="text-xs text-muted-foreground">Permanently delete your account and all data</p>
-            </div>
-          </div>
-          <Button
-            variant="destructive"
-            size="sm"
-            onClick={() => setShowDeleteDialog(true)}
-          >
-            <Trash2 className="h-3.5 w-3.5 mr-1.5" />
-            Delete
-          </Button>
-        </div>
-      </Card>
-
-      {/* Delete Confirmation Dialog */}
-      <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle className="text-destructive flex items-center gap-2">
-              <AlertTriangle className="h-5 w-5" />
-              Delete Account
-            </DialogTitle>
-            <DialogDescription>
-              This action cannot be undone. This will permanently delete your account, all your scan history, API keys, and remove your data from our servers.
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-4">
-            <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/20">
-              <p className="text-xs text-destructive">
-                <strong>Warning:</strong> You will lose access to:
-              </p>
-              <ul className="text-xs text-destructive mt-2 space-y-1 list-disc list-inside">
-                <li>All scan history and results</li>
-                <li>API keys and webhooks</li>
-                <li>Team memberships</li>
-                <li>Shared reports</li>
-              </ul>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="delete-confirm" className="text-xs">
-                Type <strong>DELETE</strong> to confirm
-              </Label>
-              <Input
-                id="delete-confirm"
-                value={deleteConfirmation}
-                onChange={(e) => setDeleteConfirmation(e.target.value)}
-                placeholder="DELETE"
-                className="bg-background"
-              />
-            </div>
-          </div>
-
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowDeleteDialog(false)}>
-              Cancel
-            </Button>
-            <Button
-              variant="destructive"
-              onClick={handleDeleteAccount}
-              disabled={isDeleting || deleteConfirmation !== "DELETE"}
-            >
-              {isDeleting ? (
-                <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
-              ) : (
-                <Trash2 className="h-4 w-4 mr-1.5" />
+              {/* Re-download Previous Export */}
+              {dataReqInfo?.hasData && (
+                <div className="flex flex-col gap-4 p-4 rounded-lg border border-border bg-muted/50">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium text-foreground">Previous Export Available</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        Re-download your last export anytime. This data was last updated {dataReqInfo.lastDownloadAt ? formatDate(dataReqInfo.lastDownloadAt) : 'recently'}.
+                      </p>
+                    </div>
+                    <Button
+                      onClick={handleDownloadPreviousData}
+                      variant="outline"
+                      className="shrink-0"
+                    >
+                      <Download className="mr-2 h-4 w-4" />
+                      Re-download
+                    </Button>
+                  </div>
+                </div>
               )}
-              Delete Account
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+
+              {/* How It Works Box */}
+              <div className="flex gap-3 p-3 rounded-lg bg-muted/50 border border-border">
+                <Download className="h-4 w-4 text-muted-foreground shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-xs font-semibold text-foreground">How It Works</p>
+                  <ul className="text-xs text-muted-foreground mt-1 space-y-1">
+                    <li>1. Click "Download Now" to get a fresh export</li>
+                    <li>2. Your data downloads as a JSON file</li>
+                    <li>3. Re-download anytime from "Previous Export"</li>
+                    <li>4. Request a new fresh export after 30 days</li>
+                  </ul>
+                </div>
+              </div>
+
+              {/* What's Included Box */}
+              <div className="flex gap-3 p-3 rounded-lg bg-muted/50 border border-border">
+                <Shield className="h-4 w-4 text-muted-foreground shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-xs font-semibold text-foreground">{`What's Included`}</p>
+                  <ul className="text-xs text-muted-foreground mt-1 space-y-1">
+                    <li>Your profile information</li>
+                    <li>All API keys and metadata</li>
+                    <li>Complete scan history and results</li>
+                    <li>API usage logs and statistics</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </section>
+
+      {/* Danger Zone */}
+      <section>
+        <div className="flex items-center gap-3 mb-4">
+          <div className="p-2 rounded-lg bg-destructive/10">
+            <AlertTriangle className="h-4 w-4 text-destructive" />
+          </div>
+          <div>
+            <h2 className="text-lg font-semibold text-destructive">Danger Zone</h2>
+            <p className="text-sm text-muted-foreground">Permanent account deletion, cannot be undone</p>
+          </div>
+        </div>
+        <Card className="border-destructive/30 bg-destructive/5">
+          <CardContent className="pt-6">
+            {!showDeleteConfirm ? (
+              <Button
+                variant="outline"
+                className="text-destructive dark:text-red-400 border-destructive/30 hover:bg-destructive/10 hover:text-destructive dark:hover:text-red-400 bg-transparent"
+                onClick={() => setShowDeleteConfirm(true)}
+              >
+                <Trash2 className="mr-2 h-4 w-4" />
+                Delete Account
+              </Button>
+            ) : (
+              <div className="flex flex-col gap-4 p-4 rounded-lg border border-destructive/30 bg-destructive/5">
+                <div>
+                  <p className="text-sm font-semibold text-foreground">Are you absolutely sure?</p>
+                  <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
+                    This will permanently delete your account, all API keys, scan history, and data exports.
+                    Type <span className="font-mono font-semibold text-destructive">DELETE</span> to confirm.
+                  </p>
+                </div>
+                <Input
+                  placeholder="Type DELETE to confirm"
+                  value={deleteConfirmText}
+                  onChange={(e) => setDeleteConfirmText(e.target.value)}
+                  className="bg-card font-mono"
+                />
+                <div className="flex items-center gap-2">
+                  <Button variant="destructive" disabled={deleteConfirmText !== 'DELETE' || deleting} onClick={handleDeleteAccount}>
+                    <Trash2 className="mr-2 h-4 w-4" />
+                    {deleting ? 'Deleting...' : 'Permanently Delete Account'}
+                  </Button>
+                  <Button variant="ghost" onClick={() => { setShowDeleteConfirm(false); setDeleteConfirmText('') }}>
+                    Cancel
+                  </Button>
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </section>
     </div>
   )
 }

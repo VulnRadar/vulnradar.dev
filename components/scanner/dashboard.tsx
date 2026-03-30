@@ -68,25 +68,23 @@ function StatCard({
   const bgColor = bgColorMap[color] || "bg-primary/10"
   
   return (
-  <div className="group relative flex flex-col gap-3 p-5 rounded-xl border border-border bg-card/50 hover:bg-card/80 transition-colors">
-  <div className="flex items-center justify-between">
-  <div className={cn("flex items-center justify-center w-10 h-10 rounded-lg", bgColor)}>
-  <Icon className={cn("h-5 w-5", color)} />
-        </div>
-        {trend && (
-          <div className={cn(
-            "flex items-center gap-1 text-xs font-medium px-2 py-1 rounded-full",
-            trend.value >= 0 ? "text-emerald-500 bg-emerald-500/10" : "text-destructive bg-destructive/10"
-          )}>
-            <TrendingUp className={cn("h-3 w-3", trend.value < 0 && "rotate-180")} />
-            {Math.abs(trend.value)}%
-          </div>
-        )}
+    <div className="flex items-center gap-3 p-4 rounded-xl border border-border/40 bg-card/30 hover:bg-card/50 hover:border-primary/30 transition-colors">
+      <div className={cn("p-2 rounded-lg", bgColor)}>
+        <Icon className={cn("h-4 w-4", color)} />
       </div>
       <div>
-        <p className="text-3xl font-bold tracking-tight text-foreground">{value}</p>
-        <p className="text-sm text-muted-foreground mt-0.5">{label}</p>
+        <p className="text-2xl font-bold">{value}</p>
+        <p className="text-xs text-muted-foreground">{label}</p>
       </div>
+      {trend && (
+        <div className={cn(
+          "ml-auto flex items-center gap-1 text-xs font-medium px-2 py-1 rounded-full",
+          trend.value >= 0 ? "text-emerald-500 bg-emerald-500/10" : "text-destructive bg-destructive/10"
+        )}>
+          <TrendingUp className={cn("h-3 w-3", trend.value < 0 && "rotate-180")} />
+          {Math.abs(trend.value)}%
+        </div>
+      )}
     </div>
   )
 }
@@ -225,13 +223,11 @@ export function Dashboard() {
         {/* Stats skeleton */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           {[...Array(4)].map((_, i) => (
-            <div key={i} className="flex flex-col gap-3 p-5 rounded-xl border border-border bg-card/50">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-lg bg-muted animate-pulse" />
-              </div>
+            <div key={i} className="flex items-center gap-3 p-4 rounded-xl border border-border/40 bg-card/30">
+              <div className="w-8 h-8 rounded-lg bg-muted animate-pulse" />
               <div className="space-y-2">
-                <div className="h-8 w-16 rounded bg-muted animate-pulse" />
-                <div className="h-4 w-24 rounded bg-muted animate-pulse" />
+                <div className="h-6 w-12 rounded bg-muted animate-pulse" />
+                <div className="h-3 w-16 rounded bg-muted animate-pulse" />
               </div>
             </div>
           ))}
@@ -240,8 +236,11 @@ export function Dashboard() {
         {/* Cards skeleton */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           {[...Array(4)].map((_, i) => (
-            <div key={i} className="p-5 rounded-xl border border-border bg-card/50">
-              <div className="h-5 w-32 rounded bg-muted animate-pulse mb-4" />
+            <div key={i} className="p-5 rounded-xl border border-border/50 bg-card/50">
+              <div className="flex items-center gap-2 mb-4">
+                <div className="w-8 h-8 rounded-lg bg-muted animate-pulse" />
+                <div className="h-4 w-28 rounded bg-muted animate-pulse" />
+              </div>
               <div className="space-y-3">
                 {[...Array(i === 1 ? 1 : 4)].map((_, j) => (
                   <div key={j} className={cn("rounded bg-muted animate-pulse", i === 1 ? "h-28" : "h-4")} style={{ width: i === 1 ? "100%" : `${90 - j * 10}%` }} />
@@ -321,11 +320,13 @@ export function Dashboard() {
       {/* Main content grid */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* Severity breakdown */}
-        <div className="p-5 rounded-xl border border-border bg-card/50">
+        <div className="p-5 rounded-xl border border-border/50 bg-card/50">
           <div className="flex items-center justify-between mb-5">
             <div className="flex items-center gap-2">
-              <Shield className="h-4 w-4 text-primary" />
-              <h3 className="text-sm font-semibold text-foreground">Severity Breakdown</h3>
+              <div className="p-2 rounded-lg bg-primary/10">
+                <Shield className="h-4 w-4 text-primary" />
+              </div>
+              <h3 className="text-sm font-medium text-foreground">Severity Breakdown</h3>
             </div>
             <span className="text-xs text-muted-foreground">{totalIssues} total issues</span>
           </div>
@@ -339,11 +340,13 @@ export function Dashboard() {
         </div>
 
         {/* Scan Activity */}
-        <div className="p-5 rounded-xl border border-border bg-card/50">
+        <div className="p-5 rounded-xl border border-border/50 bg-card/50">
           <div className="flex items-center justify-between mb-5">
             <div className="flex items-center gap-2">
-              <Activity className="h-4 w-4 text-primary" />
-              <h3 className="text-sm font-semibold text-foreground">Scan Activity</h3>
+              <div className="p-2 rounded-lg bg-primary/10">
+                <Activity className="h-4 w-4 text-primary" />
+              </div>
+              <h3 className="text-sm font-medium text-foreground">Scan Activity</h3>
             </div>
             <span className="text-xs text-muted-foreground">Last 14 days</span>
           </div>
@@ -351,11 +354,13 @@ export function Dashboard() {
         </div>
 
         {/* Top Issues */}
-        <div className="p-5 rounded-xl border border-border bg-card/50">
+        <div className="p-5 rounded-xl border border-border/50 bg-card/50">
           <div className="flex items-center justify-between mb-5">
             <div className="flex items-center gap-2">
-              <AlertTriangle className="h-4 w-4 text-[hsl(var(--severity-high))]" />
-              <h3 className="text-sm font-semibold text-foreground">Top Issues</h3>
+              <div className="p-2 rounded-lg bg-[hsl(var(--severity-high))]/10">
+                <AlertTriangle className="h-4 w-4 text-[hsl(var(--severity-high))]" />
+              </div>
+              <h3 className="text-sm font-medium text-foreground">Top Issues</h3>
             </div>
             <span className="text-xs text-muted-foreground">{data.topVulnerabilities.length} types</span>
           </div>
@@ -393,11 +398,13 @@ export function Dashboard() {
         </div>
 
         {/* Recent Scans */}
-        <div className="p-5 rounded-xl border border-border bg-card/50">
+        <div className="p-5 rounded-xl border border-border/50 bg-card/50">
           <div className="flex items-center justify-between mb-5">
             <div className="flex items-center gap-2">
-              <Clock className="h-4 w-4 text-primary" />
-              <h3 className="text-sm font-semibold text-foreground">Recent Scans</h3>
+              <div className="p-2 rounded-lg bg-primary/10">
+                <Clock className="h-4 w-4 text-primary" />
+              </div>
+              <h3 className="text-sm font-medium text-foreground">Recent Scans</h3>
             </div>
             <a 
               href="/history" 
