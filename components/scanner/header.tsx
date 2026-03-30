@@ -21,7 +21,6 @@ const NAV_LINKS = [
   { href: ROUTES.SHARES, label: "Shared" },
   { href: ROUTES.TEAMS, label: "Teams" },
   { href: ROUTES.BADGE, label: "Badge" },
-  { href: ROUTES.DOCS, label: "Docs" },
   { href: ROUTES.PROFILE, label: "Profile" },
 ]
 
@@ -74,9 +73,7 @@ export function Header() {
           {/* Desktop nav - absolutely centered */}
           <nav className="hidden lg:flex items-center gap-0.5 absolute left-1/2 -translate-x-1/2">
             {NAV_LINKS.map(({ href, label }) => {
-              const active = href === ROUTES.DOCS
-                  ? pathname.startsWith(ROUTES.DOCS)
-                  : pathname === href || pathname.startsWith(href.split("#")[0])
+              const active = pathname === href || pathname.startsWith(href.split("#")[0])
               return (
                   <Link
                       key={href}
@@ -145,7 +142,7 @@ export function Header() {
             {/* Links */}
             <nav className="flex flex-col gap-0.5 p-3 flex-1 overflow-y-auto">
               {NAV_LINKS.map(({ href, label }) => {
-                const active = href === ROUTES.DOCS ? pathname.startsWith(ROUTES.DOCS) : pathname === href || pathname.startsWith(href.split("#")[0])
+                const active = pathname === href || pathname.startsWith(href.split("#")[0])
                 return (
                     <Link
                         key={href}
