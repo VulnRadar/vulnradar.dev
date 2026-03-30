@@ -450,6 +450,8 @@ export const API_VERSION = "v2"
 // ============================================================================
 
 export const API = {
+  // Shorthand for common endpoints
+  ME: `/api/${API_VERSION}/auth/me`,
   AUTH: {
     ME: `/api/${API_VERSION}/auth/me`,
     LOGIN: `/api/${API_VERSION}/auth/login`,
