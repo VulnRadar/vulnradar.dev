@@ -44,11 +44,13 @@ export function DocsCallout({ variant = "info", title, children, className }: Do
   const Icon = styles.icon
 
   return (
-    <div className={cn("rounded-lg border p-4 flex gap-3", styles.border, styles.bg, className)}>
-      <Icon className={cn("h-5 w-5 flex-shrink-0 mt-0.5", styles.iconColor)} />
-      <div className="text-xs text-muted-foreground">
-        {title && <p className={cn("font-medium mb-1", styles.iconColor)}>{title}</p>}
-        {children}
+    <div className={cn("rounded-xl border p-4 flex gap-3", styles.border, styles.bg, className)}>
+      <div className="p-1.5 rounded-lg bg-background/50 h-fit">
+        <Icon className={cn("h-4 w-4 flex-shrink-0", styles.iconColor)} />
+      </div>
+      <div className="text-sm text-muted-foreground">
+        {title && <p className={cn("font-medium mb-1 text-foreground", styles.iconColor)}>{title}</p>}
+        <div className="leading-relaxed">{children}</div>
       </div>
     </div>
   )

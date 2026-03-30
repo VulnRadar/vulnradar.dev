@@ -2,7 +2,7 @@
 
 import { useState, useEffect, createContext, useContext } from "react"
 import { usePathname } from "next/navigation"
-import { BookOpen, Code2, Webhook, Gauge, Layers } from "lucide-react"
+import { BookOpen, Code2, Webhook, Gauge } from "lucide-react"
 import { Footer } from "@/components/scanner/footer"
 import { useAuth } from "@/components/providers/auth-provider"
 import {
@@ -43,7 +43,6 @@ const mainNavItems: NavItem[] = [
   { href: "/docs/api", label: "API Reference", icon: Code2 },
   { href: "/docs/webhooks", label: "Webhooks", icon: Webhook },
   { href: "/docs/rate-limits", label: "Rate Limits", icon: Gauge },
-  { href: "/docs/integrations", label: "Integrations", icon: Layers },
   { href: "/docs/developers", label: "Developers", icon: Code2 },
 ]
 

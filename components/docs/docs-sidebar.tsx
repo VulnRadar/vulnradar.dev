@@ -14,10 +14,10 @@ export function DocsSidebar({ navItems }: DocsSidebarProps) {
   const pathname = usePathname()
 
   return (
-    <aside className="hidden lg:block w-64 flex-shrink-0 border-r border-border/40">
+    <aside className="hidden lg:block w-64 flex-shrink-0 border-r border-border/50">
       <nav className="sticky top-16 h-[calc(100vh-4rem)] overflow-y-auto py-8 px-6">
         <div className="mb-6">
-          <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">
+          <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-3">
             Documentation
           </h2>
         </div>
@@ -33,20 +33,15 @@ export function DocsSidebar({ navItems }: DocsSidebarProps) {
                 <Link
                   href={item.href}
                   className={cn(
-                    "group flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200",
+                    "group flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors",
                     isActive
-                      ? "bg-primary text-primary-foreground shadow-sm"
+                      ? "bg-primary/10 text-primary font-medium"
                       : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
                   )}
                 >
-                  <Icon
-                    className={cn(
-                      "h-4 w-4 transition-transform duration-200",
-                      !isActive && "group-hover:scale-110"
-                    )}
-                  />
+                  <Icon className="h-4 w-4" />
                   <span>{item.label}</span>
-                  {isActive && <ChevronRight className="h-3 w-3 ml-auto opacity-70" />}
+                  {isActive && <ChevronRight className="h-3 w-3 ml-auto text-primary" />}
                 </Link>
               </li>
             )
@@ -54,8 +49,8 @@ export function DocsSidebar({ navItems }: DocsSidebarProps) {
         </ul>
 
         {/* Version Badge */}
-        <div className="mt-8 pt-6 border-t border-border/40">
-          <div className="px-3 py-2 rounded-lg bg-muted/30 text-xs text-muted-foreground">
+        <div className="mt-8 pt-6 border-t border-border/50">
+          <div className="px-3 py-2.5 rounded-xl bg-card/50 border border-border/50 text-xs text-muted-foreground">
             <span className="font-medium text-foreground">API Version:</span> v2
             <br />
             <span className="text-[10px]">v1 deprecated</span>

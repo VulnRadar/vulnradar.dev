@@ -153,15 +153,15 @@ export default function DocsPage() {
 
       {/* Quick Start */}
       <DocsSection id="quick-start" title="Quick Start">
-        <p className="text-sm sm:text-base text-muted-foreground">Get scanning in under 2 minutes.</p>
+        <p className="text-sm text-muted-foreground">Get scanning in under 2 minutes.</p>
 
-        <Card className="p-4 sm:p-6 border-border/40 bg-primary/5">
+        <Card className="p-4 sm:p-6 border-border/50 bg-card/50">
           <div className="grid lg:grid-cols-2 gap-6 lg:gap-8">
             <DocsSteps steps={quickStartSteps} />
 
             <div className="relative">
               <div className="text-xs font-medium text-muted-foreground mb-2">Example Request</div>
-              <pre className="bg-secondary/50 p-4 rounded-lg overflow-x-auto text-sm border border-border/40">
+              <pre className="bg-muted/50 p-4 rounded-xl overflow-x-auto text-sm border border-border/50 font-mono">
                 <code>{curlExample}</code>
               </pre>
               <CopyButton text={curlExample} className="absolute top-9 right-3" />
@@ -172,38 +172,34 @@ export default function DocsPage() {
 
       {/* Documentation Navigation */}
       <DocsSection id="documentation" title="Documentation">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {docSections.map((section) => (
             <Card
               key={section.href}
-              className="p-4 sm:p-6 border-border/40 hover:border-accent transition-all duration-200 group"
+              className="p-4 sm:p-5 border-border/50 bg-card/50 hover:border-primary/30 transition-colors group"
             >
-              <div className="flex items-center gap-3 mb-4">
-                <div className="flex items-center justify-center w-10 h-10 rounded-lg bg-primary/10 group-hover:bg-accent transition-colors">
-                  <section.icon className="h-5 w-5 text-primary" />
+              <div className="flex items-center gap-3 mb-3">
+                <div className="p-2 rounded-xl bg-primary/10">
+                  <section.icon className="h-4 w-4 text-primary" />
                 </div>
                 <div>
-                  <h3 className="text-lg font-bold">{section.title}</h3>
+                  <h3 className="text-sm font-medium text-foreground">{section.title}</h3>
                   <p className="text-xs text-muted-foreground">{section.subtitle}</p>
                 </div>
               </div>
-              <p className="text-sm text-muted-foreground mb-4">{section.description}</p>
+              <p className="text-sm text-muted-foreground mb-3 leading-relaxed">{section.description}</p>
               <ul className="text-xs text-muted-foreground space-y-1.5 mb-4">
                 {section.features.map((item, i) => (
                   <li key={i} className="flex items-center gap-2">
-                    <CheckCircle className="h-3 w-3 text-primary" />
+                    <CheckCircle className="h-3 w-3 text-primary flex-shrink-0" />
                     {item}
                   </li>
                 ))}
               </ul>
-              <Button
-                asChild
-                variant="outline"
-                className="w-full group-hover:bg-accent group-hover:text-accent-foreground transition-colors"
-              >
+              <Button asChild variant="outline" size="sm" className="w-full">
                 <Link href={section.href} className="flex items-center justify-center gap-2">
                   View {section.title}
-                  <ArrowRight className="h-4 w-4" />
+                  <ArrowRight className="h-3.5 w-3.5" />
                 </Link>
               </Button>
             </Card>
@@ -213,19 +209,19 @@ export default function DocsPage() {
 
       {/* Support */}
       <DocsSection id="support" title="Support">
-        <Card className="p-4 sm:p-6 border-border/40">
+        <Card className="p-4 sm:p-5 border-border/50 bg-card/50">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
-              <h3 className="font-semibold mb-1">Need Help?</h3>
+              <h3 className="text-sm font-medium text-foreground mb-1">Need Help?</h3>
               <p className="text-sm text-muted-foreground">
                 Have questions or need assistance? Reach out through our contact form or check the community resources.
               </p>
             </div>
-            <div className="flex flex-wrap gap-3">
-              <Button asChild variant="outline">
+            <div className="flex flex-wrap gap-2">
+              <Button asChild variant="outline" size="sm">
                 <Link href="/contact">Contact Support</Link>
               </Button>
-              <Button asChild variant="outline">
+              <Button asChild variant="outline" size="sm">
                 <a href="https://github.com/VulnRadar/vulnradar.dev" target="_blank" rel="noopener noreferrer">
                   GitHub
                 </a>
@@ -234,17 +230,17 @@ export default function DocsPage() {
           </div>
         </Card>
 
-        <Card className="p-4 border-border/40 bg-card/30">
+        <Card className="p-3 border-border/50 bg-card/30">
           <div className="flex flex-wrap items-center justify-between gap-4 text-xs text-muted-foreground">
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-4 font-mono">
               <span>
-                <strong>App Version:</strong> {APP_VERSION}
+                <span className="text-foreground">App:</span> {APP_VERSION}
               </span>
               <span>
-                <strong>Engine:</strong> {ENGINE_VERSION}
+                <span className="text-foreground">Engine:</span> {ENGINE_VERSION}
               </span>
               <span>
-                <strong>API:</strong> v2
+                <span className="text-foreground">API:</span> v2
               </span>
             </div>
             <a
