@@ -57,7 +57,6 @@ export function ProfileDeveloperTab({
 
   // Filter with null safety - ensure k exists and has expected properties
   const activeKeys = apiKeys.filter((k) => k && typeof k === 'object' && !k.revoked_at)
-  const revokedKeys = apiKeys.filter((k) => k && typeof k === 'object' && k.revoked_at)
 
   const fetchData = useCallback(async () => {
     try {
@@ -143,10 +142,8 @@ export function ProfileDeveloperTab({
       }
       const newKey = data.key
       setNewlyCreatedKey(newKey.raw_key)
-      setApiKeys((prev) =>
-        prev.map((k) => (k.id === keyId ? { ...k, revoked_at: new Date().toISOString() } : k))
-          .concat([newKey])
-      )
+      // Remove the old key and add the new one
+      setApiKeys((prev) => prev.filter((k) => k.id !== keyId).concat([newKey]))
       setSuccess("Key rotated successfully! Copy the new key now.")
     } catch {
       setError("Failed to rotate key.")
@@ -304,23 +301,6 @@ export function ProfileDeveloperTab({
                 <Key className="h-10 w-10 text-muted-foreground/50" />
                 <p className="text-sm font-medium text-foreground">No API keys yet</p>
                 <p className="text-xs text-muted-foreground">Generate a key above to start using the {APP_NAME} API.</p>
-              </div>
-            )}
-
-            {/* Revoked keys */}
-            {revokedKeys.length > 0 && (
-              <div className="flex flex-col gap-3">
-                <h3 className="text-sm font-semibold text-muted-foreground">Revoked Keys ({revokedKeys.length})</h3>
-                {revokedKeys.map((key) => (
-                  <div key={key.id} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 p-3 rounded-lg border border-border bg-secondary/20 opacity-60">
-                    <div className="flex items-center gap-2 min-w-0">
-                      <Key className="h-4 w-4 text-muted-foreground shrink-0" />
-                      <span className="text-sm text-muted-foreground line-through truncate">{key.name}</span>
-                      <Badge variant="outline" className="text-xs font-mono text-muted-foreground shrink-0">{key.key_prefix}...</Badge>
-                    </div>
-                    <span className="text-xs text-muted-foreground shrink-0">Revoked {formatDate(key.revoked_at)}</span>
-                  </div>
-                ))}
               </div>
             )}
               </>
