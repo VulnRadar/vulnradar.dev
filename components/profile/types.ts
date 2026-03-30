@@ -130,4 +130,6 @@ export interface ProfileTabProps {
   onTabChange: (tab: ProfileTab) => void
   pendingChanges: PendingChanges
   setPendingChanges: React.Dispatch<React.SetStateAction<PendingChanges>>
+  discardKey?: number // Incremented when discard is clicked to trigger child component resets
+  saveKey?: number // Incremented after successful save to update original values in child components
 }

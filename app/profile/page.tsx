@@ -149,6 +149,8 @@ function ProfileContent() {
   // Unified pending changes system
   const [pendingChanges, setPendingChanges] = useState<PendingChanges>({})
   const [showSaveModal, setShowSaveModal] = useState(false)
+  const [discardKey, setDiscardKey] = useState(0) // Incremented to trigger child component resets
+  const [saveKey, setSaveKey] = useState(0) // Incremented after save to update original values
 
   // Data request and delete state are now managed in ProfilePrivacyTab component
 
@@ -385,6 +387,7 @@ function ProfileContent() {
 
       setPendingChanges({})
       setShowSaveModal(false)
+      setSaveKey(prev => prev + 1) // Trigger child components to update their original values
       setSuccess(`Changes saved successfully.`)
     } catch {
       setError("Failed to save some changes.")
@@ -424,6 +427,7 @@ function ProfileContent() {
     setPendingChanges({})
     setNameInput(user?.name || "")
     setEmailInput(user?.email || "")
+    setDiscardKey(prev => prev + 1) // Trigger child components to reset
   }
 
   // ---- Helpers ----
@@ -548,6 +552,7 @@ function ProfileContent() {
                 onTabChange={handleProfileTabChange}
                 pendingChanges={pendingChanges}
                 setPendingChanges={setPendingChanges}
+                discardKey={discardKey}
                 onAvatarCrop={handleCroppedAvatar}
                 onSetCropDialog={(open, src) => {
                   setCropDialogOpen(open)
@@ -628,6 +633,8 @@ function ProfileContent() {
                 onTabChange={handleProfileTabChange}
                 pendingChanges={pendingChanges}
                 setPendingChanges={setPendingChanges}
+                discardKey={discardKey}
+                saveKey={saveKey}
               />
             )}
 
