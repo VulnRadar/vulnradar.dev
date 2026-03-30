@@ -1,11 +1,10 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect } from 'react'
 import { Shield, LogIn, Lock, Fingerprint, MonitorSmartphone, Scan, CheckCircle2, AlertCircle, CalendarClock, Zap, Key, Gauge, Webhook, XCircle, UserCog, Download, Users, Mail } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Switch } from '@/components/ui/switch'
 import { Badge } from '@/components/ui/badge'
-import { API } from '@/lib/config/constants'
 import type { ProfileTabProps, NotificationPrefs } from '../types'
 
 const DEFAULT_PREFS: NotificationPrefs = {
@@ -40,32 +39,21 @@ export function ProfileNotificationsTab({
   setPendingChanges,
   discardKey,
   saveKey,
+  preloadedNotifPrefs,
 }: ProfileTabProps) {
-  const [notifPrefs, setNotifPrefs] = useState<NotificationPrefs>(DEFAULT_PREFS)
-  const [originalPrefs, setOriginalPrefs] = useState<NotificationPrefs>(DEFAULT_PREFS)
+  // Initialize with preloaded data if available
+  const initialPrefs = preloadedNotifPrefs ? { ...DEFAULT_PREFS, ...preloadedNotifPrefs } : DEFAULT_PREFS
+  const [notifPrefs, setNotifPrefs] = useState<NotificationPrefs>(initialPrefs)
+  const [originalPrefs, setOriginalPrefs] = useState<NotificationPrefs>(initialPrefs)
 
-  // Fetch actual notification preferences from API
-  const fetchNotificationPrefs = useCallback(async () => {
-    try {
-      const res = await fetch(API.ACCOUNT_NOTIFICATIONS)
-      if (res.ok) {
-        const data = await res.json()
-        const prefs = { ...DEFAULT_PREFS }
-        for (const key of Object.keys(DEFAULT_PREFS) as (keyof NotificationPrefs)[]) {
-          if (key in data) prefs[key] = data[key] ?? true
-        }
-        setNotifPrefs(prefs)
-        setOriginalPrefs(prefs)
-      }
-    } catch {
-      // Use defaults on error
-    }
-  }, [])
-
-  // Fetch on mount
+  // Update state when preloaded data changes
   useEffect(() => {
-    fetchNotificationPrefs()
-  }, [fetchNotificationPrefs])
+    if (preloadedNotifPrefs) {
+      const prefs = { ...DEFAULT_PREFS, ...preloadedNotifPrefs }
+      setNotifPrefs(prefs)
+      setOriginalPrefs(prefs)
+    }
+  }, [preloadedNotifPrefs])
 
   // Reset to original values when discardKey changes (discard was clicked)
   useEffect(() => {

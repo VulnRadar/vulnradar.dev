@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -30,9 +30,29 @@ import type { ProfileTabProps, ApiKey, WebhookItem, ScheduleItem } from "../type
 export function ProfileDeveloperTab({
   setError,
   setSuccess,
+  loading,
+  preloadedApiKeys,
+  preloadedWebhooks,
+  preloadedSchedules,
+  setApiKeys: parentSetApiKeys,
+  setWebhooks: parentSetWebhooks,
+  setSchedules: parentSetSchedules,
 }: ProfileTabProps) {
-  // API Keys state
-  const [apiKeys, setApiKeys] = useState<ApiKey[]>([])
+  // Use preloaded data from parent, with local state as fallback
+  const [localApiKeys, setLocalApiKeys] = useState<ApiKey[]>([])
+  const [localWebhooks, setLocalWebhooks] = useState<WebhookItem[]>([])
+  const [localSchedules, setLocalSchedules] = useState<ScheduleItem[]>([])
+  
+  // Use preloaded data if available, otherwise use local state
+  const apiKeys = preloadedApiKeys ?? localApiKeys
+  const webhooks = preloadedWebhooks ?? localWebhooks
+  const schedules = preloadedSchedules ?? localSchedules
+  
+  // Use parent setters if available, otherwise use local setters
+  const setApiKeys = parentSetApiKeys ?? setLocalApiKeys
+  const setWebhooks = parentSetWebhooks ?? setLocalWebhooks
+  const setSchedules = parentSetSchedules ?? setLocalSchedules
+
   const [newKeyName, setNewKeyName] = useState("")
   const [generatingKey, setGeneratingKey] = useState(false)
   const [newlyCreatedKey, setNewlyCreatedKey] = useState<string | null>(null)
@@ -41,53 +61,18 @@ export function ProfileDeveloperTab({
   const [revokingId, setRevokingId] = useState<number | null>(null)
 
   // Webhooks state
-  const [webhooks, setWebhooks] = useState<WebhookItem[]>([])
   const [webhookUrl, setWebhookUrl] = useState("")
   const [webhookName, setWebhookName] = useState("")
   const [addingWebhook, setAddingWebhook] = useState(false)
   const [testingWebhookId, setTestingWebhookId] = useState<number | null>(null)
 
   // Schedules state
-  const [schedules, setSchedules] = useState<ScheduleItem[]>([])
   const [scheduleUrl, setScheduleUrl] = useState("")
   const [scheduleFreq, setScheduleFreq] = useState("weekly")
   const [addingSchedule, setAddingSchedule] = useState(false)
 
-  const [loading, setLoading] = useState(true)
-
   // Filter with null safety - ensure k exists and has expected properties
   const activeKeys = apiKeys.filter((k) => k && typeof k === 'object' && !k.revoked_at)
-
-  const fetchData = useCallback(async () => {
-    try {
-      const [keysRes, webhooksRes, schedulesRes] = await Promise.all([
-        fetch(API.KEYS),
-        fetch(API.WEBHOOKS),
-        fetch(API.SCHEDULES),
-      ])
-
-      const keysData = keysRes.ok ? await keysRes.json() : { keys: [] }
-      const webhooksData = webhooksRes.ok ? await webhooksRes.json() : { webhooks: [] }
-      const schedulesData = schedulesRes.ok ? await schedulesRes.json() : { schedules: [] }
-
-      // API returns { keys: [...] }, { webhooks: [...] }, { schedules: [...] }
-      const keys = Array.isArray(keysData) ? keysData : (keysData.keys || [])
-      const hooks = Array.isArray(webhooksData) ? webhooksData : (webhooksData.webhooks || [])
-      const scheds = Array.isArray(schedulesData) ? schedulesData : (schedulesData.schedules || [])
-
-      setApiKeys(keys)
-      setWebhooks(hooks)
-      setSchedules(scheds)
-    } catch {
-      setError("Failed to load developer settings.")
-    } finally {
-      setLoading(false)
-    }
-  }, [setError])
-
-  useEffect(() => {
-    fetchData()
-  }, [fetchData])
 
   // API Key handlers
   async function handleGenerateKey() {

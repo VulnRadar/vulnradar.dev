@@ -25,27 +25,21 @@ import type { ProfileTabProps, BillingInfo } from "../types"
 export function ProfileBillingTab({
   setError,
   setSuccess,
+  preloadedBillingInfo,
 }: ProfileTabProps) {
-  const [billingInfo, setBillingInfo] = useState<BillingInfo | null>(null)
+  // Use preloaded data if available
+  const [billingInfo, setBillingInfo] = useState<BillingInfo | null>(preloadedBillingInfo ?? null)
   const [showCancelDialog, setShowCancelDialog] = useState(false)
   const [cancelType, setCancelType] = useState<"period_end" | "immediate">("period_end")
   const [cancelingSubscription, setCancelingSubscription] = useState(false)
   const [reactivatingSubscription, setReactivatingSubscription] = useState(false)
 
+  // Update state when preloaded data changes
   useEffect(() => {
-    async function fetchBilling() {
-      try {
-        const res = await fetch(API.BILLING)
-        if (res.ok) {
-          const data = await res.json()
-          setBillingInfo(data)
-        }
-      } catch {
-        // Silently fail, component will show loading state
-      }
+    if (preloadedBillingInfo) {
+      setBillingInfo(preloadedBillingInfo)
     }
-    fetchBilling()
-  }, [])
+  }, [preloadedBillingInfo])
 
   async function handleCancelSubscription(immediate: boolean) {
     setCancelingSubscription(true)

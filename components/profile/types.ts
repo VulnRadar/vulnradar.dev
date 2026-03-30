@@ -132,4 +132,17 @@ export interface ProfileTabProps {
   setPendingChanges: React.Dispatch<React.SetStateAction<PendingChanges>>
   discardKey?: number // Incremented when discard is clicked to trigger child component resets
   saveKey?: number // Incremented after successful save to update original values in child components
+  // Pre-loaded data from parent to avoid loading delays
+  preloadedApiKeys?: ApiKey[]
+  preloadedWebhooks?: WebhookItem[]
+  preloadedSchedules?: ScheduleItem[]
+  preloadedNotifPrefs?: NotificationPrefs | null
+  preloadedBillingInfo?: BillingInfo | null
+  preloadedDataReqInfo?: DataRequestInfo | null
+  setApiKeys?: React.Dispatch<React.SetStateAction<ApiKey[]>>
+  setWebhooks?: React.Dispatch<React.SetStateAction<WebhookItem[]>>
+  setSchedules?: React.Dispatch<React.SetStateAction<ScheduleItem[]>>
+  setNotifPrefs?: React.Dispatch<React.SetStateAction<NotificationPrefs | null>>
+  setBillingInfo?: React.Dispatch<React.SetStateAction<BillingInfo | null>>
+  setDataReqInfo?: React.Dispatch<React.SetStateAction<DataRequestInfo | null>>
 }

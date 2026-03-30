@@ -238,9 +238,26 @@ function ProfileContent() {
     }
   }
 
+  // Pre-loaded data for tabs
+  const [apiKeys, setApiKeys] = useState<ApiKey[]>([])
+  const [webhooks, setWebhooks] = useState<WebhookItem[]>([])
+  const [schedules, setSchedules] = useState<ScheduleItem[]>([])
+  const [notifPrefs, setNotifPrefs] = useState<NotificationPrefs | null>(null)
+  const [billingInfo, setBillingInfo] = useState<BillingInfo | null>(null)
+  const [dataReqInfo, setDataReqInfo] = useState<DataRequestInfo | null>(null)
+
   const fetchData = useCallback(async () => {
     try {
-      const userRes = await fetch(API.AUTH.ME)
+      // Fetch all data in parallel for instant loading
+      const [userRes, keysRes, webhooksRes, schedulesRes, notifsRes, billingRes, dataReqRes] = await Promise.all([
+        fetch(API.AUTH.ME),
+        fetch(API.KEYS),
+        fetch(API.WEBHOOKS),
+        fetch(API.SCHEDULES),
+        fetch(API.ACCOUNT_NOTIFICATIONS),
+        fetch(API.BILLING),
+        fetch(API.DATA_REQUEST),
+      ])
 
       if (!userRes.ok) {
         router.push("/login")
@@ -251,7 +268,32 @@ function ProfileContent() {
       setUser(userData)
       setNameInput(userData.name || "")
       setEmailInput(userData.email || "")
-      // All other data (billing, 2FA, developer, privacy, notifications) is fetched by their respective tab components
+
+      // Parse developer tab data
+      const keysData = keysRes.ok ? await keysRes.json() : { keys: [] }
+      const webhooksData = webhooksRes.ok ? await webhooksRes.json() : { webhooks: [] }
+      const schedulesData = schedulesRes.ok ? await schedulesRes.json() : { schedules: [] }
+      setApiKeys(Array.isArray(keysData) ? keysData : (keysData.keys || []))
+      setWebhooks(Array.isArray(webhooksData) ? webhooksData : (webhooksData.webhooks || []))
+      setSchedules(Array.isArray(schedulesData) ? schedulesData : (schedulesData.schedules || []))
+
+      // Parse notifications data
+      if (notifsRes.ok) {
+        const notifsData = await notifsRes.json()
+        setNotifPrefs(notifsData)
+      }
+
+      // Parse billing data
+      if (billingRes.ok) {
+        const billingData = await billingRes.json()
+        setBillingInfo(billingData)
+      }
+
+      // Parse data request info
+      if (dataReqRes.ok) {
+        const dataReqData = await dataReqRes.json()
+        setDataReqInfo(dataReqData)
+      }
     } catch {
       setError("Failed to load profile data.")
     } finally {
@@ -588,6 +630,7 @@ function ProfileContent() {
                 onTabChange={handleProfileTabChange}
                 pendingChanges={pendingChanges}
                 setPendingChanges={setPendingChanges}
+                preloadedBillingInfo={billingInfo}
               />
             )}
 
@@ -618,6 +661,12 @@ function ProfileContent() {
                 onTabChange={handleProfileTabChange}
                 pendingChanges={pendingChanges}
                 setPendingChanges={setPendingChanges}
+                preloadedApiKeys={apiKeys}
+                preloadedWebhooks={webhooks}
+                preloadedSchedules={schedules}
+                setApiKeys={setApiKeys}
+                setWebhooks={setWebhooks}
+                setSchedules={setSchedules}
               />
             )}
 
@@ -635,6 +684,7 @@ function ProfileContent() {
                 setPendingChanges={setPendingChanges}
                 discardKey={discardKey}
                 saveKey={saveKey}
+                preloadedNotifPrefs={notifPrefs}
               />
             )}
 
@@ -650,6 +700,7 @@ function ProfileContent() {
                 onTabChange={handleProfileTabChange}
                 pendingChanges={pendingChanges}
                 setPendingChanges={setPendingChanges}
+                preloadedDataReqInfo={dataReqInfo}
               />
             )}
           </div>{/* End Main Content Area */}
