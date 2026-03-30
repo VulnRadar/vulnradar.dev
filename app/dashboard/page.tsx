@@ -10,6 +10,7 @@ import { ScanSummary } from "@/components/scanner/scan-summary"
 import { ResultsList } from "@/components/scanner/results-list"
 import { Dashboard } from "@/components/scanner/dashboard"
 import { Footer } from "@/components/scanner/footer"
+import { HistoryNotes } from "@/components/history"
 
 // Lazy-loaded: only shown after scan results or user interaction
 const IssueDetail = dynamic(() => import("@/components/scanner/issue-detail").then(m => ({ default: m.IssueDetail })))
@@ -22,7 +23,7 @@ const OnboardingTour = dynamic(() => import("@/components/shared/onboarding-tour
 import type { ScanResult, ScanStatus, Vulnerability } from "@/lib/scanner/types"
 import { DEFAULT_SCAN_NOTE } from "@/lib/config/constants"
 import { API } from "@/lib/config/client-constants"
-import { AlertCircle, RotateCcw, MessageSquare, Pencil, Save, Loader2 as Loader2Icon, Globe, ChevronDown, ChevronRight, ExternalLink } from "lucide-react"
+import { AlertCircle, RotateCcw, Loader2 as Loader2Icon, Globe, ChevronDown, ChevronRight, ExternalLink, ShieldCheck } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { PremiumUpgradeModal, PREMIUM_FEATURES } from "@/components/modals/premium-upgrade-modal"
 import { useAuth } from "@/components/providers/auth-provider"
@@ -91,7 +92,6 @@ function DashboardContent() {
         setError(null)
         setSelectedIssue(null)
         setScanNotes("")
-        setEditingNotes(false)
         setCrawlInfo(null)
         return
       }
@@ -114,26 +114,22 @@ function DashboardContent() {
   const [error, setError] = useState<string | null>(null)
   const [selectedIssue, setSelectedIssue] = useState<Vulnerability | null>(null)
   const [scanNotes, setScanNotes] = useState("")
-  const [editingNotes, setEditingNotes] = useState(false)
-  const [savingNotes, setSavingNotes] = useState(false)
   const [crawlInfo, setCrawlInfo] = useState<CrawlInfo | null>(null)
   const [crawlDiscoveryUrls, setCrawlDiscoveryUrls] = useState<string[]>([])
   const [crawlDiscovering, setCrawlDiscovering] = useState(false)
   const [showCrawlSelector, setShowCrawlSelector] = useState(false)
   const [pendingCrawlUrl, setPendingCrawlUrl] = useState("")
 
-  async function handleSaveNotes() {
+  async function handleSaveNotes(notes: string) {
     if (!scanHistoryId) return
-    setSavingNotes(true)
     try {
-      await fetch(`${API.HISTORY}/${scanHistoryId}`, {
+      const res = await fetch(`${API.HISTORY}/${scanHistoryId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ notes: scanNotes }),
+        body: JSON.stringify({ notes }),
       })
-      setEditingNotes(false)
+      if (res.ok) setScanNotes(notes)
     } catch { /* ignore */ }
-    setSavingNotes(false)
   }
 
   const [pendingScanners, setPendingScanners] = useState<string[] | undefined>(undefined)
@@ -177,7 +173,6 @@ function DashboardContent() {
     setError(null)
     setSelectedIssue(null)
     setScanNotes("")
-    setEditingNotes(false)
     setCrawlInfo(null)
 
     const isCrawl = !!crawlUrls
@@ -315,7 +310,6 @@ function DashboardContent() {
     setError(null)
     setSelectedIssue(null)
     setScanNotes("")
-    setEditingNotes(false)
     setCrawlInfo(null)
     setShowCrawlSelector(false)
     setCrawlDiscoveryUrls([])
@@ -389,17 +383,23 @@ function DashboardContent() {
           <div className="flex flex-col gap-6 pt-6">
             {!selectedIssue ? (
               <>
-                {/* Action buttons at top */}
-                <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center sm:justify-between gap-3 p-4 rounded-xl border border-border/40 bg-card/30 backdrop-blur-sm">
-                  <div className="min-w-0">
-                    <p className="text-xs text-muted-foreground mb-1">Scanned URL</p>
-                    <p className="text-sm font-medium text-foreground truncate">{result.url}</p>
+                {/* Header card - matching history detail view */}
+                <div className="flex flex-col gap-4 p-4 rounded-xl border border-border/50 bg-card/50">
+                  <div className="flex items-start gap-3">
+                    <div className="p-2 rounded-lg bg-primary/10 shrink-0">
+                      <Globe className="h-4 w-4 text-primary" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs text-muted-foreground mb-0.5">Scanned URL</p>
+                      <p className="text-sm font-medium text-foreground break-all font-mono">{result.url}</p>
+                    </div>
                   </div>
                   <div className="flex flex-wrap gap-2">
                     <Button variant="outline" onClick={handleReset} size="sm" className="bg-transparent">
-                      <RotateCcw className="mr-2 h-4 w-4" />
-                      <span className="hidden sm:inline">Scan Another URL</span>
+                      <RotateCcw className="h-4 w-4 sm:mr-2" />
+                      <span className="hidden sm:inline">New Scan</span>
                     </Button>
+                    <div className="flex-1" />
                     <ExportButton result={result} />
                     {scanHistoryId && <ShareButton scanId={scanHistoryId} />}
                   </div>
@@ -414,72 +414,36 @@ function DashboardContent() {
                 )}
 
                 {/* Response headers */}
-                {result.responseHeaders && (
+                {result.responseHeaders && Object.keys(result.responseHeaders).length > 0 && (
                   <ResponseHeaders headers={result.responseHeaders} />
                 )}
 
                 {/* Subdomain discovery */}
                 <SubdomainDiscovery url={result.url} onScanSubdomain={(subUrl) => handleScan(subUrl)} />
 
-                {/* Notes */}
+                {/* Notes - using shared HistoryNotes component */}
                 {scanHistoryId && (
-                  <div className="rounded-xl border border-border/40 bg-card/30 backdrop-blur-sm p-4">
-                    <div className="flex items-center justify-between mb-3">
-                      <div className="flex items-center gap-2">
-                        <MessageSquare className="h-4 w-4 text-muted-foreground" />
-                        <h3 className="text-sm font-medium text-foreground">Notes</h3>
-                      </div>
-                      {!editingNotes ? (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => setEditingNotes(true)}
-                          className="h-7 text-xs gap-1.5 text-muted-foreground"
-                        >
-                          <Pencil className="h-3 w-3" />
-                          {scanNotes ? "Edit" : "Add Note"}
-                        </Button>
-                      ) : (
-                        <div className="flex gap-1.5">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => setEditingNotes(false)}
-                            className="h-7 text-xs text-muted-foreground"
-                          >
-                            Cancel
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={handleSaveNotes}
-                            disabled={savingNotes}
-                            className="h-7 text-xs gap-1.5 bg-transparent"
-                          >
-                            {savingNotes ? <Loader2Icon className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
-                            Save
-                          </Button>
-                        </div>
-                      )}
-                    </div>
-                    {editingNotes ? (
-                      <textarea
-                        value={scanNotes}
-                        onChange={(e) => setScanNotes(e.target.value)}
-                        placeholder="Add notes about this scan... (e.g., 'Fixed CSP issue, re-scan next week')"
-                        maxLength={2000}
-                        className="w-full min-h-[80px] rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring resize-y"
-                      />
-                    ) : scanNotes ? (
-                      <p className="text-sm text-muted-foreground whitespace-pre-wrap">{scanNotes}</p>
-                    ) : (
-                      <p className="text-xs text-muted-foreground/60 italic">{'No notes yet. Click "Add Note" to annotate this scan.'}</p>
-                    )}
-                  </div>
+                  <HistoryNotes
+                    notes={scanNotes}
+                    isOwner={true}
+                    onSave={handleSaveNotes}
+                  />
                 )}
 
-                {/* Results list */}
-                <ResultsList findings={result.findings} onSelectIssue={setSelectedIssue} />
+                {/* Results list or empty state */}
+                {result.findings.length > 0 ? (
+                  <ResultsList findings={result.findings} onSelectIssue={setSelectedIssue} />
+                ) : (
+                  <div className="flex flex-col items-center gap-3 py-8 text-center rounded-xl border border-dashed border-border">
+                    <div className="w-10 h-10 rounded-lg bg-emerald-500/10 flex items-center justify-center">
+                      <ShieldCheck className="h-5 w-5 text-emerald-500" />
+                    </div>
+                    <p className="text-sm font-medium text-foreground">No issues found</p>
+                    <p className="text-xs text-muted-foreground max-w-xs">
+                      This scan came back clean with no detected vulnerabilities.
+                    </p>
+                  </div>
+                )}
               </>
             ) : (
               <IssueDetail issue={selectedIssue} onBack={() => setSelectedIssue(null)} />
