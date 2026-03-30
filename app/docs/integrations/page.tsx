@@ -154,7 +154,7 @@ jobs:
           curl -X POST https://api.vulnradar.dev/v2/scan/crawl \\
             -H "Authorization: Bearer ${{ secrets.VULNRADAR_API_KEY }}" \\
             -H "Content-Type: application/json" \\
-            -d "{\"url\": \"https://example.com\"}"
+            -d "{\\"url\\": \\"https://example.com\\"}"
 `}
             />
           </div>
@@ -172,7 +172,7 @@ jobs:
       curl -X POST https://api.vulnradar.dev/v2/scan/crawl \\
         -H "Authorization: Bearer $CI_JOB_TOKEN" \\
         -H "Content-Type: application/json" \\
-        -d "{\"url\": \"$CI_PROJECT_URL\"}"
+        -d "{\\"url\\": \\"$CI_PROJECT_URL\\"}"
   only:
     - merge_requests
 `}
