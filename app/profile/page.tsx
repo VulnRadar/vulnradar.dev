@@ -7,7 +7,7 @@ import { cn } from "@/lib/ui/utils"
 import { APP_NAME, API, ROUTES } from "@/lib/config/constants"
 
 const ImageCropDialog = dynamic(() => import("@/components/modals/image-crop-dialog").then(m => ({ default: m.ImageCropDialog })), { ssr: false })
-import { ProfileGeneralProfileTab } from "@/components/profile/tabs/profile-general-tab"
+import { ProfileGeneralTab } from "@/components/profile/tabs/profile-general-tab"
 import type { ProfileUser, ApiKey, BillingInfo, DataRequestInfo, WebhookItem, ScheduleItem, NotificationPrefs, ProfileTab, PendingChanges } from "@/components/profile/types"
 import {
   Plus,
@@ -996,14 +996,14 @@ function ProfileContent() {
 
             {/* ===================== GENERAL TAB ===================== */}
             {activeProfileTab === "general" && (
-              <ProfileGeneralProfileTab
+              <ProfileGeneralTab
                 user={user}
                 loading={loading}
                 error={error}
                 success={success}
                 setError={setError}
                 setSuccess={setSuccess}
-                onProfileTabChange={handleProfileTabChange}
+                onTabChange={handleProfileTabChange}
                 pendingChanges={pendingChanges}
                 setPendingChanges={setPendingChanges}
                 onAvatarCrop={handleCroppedAvatar}
