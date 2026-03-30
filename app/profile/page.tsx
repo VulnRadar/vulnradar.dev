@@ -489,31 +489,29 @@ function ProfileContent() {
               </div>
             </div>
 
-            {/* Desktop: Vertical sidebar */}
-            <nav className="hidden lg:block sticky top-24">
-              <div className="flex flex-col gap-1">
-                {TABS.map((tab) => (
-                  <a
-                    key={tab.id}
-                    href={`/profile#${tab.id}`}
-                    onClick={(e) => {
-                      if (!e.ctrlKey && !e.metaKey) {
-                        e.preventDefault()
-                        handleProfileTabChange(tab.id)
-                      }
-                    }}
-                    className={cn(
-                      "flex items-center gap-2.5 px-3 py-2 text-sm rounded-lg transition-all",
-                      activeProfileTab === tab.id
-                        ? "bg-secondary text-foreground font-medium"
-                        : "text-muted-foreground hover:text-foreground hover:bg-secondary/50"
-                    )}
-                  >
-                    {tab.icon}
-                    <span>{tab.label}</span>
-                  </a>
-                ))}
-              </div>
+            {/* Desktop: Vertical sidebar — self-start is required for sticky to work in a flex row */}
+            <nav className="hidden lg:flex flex-col gap-1 sticky top-20 self-start">
+              {TABS.map((tab) => (
+                <a
+                  key={tab.id}
+                  href={`/profile#${tab.id}`}
+                  onClick={(e) => {
+                    if (!e.ctrlKey && !e.metaKey) {
+                      e.preventDefault()
+                      handleProfileTabChange(tab.id)
+                    }
+                  }}
+                  className={cn(
+                    "flex items-center gap-2.5 px-3 py-2 text-sm rounded-lg transition-all",
+                    activeProfileTab === tab.id
+                      ? "bg-primary/10 text-primary font-medium"
+                      : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+                  )}
+                >
+                  {tab.icon}
+                  <span>{tab.label}</span>
+                </a>
+              ))}
             </nav>
           </aside>
 
