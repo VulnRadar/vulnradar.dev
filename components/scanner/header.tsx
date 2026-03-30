@@ -42,7 +42,7 @@ export function Header() {
       {/* Spacer so page content isn't hidden under the fixed header */}
       <div className="h-16 shrink-0" aria-hidden="true" />
       <header className={`fixed top-0 left-0 right-0 z-50 border-b border-border/50 ${backdrops.header}`}>
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 relative flex items-center">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 relative flex items-center justify-between">
           {/* Logo - left */}
           <Link
               href={ROUTES.DASHBOARD}

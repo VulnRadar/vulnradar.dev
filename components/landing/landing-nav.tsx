@@ -15,13 +15,15 @@ export function LandingNav() {
 
   return (
     <nav className={cn("sticky top-0 z-50 border-b border-border/50", backdrops.header)}>
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between">
-        <Link href="/" className="flex items-center gap-2.5 group">
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 h-14 relative flex items-center">
+        {/* Logo - left */}
+        <Link href="/" className="flex items-center gap-2.5 group shrink-0 z-10">
           <ThemedLogo width={26} height={26} className="h-6 w-6 transition-transform group-hover:scale-105" alt={`${APP_NAME} logo`} />
           <span className="font-semibold text-base tracking-tight">{APP_NAME}</span>
         </Link>
 
-        <div className="hidden md:flex items-center gap-6">
+        {/* Nav links - absolutely centered */}
+        <div className="hidden md:flex items-center gap-6 absolute left-1/2 -translate-x-1/2">
           {BILLING_ENABLED && (
             <Link href={ROUTES.PRICING} className="text-sm text-muted-foreground hover:text-foreground transition-colors">
               Pricing
@@ -35,7 +37,8 @@ export function LandingNav() {
           </Link>
         </div>
 
-        <div className="flex items-center gap-2">
+        {/* Right side actions */}
+        <div className="flex items-center gap-2 ml-auto z-10">
           {isLoading ? (
             <div className="h-8 w-24 bg-muted/50 rounded animate-pulse" />
           ) : isLoggedIn ? (
