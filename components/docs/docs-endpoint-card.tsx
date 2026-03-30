@@ -25,21 +25,21 @@ export function EndpointCard({
   return (
     <Card
       id={id}
-      className="p-4 sm:p-6 border-border/40 scroll-mt-24 transition-all duration-300 hover:border-border/60"
+      className="p-4 sm:p-6 border-border/50 bg-card/50 scroll-mt-24 transition-all duration-200 hover:border-primary/30"
     >
       {/* Header */}
       <div className="flex flex-wrap items-center gap-2 sm:gap-3 mb-3 sm:mb-4">
-        <Badge className={cn("font-mono text-[10px] sm:text-xs border", METHOD_COLORS[method])}>
+        <Badge className={cn("font-mono text-[10px] sm:text-xs border px-2 py-0.5", METHOD_COLORS[method])}>
           {method}
         </Badge>
-        <code className="text-primary font-mono text-xs sm:text-sm break-all">{path}</code>
-        <span className="text-[10px] sm:text-xs text-muted-foreground ml-auto hidden sm:inline">
-          {title}
-        </span>
+        <code className="text-primary font-mono text-xs sm:text-sm break-all bg-primary/5 px-2 py-0.5 rounded">{path}</code>
       </div>
+      
+      {/* Title */}
+      <h3 className="text-sm font-medium text-foreground mb-2">{title}</h3>
 
       {/* Description */}
-      <p className="text-muted-foreground text-xs sm:text-sm mb-4 sm:mb-6 leading-relaxed">
+      <p className="text-muted-foreground text-sm mb-4 sm:mb-6 leading-relaxed">
         {description}
       </p>
 

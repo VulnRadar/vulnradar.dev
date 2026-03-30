@@ -21,12 +21,14 @@ export function DocsFeatureGrid({ features, columns = 3, className }: DocsFeatur
       {features.map((feature, i) => (
         <div
           key={i}
-          className="flex items-start gap-3 p-4 rounded-lg bg-card/50 border border-border/40 transition-colors hover:border-border/60"
+          className="flex items-start gap-3 p-4 rounded-xl bg-card/50 border border-border/50 transition-colors hover:border-primary/30"
         >
-          <feature.icon className="h-5 w-5 text-primary mt-0.5 flex-shrink-0" />
+          <div className="p-2 rounded-lg bg-primary/10 flex-shrink-0">
+            <feature.icon className="h-4 w-4 text-primary" />
+          </div>
           <div>
-            <h3 className="font-semibold text-sm">{feature.title}</h3>
-            <p className="text-xs text-muted-foreground">{feature.description}</p>
+            <h3 className="text-sm font-medium text-foreground">{feature.title}</h3>
+            <p className="text-sm text-muted-foreground">{feature.description}</p>
           </div>
         </div>
       ))}

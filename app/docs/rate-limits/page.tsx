@@ -81,10 +81,10 @@ export default function RateLimitsPage() {
           {planLimits.map((plan) => (
             <Card
               key={plan.plan}
-              className={`p-4 border-border/40 text-center ${plan.highlight ? "border-primary/50 bg-primary/5" : ""}`}
+              className={`p-4 border-border/50 bg-card/50 text-center ${plan.highlight ? "border-primary/30 bg-primary/5" : ""}`}
             >
-              <div className={`text-2xl font-bold mb-1 ${plan.color}`}>{plan.daily}</div>
-              <div className="text-xs text-muted-foreground">{plan.plan}</div>
+              <div className={`text-xl font-bold mb-1 ${plan.color}`}>{plan.daily}</div>
+              <div className="text-xs font-medium text-foreground">{plan.plan}</div>
               <div className="text-[10px] text-muted-foreground mt-1">scans/day</div>
             </Card>
           ))}

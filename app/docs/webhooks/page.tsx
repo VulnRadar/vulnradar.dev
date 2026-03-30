@@ -78,24 +78,24 @@ export default function WebhooksPage() {
               name: "Discord",
               pattern: "discord.com/api/webhooks/*",
               description: "Rich embeds with color-coded severity indicators",
-              color: "bg-indigo-600/20 text-indigo-600",
+              color: "bg-indigo-500/10 text-indigo-500 border-indigo-500/20",
             },
             {
               name: "Slack",
               pattern: "hooks.slack.com/*",
               description: "Block Kit formatted messages with structured fields",
-              color: "bg-green-600/20 text-green-600",
+              color: "bg-green-500/10 text-green-500 border-green-500/20",
             },
             {
               name: "Generic",
               pattern: "Any HTTPS endpoint",
               description: "Standard JSON payload for custom integrations",
-              color: "bg-gray-600/20 text-gray-400",
+              color: "bg-muted text-muted-foreground border-border/50",
             },
           ].map((platform) => (
-            <Card key={platform.name} className="p-4 border-border/40">
+            <Card key={platform.name} className="p-4 border-border/50 bg-card/50">
               <div className="flex items-center gap-3 mb-3">
-                <Badge className={`${platform.color} border-0`}>{platform.name}</Badge>
+                <Badge variant="outline" className={platform.color}>{platform.name}</Badge>
               </div>
               <p className="text-sm text-muted-foreground mb-2">{platform.description}</p>
               <code className="text-xs bg-secondary px-2 py-1 rounded block truncate">
