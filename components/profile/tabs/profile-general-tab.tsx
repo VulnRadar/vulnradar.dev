@@ -127,19 +127,19 @@ export function ProfileGeneralTab({
   }
 
   return (
-    <div className="flex flex-col gap-10">
+    <div className="flex flex-col gap-8">
       {/* Personal Information */}
       <section>
         <div className="flex items-center gap-3 mb-4">
-          <div className="flex items-center justify-center h-9 w-9 rounded-lg bg-primary/10">
-            <UserCog className="h-4.5 w-4.5 text-primary" />
+          <div className="p-2 rounded-lg bg-primary/10">
+            <UserCog className="h-4 w-4 text-primary" />
           </div>
           <div>
-            <h2 className="text-base font-semibold text-foreground">Personal Information</h2>
+            <h2 className="text-lg font-semibold text-foreground">Personal Information</h2>
             <p className="text-sm text-muted-foreground">Manage your profile picture, name, and email</p>
           </div>
         </div>
-        <Card className="border-border/60">
+        <Card className="border-border/50 bg-card/50">
           <CardContent className="pt-6 flex flex-col gap-5">
             {/* Profile Picture */}
             <div className="flex flex-col gap-2">
@@ -307,38 +307,38 @@ export function ProfileGeneralTab({
       {/* Quick Links to Other Settings */}
       <section>
         <div className="flex items-center gap-3 mb-4">
-          <div className="flex items-center justify-center h-9 w-9 rounded-lg bg-primary/10">
-            <Zap className="h-4.5 w-4.5 text-primary" />
+          <div className="p-2 rounded-lg bg-primary/10">
+            <Zap className="h-4 w-4 text-primary" />
           </div>
           <div>
-            <h2 className="text-base font-semibold text-foreground">Quick Settings</h2>
+            <h2 className="text-lg font-semibold text-foreground">Quick Settings</h2>
             <p className="text-sm text-muted-foreground">Shortcuts to other account settings</p>
           </div>
         </div>
-        <Card className="border-border/60">
+        <Card className="border-border/50 bg-card/50">
           <CardContent className="pt-6">
-            <div className="grid gap-3 sm:grid-cols-2">
+            <div className="grid gap-4 sm:grid-cols-2">
               <button
                 onClick={() => onTabChange("security")}
-                className="flex items-center gap-3 p-4 rounded-lg border border-border hover:bg-secondary/50 transition-colors text-left"
+                className="flex items-center gap-3 p-4 rounded-xl border border-border/40 bg-card/30 hover:bg-card/80 hover:border-primary/30 transition-colors text-left"
               >
-                <div className="flex items-center justify-center h-10 w-10 rounded-lg bg-primary/10">
-                  <Lock className="h-5 w-5 text-primary" />
+                <div className="p-2 rounded-lg bg-primary/10">
+                  <Lock className="h-4 w-4 text-primary" />
                 </div>
                 <div>
-                  <p className="text-sm font-medium">Security</p>
+                  <p className="text-sm font-medium text-foreground">Security</p>
                   <p className="text-xs text-muted-foreground">Password, 2FA, sessions</p>
                 </div>
               </button>
               <button
                 onClick={() => onTabChange("social")}
-                className="flex items-center gap-3 p-4 rounded-lg border border-border hover:bg-secondary/50 transition-colors text-left"
+                className="flex items-center gap-3 p-4 rounded-xl border border-border/40 bg-card/30 hover:bg-card/80 hover:border-primary/30 transition-colors text-left"
               >
-                <div className="flex items-center justify-center h-10 w-10 rounded-lg bg-[#5865F2]/10">
-                  <Share2 className="h-5 w-5 text-[#5865F2]" />
+                <div className="p-2 rounded-lg bg-[#5865F2]/10">
+                  <Share2 className="h-4 w-4 text-[#5865F2]" />
                 </div>
                 <div>
-                  <p className="text-sm font-medium">Connected Accounts</p>
+                  <p className="text-sm font-medium text-foreground">Connected Accounts</p>
                   <p className="text-xs text-muted-foreground">Discord integration</p>
                 </div>
               </button>

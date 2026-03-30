@@ -167,16 +167,16 @@ export function ProfileDeveloperTab({
   }
 
   return (
-    <div className="flex flex-col gap-10">
+    <div className="flex flex-col gap-8">
       {/* API Keys Section */}
       <section>
         <div className="flex items-center justify-between gap-3 mb-4">
           <div className="flex items-center gap-3">
-            <div className="flex items-center justify-center h-9 w-9 rounded-lg bg-primary/10">
-              <Key className="h-4.5 w-4.5 text-primary" />
-            </div>
-            <div>
-              <h2 className="text-base font-semibold text-foreground">API Keys</h2>
+<div className="p-2 rounded-lg bg-primary/10">
+            <Key className="h-4 w-4 text-primary" />
+          </div>
+          <div>
+            <h2 className="text-lg font-semibold text-foreground">API Keys</h2>
               <p className="text-sm text-muted-foreground">Rate limit based on your plan, max 3 keys</p>
             </div>
           </div>
@@ -184,10 +184,16 @@ export function ProfileDeveloperTab({
             <a href="/docs">View Docs</a>
           </Button>
         </div>
-        <Card className="border-border/60">
-          <CardContent className="pt-6 flex flex-col gap-6">
-            {/* Newly created key banner */}
-            {newlyCreatedKey && (
+<Card className="border-border/50 bg-card/50">
+          <CardContent className="pt-6 flex flex-col gap-4">
+            {loading ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+              </div>
+            ) : (
+              <>
+                {/* Newly created key display */}
+                {newlyCreatedKey && (
               <div className="p-4 rounded-lg border border-primary/30 bg-primary/5">
                 <div className="flex flex-col gap-3">
                   <div className="flex items-center gap-2">
@@ -310,15 +316,15 @@ export function ProfileDeveloperTab({
       {/* Webhooks Section */}
       <section>
         <div className="flex items-center gap-3 mb-4">
-          <div className="flex items-center justify-center h-9 w-9 rounded-lg bg-primary/10">
-            <Webhook className="h-4.5 w-4.5 text-primary" />
+          <div className="p-2 rounded-lg bg-primary/10">
+            <Webhook className="h-4 w-4 text-primary" />
           </div>
           <div>
-            <h2 className="text-base font-semibold text-foreground">Webhooks</h2>
+            <h2 className="text-lg font-semibold text-foreground">Webhooks</h2>
             <p className="text-sm text-muted-foreground">Discord, Slack, and JSON webhook notifications</p>
           </div>
         </div>
-        <Card className="border-border/60">
+        <Card className="border-border/50 bg-card/50">
           <CardContent className="pt-6 space-y-4">
             {/* Add webhook form */}
             <div className="flex flex-col gap-3 p-4 rounded-lg border border-border bg-secondary/30">
@@ -455,15 +461,15 @@ export function ProfileDeveloperTab({
       {/* Scheduled Scans Section */}
       <section>
         <div className="flex items-center gap-3 mb-4">
-          <div className="flex items-center justify-center h-9 w-9 rounded-lg bg-primary/10">
-            <CalendarClock className="h-4.5 w-4.5 text-primary" />
+<div className="p-2 rounded-lg bg-primary/10">
+            <CalendarClock className="h-4 w-4 text-primary" />
           </div>
           <div>
-            <h2 className="text-base font-semibold text-foreground">Scheduled Scans</h2>
-            <p className="text-sm text-muted-foreground">Auto-scan URLs on a recurring schedule</p>
+            <h2 className="text-lg font-semibold text-foreground">Scheduled Scans</h2>
+            <p className="text-sm text-muted-foreground">Automate recurring vulnerability scans</p>
           </div>
         </div>
-        <Card className="border-border/60">
+        <Card className="border-border/50 bg-card/50">
           <CardContent className="pt-6 space-y-4">
             {/* Add schedule form */}
             <div className="flex flex-col gap-3 p-4 rounded-lg border border-border bg-secondary/30">

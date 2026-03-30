@@ -110,16 +110,16 @@ export function ProfileSecurityTab(props: ProfileTabProps) {
   }
 
   return (
-    <div className="flex flex-col gap-10">
+    <div className="flex flex-col gap-8">
       {/* Password */}
       <section>
         <div className="flex items-center justify-between gap-3 mb-4">
           <div className="flex items-center gap-3">
-            <div className="flex items-center justify-center h-9 w-9 rounded-lg bg-primary/10">
-              <Lock className="h-4.5 w-4.5 text-primary" />
+            <div className="p-2 rounded-lg bg-primary/10">
+              <Lock className="h-4 w-4 text-primary" />
             </div>
             <div>
-              <h2 className="text-base font-semibold text-foreground">Password</h2>
+              <h2 className="text-lg font-semibold text-foreground">Password</h2>
               <p className="text-sm text-muted-foreground">Update your account password</p>
             </div>
           </div>
@@ -130,7 +130,7 @@ export function ProfileSecurityTab(props: ProfileTabProps) {
           )}
         </div>
         {showPasswordForm && (
-          <Card className="border-border/60">
+          <Card className="border-border/50 bg-card/50">
             <CardContent className="pt-6 flex flex-col gap-4">
               <div className="flex flex-col gap-2">
                 <Label htmlFor="sec-current-pw" className="text-sm">Current Password</Label>
@@ -192,11 +192,11 @@ export function ProfileSecurityTab(props: ProfileTabProps) {
       <section>
         <div className="flex items-center justify-between gap-3 mb-4">
           <div className="flex items-center gap-3">
-            <div className="flex items-center justify-center h-9 w-9 rounded-lg bg-emerald-500/10">
-              <Shield className="h-4.5 w-4.5 text-emerald-600 dark:text-emerald-400" />
+            <div className="p-2 rounded-lg bg-emerald-500/10">
+              <Shield className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
             </div>
             <div>
-              <h2 className="text-base font-semibold text-foreground">Two-Factor Authentication</h2>
+              <h2 className="text-lg font-semibold text-foreground">Two-Factor Authentication</h2>
               <p className="text-sm text-muted-foreground">
                 {totpEnabled
                   ? `Active via ${twoFactorMethod === "email" ? "email" : "authenticator app"}`
@@ -212,7 +212,7 @@ export function ProfileSecurityTab(props: ProfileTabProps) {
             <Badge variant="secondary">Disabled</Badge>
           )}
         </div>
-        <Card className="border-border/60">
+        <Card className="border-border/50 bg-card/50">
           <CardContent className="pt-6 flex flex-col gap-4">
 
             {/* ── Authenticator App ── */}
@@ -486,15 +486,15 @@ export function ProfileSecurityTab(props: ProfileTabProps) {
       {/* Active Sessions / Force Logout */}
       <section>
         <div className="flex items-center gap-3 mb-4">
-          <div className="flex items-center justify-center h-9 w-9 rounded-lg bg-primary/10">
-            <MonitorSmartphone className="h-4.5 w-4.5 text-primary" />
+          <div className="p-2 rounded-lg bg-primary/10">
+            <MonitorSmartphone className="h-4 w-4 text-primary" />
           </div>
           <div>
-            <h2 className="text-base font-semibold text-foreground">Active Sessions</h2>
+            <h2 className="text-lg font-semibold text-foreground">Active Sessions</h2>
             <p className="text-sm text-muted-foreground">Log out of all devices at once</p>
           </div>
         </div>
-        <Card className="border-border/60">
+        <Card className="border-border/50 bg-card/50">
           <CardContent className="pt-6">
             <div className="flex flex-col gap-4">
               <p className="text-sm text-muted-foreground">

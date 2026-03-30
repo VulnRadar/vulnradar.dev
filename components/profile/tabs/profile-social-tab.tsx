@@ -41,14 +41,14 @@ export function ProfileSocialTab({
   }
 
   return (
-    <div className="flex flex-col gap-10">
+    <div className="flex flex-col gap-8">
       {/* Discord Integration */}
       <section>
         <div className="flex items-center justify-between gap-3 mb-4">
           <div className="flex items-center gap-3">
-            <div className="flex items-center justify-center h-9 w-9 rounded-lg bg-[#5865F2]/10">
+            <div className="p-2 rounded-lg bg-[#5865F2]/10">
               <svg
-                className="h-4.5 w-4.5 text-[#5865F2]"
+                className="h-4 w-4 text-[#5865F2]"
                 viewBox="0 0 24 24"
                 fill="currentColor"
               >
@@ -56,7 +56,7 @@ export function ProfileSocialTab({
               </svg>
             </div>
             <div>
-              <h2 className="text-base font-semibold text-foreground">
+              <h2 className="text-lg font-semibold text-foreground">
                 Discord Integration
               </h2>
               <p className="text-sm text-muted-foreground">
@@ -70,7 +70,7 @@ export function ProfileSocialTab({
             </Badge>
           )}
         </div>
-        <Card className="border-border/60">
+        <Card className="border-border/50 bg-card/50">
           <CardContent className="pt-6 space-y-4">
             {user?.discordId ? (
               <>
