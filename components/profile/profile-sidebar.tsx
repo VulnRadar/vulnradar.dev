@@ -1,7 +1,7 @@
 "use client"
 
 import { User, Shield, Share2, CreditCard, Code, Bell, Lock } from "lucide-react"
-import { cn } from "@/lib/utils"
+import { cn } from "@/lib/ui/utils"
 import { useProfile } from "./profile-context"
 import type { ProfileTab } from "./profile-types"
 
