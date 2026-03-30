@@ -18,7 +18,7 @@ import {
   Loader2,
   XCircle,
 } from "lucide-react"
-import { cn } from "@/lib/utils"
+import { cn } from "@/lib/ui/utils"
 import { API, ROUTES } from "@/lib/config/constants"
 import type { ProfileTabProps, BillingInfo } from "../types"
 
