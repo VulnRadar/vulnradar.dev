@@ -184,7 +184,7 @@ export function ProfileDeveloperTab({
             <a href="/docs">View Docs</a>
           </Button>
         </div>
-<Card className="border-border/50 bg-card/50">
+        <Card className="border-border/50 bg-card/50">
           <CardContent className="pt-6 flex flex-col gap-4">
             {loading ? (
               <div className="flex items-center justify-center py-8">
