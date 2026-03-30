@@ -104,8 +104,10 @@ export function ProfileDeveloperTab({
         setError(data.error || "Failed to generate key.")
         return
       }
-      setNewlyCreatedKey(data.key)
-      setApiKeys((prev) => [data.keyRecord, ...prev])
+      // API returns { key: { id, key_prefix, name, daily_limit, created_at, raw_key } }
+      const keyRecord = data.key
+      setNewlyCreatedKey(keyRecord.raw_key)
+      setApiKeys((prev) => [keyRecord, ...prev])
       setNewKeyName("")
       setSuccess("API key generated successfully!")
     } catch {
