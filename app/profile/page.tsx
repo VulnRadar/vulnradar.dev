@@ -379,6 +379,18 @@ function ProfileContent() {
         }
       }
 
+      // Save notification preferences if changed
+      if (pendingChanges.notifications) {
+        const res = await fetch(API.ACCOUNT_NOTIFICATIONS, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(pendingChanges.notifications),
+        })
+        if (res.ok) {
+          savedCount++
+        }
+      }
+
       setPendingChanges({})
       setShowSaveModal(false)
       setSuccess(`Changes saved successfully.`)
@@ -392,21 +404,35 @@ function ProfileContent() {
   // Check for pending changes
   const hasPendingChanges = Object.keys(pendingChanges).length > 0
 
-  // Build change items for modal
+  // Build change items for modal - include all types of changes
   const pendingChangeItems: ChangeItem[] = [
     ...(pendingChanges.name !== undefined ? [{
       field: "name",
       label: "Display Name",
       oldValue: user?.name || "",
-      newValue: pendingChanges.name
+      newValue: pendingChanges.name as string
     }] : []),
     ...(pendingChanges.email !== undefined ? [{
       field: "email",
       label: "Email Address",
       oldValue: user?.email || "",
-      newValue: pendingChanges.email
+      newValue: pendingChanges.email as string
     }] : []),
+    // Include notification preference changes
+    ...(pendingChanges.notifications ? Object.entries(pendingChanges.notifications as Record<string, boolean>).map(([key, value]) => ({
+      field: key,
+      label: key.replace("email_", "").replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase()),
+      oldValue: value ? "Disabled" : "Enabled",
+      newValue: value ? "Enabled" : "Disabled"
+    })) : []),
   ]
+
+  // Discard all pending changes
+  function discardAllChanges() {
+    setPendingChanges({})
+    setNameInput(user?.name || "")
+    setEmailInput(user?.email || "")
+  }
 
   // ---- Helpers ----
 
@@ -649,12 +675,7 @@ function ProfileContent() {
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={() => {
-                    setPendingChanges({})
-                    setNameInput(user?.name || "")
-                    setEmailInput(user?.email || "")
-                    setPendingChanges({})
-                  }}
+                  onClick={discardAllChanges}
                 >
                   Discard
                 </Button>
