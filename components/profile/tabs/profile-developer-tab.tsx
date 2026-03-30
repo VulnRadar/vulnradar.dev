@@ -1,658 +1,555 @@
 "use client"
 
-import { useState, useEffect } from "react"
-import {
-  Code,
-  Key,
-  Webhook,
-  Plus,
-  Loader2,
-  Copy,
-  Check,
-  Trash2,
-  Eye,
-  EyeOff,
-  AlertTriangle,
-  ExternalLink,
-  RefreshCw,
-} from "lucide-react"
+import { useState } from "react"
 import { Button } from "@/components/ui/button"
+import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Switch } from "@/components/ui/switch"
+import { Progress } from "@/components/ui/progress"
+import { cn } from "@/lib/ui/utils"
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
-import { toast } from "sonner"
-import { API } from "@/lib/config/constants"
-import { useProfile } from "../profile-context"
-import { getRelativeTime, maskApiKey, formatDate } from "../profile-types"
-import type { ApiKey, Webhook as WebhookType } from "../profile-types"
+  Key,
+  Plus,
+  Eye,
+  EyeOff,
+  Copy,
+  Check,
+  RefreshCw,
+  Clock,
+  Webhook,
+  Play,
+  Trash2,
+  Globe,
+  CalendarClock,
+  Loader2,
+} from "lucide-react"
+import { API, APP_NAME } from "@/lib/config/constants"
+import type { ProfileTabProps, ApiKey, WebhookItem, ScheduleItem } from "../types"
 
-const WEBHOOK_EVENTS = [
-  { id: "scan.complete", label: "Scan Complete" },
-  { id: "scan.failed", label: "Scan Failed" },
-  { id: "vulnerability.found", label: "Vulnerability Found" },
-  { id: "vulnerability.critical", label: "Critical Vulnerability" },
-]
+export function ProfileDeveloperTab({
+  setError,
+  setSuccess,
+  loading,
+  preloadedApiKeys,
+  preloadedWebhooks,
+  preloadedSchedules,
+  setApiKeys: parentSetApiKeys,
+  setWebhooks: parentSetWebhooks,
+  setSchedules: parentSetSchedules,
+}: ProfileTabProps) {
+  // Use preloaded data from parent, with local state as fallback
+  const [localApiKeys, setLocalApiKeys] = useState<ApiKey[]>([])
+  const [localWebhooks, setLocalWebhooks] = useState<WebhookItem[]>([])
+  const [localSchedules, setLocalSchedules] = useState<ScheduleItem[]>([])
+  
+  // Use preloaded data if available, otherwise use local state
+  const apiKeys = preloadedApiKeys ?? localApiKeys
+  const webhooks = preloadedWebhooks ?? localWebhooks
+  const schedules = preloadedSchedules ?? localSchedules
+  
+  // Use parent setters if available, otherwise use local setters
+  const setApiKeys = parentSetApiKeys ?? setLocalApiKeys
+  const setWebhooks = parentSetWebhooks ?? setLocalWebhooks
+  const setSchedules = parentSetSchedules ?? setLocalSchedules
 
-const API_SCOPES = [
-  { id: "scan:read", label: "Read Scans" },
-  { id: "scan:write", label: "Create Scans" },
-  { id: "history:read", label: "Read History" },
-  { id: "share:write", label: "Create Shares" },
-]
-
-export function ProfileDeveloperTab() {
-  const { apiKeys, setApiKeys, webhooks, setWebhooks } = useProfile()
-
-  const [isLoadingKeys, setIsLoadingKeys] = useState(true)
-  const [isLoadingWebhooks, setIsLoadingWebhooks] = useState(true)
-  const [showNewKeyDialog, setShowNewKeyDialog] = useState(false)
-  const [showNewWebhookDialog, setShowNewWebhookDialog] = useState(false)
   const [newKeyName, setNewKeyName] = useState("")
-  const [newKeyScopes, setNewKeyScopes] = useState<string[]>(["scan:read", "scan:write"])
-  const [newKeyExpiry, setNewKeyExpiry] = useState("never")
-  const [createdKey, setCreatedKey] = useState<string | null>(null)
-  const [isCreatingKey, setIsCreatingKey] = useState(false)
-  const [revealedKeys, setRevealedKeys] = useState<Set<string>>(new Set())
-  const [copiedKey, setCopiedKey] = useState<string | null>(null)
+  const [generatingKey, setGeneratingKey] = useState(false)
+  const [newlyCreatedKey, setNewlyCreatedKey] = useState<string | null>(null)
+  const [showKey, setShowKey] = useState(false)
+  const [copiedKey, setCopiedKey] = useState(false)
+  const [revokingId, setRevokingId] = useState<number | null>(null)
 
-  const [newWebhookUrl, setNewWebhookUrl] = useState("")
-  const [newWebhookEvents, setNewWebhookEvents] = useState<string[]>(["scan.complete"])
-  const [isCreatingWebhook, setIsCreatingWebhook] = useState(false)
+  // Webhooks state
+  const [webhookUrl, setWebhookUrl] = useState("")
+  const [webhookName, setWebhookName] = useState("")
+  const [addingWebhook, setAddingWebhook] = useState(false)
+  const [testingWebhookId, setTestingWebhookId] = useState<number | null>(null)
 
-  useEffect(() => {
-    fetchApiKeys()
-    fetchWebhooks()
-  }, [])
+  // Schedules state
+  const [scheduleUrl, setScheduleUrl] = useState("")
+  const [scheduleFreq, setScheduleFreq] = useState("weekly")
+  const [addingSchedule, setAddingSchedule] = useState(false)
 
-  const fetchApiKeys = async () => {
-    try {
-      setIsLoadingKeys(true)
-      const res = await fetch(`${API.ME}/api-keys`, { credentials: "include" })
-      if (res.ok) {
-        const data = await res.json()
-        setApiKeys(data.keys || [])
-      }
-    } catch (error) {
-      console.error("Failed to fetch API keys:", error)
-    } finally {
-      setIsLoadingKeys(false)
-    }
-  }
+  // Filter with null safety - ensure k exists and has expected properties
+  const activeKeys = apiKeys.filter((k) => k && typeof k === 'object' && !k.revoked_at)
 
-  const fetchWebhooks = async () => {
-    try {
-      setIsLoadingWebhooks(true)
-      const res = await fetch(`${API.ME}/webhooks`, { credentials: "include" })
-      if (res.ok) {
-        const data = await res.json()
-        setWebhooks(data.webhooks || [])
-      }
-    } catch (error) {
-      console.error("Failed to fetch webhooks:", error)
-    } finally {
-      setIsLoadingWebhooks(false)
-    }
-  }
-
-  const handleCreateKey = async () => {
-    if (!newKeyName.trim()) {
-      toast.error("Please enter a name for the API key")
+  // API Key handlers
+  async function handleGenerateKey() {
+    if (activeKeys.length >= 3) {
+      setError("Maximum 3 active keys allowed.")
       return
     }
-
-    setIsCreatingKey(true)
+    setGeneratingKey(true)
+    setError(null)
     try {
-      const res = await fetch(`${API.ME}/api-keys`, {
+      const body = { name: newKeyName || "Default" }
+      
+      const res = await fetch(API.KEYS, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({
-          name: newKeyName,
-          scopes: newKeyScopes,
-          expiresIn: newKeyExpiry === "never" ? null : newKeyExpiry,
-        }),
+        body: JSON.stringify(body),
       })
-
-      if (res.ok) {
-        const data = await res.json()
-        setCreatedKey(data.key)
-        setApiKeys([...apiKeys, data.apiKey])
-        toast.success("API key created")
-      } else {
-        toast.error("Failed to create API key")
+      
+      const data = await res.json()
+      
+      if (!res.ok) {
+        setError(data.error || "Failed to generate key.")
+        return
       }
-    } catch (error) {
-      toast.error("Failed to create API key")
-    } finally {
-      setIsCreatingKey(false)
-    }
-  }
-
-  const handleDeleteKey = async (keyId: string) => {
-    try {
-      const res = await fetch(`${API.ME}/api-keys/${keyId}`, {
-        method: "DELETE",
-        credentials: "include",
-      })
-
-      if (res.ok) {
-        setApiKeys(apiKeys.filter((k) => k.id !== keyId))
-        toast.success("API key deleted")
-      } else {
-        toast.error("Failed to delete API key")
-      }
-    } catch (error) {
-      toast.error("Failed to delete API key")
-    }
-  }
-
-  const handleCreateWebhook = async () => {
-    if (!newWebhookUrl.trim()) {
-      toast.error("Please enter a webhook URL")
-      return
-    }
-
-    try {
-      new URL(newWebhookUrl)
+      // API returns { key: { id, key_prefix, name, daily_limit, created_at, raw_key } }
+      const keyRecord = data.key
+      
+      setNewlyCreatedKey(keyRecord.raw_key)
+      setApiKeys((prev) => [keyRecord, ...prev])
+      setNewKeyName("")
+      setSuccess("API key generated successfully!")
     } catch {
-      toast.error("Please enter a valid URL")
-      return
-    }
-
-    setIsCreatingWebhook(true)
-    try {
-      const res = await fetch(`${API.ME}/webhooks`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({
-          url: newWebhookUrl,
-          events: newWebhookEvents,
-        }),
-      })
-
-      if (res.ok) {
-        const data = await res.json()
-        setWebhooks([...webhooks, data.webhook])
-        setShowNewWebhookDialog(false)
-        setNewWebhookUrl("")
-        setNewWebhookEvents(["scan.complete"])
-        toast.success("Webhook created")
-      } else {
-        toast.error("Failed to create webhook")
-      }
-    } catch (error) {
-      toast.error("Failed to create webhook")
+      setError("Failed to generate key.")
     } finally {
-      setIsCreatingWebhook(false)
+      setGeneratingKey(false)
     }
   }
 
-  const handleToggleWebhook = async (webhookId: string, enabled: boolean) => {
+  async function handleRotateKey(keyId: number) {
+    setRevokingId(keyId)
+    setError(null)
     try {
-      const res = await fetch(`${API.ME}/webhooks/${webhookId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ enabled }),
-      })
-
-      if (res.ok) {
-        setWebhooks(webhooks.map((w) => (w.id === webhookId ? { ...w, enabled } : w)))
-        toast.success(enabled ? "Webhook enabled" : "Webhook disabled")
-      } else {
-        toast.error("Failed to update webhook")
-      }
-    } catch (error) {
-      toast.error("Failed to update webhook")
-    }
-  }
-
-  const handleDeleteWebhook = async (webhookId: string) => {
-    try {
-      const res = await fetch(`${API.ME}/webhooks/${webhookId}`, {
-        method: "DELETE",
-        credentials: "include",
-      })
-
-      if (res.ok) {
-        setWebhooks(webhooks.filter((w) => w.id !== webhookId))
-        toast.success("Webhook deleted")
-      } else {
-        toast.error("Failed to delete webhook")
-      }
-    } catch (error) {
-      toast.error("Failed to delete webhook")
-    }
-  }
-
-  const handleTestWebhook = async (webhookId: string) => {
-    try {
-      const res = await fetch(`${API.ME}/webhooks/${webhookId}/test`, {
+      const rotateUrl = `${API.KEYS}/${keyId}/rotate`
+      const res = await fetch(rotateUrl, {
         method: "POST",
-        credentials: "include",
+        headers: { "Content-Type": "application/json" },
       })
-
-      if (res.ok) {
-        toast.success("Test webhook sent")
-      } else {
-        toast.error("Failed to send test webhook")
+      const data = await res.json()
+      if (!res.ok) {
+        setError(data.error || "Failed to rotate key.")
+        return
       }
-    } catch (error) {
-      toast.error("Failed to send test webhook")
+      const newKey = data.key
+      setNewlyCreatedKey(newKey.raw_key)
+      // Remove the old key and add the new one
+      setApiKeys((prev) => prev.filter((k) => k.id !== keyId).concat([newKey]))
+      setSuccess("Key rotated successfully! Copy the new key now.")
+    } catch {
+      setError("Failed to rotate key.")
+    } finally {
+      setRevokingId(null)
     }
   }
 
-  const copyToClipboard = (text: string, keyId: string) => {
-    navigator.clipboard.writeText(text)
-    setCopiedKey(keyId)
-    toast.success("Copied to clipboard")
-    setTimeout(() => setCopiedKey(null), 2000)
+  function handleCopyKey() {
+    if (newlyCreatedKey) {
+      navigator.clipboard.writeText(newlyCreatedKey)
+      setCopiedKey(true)
+      setTimeout(() => setCopiedKey(false), 2000)
+    }
   }
 
-  const toggleKeyVisibility = (keyId: string) => {
-    const newRevealed = new Set(revealedKeys)
-    if (newRevealed.has(keyId)) {
-      newRevealed.delete(keyId)
-    } else {
-      newRevealed.add(keyId)
-    }
-    setRevealedKeys(newRevealed)
+  function formatDate(dateStr: string | null) {
+    if (!dateStr) return "Never"
+    return new Date(dateStr).toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    })
+  }
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-16">
+        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      </div>
+    )
   }
 
   return (
-    <div className="space-y-6">
-      {/* API Keys */}
-      <Card className="p-4 sm:p-6 border-border/50 bg-card/50">
-        <div className="flex items-center justify-between mb-4">
+    <div className="flex flex-col gap-8">
+      {/* API Keys Section */}
+      <section>
+        <div className="flex items-center justify-between gap-3 mb-4">
           <div className="flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-primary/10">
-              <Key className="h-4 w-4 text-primary" />
-            </div>
-            <div>
-              <h3 className="text-sm font-medium text-foreground">API Keys</h3>
-              <p className="text-xs text-muted-foreground">Manage your API keys for programmatic access</p>
+<div className="p-2 rounded-lg bg-primary/10">
+            <Key className="h-4 w-4 text-primary" />
+          </div>
+          <div>
+            <h2 className="text-lg font-semibold text-foreground">API Keys</h2>
+              <p className="text-sm text-muted-foreground">Rate limit based on your plan, max 3 keys</p>
             </div>
           </div>
-          <Button size="sm" onClick={() => setShowNewKeyDialog(true)}>
-            <Plus className="h-3.5 w-3.5 mr-1.5" />
-            New Key
+          <Button variant="outline" size="sm" className="shrink-0" asChild>
+            <a href="/docs">View Docs</a>
           </Button>
         </div>
-
-        {isLoadingKeys ? (
-          <div className="flex items-center justify-center py-8">
-            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-          </div>
-        ) : apiKeys.length === 0 ? (
-          <div className="text-center py-8">
-            <Key className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
-            <p className="text-sm text-muted-foreground">No API keys yet</p>
-            <p className="text-xs text-muted-foreground">Create one to access the API programmatically</p>
-          </div>
-        ) : (
-          <div className="space-y-3">
-            {apiKeys.map((key) => (
-              <div
-                key={key.id}
-                className="flex items-center justify-between p-3 rounded-lg bg-muted/30 border border-border/50"
-              >
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-1">
-                    <p className="text-sm font-medium text-foreground">{key.name}</p>
-                    {key.expiresAt && new Date(key.expiresAt) < new Date() && (
-                      <Badge variant="outline" className="text-destructive border-destructive/30 bg-destructive/10 text-[10px]">
-                        Expired
-                      </Badge>
-                    )}
-                  </div>
+        <Card className="border-border/50 bg-card/50">
+          <CardContent className="pt-6 flex flex-col gap-4">
+            {loading ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+              </div>
+            ) : (
+              <>
+                {/* Newly created key display */}
+                {newlyCreatedKey && (
+              <div className="p-4 rounded-lg border border-primary/30 bg-primary/5">
+                <div className="flex flex-col gap-3">
                   <div className="flex items-center gap-2">
-                    <code className="text-xs font-mono text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
-                      {revealedKeys.has(key.id) ? key.key : maskApiKey(key.key)}
-                    </code>
-                    <button
-                      onClick={() => toggleKeyVisibility(key.id)}
-                      className="p-1 hover:bg-muted rounded"
-                    >
-                      {revealedKeys.has(key.id) ? (
-                        <EyeOff className="h-3 w-3 text-muted-foreground" />
-                      ) : (
-                        <Eye className="h-3 w-3 text-muted-foreground" />
-                      )}
-                    </button>
-                    <button
-                      onClick={() => copyToClipboard(key.key, key.id)}
-                      className="p-1 hover:bg-muted rounded"
-                    >
-                      {copiedKey === key.id ? (
-                        <Check className="h-3 w-3 text-green-500" />
-                      ) : (
-                        <Copy className="h-3 w-3 text-muted-foreground" />
-                      )}
-                    </button>
+                    <Key className="h-4 w-4 text-primary" />
+                    <span className="text-sm font-semibold text-foreground">New API Key Generated</span>
                   </div>
-                  <p className="text-[10px] text-muted-foreground mt-1">
-                    Created {formatDate(key.createdAt)} · Last used {getRelativeTime(key.lastUsed)}
+                  <p className="text-xs text-muted-foreground leading-relaxed">
+                    Copy this key now. You will not be able to see it again.
                   </p>
+                  <div className="flex items-center gap-2">
+                    <code className="flex-1 text-xs bg-secondary px-3 py-2 rounded-md font-mono text-foreground overflow-x-auto">
+                      {showKey ? newlyCreatedKey : (typeof newlyCreatedKey === 'string' ? newlyCreatedKey.slice(0, 12) + "..." + "*".repeat(32) : "...")}
+                    </code>
+                    <Button variant="ghost" size="icon" onClick={() => setShowKey(!showKey)} className="shrink-0">
+                      {showKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </Button>
+                    <Button variant="ghost" size="icon" onClick={handleCopyKey} className="shrink-0">
+                      {copiedKey ? <Check className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
+                    </Button>
+                  </div>
                 </div>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => handleDeleteKey(key.id)}
-                  className="text-destructive hover:text-destructive hover:bg-destructive/10"
-                >
-                  <Trash2 className="h-4 w-4" />
+              </div>
+            )}
+
+            {/* Generate new key */}
+            <div className="flex flex-col gap-3 p-4 rounded-lg border border-border bg-secondary/30">
+              <Label htmlFor="key-name" className="text-sm font-medium">Generate New Key</Label>
+              <div className="flex gap-2">
+                <Input
+                  id="key-name"
+                  placeholder="Key name (e.g. Production, CI/CD)"
+                  value={newKeyName}
+                  onChange={(e) => setNewKeyName(e.target.value)}
+                  className="bg-card h-10"
+                  maxLength={100}
+                  onKeyDown={(e) => { if (e.key === "Enter" && activeKeys.length < 3) handleGenerateKey() }}
+                />
+                <Button onClick={handleGenerateKey} disabled={generatingKey || activeKeys.length >= 3} className="shrink-0 h-10">
+                  <Plus className="mr-2 h-4 w-4" />
+                  {generatingKey ? "Generating..." : "Generate"}
                 </Button>
               </div>
-            ))}
-          </div>
-        )}
-      </Card>
-
-      {/* Webhooks */}
-      <Card className="p-4 sm:p-6 border-border/50 bg-card/50">
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-primary/10">
-              <Webhook className="h-4 w-4 text-primary" />
+              {activeKeys.length >= 3 && (
+                <p className="text-xs text-muted-foreground">Maximum 3 active keys. Revoke an existing key to create a new one.</p>
+              )}
             </div>
-            <div>
-              <h3 className="text-sm font-medium text-foreground">Webhooks</h3>
-              <p className="text-xs text-muted-foreground">Receive notifications for scan events</p>
-            </div>
-          </div>
-          <Button size="sm" onClick={() => setShowNewWebhookDialog(true)}>
-            <Plus className="h-3.5 w-3.5 mr-1.5" />
-            New Webhook
-          </Button>
-        </div>
 
-        {isLoadingWebhooks ? (
-          <div className="flex items-center justify-center py-8">
-            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-          </div>
-        ) : webhooks.length === 0 ? (
-          <div className="text-center py-8">
-            <Webhook className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
-            <p className="text-sm text-muted-foreground">No webhooks yet</p>
-            <p className="text-xs text-muted-foreground">Create one to receive real-time notifications</p>
-          </div>
-        ) : (
-          <div className="space-y-3">
-            {webhooks.map((webhook) => (
-              <div
-                key={webhook.id}
-                className="p-3 rounded-lg bg-muted/30 border border-border/50"
-              >
-                <div className="flex items-center justify-between mb-2">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <Switch
-                      checked={webhook.enabled}
-                      onCheckedChange={(enabled) => handleToggleWebhook(webhook.id, enabled)}
-                    />
-                    <code className="text-xs font-mono text-muted-foreground truncate">
-                      {webhook.url}
-                    </code>
+            {/* Active keys */}
+            {activeKeys.length > 0 && (
+              <div className="flex flex-col gap-3">
+                <h3 className="text-sm font-semibold text-foreground">Active Keys ({activeKeys.length}/3)</h3>
+                {activeKeys.map((key) => (
+                  <div key={key.id} className="flex flex-col gap-3 p-4 rounded-lg border border-border bg-card">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <Key className="h-4 w-4 text-muted-foreground shrink-0" />
+                        <span className="text-sm font-medium text-foreground truncate">{key.name}</span>
+                        <Badge variant="outline" className="text-xs font-mono text-muted-foreground shrink-0">{key.key_prefix}...</Badge>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleRotateKey(key.id)}
+                        disabled={revokingId === key.id}
+                        className="text-muted-foreground hover:text-foreground h-8 gap-1.5"
+                        aria-label="Rotate key"
+                      >
+                        <RefreshCw className={cn("h-3.5 w-3.5", revokingId === key.id && "animate-spin")} />
+                        <span className="hidden sm:inline">Rotate</span>
+                      </Button>
+                    </div>
+                    <div className="flex flex-col gap-1.5">
+                      <div className="flex items-center justify-between text-xs text-muted-foreground">
+                        <span>Usage today</span>
+                        <span>{key.usage_today} / {key.daily_limit} requests</span>
+                      </div>
+                      <Progress value={(key.usage_today / key.daily_limit) * 100} className="h-2" />
+                    </div>
+                    <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-4 text-xs text-muted-foreground">
+                      <span className="flex items-center gap-1">
+                        <Clock className="h-3 w-3 shrink-0" />
+                        Created {formatDate(key.created_at)}
+                      </span>
+                      {key.last_used_at && <span>Last used {formatDate(key.last_used_at)}</span>}
+                    </div>
                   </div>
-                  <div className="flex items-center gap-1 flex-shrink-0">
+                ))}
+              </div>
+            )}
+
+            {/* Empty state */}
+            {activeKeys.length === 0 && !newlyCreatedKey && (
+              <div className="flex flex-col items-center gap-3 py-8 text-center">
+                <Key className="h-10 w-10 text-muted-foreground/50" />
+                <p className="text-sm font-medium text-foreground">No API keys yet</p>
+                <p className="text-xs text-muted-foreground">Generate a key above to start using the {APP_NAME} API.</p>
+              </div>
+            )}
+              </>
+            )}
+          </CardContent>
+        </Card>
+      </section>
+
+      {/* Webhooks Section */}
+      <section>
+        <div className="flex items-center gap-3 mb-4">
+          <div className="p-2 rounded-lg bg-primary/10">
+            <Webhook className="h-4 w-4 text-primary" />
+          </div>
+          <div>
+            <h2 className="text-lg font-semibold text-foreground">Webhooks</h2>
+            <p className="text-sm text-muted-foreground">Discord, Slack, and JSON webhook notifications</p>
+          </div>
+        </div>
+        <Card className="border-border/50 bg-card/50">
+          <CardContent className="pt-6 space-y-4">
+            {/* Add webhook form */}
+            <div className="flex flex-col gap-3 p-4 rounded-lg border border-border bg-secondary/30">
+              <Label className="text-sm font-medium">Add Endpoint</Label>
+              <div className="flex flex-col sm:flex-row gap-2">
+                <Input
+                  placeholder="Name (e.g. Discord Alerts)"
+                  value={webhookName}
+                  onChange={(e) => setWebhookName(e.target.value)}
+                  className="sm:w-44 bg-card h-10"
+                />
+                <Input
+                  placeholder="https://discord.com/api/webhooks/..."
+                  value={webhookUrl}
+                  onChange={(e) => setWebhookUrl(e.target.value)}
+                  className="flex-1 bg-card h-10"
+                />
+                <Button
+                  disabled={!webhookUrl || addingWebhook}
+                  onClick={async () => {
+                    setAddingWebhook(true)
+                    try {
+                      const res = await fetch(API.WEBHOOKS, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ url: webhookUrl, name: webhookName || "Default", type: "auto" }),
+                      })
+                      const data = await res.json()
+                      if (res.ok) {
+                        setWebhooks((prev) => [data, ...prev])
+                        setWebhookUrl("")
+                        setWebhookName("")
+                        setSuccess(`Webhook added (detected as ${data.type}).`)
+                      } else {
+                        setError(data.error || "Failed to add webhook.")
+                      }
+                    } catch { setError("Failed to add webhook.") }
+                    setAddingWebhook(false)
+                  }}
+                  className="shrink-0"
+                >
+                  {addingWebhook ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+                  <span className="ml-1.5">Add</span>
+                </Button>
+              </div>
+            </div>
+
+            {/* Webhook list */}
+            {webhooks.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-4">No webhooks configured yet.</p>
+            ) : (
+              <div className="flex flex-col gap-2">
+                {webhooks.map((wh) => (
+                  <div key={wh.id} className="flex items-center gap-3 px-3 py-2.5 rounded-lg bg-secondary/30 border border-border">
+                    {wh.type === "discord" ? (
+                      <svg className="h-4 w-4 text-[#5865F2] shrink-0" viewBox="0 0 24 24" fill="currentColor"><path d="M20.317 4.37a19.791 19.791 0 00-4.885-1.515.074.074 0 00-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 00-5.487 0 12.64 12.64 0 00-.617-1.25.077.077 0 00-.079-.037A19.736 19.736 0 003.677 4.37a.07.07 0 00-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 00.031.057 19.9 19.9 0 005.993 3.03.078.078 0 00.084-.028c.462-.63.874-1.295 1.226-1.994a.076.076 0 00-.041-.106 13.107 13.107 0 01-1.872-.892.077.077 0 01-.008-.128 10.2 10.2 0 00.372-.292.074.074 0 01.077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 01.078.01c.12.098.246.198.373.292a.077.077 0 01-.006.127 12.299 12.299 0 01-1.873.892.077.077 0 00-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 00.084.028 19.839 19.839 0 006.002-3.03.077.077 0 00.032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 00-.031-.03zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418z" /></svg>
+                    ) : wh.type === "slack" ? (
+                      <svg className="h-4 w-4 text-[#E01E5A] shrink-0" viewBox="0 0 24 24" fill="currentColor"><path d="M5.042 15.165a2.528 2.528 0 01-2.52 2.523A2.528 2.528 0 010 15.165a2.527 2.527 0 012.522-2.52h2.52v2.52zm1.271 0a2.527 2.527 0 012.521-2.52 2.527 2.527 0 012.521 2.52v6.313A2.528 2.528 0 018.834 24a2.528 2.528 0 01-2.521-2.522v-6.313zM8.834 5.042a2.528 2.528 0 01-2.521-2.52A2.528 2.528 0 018.834 0a2.528 2.528 0 012.521 2.522v2.52H8.834zm0 1.271a2.528 2.528 0 012.521 2.521 2.528 2.528 0 01-2.521 2.521H2.522A2.528 2.528 0 010 8.834a2.528 2.528 0 012.522-2.521h6.312zm10.122 2.521a2.528 2.528 0 012.522-2.521A2.528 2.528 0 0124 8.834a2.528 2.528 0 01-2.522 2.521h-2.522V8.834zm-1.268 0a2.528 2.528 0 01-2.523 2.521 2.527 2.527 0 01-2.52-2.521V2.522A2.527 2.527 0 0115.165 0a2.528 2.528 0 012.523 2.522v6.312zm-2.523 10.122a2.528 2.528 0 012.523 2.522A2.528 2.528 0 0115.165 24a2.527 2.527 0 01-2.52-2.522v-2.522h2.52zm0-1.268a2.527 2.527 0 01-2.52-2.523 2.526 2.526 0 012.52-2.52h6.313A2.527 2.527 0 0124 15.165a2.528 2.528 0 01-2.522 2.523h-6.313z" /></svg>
+                    ) : (
+                      <Globe className="h-4 w-4 text-primary shrink-0" />
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <p className="text-sm font-medium text-foreground">{wh.name}</p>
+                        <span className={cn(
+                          "inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider border",
+                          wh.type === "discord" ? "bg-[#5865F2]/10 text-[#5865F2] border-[#5865F2]/20" :
+                            wh.type === "slack" ? "bg-[#E01E5A]/10 text-[#E01E5A] border-[#E01E5A]/20" :
+                              "bg-muted text-muted-foreground border-border"
+                        )}>
+                          {wh.type}
+                        </span>
+                      </div>
+                      <p className="text-xs text-muted-foreground truncate">{wh.url}</p>
+                    </div>
+                    <div className="flex items-center gap-1 shrink-0">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 text-primary hover:text-primary hover:bg-primary/10"
+                        disabled={testingWebhookId === wh.id}
+                        onClick={async () => {
+                          setTestingWebhookId(wh.id)
+                          try {
+                            const res = await fetch(API.WEBHOOKS, {
+                              method: "PATCH",
+                              headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify({ id: wh.id }),
+                            })
+                            const data = await res.json()
+                            if (res.ok) {
+                              setSuccess("Test webhook sent successfully!")
+                            } else {
+                              setError(data.error || "Failed to test webhook")
+                            }
+                          } catch {
+                            setError("Failed to test webhook")
+                          }
+                          setTestingWebhookId(null)
+                        }}
+                        title="Send test webhook"
+                      >
+                        {testingWebhookId === wh.id ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <Play className="h-3.5 w-3.5" />
+                        )}
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 text-destructive dark:text-red-400 hover:text-destructive dark:hover:text-red-400 hover:bg-destructive/10"
+                        onClick={async () => {
+                          await fetch(API.WEBHOOKS, {
+                            method: "DELETE",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ id: wh.id }),
+                          })
+                          setWebhooks((prev) => prev.filter((w) => w.id !== wh.id))
+                        }}
+                        title="Delete webhook"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </section>
+
+      {/* Scheduled Scans Section */}
+      <section>
+        <div className="flex items-center gap-3 mb-4">
+<div className="p-2 rounded-lg bg-primary/10">
+            <CalendarClock className="h-4 w-4 text-primary" />
+          </div>
+          <div>
+            <h2 className="text-lg font-semibold text-foreground">Scheduled Scans</h2>
+            <p className="text-sm text-muted-foreground">Automate recurring vulnerability scans</p>
+          </div>
+        </div>
+        <Card className="border-border/50 bg-card/50">
+          <CardContent className="pt-6 space-y-4">
+            {/* Add schedule form */}
+            <div className="flex flex-col gap-3 p-4 rounded-lg border border-border bg-secondary/30">
+              <Label className="text-sm font-medium">Add Schedule</Label>
+              <div className="flex flex-col sm:flex-row gap-2">
+                <Input
+                  placeholder="https://example.com"
+                  value={scheduleUrl}
+                  onChange={(e) => setScheduleUrl(e.target.value)}
+                  className="flex-1 bg-card h-10"
+                />
+                <select
+                  value={scheduleFreq}
+                  onChange={(e) => setScheduleFreq(e.target.value)}
+                  className="h-10 px-3 rounded-md border border-border bg-card text-foreground text-sm"
+                >
+                  <option value="daily">Daily</option>
+                  <option value="weekly">Weekly</option>
+                  <option value="monthly">Monthly</option>
+                </select>
+                <Button
+                  disabled={!scheduleUrl || addingSchedule}
+                  onClick={async () => {
+                    setAddingSchedule(true)
+                    try {
+                      const res = await fetch(API.SCHEDULES, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ url: scheduleUrl, frequency: scheduleFreq }),
+                      })
+                      const data = await res.json()
+                      if (res.ok) {
+                        setSchedules((prev) => [data, ...prev])
+                        setScheduleUrl("")
+                        setSuccess("Schedule created successfully.")
+                      } else {
+                        setError(data.error || "Failed to create schedule.")
+                      }
+                    } catch { setError("Failed to create schedule.") }
+                    setAddingSchedule(false)
+                  }}
+                  className="shrink-0"
+                >
+                  {addingSchedule ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+                  <span className="ml-1.5">Add</span>
+                </Button>
+              </div>
+            </div>
+
+            {/* Schedule list */}
+            {schedules.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-4">No scheduled scans configured yet.</p>
+            ) : (
+              <div className="flex flex-col gap-2">
+                {schedules.map((sch) => (
+                  <div key={sch.id} className="flex items-center gap-3 px-3 py-2.5 rounded-lg bg-secondary/30 border border-border">
+                    <CalendarClock className="h-4 w-4 text-primary shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-foreground truncate">{sch.url}</p>
+                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                        <Badge variant="secondary" className="text-[10px] px-1.5 py-0 uppercase font-semibold">
+                          {sch.frequency}
+                        </Badge>
+                        {sch.next_run && (
+                          <span>Next: {new Date(sch.next_run).toLocaleDateString("en-US", { month: "short", day: "numeric" })}</span>
+                        )}
+                        {sch.last_run && (
+                          <span>Last: {new Date(sch.last_run).toLocaleDateString("en-US", { month: "short", day: "numeric" })}</span>
+                        )}
+                      </div>
+                    </div>
                     <Button
                       variant="ghost"
-                      size="sm"
-                      onClick={() => handleTestWebhook(webhook.id)}
-                    >
-                      <RefreshCw className="h-3.5 w-3.5" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => handleDeleteWebhook(webhook.id)}
-                      className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                      size="icon"
+                      className="h-7 w-7 text-destructive dark:text-red-400 hover:text-destructive dark:hover:text-red-400 hover:bg-destructive/10 shrink-0"
+                      onClick={async () => {
+                        await fetch(API.SCHEDULES, {
+                          method: "DELETE",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ id: sch.id }),
+                        })
+                        setSchedules((prev) => prev.filter((s) => s.id !== sch.id))
+                      }}
                     >
                       <Trash2 className="h-3.5 w-3.5" />
                     </Button>
                   </div>
-                </div>
-                <div className="flex flex-wrap gap-1.5">
-                  {webhook.events.map((event) => (
-                    <Badge key={event} variant="outline" className="text-[10px]">
-                      {event}
-                    </Badge>
-                  ))}
-                </div>
-                {webhook.failureCount > 0 && (
-                  <p className="text-[10px] text-amber-500 mt-2 flex items-center gap-1">
-                    <AlertTriangle className="h-3 w-3" />
-                    {webhook.failureCount} recent failures
-                  </p>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
-      </Card>
-
-      {/* API Documentation Link */}
-      <Card className="p-4 sm:p-6 border-border/50 bg-card/50">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-primary/10">
-              <Code className="h-4 w-4 text-primary" />
-            </div>
-            <div>
-              <h3 className="text-sm font-medium text-foreground">API Documentation</h3>
-              <p className="text-xs text-muted-foreground">Learn how to integrate with the VulnRadar API</p>
-            </div>
-          </div>
-          <Button asChild variant="outline" size="sm">
-            <a href="/docs/api" target="_blank" rel="noopener noreferrer">
-              <ExternalLink className="h-3.5 w-3.5 mr-1.5" />
-              View Docs
-            </a>
-          </Button>
-        </div>
-      </Card>
-
-      {/* New API Key Dialog */}
-      <Dialog open={showNewKeyDialog} onOpenChange={(open) => {
-        setShowNewKeyDialog(open)
-        if (!open) {
-          setNewKeyName("")
-          setNewKeyScopes(["scan:read", "scan:write"])
-          setNewKeyExpiry("never")
-          setCreatedKey(null)
-        }
-      }}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{createdKey ? "API Key Created" : "Create API Key"}</DialogTitle>
-            <DialogDescription>
-              {createdKey
-                ? "Copy your API key now. You won't be able to see it again."
-                : "Create a new API key for programmatic access."}
-            </DialogDescription>
-          </DialogHeader>
-
-          {createdKey ? (
-            <div className="space-y-4">
-              <div className="p-4 rounded-lg bg-muted/50 border border-border/50">
-                <div className="flex items-center justify-between gap-2">
-                  <code className="text-sm font-mono break-all">{createdKey}</code>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => copyToClipboard(createdKey, "new")}
-                  >
-                    {copiedKey === "new" ? (
-                      <Check className="h-4 w-4" />
-                    ) : (
-                      <Copy className="h-4 w-4" />
-                    )}
-                  </Button>
-                </div>
-              </div>
-              <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/20">
-                <p className="text-xs text-amber-600 dark:text-amber-400 flex items-center gap-2">
-                  <AlertTriangle className="h-3.5 w-3.5" />
-                  Make sure to copy your API key now. You won&apos;t be able to see it again!
-                </p>
-              </div>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="key-name" className="text-xs">Name</Label>
-                <Input
-                  id="key-name"
-                  value={newKeyName}
-                  onChange={(e) => setNewKeyName(e.target.value)}
-                  placeholder="My API Key"
-                  className="bg-background"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label className="text-xs">Expiration</Label>
-                <Select value={newKeyExpiry} onValueChange={setNewKeyExpiry}>
-                  <SelectTrigger className="bg-background">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="never">Never</SelectItem>
-                    <SelectItem value="30d">30 days</SelectItem>
-                    <SelectItem value="90d">90 days</SelectItem>
-                    <SelectItem value="1y">1 year</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label className="text-xs">Scopes</Label>
-                <div className="grid grid-cols-2 gap-2">
-                  {API_SCOPES.map((scope) => (
-                    <label
-                      key={scope.id}
-                      className="flex items-center gap-2 p-2 rounded-lg border border-border/50 cursor-pointer hover:bg-muted/50"
-                    >
-                      <input
-                        type="checkbox"
-                        checked={newKeyScopes.includes(scope.id)}
-                        onChange={(e) => {
-                          if (e.target.checked) {
-                            setNewKeyScopes([...newKeyScopes, scope.id])
-                          } else {
-                            setNewKeyScopes(newKeyScopes.filter((s) => s !== scope.id))
-                          }
-                        }}
-                        className="rounded"
-                      />
-                      <span className="text-xs">{scope.label}</span>
-                    </label>
-                  ))}
-                </div>
-              </div>
-            </div>
-          )}
-
-          <DialogFooter>
-            {createdKey ? (
-              <Button onClick={() => setShowNewKeyDialog(false)}>Done</Button>
-            ) : (
-              <>
-                <Button variant="outline" onClick={() => setShowNewKeyDialog(false)}>
-                  Cancel
-                </Button>
-                <Button onClick={handleCreateKey} disabled={isCreatingKey}>
-                  {isCreatingKey ? (
-                    <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
-                  ) : (
-                    <Plus className="h-4 w-4 mr-1.5" />
-                  )}
-                  Create Key
-                </Button>
-              </>
-            )}
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* New Webhook Dialog */}
-      <Dialog open={showNewWebhookDialog} onOpenChange={setShowNewWebhookDialog}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Create Webhook</DialogTitle>
-            <DialogDescription>
-              Configure a webhook to receive notifications for scan events.
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="webhook-url" className="text-xs">URL</Label>
-              <Input
-                id="webhook-url"
-                value={newWebhookUrl}
-                onChange={(e) => setNewWebhookUrl(e.target.value)}
-                placeholder="https://example.com/webhook"
-                className="bg-background"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label className="text-xs">Events</Label>
-              <div className="grid grid-cols-2 gap-2">
-                {WEBHOOK_EVENTS.map((event) => (
-                  <label
-                    key={event.id}
-                    className="flex items-center gap-2 p-2 rounded-lg border border-border/50 cursor-pointer hover:bg-muted/50"
-                  >
-                    <input
-                      type="checkbox"
-                      checked={newWebhookEvents.includes(event.id)}
-                      onChange={(e) => {
-                        if (e.target.checked) {
-                          setNewWebhookEvents([...newWebhookEvents, event.id])
-                        } else {
-                          setNewWebhookEvents(newWebhookEvents.filter((ev) => ev !== event.id))
-                        }
-                      }}
-                      className="rounded"
-                    />
-                    <span className="text-xs">{event.label}</span>
-                  </label>
                 ))}
               </div>
-            </div>
-          </div>
+            )}
 
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowNewWebhookDialog(false)}>
-              Cancel
-            </Button>
-            <Button onClick={handleCreateWebhook} disabled={isCreatingWebhook}>
-              {isCreatingWebhook ? (
-                <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
-              ) : (
-                <Plus className="h-4 w-4 mr-1.5" />
-              )}
-              Create Webhook
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+            <div className="rounded-lg bg-muted/50 border border-border p-3">
+              <p className="text-xs text-muted-foreground leading-relaxed">
+                Scheduled scans run automatically at the configured frequency. Results are saved to your scan history and any active webhooks will be notified. Schedules require an active API key.
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      </section>
     </div>
   )
 }

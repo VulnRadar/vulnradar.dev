@@ -1,273 +1,362 @@
 "use client"
 
-import { useState, useRef } from "react"
-import { Camera, Loader2, Trash2, Check, X, User, Mail, Calendar, Shield, BarChart3 } from "lucide-react"
+import React, { useState, useRef, useEffect } from "react"
+import {
+  UserCog,
+  Award,
+  Mail,
+  Pencil,
+  X,
+  Camera,
+  Loader2,
+  Zap,
+  Lock,
+  Share2,
+  Tag,
+} from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
-import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { useProfile } from "../profile-context"
-import { formatDate } from "../profile-types"
+import { API } from "@/lib/config/constants"
+import type { ProfileTabProps } from "../types"
 
-export function ProfileGeneralTab() {
-  const { profile, updateProfile, uploadAvatar, deleteAvatar } = useProfile()
-  const fileInputRef = useRef<HTMLInputElement>(null)
+interface ProfileGeneralTabProps extends ProfileTabProps {
+  onAvatarCrop?: (croppedDataUrl: string) => void
+  onSetCropDialog?: (open: boolean, imageSrc: string | null) => void
+}
 
-  const [isEditing, setIsEditing] = useState(false)
-  const [isSaving, setIsSaving] = useState(false)
-  const [isUploadingAvatar, setIsUploadingAvatar] = useState(false)
-  
-  const [formData, setFormData] = useState({
-    name: profile?.name || "",
-    bio: profile?.bio || "",
-    website: profile?.website || "",
-  })
+export function ProfileGeneralTab({
+  user,
+  setError,
+  setSuccess,
+  onTabChange,
+  pendingChanges,
+  setPendingChanges,
+  discardKey,
+  onAvatarCrop,
+  onSetCropDialog,
+}: ProfileGeneralTabProps) {
+  const [profileEditMode, setProfileEditMode] = useState(false)
+  const [nameInput, setNameInput] = useState(user?.name || "")
+  const [emailInput, setEmailInput] = useState(user?.email || "")
+  const [uploadingAvatar, setUploadingAvatar] = useState(false)
+  const avatarInputRef = useRef<HTMLInputElement>(null)
 
-  const handleSave = async () => {
-    setIsSaving(true)
-    const success = await updateProfile(formData)
-    if (success) {
-      setIsEditing(false)
+  // Reset inputs when user changes
+  useEffect(() => {
+    setNameInput(user?.name || "")
+    setEmailInput(user?.email || "")
+  }, [user])
+
+  // Reset inputs when discard is clicked
+  useEffect(() => {
+    if (discardKey && discardKey > 0) {
+      setNameInput(user?.name || "")
+      setEmailInput(user?.email || "")
+      setProfileEditMode(false)
     }
-    setIsSaving(false)
-  }
+  }, [discardKey, user])
 
-  const handleCancel = () => {
-    setFormData({
-      name: profile?.name || "",
-      bio: profile?.bio || "",
-      website: profile?.website || "",
-    })
-    setIsEditing(false)
-  }
-
-  const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  function handleAvatarFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (!file) return
-
-    // Validate file
     if (!file.type.startsWith("image/")) {
+      setError("Please select an image file.")
       return
     }
-    if (file.size > 5 * 1024 * 1024) {
+    if (file.size > 10 * 1024 * 1024) {
+      setError("Image must be under 10MB.")
       return
     }
-
-    setIsUploadingAvatar(true)
-    await uploadAvatar(file)
-    setIsUploadingAvatar(false)
+    setError(null)
+    const isGif = file.type === "image/gif"
+    if (isGif) {
+      const reader = new FileReader()
+      reader.onload = () => onAvatarCrop?.(reader.result as string)
+      reader.readAsDataURL(file)
+    } else {
+      const reader = new FileReader()
+      reader.onload = () => onSetCropDialog?.(true, reader.result as string)
+      reader.readAsDataURL(file)
+    }
+    if (avatarInputRef.current) avatarInputRef.current.value = ""
   }
 
-  const handleDeleteAvatar = async () => {
-    setIsUploadingAvatar(true)
-    await deleteAvatar()
-    setIsUploadingAvatar(false)
+  async function handleRemoveAvatar() {
+    setUploadingAvatar(true)
+    setError(null)
+    try {
+      const res = await fetch(API.AUTH.UPDATE, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ avatarUrl: "" }),
+      })
+      if (res.ok) {
+        setSuccess("Profile picture removed.")
+      }
+    } catch {
+      setError("Failed to remove profile picture.")
+    } finally {
+      setUploadingAvatar(false)
+    }
   }
 
-  if (!profile) return null
+  function handleCancelEdit() {
+    setNameInput(user?.name || "")
+    setEmailInput(user?.email || "")
+    setPendingChanges(prev => {
+      const { name: _, email: __, ...rest } = prev
+      return rest
+    })
+    setProfileEditMode(false)
+  }
 
-  const initials = profile.name
-    ? profile.name.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2)
-    : profile.email?.charAt(0).toUpperCase() || "U"
+  function handleNameChange(val: string) {
+    setNameInput(val)
+    if (val !== (user?.name || "")) {
+      setPendingChanges(prev => ({ ...prev, name: val }))
+    } else {
+      setPendingChanges(prev => {
+        const { name: _, ...rest } = prev
+        return rest
+      })
+    }
+  }
+
+  function handleEmailChange(val: string) {
+    setEmailInput(val)
+    if (val !== user?.email) {
+      setPendingChanges(prev => ({ ...prev, email: val }))
+    } else {
+      setPendingChanges(prev => {
+        const { email: _, ...rest } = prev
+        return rest
+      })
+    }
+  }
 
   return (
-    <div className="space-y-6">
-      {/* Avatar Section */}
-      <Card className="p-4 sm:p-6 border-border/50 bg-card/50">
-        <div className="flex flex-col sm:flex-row sm:items-center gap-4">
-          <div className="relative">
-            <Avatar className="h-20 w-20 sm:h-24 sm:w-24">
-              <AvatarImage src={profile.avatar || undefined} alt={profile.name} />
-              <AvatarFallback className="text-xl sm:text-2xl bg-primary/10 text-primary">
-                {initials}
-              </AvatarFallback>
-            </Avatar>
-            {isUploadingAvatar && (
-              <div className="absolute inset-0 flex items-center justify-center bg-background/80 rounded-full">
-                <Loader2 className="h-6 w-6 animate-spin text-primary" />
+    <div className="flex flex-col gap-8">
+      {/* Personal Information */}
+      <section>
+        <div className="flex items-center gap-3 mb-4">
+          <div className="p-2 rounded-lg bg-primary/10">
+            <UserCog className="h-4 w-4 text-primary" />
+          </div>
+          <div>
+            <h2 className="text-lg font-semibold text-foreground">Personal Information</h2>
+            <p className="text-sm text-muted-foreground">Manage your profile picture, name, and email</p>
+          </div>
+        </div>
+        <Card className="border-border/50 bg-card/50">
+          <CardContent className="pt-6 flex flex-col gap-5">
+            {/* Profile Picture */}
+            <div className="flex flex-col gap-2">
+              <Label className="text-sm font-medium text-muted-foreground">Profile Picture</Label>
+              <div className="flex items-center gap-4">
+                <div className="relative group">
+                  <div className="h-16 w-16 rounded-full border-2 border-border bg-secondary/40 flex items-center justify-center overflow-hidden">
+                    {user?.avatarUrl ? (
+                      <img src={user.avatarUrl} alt="Profile" className="h-full w-full object-cover" />
+                    ) : (
+                      <span className="text-xl font-bold text-muted-foreground">
+                        {user?.name?.charAt(0)?.toUpperCase() || user?.email?.charAt(0)?.toUpperCase() || "?"}
+                      </span>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => avatarInputRef.current?.click()}
+                    disabled={uploadingAvatar}
+                    className="absolute inset-0 flex items-center justify-center rounded-full bg-background/70 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+                  >
+                    {uploadingAvatar ? (
+                      <Loader2 className="h-5 w-5 animate-spin text-foreground" />
+                    ) : (
+                      <Camera className="h-5 w-5 text-foreground" />
+                    )}
+                  </button>
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="bg-transparent text-xs"
+                      onClick={() => avatarInputRef.current?.click()}
+                      disabled={uploadingAvatar}
+                    >
+                      {uploadingAvatar ? "Uploading..." : "Upload"}
+                    </Button>
+                    {user?.avatarUrl && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-xs text-destructive hover:text-destructive"
+                        onClick={handleRemoveAvatar}
+                        disabled={uploadingAvatar}
+                      >
+                        Remove
+                      </Button>
+                    )}
+                  </div>
+                  <p className="text-[11px] text-muted-foreground">JPG, PNG, or GIF. Max 10MB.</p>
+                </div>
+                <input
+                  ref={avatarInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={handleAvatarFileSelect}
+                  className="hidden"
+                />
+              </div>
+            </div>
+
+            {/* Badges section */}
+            {user?.badges && user.badges.length > 0 && (
+              <div className="flex flex-col gap-2">
+                <Label className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                  <Award className="h-4 w-4" /> Badges
+                </Label>
+                <div className="flex flex-wrap gap-2 p-3 rounded-lg border border-border bg-secondary/20">
+                  {user.badges.map((badge) => (
+                    <div
+                      key={badge.id}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium"
+                      style={{
+                        backgroundColor: `${badge.color}15`,
+                        borderWidth: 1,
+                        borderColor: `${badge.color}40`,
+                        color: badge.color || undefined,
+                      }}
+                      title={badge.description || undefined}
+                    >
+                      <Tag className="h-3 w-3" />
+                      {badge.display_name}
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
-          </div>
-          <div className="flex-1 min-w-0">
-            <h3 className="text-sm font-medium text-foreground mb-1">Profile Photo</h3>
-            <p className="text-xs text-muted-foreground mb-3">
-              JPG, PNG or GIF. Max 5MB.
-            </p>
-            <div className="flex flex-wrap gap-2">
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/*"
-                onChange={handleAvatarChange}
-                className="hidden"
-              />
+
+            {/* Name + Email with edit mode toggle */}
+            <div className="flex items-center justify-between mb-1">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Personal Details</p>
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => fileInputRef.current?.click()}
-                disabled={isUploadingAvatar}
+                className="h-7 text-xs gap-1.5"
+                onClick={() => profileEditMode ? handleCancelEdit() : setProfileEditMode(true)}
               >
-                <Camera className="h-3.5 w-3.5 mr-1.5" />
-                Upload
-              </Button>
-              {profile.avatar && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleDeleteAvatar}
-                  disabled={isUploadingAvatar}
-                  className="text-destructive hover:text-destructive"
-                >
-                  <Trash2 className="h-3.5 w-3.5 mr-1.5" />
-                  Remove
-                </Button>
-              )}
-            </div>
-          </div>
-        </div>
-      </Card>
-
-      {/* Profile Info */}
-      <Card className="p-4 sm:p-6 border-border/50 bg-card/50">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-sm font-medium text-foreground">Profile Information</h3>
-          {!isEditing ? (
-            <Button variant="outline" size="sm" onClick={() => setIsEditing(true)}>
-              Edit
-            </Button>
-          ) : (
-            <div className="flex gap-2">
-              <Button variant="outline" size="sm" onClick={handleCancel} disabled={isSaving}>
-                <X className="h-3.5 w-3.5 mr-1" />
-                Cancel
-              </Button>
-              <Button size="sm" onClick={handleSave} disabled={isSaving}>
-                {isSaving ? (
-                  <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
+                {profileEditMode ? (
+                  <><X className="h-3 w-3" />Cancel</>
                 ) : (
-                  <Check className="h-3.5 w-3.5 mr-1" />
+                  <><Pencil className="h-3 w-3" />Edit</>
                 )}
-                Save
               </Button>
             </div>
-          )}
-        </div>
 
-        <div className="space-y-4">
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="space-y-2">
-              <Label htmlFor="name" className="text-xs">Display Name</Label>
-              {isEditing ? (
-                <Input
-                  id="name"
-                  value={formData.name}
-                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  placeholder="Enter your name"
-                  className="bg-background"
-                />
-              ) : (
-                <p className="text-sm text-foreground">{profile.name || "Not set"}</p>
-              )}
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="email" className="text-xs">Email</Label>
-              <div className="flex items-center gap-2">
-                <p className="text-sm text-foreground">{profile.email}</p>
-                {profile.emailVerified && (
-                  <Badge variant="outline" className="text-green-500 border-green-500/30 bg-green-500/10 text-[10px]">
-                    Verified
-                  </Badge>
-                )}
+            {!profileEditMode ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="flex flex-col gap-1 p-3 rounded-lg border bg-muted/20 border-border">
+                  <div className="flex items-center gap-2 mb-1">
+                    <UserCog className="h-3.5 w-3.5 text-muted-foreground" />
+                    <span className="text-[11px] text-muted-foreground font-medium">Display Name</span>
+                  </div>
+                  <span className="text-sm font-medium text-foreground truncate">
+                    {user?.name || <span className="text-muted-foreground italic">Not set</span>}
+                  </span>
+                </div>
+                <div className="flex flex-col gap-1 p-3 rounded-lg border bg-muted/20 border-border">
+                  <div className="flex items-center gap-2 mb-1">
+                    <Mail className="h-3.5 w-3.5 text-muted-foreground" />
+                    <span className="text-[11px] text-muted-foreground font-medium">Email Address</span>
+                  </div>
+                  <span className="text-sm font-medium text-foreground truncate">{user?.email}</span>
+                </div>
               </div>
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="website" className="text-xs">Website</Label>
-            {isEditing ? (
-              <Input
-                id="website"
-                value={formData.website}
-                onChange={(e) => setFormData({ ...formData, website: e.target.value })}
-                placeholder="https://example.com"
-                className="bg-background"
-              />
             ) : (
-              <p className="text-sm text-foreground">
-                {profile.website ? (
-                  <a href={profile.website} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
-                    {profile.website}
-                  </a>
-                ) : (
-                  "Not set"
-                )}
-              </p>
+              <div className="flex flex-col gap-3">
+                <div className="flex flex-col gap-1.5">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-xs font-medium text-muted-foreground">Display Name</Label>
+                    {pendingChanges.name !== undefined && pendingChanges.name !== (user?.name || "") && (
+                      <Badge variant="outline" className="text-[10px] bg-amber-500/10 text-amber-500 border-amber-500/20">Modified</Badge>
+                    )}
+                  </div>
+                  <Input
+                    value={nameInput}
+                    onChange={(e) => handleNameChange(e.target.value)}
+                    className="bg-card h-10"
+                    placeholder="Your display name"
+                    autoFocus
+                  />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-xs font-medium text-muted-foreground">Email Address</Label>
+                    {pendingChanges.email !== undefined && pendingChanges.email !== user?.email && (
+                      <Badge variant="outline" className="text-[10px] bg-amber-500/10 text-amber-500 border-amber-500/20">Modified</Badge>
+                    )}
+                  </div>
+                  <Input
+                    type="email"
+                    value={emailInput}
+                    onChange={(e) => handleEmailChange(e.target.value)}
+                    className="bg-card h-10"
+                    placeholder="Your email address"
+                  />
+                </div>
+              </div>
             )}
-          </div>
+          </CardContent>
+        </Card>
+      </section>
 
-          <div className="space-y-2">
-            <Label htmlFor="bio" className="text-xs">Bio</Label>
-            {isEditing ? (
-              <Textarea
-                id="bio"
-                value={formData.bio}
-                onChange={(e) => setFormData({ ...formData, bio: e.target.value })}
-                placeholder="Tell us about yourself"
-                rows={3}
-                className="bg-background resize-none"
-              />
-            ) : (
-              <p className="text-sm text-muted-foreground">{profile.bio || "No bio added yet"}</p>
-            )}
+      {/* Quick Links to Other Settings */}
+      <section>
+        <div className="flex items-center gap-3 mb-4">
+          <div className="p-2 rounded-lg bg-primary/10">
+            <Zap className="h-4 w-4 text-primary" />
+          </div>
+          <div>
+            <h2 className="text-lg font-semibold text-foreground">Quick Settings</h2>
+            <p className="text-sm text-muted-foreground">Shortcuts to other account settings</p>
           </div>
         </div>
-      </Card>
-
-      {/* Account Stats */}
-      <Card className="p-4 sm:p-6 border-border/50 bg-card/50">
-        <h3 className="text-sm font-medium text-foreground mb-4">Account Overview</h3>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-          <div className="flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-primary/10">
-              <User className="h-4 w-4 text-primary" />
+        <Card className="border-border/50 bg-card/50">
+          <CardContent className="pt-6">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <button
+                onClick={() => onTabChange("security")}
+                className="flex items-center gap-3 p-4 rounded-xl border border-border/40 bg-card/30 hover:bg-card/80 hover:border-primary/30 transition-colors text-left"
+              >
+                <div className="p-2 rounded-lg bg-primary/10">
+                  <Lock className="h-4 w-4 text-primary" />
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-foreground">Security</p>
+                  <p className="text-xs text-muted-foreground">Password, 2FA, sessions</p>
+                </div>
+              </button>
+              <button
+                onClick={() => onTabChange("social")}
+                className="flex items-center gap-3 p-4 rounded-xl border border-border/40 bg-card/30 hover:bg-card/80 hover:border-primary/30 transition-colors text-left"
+              >
+                <div className="p-2 rounded-lg bg-[#5865F2]/10">
+                  <Share2 className="h-4 w-4 text-[#5865F2]" />
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-foreground">Connected Accounts</p>
+                  <p className="text-xs text-muted-foreground">Discord integration</p>
+                </div>
+              </button>
             </div>
-            <div>
-              <p className="text-xs text-muted-foreground">Role</p>
-              <p className="text-sm font-medium text-foreground capitalize">{profile.role || "User"}</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-primary/10">
-              <BarChart3 className="h-4 w-4 text-primary" />
-            </div>
-            <div>
-              <p className="text-xs text-muted-foreground">Scans</p>
-              <p className="text-sm font-medium text-foreground">{profile.scanCount || 0}</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-primary/10">
-              <Shield className="h-4 w-4 text-primary" />
-            </div>
-            <div>
-              <p className="text-xs text-muted-foreground">Plan</p>
-              <p className="text-sm font-medium text-foreground capitalize">{profile.plan || "Free"}</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-primary/10">
-              <Calendar className="h-4 w-4 text-primary" />
-            </div>
-            <div>
-              <p className="text-xs text-muted-foreground">Joined</p>
-              <p className="text-sm font-medium text-foreground">{formatDate(profile.createdAt)}</p>
-            </div>
-          </div>
-        </div>
-      </Card>
+          </CardContent>
+        </Card>
+      </section>
     </div>
   )
 }
