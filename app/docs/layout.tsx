@@ -2,7 +2,7 @@
 
 import { useState, useEffect, createContext, useContext } from "react"
 import { usePathname } from "next/navigation"
-import { BookOpen, Zap, Code2, Webhook, Gauge } from "lucide-react"
+import { BookOpen, Zap, Code2, Webhook, Gauge, Layers } from "lucide-react"
 import { Header } from "@/components/scanner/header"
 import { Footer } from "@/components/scanner/footer"
 import { useAuth } from "@/components/providers/auth-provider"
@@ -40,10 +40,11 @@ export type { TocItem }
 
 const mainNavItems: NavItem[] = [
   { href: "/docs", label: "Getting Started", icon: BookOpen, exact: true },
-  { href: "/docs/api", label: "API Reference", icon: Zap },
+  { href: "/docs/setup", label: "Setup Guide", icon: BookOpen },
+  { href: "/docs/api", label: "API Reference", icon: Code2 },
   { href: "/docs/webhooks", label: "Webhooks", icon: Webhook },
   { href: "/docs/rate-limits", label: "Rate Limits", icon: Gauge },
-  { href: "/docs/setup", label: "Setup Guide", icon: BookOpen },
+  { href: "/docs/integrations", label: "Integrations", icon: Layers },
   { href: "/docs/developers", label: "Developers", icon: Code2 },
 ]
 
