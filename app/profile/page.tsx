@@ -347,7 +347,7 @@ function ProfileContent() {
     try {
       // Save name if changed
       if (pendingChanges.name !== undefined) {
-        const res = await fetch(API.ACCOUNT, {
+        const res = await fetch(API.AUTH.UPDATE, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ name: pendingChanges.name }),
@@ -361,7 +361,7 @@ function ProfileContent() {
 
       // Save email if changed
       if (pendingChanges.email !== undefined) {
-        const res = await fetch(API.ACCOUNT, {
+        const res = await fetch(API.AUTH.UPDATE, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ email: pendingChanges.email }),
