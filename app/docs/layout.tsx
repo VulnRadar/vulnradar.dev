@@ -2,8 +2,7 @@
 
 import { useState, useEffect, createContext, useContext } from "react"
 import { usePathname } from "next/navigation"
-import { BookOpen, Zap, Code2, Webhook, Gauge, Layers } from "lucide-react"
-import { Header } from "@/components/scanner/header"
+import { BookOpen, Code2, Webhook, Gauge, Layers } from "lucide-react"
 import { Footer } from "@/components/scanner/footer"
 import { useAuth } from "@/components/providers/auth-provider"
 import {
@@ -63,23 +62,25 @@ export default function DocsLayout({ children }: { children: React.ReactNode }) 
   const [activeSection, setActiveSection] = useState("")
   const [tocItems, setTocItems] = useState<TocItem[]>([])
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
-  const [cachedAuth, setCachedAuth] = useState<boolean | null>(() => getInitialAuthState())
+  const [isHydrated, setIsHydrated] = useState(false)
 
+  // Track hydration to prevent mismatch
   useEffect(() => {
-    if (!isLoading) setCachedAuth(!!me?.userId)
-  }, [me, isLoading])
+    setIsHydrated(true)
+  }, [])
 
   // Close mobile nav on route change
   useEffect(() => {
     setMobileNavOpen(false)
   }, [pathname])
 
-  const isLoggedIn = cachedAuth === true || !!me?.userId
+  const isLoggedIn = !!me?.userId
 
   return (
     <DocsContext.Provider value={{ activeSection, setActiveSection, tocItems, setTocItems }}>
       <div className="min-h-screen flex flex-col bg-background">
-        {isLoggedIn ? <Header /> : <DocsHeader />}
+        {/* Always use DocsHeader for docs pages - it's consistent and doesn't conditionally render */}
+        <DocsHeader />
 
         <div className="flex-1 max-w-[90rem] w-full mx-auto">
           <div className="flex">
