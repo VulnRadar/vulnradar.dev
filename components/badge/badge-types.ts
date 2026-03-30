@@ -54,3 +54,22 @@ export function getHostname(url: string) {
     return url
   }
 }
+
+export interface ParsedUrl {
+  subdomain: string | null
+  host: string
+  path: string
+}
+
+export function parseUrl(url: string): ParsedUrl {
+  try {
+    const u = new URL(url)
+    const path = u.pathname === "/" ? "" : u.pathname + (u.search || "")
+    const parts = u.hostname.split(".")
+    const subdomain = parts.length > 2 ? parts[0] : null
+    const host = subdomain ? parts.slice(1).join(".") : u.hostname
+    return { subdomain, host, path }
+  } catch {
+    return { subdomain: null, host: url, path: "" }
+  }
+}

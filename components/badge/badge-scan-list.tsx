@@ -2,7 +2,7 @@
 
 import { Search, ShieldCheck, AlertTriangle, ChevronRight } from "lucide-react"
 import { cn } from "@/lib/ui/utils"
-import { type ScanEntry, getSeverityColor, getSeverityBg, getSeverityLabel, getRelativeTime, getHostname } from "./badge-types"
+import { type ScanEntry, getSeverityColor, getSeverityBg, getSeverityLabel, getRelativeTime, parseUrl } from "./badge-types"
 
 interface BadgeScanListProps {
   scans: ScanEntry[]
@@ -15,7 +15,9 @@ interface BadgeScanListProps {
 export function BadgeScanList({ scans, selected, searchQuery, onSearchChange, onSelect }: BadgeScanListProps) {
   const filteredScans = scans.filter((s) => {
     if (!searchQuery) return true
-    return getHostname(s.url).toLowerCase().includes(searchQuery.toLowerCase())
+    const { subdomain, host, path } = parseUrl(s.url)
+    const full = [subdomain, host, path].filter(Boolean).join("")
+    return full.toLowerCase().includes(searchQuery.toLowerCase())
   })
 
   return (
@@ -44,7 +46,7 @@ export function BadgeScanList({ scans, selected, searchQuery, onSearchChange, on
             <p className="text-sm text-muted-foreground text-center py-8">No scans match your search.</p>
           ) : (
             filteredScans.map((scan) => {
-              const hostname = getHostname(scan.url)
+              const { subdomain, host, path } = parseUrl(scan.url)
               const isSelected = selected?.id === scan.id
               return (
                 <button
@@ -64,7 +66,15 @@ export function BadgeScanList({ scans, selected, searchQuery, onSearchChange, on
                     )}
                   </div>
                   <div className="flex flex-col min-w-0 flex-1">
-                    <span className="text-sm font-medium text-foreground truncate">{hostname}</span>
+                    <div className="flex items-baseline gap-0 min-w-0 font-mono text-sm">
+                      {subdomain && (
+                        <span className="text-muted-foreground truncate max-w-[60px] shrink-0">{subdomain}.</span>
+                      )}
+                      <span className="text-foreground font-medium truncate shrink min-w-0">{host}</span>
+                      {path && (
+                        <span className="text-muted-foreground truncate max-w-[120px] shrink-0">{path}</span>
+                      )}
+                    </div>
                     <span className="text-xs text-muted-foreground">{getRelativeTime(scan.scanned_at)}</span>
                   </div>
                   <div className="flex items-center gap-2 flex-shrink-0">

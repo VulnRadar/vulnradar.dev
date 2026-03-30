@@ -5,6 +5,7 @@ import { Loader2, ImageIcon, AlertTriangle, ExternalLink, Code2, Copy, Check } f
 import { Button } from "@/components/ui/button"
 import { API } from "@/lib/config/constants"
 import type { ScanEntry } from "./badge-types"
+import { parseUrl } from "./badge-types"
 
 interface BadgePreviewProps {
   selected: ScanEntry | null
@@ -128,9 +129,18 @@ export function BadgePreview({ selected, token, generating }: BadgePreviewProps)
     )
   }
 
+  const { subdomain, host, path } = parseUrl(selected.url)
+
   return (
     <div className="flex flex-col gap-4">
-      <h2 className="text-sm font-medium text-foreground">Badge preview</h2>
+      <div className="flex items-center justify-between">
+        <h2 className="text-sm font-medium text-foreground">Badge preview</h2>
+        <div className="flex items-baseline gap-0 font-mono text-xs min-w-0 max-w-[60%]">
+          {subdomain && <span className="text-muted-foreground truncate max-w-[50px] shrink-0">{subdomain}.</span>}
+          <span className="text-foreground font-medium truncate shrink min-w-0">{host}</span>
+          {path && <span className="text-muted-foreground truncate max-w-[100px] shrink-0">{path}</span>}
+        </div>
+      </div>
 
       <div className="rounded-xl border border-border bg-card p-8 flex items-center justify-center">
         <a href={shareUrl} target="_blank" rel="noopener noreferrer" className="transition-transform hover:scale-105">
