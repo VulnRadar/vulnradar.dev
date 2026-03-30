@@ -4,6 +4,7 @@ import { useState, useEffect, createContext, useContext } from "react"
 import { usePathname } from "next/navigation"
 import { BookOpen, Code2, Webhook, Gauge } from "lucide-react"
 import { Footer } from "@/components/scanner/footer"
+import { Header } from "@/components/scanner/header"
 import { useAuth } from "@/components/providers/auth-provider"
 import {
   DocsSidebar,
@@ -73,13 +74,13 @@ export default function DocsLayout({ children }: { children: React.ReactNode }) 
     setMobileNavOpen(false)
   }, [pathname])
 
-  const isLoggedIn = !!me?.userId
+  const isLoggedIn = isHydrated && !!me?.userId
 
   return (
     <DocsContext.Provider value={{ activeSection, setActiveSection, tocItems, setTocItems }}>
       <div className="min-h-screen flex flex-col bg-background">
-        {/* Always use DocsHeader for docs pages - it's consistent and doesn't conditionally render */}
-        <DocsHeader />
+        {/* Use main Header when logged in, DocsHeader when logged out */}
+        {isLoggedIn ? <Header /> : <DocsHeader />}
 
         <div className="flex-1 max-w-[90rem] w-full mx-auto">
           <div className="flex">
