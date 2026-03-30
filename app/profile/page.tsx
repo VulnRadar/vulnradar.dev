@@ -238,11 +238,7 @@ function ProfileContent() {
 
   const fetchData = useCallback(async () => {
     try {
-      const [userRes, dataReqRes, notifRes] = await Promise.all([
-        fetch(API.AUTH.ME),
-        fetch(API.DATA_REQUEST),
-        fetch(API.ACCOUNT_NOTIFICATIONS),
-      ])
+      const userRes = await fetch(API.AUTH.ME)
 
       if (!userRes.ok) {
         router.push("/login")
@@ -250,14 +246,10 @@ function ProfileContent() {
       }
 
       const userData = await userRes.json()
-      const dataReqData = await dataReqRes.json()
-      const notifData = notifRes.ok ? await notifRes.json() : null
       setUser(userData)
       setNameInput(userData.name || "")
       setEmailInput(userData.email || "")
-      // Billing, 2FA, and Developer state are managed in their respective tab components
-      setDataReqInfo(dataReqData)
-      // Notification preferences are now managed in ProfileNotificationsTab component
+      // All other data (billing, 2FA, developer, privacy, notifications) is fetched by their respective tab components
     } catch {
       setError("Failed to load profile data.")
     } finally {
