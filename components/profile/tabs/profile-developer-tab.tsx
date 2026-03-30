@@ -206,7 +206,7 @@ export function ProfileDeveloperTab({
                   </p>
                   <div className="flex items-center gap-2">
                     <code className="flex-1 text-xs bg-secondary px-3 py-2 rounded-md font-mono text-foreground overflow-x-auto">
-                      {showKey ? newlyCreatedKey : newlyCreatedKey.slice(0, 12) + "..." + "*".repeat(32)}
+                      {showKey ? newlyCreatedKey : (typeof newlyCreatedKey === 'string' ? newlyCreatedKey.slice(0, 12) + "..." + "*".repeat(32) : "...")}
                     </code>
                     <Button variant="ghost" size="icon" onClick={() => setShowKey(!showKey)} className="shrink-0">
                       {showKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
