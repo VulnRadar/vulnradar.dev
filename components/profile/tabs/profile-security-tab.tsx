@@ -7,6 +7,14 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import {
   Lock,
   Shield,
   Smartphone,
@@ -21,6 +29,7 @@ import {
   Loader2,
   LogOut,
   X,
+  AlertTriangle,
 } from "lucide-react"
 import { API } from "@/lib/config/constants"
 import type { ProfileTabProps } from "@/components/profile/types"
@@ -53,6 +62,7 @@ export function ProfileSecurityTab(props: ProfileTabProps) {
 
   // Session state
   const [forceLoggingOut, setForceLoggingOut] = useState(false)
+  const [showLogoutModal, setShowLogoutModal] = useState(false)
 
   async function handleChangePassword() {
     if (!currentPassword || !newPassword || !confirmNewPassword) {
@@ -70,8 +80,8 @@ export function ProfileSecurityTab(props: ProfileTabProps) {
 
     setSavingPassword(true)
     try {
-      const res = await fetch(API.AUTH.CHANGE_PASSWORD, {
-        method: "POST",
+      const res = await fetch(API.AUTH.UPDATE, {
+        method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ currentPassword, newPassword }),
       })
@@ -95,9 +105,10 @@ export function ProfileSecurityTab(props: ProfileTabProps) {
   async function handleForceLogout() {
     setForceLoggingOut(true)
     try {
-      const res = await fetch(API.AUTH.FORCE_LOGOUT, { method: "POST" })
+      const res = await fetch(API.AUTH.SESSIONS, { method: "DELETE" })
       if (res.ok) {
         setSuccess("All sessions have been terminated.")
+        setShowLogoutModal(false)
         setTimeout(() => window.location.href = "/login", 2000)
       } else {
         setError("Failed to log out all devices.")
@@ -503,19 +514,51 @@ export function ProfileSecurityTab(props: ProfileTabProps) {
               <Button
                 variant="outline"
                 className="self-start text-destructive dark:text-red-400 border-destructive/30 hover:bg-destructive/10"
-                onClick={handleForceLogout}
-                disabled={forceLoggingOut}
+                onClick={() => setShowLogoutModal(true)}
               >
-                {forceLoggingOut ? (
-                  <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Logging out...</>
-                ) : (
-                  <><LogOut className="mr-2 h-4 w-4" />Log Out All Devices</>
-                )}
+                <LogOut className="mr-2 h-4 w-4" />Log Out All Devices
               </Button>
             </div>
           </CardContent>
         </Card>
       </section>
+
+      {/* Logout All Devices Confirmation Modal */}
+      <Dialog open={showLogoutModal} onOpenChange={setShowLogoutModal}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <div className="flex items-center gap-3 mb-2">
+              <div className="p-2 rounded-lg bg-destructive/10">
+                <AlertTriangle className="h-5 w-5 text-destructive" />
+              </div>
+              <DialogTitle>Log Out All Devices</DialogTitle>
+            </div>
+            <DialogDescription className="text-left">
+              This will terminate all active sessions including this one. You will be redirected to the login page and will need to sign in again on all devices.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="flex-col sm:flex-row gap-2 sm:gap-0 mt-4">
+            <Button
+              variant="outline"
+              onClick={() => setShowLogoutModal(false)}
+              disabled={forceLoggingOut}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleForceLogout}
+              disabled={forceLoggingOut}
+            >
+              {forceLoggingOut ? (
+                <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Logging out...</>
+              ) : (
+                <><LogOut className="mr-2 h-4 w-4" />Log Out All Devices</>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Security Notifications Quick Link */}
       <section>
