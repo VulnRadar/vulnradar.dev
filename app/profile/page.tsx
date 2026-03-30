@@ -541,19 +541,8 @@ function ProfileContent() {
 
   }
 
-  // Check for notification changes and build list
-  const changedNotifications: { key: keyof NotificationPrefs; oldVal: boolean; newVal: boolean }[] = []
-  if (originalNotifPrefs) {
-    for (const key of Object.keys(notifPrefs) as (keyof NotificationPrefs)[]) {
-      if (notifPrefs[key] !== originalNotifPrefs[key]) {
-        changedNotifications.push({ key, oldVal: originalNotifPrefs[key], newVal: notifPrefs[key] })
-      }
-    }
-  }
-  const hasNotificationChanges = changedNotifications.length > 0
-
-  // Check for any pending changes
-  const hasPendingChanges = Object.keys(pendingChanges).length > 0 || hasNotificationChanges
+  // Check for pending changes (notification changes are now managed in ProfileNotificationsTab)
+  const hasPendingChanges = Object.keys(pendingChanges).length > 0
 
   // Build change items for modal
   const pendingChangeItems: ChangeItem[] = [
@@ -1035,7 +1024,7 @@ function ProfileContent() {
                     setPendingChanges({})
                     setNameInput(user?.name || "")
                     setEmailInput(user?.email || "")
-                    if (originalNotifPrefs) setNotifPrefs(originalNotifPrefs)
+                    setPendingChanges({})
                   }}
                 >
                   Discard
