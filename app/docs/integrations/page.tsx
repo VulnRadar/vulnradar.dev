@@ -1,6 +1,6 @@
 import { Badge } from "@/components/ui/badge"
 import { Card } from "@/components/ui/card"
-import { DocsSection, DocsHero, DocsCallout, DocsCodeBlock, DocsEndpointCard } from "@/components/docs"
+import { DocsSection, DocsHero, DocsCallout, CodeBlock, EndpointCard } from "@/components/docs"
 import { Shield, Webhook, GitBranch, Zap } from "lucide-react"
 
 export const metadata = {
@@ -139,7 +139,7 @@ def verify_webhook(payload: bytes, signature: str, secret: str) -> bool:
             <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
               <Badge>GitHub Actions</Badge>
             </h3>
-            <DocsCodeBlock
+            <CodeBlock
               language="yaml"
               code={"name: Security Scan\non: [push, pull_request]\n\njobs:\n  scan:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v3\n      - name: Run VulnRadar Scan\n        run: |\n          curl -X POST https://api.vulnradar.dev/v2/scan/crawl \\\n            -H \"Authorization: Bearer ${{ secrets.VULNRADAR_API_KEY }}\" \\\n            -H \"Content-Type: application/json\" \\\n            -d '{\"url\": \"https://example.com\"}'"}
             />
@@ -149,7 +149,7 @@ def verify_webhook(payload: bytes, signature: str, secret: str) -> bool:
             <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
               <Badge>GitLab CI</Badge>
             </h3>
-            <DocsCodeBlock
+            <CodeBlock
               language="yaml"
               code={"scan_security:\n  stage: test\n  script:\n    - |\n      curl -X POST https://api.vulnradar.dev/v2/scan/crawl \\\n        -H \"Authorization: Bearer $CI_JOB_TOKEN\" \\\n        -H \"Content-Type: application/json\" \\\n        -d '{\"url\": \"$CI_PROJECT_URL\"}'\n  only:\n    - merge_requests"}
             />
