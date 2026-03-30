@@ -4,14 +4,12 @@ import { useState, useEffect, createContext, useContext } from "react"
 import { usePathname } from "next/navigation"
 import { BookOpen, Code2, Webhook, Gauge } from "lucide-react"
 import { Footer } from "@/components/scanner/footer"
-import { Header } from "@/components/scanner/header"
-import { useAuth } from "@/components/providers/auth-provider"
+import { LandingNav } from "@/components/landing/landing-nav"
 import {
   DocsSidebar,
   DocsToc,
   DocsMobileNavTrigger,
   DocsMobileNav,
-  DocsHeader,
   type TocItem,
   type NavItem,
 } from "@/components/docs"
@@ -47,40 +45,22 @@ const mainNavItems: NavItem[] = [
   { href: "/docs/developers", label: "Developers", icon: Code2 },
 ]
 
-function getInitialAuthState(): boolean | null {
-  if (typeof window === "undefined") return null
-  try {
-    const cached = localStorage.getItem("vr_auth_cache")
-    if (cached) return !!JSON.parse(cached)?.userId
-  } catch {}
-  return null
-}
 
 export default function DocsLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
-  const { me, isLoading } = useAuth()
   const [activeSection, setActiveSection] = useState("")
   const [tocItems, setTocItems] = useState<TocItem[]>([])
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
-  const [isHydrated, setIsHydrated] = useState(false)
-
-  // Track hydration to prevent mismatch
-  useEffect(() => {
-    setIsHydrated(true)
-  }, [])
 
   // Close mobile nav on route change
   useEffect(() => {
     setMobileNavOpen(false)
   }, [pathname])
 
-  const isLoggedIn = isHydrated && !!me?.userId
-
   return (
     <DocsContext.Provider value={{ activeSection, setActiveSection, tocItems, setTocItems }}>
       <div className="min-h-screen flex flex-col bg-background">
-        {/* Use main Header when logged in, DocsHeader when logged out */}
-        {isLoggedIn ? <Header /> : <DocsHeader />}
+        <LandingNav />
 
         <div className="flex-1 max-w-[90rem] w-full mx-auto">
           <div className="flex">
