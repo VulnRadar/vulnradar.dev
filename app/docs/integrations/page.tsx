@@ -141,21 +141,7 @@ def verify_webhook(payload: bytes, signature: str, secret: str) -> bool:
             </h3>
             <DocsCodeBlock
               language="yaml"
-              code={`name: Security Scan
-on: [push, pull_request]
-
-jobs:
-  scan:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      - name: Run VulnRadar Scan
-        run: |
-          curl -X POST https://api.vulnradar.dev/v2/scan/crawl \\
-            -H "Authorization: Bearer ${{ secrets.VULNRADAR_API_KEY }}" \\
-            -H "Content-Type: application/json" \\
-            -d "{\\"url\\": \\"https://example.com\\"}"
-`}
+              code={"name: Security Scan\non: [push, pull_request]\n\njobs:\n  scan:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v3\n      - name: Run VulnRadar Scan\n        run: |\n          curl -X POST https://api.vulnradar.dev/v2/scan/crawl \\\n            -H \"Authorization: Bearer ${{ secrets.VULNRADAR_API_KEY }}\" \\\n            -H \"Content-Type: application/json\" \\\n            -d '{\"url\": \"https://example.com\"}'"}
             />
           </div>
 
@@ -165,17 +151,7 @@ jobs:
             </h3>
             <DocsCodeBlock
               language="yaml"
-              code={`scan_security:
-  stage: test
-  script:
-    - |
-      curl -X POST https://api.vulnradar.dev/v2/scan/crawl \\
-        -H "Authorization: Bearer $CI_JOB_TOKEN" \\
-        -H "Content-Type: application/json" \\
-        -d "{\\"url\\": \\"$CI_PROJECT_URL\\"}"
-  only:
-    - merge_requests
-`}
+              code={"scan_security:\n  stage: test\n  script:\n    - |\n      curl -X POST https://api.vulnradar.dev/v2/scan/crawl \\\n        -H \"Authorization: Bearer $CI_JOB_TOKEN\" \\\n        -H \"Content-Type: application/json\" \\\n        -d '{\"url\": \"$CI_PROJECT_URL\"}'\n  only:\n    - merge_requests"}
             />
           </div>
         </div>
