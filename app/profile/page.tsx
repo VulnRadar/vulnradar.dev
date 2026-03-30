@@ -558,12 +558,6 @@ function ProfileContent() {
       oldValue: user?.email || "",
       newValue: pendingChanges.email
     }] : []),
-    ...changedNotifications.map(({ key, oldVal, newVal }) => ({
-      field: key,
-      label: NOTIF_LABELS[key] || key,
-      oldValue: oldVal ? "Enabled" : "Disabled",
-      newValue: newVal ? "Enabled" : "Disabled"
-    })),
   ]
 
   // ---- Helpers ----
