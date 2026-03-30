@@ -59,9 +59,20 @@ export function ProfilePrivacyTab({
     try {
       const res = await fetch(API.DATA_REQUEST, { method: 'POST' })
       const data = await res.json()
-      if (res.ok) {
-        setSuccess('Data export initiated. You will receive an email with download link shortly.')
-        setDataReqInfo(data)
+      if (res.ok && data.data) {
+        // Immediately download the data as JSON
+        const jsonString = JSON.stringify(data.data, null, 2)
+        const blob = new Blob([jsonString], { type: 'application/json' })
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = `vulnradar-data-export-${new Date().toISOString().split('T')[0]}.json`
+        document.body.appendChild(a)
+        a.click()
+        document.body.removeChild(a)
+        URL.revokeObjectURL(url)
+        setSuccess('Data export downloaded successfully.')
+        setDataReqInfo({ hasData: true, lastDownloadAt: new Date().toISOString(), canDownloadNew: false })
       } else {
         setError(data.error || 'Failed to request data export.')
       }
@@ -78,16 +89,22 @@ export function ProfilePrivacyTab({
     try {
       const res = await fetch(API.DATA_REQUEST, { method: 'GET' })
       if (res.ok) {
-        const blob = await res.blob()
-        const url = URL.createObjectURL(blob)
-        const a = document.createElement('a')
-        a.href = url
-        a.download = `vulnradar-data-export-${new Date().toISOString().split('T')[0]}.json`
-        document.body.appendChild(a)
-        a.click()
-        document.body.removeChild(a)
-        URL.revokeObjectURL(url)
-        setSuccess('Data export downloaded successfully.')
+        const data = await res.json()
+        if (data.data) {
+          const jsonString = JSON.stringify(data.data, null, 2)
+          const blob = new Blob([jsonString], { type: 'application/json' })
+          const url = URL.createObjectURL(blob)
+          const a = document.createElement('a')
+          a.href = url
+          a.download = `vulnradar-data-export-${new Date().toISOString().split('T')[0]}.json`
+          document.body.appendChild(a)
+          a.click()
+          document.body.removeChild(a)
+          URL.revokeObjectURL(url)
+          setSuccess('Data export downloaded successfully.')
+        } else {
+          setError('No previous export data found.')
+        }
       } else {
         setError('Failed to download data export.')
       }
