@@ -55,8 +55,9 @@ export function ProfileDeveloperTab({
 
   const [loading, setLoading] = useState(true)
 
-  const activeKeys = apiKeys.filter((k) => !k.revoked_at)
-  const revokedKeys = apiKeys.filter((k) => k.revoked_at)
+  // Filter with null safety - ensure k exists and has expected properties
+  const activeKeys = apiKeys.filter((k) => k && typeof k === 'object' && !k.revoked_at)
+  const revokedKeys = apiKeys.filter((k) => k && typeof k === 'object' && k.revoked_at)
 
   const fetchData = useCallback(async () => {
     try {
