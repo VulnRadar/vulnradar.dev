@@ -131,20 +131,21 @@ export function ProfileDeveloperTab({
     setRevokingId(keyId)
     setError(null)
     try {
-      const res = await fetch(API.KEYS, {
-        method: "PATCH",
+      const rotateUrl = `${API.KEYS}/${keyId}/rotate`
+      const res = await fetch(rotateUrl, {
+        method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ keyId, action: "rotate" }),
       })
       const data = await res.json()
       if (!res.ok) {
         setError(data.error || "Failed to rotate key.")
         return
       }
-      setNewlyCreatedKey(data.key)
+      const newKey = data.key
+      setNewlyCreatedKey(newKey.raw_key)
       setApiKeys((prev) =>
         prev.map((k) => (k.id === keyId ? { ...k, revoked_at: new Date().toISOString() } : k))
-          .concat([data.keyRecord])
+          .concat([newKey])
       )
       setSuccess("Key rotated successfully! Copy the new key now.")
     } catch {
