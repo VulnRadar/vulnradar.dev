@@ -1,9 +1,6 @@
 "use client"
 
-import React from "react"
-
-import { useState, useEffect, useRef } from "react"
-import Script from "next/script"
+import { useState, useEffect } from "react"
 import { Header } from "@/components/scanner/header"
 import { Footer } from "@/components/scanner/footer"
 import { Button } from "@/components/ui/button"
@@ -23,7 +20,7 @@ import {
 } from "lucide-react"
 import Link from "next/link"
 import { cn } from "@/lib/ui/utils"
-import { SUPPORT_EMAIL, TURNSTILE_ENABLED, API } from "@/lib/config/constants"
+import { SUPPORT_EMAIL, API } from "@/lib/config/constants"
 
 const CATEGORIES = [
   { id: "bug", label: "Bug Report", icon: Bug, desc: "Something is broken or not working as expected" },
@@ -51,59 +48,6 @@ export default function ContactPage() {
   const [submitted, setSubmitted] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [turnstileToken, setTurnstileToken] = useState<string | null>(null)
-  const [scriptLoaded, setScriptLoaded] = useState(false)
-  const widgetRef = useRef<HTMLDivElement>(null)
-  const widgetIdRef = useRef<string | null>(null)
-
-  // Auto-fill email from logged-in user
-  useEffect(() => {
-    async function fetchUser() {
-      try {
-        const res = await fetch(API.AUTH.ME)
-        if (res.ok) {
-          const data = await res.json()
-          if (data?.email) {
-            setEmail(data.email)
-            setEmailLocked(true)
-          }
-          if (data?.name) {
-            setName(data.name)
-          }
-        }
-      } catch { /* not logged in */ }
-    }
-    fetchUser()
-  }, [])
-
-  // Render Turnstile widget after script loads and category is selected
-  useEffect(() => {
-    if (!TURNSTILE_ENABLED || !scriptLoaded || !widgetRef.current || !category || widgetIdRef.current) return
-
-    const turnstile = (window as any).turnstile
-    if (!turnstile) return
-
-    try {
-      widgetIdRef.current = turnstile.render(widgetRef.current, {
-        sitekey: process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY,
-        theme: "dark",
-        callback: (token: string) => {
-          setTurnstileToken(token)
-        },
-      })
-    } catch (err) {
-      console.error("Failed to render Turnstile:", err)
-    }
-
-    return () => {
-      if (widgetIdRef.current && turnstile) {
-        try {
-          turnstile.remove(widgetIdRef.current)
-          widgetIdRef.current = null
-        } catch {}
-      }
-    }
-  }, [scriptLoaded, category])
 
 
   async function handleSubmit(e: React.FormEvent) {
@@ -115,11 +59,6 @@ export default function ContactPage() {
 
     if (category === "staff_application" && !staffRole) {
       setError("Please select a role you're applying for.")
-      return
-    }
-
-    if (TURNSTILE_ENABLED && !turnstileToken) {
-      setError("Please complete the captcha verification.")
       return
     }
 
@@ -151,7 +90,6 @@ export default function ContactPage() {
           subject: finalSubject,
           message: finalMessage,
           category,
-          turnstileToken: TURNSTILE_ENABLED ? turnstileToken : null,
         }),
       })
 
@@ -212,7 +150,6 @@ export default function ContactPage() {
                 </CardContent>
               </Card>
           ) : (
-              <div className="flex flex-col gap-6">
                 {/* Quick links */}
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   {[
@@ -349,11 +286,9 @@ export default function ContactPage() {
                             We will not use your contact information for marketing purposes.
                           </p>
 
-                          <Button type="submit" className="w-full sm:w-auto self-end gap-1.5" disabled={isSubmitting || (TURNSTILE_ENABLED && !turnstileToken)}>
+                          <Button type="submit" className="w-full sm:w-auto self-end gap-1.5" disabled={isSubmitting}>
                             <Send className="h-3.5 w-3.5" />{isSubmitting ? "Sending..." : "Send Message"}
                           </Button>
-
-                          {TURNSTILE_ENABLED && <div ref={widgetRef} className="flex justify-center" />}
                         </form>
                       </CardContent>
                     </Card>
@@ -362,13 +297,6 @@ export default function ContactPage() {
           )}
         </main>
         <Footer />
-        {TURNSTILE_ENABLED && (
-            <Script
-                src="https://challenges.cloudflare.com/turnstile/v0/api.js"
-                strategy="afterInteractive"
-                onLoad={() => setScriptLoaded(true)}
-            />
-        )}
       </div>
   )
 }
