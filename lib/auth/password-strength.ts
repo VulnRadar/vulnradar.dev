@@ -204,26 +204,37 @@ function formatCrackTime(seconds: number): string {
 // ============================================================================
 
 /**
- * Comprehensive password strength analysis
+ * Comprehensive password strength analysis with detailed vulnerability detection
  *
  * Scoring breakdown (0-10 scale):
- *   +1 for length >= 8
- *   +1 for length >= 12
- *   +1 for length >= 16
- *   +1 for length >= 20
- *   +1 for lowercase letters
- *   +1 for uppercase letters
- *   +1 for numbers
- *   +1 for special characters
- *   +1 for mixed character classes (min 3 different types)
- *   +1 for length >= 14 (extended security)
+ *   Length Scoring:
+ *     +1 for length >= 8
+ *     +1 for length >= 12
+ *     +1 for length >= 16
+ *     +1 for length >= 20
+ *   
+ *   Character Type Scoring:
+ *     +1 for lowercase letters (a-z)
+ *     +1 for uppercase letters (A-Z)
+ *     +1 for numbers (0-9)
+ *     +1 for special characters (!@#$%^&*)
+ *     +1 for mixed character classes (minimum 3 different types)
+ *     +1 for extended security (length >= 14)
  *
- * Penalties:
- *   -3 if common password (dictionary match)
- *   -2 if keyboard pattern detected
- *   -1 for each sequential character sequence
- *   -1 for each repeated character sequence (aaa, 111)
- *   -0.5 for each consecutive duplicate character pair
+ * Vulnerability Penalties:
+ *     -3 if password matches common dictionary words
+ *     -2 if keyboard patterns detected (qwerty, asdfgh, etc.)
+ *     -1 for each sequential character sequence (abc, 123, etc.)
+ *     -1 for each repeated character sequence (aaa, 111, etc.)
+ *     -0.5 for each consecutive duplicate character pair (aa, 11, etc.)
+ *
+ * Final Score: Clamped between 0-10 and converted to strength level
+ * Strength Levels:
+ *     0-2:   Too Weak (red)
+ *     2-4:   Weak (red)
+ *     4-6:   Fair (yellow)
+ *     6-8:   Strong (blue)
+ *     8-10:  Very Strong (green)
  */
 export function analyzePassword(pw: string): PasswordAnalysis {
   // Edge case: empty password
