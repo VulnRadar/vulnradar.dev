@@ -37,8 +37,8 @@ interface BlockedRule {
 interface MatchingScan {
   id: number
   url: string
-  scan_type: string
-  created_at: string
+  source: string
+  scanned_at: string
   user_email?: string
   user_id: number
 }
@@ -395,12 +395,12 @@ export function BlockedDataManager() {
                                           </p>
                                         </td>
                                         <td className="px-4 py-2.5">
-                                          <Badge variant="outline" className="text-[10px] px-1.5 py-0">
-                                            {scan.scan_type}
-                                          </Badge>
-                                        </td>
-                                        <td className="px-4 py-2.5 text-xs text-muted-foreground whitespace-nowrap">
-                                          {new Date(scan.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+  <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+{scan.source}
+  </Badge>
+  </td>
+  <td className="px-4 py-2.5 text-xs text-muted-foreground whitespace-nowrap">
+{new Date(scan.scanned_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
                                         </td>
                                       </tr>
                                     ))}

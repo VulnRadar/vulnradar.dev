@@ -57,8 +57,8 @@ export async function POST(request: NextRequest) {
           SELECT 
             sh.id,
             sh.url,
-            sh.scan_type,
-            sh.created_at,
+            sh.source,
+            sh.scanned_at,
             sh.user_id,
             u.email as user_email
           FROM scan_history sh
@@ -71,7 +71,7 @@ export async function POST(request: NextRequest) {
               -- Match subdomain (hostname ends with .domain)
               OR LOWER(REGEXP_REPLACE(sh.url, '^[a-zA-Z][a-zA-Z0-9+.-]*://([^/]+).*$', '\\1')) LIKE '%.' || LOWER($1)
             )
-          ORDER BY sh.created_at DESC
+          ORDER BY sh.scanned_at DESC
           LIMIT 100
         `, [normalizedValue])
 
