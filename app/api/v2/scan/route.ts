@@ -235,17 +235,22 @@ export async function POST(request: NextRequest) {
     if (protocolType === "websocket") {
       // For WebSocket URLs, convert to HTTP(S) for initial check
       try {
-        // Parse WebSocket URL and reconstruct as HTTP(S)
+        // Parse WebSocket URL
         const wsUrl = new URL(url)
+        if (wsUrl.protocol !== "ws:" && wsUrl.protocol !== "wss:") {
+          throw new Error("Invalid WebSocket protocol")
+        }
+        
+        // Construct HTTP(S) URL from components (not string replacement)
         const protocol = wsUrl.protocol === "wss:" ? "https:" : "http:"
-        const httpUrl = new URL(wsUrl.href.replace(/^wss?:/, protocol))
+        const safeUrl = new URL(`${protocol}//${wsUrl.host}${wsUrl.pathname}${wsUrl.search}`)
         
         // Validate the constructed URL
-        if (httpUrl.protocol !== "http:" && httpUrl.protocol !== "https:") {
+        if (safeUrl.protocol !== "http:" && safeUrl.protocol !== "https:") {
           throw new Error("Invalid protocol")
         }
         
-        response = await fetch(httpUrl.toString(), {
+        response = await fetch(safeUrl.href, {
           method: "GET",
           headers: { "User-Agent": `${APP_NAME}/1.0 (Security Scanner)` },
           redirect: "follow",
@@ -271,7 +276,10 @@ export async function POST(request: NextRequest) {
           throw new Error("Invalid protocol")
         }
         
-        response = await fetch(url, {
+        // Use the validated URL object's href property for the fetch
+        const safeUrl = urlObj.href
+        
+        response = await fetch(safeUrl, {
           method: "GET",
           headers: {
             "User-Agent": `${APP_NAME}/1.0 (Security Scanner)`,

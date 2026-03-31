@@ -259,7 +259,7 @@ const detectors: Record<string, DetectFn> = {
   // which actually fetches /.well-known/security.txt instead of just searching body text
 
   "dangerous-inline-js": (_url, _headers, body) => {
-    const scripts = body.match(/<script[^>]*>[\s\S]*?<\/script\s*>/gi) || []
+    const scripts = body.match(/<script[^>]*>[\s\S]*?<\/script[^>]*>/gi) || []
     const dangerousPatterns = [/eval\s*\(/i, /document\.write\s*\(/i, /\.innerHTML\s*=\s*(?!['"]<)/i, /Function\s*\(/i, /setTimeout\s*\(\s*['"]/i, /setInterval\s*\(\s*['"]/i]
     const found: string[] = []
     for (const script of scripts) {
@@ -434,7 +434,13 @@ const detectors: Record<string, DetectFn> = {
   "private-ip-exposure": (_url, _headers, body) => {
     const privateIPs = body.match(/(?:10\.\d{1,3}\.\d{1,3}\.\d{1,3}|172\.(?:1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3})/g) || []
     const filtered = [...new Set(privateIPs)].filter((ip) => {
-      return !body.includes(`schema.org`) || body.indexOf(ip) < body.indexOf("schema.org")
+      // Check if this IP is in a schema.org context (proper validation)
+      // Look for the IP surrounded by schema.org structured data patterns
+      const schemaPattern = new RegExp(`"@context"\\s*:\\s*"https?://schema\\.org"[\\s\\S]*?"${ip.replace(/\./g, "\\.")}"|"${ip.replace(/\./g, "\\.")}".{0,100}"@context"\\s*:\\s*"https?://schema\\.org"`, "i")
+      if (schemaPattern.test(body)) {
+        return false // IP is in a proper schema.org context, filter it out
+      }
+      return true // IP is exposed outside of schema.org context
     })
     return filtered.length > 0 ? `Private IP addresses found: ${filtered.slice(0, 5).join(", ")}` : null
   },
@@ -957,8 +963,26 @@ const detectors: Record<string, DetectFn> = {
     const external = forms.filter((f) => {
       const match = f.match(/action=["'](https?:\/\/[^"'/]+)/i)
       if (!match) return false
-      const domain = match[1].toLowerCase()
-      return !domain.includes("stripe.com") && !domain.includes("paypal.com") && !domain.includes("google.com")
+      const urlString = match[1].toLowerCase()
+      
+      // Parse the URL to extract the hostname
+      try {
+        const url = new URL(urlString)
+        const hostname = url.hostname
+        
+        // List of allowed payment/auth hosts
+        const allowedHosts = ["stripe.com", "paypal.com", "google.com"]
+        
+        // Check if hostname exactly matches or is a subdomain of allowed hosts
+        const isAllowed = allowedHosts.some(host => 
+          hostname === host || hostname.endsWith("." + host)
+        )
+        
+        return !isAllowed
+      } catch {
+        // If URL parsing fails, consider it external
+        return true
+      }
     })
     return external.length > 0 ? `Found ${external.length} form(s) submitting to external domains.` : null
   },
@@ -1471,7 +1495,7 @@ const detectors: Record<string, DetectFn> = {
   },
 
   "eval-in-scripts": (_url, _headers, body) => {
-    const scripts = body.match(/<script[^>]*>[\s\S]*?<\/script\s*>/gi) || []
+    const scripts = body.match(/<script[^>]*>[\s\S]*?<\/script[^>]*>/gi) || []
     for (const s of scripts) {
       if (/\beval\s*\(/.test(s) && !s.includes("JSON.parse")) {
         return "eval() usage detected in inline scripts."
