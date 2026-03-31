@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { randomBytes, scryptSync } from "node:crypto"
 import { getSession } from "@/lib/auth"
 import pool from "@/lib/database/db"
-import { getClientIP } from "@/lib/rate-limiting/rate-limit"
+import { getClientIp } from "@/lib/api/request-utils"
 import { ERROR_MESSAGES, STAFF_ROLES, STAFF_ROLE_HIERARCHY } from "@/lib/config/constants"
 import { sendEmail, adminNotificationEmail, adminAccountChangeEmail } from "@/lib/email/email"
 
@@ -263,7 +263,7 @@ export async function PATCH(request: NextRequest) {
   const session = await requireStaff()
   if (!session) return NextResponse.json({ error: ERROR_MESSAGES.FORBIDDEN }, { status: 403 })
 
-  const ip = await getClientIP()
+  const ip = await getClientIp()
   const { action, userId, role: newRole, badgeId: rawBadgeId, name: badgeName, displayName, color: badgeColor, name, email, plan, giftPlan, giftEndDate, note, noteId, notifyUser } = await request.json()
   // Normalize badgeId to number (client may send as string)
   const badgeId = rawBadgeId != null ? Number(rawBadgeId) : undefined

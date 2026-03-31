@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { getSession } from "@/lib/auth"
 import pool from "@/lib/database/db"
 import { STAFF_ROLE_HIERARCHY } from "@/lib/config/constants"
-import { getClientIP } from "@/lib/rate-limiting/rate-limit"
+import { getClientIp } from "@/lib/api/request-utils"
 
 // POST - Update staff member's activity heartbeat
 export async function POST(request: NextRequest) {
@@ -27,7 +27,7 @@ export async function POST(request: NextRequest) {
     } catch {
       // No body or invalid JSON - use default section
     }
-    const ip = await getClientIP()
+    const ip = await getClientIp()
     const userAgent = request.headers.get("user-agent") || "unknown"
 
     // Update or insert activity record
