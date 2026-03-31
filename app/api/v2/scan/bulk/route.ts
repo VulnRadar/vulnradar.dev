@@ -62,7 +62,7 @@ async function runSingleScan(url: string, userId: number, isApiKeyAuth: boolean)
   // Check access rules (blacklist/whitelist)
   const accessCheck = await checkAccessRules(url)
   if (!accessCheck.allowed) {
-    return { url, success: false, error: accessCheck.reason || "This URL has been blocked by access rules." }
+    return { url, success: false, error: "This target cannot be scanned." }
   }
   
   const protocolType = getProtocolType(url)

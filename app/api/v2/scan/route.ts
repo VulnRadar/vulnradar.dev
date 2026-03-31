@@ -210,7 +210,7 @@ export async function POST(request: NextRequest) {
     const accessCheck = await checkAccessRules(url)
     if (!accessCheck.allowed) {
       return NextResponse.json(
-        { error: accessCheck.reason || "This URL has been blocked by access rules." },
+        { error: "This target cannot be scanned." },
         { status: 403 }
       )
     }
