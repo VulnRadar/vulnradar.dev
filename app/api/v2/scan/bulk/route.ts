@@ -81,9 +81,18 @@ async function runSingleScan(url: string, userId: number, isApiKeyAuth: boolean)
   // Handle different protocol types
   if (protocolType === "websocket") {
     // For WebSocket URLs, convert to HTTP(S) for initial check
-    const httpUrl = url.replace(/^wss?:\/\//, (m) => m.startsWith("wss") ? "https://" : "http://")
     try {
-      response = await fetch(httpUrl, {
+      // Parse WebSocket URL and reconstruct as HTTP(S)
+      const wsUrl = new URL(url)
+      const protocol = wsUrl.protocol === "wss:" ? "https:" : "http:"
+      const httpUrl = new URL(wsUrl.href.replace(/^wss?:/, protocol))
+      
+      // Validate the constructed URL
+      if (httpUrl.protocol !== "http:" && httpUrl.protocol !== "https:") {
+        throw new Error("Invalid protocol")
+      }
+      
+      response = await fetch(httpUrl.toString(), {
         method: "GET",
         headers: { "User-Agent": `${APP_NAME}/1.0 (Security Scanner)` },
         redirect: "follow",
@@ -103,6 +112,12 @@ async function runSingleScan(url: string, userId: number, isApiKeyAuth: boolean)
   } else {
     // Standard HTTP/HTTPS fetch
     try {
+      // Validate URL before fetch to prevent SSRF
+      const urlObj = new URL(url)
+      if (urlObj.protocol !== "http:" && urlObj.protocol !== "https:") {
+        throw new Error("Invalid protocol")
+      }
+      
       response = await fetch(url, {
         method: "GET",
         headers: { "User-Agent": `${APP_NAME}/1.0 (Security Scanner)` },
