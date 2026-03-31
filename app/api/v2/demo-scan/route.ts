@@ -102,6 +102,12 @@ export async function POST(request: NextRequest) {
 
     let response: Response
     try {
+      // Validate URL before fetch to prevent SSRF
+      const urlObj = new URL(url)
+      if (urlObj.protocol !== "http:" && urlObj.protocol !== "https:") {
+        throw new Error("Invalid protocol")
+      }
+      
       response = await fetch(url, {
         method: "GET",
         headers: { "User-Agent": `${APP_NAME}/1.0 (Security Scanner - Demo)` },
