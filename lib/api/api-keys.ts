@@ -122,7 +122,7 @@ export async function validateApiKey(key: string): Promise<{
         }
 
         // Fallback: try hash-based lookup (for old keys without encryption)
-        const result = await pool.query(
+        const hashResult = await pool.query(
             `SELECT ak.id as key_id, ak.user_id, ak.name, ak.daily_limit, ak.revoked_at, ak.key_hash,
                     u.email, u.name as user_name, u.tos_accepted_at
              FROM api_keys ak
@@ -131,7 +131,7 @@ export async function validateApiKey(key: string): Promise<{
         )
 
         // Try to find a matching key by bcrypt comparison
-        for (const row of result.rows) {
+        for (const row of hashResult.rows) {
             try {
                 if (await verifyKey(key, row.key_hash)) {
                     if (row.revoked_at) return null
