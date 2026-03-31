@@ -75,6 +75,9 @@ export async function POST(request: NextRequest) {
           LIMIT 100
         `, [normalizedValue])
 
+        // Log the search action
+        await logAction(user.id, null, "blocked_data_search", `Searched for scans matching blocked value: ${value} (found ${result.rows.length} results)`, ip)
+
         return NextResponse.json({ scans: result.rows })
       }
 
