@@ -22,12 +22,14 @@ export default function DemoPage() {
   const [result, setResult] = useState<ScanResult | null>(null)
   const [selectedIssue, setSelectedIssue] = useState<Vulnerability | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [errorDetails, setErrorDetails] = useState<string | null>(null)
   const [scansRemaining, setScansRemaining] = useState<number | null>(null)
 
   async function handleSelfScan() {
     setStatus("scanning")
     setResult(null)
     setError(null)
+    setErrorDetails(null)
     setSelectedIssue(null)
 
     try {
@@ -42,6 +44,7 @@ export default function DemoPage() {
 
       if (!res.ok) {
         setError(data.error || "Scan failed")
+        setErrorDetails(data.details || null)
         if (typeof data.remaining === "number") setScansRemaining(data.remaining)
         setStatus("error")
         return
@@ -75,6 +78,7 @@ export default function DemoPage() {
         <>
           <DemoError
             error={error || "An error occurred"}
+            details={errorDetails || undefined}
             onRetry={() => setStatus("idle")}
           />
           <DemoCTA />

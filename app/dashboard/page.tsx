@@ -66,6 +66,7 @@ function DashboardContent() {
   const [result, setResult] = useState<ScanResult | null>(null)
   const [scanHistoryId, setScanHistoryId] = useState<number | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [errorDetails, setErrorDetails] = useState<string | null>(null)
   const [selectedIssue, setSelectedIssue] = useState<Vulnerability | null>(null)
   const [scanNotes, setScanNotes] = useState("")
   const [crawlInfo, setCrawlInfo] = useState<CrawlInfo | null>(null)
@@ -97,10 +98,11 @@ function DashboardContent() {
         prevHash = hash
         setStatus("idle")
         setResult(null)
-        setScanHistoryId(null)
-        setError(null)
-        setSelectedIssue(null)
-        setScanNotes("")
+    setScanHistoryId(null)
+    setError(null)
+    setErrorDetails(null)
+    setSelectedIssue(null)
+    setScanNotes("")
         setCrawlInfo(null)
         return
       }
@@ -161,6 +163,7 @@ function DashboardContent() {
     setResult(null)
     setScanHistoryId(null)
     setError(null)
+    setErrorDetails(null)
     setSelectedIssue(null)
     setScanNotes("")
     setCrawlInfo(null)
@@ -187,6 +190,7 @@ function DashboardContent() {
           return
         }
         setError(data.error || "An unexpected error occurred.")
+        setErrorDetails(data.details || null)
         setStatus("failed")
         return
       }
@@ -291,6 +295,7 @@ function DashboardContent() {
     setResult(null)
     setScanHistoryId(null)
     setError(null)
+    setErrorDetails(null)
     setSelectedIssue(null)
     setScanNotes("")
     setCrawlInfo(null)
@@ -334,7 +339,7 @@ function DashboardContent() {
 
         {/* Error state */}
         {status === "failed" && error && (
-          <DashboardErrorState error={error} onRetry={handleReset} />
+          <DashboardErrorState error={error} details={errorDetails || undefined} onRetry={handleReset} />
         )}
 
         {/* Results */}
