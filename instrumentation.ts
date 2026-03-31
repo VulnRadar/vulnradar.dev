@@ -664,26 +664,6 @@ export async function register() {
       `)
 
       // ════════════════════════════════════════════════════════════════
-      // PASSWORD ROTATION POLICIES - Enforce password changes
-      // ════════════════════════════════════════════════════════════════
-      await pool.query(`
-        CREATE TABLE IF NOT EXISTS password_rotation_policies (
-          id SERIAL PRIMARY KEY,
-          policy_name VARCHAR(100) NOT NULL UNIQUE,
-          rotation_days INTEGER NOT NULL CHECK (rotation_days > 0),
-          grace_period_days INTEGER NOT NULL DEFAULT 7 CHECK (grace_period_days >= 0),
-          enforce_complexity BOOLEAN NOT NULL DEFAULT true,
-          minimum_length INTEGER NOT NULL DEFAULT 8,
-          require_uppercase BOOLEAN NOT NULL DEFAULT true,
-          require_numbers BOOLEAN NOT NULL DEFAULT true,
-          require_special BOOLEAN NOT NULL DEFAULT true,
-          created_by INTEGER NOT NULL REFERENCES users(id),
-          created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
-          is_active BOOLEAN NOT NULL DEFAULT true
-        );
-      `)
-
-      // ════════════════════════════════════════════════════════════════
       // SUBDOMAIN CACHE - Caches subdomain discovery results (4 hour TTL)
       // ════════════════════════════════════════════════════════════════
       await pool.query(`
