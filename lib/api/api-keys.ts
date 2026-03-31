@@ -1,4 +1,5 @@
-import { randomBytes, createHash } from "node:crypto"
+import { randomBytes } from "node:crypto"
+import bcrypt from "bcryptjs"
 import pool from "@/lib/database/db"
 import { API_KEY_PREFIX, DEFAULT_API_KEY_DAILY_LIMIT, TERMS_UPDATED_AT } from "@/lib/config/constants"
 import { encryptApiKey, decryptApiKey, isEncryptionConfigured } from "@/lib/auth/crypto"
@@ -26,8 +27,8 @@ export async function generateApiKey(userId: number, name: string = "Default", d
         keyEncrypted = encryptApiKey(raw)
         keyHash = generateDeprecatedPlaceholder()
     } else {
-        // If no encryption key, use hash-based storage for lookup
-        keyHash = hashKey(raw)
+        // If no encryption key, use bcrypt-based hashing for lookup
+        keyHash = await hashKey(raw)
     }
 
     const result = await pool.query(
@@ -43,9 +44,15 @@ export async function generateApiKey(userId: number, name: string = "Default", d
     }
 }
 
-// Hash the API key for fast lookup (SHA-256)
-function hashKey(key: string): string {
-    return createHash("sha256").update(key).digest("hex")
+// Hash the API key with bcrypt for secure storage
+async function hashKey(key: string): Promise<string> {
+    const saltRounds = 12
+    return await bcrypt.hash(key, saltRounds)
+}
+
+// Compare API key with its hash
+async function verifyKey(key: string, hash: string): Promise<boolean> {
+    return await bcrypt.compare(key, hash)
 }
 
 // Fallback date for terms updated at (in case config loading fails)
@@ -115,54 +122,68 @@ export async function validateApiKey(key: string): Promise<{
         }
 
         // Fallback: try hash-based lookup (for old keys without encryption)
-        const keyHash = hashKey(key)
-        const hashResult = await pool.query(
-            `SELECT ak.id as key_id, ak.user_id, ak.name, ak.daily_limit, ak.revoked_at,
+        const result = await pool.query(
+            `SELECT ak.id as key_id, ak.user_id, ak.name, ak.daily_limit, ak.revoked_at, ak.key_hash,
                     u.email, u.name as user_name, u.tos_accepted_at
              FROM api_keys ak
                       JOIN users u ON ak.user_id = u.id
-             WHERE ak.key_hash = $1`,
-            [keyHash],
+             WHERE ak.key_hash IS NOT NULL AND ak.key_encrypted IS NULL`,
         )
 
-        if (hashResult.rows.length === 0) return null
-        const row = hashResult.rows[0]
-        if (row.revoked_at) return null
+        // Try to find a matching key by bcrypt comparison
+        for (const row of result.rows) {
+            try {
+                if (await verifyKey(key, row.key_hash)) {
+                    if (row.revoked_at) return null
 
-        return {
-            keyId: row.key_id,
-            userId: row.user_id,
-            email: row.email,
-            userName: row.user_name,
-            keyName: row.name,
-            dailyLimit: row.daily_limit,
-            needsTermsAcceptance: !hasAcceptedLatestTerms(row.tos_accepted_at),
+                    return {
+                        keyId: row.key_id,
+                        userId: row.user_id,
+                        email: row.email,
+                        userName: row.user_name,
+                        keyName: row.name,
+                        dailyLimit: row.daily_limit,
+                        needsTermsAcceptance: !hasAcceptedLatestTerms(row.tos_accepted_at),
+                    }
+                }
+            } catch (error) {
+                // Comparison failed for this key, try next one
+                continue
+            }
         }
     } else {
         // Fallback: hash-based lookup if encryption is not configured
-        const keyHash = hashKey(key)
         const result = await pool.query(
-            `SELECT ak.id as key_id, ak.user_id, ak.name, ak.daily_limit, ak.revoked_at,
+            `SELECT ak.id as key_id, ak.user_id, ak.name, ak.daily_limit, ak.revoked_at, ak.key_hash,
                     u.email, u.name as user_name, u.tos_accepted_at
              FROM api_keys ak
                       JOIN users u ON ak.user_id = u.id
-             WHERE ak.key_hash = $1`,
-            [keyHash],
+             WHERE ak.key_hash IS NOT NULL`,
         )
 
-        if (result.rows.length === 0) return null
-        const row = result.rows[0]
-        if (row.revoked_at) return null
+        // Try to find a matching key by bcrypt comparison
+        for (const row of result.rows) {
+            try {
+                if (await verifyKey(key, row.key_hash)) {
+                    if (row.revoked_at) return null
 
-        return {
-            keyId: row.key_id,
-            userId: row.user_id,
-            email: row.email,
-            userName: row.user_name,
-            keyName: row.name,
-            dailyLimit: row.daily_limit,
-            needsTermsAcceptance: !hasAcceptedLatestTerms(row.tos_accepted_at),
+                    return {
+                        keyId: row.key_id,
+                        userId: row.user_id,
+                        email: row.email,
+                        userName: row.user_name,
+                        keyName: row.name,
+                        dailyLimit: row.daily_limit,
+                        needsTermsAcceptance: !hasAcceptedLatestTerms(row.tos_accepted_at),
+                    }
+                }
+            } catch (error) {
+                // Comparison failed for this key, try next one
+                continue
+            }
         }
+
+        return null
     }
 }
 
