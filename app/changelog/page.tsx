@@ -115,7 +115,7 @@ const CHANGELOG: Release[] = [
     version: "2.1.2",
     date: "March 27, 2026",
     title: "Admin Panel UX Improvements, Gift Subscriptions & Support Role Fixes",
-    highlights: true,
+    highlights: false,
     summary: "Major improvements to the admin panel user management including gift subscription system with plan/duration selection, fixed modal z-index issues causing header disappearance, proper support role badge coloring, and streamlined user list actions.",
     changes: [
       { icon: Crown, label: "Gift Subscription System", desc: "New gift subscription dialog allows admins to grant temporary premium access with selectable plan tiers (Core, Pro, Elite Supporter) and customizable durations (7 days to 1 year). Gift subscription automatically awards Premium badge to recipients.", category: "added" },
