@@ -10,8 +10,6 @@
  * - User-friendly recommendations for improvement
  */
 
-import { getRandomValues } from "node:crypto"
-
 // ============================================================================
 // TYPES & INTERFACES
 // ============================================================================
@@ -94,6 +92,20 @@ const COMMON_SEQUENCES = [
 // ============================================================================
 // UTILITY FUNCTIONS
 // ============================================================================
+
+/**
+ * Get cryptographically secure random values (works in both Node.js and browser)
+ */
+function getRandomValues(array: Uint8Array): Uint8Array {
+  if (typeof global !== "undefined" && global.crypto && global.crypto.getRandomValues) {
+    return global.crypto.getRandomValues(array)
+  }
+  if (typeof window !== "undefined" && window.crypto && window.crypto.getRandomValues) {
+    return window.crypto.getRandomValues(array)
+  }
+  // Fallback: should not happen in modern environments
+  throw new Error("crypto.getRandomValues is not available")
+}
 
 /**
  * Check if password contains sequential characters (abc, 123, cba, 321)
