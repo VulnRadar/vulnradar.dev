@@ -43,11 +43,20 @@ export async function POST(req: NextRequest) {
         // Normalize URL/domain values by stripping protocol and trailing slashes
         let normalizedValue = ip_address?.trim() || ""
         if (value_type === "url") {
-          normalizedValue = normalizedValue
-            .toLowerCase()
-            .replace(/^[a-z][a-z0-9+.-]*:\/\//i, "") // Remove protocol
-            .replace(/\/+$/, "") // Remove trailing slashes
-          // Remove paths (keep domain only) using indexOf instead of regex to avoid ReDoS
+          normalizedValue = normalizedValue.toLowerCase()
+          
+          // Remove protocol using indexOf instead of regex
+          const protoEnd = normalizedValue.indexOf("://")
+          if (protoEnd !== -1) {
+            normalizedValue = normalizedValue.substring(protoEnd + 3)
+          }
+          
+          // Remove trailing slashes using a while loop instead of regex
+          while (normalizedValue.endsWith("/")) {
+            normalizedValue = normalizedValue.slice(0, -1)
+          }
+          
+          // Remove paths (keep domain only) using indexOf
           const pathIndex = normalizedValue.indexOf("/")
           if (pathIndex !== -1) {
             normalizedValue = normalizedValue.substring(0, pathIndex)
