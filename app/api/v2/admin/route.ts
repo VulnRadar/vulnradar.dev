@@ -788,9 +788,9 @@ export async function PATCH(request: NextRequest) {
       const newEmail = email.trim().toLowerCase()
       const oldEmail = targetUser.email
       
-      // Validate email format
-      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-      if (!emailRegex.test(newEmail)) {
+      // Validate email format - simple check without ReDoS vulnerability
+      const emailParts = newEmail.split("@")
+      if (emailParts.length !== 2 || !emailParts[0] || !emailParts[1] || !emailParts[1].includes(".")) {
         return NextResponse.json({ error: "Invalid email format" }, { status: 400 })
       }
       
