@@ -96,6 +96,22 @@ interface Release {
 
 const CHANGELOG: Release[] = [
   {
+    version: "2.2.0",
+    date: "March 31, 2026",
+    title: "Backend Optimization, API Enhancements & Security Hardening",
+    highlights: true,
+    summary: "Comprehensive backend optimization and API improvements with enhanced performance. Improved UI responsiveness and visual consistency across the platform. Critical security vulnerabilities patched including SSRF prevention, enhanced password hashing, and comprehensive input validation.",
+    changes: [
+      { icon: Zap, label: "Backend Performance Optimization", desc: "Optimized database queries, improved async request handling, and streamlined API response times. Enhanced caching mechanisms and improved middleware efficiency across all endpoints.", category: "performance" },
+      { icon: Network, label: "API Enhancements", desc: "Updated API endpoints with better validation, improved error handling, and enhanced response consistency. Refined request/response formatting for better client integration and clearer API contracts.", category: "changed" },
+      { icon: Palette, label: "UI/UX Improvements", desc: "Enhanced UI responsiveness, improved visual consistency, updated component styling, and better accessibility across all pages. Refined typography and spacing for improved readability.", category: "changed" },
+      { icon: Shield, label: "SSRF Vulnerability Patches", desc: "Comprehensive fixes for Server-Side Request Forgery vulnerabilities across all API scan endpoints. Added strict URL validation, protocol checking, and hostname verification to prevent malicious requests.", category: "security" },
+      { icon: Lock, label: "Enhanced Password Hashing", desc: "Migrated from SHA-256 to bcrypt with salt cost 12 for secure password and API key storage. Improved cryptographic strength and resistance to brute force attacks.", category: "security" },
+      { icon: Bug, label: "Input Validation & Sanitization", desc: "Implemented robust input validation across all endpoints, fixed ReDoS vulnerabilities in regex patterns, and enhanced HTML tag filtering with proper multi-pass sanitization.", category: "security" },
+      { icon: AlertTriangle, label: "Additional Security Fixes", desc: "Fixed incomplete URL scheme validation, improved email domain validation, enhanced certificate verification, and added cryptographic randomness to sensitive operations.", category: "security" },
+    ],
+  },
+  {
     version: "2.1.2",
     date: "March 27, 2026",
     title: "Admin Panel UX Improvements, Gift Subscriptions & Support Role Fixes",
