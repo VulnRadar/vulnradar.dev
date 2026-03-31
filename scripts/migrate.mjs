@@ -76,10 +76,6 @@ const V2_NEW_TABLES = [
   "gifted_subscriptions",
   "admin_notifications",
   "admin_user_notes",
-  "broadcast_messages",
-  "system_settings",
-  "access_rules",
-  "security_alerts",
 ]
 
 // Columns that v2 adds to the users table
