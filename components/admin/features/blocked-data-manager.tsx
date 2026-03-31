@@ -373,46 +373,48 @@ export function BlockedDataManager() {
                               {/* Scans list */}
                               <div className="border border-border/40 rounded-lg overflow-hidden">
                                 <table className="w-full">
-                                  <thead>
-                                    <tr className="border-b border-border/40 bg-muted/30">
+                                  <thead className="sticky top-0 z-10">
+                                    <tr className="border-b border-border/40 bg-muted/60 backdrop-blur-sm">
                                       <th className="px-4 py-2 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider text-left">URL</th>
                                       <th className="px-4 py-2 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider text-left">User</th>
                                       <th className="px-4 py-2 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider text-left">Type</th>
                                       <th className="px-4 py-2 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider text-left">Date</th>
                                     </tr>
                                   </thead>
-                                  <tbody>
-                                    {scans.slice(0, 10).map((scan) => (
-                                      <tr key={scan.id} className="border-b border-border/30 last:border-0">
-                                        <td className="px-4 py-2.5">
-                                          <p className="text-xs font-mono text-foreground truncate max-w-[200px]" title={scan.url}>
-                                            {scan.url}
-                                          </p>
-                                        </td>
-                                        <td className="px-4 py-2.5">
-                                          <p className="text-xs text-muted-foreground truncate max-w-[150px]">
-                                            {scan.user_email || `User #${scan.user_id}`}
-                                          </p>
-                                        </td>
-                                        <td className="px-4 py-2.5">
-  <Badge variant="outline" className="text-[10px] px-1.5 py-0">
-{scan.source}
-  </Badge>
-  </td>
-  <td className="px-4 py-2.5 text-xs text-muted-foreground whitespace-nowrap">
-{new Date(scan.scanned_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
-                                        </td>
-                                      </tr>
-                                    ))}
-                                  </tbody>
                                 </table>
-                                {scans.length > 10 && (
-                                  <div className="px-4 py-2 bg-muted/20 border-t border-border/30 text-center">
-                                    <p className="text-xs text-muted-foreground">
-                                      Showing 10 of {scans.length} scans. Delete all to remove remaining.
-                                    </p>
-                                  </div>
-                                )}
+                                <div className="overflow-y-auto max-h-64">
+                                  <table className="w-full">
+                                    <tbody>
+                                      {scans.map((scan) => (
+                                        <tr key={scan.id} className="border-b border-border/30 last:border-0 hover:bg-muted/10 transition-colors">
+                                          <td className="px-4 py-2.5">
+                                            <p className="text-xs font-mono text-foreground truncate max-w-[200px]" title={scan.url}>
+                                              {scan.url}
+                                            </p>
+                                          </td>
+                                          <td className="px-4 py-2.5">
+                                            <p className="text-xs text-muted-foreground truncate max-w-[150px]">
+                                              {scan.user_email || `User #${scan.user_id}`}
+                                            </p>
+                                          </td>
+                                          <td className="px-4 py-2.5">
+                                            <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+                                              {scan.source}
+                                            </Badge>
+                                          </td>
+                                          <td className="px-4 py-2.5 text-xs text-muted-foreground whitespace-nowrap">
+                                            {new Date(scan.scanned_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                                          </td>
+                                        </tr>
+                                      ))}
+                                    </tbody>
+                                  </table>
+                                </div>
+                                <div className="px-4 py-2 bg-muted/20 border-t border-border/30 text-center">
+                                  <p className="text-xs text-muted-foreground">
+                                    {scans.length} scan{scans.length !== 1 ? "s" : ""} total — scroll to view all
+                                  </p>
+                                </div>
                               </div>
                             </div>
                           )}
