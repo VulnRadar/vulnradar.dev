@@ -2,12 +2,35 @@
 
 import { useState, useEffect } from "react"
 import Link from "next/link"
-import { Send, Shield, Users } from "lucide-react"
+import { Send, Shield, Users, AlertTriangle, Building2, Info } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { API } from "@/lib/config/constants"
 import { CATEGORIES, STAFF_ROLES } from "./contact-types"
+
+function getPlaceholder(category: string): string {
+  const placeholders: Record<string, string> = {
+    bug: "What happened? Steps to reproduce, expected vs actual behavior...",
+    feature: "Describe the feature you'd like to see and how it would help your workflow...",
+    security: "Please describe the vulnerability in detail. Include steps to reproduce if possible.",
+    help: "How can we help you?",
+    api: "Describe the API issue or integration challenge you're facing...",
+    performance: "What's slow? Include URLs, scan types, and approximate times...",
+    billing: "Describe your billing issue. Include transaction IDs if relevant...",
+    account_recovery: "Describe what happened and provide any account details you remember...",
+    data_request: "Specify what data you need exported or deleted (GDPR, CCPA, etc.)...",
+    account_deletion: "Please confirm you want to delete your account and all associated data...",
+    enterprise: "Tell us about your organization and security scanning needs...",
+    partnership: "Describe the partnership opportunity you have in mind...",
+    media: "Tell us about your publication and what you'd like to cover...",
+    legal: "Describe your legal or compliance question...",
+    reseller: "Tell us about your business and target market...",
+    staff_application: "Why do you want to join? Share your experience and motivation...",
+    feedback: "Share your thoughts, suggestions, or general feedback about VulnRadar...",
+  }
+  return placeholders[category] || "How can we help you?"
+}
 
 interface ContactFormProps {
   category: string
@@ -108,9 +131,19 @@ export function ContactForm({ category, onSuccess, onError }: ContactFormProps) 
   const categoryInfo = CATEGORIES.find((c) => c.id === category)
 
   return (
-    <Card className="bg-card border-border">
-      <CardHeader className="pb-2">
-        <CardTitle className="text-base">{categoryInfo?.label}</CardTitle>
+    <Card className="border-border/50 bg-card/50">
+      <CardHeader className="pb-3">
+        <div className="flex items-center gap-3">
+          {categoryInfo && (
+            <div className="p-2 rounded-lg bg-primary/10">
+              <categoryInfo.icon className="h-4 w-4 text-primary" />
+            </div>
+          )}
+          <div>
+            <CardTitle className="text-base">{categoryInfo?.label}</CardTitle>
+            <p className="text-xs text-muted-foreground mt-0.5">{categoryInfo?.desc}</p>
+          </div>
+        </div>
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
@@ -204,18 +237,10 @@ export function ContactForm({ category, onSuccess, onError }: ContactFormProps) 
               id="contact-message"
               value={message}
               onChange={(e) => setMessage(e.target.value)}
-              placeholder={
-                category === "bug"
-                  ? "What happened? Steps to reproduce, expected vs actual behavior..."
-                  : category === "security"
-                  ? "Please describe the vulnerability in detail. Include steps to reproduce if possible."
-                  : category === "feature"
-                  ? "Describe the feature you'd like to see and how it would help your workflow..."
-                  : "How can we help you?"
-              }
+              placeholder={getPlaceholder(category)}
               rows={5}
               required
-              className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 resize-none leading-relaxed"
+              className="w-full rounded-lg border border-border/40 bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 resize-none leading-relaxed"
             />
           </div>
 
@@ -230,6 +255,27 @@ export function ContactForm({ category, onSuccess, onError }: ContactFormProps) 
             <div className="flex items-start gap-2 text-xs text-yellow-600 dark:text-yellow-400 bg-yellow-500/10 border border-yellow-500/20 rounded-lg px-3 py-2">
               <Users className="h-4 w-4 shrink-0 mt-0.5" />
               <span>Staff roles are completely voluntary and unpaid. You are not obligated to work any set hours and can step down at any time. By submitting, you acknowledge this is a community contribution, not employment.</span>
+            </div>
+          )}
+
+          {category === "account_deletion" && (
+            <div className="flex items-start gap-2 text-xs text-destructive bg-destructive/10 border border-destructive/20 rounded-lg px-3 py-2">
+              <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+              <span>Account deletion is permanent and cannot be undone. All your scan history, API keys, and settings will be permanently removed.</span>
+            </div>
+          )}
+
+          {category === "enterprise" && (
+            <div className="flex items-start gap-2 text-xs text-primary bg-primary/10 border border-primary/20 rounded-lg px-3 py-2">
+              <Building2 className="h-4 w-4 shrink-0 mt-0.5" />
+              <span>Enterprise plans include dedicated support, custom integrations, SSO, and volume discounts. Our team will reach out within 1 business day.</span>
+            </div>
+          )}
+
+          {(category === "data_request" || category === "legal") && (
+            <div className="flex items-start gap-2 text-xs text-muted-foreground bg-muted border border-border/50 rounded-lg px-3 py-2">
+              <Info className="h-4 w-4 shrink-0 mt-0.5" />
+              <span>We take data privacy seriously. Please allow 5-10 business days for us to process your request in accordance with applicable regulations.</span>
             </div>
           )}
 
