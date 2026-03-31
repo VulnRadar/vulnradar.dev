@@ -1,21 +1,35 @@
-import { NextResponse } from "next/server"
+import { NextRequest, NextResponse } from "next/server"
 import pool from "@/lib/database/db"
-import { verifySession } from "@/lib/auth/session-server"
-import { logAuditAction } from "@/lib/audit/server"
-import { hasStaffPermission, STAFF_PERMISSIONS } from "@/lib/auth/permissions"
+import { getSession } from "@/lib/auth"
+import { getClientIP } from "@/lib/rate-limiting/rate-limit"
+import { STAFF_ROLE_HIERARCHY } from "@/lib/config/constants"
 
-export async function POST(request: Request) {
+async function logAction(adminId: number, targetUserId: number | null, action: string, details?: string, ip?: string) {
+  await pool.query(
+    "INSERT INTO admin_audit_log (admin_id, target_user_id, action, details, ip_address) VALUES ($1, $2, $3, $4, $5)",
+    [adminId, targetUserId, action, details || null, ip || null],
+  )
+}
+
+async function requireAdmin() {
+  const session = await getSession()
+  if (!session) return null
+  const result = await pool.query("SELECT id, role FROM users WHERE id = $1", [session.userId])
+  const user = result.rows[0]
+  if (!user) return null
+  const role = user.role || "user"
+  if ((STAFF_ROLE_HIERARCHY[role] || 0) < (STAFF_ROLE_HIERARCHY.admin || 3)) return null
+  return { ...session, id: user.id, role }
+}
+
+export async function POST(request: NextRequest) {
   try {
-    const session = await verifySession()
-    if (!session || !session.user) {
+    const user = await requireAdmin()
+    if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    // Check admin permission
-    if (!hasStaffPermission(session.user.role, STAFF_PERMISSIONS.MANAGE_ACCESS_RULES)) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 })
-    }
-
+    const ip = getClientIP(request)
     const body = await request.json()
     const { action, value } = body
 
@@ -88,15 +102,7 @@ export async function POST(request: Request) {
         const deletedCount = result.rowCount || 0
 
         // Log audit action
-        await logAuditAction({
-          userId: session.user.id,
-          action: "blocked_data_delete",
-          targetType: "scan_history",
-          details: {
-            blocked_value: value,
-            deleted_count: deletedCount,
-          },
-        })
+        await logAction(user.id, null, "blocked_data_delete", `Deleted ${deletedCount} scans for blocked value: ${value}`, ip)
 
         return NextResponse.json({ 
           success: true, 
