@@ -487,18 +487,29 @@ async function checkRobotsTxt(origin: string): Promise<Vulnerability[]> {
 
 async function checkSecurityTxt(origin: string): Promise<Vulnerability[]> {
   // Validate origin to prevent SSRF
+  let parsed: URL
   try {
-    const parsed = new URL(origin)
+    parsed = new URL(origin)
     if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return []
     if (isPrivateHostname(parsed.hostname)) return []
   } catch {
     return []
   }
 
+  // Construct and validate full URLs
+  let wellKnownUrl: string
+  let rootUrl: string
+  try {
+    wellKnownUrl = new URL(".well-known/security.txt", origin).toString()
+    rootUrl = new URL("security.txt", origin).toString()
+  } catch {
+    return []
+  }
+
   // Check both URLs in parallel
   const [wellKnown, root] = await Promise.allSettled([
-    fetch(`${origin}/.well-known/security.txt`, { ...FETCH_OPTS, signal: AbortSignal.timeout(5000) }),
-    fetch(`${origin}/security.txt`, { ...FETCH_OPTS, signal: AbortSignal.timeout(5000) }),
+    fetch(wellKnownUrl, { ...FETCH_OPTS, signal: AbortSignal.timeout(5000) }),
+    fetch(rootUrl, { ...FETCH_OPTS, signal: AbortSignal.timeout(5000) }),
   ])
 
   const found =
@@ -512,7 +523,7 @@ async function checkSecurityTxt(origin: string): Promise<Vulnerability[]> {
         "info",
         "configuration",
         "No security.txt file was found at /.well-known/security.txt or /security.txt.",
-        `Both ${origin}/.well-known/security.txt and ${origin}/security.txt returned non-200 status.`,
+        `Both ${wellKnownUrl} and ${rootUrl} returned non-200 status.`,
         "Security researchers who find vulnerabilities may not know how to responsibly report them.",
         "security.txt (RFC 9116) is a standard for responsible disclosure contact information.",
         ["Create a security.txt file at /.well-known/security.txt.", "Include at minimum: Contact, Expires."],
