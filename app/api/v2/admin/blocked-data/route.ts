@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import pool from "@/lib/database/db"
 import { getSession } from "@/lib/auth"
-import { getClientIP } from "@/lib/rate-limiting/rate-limit"
+import { getClientIp } from "@/lib/api/request-utils"
 import { STAFF_ROLE_HIERARCHY } from "@/lib/config/constants"
 
 async function logAction(adminId: number, targetUserId: number | null, action: string, details?: string, ip?: string) {
@@ -29,7 +29,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    const ip = getClientIP(request)
+    const ip = await getClientIp()
     const body = await request.json()
     const { action, value } = body
 
