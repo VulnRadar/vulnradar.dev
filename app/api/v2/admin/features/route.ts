@@ -47,7 +47,11 @@ export async function POST(req: NextRequest) {
             .toLowerCase()
             .replace(/^[a-z][a-z0-9+.-]*:\/\//i, "") // Remove protocol
             .replace(/\/+$/, "") // Remove trailing slashes
-            .replace(/\/.*$/, "") // Remove paths (keep domain only)
+          // Remove paths (keep domain only) using indexOf instead of regex to avoid ReDoS
+          const pathIndex = normalizedValue.indexOf("/")
+          if (pathIndex !== -1) {
+            normalizedValue = normalizedValue.substring(0, pathIndex)
+          }
         }
         
         const result = await pool.query(
