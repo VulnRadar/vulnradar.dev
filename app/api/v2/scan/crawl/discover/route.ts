@@ -92,6 +92,28 @@ export async function POST(request: NextRequest) {
   while (queue.length > 0 && found.length < MAX_PAGES) {
     const currentUrl = queue.shift()!
     try {
+      // Validate URL before fetch to prevent SSRF
+      if (!currentUrl.startsWith("http://") && !currentUrl.startsWith("https://")) {
+        continue
+      }
+      
+      let currentUrlObj: URL
+      try {
+        currentUrlObj = new URL(currentUrl)
+      } catch {
+        continue
+      }
+      
+      // Only allow http and https protocols
+      if (currentUrlObj.protocol !== "http:" && currentUrlObj.protocol !== "https:") {
+        continue
+      }
+      
+      // Must match the entry hostname
+      if (currentUrlObj.hostname !== entryHostname) {
+        continue
+      }
+      
       const res = await fetch(currentUrl, {
         method: "GET",
         headers: { "User-Agent": `${APP_NAME}/1.0 (Crawler)` },
