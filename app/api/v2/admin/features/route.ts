@@ -5,6 +5,18 @@ import { getClientIp } from "@/lib/api/request-utils"
 import { STAFF_ROLE_HIERARCHY } from "@/lib/config/constants"
 import { sendEmail } from "@/lib/email/email"
 
+// Robustly remove all HTML tags by repeatedly applying the regex until no more tags are found
+function stripHtmlTags(html: string): string {
+  let result = html
+  let previous = ""
+  // Keep replacing until no more HTML tags are found (handles nested/stacked tags)
+  while (result !== previous) {
+    previous = result
+    result = result.replace(/<[^>]*>/g, "")
+  }
+  return result
+}
+
 async function logAction(adminId: number, targetUserId: number | null, action: string, details?: string, ip?: string) {
   await pool.query(
     "INSERT INTO admin_audit_log (admin_id, target_user_id, action, details, ip_address) VALUES ($1, $2, $3, $4, $5)",
@@ -275,7 +287,7 @@ export async function POST(req: NextRequest) {
                 await sendEmail({
                   to: recipient.email,
                   subject: message.title,
-                  text: message.content.replace(/<[^>]*>/g, ''),
+                  text: stripHtmlTags(message.content),
                   html: message.content,
                   skipLayout: false
                 })
@@ -371,7 +383,7 @@ export async function POST(req: NextRequest) {
                 await sendEmail({
                   to: recipient.email,
                   subject: message.title,
-                  text: message.content.replace(/<[^>]*>/g, ''),
+                  text: stripHtmlTags(message.content),
                   html: message.content,
                   skipLayout: false
                 })
