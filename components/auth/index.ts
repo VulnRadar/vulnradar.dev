@@ -1,3 +1,5 @@
 export { TosGate } from './tos-gate'
 export { ForgotPasswordForm } from './forgot-password-form'
 export { ForgotPasswordSuccess } from './forgot-password-success'
+export { LoginForm } from './login-form'
+export { Login2FAForm } from './login-2fa-form'
