@@ -176,7 +176,10 @@ async function scanSingleUrl(url: string, scanners?: string[] | null): Promise<{
       throw new Error("Invalid protocol")
     }
     
-    response = await fetch(url, {
+    // Use the validated URL object's href for the fetch
+    const safeUrl = urlObj.href
+    
+    response = await fetch(safeUrl, {
       method: "GET",
       headers: { "User-Agent": `${APP_NAME}/1.0 (Security Scanner)` },
       redirect: "follow",
