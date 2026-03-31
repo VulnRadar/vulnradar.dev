@@ -210,7 +210,11 @@ export async function POST(request: NextRequest) {
     const accessCheck = await checkAccessRules(url)
     if (!accessCheck.allowed) {
       return NextResponse.json(
-        { error: "This target cannot be scanned." },
+        { 
+          error: "This target cannot be scanned.",
+          details: "This domain or IP address has been restricted from scanning for security, privacy, or compliance reasons. Access controls are enforced to protect sensitive infrastructure and user data. If you believe this is an error, please contact support.",
+          statusCode: "BLOCKED"
+        },
         { status: 403 }
       )
     }
