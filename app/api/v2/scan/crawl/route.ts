@@ -61,7 +61,7 @@ async function discoverInternalLinks(startUrl: string): Promise<string[]> {
     // Skip fragments-only and empty
     if (!href || href === "#" || href.startsWith("#")) return false
     // Skip non-HTTP
-    if (href.startsWith("mailto:") || href.startsWith("tel:") || href.startsWith("javascript:")) return false
+    if (href.startsWith("mailto:") || href.startsWith("tel:") || href.startsWith("javascript:") || href.startsWith("vbscript:")) return false
     return true
   }
 
@@ -90,7 +90,10 @@ async function discoverInternalLinks(startUrl: string): Promise<string[]> {
         continue
       }
       
-      const res = await fetch(url, {
+      // Use the validated URL object's href for the fetch
+      const safeUrl = urlObj.href
+      
+      const res = await fetch(safeUrl, {
         method: "GET",
         headers: { "User-Agent": `${APP_NAME}/1.0 (Crawler)` },
         redirect: "follow",
@@ -176,7 +179,10 @@ async function scanSingleUrl(url: string, scanners?: string[] | null): Promise<{
       throw new Error("Invalid protocol")
     }
     
-    response = await fetch(url, {
+    // Use the validated URL object's href for the fetch
+    const safeUrl = urlObj.href
+    
+    response = await fetch(safeUrl, {
       method: "GET",
       headers: { "User-Agent": `${APP_NAME}/1.0 (Security Scanner)` },
       redirect: "follow",
