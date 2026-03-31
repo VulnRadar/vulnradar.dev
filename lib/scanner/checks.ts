@@ -434,7 +434,13 @@ const detectors: Record<string, DetectFn> = {
   "private-ip-exposure": (_url, _headers, body) => {
     const privateIPs = body.match(/(?:10\.\d{1,3}\.\d{1,3}\.\d{1,3}|172\.(?:1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3})/g) || []
     const filtered = [...new Set(privateIPs)].filter((ip) => {
-      return !body.includes(`schema.org`) || body.indexOf(ip) < body.indexOf("schema.org")
+      // Check if this IP is in a schema.org context (proper validation)
+      // Look for the IP surrounded by schema.org structured data patterns
+      const schemaPattern = new RegExp(`"@context"\\s*:\\s*"https?://schema\\.org"[\\s\\S]*?"${ip.replace(/\./g, "\\.")}"|"${ip.replace(/\./g, "\\.")}".{0,100}"@context"\\s*:\\s*"https?://schema\\.org"`, "i")
+      if (schemaPattern.test(body)) {
+        return false // IP is in a proper schema.org context, filter it out
+      }
+      return true // IP is exposed outside of schema.org context
     })
     return filtered.length > 0 ? `Private IP addresses found: ${filtered.slice(0, 5).join(", ")}` : null
   },
