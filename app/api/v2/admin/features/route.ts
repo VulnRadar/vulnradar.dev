@@ -5,6 +5,18 @@ import { getClientIp } from "@/lib/api/request-utils"
 import { STAFF_ROLE_HIERARCHY } from "@/lib/config/constants"
 import { sendEmail } from "@/lib/email/email"
 
+// Robustly remove all HTML tags by repeatedly applying the regex until no more tags are found
+function stripHtmlTags(html: string): string {
+  let result = html
+  let previous = ""
+  // Keep replacing until no more HTML tags are found (handles nested/stacked tags)
+  while (result !== previous) {
+    previous = result
+    result = result.replace(/<[^>]*>/g, "")
+  }
+  return result
+}
+
 async function logAction(adminId: number, targetUserId: number | null, action: string, details?: string, ip?: string) {
   await pool.query(
     "INSERT INTO admin_audit_log (admin_id, target_user_id, action, details, ip_address) VALUES ($1, $2, $3, $4, $5)",
@@ -43,11 +55,24 @@ export async function POST(req: NextRequest) {
         // Normalize URL/domain values by stripping protocol and trailing slashes
         let normalizedValue = ip_address?.trim() || ""
         if (value_type === "url") {
-          normalizedValue = normalizedValue
-            .toLowerCase()
-            .replace(/^[a-z][a-z0-9+.-]*:\/\//i, "") // Remove protocol
-            .replace(/\/+$/, "") // Remove trailing slashes
-            .replace(/\/.*$/, "") // Remove paths (keep domain only)
+          normalizedValue = normalizedValue.toLowerCase()
+          
+          // Remove protocol using indexOf instead of regex
+          const protoEnd = normalizedValue.indexOf("://")
+          if (protoEnd !== -1) {
+            normalizedValue = normalizedValue.substring(protoEnd + 3)
+          }
+          
+          // Remove trailing slashes using a while loop instead of regex
+          while (normalizedValue.endsWith("/")) {
+            normalizedValue = normalizedValue.slice(0, -1)
+          }
+          
+          // Remove paths (keep domain only) using indexOf
+          const pathIndex = normalizedValue.indexOf("/")
+          if (pathIndex !== -1) {
+            normalizedValue = normalizedValue.substring(0, pathIndex)
+          }
         }
         
         const result = await pool.query(
@@ -262,7 +287,7 @@ export async function POST(req: NextRequest) {
                 await sendEmail({
                   to: recipient.email,
                   subject: message.title,
-                  text: message.content.replace(/<[^>]*>/g, ''),
+                  text: stripHtmlTags(message.content),
                   html: message.content,
                   skipLayout: false
                 })
@@ -358,7 +383,7 @@ export async function POST(req: NextRequest) {
                 await sendEmail({
                   to: recipient.email,
                   subject: message.title,
-                  text: message.content.replace(/<[^>]*>/g, ''),
+                  text: stripHtmlTags(message.content),
                   html: message.content,
                   skipLayout: false
                 })

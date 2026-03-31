@@ -404,7 +404,9 @@ async function fetchRapidDns(domain: string): Promise<string[]> {
     if (!res.ok) return []
 
     const html = await res.text()
-    const regex = new RegExp(`([a-z0-9._-]+\\.${domain.replace(/\./g, "\\.")})`, "gi")
+    // Properly escape all regex special characters in domain
+    const escapedDomain = domain.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+    const regex = new RegExp(`([a-z0-9._-]+\\.${escapedDomain})`, "gi")
     const matches = html.match(regex) || []
     const names = new Set<string>()
     for (const m of matches) {

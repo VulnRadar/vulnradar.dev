@@ -94,6 +94,20 @@ const COMMON_SEQUENCES = [
 // ============================================================================
 
 /**
+ * Get cryptographically secure random values (works in both Node.js and browser)
+ */
+function getRandomValues(array: Uint8Array): Uint8Array {
+  if (typeof global !== "undefined" && global.crypto && global.crypto.getRandomValues) {
+    return global.crypto.getRandomValues(array)
+  }
+  if (typeof window !== "undefined" && window.crypto && window.crypto.getRandomValues) {
+    return window.crypto.getRandomValues(array)
+  }
+  // Fallback: should not happen in modern environments
+  throw new Error("crypto.getRandomValues is not available")
+}
+
+/**
  * Check if password contains sequential characters (abc, 123, cba, 321)
  */
 function hasSequentialChars(pw: string): number {
@@ -439,20 +453,30 @@ export function generateStrongPassword(length: number = 16): string {
   const all = lowercase + uppercase + numbers + special
   let password = ""
 
-  // Ensure at least one of each type
-  password += lowercase[Math.floor(Math.random() * lowercase.length)]
-  password += uppercase[Math.floor(Math.random() * uppercase.length)]
-  password += numbers[Math.floor(Math.random() * numbers.length)]
-  password += special[Math.floor(Math.random() * special.length)]
+  // Ensure at least one of each type using cryptographically secure random
+  const randomIndices = new Uint8Array(4)
+  getRandomValues(randomIndices)
+  
+  password += lowercase[randomIndices[0] % lowercase.length]
+  password += uppercase[randomIndices[1] % uppercase.length]
+  password += numbers[randomIndices[2] % numbers.length]
+  password += special[randomIndices[3] % special.length]
 
-  // Fill remaining length
+  // Fill remaining length with cryptographically secure random characters
   for (let i = password.length; i < length; i++) {
-    password += all[Math.floor(Math.random() * all.length)]
+    const randomBytes = new Uint8Array(1)
+    getRandomValues(randomBytes)
+    password += all[randomBytes[0] % all.length]
   }
 
-  // Shuffle
-  return password
-    .split("")
-    .sort(() => Math.random() - 0.5)
-    .join("")
+  // Shuffle using Fisher-Yates with cryptographically secure random
+  const chars = password.split("")
+  for (let i = chars.length - 1; i > 0; i--) {
+    const randomBytes = new Uint8Array(1)
+    getRandomValues(randomBytes)
+    const j = randomBytes[0] % (i + 1)
+    ;[chars[i], chars[j]] = [chars[j], chars[i]]
+  }
+  
+  return chars.join("")
 }

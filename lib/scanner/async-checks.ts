@@ -318,7 +318,7 @@ function checkTLSCert(hostname: string, port: number = 443): Promise<Vulnerabili
           host: hostname,
           port,
           servername: hostname,
-          rejectUnauthorized: false,
+          rejectUnauthorized: true,
           timeout: 4500,
         },
         () => {
@@ -422,7 +422,49 @@ function checkTLSCert(hostname: string, port: number = 443): Promise<Vulnerabili
         },
       )
 
-      socket.on("error", () => { clearTimeout(timeout); resolve(findings) })
+      socket.on("error", (error: any) => {
+        // Capture certificate validation errors
+        if (error.code === "CERT_HAS_EXPIRED") {
+          findings.push(
+            makeVuln(
+              "Expired TLS Certificate", "critical", "ssl",
+              "The TLS certificate has expired.",
+              `Certificate expired error: ${error.message}`,
+              "Browsers will block access with a full-page security warning.",
+              "An expired certificate means the server's identity can no longer be verified.",
+              ["Renew the certificate immediately.", "Set up automatic renewal with Let's Encrypt / certbot."],
+            ),
+          )
+        } else if (error.code === "DEPTH_ZERO_SELF_SIGNED_CERT" || error.code === "SELF_SIGNED_CERT_IN_CHAIN") {
+          findings.push(
+            makeVuln(
+              "Self-Signed TLS Certificate",
+              "high",
+              "ssl",
+              "The server uses a self-signed TLS certificate that is not trusted by browsers.",
+              `Certificate error: ${error.code}`,
+              "Browsers will show security warnings, making users vulnerable to real MITM attacks.",
+              "Self-signed certificates are not issued by a trusted CA. While they encrypt traffic, they don't verify the server's identity.",
+              ["Obtain a certificate from a trusted CA (Let's Encrypt is free).", "Use automated cert management (certbot, Caddy, or your hosting provider)."],
+            ),
+          )
+        } else if (error.code === "UNABLE_TO_VERIFY_LEAF_SIGNATURE") {
+          findings.push(
+            makeVuln(
+              "Incomplete TLS Certificate Chain",
+              "medium",
+              "ssl",
+              "The TLS certificate chain is incomplete. Intermediate certificates may be missing.",
+              `Certificate error: ${error.code}`,
+              "Some clients may not trust this certificate because the full chain to a root CA cannot be verified.",
+              "TLS certificates form a chain of trust. If intermediates are missing, some clients can't verify the chain.",
+              ["Ensure your server sends the full certificate chain (leaf + intermediates).", "Use SSL Labs (ssllabs.com/ssltest) to verify your chain."],
+            ),
+          )
+        }
+        clearTimeout(timeout)
+        resolve(findings)
+      })
       socket.on("timeout", () => { socket.destroy(); clearTimeout(timeout); resolve(findings) })
     } catch {
       clearTimeout(timeout)
@@ -445,6 +487,11 @@ const FETCH_OPTS = {
 async function checkRobotsTxt(origin: string): Promise<Vulnerability[]> {
   const findings: Vulnerability[] = []
   try {
+    // Validate origin to prevent SSRF
+    const parsed = new URL(origin)
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return findings
+    if (isPrivateHostname(parsed.hostname)) return findings
+    
     const res = await fetch(`${origin}/robots.txt`, { ...FETCH_OPTS, signal: AbortSignal.timeout(5000) })
     if (!res.ok) return findings
 
@@ -481,10 +528,30 @@ async function checkRobotsTxt(origin: string): Promise<Vulnerability[]> {
 }
 
 async function checkSecurityTxt(origin: string): Promise<Vulnerability[]> {
+  // Validate origin to prevent SSRF
+  let parsed: URL
+  try {
+    parsed = new URL(origin)
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return []
+    if (isPrivateHostname(parsed.hostname)) return []
+  } catch {
+    return []
+  }
+
+  // Construct and validate full URLs
+  let wellKnownUrl: string
+  let rootUrl: string
+  try {
+    wellKnownUrl = new URL(".well-known/security.txt", origin).toString()
+    rootUrl = new URL("security.txt", origin).toString()
+  } catch {
+    return []
+  }
+
   // Check both URLs in parallel
   const [wellKnown, root] = await Promise.allSettled([
-    fetch(`${origin}/.well-known/security.txt`, { ...FETCH_OPTS, signal: AbortSignal.timeout(5000) }),
-    fetch(`${origin}/security.txt`, { ...FETCH_OPTS, signal: AbortSignal.timeout(5000) }),
+    fetch(wellKnownUrl, { ...FETCH_OPTS, signal: AbortSignal.timeout(5000) }),
+    fetch(rootUrl, { ...FETCH_OPTS, signal: AbortSignal.timeout(5000) }),
   ])
 
   const found =
@@ -498,7 +565,7 @@ async function checkSecurityTxt(origin: string): Promise<Vulnerability[]> {
         "info",
         "configuration",
         "No security.txt file was found at /.well-known/security.txt or /security.txt.",
-        `Both ${origin}/.well-known/security.txt and ${origin}/security.txt returned non-200 status.`,
+        `Both ${wellKnownUrl} and ${rootUrl} returned non-200 status.`,
         "Security researchers who find vulnerabilities may not know how to responsibly report them.",
         "security.txt (RFC 9116) is a standard for responsible disclosure contact information.",
         ["Create a security.txt file at /.well-known/security.txt.", "Include at minimum: Contact, Expires."],

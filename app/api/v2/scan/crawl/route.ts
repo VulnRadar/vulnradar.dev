@@ -68,6 +68,28 @@ async function discoverInternalLinks(startUrl: string): Promise<string[]> {
   while (queue.length > 0 && found.length < MAX_PAGES) {
     const url = queue.shift()!
     try {
+      // Validate URL to prevent SSRF - check protocol and parse URL
+      if (!url.startsWith("http://") && !url.startsWith("https://")) {
+        continue
+      }
+      
+      let urlObj: URL
+      try {
+        urlObj = new URL(url)
+      } catch {
+        continue
+      }
+      
+      // Only allow http and https protocols
+      if (urlObj.protocol !== "http:" && urlObj.protocol !== "https:") {
+        continue
+      }
+      
+      // Must match the origin hostname
+      if (urlObj.hostname !== new URL(origin).hostname) {
+        continue
+      }
+      
       const res = await fetch(url, {
         method: "GET",
         headers: { "User-Agent": `${APP_NAME}/1.0 (Crawler)` },
@@ -148,6 +170,12 @@ async function scanSingleUrl(url: string, scanners?: string[] | null): Promise<{
 
   let response: Response
   try {
+    // Validate URL to prevent SSRF
+    const urlObj = new URL(url)
+    if (urlObj.protocol !== "http:" && urlObj.protocol !== "https:") {
+      throw new Error("Invalid protocol")
+    }
+    
     response = await fetch(url, {
       method: "GET",
       headers: { "User-Agent": `${APP_NAME}/1.0 (Security Scanner)` },
