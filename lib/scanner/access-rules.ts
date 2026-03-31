@@ -44,6 +44,15 @@ export async function checkAccessRules(url: string): Promise<AccessRuleCheckResu
     // For domain matching: if rule is "example.com", match:
     // - hostname = "example.com" (exact match)
     // - hostname ends with ".example.com" (subdomain match)
+    // Build query based on whether we have an IP to check
+    const queryParams: string[] = [hostname]
+    let ipCondition = 'false' // Default: no IP match possible
+    
+    if (ipAddress) {
+      queryParams.push(ipAddress)
+      ipCondition = `(value_type = 'ip' AND LOWER(value) = LOWER($2))`
+    }
+    
     const result = await pool.query(`
       SELECT value, value_type, reason
       FROM access_rules
@@ -57,10 +66,10 @@ export async function checkAccessRules(url: string): Promise<AccessRuleCheckResu
             OR LOWER($1) LIKE '%.' || LOWER(value)
           ))
           -- IP match
-          OR (value_type = 'ip' AND $2 IS NOT NULL AND LOWER(value) = LOWER($2))
+          OR ${ipCondition}
         )
       LIMIT 1
-    `, [hostname, ipAddress])
+    `, queryParams)
 
     if (result.rows.length > 0) {
       const rule = result.rows[0]
