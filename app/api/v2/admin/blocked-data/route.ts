@@ -87,9 +87,19 @@ export async function POST(request: NextRequest) {
         }
 
         // Normalize the domain
-        const normalizedValue = value.trim().toLowerCase()
-          .replace(/^[a-z][a-z0-9+.-]*:\/\//i, "")
-          .replace(/\/.*$/, "")
+        let normalizedValue = value.trim().toLowerCase()
+        
+        // Remove protocol using indexOf instead of regex
+        const protoEnd = normalizedValue.indexOf("://")
+        if (protoEnd !== -1) {
+          normalizedValue = normalizedValue.substring(protoEnd + 3)
+        }
+        
+        // Remove path using indexOf instead of regex
+        const pathIndex = normalizedValue.indexOf("/")
+        if (pathIndex !== -1) {
+          normalizedValue = normalizedValue.substring(0, pathIndex)
+        }
 
         // Delete all scans matching the blocked domain (exact or subdomain)
         const result = await pool.query(`
