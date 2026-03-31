@@ -168,10 +168,31 @@ const detectors: Record<string, DetectFn> = {
     const emails = body.match(emailRegex) || []
     const filtered = emails.filter((e) => {
       const lower = e.toLowerCase()
-      return !lower.endsWith(".png") && !lower.endsWith(".jpg") && !lower.endsWith(".svg") &&
-        !lower.endsWith(".gif") && !lower.endsWith(".webp") && !lower.includes("@example") &&
-        !lower.includes("@test") && !lower.includes("schema.org") && !lower.includes("w3.org") &&
-        !lower.includes("sentry.io") && !lower.includes("@2x") && !lower.includes("@3x")
+      
+      // Extract domain part of email (everything after @)
+      const atIndex = lower.indexOf("@")
+      if (atIndex === -1) return false
+      
+      const domain = lower.substring(atIndex + 1)
+      
+      // Check for file extensions (fake emails)
+      if (domain.endsWith(".png") || domain.endsWith(".jpg") || domain.endsWith(".svg") ||
+          domain.endsWith(".gif") || domain.endsWith(".webp")) {
+        return false
+      }
+      
+      // Check for test/example domains
+      const testDomains = ["example.com", "example.org", "test.com", "test.org", "schema.org", "w3.org", "sentry.io"]
+      if (testDomains.some(d => domain === d || domain.endsWith("." + d))) {
+        return false
+      }
+      
+      // Filter out @2x/@3x patterns (image descriptors)
+      if (lower.includes("@2x") || lower.includes("@3x")) {
+        return false
+      }
+      
+      return true
     })
     const unique = [...new Set(filtered)]
     return unique.length > 0 ? `Found ${unique.length} email address(es): ${unique.slice(0, 3).join(", ")}` : null
@@ -998,7 +1019,7 @@ const detectors: Record<string, DetectFn> = {
 
   // ═══════════════════════════════════════════════════════════════════════════
   // ADVANCED CHECKS (additional hardening & best practices)
-  // ═══════════════════════════════════════════════════════════════════════════
+  // ════════════════════════════════════════════════════════════��══════════════
 
   "hsts-no-preload": (_url, headers) => {
     const hsts = h(headers, "strict-transport-security")
@@ -1689,7 +1710,7 @@ const detectors: Record<string, DetectFn> = {
     return null
   },
 
-  // ── Authentication & Session Checks ────────────────────────────────────────
+  // ── Authentication & Session Checks ─��──────────────────────────────────────
 
   "session-cookie-flags": (_url, headers) => {
     const setCookie = h(headers, "set-cookie")
