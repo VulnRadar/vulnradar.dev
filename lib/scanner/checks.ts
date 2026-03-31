@@ -1471,7 +1471,7 @@ const detectors: Record<string, DetectFn> = {
   },
 
   "eval-in-scripts": (_url, _headers, body) => {
-    const scripts = body.match(/<script[^>]*>[\s\S]*?<\/script>/gi) || []
+    const scripts = body.match(/<script[^>]*>[\s\S]*?<\/script\s*>/gi) || []
     for (const s of scripts) {
       if (/\beval\s*\(/.test(s) && !s.includes("JSON.parse")) {
         return "eval() usage detected in inline scripts."
