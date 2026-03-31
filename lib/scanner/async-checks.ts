@@ -445,6 +445,11 @@ const FETCH_OPTS = {
 async function checkRobotsTxt(origin: string): Promise<Vulnerability[]> {
   const findings: Vulnerability[] = []
   try {
+    // Validate origin to prevent SSRF
+    const parsed = new URL(origin)
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return findings
+    if (isPrivateHostname(parsed.hostname)) return findings
+    
     const res = await fetch(`${origin}/robots.txt`, { ...FETCH_OPTS, signal: AbortSignal.timeout(5000) })
     if (!res.ok) return findings
 
@@ -481,6 +486,15 @@ async function checkRobotsTxt(origin: string): Promise<Vulnerability[]> {
 }
 
 async function checkSecurityTxt(origin: string): Promise<Vulnerability[]> {
+  // Validate origin to prevent SSRF
+  try {
+    const parsed = new URL(origin)
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return []
+    if (isPrivateHostname(parsed.hostname)) return []
+  } catch {
+    return []
+  }
+
   // Check both URLs in parallel
   const [wellKnown, root] = await Promise.allSettled([
     fetch(`${origin}/.well-known/security.txt`, { ...FETCH_OPTS, signal: AbortSignal.timeout(5000) }),
