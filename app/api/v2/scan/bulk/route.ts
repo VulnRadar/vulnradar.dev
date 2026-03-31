@@ -84,8 +84,13 @@ async function runSingleScan(url: string, userId: number, isApiKeyAuth: boolean)
     try {
       // Parse WebSocket URL and reconstruct as HTTP(S)
       const wsUrl = new URL(url)
+      if (wsUrl.protocol !== "ws:" && wsUrl.protocol !== "wss:") {
+        throw new Error("Invalid WebSocket protocol")
+      }
+      
+      // Construct HTTP(S) URL from WebSocket URL components
       const protocol = wsUrl.protocol === "wss:" ? "https:" : "http:"
-      const httpUrl = new URL(wsUrl.href.replace(/^wss?:/, protocol))
+      const httpUrl = new URL(`${protocol}//${wsUrl.host}${wsUrl.pathname}${wsUrl.search}${wsUrl.hash}`)
       
       // Validate the constructed URL
       if (httpUrl.protocol !== "http:" && httpUrl.protocol !== "https:") {
