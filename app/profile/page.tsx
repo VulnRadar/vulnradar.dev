@@ -547,7 +547,7 @@ function ProfileContent() {
                     )}
                   >
                     {tab.icon}
-                    <span>{tab.label}</span>
+                    <span className="hidden sm:inline">{tab.label}</span>
                   </button>
                 ))}
               </div>
