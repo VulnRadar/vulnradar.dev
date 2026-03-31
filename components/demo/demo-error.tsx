@@ -1,33 +1,51 @@
 "use client"
 
-import { AlertTriangle, RefreshCw } from "lucide-react"
+import { ShieldX, RefreshCw, Mail } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import Link from "next/link"
 
 interface DemoErrorProps {
   error: string
+  details?: string
   onRetry: () => void
 }
 
-export function DemoError({ error, onRetry }: DemoErrorProps) {
+export function DemoError({ error, details, onRetry }: DemoErrorProps) {
+  const isBlocked = error === "This target cannot be scanned."
+  
   return (
     <section className="relative">
       <div className="max-w-6xl mx-auto px-4 sm:px-6 pt-16 pb-20 sm:pt-24">
         <div className="text-center max-w-lg mx-auto">
           <div className="w-16 h-16 rounded-2xl bg-destructive/10 flex items-center justify-center mx-auto mb-6">
-            <AlertTriangle className="h-8 w-8 text-destructive" />
+            <ShieldX className="h-8 w-8 text-destructive" />
           </div>
 
           <h1 className="text-2xl sm:text-3xl font-bold tracking-tight mb-3">
-            Scan failed
+            {isBlocked ? "Target Restricted" : "Scan Failed"}
           </h1>
 
           <p className="text-muted-foreground mb-4">
-            Something went wrong while scanning this site
-          </p>
-
-          <p className="text-sm text-destructive bg-destructive/10 px-4 py-2 rounded-lg inline-block mb-8">
             {error}
           </p>
+
+          {details && (
+            <div className="text-left p-4 rounded-xl border border-border/50 bg-card/50 mb-6">
+              <p className="text-xs text-muted-foreground leading-relaxed">{details}</p>
+            </div>
+          )}
+          
+          {isBlocked && (
+            <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground mb-6">
+              <Mail className="h-3.5 w-3.5" />
+              <span>
+                Questions? Contact{" "}
+                <Link href="mailto:support@vulnradar.dev" className="text-primary hover:underline">
+                  support@vulnradar.dev
+                </Link>
+              </span>
+            </div>
+          )}
 
           <div>
             <Button onClick={onRetry} className="gap-2">

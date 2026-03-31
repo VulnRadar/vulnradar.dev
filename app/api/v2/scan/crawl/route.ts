@@ -8,6 +8,7 @@ import { runAsyncChecks } from "@/lib/scanner/async-checks"
 import pool from "@/lib/database/db"
 import { APP_NAME, SEVERITY_LEVELS, BEARER_PREFIX } from "@/lib/config/constants"
 import type { Vulnerability, Severity, ScanResult } from "@/lib/scanner/types"
+import { checkAccessRules } from "@/lib/scanner/access-rules"
 
 const SEVERITY_ORDER: Record<Severity, number> = { critical: 0, high: 1, medium: 2, low: 3, info: 4 }
 const MAX_BODY_SIZE = 1 * 1024 * 1024
@@ -280,6 +281,19 @@ export async function POST(request: NextRequest) {
 
   try { new URL(url) } catch {
     return NextResponse.json({ error: "Invalid URL" }, { status: 400 })
+  }
+
+  // Check access rules (blacklist/whitelist) for the main URL
+  const accessCheck = await checkAccessRules(url)
+  if (!accessCheck.allowed) {
+    return NextResponse.json(
+      { 
+        error: "This target cannot be scanned.",
+        details: "This domain or IP address has been restricted from scanning for security, privacy, or compliance reasons. Access controls are enforced to protect sensitive infrastructure and user data. If you believe this is an error, please contact support.",
+        statusCode: "BLOCKED"
+      },
+      { status: 403 }
+    )
   }
 
   const startTime = Date.now()

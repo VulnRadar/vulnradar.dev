@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import pool from "@/lib/database/db"
 import { getSession } from "@/lib/auth"
-import { getClientIP } from "@/lib/rate-limiting/rate-limit"
+import { getClientIp } from "@/lib/api/request-utils"
 import { STAFF_ROLE_HIERARCHY } from "@/lib/config/constants"
 import { sendEmail } from "@/lib/email/email"
 
@@ -34,20 +34,30 @@ export async function POST(req: NextRequest) {
 
     const body = await req.json()
     const { action, section } = body
-    const ip = getClientIP(req)
+    const ip = await getClientIp()
 
     if (section === "access_rules") {
       if (action === "create") {
         const { rule_type, value_type, ip_address, description, reason, expires_at } = body
         
+        // Normalize URL/domain values by stripping protocol and trailing slashes
+        let normalizedValue = ip_address?.trim() || ""
+        if (value_type === "url") {
+          normalizedValue = normalizedValue
+            .toLowerCase()
+            .replace(/^[a-z][a-z0-9+.-]*:\/\//i, "") // Remove protocol
+            .replace(/\/+$/, "") // Remove trailing slashes
+            .replace(/\/.*$/, "") // Remove paths (keep domain only)
+        }
+        
         const result = await pool.query(
           `INSERT INTO access_rules (rule_type, value_type, value, description, reason, created_by, expires_at) 
            VALUES ($1, $2, $3, $4, $5, $6, $7) 
            RETURNING id, rule_type, value_type, value as ip_address, description, is_active, created_at`,
-          [rule_type, value_type, ip_address, description, reason, user.id, expires_at]
+          [rule_type, value_type, normalizedValue, description, reason, user.id, expires_at]
         )
         
-        await logAction(user.id, null, "access_rule_created", `Created ${value_type} ${rule_type} rule: ${ip_address}`, ip)
+        await logAction(user.id, null, "access_rule_created", `Created ${value_type} ${rule_type} rule: ${normalizedValue}`, ip)
         
         return NextResponse.json({ rule: result.rows[0], success: true })
       }
