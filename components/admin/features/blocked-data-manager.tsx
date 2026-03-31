@@ -26,7 +26,7 @@ interface BlockedRule {
   id: number
   rule_type: "blacklist"
   value_type: "ip" | "url"
-  value: string
+  ip_address: string
   description?: string
   reason?: string
   is_active: boolean
@@ -139,7 +139,7 @@ export function BlockedDataManager() {
   }
 
   const filteredRules = blockedRules.filter(rule => 
-    rule.value.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    rule.ip_address?.toLowerCase().includes(searchQuery.toLowerCase()) ||
     (rule.description?.toLowerCase().includes(searchQuery.toLowerCase()))
   )
 
@@ -294,7 +294,7 @@ export function BlockedDataManager() {
                     <div key={rule.id} className="group">
                       {/* Rule header */}
                       <button
-                        onClick={() => handleToggleExpand(rule.id, rule.value)}
+                        onClick={() => handleToggleExpand(rule.id, rule.ip_address)}
                         className="w-full flex items-center gap-4 px-5 py-4 hover:bg-muted/20 transition-colors text-left"
                       >
                         <div className="p-2 rounded-lg bg-muted/50 shrink-0">
@@ -305,7 +305,7 @@ export function BlockedDataManager() {
                           )}
                         </div>
                         <div className="flex-1 min-w-0">
-                          <p className="text-sm font-mono text-foreground truncate">{rule.value}</p>
+                          <p className="text-sm font-mono text-foreground truncate">{rule.ip_address}</p>
                           {rule.description && (
                             <p className="text-xs text-muted-foreground truncate mt-0.5">{rule.description}</p>
                           )}
@@ -358,7 +358,7 @@ export function BlockedDataManager() {
                                   variant="destructive"
                                   size="sm"
                                   className="h-8 gap-1.5"
-                                  onClick={() => setPendingDelete({ ruleId: rule.id, scanCount: scans.length, value: rule.value })}
+                                  onClick={() => setPendingDelete({ ruleId: rule.id, scanCount: scans.length, value: rule.ip_address })}
                                   disabled={deletingScans !== null}
                                 >
                                   {deletingScans === rule.id ? (
