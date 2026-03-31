@@ -5,6 +5,7 @@ import type { ScanResult, Severity, Vulnerability } from "@/lib/scanner/types"
 import { APP_NAME, DEMO_SCAN_LIMIT, DEMO_SCAN_WINDOW, SEVERITY_LEVELS } from "@/lib/config/constants"
 import { checkRateLimit } from "@/lib/rate-limiting/rate-limit"
 import { getClientIp } from "@/lib/api/request-utils"
+import { checkAccessRules } from "@/lib/scanner/access-rules"
 
 const SEVERITY_ORDER: Record<Severity, number> = {
   critical: 0,
@@ -82,6 +83,15 @@ export async function POST(request: NextRequest) {
 
     if (!isValidUrl(url)) {
       return NextResponse.json({ error: "Invalid URL." }, { status: 400 })
+    }
+
+    // Check access rules (blacklist/whitelist)
+    const accessCheck = await checkAccessRules(url)
+    if (!accessCheck.allowed) {
+      return NextResponse.json(
+        { error: accessCheck.reason || "This URL has been blocked by access rules." },
+        { status: 403 }
+      )
     }
 
     const startTime = Date.now()

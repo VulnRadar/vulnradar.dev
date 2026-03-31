@@ -12,6 +12,7 @@ import { getProtocolFromUrl } from "@/lib/scanner/protocols"
 import { runWebSocketChecks } from "@/lib/scanner/protocols/websocket"
 import { runFtpChecks } from "@/lib/scanner/protocols/ftp"
 import { validateScanTarget } from "@/lib/scanner/safe-fetch"
+import { checkAccessRules } from "@/lib/scanner/access-rules"
 
 const SEVERITY_ORDER: Record<Severity, number> = { critical: 0, high: 1, medium: 2, low: 3, info: 4 }
 const SUPPORTED_PROTOCOLS = ["http:", "https:", "ws:", "wss:", "ftp:", "ftps:"]
@@ -56,6 +57,12 @@ async function runSingleScan(url: string, userId: number, isApiKeyAuth: boolean)
   const safetyCheck = await validateScanTarget(url)
   if (!safetyCheck.safe) {
     return { url, success: false, error: safetyCheck.reason || "URL blocked for security reasons" }
+  }
+
+  // Check access rules (blacklist/whitelist)
+  const accessCheck = await checkAccessRules(url)
+  if (!accessCheck.allowed) {
+    return { url, success: false, error: accessCheck.reason || "This URL has been blocked by access rules." }
   }
   
   const protocolType = getProtocolType(url)
