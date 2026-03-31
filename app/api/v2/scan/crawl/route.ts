@@ -68,9 +68,25 @@ async function discoverInternalLinks(startUrl: string): Promise<string[]> {
   while (queue.length > 0 && found.length < MAX_PAGES) {
     const url = queue.shift()!
     try {
-      // Validate URL before fetch to prevent SSRF
-      const urlObj = new URL(url)
+      // Validate URL to prevent SSRF - check protocol and parse URL
+      if (!url.startsWith("http://") && !url.startsWith("https://")) {
+        continue
+      }
+      
+      let urlObj: URL
+      try {
+        urlObj = new URL(url)
+      } catch {
+        continue
+      }
+      
+      // Only allow http and https protocols
       if (urlObj.protocol !== "http:" && urlObj.protocol !== "https:") {
+        continue
+      }
+      
+      // Must match the origin hostname
+      if (urlObj.hostname !== new URL(origin).hostname) {
         continue
       }
       
