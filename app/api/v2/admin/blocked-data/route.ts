@@ -29,8 +29,16 @@ export async function POST(request: Request) {
           return NextResponse.json({ error: "Missing value" }, { status: 400 })
         }
 
-        // Find scans matching the blocked URL or domain
-        // Match exact URL, domain, or subdomain
+        // Normalize the domain (strip protocol if accidentally included)
+        const normalizedValue = value.trim().toLowerCase()
+          .replace(/^[a-z][a-z0-9+.-]*:\/\//i, "")
+          .replace(/\/.*$/, "")
+
+        // Find scans matching the blocked domain
+        // Uses a subquery to extract hostname from URL and match:
+        // - Exact domain match (example.com)
+        // - Subdomain match (sub.example.com)
+        // The regex extracts the hostname from URLs like http://example.com/path
         const result = await pool.query(`
           SELECT 
             sh.id,
@@ -42,13 +50,16 @@ export async function POST(request: Request) {
           FROM scan_history sh
           LEFT JOIN users u ON sh.user_id = u.id
           WHERE 
-            LOWER(sh.url) = LOWER($1)
-            OR LOWER(sh.url) LIKE LOWER($1) || '%'
-            OR LOWER(sh.url) LIKE '%://' || LOWER($1) || '%'
-            OR LOWER(sh.url) LIKE '%.' || LOWER($1) || '%'
+            -- Extract hostname from URL and check if it matches or is subdomain
+            (
+              -- Match domain exactly after stripping protocol
+              LOWER(REGEXP_REPLACE(sh.url, '^[a-zA-Z][a-zA-Z0-9+.-]*://([^/]+).*$', '\\1')) = LOWER($1)
+              -- Match subdomain (hostname ends with .domain)
+              OR LOWER(REGEXP_REPLACE(sh.url, '^[a-zA-Z][a-zA-Z0-9+.-]*://([^/]+).*$', '\\1')) LIKE '%.' || LOWER($1)
+            )
           ORDER BY sh.created_at DESC
           LIMIT 100
-        `, [value])
+        `, [normalizedValue])
 
         return NextResponse.json({ scans: result.rows })
       }
@@ -58,16 +69,21 @@ export async function POST(request: Request) {
           return NextResponse.json({ error: "Missing value" }, { status: 400 })
         }
 
-        // Delete all scans matching the blocked URL or domain
+        // Normalize the domain
+        const normalizedValue = value.trim().toLowerCase()
+          .replace(/^[a-z][a-z0-9+.-]*:\/\//i, "")
+          .replace(/\/.*$/, "")
+
+        // Delete all scans matching the blocked domain (exact or subdomain)
         const result = await pool.query(`
           DELETE FROM scan_history
           WHERE 
-            LOWER(url) = LOWER($1)
-            OR LOWER(url) LIKE LOWER($1) || '%'
-            OR LOWER(url) LIKE '%://' || LOWER($1) || '%'
-            OR LOWER(url) LIKE '%.' || LOWER($1) || '%'
+            -- Match domain exactly after stripping protocol
+            LOWER(REGEXP_REPLACE(url, '^[a-zA-Z][a-zA-Z0-9+.-]*://([^/]+).*$', '\\1')) = LOWER($1)
+            -- Match subdomain (hostname ends with .domain)
+            OR LOWER(REGEXP_REPLACE(url, '^[a-zA-Z][a-zA-Z0-9+.-]*://([^/]+).*$', '\\1')) LIKE '%.' || LOWER($1)
           RETURNING id
-        `, [value])
+        `, [normalizedValue])
 
         const deletedCount = result.rowCount || 0
 
