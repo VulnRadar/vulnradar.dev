@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Header } from "@/components/scanner/header"
 import { Footer } from "@/components/scanner/footer"
 import {
@@ -8,17 +8,44 @@ import {
   ContactCategorySelector,
   ContactForm,
   ContactSuccess,
+  CATEGORIES,
 } from "@/components/contact"
+
+const VALID_CATEGORIES = CATEGORIES.map((c) => c.id)
 
 export default function ContactPage() {
   const [category, setCategory] = useState<string | null>(null)
   const [submitted, setSubmitted] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  // Handle hash-based category selection (e.g., /contact#bug)
+  useEffect(() => {
+    function handleHash() {
+      const hash = window.location.hash.slice(1) // Remove #
+      if (hash && VALID_CATEGORIES.includes(hash)) {
+        setCategory(hash)
+      }
+    }
+    handleHash()
+    window.addEventListener("hashchange", handleHash)
+    return () => window.removeEventListener("hashchange", handleHash)
+  }, [])
+
+  // Update URL hash when category changes
+  function handleCategoryChange(newCategory: string | null) {
+    setCategory(newCategory)
+    if (newCategory) {
+      window.history.replaceState(null, "", `#${newCategory}`)
+    } else {
+      window.history.replaceState(null, "", window.location.pathname)
+    }
+  }
+
   function handleReset() {
     setSubmitted(false)
     setCategory(null)
     setError(null)
+    window.history.replaceState(null, "", window.location.pathname)
   }
 
   return (
@@ -37,7 +64,7 @@ export default function ContactPage() {
         ) : (
           <div className="flex flex-col gap-6">
             <ContactQuickLinks />
-            <ContactCategorySelector selected={category} onSelect={setCategory} />
+            <ContactCategorySelector selected={category} onSelect={handleCategoryChange} />
             {category && (
               <ContactForm
                 category={category}
