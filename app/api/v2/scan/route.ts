@@ -234,15 +234,18 @@ export async function POST(request: NextRequest) {
     // Handle different protocol types
     if (protocolType === "websocket") {
       // For WebSocket URLs, convert to HTTP(S) for initial check
-      const httpUrl = url.replace(/^wss?:\/\//, (m) => m.startsWith("wss") ? "https://" : "http://")
       try {
-        // Validate converted URL before fetch
-        const urlObj = new URL(httpUrl)
-        if (urlObj.protocol !== "http:" && urlObj.protocol !== "https:") {
+        // Parse WebSocket URL and reconstruct as HTTP(S)
+        const wsUrl = new URL(url)
+        const protocol = wsUrl.protocol === "wss:" ? "https:" : "http:"
+        const httpUrl = new URL(wsUrl.href.replace(/^wss?:/, protocol))
+        
+        // Validate the constructed URL
+        if (httpUrl.protocol !== "http:" && httpUrl.protocol !== "https:") {
           throw new Error("Invalid protocol")
         }
         
-        response = await fetch(httpUrl, {
+        response = await fetch(httpUrl.toString(), {
           method: "GET",
           headers: { "User-Agent": `${APP_NAME}/1.0 (Security Scanner)` },
           redirect: "follow",
