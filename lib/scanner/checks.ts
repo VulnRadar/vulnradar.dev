@@ -259,7 +259,7 @@ const detectors: Record<string, DetectFn> = {
   // which actually fetches /.well-known/security.txt instead of just searching body text
 
   "dangerous-inline-js": (_url, _headers, body) => {
-    const scripts = body.match(/<script[^>]*>[\s\S]*?<\/script>/gi) || []
+    const scripts = body.match(/<script[^>]*>[\s\S]*?<\/script\s*>/gi) || []
     const dangerousPatterns = [/eval\s*\(/i, /document\.write\s*\(/i, /\.innerHTML\s*=\s*(?!['"]<)/i, /Function\s*\(/i, /setTimeout\s*\(\s*['"]/i, /setInterval\s*\(\s*['"]/i]
     const found: string[] = []
     for (const script of scripts) {
