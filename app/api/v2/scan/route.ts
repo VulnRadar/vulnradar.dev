@@ -236,6 +236,12 @@ export async function POST(request: NextRequest) {
       // For WebSocket URLs, convert to HTTP(S) for initial check
       const httpUrl = url.replace(/^wss?:\/\//, (m) => m.startsWith("wss") ? "https://" : "http://")
       try {
+        // Validate converted URL before fetch
+        const urlObj = new URL(httpUrl)
+        if (urlObj.protocol !== "http:" && urlObj.protocol !== "https:") {
+          throw new Error("Invalid protocol")
+        }
+        
         response = await fetch(httpUrl, {
           method: "GET",
           headers: { "User-Agent": `${APP_NAME}/1.0 (Security Scanner)` },
@@ -256,6 +262,12 @@ export async function POST(request: NextRequest) {
     } else {
       // Standard HTTP/HTTPS fetch
       try {
+        // Validate URL before fetch to prevent SSRF
+        const urlObj = new URL(url)
+        if (urlObj.protocol !== "http:" && urlObj.protocol !== "https:") {
+          throw new Error("Invalid protocol")
+        }
+        
         response = await fetch(url, {
           method: "GET",
           headers: {
@@ -430,12 +442,12 @@ export async function POST(request: NextRequest) {
               body = JSON.stringify({ event: "scan.completed", data: scanData })
             }
 
-            fetch(webhookUrl, {
-              method: "POST",
-              headers: { "Content-Type": "application/json", "User-Agent": `${APP_NAME}-Webhook/1.0` },
-              body,
-              signal: AbortSignal.timeout(10000),
-            }).catch(() => {})
+          fetch(webhookUrl, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "User-Agent": `${APP_NAME}-Webhook/1.0` },
+            body,
+            signal: AbortSignal.timeout(10000),
+          }).catch(() => {})
           }
         })
         .catch(() => {})
