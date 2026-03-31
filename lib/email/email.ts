@@ -179,12 +179,23 @@ export async function sendEmail({ to, subject, text, html, replyTo, skipLayout }
   await transporter.sendMail({ from, to, subject, text, html: finalHtml, replyTo })
 }
 
+const CATEGORY_LABELS: Record<string, string> = {
+  bug: "Bug Report",
+  feature: "Feature Request",
+  security: "Security Issue",
+  help: "General Help",
+  billing: "Billing Issue",
+  enterprise: "Enterprise",
+  staff_application: "Staff Application",
+  feedback: "Feedback",
+}
+
 export function contactEmail(input: { name: string; email: string; subject: string; message: string; category: string }) {
   const name = escapeHtml(input.name)
   const email = escapeHtml(input.email)
   const subject = escapeHtml(input.subject)
   const message = escapeHtml(input.message).replace(/\n/g, "<br />")
-  const category = escapeHtml(input.category)
+  const category = CATEGORY_LABELS[input.category] || escapeHtml(input.category)
 
   return {
     subject: `[Contact] ${input.subject}`,

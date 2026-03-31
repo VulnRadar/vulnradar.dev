@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react"
 import Link from "next/link"
-import { Send, Shield, Users, AlertTriangle, Building2, Info } from "lucide-react"
+import { Send, Shield, Users, Building2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -12,22 +12,13 @@ import { CATEGORIES, STAFF_ROLES } from "./contact-types"
 function getPlaceholder(category: string): string {
   const placeholders: Record<string, string> = {
     bug: "What happened? Steps to reproduce, expected vs actual behavior...",
-    feature: "Describe the feature you'd like to see and how it would help your workflow...",
+    feature: "Describe the feature you'd like to see and how it would help...",
     security: "Please describe the vulnerability in detail. Include steps to reproduce if possible.",
     help: "How can we help you?",
-    api: "Describe the API issue or integration challenge you're facing...",
-    performance: "What's slow? Include URLs, scan types, and approximate times...",
     billing: "Describe your billing issue. Include transaction IDs if relevant...",
-    account_recovery: "Describe what happened and provide any account details you remember...",
-    data_request: "Specify what data you need exported or deleted (GDPR, CCPA, etc.)...",
-    account_deletion: "Please confirm you want to delete your account and all associated data...",
-    enterprise: "Tell us about your organization and security scanning needs...",
-    partnership: "Describe the partnership opportunity you have in mind...",
-    media: "Tell us about your publication and what you'd like to cover...",
-    legal: "Describe your legal or compliance question...",
-    reseller: "Tell us about your business and target market...",
+    enterprise: "Tell us about your organization, team size, and security needs...",
     staff_application: "Why do you want to join? Share your experience and motivation...",
-    feedback: "Share your thoughts, suggestions, or general feedback about VulnRadar...",
+    feedback: "Share your thoughts, suggestions, or general feedback...",
   }
   return placeholders[category] || "How can we help you?"
 }
@@ -258,24 +249,10 @@ export function ContactForm({ category, onSuccess, onError }: ContactFormProps) 
             </div>
           )}
 
-          {category === "account_deletion" && (
-            <div className="flex items-start gap-2 text-xs text-destructive bg-destructive/10 border border-destructive/20 rounded-lg px-3 py-2">
-              <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
-              <span>Account deletion is permanent and cannot be undone. All your scan history, API keys, and settings will be permanently removed.</span>
-            </div>
-          )}
-
           {category === "enterprise" && (
             <div className="flex items-start gap-2 text-xs text-primary bg-primary/10 border border-primary/20 rounded-lg px-3 py-2">
               <Building2 className="h-4 w-4 shrink-0 mt-0.5" />
               <span>Enterprise plans include dedicated support, custom integrations, SSO, and volume discounts. Our team will reach out within 1 business day.</span>
-            </div>
-          )}
-
-          {(category === "data_request" || category === "legal") && (
-            <div className="flex items-start gap-2 text-xs text-muted-foreground bg-muted border border-border/50 rounded-lg px-3 py-2">
-              <Info className="h-4 w-4 shrink-0 mt-0.5" />
-              <span>We take data privacy seriously. Please allow 5-10 business days for us to process your request in accordance with applicable regulations.</span>
             </div>
           )}
 
