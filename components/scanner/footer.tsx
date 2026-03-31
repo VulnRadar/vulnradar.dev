@@ -1,7 +1,7 @@
 "use client"
 
 import Link from "next/link"
-import { Heart, Mail, Github } from "lucide-react"
+import { Heart, Mail, GithubIcon } from "lucide-react"
 import { APP_VERSION, APP_NAME, APP_URL, APP_REPO, SUPPORT_EMAIL, ROUTES, BILLING_ENABLED } from "@/lib/config/constants"
 import { Button } from "@/components/ui/button"
 import { ThemedLogo } from "@/components/shared/themed-logo"
@@ -81,7 +81,7 @@ export function Footer() {
           </p>
           <div className="flex items-center gap-5">
             <a href={`https://github.com/${APP_REPO}`} target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-foreground transition-colors" aria-label="GitHub">
-              <Github className="h-4 w-4" />
+              <GithubIcon className="h-4 w-4" />
             </a>
             <a href={`mailto:${SUPPORT_EMAIL}`} className="text-muted-foreground hover:text-foreground transition-colors" aria-label="Email">
               <Mail className="h-4 w-4" />
