@@ -684,23 +684,6 @@ export async function register() {
       `)
 
       // ════════════════════════════════════════════════════════════════
-      // USER PASSWORD REQUIREMENTS - Track password expiration
-      // ════════════════════════════════════════════════════════════════
-      await pool.query(`
-        CREATE TABLE IF NOT EXISTS user_password_requirements (
-          id SERIAL PRIMARY KEY,
-          user_id INTEGER NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
-          policy_id INTEGER NOT NULL REFERENCES password_rotation_policies(id),
-          last_password_change TIMESTAMP WITH TIME ZONE,
-          next_required_change TIMESTAMP WITH TIME ZONE,
-          change_reminder_sent_at TIMESTAMP WITH TIME ZONE,
-          created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
-        );
-        CREATE INDEX IF NOT EXISTS idx_user_password_requirements_policy ON user_password_requirements(policy_id);
-        CREATE INDEX IF NOT EXISTS idx_user_password_requirements_next_change ON user_password_requirements(next_required_change);
-      `)
-
-      // ════════════════════════════════════════════════════════════════
       // SUBDOMAIN CACHE - Caches subdomain discovery results (4 hour TTL)
       // ════════════════════════════════════════════════════════════════
       await pool.query(`
