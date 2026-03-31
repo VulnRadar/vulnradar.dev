@@ -83,7 +83,7 @@ export async function POST(request: NextRequest) {
     if (/[%\[\]{}|\\^`<>]/.test(href) && /%5[bBdD]|%5[eE]|%7[bBdD]|%3[eE]|%3[cC]/.test(href)) return false
     if (href.startsWith("data:")) return false
     if (!href || href === "#" || href.startsWith("#")) return false
-    if (href.startsWith("mailto:") || href.startsWith("tel:") || href.startsWith("javascript:")) return false
+    if (href.startsWith("mailto:") || href.startsWith("tel:") || href.startsWith("javascript:") || href.startsWith("vbscript:")) return false
     return true
   }
 
