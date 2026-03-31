@@ -61,7 +61,7 @@ async function discoverInternalLinks(startUrl: string): Promise<string[]> {
     // Skip fragments-only and empty
     if (!href || href === "#" || href.startsWith("#")) return false
     // Skip non-HTTP
-    if (href.startsWith("mailto:") || href.startsWith("tel:") || href.startsWith("javascript:")) return false
+    if (href.startsWith("mailto:") || href.startsWith("tel:") || href.startsWith("javascript:") || href.startsWith("vbscript:")) return false
     return true
   }
 
