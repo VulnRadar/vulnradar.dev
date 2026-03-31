@@ -4,7 +4,7 @@ import { useEffect, useRef } from "react"
 import Link from "next/link"
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { FileJson, Package, Github, ExternalLink, Zap, Lightbulb, BookOpen } from "lucide-react"
+import { FileJson, Package, Code, ExternalLink, Zap, Lightbulb, BookOpen } from "lucide-react"
 import { APP_NAME, APP_URL, APP_VERSION, TOTAL_CHECKS_LABEL } from "@/lib/config/constants"
 import { useDocsContext, type TocItem } from "../layout"
 import {
