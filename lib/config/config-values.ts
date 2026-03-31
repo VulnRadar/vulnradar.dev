@@ -11,24 +11,24 @@ function parseConfigYaml(): Record<string, unknown> | null {
   // Check if we're in a server environment with fs access
   if (typeof window !== "undefined") return null
   if (typeof globalThis !== "undefined" && "EdgeRuntime" in globalThis) return null
-  
+
   try {
     // Dynamic require to avoid bundling issues
     const fs = require("fs")
     const path = require("path")
-    
+
     const configPath = path.join(process.cwd(), "config.yaml")
     if (!fs.existsSync(configPath)) return null
-    
+
     const content = fs.readFileSync(configPath, "utf-8")
-    
+
     // Parse specific values we need using regex
     const getValue = (key: string): string | null => {
       const regex = new RegExp(`^\\s*${key}:\\s*["']?([^"'\\n#]+)["']?`, "m")
       const match = content.match(regex)
       return match ? match[1].trim() : null
     }
-    
+
     return {
       app: {
         name: getValue("name") || "VulnRadar",
@@ -89,4 +89,4 @@ export const CONFIG_LEGAL_EMAIL = app.legal_email || "legal@vulnradar.dev"
 export const CONFIG_SECURITY_EMAIL = app.security_email || "security@vulnradar.dev"
 export const CONFIG_ENTERPRISE_EMAIL = app.enterprise_email || "enterprise@vulnradar.dev"
 export const CONFIG_NOREPLY_EMAIL = app.noreply_email || "noreply@vulnradar.dev"
-export const CONFIG_TERMS_UPDATED_AT = app.terms_updated_at || "2026-03-16"
+export const CONFIG_TERMS_UPDATED_AT = app.terms_updated_at || "2026-03-30"
