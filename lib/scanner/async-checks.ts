@@ -13,11 +13,61 @@
 
 import * as dns from "dns/promises"
 import * as tls from "tls"
+import * as net from "net"
 import type { Vulnerability, Category } from "./types"
 
 let idCounter = 0
 function generateId(): string {
   return `vuln-async-${Date.now()}-${idCounter++}`
+}
+
+function isPrivateHostname(hostname: string): boolean {
+  const lower = hostname.toLowerCase()
+
+  // Obvious local hostnames
+  if (
+    lower === "localhost" ||
+    lower.endsWith(".localhost") ||
+    lower.endsWith(".local")
+  ) {
+    return true
+  }
+
+  const ipVersion = net.isIP(hostname)
+  if (!ipVersion) {
+    // Not an IP literal; treat as potentially public hostname
+    return false
+  }
+
+  // Handle IPv4 private and special ranges
+  if (ipVersion === 4) {
+    const octets = hostname.split(".").map((p) => parseInt(p, 10))
+    if (octets.length !== 4 || octets.some((n) => Number.isNaN(n) || n < 0 || n > 255)) {
+      return true
+    }
+    const [o1, o2] = octets
+
+    // 10.0.0.0/8
+    if (o1 === 10) return true
+    // 172.16.0.0/12
+    if (o1 === 172 && o2 >= 16 && o2 <= 31) return true
+    // 192.168.0.0/16
+    if (o1 === 192 && o2 === 168) return true
+    // 127.0.0.0/8 loopback
+    if (o1 === 127) return true
+    // 169.254.0.0/16 link-local
+    if (o1 === 169 && o2 === 254) return true
+  }
+
+  // Handle IPv6 loopback and typical private/link-local ranges
+  if (ipVersion === 6) {
+    const normalized = hostname.toLowerCase()
+    if (normalized === "::1") return true
+    if (normalized.startsWith("fd") || normalized.startsWith("fc")) return true // fc00::/7 unique local
+    if (normalized.startsWith("fe80")) return true // fe80::/10 link-local
+  }
+
+  return false
 }
 
 function makeVuln(
@@ -460,12 +510,25 @@ async function checkSecurityTxt(origin: string): Promise<Vulnerability[]> {
 }
 
 async function checkLiveFetch(url: string): Promise<Vulnerability[]> {
-  let origin: string
+  let parsed: URL
   try {
-    origin = new URL(url).origin
+    parsed = new URL(url)
   } catch {
     return []
   }
+
+  // Only perform live HTTP(S) fetches for public targets
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    return []
+  }
+
+  const hostname = parsed.hostname
+  if (isPrivateHostname(hostname)) {
+    // Avoid SSRF to private/internal addresses
+    return []
+  }
+
+  const origin = parsed.origin
 
   // Run robots.txt and security.txt in parallel
   const [robotsResult, securityResult] = await Promise.allSettled([
