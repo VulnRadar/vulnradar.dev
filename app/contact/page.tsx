@@ -150,6 +150,7 @@ export default function ContactPage() {
                 </CardContent>
               </Card>
           ) : (
+            <div className="flex flex-col gap-6">
                 {/* Quick links */}
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   {[
