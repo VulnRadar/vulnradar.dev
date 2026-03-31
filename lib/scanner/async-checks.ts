@@ -492,7 +492,10 @@ async function checkRobotsTxt(origin: string): Promise<Vulnerability[]> {
     if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return findings
     if (isPrivateHostname(parsed.hostname)) return findings
     
-    const res = await fetch(`${origin}/robots.txt`, { ...FETCH_OPTS, signal: AbortSignal.timeout(5000) })
+    // Construct the full URL using URL constructor (not template literals)
+    const robotsUrl = new URL("robots.txt", origin)
+    
+    const res = await fetch(robotsUrl.href, { ...FETCH_OPTS, signal: AbortSignal.timeout(5000) })
     if (!res.ok) return findings
 
     const body = await res.text()
