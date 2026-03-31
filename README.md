@@ -2,7 +2,7 @@
 
 Professional web vulnerability scanner. Completely free, forever.
 
-**175+ security checks** for SQL injection, XSS, CSRF, authentication issues, and more. Scan any public URL in seconds.
+**310+ security checks** for SQL injection, XSS, CSRF, authentication issues, and more. Scan any public URL in seconds.
 
 [![Secured by VulnRadar](https://vulnradar.dev/api/v2/badge/b1cf3c1c8cea70023416d1fc52cf302a5a9b148e0d84d21bcf5040a90b917df3)](https://vulnradar.dev/shared/b1cf3c1c8cea70023416d1fc52cf302a5a9b148e0d84d21bcf5040a90b917df3)
 
