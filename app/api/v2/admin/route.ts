@@ -862,20 +862,64 @@ export async function PATCH(request: NextRequest) {
       // This permanently deletes a user account - use with caution!
       const userEmail = targetUser.email
       const userName = targetUser.name || userEmail
-      
-      // Delete in order respecting foreign key constraints
+
+      // Delete respecting FK relationships
+
+      // Sessions & auth
       await pool.query("DELETE FROM sessions WHERE user_id = $1", [userId])
+      await pool.query("DELETE FROM password_reset_tokens WHERE user_id = $1", [userId])
+      await pool.query("DELETE FROM email_verification_tokens WHERE user_id = $1", [userId])
+      await pool.query("DELETE FROM email_2fa_codes WHERE user_id = $1", [userId])
+      await pool.query("DELETE FROM device_trust WHERE user_id = $1", [userId])
+
+      // API
+      await pool.query("DELETE FROM api_usage WHERE api_key_id IN (SELECT id FROM api_keys WHERE user_id = $1)", [userId])
       await pool.query("DELETE FROM api_keys WHERE user_id = $1", [userId])
-      await pool.query("DELETE FROM user_badges WHERE user_id = $1", [userId])
-      await pool.query("DELETE FROM gifted_subscriptions WHERE user_id = $1", [userId])
-      await pool.query("DELETE FROM scan_schedules WHERE user_id = $1", [userId])
+
+      // Scans
+      await pool.query("DELETE FROM scan_tags WHERE user_id = $1", [userId])
+      await pool.query("DELETE FROM scheduled_scans WHERE user_id = $1", [userId])
+      await pool.query("DELETE FROM scan_history WHERE user_id = $1", [userId])
+
+      // Integrations
       await pool.query("DELETE FROM webhooks WHERE user_id = $1", [userId])
-      await pool.query("DELETE FROM user_notes WHERE user_id = $1", [userId])
-      await pool.query("DELETE FROM scans WHERE user_id = $1", [userId])
+      await pool.query("DELETE FROM discord_connections WHERE user_id = $1", [userId])
+
+      // Billing
+      await pool.query("DELETE FROM billing_history WHERE user_id = $1", [userId])
+      await pool.query("DELETE FROM gifted_subscriptions WHERE user_id = $1", [userId])
+
+      // Teams
+      await pool.query("DELETE FROM team_members WHERE user_id = $1", [userId])
+      await pool.query("DELETE FROM team_invites WHERE invited_by = $1", [userId])
+      await pool.query("DELETE FROM teams WHERE owner_id = $1", [userId])
+
+      // Notifications / prefs
+      await pool.query("DELETE FROM notification_preferences WHERE user_id = $1", [userId])
+
+      // Security / monitoring
+      await pool.query("DELETE FROM security_alerts WHERE user_id = $1", [userId])
+      await pool.query("DELETE FROM staff_activity WHERE user_id = $1", [userId])
+
+      // GDPR
+      await pool.query("DELETE FROM data_requests WHERE user_id = $1", [userId])
+
+      // Badges
+      await pool.query("DELETE FROM user_badges WHERE user_id = $1", [userId])
+
+      // Admin metadata
+      await pool.query("DELETE FROM admin_user_notes WHERE user_id = $1", [userId])
+      await pool.query("DELETE FROM admin_audit_log WHERE target_user_id = $1", [userId])
+
+      // Broadcast tracking
+      await pool.query("DELETE FROM broadcast_recipients WHERE user_id = $1", [userId])
+
+      // Finally delete user
       await pool.query("DELETE FROM users WHERE id = $1", [userId])
-      
+
+
       await logAction(session.userId, userId, "delete_account", `Permanently deleted account for ${userEmail}`, ip)
-      
+
       // Send final notification to user's email
       const adminNameDel = await getAdminName(session.userId)
       const emailPayloadDel = adminAccountChangeEmail({
@@ -883,10 +927,10 @@ export async function PATCH(request: NextRequest) {
         adminName: adminNameDel,
         changes: [{ field: "Account", oldValue: "Active", newValue: "Permanently Deleted" }],
         timestamp: new Date(),
-        
+
       })
       await sendNotificationIfEnabled(notifyUser, userEmail, emailPayloadDel)
-      
+
       return NextResponse.json({ success: true })
     }
 
