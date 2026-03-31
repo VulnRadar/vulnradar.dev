@@ -59,6 +59,17 @@ const CHECKBOXES = [
     ),
   },
   {
+    key: "datadeletion" as const,
+    title: "Data Deletion Policy",
+    label: (
+        <>
+          I acknowledge that {APP_NAME}{" "}
+          <strong className="text-foreground font-semibold">may delete my account data, scan history, or any other information at any time and for any reason</strong>,
+          including policy violations, security concerns, or routine maintenance. {APP_NAME} is not liable for any data loss resulting from deletion.
+        </>
+    ),
+  },
+  {
     key: "liability" as const,
     title: "Assumption of Liability & Jurisdiction",
     label: (
@@ -88,6 +99,7 @@ export function TosModal({ onAccept, isUpdate = false }: TosModalProps) {
     terms: false,
     authorization: false,
     research: false,
+    datadeletion: false,
     liability: false,
   })
 
@@ -99,7 +111,7 @@ export function TosModal({ onAccept, isUpdate = false }: TosModalProps) {
 
   const allChecked = Object.values(checked).every(Boolean)
   const checkedCount = Object.values(checked).filter(Boolean).length
-  const progress = (checkedCount / 4) * 100
+  const progress = (checkedCount / 5) * 100
 
   async function handleAccept() {
     if (!allChecked) return
@@ -145,6 +157,7 @@ export function TosModal({ onAccept, isUpdate = false }: TosModalProps) {
         .tos-item-2  { animation: fadeUp 0.38s 0.20s cubic-bezier(0.16,1,0.3,1) both; }
         .tos-item-3  { animation: fadeUp 0.38s 0.27s cubic-bezier(0.16,1,0.3,1) both; }
         .tos-item-4  { animation: fadeUp 0.38s 0.34s cubic-bezier(0.16,1,0.3,1) both; }
+        .tos-item-5  { animation: fadeUp 0.38s 0.41s cubic-bezier(0.16,1,0.3,1) both; }
         .check-pop   { animation: checkPop 0.25s cubic-bezier(0.34,1.56,0.64,1) forwards; }
         .shield-ring { animation: ringPulse 2.8s ease-out infinite; }
         .progress-live {
@@ -223,12 +236,12 @@ export function TosModal({ onAccept, isUpdate = false }: TosModalProps) {
                         strokeWidth="2"
                         strokeLinecap="round"
                         strokeDasharray={`${2 * Math.PI * 16}`}
-                        strokeDashoffset={`${2 * Math.PI * 16 * (1 - checkedCount / 4)}`}
+                        strokeDashoffset={`${2 * Math.PI * 16 * (1 - checkedCount / 5)}`}
                         className="transition-all duration-500 ease-out"
                     />
                   </svg>
-                  <span className="absolute text-[11px] font-semibold tabular-nums" style={{ color: checkedCount === 4 ? (isUpdate ? "hsl(45 93% 47%)" : "hsl(var(--primary))") : "hsl(var(--foreground))" }}>
-                  {checkedCount}/4
+                  <span className="absolute text-[11px] font-semibold tabular-nums" style={{ color: checkedCount === 5 ? (isUpdate ? "hsl(45 93% 47%)" : "hsl(var(--primary))") : "hsl(var(--foreground))" }}>
+                  {checkedCount}/5
                 </span>
                 </div>
               </div>
@@ -338,7 +351,7 @@ export function TosModal({ onAccept, isUpdate = false }: TosModalProps) {
                   {isUpdate ? "Accept Updated Terms" : `I Agree - Continue to ${APP_NAME}`}
                 </span>
                 ) : (
-                    `${checkedCount} of 4 items confirmed`
+                    `${checkedCount} of 5 items confirmed`
                 )}
               </Button>
 

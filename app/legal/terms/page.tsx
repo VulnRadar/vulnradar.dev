@@ -86,11 +86,21 @@ export default function TermsPage() {
         </p>
       </LegalSection>
 
-      <LegalSection title="7. Data Retention">
+      <LegalSection title="7. Data Retention &amp; Deletion">
         <p>
           Scan history is retained for 90 days. API usage logs are retained for 90 days. Data export
           requests are retained for 60 days. You may delete your account and all associated data
           at any time from your profile page.
+        </p>
+        <p className="font-semibold text-foreground">
+          <strong>Data Deletion Rights:</strong> We reserve the right to delete any scan data, user account data, 
+          or other information associated with your account at any time and for any reason, including 
+          (but not limited to) policy violations, security concerns, content moderation, or routine 
+          maintenance. Such deletion may be performed without prior notice and without liability.
+        </p>
+        <p>
+          You agree that {APP_NAME} is under no obligation to retain, restore, or provide backup copies 
+          of deleted data. We are not responsible for any loss or damages resulting from data deletion.
         </p>
       </LegalSection>
 

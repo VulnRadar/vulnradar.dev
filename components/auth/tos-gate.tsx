@@ -1,7 +1,6 @@
 "use client"
 
 import React from "react"
-
 import { useEffect, useState } from "react"
 import { usePathname } from "next/navigation"
 import { TosModal } from "@/components/modals/tos-modal"
@@ -57,10 +56,10 @@ export function TosGate({ children }: { children: React.ReactNode }) {
 
   if (status === "loading") {
     return (
-        <>
-          {children}
-          <div className="fixed inset-0 z-50" aria-hidden />
-        </>
+      <>
+        {children}
+        <div className="fixed inset-0 z-50" aria-hidden />
+      </>
     )
   }
 
