@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import pool from "@/lib/database/db"
 import { getSession } from "@/lib/auth"
-import { getClientIP } from "@/lib/rate-limiting/rate-limit"
+import { getClientIp } from "@/lib/api/request-utils"
 import { STAFF_ROLE_HIERARCHY } from "@/lib/config/constants"
 import { sendEmail } from "@/lib/email/email"
 
@@ -34,7 +34,7 @@ export async function POST(req: NextRequest) {
 
     const body = await req.json()
     const { action, section } = body
-    const ip = getClientIP(req)
+    const ip = await getClientIp()
 
     if (section === "access_rules") {
       if (action === "create") {
