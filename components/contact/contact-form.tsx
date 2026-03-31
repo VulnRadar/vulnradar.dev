@@ -1,0 +1,280 @@
+"use client"
+
+import { useState, useEffect } from "react"
+import Link from "next/link"
+import { Send, Shield, Users, Building2 } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { API } from "@/lib/config/constants"
+import { CATEGORIES, STAFF_ROLES } from "./contact-types"
+
+function getPlaceholder(category: string): string {
+  const placeholders: Record<string, string> = {
+    bug: "What happened? Steps to reproduce, expected vs actual behavior...",
+    feature: "Describe the feature you'd like to see and how it would help...",
+    security: "Please describe the vulnerability in detail. Include steps to reproduce if possible.",
+    help: "How can we help you?",
+    billing: "Describe your billing issue. Include transaction IDs if relevant...",
+    enterprise: "Tell us about your organization, team size, and security needs...",
+    staff_application: "Why do you want to join? Share your experience and motivation...",
+    feedback: "Share your thoughts, suggestions, or general feedback...",
+  }
+  return placeholders[category] || "How can we help you?"
+}
+
+interface ContactFormProps {
+  category: string
+  onSuccess: () => void
+  onError: (error: string) => void
+}
+
+export function ContactForm({ category, onSuccess, onError }: ContactFormProps) {
+  const [name, setName] = useState("")
+  const [email, setEmail] = useState("")
+  const [emailLocked, setEmailLocked] = useState(false)
+  const [subject, setSubject] = useState("")
+  const [message, setMessage] = useState("")
+  const [staffRole, setStaffRole] = useState("")
+  const [discord, setDiscord] = useState("")
+  const [availability, setAvailability] = useState("")
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  // Auto-fill email from logged-in user
+  useEffect(() => {
+    async function fetchUser() {
+      try {
+        const res = await fetch(API.AUTH.ME)
+        if (res.ok) {
+          const data = await res.json()
+          if (data?.email) {
+            setEmail(data.email)
+            setEmailLocked(true)
+          }
+          if (data?.name) {
+            setName(data.name)
+          }
+        }
+      } catch { /* not logged in */ }
+    }
+    fetchUser()
+  }, [])
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+
+    if (category === "staff_application" && !staffRole) {
+      setError("Please select a role you're applying for.")
+      onError("Please select a role you're applying for.")
+      return
+    }
+
+    setIsSubmitting(true)
+    setError(null)
+
+    const isStaff = category === "staff_application"
+    const finalSubject = isStaff
+      ? `Staff Application: ${STAFF_ROLES.find((r) => r.id === staffRole)?.label}`
+      : subject
+    const finalMessage = isStaff
+      ? [
+          `Role: ${STAFF_ROLES.find((r) => r.id === staffRole)?.label}`,
+          `Discord: ${discord || "Not provided"}`,
+          `Availability: ${availability || "Not provided"}`,
+          "",
+          "--- Details ---",
+          message,
+        ].join("\n")
+      : message
+
+    try {
+      const res = await fetch(API.CONTACT, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name,
+          email,
+          subject: finalSubject,
+          message: finalMessage,
+          category,
+        }),
+      })
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => null)
+        const errorMsg = data?.error || "Unable to send your message. Please try again."
+        setError(errorMsg)
+        onError(errorMsg)
+        return
+      }
+
+      onSuccess()
+    } catch {
+      const errorMsg = "Unable to send your message. Please try again."
+      setError(errorMsg)
+      onError(errorMsg)
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  const categoryInfo = CATEGORIES.find((c) => c.id === category)
+
+  return (
+    <Card className="border-border/50 bg-card/50">
+      <CardHeader className="pb-3">
+        <div className="flex items-center gap-3">
+          {categoryInfo && (
+            <div className="p-2 rounded-lg bg-primary/10">
+              <categoryInfo.icon className="h-4 w-4 text-primary" />
+            </div>
+          )}
+          <div>
+            <CardTitle className="text-base">{categoryInfo?.label}</CardTitle>
+            <p className="text-xs text-muted-foreground mt-0.5">{categoryInfo?.desc}</p>
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent>
+        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="flex flex-col gap-1.5">
+              <label htmlFor="contact-name" className="text-sm font-medium text-foreground">Name</label>
+              <Input
+                id="contact-name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Your name"
+                required
+              />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <label htmlFor="contact-email" className="text-sm font-medium text-foreground">Email</label>
+              <Input
+                id="contact-email"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="you@example.com"
+                required
+                readOnly={emailLocked}
+                className={emailLocked ? "opacity-60 cursor-not-allowed" : ""}
+              />
+              {emailLocked && (
+                <p className="text-[11px] text-muted-foreground">Auto-filled from your account</p>
+              )}
+            </div>
+          </div>
+
+          {category === "staff_application" ? (
+            <>
+              <div className="flex flex-col gap-1.5">
+                <label htmlFor="contact-role" className="text-sm font-medium text-foreground">Role</label>
+                <select
+                  id="contact-role"
+                  value={staffRole}
+                  onChange={(e) => setStaffRole(e.target.value)}
+                  required
+                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
+                >
+                  <option value="">Select a role...</option>
+                  {STAFF_ROLES.map((r) => (
+                    <option key={r.id} value={r.id}>{r.label} - {r.desc}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="flex flex-col gap-1.5">
+                  <label htmlFor="contact-discord" className="text-sm font-medium text-foreground">Discord Username</label>
+                  <Input
+                    id="contact-discord"
+                    value={discord}
+                    onChange={(e) => setDiscord(e.target.value)}
+                    placeholder="username"
+                    required
+                  />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <label htmlFor="contact-availability" className="text-sm font-medium text-foreground">Availability</label>
+                  <Input
+                    id="contact-availability"
+                    value={availability}
+                    onChange={(e) => setAvailability(e.target.value)}
+                    placeholder="e.g. 10 hrs/week, evenings"
+                    required
+                  />
+                </div>
+              </div>
+            </>
+          ) : (
+            <div className="flex flex-col gap-1.5">
+              <label htmlFor="contact-subject" className="text-sm font-medium text-foreground">Subject</label>
+              <Input
+                id="contact-subject"
+                value={subject}
+                onChange={(e) => setSubject(e.target.value)}
+                placeholder="Brief summary of your message"
+                required
+              />
+            </div>
+          )}
+
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="contact-message" className="text-sm font-medium text-foreground">
+              {category === "staff_application" ? "Why do you want to join? (Experience, motivation, etc.)" : "Message"}
+            </label>
+            <textarea
+              id="contact-message"
+              value={message}
+              onChange={(e) => setMessage(e.target.value)}
+              placeholder={getPlaceholder(category)}
+              rows={5}
+              required
+              className="w-full rounded-lg border border-border/40 bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 resize-none leading-relaxed"
+            />
+          </div>
+
+          {category === "security" && (
+            <div className="flex items-start gap-2 text-xs text-amber-600 dark:text-amber-400 bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2">
+              <Shield className="h-4 w-4 shrink-0 mt-0.5" />
+              <span>Security reports are handled with priority. We aim to acknowledge within 24 hours and will keep you updated on the resolution.</span>
+            </div>
+          )}
+
+          {category === "staff_application" && (
+            <div className="flex items-start gap-2 text-xs text-yellow-600 dark:text-yellow-400 bg-yellow-500/10 border border-yellow-500/20 rounded-lg px-3 py-2">
+              <Users className="h-4 w-4 shrink-0 mt-0.5" />
+              <span>Staff roles are completely voluntary and unpaid. You are not obligated to work any set hours and can step down at any time. By submitting, you acknowledge this is a community contribution, not employment.</span>
+            </div>
+          )}
+
+          {category === "enterprise" && (
+            <div className="flex items-start gap-2 text-xs text-primary bg-primary/10 border border-primary/20 rounded-lg px-3 py-2">
+              <Building2 className="h-4 w-4 shrink-0 mt-0.5" />
+              <span>Enterprise plans include dedicated support, custom integrations, SSO, and volume discounts. Our team will reach out within 1 business day.</span>
+            </div>
+          )}
+
+          {error && (
+            <div className="rounded-lg border border-destructive/20 bg-destructive/5 px-3 py-2.5">
+              <p className="text-sm text-destructive" role="alert">{error}</p>
+            </div>
+          )}
+
+          <p className="text-[11px] text-muted-foreground leading-relaxed">
+            By submitting this form, you agree that we may collect and process your name, email address, 
+            and message content to respond to your inquiry. Your information will be handled in accordance 
+            with our <Link href="/legal/privacy" className="text-primary hover:underline">Privacy Policy</Link>. 
+            We will not use your contact information for marketing purposes.
+          </p>
+
+          <Button type="submit" className="w-full sm:w-auto self-end gap-1.5" disabled={isSubmitting}>
+            <Send className="h-3.5 w-3.5" />
+            {isSubmitting ? "Sending..." : "Send Message"}
+          </Button>
+        </form>
+      </CardContent>
+    </Card>
+  )
+}

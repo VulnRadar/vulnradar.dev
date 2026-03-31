@@ -65,9 +65,24 @@ export function IPRulesManager() {
     setShowAddModal(true)
   }
 
+  // Normalize domain/URL by stripping protocol and trailing slashes
+  const normalizeDomain = (value: string): string => {
+    let normalized = value.trim().toLowerCase()
+    // Remove any protocol (http://, https://, ftp://, sftp://, etc.)
+    normalized = normalized.replace(/^[a-z][a-z0-9+.-]*:\/\//i, "")
+    // Remove trailing slashes
+    normalized = normalized.replace(/\/+$/, "")
+    // Remove www. prefix (optional, keeps it simple)
+    // normalized = normalized.replace(/^www\./i, "")
+    return normalized
+  }
+
   const handleAddRule = async () => {
     setAdding(true)
     try {
+      // For URL type, normalize to domain only (strip protocol)
+      const normalizedValue = valueType === "url" ? normalizeDomain(newValue) : newValue.trim()
+      
       const res = await fetch("/api/v2/admin/features", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -76,7 +91,7 @@ export function IPRulesManager() {
           section: "access_rules",
           rule_type: ruleType,
           value_type: valueType,
-          ip_address: newValue,
+          ip_address: normalizedValue,
           description: description || (valueType === "url" ? "URL Rule" : "IP Rule"),
           reason,
         }),
@@ -290,14 +305,19 @@ export function IPRulesManager() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2 block">
-                    {valueType === "ip" ? "IP Address / CIDR" : "URL / Domain"}
+                    {valueType === "ip" ? "IP Address / CIDR" : "Domain"}
                   </label>
                   <Input
-                    placeholder={valueType === "ip" ? "192.168.1.0/24 or 10.0.0.1" : "example.com or https://example.com/*"}
+                    placeholder={valueType === "ip" ? "192.168.1.0/24 or 10.0.0.1" : "example.com (blocks all subdomains & paths)"}
                     value={newValue}
                     onChange={(e) => setNewValue(e.target.value)}
                     className="bg-background/50 border-border/40"
                   />
+                  {valueType === "url" && (
+                    <p className="text-[11px] text-muted-foreground mt-1.5">
+                      Enter domain only (no http:// or https://). Blocking example.com also blocks sub.example.com and example.com/any/path
+                    </p>
+                  )}
                 </div>
                 <div>
                   <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2 block">Rule Type</label>

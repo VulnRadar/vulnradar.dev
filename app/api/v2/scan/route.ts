@@ -12,6 +12,7 @@ import { getProtocolFromUrl, getProtocolFindings, type SupportedProtocol } from 
 import { runWebSocketChecks } from "@/lib/scanner/protocols/websocket"
 import { runFtpChecks } from "@/lib/scanner/protocols/ftp"
 import { validateScanTarget } from "@/lib/scanner/safe-fetch"
+import { checkAccessRules } from "@/lib/scanner/access-rules"
 import { sendNotificationEmail } from "@/lib/notifications/notifications"
 import { scanCompleteEmail, criticalFindingsEmail } from "@/lib/email/email"
 
@@ -202,6 +203,19 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { error: safetyCheck.reason || "URL blocked for security reasons" },
         { status: 400 }
+      )
+    }
+
+    // Check access rules (blacklist/whitelist)
+    const accessCheck = await checkAccessRules(url)
+    if (!accessCheck.allowed) {
+      return NextResponse.json(
+        { 
+          error: "This target cannot be scanned.",
+          details: "This domain or IP address has been restricted from scanning for security, privacy, or compliance reasons. Access controls are enforced to protect sensitive infrastructure and user data. If you believe this is an error, please contact support.",
+          statusCode: "BLOCKED"
+        },
+        { status: 403 }
       )
     }
 

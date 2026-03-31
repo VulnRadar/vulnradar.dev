@@ -6,27 +6,34 @@ import dynamic from "next/dynamic"
 import { Header } from "@/components/scanner/header"
 import { ScanForm, type ScanMode } from "@/components/scanner/scan-form"
 import { ScanningIndicator } from "@/components/scanner/scanning-indicator"
-import { ScanSummary } from "@/components/scanner/scan-summary"
-import { ResultsList } from "@/components/scanner/results-list"
 import { Dashboard } from "@/components/scanner/dashboard"
 import { Footer } from "@/components/scanner/footer"
-import { HistoryNotes } from "@/components/history"
+import { DashboardErrorState } from "@/components/scanner/dashboard-error-state"
+import { DashboardBulkResult } from "@/components/scanner/dashboard-bulk-result"
+import { DashboardResults } from "@/components/scanner/dashboard-results"
+import { CrawlUrlSelector } from "@/components/scanner/crawl-url-selector"
 
-// Lazy-loaded: only shown after scan results or user interaction
-const IssueDetail = dynamic(() => import("@/components/scanner/issue-detail").then(m => ({ default: m.IssueDetail })))
-const ExportButton = dynamic(() => import("@/components/scanner/export-button").then(m => ({ default: m.ExportButton })))
-const ShareButton = dynamic(() => import("@/components/scanner/share-button").then(m => ({ default: m.ShareButton })))
-const ResponseHeaders = dynamic(() => import("@/components/scanner/response-headers").then(m => ({ default: m.ResponseHeaders })))
-const SubdomainDiscovery = dynamic(() => import("@/components/scanner/subdomain-discovery").then(m => ({ default: m.SubdomainDiscovery })))
-const CrawlUrlSelector = dynamic(() => import("@/components/scanner/crawl-url-selector").then(m => ({ default: m.CrawlUrlSelector })))
 const OnboardingTour = dynamic(() => import("@/components/shared/onboarding-tour").then(m => ({ default: m.OnboardingTour })), { ssr: false })
 import type { ScanResult, ScanStatus, Vulnerability } from "@/lib/scanner/types"
 import { DEFAULT_SCAN_NOTE } from "@/lib/config/constants"
 import { API } from "@/lib/config/client-constants"
-import { AlertCircle, RotateCcw, Loader2 as Loader2Icon, Globe, ChevronDown, ChevronRight, ExternalLink, ShieldCheck } from "lucide-react"
-import { Button } from "@/components/ui/button"
+import { Loader2 as Loader2Icon } from "lucide-react"
 import { PremiumUpgradeModal, PREMIUM_FEATURES } from "@/components/modals/premium-upgrade-modal"
 import { useAuth } from "@/components/providers/auth-provider"
+
+interface CrawlPageData {
+  url: string
+  findings: Vulnerability[]
+  findings_count: number
+  summary: Record<string, number>
+  duration: number
+}
+
+interface CrawlInfo {
+  pagesDiscovered: number
+  pagesScanned: number
+  pages: CrawlPageData[]
+}
 
 export default function DashboardPage() {
   return (
@@ -58,9 +65,20 @@ function DashboardContent() {
   const [showLimitModal, setShowLimitModal] = useState(false)
   const [result, setResult] = useState<ScanResult | null>(null)
   const [scanHistoryId, setScanHistoryId] = useState<number | null>(null)
-  
-  // Sync scan ID to URL hash
-  // pushState when scan completes (back returns to clean dashboard), replaceState when resetting
+  const [error, setError] = useState<string | null>(null)
+  const [errorDetails, setErrorDetails] = useState<string | null>(null)
+  const [selectedIssue, setSelectedIssue] = useState<Vulnerability | null>(null)
+  const [scanNotes, setScanNotes] = useState("")
+  const [crawlInfo, setCrawlInfo] = useState<CrawlInfo | null>(null)
+  const [crawlDiscoveryUrls, setCrawlDiscoveryUrls] = useState<string[]>([])
+  const [crawlDiscovering, setCrawlDiscovering] = useState(false)
+  const [showCrawlSelector, setShowCrawlSelector] = useState(false)
+  const [pendingCrawlUrl, setPendingCrawlUrl] = useState("")
+  const [pendingScanners, setPendingScanners] = useState<string[] | undefined>(undefined)
+  const [bulkStatus, setBulkStatus] = useState<"idle" | "scanning" | "done">("idle")
+  const [bulkProgress, setBulkProgress] = useState<{ current: number; total: number } | undefined>(undefined)
+  const [bulkResult, setBulkResult] = useState<{ total: number; successful: number; failed: number; skipped: number } | null>(null)
+
   const updateUrlWithScan = useCallback((id: number | null) => {
     if (typeof window === "undefined") return
     if (id) {
@@ -70,40 +88,30 @@ function DashboardContent() {
     }
   }, [])
 
-  // Handle URL hash changes for navigation
-  // - If user manually navigates to /dashboard#scan-{id} while idle, redirect to history
-  // - If hash is cleared (e.g., clicking logo from /dashboard#scan-305 → /dashboard), reset view
   useEffect(() => {
     if (typeof window === "undefined") return
-    
-    // Track previous hash to detect when it's cleared
     let prevHash = window.location.hash
     
     const checkHash = () => {
       const hash = window.location.hash
-      
-      // Hash was cleared (went from #scan-X to no hash) - reset to idle dashboard
       if (prevHash.startsWith("#scan-") && !hash && status === "done") {
         prevHash = hash
-        // Reset the dashboard state
         setStatus("idle")
         setResult(null)
-        setScanHistoryId(null)
-        setError(null)
-        setSelectedIssue(null)
-        setScanNotes("")
+    setScanHistoryId(null)
+    setError(null)
+    setErrorDetails(null)
+    setSelectedIssue(null)
+    setScanNotes("")
         setCrawlInfo(null)
         return
       }
-      
-      // User navigated to #scan-{id} while idle - redirect to history
       if (hash.startsWith("#scan-") && status === "idle") {
         const id = hash.replace("#scan-", "")
         if (id && !isNaN(parseInt(id, 10))) {
           window.location.href = `/history#${id}`
         }
       }
-      
       prevHash = hash
     }
     
@@ -111,14 +119,6 @@ function DashboardContent() {
     window.addEventListener("hashchange", checkHash)
     return () => window.removeEventListener("hashchange", checkHash)
   }, [status])
-  const [error, setError] = useState<string | null>(null)
-  const [selectedIssue, setSelectedIssue] = useState<Vulnerability | null>(null)
-  const [scanNotes, setScanNotes] = useState("")
-  const [crawlInfo, setCrawlInfo] = useState<CrawlInfo | null>(null)
-  const [crawlDiscoveryUrls, setCrawlDiscoveryUrls] = useState<string[]>([])
-  const [crawlDiscovering, setCrawlDiscovering] = useState(false)
-  const [showCrawlSelector, setShowCrawlSelector] = useState(false)
-  const [pendingCrawlUrl, setPendingCrawlUrl] = useState("")
 
   async function handleSaveNotes(notes: string) {
     if (!scanHistoryId) return
@@ -132,20 +132,13 @@ function DashboardContent() {
     } catch { /* ignore */ }
   }
 
-  const [pendingScanners, setPendingScanners] = useState<string[] | undefined>(undefined)
-  const [bulkStatus, setBulkStatus] = useState<"idle" | "scanning" | "done">("idle")
-  const [bulkProgress, setBulkProgress] = useState<{ current: number; total: number } | undefined>(undefined)
-  const [bulkResult, setBulkResult] = useState<{ total: number; successful: number; failed: number; skipped: number } | null>(null)
-
   const handleScan = useCallback(async (url: string, mode: ScanMode = "quick", scanners?: string[], protocol?: string) => {
     setPendingScanners(scanners)
-    // Deep crawl: first discover URLs, then show selector
-    // Note: Deep crawl only works for HTTP/HTTPS protocols
     if (mode === "deep" && (!protocol || protocol.startsWith("http"))) {
       setPendingCrawlUrl(url)
       setShowCrawlSelector(true)
       setCrawlDiscovering(true)
-      setCrawlDiscoveryUrls([url]) // always include the entry URL
+      setCrawlDiscoveryUrls([url])
 
       try {
         const res = await fetch(API.SCAN_CRAWL_DISCOVER, {
@@ -162,7 +155,6 @@ function DashboardContent() {
       return
     }
 
-    // Quick scan (or crawl with pre-selected URLs)
     runScan(url, undefined, scanners)
   }, [])
 
@@ -171,6 +163,7 @@ function DashboardContent() {
     setResult(null)
     setScanHistoryId(null)
     setError(null)
+    setErrorDetails(null)
     setSelectedIssue(null)
     setScanNotes("")
     setCrawlInfo(null)
@@ -191,18 +184,17 @@ function DashboardContent() {
       const data = await response.json()
 
       if (!response.ok) {
-        // Show upgrade modal for daily scan limit (429 with remaining: 0)
         if (response.status === 429 && (data.remaining === 0 || data.error?.toLowerCase().includes("daily scan limit") || data.error?.toLowerCase().includes("scan limit"))) {
           setStatus("idle")
           setShowLimitModal(true)
           return
         }
         setError(data.error || "An unexpected error occurred.")
+        setErrorDetails(data.details || null)
         setStatus("failed")
         return
       }
 
-      // For deep crawl: show only the main URL's findings in the result view
       if (data.crawl && data.crawl.pages?.length > 0) {
         const mainPage = data.crawl.pages[0]
         setResult({
@@ -216,16 +208,14 @@ function DashboardContent() {
         setResult(data)
       }
       const historyId = data.scanHistoryId || null
-  setScanHistoryId(historyId)
-  setScanNotes(DEFAULT_SCAN_NOTE)
-  setStatus("done")
+      setScanHistoryId(historyId)
+      setScanNotes(DEFAULT_SCAN_NOTE)
+      setStatus("done")
       
-      // Update URL with scan ID for bookmarking/sharing
       if (historyId) {
         updateUrlWithScan(historyId)
       }
 
-      // Auto-save default note to DB
       if (historyId) {
         fetch(`${API.HISTORY}/${historyId}`, {
           method: "PATCH",
@@ -237,7 +227,7 @@ function DashboardContent() {
       setError("Failed to connect to the scanner. Please check your connection and try again.")
       setStatus("failed")
     }
-  }, [])
+  }, [updateUrlWithScan])
 
   function handleCrawlConfirm(selectedUrls: string[]) {
     setShowCrawlSelector(false)
@@ -261,7 +251,6 @@ function DashboardContent() {
     let failed = 0
     let skipped = 0
     
-    // Scan URLs sequentially to show progress
     for (let i = 0; i < urls.length; i++) {
       setBulkProgress({ current: i + 1, total: urls.length })
       
@@ -277,7 +266,6 @@ function DashboardContent() {
           successful++
         } else if (res.status === 429 || data.error?.toLowerCase().includes("daily scan limit") || data.error?.toLowerCase().includes("scan limit")) {
           skipped++
-          // Show upgrade modal on first limit hit during bulk scan
           if (skipped === 1) {
             setShowLimitModal(true)
           }
@@ -294,7 +282,6 @@ function DashboardContent() {
     setBulkStatus("done")
   }, [])
 
-  // Auto-scan if ?scan= param is present (e.g. from subdomain scan button on other pages)
   useEffect(() => {
     const scanUrl = searchParams.get("scan")
     if (scanUrl && status === "idle") {
@@ -308,6 +295,7 @@ function DashboardContent() {
     setResult(null)
     setScanHistoryId(null)
     setError(null)
+    setErrorDetails(null)
     setSelectedIssue(null)
     setScanNotes("")
     setCrawlInfo(null)
@@ -315,17 +303,16 @@ function DashboardContent() {
     setCrawlDiscoveryUrls([])
     setPendingCrawlUrl("")
     setCrawlDiscovering(false)
-    // Clear scan from URL
     updateUrlWithScan(null)
   }
 
   return (
-  <div className="min-h-screen flex flex-col bg-background">
-  <OnboardingTour />
-  <Header />
+    <div className="min-h-screen flex flex-col bg-background">
+      <OnboardingTour />
+      <Header />
 
       <main className="flex-1 w-full max-w-5xl mx-auto px-4 pb-12">
-        {/* Scan form always visible at top */}
+        {/* Scan form */}
         {status !== "done" && (
           <ScanForm
             onScan={handleScan}
@@ -338,21 +325,10 @@ function DashboardContent() {
 
         {/* Bulk scan result banner */}
         {bulkStatus === "done" && bulkResult && status === "idle" && (
-          <div className="mx-auto max-w-lg w-full -mt-2 mb-2 rounded-xl border border-border bg-card/60 px-4 py-3 flex items-center justify-between gap-3">
-            <p className="text-sm text-foreground">
-              Bulk scan complete &mdash;{" "}
-              <span className="text-emerald-500 font-medium">{bulkResult.successful} succeeded</span>
-              {bulkResult.failed > 0 && <span className="text-destructive font-medium">, {bulkResult.failed} failed</span>}
-              {bulkResult.skipped > 0 && <span className="text-muted-foreground">, {bulkResult.skipped} skipped (limit)</span>}
-            </p>
-            <button
-              type="button"
-              onClick={() => { setBulkResult(null); setBulkStatus("idle") }}
-              className="text-xs text-muted-foreground hover:text-foreground shrink-0"
-            >
-              Dismiss
-            </button>
-          </div>
+          <DashboardBulkResult
+            result={bulkResult}
+            onDismiss={() => { setBulkResult(null); setBulkStatus("idle") }}
+          />
         )}
 
         {/* Dashboard when idle */}
@@ -363,92 +339,22 @@ function DashboardContent() {
 
         {/* Error state */}
         {status === "failed" && error && (
-          <div className="flex flex-col items-center gap-5 py-12">
-            <div className="flex items-center justify-center w-12 h-12 rounded-xl bg-destructive/10">
-              <AlertCircle className="h-6 w-6 text-destructive" />
-            </div>
-            <div className="flex flex-col items-center gap-2 text-center max-w-sm">
-              <h2 className="text-base font-semibold text-foreground">Scan Failed</h2>
-              <p className="text-sm text-muted-foreground leading-relaxed">{error}</p>
-            </div>
-            <Button variant="outline" onClick={handleReset} className="bg-transparent">
-              <RotateCcw className="mr-2 h-4 w-4" />
-              <span className="hidden sm:inline">Try Again</span>
-            </Button>
-          </div>
+          <DashboardErrorState error={error} details={errorDetails || undefined} onRetry={handleReset} />
         )}
 
         {/* Results */}
         {status === "done" && result && (
-          <div className="flex flex-col gap-6 pt-6">
-            {!selectedIssue ? (
-              <>
-                {/* Header card - matching history detail view */}
-                <div className="flex flex-col gap-4 p-4 rounded-xl border border-border/50 bg-card/50">
-                  <div className="flex items-start gap-3">
-                    <div className="p-2 rounded-lg bg-primary/10 shrink-0">
-                      <Globe className="h-4 w-4 text-primary" />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="text-xs text-muted-foreground mb-0.5">Scanned URL</p>
-                      <p className="text-sm font-medium text-foreground break-all font-mono">{result.url}</p>
-                    </div>
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    <Button variant="outline" onClick={handleReset} size="sm" className="bg-transparent">
-                      <RotateCcw className="h-4 w-4 sm:mr-2" />
-                      <span className="hidden sm:inline">New Scan</span>
-                    </Button>
-                    <div className="flex-1" />
-                    <ExportButton result={result} />
-                    {scanHistoryId && <ShareButton scanId={scanHistoryId} />}
-                  </div>
-                </div>
-
-                {/* Scan summary */}
-                <ScanSummary result={result} />
-
-                {/* Deep crawl: other pages scanned */}
-                {crawlInfo && crawlInfo.pages.length > 1 && (
-                  <CrawlPagesInfo crawlInfo={crawlInfo} onSelectIssue={setSelectedIssue} />
-                )}
-
-                {/* Response headers */}
-                {result.responseHeaders && Object.keys(result.responseHeaders).length > 0 && (
-                  <ResponseHeaders headers={result.responseHeaders} />
-                )}
-
-                {/* Subdomain discovery */}
-                <SubdomainDiscovery url={result.url} onScanSubdomain={(subUrl) => handleScan(subUrl)} />
-
-                {/* Notes - using shared HistoryNotes component */}
-                {scanHistoryId && (
-                  <HistoryNotes
-                    notes={scanNotes}
-                    isOwner={true}
-                    onSave={handleSaveNotes}
-                  />
-                )}
-
-                {/* Results list or empty state */}
-                {result.findings.length > 0 ? (
-                  <ResultsList findings={result.findings} onSelectIssue={setSelectedIssue} />
-                ) : (
-                  <div className="flex flex-col items-center gap-3 py-8 text-center rounded-xl border border-dashed border-border">
-                    <div className="w-10 h-10 rounded-lg bg-emerald-500/10 flex items-center justify-center">
-                      <ShieldCheck className="h-5 w-5 text-emerald-500" />
-                    </div>
-                    <p className="text-sm font-medium text-foreground">No issues found</p>
-                    <p className="text-xs text-muted-foreground max-w-xs">
-                      This scan came back clean with no detected vulnerabilities.
-                    </p>
-                  </div>
-                )}
-              </>
-            ) : (
-              <IssueDetail issue={selectedIssue} onBack={() => setSelectedIssue(null)} />
-            )}
-          </div>
+          <DashboardResults
+            result={result}
+            selectedIssue={selectedIssue}
+            onSelectIssue={setSelectedIssue}
+            scanHistoryId={scanHistoryId}
+            scanNotes={scanNotes}
+            crawlInfo={crawlInfo}
+            onReset={handleReset}
+            onScanSubdomain={(subUrl) => handleScan(subUrl)}
+            onSaveNotes={handleSaveNotes}
+          />
         )}
       </main>
 
@@ -474,163 +380,3 @@ function DashboardContent() {
     </div>
   )
 }
-
-interface CrawlPageData {
-  url: string
-  findings: Vulnerability[]
-  findings_count: number
-  summary: Record<string, number>
-  duration: number
-}
-
-interface CrawlInfo {
-  pagesDiscovered: number
-  pagesScanned: number
-  pages: CrawlPageData[]
-}
-
-function CrawlPagesInfo({ crawlInfo, onSelectIssue }: { crawlInfo: CrawlInfo; onSelectIssue: (issue: Vulnerability) => void }) {
-  const [open, setOpen] = useState(false)
-  const [expandedPage, setExpandedPage] = useState<string | null>(null)
-  // Skip first page (already shown as main results)
-  const otherPages = crawlInfo.pages.slice(1)
-  const totalOtherIssues = otherPages.reduce((sum, p) => sum + p.findings_count, 0)
-
-  function getPath(u: string) {
-    try { return new URL(u).pathname + new URL(u).search || "/" } catch { return u }
-  }
-
-  const SEV_DOT: Record<string, string> = {
-    critical: "bg-red-500",
-    high: "bg-orange-500",
-    medium: "bg-amber-500",
-    low: "bg-blue-500",
-    info: "bg-muted-foreground/50",
-  }
-  const SEV_TEXT: Record<string, string> = {
-    critical: "text-red-500 bg-red-500/10 border-red-500/20",
-    high: "text-orange-500 bg-orange-500/10 border-orange-500/20",
-    medium: "text-amber-500 bg-amber-500/10 border-amber-500/20",
-    low: "text-blue-500 bg-blue-500/10 border-blue-500/20",
-    info: "text-muted-foreground bg-muted border-border",
-  }
-
-  return (
-    <div className="rounded-xl border border-border bg-card overflow-hidden">
-      {/* Header (matches subdomain discovery style) */}
-      <button
-        type="button"
-        onClick={() => setOpen(!open)}
-        className="flex items-center gap-2 w-full px-4 py-3 text-left hover:bg-muted/50 transition-colors"
-      >
-        <Globe className="h-4 w-4 text-primary shrink-0" />
-        <span className="text-sm font-semibold text-foreground flex-1">
-          Also Crawled
-        </span>
-        <span className="text-xs text-muted-foreground">
-          {otherPages.length} {otherPages.length === 1 ? "page" : "pages"} / {totalOtherIssues} issues
-        </span>
-        {open ? (
-          <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0" />
-        ) : (
-          <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
-        )}
-      </button>
-
-      {open && (
-        <div className="border-t border-border">
-          {/* Stats bar */}
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 px-4 py-2 bg-muted/30 border-b border-border">
-            <span className="text-xs text-muted-foreground">
-              Pages: <span className="font-medium text-foreground">{otherPages.length}</span>
-            </span>
-            <span className="text-xs text-amber-600 dark:text-amber-400">
-              {totalOtherIssues} total issues
-            </span>
-            <span className="text-xs text-muted-foreground">
-              {otherPages.filter(p => p.findings_count === 0).length} clean
-            </span>
-          </div>
-
-          {/* Page rows */}
-          <div className="px-4 py-3">
-            <div className="flex flex-col gap-1">
-              {otherPages.map((page) => {
-                const path = getPath(page.url)
-                const isExpanded = expandedPage === page.url
-
-                return (
-                  <div key={page.url}>
-                    <div className="flex items-center gap-1.5 sm:gap-2 px-1.5 sm:px-2 py-1.5 rounded-md hover:bg-muted/50 transition-colors group">
-                      <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${page.findings_count > 0 ? "bg-amber-500" : "bg-emerald-500"}`} />
-                      <button
-                        type="button"
-                        onClick={() => setExpandedPage(isExpanded ? null : page.url)}
-                        className="text-[10px] sm:text-xs font-mono text-foreground truncate flex-1 text-left hover:text-primary transition-colors"
-                      >
-                        {path}
-                      </button>
-                      <span className={`text-[10px] font-mono shrink-0 ${page.findings_count > 0 ? "text-amber-500" : "text-emerald-500"}`}>
-                        {page.findings_count}
-                      </span>
-                      <span className="text-[10px] text-muted-foreground shrink-0 hidden sm:inline tabular-nums">
-                        {(page.duration / 1000).toFixed(1)}s
-                      </span>
-                      <a
-                        href={page.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-muted-foreground hover:text-primary transition-opacity shrink-0"
-                      >
-                        <ExternalLink className="h-3 w-3" />
-                      </a>
-                      {isExpanded ? (
-                        <ChevronDown className="h-3 w-3 text-muted-foreground shrink-0 cursor-pointer" onClick={() => setExpandedPage(null)} />
-                      ) : (
-                        <ChevronRight className="h-3 w-3 text-muted-foreground shrink-0 cursor-pointer" onClick={() => setExpandedPage(page.url)} />
-                      )}
-                    </div>
-
-                    {isExpanded && (
-                      <div className="ml-4 pl-2 border-l-2 border-border/40 mt-1 mb-2">
-                        {page.findings.length === 0 ? (
-                          <p className="text-[10px] text-emerald-500/80 py-1.5 italic">No issues found.</p>
-                        ) : (
-                          <div className="flex flex-col gap-0.5">
-                            {page.findings.map((f) => (
-                              <button
-                                type="button"
-                                key={`${page.url}-${f.id}`}
-                                onClick={() => onSelectIssue(f)}
-                                className="flex items-center gap-2 px-1.5 py-1 rounded-md hover:bg-muted/50 transition-colors text-left"
-                              >
-                                <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${SEV_DOT[f.severity] || SEV_DOT.info}`} />
-                                <span className="text-[10px] sm:text-xs text-foreground truncate flex-1">
-                                  {f.title}
-                                </span>
-                                <span className={`text-[9px] sm:text-[10px] font-medium uppercase shrink-0 ${
-                                  f.severity === "critical" ? "text-red-500" :
-                                  f.severity === "high" ? "text-orange-500" :
-                                  f.severity === "medium" ? "text-amber-500" :
-                                  f.severity === "low" ? "text-blue-500" :
-                                  "text-muted-foreground"
-                                }`}>
-                                  {f.severity}
-                                </span>
-                              </button>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                )
-              })}
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  )
-}
-

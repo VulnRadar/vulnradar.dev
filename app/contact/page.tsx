@@ -1,374 +1,81 @@
 "use client"
 
-import React from "react"
-
-import { useState, useEffect, useRef } from "react"
-import Script from "next/script"
+import { useState, useEffect } from "react"
 import { Header } from "@/components/scanner/header"
 import { Footer } from "@/components/scanner/footer"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import {
-  Bug,
-  Lightbulb,
-  HelpCircle,
-  Shield,
-  Send,
-  CheckCircle2,
-  Mail,
-  FileText,
-  BookOpen,
-  Users,
-} from "lucide-react"
-import Link from "next/link"
-import { cn } from "@/lib/ui/utils"
-import { SUPPORT_EMAIL, TURNSTILE_ENABLED, API } from "@/lib/config/constants"
+  ContactQuickLinks,
+  ContactCategorySelector,
+  ContactForm,
+  ContactSuccess,
+  CATEGORIES,
+} from "@/components/contact"
 
-const CATEGORIES = [
-  { id: "bug", label: "Bug Report", icon: Bug, desc: "Something is broken or not working as expected" },
-  { id: "feature", label: "Feature Request", icon: Lightbulb, desc: "Suggest a new feature or improvement" },
-  { id: "security", label: "Security Issue", icon: Shield, desc: "Report a security vulnerability" },
-  { id: "help", label: "General Help", icon: HelpCircle, desc: "Need help using VulnRadar" },
-  { id: "staff_application", label: "Apply for Staff", icon: Users, desc: "Join the VulnRadar team" },
-]
-
-const STAFF_ROLES = [
-  { id: "support", label: "Support", desc: "Help users with technical issues and questions" },
-  { id: "moderator", label: "Moderator", desc: "Enforce policies and maintain community standards" },
-]
+const VALID_CATEGORIES = CATEGORIES.map((c) => c.id)
 
 export default function ContactPage() {
   const [category, setCategory] = useState<string | null>(null)
-  const [name, setName] = useState("")
-  const [email, setEmail] = useState("")
-  const [emailLocked, setEmailLocked] = useState(false)
-  const [subject, setSubject] = useState("")
-  const [message, setMessage] = useState("")
-  const [staffRole, setStaffRole] = useState("")
-  const [discord, setDiscord] = useState("")
-  const [availability, setAvailability] = useState("")
   const [submitted, setSubmitted] = useState(false)
-  const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [turnstileToken, setTurnstileToken] = useState<string | null>(null)
-  const [scriptLoaded, setScriptLoaded] = useState(false)
-  const widgetRef = useRef<HTMLDivElement>(null)
-  const widgetIdRef = useRef<string | null>(null)
 
-  // Auto-fill email from logged-in user
+  // Handle hash-based category selection (e.g., /contact#bug)
   useEffect(() => {
-    async function fetchUser() {
-      try {
-        const res = await fetch(API.AUTH.ME)
-        if (res.ok) {
-          const data = await res.json()
-          if (data?.email) {
-            setEmail(data.email)
-            setEmailLocked(true)
-          }
-          if (data?.name) {
-            setName(data.name)
-          }
-        }
-      } catch { /* not logged in */ }
+    function handleHash() {
+      const hash = window.location.hash.slice(1) // Remove #
+      if (hash && VALID_CATEGORIES.includes(hash)) {
+        setCategory(hash)
+      }
     }
-    fetchUser()
+    handleHash()
+    window.addEventListener("hashchange", handleHash)
+    return () => window.removeEventListener("hashchange", handleHash)
   }, [])
 
-  // Render Turnstile widget after script loads and category is selected
-  useEffect(() => {
-    if (!TURNSTILE_ENABLED || !scriptLoaded || !widgetRef.current || !category || widgetIdRef.current) return
-
-    const turnstile = (window as any).turnstile
-    if (!turnstile) return
-
-    try {
-      widgetIdRef.current = turnstile.render(widgetRef.current, {
-        sitekey: process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY,
-        theme: "dark",
-        callback: (token: string) => {
-          setTurnstileToken(token)
-        },
-      })
-    } catch (err) {
-      console.error("Failed to render Turnstile:", err)
-    }
-
-    return () => {
-      if (widgetIdRef.current && turnstile) {
-        try {
-          turnstile.remove(widgetIdRef.current)
-          widgetIdRef.current = null
-        } catch {}
-      }
-    }
-  }, [scriptLoaded, category])
-
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault()
-    if (!category) {
-      setError("Please choose a category.")
-      return
-    }
-
-    if (category === "staff_application" && !staffRole) {
-      setError("Please select a role you're applying for.")
-      return
-    }
-
-    if (TURNSTILE_ENABLED && !turnstileToken) {
-      setError("Please complete the captcha verification.")
-      return
-    }
-
-    setIsSubmitting(true)
-    setError(null)
-
-    const isStaff = category === "staff_application"
-    const finalSubject = isStaff
-        ? `Staff Application: ${STAFF_ROLES.find((r) => r.id === staffRole)?.label}`
-        : subject
-    const finalMessage = isStaff
-        ? [
-          `Role: ${STAFF_ROLES.find((r) => r.id === staffRole)?.label}`,
-          `Discord: ${discord || "Not provided"}`,
-          `Availability: ${availability || "Not provided"}`,
-          "",
-          "--- Details ---",
-          message,
-        ].join("\n")
-        : message
-
-    try {
-      const res = await fetch(API.CONTACT, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name,
-          email,
-          subject: finalSubject,
-          message: finalMessage,
-          category,
-          turnstileToken: TURNSTILE_ENABLED ? turnstileToken : null,
-        }),
-      })
-
-      if (!res.ok) {
-        const data = await res.json().catch(() => null)
-        setError(data?.error || "Unable to send your message. Please try again.")
-        return
-      }
-
-      setSubmitted(true)
-    } catch {
-      setError("Unable to send your message. Please try again.")
-    } finally {
-      setIsSubmitting(false)
+  // Update URL hash when category changes
+  function handleCategoryChange(newCategory: string | null) {
+    setCategory(newCategory)
+    if (newCategory) {
+      window.history.replaceState(null, "", `#${newCategory}`)
+    } else {
+      window.history.replaceState(null, "", window.location.pathname)
     }
   }
 
+  function handleReset() {
+    setSubmitted(false)
+    setCategory(null)
+    setError(null)
+    window.history.replaceState(null, "", window.location.pathname)
+  }
+
   return (
-      <div className="min-h-screen flex flex-col bg-background">
-        <Header />
-        <main className="flex-1 w-full max-w-3xl mx-auto px-4 py-6 sm:py-10">
-          <div className="flex flex-col gap-2 mb-8">
-            <h1 className="text-2xl font-bold text-foreground">Contact & Support</h1>
-            <p className="text-sm text-muted-foreground leading-relaxed">
-              Need help? Found a bug? Have a great idea? {"We'd"} love to hear from you.
-            </p>
+    <div className="min-h-screen flex flex-col bg-background">
+      <Header />
+      <main className="flex-1 w-full max-w-3xl mx-auto px-4 py-6 sm:py-10">
+        <div className="flex flex-col gap-2 mb-8">
+          <h1 className="text-2xl font-bold text-foreground">Contact & Support</h1>
+          <p className="text-sm text-muted-foreground leading-relaxed">
+            Need help? Found a bug? Have a great idea? {"We'd"} love to hear from you.
+          </p>
+        </div>
+
+        {submitted ? (
+          <ContactSuccess category={category} onReset={handleReset} />
+        ) : (
+          <div className="flex flex-col gap-6">
+            <ContactQuickLinks />
+            <ContactCategorySelector selected={category} onSelect={handleCategoryChange} />
+            {category && (
+              <ContactForm
+                category={category}
+                onSuccess={() => setSubmitted(true)}
+                onError={setError}
+              />
+            )}
           </div>
-
-          {submitted ? (
-              <Card className="bg-card border-border">
-                <CardContent className="py-12 flex flex-col items-center gap-4 text-center">
-                  <div className="h-14 w-14 rounded-full bg-emerald-500/10 flex items-center justify-center">
-                    <CheckCircle2 className="h-7 w-7 text-emerald-500" />
-                  </div>
-                  <div>
-                    <h2 className="text-lg font-bold text-foreground">Message Received</h2>
-                    <p className="text-sm text-muted-foreground mt-1 max-w-sm leading-relaxed">
-                      Thank you for reaching out. {"We'll"} review your {category === "security" ? "security report" : "message"} and get back to you as soon as possible.
-                    </p>
-                  </div>
-                  <div className="flex gap-3 mt-2">
-                    <Button variant="outline" className="bg-transparent" onClick={() => {
-                      setSubmitted(false);
-                      setCategory(null);
-                      setSubject("");
-                      setMessage("");
-                      setStaffRole("");
-                      setDiscord("");
-                      setAvailability("");
-                      if (!emailLocked) { setName(""); setEmail(""); }
-                      setError(null);
-                      setTurnstileToken(null);
-                    }}>
-                      Send Another
-                    </Button>
-                    <Link href="/"><Button>Back to Scanner</Button></Link>
-                  </div>
-                </CardContent>
-              </Card>
-          ) : (
-              <div className="flex flex-col gap-6">
-                {/* Quick links */}
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  {[
-                    { icon: BookOpen, label: "Documentation", href: "/docs", desc: "Guides & API reference" },
-                    { icon: FileText, label: "Changelog", href: "/changelog", desc: "Latest updates" },
-                    { icon: Mail, label: "Email Us", href: `mailto:${SUPPORT_EMAIL}`, desc: SUPPORT_EMAIL },
-                  ].map((link) => (
-                      <Link key={link.label} href={link.href} className="flex items-center gap-3 p-3 rounded-xl border border-border bg-card hover:bg-muted/50 hover:border-accent transition-all">
-                        <div className="flex items-center justify-center w-9 h-9 rounded-lg bg-primary/10 shrink-0">
-                          <link.icon className="h-4 w-4 text-primary" />
-                        </div>
-                        <div>
-                          <p className="text-sm font-medium text-foreground">{link.label}</p>
-                          <p className="text-[11px] text-muted-foreground">{link.desc}</p>
-                        </div>
-                      </Link>
-                  ))}
-                </div>
-
-                {/* Category selection */}
-                <div>
-                  <p className="text-sm font-medium text-foreground mb-3">What can we help you with?</p>
-                  <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
-                    {CATEGORIES.map((cat) => (
-                        <button
-                            key={cat.id}
-                            type="button"
-                            onClick={() => setCategory(cat.id)}
-                            className={cn(
-                                "flex flex-col items-center gap-2 p-4 rounded-xl border transition-all text-center",
-                                category === cat.id
-                                    ? "border-primary bg-primary/5"
-                                    : "border-border bg-card hover:bg-muted/50 hover:border-accent"
-                            )}
-                        >
-                          <cat.icon className={cn("h-5 w-5", category === cat.id ? "text-primary" : "text-muted-foreground")} />
-                          <span className="text-xs font-medium text-foreground">{cat.label}</span>
-                        </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Contact form */}
-                {category && (
-                    <Card className="bg-card border-border">
-                      <CardHeader className="pb-2">
-                        <CardTitle className="text-base">
-                          {CATEGORIES.find((c) => c.id === category)?.label}
-                        </CardTitle>
-                      </CardHeader>
-                      <CardContent>
-                        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                            <div className="flex flex-col gap-1.5">
-                              <label htmlFor="contact-name" className="text-sm font-medium text-foreground">Name</label>
-                              <Input id="contact-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Your name" required />
-                            </div>
-                            <div className="flex flex-col gap-1.5">
-                              <label htmlFor="contact-email" className="text-sm font-medium text-foreground">Email</label>
-                              <Input id="contact-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" required readOnly={emailLocked} className={emailLocked ? "opacity-60 cursor-not-allowed" : ""} />
-                              {emailLocked && <p className="text-[11px] text-muted-foreground">Auto-filled from your account</p>}
-                            </div>
-                          </div>
-                          {category === "staff_application" ? (
-                              <>
-                                <div className="flex flex-col gap-1.5">
-                                  <label htmlFor="contact-role" className="text-sm font-medium text-foreground">Role</label>
-                                  <select
-                                      id="contact-role"
-                                      value={staffRole}
-                                      onChange={(e) => setStaffRole(e.target.value)}
-                                      required
-                                      className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
-                                  >
-                                    <option value="">Select a role...</option>
-                                    {STAFF_ROLES.map((r) => (
-                                        <option key={r.id} value={r.id}>{r.label} - {r.desc}</option>
-                                    ))}
-                                  </select>
-                                </div>
-                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                  <div className="flex flex-col gap-1.5">
-                                    <label htmlFor="contact-discord" className="text-sm font-medium text-foreground">Discord Username</label>
-                                    <Input id="contact-discord" value={discord} onChange={(e) => setDiscord(e.target.value)} placeholder="username" required />
-                                  </div>
-                                  <div className="flex flex-col gap-1.5">
-                                    <label htmlFor="contact-availability" className="text-sm font-medium text-foreground">Availability</label>
-                                    <Input id="contact-availability" value={availability} onChange={(e) => setAvailability(e.target.value)} placeholder="e.g. 10 hrs/week, evenings" required />
-                                  </div>
-                                </div>
-                              </>
-                          ) : (
-                              <div className="flex flex-col gap-1.5">
-                                <label htmlFor="contact-subject" className="text-sm font-medium text-foreground">Subject</label>
-                                <Input id="contact-subject" value={subject} onChange={(e) => setSubject(e.target.value)} placeholder="Brief summary of your message" required />
-                              </div>
-                          )}
-                          <div className="flex flex-col gap-1.5">
-                            <label htmlFor="contact-message" className="text-sm font-medium text-foreground">{category === "staff_application" ? "Why do you want to join? (Experience, motivation, etc.)" : "Message"}</label>
-                            <textarea
-                                id="contact-message"
-                                value={message}
-                                onChange={(e) => setMessage(e.target.value)}
-                                placeholder={category === "bug" ? "What happened? Steps to reproduce, expected vs actual behavior..." : category === "security" ? "Please describe the vulnerability in detail. Include steps to reproduce if possible." : category === "feature" ? "Describe the feature you'd like to see and how it would help your workflow..." : "How can we help you?"}
-                                rows={5}
-                                required
-                                className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 resize-none leading-relaxed"
-                            />
-                          </div>
-                          {category === "security" && (
-                              <div className="flex items-start gap-2 text-xs text-amber-600 dark:text-amber-400 bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2">
-                                <Shield className="h-4 w-4 shrink-0 mt-0.5" />
-                                <span>Security reports are handled with priority. We aim to acknowledge within 24 hours and will keep you updated on the resolution.</span>
-                              </div>
-                          )}
-                          {category === "staff_application" && (
-                              <div className="flex items-start gap-2 text-xs text-yellow-600 dark:text-yellow-400 bg-yellow-500/10 border border-yellow-500/20 rounded-lg px-3 py-2">
-                                <Users className="h-4 w-4 shrink-0 mt-0.5" />
-                                <span>Staff roles are completely voluntary and unpaid. You are not obligated to work any set hours and can step down at any time. By submitting, you acknowledge this is a community contribution, not employment.</span>
-                              </div>
-                          )}
-
-                          {error && (
-                              <div className="rounded-lg border border-destructive/20 bg-destructive/5 px-3 py-2.5">
-                                <p className="text-sm text-destructive" role="alert">{error}</p>
-                              </div>
-                          )}
-
-                          {/* Privacy Notice */}
-                          <p className="text-[11px] text-muted-foreground leading-relaxed">
-                            By submitting this form, you agree that we may collect and process your name, email address, 
-                            and message content to respond to your inquiry. Your information will be handled in accordance 
-                            with our <Link href="/legal/privacy" className="text-primary hover:underline">Privacy Policy</Link>. 
-                            We will not use your contact information for marketing purposes.
-                          </p>
-
-                          <Button type="submit" className="w-full sm:w-auto self-end gap-1.5" disabled={isSubmitting || (TURNSTILE_ENABLED && !turnstileToken)}>
-                            <Send className="h-3.5 w-3.5" />{isSubmitting ? "Sending..." : "Send Message"}
-                          </Button>
-
-                          {TURNSTILE_ENABLED && <div ref={widgetRef} className="flex justify-center" />}
-                        </form>
-                      </CardContent>
-                    </Card>
-                )}
-              </div>
-          )}
-        </main>
-        <Footer />
-        {TURNSTILE_ENABLED && (
-            <Script
-                src="https://challenges.cloudflare.com/turnstile/v0/api.js"
-                strategy="afterInteractive"
-                onLoad={() => setScriptLoaded(true)}
-            />
         )}
-      </div>
+      </main>
+      <Footer />
+    </div>
   )
 }
