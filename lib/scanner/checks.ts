@@ -957,8 +957,26 @@ const detectors: Record<string, DetectFn> = {
     const external = forms.filter((f) => {
       const match = f.match(/action=["'](https?:\/\/[^"'/]+)/i)
       if (!match) return false
-      const domain = match[1].toLowerCase()
-      return !domain.includes("stripe.com") && !domain.includes("paypal.com") && !domain.includes("google.com")
+      const urlString = match[1].toLowerCase()
+      
+      // Parse the URL to extract the hostname
+      try {
+        const url = new URL(urlString)
+        const hostname = url.hostname
+        
+        // List of allowed payment/auth hosts
+        const allowedHosts = ["stripe.com", "paypal.com", "google.com"]
+        
+        // Check if hostname exactly matches or is a subdomain of allowed hosts
+        const isAllowed = allowedHosts.some(host => 
+          hostname === host || hostname.endsWith("." + host)
+        )
+        
+        return !isAllowed
+      } catch {
+        // If URL parsing fails, consider it external
+        return true
+      }
     })
     return external.length > 0 ? `Found ${external.length} form(s) submitting to external domains.` : null
   },
