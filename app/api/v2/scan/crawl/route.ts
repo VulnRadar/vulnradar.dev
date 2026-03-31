@@ -90,7 +90,10 @@ async function discoverInternalLinks(startUrl: string): Promise<string[]> {
         continue
       }
       
-      const res = await fetch(url, {
+      // Use the validated URL object's href for the fetch
+      const safeUrl = urlObj.href
+      
+      const res = await fetch(safeUrl, {
         method: "GET",
         headers: { "User-Agent": `${APP_NAME}/1.0 (Crawler)` },
         redirect: "follow",
