@@ -4,7 +4,8 @@ import { useEffect, useRef } from "react"
 import Link from "next/link"
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { FileJson, Package, Github, ExternalLink, Zap, Lightbulb, BookOpen } from "lucide-react"
+import { FileJson, Package, GitBranch, ExternalLink, Zap, Lightbulb, BookOpen } from "lucide-react"
+import { FaGithub } from "react-icons/fa"
 import { APP_NAME, APP_URL, APP_VERSION, TOTAL_CHECKS_LABEL } from "@/lib/config/constants"
 import { useDocsContext, type TocItem } from "../layout"
 import {
@@ -214,7 +215,7 @@ export default function DevelopersPage() {
       </DocsSection>
 
       {/* Community SDKs */}
-      <DocsSection id="community" title="Community SDKs" icon={Github}>
+      <DocsSection id="community" title="Community SDKs" icon={GitBranch}>
         <div className="space-y-4">
           {/* Python SDK */}
           <Card className="p-6 border-border/40 hover:border-primary/50 transition-colors">
@@ -237,7 +238,7 @@ export default function DevelopersPage() {
                 rel="noopener noreferrer"
                 className="text-muted-foreground hover:text-foreground transition-colors"
               >
-                <Github className="h-5 w-5" />
+                <FaGithub className="h-5 w-5" />
               </a>
             </div>
             <p className="text-sm text-muted-foreground mb-4">
@@ -293,7 +294,7 @@ for finding in result.findings:
                   rel="noopener noreferrer"
                   className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-background border border-border text-sm font-medium hover:bg-muted transition-colors"
                 >
-                  <Github className="h-4 w-4" />
+                  <FaGithub className="h-4 w-4" />
                   View on GitHub
                   <ExternalLink className="h-3 w-3 opacity-50" />
                 </a>
