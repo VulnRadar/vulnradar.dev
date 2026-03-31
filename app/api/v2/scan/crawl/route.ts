@@ -405,7 +405,7 @@ export async function POST(request: NextRequest) {
   const scannedAt = new Date().toISOString()
 
   // Save EACH page as its own history entry (like bulk scan)
-  const { DEFAULT_SCAN_NOTE } = await import("@/lib/constants")
+  const { DEFAULT_SCAN_NOTE } = await import("@/lib/config/constants")
   const pageHistoryIds: Record<string, number> = {}
   for (const pr of pageResults) {
     try {

@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server"
 import crypto from "crypto"
 import { getSession, hashPassword } from "@/lib/auth"
-import { generateSecret, verifyTOTP, generateOtpAuthUri } from "@/lib/totp"
+import { generateSecret, verifyTOTP, generateOtpAuthUri } from "@/lib/auth/totp"
 import { twoFactorEnabledEmail } from "@/lib/email/email"
 import { sendNotificationEmail } from "@/lib/notifications/notifications"
 import pool from "@/lib/database/db"
