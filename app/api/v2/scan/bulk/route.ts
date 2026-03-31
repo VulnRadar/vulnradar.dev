@@ -88,16 +88,26 @@ async function runSingleScan(url: string, userId: number, isApiKeyAuth: boolean)
         throw new Error("Invalid WebSocket protocol")
       }
       
-      // Construct HTTP(S) URL from WebSocket URL components
-      const protocol = wsUrl.protocol === "wss:" ? "https:" : "http:"
-      const httpUrl = new URL(`${protocol}//${wsUrl.host}${wsUrl.pathname}${wsUrl.search}${wsUrl.hash}`)
+      // Validate the hostname and pathname
+      if (!wsUrl.hostname || !wsUrl.hostname.length) {
+        throw new Error("Invalid hostname")
+      }
+      
+      // Construct HTTP(S) URL from individual components
+      const protocol = wsUrl.protocol === "wss:" ? "https" : "http"
+      const hostname = wsUrl.hostname
+      const port = wsUrl.port ? `:${wsUrl.port}` : ""
+      const pathname = wsUrl.pathname || ""
+      const search = wsUrl.search || ""
+      
+      const safeUrl = new URL(`${protocol}://${hostname}${port}${pathname}${search}`)
       
       // Validate the constructed URL
-      if (httpUrl.protocol !== "http:" && httpUrl.protocol !== "https:") {
+      if (safeUrl.protocol !== "http:" && safeUrl.protocol !== "https:") {
         throw new Error("Invalid protocol")
       }
       
-      response = await fetch(httpUrl.toString(), {
+      response = await fetch(safeUrl.href, {
         method: "GET",
         headers: { "User-Agent": `${APP_NAME}/1.0 (Security Scanner)` },
         redirect: "follow",
