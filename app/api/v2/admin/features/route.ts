@@ -233,11 +233,9 @@ export async function POST(req: NextRequest) {
              bm.status,
              bm.created_at,
              bm.sent_at,
-             cu.name as created_by_name,
-             su.name as sent_by_name
+             cu.name as created_by_name
            FROM broadcast_messages bm
            LEFT JOIN users cu ON bm.created_by = cu.id
-           LEFT JOIN users su ON bm.sent_by = su.id
            ORDER BY bm.created_at DESC`
         )
         return NextResponse.json({ messages: result.rows })
@@ -255,11 +253,11 @@ export async function POST(req: NextRequest) {
         // Get broadcast title for audit
         const titleResult = await pool.query(`SELECT title FROM broadcast_messages WHERE id = $1`, [id])
         const broadcastTitle = titleResult.rows[0]?.title || "Unknown"
-
-        // Update status to sent immediately (no 'sending' state due to constraint)
+        
+        // Update status to sent immediately
         await pool.query(
-            `UPDATE broadcast_messages SET status = 'sent', sent_by = $1, sent_at = NOW() WHERE id = $2`,
-            [user.id, id]
+          `UPDATE broadcast_messages SET status = 'sent', sent_at = NOW() WHERE id = $1`,
+          [id]
         )
 
         await logAction(user.id, null, "broadcast_sent", `Sent broadcast: ${broadcastTitle}`, ip)
