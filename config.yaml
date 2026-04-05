@@ -1,5 +1,5 @@
 # ============================================================================
-# VulnRadar Configuration File (v2.2.0)
+# VulnRadar Configuration File (v2.2.1)
 # ============================================================================
 # This file contains all configurable settings for VulnRadar.
 # Self-hosters: Modify these values to customize your deployment.
@@ -23,7 +23,7 @@
 app:
   name: "VulnRadar"
   slug: "vulnradar"
-  version: "2.2.0"
+  version: "2.2.1"
   engine_version: "2.1.0"
   description: "Scan websites for security vulnerabilities. Get instant reports with severity ratings, actionable fix guidance, and team collaboration tools."
   total_checks_label: "310+"
