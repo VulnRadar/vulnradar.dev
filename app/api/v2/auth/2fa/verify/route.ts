@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createSession, verifyPassword } from "@/lib/auth"
-import { verifyTOTP } from "@/lib/totp"
+import { verifyTOTP } from "@/lib/auth/totp"
 import pool from "@/lib/database/db"
 import { sendNotificationEmail } from "@/lib/notifications/notifications"
 import { newLoginEmail } from "@/lib/email/email"

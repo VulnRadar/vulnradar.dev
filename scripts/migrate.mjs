@@ -76,10 +76,6 @@ const V2_NEW_TABLES = [
   "gifted_subscriptions",
   "admin_notifications",
   "admin_user_notes",
-  "broadcast_messages",
-  "system_settings",
-  "ip_rules",
-  "security_alerts",
 ]
 
 // Columns that v2 adds to the users table
@@ -266,7 +262,32 @@ async function getActualSchema(pool) {
   return tables
 }
 
+// ── Check if this is a v1 database that needs v2 migration ──────────────────
+// v1 is detected by: has v1 core tables, but MISSING v2 tables and v2 user columns
+function detectV1Database(actual) {
+  // Check if users table exists
+  if (!actual["users"]) return { isV1: false, reason: "No users table found" }
 
+  const userColumns = actual["users"] || []
+
+  // Check if v2 tables are missing
+  const missingV2Tables = V2_NEW_TABLES.filter(t => !actual[t])
+
+  // Check if v2 user columns are missing
+  const missingV2Columns = V2_USER_COLUMNS.filter(col => !userColumns.includes(col))
+
+  // It's v1 if it's MISSING v2 tables (core infrastructure)
+  // Missing a few columns is OK - those can be added incrementally
+  // But if v2 tables don't exist, it's definitely v1
+  const isV1 = missingV2Tables.length > 0
+
+  return {
+    isV1,
+    missingTables: missingV2Tables,
+    missingColumns: missingV2Columns,
+    hasV1CoreTables: V1_CORE_TABLES.filter(t => actual[t]).length,
+  }
+}
 
 // ── V2 Migration: Add v2 tables and columns to v1 database ──────────────────
 async function runV2Migration(pool, actual, v1Info) {
@@ -276,7 +297,7 @@ async function runV2Migration(pool, actual, v1Info) {
   log(`${c.yellow}Your database is running VulnRadar v1 schema.${c.reset}`)
   log(`${c.yellow}This migration will upgrade it to v2.${c.reset}`)
   log("")
-  
+
   if (v1Info.missingTables.length > 0) {
     log(`${c.cyan}New tables to create:${c.reset}`)
     for (const t of v1Info.missingTables) {
@@ -284,7 +305,7 @@ async function runV2Migration(pool, actual, v1Info) {
     }
     log("")
   }
-  
+
   if (v1Info.missingColumns.length > 0) {
     log(`${c.cyan}New columns to add to users table:${c.reset}`)
     for (const col of v1Info.missingColumns) {
@@ -292,7 +313,7 @@ async function runV2Migration(pool, actual, v1Info) {
     }
     log("")
   }
-  
+
   log(`${c.cyan}What this migration will do:${c.reset}`)
   log(`  1. Add new columns to the ${c.bold}users${c.reset} table (plan, stripe_customer_id, etc.)`)
   log(`  2. Create new tables: ${c.bold}badges${c.reset}, ${c.bold}user_badges${c.reset}, ${c.bold}billing_history${c.reset}`)
@@ -573,138 +594,11 @@ async function runV2Migration(pool, actual, v1Info) {
     }
   }
 
-  // Step 9: Create ip_rules table
-  if (!actual["ip_rules"]) {
-    info("Creating ip_rules table...")
-    try {
-      await pool.query(`
-        CREATE TABLE IF NOT EXISTS ip_rules (
-          id SERIAL PRIMARY KEY,
-          rule_type VARCHAR(10) NOT NULL CHECK (rule_type IN ('whitelist', 'blacklist')),
-          ip_address INET NOT NULL,
-          description TEXT,
-          reason VARCHAR(100),
-          hit_count INTEGER NOT NULL DEFAULT 0,
-          last_hit_at TIMESTAMP WITH TIME ZONE,
-          created_by INTEGER NOT NULL REFERENCES users(id),
-          created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
-          expires_at TIMESTAMP WITH TIME ZONE,
-          is_active BOOLEAN NOT NULL DEFAULT true,
-          UNIQUE(rule_type, ip_address)
-        )
-      `)
-      await pool.query(`CREATE INDEX IF NOT EXISTS idx_ip_rules_active ON ip_rules(is_active, rule_type)`)
-      await pool.query(`CREATE INDEX IF NOT EXISTS idx_ip_rules_ip ON ip_rules(ip_address)`)
-      success("  Created ip_rules table")
-    } catch (err) {
-      error(`  Failed to create ip_rules table: ${err.message}`)
-    }
-  }
-
-  // Step 10: Create security_alerts table
-  if (!actual["security_alerts"]) {
-    info("Creating security_alerts table...")
-    try {
-      await pool.query(`
-        CREATE TABLE IF NOT EXISTS security_alerts (
-          id SERIAL PRIMARY KEY,
-          user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-          alert_type VARCHAR(50) NOT NULL,
-          severity VARCHAR(20) NOT NULL CHECK (severity IN ('low', 'medium', 'high', 'critical')),
-          description TEXT NOT NULL,
-          details JSONB,
-          ip_address INET,
-          user_agent TEXT,
-          resolved_at TIMESTAMP WITH TIME ZONE,
-          resolved_by INTEGER REFERENCES users(id),
-          created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
-          action_taken VARCHAR(100)
-        )
-      `)
-      await pool.query(`CREATE INDEX IF NOT EXISTS idx_security_alerts_user ON security_alerts(user_id)`)
-      await pool.query(`CREATE INDEX IF NOT EXISTS idx_security_alerts_severity ON security_alerts(severity)`)
-      await pool.query(`CREATE INDEX IF NOT EXISTS idx_security_alerts_created ON security_alerts(created_at DESC)`)
-      success("  Created security_alerts table")
-    } catch (err) {
-      error(`  Failed to create security_alerts table: ${err.message}`)
-    }
-  }
-
-  // Step 11: Create system_settings table
-  if (!actual["system_settings"]) {
-    info("Creating system_settings table...")
-    try {
-      await pool.query(`
-        CREATE TABLE IF NOT EXISTS system_settings (
-          id SERIAL PRIMARY KEY,
-          key VARCHAR(100) NOT NULL UNIQUE,
-          value TEXT NOT NULL,
-          description TEXT,
-          setting_type VARCHAR(50) DEFAULT 'string',
-          updated_by INTEGER REFERENCES users(id),
-          updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
-        )
-      `)
-      success("  Created system_settings table")
-    } catch (err) {
-      error(`  Failed to create system_settings table: ${err.message}`)
-    }
-  }
-
-  // Step 12: Create broadcast_messages table
-  if (!actual["broadcast_messages"]) {
-    info("Creating broadcast_messages table...")
-    try {
-      await pool.query(`
-        CREATE TABLE IF NOT EXISTS broadcast_messages (
-          id SERIAL PRIMARY KEY,
-          title VARCHAR(255) NOT NULL,
-          content TEXT NOT NULL,
-          message_type VARCHAR(50) NOT NULL CHECK (message_type IN ('email', 'in_app', 'announcement')),
-          segment_filter JSONB,
-          scheduled_at TIMESTAMP WITH TIME ZONE,
-          sent_at TIMESTAMP WITH TIME ZONE,
-          created_by INTEGER NOT NULL REFERENCES users(id),
-          created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
-          status VARCHAR(50) DEFAULT 'draft' CHECK (status IN ('draft', 'scheduled', 'sent', 'cancelled'))
-        )
-      `)
-      await pool.query(`CREATE INDEX IF NOT EXISTS idx_broadcast_messages_status ON broadcast_messages(status)`)
-      await pool.query(`CREATE INDEX IF NOT EXISTS idx_broadcast_messages_created ON broadcast_messages(created_at DESC)`)
-      success("  Created broadcast_messages table")
-    } catch (err) {
-      error(`  Failed to create broadcast_messages table: ${err.message}`)
-    }
-  }
-
-  // Step 13: Create broadcast_recipients table
-  if (!actual["broadcast_recipients"]) {
-    info("Creating broadcast_recipients table...")
-    try {
-      await pool.query(`
-        CREATE TABLE IF NOT EXISTS broadcast_recipients (
-          id SERIAL PRIMARY KEY,
-          message_id INTEGER NOT NULL REFERENCES broadcast_messages(id) ON DELETE CASCADE,
-          user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-          opened_at TIMESTAMP WITH TIME ZONE,
-          clicked_at TIMESTAMP WITH TIME ZONE,
-          status VARCHAR(50) DEFAULT 'pending' CHECK (status IN ('pending', 'sent', 'failed', 'opened', 'clicked')),
-          created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
-        )
-      `)
-      await pool.query(`CREATE INDEX IF NOT EXISTS idx_broadcast_recipients_message ON broadcast_recipients(message_id)`)
-      await pool.query(`CREATE INDEX IF NOT EXISTS idx_broadcast_recipients_user ON broadcast_recipients(user_id)`)
-      success("  Created broadcast_recipients table")
-    } catch (err) {
-      error(`  Failed to create broadcast_recipients table: ${err.message}`)
-    }
-  }
-
   log("")
   success("V2 migration complete!")
   log("")
   log(`${c.cyan}Your database has been upgraded to VulnRadar v2 schema.${c.reset}`)
-  log(`${c.cyan}New features available: badges, billing history, subscription management, admin notifications, IP rules, security alerts, broadcasts.${c.reset}`)
+  log(`${c.cyan}New features available: badges, billing history, subscription management, admin notifications.${c.reset}`)
   log("")
 
   return true
@@ -718,7 +612,7 @@ async function runFreshInstall(pool, actual) {
   log(`${c.red}${c.bold}WARNING: This will DROP ALL TABLES and create a fresh database!${c.reset}`)
   log(`${c.red}All existing data will be permanently deleted.${c.reset}`)
   log("")
-  
+
   const existingTables = Object.keys(actual)
   if (existingTables.length > 0) {
     log(`${c.yellow}Tables that will be dropped:${c.reset}`)
@@ -747,7 +641,7 @@ async function runFreshInstall(pool, actual) {
 
   log("")
   info("Dropping all tables...")
-  
+
   for (const table of existingTables) {
     try {
       await pool.query(`DROP TABLE IF EXISTS "${table}" CASCADE`)
@@ -822,7 +716,7 @@ async function main() {
       log(`${c.dim}If you have important data to preserve, the migration below will${c.reset}`)
       log(`${c.dim}attempt to add missing tables/columns without data loss.${c.reset}`)
       log("")
-      
+
       const continueAnyway = await askReview("Continue with incremental migration anyway?")
       if (!continueAnyway) {
         log("")
@@ -830,7 +724,7 @@ async function main() {
         await pool.end()
         return
       }
-      
+
       const migrated = await runV2Migration(pool, actual, v1Info)
       if (migrated) {
         // Re-read schema after migration
@@ -931,7 +825,7 @@ async function main() {
   log("")
   log(`${c.bold}═══════════════════════════════════════════${c.reset}`)
   log(`${c.bold}  Schema Comparison${c.reset}`)
-  log(`${c.bold}════���══════════════════════════════════════${c.reset}`)
+  log(`${c.bold}═══════════════════════════════════════════${c.reset}`)
   log("")
 
   const missingTables = []
@@ -1003,8 +897,8 @@ async function main() {
         const content = readFileSync(filePath, "utf-8")
 
         const alterRegex = new RegExp(
-          `ALTER\\s+TABLE\\s+${table}\\s+ADD\\s+COLUMN\\s+(?:IF\\s+NOT\\s+EXISTS\\s+)?${column}\\s+([^;]+)`,
-          "i"
+            `ALTER\\s+TABLE\\s+${table}\\s+ADD\\s+COLUMN\\s+(?:IF\\s+NOT\\s+EXISTS\\s+)?${column}\\s+([^;]+)`,
+            "i"
         )
         const alterMatch = content.match(alterRegex)
 
@@ -1041,7 +935,7 @@ async function main() {
 
         try {
           const countRes = await pool.query(
-            `SELECT COUNT(*) as total, COUNT("${column}") as non_null FROM "${table}"`
+              `SELECT COUNT(*) as total, COUNT("${column}") as non_null FROM "${table}"`
           )
           log(`  ${c.dim}Rows: ${countRes.rows[0].total}, Non-null: ${countRes.rows[0].non_null}${c.reset}`)
         } catch { /* ignore */ }

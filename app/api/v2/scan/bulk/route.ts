@@ -192,7 +192,7 @@ async function runSingleScan(url: string, userId: number, isApiKeyAuth: boolean)
   // Save to history
   let scanHistoryId: number | null = null
   try {
-    const { DEFAULT_SCAN_NOTE } = await import("@/lib/constants")
+    const { DEFAULT_SCAN_NOTE } = await import("@/lib/config/constants")
     const insertResult = await pool.query(
       `INSERT INTO scan_history (user_id, url, summary, findings, findings_count, duration, scanned_at, source, response_headers, notes)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id`,

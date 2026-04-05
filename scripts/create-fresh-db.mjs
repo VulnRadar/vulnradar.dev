@@ -2,15 +2,14 @@
 
 /**
  * VulnRadar Safe Database Migration Script
- * Database Schema Version: v2 with admin features
- * 
+ *
  * Creates a NEW database with fresh schema, then optionally migrates data
  * from the original database. Never touches or erases the original DB.
- * 
+ *
  * Usage:
  *   npm run new-db
  *   node scripts/create-fresh-db.mjs
- * 
+ *
  * Requires DATABASE_URL in .env.local or as an environment variable.
  */
 
@@ -49,9 +48,8 @@ function error(msg) { log(`${c.red}[ERR]${c.reset}  ${msg}`) }
 function banner() {
   log("")
   log(`${c.bold}${c.cyan}  ╔══════════════════════════════════════════════╗${c.reset}`)
-  log(`${c.bold}${c.cyan}  ║   VulnRadar Database Setup - v2               ║${c.reset}`)
-  log(`${c.bold}${c.cyan}  ║   Creates new DB with admin features         ║${c.reset}`)
-  log(`${c.bold}${c.cyan}  ║   Preserves original data during migration    ║${c.reset}`)
+  log(`${c.bold}${c.cyan}  ║   VulnRadar Safe Database Migration          ║${c.reset}`)
+  log(`${c.bold}${c.cyan}  ║   Creates new DB, preserves original data    ║${c.reset}`)
   log(`${c.bold}${c.cyan}  ╚══════════════════════════════════════════════╝${c.reset}`)
   log("")
 }
@@ -145,7 +143,7 @@ async function getTableCounts(pool, tables) {
 // ── Tables that should be migrated (contain user data) ─────────────────────
 const MIGRATE_TABLES = [
   "users",
-  "sessions", 
+  "sessions",
   "password_reset_tokens",
   "backup_codes",
   "api_keys",
@@ -161,11 +159,6 @@ const MIGRATE_TABLES = [
   "user_badges",
   "gifted_subscriptions",
   "admin_notifications",
-  "ip_rules",
-  "security_alerts",
-  "system_settings",
-  "broadcast_messages",
-  "broadcast_recipients",
 ]
 
 // ── Main ────────────────────────────────────────────────────────────────────
@@ -207,7 +200,7 @@ async function main() {
   // Check existing tables and data
   const existingTables = await getExistingTables(originalPool)
   const tableCounts = await getTableCounts(originalPool, existingTables)
-  
+
   log("")
   log(`${c.bold}Original database has ${existingTables.length} tables:${c.reset}`)
   for (const t of existingTables) {
@@ -220,7 +213,7 @@ async function main() {
   // Ask for new database name
   const defaultNewName = `${dbInfo.database}_v2`
   const newDbName = await ask(`Enter name for the NEW database`, defaultNewName)
-  
+
   if (newDbName === dbInfo.database) {
     error("New database name cannot be the same as the original!")
     await originalPool.end()
@@ -246,7 +239,7 @@ async function main() {
   // Connect to postgres database to create new database
   log("")
   log(`${c.bold}${c.cyan}Step 1: Creating New Database${c.reset}`)
-  
+
   const adminPool = new pg.Pool({
     user: dbInfo.user,
     password: dbInfo.password,
@@ -260,10 +253,10 @@ async function main() {
   try {
     // Check if database already exists
     const existsRes = await adminPool.query(
-      `SELECT 1 FROM pg_database WHERE datname = $1`,
-      [newDbName]
+        `SELECT 1 FROM pg_database WHERE datname = $1`,
+        [newDbName]
     )
-    
+
     if (existsRes.rows.length > 0) {
       warn(`Database '${newDbName}' already exists.`)
       const shouldDrop = await askYesNo(`Drop and recreate '${newDbName}'?`, false)
@@ -273,7 +266,7 @@ async function main() {
           SELECT pg_terminate_backend(pg_stat_activity.pid)
           FROM pg_stat_activity
           WHERE pg_stat_activity.datname = $1
-          AND pid <> pg_backend_pid()
+            AND pid <> pg_backend_pid()
         `, [newDbName])
         await adminPool.query(`DROP DATABASE "${newDbName}"`)
         success(`Dropped existing database '${newDbName}'`)
@@ -281,11 +274,11 @@ async function main() {
         info("Using existing database.")
       }
     }
-    
+
     // Create new database
     const existsAgain = await adminPool.query(
-      `SELECT 1 FROM pg_database WHERE datname = $1`,
-      [newDbName]
+        `SELECT 1 FROM pg_database WHERE datname = $1`,
+        [newDbName]
     )
     if (existsAgain.rows.length === 0) {
       await adminPool.query(`CREATE DATABASE "${newDbName}"`)
@@ -297,7 +290,7 @@ async function main() {
     await originalPool.end()
     process.exit(1)
   }
-  
+
   await adminPool.end()
 
   // Connect to new database
@@ -335,7 +328,7 @@ async function main() {
 
   // Extract and execute SQL statements
   info("Creating tables in new database...")
-  
+
   const sqlBlockRegex = /await pool\.query\(`([\s\S]*?)`\)/g
   const statements = []
   let match
@@ -367,7 +360,7 @@ async function main() {
       }
     }
   }
-  
+
   log(`  ${c.dim}Created ${indexes} indexes${c.reset}`)
 
   // Seed default badges
@@ -375,13 +368,13 @@ async function main() {
   try {
     await newPool.query(`
       INSERT INTO badges (name, display_name, description, color, icon, priority) VALUES
-        ('beta_tester', 'Beta Tester', 'Helped test VulnRadar before release', '#8b5cf6', 'flask', 10),
-        ('bug_hunter', 'Bug Hunter', 'Reported bugs or security issues', '#ef4444', 'bug', 7),
-        ('contributor', 'Contributor', 'Contributed to VulnRadar development', '#10b981', 'code', 8),
-        ('premium', 'Premium', 'Premium subscription member', '#fbbf24', 'star', 6),
-        ('verified', 'Verified', 'Verified identity', '#06b6d4', 'check-circle', 5),
-        ('founder', 'Founder', 'Original founding member', '#f59e0b', 'crown', 20)
-      ON CONFLICT (name) DO NOTHING
+                                                                                    ('beta_tester', 'Beta Tester', 'Helped test VulnRadar before release', '#8b5cf6', 'flask', 10),
+                                                                                    ('bug_hunter', 'Bug Hunter', 'Reported bugs or security issues', '#ef4444', 'bug', 7),
+                                                                                    ('contributor', 'Contributor', 'Contributed to VulnRadar development', '#10b981', 'code', 8),
+                                                                                    ('premium', 'Premium', 'Premium subscription member', '#fbbf24', 'star', 6),
+                                                                                    ('verified', 'Verified', 'Verified identity', '#06b6d4', 'check-circle', 5),
+                                                                                    ('founder', 'Founder', 'Original founding member', '#f59e0b', 'crown', 20)
+        ON CONFLICT (name) DO NOTHING
     `)
     success("  Seeded default badges")
   } catch (err) {
@@ -392,11 +385,11 @@ async function main() {
   log("")
   log(`${c.bold}${c.bgGreen}${c.white} DATA MIGRATION ${c.reset}`)
   log("")
-  
-  const tablesToMigrate = MIGRATE_TABLES.filter(t => 
-    existingTables.includes(t) && tableCounts[t] > 0
+
+  const tablesToMigrate = MIGRATE_TABLES.filter(t =>
+      existingTables.includes(t) && tableCounts[t] > 0
   )
-  
+
   if (tablesToMigrate.length === 0) {
     info("No data to migrate from original database.")
   } else {
@@ -405,21 +398,21 @@ async function main() {
       log(`  - ${t} (${tableCounts[t]} rows)`)
     }
     log("")
-    
+
     const shouldMigrate = await askYesNo("Migrate data from original database?", true)
-    
+
     if (shouldMigrate) {
       log("")
       log(`${c.bold}${c.cyan}Step 3: Data Migration${c.reset}`)
       log(`${c.dim}Transferring data from original database to new database...${c.reset}`)
       log("")
-      
+
       // Order matters for foreign keys
       const orderedTables = [
         "users",
         "badges", // badges before user_badges
         "sessions",
-        "password_reset_tokens", 
+        "password_reset_tokens",
         "backup_codes",
         "api_keys",
         "scan_history",
@@ -435,13 +428,13 @@ async function main() {
         "gifted_subscriptions",
         "admin_notifications",
       ]
-      
+
       // Column defaults for v1 -> v2 migration (columns that exist in v2 but not v1)
       // These are used when a NOT NULL column exists in v2 but not in v1 data
       const COLUMN_DEFAULTS = {
         scan_history: {
           summary: "'{}'::jsonb",
-          findings: "'[]'::jsonb", 
+          findings: "'[]'::jsonb",
           findings_count: "0",
           duration: "0",
           source: "'web'",
@@ -450,7 +443,7 @@ async function main() {
           subscription_source: "'manual'",
         },
       }
-      
+
       // Column renames from v1 -> v2 (old_name: new_name)
       const COLUMN_RENAMES = {
         scan_history: {
@@ -459,15 +452,15 @@ async function main() {
           result: "findings",
         },
       }
-      
+
       // Columns that need JSON conversion (v1 might store as text)
       const JSON_COLUMNS = {
         scan_history: ["summary", "findings", "metadata", "results", "scan_results", "result"],
       }
-      
+
       for (const table of orderedTables) {
         if (!tablesToMigrate.includes(table)) continue
-        
+
         try {
           // Get columns from original table
           const colRes = await originalPool.query(`
@@ -476,20 +469,20 @@ async function main() {
             ORDER BY ordinal_position
           `, [table])
           const columns = colRes.rows.map(r => r.column_name)
-          
+
           // Check which columns exist in new table (with nullability info)
           const newColRes = await newPool.query(`
-            SELECT column_name, is_nullable, column_default 
+            SELECT column_name, is_nullable, column_default
             FROM information_schema.columns
             WHERE table_name = $1 AND table_schema = 'public'
           `, [table])
           const newColumnsInfo = new Map(newColRes.rows.map(r => [r.column_name, r]))
           const newColumns = new Set(newColRes.rows.map(r => r.column_name))
-          
+
           // Handle column renames and find common columns
           const renames = COLUMN_RENAMES[table] || {}
           const columnMapping = new Map() // old_name -> new_name
-          
+
           for (const oldCol of columns) {
             if (newColumns.has(oldCol)) {
               columnMapping.set(oldCol, oldCol)
@@ -497,17 +490,17 @@ async function main() {
               columnMapping.set(oldCol, renames[oldCol])
             }
           }
-          
+
           const commonColumns = [...columnMapping.keys()]
           const targetColumns = [...columnMapping.values()]
-          
+
           // Find new NOT NULL columns that need defaults (not in source, not already mapped)
           const tableDefaults = COLUMN_DEFAULTS[table] || {}
           const extraColumns = []
           const extraValues = []
           const mappedTargets = new Set(targetColumns)
           const oldColumns = new Set(columns)
-          
+
           // Always add columns from COLUMN_DEFAULTS if they don't exist in old table
           for (const [col, defaultVal] of Object.entries(tableDefaults)) {
             if (!oldColumns.has(col) && !mappedTargets.has(col) && newColumnsInfo.has(col)) {
@@ -515,7 +508,7 @@ async function main() {
               extraValues.push(defaultVal)
             }
           }
-          
+
           // Also check for other NOT NULL columns without defaults
           for (const [col, info] of newColumnsInfo) {
             if (!mappedTargets.has(col) && !extraColumns.includes(col) && info.is_nullable === 'NO' && !info.column_default) {
@@ -523,19 +516,19 @@ async function main() {
               warn(`    Missing default for NOT NULL column: ${col}`)
             }
           }
-          
+
           if (commonColumns.length === 0) {
             warn(`  Skipping ${table}: no common columns`)
             continue
           }
-          
+
           // Fetch data from original
           const dataRes = await originalPool.query(
-            `SELECT ${commonColumns.map(c => `"${c}"`).join(", ")} FROM "${table}"`
+              `SELECT ${commonColumns.map(c => `"${c}"`).join(", ")} FROM "${table}"`
           )
-          
+
           if (dataRes.rows.length === 0) continue
-          
+
           // Build column list with extra defaults (using target column names)
           const allTargetColumns = [...targetColumns, ...extraColumns]
           const colList = allTargetColumns.map(c => `"${c}"`).join(", ")
@@ -543,18 +536,18 @@ async function main() {
             ...targetColumns.map((_, i) => `$${i + 1}`),
             ...extraValues
           ].join(", ")
-          
+
           let migrated = 0
           let firstError = null
           const jsonCols = JSON_COLUMNS[table] || []
-          
+
           for (const row of dataRes.rows) {
             try {
               // Transform values, handling JSON columns specially
               const values = commonColumns.map((col, idx) => {
                 let val = row[col]
                 const targetCol = targetColumns[idx]
-                
+
                 // Handle JSON columns - ensure they're valid JSON
                 if (jsonCols.includes(col) || jsonCols.includes(targetCol)) {
                   if (val === null || val === undefined) {
@@ -576,10 +569,10 @@ async function main() {
                 }
                 return val
               })
-              
+
               await newPool.query(
-                `INSERT INTO "${table}" (${colList}) VALUES (${placeholders}) ON CONFLICT DO NOTHING`,
-                values
+                  `INSERT INTO "${table}" (${colList}) VALUES (${placeholders}) ON CONFLICT DO NOTHING`,
+                  values
               )
               migrated++
             } catch (err) {
@@ -587,30 +580,30 @@ async function main() {
               if (!firstError) firstError = err.message
             }
           }
-          
+
           // Show error if most rows failed
           if (migrated < dataRes.rows.length / 2 && firstError) {
             warn(`    Error sample: ${firstError.slice(0, 100)}`)
           }
-          
+
           // Reset sequence if table has serial ID
           if (targetColumns.includes("id")) {
             try {
               await newPool.query(`
-                SELECT setval(pg_get_serial_sequence('"${table}"', 'id'), 
-                  COALESCE((SELECT MAX(id) FROM "${table}"), 1))
+                SELECT setval(pg_get_serial_sequence('"${table}"', 'id'),
+                              COALESCE((SELECT MAX(id) FROM "${table}"), 1))
               `)
             } catch {
               // No sequence, that's fine
             }
           }
-          
+
           success(`  Migrated ${table}: ${migrated}/${dataRes.rows.length} rows`)
         } catch (err) {
           warn(`  Failed to migrate ${table}: ${err.message}`)
         }
       }
-      
+
       // Post-migration cleanup: fix invalid roles from v1
       log("")
       info("Cleaning up v1 data...")
