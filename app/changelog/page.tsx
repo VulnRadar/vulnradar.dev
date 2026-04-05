@@ -96,6 +96,16 @@ interface Release {
 
 const CHANGELOG: Release[] = [
   {
+    version: "2.2.1",
+    date: "April 5, 2026",
+    title: "Broadcast Messaging Hotfix",
+    highlights: false,
+    summary: "Fixed database schema mismatch in broadcast messaging system that prevented admin broadcasts from being sent.",
+    changes: [
+      { icon: Bell, label: "Broadcast Query Fix", desc: "Removed references to non-existent 'sent_by' column in broadcast_messages table. Updated SELECT and UPDATE queries to properly track broadcast status and timestamps.", category: "fixed" },
+    ],
+  },
+  {
     version: "2.2.0",
     date: "March 31, 2026",
     title: "Backend Optimization, API Enhancements & Security Hardening",
