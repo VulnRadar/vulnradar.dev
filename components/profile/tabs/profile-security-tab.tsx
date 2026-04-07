@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -63,6 +63,22 @@ export function ProfileSecurityTab(props: ProfileTabProps) {
   // Session state
   const [forceLoggingOut, setForceLoggingOut] = useState(false)
   const [showLogoutModal, setShowLogoutModal] = useState(false)
+
+  // Fetch backup codes remaining count on mount when 2FA is enabled
+  useEffect(() => {
+    if (totpEnabled && twoFactorMethod === "app") {
+      fetch(API.AUTH.TWO_FA.BACKUP_CODES)
+        .then((res) => res.json())
+        .then((data) => {
+          if (typeof data.remaining === "number") {
+            setBackupCodesRemaining(data.remaining)
+          }
+        })
+        .catch(() => {
+          // Silently fail - backup codes count is not critical
+        })
+    }
+  }, [totpEnabled, twoFactorMethod])
 
   async function handleChangePassword() {
     if (!currentPassword || !newPassword || !confirmNewPassword) {
