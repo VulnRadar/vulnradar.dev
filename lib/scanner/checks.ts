@@ -31,6 +31,10 @@ function hasHeader(headers: Headers, key: string): boolean {
   return headers.has(key)
 }
 
+function escapeRegExp(input: string): string {
+  return input.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+}
+
 // ── Detection Functions ────────────────────────────────────────────────────
 // Each function returns evidence string (truthy = found) or null (not found).
 // The framework wraps the evidence into a full Vulnerability object using JSON metadata.
@@ -436,7 +440,8 @@ const detectors: Record<string, DetectFn> = {
     const filtered = [...new Set(privateIPs)].filter((ip) => {
       // Check if this IP is in a schema.org context (proper validation)
       // Look for the IP surrounded by schema.org structured data patterns
-      const schemaPattern = new RegExp(`"@context"\\s*:\\s*"https?://schema\\.org"[\\s\\S]*?"${ip.replace(/\./g, "\\.")}"|"${ip.replace(/\./g, "\\.")}".{0,100}"@context"\\s*:\\s*"https?://schema\\.org"`, "i")
+      const escapedIp = escapeRegExp(ip)
+      const schemaPattern = new RegExp(`"@context"\\s*:\\s*"https?://schema\\.org"[\\s\\S]*?"${escapedIp}"|"${escapedIp}".{0,100}"@context"\\s*:\\s*"https?://schema\\.org"`, "i")
       if (schemaPattern.test(body)) {
         return false // IP is in a proper schema.org context, filter it out
       }
