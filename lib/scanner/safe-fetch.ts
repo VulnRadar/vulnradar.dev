@@ -8,7 +8,7 @@
 import { lookup } from "dns/promises"
 import { isIP } from "net"
 
-const ALLOWED_PROTOCOLS = new Set(["http:", "https:"])
+const ALLOWED_PROTOCOLS = new Set(["https:"])
 const DEFAULT_FETCH_TIMEOUT_MS = 30000
 
 // Basic hostname patterns we never want to scan directly, regardless of DNS resolution.
@@ -26,16 +26,19 @@ const DISALLOWED_HOSTNAME_SUFFIXES = [
  * Combine a required timeout signal with an optional caller-provided signal so that
  * the returned signal aborts when either source signal aborts.
  */
-function combineAbortSignals(timeoutSignal: AbortSignal, callerSignal?: AbortSignal): AbortSignal {
+function combineAbortSignals(
+  timeoutSignal: AbortSignal,
+  callerSignal?: AbortSignal,
+): { signal: AbortSignal; cleanup: (() => void) | undefined } {
   if (!callerSignal) {
-    return timeoutSignal
+    return { signal: timeoutSignal, cleanup: undefined }
   }
 
   // If either signal is already aborted, return a signal in the aborted state.
   if (timeoutSignal.aborted || callerSignal.aborted) {
     const controller = new AbortController()
     controller.abort()
-    return controller.signal
+    return { signal: controller.signal, cleanup: undefined }
   }
 
   const controller = new AbortController()
@@ -49,7 +52,14 @@ function combineAbortSignals(timeoutSignal: AbortSignal, callerSignal?: AbortSig
   timeoutSignal.addEventListener("abort", onAbort, { once: true })
   callerSignal.addEventListener("abort", onAbort, { once: true })
 
-  return controller.signal
+  const cleanup = () => {
+    timeoutSignal.removeEventListener("abort", onAbort)
+    if (callerSignal) {
+      callerSignal.removeEventListener("abort", onAbort)
+    }
+  }
+
+  return { signal: controller.signal, cleanup }
 }
 
 // IPv4 private ranges (RFC 1918 + special ranges)
@@ -223,7 +233,7 @@ function assertSafePublicHttpUrl(rawUrl: string): URL {
 
   const protocol = urlObj.protocol
   if (!ALLOWED_PROTOCOLS.has(protocol)) {
-    throw new Error("Invalid protocol - only http: and https: are allowed")
+    throw new Error("Invalid protocol - only https: is allowed")
   }
 
   const hostname = urlObj.hostname.toLowerCase()
@@ -300,7 +310,10 @@ export async function safeFetch(
     controller.abort()
   }, timeoutMs)
   // Combine any caller-provided signal with our timeout signal so that either can abort the request.
-  const combinedSignal = combineAbortSignals(controller.signal, finalInit?.signal)
+  const { signal: combinedSignal, cleanup: cleanupCombinedSignal } = combineAbortSignals(
+    controller.signal,
+    finalInit?.signal,
+  )
   const requestInit: RequestInit = {
     ...finalInit,
     signal: combinedSignal,
@@ -309,5 +322,8 @@ export async function safeFetch(
     return await fetch(finalUrl, requestInit)
   } finally {
     clearTimeout(timeoutId)
+    if (typeof cleanupCombinedSignal === "function") {
+      cleanupCombinedSignal()
+    }
   }
 }
