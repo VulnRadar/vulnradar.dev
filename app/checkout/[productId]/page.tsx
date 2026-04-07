@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback, use } from "react"
 import { useRouter } from "next/navigation"
 import { loadStripe } from "@stripe/stripe-js"
 import { EmbeddedCheckout, EmbeddedCheckoutProvider } from "@stripe/react-stripe-js"
-import { Shield, Check, Loader2, ArrowLeft, Lock, Sparkles, Zap, Crown } from "lucide-react"
+import { Shield, Check, Loader2, ArrowLeft, Sparkles, Zap, Crown } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
@@ -205,10 +205,7 @@ export default function CheckoutPage({ params }: { params: Promise<{ productId: 
             <ArrowLeft className="h-4 w-4" />
             <span className="text-sm">Back to plans</span>
           </Link>
-          <div className="flex items-center gap-2">
-            <Lock className="h-4 w-4 text-emerald-500" />
-            <span className="text-sm text-muted-foreground">Secure checkout</span>
-          </div>
+          <div className="w-4" /> {/* Spacer for balance */}
         </div>
       </header>
 
@@ -317,7 +314,7 @@ export default function CheckoutPage({ params }: { params: Promise<{ productId: 
 
           {/* Right column - Payment form */}
           <div className="order-1 md:order-2">
-            <div className="rounded-xl border border-border bg-white overflow-hidden">
+            <div className="rounded-xl border border-border bg-white overflow-hidden max-h-[600px] overflow-y-auto">
               <EmbeddedCheckoutProvider
                 stripe={stripePromise}
                 options={{
