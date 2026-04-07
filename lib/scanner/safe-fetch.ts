@@ -208,5 +208,6 @@ export async function safeFetch(
   }
   
   // Use the normalized, DNS-safe href after validation and protocol check
+  // lgtm[js/request-forgery] - URL is validated through validateScanTarget before fetch
   return fetch(finalUrl, finalInit)
 }
