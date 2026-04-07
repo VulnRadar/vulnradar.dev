@@ -6,6 +6,7 @@
  */
 
 import { lookup } from "dns/promises"
+import { isIP } from "net"
 
 const ALLOWED_PROTOCOLS = new Set(["http:", "https:"])
 
@@ -18,8 +19,8 @@ const PRIVATE_IP_PATTERNS = [
   /^192\.168\./,                     // Private C (192.168.0.0/16)
   /^169\.254\./,                     // Link-local (169.254.0.0/16)
   /^0\./,                            // Current network (0.0.0.0/8)
-  /^224\./,                          // Multicast (224.0.0.0/4)
-  /^240\./,                          // Reserved (240.0.0.0/4)
+  /^2(2[4-9]|3[0-9])\./,             // Multicast (224.0.0.0/4 = 224-239.x.x.x)
+  /^2(4[0-9]|5[0-5])\./,             // Reserved (240.0.0.0/4 = 240-255.x.x.x)
   /^255\./,                          // Broadcast
   
   // IPv6 private/special ranges
@@ -56,7 +57,18 @@ export interface SafetyCheckResult {
  * Check if an IP address is in a private/internal range
  */
 export function isPrivateIP(ip: string): boolean {
-  return PRIVATE_IP_PATTERNS.some(pattern => pattern.test(ip))
+  const version = isIP(ip)
+  if (version === 4) {
+    // Apply IPv4 private and special-range checks
+    return PRIVATE_IP_PATTERNS.some(pattern => pattern.test(ip))
+  }
+  if (version === 6) {
+    // For security, conservatively treat all direct IPv6 targets as private/internal.
+    // This avoids missing IPv6 loopback/link-local/ULA ranges without complex parsing.
+    return true
+  }
+  // Not a valid IP address
+  return false
 }
 
 /**
@@ -78,8 +90,9 @@ export async function validateScanTarget(url: string): Promise<SafetyCheckResult
     const parsed = new URL(url)
     const hostname = parsed.hostname
     
-    // Check if hostname is an IP address
-    if (/^[\d.]+$/.test(hostname) || hostname.includes(":")) {
+    // Check if hostname is an IP address (IPv4 or IPv6)
+    const ipVersion = isIP(hostname)
+    if (ipVersion !== 0) {
       // Direct IP address - check if private
       if (isPrivateIP(hostname)) {
         return {
@@ -110,7 +123,12 @@ export async function validateScanTarget(url: string): Promise<SafetyCheckResult
           }
         }
       }
-      return { safe: true, resolvedIp: addresses[0]?.address }
+      // If we have at least one address, treat the first as the canonical resolved IP
+      if (addresses.length > 0 && addresses[0]?.address) {
+        return { safe: true, resolvedIp: addresses[0].address }
+      }
+      // No addresses returned; treat as safe but without a resolved IP
+      return { safe: true }
     } catch (dnsError) {
       // DNS resolution failed - let the actual fetch handle it
       return { safe: true }
@@ -145,7 +163,34 @@ export async function safeFetch(
     throw new Error("Invalid protocol - only HTTP and HTTPS are allowed")
   }
   
-  // Use the normalized href after validation and protocol check
-  const safeHref = urlObj.href
-  return fetch(safeHref, init)
+  // If we have a validated resolved IP, construct a URL that uses it directly.
+  // This prevents DNS from being consulted again at fetch time (avoiding DNS rebinding).
+  let finalUrl = urlObj.href
+  let finalInit: RequestInit | undefined = init
+  
+  if (safety.resolvedIp) {
+    const originalHostname = urlObj.hostname
+    // Build a URL whose authority is the validated IP (preserving port if any)
+    const ipAuthority = urlObj.port ? `${safety.resolvedIp}:${urlObj.port}` : safety.resolvedIp
+    finalUrl = `${urlObj.protocol}//${ipAuthority}${urlObj.pathname}${urlObj.search}${urlObj.hash}`
+    
+    // Ensure the original hostname is sent in the Host header for virtual hosting
+    let headers: HeadersInit | undefined = undefined
+    if (init && init.headers) {
+      if (Array.isArray(init.headers)) {
+        headers = [...init.headers, ["Host", originalHostname]]
+      } else if (init.headers instanceof Headers) {
+        headers = new Headers(init.headers)
+        headers.set("Host", originalHostname)
+      } else {
+        headers = { ...init.headers, Host: originalHostname }
+      }
+    } else {
+      headers = { Host: originalHostname }
+    }
+    finalInit = { ...(init || {}), headers }
+  }
+  
+  // Use the normalized, DNS-safe href after validation and protocol check
+  return fetch(finalUrl, finalInit)
 }
