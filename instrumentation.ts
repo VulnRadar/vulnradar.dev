@@ -389,6 +389,16 @@ export async function register() {
           created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
         );
         CREATE INDEX IF NOT EXISTS idx_email_2fa_user ON email_2fa_codes(user_id);
+
+        CREATE TABLE IF NOT EXISTS billing_verification_codes (
+          id SERIAL PRIMARY KEY,
+          user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          code_hash VARCHAR(255) NOT NULL,
+          expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
+          created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+        );
+        CREATE INDEX IF NOT EXISTS idx_billing_verify_user ON billing_verification_codes(user_id);
+        CREATE INDEX IF NOT EXISTS idx_billing_verify_expires ON billing_verification_codes(expires_at);
       `)
 
       // ════════════════════════════════════════════════════════════════
