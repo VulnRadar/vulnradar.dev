@@ -17,10 +17,14 @@ import {
   TrendingUp,
   Loader2,
   XCircle,
+  Eye,
+  EyeOff,
+  Lock,
 } from "lucide-react"
 import { cn } from "@/lib/ui/utils"
 import { API, ROUTES } from "@/lib/config/constants"
 import type { ProfileTabProps, BillingInfo } from "../types"
+import { BillingVerificationModal } from "../modals/billing-verification-modal"
 
 export function ProfileBillingTab({
   setError,
@@ -33,6 +37,8 @@ export function ProfileBillingTab({
   const [cancelType, setCancelType] = useState<"period_end" | "immediate">("period_end")
   const [cancelingSubscription, setCancelingSubscription] = useState(false)
   const [reactivatingSubscription, setReactivatingSubscription] = useState(false)
+  const [showVerificationModal, setShowVerificationModal] = useState(false)
+  const [sensitiveInfoVisible, setSensitiveInfoVisible] = useState(false)
 
   // Update state when preloaded data changes
   useEffect(() => {
@@ -199,25 +205,69 @@ export function ProfileBillingTab({
                         <Users className="h-5 w-5 text-muted-foreground" />
                       ) : (
                         <Zap className="h-5 w-5 text-primary" />
-                      )}
-                    </div>
-                    <div>
-                      <p className="font-semibold text-foreground">
-                        {billingInfo.plan === "free" ? "Free Plan" : billingInfo.plan.replace("_supporter", " Supporter").replace(/(^\w|\s\w)/g, (m: string) => m.toUpperCase())}
-                      </p>
-                      <p className="text-sm text-muted-foreground">
-                        {billingInfo.plan === "free"
-                          ? `${billingInfo.limits.free} scans/day`
-                          : `${billingInfo.limits[billingInfo.plan as keyof typeof billingInfo.limits]} scans/day`
-                        }
-                      </p>
-                    </div>
+                    )}
                   </div>
-                  {billingInfo.plan === "free" && (
-                    <Button asChild size="sm">
-                      <a href={ROUTES.PRICING}>Upgrade</a>
-                    </Button>
-                  )}
+                )}
+
+                {/* Reveal Sensitive Billing Information */}
+                {billingInfo.subscription && !billingInfo.giftedSubscription && (
+                  <div className="flex flex-col gap-3 p-4 rounded-lg border border-border bg-background/50 mt-4">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Lock className="h-4 w-4 text-muted-foreground" />
+                        <span className="text-sm font-medium text-foreground">Payment Details</span>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setShowVerificationModal(true)}
+                        className="text-xs"
+                      >
+                        {sensitiveInfoVisible ? (
+                          <>
+                            <EyeOff className="h-4 w-4 mr-1" />
+                            Hide
+                          </>
+                        ) : (
+                          <>
+                            <Eye className="h-4 w-4 mr-1" />
+                            Reveal
+                          </>
+                        )}
+                      </Button>
+                    </div>
+
+                    {sensitiveInfoVisible && billingInfo.subscription.cardLast4 ? (
+                      <div className="space-y-2 pt-2 border-t border-border">
+                        <div className="flex items-center justify-between text-sm">
+                          <span className="text-muted-foreground">Card Number</span>
+                          <span className="font-mono text-foreground">•••• •••• •••• {billingInfo.subscription.cardLast4}</span>
+                        </div>
+                        {billingInfo.subscription.cardBrand && (
+                          <div className="flex items-center justify-between text-sm">
+                            <span className="text-muted-foreground">Card Brand</span>
+                            <span className="font-medium text-foreground capitalize">{billingInfo.subscription.cardBrand}</span>
+                          </div>
+                        )}
+                        {billingInfo.subscription.cardExpMonth && billingInfo.subscription.cardExpYear && (
+                          <div className="flex items-center justify-between text-sm">
+                            <span className="text-muted-foreground">Expires</span>
+                            <span className="font-mono text-foreground">{billingInfo.subscription.cardExpMonth.toString().padStart(2, '0')}/{billingInfo.subscription.cardExpYear.toString().slice(-2)}</span>
+                          </div>
+                        )}
+                        <p className="text-xs text-muted-foreground pt-2 italic">
+                          This information is encrypted and secure. You&apos;ll need to verify your identity each time you view it.
+                        </p>
+                      </div>
+                    ) : sensitiveInfoVisible ? (
+                      <p className="text-sm text-muted-foreground pt-2">No card information available</p>
+                    ) : (
+                      <p className="text-xs text-muted-foreground pt-2">
+                        Click &quot;Reveal&quot; and verify your email to view your payment details
+                      </p>
+                    )}
+                  </div>
+                )}
                 </div>
 
                 {/* Gifted subscription details */}
@@ -507,6 +557,14 @@ export function ProfileBillingTab({
           </div>
         </div>
       )}
+
+      {/* Billing Verification Modal */}
+      <BillingVerificationModal
+        open={showVerificationModal}
+        onOpenChange={setShowVerificationModal}
+        email={billingInfo?.email || ""}
+        onVerified={() => setSensitiveInfoVisible(true)}
+      />
     </div>
   )
 }
