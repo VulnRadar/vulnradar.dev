@@ -794,20 +794,43 @@ export function apiKeyRotationEmail(keyName: string, newKeyCreatedAt: string, de
 
 export function email2FACodeEmail(code: string) {
   return {
-    subject: `${code} - Your ${APP_NAME} Login Code`,
-    text: `Your ${APP_NAME} verification code is: ${code}\n\nThis code expires in 10 minutes.\n\nIf you did not request this code, someone may be trying to access your account. Please secure your account immediately.`,
+  subject: `${code} - Your ${APP_NAME} Login Code`,
+  text: `Your ${APP_NAME} verification code is: ${code}\n\nThis code expires in 10 minutes.\n\nIf you did not request this code, someone may be trying to access your account. Please secure your account immediately.`,
+  html: `
+  <h1 style="margin: 0 0 8px 0; font-size: 20px; font-weight: 600; color: ${COLORS.TEXT_PRIMARY};">Your Login Code</h1>
+  <p style="margin: 0 0 24px 0; font-size: 14px; color: ${COLORS.TEXT_SECONDARY}; line-height: 1.6;">Enter this code to complete your sign-in.</p>
+  <div style="background-color: ${COLORS.BG_SECTION}; border-radius: 8px; padding: 24px; margin-bottom: 20px; text-align: center;">
+  <p style="margin: 0 0 8px 0; font-size: 12px; color: ${COLORS.TEXT_MUTED}; text-transform: uppercase; font-weight: 600; letter-spacing: 0.5px;">Verification Code</p>
+  <p style="margin: 0; font-size: 36px; font-weight: 700; letter-spacing: 8px; color: ${COLORS.ACCENT_BLUE_LIGHT}; font-family: monospace;">${escapeHtml(code)}</p>
+  </div>
+  <div style="background-color: ${COLORS.BG_WARNING}; border-left: 3px solid ${COLORS.ACCENT_YELLOW}; border-radius: 6px; padding: 14px 16px; margin-bottom: 20px;">
+  <p style="margin: 0 0 4px 0; font-size: 13px; color: ${COLORS.ACCENT_YELLOW_LIGHT}; font-weight: 600;">Expires in 10 minutes</p>
+  <p style="margin: 0; font-size: 13px; color: ${COLORS.ACCENT_YELLOW_PALE}; line-height: 1.6;">Do not share this code with anyone. ${APP_NAME} will never ask you for this code outside of the login page.</p>
+  </div>
+  ${securityWarningBlock()}
+  `,
+  }
+  }
+
+export function billingVerificationCodeEmail(code: string) {
+  return {
+    subject: `${code} - Billing Information Access Code`,
+    text: `Your ${APP_NAME} billing verification code is: ${code}\n\nThis code expires in 5 minutes.\n\nYou requested this code to view sensitive billing information. If you did not make this request, please secure your account immediately.`,
     html: `
-      <h1 style="margin: 0 0 8px 0; font-size: 20px; font-weight: 600; color: ${COLORS.TEXT_PRIMARY};">Your Login Code</h1>
-      <p style="margin: 0 0 24px 0; font-size: 14px; color: ${COLORS.TEXT_SECONDARY}; line-height: 1.6;">Enter this code to complete your sign-in.</p>
-      <div style="background-color: ${COLORS.BG_SECTION}; border-radius: 8px; padding: 24px; margin-bottom: 20px; text-align: center;">
-        <p style="margin: 0 0 8px 0; font-size: 12px; color: ${COLORS.TEXT_MUTED}; text-transform: uppercase; font-weight: 600; letter-spacing: 0.5px;">Verification Code</p>
-        <p style="margin: 0; font-size: 36px; font-weight: 700; letter-spacing: 8px; color: ${COLORS.ACCENT_BLUE_LIGHT}; font-family: monospace;">${escapeHtml(code)}</p>
-      </div>
-      <div style="background-color: ${COLORS.BG_WARNING}; border-left: 3px solid ${COLORS.ACCENT_YELLOW}; border-radius: 6px; padding: 14px 16px; margin-bottom: 20px;">
-        <p style="margin: 0 0 4px 0; font-size: 13px; color: ${COLORS.ACCENT_YELLOW_LIGHT}; font-weight: 600;">Expires in 10 minutes</p>
-        <p style="margin: 0; font-size: 13px; color: ${COLORS.ACCENT_YELLOW_PALE}; line-height: 1.6;">Do not share this code with anyone. ${APP_NAME} will never ask you for this code outside of the login page.</p>
-      </div>
-      ${securityWarningBlock()}
+    <h1 style="margin: 0 0 8px 0; font-size: 20px; font-weight: 600; color: ${COLORS.TEXT_PRIMARY};">Billing Verification Code</h1>
+    <p style="margin: 0 0 24px 0; font-size: 14px; color: ${COLORS.TEXT_SECONDARY}; line-height: 1.6;">Enter this code to view your sensitive billing information.</p>
+    <div style="background-color: ${COLORS.BG_SECTION}; border-radius: 8px; padding: 24px; margin-bottom: 20px; text-align: center;">
+      <p style="margin: 0 0 8px 0; font-size: 12px; color: ${COLORS.TEXT_MUTED}; text-transform: uppercase; font-weight: 600; letter-spacing: 0.5px;">Verification Code</p>
+      <p style="margin: 0; font-size: 36px; font-weight: 700; letter-spacing: 8px; color: ${COLORS.ACCENT_BLUE_LIGHT}; font-family: monospace;">${escapeHtml(code)}</p>
+    </div>
+    <div style="background-color: ${COLORS.BG_WARNING}; border-left: 3px solid ${COLORS.ACCENT_YELLOW}; border-radius: 6px; padding: 14px 16px; margin-bottom: 20px;">
+      <p style="margin: 0 0 4px 0; font-size: 13px; color: ${COLORS.ACCENT_YELLOW_LIGHT}; font-weight: 600;">Expires in 5 minutes</p>
+      <p style="margin: 0; font-size: 13px; color: ${COLORS.ACCENT_YELLOW_PALE}; line-height: 1.6;">This code is required each time you want to view sensitive billing details. Never share this code with anyone.</p>
+    </div>
+    <div style="background-color: ${COLORS.BG_INFO}; border-left: 3px solid ${COLORS.ACCENT_BLUE_LIGHT}; border-radius: 6px; padding: 14px 16px;">
+      <p style="margin: 0 0 4px 0; font-size: 13px; color: ${COLORS.ACCENT_BLUE_PALE}; font-weight: 600;">Why do we require this?</p>
+      <p style="margin: 0; font-size: 13px; color: #cbd5e1; line-height: 1.6;">Even if someone gains access to your account, they cannot view your payment details without access to your email.</p>
+    </div>
     `,
   }
 }
