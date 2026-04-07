@@ -359,11 +359,11 @@ export async function POST(request: NextRequest) {
     if (authedUserId) {
       try {
         const source = isApiKeyAuth ? "api" : "web"
-  const insertResult = await pool.query(
-  `INSERT INTO scan_history (user_id, url, summary, findings, findings_count, duration, scanned_at, source, response_headers, notes)
-  VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id`,
-  [authedUserId, url, JSON.stringify(summary), JSON.stringify(findings), summary.total, duration, result.scannedAt, source, JSON.stringify(capturedHeaders), DEFAULT_SCAN_NOTE],
-  )
+        const insertResult = await pool.query(
+          `INSERT INTO scan_history (user_id, url, summary, findings, findings_count, duration, scanned_at, source, response_headers, notes)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id`,
+          [authedUserId, url, JSON.stringify(summary), JSON.stringify(findings), summary.total, duration, result.scannedAt, source, JSON.stringify(capturedHeaders), DEFAULT_SCAN_NOTE],
+        )
         scanHistoryId = insertResult.rows[0]?.id || null
       } catch (err) {
         // Non-fatal: don't fail the scan if history save fails
@@ -385,7 +385,12 @@ export async function POST(request: NextRequest) {
             userEmail,
             type: "scan_complete",
             emailContent: scanEmail,
-          }).catch(() => {})
+          }).catch((error) => {
+            console.error(
+              "[VulnRadar] Failed to send scan complete email:",
+              error instanceof Error ? error.message : error,
+            )
+          })
 
           // Send critical findings alert if applicable
           if (summary.critical > 0 || summary.high > 0) {
@@ -395,10 +400,20 @@ export async function POST(request: NextRequest) {
               userEmail,
               type: "severity_alerts",
               emailContent: criticalEmail,
-            }).catch(() => {})
+            }).catch((error) => {
+              console.error(
+                "[VulnRadar] Failed to send critical findings email:",
+                error instanceof Error ? error.message : error,
+              )
+            })
           }
         })
-        .catch(() => {})
+        .catch((error) => {
+          console.error(
+            "[VulnRadar] Failed to fetch user email for notifications:",
+            error instanceof Error ? error.message : error,
+          )
+        })
     }
 
     // Fire webhooks for all scans (non-blocking)
@@ -457,7 +472,16 @@ export async function POST(request: NextRequest) {
             headers: { "Content-Type": "application/json", "User-Agent": `${APP_NAME}-Webhook/1.0` },
             body,
             signal: AbortSignal.timeout(10000),
-          }).catch(() => {})
+          }).catch((err) => {
+            console.error(
+              "[VulnRadar] Webhook delivery failed",
+              {
+                url: webhookUrl,
+                type: webhookType,
+                error: err instanceof Error ? err.message : String(err),
+              },
+            )
+          })
           }
         })
         .catch(() => {})
