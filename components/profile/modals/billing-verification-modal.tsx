@@ -4,10 +4,11 @@ import { useState, useEffect, useRef } from "react"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Loader2, Mail, ShieldAlert, CheckCircle } from "lucide-react"
+import { Loader2, ShieldAlert, Mail } from "lucide-react"
 import { useToast } from "@/components/ui/use-toast"
 
 interface SensitiveBillingData {
+  // Subscription info
   subscriptionId: string
   status: string
   created: string | null
@@ -19,10 +20,18 @@ interface SensitiveBillingData {
   endedAt: string | null
   trialStart: string | null
   trialEnd: string | null
+  cancelAtPeriodEnd: boolean
+  billingCycleAnchor: number | null
+  currency: string | null
+  
+  // Customer info
   customer: {
     email: string | null
     name: string | null
     phone: string | null
+    balance: number | null
+    delinquent: boolean
+    taxExempt: string | null
     address: {
       line1?: string
       line2?: string
@@ -32,25 +41,28 @@ interface SensitiveBillingData {
       country?: string
     } | null
   }
+  
+  // Payment method
   paymentMethod: {
+    id: string | null
     cardBrand: string | null
     cardLast4: string | null
     cardExpMonth: number | null
     cardExpYear: number | null
     cardFunding: string | null
     cardCountry: string | null
+    cardFingerprint: string | null
     billingName: string | null
     billingEmail: string | null
     billingPhone: string | null
-    billingAddress: {
-      line1?: string
-      line2?: string
-      city?: string
-      state?: string
-      postal_code?: string
-      country?: string
-    } | null
+    cardSupports3dSecure: boolean
+    cvvCheck: string | null
+    postalCodeCheck: string | null
+    addressLine1Check: string | null
+    createdAt: string | null
   } | null
+  
+  // Invoice
   invoice: {
     id: string | null
     number: string | null
@@ -63,9 +75,44 @@ interface SensitiveBillingData {
     created: string | null
     hostedUrl: string | null
     pdfUrl: string | null
+    billingReason: string | null
+    paidAt: string | null
+    paymentAttempts: number | null
+    periodStart: string | null
+    periodEnd: string | null
+    dueDate: string | null
+    collectionMethod: string | null
+    lineItems: Array<{
+      description: string
+      amount: number
+      quantity: number
+    }> | null
   } | null
+  
+  // Plan/Product info
+  planName: string | null
+  productId: string | null
+  scansPerDay: number | null
+  billingInterval: string | null
+  billingIntervalCount: number | null
+  amount: number | null
+  
+  // Collection & Billing
+  collectionMethod: string | null
+  nextBillingDate: string | null
+  liveMode: boolean
+  
+  // Dates
+  customerCreatedAt: string | null
+  
+  // Stripe IDs
   stripeCustomerId: string
   stripeSubscriptionId: string
+  stripePaymentMethodId: string | null
+  
+  // Trial info
+  hasTrialPeriod: boolean
+  isOnTrial: boolean
 }
 
 interface BillingVerificationModalProps {
@@ -79,55 +126,48 @@ export function BillingVerificationModal({ open, onOpenChange, email, onVerified
   const { toast } = useToast()
   const [code, setCode] = useState("")
   const [loading, setLoading] = useState(false)
-  const [sendingEmail, setSendingEmail] = useState(false)
-  const [emailSent, setEmailSent] = useState(false)
   const [resending, setResending] = useState(false)
+  const [userContinued, setUserContinued] = useState(false)
   const hasSentEmail = useRef(false)
 
-  // Send email in background immediately when modal opens
+  // Reset state when modal closes
   useEffect(() => {
-    if (open && !hasSentEmail.current) {
-      hasSentEmail.current = true
-      setSendingEmail(true)
-      
-      fetch("/api/v2/billing/verify/send", { method: "POST" })
-        .then((res) => {
-          if (res.ok) {
-            setEmailSent(true)
-          } else {
-            toast({
-              title: "Error sending code",
-              description: "Please try again or contact support",
-              variant: "destructive",
-            })
-          }
-        })
-        .catch(() => {
-          toast({
-            title: "Error sending code",
-            description: "Please check your connection and try again",
-            variant: "destructive",
-          })
-        })
-        .finally(() => {
-          setSendingEmail(false)
-        })
+    if (!open) {
+      setUserContinued(false)
+      hasSentEmail.current = false
     }
-  }, [open, toast])
+  }, [open])
+
+  const handleContinue = async () => {
+    setUserContinued(true)
+
+    try {
+      await fetch("/api/v2/billing/verify/send", { method: "POST" })
+    } catch {
+      toast({
+        title: "Error sending code",
+        description: "Please check your connection and try again",
+        variant: "destructive",
+      })
+    }
+  }
 
   const handleResendCode = async () => {
     setResending(true)
     try {
       const response = await fetch("/api/v2/billing/verify/send", { method: "POST" })
-      if (response.ok) {
-        setEmailSent(true)
+      if (!response.ok) {
         toast({
-          title: "Code resent",
-          description: `A new verification code has been sent to ${email}`,
+          title: "Error",
+          description: "Failed to resend verification code",
+          variant: "destructive",
         })
-      } else {
-        throw new Error("Failed to resend")
+        return
       }
+      toast({
+        title: "Code resent",
+        description: `A new verification code has been sent to ${email}`,
+      })
     } catch {
       toast({
         title: "Error",
@@ -159,7 +199,12 @@ export function BillingVerificationModal({ open, onOpenChange, email, onVerified
 
       if (!response.ok) {
         const error = await response.json()
-        throw new Error(error.error || "Invalid verification code")
+        toast({
+          title: "Verification failed",
+          description: error.error || "Please check the code and try again",
+          variant: "destructive",
+        })
+        return
       }
 
       const data = await response.json()
@@ -170,13 +215,12 @@ export function BillingVerificationModal({ open, onOpenChange, email, onVerified
       })
       setCode("")
       hasSentEmail.current = false
-      setEmailSent(false)
       onOpenChange(false)
       onVerified(data.sensitiveData)
-    } catch (error) {
+    } catch {
       toast({
         title: "Verification failed",
-        description: error instanceof Error ? error.message : "Please check the code and try again",
+        description: "Please check the code and try again",
         variant: "destructive",
       })
     } finally {
@@ -186,88 +230,115 @@ export function BillingVerificationModal({ open, onOpenChange, email, onVerified
 
   const handleClose = () => {
     setCode("")
+    setUserContinued(false)
     hasSentEmail.current = false
-    setEmailSent(false)
     onOpenChange(false)
   }
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
       <DialogContent className="max-w-sm">
-        <DialogHeader>
-          <div className="flex items-center gap-2">
-            <ShieldAlert className="h-5 w-5 text-amber-500" />
-            <DialogTitle>Verify Your Identity</DialogTitle>
-          </div>
-          <DialogDescription>
-            Enter the verification code sent to your email
-          </DialogDescription>
-        </DialogHeader>
+        {!userContinued ? (
+          // Initial confirmation prompt
+          <>
+            <DialogHeader className="gap-2">
+              <div className="flex items-center gap-2">
+                <ShieldAlert className="h-5 w-5 text-amber-500" />
+                <DialogTitle>Verify Your Identity</DialogTitle>
+              </div>
+              <DialogDescription>
+                A verification code will be sent to your email address
+              </DialogDescription>
+            </DialogHeader>
 
-        <div className="space-y-4">
-          <div className="rounded-lg bg-muted/50 border border-border p-3 flex gap-3">
-            {sendingEmail ? (
-              <>
-                <Loader2 className="h-5 w-5 text-primary flex-shrink-0 mt-0.5 animate-spin" />
-                <p className="text-sm text-muted-foreground">
-                  Sending verification code to <strong className="text-foreground">{email}</strong>...
-                </p>
-              </>
-            ) : emailSent ? (
-              <>
-                <CheckCircle className="h-5 w-5 text-emerald-500 flex-shrink-0 mt-0.5" />
-                <p className="text-sm text-muted-foreground">
-                  Code sent to <strong className="text-foreground">{email}</strong>
-                </p>
-              </>
-            ) : (
-              <>
-                <Mail className="h-5 w-5 text-muted-foreground flex-shrink-0 mt-0.5" />
-                <p className="text-sm text-muted-foreground">
-                  Verification code will be sent to <strong className="text-foreground">{email}</strong>
-                </p>
-              </>
-            )}
-          </div>
+            <div className="space-y-4">
+              <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50 border border-border">
+                <Mail className="h-5 w-5 text-muted-foreground flex-shrink-0" />
+                <div className="min-w-0">
+                  <p className="text-xs text-muted-foreground font-medium">Sending to</p>
+                  <p className="text-sm font-medium text-foreground truncate">{email}</p>
+                </div>
+              </div>
 
-          <div>
-            <label className="text-sm text-muted-foreground mb-2 block">
-              Enter 6-digit code (expires in 5 minutes)
-            </label>
-            <Input
-              placeholder="000000"
-              value={code}
-              onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
-              maxLength={6}
-              className="font-mono text-center text-lg tracking-widest"
-              disabled={loading}
-              autoFocus
-            />
-          </div>
+              <div className="flex flex-col gap-2">
+                <Button onClick={handleContinue} className="w-full">
+                  Continue
+                </Button>
+                <Button variant="outline" onClick={handleClose} className="w-full">
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          </>
+        ) : (
+          // Code input area (shown after user clicks Continue)
+          <>
+            <DialogHeader className="gap-2">
+              <div className="flex items-center gap-2">
+                <ShieldAlert className="h-5 w-5 text-amber-500" />
+                <DialogTitle>Enter Verification Code</DialogTitle>
+              </div>
+              <DialogDescription>
+                Check your email for the 6-digit code
+              </DialogDescription>
+            </DialogHeader>
 
-          <Button onClick={handleVerifyCode} disabled={loading || code.length !== 6} className="w-full">
-            {loading ? (
-              <>
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                Verifying...
-              </>
-            ) : (
-              "Verify Code"
-            )}
-          </Button>
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-sm font-medium text-foreground">
+                    6-digit code
+                  </label>
+                  <span className="text-xs text-muted-foreground">Expires in 5 min</span>
+                </div>
+                <Input
+                  placeholder="000000"
+                  value={code}
+                  onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                  maxLength={6}
+                  className="font-mono text-center text-2xl tracking-widest"
+                  disabled={loading}
+                  autoFocus
+                />
+              </div>
 
-          <Button variant="outline" onClick={handleClose} disabled={loading} className="w-full">
-            Cancel
-          </Button>
+              <div className="flex flex-col gap-2">
+                <Button
+                  onClick={handleVerifyCode}
+                  disabled={loading || code.length !== 6}
+                  className="w-full"
+                >
+                  {loading ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Verifying...
+                    </>
+                  ) : (
+                    "Verify Code"
+                  )}
+                </Button>
+                <Button variant="outline" onClick={handleClose} disabled={loading} className="w-full">
+                  Cancel
+                </Button>
+              </div>
 
-          <button
-            onClick={handleResendCode}
-            disabled={loading || resending || sendingEmail}
-            className="w-full text-sm text-muted-foreground hover:text-foreground underline disabled:opacity-50"
-          >
-            {resending ? "Sending..." : "Didn't receive the code? Send again"}
-          </button>
-        </div>
+              <button
+                onClick={handleResendCode}
+                disabled={loading || resending}
+                className="w-full text-sm text-muted-foreground hover:text-foreground underline py-2 disabled:opacity-50"
+              >
+                {resending ? (
+                  <>
+                    <Loader2 className="h-4 w-4 inline mr-1 animate-spin" />
+                    Sending...
+                  </>
+                ) : (
+                  "Didn't receive the code? Send again"
+                )}
+              </button>
+            </div>
+          </>
+        )}
       </DialogContent>
     </Dialog>
   )
