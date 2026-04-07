@@ -82,7 +82,7 @@ export function CheckoutSuccessContent() {
             <Link href={ROUTES.DASHBOARD}>Start Scanning</Link>
           </Button>
           <Button variant="outline" asChild>
-            <Link href="/profile?tab=billing">View Billing Details</Link>
+            <Link href="/profile#billing">View Billing Details</Link>
           </Button>
         </div>
 
