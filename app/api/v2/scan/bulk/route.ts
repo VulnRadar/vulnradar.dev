@@ -11,7 +11,7 @@ import type { Vulnerability, Severity } from "@/lib/scanner/types"
 import { getProtocolFromUrl } from "@/lib/scanner/protocols"
 import { runWebSocketChecks } from "@/lib/scanner/protocols/websocket"
 import { runFtpChecks } from "@/lib/scanner/protocols/ftp"
-import { validateScanTarget } from "@/lib/scanner/safe-fetch"
+import { validateScanTarget, safeFetch } from "@/lib/scanner/safe-fetch"
 import { checkAccessRules } from "@/lib/scanner/access-rules"
 
 const SEVERITY_ORDER: Record<Severity, number> = { critical: 0, high: 1, medium: 2, low: 3, info: 4 }
@@ -107,15 +107,8 @@ async function runSingleScan(url: string, userId: number, isApiKeyAuth: boolean)
         throw new Error("Invalid protocol")
       }
       
-      // Build fetch URL from validated components to ensure CodeQL recognizes safety
-      const fetchProtocol = safeUrl.protocol === "https:" ? "https:" : "http:"
-      const fetchHost = safeUrl.hostname
-      const fetchPort = safeUrl.port ? `:${safeUrl.port}` : ""
-      const fetchPath = safeUrl.pathname || ""
-      const fetchSearch = safeUrl.search || ""
-      const fetchUrl = `${fetchProtocol}//${fetchHost}${fetchPort}${fetchPath}${fetchSearch}`
-      
-      response = await fetch(fetchUrl, {
+      // Use safeFetch which validates the URL internally to prevent SSRF
+      response = await safeFetch(safeUrl.href, {
         method: "GET",
         headers: { "User-Agent": `${APP_NAME}/1.0 (Security Scanner)` },
         redirect: "follow",
@@ -141,18 +134,8 @@ async function runSingleScan(url: string, userId: number, isApiKeyAuth: boolean)
         throw new Error("Invalid protocol")
       }
       
-      // Use the validated URL object's href for the fetch
-      const safeUrl = urlObj.href
-      
-      // Build fetch URL from validated components to ensure CodeQL recognizes safety
-      const fetchProtocol = urlObj.protocol === "https:" ? "https:" : "http:"
-      const fetchHost = urlObj.hostname
-      const fetchPort = urlObj.port ? `:${urlObj.port}` : ""
-      const fetchPath = urlObj.pathname || ""
-      const fetchSearch = urlObj.search || ""
-      const fetchUrl = `${fetchProtocol}//${fetchHost}${fetchPort}${fetchPath}${fetchSearch}`
-      
-      response = await fetch(fetchUrl, {
+      // Use safeFetch which validates the URL internally to prevent SSRF
+      response = await safeFetch(urlObj.href, {
         method: "GET",
         headers: { "User-Agent": `${APP_NAME}/1.0 (Security Scanner)` },
         redirect: "follow",
