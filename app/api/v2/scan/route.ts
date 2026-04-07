@@ -279,6 +279,11 @@ export async function POST(request: NextRequest) {
         // Use the validated URL object's href property for the fetch
         const safeUrl = urlObj.href
         
+        // Explicit validation immediately before fetch for CodeQL clarity
+        if (!safeUrl.startsWith("http://") && !safeUrl.startsWith("https://")) {
+          throw new Error("Invalid URL scheme")
+        }
+        
         response = await fetch(safeUrl, {
           method: "GET",
           headers: {
