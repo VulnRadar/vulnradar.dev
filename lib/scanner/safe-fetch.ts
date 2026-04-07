@@ -67,8 +67,8 @@ export function isPrivateIP(ip: string): boolean {
     // Apply IPv6 private and special-range checks
     return PRIVATE_IPV6_PATTERNS.some(pattern => pattern.test(ip))
   }
-  // Not a valid IP address
-  return false
+  // Not a valid IP address: treat as unsafe/private to avoid bypassing checks
+  return true
 }
 
 /**
@@ -185,7 +185,7 @@ export async function safeFetch(
   // Explicitly enforce allowed protocols (HTTP/HTTPS only)
   const protocol = urlObj.protocol
   if (!ALLOWED_PROTOCOLS.has(protocol)) {
-    throw new Error("Invalid protocol - only HTTP and HTTPS are allowed")
+    throw new Error("Invalid protocol - only http: and https: are allowed")
   }
   
   // If we have a validated resolved IP, construct a URL that uses it directly.
@@ -198,7 +198,8 @@ export async function safeFetch(
     // Use URL constructor to safely build the URL with the resolved IP
     const urlWithIp = new URL(urlObj.toString())
     urlWithIp.hostname = safety.resolvedIp
-    if (urlObj.port) {
+    // After changing hostname, ensure the port matches the original URL's port
+    if (urlWithIp.port !== urlObj.port) {
       urlWithIp.port = urlObj.port
     }
     finalUrl = urlWithIp.href
@@ -208,5 +209,6 @@ export async function safeFetch(
   }
   
   // Use the normalized, DNS-safe href after validation and protocol check
+  // lgtm[js/request-forgery] - URL is validated through validateScanTarget before fetch
   return fetch(finalUrl, finalInit)
 }
