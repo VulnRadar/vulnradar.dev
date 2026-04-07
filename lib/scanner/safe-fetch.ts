@@ -195,12 +195,14 @@ export async function safeFetch(
   
   if (safety.resolvedIp) {
     const originalHostname = urlObj.hostname
+    const originalPort = urlObj.port
+    const hadExplicitPort = originalPort !== ""
     // Use URL constructor to safely build the URL with the resolved IP
     const urlWithIp = new URL(urlObj.toString())
     urlWithIp.hostname = safety.resolvedIp
-    // After changing hostname, ensure the port matches the original URL's port
-    if (urlWithIp.port !== urlObj.port) {
-      urlWithIp.port = urlObj.port
+    // After changing hostname, ensure the port matches the original URL's explicit port (if any)
+    if (hadExplicitPort) {
+      urlWithIp.port = originalPort
     }
     finalUrl = urlWithIp.href
     
@@ -210,5 +212,19 @@ export async function safeFetch(
   
   // Use the normalized, DNS-safe href after validation and protocol check
   // lgtm[js/request-forgery] - URL is validated through validateScanTarget before fetch
-  return fetch(finalUrl, finalInit)
+  const controller = new AbortController()
+  const timeoutMs = 30000
+  const timeoutId = setTimeout(() => {
+    controller.abort()
+  }, timeoutMs)
+  // Prefer a caller-provided signal if present; otherwise, apply our timeout signal.
+  const requestInit: RequestInit = {
+    ...finalInit,
+    signal: finalInit?.signal ?? controller.signal,
+  }
+  try {
+    return await fetch(finalUrl, requestInit)
+  } finally {
+    clearTimeout(timeoutId)
+  }
 }
