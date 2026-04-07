@@ -506,6 +506,8 @@ export const API = {
   FINDING_TYPES: `/api/${API_VERSION}/finding-types`,
   COMPARE: `/api/${API_VERSION}/compare`,
   BILLING: `/api/${API_VERSION}/billing`,
+  SUBSCRIPTION_CANCEL: `/api/${API_VERSION}/billing/subscription/cancel`,
+  SUBSCRIPTION_REACTIVATE: `/api/${API_VERSION}/billing/subscription/reactivate`,
 } as const
 
 // ============================================================================

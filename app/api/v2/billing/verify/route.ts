@@ -62,10 +62,15 @@ export async function POST(request: NextRequest) {
         country?: string
       }
       phone?: string
+      created?: number
+      balance?: number
+      delinquent?: boolean
+      tax_exempt?: string
     } | null
 
     // Get payment method details
     const paymentMethod = subscription.default_payment_method as {
+      id?: string
       card?: {
         brand: string
         last4: string
@@ -73,6 +78,12 @@ export async function POST(request: NextRequest) {
         exp_year: number
         funding: string
         country?: string
+        fingerprint?: string
+        checks?: {
+          cvc_check?: string
+          postal_code_check?: string
+          address_line1_check?: string
+        }
       }
       billing_details?: {
         name?: string
@@ -86,6 +97,10 @@ export async function POST(request: NextRequest) {
           postal_code?: string
           country?: string
         }
+      }
+      created?: number
+      three_d_secure_usage?: {
+        supported?: boolean
       }
     } | null
 
@@ -102,10 +117,36 @@ export async function POST(request: NextRequest) {
       subtotal?: number
       total?: number
       tax?: number
+      billing_reason?: string
+      status_transitions?: {
+        paid_at?: number
+      }
+      attempt_count?: number
+      period_start?: number
+      period_end?: number
+      due_date?: number
+      collection_method?: string
+      lines?: {
+        data: Array<{
+          description?: string
+          amount?: number
+          quantity?: number
+        }>
+      }
     } | null
 
-    // Get subscription item for period data
+    // Get subscription item for period data and plan info
     const item = subscription.items?.data?.[0]
+    const plan = item?.plan as {
+      id?: string
+      amount?: number
+      interval?: string
+      interval_count?: number
+      product?: {
+        id?: string
+        name?: string
+      }
+    } | null
 
     // Return sensitive billing details
     return NextResponse.json({
@@ -123,27 +164,39 @@ export async function POST(request: NextRequest) {
         endedAt: subscription.ended_at ? new Date(subscription.ended_at * 1000).toISOString() : null,
         trialStart: subscription.trial_start ? new Date(subscription.trial_start * 1000).toISOString() : null,
         trialEnd: subscription.trial_end ? new Date(subscription.trial_end * 1000).toISOString() : null,
+        cancelAtPeriodEnd: subscription.cancel_at_period_end || false,
+        billingCycleAnchor: subscription.billing_cycle_anchor || null,
+        currency: subscription.currency || null,
         
         // Customer details
         customer: {
           email: customer?.email || null,
           name: customer?.name || null,
           phone: customer?.phone || null,
+          balance: customer?.balance ? customer.balance / 100 : null,
+          delinquent: customer?.delinquent || false,
+          taxExempt: customer?.tax_exempt || null,
           address: customer?.address || null,
         },
         
         // Payment method
         paymentMethod: paymentMethod ? {
+          id: paymentMethod.id || null,
           cardBrand: paymentMethod.card?.brand || null,
           cardLast4: paymentMethod.card?.last4 || null,
           cardExpMonth: paymentMethod.card?.exp_month || null,
           cardExpYear: paymentMethod.card?.exp_year || null,
           cardFunding: paymentMethod.card?.funding || null,
           cardCountry: paymentMethod.card?.country || null,
+          cardFingerprint: paymentMethod.card?.fingerprint || null,
           billingName: paymentMethod.billing_details?.name || null,
           billingEmail: paymentMethod.billing_details?.email || null,
           billingPhone: paymentMethod.billing_details?.phone || null,
-          billingAddress: paymentMethod.billing_details?.address || null,
+          cardSupports3dSecure: paymentMethod.three_d_secure_usage?.supported || false,
+          cvvCheck: paymentMethod.card?.checks?.cvc_check || null,
+          postalCodeCheck: paymentMethod.card?.checks?.postal_code_check || null,
+          addressLine1Check: paymentMethod.card?.checks?.address_line1_check || null,
+          createdAt: paymentMethod.created ? new Date(paymentMethod.created * 1000).toISOString() : null,
         } : null,
         
         // Latest invoice
@@ -159,11 +212,44 @@ export async function POST(request: NextRequest) {
           created: latestInvoice.created ? new Date(latestInvoice.created * 1000).toISOString() : null,
           hostedUrl: latestInvoice.hosted_invoice_url || null,
           pdfUrl: latestInvoice.invoice_pdf || null,
+          billingReason: latestInvoice.billing_reason || null,
+          paidAt: latestInvoice.status_transitions?.paid_at ? new Date(latestInvoice.status_transitions.paid_at * 1000).toISOString() : null,
+          paymentAttempts: latestInvoice.attempt_count || null,
+          periodStart: latestInvoice.period_start ? new Date(latestInvoice.period_start * 1000).toISOString() : null,
+          periodEnd: latestInvoice.period_end ? new Date(latestInvoice.period_end * 1000).toISOString() : null,
+          dueDate: latestInvoice.due_date ? new Date(latestInvoice.due_date * 1000).toISOString() : null,
+          collectionMethod: latestInvoice.collection_method || null,
+          lineItems: latestInvoice.lines?.data?.map(line => ({
+            description: line.description || "Charge",
+            amount: Math.round((line.amount || 0) / 100 * 100) / 100,
+            quantity: line.quantity || 1,
+          })) || null,
         } : null,
+        
+        // Plan/Product info
+        planName: plan?.product?.name || null,
+        productId: plan?.product?.id || null,
+        scansPerDay: item?.metadata?.scansPerDay ? parseInt(item.metadata.scansPerDay) : null,
+        billingInterval: plan?.interval || null,
+        billingIntervalCount: plan?.interval_count || null,
+        amount: plan?.amount ? plan.amount / 100 : null,
+        
+        // Collection & Billing
+        collectionMethod: subscription.collection_method || null,
+        nextBillingDate: item?.current_period_end ? new Date((item.current_period_end + (item.billing_thresholds?.usage_gte || 0)) * 1000).toISOString() : null,
+        liveMode: subscription.livemode || false,
+        
+        // Dates
+        customerCreatedAt: customer?.created ? new Date(customer.created * 1000).toISOString() : null,
         
         // Stripe IDs (for support reference)
         stripeCustomerId: user.stripe_customer_id,
         stripeSubscriptionId: user.stripe_subscription_id,
+        stripePaymentMethodId: paymentMethod?.id || null,
+        
+        // Trial info
+        hasTrialPeriod: !!subscription.trial_start,
+        isOnTrial: subscription.trial_end ? new Date(subscription.trial_end * 1000) > new Date() : false,
       }
     })
   } catch (error) {

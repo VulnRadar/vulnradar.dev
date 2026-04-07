@@ -27,6 +27,7 @@ import type { ProfileTabProps, BillingInfo } from "../types"
 import { BillingVerificationModal, type SensitiveBillingData } from "../modals/billing-verification-modal"
 
 export function ProfileBillingTab({
+  user,
   setError,
   setSuccess,
   preloadedBillingInfo,
@@ -252,16 +253,6 @@ export function ProfileBillingTab({
                       </div>
                     )}
                     
-                    {/* Current billing period */}
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-muted-foreground">Current Period</span>
-                      <span className="text-sm font-medium text-foreground">
-                        {billingInfo.subscription.currentPeriodStart && billingInfo.subscription.currentPeriodEnd
-                          ? `${new Date(billingInfo.subscription.currentPeriodStart).toLocaleDateString()} - ${new Date(billingInfo.subscription.currentPeriodEnd).toLocaleDateString()}`
-                          : "Not available"}
-                      </span>
-                    </div>
-                    
                     {/* Next billing date */}
                     {billingInfo.subscription.nextBillingDate && !billingInfo.subscription.cancelAtPeriodEnd && (
                       <div className="flex items-center justify-between">
@@ -360,51 +351,58 @@ export function ProfileBillingTab({
                                   <span className="font-mono text-foreground">{sensitiveData.paymentMethod.cardExpMonth.toString().padStart(2, '0')}/{sensitiveData.paymentMethod.cardExpYear.toString().slice(-2)}</span>
                                 </div>
                               )}
-                              {sensitiveData.paymentMethod.cardFunding && (
+                              {sensitiveData.paymentMethod.billingEmail && (
                                 <div className="flex items-center justify-between text-sm">
-                                  <span className="text-muted-foreground">Type</span>
-                                  <span className="text-foreground capitalize">{sensitiveData.paymentMethod.cardFunding}</span>
+                                  <span className="text-muted-foreground">Billing Email</span>
+                                  <span className="text-foreground text-xs">{sensitiveData.paymentMethod.billingEmail}</span>
                                 </div>
                               )}
-                              {sensitiveData.paymentMethod.cardCountry && (
+                              {sensitiveData.paymentMethod.cardSupports3dSecure && (
                                 <div className="flex items-center justify-between text-sm">
-                                  <span className="text-muted-foreground">Card Country</span>
-                                  <span className="text-foreground">{sensitiveData.paymentMethod.cardCountry}</span>
+                                  <span className="text-muted-foreground">Security</span>
+                                  <span className="text-foreground">✓ 3D Secure</span>
                                 </div>
                               )}
                             </div>
                           </div>
                         )}
 
-                        {/* Billing Address Section */}
-                        {sensitiveData.paymentMethod?.billingAddress && (
-                          <div className="space-y-2">
-                            <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Billing Address</h4>
-                            <div className="bg-muted/30 rounded-lg p-3 space-y-1">
-                              {sensitiveData.paymentMethod.billingName && (
-                                <p className="text-sm text-foreground font-medium">{sensitiveData.paymentMethod.billingName}</p>
-                              )}
-                              {sensitiveData.paymentMethod.billingAddress.line1 && (
-                                <p className="text-sm text-muted-foreground">{sensitiveData.paymentMethod.billingAddress.line1}</p>
-                              )}
-                              {sensitiveData.paymentMethod.billingAddress.line2 && (
-                                <p className="text-sm text-muted-foreground">{sensitiveData.paymentMethod.billingAddress.line2}</p>
-                              )}
-                              {(sensitiveData.paymentMethod.billingAddress.city || sensitiveData.paymentMethod.billingAddress.state || sensitiveData.paymentMethod.billingAddress.postal_code) && (
-                                <p className="text-sm text-muted-foreground">
-                                  {[
-                                    sensitiveData.paymentMethod.billingAddress.city,
-                                    sensitiveData.paymentMethod.billingAddress.state,
-                                    sensitiveData.paymentMethod.billingAddress.postal_code,
-                                  ].filter(Boolean).join(", ")}
-                                </p>
-                              )}
-                              {sensitiveData.paymentMethod.billingAddress.country && (
-                                <p className="text-sm text-muted-foreground">{sensitiveData.paymentMethod.billingAddress.country}</p>
-                              )}
-                            </div>
+
+                        {/* Subscription Details Section */}
+                        <div className="space-y-2">
+                          <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Subscription Info</h4>
+                          <div className="bg-muted/30 rounded-lg p-3 space-y-2">
+                            {sensitiveData.created && (
+                              <div className="flex items-center justify-between text-sm">
+                                <span className="text-muted-foreground">Created</span>
+                                <span className="text-foreground">{new Date(sensitiveData.created).toLocaleDateString()}</span>
+                              </div>
+                            )}
+                            {sensitiveData.currentPeriodEnd && (
+                              <div className="flex items-center justify-between text-sm">
+                                <span className="text-muted-foreground">Billing Period Ends</span>
+                                <span className="text-foreground">{new Date(sensitiveData.currentPeriodEnd).toLocaleDateString()}</span>
+                              </div>
+                            )}
+                            {sensitiveData.hasTrialPeriod && (
+                              <div className="flex items-center justify-between text-sm">
+                                <span className="text-muted-foreground">Trial</span>
+                                <span className="text-foreground">{sensitiveData.isOnTrial ? "✓ Active" : "Ended"}</span>
+                              </div>
+                            )}
+                            {sensitiveData.billingInterval && (
+                              <div className="flex items-center justify-between text-sm">
+                                <span className="text-muted-foreground">Renews</span>
+                                <span className="text-foreground capitalize">
+                                  {sensitiveData.billingIntervalCount && sensitiveData.billingIntervalCount > 1 
+                                    ? `Every ${sensitiveData.billingIntervalCount} ${sensitiveData.billingInterval}s`
+                                    : sensitiveData.billingInterval}
+                                </span>
+                              </div>
+                            )}
                           </div>
-                        )}
+                        </div>
+
 
                         {/* Latest Invoice Section */}
                         {sensitiveData.invoice && (
@@ -423,65 +421,53 @@ export function ProfileBillingTab({
                                   <span className="text-foreground">{new Date(sensitiveData.invoice.created).toLocaleDateString()}</span>
                                 </div>
                               )}
-                              {sensitiveData.invoice.subtotal !== null && (
-                                <div className="flex items-center justify-between text-sm">
-                                  <span className="text-muted-foreground">Subtotal</span>
-                                  <span className="text-foreground">${sensitiveData.invoice.subtotal.toFixed(2)}</span>
-                                </div>
-                              )}
-                              {sensitiveData.invoice.tax !== null && sensitiveData.invoice.tax > 0 && (
-                                <div className="flex items-center justify-between text-sm">
-                                  <span className="text-muted-foreground">Tax</span>
-                                  <span className="text-foreground">${sensitiveData.invoice.tax.toFixed(2)}</span>
-                                </div>
-                              )}
                               {sensitiveData.invoice.total !== null && (
                                 <div className="flex items-center justify-between text-sm font-medium">
                                   <span className="text-muted-foreground">Total</span>
                                   <span className="text-foreground">${sensitiveData.invoice.total.toFixed(2)}</span>
                                 </div>
-                              )}
-                              {sensitiveData.invoice.status && (
-                                <div className="flex items-center justify-between text-sm">
-                                  <span className="text-muted-foreground">Status</span>
-                                  <Badge className={cn(
-                                    sensitiveData.invoice.status === "paid" 
-                                      ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/20"
-                                      : "bg-muted text-muted-foreground"
-                                  )}>
-                                    {sensitiveData.invoice.status.charAt(0).toUpperCase() + sensitiveData.invoice.status.slice(1)}
-                                  </Badge>
+                               )}
+                               {sensitiveData.invoice.status && (
+                                 <div className="flex items-center justify-between text-sm">
+                                   <span className="text-muted-foreground">Status</span>
+                                   <Badge className={cn(
+                                     sensitiveData.invoice.status === "paid" 
+                                       ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/20"
+                                       : "bg-muted text-muted-foreground"
+                                   )}>
+                                     {sensitiveData.invoice.status.charAt(0).toUpperCase() + sensitiveData.invoice.status.slice(1)}
+                                   </Badge>
+                                 </div>
+                               )}
+                                <div className="flex gap-2 pt-2">
+                                  {sensitiveData.invoice.hostedUrl && (
+                                    <a
+                                      href={sensitiveData.invoice.hostedUrl}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="text-xs text-primary hover:underline"
+                                    >
+                                      View Invoice
+                                    </a>
+                                  )}
+                                  {sensitiveData.invoice.pdfUrl && (
+                                    <a
+                                      href={sensitiveData.invoice.pdfUrl}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="text-xs text-primary hover:underline"
+                                    >
+                                      Download PDF
+                                    </a>
+                                  )}
                                 </div>
-                              )}
-                              <div className="flex gap-2 pt-2">
-                                {sensitiveData.invoice.hostedUrl && (
-                                  <a
-                                    href={sensitiveData.invoice.hostedUrl}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="text-xs text-primary hover:underline"
-                                  >
-                                    View Invoice
-                                  </a>
-                                )}
-                                {sensitiveData.invoice.pdfUrl && (
-                                  <a
-                                    href={sensitiveData.invoice.pdfUrl}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="text-xs text-primary hover:underline"
-                                  >
-                                    Download PDF
-                                  </a>
-                                )}
-                              </div>
                             </div>
                           </div>
                         )}
 
                         {/* Subscription IDs Section */}
                         <div className="space-y-2">
-                          <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Reference IDs</h4>
+                          <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Reference IDs & Metadata</h4>
                           <div className="bg-muted/30 rounded-lg p-3 space-y-2">
                             <div className="flex items-center justify-between text-sm">
                               <span className="text-muted-foreground">Customer ID</span>
@@ -491,6 +477,26 @@ export function ProfileBillingTab({
                               <span className="text-muted-foreground">Subscription ID</span>
                               <span className="font-mono text-xs text-foreground">{sensitiveData.stripeSubscriptionId}</span>
                             </div>
+                            {sensitiveData.stripePaymentMethodId && (
+                              <div className="flex items-center justify-between text-sm">
+                                <span className="text-muted-foreground">Payment Method ID</span>
+                                <span className="font-mono text-xs text-foreground">{sensitiveData.stripePaymentMethodId}</span>
+                              </div>
+                            )}
+                            {sensitiveData.productId && (
+                              <div className="flex items-center justify-between text-sm">
+                                <span className="text-muted-foreground">Product ID</span>
+                                <span className="font-mono text-xs text-foreground">{sensitiveData.productId}</span>
+                              </div>
+                            )}
+                            {sensitiveData.liveMode !== undefined && (
+                              <div className="flex items-center justify-between text-sm">
+                                <span className="text-muted-foreground">Mode</span>
+                                <Badge className={sensitiveData.liveMode ? "bg-red-500/10 text-red-500 border-red-500/20" : "bg-amber-500/10 text-amber-500 border-amber-500/20"}>
+                                  {sensitiveData.liveMode ? "Live" : "Test"}
+                                </Badge>
+                              </div>
+                            )}
                             {sensitiveData.created && (
                               <div className="flex items-center justify-between text-sm">
                                 <span className="text-muted-foreground">Created</span>
@@ -702,7 +708,7 @@ export function ProfileBillingTab({
       <BillingVerificationModal
         open={showVerificationModal}
         onOpenChange={setShowVerificationModal}
-        email={billingInfo?.email || ""}
+        email={user?.email || ""}
         onVerified={(data) => {
           setSensitiveData(data)
           setSensitiveInfoVisible(true)
