@@ -205,9 +205,8 @@ export function ProfileBillingTab({
                         <Users className="h-5 w-5 text-muted-foreground" />
                       ) : (
                         <Zap className="h-5 w-5 text-primary" />
-                    )}
-                  </div>
-                )}
+                      )}
+                    </div>
 
                 {/* Reveal Sensitive Billing Information */}
                 {billingInfo.subscription && !billingInfo.giftedSubscription && (
@@ -268,7 +267,6 @@ export function ProfileBillingTab({
                     )}
                   </div>
                 )}
-                </div>
 
                 {/* Gifted subscription details */}
                 {billingInfo.giftedSubscription && (
