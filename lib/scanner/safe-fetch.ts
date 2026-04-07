@@ -10,9 +10,8 @@ import { isIP } from "net"
 
 const ALLOWED_PROTOCOLS = new Set(["http:", "https:"])
 
-// Private IP ranges (RFC 1918 + RFC 4193 + loopback + link-local)
-const PRIVATE_IP_PATTERNS = [
-  // IPv4 private ranges
+// IPv4 private ranges (RFC 1918 + special ranges)
+const PRIVATE_IPV4_PATTERNS = [
   /^127\./,                          // Loopback (127.0.0.0/8)
   /^10\./,                           // Private A (10.0.0.0/8)
   /^172\.(1[6-9]|2[0-9]|3[0-1])\./,  // Private B (172.16.0.0/12)
@@ -22,8 +21,10 @@ const PRIVATE_IP_PATTERNS = [
   /^2(2[4-9]|3[0-9])\./,             // Multicast (224.0.0.0/4 = 224-239.x.x.x)
   /^2(4[0-9]|5[0-5])\./,             // Reserved (240.0.0.0/4 = 240-255.x.x.x)
   /^255\./,                          // Broadcast
-  
-  // IPv6 private/special ranges
+]
+
+// IPv6 private/special ranges
+const PRIVATE_IPV6_PATTERNS = [
   /^::1$/,                           // IPv6 loopback
   /^fe80:/i,                         // IPv6 link-local
   /^fc00:/i,                         // IPv6 unique local (ULA)
@@ -60,15 +61,39 @@ export function isPrivateIP(ip: string): boolean {
   const version = isIP(ip)
   if (version === 4) {
     // Apply IPv4 private and special-range checks
-    return PRIVATE_IP_PATTERNS.some(pattern => pattern.test(ip))
+    return PRIVATE_IPV4_PATTERNS.some(pattern => pattern.test(ip))
   }
   if (version === 6) {
-    // For security, conservatively treat all direct IPv6 targets as private/internal.
-    // This avoids missing IPv6 loopback/link-local/ULA ranges without complex parsing.
-    return true
+    // Apply IPv6 private and special-range checks
+    return PRIVATE_IPV6_PATTERNS.some(pattern => pattern.test(ip))
   }
   // Not a valid IP address
   return false
+}
+
+/**
+ * Helper function to set the Host header while preserving existing headers
+ */
+function setHostHeader(init: RequestInit | undefined, hostname: string): RequestInit {
+  const existingInit = init || {}
+  const existingHeaders = existingInit.headers
+  let headers: HeadersInit
+
+  if (existingHeaders) {
+    if (Array.isArray(existingHeaders)) {
+      headers = [...existingHeaders, ["Host", hostname]]
+    } else if (existingHeaders instanceof Headers) {
+      const newHeaders = new Headers(existingHeaders)
+      newHeaders.set("Host", hostname)
+      headers = newHeaders
+    } else {
+      headers = { ...existingHeaders, Host: hostname }
+    }
+  } else {
+    headers = { Host: hostname }
+  }
+
+  return { ...existingInit, headers }
 }
 
 /**
@@ -170,25 +195,16 @@ export async function safeFetch(
   
   if (safety.resolvedIp) {
     const originalHostname = urlObj.hostname
-    // Build a URL whose authority is the validated IP (preserving port if any)
-    const ipAuthority = urlObj.port ? `${safety.resolvedIp}:${urlObj.port}` : safety.resolvedIp
-    finalUrl = `${urlObj.protocol}//${ipAuthority}${urlObj.pathname}${urlObj.search}${urlObj.hash}`
+    // Use URL constructor to safely build the URL with the resolved IP
+    const urlWithIp = new URL(urlObj.toString())
+    urlWithIp.hostname = safety.resolvedIp
+    if (urlObj.port) {
+      urlWithIp.port = urlObj.port
+    }
+    finalUrl = urlWithIp.href
     
     // Ensure the original hostname is sent in the Host header for virtual hosting
-    let headers: HeadersInit | undefined = undefined
-    if (init && init.headers) {
-      if (Array.isArray(init.headers)) {
-        headers = [...init.headers, ["Host", originalHostname]]
-      } else if (init.headers instanceof Headers) {
-        headers = new Headers(init.headers)
-        headers.set("Host", originalHostname)
-      } else {
-        headers = { ...init.headers, Host: originalHostname }
-      }
-    } else {
-      headers = { Host: originalHostname }
-    }
-    finalInit = { ...(init || {}), headers }
+    finalInit = setHostHeader(init, originalHostname)
   }
   
   // Use the normalized, DNS-safe href after validation and protocol check
