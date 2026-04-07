@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server"
 import { stripe } from "@/lib/billing/stripe"
-import { getSession } from "@/lib/auth/session"
+import { getSession } from "@/lib/auth"
 import { PRODUCTS, getPlanFromProductId } from "@/lib/billing/products"
-import pool from "@/lib/db/pool"
+import pool from "@/lib/database/db"
 
 export async function POST(request: NextRequest) {
   try {
