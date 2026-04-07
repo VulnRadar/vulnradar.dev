@@ -297,8 +297,10 @@ export async function POST(request: NextRequest) {
   for (const u of urls) {
     try {
       const parsed = new URL(u)
-      if (SUPPORTED_PROTOCOLS.includes(parsed.protocol)) validUrls.push(u)
-    } catch { /* skip */ }
+      if (!SUPPORTED_PROTOCOLS.includes(parsed.protocol)) continue
+      // Store the normalized href so downstream logic and safeFetch see a canonical URL
+      validUrls.push(parsed.href)
+    } catch { /* skip invalid URLs */ }
   }
 
   if (validUrls.length === 0) {
