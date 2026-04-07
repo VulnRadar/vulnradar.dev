@@ -54,8 +54,34 @@ export async function GET() {
     if (user.stripe_subscription_id) {
       try {
         const subscription = await stripe.subscriptions.retrieve(user.stripe_subscription_id, {
-          expand: ["default_payment_method", "latest_invoice"],
+          expand: ["default_payment_method", "latest_invoice", "customer", "plan", "items.data.price.product"],
         })
+        
+        // DEBUG: Log the full subscription object to see all available data
+        console.log("[v0] [Billing] Full Stripe subscription data:", JSON.stringify({
+          id: subscription.id,
+          status: subscription.status,
+          current_period_start: subscription.current_period_start,
+          current_period_end: subscription.current_period_end,
+          cancel_at_period_end: subscription.cancel_at_period_end,
+          cancel_at: subscription.cancel_at,
+          canceled_at: subscription.canceled_at,
+          created: subscription.created,
+          start_date: subscription.start_date,
+          ended_at: subscription.ended_at,
+          trial_start: subscription.trial_start,
+          trial_end: subscription.trial_end,
+          billing_cycle_anchor: subscription.billing_cycle_anchor,
+          collection_method: subscription.collection_method,
+          currency: subscription.currency,
+          customer: subscription.customer,
+          default_payment_method: subscription.default_payment_method,
+          items: subscription.items,
+          latest_invoice: subscription.latest_invoice,
+          metadata: subscription.metadata,
+          plan: subscription.plan,
+        }, null, 2))
+        
         // Only set subscription details if the subscription is valid and has period data
         if (subscription && subscription.current_period_start && subscription.current_period_end) {
           // Get price/amount info from the first item
@@ -102,7 +128,10 @@ export async function GET() {
             nextBillingDate: subscription.cancel_at_period_end ? null : new Date(subscription.current_period_end * 1000).toISOString(),
           }
         } else {
-          console.warn("[Billing] Subscription exists but has no period data:", subscription?.id)
+          console.warn("[v0] [Billing] Subscription exists but has no period data:", subscription?.id)
+          console.warn("[v0] [Billing] current_period_start:", subscription?.current_period_start)
+          console.warn("[v0] [Billing] current_period_end:", subscription?.current_period_end)
+          console.warn("[v0] [Billing] Full subscription object keys:", Object.keys(subscription || {}))
         }
       } catch (stripeErr: unknown) {
         console.error("[Billing] Error fetching subscription from Stripe:", stripeErr)
