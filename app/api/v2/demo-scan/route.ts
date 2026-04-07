@@ -82,12 +82,19 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "URL is required" }, { status: 400 })
     }
 
-    if (!isValidUrl(url)) {
+    let urlObj: URL
+    try {
+      urlObj = new URL(url)
+    } catch {
       return NextResponse.json({ error: "Invalid URL." }, { status: 400 })
     }
 
+    if (urlObj.protocol !== "http:" && urlObj.protocol !== "https:") {
+      return NextResponse.json({ error: "Only http and https URLs are allowed." }, { status: 400 })
+    }
+
     // Check access rules (blacklist/whitelist)
-    const accessCheck = await checkAccessRules(url)
+    const accessCheck = await checkAccessRules(urlObj.href)
     if (!accessCheck.allowed) {
       return NextResponse.json(
         { 
@@ -103,11 +110,7 @@ export async function POST(request: NextRequest) {
 
     let response: Response
     try {
-      // Validate URL before fetch to prevent SSRF
-      const urlObj = new URL(url)
-      if (urlObj.protocol !== "http:" && urlObj.protocol !== "https:") {
-        throw new Error("Invalid protocol")
-      }
+      // URL and protocol were validated above; urlObj.href is normalized.
       
       // Use safeFetch which validates the URL internally to prevent SSRF
       response = await safeFetch(urlObj.href, {

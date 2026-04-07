@@ -312,12 +312,21 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "URL is required" }, { status: 400 })
   }
 
-  try { new URL(url) } catch {
+  let mainUrl: URL
+  try {
+    mainUrl = new URL(url)
+  } catch {
     return NextResponse.json({ error: "Invalid URL" }, { status: 400 })
   }
 
+  if (mainUrl.protocol !== "http:" && mainUrl.protocol !== "https:") {
+    return NextResponse.json({ error: "Only http and https URLs are allowed" }, { status: 400 })
+  }
+
+  const normalizedMainUrl = mainUrl.href
+
   // Check access rules (blacklist/whitelist) for the main URL
-  const accessCheck = await checkAccessRules(url)
+  const accessCheck = await checkAccessRules(normalizedMainUrl)
   if (!accessCheck.allowed) {
     return NextResponse.json(
       { 
