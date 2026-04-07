@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { useSearchParams } from "next/navigation"
-import { Check, Loader2, PartyPopper } from "lucide-react"
+import { Check, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import Link from "next/link"
 import { ROUTES } from "@/lib/config/constants"
@@ -66,12 +66,9 @@ export function CheckoutSuccessContent() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-background">
       <div className="text-center max-w-md px-4">
-        <div className="relative mx-auto mb-6">
+        <div className="mx-auto mb-6">
           <div className="w-20 h-20 rounded-full bg-emerald-500/10 flex items-center justify-center mx-auto">
             <Check className="h-10 w-10 text-emerald-500" />
-          </div>
-          <div className="absolute -top-2 -right-2 text-2xl">
-            <PartyPopper className="h-8 w-8 text-amber-500" />
           </div>
         </div>
 
