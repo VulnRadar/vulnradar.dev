@@ -24,7 +24,7 @@ import {
 import { cn } from "@/lib/ui/utils"
 import { API, ROUTES } from "@/lib/config/constants"
 import type { ProfileTabProps, BillingInfo } from "../types"
-import { BillingVerificationModal } from "../modals/billing-verification-modal"
+import { BillingVerificationModal, type SensitiveBillingData } from "../modals/billing-verification-modal"
 
 export function ProfileBillingTab({
   setError,
@@ -39,6 +39,7 @@ export function ProfileBillingTab({
   const [reactivatingSubscription, setReactivatingSubscription] = useState(false)
   const [showVerificationModal, setShowVerificationModal] = useState(false)
   const [sensitiveInfoVisible, setSensitiveInfoVisible] = useState(false)
+  const [sensitiveData, setSensitiveData] = useState<SensitiveBillingData | null>(null)
 
   // Update state when preloaded data changes
   useEffect(() => {
@@ -310,12 +311,19 @@ export function ProfileBillingTab({
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
                         <Lock className="h-4 w-4 text-muted-foreground" />
-                        <span className="text-sm font-medium text-foreground">Payment Details</span>
+                        <span className="text-sm font-medium text-foreground">Sensitive Billing Details</span>
                       </div>
                       <Button
                         variant="ghost"
                         size="sm"
-                        onClick={() => setShowVerificationModal(true)}
+                        onClick={() => {
+                          if (sensitiveInfoVisible) {
+                            setSensitiveInfoVisible(false)
+                            setSensitiveData(null)
+                          } else {
+                            setShowVerificationModal(true)
+                          }
+                        }}
                         className="text-xs"
                       >
                         {sensitiveInfoVisible ? (
@@ -332,33 +340,175 @@ export function ProfileBillingTab({
                       </Button>
                     </div>
 
-                    {sensitiveInfoVisible && billingInfo.subscription.cardLast4 ? (
-                      <div className="space-y-2 pt-2 border-t border-border">
-                        <div className="flex items-center justify-between text-sm">
-                          <span className="text-muted-foreground">Card Number</span>
-                          <span className="font-mono text-foreground">•••• •••• •••• {billingInfo.subscription.cardLast4}</span>
+                    {sensitiveInfoVisible && sensitiveData ? (
+                      <div className="space-y-4 pt-3 border-t border-border">
+                        {/* Payment Method Section */}
+                        {sensitiveData.paymentMethod && (
+                          <div className="space-y-2">
+                            <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Payment Method</h4>
+                            <div className="bg-muted/30 rounded-lg p-3 space-y-2">
+                              <div className="flex items-center justify-between text-sm">
+                                <span className="text-muted-foreground">Card</span>
+                                <span className="font-mono text-foreground flex items-center gap-2">
+                                  <CreditCard className="h-4 w-4" />
+                                  <span className="capitalize">{sensitiveData.paymentMethod.cardBrand}</span> •••• {sensitiveData.paymentMethod.cardLast4}
+                                </span>
+                              </div>
+                              {sensitiveData.paymentMethod.cardExpMonth && sensitiveData.paymentMethod.cardExpYear && (
+                                <div className="flex items-center justify-between text-sm">
+                                  <span className="text-muted-foreground">Expires</span>
+                                  <span className="font-mono text-foreground">{sensitiveData.paymentMethod.cardExpMonth.toString().padStart(2, '0')}/{sensitiveData.paymentMethod.cardExpYear.toString().slice(-2)}</span>
+                                </div>
+                              )}
+                              {sensitiveData.paymentMethod.cardFunding && (
+                                <div className="flex items-center justify-between text-sm">
+                                  <span className="text-muted-foreground">Type</span>
+                                  <span className="text-foreground capitalize">{sensitiveData.paymentMethod.cardFunding}</span>
+                                </div>
+                              )}
+                              {sensitiveData.paymentMethod.cardCountry && (
+                                <div className="flex items-center justify-between text-sm">
+                                  <span className="text-muted-foreground">Card Country</span>
+                                  <span className="text-foreground">{sensitiveData.paymentMethod.cardCountry}</span>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Billing Address Section */}
+                        {sensitiveData.paymentMethod?.billingAddress && (
+                          <div className="space-y-2">
+                            <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Billing Address</h4>
+                            <div className="bg-muted/30 rounded-lg p-3 space-y-1">
+                              {sensitiveData.paymentMethod.billingName && (
+                                <p className="text-sm text-foreground font-medium">{sensitiveData.paymentMethod.billingName}</p>
+                              )}
+                              {sensitiveData.paymentMethod.billingAddress.line1 && (
+                                <p className="text-sm text-muted-foreground">{sensitiveData.paymentMethod.billingAddress.line1}</p>
+                              )}
+                              {sensitiveData.paymentMethod.billingAddress.line2 && (
+                                <p className="text-sm text-muted-foreground">{sensitiveData.paymentMethod.billingAddress.line2}</p>
+                              )}
+                              {(sensitiveData.paymentMethod.billingAddress.city || sensitiveData.paymentMethod.billingAddress.state || sensitiveData.paymentMethod.billingAddress.postal_code) && (
+                                <p className="text-sm text-muted-foreground">
+                                  {[
+                                    sensitiveData.paymentMethod.billingAddress.city,
+                                    sensitiveData.paymentMethod.billingAddress.state,
+                                    sensitiveData.paymentMethod.billingAddress.postal_code,
+                                  ].filter(Boolean).join(", ")}
+                                </p>
+                              )}
+                              {sensitiveData.paymentMethod.billingAddress.country && (
+                                <p className="text-sm text-muted-foreground">{sensitiveData.paymentMethod.billingAddress.country}</p>
+                              )}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Latest Invoice Section */}
+                        {sensitiveData.invoice && (
+                          <div className="space-y-2">
+                            <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Latest Invoice</h4>
+                            <div className="bg-muted/30 rounded-lg p-3 space-y-2">
+                              {sensitiveData.invoice.number && (
+                                <div className="flex items-center justify-between text-sm">
+                                  <span className="text-muted-foreground">Invoice #</span>
+                                  <span className="font-mono text-foreground">{sensitiveData.invoice.number}</span>
+                                </div>
+                              )}
+                              {sensitiveData.invoice.created && (
+                                <div className="flex items-center justify-between text-sm">
+                                  <span className="text-muted-foreground">Date</span>
+                                  <span className="text-foreground">{new Date(sensitiveData.invoice.created).toLocaleDateString()}</span>
+                                </div>
+                              )}
+                              {sensitiveData.invoice.subtotal !== null && (
+                                <div className="flex items-center justify-between text-sm">
+                                  <span className="text-muted-foreground">Subtotal</span>
+                                  <span className="text-foreground">${sensitiveData.invoice.subtotal.toFixed(2)}</span>
+                                </div>
+                              )}
+                              {sensitiveData.invoice.tax !== null && sensitiveData.invoice.tax > 0 && (
+                                <div className="flex items-center justify-between text-sm">
+                                  <span className="text-muted-foreground">Tax</span>
+                                  <span className="text-foreground">${sensitiveData.invoice.tax.toFixed(2)}</span>
+                                </div>
+                              )}
+                              {sensitiveData.invoice.total !== null && (
+                                <div className="flex items-center justify-between text-sm font-medium">
+                                  <span className="text-muted-foreground">Total</span>
+                                  <span className="text-foreground">${sensitiveData.invoice.total.toFixed(2)}</span>
+                                </div>
+                              )}
+                              {sensitiveData.invoice.status && (
+                                <div className="flex items-center justify-between text-sm">
+                                  <span className="text-muted-foreground">Status</span>
+                                  <Badge className={cn(
+                                    sensitiveData.invoice.status === "paid" 
+                                      ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/20"
+                                      : "bg-muted text-muted-foreground"
+                                  )}>
+                                    {sensitiveData.invoice.status.charAt(0).toUpperCase() + sensitiveData.invoice.status.slice(1)}
+                                  </Badge>
+                                </div>
+                              )}
+                              <div className="flex gap-2 pt-2">
+                                {sensitiveData.invoice.hostedUrl && (
+                                  <a
+                                    href={sensitiveData.invoice.hostedUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-xs text-primary hover:underline"
+                                  >
+                                    View Invoice
+                                  </a>
+                                )}
+                                {sensitiveData.invoice.pdfUrl && (
+                                  <a
+                                    href={sensitiveData.invoice.pdfUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-xs text-primary hover:underline"
+                                  >
+                                    Download PDF
+                                  </a>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Subscription IDs Section */}
+                        <div className="space-y-2">
+                          <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Reference IDs</h4>
+                          <div className="bg-muted/30 rounded-lg p-3 space-y-2">
+                            <div className="flex items-center justify-between text-sm">
+                              <span className="text-muted-foreground">Customer ID</span>
+                              <span className="font-mono text-xs text-foreground">{sensitiveData.stripeCustomerId}</span>
+                            </div>
+                            <div className="flex items-center justify-between text-sm">
+                              <span className="text-muted-foreground">Subscription ID</span>
+                              <span className="font-mono text-xs text-foreground">{sensitiveData.stripeSubscriptionId}</span>
+                            </div>
+                            {sensitiveData.created && (
+                              <div className="flex items-center justify-between text-sm">
+                                <span className="text-muted-foreground">Created</span>
+                                <span className="text-foreground">{new Date(sensitiveData.created).toLocaleDateString()}</span>
+                              </div>
+                            )}
+                          </div>
                         </div>
-                        {billingInfo.subscription.cardBrand && (
-                          <div className="flex items-center justify-between text-sm">
-                            <span className="text-muted-foreground">Card Brand</span>
-                            <span className="font-medium text-foreground capitalize">{billingInfo.subscription.cardBrand}</span>
-                          </div>
-                        )}
-                        {billingInfo.subscription.cardExpMonth && billingInfo.subscription.cardExpYear && (
-                          <div className="flex items-center justify-between text-sm">
-                            <span className="text-muted-foreground">Expires</span>
-                            <span className="font-mono text-foreground">{billingInfo.subscription.cardExpMonth.toString().padStart(2, '0')}/{billingInfo.subscription.cardExpYear.toString().slice(-2)}</span>
-                          </div>
-                        )}
+
                         <p className="text-xs text-muted-foreground pt-2 italic">
-                          This information is encrypted and secure. You&apos;ll need to verify your identity each time you view it.
+                          This information is securely fetched each time you verify. Click &quot;Hide&quot; to clear it.
                         </p>
                       </div>
                     ) : sensitiveInfoVisible ? (
-                      <p className="text-sm text-muted-foreground pt-2">No card information available</p>
+                      <p className="text-sm text-muted-foreground pt-2">No billing information available</p>
                     ) : (
                       <p className="text-xs text-muted-foreground pt-2">
-                        Click &quot;Reveal&quot; and verify your email to view your payment details
+                        Click &quot;Reveal&quot; and verify your email to view payment details, invoices, and billing address
                       </p>
                     )}
                   </div>
@@ -553,7 +703,10 @@ export function ProfileBillingTab({
         open={showVerificationModal}
         onOpenChange={setShowVerificationModal}
         email={billingInfo?.email || ""}
-        onVerified={() => setSensitiveInfoVisible(true)}
+        onVerified={(data) => {
+          setSensitiveData(data)
+          setSensitiveInfoVisible(true)
+        }}
       />
     </div>
   )
