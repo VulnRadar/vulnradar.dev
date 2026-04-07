@@ -82,10 +82,12 @@ export async function GET() {
           plan: subscription.plan,
         }, null, 2))
         
-        // Only set subscription details if the subscription is valid and has period data
-        if (subscription && subscription.current_period_start && subscription.current_period_end) {
-          // Get price/amount info from the first item
-          const item = subscription.items?.data?.[0]
+        // Only set subscription details if the subscription is valid and has items with period data
+        const item = subscription.items?.data?.[0]
+        const itemPeriodStart = item?.current_period_start
+        const itemPeriodEnd = item?.current_period_end
+        
+        if (subscription && itemPeriodStart && itemPeriodEnd) {
           const priceAmount = item?.price?.unit_amount ? item.price.unit_amount / 100 : null
           const priceCurrency = item?.price?.currency || "usd"
           const priceInterval = item?.price?.recurring?.interval || null
@@ -104,8 +106,8 @@ export async function GET() {
           subscriptionDetails = {
             id: subscription.id,
             status: subscription.status,
-            currentPeriodStart: new Date(subscription.current_period_start * 1000).toISOString(),
-            currentPeriodEnd: new Date(subscription.current_period_end * 1000).toISOString(),
+            currentPeriodStart: new Date(itemPeriodStart * 1000).toISOString(),
+            currentPeriodEnd: new Date(itemPeriodEnd * 1000).toISOString(),
             cancelAtPeriodEnd: subscription.cancel_at_period_end,
             cancelAt: subscription.cancel_at 
               ? new Date(subscription.cancel_at * 1000).toISOString() 
@@ -124,14 +126,14 @@ export async function GET() {
             lastPaymentAmount: latestInvoice?.amount_paid ? latestInvoice.amount_paid / 100 : null,
             lastPaymentStatus: latestInvoice?.status || null,
             lastPaymentDate: latestInvoice?.created ? new Date(latestInvoice.created * 1000).toISOString() : null,
-            // Computed: next billing date is currentPeriodEnd unless canceling
-            nextBillingDate: subscription.cancel_at_period_end ? null : new Date(subscription.current_period_end * 1000).toISOString(),
+            // Computed: next billing date is itemPeriodEnd unless canceling
+            nextBillingDate: subscription.cancel_at_period_end ? null : new Date(itemPeriodEnd * 1000).toISOString(),
           }
         } else {
           console.warn("[v0] [Billing] Subscription exists but has no period data:", subscription?.id)
-          console.warn("[v0] [Billing] current_period_start:", subscription?.current_period_start)
-          console.warn("[v0] [Billing] current_period_end:", subscription?.current_period_end)
-          console.warn("[v0] [Billing] Full subscription object keys:", Object.keys(subscription || {}))
+          console.warn("[v0] [Billing] item?.current_period_start:", item?.current_period_start)
+          console.warn("[v0] [Billing] item?.current_period_end:", item?.current_period_end)
+          console.warn("[v0] [Billing] subscription.items.data length:", subscription.items?.data?.length)
         }
       } catch (stripeErr: unknown) {
         console.error("[Billing] Error fetching subscription from Stripe:", stripeErr)
