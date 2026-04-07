@@ -14,7 +14,6 @@ import { PricingCards } from "@/components/pricing/pricing-cards"
 import { PricingFeatures } from "@/components/pricing/pricing-features"
 import { PricingFaq } from "@/components/pricing/pricing-faq"
 import { PricingCta } from "@/components/pricing/pricing-cta"
-import { CheckoutModal } from "@/components/pricing/checkout-modal"
 
 // Generate pricing page plans from centralized config
 function getRetentionLabel(planId: string): string {
@@ -53,7 +52,6 @@ const PLANS = LIB_PLANS.map((libPlan) => {
 export default function PricingPage() {
   const { me } = useAuth()
   const [billing, setBilling] = useState<"monthly" | "yearly">("monthly")
-  const [checkoutPlan, setCheckoutPlan] = useState<string | null>(null)
 
   const currentPlan = me?.plan || "free"
   const isGifted = me?.subscriptionStatus === "gifted"
@@ -86,17 +84,6 @@ export default function PricingPage() {
       <LandingNav />
 
       <main className="flex-1">
-        {/* Checkout Modal */}
-        {checkoutPlan && me?.userId && (
-          <CheckoutModal
-            planId={checkoutPlan}
-            userId={me.userId}
-            billing={billing}
-            onClose={() => setCheckoutPlan(null)}
-            onSuccess={() => setCheckoutPlan(null)}
-          />
-        )}
-
         <PricingHero billing={billing} onBillingChange={setBilling} />
         
         <PricingCards
@@ -105,7 +92,6 @@ export default function PricingPage() {
           currentPlan={currentPlan}
           isGifted={isGifted}
           isLoggedIn={isLoggedIn}
-          onSelectPlan={setCheckoutPlan}
         />
         
         <PricingFeatures />
