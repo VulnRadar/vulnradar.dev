@@ -25,7 +25,7 @@ interface PricingCardsProps {
   currentPlan: string
   isGifted: boolean
   isLoggedIn: boolean
-  onSelectPlan: (planId: string) => void
+  onSelectPlan?: (planId: string) => void
 }
 
 export function PricingCards({ plans, billing, currentPlan, isGifted, isLoggedIn, onSelectPlan }: PricingCardsProps) {
@@ -110,9 +110,11 @@ export function PricingCards({ plans, billing, currentPlan, isGifted, isLoggedIn
                 <Button
                   variant={plan.popular ? "default" : "outline"}
                   className={cn("w-full h-10", plan.popular && "shadow-md shadow-primary/20")}
-                  onClick={() => onSelectPlan(getStripeProductId(plan.stripeId!))}
+                  asChild
                 >
-                  Upgrade to {plan.name}
+                  <Link href={`/checkout/${getStripeProductId(plan.stripeId!)}`}>
+                    Upgrade to {plan.name}
+                  </Link>
                 </Button>
               ) : (
                 <Button variant={plan.popular ? "default" : "outline"} className={cn("w-full h-10", plan.popular && "shadow-md shadow-primary/20")} asChild>
