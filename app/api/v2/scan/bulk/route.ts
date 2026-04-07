@@ -210,6 +210,7 @@ export async function POST(request: NextRequest) {
   // Auth: check API key first (Bearer token), then fall back to session cookie
   const authHeader = request.headers.get("authorization")
   let apiKeyId: number | null = null
+  let apiKeyDailyLimit: number | null = null
   let isApiKeyAuth = false
   let authedUserId: number | null = null
 
@@ -261,6 +262,7 @@ export async function POST(request: NextRequest) {
     }
 
     apiKeyId = keyData.keyId
+    apiKeyDailyLimit = keyData.dailyLimit
     isApiKeyAuth = true
     authedUserId = keyData.userId
   } else {
@@ -345,9 +347,9 @@ export async function POST(request: NextRequest) {
   }
 
   // Record API key usage and add rate limit headers
-  if (isApiKeyAuth && apiKeyId) {
+  if (isApiKeyAuth && apiKeyId && typeof apiKeyDailyLimit === "number") {
     await recordUsage(apiKeyId)
-    const rateLimit = await checkApiKeyRateLimit(apiKeyId, keyData!.dailyLimit)
+    const rateLimit = await checkApiKeyRateLimit(apiKeyId, apiKeyDailyLimit)
     return NextResponse.json(responseData, {
       headers: {
         "X-RateLimit-Limit": String(rateLimit.limit),
