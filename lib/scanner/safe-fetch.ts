@@ -10,6 +10,17 @@ import { isIP } from "net"
 
 const ALLOWED_PROTOCOLS = new Set(["http:", "https:"])
 
+// Basic hostname patterns we never want to scan directly, regardless of DNS resolution.
+// These are a fast, syntactic safeguard that complements validateScanTarget's IP-based checks.
+const DISALLOWED_HOSTNAMES = [
+  "localhost",
+]
+const DISALLOWED_HOSTNAME_SUFFIXES = [
+  ".local",
+  ".internal",
+  ".lan",
+]
+
 // IPv4 private ranges (RFC 1918 + special ranges)
 const PRIVATE_IPV4_PATTERNS = [
   /^127\./,                          // Loopback (127.0.0.0/8)
@@ -167,30 +178,70 @@ export async function validateScanTarget(url: string): Promise<SafetyCheckResult
 }
 
 /**
+ * Perform a fast, explicit check that the URL is an HTTP(S) URL pointing to a public host.
+ * This is a simple syntactic guard that complements validateScanTarget's DNS/IP checks
+ * and is easy for static analyzers to understand.
+ */
+function assertSafePublicHttpUrl(rawUrl: string): URL {
+  let urlObj: URL
+  try {
+    urlObj = new URL(rawUrl)
+  } catch {
+    throw new Error("Invalid URL format")
+  }
+
+  const protocol = urlObj.protocol
+  if (!ALLOWED_PROTOCOLS.has(protocol)) {
+    throw new Error("Invalid protocol - only http: and https: are allowed")
+  }
+
+  const hostname = urlObj.hostname.toLowerCase()
+
+  // Disallow obvious local hostnames like "localhost"
+  if (DISALLOWED_HOSTNAMES.includes(hostname)) {
+    throw new Error("Access to local hostnames is not allowed")
+  }
+
+  // Disallow common internal TLD-like suffixes
+  for (const suffix of DISALLOWED_HOSTNAME_SUFFIXES) {
+    if (hostname.endsWith(suffix)) {
+      throw new Error("Access to internal hostnames is not allowed")
+    }
+  }
+
+  // Optionally require at least one dot to avoid bare hostnames like "devbox"
+  if (!hostname.includes(".")) {
+    throw new Error("Access to unqualified hostnames is not allowed")
+  }
+
+  return urlObj
+}
+
+/**
  * Safe fetch wrapper that validates the target before making the request
  */
 export async function safeFetch(
   url: string,
   init?: RequestInit,
 ): Promise<Response> {
-  const safety = await validateScanTarget(url)
+  // First perform a simple, explicit public-HTTP(S) check that is easy to reason about.
+  // This ensures fetch() is never called with an obviously unsafe URL, even if callers
+  // pass in untrusted data.
+  const prevalidatedUrlObj = assertSafePublicHttpUrl(url)
+  const normalizedUrl = prevalidatedUrlObj.href
+
+  const safety = await validateScanTarget(normalizedUrl)
   
   if (!safety.safe) {
     throw new Error(safety.reason || "URL blocked for security reasons")
   }
   
-  // Parse and normalize the URL after validation
-  const urlObj = new URL(url)
-  
-  // Explicitly enforce allowed protocols (HTTP/HTTPS only)
-  const protocol = urlObj.protocol
-  if (!ALLOWED_PROTOCOLS.has(protocol)) {
-    throw new Error("Invalid protocol - only http: and https: are allowed")
-  }
+  // We already parsed and normalized the URL in assertSafePublicHttpUrl above.
+  const urlObj = prevalidatedUrlObj
   
   // If we have a validated resolved IP, construct a URL that uses it directly.
   // This prevents DNS from being consulted again at fetch time (avoiding DNS rebinding).
-  let finalUrl = urlObj.href
+  let finalUrl = normalizedUrl
   let finalInit: RequestInit | undefined = init
   
   if (safety.resolvedIp) {
