@@ -1252,6 +1252,9 @@ const detectors: Record<string, DetectFn> = {
     for (const c of cookies) {
       if (c.toLowerCase().includes("path=/") && !c.toLowerCase().includes("path=/;")) count++
     }
+    if (count > 0) {
+      return `${count} cookie${count > 1 ? "s" : ""} use a broad path '/' which may expose them to more endpoints than necessary.`
+    }
     return null
   },
 
@@ -1634,13 +1637,6 @@ const detectors: Record<string, DetectFn> = {
 
   // ── OWASP Top 10 & Modern Vulnerabilities ──────────────────────────────────
 
-  "postmessage-wildcard": (_url, _headers, body) => {
-    if (/\.postMessage\s*\([^)]*,\s*["']\*["']\s*\)/g.test(body)) {
-      return "postMessage() called with wildcard origin (*), allowing any origin to receive messages."
-    }
-    return null
-  },
-
   "innerhtml-xss-sink": (_url, _headers, body) => {
     const matches = body.match(/\.innerHTML\s*=(?!\s*["'])/g) || []
     if (matches.length < 2) return null
@@ -1791,12 +1787,7 @@ const detectors: Record<string, DetectFn> = {
 
   // ── API & Data Exposure ────────────────────────────────────���───────────────
 
-  "graphql-introspection": (_url, _headers, body) => {
-    if (/__schema|__type|introspectionQuery/i.test(body)) {
-      return "GraphQL introspection appears enabled - exposes entire API schema."
-    }
-    return null
-  },
+  // (duplicate check removed - already defined earlier)
 
   "api-version-exposed": (_url, _headers, body) => {
     if (/["']\/api\/v[0-9]+/gi.test(body) && /["']\/api\/v[0-9]+.*["']\/api\/v[0-9]+/gi.test(body)) {
@@ -1820,10 +1811,9 @@ const detectors: Record<string, DetectFn> = {
   },
 
   "internal-ip-exposed": (_url, _headers, body) => {
-    if (/\b(?:10\.\d{1,3}\.\d{1,3}\.\d{1,3}|172\.(?:1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3})\b/.test(body)) {
-      return "Internal/private IP address found in page source."
-    }
-    return null
+    // Delegate to the existing, more sophisticated private-ip-exposure check
+    const baseCheck = checks["private-ip-exposure"]
+    return baseCheck ? baseCheck(_url, _headers, body) : null
   },
 
   "stack-trace-exposed": (_url, _headers, body) => {
@@ -2042,7 +2032,8 @@ const detectors: Record<string, DetectFn> = {
   },
 
   "ssn-pattern": (_url, _headers, body) => {
-    if (/\b\d{3}-\d{2}-\d{4}\b/.test(body) && !/<script/i.test(body.substring(0, body.indexOf(/\d{3}-\d{2}-\d{4}/)))) {
+    const idx = body.search(/\b\d{3}-\d{2}-\d{4}\b/)
+    if (idx !== -1 && !/<script/i.test(body.substring(0, idx))) {
       return "Potential SSN pattern found in page content."
     }
     return null
