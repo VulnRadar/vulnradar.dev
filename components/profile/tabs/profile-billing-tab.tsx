@@ -262,6 +262,24 @@ export function ProfileBillingTab({
                         }
                       </Badge>
                     </div>
+                    
+                    {/* Price and billing interval */}
+                    {billingInfo.subscription.priceAmount && (
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm text-muted-foreground">Billing Amount</span>
+                        <span className="text-sm font-medium text-foreground">
+                          {new Intl.NumberFormat("en-US", {
+                            style: "currency",
+                            currency: billingInfo.subscription.priceCurrency || "usd",
+                          }).format(billingInfo.subscription.priceAmount)}
+                          /{billingInfo.subscription.priceIntervalCount === 1 
+                            ? billingInfo.subscription.priceInterval 
+                            : `${billingInfo.subscription.priceIntervalCount} ${billingInfo.subscription.priceInterval}s`}
+                        </span>
+                      </div>
+                    )}
+                    
+                    {/* Current billing period */}
                     <div className="flex items-center justify-between">
                       <span className="text-sm text-muted-foreground">Current Period</span>
                       <span className="text-sm font-medium text-foreground">
@@ -270,6 +288,55 @@ export function ProfileBillingTab({
                           : "Not available"}
                       </span>
                     </div>
+                    
+                    {/* Next billing date */}
+                    {billingInfo.subscription.nextBillingDate && !billingInfo.subscription.cancelAtPeriodEnd && (
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm text-muted-foreground">Next Billing Date</span>
+                        <span className="text-sm font-medium text-foreground">
+                          {new Date(billingInfo.subscription.nextBillingDate).toLocaleDateString(undefined, {
+                            weekday: "short",
+                            year: "numeric",
+                            month: "short",
+                            day: "numeric",
+                          })}
+                        </span>
+                      </div>
+                    )}
+                    
+                    {/* Payment method */}
+                    {billingInfo.subscription.cardLast4 && (
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm text-muted-foreground">Payment Method</span>
+                        <span className="text-sm font-medium text-foreground flex items-center gap-2">
+                          <CreditCard className="h-4 w-4 text-muted-foreground" />
+                          {billingInfo.subscription.cardBrand?.charAt(0).toUpperCase()}{billingInfo.subscription.cardBrand?.slice(1)} •••• {billingInfo.subscription.cardLast4}
+                          {billingInfo.subscription.cardExpMonth && billingInfo.subscription.cardExpYear && (
+                            <span className="text-muted-foreground text-xs">
+                              (exp {billingInfo.subscription.cardExpMonth}/{billingInfo.subscription.cardExpYear.toString().slice(-2)})
+                            </span>
+                          )}
+                        </span>
+                      </div>
+                    )}
+                    
+                    {/* Last payment info */}
+                    {billingInfo.subscription.lastPaymentDate && (
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm text-muted-foreground">Last Payment</span>
+                        <span className="text-sm font-medium text-foreground">
+                          {billingInfo.subscription.lastPaymentAmount && new Intl.NumberFormat("en-US", {
+                            style: "currency",
+                            currency: billingInfo.subscription.priceCurrency || "usd",
+                          }).format(billingInfo.subscription.lastPaymentAmount)}
+                          {" "}on {new Date(billingInfo.subscription.lastPaymentDate).toLocaleDateString()}
+                          {billingInfo.subscription.lastPaymentStatus === "paid" && (
+                            <Badge className="ml-2 bg-emerald-500/10 text-emerald-500 border-emerald-500/20 text-xs">Paid</Badge>
+                          )}
+                        </span>
+                      </div>
+                    )}
+                    
                     {billingInfo.subscription.cancelAtPeriodEnd && (
                       <div className="flex items-center gap-2 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20 mt-2">
                         <Calendar className="h-4 w-4 text-amber-500 shrink-0" />

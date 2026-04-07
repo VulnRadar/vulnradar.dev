@@ -53,9 +53,28 @@ export async function GET() {
     let subscriptionDetails = null
     if (user.stripe_subscription_id) {
       try {
-        const subscription = await stripe.subscriptions.retrieve(user.stripe_subscription_id)
+        const subscription = await stripe.subscriptions.retrieve(user.stripe_subscription_id, {
+          expand: ["default_payment_method", "latest_invoice"],
+        })
         // Only set subscription details if the subscription is valid and has period data
         if (subscription && subscription.current_period_start && subscription.current_period_end) {
+          // Get price/amount info from the first item
+          const item = subscription.items?.data?.[0]
+          const priceAmount = item?.price?.unit_amount ? item.price.unit_amount / 100 : null
+          const priceCurrency = item?.price?.currency || "usd"
+          const priceInterval = item?.price?.recurring?.interval || null
+          const priceIntervalCount = item?.price?.recurring?.interval_count || 1
+          
+          // Get payment method details
+          const paymentMethod = subscription.default_payment_method as { card?: { brand: string; last4: string; exp_month: number; exp_year: number } } | null
+          const cardBrand = paymentMethod?.card?.brand || null
+          const cardLast4 = paymentMethod?.card?.last4 || null
+          const cardExpMonth = paymentMethod?.card?.exp_month || null
+          const cardExpYear = paymentMethod?.card?.exp_year || null
+          
+          // Get latest invoice info
+          const latestInvoice = subscription.latest_invoice as { amount_paid?: number; status?: string; paid?: boolean; created?: number } | null
+          
           subscriptionDetails = {
             id: subscription.id,
             status: subscription.status,
@@ -65,6 +84,22 @@ export async function GET() {
             cancelAt: subscription.cancel_at 
               ? new Date(subscription.cancel_at * 1000).toISOString() 
               : null,
+            // Additional details
+            priceAmount,
+            priceCurrency,
+            priceInterval,
+            priceIntervalCount,
+            // Payment method info
+            cardBrand,
+            cardLast4,
+            cardExpMonth,
+            cardExpYear,
+            // Invoice info
+            lastPaymentAmount: latestInvoice?.amount_paid ? latestInvoice.amount_paid / 100 : null,
+            lastPaymentStatus: latestInvoice?.status || null,
+            lastPaymentDate: latestInvoice?.created ? new Date(latestInvoice.created * 1000).toISOString() : null,
+            // Computed: next billing date is currentPeriodEnd unless canceling
+            nextBillingDate: subscription.cancel_at_period_end ? null : new Date(subscription.current_period_end * 1000).toISOString(),
           }
         } else {
           console.warn("[Billing] Subscription exists but has no period data:", subscription?.id)

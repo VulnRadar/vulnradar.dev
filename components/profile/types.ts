@@ -52,6 +52,22 @@ export interface BillingInfo {
     currentPeriodEnd: string | null
     cancelAtPeriodEnd: boolean
     cancelAt: string | null
+    // Price info
+    priceAmount: number | null
+    priceCurrency: string | null
+    priceInterval: string | null
+    priceIntervalCount: number | null
+    // Payment method info
+    cardBrand: string | null
+    cardLast4: string | null
+    cardExpMonth: number | null
+    cardExpYear: number | null
+    // Invoice info
+    lastPaymentAmount: number | null
+    lastPaymentStatus: string | null
+    lastPaymentDate: string | null
+    // Next billing
+    nextBillingDate: string | null
   } | null
   giftedSubscription: {
     plan: string
