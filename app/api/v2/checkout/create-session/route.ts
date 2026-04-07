@@ -89,8 +89,8 @@ export async function POST(request: NextRequest) {
           scansPerDay: product.scansPerDay.toString(),
         },
       },
-      // Use embedded mode for custom UI
-      ui_mode: "embedded",
+      // Use embedded_page mode for custom UI
+      ui_mode: "embedded_page",
       return_url: `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/checkout/success?session_id={CHECKOUT_SESSION_ID}`,
     })
 
