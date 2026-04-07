@@ -17,10 +17,14 @@ import {
   TrendingUp,
   Loader2,
   XCircle,
+  Eye,
+  EyeOff,
+  Lock,
 } from "lucide-react"
 import { cn } from "@/lib/ui/utils"
 import { API, ROUTES } from "@/lib/config/constants"
 import type { ProfileTabProps, BillingInfo } from "../types"
+import { BillingVerificationModal } from "../modals/billing-verification-modal"
 
 export function ProfileBillingTab({
   setError,
@@ -33,6 +37,8 @@ export function ProfileBillingTab({
   const [cancelType, setCancelType] = useState<"period_end" | "immediate">("period_end")
   const [cancelingSubscription, setCancelingSubscription] = useState(false)
   const [reactivatingSubscription, setReactivatingSubscription] = useState(false)
+  const [showVerificationModal, setShowVerificationModal] = useState(false)
+  const [sensitiveInfoVisible, setSensitiveInfoVisible] = useState(false)
 
   // Update state when preloaded data changes
   useEffect(() => {
@@ -203,66 +209,32 @@ export function ProfileBillingTab({
                     </div>
                     <div>
                       <p className="font-semibold text-foreground">
-                        {billingInfo.plan === "free" ? "Free Plan" : billingInfo.plan.replace("_supporter", " Supporter").replace(/(^\w|\s\w)/g, (m: string) => m.toUpperCase())}
+                        {billingInfo.planName}
                       </p>
                       <p className="text-sm text-muted-foreground">
-                        {billingInfo.plan === "free"
-                          ? `${billingInfo.limits.free} scans/day`
-                          : `${billingInfo.limits[billingInfo.plan as keyof typeof billingInfo.limits]} scans/day`
-                        }
+                        {billingInfo.limits[billingInfo.plan as keyof typeof billingInfo.limits] || billingInfo.limits.free} scans/day
                       </p>
                     </div>
                   </div>
-                  {billingInfo.plan === "free" && (
-                    <Button asChild size="sm">
-                      <a href={ROUTES.PRICING}>Upgrade</a>
-                    </Button>
+                  {billingInfo.subscription?.status && (
+                    <Badge className={cn(
+                      billingInfo.subscription.cancelAtPeriodEnd
+                        ? "bg-amber-500/10 text-amber-500 border-amber-500/20"
+                        : billingInfo.subscription.status === "active"
+                          ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/20"
+                          : "bg-muted text-muted-foreground"
+                    )}>
+                      {billingInfo.subscription.cancelAtPeriodEnd
+                        ? "Canceling"
+                        : billingInfo.subscription.status.charAt(0).toUpperCase() + billingInfo.subscription.status.slice(1)
+                      }
+                    </Badge>
                   )}
                 </div>
-
-                {/* Gifted subscription details */}
-                {billingInfo.giftedSubscription && (
-                  <div className="flex flex-col gap-3 p-4 rounded-lg border border-primary/30 bg-primary/5">
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-muted-foreground">Status</span>
-                      <Badge className="bg-primary/10 text-primary border-primary/20">
-                        Gifted
-                      </Badge>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-muted-foreground">Gift Period</span>
-                      <span className="text-sm font-medium text-foreground">
-                        {new Date(billingInfo.giftedSubscription.startedAt).toLocaleDateString()} - {new Date(billingInfo.giftedSubscription.expiresAt).toLocaleDateString()}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-2 p-3 rounded-lg bg-primary/10 border border-primary/20 mt-2">
-                      <Gift className="h-4 w-4 text-primary shrink-0" />
-                      <p className="text-sm text-primary">
-                        You have a gifted {billingInfo.giftedSubscription.plan.replace("_supporter", "").replace("_", " ")} subscription until {new Date(billingInfo.giftedSubscription.expiresAt).toLocaleDateString()}.
-                      </p>
-                    </div>
-                  </div>
-                )}
 
                 {/* Subscription details for paid Stripe plans */}
                 {billingInfo.subscription && !billingInfo.giftedSubscription && (
                   <div className="flex flex-col gap-3 p-4 rounded-lg border border-border">
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-muted-foreground">Status</span>
-                      <Badge className={cn(
-                        billingInfo.subscription.cancelAtPeriodEnd
-                          ? "bg-amber-500/10 text-amber-500 border-amber-500/20"
-                          : billingInfo.subscription.status === "active"
-                            ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/20"
-                            : "bg-muted text-muted-foreground"
-                      )}>
-                        {billingInfo.subscription.cancelAtPeriodEnd
-                          ? "Canceling"
-                          : billingInfo.subscription.status.charAt(0).toUpperCase() + billingInfo.subscription.status.slice(1)
-                        }
-                      </Badge>
-                    </div>
-                    
                     {/* Price and billing interval */}
                     {billingInfo.subscription.priceAmount && (
                       <div className="flex items-center justify-between">
@@ -304,22 +276,6 @@ export function ProfileBillingTab({
                       </div>
                     )}
                     
-                    {/* Payment method */}
-                    {billingInfo.subscription.cardLast4 && (
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm text-muted-foreground">Payment Method</span>
-                        <span className="text-sm font-medium text-foreground flex items-center gap-2">
-                          <CreditCard className="h-4 w-4 text-muted-foreground" />
-                          {billingInfo.subscription.cardBrand?.charAt(0).toUpperCase()}{billingInfo.subscription.cardBrand?.slice(1)} •••• {billingInfo.subscription.cardLast4}
-                          {billingInfo.subscription.cardExpMonth && billingInfo.subscription.cardExpYear && (
-                            <span className="text-muted-foreground text-xs">
-                              (exp {billingInfo.subscription.cardExpMonth}/{billingInfo.subscription.cardExpYear.toString().slice(-2)})
-                            </span>
-                          )}
-                        </span>
-                      </div>
-                    )}
-                    
                     {/* Last payment info */}
                     {billingInfo.subscription.lastPaymentDate && (
                       <div className="flex items-center justify-between">
@@ -336,7 +292,7 @@ export function ProfileBillingTab({
                         </span>
                       </div>
                     )}
-                    
+
                     {billingInfo.subscription.cancelAtPeriodEnd && (
                       <div className="flex items-center gap-2 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20 mt-2">
                         <Calendar className="h-4 w-4 text-amber-500 shrink-0" />
@@ -345,6 +301,90 @@ export function ProfileBillingTab({
                         </p>
                       </div>
                     )}
+                  </div>
+                )}
+
+                {/* Reveal Sensitive Billing Information */}
+                {billingInfo.subscription && !billingInfo.giftedSubscription && (
+                  <div className="flex flex-col gap-3 p-4 rounded-lg border border-border bg-background/50 mt-4">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Lock className="h-4 w-4 text-muted-foreground" />
+                        <span className="text-sm font-medium text-foreground">Payment Details</span>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setShowVerificationModal(true)}
+                        className="text-xs"
+                      >
+                        {sensitiveInfoVisible ? (
+                          <>
+                            <EyeOff className="h-4 w-4 mr-1" />
+                            Hide
+                          </>
+                        ) : (
+                          <>
+                            <Eye className="h-4 w-4 mr-1" />
+                            Reveal
+                          </>
+                        )}
+                      </Button>
+                    </div>
+
+                    {sensitiveInfoVisible && billingInfo.subscription.cardLast4 ? (
+                      <div className="space-y-2 pt-2 border-t border-border">
+                        <div className="flex items-center justify-between text-sm">
+                          <span className="text-muted-foreground">Card Number</span>
+                          <span className="font-mono text-foreground">•••• •••• •••• {billingInfo.subscription.cardLast4}</span>
+                        </div>
+                        {billingInfo.subscription.cardBrand && (
+                          <div className="flex items-center justify-between text-sm">
+                            <span className="text-muted-foreground">Card Brand</span>
+                            <span className="font-medium text-foreground capitalize">{billingInfo.subscription.cardBrand}</span>
+                          </div>
+                        )}
+                        {billingInfo.subscription.cardExpMonth && billingInfo.subscription.cardExpYear && (
+                          <div className="flex items-center justify-between text-sm">
+                            <span className="text-muted-foreground">Expires</span>
+                            <span className="font-mono text-foreground">{billingInfo.subscription.cardExpMonth.toString().padStart(2, '0')}/{billingInfo.subscription.cardExpYear.toString().slice(-2)}</span>
+                          </div>
+                        )}
+                        <p className="text-xs text-muted-foreground pt-2 italic">
+                          This information is encrypted and secure. You&apos;ll need to verify your identity each time you view it.
+                        </p>
+                      </div>
+                    ) : sensitiveInfoVisible ? (
+                      <p className="text-sm text-muted-foreground pt-2">No card information available</p>
+                    ) : (
+                      <p className="text-xs text-muted-foreground pt-2">
+                        Click &quot;Reveal&quot; and verify your email to view your payment details
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                {/* Gifted subscription details */}
+                {billingInfo.giftedSubscription && (
+                  <div className="flex flex-col gap-3 p-4 rounded-lg border border-primary/30 bg-primary/5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-muted-foreground">Status</span>
+                      <Badge className="bg-primary/10 text-primary border-primary/20">
+                        Gifted
+                      </Badge>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-muted-foreground">Gift Period</span>
+                      <span className="text-sm font-medium text-foreground">
+                        {new Date(billingInfo.giftedSubscription.startedAt).toLocaleDateString()} - {new Date(billingInfo.giftedSubscription.expiresAt).toLocaleDateString()}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2 p-3 rounded-lg bg-primary/10 border border-primary/20 mt-2">
+                      <Gift className="h-4 w-4 text-primary shrink-0" />
+                      <p className="text-sm text-primary">
+                        You have a gifted {billingInfo.giftedSubscription.plan.replace("_supporter", "").replace("_", " ")} subscription until {new Date(billingInfo.giftedSubscription.expiresAt).toLocaleDateString()}.
+                      </p>
+                    </div>
                   </div>
                 )}
 
@@ -507,6 +547,14 @@ export function ProfileBillingTab({
           </div>
         </div>
       )}
+
+      {/* Billing Verification Modal */}
+      <BillingVerificationModal
+        open={showVerificationModal}
+        onOpenChange={setShowVerificationModal}
+        email={billingInfo?.email || ""}
+        onVerified={() => setSensitiveInfoVisible(true)}
+      />
     </div>
   )
 }

@@ -15,6 +15,7 @@ export interface CleanupStats {
   expiredTokens: number
   expiredInvites: number
   expired2FACodes: number
+  expiredBillingCodes: number
   expiredDeviceTrust: number
   expiredNotifications: number
   expiredGiftedSubs: number
@@ -38,6 +39,7 @@ export async function performDatabaseCleanup(): Promise<CleanupStats> {
     expiredTokens: 0,
     expiredInvites: 0,
     expired2FACodes: 0,
+    expiredBillingCodes: 0,
     expiredDeviceTrust: 0,
     expiredNotifications: 0,
     expiredGiftedSubs: 0,
@@ -116,6 +118,10 @@ export async function performDatabaseCleanup(): Promise<CleanupStats> {
     // Delete expired email 2FA codes
     const email2faRes = await pool.query("DELETE FROM email_2fa_codes WHERE expires_at < NOW()")
     stats.expired2FACodes = email2faRes.rowCount || 0
+
+    // Delete expired billing verification codes
+    const billingVerifyRes = await pool.query("DELETE FROM billing_verification_codes WHERE expires_at < NOW()")
+    stats.expiredBillingCodes = billingVerifyRes.rowCount || 0
 
     // Delete expired device trust records
     const deviceTrustRes = await pool.query("DELETE FROM device_trust WHERE expires_at < NOW()")
@@ -210,6 +216,7 @@ export function formatCleanupStats(stats: CleanupStats): string {
   if (stats.expiredTokens > 0) items.push(`${stats.expiredTokens} tokens`)
   if (stats.expiredInvites > 0) items.push(`${stats.expiredInvites} invites`)
   if (stats.expired2FACodes > 0) items.push(`${stats.expired2FACodes} 2FA codes`)
+  if (stats.expiredBillingCodes > 0) items.push(`${stats.expiredBillingCodes} billing codes`)
   if (stats.expiredDeviceTrust > 0) items.push(`${stats.expiredDeviceTrust} device trusts`)
   if (stats.expiredNotifications > 0) items.push(`${stats.expiredNotifications} notifications`)
   if (stats.expiredGiftedSubs > 0) items.push(`${stats.expiredGiftedSubs} gifted subs`)
