@@ -7,6 +7,8 @@
 
 import { lookup } from "dns/promises"
 
+const ALLOWED_PROTOCOLS = new Set(["http:", "https:"])
+
 // Private IP ranges (RFC 1918 + RFC 4193 + loopback + link-local)
 const PRIVATE_IP_PATTERNS = [
   // IPv4 private ranges
@@ -134,16 +136,16 @@ export async function safeFetch(
     throw new Error(safety.reason || "URL blocked for security reasons")
   }
   
-  // Parse the URL through the URL constructor, which validates and normalizes it
+  // Parse and normalize the URL after validation
   const urlObj = new URL(url)
   
-  // Explicitly check protocol to ensure CodeQL recognizes the safety constraint
+  // Explicitly enforce allowed protocols (HTTP/HTTPS only)
   const protocol = urlObj.protocol
-  if (protocol !== "http:" && protocol !== "https:") {
+  if (!ALLOWED_PROTOCOLS.has(protocol)) {
     throw new Error("Invalid protocol - only HTTP and HTTPS are allowed")
   }
   
-  // Use the URL object's href property, which is safe after our validations
-  // The URL constructor has already validated the URL structure
-  return fetch(urlObj.href, init)
+  // Use the normalized href after validation and protocol check
+  const safeHref = urlObj.href
+  return fetch(safeHref, init)
 }
