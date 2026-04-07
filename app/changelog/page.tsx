@@ -96,6 +96,23 @@ interface Release {
 
 const CHANGELOG: Release[] = [
   {
+    version: "2.2.2",
+    date: "April 7, 2026",
+    title: "Security Hardening & Code Quality Improvements",
+    highlights: true,
+    summary: "Comprehensive security fixes addressing SSRF vulnerabilities across all scan endpoints, enhanced DNS rebinding prevention, dependency updates to latest versions, and extensive code quality improvements. Improved error logging for webhooks and email notifications.",
+    changes: [
+      { icon: Shield, label: "SSRF Vulnerability Fixes", desc: "Fixed Server-Side Request Forgery vulnerabilities in all scan routes (bulk, crawl, discover, demo) using safeFetch wrapper with URL validation through validateScanTarget. Implemented DNS rebinding prevention using resolved IPs with Host header preservation.", category: "security" },
+      { icon: Lock, label: "Enhanced DNS Validation", desc: "Added proper IPv4 and IPv6 private range detection using isIP() validation from Node.js 'net' module. Split IP patterns by version for efficient checking. Prevents direct IPv6 access while allowing public IPv6 addresses.", category: "security" },
+      { icon: Network, label: "Fetch Timeout & Abort Control", desc: "Added 30-second timeout to safeFetch with AbortController and proper signal handling. Respects caller-provided abort signals while applying default timeout for network operations.", category: "reliability" },
+      { icon: AlertTriangle, label: "Incomplete String Escaping Fix", desc: "Fixed incomplete regex escaping in private-ip-exposure check using comprehensive escapeRegExp() helper function that properly escapes all regex metacharacters.", category: "security" },
+      { icon: Database, label: "API Key Rate Limiting Fix", desc: "Removed unsafe non-null assertion operator (!) on keyData by storing apiKeyDailyLimit as variable during authentication phase. Added proper type checking for rate limit operations.", category: "fixed" },
+      { icon: Bug, label: "Code Quality Improvements", desc: "Fixed 5+ code quality issues: corrected cookie-path-broad check to return findings, removed duplicate checks (postmessage-wildcard, graphql-introspection, internal-ip-exposed), fixed ssn-pattern using search() instead of indexOf with RegExp.", category: "changed" },
+      { icon: Zap, label: "Error Logging Enhancement", desc: "Added comprehensive error logging for email notification failures and webhook delivery failures. Improved debugging visibility for scanning operations and notification system issues.", category: "changed" },
+      { icon: Package, label: "Dependency Updates", desc: "Updated all core dependencies to latest versions including @hookform/resolvers (5.2.2), Stripe (22.0.0), react-resizable-panels (4.9.0), zod (4.3.6), and TypeScript (6.0.2) with full compatibility verification.", category: "changed" },
+    ],
+  },
+  {
     version: "2.2.1",
     date: "April 5, 2026",
     title: "Broadcast Messaging Hotfix",
