@@ -68,14 +68,22 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "URL is required" }, { status: 400 })
   }
 
-  try { new URL(url) } catch {
+  let startUrl: URL
+  try {
+    startUrl = new URL(url)
+  } catch {
     return NextResponse.json({ error: "Invalid URL" }, { status: 400 })
   }
 
-  const origin = new URL(url).origin
-  const visited = new Set<string>([url])
-  const queue = [url]
-  const found: string[] = [url]
+  if (startUrl.protocol !== "http:" && startUrl.protocol !== "https:") {
+    return NextResponse.json({ error: "Only http and https URLs are allowed" }, { status: 400 })
+  }
+
+  const normalizedStart = startUrl.href
+  const origin = startUrl.origin
+  const visited = new Set<string>([normalizedStart])
+  const queue = [normalizedStart]
+  const found: string[] = [normalizedStart]
 
   const skipExtensions = /\.(png|jpg|jpeg|gif|svg|webp|ico|css|js|mjs|cjs|woff2?|ttf|eot|otf|pdf|zip|tar|gz|mp4|mp3|wav|ogg|webm|avif|map|xml|rss|atom|json|wasm|txt)$/i
   const skipPathSegments = /(\/_next\/|\/static\/|\/assets\/|\/api\/|\/favicon|\/robots\.txt|\/sitemap|\/manifest|\/sw\.js|\/workbox)/i
