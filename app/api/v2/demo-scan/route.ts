@@ -6,6 +6,7 @@ import { APP_NAME, DEMO_SCAN_LIMIT, DEMO_SCAN_WINDOW, SEVERITY_LEVELS } from "@/
 import { checkRateLimit } from "@/lib/rate-limiting/rate-limit"
 import { getClientIp } from "@/lib/api/request-utils"
 import { checkAccessRules } from "@/lib/scanner/access-rules"
+import { safeFetch } from "@/lib/scanner/safe-fetch"
 
 const SEVERITY_ORDER: Record<Severity, number> = {
   critical: 0,
@@ -108,18 +109,8 @@ export async function POST(request: NextRequest) {
         throw new Error("Invalid protocol")
       }
       
-      // Use the validated URL object's href for the fetch
-      const safeUrl = urlObj.href
-      
-      // Build fetch URL from validated components to ensure CodeQL recognizes safety
-      const fetchProtocol = urlObj.protocol === "https:" ? "https:" : "http:"
-      const fetchHost = urlObj.hostname
-      const fetchPort = urlObj.port ? `:${urlObj.port}` : ""
-      const fetchPath = urlObj.pathname || ""
-      const fetchSearch = urlObj.search || ""
-      const fetchUrl = `${fetchProtocol}//${fetchHost}${fetchPort}${fetchPath}${fetchSearch}`
-      
-      response = await fetch(fetchUrl, {
+      // Use safeFetch which validates the URL internally to prevent SSRF
+      response = await safeFetch(urlObj.href, {
         method: "GET",
         headers: { "User-Agent": `${APP_NAME}/1.0 (Security Scanner - Demo)` },
         redirect: "follow",

@@ -3,6 +3,7 @@ import { getSession } from "@/lib/auth"
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit"
 import { validateApiKey } from "@/lib/api/api-keys"
 import { APP_NAME, BEARER_PREFIX } from "@/lib/config/constants"
+import { safeFetch } from "@/lib/scanner/safe-fetch"
 
 const MAX_BODY_SIZE = 512 * 1024
 const MAX_PAGES = 20
@@ -114,18 +115,8 @@ export async function POST(request: NextRequest) {
         continue
       }
       
-      // Use the validated URL object's href for the fetch
-      const safeUrl = currentUrlObj.href
-      
-      // Build fetch URL from validated components to ensure CodeQL recognizes safety
-      const fetchProtocol = currentUrlObj.protocol === "https:" ? "https:" : "http:"
-      const fetchHost = currentUrlObj.hostname
-      const fetchPort = currentUrlObj.port ? `:${currentUrlObj.port}` : ""
-      const fetchPath = currentUrlObj.pathname || ""
-      const fetchSearch = currentUrlObj.search || ""
-      const fetchUrl = `${fetchProtocol}//${fetchHost}${fetchPort}${fetchPath}${fetchSearch}`
-      
-      const res = await fetch(fetchUrl, {
+      // Use safeFetch which validates the URL internally to prevent SSRF
+      const res = await safeFetch(currentUrlObj.href, {
         method: "GET",
         headers: { "User-Agent": `${APP_NAME}/1.0 (Crawler)` },
         redirect: "follow",
