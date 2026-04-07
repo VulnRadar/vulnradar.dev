@@ -9,6 +9,7 @@ import { lookup } from "dns/promises"
 import { isIP } from "net"
 
 const ALLOWED_PROTOCOLS = new Set(["http:", "https:"])
+const DEFAULT_FETCH_TIMEOUT_MS = 30000
 
 // Basic hostname patterns we never want to scan directly, regardless of DNS resolution.
 // These are a fast, syntactic safeguard that complements validateScanTarget's IP-based checks.
@@ -21,6 +22,36 @@ const DISALLOWED_HOSTNAME_SUFFIXES = [
   ".lan",
 ]
 
+/**
+ * Combine a required timeout signal with an optional caller-provided signal so that
+ * the returned signal aborts when either source signal aborts.
+ */
+function combineAbortSignals(timeoutSignal: AbortSignal, callerSignal?: AbortSignal): AbortSignal {
+  if (!callerSignal) {
+    return timeoutSignal
+  }
+
+  // If either signal is already aborted, return a signal in the aborted state.
+  if (timeoutSignal.aborted || callerSignal.aborted) {
+    const controller = new AbortController()
+    controller.abort()
+    return controller.signal
+  }
+
+  const controller = new AbortController()
+
+  const onAbort = () => {
+    if (!controller.signal.aborted) {
+      controller.abort()
+    }
+  }
+
+  timeoutSignal.addEventListener("abort", onAbort, { once: true })
+  callerSignal.addEventListener("abort", onAbort, { once: true })
+
+  return controller.signal
+}
+
 // IPv4 private ranges (RFC 1918 + special ranges)
 const PRIVATE_IPV4_PATTERNS = [
   /^127\./,                          // Loopback (127.0.0.0/8)
@@ -30,7 +61,7 @@ const PRIVATE_IPV4_PATTERNS = [
   /^169\.254\./,                     // Link-local (169.254.0.0/16)
   /^0\./,                            // Current network (0.0.0.0/8)
   /^2(2[4-9]|3[0-9])\./,             // Multicast (224.0.0.0/4 = 224-239.x.x.x)
-  /^24[0-9]\.|^25[0-5]\./,           // Reserved (240.0.0.0/4 = 240-255.x.x.x)
+  /^2(4[0-9]|5[0-5])\./,             // Reserved (240.0.0.0/4 = 240-255.x.x.x)
   /^255\./,                          // Broadcast
 ]
 
@@ -264,14 +295,15 @@ export async function safeFetch(
   // Use the normalized, DNS-safe href after validation and protocol check
   // lgtm[js/request-forgery] - URL is validated through validateScanTarget before fetch
   const controller = new AbortController()
-  const timeoutMs = 30000
+  const timeoutMs = DEFAULT_FETCH_TIMEOUT_MS
   const timeoutId = setTimeout(() => {
     controller.abort()
   }, timeoutMs)
-  // Prefer a caller-provided signal if present; otherwise, apply our timeout signal.
+  // Combine any caller-provided signal with our timeout signal so that either can abort the request.
+  const combinedSignal = combineAbortSignals(controller.signal, finalInit?.signal)
   const requestInit: RequestInit = {
     ...finalInit,
-    signal: finalInit?.signal ?? controller.signal,
+    signal: combinedSignal,
   }
   try {
     return await fetch(finalUrl, requestInit)
