@@ -3,7 +3,7 @@
 import { useEffect, useRef } from "react"
 import { Card } from "@/components/ui/card"
 import { CheckCircle, Settings, Info, AlertTriangle } from "lucide-react"
-import { APP_NAME, APP_URL, APP_VERSION, ENGINE_VERSION, APP_REPO, APP_SLUG } from "@/lib/config/constants"
+import { APP_NAME, APP_URL, APP_VERSION, ENGINE_VERSION, APP_REPO } from "@/lib/config/constants"
 import { useDocsContext, type TocItem } from "../layout"
 import { DocsHero, DocsSection, DocsCallout, CodeBlock } from "@/components/docs"
 
