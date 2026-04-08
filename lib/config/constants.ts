@@ -79,7 +79,7 @@ export const RELEASES_URL = `https://github.com/${APP_REPO}/releases`
 // BRANDING (from config.yaml)
 // ============================================================================
 
-export const LOGO_URL = process.env.LOGO_URL || `${APP_URL}${config.branding.logo_url}`
+export const LOGO_URL = process.env.LOGO_URL || new URL(config.branding.logo_url, APP_URL).toString()
 export const BRANDING_PRIMARY_COLOR = config.branding.primary_color
 export const BRANDING_FOOTER_TEXT = config.branding.footer_text
 
