@@ -92,8 +92,6 @@ import {
   CONFIG_BILLING_UNLIMITED_MODE_LIMIT,
 } from "./config-values"
 
-// Get config (loads from hardcoded defaults in config-values.ts)
-const config = getConfig()
 
 // ============================================================================
 // APPLICATION METADATA (from config-values.ts -> config.yaml)
