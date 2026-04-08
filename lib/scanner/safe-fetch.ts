@@ -143,9 +143,13 @@ function setHostHeader(init: RequestInit | undefined, hostname: string): Request
  */
 export function isBlockedHostname(hostname: string): boolean {
   const lower = hostname.toLowerCase()
-  return DISALLOWED_HOSTNAMES.some(blocked => 
+  const matchesBlockedHostname = DISALLOWED_HOSTNAMES.some(blocked =>
     lower === blocked || lower.endsWith(`.${blocked}`)
   )
+  const matchesBlockedSuffix = DISALLOWED_HOSTNAME_SUFFIXES.some(suffix =>
+    lower.endsWith(suffix)
+  )
+  return matchesBlockedHostname || matchesBlockedSuffix
 }
 
 /**
