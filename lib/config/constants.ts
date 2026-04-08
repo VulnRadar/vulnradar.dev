@@ -616,3 +616,7 @@ export const API = {
     TERMS_STATUS: `/api/${API_VERSION}/legal/terms-status`,
   },
 } as const
+
+// Alias for v2 API (for backwards compatibility with code that expects API_V2)
+export const API_V2 = API
+
