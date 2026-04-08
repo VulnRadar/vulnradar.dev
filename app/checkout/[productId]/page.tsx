@@ -12,6 +12,7 @@ import { PRODUCTS, getPlanFromProductId } from "@/lib/billing/products"
 import { PLANS } from "@/lib/billing/plans"
 import Link from "next/link"
 import { ROUTES } from "@/lib/config/constants"
+import { useVerifySubscription } from "@/hooks/use-verify-subscription"
 
 const stripePromise = loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY!)
 
@@ -22,11 +23,15 @@ export default function CheckoutPage({ params }: { params: Promise<{ productId: 
   const [error, setError] = useState<string | null>(null)
   const [userId, setUserId] = useState<number | null>(null)
   const [checkoutComplete, setCheckoutComplete] = useState(false)
-  const [verifying, setVerifying] = useState(false)
 
   const product = PRODUCTS.find((p) => p.id === productId)
   const planId = product ? getPlanFromProductId(product.id) : null
   const plan = planId ? PLANS.find((p) => p.id === planId) : null
+
+  const { verifying, startVerification } = useVerifySubscription({
+    expectedPlanId: planId || undefined,
+    autoStart: false,
+  })
 
   const monthlyPrice = product ? product.priceInCents / 100 : 0
   const isYearly = product?.interval === "year"
@@ -73,42 +78,10 @@ export default function CheckoutPage({ params }: { params: Promise<{ productId: 
     return clientSecret
   }, [productId])
 
-  const verifySubscription = useCallback(async () => {
-    setVerifying(true)
-
-    const pollIntervals = [
-      ...Array(5).fill(500),
-      ...Array(5).fill(1000),
-      ...Array(5).fill(2000),
-    ]
-
-    for (let i = 0; i < pollIntervals.length; i++) {
-      try {
-        const response = await fetch("/api/v2/auth/me")
-        if (response.ok) {
-          const data = await response.json()
-          const currentPlan = data.data?.plan || "free"
-
-          if (currentPlan === planId) {
-            setVerifying(false)
-            setCheckoutComplete(true)
-            return
-          }
-        }
-      } catch {
-        // Ignore fetch errors, will retry
-      }
-
-      await new Promise(resolve => setTimeout(resolve, pollIntervals[i]))
-    }
-
-    setVerifying(false)
-    setCheckoutComplete(true)
-  }, [planId])
-
   const handleComplete = useCallback(() => {
-    verifySubscription()
-  }, [verifySubscription])
+    startVerification()
+    setCheckoutComplete(true)
+  }, [startVerification])
 
   if (!product || !plan) {
     return (
