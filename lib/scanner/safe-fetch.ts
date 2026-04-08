@@ -56,9 +56,7 @@ function combineAbortSignals(
 
   const cleanup = () => {
     timeoutSignal.removeEventListener("abort", onAbort)
-    if (callerSignal) {
-      callerSignal.removeEventListener("abort", onAbort)
-    }
+    callerSignal.removeEventListener("abort", onAbort)
   }
 
   return { signal: controller.signal, cleanup }
