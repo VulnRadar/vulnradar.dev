@@ -265,7 +265,7 @@ function AdminContent() {
     setDetailLoading(false)
   }
 
-  async function fetchAllBadges() {
+  const fetchAllBadges = useCallback(async () => {
     try {
       const res = await fetch(`${API.ADMIN}?section=badges`)
       if (res.ok) {
@@ -273,9 +273,9 @@ function AdminContent() {
         setAllBadges(data.badges || [])
       }
     } catch { /* ignore */ }
-  }
+  }, [])
 
-  useEffect(() => { fetchData(1, "", true); fetchAllBadges() }, [])
+  useEffect(() => { fetchData(1, "", true); fetchAllBadges() }, [fetchData, fetchAllBadges])
 
   useEffect(() => {
     if (activeTab === "audit") fetchAudit()
