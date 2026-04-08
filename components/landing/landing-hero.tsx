@@ -4,7 +4,7 @@ import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { ArrowRight, Terminal, CheckCircle, Activity, LayoutDashboard } from "lucide-react"
-import { APP_NAME, TOTAL_CHECKS_LABEL, ROUTES } from "@/lib/config/constants"
+import { TOTAL_CHECKS_LABEL, ROUTES } from "@/lib/config/constants"
 import { useAuth } from "@/components/providers/auth-provider"
 
 export function LandingHero() {
