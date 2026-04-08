@@ -449,7 +449,7 @@ APP_PORT=3000`} language="bash" />
   "latest": "${APP_VERSION}",
   "engine": "${ENGINE_VERSION}",
   "status": "up-to-date"
-}`} />
+}`} language="json" />
         </Card>
       </DocsSection>
     </div>
