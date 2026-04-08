@@ -156,7 +156,7 @@ GRANT ALL PRIVILEGES ON DATABASE vulnradar TO vulnradar_user;
             Create a <code className="bg-secondary px-2 py-1 rounded text-xs">.env.local</code> file in the project root:
           </p>
           <CodeBlock code={`# DATABASE (Required)
-DATABASE_URL=postgresql://vulnradar:yourpassword@localhost:5432/vulnradar
+DATABASE_URL=postgresql://vulnradar:your-secure-password-here@localhost:5432/vulnradar
 DATABASE_SSL=false
 
 # APPLICATION (Required)
