@@ -3,7 +3,7 @@
 import { useEffect, useRef } from "react"
 import { Card } from "@/components/ui/card"
 import { CheckCircle, AlertTriangle } from "lucide-react"
-import { APP_NAME, APP_URL, APP_VERSION, ENGINE_VERSION, APP_REPO } from "@/lib/config/constants"
+import { APP_NAME, APP_URL, APP_VERSION, ENGINE_VERSION, APP_REPO, APP_SLUG } from "@/lib/config/constants"
 import { useDocsContext, type TocItem } from "../layout"
 import { DocsHero, DocsSection, DocsCallout, CodeBlock } from "@/components/docs"
 
@@ -156,7 +156,7 @@ GRANT ALL PRIVILEGES ON DATABASE vulnradar TO vulnradar_user;
             Create a <code className="bg-secondary px-2 py-1 rounded text-xs">.env.local</code> file in the project root:
           </p>
           <CodeBlock code={`# DATABASE (Required)
-DATABASE_URL=postgresql://vulnradar:yourpassword@localhost:5432/vulnradar
+DATABASE_URL=postgresql://vulnradar:your-secure-password-here@localhost:5432/vulnradar
 DATABASE_SSL=false
 
 # APPLICATION (Required)
@@ -449,7 +449,7 @@ APP_PORT=3000`} language="bash" />
   "latest": "${APP_VERSION}",
   "engine": "${ENGINE_VERSION}",
   "status": "up-to-date"
-}`} />
+}`} language="json" />
         </Card>
       </DocsSection>
     </div>
