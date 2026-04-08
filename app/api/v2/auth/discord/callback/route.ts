@@ -64,7 +64,7 @@ export async function GET(request: Request) {
   }
 
   // Parse state to get action
-  let action = "connect"
+  let action: string
   try {
     const stateData = JSON.parse(Buffer.from(state, "base64url").toString())
     action = stateData.action || "connect"

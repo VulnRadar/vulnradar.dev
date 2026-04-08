@@ -42,14 +42,14 @@ export async function startCheckoutSession(productId: string, userId?: number) {
     metadata: {
       planId: planId,
       productId: product.id,
-      userId: userId ? String(userId) : '',
+      userId: String(userId),
     },
     // Also store on subscription for subscription.* webhooks
     subscription_data: {
       metadata: {
         planId: planId,
         productId: product.id,
-        userId: userId ? String(userId) : '',
+        userId: String(userId),
         scansPerDay: product.scansPerDay.toString(),
       },
     },

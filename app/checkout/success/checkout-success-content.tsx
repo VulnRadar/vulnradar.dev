@@ -1,55 +1,16 @@
 "use client"
 
-import { useEffect, useState } from "react"
 import { useSearchParams } from "next/navigation"
 import { Check, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import Link from "next/link"
 import { ROUTES } from "@/lib/config/constants"
-import { PLANS } from "@/lib/billing/plans"
+import { useVerifySubscription } from "@/hooks/use-verify-subscription"
 
 export function CheckoutSuccessContent() {
   const searchParams = useSearchParams()
   const sessionId = searchParams.get("session_id")
-  const [verifying, setVerifying] = useState(true)
-  const [planName, setPlanName] = useState<string | null>(null)
-
-  useEffect(() => {
-    async function verifySubscription() {
-      // Poll to verify subscription is active
-      const pollIntervals = [
-        ...Array(5).fill(500),
-        ...Array(5).fill(1000),
-        ...Array(5).fill(2000),
-      ]
-
-      for (let i = 0; i < pollIntervals.length; i++) {
-        try {
-          const response = await fetch("/api/v2/auth/me")
-          if (response.ok) {
-            const data = await response.json()
-            const currentPlan = data.data?.plan || "free"
-
-            if (currentPlan !== "free") {
-              const plan = PLANS.find((p) => p.id === currentPlan)
-              setPlanName(plan?.name || currentPlan)
-              setVerifying(false)
-              return
-            }
-          }
-        } catch {
-          // Ignore fetch errors, will retry
-        }
-
-        await new Promise((resolve) => setTimeout(resolve, pollIntervals[i]))
-      }
-
-      // Assume success after polling (webhook may be slow)
-      setVerifying(false)
-    }
-
-    verifySubscription()
-  }, [sessionId])
+  const { verifying, planName } = useVerifySubscription({ sessionId })
 
   if (verifying) {
     return (
