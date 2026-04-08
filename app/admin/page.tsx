@@ -345,6 +345,8 @@ function AdminContent() {
     setConfirmDialog(null)
   }
 
+  const searchInitRef = useRef(false)
+
   // Debounced server-side search
   useEffect(() => {
     if (!searchInitRef.current) {
@@ -368,8 +370,6 @@ function AdminContent() {
     }, 300)
     return () => { clearTimeout(timeout); setSearchLoading(false) }
   }, [searchQuery])
-
-  const searchInitRef = useRef(false)
 
   // Debounced teams search
   useEffect(() => {
