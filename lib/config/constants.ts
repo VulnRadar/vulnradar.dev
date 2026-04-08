@@ -50,26 +50,14 @@ export const APP_REPO = CONFIG_APP_REPO
 export const TERMS_UPDATED_AT = CONFIG_TERMS_UPDATED_AT
 
 // Scan note with version info - use safe fallbacks for missing config values
-const SAFE_APP_NAME =
-  APP_NAME && APP_NAME.trim() && APP_NAME !== "N/A" && APP_NAME !== "undefined" && APP_NAME !== "null"
-    ? APP_NAME
-    : "App"
-const SAFE_APP_VERSION =
-  APP_VERSION &&
-  APP_VERSION.trim() &&
-  APP_VERSION !== "N/A" &&
-  APP_VERSION !== "undefined" &&
-  APP_VERSION !== "null"
-    ? APP_VERSION
-    : "unknown"
-const SAFE_ENGINE_VERSION =
-  ENGINE_VERSION &&
-  ENGINE_VERSION.trim() &&
-  ENGINE_VERSION !== "N/A" &&
-  ENGINE_VERSION !== "undefined" &&
-  ENGINE_VERSION !== "null"
-    ? ENGINE_VERSION
-    : "unknown"
+const getSafeValue = (value: string | undefined, fallback: string): string =>
+  value && value.trim() && value !== "N/A" && value !== "undefined" && value !== "null"
+    ? value
+    : fallback
+
+const SAFE_APP_NAME = getSafeValue(APP_NAME, "App")
+const SAFE_APP_VERSION = getSafeValue(APP_VERSION, "unknown")
+const SAFE_ENGINE_VERSION = getSafeValue(ENGINE_VERSION, "unknown")
 export const DEFAULT_SCAN_NOTE = `${SAFE_APP_NAME} v${SAFE_APP_VERSION} (Detection Engine v${SAFE_ENGINE_VERSION})`
 
 export const VERSION_CHECK_URL = `https://api.github.com/repos/${APP_REPO}/releases/latest`
@@ -79,7 +67,7 @@ export const RELEASES_URL = `https://github.com/${APP_REPO}/releases`
 // BRANDING (from config.yaml)
 // ============================================================================
 
-export const LOGO_URL = process.env.LOGO_URL || `${APP_URL}${config.branding.logo_url}`
+export const LOGO_URL = process.env.LOGO_URL || new URL(config.branding.logo_url, APP_URL).toString()
 export const BRANDING_PRIMARY_COLOR = config.branding.primary_color
 export const BRANDING_FOOTER_TEXT = config.branding.footer_text
 
@@ -116,10 +104,16 @@ export const EMAIL_VERIFICATION_TOKEN_LIFETIME = 60 * 60 * config.auth.email_ver
 export const DEVICE_TRUST_DURATION = 60 * 60 * 24 * config.auth.device_trust_days
 
 // Rate limiting
-export const RATE_LIMIT_LOGIN_ATTEMPTS = config.rate_limits.login.max_attempts || 5
+const RATE_LIMIT_DEFAULTS = {
+  loginMaxAttempts: 5,
+  signupMaxAttempts: 3,
+}
+export const RATE_LIMIT_LOGIN_ATTEMPTS =
+  config.rate_limits.login.max_attempts || RATE_LIMIT_DEFAULTS.loginMaxAttempts
 export const RATE_LIMIT_LOGIN_WINDOW = 60 * config.rate_limits.login.window_minutes
 export const RATE_LIMIT_API_WINDOW = 60 * config.rate_limits.api.window_minutes
-export const RATE_LIMIT_SIGNUP_ATTEMPTS = config.rate_limits.signup.max_attempts || 3
+export const RATE_LIMIT_SIGNUP_ATTEMPTS =
+  config.rate_limits.signup.max_attempts || RATE_LIMIT_DEFAULTS.signupMaxAttempts
 export const RATE_LIMIT_SIGNUP_WINDOW = 60 * config.rate_limits.signup.window_minutes
 
 // Scanning
@@ -210,29 +204,38 @@ export const PATTERNS = {
 // RATE LIMIT CONFIGS (from config.yaml)
 // ============================================================================
 
+const RATE_LIMIT_DEFAULTS = {
+  login: 5,
+  forgotPassword: 3,
+  signup: 3,
+  api: 100,
+  scan: 100,
+  bulkScan: 10,
+} as const
+
 export const RATE_LIMITS = {
   login: {
-    maxAttempts: config.rate_limits.login.max_attempts || 5,
+    maxAttempts: config.rate_limits.login.max_attempts || RATE_LIMIT_DEFAULTS.login,
     windowSeconds: 60 * config.rate_limits.login.window_minutes,
   },
   forgotPassword: {
-    maxAttempts: config.rate_limits.forgot_password.max_attempts || 3,
+    maxAttempts: config.rate_limits.forgot_password.max_attempts || RATE_LIMIT_DEFAULTS.forgotPassword,
     windowSeconds: 60 * config.rate_limits.forgot_password.window_minutes,
   },
   signup: {
-    maxAttempts: config.rate_limits.signup.max_attempts || 3,
+    maxAttempts: config.rate_limits.signup.max_attempts || RATE_LIMIT_DEFAULTS.signup,
     windowSeconds: 60 * config.rate_limits.signup.window_minutes,
   },
   api: {
-    maxAttempts: config.rate_limits.api.max_requests || 100,
+    maxAttempts: config.rate_limits.api.max_requests || RATE_LIMIT_DEFAULTS.api,
     windowSeconds: 60 * config.rate_limits.api.window_minutes,
   },
   scan: {
-    maxAttempts: config.rate_limits.scan.max_requests || 100,
+    maxAttempts: config.rate_limits.scan.max_requests || RATE_LIMIT_DEFAULTS.scan,
     windowSeconds: 60 * config.rate_limits.scan.window_minutes,
   },
   bulkScan: {
-    maxAttempts: config.rate_limits.bulk_scan.max_requests || 10,
+    maxAttempts: config.rate_limits.bulk_scan.max_requests || RATE_LIMIT_DEFAULTS.bulkScan,
     windowSeconds: 60 * config.rate_limits.bulk_scan.window_minutes,
   },
 }
