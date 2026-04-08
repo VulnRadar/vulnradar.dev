@@ -177,7 +177,7 @@ function AdminContent() {
     return () => window.removeEventListener("hashchange", handleHashChange)
   }, [handleHashChange])
 
-  async function fetchData(p: number, search: string, isInitial: boolean, limit: number) {
+  const fetchData = useCallback(async (p: number, search: string, isInitial: boolean, limit: number) => {
     if (isInitial) setLoading(true)
     else setSearchLoading(true)
     try {
@@ -194,7 +194,7 @@ function AdminContent() {
     } catch (error) { console.error("Failed to fetch admin data", error); setForbidden(true) }
     setLoading(false)
     setSearchLoading(false)
-  }
+  }, [])
 
   async function fetchAudit(p = 1, limit = auditPageSize) {
     setAuditPaging(true)
