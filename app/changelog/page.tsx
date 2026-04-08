@@ -97,6 +97,14 @@ interface Release {
 
 const CHANGELOG: Release[] = [
   {
+    version: "2.2.3",
+    date: "April 8, 2026",
+    title: "Code Quality & Billing Enhancements",
+    highlights: false,
+    summary: "",
+    changes: [],
+  },
+  {
     version: "2.2.2",
     date: "April 7, 2026",
     title: "Security Hardening & Code Quality Improvements",
