@@ -38,6 +38,19 @@ import { STAFF_ROLES, STAFF_ROLE_LABELS, STAFF_ROLE_HIERARCHY, ROLE_BADGE_STYLES
 import { hasStaffPermission, STAFF_PERMISSIONS } from "@/lib/auth/permissions-client"
 import { NotificationsManager } from "@/components/admin/notifications"
 
+const VALID_TABS = [
+  "users",
+  "audit",
+  "admins",
+  "notifications",
+  "teams",
+  "access-rules",
+  "blocked-data",
+  "security-alerts",
+  "settings",
+  "broadcast",
+] as const
+
 // Import from new admin architecture
 import type { AdminStats, AdminUser, UserDetail, AuditEntry, ActiveAdmin, BadgeDef } from "@/components/admin/types"
 import { ACTION_META, ADMIN_TABS } from "@/components/admin/config"
@@ -140,9 +153,8 @@ function AdminContent() {
 
     const parts = hash.split("/")
     let foundUser = false
-    const validTabs = ["users", "audit", "admins", "notifications", "teams", "access-rules", "blocked-data", "security-alerts", "settings", "broadcast"]
     for (const part of parts) {
-      if (validTabs.includes(part)) {
+      if (VALID_TABS.includes(part as (typeof VALID_TABS)[number])) {
         setActiveTab(part as typeof activeTab)
         if (part === "audit") fetchAudit()
         if (part === "admins") fetchActiveAdmins()
