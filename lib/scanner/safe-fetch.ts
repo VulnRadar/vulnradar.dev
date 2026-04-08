@@ -56,9 +56,7 @@ function combineAbortSignals(
 
   const cleanup = () => {
     timeoutSignal.removeEventListener("abort", onAbort)
-    if (callerSignal) {
-      callerSignal.removeEventListener("abort", onAbort)
-    }
+    callerSignal.removeEventListener("abort", onAbort)
   }
 
   return { signal: controller.signal, cleanup }
@@ -73,7 +71,7 @@ const PRIVATE_IPV4_PATTERNS = [
   /^169\.254\./,                     // Link-local (169.254.0.0/16)
   /^0\./,                            // Current network (0.0.0.0/8)
   /^2(2[4-9]|3[0-9])\./,             // Multicast (224.0.0.0/4 = 224-239.x.x.x)
-  /^(24[0-9]|25[0-4])\./,            // Reserved (240.0.0.0/4, excluding 255 broadcast)
+  /^(24[0-9]|25[0-4])\./,            // Reserved first octet range 240-254 (255 handled separately below)
   /^255\./,                          // Broadcast
 ]
 
@@ -195,7 +193,7 @@ export async function validateScanTarget(url: string): Promise<SafetyCheckResult
         }
       }
       // If we have at least one address, treat the first as the canonical resolved IP
-      if (addresses.length > 0 && addresses[0].address) {
+      if (addresses.length > 0) {
         return { safe: true, resolvedIp: addresses[0].address }
       }
       // No addresses returned; treat as safe but without a resolved IP
@@ -302,7 +300,9 @@ export async function safeFetch(
     const hadExplicitPort = originalPort !== ""
     // Use URL constructor to safely build the URL with the resolved IP
     const urlWithIp = new URL(urlObj.href)
-    urlWithIp.hostname = safety.resolvedIp
+    const resolvedHostForUrl =
+      isIP(safety.resolvedIp) === 6 ? `[${safety.resolvedIp}]` : safety.resolvedIp
+    urlWithIp.hostname = resolvedHostForUrl
     // After changing hostname, ensure the port matches the original URL's explicit port (if any)
     if (hadExplicitPort) {
       urlWithIp.port = originalPort
