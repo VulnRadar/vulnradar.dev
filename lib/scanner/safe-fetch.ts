@@ -191,7 +191,7 @@ export async function validateScanTarget(url: string): Promise<SafetyCheckResult
         }
       }
       // If we have at least one address, treat the first as the canonical resolved IP
-      if (addresses.length > 0 && addresses[0]?.address) {
+      if (addresses.length > 0 && addresses[0].address) {
         return { safe: true, resolvedIp: addresses[0].address }
       }
       // No addresses returned; treat as safe but without a resolved IP
