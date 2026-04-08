@@ -60,10 +60,10 @@ export const metadata: Metadata = {
     follow: true,
   },
   other: {
-    'security-contact': APP_URL ? `${APP_URL}/.well-known/security.txt` : '/.well-known/security.txt',
+    'security-contact': `${APP_URL}/.well-known/security.txt`,
     'theme-color': '#2563eb',
   },
-  metadataBase: APP_URL ? new URL(APP_URL) : new URL('http://localhost:3000'),
+  metadataBase: new URL(APP_URL),
 }
 
 export const viewport: Viewport = {
