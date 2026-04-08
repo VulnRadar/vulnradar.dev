@@ -79,7 +79,6 @@ function AdminContent() {
   const [auditPageSize, setAuditPageSize] = useState(10)
   const [expandedLog, setExpandedLog] = useState<number | null>(null)
   const [auditFilter, setAuditFilter] = useState<string>("all")
-  const [auditSearch, setAuditSearch] = useState("")
   const [teams, setTeams] = useState<{ id: number; name: string; slug: string; created_at: string; owner_id: number; owner_email: string; owner_name: string | null; owner_avatar_url: string | null; member_count: number }[]>([])
   const [teamsLoading, setTeamsLoading] = useState(false)
   const [teamsPage, setTeamsPage] = useState(1)
