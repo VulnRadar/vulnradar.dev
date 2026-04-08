@@ -1,7 +1,7 @@
 "use client"
 
 import React from "react"
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useRef } from "react"
 import { useRouter } from "next/navigation"
 import {
   Users,
@@ -98,8 +98,6 @@ function AdminContent() {
   const [allBadges, setAllBadges] = useState<BadgeDef[]>([])
   const teamsSearchInitRef = useRef(false)
   
-  const staffPagination = usePagination(activeAdmins, staffPageSize)
-  const pagedStaff = staffPagination.getPage(staffPage)
   const showToast = useCallback((message: string, type: "success" | "error") => {
     setToast({ message, type })
   }, [])
@@ -144,7 +142,7 @@ function AdminContent() {
       }
     }
     if (!foundUser) setSelectedUser(null)
-  }, [activeTab])
+  }, [fetchAudit, fetchActiveAdmins, fetchTeams, fetchUserDetail])
 
   useEffect(() => {
     handleHashChange()
