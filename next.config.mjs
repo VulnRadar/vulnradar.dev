@@ -1,5 +1,6 @@
 import fs from 'fs'
 import path from 'path'
+import yaml from 'js-yaml'
 
 // ============================================================================
 // BUILD-TIME CONFIG LOADING
@@ -13,39 +14,49 @@ function loadConfigYaml() {
   try {
     const configPath = path.join(process.cwd(), 'config.yaml')
     if (!fs.existsSync(configPath)) {
-      console.warn('[next.config.mjs] config.yaml not found, using empty config')
+      console.warn('[next.config.mjs] config.yaml not found')
       return {}
     }
     
     const content = fs.readFileSync(configPath, 'utf-8')
     
-    // Simple YAML parser for key: "value" pairs
-    const getValue = (key) => {
-      const regex = new RegExp(`^\\s*${key}:\\s*["']?([^"'\\n#]+)["']?`, 'm')
-      const match = content.match(regex)
-      return match ? match[1].trim() : null
+    // Parse using js-yaml for proper YAML support
+    const parsed = yaml.load(content)
+    
+    if (!parsed || typeof parsed !== 'object') {
+      console.warn('[next.config.mjs] config.yaml is not valid YAML')
+      return {}
     }
     
+    // Extract app section
+    const app = parsed.app || {}
+    const branding = parsed.branding || {}
+    
+    console.log('[next.config.mjs] Loaded config values:')
+    console.log('  - app.name:', app.name)
+    console.log('  - app.url:', app.url)
+    console.log('  - branding.logo_url:', branding.logo_url)
+    
     return {
-      name: getValue('name'),
-      slug: getValue('slug'),
-      version: getValue('version'),
-      engine_version: getValue('engine_version'),
-      api_version: getValue('api_version'),
-      description: getValue('description'),
-      total_checks_label: getValue('total_checks_label'),
-      url: getValue('url'),
-      repo: getValue('repo'),
-      discord_invite_url: getValue('discord_invite_url'),
-      support_email: getValue('support_email'),
-      legal_email: getValue('legal_email'),
-      security_email: getValue('security_email'),
-      enterprise_email: getValue('enterprise_email'),
-      noreply_email: getValue('noreply_email'),
-      terms_updated_at: getValue('terms_updated_at'),
-      logo_url: getValue('logo_url'),
-      primary_color: getValue('primary_color'),
-      footer_text: getValue('footer_text'),
+      name: app.name,
+      slug: app.slug,
+      version: app.version,
+      engine_version: app.engine_version,
+      api_version: app.api_version,
+      description: app.description,
+      total_checks_label: app.total_checks_label,
+      url: app.url,
+      repo: app.repo,
+      discord_invite_url: app.discord_invite_url,
+      support_email: app.support_email,
+      legal_email: app.legal_email,
+      security_email: app.security_email,
+      enterprise_email: app.enterprise_email,
+      noreply_email: app.noreply_email,
+      terms_updated_at: app.terms_updated_at,
+      logo_url: branding.logo_url,
+      primary_color: branding.primary_color,
+      footer_text: branding.footer_text,
     }
   } catch (error) {
     console.error('[next.config.mjs] Error loading config.yaml:', error.message)
