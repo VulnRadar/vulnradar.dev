@@ -49,6 +49,18 @@ import { AuditLog } from "@/components/admin/audit"
 import { StaffList } from "@/components/admin/staff"
 import { TeamsList } from "@/components/admin/teams"
 
+type ActiveTab =
+  | "users"
+  | "audit"
+  | "admins"
+  | "notifications"
+  | "teams"
+  | "access-rules"
+  | "blocked-data"
+  | "security-alerts"
+  | "settings"
+  | "broadcast"
+
 export default function AdminPage() {
   return <AdminContent />
 }
@@ -65,7 +77,7 @@ function AdminContent() {
   const [searchQuery, setSearchQuery] = useState("")
   const [actionLoading, setActionLoading] = useState<string | null>(null)
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null)
-  const [activeTab, setActiveTab] = useState<"users" | "audit" | "admins" | "notifications" | "teams" | "access-rules" | "blocked-data" | "security-alerts" | "settings" | "broadcast">("users")
+  const [activeTab, setActiveTab] = useState<ActiveTab>("users")
   const [selectedUser, setSelectedUser] = useState<UserDetail | null>(null)
   const [detailLoading, setDetailLoading] = useState(false)
   const [confirmDialog, setConfirmDialog] = useState<{
