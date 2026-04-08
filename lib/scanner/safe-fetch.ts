@@ -143,7 +143,7 @@ function setHostHeader(init: RequestInit | undefined, hostname: string): Request
  */
 export function isBlockedHostname(hostname: string): boolean {
   const lower = hostname.toLowerCase()
-  return BLOCKED_HOSTNAMES.some(blocked => 
+  return DISALLOWED_HOSTNAMES.some(blocked => 
     lower === blocked || lower.endsWith(`.${blocked}`)
   )
 }
@@ -223,7 +223,7 @@ function assertSafePublicHttpUrl(rawUrl: string): URL {
 
   const protocol = urlObj.protocol
   if (!ALLOWED_PROTOCOLS.has(protocol)) {
-    throw new Error("Invalid protocol - only https: is allowed")
+    throw new Error("Invalid protocol - only http: and https: are allowed")
   }
 
   const hostname = urlObj.hostname.toLowerCase()
