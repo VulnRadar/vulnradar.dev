@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import pool from "@/lib/database/db"
-import { createSession } from "@/lib/auth"
 import { ApiResponse, parseBody, withErrorHandling } from "@/lib/api/api-utils"
-import { getClientIp, getUserAgent } from "@/lib/api/request-utils"
 import { SUCCESS_MESSAGES, ERROR_MESSAGES } from "@/lib/config/constants"
 
 export const POST = withErrorHandling(async (request: NextRequest) => {
@@ -72,11 +70,6 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     )
 
     await client.query("COMMIT")
-
-    // Create session for the user (auto-login after verification)
-    const ip = await getClientIp()
-    const userAgent = await getUserAgent()
-    await createSession(verificationToken.user_id, ip, userAgent)
 
     return ApiResponse.success({
       message: SUCCESS_MESSAGES.EMAIL_VERIFIED,

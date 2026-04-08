@@ -1,7 +1,7 @@
 "use client"
 
 import React from "react"
-import { useState, useEffect, useCallback, useRef } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import {
   Users,
@@ -97,7 +97,6 @@ function AdminContent() {
   const [callerRole, setCallerRole] = useState<string>("user")
   const [auditPaging, setAuditPaging] = useState(false)
   const [allBadges, setAllBadges] = useState<BadgeDef[]>([])
-  const searchInitRef = useRef(false)
   const teamsSearchInitRef = useRef(false)
   
   const staffPagination = usePagination(activeAdmins, staffPageSize)

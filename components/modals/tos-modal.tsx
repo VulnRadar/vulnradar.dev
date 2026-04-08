@@ -165,7 +165,7 @@ export function TosModal({ onAccept, isUpdate = false }: TosModalProps) {
               {/* Icon */}
               <div className={`p-2.5 rounded-xl shrink-0 ${isUpdate ? "bg-amber-500/15 border border-amber-500/30" : "bg-primary/15 border border-primary/30"}`}>
                 {isUpdate ? (
-                  <RefreshCw className={`h-5 w-5 ${isUpdate ? "text-amber-600 dark:text-amber-400" : "text-primary"}`} />
+                  <RefreshCw className="h-5 w-5 text-amber-600 dark:text-amber-400" />
                 ) : (
                   <Shield className="h-5 w-5 text-primary" />
                 )}
