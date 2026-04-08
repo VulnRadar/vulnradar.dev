@@ -113,12 +113,13 @@ export async function POST(request: NextRequest) {
       // URL and protocol were validated above; urlObj.href is normalized.
       
       // Use safeFetch which validates the URL internally to prevent SSRF
+      // Pass the original hostname as the only allowed hostname to prevent redirect-based SSRF
       response = await safeFetch(urlObj.href, {
         method: "GET",
         headers: { "User-Agent": `${APP_NAME}/1.0 (Security Scanner - Demo)` },
         redirect: "follow",
         signal: AbortSignal.timeout(15000),
-      })
+      }, [urlObj.hostname])
     } catch (fetchError) {
       const message = fetchError instanceof Error ? fetchError.message : "Unknown error"
       return NextResponse.json(
