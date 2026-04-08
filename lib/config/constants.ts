@@ -51,9 +51,7 @@ export const TERMS_UPDATED_AT = CONFIG_TERMS_UPDATED_AT
 
 // Scan note with version info - use safe fallbacks for missing config values
 const getSafeValue = (value: string | undefined, fallback: string): string =>
-  value && value.trim() && value !== "N/A" && value !== "undefined" && value !== "null"
-    ? value
-    : fallback
+  value && value.trim() ? value : fallback
 
 const SAFE_APP_NAME = getSafeValue(APP_NAME, "App")
 const SAFE_APP_VERSION = getSafeValue(APP_VERSION, "unknown")
@@ -70,7 +68,7 @@ export const RELEASES_URL = `https://github.com/${APP_REPO}/releases`
 // Safe URL construction helper - returns fallback if URL construction fails
 function safeUrlConstruct(path: string, base: string, fallback: string): string {
   try {
-    if (!base || base === "N/A" || base === "undefined" || base === "null") {
+    if (!base || !base.trim()) {
       return fallback
     }
     return new URL(path, base).toString()
