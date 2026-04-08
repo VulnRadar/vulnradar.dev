@@ -104,16 +104,12 @@ export const EMAIL_VERIFICATION_TOKEN_LIFETIME = 60 * 60 * config.auth.email_ver
 export const DEVICE_TRUST_DURATION = 60 * 60 * 24 * config.auth.device_trust_days
 
 // Rate limiting
-const RATE_LIMIT_DEFAULTS = {
-  loginMaxAttempts: 5,
-  signupMaxAttempts: 3,
-}
 export const RATE_LIMIT_LOGIN_ATTEMPTS =
-  config.rate_limits.login.max_attempts || RATE_LIMIT_DEFAULTS.loginMaxAttempts
+  config.rate_limits.login.max_attempts || 5
 export const RATE_LIMIT_LOGIN_WINDOW = 60 * config.rate_limits.login.window_minutes
 export const RATE_LIMIT_API_WINDOW = 60 * config.rate_limits.api.window_minutes
 export const RATE_LIMIT_SIGNUP_ATTEMPTS =
-  config.rate_limits.signup.max_attempts || RATE_LIMIT_DEFAULTS.signupMaxAttempts
+  config.rate_limits.signup.max_attempts || 3
 export const RATE_LIMIT_SIGNUP_WINDOW = 60 * config.rate_limits.signup.window_minutes
 
 // Scanning
