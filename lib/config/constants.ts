@@ -50,26 +50,14 @@ export const APP_REPO = CONFIG_APP_REPO
 export const TERMS_UPDATED_AT = CONFIG_TERMS_UPDATED_AT
 
 // Scan note with version info - use safe fallbacks for missing config values
-const SAFE_APP_NAME =
-  APP_NAME && APP_NAME.trim() && APP_NAME !== "N/A" && APP_NAME !== "undefined" && APP_NAME !== "null"
-    ? APP_NAME
-    : "App"
-const SAFE_APP_VERSION =
-  APP_VERSION &&
-  APP_VERSION.trim() &&
-  APP_VERSION !== "N/A" &&
-  APP_VERSION !== "undefined" &&
-  APP_VERSION !== "null"
-    ? APP_VERSION
-    : "unknown"
-const SAFE_ENGINE_VERSION =
-  ENGINE_VERSION &&
-  ENGINE_VERSION.trim() &&
-  ENGINE_VERSION !== "N/A" &&
-  ENGINE_VERSION !== "undefined" &&
-  ENGINE_VERSION !== "null"
-    ? ENGINE_VERSION
-    : "unknown"
+const getSafeValue = (value: string | undefined, fallback: string): string =>
+  value && value.trim() && value !== "N/A" && value !== "undefined" && value !== "null"
+    ? value
+    : fallback
+
+const SAFE_APP_NAME = getSafeValue(APP_NAME, "App")
+const SAFE_APP_VERSION = getSafeValue(APP_VERSION, "unknown")
+const SAFE_ENGINE_VERSION = getSafeValue(ENGINE_VERSION, "unknown")
 export const DEFAULT_SCAN_NOTE = `${SAFE_APP_NAME} v${SAFE_APP_VERSION} (Detection Engine v${SAFE_ENGINE_VERSION})`
 
 export const VERSION_CHECK_URL = `https://api.github.com/repos/${APP_REPO}/releases/latest`
