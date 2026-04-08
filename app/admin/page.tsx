@@ -98,8 +98,6 @@ function AdminContent() {
   const [allBadges, setAllBadges] = useState<BadgeDef[]>([])
   const teamsSearchInitRef = useRef(false)
   
-  const staffPagination = usePagination(activeAdmins, staffPageSize)
-  const pagedStaff = staffPagination.getPage(staffPage)
   const showToast = useCallback((message: string, type: "success" | "error") => {
     setToast({ message, type })
   }, [])
