@@ -90,7 +90,6 @@ function AdminContent() {
   const [teamMembersLoading, setTeamMembersLoading] = useState(false)
   const [activeAdmins, setActiveAdmins] = useState<ActiveAdmin[]>([])
   const [adminsLoading, setAdminsLoading] = useState(false)
-  const [staffPage, setStaffPage] = useState(1)
   const [staffPageSize, setStaffPageSize] = useState(10)
   const [searchLoading, setSearchLoading] = useState(false)
   const [callerRole, setCallerRole] = useState<string>("user")
