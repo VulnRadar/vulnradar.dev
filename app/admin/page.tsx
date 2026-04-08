@@ -358,6 +358,8 @@ function AdminContent() {
     return () => { clearTimeout(timeout); setSearchLoading(false) }
   }, [searchQuery])
 
+  const searchInitRef = useRef(false)
+
   // Debounced teams search
   useEffect(() => {
     if (!teamsSearchInitRef.current) {
