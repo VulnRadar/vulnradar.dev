@@ -232,8 +232,8 @@ function assertSafePublicHttpUrl(rawUrl: string): URL {
 
   const hostname = urlObj.hostname.toLowerCase()
 
-  // Disallow obvious local hostnames like "localhost"
-  if (DISALLOWED_HOSTNAMES.includes(hostname)) {
+  // Disallow blocked hostnames (including exact and subdomain matches)
+  if (isBlockedHostname(hostname)) {
     throw new Error("Access to local hostnames is not allowed")
   }
 
