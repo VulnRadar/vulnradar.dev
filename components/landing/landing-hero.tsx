@@ -55,8 +55,8 @@ export function LandingHero() {
 
           {!isLoggedIn && (
             <div className="mt-10 flex flex-wrap items-center justify-center gap-x-6 gap-y-3 text-sm text-muted-foreground">
-              {["No credit card required", "Free forever tier", "Open source"].map((item, i) => (
-                <div key={i} className="flex items-center gap-1.5">
+              {["No credit card required", "Free forever tier", "Open source"].map((item) => (
+                <div key={item} className="flex items-center gap-1.5">
                   <CheckCircle className="h-3.5 w-3.5 text-primary" />
                   <span>{item}</span>
                 </div>
