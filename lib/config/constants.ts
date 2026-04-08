@@ -210,29 +210,38 @@ export const PATTERNS = {
 // RATE LIMIT CONFIGS (from config.yaml)
 // ============================================================================
 
+const RATE_LIMIT_DEFAULTS = {
+  login: 5,
+  forgotPassword: 3,
+  signup: 3,
+  api: 100,
+  scan: 100,
+  bulkScan: 10,
+} as const
+
 export const RATE_LIMITS = {
   login: {
-    maxAttempts: config.rate_limits.login.max_attempts || 5,
+    maxAttempts: config.rate_limits.login.max_attempts || RATE_LIMIT_DEFAULTS.login,
     windowSeconds: 60 * config.rate_limits.login.window_minutes,
   },
   forgotPassword: {
-    maxAttempts: config.rate_limits.forgot_password.max_attempts || 3,
+    maxAttempts: config.rate_limits.forgot_password.max_attempts || RATE_LIMIT_DEFAULTS.forgotPassword,
     windowSeconds: 60 * config.rate_limits.forgot_password.window_minutes,
   },
   signup: {
-    maxAttempts: config.rate_limits.signup.max_attempts || 3,
+    maxAttempts: config.rate_limits.signup.max_attempts || RATE_LIMIT_DEFAULTS.signup,
     windowSeconds: 60 * config.rate_limits.signup.window_minutes,
   },
   api: {
-    maxAttempts: config.rate_limits.api.max_requests || 100,
+    maxAttempts: config.rate_limits.api.max_requests || RATE_LIMIT_DEFAULTS.api,
     windowSeconds: 60 * config.rate_limits.api.window_minutes,
   },
   scan: {
-    maxAttempts: config.rate_limits.scan.max_requests || 100,
+    maxAttempts: config.rate_limits.scan.max_requests || RATE_LIMIT_DEFAULTS.scan,
     windowSeconds: 60 * config.rate_limits.scan.window_minutes,
   },
   bulkScan: {
-    maxAttempts: config.rate_limits.bulk_scan.max_requests || 10,
+    maxAttempts: config.rate_limits.bulk_scan.max_requests || RATE_LIMIT_DEFAULTS.bulkScan,
     windowSeconds: 60 * config.rate_limits.bulk_scan.window_minutes,
   },
 }
