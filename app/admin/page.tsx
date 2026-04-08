@@ -60,6 +60,11 @@ type ActiveTab =
   | "settings"
   | "broadcast"
 
+type TeamMembersState = {
+  team: { id: number; name: string; owner_email: string; owner_name: string | null }
+  members: { user_id: number; role: string; email: string; name: string | null; avatar_url: string | null }[]
+}
+
 export default function AdminPage() {
   return <AdminContent />
 }
@@ -97,7 +102,7 @@ function AdminContent() {
   const [teamsPageSize, setTeamsPageSize] = useState(10)
   const [teamsSearch, setTeamsSearch] = useState("")
   const [editingTeam, setEditingTeam] = useState<{ id: number; name: string } | null>(null)
-  const [teamMembers, setTeamMembers] = useState<{ team: { id: number; name: string; owner_email: string; owner_name: string | null }; members: { user_id: number; role: string; email: string; name: string | null; avatar_url: string | null }[] } | null>(null)
+  const [teamMembers, setTeamMembers] = useState<TeamMembersState | null>(null)
   const [teamMembersLoading, setTeamMembersLoading] = useState(false)
   const [activeAdmins, setActiveAdmins] = useState<ActiveAdmin[]>([])
   const [adminsLoading, setAdminsLoading] = useState(false)
