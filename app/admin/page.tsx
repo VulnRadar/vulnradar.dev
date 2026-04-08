@@ -144,7 +144,7 @@ function AdminContent() {
       }
     }
     if (!foundUser) setSelectedUser(null)
-  }, [activeTab])
+  }, [fetchAudit, fetchActiveAdmins, fetchTeams, fetchUserDetail])
 
   useEffect(() => {
     handleHashChange()
