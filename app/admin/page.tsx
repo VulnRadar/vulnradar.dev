@@ -836,7 +836,7 @@ function AdminContent() {
                         <PaginationControl
                           currentPage={page}
                           totalPages={totalPages}
-                          onPageChange={(p) => fetchData(p)}
+                          onPageChange={(p) => fetchData(p, searchQuery, false, usersPageSize)}
                           pageSize={usersPageSize}
                           onPageSizeChange={(s) => { setUsersPageSize(s); fetchData(1, searchQuery, false, s) }}
                         />
