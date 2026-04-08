@@ -165,7 +165,7 @@ function AdminContent() {
     return () => window.removeEventListener("hashchange", handleHashChange)
   }, [handleHashChange])
 
-  async function fetchData(p = 1, search = searchQuery, isInitial = false, limit = usersPageSize) {
+  async function fetchData(p: number, search: string, isInitial: boolean, limit: number) {
     if (isInitial) setLoading(true)
     else setSearchLoading(true)
     try {
