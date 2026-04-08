@@ -140,10 +140,21 @@ function setHostHeader(init: RequestInit | undefined, hostname: string): Request
  * Check if a hostname is blocked
  */
 export function isBlockedHostname(hostname: string): boolean {
-  const lower = hostname.toLowerCase()
-  const matchesBlockedHostname = DISALLOWED_HOSTNAMES.some(blocked =>
-    lower === blocked || lower.endsWith(`.${blocked}`)
-  )
+  const lower = hostname.toLowerCase().replace(/\.$/, "")
+  const hostLabels = lower.split(".").filter(Boolean)
+  const matchesBlockedHostname = DISALLOWED_HOSTNAMES.some(blocked => {
+    const blockedLabels = blocked.toLowerCase().split(".").filter(Boolean)
+
+    if (hostLabels.length < blockedLabels.length) return false
+
+    for (let i = 1; i <= blockedLabels.length; i++) {
+      if (hostLabels[hostLabels.length - i] !== blockedLabels[blockedLabels.length - i]) {
+        return false
+      }
+    }
+
+    return true
+  })
   const matchesBlockedSuffix = DISALLOWED_HOSTNAME_SUFFIXES.some(suffix =>
     lower.endsWith(suffix)
   )
