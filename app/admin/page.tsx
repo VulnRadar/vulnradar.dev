@@ -348,7 +348,7 @@ function AdminContent() {
         showToast(labels[action] || "Action completed.", "success")
         // Skip refetch for badge award/revoke - onBadgesChanged handles optimistic UI update
         if (action !== "award_badge" && action !== "revoke_badge") {
-          await fetchData(page)
+          await fetchData(page, search, false, limit)
           if (selectedUser && selectedUser.user.id === userId) {
             if (action === "delete") { setSelectedUser(null); updateUrlWithUser(null, activeTab) }
             else await fetchUserDetail(userId)
