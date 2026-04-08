@@ -302,7 +302,9 @@ export async function safeFetch(
     const hadExplicitPort = originalPort !== ""
     // Use URL constructor to safely build the URL with the resolved IP
     const urlWithIp = new URL(urlObj.href)
-    urlWithIp.hostname = safety.resolvedIp
+    const resolvedHostForUrl =
+      isIP(safety.resolvedIp) === 6 ? `[${safety.resolvedIp}]` : safety.resolvedIp
+    urlWithIp.hostname = resolvedHostForUrl
     // After changing hostname, ensure the port matches the original URL's explicit port (if any)
     if (hadExplicitPort) {
       urlWithIp.port = originalPort
