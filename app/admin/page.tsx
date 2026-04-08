@@ -179,7 +179,7 @@ function AdminContent() {
       setPage(data.page)
       setTotalPages(data.totalPages)
       if (data.callerRole) setCallerRole(data.callerRole)
-    } catch { setForbidden(true) }
+    } catch (error) { console.error("Failed to fetch admin data", error); setForbidden(true) }
     setLoading(false)
     setSearchLoading(false)
   }
@@ -192,7 +192,7 @@ function AdminContent() {
       setAuditLogs(data.logs)
       setAuditPage(data.page)
       setAuditTotalPages(data.totalPages)
-    } catch { /* ignore */ }
+    } catch (error) { console.error("Failed to fetch audit logs", error) }
     setAuditPaging(false)
   }
 
@@ -202,7 +202,7 @@ function AdminContent() {
       const res = await fetch(`${API.ADMIN}?section=active-admins`)
       const data = await res.json()
       setActiveAdmins(data.admins || [])
-    } catch { /* ignore */ }
+    } catch (error) { console.error("Failed to fetch active admins", error) }
     setAdminsLoading(false)
   }
 
