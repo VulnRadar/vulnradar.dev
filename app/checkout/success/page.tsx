@@ -1,10 +1,7 @@
 "use client"
 
 import { Suspense } from "react"
-import { Check, Loader2, PartyPopper } from "lucide-react"
-import { Button } from "@/components/ui/button"
-import Link from "next/link"
-import { ROUTES } from "@/lib/config/constants"
+import { Loader2 } from "lucide-react"
 import { CheckoutSuccessContent } from "./checkout-success-content"
 
 function LoadingFallback() {
