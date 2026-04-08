@@ -73,7 +73,7 @@ const PRIVATE_IPV4_PATTERNS = [
   /^169\.254\./,                     // Link-local (169.254.0.0/16)
   /^0\./,                            // Current network (0.0.0.0/8)
   /^2(2[4-9]|3[0-9])\./,             // Multicast (224.0.0.0/4 = 224-239.x.x.x)
-  /^(24[0-9]|25[0-5])\./,            // Reserved (240.0.0.0/4 = 240-255.x.x.x)
+  /^(24[0-9]|25[0-4])\./,            // Reserved (240.0.0.0/4, excluding 255 broadcast)
   /^255\./,                          // Broadcast
 ]
 
@@ -301,7 +301,7 @@ export async function safeFetch(
     const originalPort = urlObj.port
     const hadExplicitPort = originalPort !== ""
     // Use URL constructor to safely build the URL with the resolved IP
-    const urlWithIp = new URL(urlObj.toString())
+    const urlWithIp = new URL(urlObj.href)
     urlWithIp.hostname = safety.resolvedIp
     // After changing hostname, ensure the port matches the original URL's explicit port (if any)
     if (hadExplicitPort) {
