@@ -131,11 +131,36 @@ export function BackupCodesModal() {
 
 // ─── Variant Styles ──────────────────────────────────────────────
 
-const VARIANT_ICONS: Record<string, { icon: React.ReactNode; bg: string }> = {
-  info: { icon: <Info className="h-4 w-4" />, bg: "bg-blue-500/10 text-blue-500" },
-  success: { icon: <CheckCircle2 className="h-4 w-4" />, bg: "bg-emerald-500/10 text-emerald-500" },
-  warning: { icon: <AlertTriangle className="h-4 w-4" />, bg: "bg-amber-500/10 text-amber-500" },
-  error: { icon: <AlertTriangle className="h-4 w-4" />, bg: "bg-destructive/10 text-destructive" },
+const VARIANT_CONFIG: Record<string, {
+  icon: React.ReactNode
+  bg: string
+  border: string
+  text: string
+}> = {
+  info: {
+    icon: <Info className="h-4 w-4" />,
+    bg: "bg-primary/10",
+    border: "border-primary/30",
+    text: "text-primary",
+  },
+  success: {
+    icon: <CheckCircle2 className="h-4 w-4" />,
+    bg: "bg-emerald-500/10",
+    border: "border-emerald-500/30",
+    text: "text-emerald-600 dark:text-emerald-400",
+  },
+  warning: {
+    icon: <AlertTriangle className="h-4 w-4" />,
+    bg: "bg-amber-500/10",
+    border: "border-amber-500/30",
+    text: "text-amber-600 dark:text-amber-400",
+  },
+  error: {
+    icon: <AlertTriangle className="h-4 w-4" />,
+    bg: "bg-destructive/10",
+    border: "border-destructive/30",
+    text: "text-destructive",
+  },
 }
 
 // ─── Notification Bell (header dropdown) ─────────────────────────
@@ -251,54 +276,59 @@ export function NotificationBell() {
         size="icon"
         onClick={() => setOpen(!open)}
         aria-label={hydrated ? `Notifications${count > 0 ? ` (${count} unread)` : ""}` : "Notifications"}
-        className="relative text-muted-foreground hover:text-foreground h-8 w-8"
+        className="relative h-8 w-8"
       >
         <Bell className="h-4 w-4" />
         {hydrated && count > 0 && (
-          <span className="absolute -top-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-primary-foreground">
-            {count}
+          <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-primary-foreground">
+            {count > 9 ? '9+' : count}
           </span>
         )}
       </Button>
 
       {open && (
-        <div className="fixed right-3 left-3 sm:left-auto sm:absolute sm:right-0 sm:w-80 top-14 sm:top-full sm:mt-2 rounded-xl border border-border bg-card shadow-xl z-50 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-150">
+        <div className="fixed right-3 left-3 sm:left-auto sm:absolute sm:right-0 sm:w-80 top-14 sm:top-full sm:mt-2 z-50 overflow-hidden rounded-lg border border-border/50 bg-card shadow-lg animate-in fade-in slide-in-from-top-2 duration-200">
           {/* Header */}
-          <div className="flex items-center justify-between px-4 py-3 border-b border-border">
-            <span className="text-sm font-semibold text-foreground">Notifications</span>
-            {count > 0 && (
+          <div className="flex items-center justify-between border-b border-border/40 px-4 py-3">
+            <span className="text-sm font-medium text-foreground">Notifications</span>
+            {count > 0 && !loading && (
               <span className="text-xs text-muted-foreground">{count} new</span>
             )}
           </div>
 
-          {/* Items */}
+          {/* Content */}
           {loading ? (
-            <div className="px-4 py-8 text-center">
-              <div className="h-6 w-6 border-2 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-2" />
-              <p className="text-sm text-muted-foreground">Loading...</p>
+            <div className="flex flex-col items-center justify-center py-8 px-4">
+              <Bell className="h-8 w-8 text-muted-foreground/30 mb-2 animate-pulse" />
+              <p className="text-xs text-muted-foreground">Loading...</p>
             </div>
           ) : count === 0 ? (
-            <div className="px-4 py-8 text-center">
-              <Bell className="h-8 w-8 text-muted-foreground/30 mx-auto mb-2" />
-              <p className="text-sm text-muted-foreground">All caught up!</p>
+            <div className="flex flex-col items-center justify-center py-12 px-4">
+              <Bell className="h-8 w-8 text-muted-foreground/30 mb-3" />
+              <p className="text-sm font-medium text-foreground">All caught up!</p>
+              <p className="text-xs text-muted-foreground mt-1">You're on top of everything</p>
             </div>
           ) : (
-            <div className="max-h-80 overflow-y-auto">
-              {/* Version notification (hardcoded, cookie-based) */}
+            <div className="max-h-96 overflow-y-auto">
+              {/* Version notification */}
               {showVersionNotif && (
-                <div className="px-4 py-3 border-b border-border hover:bg-muted/50 transition-colors">
+                <div className="border-b border-border/40 p-4 hover:bg-muted/50 transition-colors">
                   <div className="flex items-start gap-3">
-                    <div className="flex-shrink-0 p-2 rounded-lg bg-primary/10 text-primary">
+                    <div className="flex-shrink-0 p-2 rounded-lg bg-primary/10 border border-primary/30 text-primary">
                       <Sparkles className="h-4 w-4" />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-foreground">{APP_NAME} v{APP_VERSION} Released</p>
-                      <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">New features, improvements, and bug fixes are available.</p>
-                      <div className="flex items-center gap-2 mt-2">
+                      <p className="text-sm font-medium text-foreground mb-0.5">
+                        {APP_NAME} v{APP_VERSION} Released
+                      </p>
+                      <p className="text-xs text-muted-foreground leading-relaxed mb-2">
+                        New features, improvements, and bug fixes are available.
+                      </p>
+                      <div className="flex items-center gap-2">
                         <a
                           href="/changelog"
                           onClick={() => { dismissVersionNotif(); setOpen(false) }}
-                          className="text-xs font-medium text-primary hover:text-primary/80 transition-colors flex items-center gap-1"
+                          className="text-xs font-medium text-primary hover:text-primary/80 transition-colors inline-flex items-center gap-1"
                         >
                           View Changelog
                           <ArrowRight className="h-3 w-3" />
@@ -313,37 +343,56 @@ export function NotificationBell() {
                     </div>
                     <button
                       onClick={dismissVersionNotif}
-                      className="flex-shrink-0 p-0.5 rounded text-muted-foreground/50 hover:text-muted-foreground transition-colors"
+                      className="flex-shrink-0 p-1 rounded text-muted-foreground/50 hover:text-foreground transition-colors"
                       aria-label="Dismiss version notification"
                     >
-                      <X className="h-3.5 w-3.5" />
+                      <X className="h-4 w-4" />
                     </button>
                   </div>
                 </div>
               )}
+
               {/* API-driven notifications */}
               {visibleNotifications.map((n) => {
-                const variant = VARIANT_ICONS[n.variant] || VARIANT_ICONS.info
+                const config = VARIANT_CONFIG[n.variant] || VARIANT_CONFIG.info
                 return (
-                  <div key={n.id} className="px-4 py-3 border-b border-border last:border-b-0 hover:bg-muted/50 transition-colors">
+                  <div
+                    key={n.id}
+                    className="border-b border-border/40 p-4 last:border-0 hover:bg-muted/50 transition-colors"
+                  >
                     <div className="flex items-start gap-3">
-                      <div className={cn("flex-shrink-0 p-2 rounded-lg", variant.bg)}>
-                        {variant.icon}
+                      <div className={cn(
+                        "flex-shrink-0 p-2 rounded-lg border",
+                        config.bg,
+                        config.border,
+                        config.text
+                      )}>
+                        {config.icon}
                       </div>
+
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-foreground">{n.title}</p>
-                        <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed whitespace-pre-wrap">{n.message}</p>
-                        <div className="flex items-center gap-2 mt-2">
+                        <p className="text-sm font-medium text-foreground mb-0.5">
+                          {n.title}
+                        </p>
+                        <p className="text-xs text-muted-foreground leading-relaxed whitespace-pre-wrap mb-2">
+                          {n.message}
+                        </p>
+
+                        <div className="flex items-center gap-2">
                           {n.action_url && (
                             <a
                               href={n.action_url}
                               target={n.action_external ? "_blank" : "_self"}
                               rel={n.action_external ? "noopener noreferrer" : undefined}
                               onClick={() => { if (n.is_dismissible) dismissNotification(n.cookie_id, n.dismiss_duration_hours); setOpen(false) }}
-                              className="text-xs font-medium text-primary hover:text-primary/80 transition-colors flex items-center gap-1"
+                              className="text-xs font-medium text-primary hover:text-primary/80 transition-colors inline-flex items-center gap-1"
                             >
                               {n.action_label || "View"}
-                              {n.action_external ? <ExternalLink className="h-3 w-3" /> : <ArrowRight className="h-3 w-3" />}
+                              {n.action_external ? (
+                                <ExternalLink className="h-3 w-3" />
+                              ) : (
+                                <ArrowRight className="h-3 w-3" />
+                              )}
                             </a>
                           )}
                           {n.is_dismissible && (
@@ -356,13 +405,14 @@ export function NotificationBell() {
                           )}
                         </div>
                       </div>
+
                       {n.is_dismissible && (
                         <button
                           onClick={() => dismissNotification(n.cookie_id, n.dismiss_duration_hours)}
-                          className="flex-shrink-0 p-0.5 rounded text-muted-foreground/50 hover:text-muted-foreground transition-colors"
+                          className="flex-shrink-0 p-1 rounded text-muted-foreground/50 hover:text-foreground transition-colors"
                           aria-label={`Dismiss ${n.title}`}
                         >
-                          <X className="h-3.5 w-3.5" />
+                          <X className="h-4 w-4" />
                         </button>
                       )}
                     </div>

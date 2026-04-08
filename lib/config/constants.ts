@@ -1,16 +1,8 @@
 // ============================================================================
 // APP CONSTANTS - Centralized configuration for the entire application
 // ============================================================================
-// CONFIGURATION SOURCES:
-// - config-values.ts imports from config.yaml (self-hoster editable):
-//   * App metadata (name, slug, version, description, labels)
-//   * URLs and repository information (app_url, repo, discord_invite_url)
-//   * Contact emails (support, legal, security, enterprise, noreply)
-//   * API configuration (version, key prefix, rate limits)
-// - config.ts loads runtime settings from config.yaml (auth, cookies, rate limits, scanning)
-// - Environment variables override: SMTP_*, DATABASE_*, STRIPE_*, AI_*, DISCORD_TOKEN, etc.
-// Self-hosters: Modify config.yaml for app metadata, branding, and feature toggles.
-// Set environment variables for sensitive values (API keys, database URLs, email credentials).
+// This file imports from config-values.ts which contains hardcoded defaults.
+// Self-hosters: Modify lib/config/config-values.ts to customize your deployment.
 // ============================================================================
 
 import { getConfig } from "./config"
@@ -23,16 +15,84 @@ import {
   CONFIG_TOTAL_CHECKS_LABEL,
   CONFIG_APP_URL,
   CONFIG_APP_REPO,
+  CONFIG_DISCORD_INVITE_URL,
   CONFIG_SUPPORT_EMAIL,
   CONFIG_LEGAL_EMAIL,
   CONFIG_SECURITY_EMAIL,
   CONFIG_ENTERPRISE_EMAIL,
   CONFIG_NOREPLY_EMAIL,
   CONFIG_TERMS_UPDATED_AT,
-  CONFIG_API_VERSION,
+  CONFIG_LOGO_URL,
+  CONFIG_PRIMARY_COLOR,
+  CONFIG_FOOTER_TEXT,
+  CONFIG_SESSION_COOKIE_NAME,
+  CONFIG_SESSION_MAX_AGE_DAYS,
+  CONFIG_VERSION_COOKIE_NAME,
+  CONFIG_VERSION_COOKIE_MAX_AGE_DAYS,
+  CONFIG_DEVICE_TRUST_COOKIE_NAME,
+  CONFIG_DEVICE_TRUST_MAX_AGE_DAYS,
+  CONFIG_2FA_PENDING_COOKIE_NAME,
+  CONFIG_2FA_PENDING_MAX_AGE_SECONDS,
+  CONFIG_SESSION_TIMEOUT_DAYS,
+  CONFIG_PASSWORD_RESET_HOURS,
+  CONFIG_EMAIL_VERIFICATION_HOURS,
+  CONFIG_DEVICE_TRUST_DAYS,
+  CONFIG_TOTP_VALIDITY_SECONDS,
+  CONFIG_CLEANUP_INTERVAL_MS,
+  CONFIG_RATE_LIMIT_LOGIN_ATTEMPTS,
+  CONFIG_RATE_LIMIT_LOGIN_WINDOW_MINUTES,
+  CONFIG_RATE_LIMIT_SIGNUP_ATTEMPTS,
+  CONFIG_RATE_LIMIT_SIGNUP_WINDOW_MINUTES,
+  CONFIG_RATE_LIMIT_FORGOT_PASSWORD_ATTEMPTS,
+  CONFIG_RATE_LIMIT_FORGOT_PASSWORD_WINDOW_MINUTES,
+  CONFIG_RATE_LIMIT_API_REQUESTS,
+  CONFIG_RATE_LIMIT_API_WINDOW_MINUTES,
+  CONFIG_RATE_LIMIT_SCAN_REQUESTS,
+  CONFIG_RATE_LIMIT_SCAN_WINDOW_MINUTES,
+  CONFIG_RATE_LIMIT_BULK_SCAN_REQUESTS,
+  CONFIG_RATE_LIMIT_BULK_SCAN_WINDOW_MINUTES,
+  CONFIG_MAX_URL_LENGTH,
+  CONFIG_MAX_URLS_BULK,
+  CONFIG_SCAN_TIMEOUT_SECONDS,
+  CONFIG_BULK_SCAN_TIMEOUT_SECONDS,
+  CONFIG_DEFAULT_SEVERITY_THRESHOLD,
+  CONFIG_API_KEY_PREFIX,
+  CONFIG_DEFAULT_API_KEY_DAILY_LIMIT,
+  CONFIG_API_CURRENT_VERSION,
+  CONFIG_API_SUPPORTED_VERSIONS,
+  CONFIG_DEMO_SCAN_LIMIT,
+  CONFIG_DEMO_WINDOW_HOURS,
+  CONFIG_MAX_EMAIL_LENGTH,
+  CONFIG_MAX_NAME_LENGTH,
+  CONFIG_MAX_DESCRIPTION_LENGTH,
+  CONFIG_MAX_TEAM_NAME_LENGTH,
+  CONFIG_MAX_TAGS_PER_SCAN,
+  CONFIG_PAGINATION_DEFAULT_PAGE_SIZE,
+  CONFIG_PAGINATION_MAX_PAGE_SIZE,
+  CONFIG_PAGINATION_DEFAULT_PAGE,
+  CONFIG_BETA_ENABLED,
+  CONFIG_BETA_BANNER_MESSAGE,
+  CONFIG_FEATURE_DEMO_MODE,
+  CONFIG_FEATURE_TEAMS,
+  CONFIG_FEATURE_API_KEYS,
+  CONFIG_FEATURE_WEBHOOKS,
+  CONFIG_FEATURE_SCHEDULED_SCANS,
+  CONFIG_FEATURE_BULK_SCANS,
+  CONFIG_FEATURE_PDF_REPORTS,
+  CONFIG_FEATURE_EMAIL_NOTIFICATIONS,
+  CONFIG_BILLING_ENABLED,
+  CONFIG_BILLING_FREE_LIMIT,
+  CONFIG_BILLING_CORE_SUPPORTER_LIMIT,
+  CONFIG_BILLING_PRO_SUPPORTER_LIMIT,
+  CONFIG_BILLING_ELITE_SUPPORTER_LIMIT,
+  CONFIG_BILLING_FREE_RETENTION,
+  CONFIG_BILLING_CORE_SUPPORTER_RETENTION,
+  CONFIG_BILLING_PRO_SUPPORTER_RETENTION,
+  CONFIG_BILLING_ELITE_SUPPORTER_RETENTION,
+  CONFIG_BILLING_UNLIMITED_MODE_LIMIT,
 } from "./config-values"
 
-// Get config (loads from config.yaml or uses defaults) - for non-app settings
+// Get config (loads from hardcoded defaults in config-values.ts)
 const config = getConfig()
 
 // ============================================================================
@@ -49,84 +109,62 @@ export const APP_URL = CONFIG_APP_URL
 export const APP_REPO = CONFIG_APP_REPO
 export const TERMS_UPDATED_AT = CONFIG_TERMS_UPDATED_AT
 
-// Scan note with version info - use safe fallbacks for missing config values
-const getSafeValue = (value: string | undefined, fallback: string): string =>
-  value && value.trim() && value !== "N/A" && value !== "undefined" && value !== "null"
-    ? value
-    : fallback
-
-const SAFE_APP_NAME = getSafeValue(APP_NAME, "App")
-const SAFE_APP_VERSION = getSafeValue(APP_VERSION, "unknown")
-const SAFE_ENGINE_VERSION = getSafeValue(ENGINE_VERSION, "unknown")
-export const DEFAULT_SCAN_NOTE = `${SAFE_APP_NAME} v${SAFE_APP_VERSION} (Detection Engine v${SAFE_ENGINE_VERSION})`
+// Scan note with version info
+export const DEFAULT_SCAN_NOTE = `${APP_NAME} v${APP_VERSION} (Detection Engine v${ENGINE_VERSION})`
 
 export const VERSION_CHECK_URL = `https://api.github.com/repos/${APP_REPO}/releases/latest`
 export const RELEASES_URL = `https://github.com/${APP_REPO}/releases`
 
 // ============================================================================
-// BRANDING (from config.yaml)
+// BRANDING (from config-values.ts)
 // ============================================================================
 
-// Safe URL construction helper - returns fallback if URL construction fails
-function safeUrlConstruct(path: string, base: string, fallback: string): string {
-  try {
-    if (!base || base === "N/A" || base === "undefined" || base === "null") {
-      return fallback
-    }
-    return new URL(path, base).toString()
-  } catch {
-    return fallback
-  }
-}
-
-export const LOGO_URL = process.env.LOGO_URL || safeUrlConstruct(config.branding.logo_url, APP_URL, "/logo.svg")
-export const BRANDING_PRIMARY_COLOR = config.branding.primary_color
-export const BRANDING_FOOTER_TEXT = config.branding.footer_text
+export const LOGO_URL = process.env.LOGO_URL || `${APP_URL}${CONFIG_LOGO_URL}`
+export const BRANDING_PRIMARY_COLOR = CONFIG_PRIMARY_COLOR
+export const BRANDING_FOOTER_TEXT = CONFIG_FOOTER_TEXT
 
 // ============================================================================
-// COOKIE NAMES AND SETTINGS (from config.yaml)
+// COOKIE NAMES AND SETTINGS (from config-values.ts)
 // ============================================================================
 
 // Version notification
-export const VERSION_COOKIE_NAME = config.cookies.version.name
-export const VERSION_COOKIE_MAX_AGE = 60 * 60 * 24 * config.cookies.version.max_age_days
+export const VERSION_COOKIE_NAME = CONFIG_VERSION_COOKIE_NAME
+export const VERSION_COOKIE_MAX_AGE = 60 * 60 * 24 * CONFIG_VERSION_COOKIE_MAX_AGE_DAYS
 
 // Authentication
-export const AUTH_SESSION_COOKIE_NAME = config.cookies.session.name
-export const AUTH_SESSION_MAX_AGE = 60 * 60 * 24 * config.cookies.session.max_age_days
-export const AUTH_CLEANUP_INTERVAL = config.auth.cleanup_interval_ms
-export const AUTH_2FA_PENDING_COOKIE = config.cookies.two_fa_pending.name
-export const AUTH_2FA_PENDING_MAX_AGE = config.cookies.two_fa_pending.max_age_seconds
+export const AUTH_SESSION_COOKIE_NAME = CONFIG_SESSION_COOKIE_NAME
+export const AUTH_SESSION_MAX_AGE = 60 * 60 * 24 * CONFIG_SESSION_MAX_AGE_DAYS
+export const AUTH_CLEANUP_INTERVAL = CONFIG_CLEANUP_INTERVAL_MS
+export const AUTH_2FA_PENDING_COOKIE = CONFIG_2FA_PENDING_COOKIE_NAME
+export const AUTH_2FA_PENDING_MAX_AGE = CONFIG_2FA_PENDING_MAX_AGE_SECONDS
 
 // Device trust
-export const DEVICE_TRUST_COOKIE_NAME = config.cookies.device_trust.name
-export const DEVICE_TRUST_MAX_AGE = 60 * 60 * 24 * config.cookies.device_trust.max_age_days
+export const DEVICE_TRUST_COOKIE_NAME = CONFIG_DEVICE_TRUST_COOKIE_NAME
+export const DEVICE_TRUST_MAX_AGE = 60 * 60 * 24 * CONFIG_DEVICE_TRUST_MAX_AGE_DAYS
 
 // ============================================================================
-// TIME INTERVALS (from config.yaml)
+// TIME INTERVALS (from config-values.ts)
 // ============================================================================
 
 // Authentication timeouts
-export const TOTP_CODE_VALIDITY = config.auth.totp_validity_seconds
-export const SESSION_TIMEOUT = 60 * 60 * 24 * config.auth.session_timeout_days
-export const PASSWORD_RESET_TOKEN_LIFETIME = 60 * 60 * config.auth.password_reset_hours
-export const EMAIL_VERIFICATION_TOKEN_LIFETIME = 60 * 60 * config.auth.email_verification_hours
+export const TOTP_CODE_VALIDITY = CONFIG_TOTP_VALIDITY_SECONDS
+export const SESSION_TIMEOUT = 60 * 60 * 24 * CONFIG_SESSION_TIMEOUT_DAYS
+export const PASSWORD_RESET_TOKEN_LIFETIME = 60 * 60 * CONFIG_PASSWORD_RESET_HOURS
+export const EMAIL_VERIFICATION_TOKEN_LIFETIME = 60 * 60 * CONFIG_EMAIL_VERIFICATION_HOURS
 
 // Device trust
-export const DEVICE_TRUST_DURATION = 60 * 60 * 24 * config.auth.device_trust_days
+export const DEVICE_TRUST_DURATION = 60 * 60 * 24 * CONFIG_DEVICE_TRUST_DAYS
 
 // Rate limiting
-export const RATE_LIMIT_LOGIN_ATTEMPTS =
-  config.rate_limits.login.max_attempts || 5
-export const RATE_LIMIT_LOGIN_WINDOW = 60 * config.rate_limits.login.window_minutes
-export const RATE_LIMIT_API_WINDOW = 60 * config.rate_limits.api.window_minutes
-export const RATE_LIMIT_SIGNUP_ATTEMPTS =
-  config.rate_limits.signup.max_attempts || 3
-export const RATE_LIMIT_SIGNUP_WINDOW = 60 * config.rate_limits.signup.window_minutes
+export const RATE_LIMIT_LOGIN_ATTEMPTS = CONFIG_RATE_LIMIT_LOGIN_ATTEMPTS || 5
+export const RATE_LIMIT_LOGIN_WINDOW = 60 * CONFIG_RATE_LIMIT_LOGIN_WINDOW_MINUTES
+export const RATE_LIMIT_API_WINDOW = 60 * CONFIG_RATE_LIMIT_API_WINDOW_MINUTES
+export const RATE_LIMIT_SIGNUP_ATTEMPTS = CONFIG_RATE_LIMIT_SIGNUP_ATTEMPTS || 3
+export const RATE_LIMIT_SIGNUP_WINDOW = 60 * CONFIG_RATE_LIMIT_SIGNUP_WINDOW_MINUTES
 
 // Scanning
-export const SCAN_TIMEOUT = config.scanning.timeout_seconds
-export const BULK_SCAN_TIMEOUT = config.scanning.bulk_timeout_seconds
+export const SCAN_TIMEOUT = CONFIG_SCAN_TIMEOUT_SECONDS
+export const BULK_SCAN_TIMEOUT = CONFIG_BULK_SCAN_TIMEOUT_SECONDS
 
 // ============================================================================
 // HTTP HEADERS
@@ -159,7 +197,7 @@ export const ERROR_MESSAGES = {
 
   // Rate limiting - Informative with timing
   TOO_MANY_ATTEMPTS: (resource: string, minutes: number) =>
-    `Too many ${resource} attempts. Please wait ${minutes} minute${minutes > 1 ? 's' : ''} before trying again.`,
+      `Too many ${resource} attempts. Please wait ${minutes} minute${minutes > 1 ? 's' : ''} before trying again.`,
 
   // Database - User-friendly errors
   DATABASE_ERROR: "A temporary error occurred. Please try again in a moment.",
@@ -170,7 +208,7 @@ export const ERROR_MESSAGES = {
   FORBIDDEN: "You do not have permission to access this resource.",
   NOT_FOUND: "The requested resource could not be found.",
   SERVER_ERROR: "An unexpected error occurred. Please try again later.",
-  
+
   // API-specific messages
   INVALID_API_KEY: "The API key provided is invalid or has been revoked.",
   API_KEY_REQUIRED: "An API key is required to access this endpoint.",
@@ -209,100 +247,91 @@ export const PATTERNS = {
 }
 
 // ============================================================================
-// RATE LIMIT CONFIGS (from config.yaml)
+// RATE LIMIT CONFIGS (from config-values.ts)
 // ============================================================================
-
-const RATE_LIMIT_DEFAULTS = {
-  login: 5,
-  forgotPassword: 3,
-  signup: 3,
-  api: 100,
-  scan: 100,
-  bulkScan: 10,
-} as const
 
 export const RATE_LIMITS = {
   login: {
-    maxAttempts: config.rate_limits.login.max_attempts || RATE_LIMIT_DEFAULTS.login,
-    windowSeconds: 60 * config.rate_limits.login.window_minutes,
+    maxAttempts: CONFIG_RATE_LIMIT_LOGIN_ATTEMPTS || 5,
+    windowSeconds: 60 * CONFIG_RATE_LIMIT_LOGIN_WINDOW_MINUTES,
   },
   forgotPassword: {
-    maxAttempts: config.rate_limits.forgot_password.max_attempts || RATE_LIMIT_DEFAULTS.forgotPassword,
-    windowSeconds: 60 * config.rate_limits.forgot_password.window_minutes,
+    maxAttempts: CONFIG_RATE_LIMIT_FORGOT_PASSWORD_ATTEMPTS || 3,
+    windowSeconds: 60 * CONFIG_RATE_LIMIT_FORGOT_PASSWORD_WINDOW_MINUTES,
   },
   signup: {
-    maxAttempts: config.rate_limits.signup.max_attempts || RATE_LIMIT_DEFAULTS.signup,
-    windowSeconds: 60 * config.rate_limits.signup.window_minutes,
+    maxAttempts: CONFIG_RATE_LIMIT_SIGNUP_ATTEMPTS || 3,
+    windowSeconds: 60 * CONFIG_RATE_LIMIT_SIGNUP_WINDOW_MINUTES,
   },
   api: {
-    maxAttempts: config.rate_limits.api.max_requests || RATE_LIMIT_DEFAULTS.api,
-    windowSeconds: 60 * config.rate_limits.api.window_minutes,
+    maxAttempts: CONFIG_RATE_LIMIT_API_REQUESTS || 100,
+    windowSeconds: 60 * CONFIG_RATE_LIMIT_API_WINDOW_MINUTES,
   },
   scan: {
-    maxAttempts: config.rate_limits.scan.max_requests || RATE_LIMIT_DEFAULTS.scan,
-    windowSeconds: 60 * config.rate_limits.scan.window_minutes,
+    maxAttempts: CONFIG_RATE_LIMIT_SCAN_REQUESTS || 100,
+    windowSeconds: 60 * CONFIG_RATE_LIMIT_SCAN_WINDOW_MINUTES,
   },
   bulkScan: {
-    maxAttempts: config.rate_limits.bulk_scan.max_requests || RATE_LIMIT_DEFAULTS.bulkScan,
-    windowSeconds: 60 * config.rate_limits.bulk_scan.window_minutes,
+    maxAttempts: CONFIG_RATE_LIMIT_BULK_SCAN_REQUESTS || 10,
+    windowSeconds: 60 * CONFIG_RATE_LIMIT_BULK_SCAN_WINDOW_MINUTES,
   },
 }
 
 // ============================================================================
-// DATABASE CONSTRAINTS (from config.yaml)
+// DATABASE CONSTRAINTS (from config-values.ts)
 // ============================================================================
 
 export const DATABASE = {
-  MAX_EMAIL_LENGTH: config.database.max_email_length,
-  MAX_NAME_LENGTH: config.database.max_name_length,
-  MAX_DESCRIPTION_LENGTH: config.database.max_description_length,
-  MAX_TEAM_NAME_LENGTH: config.database.max_team_name_length,
-  MAX_TAGS_PER_SCAN: config.database.max_tags_per_scan,
+  MAX_EMAIL_LENGTH: CONFIG_MAX_EMAIL_LENGTH,
+  MAX_NAME_LENGTH: CONFIG_MAX_NAME_LENGTH,
+  MAX_DESCRIPTION_LENGTH: CONFIG_MAX_DESCRIPTION_LENGTH,
+  MAX_TEAM_NAME_LENGTH: CONFIG_MAX_TEAM_NAME_LENGTH,
+  MAX_TAGS_PER_SCAN: CONFIG_MAX_TAGS_PER_SCAN,
 }
 
 // ============================================================================
-// SECURITY SCANNING CONSTRAINTS (from config.yaml)
+// SECURITY SCANNING CONSTRAINTS (from config-values.ts)
 // ============================================================================
 
 export const SCANNING = {
-  MAX_URL_LENGTH: config.scanning.max_url_length,
-  MAX_URLS_IN_BULK: config.scanning.max_urls_bulk,
-  TIMEOUT_SECONDS: config.scanning.timeout_seconds,
-  BULK_TIMEOUT_SECONDS: config.scanning.bulk_timeout_seconds,
-  DEFAULT_SEVERITY_THRESHOLD: config.scanning.default_severity_threshold,
+  MAX_URL_LENGTH: CONFIG_MAX_URL_LENGTH,
+  MAX_URLS_IN_BULK: CONFIG_MAX_URLS_BULK,
+  TIMEOUT_SECONDS: CONFIG_SCAN_TIMEOUT_SECONDS,
+  BULK_TIMEOUT_SECONDS: CONFIG_BULK_SCAN_TIMEOUT_SECONDS,
+  DEFAULT_SEVERITY_THRESHOLD: CONFIG_DEFAULT_SEVERITY_THRESHOLD,
 }
 
 // ============================================================================
-// PAGINATION (from config.yaml)
+// PAGINATION (from config-values.ts)
 // ============================================================================
 
 export const PAGINATION = {
-  DEFAULT_PAGE_SIZE: config.pagination.default_page_size,
-  MAX_PAGE_SIZE: config.pagination.max_page_size,
-  DEFAULT_PAGE: config.pagination.default_page,
+  DEFAULT_PAGE_SIZE: CONFIG_PAGINATION_DEFAULT_PAGE_SIZE,
+  MAX_PAGE_SIZE: CONFIG_PAGINATION_MAX_PAGE_SIZE,
+  DEFAULT_PAGE: CONFIG_PAGINATION_DEFAULT_PAGE,
 }
 
 // ============================================================================
-// BILLING / PREMIUM (from config.yaml)
+// BILLING / PREMIUM (from config-values.ts)
 // ============================================================================
 // When BILLING_ENABLED is false, all users get unlimited access
 // Self-hosters can disable this to remove all premium restrictions
 // ============================================================================
 
-export const BILLING_ENABLED = config.billing?.enabled ?? false
-export const BILLING_PLAN_LIMITS = config.billing?.plan_limits ?? {
-  free: 25,
-  core_supporter: 100,
-  pro_supporter: 150,
-  elite_supporter: 500,
+export const BILLING_ENABLED = CONFIG_BILLING_ENABLED
+export const BILLING_PLAN_LIMITS = {
+  free: CONFIG_BILLING_FREE_LIMIT,
+  core_supporter: CONFIG_BILLING_CORE_SUPPORTER_LIMIT,
+  pro_supporter: CONFIG_BILLING_PRO_SUPPORTER_LIMIT,
+  elite_supporter: CONFIG_BILLING_ELITE_SUPPORTER_LIMIT,
 }
-export const BILLING_HISTORY_RETENTION = config.billing?.history_retention ?? {
-  free: 30,
-  core_supporter: 90,
-  pro_supporter: -1,
-  elite_supporter: -1,
+export const BILLING_HISTORY_RETENTION = {
+  free: CONFIG_BILLING_FREE_RETENTION,
+  core_supporter: CONFIG_BILLING_CORE_SUPPORTER_RETENTION,
+  pro_supporter: CONFIG_BILLING_PRO_SUPPORTER_RETENTION,
+  elite_supporter: CONFIG_BILLING_ELITE_SUPPORTER_RETENTION,
 }
-export const BILLING_UNLIMITED_MODE_LIMIT = config.billing?.unlimited_mode_limit ?? -1
+export const BILLING_UNLIMITED_MODE_LIMIT = CONFIG_BILLING_UNLIMITED_MODE_LIMIT
 
 // ============================================================================
 // TEAM ROLES
@@ -356,15 +385,15 @@ export const SMTP_HOST = process.env.SMTP_HOST || ""
 export const SMTP_PORT = Number(process.env.SMTP_PORT) || 587
 export const SMTP_USER = process.env.SMTP_USER || ""
 export const SMTP_PASS = process.env.SMTP_PASS || ""
-export const SMTP_FROM = process.env.SMTP_FROM || SMTP_USER
+export const SMTP_FROM = process.env.SMTP_FROM || process.env.SMTP_USER || SMTP_USER
 
 // ============================================================================
-// API KEY CONFIGURATION (from config.yaml)
+// API KEY CONFIGURATION (from config-values.ts)
 // ============================================================================
 
-export const API_KEY_PREFIX = config.api.key_prefix
-export const DEFAULT_API_KEY_DAILY_LIMIT = config.api.default_daily_limit
-export const API_CURRENT_VERSION = config.api.current_version
+export const API_KEY_PREFIX = CONFIG_API_KEY_PREFIX
+export const DEFAULT_API_KEY_DAILY_LIMIT = CONFIG_DEFAULT_API_KEY_DAILY_LIMIT
+export const API_CURRENT_VERSION = CONFIG_API_CURRENT_VERSION
 
 // Auth / headers
 export const AUTH_HEADER = "authorization"
@@ -374,11 +403,11 @@ export const BEARER_PREFIX = "Bearer "
 export const TOTP_ISSUER = APP_NAME
 
 // ============================================================================
-// BETA MODE CONFIGURATION (from config.yaml)
+// BETA MODE CONFIGURATION (from config-values.ts)
 // ============================================================================
 
-export const BETA_MODE = config.beta.enabled
-export const BETA_BANNER_MESSAGE = config.beta.banner_message
+export const BETA_MODE = CONFIG_BETA_ENABLED
+export const BETA_BANNER_MESSAGE = CONFIG_BETA_BANNER_MESSAGE
 
 // ============================================================================
 // TURNSTILE / CAPTCHA CONFIG
@@ -387,10 +416,10 @@ export const BETA_BANNER_MESSAGE = config.beta.banner_message
 export const TURNSTILE_ENABLED = !!process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY
 
 // ============================================================================
-// DEMO SCAN LIMITS (from config.yaml)
+// DEMO SCAN LIMITS (from config-values.ts)
 // ============================================================================
-export const DEMO_SCAN_LIMIT = config.demo.scan_limit
-export const DEMO_SCAN_WINDOW = 60 * 60 * config.demo.window_hours
+export const DEMO_SCAN_LIMIT = CONFIG_DEMO_SCAN_LIMIT
+export const DEMO_SCAN_WINDOW = 60 * 60 * CONFIG_DEMO_WINDOW_HOURS
 
 // ============================================================================
 // STAFF / ADMIN ROLES
@@ -480,7 +509,7 @@ export const ROUTES = {
 // This is the single source of truth for the active API version
 // ============================================================================
 
-export const API_VERSION = CONFIG_API_VERSION
+export const API_VERSION = "v2"
 
 // ============================================================================
 // API ENDPOINTS (dynamically versioned)
@@ -602,18 +631,18 @@ export const API_V2 = {
 } as const
 
 // ============================================================================
-// FEATURE FLAGS (from config.yaml)
+// FEATURE FLAGS (from config-values.ts)
 // ============================================================================
 
 export const FEATURES = {
-  DEMO_MODE: config.features.demo_mode,
-  TEAMS: config.features.teams,
-  API_KEYS: config.features.api_keys,
-  WEBHOOKS: config.features.webhooks,
-  SCHEDULED_SCANS: config.features.scheduled_scans,
-  BULK_SCANS: config.features.bulk_scans,
-  PDF_REPORTS: config.features.pdf_reports,
-  EMAIL_NOTIFICATIONS: config.features.email_notifications,
+  DEMO_MODE: CONFIG_FEATURE_DEMO_MODE,
+  TEAMS: CONFIG_FEATURE_TEAMS,
+  API_KEYS: CONFIG_FEATURE_API_KEYS,
+  WEBHOOKS: CONFIG_FEATURE_WEBHOOKS,
+  SCHEDULED_SCANS: CONFIG_FEATURE_SCHEDULED_SCANS,
+  BULK_SCANS: CONFIG_FEATURE_BULK_SCANS,
+  PDF_REPORTS: CONFIG_FEATURE_PDF_REPORTS,
+  EMAIL_NOTIFICATIONS: CONFIG_FEATURE_EMAIL_NOTIFICATIONS,
 } as const
 
 // ============================================================================

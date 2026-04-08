@@ -74,61 +74,61 @@ export const viewport: Viewport = {
 }
 
 export default function RootLayout({
-  children,
-}: Readonly<{
+                                     children,
+                                   }: Readonly<{
   children: React.ReactNode
 }>) {
   return (
-    <html lang="en" className="dark" suppressHydrationWarning data-scroll-behavior="smooth">
+      <html lang="en" className="dark" suppressHydrationWarning data-scroll-behavior="smooth">
       <head>
         <script dangerouslySetInnerHTML={{ __html: `try{var d=localStorage.getItem("vr_auth_cache");if(d&&d.length>2){var p=JSON.parse(d),s=document.createElement("style");s.id="vr-auth-css";var r="";if(p&&p.userId){r+=".vr-auth-only{visibility:visible!important;pointer-events:auto!important}"}if(p&&p.role&&${JSON.stringify([STAFF_ROLES.ADMIN, STAFF_ROLES.MODERATOR, STAFF_ROLES.SUPPORT])}.includes(p.role)){r+=".vr-staff-only{display:flex!important}"}if(r){s.textContent=r;document.head.appendChild(s)}}}catch(e){}` }} />
       </head>
       <body className="font-sans antialiased" suppressHydrationWarning>
-        <ThemeProvider
+      <ThemeProvider
           attribute="class"
           defaultTheme="dark"
           enableSystem
           disableTransitionOnChange
-        >
-          <AuthProvider>
-            <StaffHeartbeat />
-            <SiteNotificationsWrapper />
-            <TosGate>
-              {children}
-            </TosGate>
-            <BackupCodesModal />
-            <DiscordProfileModalWrapper />
-          </AuthProvider>
-        </ThemeProvider>
-        {/*        <Script id="tawk-to" strategy="lazyOnload">*/}
-        {/*          {`var Tawk_API=Tawk_API||{}, Tawk_LoadStart=new Date();*/}
-        {/*Tawk_API.onLoad = function(){*/}
-        {/*  if(window.innerWidth < 640){*/}
-        {/*    Tawk_API.setProperty('fontSize', 14);*/}
-        {/*    var el = document.querySelector('iframe[title="chat widget"]');*/}
-        {/*    if(el){*/}
-        {/*      el.style.minWidth = '80px';*/}
-        {/*      el.style.minHeight = '80px';*/}
-        {/*    }*/}
-        {/*  }*/}
-        {/*};*/}
-        {/*Tawk_API.customStyle = {*/}
-        {/*  visibility: {*/}
-        {/*    desktop: { position: 'br', xOffset: 20, yOffset: 20 },*/}
-        {/*    mobile: { position: 'br', xOffset: 10, yOffset: 10 },*/}
-        {/*  },*/}
-        {/*  zIndex: 999*/}
-        {/*};*/}
-        {/*(function(){*/}
-        {/*var s1=document.createElement("script"),s0=document.getElementsByTagName("script")[0];*/}
-        {/*s1.async=true;*/}
-        {/*s1.src='https://embed.tawk.to/6993aa8073d8cb1c357e314e/1jhkd41di';*/}
-        {/*s1.charset='UTF-8';*/}
-        {/*s1.setAttribute('crossorigin','*');*/}
-        {/*s0.parentNode.insertBefore(s1,s0);*/}
-        {/*})();`}*/}
-        {/*        </Script>*/}
+      >
+        <AuthProvider>
+          <StaffHeartbeat />
+          <SiteNotificationsWrapper />
+          <TosGate>
+            {children}
+          </TosGate>
+          <BackupCodesModal />
+          <DiscordProfileModalWrapper />
+        </AuthProvider>
+      </ThemeProvider>
+      {/*        <Script id="tawk-to" strategy="lazyOnload">*/}
+      {/*          {`var Tawk_API=Tawk_API||{}, Tawk_LoadStart=new Date();*/}
+      {/*Tawk_API.onLoad = function(){*/}
+      {/*  if(window.innerWidth < 640){*/}
+      {/*    Tawk_API.setProperty('fontSize', 14);*/}
+      {/*    var el = document.querySelector('iframe[title="chat widget"]');*/}
+      {/*    if(el){*/}
+      {/*      el.style.minWidth = '80px';*/}
+      {/*      el.style.minHeight = '80px';*/}
+      {/*    }*/}
+      {/*  }*/}
+      {/*};*/}
+      {/*Tawk_API.customStyle = {*/}
+      {/*  visibility: {*/}
+      {/*    desktop: { position: 'br', xOffset: 20, yOffset: 20 },*/}
+      {/*    mobile: { position: 'br', xOffset: 10, yOffset: 10 },*/}
+      {/*  },*/}
+      {/*  zIndex: 999*/}
+      {/*};*/}
+      {/*(function(){*/}
+      {/*var s1=document.createElement("script"),s0=document.getElementsByTagName("script")[0];*/}
+      {/*s1.async=true;*/}
+      {/*s1.src='https://embed.tawk.to/6993aa8073d8cb1c357e314e/1jhkd41di';*/}
+      {/*s1.charset='UTF-8';*/}
+      {/*s1.setAttribute('crossorigin','*');*/}
+      {/*s0.parentNode.insertBefore(s1,s0);*/}
+      {/*})();`}*/}
+      {/*        </Script>*/}
       </body>
-    </html>
+      </html>
   )
 }
