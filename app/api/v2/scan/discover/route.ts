@@ -155,7 +155,6 @@ export async function POST(request: NextRequest) {
         }
 
         userId = keyData.userId
-        isApiKeyAuth = true
       } else {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
       }
