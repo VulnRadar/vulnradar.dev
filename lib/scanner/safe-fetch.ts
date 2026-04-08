@@ -90,46 +90,6 @@ const PRIVATE_IPV6_PATTERNS = [
   /^::ffff:192\.168\./i,             // IPv4-mapped private C
 ]
 
-/**
- * Combine a required timeout signal with an optional caller-provided signal so that
- * the returned signal aborts when either source signal aborts.
- */
-function combineAbortSignals(
-  timeoutSignal: AbortSignal,
-  callerSignal?: AbortSignal,
-): { signal: AbortSignal; cleanup: (() => void) | undefined } {
-  if (!callerSignal) {
-    return { signal: timeoutSignal, cleanup: undefined }
-  }
-
-  // If either signal is already aborted, return a signal in the aborted state.
-  if (timeoutSignal.aborted || callerSignal.aborted) {
-    const controller = new AbortController()
-    controller.abort()
-    return { signal: controller.signal, cleanup: undefined }
-  }
-
-  const controller = new AbortController()
-
-  const onAbort = () => {
-    if (!controller.signal.aborted) {
-      controller.abort()
-    }
-  }
-
-  timeoutSignal.addEventListener("abort", onAbort, { once: true })
-  callerSignal.addEventListener("abort", onAbort, { once: true })
-
-  const cleanup = () => {
-    timeoutSignal.removeEventListener("abort", onAbort)
-    if (callerSignal) {
-      callerSignal.removeEventListener("abort", onAbort)
-    }
-  }
-
-  return { signal: controller.signal, cleanup }
-}
-
 export interface SafetyCheckResult {
   safe: boolean
   reason?: string
