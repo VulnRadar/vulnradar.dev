@@ -67,7 +67,19 @@ export const RELEASES_URL = `https://github.com/${APP_REPO}/releases`
 // BRANDING (from config.yaml)
 // ============================================================================
 
-export const LOGO_URL = process.env.LOGO_URL || new URL(config.branding.logo_url, APP_URL).toString()
+// Safe URL construction helper - returns fallback if URL construction fails
+function safeUrlConstruct(path: string, base: string, fallback: string): string {
+  try {
+    if (!base || base === "N/A" || base === "undefined" || base === "null") {
+      return fallback
+    }
+    return new URL(path, base).toString()
+  } catch {
+    return fallback
+  }
+}
+
+export const LOGO_URL = process.env.LOGO_URL || safeUrlConstruct(config.branding.logo_url, APP_URL, "/logo.svg")
 export const BRANDING_PRIMARY_COLOR = config.branding.primary_color
 export const BRANDING_FOOTER_TEXT = config.branding.footer_text
 
