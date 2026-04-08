@@ -71,8 +71,7 @@ const PRIVATE_IPV4_PATTERNS = [
   /^169\.254\./,                     // Link-local (169.254.0.0/16)
   /^0\./,                            // Current network (0.0.0.0/8)
   /^2(2[4-9]|3[0-9])\./,             // Multicast (224.0.0.0/4 = 224-239.x.x.x)
-  /^(24[0-9]|25[0-4])\./,            // Reserved first octet range 240-254 (255 handled separately below)
-  /^255\./,                          // Broadcast
+  /^(24[0-9]|25[0-5])\./,            // Reserved/broadcast first octet range 240-255
 ]
 
 // IPv6 private/special ranges
@@ -140,10 +139,21 @@ function setHostHeader(init: RequestInit | undefined, hostname: string): Request
  * Check if a hostname is blocked
  */
 export function isBlockedHostname(hostname: string): boolean {
-  const lower = hostname.toLowerCase()
-  const matchesBlockedHostname = DISALLOWED_HOSTNAMES.some(blocked =>
-    lower === blocked || lower.endsWith(`.${blocked}`)
-  )
+  const lower = hostname.toLowerCase().replace(/\.$/, "")
+  const hostLabels = lower.split(".").filter(Boolean)
+  const matchesBlockedHostname = DISALLOWED_HOSTNAMES.some(blocked => {
+    const blockedLabels = blocked.toLowerCase().split(".").filter(Boolean)
+
+    if (hostLabels.length < blockedLabels.length) return false
+
+    for (let i = 1; i <= blockedLabels.length; i++) {
+      if (hostLabels[hostLabels.length - i] !== blockedLabels[blockedLabels.length - i]) {
+        return false
+      }
+    }
+
+    return true
+  })
   const matchesBlockedSuffix = DISALLOWED_HOSTNAME_SUFFIXES.some(suffix =>
     lower.endsWith(suffix)
   )
