@@ -667,7 +667,7 @@ function AdminContent() {
                             className="pl-9 h-10 bg-background/50 border-border/40 focus:border-primary/50"
                           />
                         </div>
-                        <Button variant="outline" size="sm" className="h-10 px-3 gap-2 border-border/40 shrink-0" onClick={() => fetchData(page, searchQuery)}>
+                        <Button variant="outline" size="sm" className="h-10 px-3 gap-2 border-border/40 shrink-0" onClick={() => fetchData(page, searchQuery, false, itemsPerPage)}>
                           <RefreshCw className={cn("h-4 w-4", searchLoading && "animate-spin")} />
                           <span className="hidden sm:inline">Refresh</span>
                         </Button>
