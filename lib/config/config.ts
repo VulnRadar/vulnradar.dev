@@ -165,8 +165,8 @@ function deepMerge<T extends Record<string, unknown>>(target: T, source: Partial
 
 // Validate config structure
 function validateConfig(config: unknown): config is Partial<VulnRadarConfig> {
-  // typeof null === "object" in JS, so we need to explicitly check for it
-  return typeof config === "object" && config !== null
+  // Check null first, then typeof (since typeof null === "object" in JS)
+  return config !== null && typeof config === "object"
 }
 
 // Config loading state
