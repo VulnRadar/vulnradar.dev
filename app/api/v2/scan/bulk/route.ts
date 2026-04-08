@@ -108,12 +108,13 @@ async function runSingleScan(url: string, userId: number, isApiKeyAuth: boolean)
       }
       
       // Use safeFetch which validates the URL internally to prevent SSRF
+      // Pass the original hostname as the only allowed hostname to prevent redirect-based SSRF
       response = await safeFetch(safeUrl.href, {
         method: "GET",
         headers: { "User-Agent": `${APP_NAME}/1.0 (Security Scanner)` },
         redirect: "follow",
         signal: AbortSignal.timeout(15000),
-      })
+      }, [hostname])
       responseBody = await safeReadBody(response, MAX_BODY_SIZE)
       headers = response.headers
       headers.forEach((v, k) => { capturedHeaders[k] = v })
@@ -135,12 +136,13 @@ async function runSingleScan(url: string, userId: number, isApiKeyAuth: boolean)
       }
       
       // Use safeFetch which validates the URL internally to prevent SSRF
+      // Pass the original hostname as the only allowed hostname to prevent redirect-based SSRF
       response = await safeFetch(urlObj.href, {
         method: "GET",
         headers: { "User-Agent": `${APP_NAME}/1.0 (Security Scanner)` },
         redirect: "follow",
         signal: AbortSignal.timeout(15000),
-      })
+      }, [urlObj.hostname])
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Unknown error"
       return { url, success: false, error: `Could not reach: ${msg}` }

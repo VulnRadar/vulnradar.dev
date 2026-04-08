@@ -12,6 +12,13 @@ function isClientOrEdge(): boolean {
   return false
 }
 
+// Safe development mode check that works across all runtimes
+function isDevelopment(): boolean {
+  return typeof process !== "undefined" &&
+    typeof process.env !== "undefined" &&
+    process.env.NODE_ENV === "development"
+}
+
 // Dynamically load fs functions only on Node.js server
 // This avoids webpack/next static analysis issues
 function getNodeFs(): {
@@ -56,7 +63,8 @@ function parseYaml(content: string): Record<string, unknown> {
     if (!line.trim() || line.trim().startsWith("#")) continue
     
     // Calculate indentation
-    const indent = line.search(/\S/)
+    const rawIndent = line.search(/\S/)
+    const indent = rawIndent === -1 ? 0 : rawIndent
     const trimmed = line.trim()
     
     // Skip lines that are just dashes (array items we'll handle differently)
@@ -157,8 +165,8 @@ function deepMerge<T extends Record<string, unknown>>(target: T, source: Partial
 
 // Validate config structure
 function validateConfig(config: unknown): config is Partial<VulnRadarConfig> {
-  // typeof null === "object" in JS, so we need to explicitly check for it
-  return typeof config === "object" && config !== null
+  // Check null first, then typeof (since typeof null === "object" in JS)
+  return config !== null && typeof config === "object"
 }
 
 // Config loading state
@@ -177,7 +185,7 @@ export function clearConfigCache() {
  */
 export function loadConfig(): VulnRadarConfig {
   // In development, skip cache to pick up config changes without restart
-  if (_config && process.env.NODE_ENV !== "development") return _config
+  if (_config && !isDevelopment()) return _config
   
   // Get Node.js fs functions (returns null in browser/edge)
   const nodeFs = getNodeFs()
@@ -205,7 +213,7 @@ export function loadConfig(): VulnRadarConfig {
     }
     
     if (!configPath) {
-      if (process.env.NODE_ENV === "development") {
+      if (isDevelopment()) {
         console.warn("[Config] No config.yaml found, using defaults")
       }
       _config = DEFAULT_CONFIG
@@ -216,7 +224,7 @@ export function loadConfig(): VulnRadarConfig {
     const parsed = parseYaml(content)
     
     if (!validateConfig(parsed)) {
-      if (process.env.NODE_ENV === "development") {
+      if (isDevelopment()) {
         console.warn("[Config] Invalid config.yaml structure, using defaults")
       }
       _config = DEFAULT_CONFIG
@@ -229,7 +237,7 @@ export function loadConfig(): VulnRadarConfig {
     
   } catch (error) {
     _configLoadError = error instanceof Error ? error.message : "Unknown error"
-    if (process.env.NODE_ENV === "development") {
+    if (isDevelopment()) {
       console.error(`[Config] Error loading config: ${_configLoadError}`)
       console.warn("[Config] Falling back to defaults")
     }
@@ -276,8 +284,10 @@ export function reloadConfig(): VulnRadarConfig {
 // Convenience Exports
 // ============================================================================
 
-// Export the config object directly for easy access
-export const CONFIG = getConfig()
+// Export a getter function to always return the latest config
+export function CONFIG(): VulnRadarConfig {
+  return getConfig()
+}
 
 // Re-export types
-export type { VulnRadarConfig } from "./types/config"
+export type { VulnRadarConfig } from "../types/config"

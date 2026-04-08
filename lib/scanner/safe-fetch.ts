@@ -260,16 +260,33 @@ function assertSafePublicHttpUrl(rawUrl: string): URL {
 
 /**
  * Safe fetch wrapper that validates the target before making the request
+ * 
+ * @param url - The URL to fetch
+ * @param init - Optional fetch initialization options
+ * @param allowedHostnames - Optional array of hostnames that are allowed for this request.
+ *                           If provided and not empty, the resolved hostname must match one of these.
  */
 export async function safeFetch(
   url: string,
   init?: RequestInit,
+  allowedHostnames?: string[],
 ): Promise<Response> {
   // First perform a simple, explicit public-HTTP(S) check that is easy to reason about.
   // This ensures fetch() is never called with an obviously unsafe URL, even if callers
   // pass in untrusted data.
   const prevalidatedUrlObj = assertSafePublicHttpUrl(url)
   const normalizedUrl = prevalidatedUrlObj.href
+
+  // If allowedHostnames is provided, enforce that the hostname matches
+  if (allowedHostnames && allowedHostnames.length > 0) {
+    const requestHostname = prevalidatedUrlObj.hostname.toLowerCase()
+    const isAllowed = allowedHostnames.some(allowed => 
+      allowed.toLowerCase() === requestHostname
+    )
+    if (!isAllowed) {
+      throw new Error(`Hostname ${requestHostname} is not in the allowed list`)
+    }
+  }
 
   const safety = await validateScanTarget(normalizedUrl)
   
