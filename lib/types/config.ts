@@ -2,23 +2,6 @@
 // Configuration Type Definitions
 // ============================================================================
 
-import {
-  CONFIG_APP_NAME,
-  CONFIG_APP_SLUG,
-  CONFIG_APP_VERSION,
-  CONFIG_ENGINE_VERSION,
-  CONFIG_APP_DESCRIPTION,
-  CONFIG_TOTAL_CHECKS_LABEL,
-  CONFIG_APP_URL,
-  CONFIG_APP_REPO,
-  CONFIG_DISCORD_INVITE_URL,
-  CONFIG_SUPPORT_EMAIL,
-  CONFIG_LEGAL_EMAIL,
-  CONFIG_SECURITY_EMAIL,
-  CONFIG_ENTERPRISE_EMAIL,
-  CONFIG_NOREPLY_EMAIL,
-} from "../config/config-values"
-
 export interface AppConfig {
   name: string
   slug: string
@@ -34,6 +17,7 @@ export interface AppConfig {
   security_email: string
   enterprise_email: string
   noreply_email: string
+  terms_updated_at: string
 }
 
 export interface BrandingConfig {
@@ -182,20 +166,21 @@ export interface VulnRadarConfig {
 
 export const DEFAULT_CONFIG: VulnRadarConfig = {
   app: {
-    name: CONFIG_APP_NAME,
-    slug: CONFIG_APP_SLUG,
-    version: CONFIG_APP_VERSION,
-    engine_version: CONFIG_ENGINE_VERSION,
-    description: CONFIG_APP_DESCRIPTION,
-    total_checks_label: CONFIG_TOTAL_CHECKS_LABEL,
-    url: CONFIG_APP_URL,
-    repo: CONFIG_APP_REPO,
-    discord_invite_url: CONFIG_DISCORD_INVITE_URL,
-    support_email: CONFIG_SUPPORT_EMAIL,
-    legal_email: CONFIG_LEGAL_EMAIL,
-    security_email: CONFIG_SECURITY_EMAIL,
-    enterprise_email: CONFIG_ENTERPRISE_EMAIL,
-    noreply_email: CONFIG_NOREPLY_EMAIL,
+    name: "VulnRadar",
+    slug: "vulnradar",
+    version: "2.2.3",
+    engine_version: "2.1.0",
+    description: "Scan websites for security vulnerabilities. Get instant reports with severity ratings, actionable fix guidance, and team collaboration tools.",
+    total_checks_label: "310+",
+    url: "https://vulnradar.dev",
+    repo: "VulnRadar/vulnradar.dev",
+    discord_invite_url: "https://discord.gg/Y7R6hdGbNe",
+    support_email: "support@vulnradar.dev",
+    legal_email: "legal@vulnradar.dev",
+    security_email: "security@vulnradar.dev",
+    enterprise_email: "enterprise@vulnradar.dev",
+    noreply_email: "noreply@vulnradar.dev",
+    terms_updated_at: "2026-03-16",
   },
   branding: {
     logo_url: "/favicon.png",
@@ -266,7 +251,7 @@ export const DEFAULT_CONFIG: VulnRadarConfig = {
     default_page: 1,
   },
   beta: {
-    enabled: true,
+    enabled: false,
     banner_message: "You are using VulnRadar v2.0 BETA - Some features may be unstable. Please report issues.",
   },
   features: {
@@ -280,7 +265,7 @@ export const DEFAULT_CONFIG: VulnRadarConfig = {
     email_notifications: true,
   },
   billing: {
-    enabled: true,
+    enabled: false,
     plan_limits: {
       free: 25,
       core_supporter: 100,
@@ -293,6 +278,6 @@ export const DEFAULT_CONFIG: VulnRadarConfig = {
       pro_supporter: -1,
       elite_supporter: -1,
     },
-    unlimited_mode_limit: -1, // -1 = unlimited when billing is disabled
+    unlimited_mode_limit: -1,
   },
 }
