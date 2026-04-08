@@ -1,19 +1,14 @@
 // ============================================================================
 // APP CONSTANTS - Centralized configuration for the entire application
 // ============================================================================
-// CONFIGURATION SOURCES:
-// - config-values.ts imports from config.yaml (self-hoster editable):
-//   * App metadata (name, slug, version, description, labels)
-//   * URLs and repository information (app_url, repo, discord_invite_url)
-//   * Contact emails (support, legal, security, enterprise, noreply)
-//   * API configuration (version, key prefix, rate limits)
-// - config.ts loads runtime settings from config.yaml (auth, cookies, rate limits, scanning)
-// - Environment variables override: SMTP_*, DATABASE_*, STRIPE_*, AI_*, DISCORD_TOKEN, etc.
-// Self-hosters: Modify config.yaml for app metadata, branding, and feature toggles.
-// Set environment variables for sensitive values (API keys, database URLs, email credentials).
+// ALL configuration now comes from config-values.ts which reads from
+// build-time injected environment variables (set by next.config.mjs from config.yaml).
+// This ensures config works in ALL runtimes: Node.js, Edge (middleware), and browser.
+//
+// Self-hosters: Edit config.yaml and restart dev server (or rebuild for prod).
+// Set environment variables for sensitive values (API keys, database URLs, etc).
 // ============================================================================
 
-import { getConfig } from "./config"
 import {
   CONFIG_APP_NAME,
   CONFIG_APP_SLUG,
@@ -30,13 +25,81 @@ import {
   CONFIG_NOREPLY_EMAIL,
   CONFIG_TERMS_UPDATED_AT,
   CONFIG_API_VERSION,
+  CONFIG_DISCORD_INVITE_URL,
+  // Branding
+  CONFIG_LOGO_URL,
+  CONFIG_PRIMARY_COLOR,
+  CONFIG_FOOTER_TEXT,
+  // Cookies
+  CONFIG_COOKIE_SESSION_NAME,
+  CONFIG_COOKIE_SESSION_MAX_AGE_DAYS,
+  CONFIG_COOKIE_VERSION_NAME,
+  CONFIG_COOKIE_VERSION_MAX_AGE_DAYS,
+  CONFIG_COOKIE_DEVICE_TRUST_NAME,
+  CONFIG_COOKIE_DEVICE_TRUST_MAX_AGE_DAYS,
+  CONFIG_COOKIE_2FA_PENDING_NAME,
+  CONFIG_COOKIE_2FA_PENDING_MAX_AGE_SECONDS,
+  // Auth
+  CONFIG_AUTH_SESSION_TIMEOUT_DAYS,
+  CONFIG_AUTH_PASSWORD_RESET_HOURS,
+  CONFIG_AUTH_EMAIL_VERIFICATION_HOURS,
+  CONFIG_AUTH_DEVICE_TRUST_DAYS,
+  CONFIG_AUTH_TOTP_VALIDITY_SECONDS,
+  CONFIG_AUTH_CLEANUP_INTERVAL_MS,
+  // Rate limits
+  CONFIG_RATE_LIMIT_LOGIN_MAX,
+  CONFIG_RATE_LIMIT_LOGIN_WINDOW,
+  CONFIG_RATE_LIMIT_SIGNUP_MAX,
+  CONFIG_RATE_LIMIT_SIGNUP_WINDOW,
+  CONFIG_RATE_LIMIT_FORGOT_PASSWORD_MAX,
+  CONFIG_RATE_LIMIT_FORGOT_PASSWORD_WINDOW,
+  CONFIG_RATE_LIMIT_API_MAX,
+  CONFIG_RATE_LIMIT_API_WINDOW,
+  CONFIG_RATE_LIMIT_SCAN_MAX,
+  CONFIG_RATE_LIMIT_SCAN_WINDOW,
+  CONFIG_RATE_LIMIT_BULK_SCAN_MAX,
+  CONFIG_RATE_LIMIT_BULK_SCAN_WINDOW,
+  // Scanning
+  CONFIG_SCAN_MAX_URL_LENGTH,
+  CONFIG_SCAN_MAX_URLS_BULK,
+  CONFIG_SCAN_TIMEOUT_SECONDS,
+  CONFIG_SCAN_BULK_TIMEOUT_SECONDS,
+  CONFIG_SCAN_DEFAULT_SEVERITY_THRESHOLD,
+  // API
+  CONFIG_API_KEY_PREFIX,
+  CONFIG_API_DEFAULT_DAILY_LIMIT,
+  CONFIG_API_CURRENT_VERSION,
+  // Demo
+  CONFIG_DEMO_SCAN_LIMIT,
+  CONFIG_DEMO_WINDOW_HOURS,
+  // Database
+  CONFIG_DB_MAX_EMAIL_LENGTH,
+  CONFIG_DB_MAX_NAME_LENGTH,
+  CONFIG_DB_MAX_DESCRIPTION_LENGTH,
+  CONFIG_DB_MAX_TEAM_NAME_LENGTH,
+  CONFIG_DB_MAX_TAGS_PER_SCAN,
+  // Pagination
+  CONFIG_PAGINATION_DEFAULT_SIZE,
+  CONFIG_PAGINATION_MAX_SIZE,
+  CONFIG_PAGINATION_DEFAULT_PAGE,
+  // Beta
+  CONFIG_BETA_ENABLED,
+  CONFIG_BETA_BANNER_MESSAGE,
+  // Billing
+  CONFIG_BILLING_ENABLED,
+  CONFIG_BILLING_FREE_LIMIT,
+  CONFIG_BILLING_CORE_LIMIT,
+  CONFIG_BILLING_PRO_LIMIT,
+  CONFIG_BILLING_ELITE_LIMIT,
+  CONFIG_BILLING_FREE_HISTORY,
+  CONFIG_BILLING_CORE_HISTORY,
+  CONFIG_BILLING_PRO_HISTORY,
+  CONFIG_BILLING_ELITE_HISTORY,
+  CONFIG_BILLING_UNLIMITED_LIMIT,
 } from "./config-values"
 
-// Get config (loads from config.yaml or uses defaults) - for non-app settings
-const config = getConfig()
-
 // ============================================================================
-// APPLICATION METADATA (from config-values.ts -> config.yaml)
+// APPLICATION METADATA
 // ============================================================================
 
 export const APP_NAME = CONFIG_APP_NAME
@@ -48,77 +111,74 @@ export const TOTAL_CHECKS_LABEL = CONFIG_TOTAL_CHECKS_LABEL
 export const APP_URL = CONFIG_APP_URL
 export const APP_REPO = CONFIG_APP_REPO
 export const TERMS_UPDATED_AT = CONFIG_TERMS_UPDATED_AT
+export const DISCORD_INVITE_URL = CONFIG_DISCORD_INVITE_URL
 
-// Scan note with version info - use safe fallbacks for missing config values
-const getSafeValue = (value: string | undefined, fallback: string): string =>
-  value && value.trim() && value !== "N/A" && value !== "undefined" && value !== "null"
-    ? value
-    : fallback
+// Scan note with version info
+export const DEFAULT_SCAN_NOTE = `${APP_NAME} v${APP_VERSION} (Detection Engine v${ENGINE_VERSION})`
 
-const SAFE_APP_NAME = getSafeValue(APP_NAME, "App")
-const SAFE_APP_VERSION = getSafeValue(APP_VERSION, "unknown")
-const SAFE_ENGINE_VERSION = getSafeValue(ENGINE_VERSION, "unknown")
-export const DEFAULT_SCAN_NOTE = `${SAFE_APP_NAME} v${SAFE_APP_VERSION} (Detection Engine v${SAFE_ENGINE_VERSION})`
-
-export const VERSION_CHECK_URL = `https://api.github.com/repos/${APP_REPO}/releases/latest`
-export const RELEASES_URL = `https://github.com/${APP_REPO}/releases`
+export const VERSION_CHECK_URL = APP_REPO ? `https://api.github.com/repos/${APP_REPO}/releases/latest` : ''
+export const RELEASES_URL = APP_REPO ? `https://github.com/${APP_REPO}/releases` : ''
 
 // ============================================================================
-// BRANDING (from config.yaml)
+// BRANDING
 // ============================================================================
 
-export const LOGO_URL = process.env.LOGO_URL || new URL(config.branding.logo_url, APP_URL).toString()
-export const BRANDING_PRIMARY_COLOR = config.branding.primary_color
-export const BRANDING_FOOTER_TEXT = config.branding.footer_text
+// Safe URL construction helper
+function safeUrlConstruct(path: string, base: string, fallback: string): string {
+  try {
+    if (!base || !base.trim()) return fallback
+    return new URL(path, base).toString()
+  } catch {
+    return fallback
+  }
+}
+
+export const LOGO_URL = process.env.LOGO_URL || safeUrlConstruct(CONFIG_LOGO_URL, APP_URL, "/logo.svg")
+export const BRANDING_PRIMARY_COLOR = CONFIG_PRIMARY_COLOR
+export const BRANDING_FOOTER_TEXT = CONFIG_FOOTER_TEXT
 
 // ============================================================================
-// COOKIE NAMES AND SETTINGS (from config.yaml)
+// COOKIE NAMES AND SETTINGS
 // ============================================================================
 
 // Version notification
-export const VERSION_COOKIE_NAME = config.cookies.version.name
-export const VERSION_COOKIE_MAX_AGE = 60 * 60 * 24 * config.cookies.version.max_age_days
+export const VERSION_COOKIE_NAME = CONFIG_COOKIE_VERSION_NAME
+export const VERSION_COOKIE_MAX_AGE = 60 * 60 * 24 * CONFIG_COOKIE_VERSION_MAX_AGE_DAYS
 
 // Authentication
-export const AUTH_SESSION_COOKIE_NAME = config.cookies.session.name
-export const AUTH_SESSION_MAX_AGE = 60 * 60 * 24 * config.cookies.session.max_age_days
-export const AUTH_CLEANUP_INTERVAL = config.auth.cleanup_interval_ms
-export const AUTH_2FA_PENDING_COOKIE = config.cookies.two_fa_pending.name
-export const AUTH_2FA_PENDING_MAX_AGE = config.cookies.two_fa_pending.max_age_seconds
+export const AUTH_SESSION_COOKIE_NAME = CONFIG_COOKIE_SESSION_NAME
+export const AUTH_SESSION_MAX_AGE = 60 * 60 * 24 * CONFIG_COOKIE_SESSION_MAX_AGE_DAYS
+export const AUTH_CLEANUP_INTERVAL = CONFIG_AUTH_CLEANUP_INTERVAL_MS
+export const AUTH_2FA_PENDING_COOKIE = CONFIG_COOKIE_2FA_PENDING_NAME
+export const AUTH_2FA_PENDING_MAX_AGE = CONFIG_COOKIE_2FA_PENDING_MAX_AGE_SECONDS
 
 // Device trust
-export const DEVICE_TRUST_COOKIE_NAME = config.cookies.device_trust.name
-export const DEVICE_TRUST_MAX_AGE = 60 * 60 * 24 * config.cookies.device_trust.max_age_days
+export const DEVICE_TRUST_COOKIE_NAME = CONFIG_COOKIE_DEVICE_TRUST_NAME
+export const DEVICE_TRUST_MAX_AGE = 60 * 60 * 24 * CONFIG_COOKIE_DEVICE_TRUST_MAX_AGE_DAYS
 
 // ============================================================================
-// TIME INTERVALS (from config.yaml)
+// TIME INTERVALS
 // ============================================================================
 
 // Authentication timeouts
-export const TOTP_CODE_VALIDITY = config.auth.totp_validity_seconds
-export const SESSION_TIMEOUT = 60 * 60 * 24 * config.auth.session_timeout_days
-export const PASSWORD_RESET_TOKEN_LIFETIME = 60 * 60 * config.auth.password_reset_hours
-export const EMAIL_VERIFICATION_TOKEN_LIFETIME = 60 * 60 * config.auth.email_verification_hours
+export const TOTP_CODE_VALIDITY = CONFIG_AUTH_TOTP_VALIDITY_SECONDS
+export const SESSION_TIMEOUT = 60 * 60 * 24 * CONFIG_AUTH_SESSION_TIMEOUT_DAYS
+export const PASSWORD_RESET_TOKEN_LIFETIME = 60 * 60 * CONFIG_AUTH_PASSWORD_RESET_HOURS
+export const EMAIL_VERIFICATION_TOKEN_LIFETIME = 60 * 60 * CONFIG_AUTH_EMAIL_VERIFICATION_HOURS
 
 // Device trust
-export const DEVICE_TRUST_DURATION = 60 * 60 * 24 * config.auth.device_trust_days
+export const DEVICE_TRUST_DURATION = 60 * 60 * 24 * CONFIG_AUTH_DEVICE_TRUST_DAYS
 
 // Rate limiting
-const RATE_LIMIT_DEFAULTS = {
-  loginMaxAttempts: 5,
-  signupMaxAttempts: 3,
-}
-export const RATE_LIMIT_LOGIN_ATTEMPTS =
-  config.rate_limits.login.max_attempts || RATE_LIMIT_DEFAULTS.loginMaxAttempts
-export const RATE_LIMIT_LOGIN_WINDOW = 60 * config.rate_limits.login.window_minutes
-export const RATE_LIMIT_API_WINDOW = 60 * config.rate_limits.api.window_minutes
-export const RATE_LIMIT_SIGNUP_ATTEMPTS =
-  config.rate_limits.signup.max_attempts || RATE_LIMIT_DEFAULTS.signupMaxAttempts
-export const RATE_LIMIT_SIGNUP_WINDOW = 60 * config.rate_limits.signup.window_minutes
+export const RATE_LIMIT_LOGIN_ATTEMPTS = CONFIG_RATE_LIMIT_LOGIN_MAX
+export const RATE_LIMIT_LOGIN_WINDOW = 60 * CONFIG_RATE_LIMIT_LOGIN_WINDOW
+export const RATE_LIMIT_API_WINDOW = 60 * CONFIG_RATE_LIMIT_API_WINDOW
+export const RATE_LIMIT_SIGNUP_ATTEMPTS = CONFIG_RATE_LIMIT_SIGNUP_MAX
+export const RATE_LIMIT_SIGNUP_WINDOW = 60 * CONFIG_RATE_LIMIT_SIGNUP_WINDOW
 
 // Scanning
-export const SCAN_TIMEOUT = config.scanning.timeout_seconds
-export const BULK_SCAN_TIMEOUT = config.scanning.bulk_timeout_seconds
+export const SCAN_TIMEOUT = CONFIG_SCAN_TIMEOUT_SECONDS
+export const BULK_SCAN_TIMEOUT = CONFIG_SCAN_BULK_TIMEOUT_SECONDS
 
 // ============================================================================
 // HTTP HEADERS
@@ -135,35 +195,24 @@ export const COMMON_HEADERS = {
 // ============================================================================
 
 export const ERROR_MESSAGES = {
-  // Authentication - Professional, clear messages
   INVALID_CREDENTIALS: "The email or password you entered is incorrect. Please try again.",
   EMAIL_NOT_VERIFIED: "Please verify your email address before signing in.",
   ACCOUNT_DISABLED: "Your account has been suspended. Please contact support for assistance.",
   SESSION_EXPIRED: "Your session has expired. Please sign in again to continue.",
   INVALID_2FA: "The verification code you entered is invalid. Please try again.",
   INVALID_2FA_SESSION: "Your verification session has expired. Please sign in again.",
-
-  // Validation - Clear, actionable messages
   REQUIRED_FIELD: (field: string) => `${field} is required.`,
   INVALID_EMAIL: "Please enter a valid email address.",
   WEAK_PASSWORD: "Password must be at least 8 characters long.",
   PASSWORDS_NOT_MATCH: "The passwords you entered do not match.",
-
-  // Rate limiting - Informative with timing
   TOO_MANY_ATTEMPTS: (resource: string, minutes: number) =>
     `Too many ${resource} attempts. Please wait ${minutes} minute${minutes > 1 ? 's' : ''} before trying again.`,
-
-  // Database - User-friendly errors
   DATABASE_ERROR: "A temporary error occurred. Please try again in a moment.",
   DUPLICATE_EMAIL: "An account with this email address already exists.",
-
-  // Authorization - Clear, professional responses
   UNAUTHORIZED: "Authentication required. Please sign in to access this resource.",
   FORBIDDEN: "You do not have permission to access this resource.",
   NOT_FOUND: "The requested resource could not be found.",
   SERVER_ERROR: "An unexpected error occurred. Please try again later.",
-  
-  // API-specific messages
   INVALID_API_KEY: "The API key provided is invalid or has been revoked.",
   API_KEY_REQUIRED: "An API key is required to access this endpoint.",
   RATE_LIMIT_EXCEEDED: "Rate limit exceeded. Please slow down your requests.",
@@ -195,106 +244,94 @@ export const PATTERNS = {
   EMAIL: /^[^\s@]+@[^\s@]+\.[^\s@]+$/,
   URL: /^https?:\/\/.+/i,
   DOMAIN: /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)*[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/i,
-  PASSWORD: /^.{8,}$/, // At least 8 characters
+  PASSWORD: /^.{8,}$/,
   BACKUP_CODE: /^[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}$/,
   TOTP_CODE: /^\d{6}$/,
 }
 
 // ============================================================================
-// RATE LIMIT CONFIGS (from config.yaml)
+// RATE LIMIT CONFIGS
 // ============================================================================
-
-const RATE_LIMIT_DEFAULTS = {
-  login: 5,
-  forgotPassword: 3,
-  signup: 3,
-  api: 100,
-  scan: 100,
-  bulkScan: 10,
-} as const
 
 export const RATE_LIMITS = {
   login: {
-    maxAttempts: config.rate_limits.login.max_attempts || RATE_LIMIT_DEFAULTS.login,
-    windowSeconds: 60 * config.rate_limits.login.window_minutes,
+    maxAttempts: CONFIG_RATE_LIMIT_LOGIN_MAX,
+    windowSeconds: 60 * CONFIG_RATE_LIMIT_LOGIN_WINDOW,
   },
   forgotPassword: {
-    maxAttempts: config.rate_limits.forgot_password.max_attempts || RATE_LIMIT_DEFAULTS.forgotPassword,
-    windowSeconds: 60 * config.rate_limits.forgot_password.window_minutes,
+    maxAttempts: CONFIG_RATE_LIMIT_FORGOT_PASSWORD_MAX,
+    windowSeconds: 60 * CONFIG_RATE_LIMIT_FORGOT_PASSWORD_WINDOW,
   },
   signup: {
-    maxAttempts: config.rate_limits.signup.max_attempts || RATE_LIMIT_DEFAULTS.signup,
-    windowSeconds: 60 * config.rate_limits.signup.window_minutes,
+    maxAttempts: CONFIG_RATE_LIMIT_SIGNUP_MAX,
+    windowSeconds: 60 * CONFIG_RATE_LIMIT_SIGNUP_WINDOW,
   },
   api: {
-    maxAttempts: config.rate_limits.api.max_requests || RATE_LIMIT_DEFAULTS.api,
-    windowSeconds: 60 * config.rate_limits.api.window_minutes,
+    maxAttempts: CONFIG_RATE_LIMIT_API_MAX,
+    windowSeconds: 60 * CONFIG_RATE_LIMIT_API_WINDOW,
   },
   scan: {
-    maxAttempts: config.rate_limits.scan.max_requests || RATE_LIMIT_DEFAULTS.scan,
-    windowSeconds: 60 * config.rate_limits.scan.window_minutes,
+    maxAttempts: CONFIG_RATE_LIMIT_SCAN_MAX,
+    windowSeconds: 60 * CONFIG_RATE_LIMIT_SCAN_WINDOW,
   },
   bulkScan: {
-    maxAttempts: config.rate_limits.bulk_scan.max_requests || RATE_LIMIT_DEFAULTS.bulkScan,
-    windowSeconds: 60 * config.rate_limits.bulk_scan.window_minutes,
+    maxAttempts: CONFIG_RATE_LIMIT_BULK_SCAN_MAX,
+    windowSeconds: 60 * CONFIG_RATE_LIMIT_BULK_SCAN_WINDOW,
   },
 }
 
 // ============================================================================
-// DATABASE CONSTRAINTS (from config.yaml)
+// DATABASE CONSTRAINTS
 // ============================================================================
 
 export const DATABASE = {
-  MAX_EMAIL_LENGTH: config.database.max_email_length,
-  MAX_NAME_LENGTH: config.database.max_name_length,
-  MAX_DESCRIPTION_LENGTH: config.database.max_description_length,
-  MAX_TEAM_NAME_LENGTH: config.database.max_team_name_length,
-  MAX_TAGS_PER_SCAN: config.database.max_tags_per_scan,
+  MAX_EMAIL_LENGTH: CONFIG_DB_MAX_EMAIL_LENGTH,
+  MAX_NAME_LENGTH: CONFIG_DB_MAX_NAME_LENGTH,
+  MAX_DESCRIPTION_LENGTH: CONFIG_DB_MAX_DESCRIPTION_LENGTH,
+  MAX_TEAM_NAME_LENGTH: CONFIG_DB_MAX_TEAM_NAME_LENGTH,
+  MAX_TAGS_PER_SCAN: CONFIG_DB_MAX_TAGS_PER_SCAN,
 }
 
 // ============================================================================
-// SECURITY SCANNING CONSTRAINTS (from config.yaml)
+// SECURITY SCANNING CONSTRAINTS
 // ============================================================================
 
 export const SCANNING = {
-  MAX_URL_LENGTH: config.scanning.max_url_length,
-  MAX_URLS_IN_BULK: config.scanning.max_urls_bulk,
-  TIMEOUT_SECONDS: config.scanning.timeout_seconds,
-  BULK_TIMEOUT_SECONDS: config.scanning.bulk_timeout_seconds,
-  DEFAULT_SEVERITY_THRESHOLD: config.scanning.default_severity_threshold,
+  MAX_URL_LENGTH: CONFIG_SCAN_MAX_URL_LENGTH,
+  MAX_URLS_IN_BULK: CONFIG_SCAN_MAX_URLS_BULK,
+  TIMEOUT_SECONDS: CONFIG_SCAN_TIMEOUT_SECONDS,
+  BULK_TIMEOUT_SECONDS: CONFIG_SCAN_BULK_TIMEOUT_SECONDS,
+  DEFAULT_SEVERITY_THRESHOLD: CONFIG_SCAN_DEFAULT_SEVERITY_THRESHOLD,
 }
 
 // ============================================================================
-// PAGINATION (from config.yaml)
+// PAGINATION
 // ============================================================================
 
 export const PAGINATION = {
-  DEFAULT_PAGE_SIZE: config.pagination.default_page_size,
-  MAX_PAGE_SIZE: config.pagination.max_page_size,
-  DEFAULT_PAGE: config.pagination.default_page,
+  DEFAULT_PAGE_SIZE: CONFIG_PAGINATION_DEFAULT_SIZE,
+  MAX_PAGE_SIZE: CONFIG_PAGINATION_MAX_SIZE,
+  DEFAULT_PAGE: CONFIG_PAGINATION_DEFAULT_PAGE,
 }
 
 // ============================================================================
-// BILLING / PREMIUM (from config.yaml)
-// ============================================================================
-// When BILLING_ENABLED is false, all users get unlimited access
-// Self-hosters can disable this to remove all premium restrictions
+// BILLING / PREMIUM
 // ============================================================================
 
-export const BILLING_ENABLED = config.billing?.enabled ?? false
-export const BILLING_PLAN_LIMITS = config.billing?.plan_limits ?? {
-  free: 25,
-  core_supporter: 100,
-  pro_supporter: 150,
-  elite_supporter: 500,
+export const BILLING_ENABLED = CONFIG_BILLING_ENABLED
+export const BILLING_PLAN_LIMITS = {
+  free: CONFIG_BILLING_FREE_LIMIT,
+  core_supporter: CONFIG_BILLING_CORE_LIMIT,
+  pro_supporter: CONFIG_BILLING_PRO_LIMIT,
+  elite_supporter: CONFIG_BILLING_ELITE_LIMIT,
 }
-export const BILLING_HISTORY_RETENTION = config.billing?.history_retention ?? {
-  free: 30,
-  core_supporter: 90,
-  pro_supporter: -1,
-  elite_supporter: -1,
+export const BILLING_HISTORY_RETENTION = {
+  free: CONFIG_BILLING_FREE_HISTORY,
+  core_supporter: CONFIG_BILLING_CORE_HISTORY,
+  pro_supporter: CONFIG_BILLING_PRO_HISTORY,
+  elite_supporter: CONFIG_BILLING_ELITE_HISTORY,
 }
-export const BILLING_UNLIMITED_MODE_LIMIT = config.billing?.unlimited_mode_limit ?? -1
+export const BILLING_UNLIMITED_MODE_LIMIT = CONFIG_BILLING_UNLIMITED_LIMIT
 
 // ============================================================================
 // TEAM ROLES
@@ -335,7 +372,7 @@ export const SEVERITY_PRIORITY = {
 }
 
 // ============================================================================
-// EMAIL / SMTP CONFIG (from config.yaml + env vars)
+// EMAIL / SMTP CONFIG
 // ============================================================================
 
 export const SUPPORT_EMAIL = process.env.SUPPORT_EMAIL || CONFIG_SUPPORT_EMAIL
@@ -351,12 +388,12 @@ export const SMTP_PASS = process.env.SMTP_PASS || ""
 export const SMTP_FROM = process.env.SMTP_FROM || SMTP_USER
 
 // ============================================================================
-// API KEY CONFIGURATION (from config.yaml)
+// API KEY CONFIGURATION
 // ============================================================================
 
-export const API_KEY_PREFIX = config.api.key_prefix
-export const DEFAULT_API_KEY_DAILY_LIMIT = config.api.default_daily_limit
-export const API_CURRENT_VERSION = config.api.current_version
+export const API_KEY_PREFIX = CONFIG_API_KEY_PREFIX
+export const DEFAULT_API_KEY_DAILY_LIMIT = CONFIG_API_DEFAULT_DAILY_LIMIT
+export const API_CURRENT_VERSION = CONFIG_API_CURRENT_VERSION
 
 // Auth / headers
 export const AUTH_HEADER = "authorization"
@@ -366,11 +403,11 @@ export const BEARER_PREFIX = "Bearer "
 export const TOTP_ISSUER = APP_NAME
 
 // ============================================================================
-// BETA MODE CONFIGURATION (from config.yaml)
+// BETA MODE CONFIGURATION
 // ============================================================================
 
-export const BETA_MODE = config.beta.enabled
-export const BETA_BANNER_MESSAGE = config.beta.banner_message
+export const BETA_MODE = CONFIG_BETA_ENABLED
+export const BETA_BANNER_MESSAGE = CONFIG_BETA_BANNER_MESSAGE
 
 // ============================================================================
 // TURNSTILE / CAPTCHA CONFIG
@@ -379,16 +416,16 @@ export const BETA_BANNER_MESSAGE = config.beta.banner_message
 export const TURNSTILE_ENABLED = !!process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY
 
 // ============================================================================
-// DEMO SCAN LIMITS (from config.yaml)
+// DEMO SCAN LIMITS
 // ============================================================================
-export const DEMO_SCAN_LIMIT = config.demo.scan_limit
-export const DEMO_SCAN_WINDOW = 60 * 60 * config.demo.window_hours
+
+export const DEMO_SCAN_LIMIT = CONFIG_DEMO_SCAN_LIMIT
+export const DEMO_SCAN_WINDOW = 60 * 60 * CONFIG_DEMO_WINDOW_HOURS
 
 // ============================================================================
 // STAFF / ADMIN ROLES
-// NOTE: Also defined in client-constants.ts for client components
-// Keep these in sync if modified
 // ============================================================================
+
 export const STAFF_ROLES = {
   USER: "user",
   BETA_TESTER: "beta_tester",
@@ -416,7 +453,7 @@ export const STAFF_ROLE_LABELS: Record<string, string> = {
 }
 
 // ============================================================================
-// ROLE BADGE STYLES (used across admin, shared, staff pages)
+// ROLE BADGE STYLES
 // ============================================================================
 
 export const ROLE_BADGE_STYLES: Record<string, string> = {
@@ -429,8 +466,6 @@ export const ROLE_BADGE_STYLES: Record<string, string> = {
 
 // ============================================================================
 // APPLICATION ROUTES
-// NOTE: Also defined in client-constants.ts for client components
-// Keep these in sync if modified
 // ============================================================================
 
 export const ROUTES = {
@@ -468,148 +503,120 @@ export const ROUTES = {
 
 // ============================================================================
 // API VERSION CONSTANT
-// NOTE: Also defined in client-constants.ts for client components
-// This is the single source of truth for the active API version
 // ============================================================================
 
 export const API_VERSION = CONFIG_API_VERSION
 
 // ============================================================================
 // API ENDPOINTS (dynamically versioned)
-// NOTE: Also defined in client-constants.ts for client components
-// Keep these in sync if modified
 // ============================================================================
 
 export const API = {
-  // Shorthand for common endpoints
   ME: `/api/${API_VERSION}/auth/me`,
   AUTH: {
     ME: `/api/${API_VERSION}/auth/me`,
     LOGIN: `/api/${API_VERSION}/auth/login`,
     SIGNUP: `/api/${API_VERSION}/auth/signup`,
     LOGOUT: `/api/${API_VERSION}/auth/logout`,
-    UPDATE: `/api/${API_VERSION}/auth/update`,
     FORGOT_PASSWORD: `/api/${API_VERSION}/auth/forgot-password`,
     RESET_PASSWORD: `/api/${API_VERSION}/auth/reset-password`,
     VERIFY_EMAIL: `/api/${API_VERSION}/auth/verify-email`,
     RESEND_VERIFICATION: `/api/${API_VERSION}/auth/resend-verification`,
-    ACCEPT_TOS: `/api/${API_VERSION}/auth/accept-tos`,
-    ONBOARDING: `/api/${API_VERSION}/auth/onboarding`,
+    CHANGE_EMAIL: `/api/${API_VERSION}/auth/change-email`,
+    VERIFY_EMAIL_CHANGE: `/api/${API_VERSION}/auth/verify-email-change`,
     TWO_FA: {
+      STATUS: `/api/${API_VERSION}/auth/2fa/status`,
       SETUP: `/api/${API_VERSION}/auth/2fa/setup`,
-      VERIFY: `/api/${API_VERSION}/auth/2fa/verify`,
+      ENABLE: `/api/${API_VERSION}/auth/2fa/enable`,
       DISABLE: `/api/${API_VERSION}/auth/2fa/disable`,
-      EMAIL_SETUP: `/api/${API_VERSION}/auth/2fa/email-setup`,
-      EMAIL_SEND: `/api/${API_VERSION}/auth/2fa/email-send`,
-      BACKUP_CODES: `/api/${API_VERSION}/auth/2fa/backup-codes`,
+      VERIFY: `/api/${API_VERSION}/auth/2fa/verify`,
+      RECOVERY: `/api/${API_VERSION}/auth/2fa/recovery`,
     },
-    SESSIONS: `/api/${API_VERSION}/auth/sessions`,
+    UPDATE_PASSWORD: `/api/${API_VERSION}/auth/update-password`,
+    DELETE_ACCOUNT: `/api/${API_VERSION}/auth/delete-account`,
   },
-  SCAN: `/api/${API_VERSION}/scan`,
-  SCAN_BULK: `/api/${API_VERSION}/scan/bulk`,
-  SCAN_TAGS: `/api/${API_VERSION}/scan/tags`,
-  SCAN_DISCOVER: `/api/${API_VERSION}/scan/discover`,
-  SCAN_CRAWL: `/api/${API_VERSION}/scan/crawl`,
-  SCAN_CRAWL_DISCOVER: `/api/${API_VERSION}/scan/crawl/discover`,
-  DEMO_SCAN: `/api/${API_VERSION}/demo-scan`,
-  HISTORY: `/api/${API_VERSION}/history`,
-  DASHBOARD: `/api/${API_VERSION}/dashboard`,
-  SHARES: `/api/${API_VERSION}/shares`,
-  SHARED: `/api/${API_VERSION}/shared`,
-  KEYS: `/api/${API_VERSION}/keys`,
-  WEBHOOKS: `/api/${API_VERSION}/webhooks`,
-  SCHEDULES: `/api/${API_VERSION}/schedules`,
-  TEAMS: `/api/${API_VERSION}/teams`,
-  TEAMS_MEMBERS: `/api/${API_VERSION}/teams/members`,
-  TEAMS_MEMBER_SCANS: `/api/${API_VERSION}/teams/member-scans`,
-  TEAMS_ACCEPT_INVITE: `/api/${API_VERSION}/teams/accept-invite`,
+  USER: {
+    PROFILE: `/api/${API_VERSION}/user/profile`,
+    APPEARANCE: `/api/${API_VERSION}/user/appearance`,
+    NOTIFICATIONS: `/api/${API_VERSION}/user/notifications`,
+    ACTIVITY_LOG: `/api/${API_VERSION}/user/activity-log`,
+    EXPORT: `/api/${API_VERSION}/user/export`,
+    SESSIONS: `/api/${API_VERSION}/user/sessions`,
+  },
+  SCAN: {
+    BASE: `/api/${API_VERSION}/scan`,
+    HISTORY: `/api/${API_VERSION}/scan/history`,
+    EXPORT: `/api/${API_VERSION}/scan/export`,
+    COMPARE: `/api/${API_VERSION}/scan/compare`,
+    SCHEDULED: `/api/${API_VERSION}/scan/scheduled`,
+    BULK: `/api/${API_VERSION}/scan/bulk`,
+    DEMO: `/api/${API_VERSION}/scan/demo`,
+    TAGS: `/api/${API_VERSION}/scan/tags`,
+    NOTES: `/api/${API_VERSION}/scan/notes`,
+    SHARE: `/api/${API_VERSION}/scan/share`,
+    WEBHOOK_TEST: `/api/${API_VERSION}/scan/webhook-test`,
+    RESCAN: `/api/${API_VERSION}/scan/rescan`,
+    BADGE: `/api/${API_VERSION}/scan/badge`,
+    BADGE_IMAGE: `/api/${API_VERSION}/scan/badge/image`,
+    DELETE: `/api/${API_VERSION}/scan/delete`,
+    REPORT: `/api/${API_VERSION}/scan/report`,
+  },
+  TEAMS: {
+    BASE: `/api/${API_VERSION}/teams`,
+    LIST: `/api/${API_VERSION}/teams/list`,
+    CREATE: `/api/${API_VERSION}/teams/create`,
+    JOIN: `/api/${API_VERSION}/teams/join`,
+    LEAVE: `/api/${API_VERSION}/teams/leave`,
+    UPDATE: `/api/${API_VERSION}/teams/update`,
+    DELETE: `/api/${API_VERSION}/teams/delete`,
+    MEMBERS: `/api/${API_VERSION}/teams/members`,
+    INVITE: `/api/${API_VERSION}/teams/invite`,
+    REVOKE_INVITE: `/api/${API_VERSION}/teams/revoke-invite`,
+    REMOVE_MEMBER: `/api/${API_VERSION}/teams/remove-member`,
+    UPDATE_ROLE: `/api/${API_VERSION}/teams/update-role`,
+    TRANSFER_OWNERSHIP: `/api/${API_VERSION}/teams/transfer-ownership`,
+  },
+  INTEGRATIONS: {
+    WEBHOOKS: `/api/${API_VERSION}/integrations/webhooks`,
+    API_KEYS: `/api/${API_VERSION}/integrations/api-keys`,
+    DISCORD: `/api/${API_VERSION}/integrations/discord`,
+  },
+  ADMIN: {
+    USERS: `/api/${API_VERSION}/admin/users`,
+    SCANS: `/api/${API_VERSION}/admin/scans`,
+    STATS: `/api/${API_VERSION}/admin/stats`,
+    CONFIG: `/api/${API_VERSION}/admin/config`,
+    AUDIT_LOG: `/api/${API_VERSION}/admin/audit-log`,
+    API_LOGS: `/api/${API_VERSION}/admin/api-logs`,
+    ANNOUNCEMENTS: `/api/${API_VERSION}/admin/announcements`,
+  },
+  STAFF: {
+    USERS: `/api/${API_VERSION}/staff/users`,
+    LOOKUP: `/api/${API_VERSION}/staff/lookup`,
+    BAN: `/api/${API_VERSION}/staff/ban`,
+    UNBAN: `/api/${API_VERSION}/staff/unban`,
+  },
   CONTACT: `/api/${API_VERSION}/contact`,
-  LANDING_CONTACT: `/api/${API_VERSION}/landing-contact`,
-  ADMIN: `/api/${API_VERSION}/admin`,
-  STAFF: `/api/${API_VERSION}/staff`,
-  VERSION: "/api/version",
-  BADGE: `/api/${API_VERSION}/badge`,
-  BADGE_SCANS: `/api/${API_VERSION}/badge/scans`,
-  DATA_REQUEST: `/api/${API_VERSION}/data-request`,
-  DATA_REQUEST_DOWNLOAD: `/api/${API_VERSION}/data-request/download`,
-  ACCOUNT_DELETE: `/api/${API_VERSION}/account/delete`,
-  ACCOUNT_NOTIFICATIONS: `/api/${API_VERSION}/account/notifications`,
-  FINDING_TYPES: `/api/${API_VERSION}/finding-types`,
-  COMPARE: `/api/${API_VERSION}/compare`,
-  BILLING: `/api/${API_VERSION}/billing`,
-  SUBSCRIPTION_CANCEL: `/api/${API_VERSION}/billing/subscription/cancel`,
-  SUBSCRIPTION_REACTIVATE: `/api/${API_VERSION}/billing/subscription/reactivate`,
-} as const
-
-// ============================================================================
-// API V2 ENDPOINTS
-// ============================================================================
-
-export const API_V2 = {
-  AUTH: {
-    ME: "/api/v2/auth/me",
-    LOGIN: "/api/v2/auth/login",
-    SIGNUP: "/api/v2/auth/signup",
-    LOGOUT: "/api/v2/auth/logout",
-    UPDATE: "/api/v2/auth/update",
-    FORGOT_PASSWORD: "/api/v2/auth/forgot-password",
-    RESET_PASSWORD: "/api/v2/auth/reset-password",
-    VERIFY_EMAIL: "/api/v2/auth/verify-email",
-    RESEND_VERIFICATION: "/api/v2/auth/resend-verification",
-    ACCEPT_TOS: "/api/v2/auth/accept-tos",
-    ONBOARDING: "/api/v2/auth/onboarding",
-    TWO_FA: {
-      SETUP: "/api/v2/auth/2fa/setup",
-      VERIFY: "/api/v2/auth/2fa/verify",
-      DISABLE: "/api/v2/auth/2fa/disable",
-      EMAIL_SETUP: "/api/v2/auth/2fa/email-setup",
-      EMAIL_SEND: "/api/v2/auth/2fa/email-send",
-      BACKUP_CODES: "/api/v2/auth/2fa/backup-codes",
-    },
+  CHANGELOG: `/api/${API_VERSION}/changelog`,
+  VERSION_CHECK: `/api/${API_VERSION}/version-check`,
+  PUBLIC: {
+    SHARED_SCAN: `/api/${API_VERSION}/public/scan`,
   },
-  SCAN: "/api/v2/scan",
-  SCAN_BULK: "/api/v2/scan/bulk",
-  SCAN_TAGS: "/api/v2/scan/tags",
-  SCAN_DISCOVER: "/api/v2/scan/discover",
-  SCAN_CRAWL_DISCOVER: "/api/v2/scan/crawl/discover",
-  DEMO_SCAN: "/api/v2/demo-scan",
-  HISTORY: "/api/v2/history",
-  DASHBOARD: "/api/v2/dashboard",
-  SHARES: "/api/v2/shares",
-  KEYS: "/api/v2/keys",
-  WEBHOOKS: "/api/v2/webhooks",
-  SCHEDULES: "/api/v2/schedules",
-  TEAMS: "/api/v2/teams",
-  TEAMS_MEMBERS: "/api/v2/teams/members",
-  TEAMS_ACCEPT_INVITE: "/api/v2/teams/accept-invite",
-  CONTACT: "/api/v2/contact",
-  LANDING_CONTACT: "/api/v2/landing-contact",
-  ADMIN: "/api/v2/admin",
-  STAFF: "/api/v2/staff",
-  BADGE_SCANS: "/api/v2/badge/scans",
-  DATA_REQUEST: "/api/v2/data-request",
-  ACCOUNT_DELETE: "/api/v2/account/delete",
-  ACCOUNT_NOTIFICATIONS: "/api/v2/account/notifications",
-  FINDING_TYPES: "/api/v2/finding-types",
+  BILLING: {
+    CHECKOUT: `/api/${API_VERSION}/billing/checkout`,
+    PORTAL: `/api/${API_VERSION}/billing/portal`,
+    STATUS: `/api/${API_VERSION}/billing/status`,
+    SUBSCRIBE: `/api/${API_VERSION}/billing/subscribe`,
+    CANCEL: `/api/${API_VERSION}/billing/cancel`,
+    WEBHOOK: `/api/${API_VERSION}/billing/webhook`,
+    PLANS: `/api/${API_VERSION}/billing/plans`,
+  },
+  LEGAL: {
+    ACCEPT_TERMS: `/api/${API_VERSION}/legal/accept-terms`,
+    TERMS_STATUS: `/api/${API_VERSION}/legal/terms-status`,
+  },
 } as const
 
-// ============================================================================
-// FEATURE FLAGS (from config.yaml)
-// ============================================================================
+// Alias for v2 API (for backwards compatibility with code that expects API_V2)
+export const API_V2 = API
 
-export const FEATURES = {
-  DEMO_MODE: config.features.demo_mode,
-  TEAMS: config.features.teams,
-  API_KEYS: config.features.api_keys,
-  WEBHOOKS: config.features.webhooks,
-  SCHEDULED_SCANS: config.features.scheduled_scans,
-  BULK_SCANS: config.features.bulk_scans,
-  PDF_REPORTS: config.features.pdf_reports,
-  EMAIL_NOTIFICATIONS: config.features.email_notifications,
-} as const
-
-// ============================================================================
-// RE-EXPORT CONFIG FOR CONVENIENCE
-// ============================================================================
-
-export { getConfig, CONFIG } from "./config"
