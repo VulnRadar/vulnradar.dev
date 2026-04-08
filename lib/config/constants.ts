@@ -22,6 +22,7 @@ import {
   CONFIG_ENTERPRISE_EMAIL,
   CONFIG_NOREPLY_EMAIL,
   CONFIG_TERMS_UPDATED_AT,
+  CONFIG_API_VERSION,
 } from "./config-values"
 
 // Get config (loads from config.yaml or uses defaults) - for non-app settings
@@ -250,7 +251,7 @@ export const PAGINATION = {
 // Self-hosters can disable this to remove all premium restrictions
 // ============================================================================
 
-export const BILLING_ENABLED = config.billing?.enabled ?? true
+export const BILLING_ENABLED = config.billing?.enabled ?? false
 export const BILLING_PLAN_LIMITS = config.billing?.plan_limits ?? {
   free: 25,
   core_supporter: 100,
@@ -441,7 +442,7 @@ export const ROUTES = {
 // This is the single source of truth for the active API version
 // ============================================================================
 
-export const API_VERSION = "v2"
+export const API_VERSION = CONFIG_API_VERSION
 
 // ============================================================================
 // API ENDPOINTS (dynamically versioned)
