@@ -38,6 +38,19 @@ import { STAFF_ROLES, STAFF_ROLE_LABELS, STAFF_ROLE_HIERARCHY, ROLE_BADGE_STYLES
 import { hasStaffPermission, STAFF_PERMISSIONS } from "@/lib/auth/permissions-client"
 import { NotificationsManager } from "@/components/admin/notifications"
 
+const VALID_TABS = [
+  "users",
+  "audit",
+  "admins",
+  "notifications",
+  "teams",
+  "access-rules",
+  "blocked-data",
+  "security-alerts",
+  "settings",
+  "broadcast",
+] as const
+
 // Import from new admin architecture
 import type { AdminStats, AdminUser, UserDetail, AuditEntry, ActiveAdmin, BadgeDef } from "@/components/admin/types"
 import { ACTION_META, ADMIN_TABS } from "@/components/admin/config"
@@ -140,9 +153,8 @@ function AdminContent() {
 
     const parts = hash.split("/")
     let foundUser = false
-    const validTabs = ["users", "audit", "admins", "notifications", "teams", "access-rules", "blocked-data", "security-alerts", "settings", "broadcast"]
     for (const part of parts) {
-      if (validTabs.includes(part)) {
+      if (VALID_TABS.includes(part as (typeof VALID_TABS)[number])) {
         setActiveTab(part as typeof activeTab)
         if (part === "audit") fetchAudit()
         if (part === "admins") fetchActiveAdmins()
@@ -165,7 +177,7 @@ function AdminContent() {
     return () => window.removeEventListener("hashchange", handleHashChange)
   }, [handleHashChange])
 
-  async function fetchData(p = 1, search = searchQuery, isInitial = false, limit = usersPageSize) {
+  async function fetchData(p: number, search: string, isInitial: boolean, limit: number) {
     if (isInitial) setLoading(true)
     else setSearchLoading(true)
     try {
@@ -179,7 +191,7 @@ function AdminContent() {
       setPage(data.page)
       setTotalPages(data.totalPages)
       if (data.callerRole) setCallerRole(data.callerRole)
-    } catch { setForbidden(true) }
+    } catch (error) { console.error("Failed to fetch admin data", error); setForbidden(true) }
     setLoading(false)
     setSearchLoading(false)
   }
@@ -192,7 +204,7 @@ function AdminContent() {
       setAuditLogs(data.logs)
       setAuditPage(data.page)
       setAuditTotalPages(data.totalPages)
-    } catch { /* ignore */ }
+    } catch (error) { console.error("Failed to fetch audit logs", error) }
     setAuditPaging(false)
   }
 
@@ -202,7 +214,7 @@ function AdminContent() {
       const res = await fetch(`${API.ADMIN}?section=active-admins`)
       const data = await res.json()
       setActiveAdmins(data.admins || [])
-    } catch { /* ignore */ }
+    } catch (error) { console.error("Failed to fetch active admins", error) }
     setAdminsLoading(false)
   }
 
