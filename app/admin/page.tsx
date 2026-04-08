@@ -1,7 +1,6 @@
 "use client"
 
-import React from "react"
-import { useState, useEffect, useCallback, useRef } from "react"
+import React, { useState, useEffect, useCallback, useRef } from "react"
 import { useRouter } from "next/navigation"
 import {
   Users,
@@ -49,6 +48,18 @@ import { AuditLog } from "@/components/admin/audit"
 import { StaffList } from "@/components/admin/staff"
 import { TeamsList } from "@/components/admin/teams"
 
+type ActiveTab =
+  | "users"
+  | "audit"
+  | "admins"
+  | "notifications"
+  | "teams"
+  | "access-rules"
+  | "blocked-data"
+  | "security-alerts"
+  | "settings"
+  | "broadcast"
+
 export default function AdminPage() {
   return <AdminContent />
 }
@@ -65,7 +76,7 @@ function AdminContent() {
   const [searchQuery, setSearchQuery] = useState("")
   const [actionLoading, setActionLoading] = useState<string | null>(null)
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null)
-  const [activeTab, setActiveTab] = useState<"users" | "audit" | "admins" | "notifications" | "teams" | "access-rules" | "blocked-data" | "security-alerts" | "settings" | "broadcast">("users")
+  const [activeTab, setActiveTab] = useState<ActiveTab>("users")
   const [selectedUser, setSelectedUser] = useState<UserDetail | null>(null)
   const [detailLoading, setDetailLoading] = useState(false)
   const [confirmDialog, setConfirmDialog] = useState<{
@@ -265,7 +276,7 @@ function AdminContent() {
     setDetailLoading(false)
   }
 
-  async function fetchAllBadges() {
+  const fetchAllBadges = useCallback(async () => {
     try {
       const res = await fetch(`${API.ADMIN}?section=badges`)
       if (res.ok) {
@@ -273,9 +284,9 @@ function AdminContent() {
         setAllBadges(data.badges || [])
       }
     } catch { /* ignore */ }
-  }
+  }, [])
 
-  useEffect(() => { fetchData(1, "", true); fetchAllBadges() }, [])
+  useEffect(() => { fetchData(1, "", true); fetchAllBadges() }, [fetchData, fetchAllBadges])
 
   useEffect(() => {
     if (activeTab === "audit") fetchAudit()
@@ -357,6 +368,8 @@ function AdminContent() {
     }, 300)
     return () => { clearTimeout(timeout); setSearchLoading(false) }
   }, [searchQuery])
+
+  const searchInitRef = useRef(false)
 
   // Debounced teams search
   useEffect(() => {
