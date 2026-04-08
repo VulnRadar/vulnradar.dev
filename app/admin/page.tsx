@@ -303,7 +303,7 @@ function AdminContent() {
     } catch { /* ignore */ }
   }, [])
 
-  useEffect(() => { fetchData(1, "", true); fetchAllBadges() }, [fetchData, fetchAllBadges])
+  useEffect(() => { fetchData(1, "", true); fetchAllBadges() }, [])
 
   useEffect(() => {
     if (activeTab === "audit") fetchAudit()
