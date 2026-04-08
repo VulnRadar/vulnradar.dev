@@ -8,8 +8,10 @@
 import { lookup } from "dns/promises"
 import { isIP } from "net"
 
-const ALLOWED_PROTOCOLS = new Set(["https:"])
-const DEFAULT_FETCH_TIMEOUT_MS = 30000
+const ALLOWED_PROTOCOLS = new Set(["http:", "https:"])
+// Keep in sync with scan route timeout defaults (crawl: 8s, scan routes: 15s)
+// safeFetch enforces a 15s max to align with most scan operations
+const DEFAULT_FETCH_TIMEOUT_MS = 15000
 
 // Basic hostname patterns we never want to scan directly, regardless of DNS resolution.
 // These are a fast, syntactic safeguard that complements validateScanTarget's IP-based checks.
@@ -88,17 +90,45 @@ const PRIVATE_IPV6_PATTERNS = [
   /^::ffff:192\.168\./i,             // IPv4-mapped private C
 ]
 
-// Blocked hostnames
-const BLOCKED_HOSTNAMES = [
-  "localhost",
-  "localhost.localdomain",
-  "local",
-  "internal",
-  "intranet",
-  "metadata",                    // Cloud metadata services
-  "metadata.google.internal",    // GCP
-  "169.254.169.254",            // AWS/GCP/Azure metadata
-]
+/**
+ * Combine a required timeout signal with an optional caller-provided signal so that
+ * the returned signal aborts when either source signal aborts.
+ */
+function combineAbortSignals(
+  timeoutSignal: AbortSignal,
+  callerSignal?: AbortSignal,
+): { signal: AbortSignal; cleanup: (() => void) | undefined } {
+  if (!callerSignal) {
+    return { signal: timeoutSignal, cleanup: undefined }
+  }
+
+  // If either signal is already aborted, return a signal in the aborted state.
+  if (timeoutSignal.aborted || callerSignal.aborted) {
+    const controller = new AbortController()
+    controller.abort()
+    return { signal: controller.signal, cleanup: undefined }
+  }
+
+  const controller = new AbortController()
+
+  const onAbort = () => {
+    if (!controller.signal.aborted) {
+      controller.abort()
+    }
+  }
+
+  timeoutSignal.addEventListener("abort", onAbort, { once: true })
+  callerSignal.addEventListener("abort", onAbort, { once: true })
+
+  const cleanup = () => {
+    timeoutSignal.removeEventListener("abort", onAbort)
+    if (callerSignal) {
+      callerSignal.removeEventListener("abort", onAbort)
+    }
+  }
+
+  return { signal: controller.signal, cleanup }
+}
 
 export interface SafetyCheckResult {
   safe: boolean
