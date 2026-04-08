@@ -177,7 +177,7 @@ function AdminContent() {
     return () => window.removeEventListener("hashchange", handleHashChange)
   }, [handleHashChange])
 
-  async function fetchData(p: number, search: string, isInitial: boolean, limit: number) {
+  const fetchData = useCallback(async (p: number, search: string, isInitial: boolean, limit: number) => {
     if (isInitial) setLoading(true)
     else setSearchLoading(true)
     try {
@@ -194,7 +194,7 @@ function AdminContent() {
     } catch (error) { console.error("Failed to fetch admin data", error); setForbidden(true) }
     setLoading(false)
     setSearchLoading(false)
-  }
+  }, [])
 
   async function fetchAudit(p = 1, limit = auditPageSize) {
     setAuditPaging(true)
@@ -303,7 +303,7 @@ function AdminContent() {
     } catch { /* ignore */ }
   }, [])
 
-  useEffect(() => { fetchData(1, "", true); fetchAllBadges() }, [fetchData, fetchAllBadges])
+  useEffect(() => { fetchData(1, "", true); fetchAllBadges() }, [])
 
   useEffect(() => {
     if (activeTab === "audit") fetchAudit()
@@ -348,7 +348,7 @@ function AdminContent() {
         showToast(labels[action] || "Action completed.", "success")
         // Skip refetch for badge award/revoke - onBadgesChanged handles optimistic UI update
         if (action !== "award_badge" && action !== "revoke_badge") {
-          await fetchData(page)
+          await fetchData(page, search, false, limit)
           if (selectedUser && selectedUser.user.id === userId) {
             if (action === "delete") { setSelectedUser(null); updateUrlWithUser(null, activeTab) }
             else await fetchUserDetail(userId)
@@ -667,7 +667,7 @@ function AdminContent() {
                             className="pl-9 h-10 bg-background/50 border-border/40 focus:border-primary/50"
                           />
                         </div>
-                        <Button variant="outline" size="sm" className="h-10 px-3 gap-2 border-border/40 shrink-0" onClick={() => fetchData(page, searchQuery)}>
+                        <Button variant="outline" size="sm" className="h-10 px-3 gap-2 border-border/40 shrink-0" onClick={() => fetchData(page, searchQuery, false, itemsPerPage)}>
                           <RefreshCw className={cn("h-4 w-4", searchLoading && "animate-spin")} />
                           <span className="hidden sm:inline">Refresh</span>
                         </Button>
@@ -836,7 +836,7 @@ function AdminContent() {
                         <PaginationControl
                           currentPage={page}
                           totalPages={totalPages}
-                          onPageChange={(p) => fetchData(p)}
+                          onPageChange={(p) => fetchData(p, searchQuery, false, usersPageSize)}
                           pageSize={usersPageSize}
                           onPageSizeChange={(s) => { setUsersPageSize(s); fetchData(1, searchQuery, false, s) }}
                         />
