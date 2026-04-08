@@ -45,7 +45,7 @@ export function LandingHero() {
                 </Button>
               </Link>
             )}
-            <Link href="/demo">
+            <Link href={ROUTES.DEMO}>
               <Button size="lg" variant="outline" className="h-11 px-6 gap-2">
                 <Terminal className="h-4 w-4" />
                 Live Demo
