@@ -1,8 +1,16 @@
 // ============================================================================
 // APP CONSTANTS - Centralized configuration for the entire application
 // ============================================================================
-// This file imports from config-values.ts which reads config.yaml directly.
-// Self-hosters: Modify config.yaml to customize your deployment.
+// CONFIGURATION SOURCES:
+// - config-values.ts imports from config.yaml (self-hoster editable):
+//   * App metadata (name, slug, version, description, labels)
+//   * URLs and repository information (app_url, repo, discord_invite_url)
+//   * Contact emails (support, legal, security, enterprise, noreply)
+//   * API configuration (version, key prefix, rate limits)
+// - config.ts loads runtime settings from config.yaml (auth, cookies, rate limits, scanning)
+// - Environment variables override: SMTP_*, DATABASE_*, STRIPE_*, AI_*, DISCORD_TOKEN, etc.
+// Self-hosters: Modify config.yaml for app metadata, branding, and feature toggles.
+// Set environment variables for sensitive values (API keys, database URLs, email credentials).
 // ============================================================================
 
 import { getConfig } from "./config"
@@ -42,8 +50,28 @@ export const APP_URL = CONFIG_APP_URL
 export const APP_REPO = CONFIG_APP_REPO
 export const TERMS_UPDATED_AT = CONFIG_TERMS_UPDATED_AT
 
-// Scan note with version info
-export const DEFAULT_SCAN_NOTE = `${APP_NAME} v${APP_VERSION} (Detection Engine v${ENGINE_VERSION})`
+// Scan note with version info - use safe fallbacks for missing config values
+const SAFE_APP_NAME =
+  APP_NAME && APP_NAME.trim() && APP_NAME !== "N/A" && APP_NAME !== "undefined" && APP_NAME !== "null"
+    ? APP_NAME
+    : "App"
+const SAFE_APP_VERSION =
+  APP_VERSION &&
+  APP_VERSION.trim() &&
+  APP_VERSION !== "N/A" &&
+  APP_VERSION !== "undefined" &&
+  APP_VERSION !== "null"
+    ? APP_VERSION
+    : "unknown"
+const SAFE_ENGINE_VERSION =
+  ENGINE_VERSION &&
+  ENGINE_VERSION.trim() &&
+  ENGINE_VERSION !== "N/A" &&
+  ENGINE_VERSION !== "undefined" &&
+  ENGINE_VERSION !== "null"
+    ? ENGINE_VERSION
+    : "unknown"
+export const DEFAULT_SCAN_NOTE = `${SAFE_APP_NAME} v${SAFE_APP_VERSION} (Detection Engine v${SAFE_ENGINE_VERSION})`
 
 export const VERSION_CHECK_URL = `https://api.github.com/repos/${APP_REPO}/releases/latest`
 export const RELEASES_URL = `https://github.com/${APP_REPO}/releases`
@@ -318,7 +346,7 @@ export const SMTP_HOST = process.env.SMTP_HOST || ""
 export const SMTP_PORT = Number(process.env.SMTP_PORT) || 587
 export const SMTP_USER = process.env.SMTP_USER || ""
 export const SMTP_PASS = process.env.SMTP_PASS || ""
-export const SMTP_FROM = process.env.SMTP_FROM || process.env.SMTP_USER || SMTP_USER
+export const SMTP_FROM = process.env.SMTP_FROM || SMTP_USER
 
 // ============================================================================
 // API KEY CONFIGURATION (from config.yaml)

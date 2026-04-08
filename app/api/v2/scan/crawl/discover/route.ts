@@ -123,12 +123,13 @@ export async function POST(request: NextRequest) {
       }
       
       // Use safeFetch which validates the URL internally to prevent SSRF
+      // Pass entryHostname as the only allowed hostname to prevent redirect-based SSRF
       const res = await safeFetch(currentUrlObj.href, {
         method: "GET",
         headers: { "User-Agent": `${APP_NAME}/1.0 (Crawler)` },
         redirect: "follow",
         signal: AbortSignal.timeout(CRAWL_TIMEOUT),
-      })
+      }, [entryHostname])
 
       // Only allow redirects that stay on the exact same hostname
       const redirectedUrl = new URL(res.url)
