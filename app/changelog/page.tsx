@@ -97,10 +97,24 @@ interface Release {
 
 const CHANGELOG: Release[] = [
   {
+    version: "2.2.3",
+    date: "April 9, 2026",
+    title: "HTTPS Scanning Fix & Security Stabilization",
+    highlights: true,
+    summary: "Critical fix for HTTPS scanning failures caused by SSL/TLS certificate validation issues introduced in 2.2.2 security hardening. Resolved issue where resolved IPs were used for all protocols, breaking certificate validation for HTTPS URLs. Enhanced configuration system and middleware stability with comprehensive code quality improvements.",
+    changes: [
+      { icon: Shield, label: "HTTPS Scanning Fix", desc: "Fixed critical bug where resolved IPs were used for HTTPS connections, causing SSL/TLS certificate validation failures. HTTPS/WSS connections now preserve original hostname to maintain certificate validity while HTTP/WS connections use resolved IPs for DNS rebinding prevention. Maintains security protections while restoring HTTPS functionality.", category: "fixed" },
+      { icon: Lock, label: "Protocol-Specific IP Handling", desc: "Implemented smart IP resolution: HTTP protocols use resolved IP to prevent DNS rebinding attacks, HTTPS protocols keep original hostname for certificate validation. Both preserve Host header for virtual hosting support. Fixes regression from 2.2.2 while maintaining SSRF security improvements.", category: "security" },
+      { icon: Zap, label: "Billing Verification & Configuration", desc: "Improved billing verification checks and enhanced configuration visibility across the system. Better handling of billing state transitions and clearer configuration error messages.", category: "changed" },
+      { icon: Network, label: "Middleware Stability", desc: "Improved middleware stability and URL configuration handling with better error handling and edge case coverage. Enhanced request routing and enhanced response formatting for consistency.", category: "changed" },
+      { icon: Bug, label: "Code Quality Improvements", desc: "Extensive code quality fixes addressing 40+ findings including redundant variables, unused imports, improved error handling, and type safety. Comprehensive review and refactoring of codebase for maintainability and performance.", category: "changed" },
+    ],
+  },
+  {
     version: "2.2.2",
     date: "April 7, 2026",
     title: "Security Hardening & Code Quality Improvements",
-    highlights: true,
+    highlights: false,
     summary: "Comprehensive security fixes addressing SSRF vulnerabilities across all scan endpoints, enhanced DNS rebinding prevention, dependency updates to latest versions, and extensive code quality improvements. Improved error logging for webhooks and email notifications.",
     changes: [
       { icon: Shield, label: "SSRF Vulnerability Fixes", desc: "Fixed Server-Side Request Forgery vulnerabilities in all scan routes (bulk, crawl, discover, demo) using safeFetch wrapper with URL validation through validateScanTarget. Implemented DNS rebinding prevention using resolved IPs with Host header preservation.", category: "security" },

@@ -273,30 +273,30 @@ export async function POST(request: NextRequest) {
       try {
         // Validate URL before fetch to prevent SSRF
         const urlObj = new URL(url)
-        if (urlObj.protocol !== "http:" && urlObj.protocol !== "https:") {
-          throw new Error("Invalid protocol")
-        }
-        
-        // Use safeFetch which validates the URL internally to prevent SSRF
-        response = await safeFetch(urlObj.href, {
-          method: "GET",
-          headers: {
-            "User-Agent": `${APP_NAME}/1.0 (Security Scanner)`,
-          },
-          redirect: "follow",
-          signal: AbortSignal.timeout(15000),
-        })
-        responseBody = await safeReadBody(response, MAX_BODY_SIZE)
-        headers = response.headers
-      } catch (fetchError) {
-        const message =
-          fetchError instanceof Error ? fetchError.message : "Unknown error"
-        return NextResponse.json(
-          {
-            error: `Could not reach the target URL: ${message}. The site may be down, blocking automated requests, or not publicly accessible.`,
-          },
-          { status: 422 }
-        )
+         if (urlObj.protocol !== "http:" && urlObj.protocol !== "https:") {
+           throw new Error("Invalid protocol")
+         }
+
+         // Use safeFetch which validates the URL internally to prevent SSRF
+         response = await safeFetch(urlObj.href, {
+           method: "GET",
+           headers: {
+             "User-Agent": `${APP_NAME}/1.0 (Security Scanner)`,
+           },
+           redirect: "follow",
+           signal: AbortSignal.timeout(15000),
+         })
+         responseBody = await safeReadBody(response, MAX_BODY_SIZE)
+         headers = response.headers
+       } catch (fetchError) {
+         const message =
+           fetchError instanceof Error ? fetchError.message : "Unknown error"
+         return NextResponse.json(
+           {
+             error: `Could not reach the target URL: ${message}. The site may be down, blocking automated requests, or not publicly accessible.`,
+           },
+           { status: 422 }
+         )
       }
     }
 
