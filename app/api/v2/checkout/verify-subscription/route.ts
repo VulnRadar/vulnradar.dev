@@ -3,9 +3,16 @@ import { getSession } from "@/lib/auth"
 import pool from "@/lib/database/db"
 import Stripe from "stripe"
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-  apiVersion: "2025-04-30.basil",
-})
+// Initialize Stripe client lazily to avoid issues during build time
+function getStripeClient() {
+  const key = process.env.STRIPE_SECRET_KEY
+  if (!key) {
+    throw new Error("STRIPE_SECRET_KEY environment variable is not set")
+  }
+  return new Stripe(key, {
+    apiVersion: "2025-04-30.basil",
+  })
+}
 
 export async function GET(request: NextRequest) {
   try {
@@ -33,6 +40,7 @@ export async function GET(request: NextRequest) {
     let sessionVerified = false
     if (sessionId && user.stripe_subscription_id) {
       try {
+        const stripe = getStripeClient()
         const checkoutSession = await stripe.checkout.sessions.retrieve(sessionId)
         if (checkoutSession.subscription === user.stripe_subscription_id) {
           sessionVerified = true

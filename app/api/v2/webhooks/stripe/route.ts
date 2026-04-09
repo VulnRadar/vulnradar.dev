@@ -4,7 +4,14 @@ import { getPlanFromProductId } from "@/lib/billing/products"
 import pool from "@/lib/database/db"
 import Stripe from "stripe"
 
-const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET!
+// Get webhook secret lazily to avoid issues during build time
+function getWebhookSecret() {
+  const secret = process.env.STRIPE_WEBHOOK_SECRET
+  if (!secret) {
+    throw new Error("STRIPE_WEBHOOK_SECRET environment variable is not set")
+  }
+  return secret
+}
 
 // Helper function to grant premium badge to user
 async function grantPremiumBadge(userId: number) {
@@ -60,7 +67,7 @@ export async function POST(req: NextRequest) {
   let event: Stripe.Event
 
   try {
-    event = stripe.webhooks.constructEvent(body, signature, webhookSecret)
+    event = stripe.webhooks.constructEvent(body, signature, getWebhookSecret())
   } catch (err) {
     console.error("Webhook signature verification failed:", err)
     return NextResponse.json({ error: "Invalid signature" }, { status: 400 })
