@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
-import { getSession } from "@/lib/auth/session"
-import { pool } from "@/lib/database/connection"
+import { getSession } from "@/lib/auth"
+import pool from "@/lib/database/db"
 import Stripe from "stripe"
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
