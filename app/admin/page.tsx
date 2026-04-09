@@ -53,10 +53,8 @@ const VALID_TABS = [
 
 // Import from new admin architecture
 import type { AdminStats, AdminUser, UserDetail, AuditEntry, ActiveAdmin, BadgeDef } from "@/components/admin/types"
-import { ACTION_META, ADMIN_TABS } from "@/components/admin/config"
-import { formatRelativeTime } from "@/components/admin/utils"
 import { UserAvatar, Toast as AdminToast, ConfirmDialog } from "@/components/admin/shared"
-import { GiftSubscriptionModal, UserDetailPanel } from "@/components/admin/users"
+import { UserDetailPanel } from "@/components/admin/users"
 import { AuditLog } from "@/components/admin/audit"
 import { StaffList } from "@/components/admin/staff"
 import { TeamsList } from "@/components/admin/teams"
@@ -126,111 +124,141 @@ function AdminContent() {
   const [allBadges, setAllBadges] = useState<BadgeDef[]>([])
   const teamsSearchInitRef = useRef(false)
   
-  const showToast = useCallback((message: string, type: "success" | "error") => {
-    setToast({ message, type })
-  }, [])
+   const showToast = useCallback((message: string, type: "success" | "error") => {
+     setToast({ message, type })
+   }, [])
 
-  // Sync user/tab selection with URL hash
-  const updateUrlWithUser = useCallback((userId: number | null, tab?: string, replace = true) => {
-    if (typeof window === "undefined") return
-    const parts: string[] = []
-    if (tab) parts.push(tab)
-    if (userId) parts.push(`user-${userId}`)
-    const hash = parts.join("/")
-    const method = replace ? "replaceState" : "pushState"
-    window.history[method](null, "", `/admin${hash ? `#${hash}` : ""}`)
-  }, [])
+   // Sync user/tab selection with URL hash
+   const updateUrlWithUser = useCallback((userId: number | null, tab?: string, replace = true) => {
+     if (typeof window === "undefined") return
+     const parts: string[] = []
+     if (tab) parts.push(tab)
+     if (userId) parts.push(`user-${userId}`)
+     const hash = parts.join("/")
+     const method = replace ? "replaceState" : "pushState"
+     window.history[method](null, "", `/admin${hash ? `#${hash}` : ""}`)
+   }, [])
 
-  // Parse hash and load corresponding data
-  const handleHashChange = useCallback(() => {
-    if (typeof window === "undefined") return
-    const hash = window.location.hash.replace("#", "")
-    if (!hash) {
-      window.history.replaceState(null, "", "/admin#users")
-      setSelectedUser(null)
-      return
-    }
+   // FETCH FUNCTIONS - must be defined before handleHashChange
+   const fetchData = useCallback(async (p: number, search: string, isInitial: boolean, limit: number) => {
+     if (isInitial) setLoading(true)
+     else setSearchLoading(true)
+     try {
+       const params = new URLSearchParams({ page: String(p), limit: String(limit) })
+       if (search.trim()) params.set("search", search.trim())
+       const res = await fetch(`${API.ADMIN}?${params}`)
+       if (res.status === 403) { setForbidden(true); setLoading(false); setSearchLoading(false); return }
+       const data = await res.json()
+       setStats(data.stats)
+       setUsers(data.users)
+       setPage(data.page)
+       setTotalPages(data.totalPages)
+       if (data.callerRole) setCallerRole(data.callerRole)
+     } catch (error) { console.error("Failed to fetch admin data", error); setForbidden(true) }
+     setLoading(false)
+     setSearchLoading(false)
+   }, [])
 
-    const parts = hash.split("/")
-    let foundUser = false
-    for (const part of parts) {
-      if (VALID_TABS.includes(part as (typeof VALID_TABS)[number])) {
-        setActiveTab(part as typeof activeTab)
-        if (part === "audit") fetchAudit()
-        if (part === "admins") fetchActiveAdmins()
-        if (part === "teams") fetchTeams()
-      }
-      if (part.startsWith("user-")) {
-        const id = parseInt(part.replace("user-", ""), 10)
-        if (!isNaN(id)) {
-          fetchUserDetail(id, true)
-          foundUser = true
-        }
-      }
-    }
-    if (!foundUser) setSelectedUser(null)
-  }, [fetchAudit, fetchActiveAdmins, fetchTeams, fetchUserDetail])
+   const fetchAudit = useCallback(async (p = 1, limit = auditPageSize) => {
+     setAuditPaging(true)
+     try {
+       const res = await fetch(`${API.ADMIN}?section=audit&page=${p}&limit=${limit}`)
+       const data = await res.json()
+       setAuditLogs(data.logs)
+       setAuditPage(data.page)
+       setAuditTotalPages(data.totalPages)
+     } catch (error) { console.error("Failed to fetch audit logs", error) }
+     setAuditPaging(false)
+   }, [auditPageSize])
+
+   const fetchActiveAdmins = useCallback(async () => {
+     setAdminsLoading(true)
+     try {
+       const res = await fetch(`${API.ADMIN}?section=active-admins`)
+       const data = await res.json()
+       setActiveAdmins(data.admins || [])
+     } catch (error) { console.error("Failed to fetch active admins", error) }
+     setAdminsLoading(false)
+   }, [])
+
+   const fetchTeams = useCallback(async (p = 1, search?: string) => {
+     setTeamsLoading(true)
+     try {
+       const params = new URLSearchParams({ page: String(p), limit: "10" })
+       const searchTerm = search !== undefined ? search : teamsSearch
+       if (searchTerm.trim()) params.set("search", searchTerm.trim())
+       const res = await fetch(`/api/v2/admin/teams?${params}`)
+       const data = await res.json()
+       setTeams(data.teams || [])
+       setTeamsPage(data.page || 1)
+       setTeamsTotalPages(data.totalPages || 1)
+     } catch { /* ignore */ }
+     setTeamsLoading(false)
+   }, [teamsSearch])
+
+   const fetchUserDetail = useCallback(async (userId: number, skipUrlUpdate = false) => {
+     setDetailLoading(true)
+     try {
+       const res = await fetch(`${API.ADMIN}?section=user-detail&userId=${userId}`)
+       const data = await res.json()
+       setSelectedUser(data)
+       if (!skipUrlUpdate) updateUrlWithUser(userId, activeTab, false)
+     } catch { showToast("Failed to load user details.", "error") }
+     setDetailLoading(false)
+   }, [activeTab, updateUrlWithUser, showToast])
+
+   const fetchAllBadges = useCallback(async () => {
+     try {
+       const res = await fetch(`${API.ADMIN}?section=badges`)
+       if (res.ok) {
+         const data = await res.json()
+         setAllBadges(data.badges || [])
+       }
+     } catch { /* ignore */ }
+   }, [])
+
+   // Parse hash and load corresponding data
+   const handleHashChange = useCallback(() => {
+     if (typeof window === "undefined") return
+     const hash = window.location.hash.replace("#", "")
+     if (!hash) {
+       window.history.replaceState(null, "", "/admin#users")
+       setSelectedUser(null)
+       return
+     }
+
+     const parts = hash.split("/")
+     let foundUser = false
+     for (const part of parts) {
+       if (VALID_TABS.includes(part as (typeof VALID_TABS)[number])) {
+         setActiveTab(part as typeof activeTab)
+         if (part === "audit") fetchAudit()
+         if (part === "admins") fetchActiveAdmins()
+         if (part === "teams") fetchTeams()
+       }
+       if (part.startsWith("user-")) {
+         const id = parseInt(part.replace("user-", ""), 10)
+         if (!isNaN(id)) {
+           fetchUserDetail(id, true)
+           foundUser = true
+         }
+       }
+     }
+     if (!foundUser) setSelectedUser(null)
+   }, [fetchAudit, fetchActiveAdmins, fetchTeams, fetchUserDetail])
 
   useEffect(() => {
     handleHashChange()
     window.addEventListener("hashchange", handleHashChange)
     return () => window.removeEventListener("hashchange", handleHashChange)
-  }, [handleHashChange])
+   }, [handleHashChange])
 
-  const fetchData = useCallback(async (p: number, search: string, isInitial: boolean, limit: number) => {
-    if (isInitial) setLoading(true)
-    else setSearchLoading(true)
-    try {
-      const params = new URLSearchParams({ page: String(p), limit: String(limit) })
-      if (search.trim()) params.set("search", search.trim())
-      const res = await fetch(`${API.ADMIN}?${params}`)
-      if (res.status === 403) { setForbidden(true); setLoading(false); setSearchLoading(false); return }
-      const data = await res.json()
-      setStats(data.stats)
-      setUsers(data.users)
-      setPage(data.page)
-      setTotalPages(data.totalPages)
-      if (data.callerRole) setCallerRole(data.callerRole)
-    } catch (error) { console.error("Failed to fetch admin data", error); setForbidden(true) }
-    setLoading(false)
-    setSearchLoading(false)
-  }, [])
+   useEffect(() => {
+     if (activeTab === "audit") fetchAudit()
+     if (activeTab === "admins") fetchActiveAdmins()
+   }, [activeTab, fetchActiveAdmins, fetchAudit])
 
-  async function fetchAudit(p = 1, limit = auditPageSize) {
-    setAuditPaging(true)
-    try {
-      const res = await fetch(`${API.ADMIN}?section=audit&page=${p}&limit=${limit}`)
-      const data = await res.json()
-      setAuditLogs(data.logs)
-      setAuditPage(data.page)
-      setAuditTotalPages(data.totalPages)
-    } catch (error) { console.error("Failed to fetch audit logs", error) }
-    setAuditPaging(false)
-  }
-
-  async function fetchActiveAdmins() {
-    setAdminsLoading(true)
-    try {
-      const res = await fetch(`${API.ADMIN}?section=active-admins`)
-      const data = await res.json()
-      setActiveAdmins(data.admins || [])
-    } catch (error) { console.error("Failed to fetch active admins", error) }
-    setAdminsLoading(false)
-  }
-
-  async function fetchTeams(p = 1, search = teamsSearch) {
-    setTeamsLoading(true)
-    try {
-      const params = new URLSearchParams({ page: String(p), limit: "10" })
-      if (search.trim()) params.set("search", search.trim())
-      const res = await fetch(`/api/v2/admin/teams?${params}`)
-      const data = await res.json()
-      setTeams(data.teams || [])
-      setTeamsPage(data.page || 1)
-      setTeamsTotalPages(data.totalPages || 1)
-    } catch { /* ignore */ }
-    setTeamsLoading(false)
-  }
+   useEffect(() => { fetchData(1, "", true, 10); fetchAllBadges() }, [fetchData, fetchAllBadges])
 
   async function fetchTeamMembers(teamId: number) {
     setTeamMembersLoading(true)
@@ -280,37 +308,9 @@ function AdminContent() {
       }
     } catch { showToast("Failed to delete team", "error") }
     setActionLoading(null)
-  }
+   }
 
-  async function fetchUserDetail(userId: number, skipUrlUpdate = false) {
-    setDetailLoading(true)
-    try {
-      const res = await fetch(`${API.ADMIN}?section=user-detail&userId=${userId}`)
-      const data = await res.json()
-      setSelectedUser(data)
-      if (!skipUrlUpdate) updateUrlWithUser(userId, activeTab, false)
-    } catch { showToast("Failed to load user details.", "error") }
-    setDetailLoading(false)
-  }
-
-  const fetchAllBadges = useCallback(async () => {
-    try {
-      const res = await fetch(`${API.ADMIN}?section=badges`)
-      if (res.ok) {
-        const data = await res.json()
-        setAllBadges(data.badges || [])
-      }
-    } catch { /* ignore */ }
-  }, [])
-
-  useEffect(() => { fetchData(1, "", true); fetchAllBadges() }, [])
-
-  useEffect(() => {
-    if (activeTab === "audit") fetchAudit()
-    if (activeTab === "admins") fetchActiveAdmins()
-  }, [activeTab])
-
-  async function handleAction(userId: number, action: string, extra?: Record<string, unknown>) {
+   async function handleAction(userId: number, action: string, extra?: Record<string, unknown>) {
     setActionLoading(`${userId}-${action}`)
     try {
       const res = await fetch(API.ADMIN, {
@@ -348,7 +348,7 @@ function AdminContent() {
         showToast(labels[action] || "Action completed.", "success")
         // Skip refetch for badge award/revoke - onBadgesChanged handles optimistic UI update
         if (action !== "award_badge" && action !== "revoke_badge") {
-          await fetchData(page, search, false, limit)
+          await fetchData(page, searchQuery, false, usersPageSize)
           if (selectedUser && selectedUser.user.id === userId) {
             if (action === "delete") { setSelectedUser(null); updateUrlWithUser(null, activeTab) }
             else await fetchUserDetail(userId)
@@ -667,7 +667,7 @@ function AdminContent() {
                             className="pl-9 h-10 bg-background/50 border-border/40 focus:border-primary/50"
                           />
                         </div>
-                        <Button variant="outline" size="sm" className="h-10 px-3 gap-2 border-border/40 shrink-0" onClick={() => fetchData(page, searchQuery, false, itemsPerPage)}>
+                        <Button variant="outline" size="sm" className="h-10 px-3 gap-2 border-border/40 shrink-0" onClick={() => fetchData(page, searchQuery, false, usersPageSize)}>
                           <RefreshCw className={cn("h-4 w-4", searchLoading && "animate-spin")} />
                           <span className="hidden sm:inline">Refresh</span>
                         </Button>
