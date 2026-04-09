@@ -54,8 +54,22 @@ export async function GET(request: NextRequest) {
   if (!session) return NextResponse.json({ error: ERROR_MESSAGES.FORBIDDEN }, { status: 403 })
 
   const { searchParams } = new URL(request.url)
-  const page = Math.max(1, Number(searchParams.get("page") || 1))
-  const limit = Math.min(100, Math.max(1, Number(searchParams.get("limit") || 10)))
+  const pageParam = searchParams.get("page")
+  const limitParam = searchParams.get("limit")
+  
+  const page = Math.max(1, Number(pageParam || 1))
+  let limit = 10
+  if (limitParam && limitParam !== "undefined") {
+    const parsedLimit = Number(limitParam)
+    if (!isNaN(parsedLimit)) {
+      limit = Math.min(100, Math.max(1, parsedLimit))
+    }
+  }
+  
+  if (isNaN(page) || isNaN(limit)) {
+    return NextResponse.json({ error: "Invalid pagination parameters" }, { status: 400 })
+  }
+  
   const offset = (page - 1) * limit
   const section = searchParams.get("section")
   const search = searchParams.get("search")?.trim() || ""
