@@ -20,9 +20,14 @@ ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL}
 
-# Provide a dummy DATABASE_URL so Next.js can build without a live DB.
-# The real value is injected at runtime via docker-compose or docker run.
+# Provide dummy environment variables for build-time compatibility
+# These are only used during the build phase and don't affect runtime behavior
+# The real values are injected at runtime via docker-compose or docker run
 ENV DATABASE_URL="postgresql://placeholder:placeholder@localhost:5432/placeholder"
+ENV STRIPE_SECRET_KEY="placeholder"
+ENV STRIPE_WEBHOOK_SECRET="placeholder"
+ENV STRIPE_PUBLISHABLE_KEY="placeholder"
+ENV API_KEY_ENCRYPTION_KEY="00000000000000000000000000000000000000000000000000000000000000000000"
 
 RUN npm run build
 
