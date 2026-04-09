@@ -295,16 +295,19 @@ export async function safeFetch(
   if (!safety.safe) {
     throw new Error(safety.reason || "URL blocked for security reasons")
   }
-  
+
   // We already parsed and normalized the URL in assertSafePublicHttpUrl above.
   const urlObj = prevalidatedUrlObj
   
-  // If we have a validated resolved IP, construct a URL that uses it directly.
-  // This prevents DNS from being consulted again at fetch time (avoiding DNS rebinding).
+  // For HTTPS/WSS, we MUST keep the original hostname to avoid SSL/TLS certificate validation errors.
+  // For HTTP/WS, we can use the resolved IP to prevent DNS rebinding attacks.
   let finalUrl = normalizedUrl
   let finalInit: RequestInit | undefined = init
   
-  if (safety.resolvedIp) {
+  const isSecureProtocol = urlObj.protocol === "https:" || urlObj.protocol === "wss:"
+
+  if (safety.resolvedIp && !isSecureProtocol) {
+    // Only use resolved IP for HTTP (not HTTPS) to avoid cert validation issues
     const originalHostname = urlObj.hostname
     const originalPort = urlObj.port
     const hadExplicitPort = originalPort !== ""
@@ -318,9 +321,12 @@ export async function safeFetch(
       urlWithIp.port = originalPort
     }
     finalUrl = urlWithIp.href
-    
+
     // Ensure the original hostname is sent in the Host header for virtual hosting
     finalInit = setHostHeader(init, originalHostname)
+  } else if (isSecureProtocol && safety.resolvedIp) {
+    // For HTTPS, just ensure Host header is set but keep original URL
+    finalInit = setHostHeader(init, urlObj.hostname)
   }
   
   // Use the normalized, DNS-safe href after validation and protocol check
@@ -333,14 +339,15 @@ export async function safeFetch(
   // Combine any caller-provided signal with our timeout signal so that either can abort the request.
   const { signal: combinedSignal, cleanup: cleanupCombinedSignal } = combineAbortSignals(
     controller.signal,
-    finalInit?.signal,
+    finalInit?.signal ?? undefined,
   )
   const requestInit: RequestInit = {
     ...finalInit,
     signal: combinedSignal,
   }
   try {
-    return await fetch(finalUrl, requestInit)
+    const response = await fetch(finalUrl, requestInit)
+    return response
   } finally {
     clearTimeout(timeoutId)
     if (typeof cleanupCombinedSignal === "function") {
