@@ -42,7 +42,7 @@
     "@radix-ui/react-toggle-group": "1.1.11",
     "@radix-ui/react-tooltip": "1.2.8",
     "@stripe/react-stripe-js": "6.1.0",
-    "@stripe/stripe-js": "9.0.1",
+    "@stripe/stripe-js": "9.1.0",
     "autoprefixer": "10.4.27",
     "bcrypt": "6.0.0",
     "bcryptjs": "3.0.3",
