@@ -13,7 +13,6 @@ interface UseAdminAuditOptions {
  */
 export function useAdminAudit({ initialPageSize = 10 }: UseAdminAuditOptions = {}) {
   const [logs, setLogs] = useState<AuditEntry[]>([])
-  const [loading, setLoading] = useState(false)
   const [paging, setPaging] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [page, setPage] = useState(1)
@@ -88,7 +87,6 @@ export function useAdminAudit({ initialPageSize = 10 }: UseAdminAuditOptions = {
     // State
     logs: filteredLogs,
     allLogs: logs,
-    loading,
     paging,
     error,
     page,

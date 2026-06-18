@@ -21,7 +21,7 @@ export default function CheckoutPage({ params }: { params: Promise<{ productId: 
   const router = useRouter()
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [userId, setUserId] = useState<number | null>(null)
+  const [_userId, setUserId] = useState<number | null>(null)
   const [checkoutComplete, setCheckoutComplete] = useState(false)
 
   const product = PRODUCTS.find((p) => p.id === productId)

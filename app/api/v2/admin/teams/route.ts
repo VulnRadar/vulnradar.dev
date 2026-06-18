@@ -69,7 +69,7 @@ export async function PATCH(request: Request) {
   const session = await getSession()
   if (!session) return NextResponse.json({ error: ERROR_MESSAGES.UNAUTHORIZED }, { status: 401 })
 
-  const { allowed, role } = await checkAdminAccess(session.userId)
+  const { allowed } = await checkAdminAccess(session.userId)
   if (!allowed) return NextResponse.json({ error: ERROR_MESSAGES.FORBIDDEN }, { status: 403 })
 
   const { teamId, name } = await request.json()

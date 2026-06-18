@@ -23,7 +23,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { SaveConfirmationModal, type ChangeItem } from "@/components/shared/save-confirmation-modal"
+import { SaveConfirmationModal } from "@/components/shared/save-confirmation-modal"
 import {
   Bell,
   Plus,

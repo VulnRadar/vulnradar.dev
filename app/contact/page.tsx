@@ -16,7 +16,7 @@ const VALID_CATEGORIES = CATEGORIES.map((c) => c.id)
 export default function ContactPage() {
   const [category, setCategory] = useState<string | null>(null)
   const [submitted, setSubmitted] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [_error, setError] = useState<string | null>(null)
 
   // Handle hash-based category selection (e.g., /contact#bug)
   useEffect(() => {

@@ -6,7 +6,7 @@ import { validateApiKey, checkRateLimit as checkApiKeyRateLimit, recordUsage } f
 import { allChecks } from "@/lib/scanner/checks"
 import { runAsyncChecks } from "@/lib/scanner/async-checks"
 import pool from "@/lib/database/db"
-import { ERROR_MESSAGES, APP_NAME, SEVERITY_LEVELS, BEARER_PREFIX } from "@/lib/config/constants"
+import { APP_NAME, SEVERITY_LEVELS, BEARER_PREFIX } from "@/lib/config/constants"
 import type { Vulnerability, Severity } from "@/lib/scanner/types"
 import { getProtocolFromUrl } from "@/lib/scanner/protocols"
 import { runWebSocketChecks } from "@/lib/scanner/protocols/websocket"

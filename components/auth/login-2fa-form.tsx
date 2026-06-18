@@ -12,11 +12,11 @@ interface Login2FAFormProps {
   redirectTo: string
   userId: number | null
   method: string
-  maskedEmail?: string
+  _maskedEmail?: string
   isDiscordAuth?: boolean
 }
 
-export function Login2FAForm({ redirectTo, userId, method, maskedEmail, isDiscordAuth }: Login2FAFormProps) {
+export function Login2FAForm({ redirectTo, userId, method, _maskedEmail, isDiscordAuth }: Login2FAFormProps) {
   const router = useRouter()
   const [totpCode, setTotpCode] = useState("")
   const [verifying, setVerifying] = useState(false)
