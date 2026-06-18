@@ -151,7 +151,7 @@ export async function GET() {
         elite_supporter: PLAN_LIMITS.elite_supporter,
       },
     })
-  } catch (error) {
+  } catch (_error) {
     console.error("[Billing] Error fetching billing info:", error)
     return NextResponse.json({ error: "Failed to fetch billing info" }, { status: 500 })
   }
@@ -289,7 +289,7 @@ export async function POST(request: Request) {
     }
 
     return NextResponse.json({ error: "Invalid action" }, { status: 400 })
-  } catch (error) {
+  } catch (_error) {
     console.error("[Billing] Error processing billing action:", error)
     return NextResponse.json({ error: "Failed to process request" }, { status: 500 })
   }

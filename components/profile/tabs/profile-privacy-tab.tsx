@@ -17,14 +17,14 @@ import { API } from '@/lib/config/constants'
 import type { ProfileTabProps } from '@/components/profile/types'
 
 export function ProfilePrivacyTab({
-  user,
+  user: _user,
   loading,
-  error,
-  success,
+  error: _error,
+  success: _success,
   setError,
   setSuccess,
-  pendingChanges,
-  setPendingChanges,
+  pendingChanges: _pendingChanges,
+  setPendingChanges: _setPendingChanges,
   preloadedDataReqInfo,
 }: ProfileTabProps) {
   // Use preloaded data if available

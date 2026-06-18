@@ -28,7 +28,7 @@ export async function sendDiscordEmail2FACode(userId: number, userEmail: string)
       text: emailContent.text,
       html: emailContent.html,
     })
-  } catch (error) {
+  } catch (_error) {
     console.error("[Discord Email 2FA]", error)
     // Don't rethrow - this is background operation
   }

@@ -271,7 +271,7 @@ export async function GET(request: Request) {
 
       return NextResponse.redirect(`${baseUrl}/dashboard`)
     }
-  } catch (error) {
+  } catch (_error) {
     console.error("[Discord] OAuth callback error:", error)
     return NextResponse.redirect(`${baseUrl}/login?error=discord_failed`)
   }

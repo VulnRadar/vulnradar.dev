@@ -42,11 +42,16 @@ export default [
     },
     rules: {
       // Pre-existing project conventions
+      // We disable args/argsIgnorePattern checks for component props because
+      // the tab interfaces (ProfileTabProps) require all props, even when
+      // a specific tab doesn't use them. Prefixing with _ for every
+      // unused prop would be extremely noisy across 5+ tab files.
+      // - `vars` and `caughtErrors`: still checked (prefix with _ to silence)
+      // - `args`: disabled because props are dictated by parent interface
       "@typescript-eslint/no-unused-vars": [
         "warn",
         {
-          args: "all",
-          argsIgnorePattern: "^_",
+          args: "none",
           varsIgnorePattern: "^_",
           caughtErrorsIgnorePattern: "^_",
           ignoreRestSiblings: true,

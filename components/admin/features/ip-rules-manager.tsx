@@ -48,7 +48,7 @@ export function IPRulesManager() {
       })
       const data = await res.json()
       setRules(data.rules || [])
-    } catch (error) {
+    } catch (_error) {
       console.error("Error fetching access rules:", error)
     } finally {
       setLoading(false)
@@ -103,7 +103,7 @@ export function IPRulesManager() {
         setReason("")
         await fetchRules()
       }
-    } catch (error) {
+    } catch (_error) {
       console.error("Error adding rule:", error)
     } finally {
       setAdding(false)
@@ -128,7 +128,7 @@ export function IPRulesManager() {
         setPendingDelete(null)
         await fetchRules()
       }
-    } catch (error) {
+    } catch (_error) {
       console.error("Error deleting rule:", error)
     } finally {
       setDeleting(false)

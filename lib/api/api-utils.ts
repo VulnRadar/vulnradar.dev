@@ -181,7 +181,7 @@ export async function parseBody<T>(request: Request): Promise<{ success: true; d
     }
     
     return { success: false, error: "Unsupported content-type" }
-  } catch (error) {
+  } catch (_error) {
     console.error("[Parse Body Error]", error)
     return { success: false, error: "Failed to parse request body" }
   }
@@ -212,7 +212,7 @@ export function withErrorHandling(
   return async (req: Request) => {
     try {
       return await handler(req)
-    } catch (error) {
+    } catch (_error) {
       console.error("[API Error]", error)
       return ApiResponse.serverError("An unexpected error occurred")
     }

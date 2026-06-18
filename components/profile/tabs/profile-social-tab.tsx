@@ -15,9 +15,9 @@ import type { ProfileTabProps } from "../types"
 
 export function ProfileSocialTab({
   user,
-  loading,
-  error,
-  success,
+  loading: _loading,
+  error: _error,
+  success: _success,
   setError,
   setSuccess,
 }: ProfileTabProps) {
@@ -29,7 +29,7 @@ export function ProfileSocialTab({
       if (res.ok) {
         setSuccess("Discord account disconnected")
         const authRes = await fetch("/api/v2/auth/me")
-        const authData = await authRes.json()
+        await authRes.json()
         // Trigger parent re-fetch of user data
         window.location.reload()
       } else {

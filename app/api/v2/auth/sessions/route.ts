@@ -22,7 +22,7 @@ export async function DELETE() {
     })
 
     return response
-  } catch (error) {
+  } catch (_error) {
     console.error("[Sessions] Error revoking sessions:", error)
     return NextResponse.json({ error: "Failed to revoke sessions" }, { status: 500 })
   }

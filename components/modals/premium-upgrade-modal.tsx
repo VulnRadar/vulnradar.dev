@@ -1,6 +1,6 @@
 "use client"
 
-import { Crown, Zap, Check, X } from "lucide-react"
+import { Crown, Zap, Check } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -94,7 +94,7 @@ export function PremiumUpgradeModal({
   open,
   onOpenChange,
   feature,
-  currentPlan = "free",
+  currentPlan: _currentPlan = "free",
 }: PremiumUpgradeModalProps) {
   const requiredPlanLabel = PLAN_LABELS[feature.requiredPlan]
   const requiredPlanPrice = PLAN_PRICES[feature.requiredPlan]

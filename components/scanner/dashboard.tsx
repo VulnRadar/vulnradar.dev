@@ -1,7 +1,6 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { useRouter } from "next/navigation"
 import {
   BarChart3,
   Shield,
@@ -89,25 +88,7 @@ function StatCard({
   )
 }
 
-function MiniAreaChart({ data, color = "bg-primary" }: { data: number[]; color?: string }) {
-  const max = Math.max(...data, 1)
-  return (
-    <div className="flex items-end gap-[2px] h-12">
-      {data.map((value, i) => {
-        const height = (value / max) * 100
-        return (
-          <div
-            key={i}
-            className={cn("flex-1 rounded-sm transition-all", color, value === 0 && "bg-muted/30")}
-            style={{ height: `${Math.max(height, 4)}%`, opacity: 0.4 + (i / data.length) * 0.6 }}
-          />
-        )
-      })}
-    </div>
-  )
-}
-
-function SeverityBar({ label, count, total, color, icon: Icon }: { 
+function SeverityBar({ label, count, total, color, icon: _Icon }: {
   label: string
   count: number
   total: number
@@ -195,7 +176,6 @@ function ActivityChart({ data }: { data: { day: string; scans: number; issues: n
 }
 
 export function Dashboard() {
-  const router = useRouter()
   const [data, setData] = useState<DashboardData | null>(null)
   const [loading, setLoading] = useState(true)
 

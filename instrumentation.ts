@@ -736,7 +736,7 @@ export async function register() {
       }
       process.on("SIGTERM", gracefulShutdown)
       process.on("SIGINT", gracefulShutdown)
-    } catch (error) {
+    } catch (_error) {
       console.error(`[${APP_NAME}] Database migration failed:`, error)
     }
   }

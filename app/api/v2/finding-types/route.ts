@@ -18,7 +18,7 @@ export async function GET() {
       count: findingTypes.length,
       data: findingTypes,
     })
-  } catch (error) {
+  } catch (_error) {
     console.error("Error retrieving finding types:", error)
     return NextResponse.json(
       { success: false, error: "Failed to retrieve finding types" },

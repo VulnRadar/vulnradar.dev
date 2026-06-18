@@ -24,7 +24,7 @@ export async function verifyOwnership(
     return {
       owned: result.rows.length > 0,
     }
-  } catch (err) {
+  } catch (_err) {
     return {
       owned: false,
       error: ApiResponse.serverError("Failed to verify ownership"),
@@ -69,7 +69,7 @@ export async function verifyTeamMembership(
     }
 
     return { isMember: true, role }
-  } catch (err) {
+  } catch (_err) {
     return {
       isMember: false,
       error: ApiResponse.serverError("Failed to verify team membership"),

@@ -99,7 +99,7 @@ export async function POST(request: NextRequest) {
             html: confirmationPayload.html,
           }),
         ])
-      } catch (error) {
+      } catch (_error) {
         console.error("Contact email send failed", error)
       }
     }

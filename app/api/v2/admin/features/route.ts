@@ -418,7 +418,7 @@ export async function POST(req: NextRequest) {
     }
 
     return NextResponse.json({ error: "Unknown section" }, { status: 400 })
-  } catch (error) {
+  } catch (_error) {
     console.error("[Admin API] Error:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }

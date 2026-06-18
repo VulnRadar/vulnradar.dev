@@ -503,7 +503,7 @@ export async function POST(request: NextRequest) {
     }
 
     return NextResponse.json(responseData)
-  } catch (error) {
+  } catch (_error) {
     console.error("[VulnRadar] Scan error:", error instanceof Error ? error.message : error)
     return NextResponse.json(
       { error: "An unexpected error occurred during the scan." },

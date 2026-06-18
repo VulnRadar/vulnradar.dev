@@ -53,7 +53,7 @@ export async function getUserSubscription(userId: number): Promise<UserSubscript
       currentPeriodEnd: row.current_period_end,
       cancelAtPeriodEnd: row.cancel_at_period_end || false,
     }
-  } catch (error) {
+  } catch (_error) {
     console.error("[Billing] Error getting subscription:", error)
     return null
   }
@@ -133,7 +133,7 @@ export async function updateUserSubscription(
       `UPDATE users SET ${setClauses.join(", ")} WHERE id = $${paramIndex}`,
       values
     )
-  } catch (error) {
+  } catch (_error) {
     console.error("[Billing] Error updating subscription:", error)
     throw error
   }
@@ -159,7 +159,7 @@ export async function createStripeCustomer(userId: number, email: string, name?:
 
     await updateUserSubscription(userId, { stripeCustomerId: customer.id })
     return customer.id
-  } catch (error) {
+  } catch (_error) {
     console.error("[Billing] Error creating Stripe customer:", error)
     return null
   }
@@ -230,7 +230,7 @@ export async function createSubscriptionCheckout(
     })
 
     return session.url
-  } catch (error) {
+  } catch (_error) {
     console.error("[Billing] Error creating checkout session:", error)
     throw error
   }
@@ -259,7 +259,7 @@ export async function createBillingPortalSession(
     })
 
     return session.url
-  } catch (error) {
+  } catch (_error) {
     console.error("[Billing] Error creating portal session:", error)
     throw error
   }
@@ -284,7 +284,7 @@ export async function cancelSubscription(userId: number): Promise<void> {
     })
 
     await updateUserSubscription(userId, { cancelAtPeriodEnd: true })
-  } catch (error) {
+  } catch (_error) {
     console.error("[Billing] Error canceling subscription:", error)
     throw error
   }
@@ -308,7 +308,7 @@ export async function recordBillingHistory(
        ON CONFLICT (stripe_invoice_id) DO NOTHING`,
       [userId, stripeInvoiceId, amountCents, status, description, invoicePdfUrl]
     )
-  } catch (error) {
+  } catch (_error) {
     console.error("[Billing] Error recording billing history:", error)
   }
 }
@@ -339,7 +339,7 @@ export async function getBillingHistory(userId: number): Promise<{
       invoicePdfUrl: row.invoice_pdf_url,
       createdAt: row.created_at,
     }))
-  } catch (error) {
+  } catch (_error) {
     console.error("[Billing] Error getting billing history:", error)
     return []
   }

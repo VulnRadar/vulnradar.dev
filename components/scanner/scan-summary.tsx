@@ -11,7 +11,6 @@ import {
   ShieldX,
   TriangleAlert,
   ScanSearch,
-  Copy,
   Check,
 } from "lucide-react"
 import { useState } from "react"
