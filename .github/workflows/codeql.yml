@@ -1,5 +1,10 @@
 name: CodeQL
 
+# CodeQL Advanced Setup
+# Uses github/codeql-action v4 (v3 deprecated Dec 2026).
+# Both JS/TS and Actions scanned. Queries: security (smaller SARIF,
+# faster, no default-setup conflict).
+
 on:
   push:
     branches: [main]
@@ -23,22 +28,24 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        language: [javascript-typescript]
+        include:
+          - language: javascript-typescript
+            build-mode: none
+          - language: actions
+            build-mode: none
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@v3
+        uses: github/codeql-action/init@v4
         with:
           languages: ${{ matrix.language }}
-          queries: security-and-quality
-
-      - name: Autobuild
-        uses: github/codeql-action/autobuild@v3
+          queries: security
+          build-mode: ${{ matrix.build-mode }}
 
       - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@v3
+        uses: github/codeql-action/analyze@v4
         with:
           category: "/language:${{ matrix.language }}"
