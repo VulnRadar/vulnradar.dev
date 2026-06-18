@@ -7,18 +7,7 @@ export interface AccessRuleCheckResult {
   matchedValue?: string
 }
 
-/**
- * Normalize a domain by removing protocol and trailing slashes.
- * Used to ensure consistent matching.
- */
-function normalizeDomain(value: string): string {
-  let normalized = value.trim().toLowerCase()
-  // Remove any protocol (http://, https://, ftp://, sftp://, etc.)
-  normalized = normalized.replace(/^[a-z][a-z0-9+.-]*:\/\//i, "")
-  // Remove trailing slashes and paths for base domain matching
-  normalized = normalized.replace(/\/.*$/, "")
-  return normalized
-}
+// (normalizeDomain removed in cleanup; access-rules.ts now uses external normalization)
 
 /**
  * Check if a URL or its domain/IP is blocked by access rules.

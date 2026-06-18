@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from "react"
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { AlertTriangle, CheckCircle } from "lucide-react"
+
 import { APP_URL, APP_NAME, APP_VERSION, ENGINE_VERSION } from "@/lib/config/constants"
 import { cn } from "@/lib/ui/utils"
 import { useDocsContext, type TocItem } from "../layout"

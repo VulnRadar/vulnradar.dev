@@ -5,7 +5,6 @@
 // Self-hosters: Modify lib/config/config-values.ts to customize your deployment.
 // ============================================================================
 
-import { getConfig } from "./config"
 import {
   CONFIG_APP_NAME,
   CONFIG_APP_SLUG,
@@ -15,7 +14,6 @@ import {
   CONFIG_TOTAL_CHECKS_LABEL,
   CONFIG_APP_URL,
   CONFIG_APP_REPO,
-  CONFIG_DISCORD_INVITE_URL,
   CONFIG_SUPPORT_EMAIL,
   CONFIG_LEGAL_EMAIL,
   CONFIG_SECURITY_EMAIL,

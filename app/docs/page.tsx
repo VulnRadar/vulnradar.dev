@@ -12,7 +12,6 @@ import {
   DocsSection,
   DocsFeatureGrid,
   DocsSteps,
-  CodeBlock,
   CopyButton,
   type Feature,
   type Step,
