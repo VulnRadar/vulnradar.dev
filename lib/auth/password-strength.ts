@@ -82,7 +82,7 @@ const KEYBOARD_PATTERNS = [
 ];
 
 // Common name patterns and sequences
-const COMMON_SEQUENCES = [
+const _COMMON_SEQUENCES = [
   "abc", "bcd", "cde", "def", "efg", "fgh", "ghi", "hij", "ijk", "jkl",
   "klm", "lmn", "mno", "nop", "opq", "pqr", "qrs", "rst", "stu", "tuv",
   "uvw", "vwx", "wxy", "xyz", "012", "123", "234", "345", "456", "567",

@@ -84,7 +84,7 @@ export function useAdminUsers({ toast, initialPageSize = 10 }: UseAdminUsersOpti
       const data = await fetchUserDetailService(userId)
       setSelectedUser(data)
       return data
-    } catch (err) {
+    } catch (_err) {
       toast.error("Failed to load user details.")
       return null
     } finally {

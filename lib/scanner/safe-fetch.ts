@@ -208,7 +208,7 @@ export async function validateScanTarget(url: string): Promise<SafetyCheckResult
       }
       // No addresses returned; treat as safe but without a resolved IP
       return { safe: true }
-    } catch (dnsError) {
+    } catch (_dnsError) {
       // DNS resolution failed - let the actual fetch handle it
       return { safe: true }
     }

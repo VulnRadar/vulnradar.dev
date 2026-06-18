@@ -28,7 +28,7 @@ export function Header() {
   const router = useRouter()
   const pathname = usePathname()
   const [mobileOpen, setMobileOpen] = useState(false)
-  const { me, isStaff } = useAuth()
+  const { isStaff } = useAuth()
 
   async function handleLogout() {
     clearAuthCache()
