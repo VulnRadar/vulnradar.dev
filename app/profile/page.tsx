@@ -74,8 +74,6 @@ function ProfileContent() {
     if (Object.keys(pendingChanges).length > 0 || showSaveModal) {
       setPendingChanges({})
       setShowSaveModal(false)
-      setNameInput(user?.name || "")
-      setEmailInput(user?.email || "")
     }
     setActiveProfileTab(tab)
     window.location.hash = tab
@@ -88,11 +86,6 @@ function ProfileContent() {
   // API key state is now managed in ProfileDeveloperTab component
 
   // Profile editing state
-  const [editingName, setEditingName] = useState(false)
-  const [editingEmail, setEditingEmail] = useState(false)
-  const [profileEditMode, setProfileEditMode] = useState(false)
-  const [nameInput, setNameInput] = useState("")
-  const [emailInput, setEmailInput] = useState("")
   const [savingProfile, setSavingProfile] = useState(false)
 
   // Unified pending changes system
@@ -109,39 +102,6 @@ function ProfileContent() {
   const [uploadingAvatar, setUploadingAvatar] = useState(false)
   const [cropDialogOpen, setCropDialogOpen] = useState(false)
   const [cropImageSrc, setCropImageSrc] = useState<string | null>(null)
-  const [isGifUpload, setIsGifUpload] = useState(false)
-  const avatarInputRef = React.useRef<HTMLInputElement>(null)
-
-  function handleAvatarFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]
-    if (!file) return
-    if (!file.type.startsWith("image/")) {
-      setError("Please select an image file.")
-      return
-    }
-    if (file.size > 10 * 1024 * 1024) {
-      setError("Image must be under 10MB.")
-      return
-    }
-    setError(null)
-    const isGif = file.type === "image/gif"
-    setIsGifUpload(isGif)
-    if (isGif) {
-      // Skip crop dialog for GIFs to preserve animation
-      const reader = new FileReader()
-      reader.onload = () => handleCroppedAvatar(reader.result as string)
-      reader.readAsDataURL(file)
-    } else {
-      const reader = new FileReader()
-      reader.onload = () => {
-        setCropImageSrc(reader.result as string)
-        setCropDialogOpen(true)
-      }
-      reader.readAsDataURL(file)
-    }
-    if (avatarInputRef.current) avatarInputRef.current.value = ""
-  }
-
   async function handleCroppedAvatar(croppedDataUrl: string) {
     setUploadingAvatar(true)
     setError(null)
@@ -162,26 +122,6 @@ function ProfileContent() {
       }
     } catch {
       setError("Failed to upload profile picture.")
-    } finally {
-      setUploadingAvatar(false)
-    }
-  }
-
-  async function handleRemoveAvatar() {
-    setUploadingAvatar(true)
-    setError(null)
-    try {
-      const res = await fetch(API.AUTH.UPDATE, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ avatarUrl: "" }),
-      })
-      if (res.ok) {
-        setUser((prev) => (prev ? { ...prev, avatarUrl: null } : prev))
-        setSuccess("Profile picture removed.")
-      }
-    } catch {
-      setError("Failed to remove profile picture.")
     } finally {
       setUploadingAvatar(false)
     }
@@ -215,8 +155,6 @@ function ProfileContent() {
 
       const userData = await userRes.json()
       setUser(userData)
-      setNameInput(userData.name || "")
-      setEmailInput(userData.email || "")
 
       // Parse developer tab data
       const keysData = keysRes.ok ? await keysRes.json() : { keys: [] }
@@ -269,63 +207,6 @@ function ProfileContent() {
     }
   }, [error])
 
-  // ---- Profile handlers ----
-  async function handleSaveName() {
-    if (!nameInput.trim()) {
-      setError("Name cannot be empty.")
-      return
-    }
-    setSavingProfile(true)
-    setError(null)
-    try {
-      const res = await fetch(API.AUTH.UPDATE, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: nameInput.trim() }),
-      })
-      const data = await res.json()
-      if (!res.ok) {
-        setError(data.error)
-        return
-      }
-      setUser((prev) => (prev ? { ...prev, name: data.name } : prev))
-      setEditingName(false)
-      setSuccess("Name updated successfully.")
-    } catch {
-      setError("Failed to update name.")
-    } finally {
-      setSavingProfile(false)
-    }
-  }
-
-  async function handleSaveEmail() {
-    if (!emailInput.trim() || !emailInput.includes("@")) {
-      setError("Please enter a valid email.")
-      return
-    }
-    setSavingProfile(true)
-    setError(null)
-    try {
-      const res = await fetch(API.AUTH.UPDATE, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: emailInput.trim() }),
-      })
-      const data = await res.json()
-      if (!res.ok) {
-        setError(data.error)
-        return
-      }
-      setUser((prev) => (prev ? { ...prev, email: data.email } : prev))
-      setEditingEmail(false)
-      setSuccess("Email updated successfully.")
-    } catch {
-      setError("Failed to update email.")
-    } finally {
-      setSavingProfile(false)
-    }
-  }
-
   // ---- Account handlers ----
   // Data request and delete handlers are now managed in ProfilePrivacyTab component
 
@@ -333,7 +214,6 @@ function ProfileContent() {
   async function saveAllPendingChanges() {
     setSavingProfile(true)
     setError(null)
-    let savedCount = 0
 
     try {
       // Save name if changed
@@ -346,7 +226,6 @@ function ProfileContent() {
         if (res.ok) {
           const data = await res.json()
           setUser((u) => u ? { ...u, name: data.name } : u)
-          savedCount++
         }
       }
 
@@ -360,20 +239,16 @@ function ProfileContent() {
         if (res.ok) {
           const data = await res.json()
           setUser((u) => u ? { ...u, email: data.email } : u)
-          savedCount++
         }
       }
 
       // Save notification preferences if changed
       if (pendingChanges.notifications) {
-        const res = await fetch(API.ACCOUNT_NOTIFICATIONS, {
+        await fetch(API.ACCOUNT_NOTIFICATIONS, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(pendingChanges.notifications),
         })
-        if (res.ok) {
-          savedCount++
-        }
       }
 
       setPendingChanges({})
@@ -416,8 +291,6 @@ function ProfileContent() {
   // Discard all pending changes
   function discardAllChanges() {
     setPendingChanges({})
-    setNameInput(user?.name || "")
-    setEmailInput(user?.email || "")
     setDiscardKey(prev => prev + 1) // Trigger child components to reset
   }
 
