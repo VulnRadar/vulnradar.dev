@@ -42,7 +42,6 @@ jobs:
         uses: github/codeql-action/init@v4
         with:
           languages: ${{ matrix.language }}
-          queries: security
           build-mode: ${{ matrix.build-mode }}
 
       - name: Perform CodeQL Analysis
