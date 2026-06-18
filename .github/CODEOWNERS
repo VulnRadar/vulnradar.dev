@@ -2,33 +2,33 @@
 # VulnRadar Code Owners
 # ============================================================================
 # Auto-assigns reviewers based on which paths the PR touches.
-# VulnRadar is currently a solo project; this file is the seed for future
-# team expansion. Add GitHub usernames as the team grows.
+# VulnRadar is currently a 2-person org (dbcaa, RejectModders); both are
+# listed as owners for all paths until sub-teams are created.
 # ============================================================================
 
 # Default owner for everything not matched below
-*       @VulnRadar/maintainers
+*       @dbcaa @RejectModders
 
-# Security-critical paths require security owner review
-/lib/auth/         @VulnRadar/maintainers @VulnRadar/security
-/lib/scanner/      @VulnRadar/maintainers @VulnRadar/security
-/lib/rate-limiting/ @VulnRadar/maintainers @VulnRadar/security
-/lib/billing/      @VulnRadar/maintainers @VulnRadar/security
-/app/api/v2/auth/  @VulnRadar/maintainers @VulnRadar/security
-/app/api/v2/billing/ @VulnRadar/maintainers @VulnRadar/security
-/app/api/v2/webhooks/ @VulnRadar/maintainers @VulnRadar/security
+# Security-critical paths
+/lib/auth/          @dbcaa @RejectModders
+/lib/scanner/       @dbcaa @RejectModders
+/lib/rate-limiting/ @dbcaa @RejectModders
+/lib/billing/       @dbcaa @RejectModders
+/app/api/v2/auth/   @dbcaa @RejectModders
+/app/api/v2/billing/ @dbcaa @RejectModders
+/app/api/v2/webhooks/ @dbcaa @RejectModders
 
 # Configuration changes
-/lib/config/       @VulnRadar/maintainers
-/.env.example      @VulnRadar/maintainers
-/next.config.mjs   @VulnRadar/maintainers
-/Dockerfile        @VulnRadar/maintainers
-/docker-compose.yml @VulnRadar/maintainers
+/lib/config/        @dbcaa @RejectModders
+/.env.example       @dbcaa @RejectModders
+/next.config.mjs    @dbcaa @RejectModders
+/Dockerfile         @dbcaa @RejectModders
+/docker-compose.yml @dbcaa @RejectModders
 
 # CI / infrastructure
-/.github/          @VulnRadar/maintainers
+/.github/           @dbcaa @RejectModders
 
 # Database migrations
-/lib/database/     @VulnRadar/maintainers
-/scripts/migrate.mjs @VulnRadar/maintainers
-/scripts/create-fresh-db.mjs @VulnRadar/maintainers
+/lib/database/      @dbcaa @RejectModders
+/scripts/migrate.mjs @dbcaa @RejectModders
+/scripts/create-fresh-db.mjs @dbcaa @RejectModders
