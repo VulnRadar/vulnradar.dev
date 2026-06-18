@@ -1,5 +1,6 @@
 Contact: mailto:security@vulnradar.dev
-Expires: 2027-02-09T23:59:59.000Z
+Expires: 2028-06-18T23:59:59.000Z
 Preferred-Languages: en
 Canonical: https://vulnradar.dev/.well-known/security.txt
 Policy: https://vulnradar.dev/legal/acceptable-use
+Acknowledgments: https://vulnradar.dev/changelog

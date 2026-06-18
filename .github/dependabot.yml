@@ -12,13 +12,66 @@ updates:
     labels:
       - "dependabot"
       - "dependencies"
+    groups:
+      next-stack:
+        patterns:
+          - "next"
+          - "react"
+          - "react-dom"
+          - "@types/react"
+          - "@types/react-dom"
+          - "eslint-config-next"
+      stripe:
+        patterns:
+          - "stripe"
+          - "@stripe/*"
+      ui:
+        patterns:
+          - "@radix-ui/*"
+          - "lucide-react"
+          - "react-icons"
+          - "tailwindcss"
+          - "tailwindcss-animate"
+          - "tailwind-merge"
+          - "class-variance-authority"
+          - "clsx"
+      scanning:
+        patterns:
+          - "dompurify"
+          - "jspdf"
+          - "jspdf-autotable"
+          - "recharts"
+          - "cmdk"
+          - "embla-carousel-react"
+          - "vaul"
+          - "sonner"
+          - "swr"
+          - "react-day-picker"
+          - "react-hook-form"
+          - "react-resizable-panels"
+          - "input-otp"
+          - "date-fns"
+          - "server-only"
+      security:
+        patterns:
+          - "bcrypt"
+          - "bcryptjs"
+          - "jsonwebtoken"
+          - "nodemailer"
+          - "@neondatabase/serverless"
+          - "pg"
+          - "zod"
+          - "@hookform/resolvers"
+      build:
+        patterns:
+          - "postcss"
+          - "autoprefixer"
+          - "typescript"
+          - "@types/*"
+          - "tslib"
     ignore:
       # Only get major Next.js updates as PRs you manually review
       - dependency-name: "next"
-        update-types: ["version-update:semver-major"]
-      - dependency-name: "react"
-        update-types: ["version-update:semver-major"]
-      - dependency-name: "react-dom"
         update-types: ["version-update:semver-major"]
 
   # GitHub Actions themselves
@@ -32,3 +85,7 @@ updates:
     labels:
       - "dependabot"
       - "github-actions"
+    groups:
+      actions:
+        patterns:
+          - "*"
