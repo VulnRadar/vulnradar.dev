@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from "react"
 import { Card } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
+
 import { Gauge, Clock, Zap, ShieldCheck } from "lucide-react"
 import { APP_NAME, APP_URL, BILLING_ENABLED } from "@/lib/config/constants"
 import { useDocsContext, type TocItem } from "../layout"

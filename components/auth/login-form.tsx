@@ -8,7 +8,6 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Eye, EyeOff, Loader2, Mail, AlertTriangle } from "lucide-react"
 import { API } from "@/lib/config/client-constants"
-import { APP_NAME } from "@/lib/config/constants"
 import { transitions } from "@/lib/ui/animations"
 
 interface LoginFormProps {

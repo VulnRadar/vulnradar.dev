@@ -1,7 +1,6 @@
 "use client"
 
 import React, { useState, useEffect, useCallback, useRef } from "react"
-import { useRouter } from "next/navigation"
 import {
   Users,
   Activity,
@@ -33,10 +32,10 @@ import { Badge } from "@/components/ui/badge"
 import { Header } from "@/components/scanner/header"
 import { Footer } from "@/components/scanner/footer"
 import { cn } from "@/lib/ui/utils"
-import { PaginationControl, usePagination } from "@/components/ui/pagination-control"
-import { STAFF_ROLES, STAFF_ROLE_LABELS, STAFF_ROLE_HIERARCHY, ROLE_BADGE_STYLES, API } from "@/lib/config/constants"
-import { hasStaffPermission, STAFF_PERMISSIONS } from "@/lib/auth/permissions-client"
+import { PaginationControl } from "@/components/ui/pagination-control"
+import { STAFF_ROLES, STAFF_ROLE_LABELS, ROLE_BADGE_STYLES, API } from "@/lib/config/constants"
 import { NotificationsManager } from "@/components/admin/notifications"
+
 
 const VALID_TABS = [
   "users",
@@ -81,7 +80,6 @@ export default function AdminPage() {
 }
 
 function AdminContent() {
-  const router = useRouter()
   const [loading, setLoading] = useState(true)
   const [forbidden, setForbidden] = useState(false)
   const [stats, setStats] = useState<AdminStats | null>(null)
@@ -104,20 +102,16 @@ function AdminContent() {
   const [auditPage, setAuditPage] = useState(1)
   const [auditTotalPages, setAuditTotalPages] = useState(1)
   const [auditPageSize, setAuditPageSize] = useState(10)
-  const [expandedLog, setExpandedLog] = useState<number | null>(null)
-  const [auditFilter, setAuditFilter] = useState<string>("all")
   const [teams, setTeams] = useState<{ id: number; name: string; slug: string; created_at: string; owner_id: number; owner_email: string; owner_name: string | null; owner_avatar_url: string | null; member_count: number }[]>([])
   const [teamsLoading, setTeamsLoading] = useState(false)
   const [teamsPage, setTeamsPage] = useState(1)
   const [teamsTotalPages, setTeamsTotalPages] = useState(1)
   const [teamsPageSize, setTeamsPageSize] = useState(10)
   const [teamsSearch, setTeamsSearch] = useState("")
-  const [editingTeam, setEditingTeam] = useState<{ id: number; name: string } | null>(null)
   const [teamMembers, setTeamMembers] = useState<TeamMembersState | null>(null)
   const [teamMembersLoading, setTeamMembersLoading] = useState(false)
   const [activeAdmins, setActiveAdmins] = useState<ActiveAdmin[]>([])
   const [adminsLoading, setAdminsLoading] = useState(false)
-  const [staffPageSize, setStaffPageSize] = useState(10)
   const [searchLoading, setSearchLoading] = useState(false)
   const [callerRole, setCallerRole] = useState<string>("user")
   const [auditPaging, setAuditPaging] = useState(false)
@@ -280,7 +274,6 @@ function AdminContent() {
       })
       if (res.ok) {
         showToast("Team renamed successfully", "success")
-        setEditingTeam(null)
         fetchTeams(teamsPage)
       } else {
         const data = await res.json()

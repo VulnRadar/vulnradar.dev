@@ -1,6 +1,6 @@
 "use client"
 
-import { LogOut, Menu, ShieldAlert } from "lucide-react"
+import { LogOut, Menu } from "lucide-react"
 import { ThemeToggle } from "@/components/shared/theme-toggle"
 import { Button } from "@/components/ui/button"
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet"
