@@ -6,7 +6,6 @@ import { FaGithub } from "react-icons/fa"
 import { APP_VERSION, APP_NAME, APP_URL, APP_REPO, SUPPORT_EMAIL, ROUTES, BILLING_ENABLED } from "@/lib/config/constants"
 import { Button } from "@/components/ui/button"
 import { ThemedLogo } from "@/components/shared/themed-logo"
-import { transitions } from "@/lib/ui/animations"
 
 export function Footer() {
   return (

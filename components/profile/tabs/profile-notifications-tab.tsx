@@ -28,14 +28,14 @@ const DEFAULT_PREFS: NotificationPrefs = {
 }
 
 export function ProfileNotificationsTab({
-  user,
-  loading,
-  error,
-  success,
-  setError,
-  setSuccess,
-  onTabChange,
-  pendingChanges,
+  user: _user,
+  loading: _loading,
+  error: _error,
+  success: _success,
+  setError: _setError,
+  setSuccess: _setSuccess,
+  onTabChange: _onTabChange,
+  pendingChanges: _pendingChanges,
   setPendingChanges,
   discardKey,
   saveKey,

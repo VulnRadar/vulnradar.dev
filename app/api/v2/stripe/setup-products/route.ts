@@ -112,7 +112,7 @@ export async function GET() {
         "You can view them at: https://dashboard.stripe.com/products",
       ],
     })
-  } catch (error) {
+  } catch (_error) {
     console.error("[Stripe] Error setting up products:", error)
     return NextResponse.json({
       success: false,

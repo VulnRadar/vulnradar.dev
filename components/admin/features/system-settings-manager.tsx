@@ -55,8 +55,8 @@ export function SystemSettingsManager() {
       })
       setSettings(settingsMap)
       setChanges({})
-    } catch (error) {
-      console.error("Error fetching settings:", error)
+    } catch (_error) {
+      console.error("Error fetching settings:", _error)
     } finally {
       setLoading(false)
     }
@@ -93,8 +93,8 @@ export function SystemSettingsManager() {
         ...changes,
       }))
       setChanges({})
-    } catch (error) {
-      console.error("Error saving settings:", error)
+    } catch (_error) {
+      console.error("Error saving settings:", _error)
     } finally {
       setSaving(false)
     }
@@ -119,9 +119,6 @@ export function SystemSettingsManager() {
   })
 
   // Stats
-  const totalSettings = defaultSettings.length
-  const configuredSettings = Object.keys(settings).length
-  const pendingChanges = Object.keys(changes).length
   const maintenanceActive = (changes.maintenance_mode ?? settings.maintenance_mode) === "true"
 
   return (

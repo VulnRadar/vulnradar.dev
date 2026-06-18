@@ -115,7 +115,7 @@ export async function validateApiKey(key: string): Promise<{
                         needsTermsAcceptance: !hasAcceptedLatestTerms(row.tos_accepted_at),
                     }
                 }
-            } catch (error) {
+            } catch (_error) {
                 // Decryption failed for this key, try next one
                 continue
             }
@@ -146,7 +146,7 @@ export async function validateApiKey(key: string): Promise<{
                         needsTermsAcceptance: !hasAcceptedLatestTerms(row.tos_accepted_at),
                     }
                 }
-            } catch (error) {
+            } catch (_error) {
                 // Comparison failed for this key, try next one
                 continue
             }
@@ -177,7 +177,7 @@ export async function validateApiKey(key: string): Promise<{
                         needsTermsAcceptance: !hasAcceptedLatestTerms(row.tos_accepted_at),
                     }
                 }
-            } catch (error) {
+            } catch (_error) {
                 // Comparison failed for this key, try next one
                 continue
             }

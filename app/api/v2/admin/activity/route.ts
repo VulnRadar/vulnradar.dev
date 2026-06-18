@@ -51,7 +51,7 @@ export async function POST(request: NextRequest) {
         is_active: true, // Just sent heartbeat, so is active
       },
     })
-  } catch (error) {
+  } catch (_error) {
     console.error("[Admin Activity] Heartbeat error:", error)
     return NextResponse.json({ error: "Failed to update activity" }, { status: 500 })
   }
@@ -101,7 +101,7 @@ export async function GET(request: NextRequest) {
       staff: staffResult.rows,
       timestamp: new Date(),
     })
-  } catch (error) {
+  } catch (_error) {
     console.error("[Admin Activity] Fetch error:", error)
     return NextResponse.json({ error: "Failed to fetch activity" }, { status: 500 })
   }

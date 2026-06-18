@@ -29,7 +29,7 @@ export async function GET() {
       guildJoined: connection.guild_joined,
       updatedAt: connection.updated_at,
     })
-  } catch (error) {
+  } catch (_error) {
     console.error("Discord connection check error:", error)
     return NextResponse.json({ error: "Failed to check Discord connection" }, { status: 500 })
   }
@@ -69,7 +69,7 @@ export async function DELETE() {
     )
 
     return NextResponse.json({ success: true, message: "Discord account disconnected" })
-  } catch (error) {
+  } catch (_error) {
     console.error("Discord disconnect error:", error)
     return NextResponse.json({ error: "Failed to disconnect Discord account" }, { status: 500 })
   }

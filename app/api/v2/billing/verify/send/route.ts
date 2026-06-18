@@ -66,7 +66,7 @@ export async function POST(request: NextRequest) {
       message: "Verification code sent to your email.",
       maskedEmail: masked 
     })
-  } catch (error) {
+  } catch (_error) {
     console.error("[Billing] Error sending verification code:", error)
     return NextResponse.json({ error: "Failed to send verification code" }, { status: 500 })
   }

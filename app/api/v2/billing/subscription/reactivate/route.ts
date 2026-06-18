@@ -37,7 +37,7 @@ export async function POST() {
       success: true,
       message: "Subscription reactivated successfully",
     })
-  } catch (error) {
+  } catch (_error) {
     console.error("[Billing] Error reactivating subscription:", error)
     return NextResponse.json({ error: "Failed to reactivate subscription" }, { status: 500 })
   }

@@ -252,7 +252,7 @@ export async function POST(request: NextRequest) {
         isOnTrial: subscription.trial_end ? new Date(subscription.trial_end * 1000) > new Date() : false,
       }
     })
-  } catch (error) {
+  } catch (_error) {
     console.error("[Billing] Error verifying code:", error)
     return NextResponse.json({ error: "Failed to verify code" }, { status: 500 })
   }

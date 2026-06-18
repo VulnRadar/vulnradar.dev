@@ -33,7 +33,7 @@ export async function GET(req: Request) {
     )
 
     return Response.json(result.rows)
-  } catch (error) {
+  } catch (_error) {
     console.error("Error fetching active notifications:", error)
     return Response.json({ error: "Failed to fetch notifications" }, { status: 500 })
   }

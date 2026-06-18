@@ -662,7 +662,6 @@ export function scheduleDeletedEmail(url: string, details: SecurityAlertDetails)
 
 // Data request emails
 export function dataRequestCreatedEmail(requestType: string, details: SecurityAlertDetails) {
-  const safeType = escapeHtml(requestType)
   const typeLabel = requestType === "export" ? "Data Export" : "Account Deletion"
   return {
     subject: `${typeLabel} Request Submitted - ${APP_NAME}`,
@@ -746,7 +745,7 @@ export function failedLoginAttemptsEmail(attempts: number, ipAddress: string, de
   }
 }
 
-export function rateLimitedEmail(ipAddress: string, details: SecurityAlertDetails) {
+export function rateLimitedEmail(ipAddress: string, _details: SecurityAlertDetails) {
   return {
     subject: `API Rate Limit - ${APP_NAME}`,
     text: `Your ${APP_NAME} API key has been temporarily rate limited due to excessive requests.\n\nIP Address: ${ipAddress}\n\nYour account will resume normal operation shortly. If you believe this is an error, contact support.`,

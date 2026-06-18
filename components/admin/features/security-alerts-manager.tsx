@@ -50,7 +50,7 @@ export function SecurityAlertsManager() {
       })
       const data = await res.json()
       setAlerts(data.alerts || [])
-    } catch (error) {
+    } catch (_error) {
       console.error("Error fetching alerts:", error)
     } finally {
       setLoading(false)
@@ -76,7 +76,7 @@ export function SecurityAlertsManager() {
         }),
       })
       await fetchAlerts()
-    } catch (error) {
+    } catch (_error) {
       console.error("Error resolving alert:", error)
     } finally {
       setResolving(false)

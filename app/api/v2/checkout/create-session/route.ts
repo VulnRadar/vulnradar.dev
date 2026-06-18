@@ -97,7 +97,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       clientSecret: checkoutSession.client_secret,
     })
-  } catch (error) {
+  } catch (_error) {
     console.error("[Checkout] Error creating session:", error)
     return NextResponse.json(
       { error: "Failed to create checkout session" },

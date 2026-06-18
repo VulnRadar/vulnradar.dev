@@ -28,7 +28,7 @@ export function loadConfig(): VulnRadarConfig {
   try {
     _config = DEFAULT_CONFIG
     return _config
-  } catch (error) {
+  } catch (_error) {
     _configLoadError = error instanceof Error ? error.message : "Unknown error"
     if (process.env.NODE_ENV === "development") {
       console.error(`[Config] Error loading config: ${_configLoadError}`)

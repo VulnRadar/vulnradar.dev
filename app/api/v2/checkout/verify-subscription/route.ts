@@ -58,7 +58,7 @@ export async function GET(request: NextRequest) {
         sessionVerified,
       },
     })
-  } catch (error) {
+  } catch (_error) {
     console.error("[Checkout] Verify subscription error:", error)
     return NextResponse.json(
       { error: "Failed to verify subscription" },

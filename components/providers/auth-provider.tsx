@@ -2,15 +2,14 @@
 
 import { createContext, useContext, ReactNode, useEffect, useMemo } from "react"
 import useSWR from "swr"
-import { API, STAFF_ROLES } from "@/lib/config/constants"
-import { 
-  isStaffRole, 
-  hasStaffPermission, 
-  canAccessAdmin, 
+import { API } from "@/lib/config/constants"
+import {
+  isStaffRole,
+  hasStaffPermission,
+  canAccessAdmin,
   canAccessStaffPage,
   getStaffPermissions,
-  STAFF_PERMISSIONS,
-  type StaffPermission 
+  type StaffPermission
 } from "@/lib/auth/permissions-client"
 
 interface AuthContextType {

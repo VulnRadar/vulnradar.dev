@@ -44,8 +44,8 @@ export function useAdminTeams({ toast }: UseAdminTeamsOptions) {
       setTeams(data.teams || [])
       setPage(data.page || 1)
       setTotalPages(data.totalPages || 1)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load teams")
+    } catch (_err) {
+      setError(_err instanceof Error ? _err.message : "Failed to load teams")
     }
     
     setLoading(false)
@@ -85,7 +85,7 @@ export function useAdminTeams({ toast }: UseAdminTeamsOptions) {
       setEditingTeam(null)
       await refresh(page)
       return true
-    } catch (err) {
+    } catch (_err) {
       toast.error("Failed to rename team")
       return false
     } finally {
@@ -109,7 +109,7 @@ export function useAdminTeams({ toast }: UseAdminTeamsOptions) {
       toast.success("Team deleted successfully")
       await refresh(page)
       return true
-    } catch (err) {
+    } catch (_err) {
       toast.error("Failed to delete team")
       return false
     } finally {

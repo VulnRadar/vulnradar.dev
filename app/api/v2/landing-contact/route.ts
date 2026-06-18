@@ -82,7 +82,7 @@ export async function POST(request: NextRequest) {
             html: userEmail.html,
           }),
         ])
-      } catch (error) {
+      } catch (_error) {
         console.error("Landing page contact email send failed", error)
       }
     }

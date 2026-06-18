@@ -28,7 +28,7 @@ interface PricingCardsProps {
   onSelectPlan?: (planId: string) => void
 }
 
-export function PricingCards({ plans, billing, currentPlan, isGifted, isLoggedIn, onSelectPlan }: PricingCardsProps) {
+export function PricingCards({ plans, billing, currentPlan, isGifted, isLoggedIn, onSelectPlan: _onSelectPlan }: PricingCardsProps) {
   const getPrice = (basePrice: number) => {
     if (basePrice === 0) return 0
     return billing === "yearly" ? Math.round(basePrice * 0.8 * 12) : basePrice
