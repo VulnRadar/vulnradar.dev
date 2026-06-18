@@ -33,7 +33,7 @@ async function getCachedSubdomains(domain: string): Promise<CacheResult | null> 
       }
     }
   } catch (err) {
-    console.error("[v0] getCachedSubdomains error:", err)
+    console.error("[Discover] getCachedSubdomains error:", err)
   }
   return null
 }
@@ -47,7 +47,7 @@ async function cacheSubdomains(domain: string, subdomains: DiscoveredSubdomain[]
       [domain, JSON.stringify(subdomains)]
     )
   } catch (err) {
-    console.error("[v0] cacheSubdomains error:", err)
+    console.error("[Discover] cacheSubdomains error:", err)
   }
 }
 
@@ -303,7 +303,7 @@ export async function POST(request: NextRequest) {
     },
   })
   } catch (err) {
-    console.error("[v0] Subdomain discovery error:", err)
+    console.error("[Discover] Subdomain discovery error:", err)
     return NextResponse.json({ error: "Subdomain discovery failed" }, { status: 500 })
   }
 }
