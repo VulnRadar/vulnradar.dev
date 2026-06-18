@@ -1,0 +1,52 @@
+# ============================================================================
+# VulnRadar Line Ending Policy
+# ============================================================================
+# Enforce LF for source code, CRLF only for Windows-specific files.
+# This prevents Windows autocrlf churn on every checkout.
+# ============================================================================
+
+# Default: LF for all text files
+* text=auto eol=lf
+
+# Explicit LF for source code
+*.ts       text eol=lf
+*.tsx      text eol=lf
+*.js       text eol=lf
+*.jsx      text eol=lf
+*.mjs      text eol=lf
+*.cjs      text eol=lf
+*.json     text eol=lf
+*.jsonc    text eol=lf
+*.md       text eol=lf
+*.mdx      text eol=lf
+*.yml      text eol=lf
+*.yaml     text eol=lf
+*.toml     text eol=lf
+*.css      text eol=lf
+*.scss     text eol=lf
+*.html     text eol=lf
+*.svg      text eol=lf
+*.xml      text eol=lf
+*.sql      text eol=lf
+*.sh       text eol=lf
+*.gitignore text eol=lf
+*.gitattributes text eol=lf
+.env.example text eol=lf
+
+# Binary files (never touch)
+*.png      binary
+*.jpg      binary
+*.jpeg     binary
+*.gif      binary
+*.ico      binary
+*.webp     binary
+*.woff     binary
+*.woff2    binary
+*.ttf      binary
+*.eot      binary
+*.pdf      binary
+*.zip      binary
+*.tar      binary
+*.gz      binary
+*.mp4      binary
+*.webm     binary

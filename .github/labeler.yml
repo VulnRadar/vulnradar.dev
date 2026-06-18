@@ -1,0 +1,44 @@
+# Auto-label PRs based on changed files
+
+size:
+  - label: "size/xs"
+    files:
+      - "**/*.{md,yml,yaml,json}"
+  - label: "size/s"
+    files:
+      - "**/*.{ts,tsx,js,jsx,css}"
+      - "!app/**"
+      - "!lib/**"
+      - "!components/**"
+  - label: "size/m"
+    files:
+      - "app/**/*.{ts,tsx}"
+      - "lib/**/*.{ts,tsx}"
+  - label: "size/l"
+    files:
+      - "components/**/*.{ts,tsx}"
+
+dependencies:
+  - label: "dependencies"
+    from-branch:
+      - "dependabot/**"
+
+ci:
+  - label: "ci"
+    changed-files:
+      - any-glob-to-any-file: [".github/workflows/**"]
+
+config:
+  - label: "config"
+    changed-files:
+      - any-glob-to-any-file: ["lib/config/**", ".env.example", "**/config.{ts,js,mjs}"]
+
+security:
+  - label: "security"
+    changed-files:
+      - any-glob-to-any-file: ["lib/auth/**", "lib/scanner/**", "**/security*"]
+
+docs:
+  - label: "docs"
+    changed-files:
+      - any-glob-to-any-file: ["docs/**", "**/*.md", "**/README*"]
