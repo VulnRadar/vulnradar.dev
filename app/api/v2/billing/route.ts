@@ -105,10 +105,10 @@ export async function GET() {
             nextBillingDate: subscription.cancel_at_period_end ? null : new Date(itemPeriodEnd * 1000).toISOString(),
           }
         } else {
-          console.warn("[v0] [Billing] Subscription exists but has no period data:", subscription?.id)
-          console.warn("[v0] [Billing] item?.current_period_start:", item?.current_period_start)
-          console.warn("[v0] [Billing] item?.current_period_end:", item?.current_period_end)
-          console.warn("[v0] [Billing] subscription.items.data length:", subscription.items?.data?.length)
+          console.warn("[Billing] Subscription exists but has no period data:", subscription?.id)
+          console.warn("[Billing] item?.current_period_start:", item?.current_period_start)
+          console.warn("[Billing] item?.current_period_end:", item?.current_period_end)
+          console.warn("[Billing] subscription.items.data length:", subscription.items?.data?.length)
         }
       } catch (stripeErr: unknown) {
         console.error("[Billing] Error fetching subscription from Stripe:", stripeErr)
