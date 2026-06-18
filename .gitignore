@@ -4,3 +4,42 @@ node_modules/
 .env*.local
 .DS_Store
 .env
+
+# Editor / IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# TypeScript build info
+*.tsbuildinfo
+tsconfig.tsbuildinfo
+
+# OS files
+Thumbs.db
+.DS_Store
+desktop.ini
+
+# Coverage
+coverage/
+.nyc_output/
+
+# Local artifacts
+out/
+dist/
+build/
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Dependency directories
+.pnp.*
+.yarn/cache
+.yarn/unplugged
+.yarn/build-state.yml
+.yarn/install-state.gz
