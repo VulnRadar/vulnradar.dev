@@ -37,7 +37,6 @@ import {
   Send,
   Webhook,
   Activity,
-  CalendarClock,
   Save,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -65,7 +64,6 @@ interface UserDetailPanelProps {
   onClearTempPassword: () => void
   callerRole: string
   allBadges: BadgeDef[]
-  onRefreshBadges: () => void
   onBadgesChanged: (awardedIds: number[], revokedIds: number[]) => void
 }
 
@@ -79,7 +77,6 @@ export function UserDetailPanel({
   onClearTempPassword,
   callerRole,
   allBadges,
-  onRefreshBadges,
   onBadgesChanged,
 }: UserDetailPanelProps) {
   const u = detail.user
@@ -107,7 +104,6 @@ export function UserDetailPanel({
   const [editEmail, setEditEmail] = useState(u.email)
   const [editPlan, setEditPlan] = useState(u.plan || "free")
   const [editRole, setEditRole] = useState(u.role || "user")
-  const [confirmEmail, setConfirmEmail] = useState("")
   const [isSaving, setIsSaving] = useState(false)
   const [showGiftModal, setShowGiftModal] = useState(false)
   const [showSaveModal, setShowSaveModal] = useState(false)
@@ -150,7 +146,6 @@ export function UserDetailPanel({
     setEditEmail(u.email)
     setEditPlan(u.plan || "free")
     setEditRole(u.role || "user")
-    setConfirmEmail("")
   }, [u.id, u.name, u.email, u.plan, u.role])
 
   // Add a change to pending
@@ -217,7 +212,6 @@ export function UserDetailPanel({
     setEditEmail(u.email)
     setEditPlan(u.plan || "free")
     setEditRole(u.role || "user")
-    setConfirmEmail("")
   }
 
   // Handle save button click - open confirmation modal
