@@ -4,7 +4,7 @@ import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
-import { Users, Loader2, AlertTriangle, ArrowRight } from "lucide-react"
+import { Users, Loader2, AlertTriangle } from "lucide-react"
 import Link from "next/link"
 import { APP_NAME, API } from "@/lib/config/constants"
 

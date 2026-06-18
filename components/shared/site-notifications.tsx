@@ -93,7 +93,6 @@ export function SiteBanner({ notification }: { notification: Notification }) {
   const [dismissed, setDismissed] = useState(() => isNotificationDismissed(notification.cookie_id))
   const [mounted, setMounted] = useState(false)
   const config = variantConfig[notification.variant]
-  const Icon = config.icon
 
   useEffect(() => setMounted(true), [])
 

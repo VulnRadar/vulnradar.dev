@@ -13,7 +13,7 @@ import { backdrops, transitions } from "@/lib/ui/animations"
 interface PublicPageShellProps {
   children: React.ReactNode
   /** Label shown next to the logo for guests, e.g. "Demo", "Staff" */
-  badge?: string
+  _badge?: string
   /** Max-width class for the main content area. Defaults to "max-w-5xl" */
   maxWidth?: string
   /** Extra padding class for main. Defaults to "py-8" */
@@ -35,7 +35,7 @@ function getInitialAuthState(): boolean | null {
 
 export function PublicPageShell({
   children,
-  badge,
+  _badge,
   maxWidth = "max-w-5xl",
   padding = "py-8",
 }: PublicPageShellProps) {

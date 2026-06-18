@@ -231,7 +231,7 @@ export function formatCleanupStats(stats: CleanupStats): string {
  * Schedule cleanup to run every 24 hours
  * Starts after initial delay to not overload startup
  */
-export function schedulePeriodicCleanup(initialDelayMs: number = 60000): NodeJS.Timeout {
+export function schedulePeriodicCleanup(_initialDelayMs: number = 60000): NodeJS.Timeout {
   return setInterval(async () => {
     try {
       const stats = await performDatabaseCleanup()
