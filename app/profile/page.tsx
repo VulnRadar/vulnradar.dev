@@ -4,7 +4,7 @@ import React, { useState, useEffect, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import dynamic from "next/dynamic"
 import { cn } from "@/lib/ui/utils"
-import { APP_NAME, API, ROUTES } from "@/lib/config/constants"
+import { API } from "@/lib/config/constants"
 
 const ImageCropDialog = dynamic(() => import("@/components/modals/image-crop-dialog").then(m => ({ default: m.ImageCropDialog })), { ssr: false })
 import { ProfileGeneralTab } from "@/components/profile/tabs/profile-general-tab"
@@ -16,56 +16,17 @@ import { ProfileNotificationsTab } from "@/components/profile/tabs/profile-notif
 import { ProfilePrivacyTab } from "@/components/profile/tabs/profile-privacy-tab"
 import type { ProfileUser, ApiKey, BillingInfo, DataRequestInfo, WebhookItem, ScheduleItem, NotificationPrefs, ProfileTab, PendingChanges } from "@/components/profile/types"
 import {
-  Plus,
-  Copy,
   Check,
-  Eye,
-  EyeOff,
-  Trash2,
   Key,
-  KeyRound,
-  Clock,
   AlertTriangle,
-  Download,
   Shield,
-  FileDown,
   UserCog,
   Lock,
-  Mail,
-  Pencil,
   Save,
-  X,
-  Webhook,
-  CalendarClock,
-  Globe,
   Loader2,
   Bell,
-  Camera,
-  LogIn,
-  Fingerprint,
-  MonitorSmartphone,
-  Scan,
-  XCircle,
-  AlertCircle,
-  CheckCircle2,
-  Gift,
-  Gauge,
-  Zap,
-  Users,
-  Lightbulb,
-  Megaphone,
-  Smartphone,
-  Award,
-  Tag,
   Share2,
-  LogOut,
   CreditCard,
-  TrendingUp,
-  Calendar,
-  RefreshCw,
-  ExternalLink,
-  Unlink,
-  Play,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
