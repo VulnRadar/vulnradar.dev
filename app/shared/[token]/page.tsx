@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import Image from "next/image"
 import { useParams } from "next/navigation"
 import {
   Loader2,
@@ -146,7 +147,7 @@ export default function SharedScanPage() {
                     {scannedBy && (
                       <div className="flex items-center gap-2 mb-4">
                         {scannedByAvatar ? (
-                          <img src={scannedByAvatar} alt={scannedBy} className="h-6 w-6 rounded-full object-cover ring-2 ring-background" />
+                          <Image src={scannedByAvatar} alt={scannedBy} width={24} height={24} className="h-6 w-6 rounded-full object-cover ring-2 ring-background" />
                         ) : (
                           <div className="flex items-center justify-center h-6 w-6 rounded-full bg-muted">
                             <User className="h-3.5 w-3.5 text-muted-foreground" />

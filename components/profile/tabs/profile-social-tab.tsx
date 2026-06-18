@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import Image from "next/image"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -88,9 +89,12 @@ export function ProfileSocialTab({
                     {/* User info row */}
                     <div className="flex items-center gap-4">
                       {user.discordAvatar ? (
-                        <img
+                        <Image
                           src={`https://cdn.discordapp.com/avatars/${user.discordId}/${user.discordAvatar}.png?size=128`}
                           alt="Discord avatar"
+                          width={56}
+                          height={56}
+                          unoptimized
                           className="h-14 w-14 rounded-full ring-2 ring-[#5865F2]/30 ring-offset-2 ring-offset-background"
                         />
                       ) : (

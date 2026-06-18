@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import Image from "next/image"
 import { Shield, ShieldCheck, Headset, Users } from "lucide-react"
 import { cn } from "@/lib/ui/utils"
 import { APP_NAME, STAFF_ROLES, STAFF_ROLE_LABELS, API } from "@/lib/config/constants"
@@ -167,7 +168,7 @@ export default function StaffPage() {
                           )}
                         >
                           {member.avatarUrl ? (
-                            <img src={member.avatarUrl} alt={member.name} loading="lazy" className="h-full w-full object-cover" />
+                            <Image src={member.avatarUrl} alt={member.name} width={48} height={48} loading="lazy" className="h-full w-full object-cover" />
                           ) : (
                             <span className={cn("text-sm font-bold", config.color)}>
                               {initials}
