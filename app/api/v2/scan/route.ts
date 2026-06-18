@@ -8,7 +8,7 @@ import { checkAndRecordRequest, getRateLimitHeaders } from "@/lib/rate-limiting/
 import pool from "@/lib/database/db"
 import type { ScanResult, Severity, Vulnerability } from "@/lib/scanner/types"
 import { APP_NAME, BEARER_PREFIX, SEVERITY_LEVELS, DEFAULT_SCAN_NOTE } from "@/lib/config/constants"
-import { getProtocolFromUrl, getProtocolFindings, type SupportedProtocol } from "@/lib/scanner/protocols"
+import { getProtocolFromUrl, getProtocolFindings } from "@/lib/scanner/protocols"
 import { runWebSocketChecks } from "@/lib/scanner/protocols/websocket"
 import { runFtpChecks } from "@/lib/scanner/protocols/ftp"
 import { validateScanTarget, safeFetch } from "@/lib/scanner/safe-fetch"

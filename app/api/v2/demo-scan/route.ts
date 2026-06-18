@@ -18,7 +18,7 @@ const SEVERITY_ORDER: Record<Severity, number> = {
 
 const MAX_BODY_SIZE = 1 * 1024 * 1024 // 1 MB
 
-function isValidUrl(input: string): boolean {
+function _isValidUrl(input: string): boolean {
   try {
     const url = new URL(input)
     return url.protocol === "http:" || url.protocol === "https:"

@@ -5,7 +5,7 @@ import pool from "@/lib/database/db"
 import { billingVerificationCodeEmail, sendEmail } from "@/lib/email/email"
 
 // POST /api/v2/billing/verify/send - Send billing verification code
-export async function POST(request: NextRequest) {
+export async function POST(_request: NextRequest) {
   const session = await getSession()
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })

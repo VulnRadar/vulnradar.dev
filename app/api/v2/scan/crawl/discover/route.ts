@@ -32,7 +32,7 @@ async function safeReadBody(response: Response, maxBytes: number): Promise<strin
 export async function POST(request: NextRequest) {
   // Allow either session-based auth or API key (Bearer)
   let userId: number | null = null
-  let isApiKeyAuth = false
+  let _isApiKeyAuth = false
 
   const session = await getSession()
   if (session) {

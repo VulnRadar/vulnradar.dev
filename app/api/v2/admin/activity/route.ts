@@ -58,7 +58,7 @@ export async function POST(request: NextRequest) {
 }
 
 // GET - Fetch all active staff members
-export async function GET(request: NextRequest) {
+export async function GET(_request: NextRequest) {
   try {
     const session = await getSession()
     if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })

@@ -130,7 +130,7 @@ function extractRootDomain(hostname: string): string {
 export async function POST(request: NextRequest) {
   try {
     let userId: number | null = null
-    let isApiKeyAuth = false
+    let _isApiKeyAuth = false
 
     // Try session auth first
     const session = await getSession()

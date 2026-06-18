@@ -252,7 +252,7 @@ export async function GET(request: NextRequest) {
 // Moderator: disable/enable, revoke_sessions, revoke_api_keys, delete_scans, clear_rate_limits, verify_email, add_note, clear_avatar
 // Support: view only (no PATCH actions)
 function canPerformAction(role: string, action: string): boolean {
-  const adminOnly = [
+  const _adminOnly = [
     "make_admin", "remove_admin", "set_role", "delete", "reset_password", 
     "award_badge", "revoke_badge", "create_badge", "delete_badge",
     "update_email", "update_plan",

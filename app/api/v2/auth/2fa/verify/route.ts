@@ -8,7 +8,6 @@ import { ApiResponse, parseBody, Validate, withErrorHandling } from "@/lib/api/a
 import { getClientIp, getUserAgent } from "@/lib/api/request-utils"
 import {
   AUTH_2FA_PENDING_COOKIE,
-  AUTH_2FA_PENDING_MAX_AGE,
   DEVICE_TRUST_COOKIE_NAME,
   DEVICE_TRUST_MAX_AGE,
   ERROR_MESSAGES,

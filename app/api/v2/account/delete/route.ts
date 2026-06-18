@@ -1,7 +1,7 @@
 import { getSession, destroySession } from "@/lib/auth"
 import pool from "@/lib/database/db"
 import { ApiResponse, withErrorHandling } from "@/lib/api/api-utils"
-import { ERROR_MESSAGES, SUCCESS_MESSAGES } from "@/lib/config/constants"
+import { ERROR_MESSAGES } from "@/lib/config/constants"
 
 export const POST = withErrorHandling(async () => {
   const session = await getSession()

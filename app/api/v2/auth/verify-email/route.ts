@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import pool from "@/lib/database/db"
 import { ApiResponse, parseBody, withErrorHandling } from "@/lib/api/api-utils"
-import { SUCCESS_MESSAGES, ERROR_MESSAGES } from "@/lib/config/constants"
+import { SUCCESS_MESSAGES } from "@/lib/config/constants"
 
 export const POST = withErrorHandling(async (request: NextRequest) => {
   const parsed = await parseBody<{ token: string }>(request)
