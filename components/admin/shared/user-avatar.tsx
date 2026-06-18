@@ -1,3 +1,4 @@
+import Image from "next/image"
 import { cn } from "@/lib/ui/utils"
 import { AVATAR_COLORS, getAvatarColorIndex } from "../utils"
 
@@ -23,11 +24,13 @@ export function UserAvatar({ name, email, size = "md", avatarUrl }: UserAvatarPr
   
   if (avatarUrl) {
     return (
-      <img 
-        src={avatarUrl} 
-        alt={name || email} 
-        loading="lazy" 
-        className={cn("rounded-full object-cover shrink-0", sizeClasses[size])} 
+      <Image
+        src={avatarUrl}
+        alt={name || email}
+        width={48}
+        height={48}
+        loading="lazy"
+        className={cn("rounded-full object-cover shrink-0", sizeClasses[size])}
       />
     )
   }

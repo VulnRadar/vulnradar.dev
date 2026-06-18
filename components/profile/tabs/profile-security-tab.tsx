@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import Image from "next/image"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -373,7 +374,7 @@ export function ProfileSecurityTab(props: ProfileTabProps) {
                       <div className="flex flex-col gap-3 p-4 rounded-lg bg-secondary/30 border border-border">
                         <p className="text-sm font-medium">1. Scan this QR code with your authenticator app:</p>
                         <div className="flex justify-center p-4 bg-background rounded-lg border border-border">
-                          <img src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(totpUri)}`} alt="2FA QR Code" className="w-[200px] h-[200px]" crossOrigin="anonymous" />
+                          <Image src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(totpUri)}`} alt="2FA QR Code" width={200} height={200} className="w-[200px] h-[200px]" unoptimized />
                         </div>
                         <p className="text-sm text-muted-foreground">Or enter this secret manually:</p>
                         <code className="text-xs bg-card border border-border px-3 py-2 rounded font-mono text-primary break-all select-all">{totpSecret}</code>

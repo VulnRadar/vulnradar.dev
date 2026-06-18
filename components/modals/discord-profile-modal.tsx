@@ -9,7 +9,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Checkbox } from "@/components/ui/checkbox"
-import { Check, Loader2, Image, User, Mail } from "lucide-react"
+import { Check, Loader2, Image as ImageIcon, User, Mail } from "lucide-react"
 import { cn } from "@/lib/ui/utils"
 
 const AUTH_UPDATE_ENDPOINT = "/api/v2/auth/update"
@@ -154,7 +154,7 @@ export function DiscordProfileModal() {
                   className="data-[state=checked]:bg-[#5865F2] data-[state=checked]:border-[#5865F2]"
                 />
                 <div className="flex items-center justify-center h-9 w-9 rounded-lg bg-muted shrink-0">
-                  <Image className="h-4 w-4 text-muted-foreground" />
+                  <ImageIcon className="h-4 w-4 text-muted-foreground" />
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium text-foreground">Profile Picture</p>

@@ -1,6 +1,7 @@
 "use client"
 
 import React, { useState, useRef, useEffect } from "react"
+import Image from "next/image"
 import {
   UserCog,
   Award,
@@ -159,7 +160,7 @@ export function ProfileGeneralTab({
                 <div className="relative group">
                   <div className="h-16 w-16 rounded-full border-2 border-border bg-secondary/40 flex items-center justify-center overflow-hidden">
                     {user?.avatarUrl ? (
-                      <img src={user.avatarUrl} alt="Profile" className="h-full w-full object-cover" />
+                      <Image src={user.avatarUrl} alt="Profile" width={64} height={64} className="h-full w-full object-cover" />
                     ) : (
                       <span className="text-xl font-bold text-muted-foreground">
                         {user?.name?.charAt(0)?.toUpperCase() || user?.email?.charAt(0)?.toUpperCase() || "?"}

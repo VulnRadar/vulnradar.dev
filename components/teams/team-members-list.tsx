@@ -1,5 +1,6 @@
 "use client"
 
+import Image from "next/image"
 import { Eye, Loader2, MoreHorizontal, X, Trash2, Mail } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
@@ -52,9 +53,11 @@ export function TeamMembersList({
                     className="flex items-center gap-3 px-5 py-3 hover:bg-muted/30 transition-colors group"
                   >
                     {m.avatar_url ? (
-                      <img
+                      <Image
                         src={m.avatar_url}
                         alt=""
+                        width={36}
+                        height={36}
                         loading="lazy"
                         className="w-9 h-9 rounded-full object-cover shrink-0"
                       />
