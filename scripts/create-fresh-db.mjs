@@ -236,6 +236,7 @@ async function copyTableData(originalPool, newPool, table, rowCount) {
   const jsonCols = new Set(JSON_COLUMNS[table] || []);
 
   let inserted = 0;
+  let skipped = 0;
   for (const row of rows.rows) {
     const values = [
       ...targetNames.map((t) => {
@@ -263,17 +264,41 @@ async function copyTableData(originalPool, newPool, table, rowCount) {
       ...extraVals,
     ];
     try {
+      // ON CONFLICT (id) DO UPDATE ensures the row uses the exact source id.
+      // Without a target, ON CONFLICT DO NOTHING can silently skip rows on
+      // non-PK unique constraints (e.g. badges.name) and the count lies.
       await newPool.query(
         `INSERT INTO "${table}" (${colList}) VALUES (${placeholders})
-         ON CONFLICT DO NOTHING`,
+         ON CONFLICT (id) DO UPDATE SET ${allCols
+           .filter((c) => c !== "id")
+           .map((c, i) => `"${c}" = $${i + 2}`)
+           .join(", ")}`,
         values,
       );
       inserted++;
     } catch (err) {
-      warn(`  Row insert failed in ${table}: ${err.message}`);
+      // FK violation: source has orphaned references (e.g. user_badges
+      // pointing at a badge_id that no longer exists). Log the row and skip.
+      skipped++;
+      const msg = err.message || "";
+      if (msg.includes("foreign key")) {
+        const fkMatch = msg.match(/"([^"]+)"/g);
+        const fkHint = fkMatch ? ` (${fkMatch.join(", ")})` : "";
+        warn(
+          `  Skipped ${table} row (FK violation${fkHint}): ${JSON.stringify(row).slice(0, 120)}`,
+        );
+      } else {
+        warn(`  Row insert failed in ${table}: ${msg}`);
+      }
     }
   }
-  success(`  ${table}: ${inserted}/${rowCount} rows copied`);
+  if (skipped > 0) {
+    success(
+      `  ${table}: ${inserted}/${rowCount} rows copied (${skipped} skipped due to source data issues)`,
+    );
+  } else {
+    success(`  ${table}: ${inserted}/${rowCount} rows copied`);
+  }
   return true;
 }
 
