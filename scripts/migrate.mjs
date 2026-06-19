@@ -38,6 +38,10 @@ import {
   connect,
   confirmIntro,
   requireDatabaseUrl,
+  parseDbUrl,
+  formatDbTarget,
+  buildConnectionString,
+  chooseDatabase,
   ROOT,
 } from "./_lib.mjs";
 
@@ -502,10 +506,16 @@ async function main() {
   loadEnv();
   requireDatabaseUrl();
 
+  const sourceParsed = parseDbUrl(process.env.DATABASE_URL);
+  if (!sourceParsed) {
+    error("Could not parse DATABASE_URL.");
+    process.exit(1);
+  }
+
   const ok = await confirmIntro({
     title: `VulnRadar ${meta.version} — Database Migration`,
     tagline: "Compares live schema to instrumentation.ts and applies the diff.",
-    target: process.env.DATABASE_URL,
+    target: formatDbTarget(sourceParsed),
     steps: [
       "Connect to the database and read every table/column",
       "Detect v1 -> v2 drift and offer the upgrade path",
@@ -524,12 +534,25 @@ async function main() {
     return;
   }
 
+  // Let the user pick which database to migrate (lists all on the host)
+  const chosenDb = await chooseDatabase(sourceParsed, {
+    currentDb: sourceParsed.database,
+    prompt: "Which database to migrate",
+  });
+  if (chosenDb !== sourceParsed.database) {
+    process.env.DATABASE_URL = buildConnectionString(sourceParsed, chosenDb);
+  }
+  success(
+    `Target: ${c.bold}${chosenDb}${c.reset} on ${c.cyan}${sourceParsed.host}:${sourceParsed.port}${c.reset}`,
+  );
+  log("");
+
   const pool = createPool();
   if (!(await connect(pool))) {
     await pool.end();
     process.exit(1);
   }
-  success("Connected to database.");
+  success("Connected.");
 
   log("");
   info("Reading actual database schema...");
