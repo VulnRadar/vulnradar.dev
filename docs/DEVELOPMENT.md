@@ -48,8 +48,8 @@ UPDATE users SET role = 'admin' WHERE email = 'you@example.com';
 | `npm run lint`      | Run ESLint over the repo (no `--fix`)            |
 | `npm run lint:fix`  | Run ESLint with `--fix` (auto-fixes where safe)  |
 | `npm run typecheck` | Run `tsc --noEmit` (build-time typecheck)        |
-| `npm run migrate`   | Run `scripts/migrate.mjs` (ad-hoc DB migrations) |
-| `npm run new-db`    | Drop and recreate the database schema            |
+| `npm run db:migrate` | Run `scripts/migrate.mjs` (ad-hoc DB migrations) |
+| `npm run db:create`  | Drop and recreate the database schema            |
 
 ## Linting
 
@@ -134,7 +134,7 @@ Examples:
 2. **Adding a new API route** — copy an existing one in `app/api/v2/.../route.ts`;
    wrap with `withErrorHandling`, use `parseBody` + `Validate` for input.
 3. **Adding a database table** — add the `CREATE TABLE` to `scripts/create-fresh-db.mjs`
-   (idempotent) and run `npm run new-db` to test.
+   (idempotent) and run `npm run db:create` to test.
 4. **Adding a new icon** — import from `lucide-react`. Don't bundle from a different lib.
 5. **Adding a constant** — if it's a value (not a path or URL), add it to
    `config-values.ts` rather than a magic number in the code.

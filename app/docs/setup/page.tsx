@@ -623,7 +623,7 @@ APP_PORT=3000`}
           <p className="text-sm text-muted-foreground mb-3">
             After pulling a new version:
           </p>
-          <CodeBlock code="npm run migrate" language="bash" />
+          <CodeBlock code="npm run db:migrate" language="bash" />
           <p className="text-sm text-muted-foreground mt-4 mb-3">
             The tool will:
           </p>

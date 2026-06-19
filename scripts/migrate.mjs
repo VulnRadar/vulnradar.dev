@@ -834,7 +834,7 @@ async function main() {
       log("");
       log(`${c.cyan}${c.bold}RECOMMENDATION:${c.reset}`);
       log(
-        `${c.cyan}For v1 databases, we recommend using ${c.bold}npm run new-db${c.reset}${c.cyan} instead.${c.reset}`,
+        `${c.cyan}For v1 databases, we recommend using ${c.bold}npm run db:create${c.reset}${c.cyan} instead.${c.reset}`,
       );
       log(
         `${c.cyan}This creates a fresh database with the latest schema and is safer${c.reset}`,
@@ -856,7 +856,7 @@ async function main() {
       );
       if (!continueAnyway) {
         log("");
-        info("Migration cancelled. Run 'npm run new-db' for a fresh install.");
+        info("Migration cancelled. Run 'npm run db:create' for a fresh install.");
         await pool.end();
         return;
       }

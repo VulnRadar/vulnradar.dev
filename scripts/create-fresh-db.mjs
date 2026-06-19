@@ -7,7 +7,7 @@
  * from the original database. Never touches or erases the original DB.
  *
  * Usage:
- *   npm run new-db
+ *   npm run db:create
  *   node scripts/create-fresh-db.mjs
  *
  * Requires DATABASE_URL in .env.local or as an environment variable.

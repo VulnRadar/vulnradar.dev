@@ -82,7 +82,7 @@ See [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) for:
 
 - Prerequisites (Node 20+, PostgreSQL 14+)
 - Local setup (`npm install`, `.env`, `npm run dev`)
-- Scripts (`dev`, `build`, `lint`, `lint:fix`, `typecheck`, `migrate`, `new-db`)
+- Scripts (`dev`, `build`, `lint`, `lint:fix`, `typecheck`, `db:migrate`, `db:create`)
 - Linting & formatting (ESLint 9 + flat config)
 - Commit conventions
 - Pull request process
