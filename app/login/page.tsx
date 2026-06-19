@@ -116,7 +116,7 @@ function LoginPageContent() {
                 redirectTo={redirectTo}
                 userId={pendingUserId}
                 method={twoFactorMethod}
-                maskedEmail={maskedEmail}
+                _maskedEmail={maskedEmail}
                 isDiscordAuth={isDiscord2FA}
               />
             ) : (
