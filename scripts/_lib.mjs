@@ -166,10 +166,125 @@ export function parseDbUrl(url) {
   };
 }
 
-export function summariseDbUrl(url) {
-  const parsed = parseDbUrl(url);
-  if (!parsed) return url;
-  return `${parsed.user}@${parsed.host}:${parsed.port}/${parsed.database}`;
+/**
+ * Build a connection string from a parsed DB object, optionally overriding the
+ * database name. Used to spin up an admin pool against the `postgres` database
+ * for things like CREATE DATABASE or listing databases.
+ */
+export function buildConnectionString(parsed, database) {
+  const db = database ?? parsed.database;
+  const port = parsed.port || "5432";
+  return `postgresql://${parsed.user}:${parsed.password}@${parsed.host}:${port}/${db}`;
+}
+
+/**
+ * Pretty-print a parsed DB for human display. NEVER includes the password.
+ */
+export function formatDbTarget(parsed) {
+  if (!parsed) return null;
+  const port = parsed.port || "5432";
+  return `${parsed.user}@${parsed.host}:${port}/${parsed.database}`;
+}
+
+/**
+ * Connect to the `postgres` admin database and list every non-template database
+ * on the same host. Returns an array of { name, sizeBytes, owner }.
+ */
+export async function listDatabases(parsed) {
+  const adminUrl = buildConnectionString(parsed, "postgres");
+  const pool = new pg.Pool({
+    connectionString: adminUrl,
+    connectionTimeoutMillis: 10000,
+    statement_timeout: 10000,
+  });
+  try {
+    const res = await pool.query(`
+      SELECT
+        d.datname AS name,
+        pg_database_size(d.datname) AS size_bytes,
+        pg_catalog.pg_get_userbyid(d.datdba) AS owner,
+        d.datistemplate AS is_template
+      FROM pg_database d
+      WHERE d.datistemplate = false
+      ORDER BY d.datname
+    `);
+    return res.rows
+      .filter((r) => !r.is_template)
+      .map((r) => ({
+        name: r.name,
+        sizeBytes: Number(r.size_bytes),
+        owner: r.owner,
+      }));
+  } finally {
+    await pool.end();
+  }
+}
+
+/**
+ * Show a numbered list of databases on the same host and let the user pick.
+ * Accepts a free-text answer to allow custom database names. Returns the
+ * chosen database name. If the user picks the current database, returns it
+ * unchanged.
+ */
+export async function chooseDatabase(parsed, options = {}) {
+  const {
+    currentDb = parsed.database,
+    prompt = "Which database",
+    excludeCurrent = false,
+    allowCustom = true,
+  } = options;
+
+  const dbs = await listDatabases(parsed);
+  const choices = excludeCurrent
+    ? dbs.filter((d) => d.name !== currentDb)
+    : dbs;
+
+  log("");
+  log(
+    `  ${c.bold}Databases on ${c.cyan}${parsed.host}:${parsed.port}${c.reset}:${c.reset}`,
+  );
+  for (let i = 0; i < choices.length; i++) {
+    const d = choices[i];
+    const isCurrent = d.name === currentDb;
+    const marker = isCurrent ? `${c.green}*${c.reset}` : " ";
+    const sizeStr = formatBytes(d.sizeBytes);
+    log(
+      `    ${marker} ${c.bold}${String(i + 1).padStart(2)}${c.reset}. ${d.name} ${c.dim}(${sizeStr})${c.reset}`,
+    );
+  }
+  if (allowCustom) {
+    log(`     ${c.dim} 0.  Enter a custom database name${c.reset}`);
+  }
+  if (currentDb) {
+    log("");
+    log(`  ${c.dim}* = current (${currentDb})${c.reset}`);
+  }
+  log("");
+
+  while (true) {
+    const raw = await rawQuestion(
+      `${c.cyan}?${c.reset} ${prompt} ${c.dim}[1-${choices.length}${allowCustom ? " or 0" : ""}]${c.reset} `,
+    );
+    const trimmed = raw.trim();
+
+    if (trimmed === "" && currentDb) {
+      return currentDb;
+    }
+
+    if (
+      allowCustom &&
+      (trimmed === "0" || trimmed.toLowerCase() === "custom")
+    ) {
+      return await ask("Enter database name");
+    }
+
+    const n = Number(trimmed);
+    if (Number.isInteger(n) && n >= 1 && n <= choices.length) {
+      return choices[n - 1].name;
+    }
+
+    warn("Invalid selection. Try again.");
+  }
 }
 
 // ── Pool factory (safe timeouts, friendly errors) ──────────────────────────

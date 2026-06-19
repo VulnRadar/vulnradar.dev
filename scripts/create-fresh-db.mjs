@@ -39,7 +39,9 @@ import {
   createPool,
   connect,
   parseDbUrl,
-  summariseDbUrl,
+  formatDbTarget,
+  buildConnectionString,
+  chooseDatabase,
   getDatabaseSummary,
   confirmIntro,
   requireDatabaseUrl,
@@ -304,10 +306,10 @@ async function main() {
   const ok = await confirmIntro({
     title: `VulnRadar ${meta.version} — Create New Database`,
     tagline: "Creates a NEW database, leaves the original untouched.",
-    target: summariseDbUrl(process.env.DATABASE_URL),
+    target: formatDbTarget(sourceParsed),
     steps: [
-      `Connect to source database ${c.bold}${sourceParsed.database}${c.reset} on ${c.bold}${sourceParsed.host}${c.reset}`,
-      `Ask for a target database name (default: ${c.bold}${sourceParsed.database}_v2${c.reset})`,
+      "Let you pick which database to copy FROM",
+      "Ask for a name for the NEW database",
       "Create the target database via the postgres admin connection",
       "Apply the schema from instrumentation.ts",
       "Seed default badges",
@@ -323,6 +325,22 @@ async function main() {
     info("Cancelled.");
     return;
   }
+
+  // Let the user pick which database to copy FROM
+  const chosenSource = await chooseDatabase(sourceParsed, {
+    currentDb: sourceParsed.database,
+    prompt: "Which database to copy FROM",
+  });
+  if (chosenSource !== sourceParsed.database) {
+    process.env.DATABASE_URL = buildConnectionString(
+      sourceParsed,
+      chosenSource,
+    );
+  }
+  success(
+    `Source: ${c.bold}${chosenSource}${c.reset} on ${c.cyan}${sourceParsed.host}:${sourceParsed.port}${c.reset}`,
+  );
+  log("");
 
   info("Connecting to source database...");
   const sourcePool = createPool();
@@ -347,13 +365,13 @@ async function main() {
   }
   log("");
 
-  const defaultNewName = `${sourceParsed.database}_v2`;
+  const defaultNewName = `${chosenSource}_v2`;
   const newDbName = await ask(
     "Enter name for the NEW database",
     defaultNewName,
   );
-  if (newDbName === sourceParsed.database) {
-    error("New database name cannot be the same as the original.");
+  if (newDbName === chosenSource) {
+    error("New database name cannot be the same as the source.");
     await sourcePool.end();
     process.exit(1);
   }
