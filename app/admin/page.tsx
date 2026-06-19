@@ -63,6 +63,8 @@ import type {
   AuditEntry,
   ActiveAdmin,
   BadgeDef,
+  Team,
+  TeamMember,
 } from "@/components/admin/types";
 import {
   UserAvatar,
@@ -87,19 +89,8 @@ type ActiveTab =
   | "broadcast";
 
 type TeamMembersState = {
-  team: {
-    id: number;
-    name: string;
-    owner_email: string;
-    owner_name: string | null;
-  };
-  members: {
-    user_id: number;
-    role: string;
-    email: string;
-    name: string | null;
-    avatar_url: string | null;
-  }[];
+  team: Team;
+  members: TeamMember[];
 };
 
 export default function AdminPage() {
@@ -579,11 +570,12 @@ function AdminContent() {
     },
   ];
 
-  const ALL_ADMIN_TABS = NAV_GROUPS.flatMap((g) => g.items) as unknown as {
-    key: string;
-    label: string;
-    icon: LucideIcon;
-  }[];
+  const ALL_ADMIN_TABS: { key: string; label: string; icon: LucideIcon }[] =
+    NAV_GROUPS.flatMap((g) => g.items) as Array<{
+      key: string;
+      label: string;
+      icon: LucideIcon;
+    }>;
 
   const handleTabChange = (tabKey: string) => {
     setActiveTab(tabKey as typeof activeTab);
@@ -783,7 +775,12 @@ function AdminContent() {
                           id: b.id,
                           name: b.name,
                           display_name: b.display_name,
+                          description: b.description,
+                          icon: b.icon,
                           color: b.color,
+                          priority: b.priority,
+                          is_limited: b.is_limited,
+                          image_url: null,
                           awarded_at: new Date().toISOString(),
                         }));
                       const kept = prev.badges.filter(

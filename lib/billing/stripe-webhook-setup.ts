@@ -1,7 +1,12 @@
-﻿import "server-only";
+import "server-only";
 
+import type Stripe from "stripe";
 import { stripe } from "./stripe";
 import { BILLING_ENABLED } from "@/lib/config/constants";
+
+type WebhookEvent = Parameters<
+  Stripe["webhookEndpoints"]["create"]
+>[0]["enabled_events"][number];
 
 // Events we need for billing
 const REQUIRED_EVENTS = [
@@ -64,7 +69,7 @@ export async function ensureStripeWebhook(): Promise<{
       // Webhook already exists - check if it has all required events
       const hasAllEvents = REQUIRED_EVENTS.every((event) =>
         existingWebhook.enabled_events?.includes(
-          event as Stripe.WebhookEndpoint["EnabledEvent"],
+          event as WebhookEvent,
         ),
       );
 
@@ -79,7 +84,7 @@ export async function ensureStripeWebhook(): Promise<{
       // Update webhook to include all required events
       const updated = await stripe.webhookEndpoints.update(existingWebhook.id, {
         enabled_events:
-          REQUIRED_EVENTS as unknown as Stripe.WebhookEndpoint["EnabledEvent"][],
+          REQUIRED_EVENTS as unknown as WebhookEvent[],
       });
 
       return {
@@ -93,7 +98,7 @@ export async function ensureStripeWebhook(): Promise<{
     const newWebhook = await stripe.webhookEndpoints.create({
       url: webhookUrl,
       enabled_events:
-        REQUIRED_EVENTS as unknown as Stripe.WebhookEndpoint["EnabledEvent"][],
+        REQUIRED_EVENTS as unknown as WebhookEvent[],
       description: `VulnRadar billing webhook - auto-created for ${appUrl}`,
     });
 
@@ -128,3 +133,4 @@ export function ensureStripeWebhookOnce(): Promise<{
 
 // Type import for Stripe
 import type Stripe from "stripe";
+

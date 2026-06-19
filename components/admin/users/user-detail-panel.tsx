@@ -127,9 +127,13 @@ export function UserDetailPanel({
   const unawardedBadges = allBadges.filter((b) => !awardedIds.has(b.id));
 
   // Pending changes state - batch all changes and save together
-  const [pendingChanges, setPendingChanges] = useState<Record<string, unknown>>(
-    {},
-  );
+  interface PendingAdminChanges {
+    name?: string;
+    email?: string;
+    plan?: string;
+    role?: string;
+  }
+  const [pendingChanges, setPendingChanges] = useState<PendingAdminChanges>({});
   const [pendingBadgeAwards, setPendingBadgeAwards] = useState<number[]>([]);
   const [pendingBadgeRevokes, setPendingBadgeRevokes] = useState<number[]>([]);
   const [accountEditMode, setAccountEditMode] = useState(false);
@@ -246,8 +250,8 @@ export function UserDetailPanel({
 
   // Add a change to pending
   const addPendingChange = (
-    key: string,
-    value: unknown,
+    key: keyof PendingAdminChanges,
+    value: string,
     originalValue: unknown,
   ) => {
     if (value === originalValue) {
