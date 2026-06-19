@@ -1,4 +1,4 @@
-import { SEVERITY_LEVELS } from "@/lib/config/constants"
+import { SEVERITY_LEVELS } from "@/lib/config/constants";
 
 // ════════════════════════════════════════════════════════════════════════════
 // SMART SAFETY RATING ENGINE
@@ -15,11 +15,11 @@ import { SEVERITY_LEVELS } from "@/lib/config/constants"
 //   3. INFORMATIONAL – Expected behavior, framework-specific, or trivial
 // ════════════════════════════════════════════════════════════════════════════
 
-export type SafetyRating = "safe" | "caution" | "unsafe"
+export type SafetyRating = "safe" | "caution" | "unsafe";
 
 interface Finding {
-  severity: string
-  title: string
+  severity: string;
+  title: string;
 }
 
 // ── TIER 1: Actively Exploitable Vulnerabilities ──────────────────────────
@@ -39,7 +39,7 @@ const exploitablePatterns = [
   "Unencrypted HTTP",
   "Mixed Content",
   "CORS Allows Any Origin with Credentials",
-]
+];
 
 // ── TIER 2: Hardening Recommendations ─────────────────────────────────────
 const hardeningPatterns = [
@@ -65,7 +65,7 @@ const hardeningPatterns = [
   "Excessive Permissions",
   "Cookie",
   "Autocomplete",
-]
+];
 
 // ── TIER 3: Always Informational ──────────────────────────────────────────
 const alwaysInfoPatterns = [
@@ -91,57 +91,64 @@ const alwaysInfoPatterns = [
   "document.write",
   "Preconnect",
   "Input.*maxlength",
-]
+];
 
 const matchesAny = (title: string, patterns: string[]) =>
   patterns.some((p) => {
     try {
-      return new RegExp(p, "i").test(title)
+      return new RegExp(p, "i").test(title);
     } catch {
-      return title.toLowerCase().includes(p.toLowerCase())
+      return title.toLowerCase().includes(p.toLowerCase());
     }
-  })
+  });
 
 export function getSafetyRating(findings: Finding[]): SafetyRating {
-  const exploitable: Finding[] = []
-  const hardening: Finding[] = []
+  const exploitable: Finding[] = [];
+  const hardening: Finding[] = [];
 
   for (const f of findings) {
-    if (f.severity === SEVERITY_LEVELS.INFO) continue
-    if (matchesAny(f.title, alwaysInfoPatterns)) continue
+    if (f.severity === SEVERITY_LEVELS.INFO) continue;
+    if (matchesAny(f.title, alwaysInfoPatterns)) continue;
 
     if (matchesAny(f.title, exploitablePatterns)) {
-      exploitable.push(f)
+      exploitable.push(f);
     } else if (matchesAny(f.title, hardeningPatterns)) {
-      hardening.push(f)
+      hardening.push(f);
     } else {
       if (f.severity === SEVERITY_LEVELS.CRITICAL) {
-        exploitable.push(f)
+        exploitable.push(f);
       } else if (f.severity === SEVERITY_LEVELS.HIGH) {
-        hardening.push(f)
+        hardening.push(f);
       }
     }
   }
 
   // ANY critical exploitable = UNSAFE
-  if (exploitable.some((f) => f.severity === SEVERITY_LEVELS.CRITICAL)) return "unsafe"
+  if (exploitable.some((f) => f.severity === SEVERITY_LEVELS.CRITICAL))
+    return "unsafe";
 
   // Multiple HIGH exploitable (2+) = UNSAFE
-  const highExploits = exploitable.filter((f) => f.severity === SEVERITY_LEVELS.HIGH)
-  if (highExploits.length >= 2) return "unsafe"
+  const highExploits = exploitable.filter(
+    (f) => f.severity === SEVERITY_LEVELS.HIGH,
+  );
+  if (highExploits.length >= 2) return "unsafe";
 
   // Single HIGH exploitable = CAUTION
-  if (highExploits.length === 1) return "caution"
+  if (highExploits.length === 1) return "caution";
 
   // Medium exploitable (3+) = CAUTION
-  const mediumExploits = exploitable.filter((f) => f.severity === SEVERITY_LEVELS.MEDIUM)
-  if (mediumExploits.length >= 3) return "caution"
+  const mediumExploits = exploitable.filter(
+    (f) => f.severity === SEVERITY_LEVELS.MEDIUM,
+  );
+  if (mediumExploits.length >= 3) return "caution";
 
   // Many high hardening issues = CAUTION at most
   const highHardening = hardening.filter(
-    (f) => f.severity === SEVERITY_LEVELS.HIGH || f.severity === SEVERITY_LEVELS.CRITICAL,
-  )
-  if (highHardening.length >= 5) return "caution"
+    (f) =>
+      f.severity === SEVERITY_LEVELS.HIGH ||
+      f.severity === SEVERITY_LEVELS.CRITICAL,
+  );
+  if (highHardening.length >= 5) return "caution";
 
-  return "safe"
+  return "safe";
 }

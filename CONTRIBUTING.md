@@ -12,14 +12,14 @@ npm run dev
 
 ## Scripts
 
-| Script | Purpose |
-| --- | --- |
-| `npm run dev` | Start dev server |
-| `npm run build` | Production build |
-| `npm run lint` | Run ESLint |
-| `npm run lint:fix` | Run ESLint with `--fix` |
-| `npm run typecheck` | Run `tsc --noEmit` |
-| `npm run format` | Format with Prettier |
+| Script              | Purpose                 |
+| ------------------- | ----------------------- |
+| `npm run dev`       | Start dev server        |
+| `npm run build`     | Production build        |
+| `npm run lint`      | Run ESLint              |
+| `npm run lint:fix`  | Run ESLint with `--fix` |
+| `npm run typecheck` | Run `tsc --noEmit`      |
+| `npm run format`    | Format with Prettier    |
 
 ## Commit signing
 

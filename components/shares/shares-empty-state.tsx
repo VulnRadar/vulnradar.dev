@@ -1,7 +1,7 @@
-import Link from "next/link"
-import { Share2, Shield } from "lucide-react"
-import { Button } from "@/components/ui/button"
-import { Card } from "@/components/ui/card"
+import Link from "next/link";
+import { Share2, Shield } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 
 export function SharesEmptyState() {
   return (
@@ -10,9 +10,12 @@ export function SharesEmptyState() {
         <Share2 className="h-6 w-6 text-muted-foreground/50" />
       </div>
       <div>
-        <h3 className="text-base font-semibold text-foreground mb-1">No active shares</h3>
+        <h3 className="text-base font-semibold text-foreground mb-1">
+          No active shares
+        </h3>
         <p className="text-sm text-muted-foreground max-w-sm">
-          Start sharing scan results from your history to make them available to others.
+          Start sharing scan results from your history to make them available to
+          others.
         </p>
       </div>
       <Link href="/history">
@@ -22,5 +25,5 @@ export function SharesEmptyState() {
         </Button>
       </Link>
     </Card>
-  )
+  );
 }

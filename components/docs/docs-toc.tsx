@@ -1,15 +1,15 @@
-"use client"
+"use client";
 
-import { cn } from "@/lib/ui/utils"
-import type { TocItem } from "./docs-types"
+import { cn } from "@/lib/ui/utils";
+import type { TocItem } from "./docs-types";
 
 interface DocsTocProps {
-  items: TocItem[]
-  activeSection: string
+  items: TocItem[];
+  activeSection: string;
 }
 
 export function DocsToc({ items, activeSection }: DocsTocProps) {
-  if (items.length === 0) return null
+  if (items.length === 0) return null;
 
   return (
     <aside className="hidden xl:block w-56 flex-shrink-0">
@@ -27,7 +27,7 @@ export function DocsToc({ items, activeSection }: DocsTocProps) {
                 item.level === 2 && "pl-6",
                 activeSection === item.id
                   ? "text-primary font-medium border-primary"
-                  : "text-muted-foreground hover:text-foreground border-transparent hover:border-border"
+                  : "text-muted-foreground hover:text-foreground border-transparent hover:border-border",
               )}
             >
               {item.label}
@@ -36,5 +36,5 @@ export function DocsToc({ items, activeSection }: DocsTocProps) {
         </nav>
       </div>
     </aside>
-  )
+  );
 }

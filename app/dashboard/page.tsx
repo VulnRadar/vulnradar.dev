@@ -1,38 +1,51 @@
-"use client"
+"use client";
 
-import { useState, useCallback, useEffect, Suspense, useRef } from "react"
-import { useSearchParams } from "next/navigation"
-import dynamic from "next/dynamic"
-import { Header } from "@/components/scanner/header"
-import { ScanForm, type ScanMode } from "@/components/scanner/scan-form"
-import { ScanningIndicator } from "@/components/scanner/scanning-indicator"
-import { Dashboard } from "@/components/scanner/dashboard"
-import { Footer } from "@/components/scanner/footer"
-import { DashboardErrorState } from "@/components/scanner/dashboard-error-state"
-import { DashboardBulkResult } from "@/components/scanner/dashboard-bulk-result"
-import { DashboardResults } from "@/components/scanner/dashboard-results"
-import { CrawlUrlSelector } from "@/components/scanner/crawl-url-selector"
+import { useState, useCallback, useEffect, Suspense, useRef } from "react";
+import { useSearchParams } from "next/navigation";
+import dynamic from "next/dynamic";
+import { Header } from "@/components/scanner/header";
+import { ScanForm, type ScanMode } from "@/components/scanner/scan-form";
+import { ScanningIndicator } from "@/components/scanner/scanning-indicator";
+import { Dashboard } from "@/components/scanner/dashboard";
+import { Footer } from "@/components/scanner/footer";
+import { DashboardErrorState } from "@/components/scanner/dashboard-error-state";
+import { DashboardBulkResult } from "@/components/scanner/dashboard-bulk-result";
+import { DashboardResults } from "@/components/scanner/dashboard-results";
+import { CrawlUrlSelector } from "@/components/scanner/crawl-url-selector";
 
-const OnboardingTour = dynamic(() => import("@/components/shared/onboarding-tour").then(m => ({ default: m.OnboardingTour })), { ssr: false })
-import type { ScanResult, ScanStatus, Vulnerability } from "@/lib/scanner/types"
-import { DEFAULT_SCAN_NOTE } from "@/lib/config/constants"
-import { API } from "@/lib/config/client-constants"
-import { Loader2 as Loader2Icon } from "lucide-react"
-import { PremiumUpgradeModal, PREMIUM_FEATURES } from "@/components/modals/premium-upgrade-modal"
-import { useAuth } from "@/components/providers/auth-provider"
+const OnboardingTour = dynamic(
+  () =>
+    import("@/components/shared/onboarding-tour").then((m) => ({
+      default: m.OnboardingTour,
+    })),
+  { ssr: false },
+);
+import type {
+  ScanResult,
+  ScanStatus,
+  Vulnerability,
+} from "@/lib/scanner/types";
+import { DEFAULT_SCAN_NOTE } from "@/lib/config/constants";
+import { API } from "@/lib/config/client-constants";
+import { Loader2 as Loader2Icon } from "lucide-react";
+import {
+  PremiumUpgradeModal,
+  PREMIUM_FEATURES,
+} from "@/components/modals/premium-upgrade-modal";
+import { useAuth } from "@/components/providers/auth-provider";
 
 interface CrawlPageData {
-  url: string
-  findings: Vulnerability[]
-  findings_count: number
-  summary: Record<string, number>
-  duration: number
+  url: string;
+  findings: Vulnerability[];
+  findings_count: number;
+  summary: Record<string, number>;
+  duration: number;
 }
 
 interface CrawlInfo {
-  pagesDiscovered: number
-  pagesScanned: number
-  pages: CrawlPageData[]
+  pagesDiscovered: number;
+  pagesScanned: number;
+  pages: CrawlPageData[];
 }
 
 export default function DashboardPage() {
@@ -40,7 +53,7 @@ export default function DashboardPage() {
     <Suspense fallback={<DashboardLoading />}>
       <DashboardContent />
     </Suspense>
-  )
+  );
 }
 
 function DashboardLoading() {
@@ -55,262 +68,308 @@ function DashboardLoading() {
       </main>
       <Footer />
     </div>
-  )
+  );
 }
 
 function DashboardContent() {
-  const searchParams = useSearchParams()
-  const { me } = useAuth()
-  const runScanRef = useRef<((url: string, crawlUrls?: string[], scanners?: string[]) => Promise<void>) | null>(null)
-  const [status, setStatus] = useState<ScanStatus>("idle")
-  const [showLimitModal, setShowLimitModal] = useState(false)
-  const [result, setResult] = useState<ScanResult | null>(null)
-  const [scanHistoryId, setScanHistoryId] = useState<number | null>(null)
-  const [error, setError] = useState<string | null>(null)
-  const [errorDetails, setErrorDetails] = useState<string | null>(null)
-  const [selectedIssue, setSelectedIssue] = useState<Vulnerability | null>(null)
-  const [scanNotes, setScanNotes] = useState("")
-  const [crawlInfo, setCrawlInfo] = useState<CrawlInfo | null>(null)
-  const [crawlDiscoveryUrls, setCrawlDiscoveryUrls] = useState<string[]>([])
-  const [crawlDiscovering, setCrawlDiscovering] = useState(false)
-  const [showCrawlSelector, setShowCrawlSelector] = useState(false)
-  const [pendingCrawlUrl, setPendingCrawlUrl] = useState("")
-  const [pendingScanners, setPendingScanners] = useState<string[] | undefined>(undefined)
-  const [bulkStatus, setBulkStatus] = useState<"idle" | "scanning" | "done">("idle")
-  const [bulkProgress, setBulkProgress] = useState<{ current: number; total: number } | undefined>(undefined)
-  const [bulkResult, setBulkResult] = useState<{ total: number; successful: number; failed: number; skipped: number } | null>(null)
+  const searchParams = useSearchParams();
+  const { me } = useAuth();
+  const runScanRef = useRef<
+    | ((
+        url: string,
+        crawlUrls?: string[],
+        scanners?: string[],
+      ) => Promise<void>)
+    | null
+  >(null);
+  const [status, setStatus] = useState<ScanStatus>("idle");
+  const [showLimitModal, setShowLimitModal] = useState(false);
+  const [result, setResult] = useState<ScanResult | null>(null);
+  const [scanHistoryId, setScanHistoryId] = useState<number | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [errorDetails, setErrorDetails] = useState<string | null>(null);
+  const [selectedIssue, setSelectedIssue] = useState<Vulnerability | null>(
+    null,
+  );
+  const [scanNotes, setScanNotes] = useState("");
+  const [crawlInfo, setCrawlInfo] = useState<CrawlInfo | null>(null);
+  const [crawlDiscoveryUrls, setCrawlDiscoveryUrls] = useState<string[]>([]);
+  const [crawlDiscovering, setCrawlDiscovering] = useState(false);
+  const [showCrawlSelector, setShowCrawlSelector] = useState(false);
+  const [pendingCrawlUrl, setPendingCrawlUrl] = useState("");
+  const [pendingScanners, setPendingScanners] = useState<string[] | undefined>(
+    undefined,
+  );
+  const [bulkStatus, setBulkStatus] = useState<"idle" | "scanning" | "done">(
+    "idle",
+  );
+  const [bulkProgress, setBulkProgress] = useState<
+    { current: number; total: number } | undefined
+  >(undefined);
+  const [bulkResult, setBulkResult] = useState<{
+    total: number;
+    successful: number;
+    failed: number;
+    skipped: number;
+  } | null>(null);
 
   const updateUrlWithScan = useCallback((id: number | null) => {
-    if (typeof window === "undefined") return
+    if (typeof window === "undefined") return;
     if (id) {
-      window.history.pushState(null, "", `/dashboard#scan-${id}`)
+      window.history.pushState(null, "", `/dashboard#scan-${id}`);
     } else {
-      window.history.replaceState(null, "", "/dashboard")
+      window.history.replaceState(null, "", "/dashboard");
     }
-  }, [])
+  }, []);
 
   useEffect(() => {
-    if (typeof window === "undefined") return
-    let prevHash = window.location.hash
-    
+    if (typeof window === "undefined") return;
+    let prevHash = window.location.hash;
+
     const checkHash = () => {
-      const hash = window.location.hash
+      const hash = window.location.hash;
       if (prevHash.startsWith("#scan-") && !hash && status === "done") {
-        prevHash = hash
-        setStatus("idle")
-        setResult(null)
-    setScanHistoryId(null)
-    setError(null)
-    setErrorDetails(null)
-    setSelectedIssue(null)
-    setScanNotes("")
-        setCrawlInfo(null)
-        return
+        prevHash = hash;
+        setStatus("idle");
+        setResult(null);
+        setScanHistoryId(null);
+        setError(null);
+        setErrorDetails(null);
+        setSelectedIssue(null);
+        setScanNotes("");
+        setCrawlInfo(null);
+        return;
       }
       if (hash.startsWith("#scan-") && status === "idle") {
-        const id = hash.replace("#scan-", "")
+        const id = hash.replace("#scan-", "");
         if (id && !isNaN(parseInt(id, 10))) {
-          window.location.href = `/history#${id}`
+          window.location.href = `/history#${id}`;
         }
       }
-      prevHash = hash
-    }
-    
-    checkHash()
-    window.addEventListener("hashchange", checkHash)
-    return () => window.removeEventListener("hashchange", checkHash)
-  }, [status])
+      prevHash = hash;
+    };
+
+    checkHash();
+    window.addEventListener("hashchange", checkHash);
+    return () => window.removeEventListener("hashchange", checkHash);
+  }, [status]);
 
   async function handleSaveNotes(notes: string) {
-    if (!scanHistoryId) return
+    if (!scanHistoryId) return;
     try {
       const res = await fetch(`${API.HISTORY}/${scanHistoryId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ notes }),
-      })
-      if (res.ok) setScanNotes(notes)
-    } catch { /* ignore */ }
+      });
+      if (res.ok) setScanNotes(notes);
+    } catch {
+      /* ignore */
+    }
   }
 
-  const handleScan = useCallback(async (url: string, mode: ScanMode = "quick", scanners?: string[], protocol?: string) => {
-    setPendingScanners(scanners)
-    if (mode === "deep" && (!protocol || protocol.startsWith("http"))) {
-      setPendingCrawlUrl(url)
-      setShowCrawlSelector(true)
-      setCrawlDiscovering(true)
-      setCrawlDiscoveryUrls([url])
+  const handleScan = useCallback(
+    async (
+      url: string,
+      mode: ScanMode = "quick",
+      scanners?: string[],
+      protocol?: string,
+    ) => {
+      setPendingScanners(scanners);
+      if (mode === "deep" && (!protocol || protocol.startsWith("http"))) {
+        setPendingCrawlUrl(url);
+        setShowCrawlSelector(true);
+        setCrawlDiscovering(true);
+        setCrawlDiscoveryUrls([url]);
+
+        try {
+          const res = await fetch(API.SCAN_CRAWL_DISCOVER, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ url }),
+          });
+          const data = await res.json();
+          if (res.ok && data.urls) {
+            setCrawlDiscoveryUrls(data.urls);
+          }
+        } catch {
+          /* keep the entry URL at minimum */
+        }
+        setCrawlDiscovering(false);
+        return;
+      }
+
+      runScanRef.current?.(url, undefined, scanners);
+    },
+    [],
+  );
+
+  const runScan = useCallback(
+    async (url: string, crawlUrls?: string[], scanners?: string[]) => {
+      setStatus("scanning");
+      setResult(null);
+      setScanHistoryId(null);
+      setError(null);
+      setErrorDetails(null);
+      setSelectedIssue(null);
+      setScanNotes("");
+      setCrawlInfo(null);
+
+      const isCrawl = !!crawlUrls;
+      const endpoint = isCrawl ? API.SCAN_CRAWL : API.SCAN;
+      const payload = isCrawl
+        ? { url, urls: crawlUrls, ...(scanners ? { scanners } : {}) }
+        : { url, ...(scanners ? { scanners } : {}) };
 
       try {
-        const res = await fetch(API.SCAN_CRAWL_DISCOVER, {
+        const response = await fetch(endpoint, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ url }),
-        })
-        const data = await res.json()
-        if (res.ok && data.urls) {
-          setCrawlDiscoveryUrls(data.urls)
+          body: JSON.stringify(payload),
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          if (
+            response.status === 429 &&
+            (data.remaining === 0 ||
+              data.error?.toLowerCase().includes("daily scan limit") ||
+              data.error?.toLowerCase().includes("scan limit"))
+          ) {
+            setStatus("idle");
+            setShowLimitModal(true);
+            return;
+          }
+          setError(data.error || "An unexpected error occurred.");
+          setErrorDetails(data.details || null);
+          setStatus("failed");
+          return;
         }
-      } catch { /* keep the entry URL at minimum */ }
-      setCrawlDiscovering(false)
-      return
-    }
 
-    runScanRef.current?.(url, undefined, scanners)
-  }, [])
-
-  const runScan = useCallback(async (url: string, crawlUrls?: string[], scanners?: string[]) => {
-    setStatus("scanning")
-    setResult(null)
-    setScanHistoryId(null)
-    setError(null)
-    setErrorDetails(null)
-    setSelectedIssue(null)
-    setScanNotes("")
-    setCrawlInfo(null)
-
-    const isCrawl = !!crawlUrls
-    const endpoint = isCrawl ? API.SCAN_CRAWL : API.SCAN
-    const payload = isCrawl
-      ? { url, urls: crawlUrls, ...(scanners ? { scanners } : {}) }
-      : { url, ...(scanners ? { scanners } : {}) }
-
-    try {
-      const response = await fetch(endpoint, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      })
-
-      const data = await response.json()
-
-      if (!response.ok) {
-        if (response.status === 429 && (data.remaining === 0 || data.error?.toLowerCase().includes("daily scan limit") || data.error?.toLowerCase().includes("scan limit"))) {
-          setStatus("idle")
-          setShowLimitModal(true)
-          return
+        if (data.crawl && data.crawl.pages?.length > 0) {
+          const mainPage = data.crawl.pages[0];
+          setResult({
+            ...data,
+            findings: mainPage.findings,
+            summary: mainPage.summary,
+            duration: mainPage.duration,
+          });
+          setCrawlInfo(data.crawl);
+        } else {
+          setResult(data);
         }
-        setError(data.error || "An unexpected error occurred.")
-        setErrorDetails(data.details || null)
-        setStatus("failed")
-        return
-      }
+        const historyId = data.scanHistoryId || null;
+        setScanHistoryId(historyId);
+        setScanNotes(DEFAULT_SCAN_NOTE);
+        setStatus("done");
 
-      if (data.crawl && data.crawl.pages?.length > 0) {
-        const mainPage = data.crawl.pages[0]
-        setResult({
-          ...data,
-          findings: mainPage.findings,
-          summary: mainPage.summary,
-          duration: mainPage.duration,
-        })
-        setCrawlInfo(data.crawl)
-      } else {
-        setResult(data)
-      }
-      const historyId = data.scanHistoryId || null
-      setScanHistoryId(historyId)
-      setScanNotes(DEFAULT_SCAN_NOTE)
-      setStatus("done")
-      
-      if (historyId) {
-        updateUrlWithScan(historyId)
-      }
+        if (historyId) {
+          updateUrlWithScan(historyId);
+        }
 
-      if (historyId) {
-        fetch(`${API.HISTORY}/${historyId}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ notes: DEFAULT_SCAN_NOTE }),
-        }).catch(() => {})
+        if (historyId) {
+          fetch(`${API.HISTORY}/${historyId}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ notes: DEFAULT_SCAN_NOTE }),
+          }).catch(() => {});
+        }
+      } catch {
+        setError(
+          "Failed to connect to the scanner. Please check your connection and try again.",
+        );
+        setStatus("failed");
       }
-    } catch {
-      setError("Failed to connect to the scanner. Please check your connection and try again.")
-      setStatus("failed")
-    }
-  }, [updateUrlWithScan])
+    },
+    [updateUrlWithScan],
+  );
 
   // Keep ref in sync with latest runScan so handleScan (defined earlier)
   // can call it without re-running on every callback recreation.
   useEffect(() => {
-    runScanRef.current = runScan
-  }, [runScan])
+    runScanRef.current = runScan;
+  }, [runScan]);
 
   function handleCrawlConfirm(selectedUrls: string[]) {
-    setShowCrawlSelector(false)
-    setCrawlDiscoveryUrls([])
-    runScan(pendingCrawlUrl, selectedUrls, pendingScanners)
+    setShowCrawlSelector(false);
+    setCrawlDiscoveryUrls([]);
+    runScan(pendingCrawlUrl, selectedUrls, pendingScanners);
   }
 
   function handleCrawlCancel() {
-    setShowCrawlSelector(false)
-    setCrawlDiscoveryUrls([])
-    setPendingCrawlUrl("")
-    setCrawlDiscovering(false)
+    setShowCrawlSelector(false);
+    setCrawlDiscoveryUrls([]);
+    setPendingCrawlUrl("");
+    setCrawlDiscovering(false);
   }
 
   const handleBulkScan = useCallback(async (urls: string[]) => {
-    setBulkStatus("scanning")
-    setBulkResult(null)
-    setBulkProgress({ current: 0, total: urls.length })
-    
-    let successful = 0
-    let failed = 0
-    let skipped = 0
-    
+    setBulkStatus("scanning");
+    setBulkResult(null);
+    setBulkProgress({ current: 0, total: urls.length });
+
+    let successful = 0;
+    let failed = 0;
+    let skipped = 0;
+
     for (let i = 0; i < urls.length; i++) {
-      setBulkProgress({ current: i + 1, total: urls.length })
-      
+      setBulkProgress({ current: i + 1, total: urls.length });
+
       try {
         const res = await fetch(API.SCAN, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ url: urls[i], source: "bulk" }),
-        })
-        const data = await res.json()
-        
+        });
+        const data = await res.json();
+
         if (res.ok && !data.error) {
-          successful++
-        } else if (res.status === 429 || data.error?.toLowerCase().includes("daily scan limit") || data.error?.toLowerCase().includes("scan limit")) {
-          skipped++
+          successful++;
+        } else if (
+          res.status === 429 ||
+          data.error?.toLowerCase().includes("daily scan limit") ||
+          data.error?.toLowerCase().includes("scan limit")
+        ) {
+          skipped++;
           if (skipped === 1) {
-            setShowLimitModal(true)
+            setShowLimitModal(true);
           }
         } else {
-          failed++
+          failed++;
         }
       } catch {
-        failed++
+        failed++;
       }
     }
-    
-    setBulkResult({ total: urls.length, successful, failed, skipped })
-    setBulkProgress(undefined)
-    setBulkStatus("done")
-  }, [])
+
+    setBulkResult({ total: urls.length, successful, failed, skipped });
+    setBulkProgress(undefined);
+    setBulkStatus("done");
+  }, []);
 
   useEffect(() => {
-    const scanUrl = searchParams.get("scan")
+    const scanUrl = searchParams.get("scan");
     if (scanUrl && status === "idle") {
-      handleScan(scanUrl)
+      handleScan(scanUrl);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchParams])
+  }, [searchParams]);
 
   function handleReset() {
-    setStatus("idle")
-    setResult(null)
-    setScanHistoryId(null)
-    setError(null)
-    setErrorDetails(null)
-    setSelectedIssue(null)
-    setScanNotes("")
-    setCrawlInfo(null)
-    setShowCrawlSelector(false)
-    setCrawlDiscoveryUrls([])
-    setPendingCrawlUrl("")
-    setCrawlDiscovering(false)
-    updateUrlWithScan(null)
+    setStatus("idle");
+    setResult(null);
+    setScanHistoryId(null);
+    setError(null);
+    setErrorDetails(null);
+    setSelectedIssue(null);
+    setScanNotes("");
+    setCrawlInfo(null);
+    setShowCrawlSelector(false);
+    setCrawlDiscoveryUrls([]);
+    setPendingCrawlUrl("");
+    setCrawlDiscovering(false);
+    updateUrlWithScan(null);
   }
 
   return (
@@ -334,7 +393,10 @@ function DashboardContent() {
         {bulkStatus === "done" && bulkResult && status === "idle" && (
           <DashboardBulkResult
             result={bulkResult}
-            onDismiss={() => { setBulkResult(null); setBulkStatus("idle") }}
+            onDismiss={() => {
+              setBulkResult(null);
+              setBulkStatus("idle");
+            }}
           />
         )}
 
@@ -346,7 +408,11 @@ function DashboardContent() {
 
         {/* Error state */}
         {status === "failed" && error && (
-          <DashboardErrorState error={error} details={errorDetails || undefined} onRetry={handleReset} />
+          <DashboardErrorState
+            error={error}
+            details={errorDetails || undefined}
+            onRetry={handleReset}
+          />
         )}
 
         {/* Results */}
@@ -385,5 +451,5 @@ function DashboardContent() {
         currentPlan={me?.plan || "free"}
       />
     </div>
-  )
+  );
 }

@@ -1,19 +1,26 @@
-import { cn } from "@/lib/ui/utils"
-import { CATEGORIES } from "./contact-types"
+import { cn } from "@/lib/ui/utils";
+import { CATEGORIES } from "./contact-types";
 
 interface ContactCategorySelectorProps {
-  selected: string | null
-  onSelect: (id: string) => void
+  selected: string | null;
+  onSelect: (id: string) => void;
 }
 
-export function ContactCategorySelector({ selected, onSelect }: ContactCategorySelectorProps) {
+export function ContactCategorySelector({
+  selected,
+  onSelect,
+}: ContactCategorySelectorProps) {
   return (
     <div className="flex flex-col gap-4">
       <div>
-        <h2 className="text-lg font-semibold text-foreground mb-1">What can we help you with?</h2>
-        <p className="text-sm text-muted-foreground">Select a category that best matches your inquiry</p>
+        <h2 className="text-lg font-semibold text-foreground mb-1">
+          What can we help you with?
+        </h2>
+        <p className="text-sm text-muted-foreground">
+          Select a category that best matches your inquiry
+        </p>
       </div>
-      
+
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
         {CATEGORIES.map((cat) => (
           <button
@@ -24,22 +31,33 @@ export function ContactCategorySelector({ selected, onSelect }: ContactCategoryS
               "flex flex-col items-center gap-2 p-4 rounded-xl border transition-all text-center",
               selected === cat.id
                 ? "border-primary bg-primary/5"
-                : "border-border/50 bg-card/50 hover:bg-card/80 hover:border-primary/30"
+                : "border-border/50 bg-card/50 hover:bg-card/80 hover:border-primary/30",
             )}
           >
-            <div className={cn(
-              "p-2 rounded-lg",
-              selected === cat.id ? "bg-primary/10" : "bg-muted"
-            )}>
-              <cat.icon className={cn("h-4 w-4", selected === cat.id ? "text-primary" : "text-muted-foreground")} />
+            <div
+              className={cn(
+                "p-2 rounded-lg",
+                selected === cat.id ? "bg-primary/10" : "bg-muted",
+              )}
+            >
+              <cat.icon
+                className={cn(
+                  "h-4 w-4",
+                  selected === cat.id
+                    ? "text-primary"
+                    : "text-muted-foreground",
+                )}
+              />
             </div>
             <div>
               <p className="text-sm font-medium text-foreground">{cat.label}</p>
-              <p className="text-xs text-muted-foreground hidden sm:block">{cat.desc}</p>
+              <p className="text-xs text-muted-foreground hidden sm:block">
+                {cat.desc}
+              </p>
             </div>
           </button>
         ))}
       </div>
     </div>
-  )
+  );
 }

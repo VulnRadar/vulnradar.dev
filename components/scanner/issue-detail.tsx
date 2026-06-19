@@ -1,7 +1,7 @@
-"use client"
+"use client";
 
-import React from "react"
-import { useState } from "react"
+import React from "react";
+import { useState } from "react";
 import {
   ArrowLeft,
   AlertTriangle,
@@ -13,15 +13,15 @@ import {
   ShieldAlert,
   ChevronDown,
   ExternalLink,
-} from "lucide-react"
-import { Button } from "@/components/ui/button"
-import { SeverityBadge } from "@/components/scanner/severity-badge"
-import type { Vulnerability } from "@/lib/scanner/types"
-import { cn } from "@/lib/ui/utils"
+} from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { SeverityBadge } from "@/components/scanner/severity-badge";
+import type { Vulnerability } from "@/lib/scanner/types";
+import { cn } from "@/lib/ui/utils";
 
 interface IssueDetailProps {
-  issue: Vulnerability
-  onBack: () => void
+  issue: Vulnerability;
+  onBack: () => void;
 }
 
 const CATEGORY_CONFIG: Record<string, { bg: string; text: string }> = {
@@ -31,21 +31,15 @@ const CATEGORY_CONFIG: Record<string, { bg: string; text: string }> = {
   cookies: { bg: "bg-orange-500/10", text: "text-orange-500" },
   configuration: { bg: "bg-cyan-500/10", text: "text-cyan-500" },
   "information-disclosure": { bg: "bg-rose-500/10", text: "text-rose-500" },
-}
+};
 
-function CodeBlock({
-  code,
-  language,
-}: {
-  code: string
-  language: string
-}) {
-  const [copied, setCopied] = useState(false)
+function CodeBlock({ code, language }: { code: string; language: string }) {
+  const [copied, setCopied] = useState(false);
 
   function handleCopy() {
-    navigator.clipboard.writeText(code)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
+    navigator.clipboard.writeText(code);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
   }
 
   return (
@@ -84,7 +78,7 @@ function CodeBlock({
         <code className="font-mono text-[13px] text-foreground/90">{code}</code>
       </pre>
     </div>
-  )
+  );
 }
 
 function CollapsibleSection({
@@ -95,14 +89,14 @@ function CollapsibleSection({
   defaultOpen = true,
   children,
 }: {
-  icon: React.ComponentType<{ className?: string }>
-  iconColor: string
-  iconBg: string
-  title: string
-  defaultOpen?: boolean
-  children: React.ReactNode
+  icon: React.ComponentType<{ className?: string }>;
+  iconColor: string;
+  iconBg: string;
+  title: string;
+  defaultOpen?: boolean;
+  children: React.ReactNode;
 }) {
-  const [isOpen, setIsOpen] = useState(defaultOpen)
+  const [isOpen, setIsOpen] = useState(defaultOpen);
 
   return (
     <div className="rounded-xl border border-border bg-card overflow-hidden">
@@ -112,28 +106,34 @@ function CollapsibleSection({
         className="flex items-center justify-between w-full p-4 text-left hover:bg-muted/30 transition-colors"
       >
         <div className="flex items-center gap-3">
-          <div className={cn("flex items-center justify-center w-8 h-8 rounded-lg", iconBg)}>
+          <div
+            className={cn(
+              "flex items-center justify-center w-8 h-8 rounded-lg",
+              iconBg,
+            )}
+          >
             <Icon className={cn("h-4 w-4", iconColor)} />
           </div>
           <h3 className="text-sm font-semibold text-foreground">{title}</h3>
         </div>
-        <ChevronDown className={cn(
-          "h-4 w-4 text-muted-foreground transition-transform",
-          isOpen && "rotate-180"
-        )} />
+        <ChevronDown
+          className={cn(
+            "h-4 w-4 text-muted-foreground transition-transform",
+            isOpen && "rotate-180",
+          )}
+        />
       </button>
-      {isOpen && (
-        <div className="px-4 pb-4 pt-0">
-          {children}
-        </div>
-      )}
+      {isOpen && <div className="px-4 pb-4 pt-0">{children}</div>}
     </div>
-  )
+  );
 }
 
 export function IssueDetail({ issue, onBack }: IssueDetailProps) {
-  const [activeTab, setActiveTab] = useState(0)
-  const catConfig = CATEGORY_CONFIG[issue.category] || { bg: "bg-muted", text: "text-muted-foreground" }
+  const [activeTab, setActiveTab] = useState(0);
+  const catConfig = CATEGORY_CONFIG[issue.category] || {
+    bg: "bg-muted",
+    text: "text-muted-foreground",
+  };
 
   return (
     <div className="flex flex-col gap-4">
@@ -150,23 +150,27 @@ export function IssueDetail({ issue, onBack }: IssueDetailProps) {
       {/* Header card */}
       <div className="rounded-xl border border-border bg-card overflow-hidden">
         {/* Severity bar */}
-        <div className={cn(
-          "h-1",
-          issue.severity === "critical" && "bg-red-500",
-          issue.severity === "high" && "bg-orange-500",
-          issue.severity === "medium" && "bg-yellow-500",
-          issue.severity === "low" && "bg-blue-500",
-          issue.severity === "info" && "bg-muted-foreground",
-        )} />
-        
+        <div
+          className={cn(
+            "h-1",
+            issue.severity === "critical" && "bg-red-500",
+            issue.severity === "high" && "bg-orange-500",
+            issue.severity === "medium" && "bg-yellow-500",
+            issue.severity === "low" && "bg-blue-500",
+            issue.severity === "info" && "bg-muted-foreground",
+          )}
+        />
+
         <div className="p-5">
           <div className="flex flex-wrap items-center gap-2 mb-3">
             <SeverityBadge severity={issue.severity} />
-            <span className={cn(
-              "inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium capitalize",
-              catConfig.bg,
-              catConfig.text
-            )}>
+            <span
+              className={cn(
+                "inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium capitalize",
+                catConfig.bg,
+                catConfig.text,
+              )}
+            >
               {issue.category.replace("-", " ")}
             </span>
           </div>
@@ -211,7 +215,10 @@ export function IssueDetail({ issue, onBack }: IssueDetailProps) {
           {issue.evidence.includes("\n") ? (
             <ul className="flex flex-col gap-1">
               {issue.evidence.split("\n").map((line, i) => (
-                <li key={i} className="text-sm font-mono text-foreground/80 break-all leading-relaxed">
+                <li
+                  key={i}
+                  className="text-sm font-mono text-foreground/80 break-all leading-relaxed"
+                >
                   {line}
                 </li>
               ))}
@@ -249,7 +256,9 @@ export function IssueDetail({ issue, onBack }: IssueDetailProps) {
               <span className="flex items-center justify-center w-6 h-6 rounded-full bg-emerald-500/10 text-emerald-500 text-xs font-bold shrink-0 mt-0.5">
                 {i + 1}
               </span>
-              <span className="text-muted-foreground leading-relaxed">{step}</span>
+              <span className="text-muted-foreground leading-relaxed">
+                {step}
+              </span>
             </li>
           ))}
         </ol>
@@ -317,5 +326,5 @@ export function IssueDetail({ issue, onBack }: IssueDetailProps) {
         </div>
       )}
     </div>
-  )
+  );
 }

@@ -6,11 +6,15 @@
 // When billing is disabled (config.yaml), all users get unlimited access
 // ============================================================================
 
-import pool from "@/lib/database/db"
-import { BILLING_ENABLED, BILLING_PLAN_LIMITS, BILLING_UNLIMITED_MODE_LIMIT } from "@/lib/config/constants"
+import pool from "@/lib/database/db";
+import {
+  BILLING_ENABLED,
+  BILLING_PLAN_LIMITS,
+  BILLING_UNLIMITED_MODE_LIMIT,
+} from "@/lib/config/constants";
 
 // Staff roles that get unlimited access
-const STAFF_ROLES = ["admin", "moderator", "support"]
+const STAFF_ROLES = ["admin", "moderator", "support"];
 
 // Plan-based daily limits (from config.yaml when billing is enabled)
 export const PLAN_LIMITS = {
@@ -19,16 +23,16 @@ export const PLAN_LIMITS = {
   pro_supporter: BILLING_PLAN_LIMITS.pro_supporter,
   elite_supporter: BILLING_PLAN_LIMITS.elite_supporter,
   staff: Infinity, // Unlimited for all staff (admin, moderator, support)
-} as const
+} as const;
 
-export type PlanType = keyof typeof PLAN_LIMITS
+export type PlanType = keyof typeof PLAN_LIMITS;
 
 /**
  * Check if billing is enabled
  * When disabled, all users get unlimited access (or unlimited_mode_limit)
  */
 export function isBillingEnabled(): boolean {
-  return BILLING_ENABLED
+  return BILLING_ENABLED;
 }
 
 /**
@@ -44,24 +48,24 @@ export async function getUserPlan(userId: number): Promise<PlanType> {
          AND gs.revoked_at IS NULL 
          AND gs.expires_at > NOW()
        WHERE u.id = $1`,
-      [userId]
-    )
-    const row = result.rows[0]
-    
+      [userId],
+    );
+    const row = result.rows[0];
+
     // Staff roles get unlimited
     if (row?.role && STAFF_ROLES.includes(row.role)) {
-      return "staff"
+      return "staff";
     }
-    
+
     // Gifted plan takes priority over regular plan
-    const effectivePlan = row?.gifted_plan || row?.plan
+    const effectivePlan = row?.gifted_plan || row?.plan;
     if (effectivePlan && effectivePlan !== "free") {
-      return effectivePlan as PlanType
+      return effectivePlan as PlanType;
     }
-    return "free"
+    return "free";
   } catch (error) {
-    console.error("[DailyLimits] Error getting user plan:", error)
-    return "free"
+    console.error("[DailyLimits] Error getting user plan:", error);
+    return "free";
   }
 }
 
@@ -72,11 +76,13 @@ export async function getUserPlan(userId: number): Promise<PlanType> {
 export async function getDailyLimit(userId: number): Promise<number> {
   // When billing is disabled, everyone gets unlimited (or the configured limit)
   if (!BILLING_ENABLED) {
-    return BILLING_UNLIMITED_MODE_LIMIT === -1 ? Infinity : BILLING_UNLIMITED_MODE_LIMIT
+    return BILLING_UNLIMITED_MODE_LIMIT === -1
+      ? Infinity
+      : BILLING_UNLIMITED_MODE_LIMIT;
   }
-  
-  const plan = await getUserPlan(userId)
-  return PLAN_LIMITS[plan] || PLAN_LIMITS.free
+
+  const plan = await getUserPlan(userId);
+  return PLAN_LIMITS[plan] || PLAN_LIMITS.free;
 }
 
 /**
@@ -84,16 +90,16 @@ export async function getDailyLimit(userId: number): Promise<number> {
  */
 export async function getDailyRequestCount(userId: number): Promise<number> {
   try {
-    const key = `daily_scan:${userId}`
+    const key = `daily_scan:${userId}`;
     const result = await pool.query(
       `SELECT SUM("count") as total FROM rate_limits 
        WHERE key = $1 AND window_start >= CURRENT_DATE`,
-      [key]
-    )
-    return parseInt(result.rows[0]?.total || "0", 10)
+      [key],
+    );
+    return parseInt(result.rows[0]?.total || "0", 10);
   } catch (error) {
-    console.error("[DailyLimits] Error getting request count:", error)
-    return 0
+    console.error("[DailyLimits] Error getting request count:", error);
+    return 0;
   }
 }
 
@@ -103,18 +109,18 @@ export async function getDailyRequestCount(userId: number): Promise<number> {
  */
 export async function incrementDailyCount(userId: number): Promise<number> {
   try {
-    const key = `daily_scan:${userId}`
+    const key = `daily_scan:${userId}`;
     await pool.query(
       `INSERT INTO rate_limits (key, "count", window_start)
        VALUES ($1, 1, CURRENT_TIMESTAMP)
        ON CONFLICT (key, window_start) 
        DO UPDATE SET "count" = rate_limits."count" + 1`,
-      [key]
-    )
-    return await getDailyRequestCount(userId)
+      [key],
+    );
+    return await getDailyRequestCount(userId);
   } catch (error) {
-    console.error("[DailyLimits] Error incrementing count:", error)
-    return 0
+    console.error("[DailyLimits] Error incrementing count:", error);
+    return 0;
   }
 }
 
@@ -122,26 +128,26 @@ export async function incrementDailyCount(userId: number): Promise<number> {
  * Check if user can make a request (has remaining daily quota)
  */
 export async function canMakeRequest(userId: number): Promise<{
-  allowed: boolean
-  used: number
-  limit: number
-  remaining: number
-  resetsAt: string
+  allowed: boolean;
+  used: number;
+  limit: number;
+  remaining: number;
+  resetsAt: string;
 }> {
   const [limit, used] = await Promise.all([
     getDailyLimit(userId),
-    getDailyRequestCount(userId)
-  ])
+    getDailyRequestCount(userId),
+  ]);
 
   // Calculate reset time (midnight UTC)
-  const now = new Date()
-  const tomorrow = new Date(now)
-  tomorrow.setUTCDate(tomorrow.getUTCDate() + 1)
-  tomorrow.setUTCHours(0, 0, 0, 0)
-  const resetsAt = tomorrow.toISOString()
+  const now = new Date();
+  const tomorrow = new Date(now);
+  tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
+  tomorrow.setUTCHours(0, 0, 0, 0);
+  const resetsAt = tomorrow.toISOString();
 
-  const remaining = Math.max(0, limit - used)
-  const allowed = limit === Infinity || used < limit
+  const remaining = Math.max(0, limit - used);
+  const allowed = limit === Infinity || used < limit;
 
   return {
     allowed,
@@ -149,7 +155,7 @@ export async function canMakeRequest(userId: number): Promise<{
     limit: limit === Infinity ? -1 : limit, // -1 indicates unlimited
     remaining: limit === Infinity ? -1 : remaining,
     resetsAt,
-  }
+  };
 }
 
 /**
@@ -157,67 +163,76 @@ export async function canMakeRequest(userId: number): Promise<{
  * Returns rate limit info including whether the request was allowed
  */
 export async function checkAndRecordRequest(userId: number): Promise<{
-  allowed: boolean
-  used: number
-  limit: number
-  remaining: number
-  resetsAt: string
+  allowed: boolean;
+  used: number;
+  limit: number;
+  remaining: number;
+  resetsAt: string;
 }> {
-  const check = await canMakeRequest(userId)
-  
+  const check = await canMakeRequest(userId);
+
   if (check.allowed) {
-    const newCount = await incrementDailyCount(userId)
+    const newCount = await incrementDailyCount(userId);
     return {
       ...check,
       used: newCount,
       remaining: check.limit === -1 ? -1 : Math.max(0, check.limit - newCount),
-    }
+    };
   }
-  
-  return check
+
+  return check;
 }
 
 /**
  * Get rate limit headers for API responses
  */
 export function getRateLimitHeaders(rateInfo: {
-  used: number
-  limit: number
-  remaining: number
-  resetsAt: string
+  used: number;
+  limit: number;
+  remaining: number;
+  resetsAt: string;
 }): Record<string, string> {
   return {
-    "X-RateLimit-Limit": rateInfo.limit === -1 ? "unlimited" : String(rateInfo.limit),
-    "X-RateLimit-Remaining": rateInfo.remaining === -1 ? "unlimited" : String(rateInfo.remaining),
+    "X-RateLimit-Limit":
+      rateInfo.limit === -1 ? "unlimited" : String(rateInfo.limit),
+    "X-RateLimit-Remaining":
+      rateInfo.remaining === -1 ? "unlimited" : String(rateInfo.remaining),
     "X-RateLimit-Used": String(rateInfo.used),
     "X-RateLimit-Reset": rateInfo.resetsAt,
     "X-RateLimit-Policy": "daily",
-  }
+  };
 }
 
 /**
  * Clean up old rate limit records (run daily via cron)
  */
-export async function cleanupOldLimits(daysToKeep: number = 7): Promise<number> {
+export async function cleanupOldLimits(
+  daysToKeep: number = 7,
+): Promise<number> {
   try {
     const result = await pool.query(
       `DELETE FROM rate_limits 
-       WHERE window_start < NOW() - INTERVAL '${daysToKeep} days'`
-    )
-    return result.rowCount || 0
+       WHERE window_start < NOW() - INTERVAL '${daysToKeep} days'`,
+    );
+    return result.rowCount || 0;
   } catch (error) {
-    console.error("[DailyLimits] Error cleaning up old limits:", error)
-    return 0
+    console.error("[DailyLimits] Error cleaning up old limits:", error);
+    return 0;
   }
 }
 
 /**
  * Get usage stats for a user over time (using scan_history)
  */
-export async function getUsageStats(userId: number, days: number = 30): Promise<{
-  date: string
-  count: number
-}[]> {
+export async function getUsageStats(
+  userId: number,
+  days: number = 30,
+): Promise<
+  {
+    date: string;
+    count: number;
+  }[]
+> {
   try {
     const result = await pool.query(
       `SELECT DATE(scanned_at)::text as date, COUNT(*) as count
@@ -225,11 +240,11 @@ export async function getUsageStats(userId: number, days: number = 30): Promise<
        WHERE user_id = $1 AND scanned_at >= NOW() - INTERVAL '${days} days'
        GROUP BY DATE(scanned_at)
        ORDER BY date ASC`,
-      [userId]
-    )
-    return result.rows
+      [userId],
+    );
+    return result.rows;
   } catch (error) {
-    console.error("[DailyLimits] Error getting usage stats:", error)
-    return []
+    console.error("[DailyLimits] Error getting usage stats:", error);
+    return [];
   }
 }

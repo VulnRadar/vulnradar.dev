@@ -1,12 +1,18 @@
-"use client"
+"use client";
 
-import { useState, useEffect, useCallback } from "react"
-import { Header } from "@/components/scanner/header"
-import { Footer } from "@/components/scanner/footer"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { GitCompareArrows, Loader2, Search, ChevronRight, ArrowRight } from "lucide-react"
-import { API } from "@/lib/config/constants"
+import { useState, useEffect, useCallback } from "react";
+import { Header } from "@/components/scanner/header";
+import { Footer } from "@/components/scanner/footer";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import {
+  GitCompareArrows,
+  Loader2,
+  Search,
+  ChevronRight,
+  ArrowRight,
+} from "lucide-react";
+import { API } from "@/lib/config/constants";
 import {
   CompareScanPicker,
   CompareHeader,
@@ -16,53 +22,63 @@ import {
   type DiffResult,
   getDomain,
   displayUrl,
-} from "@/components/compare"
+} from "@/components/compare";
 
 export default function ComparePage() {
-  const [scans, setScans] = useState<ScanOption[]>([])
-  const [selectedA, setSelectedA] = useState<number | null>(null)
-  const [selectedB, setSelectedB] = useState<number | null>(null)
-  const [diffResult, setDiffResult] = useState<DiffResult | null>(null)
-  const [loading, setLoading] = useState(false)
-  const [loadingScans, setLoadingScans] = useState(true)
-  const [searchQuery, setSearchQuery] = useState("")
+  const [scans, setScans] = useState<ScanOption[]>([]);
+  const [selectedA, setSelectedA] = useState<number | null>(null);
+  const [selectedB, setSelectedB] = useState<number | null>(null);
+  const [diffResult, setDiffResult] = useState<DiffResult | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [loadingScans, setLoadingScans] = useState(true);
+  const [searchQuery, setSearchQuery] = useState("");
 
   useEffect(() => {
     fetch(API.HISTORY)
       .then((r) => r.json())
       .then((d) => {
-        const list = Array.isArray(d) ? d : Array.isArray(d?.scans) ? d.scans : []
-        setScans(list)
-        setLoadingScans(false)
+        const list = Array.isArray(d)
+          ? d
+          : Array.isArray(d?.scans)
+            ? d.scans
+            : [];
+        setScans(list);
+        setLoadingScans(false);
       })
-      .catch(() => setLoadingScans(false))
-  }, [])
+      .catch(() => setLoadingScans(false));
+  }, []);
 
   const handleCompare = useCallback(async () => {
-    if (!selectedA || !selectedB) return
-    setLoading(true)
-    setDiffResult(null)
+    if (!selectedA || !selectedB) return;
+    setLoading(true);
+    setDiffResult(null);
     try {
-      const res = await fetch(`${API.COMPARE}?a=${selectedA}&b=${selectedB}`)
-      const data = await res.json()
-      if (res.ok) setDiffResult(data)
-    } catch { /* ignore */ }
-    setLoading(false)
-  }, [selectedA, selectedB])
+      const res = await fetch(`${API.COMPARE}?a=${selectedA}&b=${selectedB}`);
+      const data = await res.json();
+      if (res.ok) setDiffResult(data);
+    } catch {
+      /* ignore */
+    }
+    setLoading(false);
+  }, [selectedA, selectedB]);
 
   const filteredScans = scans.filter((s) =>
-    displayUrl(s.url).toLowerCase().includes(searchQuery.toLowerCase())
-  )
+    displayUrl(s.url).toLowerCase().includes(searchQuery.toLowerCase()),
+  );
 
-  const selectedADomain = selectedA ? getDomain(scans.find((s) => s.id === selectedA)?.url || "") : null
+  const selectedADomain = selectedA
+    ? getDomain(scans.find((s) => s.id === selectedA)?.url || "")
+    : null;
   const filteredScansB = selectedADomain
-    ? filteredScans.filter((s) => getDomain(s.url) === selectedADomain && s.id !== selectedA)
-    : []
+    ? filteredScans.filter(
+        (s) => getDomain(s.url) === selectedADomain && s.id !== selectedA,
+      )
+    : [];
 
   function handleReset() {
-    setDiffResult(null)
-    setSelectedA(null)
-    setSelectedB(null)
+    setDiffResult(null);
+    setSelectedA(null);
+    setSelectedB(null);
   }
 
   return (
@@ -70,11 +86,14 @@ export default function ComparePage() {
       <Header />
       <main className="flex-1 container max-w-6xl mx-auto px-4 py-8">
         <div className="flex flex-col gap-8">
-
           {/* Page title */}
           <div className="flex flex-col gap-1">
-            <h1 className="text-2xl font-semibold tracking-tight">Compare Scans</h1>
-            <p className="text-sm text-muted-foreground">Track security changes between scan results</p>
+            <h1 className="text-2xl font-semibold tracking-tight">
+              Compare Scans
+            </h1>
+            <p className="text-sm text-muted-foreground">
+              Track security changes between scan results
+            </p>
           </div>
 
           {/* Selection UI */}
@@ -101,9 +120,9 @@ export default function ComparePage() {
                   selected={selectedA}
                   loading={loadingScans}
                   onSelect={(id) => {
-                    setSelectedA(id)
-                    setSelectedB(null)
-                    setDiffResult(null)
+                    setSelectedA(id);
+                    setSelectedB(null);
+                    setDiffResult(null);
                   }}
                 />
 
@@ -171,5 +190,5 @@ export default function ComparePage() {
       </main>
       <Footer />
     </div>
-  )
+  );
 }

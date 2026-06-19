@@ -1,28 +1,40 @@
-import { NextResponse } from "next/server"
-import pool from "@/lib/database/db"
-import { getSession } from "@/lib/auth"
-import { hasStaffPermission, STAFF_PERMISSIONS } from "@/lib/auth/permissions-client"
+import { NextResponse } from "next/server";
+import pool from "@/lib/database/db";
+import { getSession } from "@/lib/auth";
+import {
+  hasStaffPermission,
+  STAFF_PERMISSIONS,
+} from "@/lib/auth/permissions-client";
 
-async function logAction(adminId: number, action: string, details?: string, ip?: string) {
+async function logAction(
+  adminId: number,
+  action: string,
+  details?: string,
+  ip?: string,
+) {
   await pool.query(
     "INSERT INTO admin_audit_log (admin_id, target_user_id, action, details, ip_address) VALUES ($1, $2, $3, $4, $5)",
     [adminId, null, action, details || null, ip || null],
-  )
+  );
 }
 
 export async function PUT(
   req: Request,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ id: string }> },
 ) {
   try {
-    const session = await getSession()
-    if (!session || !hasStaffPermission(session.role, STAFF_PERMISSIONS.SEND_ANNOUNCEMENTS)) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    const session = await getSession();
+    if (
+      !session ||
+      !hasStaffPermission(session.role, STAFF_PERMISSIONS.SEND_ANNOUNCEMENTS)
+    ) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || null
-    const { id } = await params
-    const body = await req.json()
+    const ip =
+      req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || null;
+    const { id } = await params;
+    const body = await req.json();
     const {
       title,
       message,
@@ -39,7 +51,7 @@ export async function PUT(
       action_url,
       action_external,
       priority,
-    } = body
+    } = body;
 
     const result = await pool.query(
       `UPDATE admin_notifications SET
@@ -78,54 +90,83 @@ export async function PUT(
         action_external,
         priority,
         id,
-      ]
-    )
+      ],
+    );
 
     if (result.rows.length === 0) {
-      return NextResponse.json({ error: "Notification not found" }, { status: 404 })
+      return NextResponse.json(
+        { error: "Notification not found" },
+        { status: 404 },
+      );
     }
 
-    const updatedNotif = result.rows[0]
-    await logAction(session.userId, "notification_updated", `Updated notification: "${updatedNotif.title}" (ID: ${id})`, ip)
+    const updatedNotif = result.rows[0];
+    await logAction(
+      session.userId,
+      "notification_updated",
+      `Updated notification: "${updatedNotif.title}" (ID: ${id})`,
+      ip,
+    );
 
-    return NextResponse.json({ notification: result.rows[0] })
+    return NextResponse.json({ notification: result.rows[0] });
   } catch (error) {
-    console.error("Error updating notification:", error)
-    return NextResponse.json({ error: "Failed to update notification" }, { status: 500 })
+    console.error("Error updating notification:", error);
+    return NextResponse.json(
+      { error: "Failed to update notification" },
+      { status: 500 },
+    );
   }
 }
 
 export async function DELETE(
   req: Request,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ id: string }> },
 ) {
   try {
-    const session = await getSession()
-    if (!session || !hasStaffPermission(session.role, STAFF_PERMISSIONS.SEND_ANNOUNCEMENTS)) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    const session = await getSession();
+    if (
+      !session ||
+      !hasStaffPermission(session.role, STAFF_PERMISSIONS.SEND_ANNOUNCEMENTS)
+    ) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || null
-    const { id } = await params
+    const ip =
+      req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || null;
+    const { id } = await params;
 
     // Get notification title before deleting for audit
-    const notifResult = await pool.query(`SELECT title FROM admin_notifications WHERE id = $1`, [id])
-    const notifTitle = notifResult.rows[0]?.title || "Unknown"
+    const notifResult = await pool.query(
+      `SELECT title FROM admin_notifications WHERE id = $1`,
+      [id],
+    );
+    const notifTitle = notifResult.rows[0]?.title || "Unknown";
 
     const result = await pool.query(
       `DELETE FROM admin_notifications WHERE id = $1 RETURNING id`,
-      [id]
-    )
+      [id],
+    );
 
     if (result.rows.length === 0) {
-      return NextResponse.json({ error: "Notification not found" }, { status: 404 })
+      return NextResponse.json(
+        { error: "Notification not found" },
+        { status: 404 },
+      );
     }
 
-    await logAction(session.userId, "notification_deleted", `Deleted notification: "${notifTitle}" (ID: ${id})`, ip)
+    await logAction(
+      session.userId,
+      "notification_deleted",
+      `Deleted notification: "${notifTitle}" (ID: ${id})`,
+      ip,
+    );
 
-    return NextResponse.json({ success: true })
+    return NextResponse.json({ success: true });
   } catch (error) {
-    console.error("Error deleting notification:", error)
-    return NextResponse.json({ error: "Failed to delete notification" }, { status: 500 })
+    console.error("Error deleting notification:", error);
+    return NextResponse.json(
+      { error: "Failed to delete notification" },
+      { status: 500 },
+    );
   }
 }

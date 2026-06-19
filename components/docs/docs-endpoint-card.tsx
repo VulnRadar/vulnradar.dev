@@ -1,11 +1,11 @@
-"use client"
+"use client";
 
-import { Card } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
-import { CheckCircle } from "lucide-react"
-import { cn } from "@/lib/ui/utils"
-import { CodeBlock, InlineCode } from "./docs-code-block"
-import { type Endpoint, METHOD_COLORS } from "./docs-types"
+import { Card } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { CheckCircle } from "lucide-react";
+import { cn } from "@/lib/ui/utils";
+import { CodeBlock, InlineCode } from "./docs-code-block";
+import { type Endpoint, METHOD_COLORS } from "./docs-types";
 
 interface EndpointCardProps extends Endpoint {}
 
@@ -29,12 +29,19 @@ export function EndpointCard({
     >
       {/* Header */}
       <div className="flex flex-wrap items-center gap-2 sm:gap-3 mb-3 sm:mb-4">
-        <Badge className={cn("font-mono text-[10px] sm:text-xs border px-2 py-0.5", METHOD_COLORS[method])}>
+        <Badge
+          className={cn(
+            "font-mono text-[10px] sm:text-xs border px-2 py-0.5",
+            METHOD_COLORS[method],
+          )}
+        >
           {method}
         </Badge>
-        <code className="text-primary font-mono text-xs sm:text-sm break-all bg-primary/5 px-2 py-0.5 rounded">{path}</code>
+        <code className="text-primary font-mono text-xs sm:text-sm break-all bg-primary/5 px-2 py-0.5 rounded">
+          {path}
+        </code>
       </div>
-      
+
       {/* Title */}
       <h3 className="text-sm font-medium text-foreground mb-2">{title}</h3>
 
@@ -52,10 +59,17 @@ export function EndpointCard({
             </h4>
             <div className="space-y-2">
               {pathParams.map((param) => (
-                <div key={param.name} className="flex items-start gap-3 text-sm">
+                <div
+                  key={param.name}
+                  className="flex items-start gap-3 text-sm"
+                >
                   <InlineCode>{param.name}</InlineCode>
-                  <span className="text-muted-foreground text-xs">{param.type}</span>
-                  <span className="text-muted-foreground text-xs flex-1">{param.description}</span>
+                  <span className="text-muted-foreground text-xs">
+                    {param.type}
+                  </span>
+                  <span className="text-muted-foreground text-xs flex-1">
+                    {param.description}
+                  </span>
                 </div>
               ))}
             </div>
@@ -70,15 +84,25 @@ export function EndpointCard({
             </h4>
             <div className="space-y-2">
               {queryParams.map((param) => (
-                <div key={param.name} className="flex items-start gap-3 text-sm">
+                <div
+                  key={param.name}
+                  className="flex items-start gap-3 text-sm"
+                >
                   <InlineCode>{param.name}</InlineCode>
-                  <span className="text-muted-foreground text-xs">{param.type}</span>
+                  <span className="text-muted-foreground text-xs">
+                    {param.type}
+                  </span>
                   {param.required && (
-                    <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+                    <Badge
+                      variant="outline"
+                      className="text-[10px] px-1.5 py-0"
+                    >
                       required
                     </Badge>
                   )}
-                  <span className="text-muted-foreground text-xs flex-1">{param.description}</span>
+                  <span className="text-muted-foreground text-xs flex-1">
+                    {param.description}
+                  </span>
                 </div>
               ))}
             </div>
@@ -110,7 +134,10 @@ export function EndpointCard({
         {notes && notes.length > 0 && (
           <div className="space-y-2">
             {notes.map((note, i) => (
-              <div key={i} className="flex items-start gap-2 text-xs text-muted-foreground">
+              <div
+                key={i}
+                className="flex items-start gap-2 text-xs text-muted-foreground"
+              >
                 <CheckCircle className="h-3.5 w-3.5 text-primary mt-0.5 flex-shrink-0" />
                 <span>{note}</span>
               </div>
@@ -126,11 +153,16 @@ export function EndpointCard({
             </h4>
             <div className="space-y-2">
               {errors.map((error) => (
-                <div key={error.code} className="flex items-start gap-3 text-sm">
+                <div
+                  key={error.code}
+                  className="flex items-start gap-3 text-sm"
+                >
                   <Badge variant="outline" className="text-xs font-mono">
                     {error.code}
                   </Badge>
-                  <span className="text-muted-foreground text-xs">{error.description}</span>
+                  <span className="text-muted-foreground text-xs">
+                    {error.description}
+                  </span>
                 </div>
               ))}
             </div>
@@ -138,5 +170,5 @@ export function EndpointCard({
         )}
       </div>
     </Card>
-  )
+  );
 }

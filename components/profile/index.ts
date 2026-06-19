@@ -1,7 +1,7 @@
 // Profile components and types barrel export
 
 // Types
-export * from "./types"
+export * from "./types";
 
 // Tab components
-export { ProfileGeneralTab } from "./tabs/profile-general-tab"
+export { ProfileGeneralTab } from "./tabs/profile-general-tab";

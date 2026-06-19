@@ -1,12 +1,17 @@
-import { NextRequest, NextResponse } from "next/server"
-import { allChecks } from "@/lib/scanner/checks"
-import { runAsyncChecks } from "@/lib/scanner/async-checks"
-import type { ScanResult, Severity, Vulnerability } from "@/lib/scanner/types"
-import { APP_NAME, DEMO_SCAN_LIMIT, DEMO_SCAN_WINDOW, SEVERITY_LEVELS } from "@/lib/config/constants"
-import { checkRateLimit } from "@/lib/rate-limiting/rate-limit"
-import { getClientIp } from "@/lib/api/request-utils"
-import { checkAccessRules } from "@/lib/scanner/access-rules"
-import { safeFetch } from "@/lib/scanner/safe-fetch"
+import { NextRequest, NextResponse } from "next/server";
+import { allChecks } from "@/lib/scanner/checks";
+import { runAsyncChecks } from "@/lib/scanner/async-checks";
+import type { ScanResult, Severity, Vulnerability } from "@/lib/scanner/types";
+import {
+  APP_NAME,
+  DEMO_SCAN_LIMIT,
+  DEMO_SCAN_WINDOW,
+  SEVERITY_LEVELS,
+} from "@/lib/config/constants";
+import { checkRateLimit } from "@/lib/rate-limiting/rate-limit";
+import { getClientIp } from "@/lib/api/request-utils";
+import { checkAccessRules } from "@/lib/scanner/access-rules";
+import { safeFetch } from "@/lib/scanner/safe-fetch";
 
 const SEVERITY_ORDER: Record<Severity, number> = {
   critical: 0,
@@ -14,57 +19,67 @@ const SEVERITY_ORDER: Record<Severity, number> = {
   medium: 2,
   low: 3,
   info: 4,
-}
+};
 
-const MAX_BODY_SIZE = 1 * 1024 * 1024 // 1 MB
+const MAX_BODY_SIZE = 1 * 1024 * 1024; // 1 MB
 
 function _isValidUrl(input: string): boolean {
   try {
-    const url = new URL(input)
-    return url.protocol === "http:" || url.protocol === "https:"
+    const url = new URL(input);
+    return url.protocol === "http:" || url.protocol === "https:";
   } catch {
-    return false
+    return false;
   }
 }
 
-async function safeReadBody(response: Response, maxBytes: number): Promise<string> {
-  const reader = response.body?.getReader()
-  if (!reader) return ""
-  const decoder = new TextDecoder("utf-8", { fatal: false })
-  const chunks: string[] = []
-  let totalBytes = 0
+async function safeReadBody(
+  response: Response,
+  maxBytes: number,
+): Promise<string> {
+  const reader = response.body?.getReader();
+  if (!reader) return "";
+  const decoder = new TextDecoder("utf-8", { fatal: false });
+  const chunks: string[] = [];
+  let totalBytes = 0;
   try {
     while (true) {
-      const { done, value } = await reader.read()
-      if (done) break
-      totalBytes += value.byteLength
+      const { done, value } = await reader.read();
+      if (done) break;
+      totalBytes += value.byteLength;
       if (totalBytes > maxBytes) {
-        const overshoot = totalBytes - maxBytes
-        const trimmed = value.slice(0, value.byteLength - overshoot)
-        if (trimmed.byteLength > 0) chunks.push(decoder.decode(trimmed, { stream: false }))
-        break
+        const overshoot = totalBytes - maxBytes;
+        const trimmed = value.slice(0, value.byteLength - overshoot);
+        if (trimmed.byteLength > 0)
+          chunks.push(decoder.decode(trimmed, { stream: false }));
+        break;
       }
-      chunks.push(decoder.decode(value, { stream: true }))
+      chunks.push(decoder.decode(value, { stream: true }));
     }
-  } catch { /* return what we have */ } finally {
-    try { reader.cancel() } catch { /* ignore */ }
+  } catch {
+    /* return what we have */
+  } finally {
+    try {
+      reader.cancel();
+    } catch {
+      /* ignore */
+    }
   }
-  return chunks.join("")
+  return chunks.join("");
 }
 
 export async function POST(request: NextRequest) {
   try {
     // IP-based rate limiting via database
-    const ip = await getClientIp()
-    const rateLimitKey = `demo_scan:${ip}`
+    const ip = await getClientIp();
+    const rateLimitKey = `demo_scan:${ip}`;
     const rateCheck = await checkRateLimit({
       key: rateLimitKey,
       maxAttempts: DEMO_SCAN_LIMIT,
       windowSeconds: DEMO_SCAN_WINDOW,
-    })
+    });
 
     if (!rateCheck.allowed) {
-      const hours = Math.ceil(rateCheck.retryAfterSeconds / 3600)
+      const hours = Math.ceil(rateCheck.retryAfterSeconds / 3600);
       return NextResponse.json(
         {
           error: `Demo limit reached (${DEMO_SCAN_LIMIT} scans per 12 hours). Try again in ~${hours} hour${hours !== 1 ? "s" : ""}, or create a free account for unlimited scans.`,
@@ -72,103 +87,123 @@ export async function POST(request: NextRequest) {
           limit: DEMO_SCAN_LIMIT,
         },
         { status: 429 },
-      )
+      );
     }
 
-    const body = await request.json()
-    const { url } = body
+    const body = await request.json();
+    const { url } = body;
 
     if (!url || typeof url !== "string") {
-      return NextResponse.json({ error: "URL is required" }, { status: 400 })
+      return NextResponse.json({ error: "URL is required" }, { status: 400 });
     }
 
-    let urlObj: URL
+    let urlObj: URL;
     try {
-      urlObj = new URL(url)
+      urlObj = new URL(url);
     } catch {
-      return NextResponse.json({ error: "Invalid URL." }, { status: 400 })
+      return NextResponse.json({ error: "Invalid URL." }, { status: 400 });
     }
 
     if (urlObj.protocol !== "http:" && urlObj.protocol !== "https:") {
-      return NextResponse.json({ error: "Only http and https URLs are allowed." }, { status: 400 })
+      return NextResponse.json(
+        { error: "Only http and https URLs are allowed." },
+        { status: 400 },
+      );
     }
 
     // Check access rules (blacklist/whitelist)
-    const accessCheck = await checkAccessRules(urlObj.href)
+    const accessCheck = await checkAccessRules(urlObj.href);
     if (!accessCheck.allowed) {
       return NextResponse.json(
-        { 
+        {
           error: "This target cannot be scanned.",
-          details: "This domain or IP address has been restricted from scanning for security, privacy, or compliance reasons. Access controls are enforced to protect sensitive infrastructure and user data. If you believe this is an error, please contact support.",
-          statusCode: "BLOCKED"
+          details:
+            "This domain or IP address has been restricted from scanning for security, privacy, or compliance reasons. Access controls are enforced to protect sensitive infrastructure and user data. If you believe this is an error, please contact support.",
+          statusCode: "BLOCKED",
         },
-        { status: 403 }
-      )
+        { status: 403 },
+      );
     }
 
-    const startTime = Date.now()
+    const startTime = Date.now();
 
-    let response: Response
+    let response: Response;
     try {
       // URL and protocol were validated above; urlObj.href is normalized.
-      
+
       // Use safeFetch which validates the URL internally to prevent SSRF
       // Pass the original hostname as the only allowed hostname to prevent redirect-based SSRF
-      response = await safeFetch(urlObj.href, {
-        method: "GET",
-        headers: { "User-Agent": `${APP_NAME}/1.0 (Security Scanner - Demo)` },
-        redirect: "follow",
-        signal: AbortSignal.timeout(15000),
-      }, [urlObj.hostname])
+      response = await safeFetch(
+        urlObj.href,
+        {
+          method: "GET",
+          headers: {
+            "User-Agent": `${APP_NAME}/1.0 (Security Scanner - Demo)`,
+          },
+          redirect: "follow",
+          signal: AbortSignal.timeout(15000),
+        },
+        [urlObj.hostname],
+      );
     } catch (fetchError) {
-      const message = fetchError instanceof Error ? fetchError.message : "Unknown error"
+      const message =
+        fetchError instanceof Error ? fetchError.message : "Unknown error";
       return NextResponse.json(
         { error: `Could not reach the target URL: ${message}.` },
         { status: 422 },
-      )
+      );
     }
 
-    const responseBody = await safeReadBody(response, MAX_BODY_SIZE)
-    const headers = response.headers
+    const responseBody = await safeReadBody(response, MAX_BODY_SIZE);
+    const headers = response.headers;
 
     // Capture response headers as a plain object for evidence
-    const capturedHeaders: Record<string, string> = {}
+    const capturedHeaders: Record<string, string> = {};
     headers.forEach((value, key) => {
-      capturedHeaders[key] = value
-    })
+      capturedHeaders[key] = value;
+    });
 
-    const bodyForChecks = responseBody.length > 1_000_000 ? responseBody.slice(0, 1_000_000) : responseBody
-    const syncFindings: Vulnerability[] = []
+    const bodyForChecks =
+      responseBody.length > 1_000_000
+        ? responseBody.slice(0, 1_000_000)
+        : responseBody;
+    const syncFindings: Vulnerability[] = [];
     for (const check of allChecks) {
       try {
-        const result = check(url, headers, bodyForChecks)
-        if (result) syncFindings.push(result)
+        const result = check(url, headers, bodyForChecks);
+        if (result) syncFindings.push(result);
       } catch {
         // Skip failed checks
       }
     }
 
-    let asyncFindings: Vulnerability[] = []
+    let asyncFindings: Vulnerability[] = [];
     try {
-      const asyncPromise = runAsyncChecks(url)
-      const timeoutPromise = new Promise<Vulnerability[]>((resolve) => setTimeout(() => resolve([]), 15000))
-      asyncFindings = await Promise.race([asyncPromise, timeoutPromise])
+      const asyncPromise = runAsyncChecks(url);
+      const timeoutPromise = new Promise<Vulnerability[]>((resolve) =>
+        setTimeout(() => resolve([]), 15000),
+      );
+      asyncFindings = await Promise.race([asyncPromise, timeoutPromise]);
     } catch {
       // Non-fatal
     }
 
-    const findings = [...syncFindings, ...asyncFindings]
-    findings.sort((a, b) => SEVERITY_ORDER[a.severity] - SEVERITY_ORDER[b.severity])
+    const findings = [...syncFindings, ...asyncFindings];
+    findings.sort(
+      (a, b) => SEVERITY_ORDER[a.severity] - SEVERITY_ORDER[b.severity],
+    );
 
-    const duration = Date.now() - startTime
+    const duration = Date.now() - startTime;
     const summary = {
-      critical: findings.filter((f) => f.severity === SEVERITY_LEVELS.CRITICAL).length,
+      critical: findings.filter((f) => f.severity === SEVERITY_LEVELS.CRITICAL)
+        .length,
       high: findings.filter((f) => f.severity === SEVERITY_LEVELS.HIGH).length,
-      medium: findings.filter((f) => f.severity === SEVERITY_LEVELS.MEDIUM).length,
+      medium: findings.filter((f) => f.severity === SEVERITY_LEVELS.MEDIUM)
+        .length,
       low: findings.filter((f) => f.severity === SEVERITY_LEVELS.LOW).length,
       info: findings.filter((f) => f.severity === SEVERITY_LEVELS.INFO).length,
       total: findings.length,
-    }
+    };
 
     const result: ScanResult = {
       url,
@@ -177,14 +212,17 @@ export async function POST(request: NextRequest) {
       findings,
       summary,
       responseHeaders: capturedHeaders,
-    }
+    };
 
     return NextResponse.json({
       ...result,
       remaining: rateCheck.remaining,
       limit: DEMO_SCAN_LIMIT,
-    })
+    });
   } catch {
-    return NextResponse.json({ error: "An unexpected error occurred." }, { status: 500 })
+    return NextResponse.json(
+      { error: "An unexpected error occurred." },
+      { status: 500 },
+    );
   }
 }

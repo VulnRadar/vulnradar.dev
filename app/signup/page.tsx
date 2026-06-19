@@ -1,16 +1,22 @@
-"use client"
+"use client";
 
-import { useState } from "react"
-import Link from "next/link"
-import { ThemedLogo } from "@/components/shared/themed-logo"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { SignupForm } from "@/components/auth/signup-form"
-import { SignupSuccess } from "@/components/auth/signup-success"
-import { APP_NAME } from "@/lib/config/constants"
-import { transitions } from "@/lib/ui/animations"
+import { useState } from "react";
+import Link from "next/link";
+import { ThemedLogo } from "@/components/shared/themed-logo";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { SignupForm } from "@/components/auth/signup-form";
+import { SignupSuccess } from "@/components/auth/signup-success";
+import { APP_NAME } from "@/lib/config/constants";
+import { transitions } from "@/lib/ui/animations";
 
 export default function SignupPage() {
-  const [successEmail, setSuccessEmail] = useState<string | null>(null)
+  const [successEmail, setSuccessEmail] = useState<string | null>(null);
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-background px-4 py-8 relative overflow-hidden">
@@ -30,14 +36,18 @@ export default function SignupPage() {
             className="h-7 w-7 transition-transform group-hover:scale-105"
             alt={`${APP_NAME} logo`}
           />
-          <span className="text-xl font-semibold text-foreground tracking-tight">{APP_NAME}</span>
+          <span className="text-xl font-semibold text-foreground tracking-tight">
+            {APP_NAME}
+          </span>
         </Link>
 
         <Card className="bg-card/95 backdrop-blur-sm border-border/50 shadow-xl">
           {!successEmail ? (
             <>
               <CardHeader className="text-center pb-5 pt-7 px-6">
-                <CardTitle className="text-xl font-semibold tracking-tight">Create an account</CardTitle>
+                <CardTitle className="text-xl font-semibold tracking-tight">
+                  Create an account
+                </CardTitle>
                 <CardDescription className="mt-1.5">
                   Enter your details below to get started.
                 </CardDescription>
@@ -54,5 +64,5 @@ export default function SignupPage() {
         </Card>
       </div>
     </div>
-  )
+  );
 }

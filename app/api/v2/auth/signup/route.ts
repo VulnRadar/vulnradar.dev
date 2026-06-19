@@ -1,37 +1,58 @@
-import { NextRequest } from "next/server"
-import { createUser, getUserByEmail } from "@/lib/auth"
-import { sendEmail, emailVerificationEmail } from "@/lib/email/email"
-import { ApiResponse, Validate, parseBody, withErrorHandling } from "@/lib/api/api-utils"
-import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit"
-import { getClientIp } from "@/lib/api/request-utils"
-import pool from "@/lib/database/db"
-import crypto from "crypto"
-import { APP_URL, ERROR_MESSAGES, SUCCESS_MESSAGES, EMAIL_VERIFICATION_TOKEN_LIFETIME, TURNSTILE_ENABLED } from "@/lib/config/constants"
+import { NextRequest } from "next/server";
+import { createUser, getUserByEmail } from "@/lib/auth";
+import { sendEmail, emailVerificationEmail } from "@/lib/email/email";
+import {
+  ApiResponse,
+  Validate,
+  parseBody,
+  withErrorHandling,
+} from "@/lib/api/api-utils";
+import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
+import { getClientIp } from "@/lib/api/request-utils";
+import pool from "@/lib/database/db";
+import crypto from "crypto";
+import {
+  APP_URL,
+  ERROR_MESSAGES,
+  SUCCESS_MESSAGES,
+  EMAIL_VERIFICATION_TOKEN_LIFETIME,
+  TURNSTILE_ENABLED,
+} from "@/lib/config/constants";
 
 export const POST = withErrorHandling(async (request: NextRequest) => {
-  const parsed = await parseBody<{ email: string; password: string; name: string; turnstileToken?: string }>(request)
-  if (!parsed.success) return ApiResponse.badRequest(parsed.error)
-  const { email, password, name, turnstileToken } = parsed.data
+  const parsed = await parseBody<{
+    email: string;
+    password: string;
+    name: string;
+    turnstileToken?: string;
+  }>(request);
+  if (!parsed.success) return ApiResponse.badRequest(parsed.error);
+  const { email, password, name, turnstileToken } = parsed.data;
 
-  const ip = await getClientIp()
+  const ip = await getClientIp();
 
   // Verify Turnstile captcha only if enabled
   if (TURNSTILE_ENABLED) {
     if (!turnstileToken) {
-      return ApiResponse.badRequest("Captcha verification required.")
+      return ApiResponse.badRequest("Captcha verification required.");
     }
-    const turnstileRes = await fetch("https://challenges.cloudflare.com/turnstile/v0/siteverify", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        secret: process.env.TURNSTILE_SECRET_KEY,
-        response: turnstileToken,
-        remoteip: ip,
-      }),
-    })
-    const turnstileData = await turnstileRes.json()
+    const turnstileRes = await fetch(
+      "https://challenges.cloudflare.com/turnstile/v0/siteverify",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          secret: process.env.TURNSTILE_SECRET_KEY,
+          response: turnstileToken,
+          remoteip: ip,
+        }),
+      },
+    );
+    const turnstileData = await turnstileRes.json();
     if (!turnstileData.success) {
-      return ApiResponse.badRequest("Captcha verification failed. Please try again.")
+      return ApiResponse.badRequest(
+        "Captcha verification failed. Please try again.",
+      );
     }
   }
 
@@ -43,62 +64,72 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     Validate.email(email),
     Validate.required(password, "Password"),
     Validate.password(password, 8), // Using 8 char minimum
-  ])
-  if (validationError) return ApiResponse.badRequest(validationError)
+  ]);
+  if (validationError) return ApiResponse.badRequest(validationError);
 
   // Rate limit by IP (ip already resolved above for Turnstile)
-  const rl = await checkRateLimit({ key: `signup:${ip}`, ...RATE_LIMITS.signup })
+  const rl = await checkRateLimit({
+    key: `signup:${ip}`,
+    ...RATE_LIMITS.signup,
+  });
   if (!rl.allowed) {
-    const minutes = Math.ceil(rl.retryAfterSeconds / 60)
+    const minutes = Math.ceil(rl.retryAfterSeconds / 60);
     return ApiResponse.tooManyRequests(
-        ERROR_MESSAGES.TOO_MANY_ATTEMPTS("signup attempts", minutes),
-        rl.retryAfterSeconds,
-    )
+      ERROR_MESSAGES.TOO_MANY_ATTEMPTS("signup attempts", minutes),
+      rl.retryAfterSeconds,
+    );
   }
 
   // Check if user already exists
-  const existing = await getUserByEmail(email)
+  const existing = await getUserByEmail(email);
   if (existing) {
-    return ApiResponse.conflict(ERROR_MESSAGES.DUPLICATE_EMAIL)
+    return ApiResponse.conflict(ERROR_MESSAGES.DUPLICATE_EMAIL);
   }
 
   // Create user
-  const user = await createUser(email, password, name)
+  const user = await createUser(email, password, name);
 
   // Try to fetch Gravatar or other avatar services (non-blocking)
   setImmediate(async () => {
     try {
-      const emailHash = crypto.createHash("md5").update(email.toLowerCase().trim()).digest("hex")
+      const emailHash = crypto
+        .createHash("md5")
+        .update(email.toLowerCase().trim())
+        .digest("hex");
       // Check if Gravatar exists (returns 404 if not)
-      const gravatarUrl = `https://www.gravatar.com/avatar/${emailHash}?d=404&s=200`
-      const gravatarRes = await fetch(gravatarUrl, { method: "HEAD" })
+      const gravatarUrl = `https://www.gravatar.com/avatar/${emailHash}?d=404&s=200`;
+      const gravatarRes = await fetch(gravatarUrl, { method: "HEAD" });
       if (gravatarRes.ok) {
-        await pool.query("UPDATE users SET avatar_url = $1 WHERE id = $2 AND avatar_url IS NULL", [
-          `https://www.gravatar.com/avatar/${emailHash}?s=200`,
-          user.id
-        ])
+        await pool.query(
+          "UPDATE users SET avatar_url = $1 WHERE id = $2 AND avatar_url IS NULL",
+          [`https://www.gravatar.com/avatar/${emailHash}?s=200`, user.id],
+        );
       }
     } catch {
       // Silently fail - avatar is not critical
     }
-  })
+  });
 
   // Generate verification token
-  const token = crypto.randomBytes(32).toString("hex")
-  const expiresAt = new Date(Date.now() + EMAIL_VERIFICATION_TOKEN_LIFETIME * 1000)
+  const token = crypto.randomBytes(32).toString("hex");
+  const expiresAt = new Date(
+    Date.now() + EMAIL_VERIFICATION_TOKEN_LIFETIME * 1000,
+  );
 
   // Delete any existing verification tokens for this user
-  await pool.query("DELETE FROM email_verification_tokens WHERE user_id = $1", [user.id])
+  await pool.query("DELETE FROM email_verification_tokens WHERE user_id = $1", [
+    user.id,
+  ]);
 
   // Store token
   await pool.query(
-      "INSERT INTO email_verification_tokens (user_id, token_hash, expires_at) VALUES ($1, $2, $3)",
-      [user.id, token, expiresAt]
-  )
+    "INSERT INTO email_verification_tokens (user_id, token_hash, expires_at) VALUES ($1, $2, $3)",
+    [user.id, token, expiresAt],
+  );
 
   // Create default notification preferences (all enabled except tips_guides) for the new user
   await pool.query(
-      `INSERT INTO notification_preferences (
+    `INSERT INTO notification_preferences (
         user_id,
         email_security, email_new_login, email_password_change, email_2fa_change, email_session_revoked,
         email_scan_complete, email_critical_findings, email_regression_alert, email_schedules,
@@ -107,12 +138,12 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
         email_product_updates, email_tips_guides
       ) VALUES ($1, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, false)
          ON CONFLICT (user_id) DO NOTHING`,
-      [user.id]
-  )
+    [user.id],
+  );
 
   // Send verification email in background (don't block the response)
-  const verifyLink = `${APP_URL}/verify-email?token=${token}`
-  const emailContent = emailVerificationEmail(name.trim(), verifyLink)
+  const verifyLink = `${APP_URL}/verify-email?token=${token}`;
+  const emailContent = emailVerificationEmail(name.trim(), verifyLink);
 
   setImmediate(() => {
     sendEmail({
@@ -121,12 +152,12 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
       text: emailContent.text,
       html: emailContent.html,
     }).catch((err) => {
-      console.error("[Email Error] Failed to send verification email:", err)
-    })
-  })
+      console.error("[Email Error] Failed to send verification email:", err);
+    });
+  });
 
   return ApiResponse.success({
     message: SUCCESS_MESSAGES.SIGNUP,
     requiresVerification: true,
-  })
-})
+  });
+});

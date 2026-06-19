@@ -11,18 +11,18 @@
  * - DNSSEC DoH timeout reduced from 6s to 4s
  */
 
-import * as dns from "dns/promises"
-import * as tls from "tls"
-import * as net from "net"
-import type { Vulnerability, Category } from "./types"
+import * as dns from "dns/promises";
+import * as tls from "tls";
+import * as net from "net";
+import type { Vulnerability, Category } from "./types";
 
-let idCounter = 0
+let idCounter = 0;
 function generateId(): string {
-  return `vuln-async-${Date.now()}-${idCounter++}`
+  return `vuln-async-${Date.now()}-${idCounter++}`;
 }
 
 function isPrivateHostname(hostname: string): boolean {
-  const lower = hostname.toLowerCase()
+  const lower = hostname.toLowerCase();
 
   // Obvious local hostnames
   if (
@@ -30,44 +30,47 @@ function isPrivateHostname(hostname: string): boolean {
     lower.endsWith(".localhost") ||
     lower.endsWith(".local")
   ) {
-    return true
+    return true;
   }
 
-  const ipVersion = net.isIP(hostname)
+  const ipVersion = net.isIP(hostname);
   if (!ipVersion) {
     // Not an IP literal; treat as potentially public hostname
-    return false
+    return false;
   }
 
   // Handle IPv4 private and special ranges
   if (ipVersion === 4) {
-    const octets = hostname.split(".").map((p) => parseInt(p, 10))
-    if (octets.length !== 4 || octets.some((n) => Number.isNaN(n) || n < 0 || n > 255)) {
-      return true
+    const octets = hostname.split(".").map((p) => parseInt(p, 10));
+    if (
+      octets.length !== 4 ||
+      octets.some((n) => Number.isNaN(n) || n < 0 || n > 255)
+    ) {
+      return true;
     }
-    const [o1, o2] = octets
+    const [o1, o2] = octets;
 
     // 10.0.0.0/8
-    if (o1 === 10) return true
+    if (o1 === 10) return true;
     // 172.16.0.0/12
-    if (o1 === 172 && o2 >= 16 && o2 <= 31) return true
+    if (o1 === 172 && o2 >= 16 && o2 <= 31) return true;
     // 192.168.0.0/16
-    if (o1 === 192 && o2 === 168) return true
+    if (o1 === 192 && o2 === 168) return true;
     // 127.0.0.0/8 loopback
-    if (o1 === 127) return true
+    if (o1 === 127) return true;
     // 169.254.0.0/16 link-local
-    if (o1 === 169 && o2 === 254) return true
+    if (o1 === 169 && o2 === 254) return true;
   }
 
   // Handle IPv6 loopback and typical private/link-local ranges
   if (ipVersion === 6) {
-    const normalized = hostname.toLowerCase()
-    if (normalized === "::1") return true
-    if (normalized.startsWith("fd") || normalized.startsWith("fc")) return true // fc00::/7 unique local
-    if (normalized.startsWith("fe80")) return true // fe80::/10 link-local
+    const normalized = hostname.toLowerCase();
+    if (normalized === "::1") return true;
+    if (normalized.startsWith("fd") || normalized.startsWith("fc")) return true; // fc00::/7 unique local
+    if (normalized.startsWith("fe80")) return true; // fe80::/10 link-local
   }
 
-  return false
+  return false;
 }
 
 function makeVuln(
@@ -92,17 +95,17 @@ function makeVuln(
     explanation,
     fixSteps,
     codeExamples,
-  }
+  };
 }
 
 // ── Individual DNS sub-checks (run in parallel) ─────────────────────────────
 
 async function checkSPF(domain: string): Promise<Vulnerability[]> {
-  const findings: Vulnerability[] = []
+  const findings: Vulnerability[] = [];
   try {
-    const txtRecords = await dns.resolveTxt(domain)
-    const flat = txtRecords.map((r) => r.join(""))
-    const spf = flat.find((r) => r.startsWith("v=spf1"))
+    const txtRecords = await dns.resolveTxt(domain);
+    const flat = txtRecords.map((r) => r.join(""));
+    const spf = flat.find((r) => r.startsWith("v=spf1"));
     if (!spf) {
       findings.push(
         makeVuln(
@@ -118,9 +121,15 @@ async function checkSPF(domain: string): Promise<Vulnerability[]> {
             "Start with: v=spf1 include:_spf.google.com ~all (adjust for your mail provider).",
             "Use -all (hard fail) for strict enforcement or ~all (soft fail) to start.",
           ],
-          [{ label: "DNS TXT Record", language: "dns", code: 'v=spf1 include:_spf.google.com include:sendgrid.net -all' }],
+          [
+            {
+              label: "DNS TXT Record",
+              language: "dns",
+              code: "v=spf1 include:_spf.google.com include:sendgrid.net -all",
+            },
+          ],
         ),
-      )
+      );
     } else if (spf.includes("+all")) {
       findings.push(
         makeVuln(
@@ -131,20 +140,25 @@ async function checkSPF(domain: string): Promise<Vulnerability[]> {
           `SPF record: ${spf}`,
           "The +all mechanism effectively disables SPF protection, allowing anyone to spoof emails from your domain.",
           "SPF with +all means 'allow all senders' which defeats the purpose of having SPF at all.",
-          ["Change +all to -all (hard fail) or ~all (soft fail).", "Audit which mail servers need to be in your SPF record."],
+          [
+            "Change +all to -all (hard fail) or ~all (soft fail).",
+            "Audit which mail servers need to be in your SPF record.",
+          ],
         ),
-      )
+      );
     }
-  } catch { /* DNS failed */ }
-  return findings
+  } catch {
+    /* DNS failed */
+  }
+  return findings;
 }
 
 async function checkDMARC(domain: string): Promise<Vulnerability[]> {
-  const findings: Vulnerability[] = []
+  const findings: Vulnerability[] = [];
   try {
-    const dmarcRecords = await dns.resolveTxt(`_dmarc.${domain}`)
-    const dmarcFlat = dmarcRecords.map((r) => r.join(""))
-    const dmarc = dmarcFlat.find((r) => r.startsWith("v=DMARC1"))
+    const dmarcRecords = await dns.resolveTxt(`_dmarc.${domain}`);
+    const dmarcFlat = dmarcRecords.map((r) => r.join(""));
+    const dmarc = dmarcFlat.find((r) => r.startsWith("v=DMARC1"));
     if (!dmarc) {
       findings.push(
         makeVuln(
@@ -160,9 +174,15 @@ async function checkDMARC(domain: string): Promise<Vulnerability[]> {
             "Start with p=none to monitor, then move to p=quarantine or p=reject.",
             "Include a rua= tag to receive aggregate reports.",
           ],
-          [{ label: "DNS TXT Record", language: "dns", code: 'v=DMARC1; p=reject; rua=mailto:dmarc-reports@yourdomain.com; adkim=s; aspf=s' }],
+          [
+            {
+              label: "DNS TXT Record",
+              language: "dns",
+              code: "v=DMARC1; p=reject; rua=mailto:dmarc-reports@yourdomain.com; adkim=s; aspf=s",
+            },
+          ],
         ),
-      )
+      );
     } else if (dmarc.includes("p=none")) {
       findings.push(
         makeVuln(
@@ -173,9 +193,12 @@ async function checkDMARC(domain: string): Promise<Vulnerability[]> {
           `DMARC record: ${dmarc}`,
           "With p=none, DMARC only monitors but does not prevent spoofed emails from being delivered.",
           "A DMARC policy of 'none' is useful for initial monitoring but should be upgraded to 'quarantine' or 'reject'.",
-          ["Upgrade to p=quarantine (send to spam) or p=reject (block entirely).", "Review DMARC reports first."],
+          [
+            "Upgrade to p=quarantine (send to spam) or p=reject (block entirely).",
+            "Review DMARC reports first.",
+          ],
         ),
-      )
+      );
     }
   } catch {
     findings.push(
@@ -187,47 +210,84 @@ async function checkDMARC(domain: string): Promise<Vulnerability[]> {
         `No TXT record found at _dmarc.${domain}.`,
         "Without DMARC, there is no policy telling email receivers how to handle messages that fail SPF/DKIM checks.",
         "DMARC builds on SPF and DKIM to provide email authentication.",
-        ["Add a TXT record at _dmarc.yourdomain.com.", "Start with p=none to monitor, then move to p=quarantine or p=reject."],
+        [
+          "Add a TXT record at _dmarc.yourdomain.com.",
+          "Start with p=none to monitor, then move to p=quarantine or p=reject.",
+        ],
       ),
-    )
+    );
   }
-  return findings
+  return findings;
 }
 
 async function checkDKIM(domain: string): Promise<Vulnerability[]> {
-  const selectors = ["default", "google", "selector1", "selector2", "k1", "s1", "dkim", "mail", "protonmail", "protonmail2", "protonmail3", "mxvault", "cm", "mandrill", "smtp", "zendesk1", "zendesk2", "em1", "em2", "s2"]
+  const selectors = [
+    "default",
+    "google",
+    "selector1",
+    "selector2",
+    "k1",
+    "s1",
+    "dkim",
+    "mail",
+    "protonmail",
+    "protonmail2",
+    "protonmail3",
+    "mxvault",
+    "cm",
+    "mandrill",
+    "smtp",
+    "zendesk1",
+    "zendesk2",
+    "em1",
+    "em2",
+    "s2",
+  ];
 
   // Race all selectors: resolve as soon as ANY one is found
   const found = await new Promise<boolean>((resolve) => {
-    let pending = selectors.length
-    let resolved = false
+    let pending = selectors.length;
+    let resolved = false;
 
     for (const sel of selectors) {
-      const dkimHost = `${sel}._domainkey.${domain}`
+      const dkimHost = `${sel}._domainkey.${domain}`;
 
       // Check TXT then CNAME for each selector
-      ;(async () => {
+      (async () => {
         try {
-          const records = await dns.resolveTxt(dkimHost)
-          const flat = records.map((r) => r.join(""))
+          const records = await dns.resolveTxt(dkimHost);
+          const flat = records.map((r) => r.join(""));
           if (flat.some((r) => r.includes("v=DKIM1") || r.includes("p="))) {
-            if (!resolved) { resolved = true; resolve(true) }
-            return
+            if (!resolved) {
+              resolved = true;
+              resolve(true);
+            }
+            return;
           }
-        } catch { /* no TXT */ }
+        } catch {
+          /* no TXT */
+        }
         try {
-          const cnames = await dns.resolveCname(dkimHost)
+          const cnames = await dns.resolveCname(dkimHost);
           if (cnames.length > 0) {
-            if (!resolved) { resolved = true; resolve(true) }
-            return
+            if (!resolved) {
+              resolved = true;
+              resolve(true);
+            }
+            return;
           }
-        } catch { /* no CNAME */ }
+        } catch {
+          /* no CNAME */
+        }
 
-        pending--
-        if (pending === 0 && !resolved) { resolved = true; resolve(false) }
-      })()
+        pending--;
+        if (pending === 0 && !resolved) {
+          resolved = true;
+          resolve(false);
+        }
+      })();
     }
-  })
+  });
 
   if (!found) {
     return [
@@ -244,28 +304,34 @@ async function checkDKIM(domain: string): Promise<Vulnerability[]> {
           "Publish the DKIM public key as a TXT record at selector._domainkey.yourdomain.com.",
         ],
       ),
-    ]
+    ];
   }
-  return []
+  return [];
 }
 
 async function checkDNSSEC(domain: string): Promise<Vulnerability[]> {
   // Query Google and Cloudflare DoH in parallel for the AD (Authenticated Data) flag
   const [googleAD, cloudflareAD] = await Promise.allSettled([
-    fetch(`https://dns.google/resolve?name=${encodeURIComponent(domain)}&type=A&do=1`, { signal: AbortSignal.timeout(4000) })
+    fetch(
+      `https://dns.google/resolve?name=${encodeURIComponent(domain)}&type=A&do=1`,
+      { signal: AbortSignal.timeout(4000) },
+    )
       .then((r) => r.json())
       .then((d) => d.AD === true),
-    fetch(`https://cloudflare-dns.com/dns-query?name=${encodeURIComponent(domain)}&type=A&do=true`, {
-      signal: AbortSignal.timeout(4000),
-      headers: { Accept: "application/dns-json" },
-    })
+    fetch(
+      `https://cloudflare-dns.com/dns-query?name=${encodeURIComponent(domain)}&type=A&do=true`,
+      {
+        signal: AbortSignal.timeout(4000),
+        headers: { Accept: "application/dns-json" },
+      },
+    )
       .then((r) => r.json())
       .then((d) => d.AD === true),
-  ])
+  ]);
 
   const enabled =
     (googleAD.status === "fulfilled" && googleAD.value) ||
-    (cloudflareAD.status === "fulfilled" && cloudflareAD.value)
+    (cloudflareAD.status === "fulfilled" && cloudflareAD.value);
 
   if (!enabled) {
     return [
@@ -283,9 +349,9 @@ async function checkDNSSEC(domain: string): Promise<Vulnerability[]> {
           "Verify with: dig +dnssec yourdomain.com",
         ],
       ),
-    ]
+    ];
   }
-  return []
+  return [];
 }
 
 // ── DNS Security (orchestrator: runs all sub-checks in parallel) ───────────
@@ -296,21 +362,24 @@ async function checkDNSSecurity(domain: string): Promise<Vulnerability[]> {
     checkDMARC(domain),
     checkDKIM(domain),
     checkDNSSEC(domain),
-  ])
+  ]);
 
-  const findings: Vulnerability[] = []
+  const findings: Vulnerability[] = [];
   for (const r of results) {
-    if (r.status === "fulfilled") findings.push(...r.value)
+    if (r.status === "fulfilled") findings.push(...r.value);
   }
-  return findings
+  return findings;
 }
 
 // ── TLS Certificate Checks ───────────────────────────────────────────────────
 
-function checkTLSCert(hostname: string, port: number = 443): Promise<Vulnerability[]> {
+function checkTLSCert(
+  hostname: string,
+  port: number = 443,
+): Promise<Vulnerability[]> {
   return new Promise((resolve) => {
-    const findings: Vulnerability[] = []
-    const timeout = setTimeout(() => resolve(findings), 5000)
+    const findings: Vulnerability[] = [];
+    const timeout = setTimeout(() => resolve(findings), 5000);
 
     try {
       const socket = tls.connect(
@@ -323,13 +392,16 @@ function checkTLSCert(hostname: string, port: number = 443): Promise<Vulnerabili
         },
         () => {
           try {
-            const cert = socket.getPeerCertificate()
-            const authorized = socket.authorized
-            const protocol = socket.getProtocol()
+            const cert = socket.getPeerCertificate();
+            const authorized = socket.authorized;
+            const protocol = socket.getProtocol();
 
             if (!authorized) {
-              const authError = socket.authorizationError
-              if (authError === "DEPTH_ZERO_SELF_SIGNED_CERT" || authError === "SELF_SIGNED_CERT_IN_CHAIN") {
+              const authError = socket.authorizationError;
+              if (
+                authError === "DEPTH_ZERO_SELF_SIGNED_CERT" ||
+                authError === "SELF_SIGNED_CERT_IN_CHAIN"
+              ) {
                 findings.push(
                   makeVuln(
                     "Self-Signed TLS Certificate",
@@ -339,9 +411,12 @@ function checkTLSCert(hostname: string, port: number = 443): Promise<Vulnerabili
                     `Certificate authorization error: ${authError}`,
                     "Browsers will show security warnings, making users vulnerable to real MITM attacks.",
                     "Self-signed certificates are not issued by a trusted CA. While they encrypt traffic, they don't verify the server's identity.",
-                    ["Obtain a certificate from a trusted CA (Let's Encrypt is free).", "Use automated cert management (certbot, Caddy, or your hosting provider)."],
+                    [
+                      "Obtain a certificate from a trusted CA (Let's Encrypt is free).",
+                      "Use automated cert management (certbot, Caddy, or your hosting provider).",
+                    ],
                   ),
-                )
+                );
               } else if (authError === "UNABLE_TO_VERIFY_LEAF_SIGNATURE") {
                 findings.push(
                   makeVuln(
@@ -352,90 +427,131 @@ function checkTLSCert(hostname: string, port: number = 443): Promise<Vulnerabili
                     `Certificate authorization error: ${authError}`,
                     "Some clients may not trust this certificate because the full chain to a root CA cannot be verified.",
                     "TLS certificates form a chain of trust. If intermediates are missing, some clients can't verify the chain.",
-                    ["Ensure your server sends the full certificate chain (leaf + intermediates).", "Use SSL Labs (ssllabs.com/ssltest) to verify your chain."],
+                    [
+                      "Ensure your server sends the full certificate chain (leaf + intermediates).",
+                      "Use SSL Labs (ssllabs.com/ssltest) to verify your chain.",
+                    ],
                   ),
-                )
+                );
               }
             }
 
             if (cert && cert.valid_to) {
-              const expiryDate = new Date(cert.valid_to)
-              const daysUntilExpiry = Math.floor((expiryDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24))
+              const expiryDate = new Date(cert.valid_to);
+              const daysUntilExpiry = Math.floor(
+                (expiryDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24),
+              );
 
               if (daysUntilExpiry < 0) {
                 findings.push(
                   makeVuln(
-                    "Expired TLS Certificate", "critical", "ssl",
+                    "Expired TLS Certificate",
+                    "critical",
+                    "ssl",
                     "The TLS certificate has expired.",
                     `Certificate expired on ${cert.valid_to} (${Math.abs(daysUntilExpiry)} days ago).`,
                     "Browsers will block access with a full-page security warning.",
                     "An expired certificate means the server's identity can no longer be verified.",
-                    ["Renew the certificate immediately.", "Set up automatic renewal with Let's Encrypt / certbot."],
+                    [
+                      "Renew the certificate immediately.",
+                      "Set up automatic renewal with Let's Encrypt / certbot.",
+                    ],
                   ),
-                )
+                );
               } else if (daysUntilExpiry <= 14) {
                 findings.push(
                   makeVuln(
-                    "TLS Certificate Expiring Soon", "high", "ssl",
+                    "TLS Certificate Expiring Soon",
+                    "high",
+                    "ssl",
                     "The TLS certificate will expire within 14 days.",
                     `Certificate expires on ${cert.valid_to} (${daysUntilExpiry} days remaining).`,
                     "If the certificate expires, browsers will show security warnings and block access.",
                     "TLS certificates have a finite validity period. Renewing before expiry prevents downtime.",
-                    ["Renew the certificate before it expires.", "Enable auto-renewal if available."],
+                    [
+                      "Renew the certificate before it expires.",
+                      "Enable auto-renewal if available.",
+                    ],
                   ),
-                )
+                );
               } else if (daysUntilExpiry <= 30) {
                 findings.push(
                   makeVuln(
-                    "TLS Certificate Expiring Within 30 Days", "medium", "ssl",
+                    "TLS Certificate Expiring Within 30 Days",
+                    "medium",
+                    "ssl",
                     "The TLS certificate will expire within 30 days.",
                     `Certificate expires on ${cert.valid_to} (${daysUntilExpiry} days remaining).`,
                     "Plan to renew soon to avoid any disruption.",
                     "Most CAs recommend renewing at least 30 days before expiry.",
-                    ["Schedule certificate renewal.", "Consider automating renewals with Let's Encrypt."],
+                    [
+                      "Schedule certificate renewal.",
+                      "Consider automating renewals with Let's Encrypt.",
+                    ],
                   ),
-                )
+                );
               }
             }
 
             if (protocol) {
-              const weakProtocols = ["TLSv1", "TLSv1.1", "SSLv3"]
+              const weakProtocols = ["TLSv1", "TLSv1.1", "SSLv3"];
               if (weakProtocols.includes(protocol)) {
                 findings.push(
                   makeVuln(
-                    "Weak TLS Protocol Version", "high", "ssl",
+                    "Weak TLS Protocol Version",
+                    "high",
+                    "ssl",
                     `The server negotiated ${protocol}, which is considered insecure.`,
                     `Negotiated protocol: ${protocol}`,
                     "Older TLS versions have known vulnerabilities (POODLE, BEAST, etc.).",
                     "TLS 1.0 and 1.1 are deprecated. Only TLS 1.2 and 1.3 should be supported.",
-                    ["Disable TLS 1.0 and TLS 1.1.", "Ensure TLS 1.2 and TLS 1.3 are enabled."],
-                    [{ label: "Nginx", language: "nginx", code: "ssl_protocols TLSv1.2 TLSv1.3;\nssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256;" }],
+                    [
+                      "Disable TLS 1.0 and TLS 1.1.",
+                      "Ensure TLS 1.2 and TLS 1.3 are enabled.",
+                    ],
+                    [
+                      {
+                        label: "Nginx",
+                        language: "nginx",
+                        code: "ssl_protocols TLSv1.2 TLSv1.3;\nssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256;",
+                      },
+                    ],
                   ),
-                )
+                );
               }
             }
-          } catch { /* cert inspection failed */ }
+          } catch {
+            /* cert inspection failed */
+          }
 
-          socket.destroy()
-          clearTimeout(timeout)
-          resolve(findings)
+          socket.destroy();
+          clearTimeout(timeout);
+          resolve(findings);
         },
-      )
+      );
 
       socket.on("error", (error: NodeJS.ErrnoException) => {
         // Capture certificate validation errors
         if (error.code === "CERT_HAS_EXPIRED") {
           findings.push(
             makeVuln(
-              "Expired TLS Certificate", "critical", "ssl",
+              "Expired TLS Certificate",
+              "critical",
+              "ssl",
               "The TLS certificate has expired.",
               `Certificate expired error: ${error.message}`,
               "Browsers will block access with a full-page security warning.",
               "An expired certificate means the server's identity can no longer be verified.",
-              ["Renew the certificate immediately.", "Set up automatic renewal with Let's Encrypt / certbot."],
+              [
+                "Renew the certificate immediately.",
+                "Set up automatic renewal with Let's Encrypt / certbot.",
+              ],
             ),
-          )
-        } else if (error.code === "DEPTH_ZERO_SELF_SIGNED_CERT" || error.code === "SELF_SIGNED_CERT_IN_CHAIN") {
+          );
+        } else if (
+          error.code === "DEPTH_ZERO_SELF_SIGNED_CERT" ||
+          error.code === "SELF_SIGNED_CERT_IN_CHAIN"
+        ) {
           findings.push(
             makeVuln(
               "Self-Signed TLS Certificate",
@@ -445,9 +561,12 @@ function checkTLSCert(hostname: string, port: number = 443): Promise<Vulnerabili
               `Certificate error: ${error.code}`,
               "Browsers will show security warnings, making users vulnerable to real MITM attacks.",
               "Self-signed certificates are not issued by a trusted CA. While they encrypt traffic, they don't verify the server's identity.",
-              ["Obtain a certificate from a trusted CA (Let's Encrypt is free).", "Use automated cert management (certbot, Caddy, or your hosting provider)."],
+              [
+                "Obtain a certificate from a trusted CA (Let's Encrypt is free).",
+                "Use automated cert management (certbot, Caddy, or your hosting provider).",
+              ],
             ),
-          )
+          );
         } else if (error.code === "UNABLE_TO_VERIFY_LEAF_SIGNATURE") {
           findings.push(
             makeVuln(
@@ -458,19 +577,26 @@ function checkTLSCert(hostname: string, port: number = 443): Promise<Vulnerabili
               `Certificate error: ${error.code}`,
               "Some clients may not trust this certificate because the full chain to a root CA cannot be verified.",
               "TLS certificates form a chain of trust. If intermediates are missing, some clients can't verify the chain.",
-              ["Ensure your server sends the full certificate chain (leaf + intermediates).", "Use SSL Labs (ssllabs.com/ssltest) to verify your chain."],
+              [
+                "Ensure your server sends the full certificate chain (leaf + intermediates).",
+                "Use SSL Labs (ssllabs.com/ssltest) to verify your chain.",
+              ],
             ),
-          )
+          );
         }
-        clearTimeout(timeout)
-        resolve(findings)
-      })
-      socket.on("timeout", () => { socket.destroy(); clearTimeout(timeout); resolve(findings) })
+        clearTimeout(timeout);
+        resolve(findings);
+      });
+      socket.on("timeout", () => {
+        socket.destroy();
+        clearTimeout(timeout);
+        resolve(findings);
+      });
     } catch {
-      clearTimeout(timeout)
-      resolve(findings)
+      clearTimeout(timeout);
+      resolve(findings);
     }
-  })
+  });
 }
 
 // ── Live Fetch Checks (robots.txt, security.txt) ─────────────────────────────
@@ -479,34 +605,45 @@ const FETCH_OPTS = {
   signal: undefined as AbortSignal | undefined,
   redirect: "follow" as RequestRedirect,
   headers: {
-    "User-Agent": "Mozilla/5.0 (compatible; VulnRadar/1.0; +https://vulnradar.dev)",
-    "Accept": "text/plain, text/*;q=0.9, */*;q=0.8",
+    "User-Agent":
+      "Mozilla/5.0 (compatible; VulnRadar/1.0; +https://vulnradar.dev)",
+    Accept: "text/plain, text/*;q=0.9, */*;q=0.8",
   },
-}
+};
 
 async function checkRobotsTxt(origin: string): Promise<Vulnerability[]> {
-  const findings: Vulnerability[] = []
+  const findings: Vulnerability[] = [];
   try {
     // Validate origin to prevent SSRF
-    const parsed = new URL(origin)
-    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return findings
-    if (isPrivateHostname(parsed.hostname)) return findings
-    
-    // Construct the full URL using URL constructor (not template literals)
-    const robotsUrl = new URL("robots.txt", origin)
-    
-    const res = await fetch(robotsUrl.href, { ...FETCH_OPTS, signal: AbortSignal.timeout(5000) })
-    if (!res.ok) return findings
+    const parsed = new URL(origin);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:")
+      return findings;
+    if (isPrivateHostname(parsed.hostname)) return findings;
 
-    const body = await res.text()
-    if (!body.includes("User-agent") && !body.includes("Disallow") && !body.includes("Allow")) return findings
+    // Construct the full URL using URL constructor (not template literals)
+    const robotsUrl = new URL("robots.txt", origin);
+
+    const res = await fetch(robotsUrl.href, {
+      ...FETCH_OPTS,
+      signal: AbortSignal.timeout(5000),
+    });
+    if (!res.ok) return findings;
+
+    const body = await res.text();
+    if (
+      !body.includes("User-agent") &&
+      !body.includes("Disallow") &&
+      !body.includes("Allow")
+    )
+      return findings;
 
     // Single combined regex for all sensitive paths
-    const sensitiveRegex = /Disallow:\s*(\/(?:admin|backup|config|database|private|secret|\.env|\.git|wp-admin|cgi-bin|tmp|internal|api\/internal|debug|staging|test)\b[^\n]*)/gi
-    const found: string[] = []
-    let match: RegExpExecArray | null
+    const sensitiveRegex =
+      /Disallow:\s*(\/(?:admin|backup|config|database|private|secret|\.env|\.git|wp-admin|cgi-bin|tmp|internal|api\/internal|debug|staging|test)\b[^\n]*)/gi;
+    const found: string[] = [];
+    let match: RegExpExecArray | null;
     while ((match = sensitiveRegex.exec(body)) !== null) {
-      found.push(match[0].trim())
+      found.push(match[0].trim());
     }
 
     if (found.length > 0) {
@@ -524,42 +661,44 @@ async function checkRobotsTxt(origin: string): Promise<Vulnerability[]> {
             "Protect sensitive endpoints with authentication instead of relying on obscurity.",
           ],
         ),
-      )
+      );
     }
-  } catch { /* skip */ }
-  return findings
+  } catch {
+    /* skip */
+  }
+  return findings;
 }
 
 async function checkSecurityTxt(origin: string): Promise<Vulnerability[]> {
   // Validate origin to prevent SSRF
-  let parsed: URL
+  let parsed: URL;
   try {
-    parsed = new URL(origin)
-    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return []
-    if (isPrivateHostname(parsed.hostname)) return []
+    parsed = new URL(origin);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return [];
+    if (isPrivateHostname(parsed.hostname)) return [];
   } catch {
-    return []
+    return [];
   }
 
   // Construct and validate full URLs
-  let wellKnownUrl: string
-  let rootUrl: string
+  let wellKnownUrl: string;
+  let rootUrl: string;
   try {
-    wellKnownUrl = new URL(".well-known/security.txt", origin).toString()
-    rootUrl = new URL("security.txt", origin).toString()
+    wellKnownUrl = new URL(".well-known/security.txt", origin).toString();
+    rootUrl = new URL("security.txt", origin).toString();
   } catch {
-    return []
+    return [];
   }
 
   // Check both URLs in parallel
   const [wellKnown, root] = await Promise.allSettled([
     fetch(wellKnownUrl, { ...FETCH_OPTS, signal: AbortSignal.timeout(5000) }),
     fetch(rootUrl, { ...FETCH_OPTS, signal: AbortSignal.timeout(5000) }),
-  ])
+  ]);
 
   const found =
     (wellKnown.status === "fulfilled" && wellKnown.value.ok) ||
-    (root.status === "fulfilled" && root.value.ok)
+    (root.status === "fulfilled" && root.value.ok);
 
   if (!found) {
     return [
@@ -571,87 +710,104 @@ async function checkSecurityTxt(origin: string): Promise<Vulnerability[]> {
         `Both ${wellKnownUrl} and ${rootUrl} returned non-200 status.`,
         "Security researchers who find vulnerabilities may not know how to responsibly report them.",
         "security.txt (RFC 9116) is a standard for responsible disclosure contact information.",
-        ["Create a security.txt file at /.well-known/security.txt.", "Include at minimum: Contact, Expires."],
-        [{ label: "security.txt", language: "text", code: "Contact: mailto:security@yourdomain.com\nExpires: 2026-12-31T23:59:59z\nPreferred-Languages: en" }],
+        [
+          "Create a security.txt file at /.well-known/security.txt.",
+          "Include at minimum: Contact, Expires.",
+        ],
+        [
+          {
+            label: "security.txt",
+            language: "text",
+            code: "Contact: mailto:security@yourdomain.com\nExpires: 2026-12-31T23:59:59z\nPreferred-Languages: en",
+          },
+        ],
       ),
-    ]
+    ];
   }
-  return []
+  return [];
 }
 
 async function checkLiveFetch(url: string): Promise<Vulnerability[]> {
-  let parsed: URL
+  let parsed: URL;
   try {
-    parsed = new URL(url)
+    parsed = new URL(url);
   } catch {
-    return []
+    return [];
   }
 
   // Only perform live HTTP(S) fetches for public targets
   if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-    return []
+    return [];
   }
 
-  const hostname = parsed.hostname
+  const hostname = parsed.hostname;
   if (isPrivateHostname(hostname)) {
     // Avoid SSRF to private/internal addresses
-    return []
+    return [];
   }
 
-  const origin = parsed.origin
+  const origin = parsed.origin;
 
   // Run robots.txt and security.txt in parallel
   const [robotsResult, securityResult] = await Promise.allSettled([
     checkRobotsTxt(origin),
     checkSecurityTxt(origin),
-  ])
+  ]);
 
-  const findings: Vulnerability[] = []
-  if (robotsResult.status === "fulfilled") findings.push(...robotsResult.value)
-  if (securityResult.status === "fulfilled") findings.push(...securityResult.value)
-  return findings
+  const findings: Vulnerability[] = [];
+  if (robotsResult.status === "fulfilled") findings.push(...robotsResult.value);
+  if (securityResult.status === "fulfilled")
+    findings.push(...securityResult.value);
+  return findings;
 }
 
 // ── Main runner ──────────────────────────────────────────────────────────────
 
-export async function runAsyncChecks(url: string, categories?: string[] | null): Promise<Vulnerability[]> {
-  let hostname: string
-  let isHTTPS: boolean
+export async function runAsyncChecks(
+  url: string,
+  categories?: string[] | null,
+): Promise<Vulnerability[]> {
+  let hostname: string;
+  let isHTTPS: boolean;
   try {
-    const parsed = new URL(url)
-    hostname = parsed.hostname
-    isHTTPS = parsed.protocol === "https:"
+    const parsed = new URL(url);
+    hostname = parsed.hostname;
+    isHTTPS = parsed.protocol === "https:";
   } catch {
-    return []
+    return [];
   }
 
-  const allowed = categories ? new Set(categories) : null
-  const runAll = !allowed
+  const allowed = categories ? new Set(categories) : null;
+  const runAll = !allowed;
 
   // Build tasks based on selected categories
-  const tasks: Promise<Vulnerability[]>[] = []
+  const tasks: Promise<Vulnerability[]>[] = [];
 
   // DNS checks map to "dns" category (SPF, DMARC, DKIM, DNSSEC)
   if (runAll || allowed!.has("dns")) {
-    tasks.push(checkDNSSecurity(hostname))
+    tasks.push(checkDNSSecurity(hostname));
   }
 
   // TLS checks map to "ssl" category
   if ((runAll || allowed!.has("ssl")) && isHTTPS) {
-    tasks.push(checkTLSCert(hostname))
+    tasks.push(checkTLSCert(hostname));
   }
 
   // Live fetch checks (robots.txt → configuration/information-disclosure, security.txt → configuration)
-  if (runAll || allowed!.has("configuration") || allowed!.has("information-disclosure")) {
-    tasks.push(checkLiveFetch(url))
+  if (
+    runAll ||
+    allowed!.has("configuration") ||
+    allowed!.has("information-disclosure")
+  ) {
+    tasks.push(checkLiveFetch(url));
   }
 
-  if (tasks.length === 0) return []
+  if (tasks.length === 0) return [];
 
-  const results = await Promise.allSettled(tasks)
-  const findings: Vulnerability[] = []
+  const results = await Promise.allSettled(tasks);
+  const findings: Vulnerability[] = [];
   for (const r of results) {
-    if (r.status === "fulfilled") findings.push(...r.value)
+    if (r.status === "fulfilled") findings.push(...r.value);
   }
-  return findings
+  return findings;
 }

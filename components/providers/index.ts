@@ -1,1 +1,1 @@
-export { AuthProvider, useAuth, clearAuthCache } from './auth-provider'
+export { AuthProvider, useAuth, clearAuthCache } from "./auth-provider";

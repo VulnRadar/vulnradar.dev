@@ -3,7 +3,7 @@
 // ============================================================================
 // These constants are safe to use in client components and don't depend
 // on server-only config loading. Role definitions, routes, and UI styles.
-// 
+//
 // NOTE: constants.ts re-exports these values for convenience. If you need
 // client-safe constants in client components, import from here directly
 // to avoid potential bundling issues with server-only code.
@@ -19,9 +19,9 @@ export const STAFF_ROLES = {
   SUPPORT: "support",
   MODERATOR: "moderator",
   ADMIN: "admin",
-} as const
+} as const;
 
-export type StaffRole = (typeof STAFF_ROLES)[keyof typeof STAFF_ROLES]
+export type StaffRole = (typeof STAFF_ROLES)[keyof typeof STAFF_ROLES];
 
 export const STAFF_ROLE_HIERARCHY: Record<string, number> = {
   user: 0,
@@ -29,7 +29,7 @@ export const STAFF_ROLE_HIERARCHY: Record<string, number> = {
   support: 1,
   moderator: 2,
   admin: 3,
-}
+};
 
 export const STAFF_ROLE_LABELS: Record<string, string> = {
   user: "User",
@@ -37,7 +37,7 @@ export const STAFF_ROLE_LABELS: Record<string, string> = {
   support: "Support",
   moderator: "Moderator",
   admin: "Admin",
-}
+};
 
 // ============================================================================
 // ROLE BADGE STYLES (used across admin, shared, staff pages)
@@ -45,17 +45,18 @@ export const STAFF_ROLE_LABELS: Record<string, string> = {
 
 export const ROLE_BADGE_STYLES: Record<string, string> = {
   admin: "bg-primary/10 text-primary border-primary/20",
-  moderator: "bg-[hsl(var(--severity-medium))]/10 text-[hsl(var(--severity-medium))] border-[hsl(var(--severity-medium))]/20",
+  moderator:
+    "bg-[hsl(var(--severity-medium))]/10 text-[hsl(var(--severity-medium))] border-[hsl(var(--severity-medium))]/20",
   support: "bg-blue-500/10 text-blue-500 border-blue-500/20",
   beta_tester: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
   user: "bg-muted text-muted-foreground border-border",
-}
+};
 
 // ============================================================================
 // API VERSION - Change this to switch all API calls between versions
 // ============================================================================
 
-export const API_VERSION = "v2"
+export const API_VERSION = "v2";
 
 // ============================================================================
 // API ENDPOINTS (dynamically versioned)
@@ -114,7 +115,7 @@ export const API = {
   ACCOUNT_NOTIFICATIONS: `/api/${API_VERSION}/account/notifications`,
   FINDING_TYPES: `/api/${API_VERSION}/finding-types`,
   COMPARE: `/api/${API_VERSION}/compare`,
-} as const
+} as const;
 
 // ============================================================================
 // APPLICATION ROUTES
@@ -150,7 +151,7 @@ export const ROUTES = {
   DOCS_SETUP: "/docs/setup",
   DOCS_DEVELOPERS: "/docs/developers",
   ADMIN: "/admin",
-} as const
+} as const;
 
 // ============================================================================
 // SEVERITY LEVELS & COLORS
@@ -162,9 +163,10 @@ export const SEVERITY_LEVELS = {
   MEDIUM: "medium",
   LOW: "low",
   INFO: "info",
-} as const
+} as const;
 
-export type SeverityLevel = (typeof SEVERITY_LEVELS)[keyof typeof SEVERITY_LEVELS]
+export type SeverityLevel =
+  (typeof SEVERITY_LEVELS)[keyof typeof SEVERITY_LEVELS];
 
 export const SEVERITY_COLORS = {
   critical: "hsl(var(--severity-critical))",
@@ -172,7 +174,7 @@ export const SEVERITY_COLORS = {
   medium: "hsl(var(--severity-medium))",
   low: "hsl(var(--severity-low))",
   info: "hsl(var(--severity-info))",
-}
+};
 
 export const SEVERITY_LABELS = {
   critical: "Critical",
@@ -180,7 +182,7 @@ export const SEVERITY_LABELS = {
   medium: "Medium",
   low: "Low",
   info: "Informational",
-}
+};
 
 // ============================================================================
 // UI / DESIGN CONSTANTS
@@ -190,10 +192,10 @@ export const ANIMATION_DURATION = {
   FAST: 150,
   NORMAL: 300,
   SLOW: 500,
-}
+};
 
 export const TOAST_DURATION = {
   SHORT: 3000,
   NORMAL: 4000,
   LONG: 6000,
-}
+};

@@ -1,26 +1,40 @@
-"use client"
+"use client";
 
-import React, { useState, useEffect } from "react"
-import { Card, CardContent } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Switch } from "@/components/ui/switch"
-import { Settings, AlertTriangle, Save, RefreshCw, Loader2, CheckCircle2, X, MessageSquare, Shield } from "lucide-react"
-import { SaveConfirmationModal, type ChangeItem } from "@/components/shared/save-confirmation-modal"
-import { cn } from "@/lib/ui/utils"
+import React, { useState, useEffect } from "react";
+import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
+import {
+  Settings,
+  AlertTriangle,
+  Save,
+  RefreshCw,
+  Loader2,
+  CheckCircle2,
+  X,
+  MessageSquare,
+  Shield,
+} from "lucide-react";
+import {
+  SaveConfirmationModal,
+  type ChangeItem,
+} from "@/components/shared/save-confirmation-modal";
+import { cn } from "@/lib/ui/utils";
 
 interface SystemSetting {
-  key: string
-  value: string
-  description?: string
-  updated_at?: string
+  key: string;
+  value: string;
+  description?: string;
+  updated_at?: string;
 }
 
 const defaultSettings = [
   {
     key: "maintenance_mode",
     label: "Maintenance Mode",
-    description: "Disable access for regular users while maintenance is in progress",
+    description:
+      "Disable access for regular users while maintenance is in progress",
     type: "toggle",
     icon: Shield,
   },
@@ -31,50 +45,50 @@ const defaultSettings = [
     type: "text",
     icon: MessageSquare,
   },
-]
+];
 
 export function SystemSettingsManager() {
-  const [settings, setSettings] = useState<Record<string, string>>({})
-  const [loading, setLoading] = useState(false)
-  const [saving, setSaving] = useState(false)
-  const [changes, setChanges] = useState<Record<string, string>>({})
-  const [showSaveModal, setShowSaveModal] = useState(false)
+  const [settings, setSettings] = useState<Record<string, string>>({});
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [changes, setChanges] = useState<Record<string, string>>({});
+  const [showSaveModal, setShowSaveModal] = useState(false);
 
   const fetchSettings = async () => {
-    setLoading(true)
+    setLoading(true);
     try {
       const res = await fetch("/api/v2/admin/features", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "list", section: "system_settings" }),
-      })
-      const data = await res.json()
-      const settingsMap: Record<string, string> = {}
+      });
+      const data = await res.json();
+      const settingsMap: Record<string, string> = {};
       data.settings?.forEach((s: SystemSetting) => {
-        settingsMap[s.key] = s.value
-      })
-      setSettings(settingsMap)
-      setChanges({})
+        settingsMap[s.key] = s.value;
+      });
+      setSettings(settingsMap);
+      setChanges({});
     } catch (error) {
-      console.error("Error fetching settings:", error)
+      console.error("Error fetching settings:", error);
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }
+  };
 
   useEffect(() => {
-    fetchSettings()
-  }, [])
+    fetchSettings();
+  }, []);
 
   const handleChange = (key: string, value: string) => {
     setChanges((prev) => ({
       ...prev,
       [key]: value,
-    }))
-  }
+    }));
+  };
 
   const handleSave = async () => {
-    setSaving(true)
+    setSaving(true);
     try {
       for (const [key, value] of Object.entries(changes)) {
         await fetch("/api/v2/admin/features", {
@@ -86,40 +100,53 @@ export function SystemSettingsManager() {
             key,
             value,
           }),
-        })
+        });
       }
       setSettings((prev) => ({
         ...prev,
         ...changes,
-      }))
-      setChanges({})
+      }));
+      setChanges({});
     } catch (error) {
-      console.error("Error saving settings:", error)
+      console.error("Error saving settings:", error);
     } finally {
-      setSaving(false)
+      setSaving(false);
     }
-  }
+  };
 
   const discardChanges = () => {
-    setChanges({})
-  }
+    setChanges({});
+  };
 
-  const hasChanges = Object.keys(changes).length > 0
+  const hasChanges = Object.keys(changes).length > 0;
 
   // Build change items for modal
-  const modalChanges: ChangeItem[] = Object.entries(changes).map(([key, value]) => {
-    const setting = defaultSettings.find((s) => s.key === key)
-    const oldValue = settings[key] || ""
-    return {
-      field: key,
-      label: setting?.label || key,
-      oldValue: setting?.type === "toggle" ? (oldValue === "true" ? "Enabled" : "Disabled") : oldValue,
-      newValue: setting?.type === "toggle" ? (value === "true" ? "Enabled" : "Disabled") : value,
-    }
-  })
+  const modalChanges: ChangeItem[] = Object.entries(changes).map(
+    ([key, value]) => {
+      const setting = defaultSettings.find((s) => s.key === key);
+      const oldValue = settings[key] || "";
+      return {
+        field: key,
+        label: setting?.label || key,
+        oldValue:
+          setting?.type === "toggle"
+            ? oldValue === "true"
+              ? "Enabled"
+              : "Disabled"
+            : oldValue,
+        newValue:
+          setting?.type === "toggle"
+            ? value === "true"
+              ? "Enabled"
+              : "Disabled"
+            : value,
+      };
+    },
+  );
 
   // Stats
-  const maintenanceActive = (changes.maintenance_mode ?? settings.maintenance_mode) === "true"
+  const maintenanceActive =
+    (changes.maintenance_mode ?? settings.maintenance_mode) === "true";
 
   return (
     <div className="space-y-6">
@@ -130,7 +157,9 @@ export function SystemSettingsManager() {
             <AlertTriangle className="h-4 w-4 text-amber-600" />
           </div>
           <div className="flex-1">
-            <p className="text-sm font-medium text-amber-900 dark:text-amber-200">Maintenance Mode Active</p>
+            <p className="text-sm font-medium text-amber-900 dark:text-amber-200">
+              Maintenance Mode Active
+            </p>
             <p className="text-xs text-amber-800/80 dark:text-amber-300/80 mt-0.5">
               Regular users cannot access the application
             </p>
@@ -147,8 +176,12 @@ export function SystemSettingsManager() {
                 <Settings className="h-4 w-4 text-primary" />
               </div>
               <div>
-                <h3 className="text-base font-semibold text-foreground">System Settings</h3>
-                <p className="text-xs text-muted-foreground mt-0.5">Configure global system behavior</p>
+                <h3 className="text-base font-semibold text-foreground">
+                  System Settings
+                </h3>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Configure global system behavior
+                </p>
               </div>
             </div>
             <Button
@@ -167,11 +200,14 @@ export function SystemSettingsManager() {
         <CardContent className="p-0">
           <div className="divide-y divide-border/40">
             {defaultSettings.map((setting) => {
-              const value = changes[setting.key] ?? settings[setting.key] ?? ""
-              const Icon = setting.icon
+              const value = changes[setting.key] ?? settings[setting.key] ?? "";
+              const Icon = setting.icon;
 
               return (
-                <div key={setting.key} className="px-4 sm:px-5 py-4 hover:bg-muted/20 transition-colors">
+                <div
+                  key={setting.key}
+                  className="px-4 sm:px-5 py-4 hover:bg-muted/20 transition-colors"
+                >
                   <div className="flex items-start gap-3">
                     <div className="p-2 rounded-lg bg-muted/50 shrink-0 mt-0.5">
                       <Icon className="h-4 w-4 text-muted-foreground" />
@@ -179,7 +215,9 @@ export function SystemSettingsManager() {
                     <div className="flex-1 min-w-0">
                       <div className="flex items-start justify-between gap-4">
                         <div className="flex-1">
-                          <label className="text-sm font-medium text-foreground">{setting.label}</label>
+                          <label className="text-sm font-medium text-foreground">
+                            {setting.label}
+                          </label>
                           {setting.description && (
                             <p className="text-xs text-muted-foreground mt-1">
                               {setting.description}
@@ -188,16 +226,23 @@ export function SystemSettingsManager() {
                         </div>
                         {setting.type === "toggle" && (
                           <div className="flex items-center gap-2 shrink-0">
-                            <span className={cn(
-                              "text-xs font-medium",
-                              value === "true" ? "text-emerald-500" : "text-muted-foreground"
-                            )}>
+                            <span
+                              className={cn(
+                                "text-xs font-medium",
+                                value === "true"
+                                  ? "text-emerald-500"
+                                  : "text-muted-foreground",
+                              )}
+                            >
                               {value === "true" ? "Enabled" : "Disabled"}
                             </span>
                             <Switch
                               checked={value === "true"}
                               onCheckedChange={(checked) =>
-                                handleChange(setting.key, checked ? "true" : "false")
+                                handleChange(
+                                  setting.key,
+                                  checked ? "true" : "false",
+                                )
                               }
                             />
                           </div>
@@ -209,7 +254,9 @@ export function SystemSettingsManager() {
                           <Input
                             type={setting.type}
                             value={value}
-                            onChange={(e) => handleChange(setting.key, e.target.value)}
+                            onChange={(e) =>
+                              handleChange(setting.key, e.target.value)
+                            }
                             placeholder={`Enter ${setting.label.toLowerCase()}`}
                             className="h-10 bg-background/50 border-border/40 focus:border-primary/50"
                           />
@@ -218,7 +265,7 @@ export function SystemSettingsManager() {
                     </div>
                   </div>
                 </div>
-              )
+              );
             })}
           </div>
         </CardContent>
@@ -234,16 +281,32 @@ export function SystemSettingsManager() {
                   <Save className="h-3.5 w-3.5 text-primary" />
                 </div>
                 <p className="text-sm font-medium text-foreground">
-                  {modalChanges.length} unsaved change{modalChanges.length !== 1 ? "s" : ""}
+                  {modalChanges.length} unsaved change
+                  {modalChanges.length !== 1 ? "s" : ""}
                 </p>
               </div>
               <div className="flex items-center gap-2">
-                <Button variant="ghost" size="sm" onClick={discardChanges} disabled={saving} className="gap-1.5">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={discardChanges}
+                  disabled={saving}
+                  className="gap-1.5"
+                >
                   <X className="h-3.5 w-3.5" />
                   <span className="hidden sm:inline">Discard</span>
                 </Button>
-                <Button size="sm" className="gap-1.5" onClick={() => setShowSaveModal(true)} disabled={saving}>
-                  {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
+                <Button
+                  size="sm"
+                  className="gap-1.5"
+                  onClick={() => setShowSaveModal(true)}
+                  disabled={saving}
+                >
+                  {saving ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <CheckCircle2 className="h-3.5 w-3.5" />
+                  )}
                   <span className="hidden sm:inline">Save Changes</span>
                   <span className="sm:hidden">Save</span>
                 </Button>
@@ -258,8 +321,8 @@ export function SystemSettingsManager() {
         isOpen={showSaveModal}
         onClose={() => setShowSaveModal(false)}
         onConfirm={async () => {
-          await handleSave()
-          setShowSaveModal(false)
+          await handleSave();
+          setShowSaveModal(false);
         }}
         title="Save System Settings"
         description="Review and confirm changes to system configuration."
@@ -268,5 +331,5 @@ export function SystemSettingsManager() {
         confirmText="Save Settings"
       />
     </div>
-  )
+  );
 }

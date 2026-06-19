@@ -1,38 +1,63 @@
-"use client"
+"use client";
 
-import { ArrowLeft, Pencil, UserPlus, MoreHorizontal, Trash2, LogOut, Check, X, Loader2 } from "lucide-react"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Card, CardContent } from "@/components/ui/card"
 import {
-  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
-import { TEAM_ROLES } from "@/lib/config/constants"
-import { type Team } from "./teams-types"
+  ArrowLeft,
+  Pencil,
+  UserPlus,
+  MoreHorizontal,
+  Trash2,
+  LogOut,
+  Check,
+  X,
+  Loader2,
+} from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Card, CardContent } from "@/components/ui/card";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { TEAM_ROLES } from "@/lib/config/constants";
+import { type Team } from "./teams-types";
 
 interface TeamDetailHeaderProps {
-  team: Team
-  currentRole: string
-  memberCount: number
-  editingName: boolean
-  nameInput: string
-  savingName: boolean
-  onBack: () => void
-  onEditName: () => void
-  onNameInputChange: (v: string) => void
-  onSaveName: () => void
-  onCancelEdit: () => void
-  onToggleInvite: () => void
-  onDelete: () => void
-  onLeave: () => void
+  team: Team;
+  currentRole: string;
+  memberCount: number;
+  editingName: boolean;
+  nameInput: string;
+  savingName: boolean;
+  onBack: () => void;
+  onEditName: () => void;
+  onNameInputChange: (v: string) => void;
+  onSaveName: () => void;
+  onCancelEdit: () => void;
+  onToggleInvite: () => void;
+  onDelete: () => void;
+  onLeave: () => void;
 }
 
 export function TeamDetailHeader({
-  team, currentRole, memberCount, editingName, nameInput, savingName,
-  onBack, onEditName, onNameInputChange, onSaveName, onCancelEdit,
-  onToggleInvite, onDelete, onLeave,
+  team,
+  currentRole,
+  memberCount,
+  editingName,
+  nameInput,
+  savingName,
+  onBack,
+  onEditName,
+  onNameInputChange,
+  onSaveName,
+  onCancelEdit,
+  onToggleInvite,
+  onDelete,
+  onLeave,
 }: TeamDetailHeaderProps) {
-  const canManage = currentRole === TEAM_ROLES.OWNER || currentRole === TEAM_ROLES.ADMIN
+  const canManage =
+    currentRole === TEAM_ROLES.OWNER || currentRole === TEAM_ROLES.ADMIN;
 
   return (
     <>
@@ -41,7 +66,8 @@ export function TeamDetailHeader({
         onClick={onBack}
         className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors w-fit"
       >
-        <ArrowLeft className="h-4 w-4" />Back to Teams
+        <ArrowLeft className="h-4 w-4" />
+        Back to Teams
       </button>
 
       <Card className="bg-card border-border/50">
@@ -54,23 +80,39 @@ export function TeamDetailHeader({
                     value={nameInput}
                     onChange={(e) => onNameInputChange(e.target.value)}
                     onKeyDown={(e) => {
-                      if (e.key === "Enter") onSaveName()
-                      if (e.key === "Escape") onCancelEdit()
+                      if (e.key === "Enter") onSaveName();
+                      if (e.key === "Escape") onCancelEdit();
                     }}
                     className="h-9 text-base font-semibold w-48 sm:w-64"
                     autoFocus
                     maxLength={50}
                   />
-                  <Button size="sm" className="h-9 w-9 p-0" onClick={onSaveName} disabled={savingName}>
-                    {savingName ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+                  <Button
+                    size="sm"
+                    className="h-9 w-9 p-0"
+                    onClick={onSaveName}
+                    disabled={savingName}
+                  >
+                    {savingName ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Check className="h-4 w-4" />
+                    )}
                   </Button>
-                  <Button variant="ghost" size="sm" className="h-9 w-9 p-0" onClick={onCancelEdit}>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-9 w-9 p-0"
+                    onClick={onCancelEdit}
+                  >
                     <X className="h-4 w-4" />
                   </Button>
                 </div>
               ) : (
                 <div className="flex items-center gap-2">
-                  <h2 className="text-xl font-semibold tracking-tight truncate">{team.name}</h2>
+                  <h2 className="text-xl font-semibold tracking-tight truncate">
+                    {team.name}
+                  </h2>
                   {canManage && (
                     <button
                       type="button"
@@ -90,7 +132,12 @@ export function TeamDetailHeader({
 
             <div className="flex items-center gap-2 self-start sm:self-auto">
               {canManage && (
-                <Button variant="outline" size="sm" className="gap-1.5" onClick={onToggleInvite}>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-1.5"
+                  onClick={onToggleInvite}
+                >
                   <UserPlus className="h-4 w-4" />
                   <span className="hidden sm:inline">Invite</span>
                 </Button>
@@ -103,12 +150,20 @@ export function TeamDetailHeader({
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-48">
                   {currentRole === TEAM_ROLES.OWNER ? (
-                    <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={onDelete}>
-                      <Trash2 className="h-4 w-4 mr-2" />Delete Team
+                    <DropdownMenuItem
+                      className="text-destructive focus:text-destructive"
+                      onClick={onDelete}
+                    >
+                      <Trash2 className="h-4 w-4 mr-2" />
+                      Delete Team
                     </DropdownMenuItem>
                   ) : (
-                    <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={onLeave}>
-                      <LogOut className="h-4 w-4 mr-2" />Leave Team
+                    <DropdownMenuItem
+                      className="text-destructive focus:text-destructive"
+                      onClick={onLeave}
+                    >
+                      <LogOut className="h-4 w-4 mr-2" />
+                      Leave Team
                     </DropdownMenuItem>
                   )}
                 </DropdownMenuContent>
@@ -118,5 +173,5 @@ export function TeamDetailHeader({
         </CardContent>
       </Card>
     </>
-  )
+  );
 }

@@ -1,67 +1,78 @@
-import { NextRequest, NextResponse } from "next/server"
-import { createSession, verifyPassword } from "@/lib/auth"
-import { verifyTOTP } from "@/lib/auth/totp"
-import pool from "@/lib/database/db"
-import { sendNotificationEmail } from "@/lib/notifications/notifications"
-import { newLoginEmail } from "@/lib/email/email"
-import { ApiResponse, parseBody, Validate, withErrorHandling } from "@/lib/api/api-utils"
-import { getClientIp, getUserAgent } from "@/lib/api/request-utils"
+import { NextRequest, NextResponse } from "next/server";
+import { createSession, verifyPassword } from "@/lib/auth";
+import { verifyTOTP } from "@/lib/auth/totp";
+import pool from "@/lib/database/db";
+import { sendNotificationEmail } from "@/lib/notifications/notifications";
+import { newLoginEmail } from "@/lib/email/email";
+import {
+  ApiResponse,
+  parseBody,
+  Validate,
+  withErrorHandling,
+} from "@/lib/api/api-utils";
+import { getClientIp, getUserAgent } from "@/lib/api/request-utils";
 import {
   AUTH_2FA_PENDING_COOKIE,
   DEVICE_TRUST_COOKIE_NAME,
   DEVICE_TRUST_MAX_AGE,
   ERROR_MESSAGES,
-} from "@/lib/config/constants"
+} from "@/lib/config/constants";
 
 export const POST = withErrorHandling(async (request: NextRequest) => {
-  const ip = await getClientIp()
-  const userAgent = await getUserAgent()
+  const ip = await getClientIp();
+  const userAgent = await getUserAgent();
 
   const parsed = await parseBody<{
-    userId: number
-    code?: string
-    backupCode?: string
-    rememberDevice?: boolean
-  }>(request)
-  if (!parsed.success) return ApiResponse.badRequest(parsed.error)
-  const { userId, code, backupCode, rememberDevice } = parsed.data
+    userId: number;
+    code?: string;
+    backupCode?: string;
+    rememberDevice?: boolean;
+  }>(request);
+  if (!parsed.success) return ApiResponse.badRequest(parsed.error);
+  const { userId, code, backupCode, rememberDevice } = parsed.data;
 
   const validationError = Validate.multiple([
     Validate.required(code || backupCode, "Code or backup code"),
-  ])
-  if (validationError) return ApiResponse.badRequest(validationError)
+  ]);
+  if (validationError) return ApiResponse.badRequest(validationError);
 
   // Verify the pending 2FA token (check both normal login and Discord login pending cookies)
-  const pending = request.cookies.get(AUTH_2FA_PENDING_COOKIE)?.value
-  const discordPending = request.cookies.get("discord_pending_login")?.value
-  
-  let isDiscordLogin = false
-  let effectiveUserId = userId
-  let parsedDiscordPending: { userId: number; token: string; ts: number } | null = null
-  
+  const pending = request.cookies.get(AUTH_2FA_PENDING_COOKIE)?.value;
+  const discordPending = request.cookies.get("discord_pending_login")?.value;
+
+  let isDiscordLogin = false;
+  let effectiveUserId = userId;
+  let parsedDiscordPending: {
+    userId: number;
+    token: string;
+    ts: number;
+  } | null = null;
+
   // Check for Discord pending login first (userId might be 0 from client)
   if (discordPending) {
     try {
-      parsedDiscordPending = JSON.parse(discordPending)
+      parsedDiscordPending = JSON.parse(discordPending);
       if (parsedDiscordPending) {
-        isDiscordLogin = true
-        effectiveUserId = parsedDiscordPending.userId
+        isDiscordLogin = true;
+        effectiveUserId = parsedDiscordPending.userId;
         // Check if Discord pending token is expired (5 minutes)
         if (Date.now() - parsedDiscordPending.ts > 5 * 60 * 1000) {
-          return ApiResponse.unauthorized("Discord login session expired. Please try again.")
+          return ApiResponse.unauthorized(
+            "Discord login session expired. Please try again.",
+          );
         }
       }
     } catch {
       // Invalid JSON, ignore
     }
   }
-  
+
   if (!isDiscordLogin) {
     if (!userId) {
-      return ApiResponse.badRequest("User ID is required")
+      return ApiResponse.badRequest("User ID is required");
     }
     if (!pending || pending !== String(userId)) {
-      return ApiResponse.unauthorized(ERROR_MESSAGES.INVALID_2FA_SESSION)
+      return ApiResponse.unauthorized(ERROR_MESSAGES.INVALID_2FA_SESSION);
     }
   }
 
@@ -69,74 +80,84 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   const result = await pool.query(
     "SELECT totp_secret, totp_enabled, backup_codes, two_factor_method FROM users WHERE id = $1",
     [effectiveUserId],
-  )
-  const user = result.rows[0]
+  );
+  const user = result.rows[0];
   if (!user || !user.totp_enabled) {
-    return ApiResponse.badRequest("2FA is not enabled for this account.")
+    return ApiResponse.badRequest("2FA is not enabled for this account.");
   }
 
-  const method = user.two_factor_method || "app"
-  let verified = false
+  const method = user.two_factor_method || "app";
+  let verified = false;
 
   if (backupCode && method === "app") {
     // Verify backup code against hashed codes (only for app-based 2FA)
-    const normalizedInput = backupCode.trim().toUpperCase().replace(/[\s-]/g, "")
-    const storedHashes: string[] = user.backup_codes ? JSON.parse(user.backup_codes) : []
+    const normalizedInput = backupCode
+      .trim()
+      .toUpperCase()
+      .replace(/[\s-]/g, "");
+    const storedHashes: string[] = user.backup_codes
+      ? JSON.parse(user.backup_codes)
+      : [];
     const matchIndex = storedHashes.findIndex((hash: string) => {
       try {
-        return verifyPassword(normalizedInput, hash)
+        return verifyPassword(normalizedInput, hash);
       } catch {
-        return false
+        return false;
       }
-    })
+    });
     if (matchIndex >= 0) {
-      verified = true
+      verified = true;
       // Consume the backup code (one-time use)
-      storedHashes.splice(matchIndex, 1)
+      storedHashes.splice(matchIndex, 1);
       await pool.query("UPDATE users SET backup_codes = $1 WHERE id = $2", [
         JSON.stringify(storedHashes),
         effectiveUserId,
-      ])
+      ]);
     }
   } else if (code) {
     const codeError = Validate.multiple([
       Validate.required(code, "Code"),
       Validate.string(code, "Code", 6, 6),
       Validate.pattern(code, "Code", /^\d{6}$/, "Must be 6 digits"),
-    ])
-    if (codeError) return ApiResponse.badRequest(codeError)
+    ]);
+    if (codeError) return ApiResponse.badRequest(codeError);
 
     if (method === "email") {
       // Verify email 2FA code
       const codeResult = await pool.query(
         "SELECT id FROM email_2fa_codes WHERE user_id = $1 AND code_hash = encode(sha256($2::bytea), 'hex') AND expires_at > NOW()",
         [effectiveUserId, code],
-      )
+      );
       if (codeResult.rows.length > 0) {
-        verified = true
+        verified = true;
         // Delete used code
-        await pool.query("DELETE FROM email_2fa_codes WHERE user_id = $1", [effectiveUserId])
+        await pool.query("DELETE FROM email_2fa_codes WHERE user_id = $1", [
+          effectiveUserId,
+        ]);
       }
     } else {
       // Verify TOTP code (app-based)
       if (!user.totp_secret) {
-        return ApiResponse.badRequest("2FA is not configured properly.")
+        return ApiResponse.badRequest("2FA is not configured properly.");
       }
-      verified = verifyTOTP(user.totp_secret, code)
+      verified = verifyTOTP(user.totp_secret, code);
     }
   }
 
   if (!verified) {
-    return ApiResponse.badRequest("Invalid code. Please try again.")
+    return ApiResponse.badRequest("Invalid code. Please try again.");
   }
 
   // Create session with IP and user agent
-  await createSession(effectiveUserId, ip, userAgent)
+  await createSession(effectiveUserId, ip, userAgent);
 
   // Get user email for login notification
-  const userEmailResult = await pool.query("SELECT email FROM users WHERE id = $1", [effectiveUserId])
-  const userEmail = userEmailResult.rows[0]?.email
-  
+  const userEmailResult = await pool.query(
+    "SELECT email FROM users WHERE id = $1",
+    [effectiveUserId],
+  );
+  const userEmail = userEmailResult.rows[0]?.email;
+
   // Send new login alert email in background
   if (userEmail) {
     setImmediate(() => {
@@ -144,32 +165,37 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
         userId: effectiveUserId,
         userEmail,
         type: "login_alerts",
-        emailContent: newLoginEmail("2FA verified login", ip, { ipAddress: ip, userAgent }),
-      }).catch((err) => console.error("Failed to send login alert:", err))
-    })
+        emailContent: newLoginEmail("2FA verified login", ip, {
+          ipAddress: ip,
+          userAgent,
+        }),
+      }).catch((err) => console.error("Failed to send login alert:", err));
+    });
   }
 
   // Create response
-  const response = NextResponse.json({ success: true })
+  const response = NextResponse.json({ success: true });
 
   // Clear the pending cookies
-  response.cookies.delete(AUTH_2FA_PENDING_COOKIE)
+  response.cookies.delete(AUTH_2FA_PENDING_COOKIE);
   if (isDiscordLogin) {
-    response.cookies.delete("discord_pending_login")
+    response.cookies.delete("discord_pending_login");
   }
 
   // If user wants to remember this device, set device trust cookie
   // Use the rememberDevice value from the form submission for both normal and Discord logins
   if (rememberDevice === true) {
-    const deviceId = `${ip}-${userAgent}`.split("").reduce((a, b) => ((a << 5) - a) + b.charCodeAt(0), 0)
+    const deviceId = `${ip}-${userAgent}`
+      .split("")
+      .reduce((a, b) => (a << 5) - a + b.charCodeAt(0), 0);
     response.cookies.set(DEVICE_TRUST_COOKIE_NAME, String(deviceId), {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: "lax",
       path: "/",
       maxAge: DEVICE_TRUST_MAX_AGE,
-    })
+    });
   }
 
-  return response
-})
+  return response;
+});

@@ -1,82 +1,92 @@
-"use client"
+"use client";
 
-import { useState } from "react"
-import { useRouter } from "next/navigation"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Loader2, AlertTriangle } from "lucide-react"
-import { API } from "@/lib/config/client-constants"
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Loader2, AlertTriangle } from "lucide-react";
+import { API } from "@/lib/config/client-constants";
 
 interface Login2FAFormProps {
-  redirectTo: string
-  userId: number | null
-  method: string
-  _maskedEmail?: string
-  isDiscordAuth?: boolean
+  redirectTo: string;
+  userId: number | null;
+  method: string;
+  _maskedEmail?: string;
+  isDiscordAuth?: boolean;
 }
 
-export function Login2FAForm({ redirectTo, userId, method, _maskedEmail, isDiscordAuth }: Login2FAFormProps) {
-  const router = useRouter()
-  const [totpCode, setTotpCode] = useState("")
-  const [verifying, setVerifying] = useState(false)
-  const [error, setError] = useState("")
-  const [useBackupCode, setUseBackupCode] = useState(false)
-  const [backupCodeInput, setBackupCodeInput] = useState("")
-  const [rememberDevice, setRememberDevice] = useState(false)
-  const [resendingCode, setResendingCode] = useState(false)
+export function Login2FAForm({
+  redirectTo,
+  userId,
+  method,
+  _maskedEmail,
+  isDiscordAuth,
+}: Login2FAFormProps) {
+  const router = useRouter();
+  const [totpCode, setTotpCode] = useState("");
+  const [verifying, setVerifying] = useState(false);
+  const [error, setError] = useState("");
+  const [useBackupCode, setUseBackupCode] = useState(false);
+  const [backupCodeInput, setBackupCodeInput] = useState("");
+  const [rememberDevice, setRememberDevice] = useState(false);
+  const [resendingCode, setResendingCode] = useState(false);
 
   async function handleVerify(e: React.FormEvent) {
-    e.preventDefault()
-    setError("")
-    setVerifying(true)
+    e.preventDefault();
+    setError("");
+    setVerifying(true);
 
     try {
-      const effectiveUserId = isDiscordAuth ? 0 : userId
+      const effectiveUserId = isDiscordAuth ? 0 : userId;
       const body = useBackupCode
-        ? { userId: effectiveUserId, backupCode: backupCodeInput, rememberDevice }
-        : { userId: effectiveUserId, code: totpCode, rememberDevice }
-      
+        ? {
+            userId: effectiveUserId,
+            backupCode: backupCodeInput,
+            rememberDevice,
+          }
+        : { userId: effectiveUserId, code: totpCode, rememberDevice };
+
       const res = await fetch(API.AUTH.TWO_FA.VERIFY, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
-      })
+      });
 
-      const data = await res.json()
+      const data = await res.json();
 
       if (!res.ok) {
-        setError(data.error || "Verification failed.")
-        setVerifying(false)
-        return
+        setError(data.error || "Verification failed.");
+        setVerifying(false);
+        return;
       }
 
-      router.push(redirectTo)
-      router.refresh()
+      router.push(redirectTo);
+      router.refresh();
     } catch {
-      setError("Something went wrong. Please try again.")
-      setVerifying(false)
+      setError("Something went wrong. Please try again.");
+      setVerifying(false);
     }
   }
 
   async function handleResendEmailCode() {
-    setResendingCode(true)
-    setError("")
+    setResendingCode(true);
+    setError("");
     try {
       const res = await fetch("/api/v2/auth/2fa/email-send", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-      })
-      const data = await res.json()
+      });
+      const data = await res.json();
       if (!res.ok) {
-        setError(data.error || "Failed to resend code.")
+        setError(data.error || "Failed to resend code.");
       } else {
-        setTotpCode("")
+        setTotpCode("");
       }
     } catch {
-      setError("Failed to resend code.")
+      setError("Failed to resend code.");
     } finally {
-      setResendingCode(false)
+      setResendingCode(false);
     }
   }
 
@@ -113,7 +123,9 @@ export function Login2FAForm({ redirectTo, userId, method, _maskedEmail, isDisco
             maxLength={6}
             placeholder="000000"
             value={totpCode}
-            onChange={(e) => setTotpCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+            onChange={(e) =>
+              setTotpCode(e.target.value.replace(/\D/g, "").slice(0, 6))
+            }
             required
             autoFocus
             autoComplete="one-time-code"
@@ -124,7 +136,10 @@ export function Login2FAForm({ redirectTo, userId, method, _maskedEmail, isDisco
 
       {error && (
         <div className="rounded-lg border border-destructive/20 bg-destructive/5 px-3 py-2.5">
-          <p className="text-sm text-destructive flex items-center gap-2" role="alert">
+          <p
+            className="text-sm text-destructive flex items-center gap-2"
+            role="alert"
+          >
             <AlertTriangle className="h-4 w-4 shrink-0" />
             {error}
           </p>
@@ -139,14 +154,20 @@ export function Login2FAForm({ redirectTo, userId, method, _maskedEmail, isDisco
           onChange={(e) => setRememberDevice(e.target.checked)}
           className="h-4 w-4 rounded border-border bg-card cursor-pointer"
         />
-        <label htmlFor="remember-device" className="text-sm text-muted-foreground cursor-pointer">
+        <label
+          htmlFor="remember-device"
+          className="text-sm text-muted-foreground cursor-pointer"
+        >
           Trust this device for 30 days
         </label>
       </div>
 
       <Button
         type="submit"
-        disabled={verifying || (useBackupCode ? backupCodeInput.length < 8 : totpCode.length !== 6)}
+        disabled={
+          verifying ||
+          (useBackupCode ? backupCodeInput.length < 8 : totpCode.length !== 6)
+        }
         className="h-10 w-full mt-2"
       >
         {verifying ? (
@@ -173,11 +194,11 @@ export function Login2FAForm({ redirectTo, userId, method, _maskedEmail, isDisco
           <button
             type="button"
             onClick={() => {
-              setUseBackupCode(!useBackupCode)
-              setBackupCodeInput("")
-              setTotpCode("")
-              setRememberDevice(false)
-              setError("")
+              setUseBackupCode(!useBackupCode);
+              setBackupCodeInput("");
+              setTotpCode("");
+              setRememberDevice(false);
+              setError("");
             }}
             className="text-sm text-muted-foreground hover:text-foreground transition-colors"
           >
@@ -186,5 +207,5 @@ export function Login2FAForm({ redirectTo, userId, method, _maskedEmail, isDisco
         )}
       </div>
     </form>
-  )
+  );
 }

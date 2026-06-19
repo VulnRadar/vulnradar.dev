@@ -1,26 +1,30 @@
-"use client"
+"use client";
 
-import { useState } from "react"
-import { MessageSquare, Pencil, Save, Loader2 } from "lucide-react"
-import { Button } from "@/components/ui/button"
+import { useState } from "react";
+import { MessageSquare, Pencil, Save, Loader2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
 interface HistoryNotesProps {
-  notes: string
-  isOwner: boolean
-  onSave: (notes: string) => Promise<void>
+  notes: string;
+  isOwner: boolean;
+  onSave: (notes: string) => Promise<void>;
 }
 
-export function HistoryNotes({ notes: initialNotes, isOwner, onSave }: HistoryNotesProps) {
-  const [notes, setNotes] = useState(initialNotes)
-  const [editing, setEditing] = useState(false)
-  const [saving, setSaving] = useState(false)
+export function HistoryNotes({
+  notes: initialNotes,
+  isOwner,
+  onSave,
+}: HistoryNotesProps) {
+  const [notes, setNotes] = useState(initialNotes);
+  const [editing, setEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   const handleSave = async () => {
-    setSaving(true)
-    await onSave(notes)
-    setSaving(false)
-    setEditing(false)
-  }
+    setSaving(true);
+    await onSave(notes);
+    setSaving(false);
+    setEditing(false);
+  };
 
   return (
     <div className="rounded-xl border border-border/50 bg-card/50 p-4">
@@ -46,7 +50,10 @@ export function HistoryNotes({ notes: initialNotes, isOwner, onSave }: HistoryNo
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={() => { setEditing(false); setNotes(initialNotes) }}
+                  onClick={() => {
+                    setEditing(false);
+                    setNotes(initialNotes);
+                  }}
                   className="h-7 text-xs text-muted-foreground"
                 >
                   Cancel
@@ -58,7 +65,11 @@ export function HistoryNotes({ notes: initialNotes, isOwner, onSave }: HistoryNo
                   disabled={saving}
                   className="h-7 text-xs gap-1.5 bg-transparent"
                 >
-                  {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
+                  {saving ? (
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                  ) : (
+                    <Save className="h-3 w-3" />
+                  )}
                   Save
                 </Button>
               </div>
@@ -66,7 +77,7 @@ export function HistoryNotes({ notes: initialNotes, isOwner, onSave }: HistoryNo
           </>
         )}
       </div>
-      
+
       {editing && isOwner ? (
         <textarea
           value={notes}
@@ -78,12 +89,16 @@ export function HistoryNotes({ notes: initialNotes, isOwner, onSave }: HistoryNo
           className="w-full min-h-[80px] rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring resize-y"
         />
       ) : notes ? (
-        <p className="text-sm text-muted-foreground whitespace-pre-wrap">{notes}</p>
+        <p className="text-sm text-muted-foreground whitespace-pre-wrap">
+          {notes}
+        </p>
       ) : (
         <p className="text-xs text-muted-foreground/60 italic">
-          {isOwner ? 'No notes yet. Click "Add Note" to annotate this scan.' : "No notes for this scan."}
+          {isOwner
+            ? 'No notes yet. Click "Add Note" to annotate this scan.'
+            : "No notes for this scan."}
         </p>
       )}
     </div>
-  )
+  );
 }

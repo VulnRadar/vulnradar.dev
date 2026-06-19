@@ -1,17 +1,17 @@
-"use client"
+"use client";
 
-import Link from "next/link"
-import { usePathname } from "next/navigation"
-import { cn } from "@/lib/ui/utils"
-import { ChevronRight } from "lucide-react"
-import type { NavItem } from "./docs-types"
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { cn } from "@/lib/ui/utils";
+import { ChevronRight } from "lucide-react";
+import type { NavItem } from "./docs-types";
 
 interface DocsSidebarProps {
-  navItems: NavItem[]
+  navItems: NavItem[];
 }
 
 export function DocsSidebar({ navItems }: DocsSidebarProps) {
-  const pathname = usePathname()
+  const pathname = usePathname();
 
   return (
     <aside className="hidden lg:block w-64 flex-shrink-0 border-r border-border/50">
@@ -23,10 +23,11 @@ export function DocsSidebar({ navItems }: DocsSidebarProps) {
         </div>
         <ul className="space-y-1">
           {navItems.map((item) => {
-            const Icon = item.icon
+            const Icon = item.icon;
             const isActive = item.exact
               ? pathname === item.href
-              : pathname.startsWith(item.href) && (item.href !== "/docs" || pathname === "/docs")
+              : pathname.startsWith(item.href) &&
+                (item.href !== "/docs" || pathname === "/docs");
 
             return (
               <li key={item.href}>
@@ -36,15 +37,17 @@ export function DocsSidebar({ navItems }: DocsSidebarProps) {
                     "group flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors",
                     isActive
                       ? "bg-primary/10 text-primary font-medium"
-                      : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+                      : "text-muted-foreground hover:text-foreground hover:bg-muted/50",
                   )}
                 >
                   <Icon className="h-4 w-4" />
                   <span>{item.label}</span>
-                  {isActive && <ChevronRight className="h-3 w-3 ml-auto text-primary" />}
+                  {isActive && (
+                    <ChevronRight className="h-3 w-3 ml-auto text-primary" />
+                  )}
                 </Link>
               </li>
-            )
+            );
           })}
         </ul>
 
@@ -58,5 +61,5 @@ export function DocsSidebar({ navItems }: DocsSidebarProps) {
         </div>
       </nav>
     </aside>
-  )
+  );
 }

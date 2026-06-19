@@ -1,18 +1,18 @@
-"use client"
+"use client";
 
-import { useEffect, useRef } from "react"
-import { Card } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
-import { Webhook, Bell, Zap, Shield } from "lucide-react"
-import { APP_NAME, APP_URL } from "@/lib/config/constants"
-import { useDocsContext, type TocItem } from "../layout"
+import { useEffect, useRef } from "react";
+import { Card } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Webhook, Bell, Zap, Shield } from "lucide-react";
+import { APP_NAME, APP_URL } from "@/lib/config/constants";
+import { useDocsContext, type TocItem } from "../layout";
 import {
   DocsHero,
   DocsSection,
   DocsCallout,
   CodeBlock,
   EndpointCard,
-} from "@/components/docs"
+} from "@/components/docs";
 
 const tocItems: TocItem[] = [
   { id: "overview", label: "Overview" },
@@ -21,36 +21,36 @@ const tocItems: TocItem[] = [
   { id: "payloads", label: "Webhook Payloads" },
   { id: "security", label: "Security" },
   { id: "examples", label: "Integration Examples" },
-]
+];
 
 export default function WebhooksPage() {
-  const { setActiveSection, setTocItems } = useDocsContext()
-  const observerRef = useRef<IntersectionObserver | null>(null)
+  const { setActiveSection, setTocItems } = useDocsContext();
+  const observerRef = useRef<IntersectionObserver | null>(null);
 
   useEffect(() => {
-    setTocItems(tocItems)
-    return () => setTocItems([])
-  }, [setTocItems])
+    setTocItems(tocItems);
+    return () => setTocItems([]);
+  }, [setTocItems]);
 
   useEffect(() => {
     observerRef.current = new IntersectionObserver(
       (entries) => {
         entries.forEach((entry) => {
           if (entry.isIntersecting) {
-            setActiveSection(entry.target.id)
+            setActiveSection(entry.target.id);
           }
-        })
+        });
       },
-      { rootMargin: "-20% 0px -70% 0px", threshold: 0 }
-    )
+      { rootMargin: "-20% 0px -70% 0px", threshold: 0 },
+    );
 
     tocItems.forEach((item) => {
-      const el = document.getElementById(item.id)
-      if (el) observerRef.current?.observe(el)
-    })
+      const el = document.getElementById(item.id);
+      if (el) observerRef.current?.observe(el);
+    });
 
-    return () => observerRef.current?.disconnect()
-  }, [setActiveSection])
+    return () => observerRef.current?.disconnect();
+  }, [setActiveSection]);
 
   return (
     <div className="space-y-16">
@@ -67,9 +67,14 @@ export default function WebhooksPage() {
       />
 
       {/* Supported Platforms */}
-      <DocsSection id="supported-platforms" title="Supported Platforms" icon={Bell}>
+      <DocsSection
+        id="supported-platforms"
+        title="Supported Platforms"
+        icon={Bell}
+      >
         <p className="text-muted-foreground">
-          {APP_NAME} auto-detects webhook types based on URL patterns and formats payloads accordingly.
+          {APP_NAME} auto-detects webhook types based on URL patterns and
+          formats payloads accordingly.
         </p>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -83,7 +88,8 @@ export default function WebhooksPage() {
             {
               name: "Slack",
               pattern: "hooks.slack.com/*",
-              description: "Block Kit formatted messages with structured fields",
+              description:
+                "Block Kit formatted messages with structured fields",
               color: "bg-green-500/10 text-green-500 border-green-500/20",
             },
             {
@@ -93,11 +99,18 @@ export default function WebhooksPage() {
               color: "bg-muted text-muted-foreground border-border/50",
             },
           ].map((platform) => (
-            <Card key={platform.name} className="p-4 border-border/50 bg-card/50">
+            <Card
+              key={platform.name}
+              className="p-4 border-border/50 bg-card/50"
+            >
               <div className="flex items-center gap-3 mb-3">
-                <Badge variant="outline" className={platform.color}>{platform.name}</Badge>
+                <Badge variant="outline" className={platform.color}>
+                  {platform.name}
+                </Badge>
               </div>
-              <p className="text-sm text-muted-foreground mb-2">{platform.description}</p>
+              <p className="text-sm text-muted-foreground mb-2">
+                {platform.description}
+              </p>
               <code className="text-xs bg-secondary px-2 py-1 rounded block truncate">
                 {platform.pattern}
               </code>
@@ -157,7 +170,10 @@ export default function WebhooksPage() {
               "Type auto-detection: Discord, Slack, or generic",
             ]}
             errors={[
-              { code: 400, description: "Invalid URL or maximum webhooks reached" },
+              {
+                code: 400,
+                description: "Invalid URL or maximum webhooks reached",
+              },
               { code: 401, description: "Unauthorized" },
             ]}
           />
@@ -201,12 +217,14 @@ export default function WebhooksPage() {
       {/* Webhook Payloads */}
       <DocsSection id="payloads" title="Webhook Payloads" icon={Webhook}>
         <p className="text-muted-foreground">
-          Payload format depends on the webhook type. Here are examples for each platform:
+          Payload format depends on the webhook type. Here are examples for each
+          platform:
         </p>
 
         <Card className="p-6 border-border/40">
           <h3 className="font-semibold mb-4">Discord Payload</h3>
-          <CodeBlock code={`{
+          <CodeBlock
+            code={`{
   "content": null,
   "embeds": [{
     "title": "Scan Complete: example.com",
@@ -221,12 +239,14 @@ export default function WebhooksPage() {
     "footer": { "text": "VulnRadar Security Scanner" },
     "timestamp": "2026-03-10T15:30:00.000Z"
   }]
-}`} />
+}`}
+          />
         </Card>
 
         <Card className="p-6 border-border/40">
           <h3 className="font-semibold mb-4">Slack Payload</h3>
-          <CodeBlock code={`{
+          <CodeBlock
+            code={`{
   "text": "Scan Complete: example.com",
   "blocks": [
     {
@@ -247,12 +267,14 @@ export default function WebhooksPage() {
       ]
     }
   ]
-}`} />
+}`}
+          />
         </Card>
 
         <Card className="p-6 border-border/40">
           <h3 className="font-semibold mb-4">Generic Payload</h3>
-          <CodeBlock code={`{
+          <CodeBlock
+            code={`{
   "event": "scan.complete",
   "scan_id": 12345,
   "url": "https://example.com",
@@ -273,7 +295,8 @@ export default function WebhooksPage() {
   ],
   "timestamp": "2026-03-10T15:30:00.000Z",
   "view_url": "${APP_URL}/history/12345"
-}`} />
+}`}
+          />
         </Card>
       </DocsSection>
 
@@ -284,11 +307,14 @@ export default function WebhooksPage() {
             <div>
               <h3 className="font-semibold mb-3">URL Validation</h3>
               <p className="text-sm text-muted-foreground mb-3">
-                Webhook URLs are validated to prevent SSRF attacks. The following are blocked:
+                Webhook URLs are validated to prevent SSRF attacks. The
+                following are blocked:
               </p>
               <ul className="text-sm text-muted-foreground space-y-1 list-disc list-inside">
                 <li>localhost, 127.0.0.1, ::1</li>
-                <li>Private IP ranges (10.x.x.x, 192.168.x.x, 172.16-31.x.x)</li>
+                <li>
+                  Private IP ranges (10.x.x.x, 192.168.x.x, 172.16-31.x.x)
+                </li>
                 <li>Cloud metadata endpoints (169.254.169.254)</li>
                 <li>Non-HTTPS URLs</li>
               </ul>
@@ -297,14 +323,18 @@ export default function WebhooksPage() {
             <div>
               <h3 className="font-semibold mb-3">Webhook Limits</h3>
               <p className="text-sm text-muted-foreground">
-                Each user is limited to 5 active webhooks. This prevents abuse and ensures reliable delivery.
+                Each user is limited to 5 active webhooks. This prevents abuse
+                and ensures reliable delivery.
               </p>
             </div>
 
             <div>
               <h3 className="font-semibold mb-3">Retry Policy</h3>
               <p className="text-sm text-muted-foreground">
-                Webhook delivery is attempted once. If your endpoint returns a non-2xx status, the delivery is marked as failed. We recommend implementing your own retry logic or using a webhook relay service for critical integrations.
+                Webhook delivery is attempted once. If your endpoint returns a
+                non-2xx status, the delivery is marked as failed. We recommend
+                implementing your own retry logic or using a webhook relay
+                service for critical integrations.
               </p>
             </div>
           </div>
@@ -312,7 +342,9 @@ export default function WebhooksPage() {
 
         <DocsCallout variant="warning" title="Keep Your Webhook URLs Secret">
           <p>
-            Webhook URLs often contain authentication tokens. Treat them as secrets and don&apos;t expose them in client-side code or public repositories.
+            Webhook URLs often contain authentication tokens. Treat them as
+            secrets and don&apos;t expose them in client-side code or public
+            repositories.
           </p>
         </DocsCallout>
       </DocsSection>
@@ -324,30 +356,39 @@ export default function WebhooksPage() {
           <ol className="list-decimal list-inside space-y-2 text-sm text-muted-foreground mb-4">
             <li>Open Discord and go to your server settings</li>
             <li>Navigate to Integrations → Webhooks</li>
-            <li>Click &quot;New Webhook&quot; and configure the name and channel</li>
+            <li>
+              Click &quot;New Webhook&quot; and configure the name and channel
+            </li>
             <li>Copy the webhook URL</li>
             <li>Add it in {APP_NAME} settings → Webhooks</li>
           </ol>
-          <CodeBlock code={`curl -X POST "${APP_URL}/api/v2/webhooks" \\
+          <CodeBlock
+            code={`curl -X POST "${APP_URL}/api/v2/webhooks" \\
   -H "Authorization: Bearer YOUR_API_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{
     "url": "https://discord.com/api/webhooks/xxx/yyy",
     "name": "Security Alerts"
-  }'`} language="bash" />
+  }'`}
+            language="bash"
+          />
         </Card>
 
         <Card className="p-6 border-border/40">
           <h3 className="font-semibold mb-4">Testing Your Webhook</h3>
-          <CodeBlock code={`curl -X PATCH "${APP_URL}/api/v2/webhooks" \\
+          <CodeBlock
+            code={`curl -X PATCH "${APP_URL}/api/v2/webhooks" \\
   -H "Authorization: Bearer YOUR_API_KEY" \\
   -H "Content-Type: application/json" \\
-  -d '{"id": 1}'`} language="bash" />
+  -d '{"id": 1}'`}
+            language="bash"
+          />
           <p className="text-xs text-muted-foreground mt-2">
-            This sends a test payload to verify connectivity before running actual scans.
+            This sends a test payload to verify connectivity before running
+            actual scans.
           </p>
         </Card>
       </DocsSection>
     </div>
-  )
+  );
 }

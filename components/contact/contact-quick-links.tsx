@@ -1,12 +1,27 @@
-import Link from "next/link"
-import { Mail, FileText, BookOpen } from "lucide-react"
-import { SUPPORT_EMAIL } from "@/lib/config/constants"
+import Link from "next/link";
+import { Mail, FileText, BookOpen } from "lucide-react";
+import { SUPPORT_EMAIL } from "@/lib/config/constants";
 
 const QUICK_LINKS = [
-  { icon: BookOpen, label: "Documentation", href: "/docs", desc: "Guides & API reference" },
-  { icon: FileText, label: "Changelog", href: "/changelog", desc: "Latest updates" },
-  { icon: Mail, label: "Email Us", href: `mailto:${SUPPORT_EMAIL}`, desc: SUPPORT_EMAIL },
-]
+  {
+    icon: BookOpen,
+    label: "Documentation",
+    href: "/docs",
+    desc: "Guides & API reference",
+  },
+  {
+    icon: FileText,
+    label: "Changelog",
+    href: "/changelog",
+    desc: "Latest updates",
+  },
+  {
+    icon: Mail,
+    label: "Email Us",
+    href: `mailto:${SUPPORT_EMAIL}`,
+    desc: SUPPORT_EMAIL,
+  },
+];
 
 export function ContactQuickLinks() {
   return (
@@ -22,10 +37,12 @@ export function ContactQuickLinks() {
           </div>
           <div>
             <p className="text-sm font-medium text-foreground">{link.label}</p>
-            <p className="text-[11px] text-muted-foreground hidden sm:block">{link.desc}</p>
+            <p className="text-[11px] text-muted-foreground hidden sm:block">
+              {link.desc}
+            </p>
           </div>
         </Link>
       ))}
     </div>
-  )
+  );
 }

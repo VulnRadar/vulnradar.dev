@@ -1,14 +1,19 @@
-import type { Share } from "./shares-types"
-import { SharesRow } from "./shares-row"
+import type { Share } from "./shares-types";
+import { SharesRow } from "./shares-row";
 
 interface SharesTableProps {
-  shares: Share[]
-  revoking: number | null
-  onRevoke: (id: number) => void
-  onOpenShareModal: (share: Share) => void
+  shares: Share[];
+  revoking: number | null;
+  onRevoke: (id: number) => void;
+  onOpenShareModal: (share: Share) => void;
 }
 
-export function SharesTable({ shares, revoking, onRevoke, onOpenShareModal }: SharesTableProps) {
+export function SharesTable({
+  shares,
+  revoking,
+  onRevoke,
+  onOpenShareModal,
+}: SharesTableProps) {
   return (
     <div className="rounded-xl border border-border/50 bg-card overflow-hidden">
       {/* Table header - hidden on mobile */}
@@ -32,5 +37,5 @@ export function SharesTable({ shares, revoking, onRevoke, onOpenShareModal }: Sh
         ))}
       </div>
     </div>
-  )
+  );
 }

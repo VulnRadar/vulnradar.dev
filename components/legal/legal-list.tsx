@@ -1,8 +1,8 @@
-import { cn } from "@/lib/ui/utils"
+import { cn } from "@/lib/ui/utils";
 
 interface LegalListProps {
-  items: (string | React.ReactNode)[]
-  className?: string
+  items: (string | React.ReactNode)[];
+  className?: string;
 }
 
 export function LegalList({ items, className }: LegalListProps) {
@@ -15,5 +15,5 @@ export function LegalList({ items, className }: LegalListProps) {
         </li>
       ))}
     </ul>
-  )
+  );
 }

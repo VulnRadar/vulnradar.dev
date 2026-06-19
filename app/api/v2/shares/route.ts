@@ -1,11 +1,11 @@
-import { NextRequest, NextResponse } from "next/server"
-import { getSession } from "@/lib/auth"
-import pool from "@/lib/database/db"
+import { NextRequest, NextResponse } from "next/server";
+import { getSession } from "@/lib/auth";
+import pool from "@/lib/database/db";
 
 export async function GET(_request: NextRequest) {
-  const session = await getSession()
+  const session = await getSession();
   if (!session) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   // Get all shared scans for the current user (where share_token is NOT NULL)
@@ -21,11 +21,15 @@ export async function GET(_request: NextRequest) {
      WHERE user_id = $1 AND share_token IS NOT NULL
      ORDER BY scanned_at DESC`,
     [session.userId],
-  )
+  );
 
   const shares = result.rows.map((row) => {
-    const findings = typeof row.findings === "string" ? JSON.parse(row.findings) : (row.findings || [])
-    const summary = typeof row.summary === "string" ? JSON.parse(row.summary) : row.summary
+    const findings =
+      typeof row.findings === "string"
+        ? JSON.parse(row.findings)
+        : row.findings || [];
+    const summary =
+      typeof row.summary === "string" ? JSON.parse(row.summary) : row.summary;
     return {
       id: row.id,
       url: row.url,
@@ -34,8 +38,8 @@ export async function GET(_request: NextRequest) {
       summary,
       findings,
       findingsCount: findings.length,
-    }
-  })
+    };
+  });
 
-  return NextResponse.json({ shares })
+  return NextResponse.json({ shares });
 }

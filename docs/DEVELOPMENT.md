@@ -40,16 +40,16 @@ UPDATE users SET role = 'admin' WHERE email = 'you@example.com';
 
 ## Scripts
 
-| Script | What it does |
-|---|---|
-| `npm run dev` | Start Next.js dev server (HMR) on port 3000 |
-| `npm run build` | Production build (runs `next build`) |
-| `npm run start` | Run the production build |
-| `npm run lint` | Run ESLint over the repo (no `--fix`) |
-| `npm run lint:fix` | Run ESLint with `--fix` (auto-fixes where safe) |
-| `npm run typecheck` | Run `tsc --noEmit` (build-time typecheck) |
-| `npm run migrate` | Run `scripts/migrate.mjs` (ad-hoc DB migrations) |
-| `npm run new-db` | Drop and recreate the database schema |
+| Script              | What it does                                     |
+| ------------------- | ------------------------------------------------ |
+| `npm run dev`       | Start Next.js dev server (HMR) on port 3000      |
+| `npm run build`     | Production build (runs `next build`)             |
+| `npm run start`     | Run the production build                         |
+| `npm run lint`      | Run ESLint over the repo (no `--fix`)            |
+| `npm run lint:fix`  | Run ESLint with `--fix` (auto-fixes where safe)  |
+| `npm run typecheck` | Run `tsc --noEmit` (build-time typecheck)        |
+| `npm run migrate`   | Run `scripts/migrate.mjs` (ad-hoc DB migrations) |
+| `npm run new-db`    | Drop and recreate the database schema            |
 
 ## Linting
 
@@ -62,6 +62,7 @@ npm run lint:fix    # auto-fix
 ```
 
 Common rule overrides:
+
 - `@typescript-eslint/no-unused-vars` → `warn` (with `^_` underscore convention)
 - `@typescript-eslint/no-explicit-any` → `warn`
 - `@next/next/no-html-link-for-pages` → off (we use `<Link>` exclusively)
@@ -85,19 +86,20 @@ We follow Conventional Commits:
 <footer>
 ```
 
-| Type | Used for |
-|---|---|
-| `feat` | New user-facing feature |
-| `fix` | Bug fix |
-| `chore` | Maintenance, deps, tooling, no production code change |
-| `refactor` | Code change with no behavior change |
-| `docs` | Documentation only |
-| `style` | Formatting only (no logic change) |
-| `test` | Adding/updating tests |
-| `perf` | Performance improvement |
-| `ci` | CI/CD changes |
+| Type       | Used for                                              |
+| ---------- | ----------------------------------------------------- |
+| `feat`     | New user-facing feature                               |
+| `fix`      | Bug fix                                               |
+| `chore`    | Maintenance, deps, tooling, no production code change |
+| `refactor` | Code change with no behavior change                   |
+| `docs`     | Documentation only                                    |
+| `style`    | Formatting only (no logic change)                     |
+| `test`     | Adding/updating tests                                 |
+| `perf`     | Performance improvement                               |
+| `ci`       | CI/CD changes                                         |
 
 Examples:
+
 - `feat(scan): add WebSocket CSWSH check`
 - `fix(auth): correct TOTP clock skew handling`
 - `chore(deps): bump next to 15.5.18`

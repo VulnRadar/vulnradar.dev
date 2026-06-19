@@ -1,18 +1,18 @@
-"use client"
+"use client";
 
-import { ShieldX, RefreshCw, Mail } from "lucide-react"
-import { Button } from "@/components/ui/button"
-import Link from "next/link"
+import { ShieldX, RefreshCw, Mail } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import Link from "next/link";
 
 interface DemoErrorProps {
-  error: string
-  details?: string
-  onRetry: () => void
+  error: string;
+  details?: string;
+  onRetry: () => void;
 }
 
 export function DemoError({ error, details, onRetry }: DemoErrorProps) {
-  const isBlocked = error === "This target cannot be scanned."
-  
+  const isBlocked = error === "This target cannot be scanned.";
+
   return (
     <section className="relative">
       <div className="max-w-6xl mx-auto px-4 sm:px-6 pt-16 pb-20 sm:pt-24">
@@ -25,22 +25,25 @@ export function DemoError({ error, details, onRetry }: DemoErrorProps) {
             {isBlocked ? "Target Restricted" : "Scan Failed"}
           </h1>
 
-          <p className="text-muted-foreground mb-4">
-            {error}
-          </p>
+          <p className="text-muted-foreground mb-4">{error}</p>
 
           {details && (
             <div className="text-left p-4 rounded-xl border border-border/50 bg-card/50 mb-6">
-              <p className="text-xs text-muted-foreground leading-relaxed">{details}</p>
+              <p className="text-xs text-muted-foreground leading-relaxed">
+                {details}
+              </p>
             </div>
           )}
-          
+
           {isBlocked && (
             <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground mb-6">
               <Mail className="h-3.5 w-3.5" />
               <span>
                 Questions? Contact{" "}
-                <Link href="mailto:support@vulnradar.dev" className="text-primary hover:underline">
+                <Link
+                  href="mailto:support@vulnradar.dev"
+                  className="text-primary hover:underline"
+                >
                   support@vulnradar.dev
                 </Link>
               </span>
@@ -56,5 +59,5 @@ export function DemoError({ error, details, onRetry }: DemoErrorProps) {
         </div>
       </div>
     </section>
-  )
+  );
 }

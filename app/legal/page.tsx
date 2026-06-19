@@ -1,45 +1,55 @@
-import Link from "next/link"
-import { Scale, Shield, AlertTriangle, FileText, Accessibility, Copyright } from "lucide-react"
-import { APP_NAME } from "@/lib/config/constants"
+import Link from "next/link";
+import {
+  Scale,
+  Shield,
+  AlertTriangle,
+  FileText,
+  Accessibility,
+  Copyright,
+} from "lucide-react";
+import { APP_NAME } from "@/lib/config/constants";
 
 const legalPages = [
-  { 
-    href: "/legal/terms", 
-    title: "Terms of Service", 
-    description: "The terms and conditions that govern your use of our service.",
-    icon: Scale 
+  {
+    href: "/legal/terms",
+    title: "Terms of Service",
+    description:
+      "The terms and conditions that govern your use of our service.",
+    icon: Scale,
   },
-  { 
-    href: "/legal/privacy", 
-    title: "Privacy Policy", 
+  {
+    href: "/legal/privacy",
+    title: "Privacy Policy",
     description: "How we collect, use, and protect your personal information.",
-    icon: Shield 
+    icon: Shield,
   },
-  { 
-    href: "/legal/disclaimer", 
-    title: "Disclaimer", 
-    description: "Important legal notices about the limitations of our service.",
-    icon: AlertTriangle 
+  {
+    href: "/legal/disclaimer",
+    title: "Disclaimer",
+    description:
+      "Important legal notices about the limitations of our service.",
+    icon: AlertTriangle,
   },
-  { 
-    href: "/legal/acceptable-use", 
-    title: "Acceptable Use Policy", 
-    description: "Guidelines for appropriate and authorized use of our scanning tools.",
-    icon: FileText 
+  {
+    href: "/legal/acceptable-use",
+    title: "Acceptable Use Policy",
+    description:
+      "Guidelines for appropriate and authorized use of our scanning tools.",
+    icon: FileText,
   },
-  { 
-    href: "/legal/accessibility", 
-    title: "Accessibility Statement", 
+  {
+    href: "/legal/accessibility",
+    title: "Accessibility Statement",
     description: "Our commitment to digital accessibility and WCAG compliance.",
-    icon: Accessibility 
+    icon: Accessibility,
   },
-  { 
-    href: "/legal/dmca", 
-    title: "DMCA & Copyright Policy", 
+  {
+    href: "/legal/dmca",
+    title: "DMCA & Copyright Policy",
     description: "Procedures for reporting copyright infringement claims.",
-    icon: Copyright 
+    icon: Copyright,
   },
-]
+];
 
 export default function LegalIndexPage() {
   return (
@@ -53,7 +63,7 @@ export default function LegalIndexPage() {
 
       <div className="grid gap-4 sm:grid-cols-2">
         {legalPages.map((page) => {
-          const Icon = page.icon
+          const Icon = page.icon;
           return (
             <Link
               key={page.href}
@@ -74,9 +84,9 @@ export default function LegalIndexPage() {
                 </div>
               </div>
             </Link>
-          )
+          );
         })}
       </div>
     </div>
-  )
+  );
 }

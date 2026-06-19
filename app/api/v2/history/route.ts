@@ -1,56 +1,80 @@
-import { NextRequest } from "next/server"
-import { getSession } from "@/lib/auth"
-import pool from "@/lib/database/db"
-import { ApiResponse, withErrorHandling } from "@/lib/api/api-utils"
-import { ERROR_MESSAGES, SUCCESS_MESSAGES, BEARER_PREFIX, BILLING_HISTORY_RETENTION } from "@/lib/config/constants"
-import { validateApiKey, checkRateLimit as checkApiKeyRateLimit, recordUsage } from "@/lib/api/api-keys"
+import { NextRequest } from "next/server";
+import { getSession } from "@/lib/auth";
+import pool from "@/lib/database/db";
+import { ApiResponse, withErrorHandling } from "@/lib/api/api-utils";
+import {
+  ERROR_MESSAGES,
+  SUCCESS_MESSAGES,
+  BEARER_PREFIX,
+  BILLING_HISTORY_RETENTION,
+} from "@/lib/config/constants";
+import {
+  validateApiKey,
+  checkRateLimit as checkApiKeyRateLimit,
+  recordUsage,
+} from "@/lib/api/api-keys";
 
 export const GET = withErrorHandling(async (request: NextRequest) => {
   // Auth: check API key first (Bearer token), then fall back to session cookie
-  const authHeader = request.headers.get("authorization")
-  let authedUserId: number | null = null
-  let apiKeyId: number | null = null
-  let keyData: Awaited<ReturnType<typeof validateApiKey>> = null
+  const authHeader = request.headers.get("authorization");
+  let authedUserId: number | null = null;
+  let apiKeyId: number | null = null;
+  let keyData: Awaited<ReturnType<typeof validateApiKey>> = null;
 
   if (authHeader?.startsWith(BEARER_PREFIX)) {
-    const token = authHeader.slice(7)
-    keyData = await validateApiKey(token)
+    const token = authHeader.slice(7);
+    keyData = await validateApiKey(token);
 
     if (!keyData) {
-      return ApiResponse.unauthorized("Invalid or revoked API key.")
+      return ApiResponse.unauthorized("Invalid or revoked API key.");
     }
     if (keyData.needsTermsAcceptance) {
-      return ApiResponse.error("Please accept our updated Terms of Service. Log in to your account to review and accept the new terms before using the API.", 403)
+      return ApiResponse.error(
+        "Please accept our updated Terms of Service. Log in to your account to review and accept the new terms before using the API.",
+        403,
+      );
     }
 
     // Check API key rate limit
-    const rateLimit = await checkApiKeyRateLimit(keyData.keyId, keyData.dailyLimit)
+    const rateLimit = await checkApiKeyRateLimit(
+      keyData.keyId,
+      keyData.dailyLimit,
+    );
     if (!rateLimit.allowed) {
-      return ApiResponse.error(`Rate limit exceeded. Daily limit reached. Resets at ${rateLimit.resetsAt}`, 429)
+      return ApiResponse.error(
+        `Rate limit exceeded. Daily limit reached. Resets at ${rateLimit.resetsAt}`,
+        429,
+      );
     }
 
-    apiKeyId = keyData.keyId
-    authedUserId = keyData.userId
+    apiKeyId = keyData.keyId;
+    authedUserId = keyData.userId;
   } else {
-    const session = await getSession()
+    const session = await getSession();
     if (!session) {
-      return ApiResponse.unauthorized(ERROR_MESSAGES.UNAUTHORIZED)
+      return ApiResponse.unauthorized(ERROR_MESSAGES.UNAUTHORIZED);
     }
-    authedUserId = session.userId
+    authedUserId = session.userId;
   }
 
   if (!authedUserId) {
-    return ApiResponse.unauthorized(ERROR_MESSAGES.UNAUTHORIZED)
+    return ApiResponse.unauthorized(ERROR_MESSAGES.UNAUTHORIZED);
   }
 
   // Get user's plan and role to determine history retention from centralized config
-  const userRes = await pool.query("SELECT plan, role FROM users WHERE id = $1", [authedUserId])
-  const userPlan = (userRes.rows[0]?.plan || "free") as keyof typeof BILLING_HISTORY_RETENTION
-  const userRole = userRes.rows[0]?.role || "user"
+  const userRes = await pool.query(
+    "SELECT plan, role FROM users WHERE id = $1",
+    [authedUserId],
+  );
+  const userPlan = (userRes.rows[0]?.plan ||
+    "free") as keyof typeof BILLING_HISTORY_RETENTION;
+  const userRole = userRes.rows[0]?.role || "user";
 
   // Staff/admin always get unlimited retention regardless of plan
-  const isStaff = ["admin", "moderator", "support"].includes(userRole)
-  const retentionDays = isStaff ? -1 : (BILLING_HISTORY_RETENTION[userPlan] ?? BILLING_HISTORY_RETENTION.free)
+  const isStaff = ["admin", "moderator", "support"].includes(userRole);
+  const retentionDays = isStaff
+    ? -1
+    : (BILLING_HISTORY_RETENTION[userPlan] ?? BILLING_HISTORY_RETENTION.free);
 
   const result = await pool.query(
     retentionDays <= 0
@@ -73,61 +97,72 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
        ORDER BY sh.scanned_at DESC
        LIMIT 100`,
     [authedUserId],
-  )
+  );
 
   // Record API key usage
   if (apiKeyId) {
-    await recordUsage(apiKeyId)
+    await recordUsage(apiKeyId);
   }
 
-  return ApiResponse.success({ scans: result.rows })
-})
+  return ApiResponse.success({ scans: result.rows });
+});
 
 export const DELETE = withErrorHandling(async (request: NextRequest) => {
   // Auth: check API key first (Bearer token), then fall back to session cookie
-  const authHeader = request.headers.get("authorization")
-  let authedUserId: number | null = null
-  let apiKeyId: number | null = null
-  let keyData: Awaited<ReturnType<typeof validateApiKey>> = null
+  const authHeader = request.headers.get("authorization");
+  let authedUserId: number | null = null;
+  let apiKeyId: number | null = null;
+  let keyData: Awaited<ReturnType<typeof validateApiKey>> = null;
 
   if (authHeader?.startsWith(BEARER_PREFIX)) {
-    const token = authHeader.slice(7)
-    keyData = await validateApiKey(token)
+    const token = authHeader.slice(7);
+    keyData = await validateApiKey(token);
 
     if (!keyData) {
-      return ApiResponse.unauthorized("Invalid or revoked API key.")
+      return ApiResponse.unauthorized("Invalid or revoked API key.");
     }
     if (keyData.needsTermsAcceptance) {
-      return ApiResponse.error("Please accept our updated Terms of Service. Log in to your account to review and accept the new terms before using the API.", 403)
+      return ApiResponse.error(
+        "Please accept our updated Terms of Service. Log in to your account to review and accept the new terms before using the API.",
+        403,
+      );
     }
 
     // Check API key rate limit
-    const rateLimit = await checkApiKeyRateLimit(keyData.keyId, keyData.dailyLimit)
+    const rateLimit = await checkApiKeyRateLimit(
+      keyData.keyId,
+      keyData.dailyLimit,
+    );
     if (!rateLimit.allowed) {
-      return ApiResponse.error(`Rate limit exceeded. Daily limit reached. Resets at ${rateLimit.resetsAt}`, 429)
+      return ApiResponse.error(
+        `Rate limit exceeded. Daily limit reached. Resets at ${rateLimit.resetsAt}`,
+        429,
+      );
     }
 
-    apiKeyId = keyData.keyId
-    authedUserId = keyData.userId
+    apiKeyId = keyData.keyId;
+    authedUserId = keyData.userId;
   } else {
-    const session = await getSession()
+    const session = await getSession();
     if (!session) {
-      return ApiResponse.unauthorized(ERROR_MESSAGES.UNAUTHORIZED)
+      return ApiResponse.unauthorized(ERROR_MESSAGES.UNAUTHORIZED);
     }
-    authedUserId = session.userId
+    authedUserId = session.userId;
   }
 
   if (!authedUserId) {
-    return ApiResponse.unauthorized(ERROR_MESSAGES.UNAUTHORIZED)
+    return ApiResponse.unauthorized(ERROR_MESSAGES.UNAUTHORIZED);
   }
 
-  await pool.query("DELETE FROM scan_tags WHERE user_id = $1", [authedUserId])
-  await pool.query("DELETE FROM scan_history WHERE user_id = $1", [authedUserId])
+  await pool.query("DELETE FROM scan_tags WHERE user_id = $1", [authedUserId]);
+  await pool.query("DELETE FROM scan_history WHERE user_id = $1", [
+    authedUserId,
+  ]);
 
   // Record API key usage
   if (apiKeyId) {
-    await recordUsage(apiKeyId)
+    await recordUsage(apiKeyId);
   }
 
-  return ApiResponse.success({ message: SUCCESS_MESSAGES.DELETED })
-})
+  return ApiResponse.success({ message: SUCCESS_MESSAGES.DELETED });
+});

@@ -1,7 +1,7 @@
-"use client"
+"use client";
 
-import { useAuth } from "@/components/providers/auth-provider"
-import { useAdminHeartbeat } from "@/lib/hooks/use-admin-heartbeat"
+import { useAuth } from "@/components/providers/auth-provider";
+import { useAdminHeartbeat } from "@/lib/hooks/use-admin-heartbeat";
 
 /**
  * Mounts the global staff heartbeat inside the AuthProvider tree.
@@ -9,7 +9,7 @@ import { useAdminHeartbeat } from "@/lib/hooks/use-admin-heartbeat"
  * Must be rendered as a child of <AuthProvider>.
  */
 export function StaffHeartbeat() {
-  const { isStaff } = useAuth()
-  useAdminHeartbeat({ enabled: isStaff })
-  return null
+  const { isStaff } = useAuth();
+  useAdminHeartbeat({ enabled: isStaff });
+  return null;
 }

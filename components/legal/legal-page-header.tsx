@@ -1,4 +1,11 @@
-import { Scale, FileText, Shield, AlertTriangle, Accessibility, Copyright } from "lucide-react"
+import {
+  Scale,
+  FileText,
+  Shield,
+  AlertTriangle,
+  Accessibility,
+  Copyright,
+} from "lucide-react";
 
 const iconMap = {
   terms: Scale,
@@ -7,17 +14,21 @@ const iconMap = {
   "acceptable-use": FileText,
   accessibility: Accessibility,
   dmca: Copyright,
-}
+};
 
 interface LegalPageHeaderProps {
-  title: string
-  lastUpdated: string
-  type?: keyof typeof iconMap
+  title: string;
+  lastUpdated: string;
+  type?: keyof typeof iconMap;
 }
 
-export function LegalPageHeader({ title, lastUpdated, type = "terms" }: LegalPageHeaderProps) {
-  const Icon = iconMap[type] || Scale
-  
+export function LegalPageHeader({
+  title,
+  lastUpdated,
+  type = "terms",
+}: LegalPageHeaderProps) {
+  const Icon = iconMap[type] || Scale;
+
   return (
     <div className="mb-8">
       <div className="flex items-center gap-3 mb-3">
@@ -26,7 +37,9 @@ export function LegalPageHeader({ title, lastUpdated, type = "terms" }: LegalPag
         </div>
         <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
       </div>
-      <p className="text-sm text-muted-foreground">Last updated: {lastUpdated}</p>
+      <p className="text-sm text-muted-foreground">
+        Last updated: {lastUpdated}
+      </p>
     </div>
-  )
+  );
 }

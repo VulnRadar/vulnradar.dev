@@ -1,8 +1,8 @@
-"use client"
+"use client";
 
-import { useEffect, useState } from "react"
-import { Loader2, Shield } from "lucide-react"
-import { TOTAL_CHECKS_LABEL } from "@/lib/config/constants"
+import { useEffect, useState } from "react";
+import { Loader2, Shield } from "lucide-react";
+import { TOTAL_CHECKS_LABEL } from "@/lib/config/constants";
 
 const SCAN_STEPS = [
   "Connecting to target...",
@@ -16,17 +16,17 @@ const SCAN_STEPS = [
   "Scanning for subresource integrity...",
   "Detecting sensitive file references...",
   "Analyzing cache control headers...",
-]
+];
 
 export function ScanningIndicator() {
-  const [activeStep, setActiveStep] = useState(0)
+  const [activeStep, setActiveStep] = useState(0);
 
   useEffect(() => {
     const interval = setInterval(() => {
-      setActiveStep((prev) => (prev + 1) % SCAN_STEPS.length)
-    }, 1200)
-    return () => clearInterval(interval)
-  }, [])
+      setActiveStep((prev) => (prev + 1) % SCAN_STEPS.length);
+    }, 1200);
+    return () => clearInterval(interval);
+  }, []);
 
   return (
     <div className="flex flex-col items-center gap-8 py-12 sm:py-16 px-4">
@@ -48,15 +48,16 @@ export function ScanningIndicator() {
           </h2>
         </div>
         <p className="text-sm text-muted-foreground max-w-sm">
-          Running {TOTAL_CHECKS_LABEL} different vulnerability checks against the target. This usually takes a few seconds.
+          Running {TOTAL_CHECKS_LABEL} different vulnerability checks against
+          the target. This usually takes a few seconds.
         </p>
       </div>
 
       {/* Progressive steps */}
       <div className="flex flex-col gap-1.5 w-full max-w-xs">
         {SCAN_STEPS.map((step, i) => {
-          const isActive = i === activeStep
-          const isPast = i < activeStep
+          const isActive = i === activeStep;
+          const isPast = i < activeStep;
 
           return (
             <div
@@ -83,9 +84,9 @@ export function ScanningIndicator() {
                 {step}
               </span>
             </div>
-          )
+          );
         })}
       </div>
     </div>
-  )
+  );
 }

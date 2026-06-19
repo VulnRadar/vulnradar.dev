@@ -1,12 +1,17 @@
-"use client"
+"use client";
 
-import { useState, useEffect, useRef } from "react"
-import { Card } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
+import { useState, useEffect, useRef } from "react";
+import { Card } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 
-import { APP_URL, APP_NAME, APP_VERSION, ENGINE_VERSION } from "@/lib/config/constants"
-import { cn } from "@/lib/ui/utils"
-import { useDocsContext, type TocItem } from "../layout"
+import {
+  APP_URL,
+  APP_NAME,
+  APP_VERSION,
+  ENGINE_VERSION,
+} from "@/lib/config/constants";
+import { cn } from "@/lib/ui/utils";
+import { useDocsContext, type TocItem } from "../layout";
 import {
   DocsHero,
   DocsSection,
@@ -14,7 +19,7 @@ import {
   EndpointCard,
   CodeBlock,
   type Endpoint,
-} from "@/components/docs"
+} from "@/components/docs";
 
 // Define all endpoints
 const endpoints: Endpoint[] = [
@@ -80,7 +85,9 @@ const endpoints: Endpoint[] = [
     }
   ]
 }`,
-    errors: [{ code: 401, description: "Unauthorized - must be authenticated" }],
+    errors: [
+      { code: 401, description: "Unauthorized - must be authenticated" },
+    ],
   },
   {
     id: "get-history-id",
@@ -121,14 +128,20 @@ const endpoints: Endpoint[] = [
     title: "Delete Scan",
     description:
       "Permanently delete a scan from your history. This action cannot be undone. Only the scan owner or team admins can delete scans.",
-    pathParams: [{ name: "id", type: "number", description: "The scan ID to delete" }],
+    pathParams: [
+      { name: "id", type: "number", description: "The scan ID to delete" },
+    ],
     responseExample: `{
   "success": true,
   "message": "Scan deleted successfully"
 }`,
     errors: [
       { code: 401, description: "Unauthorized - must be authenticated" },
-      { code: 403, description: "Forbidden - you don't have permission to delete this scan" },
+      {
+        code: 403,
+        description:
+          "Forbidden - you don't have permission to delete this scan",
+      },
       { code: 404, description: "Scan not found" },
     ],
   },
@@ -194,7 +207,10 @@ const endpoints: Endpoint[] = [
   ],
   "total": 4
 }`,
-    notes: ["Discovery does not count against your scan rate limit", "Returns up to 100 discovered URLs"],
+    notes: [
+      "Discovery does not count against your scan rate limit",
+      "Returns up to 100 discovered URLs",
+    ],
     errors: [
       { code: 400, description: "Missing or invalid URL" },
       { code: 401, description: "Unauthorized" },
@@ -255,7 +271,7 @@ const endpoints: Endpoint[] = [
     ],
     errors: [],
   },
-]
+];
 
 // Table of contents
 const tocItems: TocItem[] = [
@@ -267,7 +283,7 @@ const tocItems: TocItem[] = [
   { id: "rate-limiting", label: "Rate Limiting" },
   { id: "error-handling", label: "Error Handling" },
   { id: "best-practices", label: "Best Practices" },
-]
+];
 
 // Code examples by language
 const codeExamples = {
@@ -326,37 +342,39 @@ response = requests.get(
 )
 scan = response.json()`,
   },
-}
+};
 
 export default function APIDocsPage() {
-  const { setActiveSection, setTocItems } = useDocsContext()
-  const [activeCodeTab, setActiveCodeTab] = useState<"curl" | "javascript" | "python">("curl")
-  const observerRef = useRef<IntersectionObserver | null>(null)
+  const { setActiveSection, setTocItems } = useDocsContext();
+  const [activeCodeTab, setActiveCodeTab] = useState<
+    "curl" | "javascript" | "python"
+  >("curl");
+  const observerRef = useRef<IntersectionObserver | null>(null);
 
   useEffect(() => {
-    setTocItems(tocItems)
-    return () => setTocItems([])
-  }, [setTocItems])
+    setTocItems(tocItems);
+    return () => setTocItems([]);
+  }, [setTocItems]);
 
   useEffect(() => {
     observerRef.current = new IntersectionObserver(
       (entries) => {
         entries.forEach((entry) => {
           if (entry.isIntersecting) {
-            setActiveSection(entry.target.id)
+            setActiveSection(entry.target.id);
           }
-        })
+        });
       },
-      { rootMargin: "-20% 0px -70% 0px", threshold: 0 }
-    )
+      { rootMargin: "-20% 0px -70% 0px", threshold: 0 },
+    );
 
     tocItems.forEach((item) => {
-      const el = document.getElementById(item.id)
-      if (el) observerRef.current?.observe(el)
-    })
+      const el = document.getElementById(item.id);
+      if (el) observerRef.current?.observe(el);
+    });
 
-    return () => observerRef.current?.disconnect()
-  }, [setActiveSection])
+    return () => observerRef.current?.disconnect();
+  }, [setActiveSection]);
 
   return (
     <div className="space-y-16">
@@ -375,8 +393,8 @@ export default function APIDocsPage() {
       {/* Authentication */}
       <DocsSection id="authentication" title="Authentication">
         <p className="text-sm sm:text-base text-muted-foreground">
-          All API requests require authentication using a Bearer token. Generate API keys from your account
-          settings.
+          All API requests require authentication using a Bearer token. Generate
+          API keys from your account settings.
         </p>
 
         <Card className="p-4 sm:p-6 border-border/40">
@@ -384,29 +402,37 @@ export default function APIDocsPage() {
           <p className="text-sm text-muted-foreground mb-4">
             Include your API key in the Authorization header:
           </p>
-          <CodeBlock code="Authorization: Bearer YOUR_API_KEY_HERE" language="http" />
+          <CodeBlock
+            code="Authorization: Bearer YOUR_API_KEY_HERE"
+            language="http"
+          />
 
           <div className="mt-6 pt-6 border-t border-border/40">
             <h4 className="font-semibold mb-3 text-sm">Getting Your API Key</h4>
             <ol className="list-decimal list-inside space-y-2 text-sm text-muted-foreground">
+              <li>Log in to your {APP_NAME} account</li>
               <li>
-                Log in to your {APP_NAME} account
+                Navigate to <strong className="text-foreground">Profile</strong>{" "}
+                &rarr; <strong className="text-foreground">API Keys</strong>
               </li>
               <li>
-                Navigate to <strong className="text-foreground">Profile</strong> &rarr;{" "}
-                <strong className="text-foreground">API Keys</strong>
+                Click{" "}
+                <strong className="text-foreground">Generate New Key</strong>
               </li>
               <li>
-                Click <strong className="text-foreground">Generate New Key</strong>
+                Copy and store the key securely (it will only be shown once)
               </li>
-              <li>Copy and store the key securely (it will only be shown once)</li>
             </ol>
           </div>
 
-          <DocsCallout variant="warning" title="Security Warning" className="mt-6">
+          <DocsCallout
+            variant="warning"
+            title="Security Warning"
+            className="mt-6"
+          >
             <p>
-              Never share API keys publicly or commit them to version control. Each account is limited to 3
-              active API keys.
+              Never share API keys publicly or commit them to version control.
+              Each account is limited to 3 active API keys.
             </p>
           </DocsCallout>
         </Card>
@@ -433,7 +459,8 @@ export default function APIDocsPage() {
       {/* Code Examples */}
       <DocsSection id="code-examples" title="Code Examples">
         <p className="text-muted-foreground">
-          Complete examples for the most common API operations in multiple languages.
+          Complete examples for the most common API operations in multiple
+          languages.
         </p>
 
         <Card className="p-6 border-border/40">
@@ -444,7 +471,9 @@ export default function APIDocsPage() {
                 onClick={() => setActiveCodeTab(lang)}
                 className={cn(
                   "px-4 py-2.5 text-sm font-medium transition-all duration-200 capitalize relative",
-                  activeCodeTab === lang ? "text-primary" : "text-muted-foreground hover:text-foreground"
+                  activeCodeTab === lang
+                    ? "text-primary"
+                    : "text-muted-foreground hover:text-foreground",
                 )}
               >
                 {lang}
@@ -485,7 +514,8 @@ export default function APIDocsPage() {
       <DocsSection id="rate-limiting" title="Rate Limiting">
         <Card className="p-6 border-border/40">
           <p className="text-muted-foreground mb-6">
-            API rate limits vary by subscription plan. Rate limit information is included in response headers.
+            API rate limits vary by subscription plan. Rate limit information is
+            included in response headers.
           </p>
 
           <div className="space-y-6">
@@ -504,10 +534,17 @@ export default function APIDocsPage() {
                     key={plan.label}
                     className="p-3 rounded-lg bg-secondary/30 border border-border/40 text-center"
                   >
-                    <div className={cn("text-lg font-bold", plan.highlight ? "text-primary" : "text-foreground")}>
+                    <div
+                      className={cn(
+                        "text-lg font-bold",
+                        plan.highlight ? "text-primary" : "text-foreground",
+                      )}
+                    >
                       {plan.value}
                     </div>
-                    <div className="text-xs text-muted-foreground">{plan.label}</div>
+                    <div className="text-xs text-muted-foreground">
+                      {plan.label}
+                    </div>
                   </div>
                 ))}
               </div>
@@ -543,8 +580,8 @@ Retry-After: 86400`}
 
             <DocsCallout variant="info" title="Web Sessions vs API Keys">
               <p>
-                Scans performed via the web interface use separate rate limits. API rate limits only apply to
-                API key requests.
+                Scans performed via the web interface use separate rate limits.
+                API rate limits only apply to API key requests.
               </p>
             </DocsCallout>
           </div>
@@ -555,7 +592,8 @@ Retry-After: 86400`}
       <DocsSection id="error-handling" title="Error Handling">
         <Card className="p-6 border-border/40">
           <p className="text-muted-foreground mb-6">
-            The API uses standard HTTP status codes and returns detailed error messages in JSON format.
+            The API uses standard HTTP status codes and returns detailed error
+            messages in JSON format.
           </p>
 
           <div className="space-y-4">
@@ -563,46 +601,61 @@ Retry-After: 86400`}
               {
                 code: 400,
                 title: "Bad Request",
-                description: "Missing or invalid request parameters. Check your request body and query parameters.",
+                description:
+                  "Missing or invalid request parameters. Check your request body and query parameters.",
               },
               {
                 code: 401,
                 title: "Unauthorized",
-                description: "Invalid, missing, or revoked API key. Verify your Authorization header is correct.",
+                description:
+                  "Invalid, missing, or revoked API key. Verify your Authorization header is correct.",
               },
               {
                 code: 403,
                 title: "Forbidden",
-                description: "You don't have permission to access this resource.",
+                description:
+                  "You don't have permission to access this resource.",
               },
               {
                 code: 404,
                 title: "Not Found",
-                description: "Resource doesn't exist or you don't have access. Check the resource ID.",
+                description:
+                  "Resource doesn't exist or you don't have access. Check the resource ID.",
               },
               {
                 code: 422,
                 title: "Unprocessable Entity",
-                description: "Target URL is unreachable, blocking requests, or not publicly accessible.",
+                description:
+                  "Target URL is unreachable, blocking requests, or not publicly accessible.",
               },
               {
                 code: 429,
                 title: "Too Many Requests",
-                description: "Rate limit exceeded. Wait until the reset time before making more requests.",
+                description:
+                  "Rate limit exceeded. Wait until the reset time before making more requests.",
               },
               {
                 code: 500,
                 title: "Server Error",
-                description: "Unexpected server error. Try again later or contact support if the issue persists.",
+                description:
+                  "Unexpected server error. Try again later or contact support if the issue persists.",
               },
             ].map((error) => (
-              <div key={error.code} className="flex items-start gap-4 p-3 rounded-lg bg-secondary/20">
-                <Badge variant="outline" className="font-mono text-xs flex-shrink-0">
+              <div
+                key={error.code}
+                className="flex items-start gap-4 p-3 rounded-lg bg-secondary/20"
+              >
+                <Badge
+                  variant="outline"
+                  className="font-mono text-xs flex-shrink-0"
+                >
                   {error.code}
                 </Badge>
                 <div>
                   <h4 className="font-semibold text-sm mb-1">{error.title}</h4>
-                  <p className="text-xs text-muted-foreground">{error.description}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {error.description}
+                  </p>
                 </div>
               </div>
             ))}
@@ -632,7 +685,8 @@ Retry-After: 86400`}
               },
               {
                 title: "Retry Failed Requests",
-                description: "Implement retry logic with exponential backoff for transient failures (422, 500).",
+                description:
+                  "Implement retry logic with exponential backoff for transient failures (422, 500).",
               },
               {
                 title: "Cache Results",
@@ -645,14 +699,19 @@ Retry-After: 86400`}
                   "Track your API usage to stay within limits. Set up alerts when approaching the daily cap.",
               },
             ].map((practice, i) => (
-              <div key={i} className="p-4 rounded-lg bg-secondary/20 border border-border/40">
+              <div
+                key={i}
+                className="p-4 rounded-lg bg-secondary/20 border border-border/40"
+              >
                 <h4 className="font-semibold text-sm mb-2">{practice.title}</h4>
-                <p className="text-xs text-muted-foreground">{practice.description}</p>
+                <p className="text-xs text-muted-foreground">
+                  {practice.description}
+                </p>
               </div>
             ))}
           </div>
         </Card>
       </DocsSection>
     </div>
-  )
+  );
 }

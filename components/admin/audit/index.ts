@@ -1,3 +1,3 @@
 // Admin audit components barrel export
 
-export * from "./audit-log"
+export * from "./audit-log";

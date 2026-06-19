@@ -1,9 +1,9 @@
-import { NextRequest } from "next/server"
-import { getSession } from "@/lib/auth"
-import pool from "@/lib/database/db"
-import { ApiResponse, parseBody, withErrorHandling } from "@/lib/api/api-utils"
-import { ERROR_MESSAGES } from "@/lib/config/constants"
-import { getNotificationPreferences } from "@/lib/notifications/notifications"
+import { NextRequest } from "next/server";
+import { getSession } from "@/lib/auth";
+import pool from "@/lib/database/db";
+import { ApiResponse, parseBody, withErrorHandling } from "@/lib/api/api-utils";
+import { ERROR_MESSAGES } from "@/lib/config/constants";
+import { getNotificationPreferences } from "@/lib/notifications/notifications";
 
 const ALL_PREF_COLUMNS = [
   // Security
@@ -30,47 +30,47 @@ const ALL_PREF_COLUMNS = [
   // Product
   "email_product_updates",
   "email_tips_guides",
-] as const
+] as const;
 
 // GET: Fetch notification preferences
 export const GET = withErrorHandling(async () => {
-  const session = await getSession()
-  if (!session) return ApiResponse.unauthorized(ERROR_MESSAGES.UNAUTHORIZED)
+  const session = await getSession();
+  if (!session) return ApiResponse.unauthorized(ERROR_MESSAGES.UNAUTHORIZED);
 
-  const prefs = await getNotificationPreferences(session.userId)
-  return ApiResponse.success(prefs)
-})
+  const prefs = await getNotificationPreferences(session.userId);
+  return ApiResponse.success(prefs);
+});
 
 // PUT: Update notification preferences
 export const PUT = withErrorHandling(async (request: NextRequest) => {
-  const session = await getSession()
-  if (!session) return ApiResponse.unauthorized(ERROR_MESSAGES.UNAUTHORIZED)
+  const session = await getSession();
+  if (!session) return ApiResponse.unauthorized(ERROR_MESSAGES.UNAUTHORIZED);
 
-  const parsed = await parseBody<Record<string, boolean>>(request)
-  if (!parsed.success) return ApiResponse.badRequest(parsed.error)
-  const data = parsed.data
+  const parsed = await parseBody<Record<string, boolean>>(request);
+  if (!parsed.success) return ApiResponse.badRequest(parsed.error);
+  const data = parsed.data;
 
   // Validate: only accept known columns, all must be booleans
-  const updates: Record<string, boolean> = {}
+  const updates: Record<string, boolean> = {};
   for (const col of ALL_PREF_COLUMNS) {
     if (col in data) {
       if (typeof data[col] !== "boolean") {
-        return ApiResponse.badRequest(`Invalid value for ${col}`)
+        return ApiResponse.badRequest(`Invalid value for ${col}`);
       }
-      updates[col] = data[col]
+      updates[col] = data[col];
     }
   }
 
   if (Object.keys(updates).length === 0) {
-    return ApiResponse.badRequest("No valid preferences provided.")
+    return ApiResponse.badRequest("No valid preferences provided.");
   }
 
   // Build dynamic upsert
-  const cols = Object.keys(updates)
-  const vals = Object.values(updates)
-  const setClause = cols.map((c, i) => `${c} = $${i + 2}`).join(", ")
-  const insertCols = ["user_id", ...cols].join(", ")
-  const insertVals = cols.map((_, i) => `$${i + 2}`).join(", ")
+  const cols = Object.keys(updates);
+  const vals = Object.values(updates);
+  const setClause = cols.map((c, i) => `${c} = $${i + 2}`).join(", ");
+  const insertCols = ["user_id", ...cols].join(", ");
+  const insertVals = cols.map((_, i) => `$${i + 2}`).join(", ");
 
   const result = await pool.query(
     `INSERT INTO notification_preferences (${insertCols}, updated_at)
@@ -78,7 +78,7 @@ export const PUT = withErrorHandling(async (request: NextRequest) => {
      ON CONFLICT (user_id) DO UPDATE SET ${setClause}, updated_at = NOW()
      RETURNING *`,
     [session.userId, ...vals],
-  )
+  );
 
-  return ApiResponse.success(result.rows[0], 200)
-})
+  return ApiResponse.success(result.rows[0], 200);
+});

@@ -1,7 +1,7 @@
-"use client"
+"use client";
 
-import { Loader2, Shield } from "lucide-react"
-import { TOTAL_CHECKS_LABEL } from "@/lib/config/constants"
+import { Loader2, Shield } from "lucide-react";
+import { TOTAL_CHECKS_LABEL } from "@/lib/config/constants";
 
 export function DemoScanning() {
   return (
@@ -22,12 +22,12 @@ export function DemoScanning() {
 
           <div className="space-y-4 max-w-xs mx-auto">
             <div className="w-full bg-muted rounded-full h-2 overflow-hidden">
-              <div 
-                className="h-full bg-primary rounded-full animate-pulse" 
-                style={{ width: "75%" }} 
+              <div
+                className="h-full bg-primary rounded-full animate-pulse"
+                style={{ width: "75%" }}
               />
             </div>
-            
+
             <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
               <Loader2 className="h-4 w-4 animate-spin" />
               <span>This typically takes 10-30 seconds</span>
@@ -36,5 +36,5 @@ export function DemoScanning() {
         </div>
       </div>
     </section>
-  )
+  );
 }

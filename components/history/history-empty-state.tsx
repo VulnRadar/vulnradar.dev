@@ -1,15 +1,19 @@
-"use client"
+"use client";
 
-import { Clock, Search } from "lucide-react"
-import { Button } from "@/components/ui/button"
+import { Clock, Search } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
 interface HistoryEmptyStateProps {
-  hasScans: boolean
-  hasFilters: boolean
-  onClearFilters: () => void
+  hasScans: boolean;
+  hasFilters: boolean;
+  onClearFilters: () => void;
 }
 
-export function HistoryEmptyState({ hasScans, hasFilters, onClearFilters }: HistoryEmptyStateProps) {
+export function HistoryEmptyState({
+  hasScans,
+  hasFilters,
+  onClearFilters,
+}: HistoryEmptyStateProps) {
   if (!hasScans) {
     return (
       <div className="flex flex-col items-center gap-4 py-16 text-center rounded-xl border border-dashed border-border bg-card/30">
@@ -17,7 +21,9 @@ export function HistoryEmptyState({ hasScans, hasFilters, onClearFilters }: Hist
           <Clock className="h-6 w-6 text-muted-foreground" />
         </div>
         <div className="flex flex-col gap-1">
-          <p className="text-sm font-medium text-foreground">No scan history yet</p>
+          <p className="text-sm font-medium text-foreground">
+            No scan history yet
+          </p>
           <p className="text-xs text-muted-foreground">
             Scans you run will appear here automatically.
           </p>
@@ -26,7 +32,7 @@ export function HistoryEmptyState({ hasScans, hasFilters, onClearFilters }: Hist
           <a href="/dashboard">Run Your First Scan</a>
         </Button>
       </div>
-    )
+    );
   }
 
   if (hasFilters) {
@@ -40,8 +46,8 @@ export function HistoryEmptyState({ hasScans, hasFilters, onClearFilters }: Hist
           Clear filters
         </Button>
       </div>
-    )
+    );
   }
 
-  return null
+  return null;
 }

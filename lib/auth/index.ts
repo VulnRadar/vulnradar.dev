@@ -8,8 +8,16 @@ export {
   getUserByEmail,
   cleanupExpiredSessions,
   deleteAllSessions,
-} from "./auth"
+} from "./auth";
 
-export { isStaffRole, hasStaffPermission, canAccessAdmin, canAccessStaffPage, getStaffPermissions, canManageRole, getAvailableActions } from "./permissions"
+export {
+  isStaffRole,
+  hasStaffPermission,
+  canAccessAdmin,
+  canAccessStaffPage,
+  getStaffPermissions,
+  canManageRole,
+  getAvailableActions,
+} from "./permissions";
 
-export type { StaffPermission } from "./permissions-client"
+export type { StaffPermission } from "./permissions-client";

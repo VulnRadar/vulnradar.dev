@@ -1,14 +1,14 @@
-import { NextRequest, NextResponse } from "next/server"
-import pool from "@/lib/database/db"
+import { NextRequest, NextResponse } from "next/server";
+import pool from "@/lib/database/db";
 
 export async function GET(
   _request: NextRequest,
   { params }: { params: Promise<{ token: string }> },
 ) {
-  const { token } = await params
+  const { token } = await params;
 
   if (!token || token.length !== 64) {
-    return NextResponse.json({ error: "Invalid share link" }, { status: 400 })
+    return NextResponse.json({ error: "Invalid share link" }, { status: 400 });
   }
 
   const result = await pool.query(
@@ -17,21 +17,24 @@ export async function GET(
      JOIN users u ON sh.user_id = u.id
      WHERE sh.share_token = $1`,
     [token],
-  )
+  );
 
   if (result.rows.length === 0) {
-    return NextResponse.json({ error: "Shared scan not found or link has been revoked" }, { status: 404 })
+    return NextResponse.json(
+      { error: "Shared scan not found or link has been revoked" },
+      { status: 404 },
+    );
   }
 
-  const row = result.rows[0]
+  const row = result.rows[0];
 
   // Get user badges
   const badgesResult = await pool.query(
     `SELECT b.id, b.name, b.display_name, b.icon, b.color, b.priority
      FROM user_badges ub JOIN badges b ON ub.badge_id = b.id
      WHERE ub.user_id = $1 ORDER BY b.priority DESC`,
-    [row.user_id]
-  )
+    [row.user_id],
+  );
 
   return NextResponse.json({
     url: row.url,
@@ -45,5 +48,5 @@ export async function GET(
     scannedByAvatar: row.scanned_by_avatar || null,
     scannedByRole: row.scanned_by_role || "user",
     scannedByBadges: badgesResult.rows,
-  })
+  });
 }

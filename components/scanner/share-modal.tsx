@@ -1,49 +1,57 @@
-"use client"
+"use client";
 
-import { useState } from "react"
-import { Link2, Check, Copy, Mail, MessageCircle, Globe, Share2 } from "lucide-react"
-import { Button } from "@/components/ui/button"
+import { useState } from "react";
+import {
+  Link2,
+  Check,
+  Copy,
+  Mail,
+  MessageCircle,
+  Globe,
+  Share2,
+} from "lucide-react";
+import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
   DialogDescription,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog"
-import { cn } from "@/lib/ui/utils"
+} from "@/components/ui/dialog";
+import { cn } from "@/lib/ui/utils";
 
 interface ShareModalProps {
-  open: boolean
-  onOpenChange: (open: boolean) => void
-  shareUrl: string
-  title?: string
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  shareUrl: string;
+  title?: string;
 }
 
 async function copyText(text: string): Promise<boolean> {
   if (navigator.clipboard?.writeText) {
     try {
-      await navigator.clipboard.writeText(text)
-      return true
+      await navigator.clipboard.writeText(text);
+      return true;
     } catch {
       // Fall through to legacy fallback
     }
   }
 
   try {
-    const textarea = document.createElement("textarea")
-    textarea.value = text
-    textarea.style.position = "fixed"
-    textarea.style.left = "-9999px"
-    textarea.style.top = "-9999px"
-    textarea.style.opacity = "0"
-    document.body.appendChild(textarea)
-    textarea.focus()
-    textarea.select()
-    const success = document.execCommand("copy")
-    document.body.removeChild(textarea)
-    return success
+    const textarea = document.createElement("textarea");
+    textarea.value = text;
+    textarea.style.position = "fixed";
+    textarea.style.left = "-9999px";
+    textarea.style.top = "-9999px";
+    textarea.style.opacity = "0";
+    document.body.appendChild(textarea);
+    textarea.focus();
+    textarea.select();
+    const success = document.execCommand("copy");
+    document.body.removeChild(textarea);
+    return success;
   } catch {
-    return false
+    return false;
   }
 }
 
@@ -100,22 +108,27 @@ const SHARE_OPTIONS = [
     getUrl: (url: string, title: string) =>
       `mailto:?subject=${encodeURIComponent(title)}&body=${encodeURIComponent(`Check out this VulnRadar scan report:\n\n${url}`)}`,
   },
-]
+];
 
-export function ShareModal({ open, onOpenChange, shareUrl, title = "VulnRadar Scan Report" }: ShareModalProps) {
-  const [copied, setCopied] = useState(false)
+export function ShareModal({
+  open,
+  onOpenChange,
+  shareUrl,
+  title = "VulnRadar Scan Report",
+}: ShareModalProps) {
+  const [copied, setCopied] = useState(false);
 
   async function handleCopy() {
-    const success = await copyText(shareUrl)
+    const success = await copyText(shareUrl);
     if (success) {
-      setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
     }
   }
 
   function handleShare(option: (typeof SHARE_OPTIONS)[number]) {
-    const url = option.getUrl(shareUrl, title)
-    window.open(url, "_blank", "noopener,noreferrer,width=600,height=400")
+    const url = option.getUrl(shareUrl, title);
+    window.open(url, "_blank", "noopener,noreferrer,width=600,height=400");
   }
 
   return (
@@ -127,7 +140,9 @@ export function ShareModal({ open, onOpenChange, shareUrl, title = "VulnRadar Sc
               <Share2 className="h-5 w-5 text-primary" />
             </div>
             <div>
-              <DialogTitle className="text-lg font-semibold">Share Report</DialogTitle>
+              <DialogTitle className="text-lg font-semibold">
+                Share Report
+              </DialogTitle>
               <DialogDescription className="text-sm text-muted-foreground">
                 Share this scan report with others
               </DialogDescription>
@@ -159,7 +174,7 @@ export function ShareModal({ open, onOpenChange, shareUrl, title = "VulnRadar Sc
                   "min-w-[100px] gap-2 transition-all font-medium",
                   copied
                     ? "bg-emerald-500 hover:bg-emerald-500 text-white"
-                    : "bg-primary hover:bg-primary/90"
+                    : "bg-primary hover:bg-primary/90",
                 )}
               >
                 {copied ? (
@@ -183,14 +198,16 @@ export function ShareModal({ open, onOpenChange, shareUrl, title = "VulnRadar Sc
               <div className="w-full border-t border-border" />
             </div>
             <div className="relative flex justify-center text-xs uppercase">
-              <span className="bg-card px-3 text-muted-foreground">or share via</span>
+              <span className="bg-card px-3 text-muted-foreground">
+                or share via
+              </span>
             </div>
           </div>
 
           {/* Share buttons grid */}
           <div className="grid grid-cols-5 gap-2">
             {SHARE_OPTIONS.map((option) => {
-              const Icon = option.icon
+              const Icon = option.icon;
               return (
                 <button
                   key={option.id}
@@ -200,7 +217,7 @@ export function ShareModal({ open, onOpenChange, shareUrl, title = "VulnRadar Sc
                   <div
                     className={cn(
                       "flex items-center justify-center h-10 w-10 rounded-xl transition-transform group-hover:scale-105",
-                      option.color
+                      option.color,
                     )}
                   >
                     <Icon />
@@ -209,7 +226,7 @@ export function ShareModal({ open, onOpenChange, shareUrl, title = "VulnRadar Sc
                     {option.label}
                   </span>
                 </button>
-              )
+              );
             })}
           </div>
 
@@ -219,10 +236,12 @@ export function ShareModal({ open, onOpenChange, shareUrl, title = "VulnRadar Sc
               variant="outline"
               className="w-full gap-2 bg-transparent"
               onClick={() => {
-                navigator.share({
-                  title,
-                  url: shareUrl,
-                }).catch(() => {})
+                navigator
+                  .share({
+                    title,
+                    url: shareUrl,
+                  })
+                  .catch(() => {});
               }}
             >
               <Globe className="h-4 w-4" />
@@ -232,5 +251,5 @@ export function ShareModal({ open, onOpenChange, shareUrl, title = "VulnRadar Sc
         </div>
       </DialogContent>
     </Dialog>
-  )
+  );
 }

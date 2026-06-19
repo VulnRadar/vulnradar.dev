@@ -1,27 +1,39 @@
-"use client"
+"use client";
 
-import { X, Loader2, ExternalLink } from "lucide-react"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent } from "@/components/ui/card"
-import { PaginationControl } from "@/components/ui/pagination-control"
-import { type Member, type MemberScan, formatRelativeTime } from "./teams-types"
+import { X, Loader2, ExternalLink } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { PaginationControl } from "@/components/ui/pagination-control";
+import {
+  type Member,
+  type MemberScan,
+  formatRelativeTime,
+} from "./teams-types";
 
 interface TeamMemberScansProps {
-  member: Member
-  scans: MemberScan[]
-  loading: boolean
-  page: number
-  pageSize: number
-  totalPages: number
-  paginatedScans: MemberScan[]
-  onClose: () => void
-  onPageChange: (p: number) => void
-  onPageSizeChange: (s: number) => void
+  member: Member;
+  scans: MemberScan[];
+  loading: boolean;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+  paginatedScans: MemberScan[];
+  onClose: () => void;
+  onPageChange: (p: number) => void;
+  onPageSizeChange: (s: number) => void;
 }
 
 export function TeamMemberScans({
-  member, scans, loading, page, pageSize, totalPages, paginatedScans,
-  onClose, onPageChange, onPageSizeChange,
+  member,
+  scans,
+  loading,
+  page,
+  pageSize,
+  totalPages,
+  paginatedScans,
+  onClose,
+  onPageChange,
+  onPageSizeChange,
 }: TeamMemberScansProps) {
   return (
     <Card className="bg-card border-border/50">
@@ -35,7 +47,12 @@ export function TeamMemberScans({
               {scans.length} scan{scans.length !== 1 && "s"} total
             </p>
           </div>
-          <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={onClose}>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-8 w-8 p-0"
+            onClick={onClose}
+          >
             <X className="h-4 w-4" />
           </Button>
         </div>
@@ -58,15 +75,24 @@ export function TeamMemberScans({
                   className="flex items-center gap-3 px-5 py-3 hover:bg-muted/30 transition-colors"
                 >
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium truncate font-mono">{scan.url}</p>
+                    <p className="text-sm font-medium truncate font-mono">
+                      {scan.url}
+                    </p>
                     <p className="text-xs text-muted-foreground">
                       {formatRelativeTime(new Date(scan.scanned_at))} ·{" "}
-                      {scan.findings_count} issue{scan.findings_count !== 1 && "s"}
+                      {scan.findings_count} issue
+                      {scan.findings_count !== 1 && "s"}
                     </p>
                   </div>
-                  <Button variant="ghost" size="sm" className="gap-1.5 shrink-0" asChild>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="gap-1.5 shrink-0"
+                    asChild
+                  >
                     <a href={`/history#${scan.id}`}>
-                      View<ExternalLink className="h-3 w-3" />
+                      View
+                      <ExternalLink className="h-3 w-3" />
                     </a>
                   </Button>
                 </div>
@@ -78,7 +104,10 @@ export function TeamMemberScans({
                 totalPages={totalPages}
                 onPageChange={onPageChange}
                 pageSize={pageSize}
-                onPageSizeChange={(s) => { onPageSizeChange(s); onPageChange(1) }}
+                onPageSizeChange={(s) => {
+                  onPageSizeChange(s);
+                  onPageChange(1);
+                }}
                 totalItems={scans.length}
               />
             </div>
@@ -86,5 +115,5 @@ export function TeamMemberScans({
         )}
       </CardContent>
     </Card>
-  )
+  );
 }

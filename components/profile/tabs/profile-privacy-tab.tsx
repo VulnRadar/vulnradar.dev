@@ -1,9 +1,9 @@
-'use client'
+"use client";
 
-import { useState, useEffect } from 'react'
-import { Button } from '@/components/ui/button'
-import { Card, CardContent } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
+import { useState, useEffect } from "react";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import {
   AlertTriangle,
   Clock,
@@ -12,9 +12,9 @@ import {
   Lock,
   Shield,
   Trash2,
-} from 'lucide-react'
-import { API } from '@/lib/config/constants'
-import type { ProfileTabProps } from '@/components/profile/types'
+} from "lucide-react";
+import { API } from "@/lib/config/constants";
+import type { ProfileTabProps } from "@/components/profile/types";
 
 export function ProfilePrivacyTab({
   user: _user,
@@ -29,128 +29,132 @@ export function ProfilePrivacyTab({
 }: ProfileTabProps) {
   // Use preloaded data if available
   const [dataReqInfo, setDataReqInfo] = useState<{
-    hasData: boolean
-    canDownloadNew: boolean
-    cooldownEndsAt?: string
-    lastDownloadAt?: string
-  } | null>(preloadedDataReqInfo ?? null)
-  const [requestingData, setRequestingData] = useState(false)
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
-  const [deleteConfirmText, setDeleteConfirmText] = useState('')
-  const [deleting, setDeleting] = useState(false)
+    hasData: boolean;
+    canDownloadNew: boolean;
+    cooldownEndsAt?: string;
+    lastDownloadAt?: string;
+  } | null>(preloadedDataReqInfo ?? null);
+  const [requestingData, setRequestingData] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleteConfirmText, setDeleteConfirmText] = useState("");
+  const [deleting, setDeleting] = useState(false);
 
   // Update state when preloaded data changes
   useEffect(() => {
     if (preloadedDataReqInfo) {
-      setDataReqInfo(preloadedDataReqInfo)
+      setDataReqInfo(preloadedDataReqInfo);
     }
-  }, [preloadedDataReqInfo])
+  }, [preloadedDataReqInfo]);
 
   async function handleRequestData() {
-    setRequestingData(true)
-    setError(null)
+    setRequestingData(true);
+    setError(null);
     try {
-      const res = await fetch(API.DATA_REQUEST, { method: 'POST' })
-      const data = await res.json()
+      const res = await fetch(API.DATA_REQUEST, { method: "POST" });
+      const data = await res.json();
       if (res.ok && data.data) {
         // Immediately download the data as JSON
-        const jsonString = JSON.stringify(data.data, null, 2)
-        const blob = new Blob([jsonString], { type: 'application/json' })
-        const url = URL.createObjectURL(blob)
-        const a = document.createElement('a')
-        a.href = url
-        a.download = `vulnradar-data-export-${new Date().toISOString().split('T')[0]}.json`
-        document.body.appendChild(a)
-        a.click()
-        document.body.removeChild(a)
-        URL.revokeObjectURL(url)
-        setSuccess('Data export downloaded successfully.')
-        setDataReqInfo({ hasData: true, lastDownloadAt: new Date().toISOString(), canDownloadNew: false })
+        const jsonString = JSON.stringify(data.data, null, 2);
+        const blob = new Blob([jsonString], { type: "application/json" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `vulnradar-data-export-${new Date().toISOString().split("T")[0]}.json`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        setSuccess("Data export downloaded successfully.");
+        setDataReqInfo({
+          hasData: true,
+          lastDownloadAt: new Date().toISOString(),
+          canDownloadNew: false,
+        });
       } else {
-        setError(data.error || 'Failed to request data export.')
+        setError(data.error || "Failed to request data export.");
       }
     } catch {
-      setError('Failed to request data export.')
+      setError("Failed to request data export.");
     } finally {
-      setRequestingData(false)
+      setRequestingData(false);
     }
   }
 
   async function handleDownloadPreviousData() {
-    setRequestingData(true)
-    setError(null)
+    setRequestingData(true);
+    setError(null);
     try {
-      const res = await fetch(API.DATA_REQUEST, { method: 'GET' })
+      const res = await fetch(API.DATA_REQUEST, { method: "GET" });
       if (res.ok) {
-        const data = await res.json()
+        const data = await res.json();
         if (data.data) {
-          const jsonString = JSON.stringify(data.data, null, 2)
-          const blob = new Blob([jsonString], { type: 'application/json' })
-          const url = URL.createObjectURL(blob)
-          const a = document.createElement('a')
-          a.href = url
-          a.download = `vulnradar-data-export-${new Date().toISOString().split('T')[0]}.json`
-          document.body.appendChild(a)
-          a.click()
-          document.body.removeChild(a)
-          URL.revokeObjectURL(url)
-          setSuccess('Data export downloaded successfully.')
+          const jsonString = JSON.stringify(data.data, null, 2);
+          const blob = new Blob([jsonString], { type: "application/json" });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = `vulnradar-data-export-${new Date().toISOString().split("T")[0]}.json`;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+          setSuccess("Data export downloaded successfully.");
         } else {
-          setError('No previous export data found.')
+          setError("No previous export data found.");
         }
       } else {
-        setError('Failed to download data export.')
+        setError("Failed to download data export.");
       }
     } catch {
-      setError('Failed to download data export.')
+      setError("Failed to download data export.");
     } finally {
-      setRequestingData(false)
+      setRequestingData(false);
     }
   }
 
   async function handleDeleteAccount() {
-    setDeleting(true)
-    setError(null)
+    setDeleting(true);
+    setError(null);
     try {
-      const res = await fetch(API.ACCOUNT, { method: 'DELETE' })
-      const data = await res.json()
+      const res = await fetch(API.ACCOUNT, { method: "DELETE" });
+      const data = await res.json();
       if (res.ok) {
-        setSuccess('Account deletion initiated. Redirecting to login...')
+        setSuccess("Account deletion initiated. Redirecting to login...");
         setTimeout(() => {
-          window.location.href = '/login'
-        }, 1500)
+          window.location.href = "/login";
+        }, 1500);
       } else {
-        setError(data.error || 'Failed to delete account.')
+        setError(data.error || "Failed to delete account.");
       }
     } catch {
-      setError('Failed to delete account.')
+      setError("Failed to delete account.");
     } finally {
-      setDeleting(false)
+      setDeleting(false);
     }
   }
 
   function formatDate(date: string) {
-    return new Date(date).toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-    })
+    return new Date(date).toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    });
   }
 
   function getTimeRemaining(endDate: string) {
-    const now = new Date()
-    const end = new Date(endDate)
-    const diff = end.getTime() - now.getTime()
+    const now = new Date();
+    const end = new Date(endDate);
+    const diff = end.getTime() - now.getTime();
 
-    if (diff <= 0) return 'now'
+    if (diff <= 0) return "now";
 
-    const days = Math.floor(diff / (1000 * 60 * 60 * 24))
-    const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60))
-    const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60))
+    const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+    const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+    const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
 
-    if (days > 0) return `${days}d ${hours}h`
-    if (hours > 0) return `${hours}h ${minutes}m`
-    return `${minutes}m`
+    if (days > 0) return `${days}d ${hours}h`;
+    if (hours > 0) return `${hours}h ${minutes}m`;
+    return `${minutes}m`;
   }
 
   if (loading) {
@@ -158,10 +162,12 @@ export function ProfilePrivacyTab({
       <div className="flex items-center justify-center py-12">
         <div className="text-center">
           <div className="h-6 w-6 animate-spin rounded-full border-2 border-muted border-t-primary mx-auto mb-3" />
-          <p className="text-sm text-muted-foreground">Loading privacy settings...</p>
+          <p className="text-sm text-muted-foreground">
+            Loading privacy settings...
+          </p>
         </div>
       </div>
-    )
+    );
   }
 
   return (
@@ -173,8 +179,12 @@ export function ProfilePrivacyTab({
             <Shield className="h-4 w-4 text-primary" />
           </div>
           <div>
-            <h2 className="text-lg font-semibold text-foreground">Privacy & Data Protection</h2>
-            <p className="text-sm text-muted-foreground">Protected under GDPR and privacy regulations</p>
+            <h2 className="text-lg font-semibold text-foreground">
+              Privacy & Data Protection
+            </h2>
+            <p className="text-sm text-muted-foreground">
+              Protected under GDPR and privacy regulations
+            </p>
           </div>
         </div>
         <Card className="border-primary/30 bg-primary/5">
@@ -183,15 +193,23 @@ export function ProfilePrivacyTab({
               <div className="flex items-start gap-3 p-3 rounded-lg bg-card/50 border border-border">
                 <Globe className="h-4 w-4 text-blue-500 shrink-0 mt-0.5" />
                 <div>
-                  <p className="text-xs font-semibold text-foreground">GDPR Compliant</p>
-                  <p className="text-xs text-muted-foreground mt-0.5">Full compliance with EU data protection regulations</p>
+                  <p className="text-xs font-semibold text-foreground">
+                    GDPR Compliant
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Full compliance with EU data protection regulations
+                  </p>
                 </div>
               </div>
               <div className="flex items-start gap-3 p-3 rounded-lg bg-card/50 border border-border">
                 <Lock className="h-4 w-4 text-green-500 shrink-0 mt-0.5" />
                 <div>
-                  <p className="text-xs font-semibold text-foreground">Encrypted Storage</p>
-                  <p className="text-xs text-muted-foreground mt-0.5">Your data is encrypted at rest and in transit</p>
+                  <p className="text-xs font-semibold text-foreground">
+                    Encrypted Storage
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Your data is encrypted at rest and in transit
+                  </p>
                 </div>
               </div>
             </div>
@@ -206,8 +224,12 @@ export function ProfilePrivacyTab({
             <Download className="h-4 w-4 text-primary" />
           </div>
           <div>
-            <h2 className="text-lg font-semibold text-foreground">Data Export</h2>
-            <p className="text-sm text-muted-foreground">Download your data, available every 30 days</p>
+            <h2 className="text-lg font-semibold text-foreground">
+              Data Export
+            </h2>
+            <p className="text-sm text-muted-foreground">
+              Download your data, available every 30 days
+            </p>
           </div>
         </div>
         <Card className="border-border/50 bg-card/50">
@@ -219,11 +241,13 @@ export function ProfilePrivacyTab({
                 {dataReqInfo?.canDownloadNew && (
                   <div className="flex items-center justify-between">
                     <div>
-                      <p className="text-sm font-medium text-foreground">Download Fresh Export</p>
+                      <p className="text-sm font-medium text-foreground">
+                        Download Fresh Export
+                      </p>
                       <p className="text-xs text-muted-foreground mt-0.5">
                         {dataReqInfo?.lastDownloadAt
-                          ? 'Your 30-day cooldown has expired. Get a fresh export now.'
-                          : 'Download your complete account data now.'}
+                          ? "Your 30-day cooldown has expired. Get a fresh export now."
+                          : "Download your complete account data now."}
                       </p>
                     </div>
                     <Button
@@ -232,32 +256,39 @@ export function ProfilePrivacyTab({
                       className="shrink-0"
                     >
                       <Download className="mr-2 h-4 w-4" />
-                      {requestingData ? 'Downloading...' : 'Download Now'}
+                      {requestingData ? "Downloading..." : "Download Now"}
                     </Button>
                   </div>
                 )}
 
                 {/* Cooldown active - can't get fresh data yet */}
-                {!dataReqInfo?.canDownloadNew && dataReqInfo?.lastDownloadAt && (
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm font-medium text-foreground">Fresh Export Cooldown</p>
-                      <p className="text-xs text-muted-foreground mt-0.5">
-                        Next fresh export available in{' '}
-                        <span className="font-mono text-foreground font-semibold">
-                          {dataReqInfo.cooldownEndsAt ? getTimeRemaining(dataReqInfo.cooldownEndsAt) || 'soon' : 'soon'}
-                        </span>
-                      </p>
-                      <p className="text-xs text-muted-foreground mt-1">
-                        Last downloaded: {formatDate(dataReqInfo.lastDownloadAt)}
-                      </p>
+                {!dataReqInfo?.canDownloadNew &&
+                  dataReqInfo?.lastDownloadAt && (
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm font-medium text-foreground">
+                          Fresh Export Cooldown
+                        </p>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          Next fresh export available in{" "}
+                          <span className="font-mono text-foreground font-semibold">
+                            {dataReqInfo.cooldownEndsAt
+                              ? getTimeRemaining(dataReqInfo.cooldownEndsAt) ||
+                                "soon"
+                              : "soon"}
+                          </span>
+                        </p>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Last downloaded:{" "}
+                          {formatDate(dataReqInfo.lastDownloadAt)}
+                        </p>
+                      </div>
+                      <Button disabled className="shrink-0">
+                        <Clock className="mr-2 h-4 w-4" />
+                        On Cooldown
+                      </Button>
                     </div>
-                    <Button disabled className="shrink-0">
-                      <Clock className="mr-2 h-4 w-4" />
-                      On Cooldown
-                    </Button>
-                  </div>
-                )}
+                  )}
               </div>
 
               {/* Re-download Previous Export */}
@@ -265,9 +296,16 @@ export function ProfilePrivacyTab({
                 <div className="flex flex-col gap-4 p-4 rounded-lg border border-border bg-muted/50">
                   <div className="flex items-center justify-between">
                     <div>
-                      <p className="text-sm font-medium text-foreground">Previous Export Available</p>
+                      <p className="text-sm font-medium text-foreground">
+                        Previous Export Available
+                      </p>
                       <p className="text-xs text-muted-foreground mt-0.5">
-                        Re-download your last export anytime. This data was last updated {dataReqInfo.lastDownloadAt ? formatDate(dataReqInfo.lastDownloadAt) : 'recently'}.
+                        Re-download your last export anytime. This data was last
+                        updated{" "}
+                        {dataReqInfo.lastDownloadAt
+                          ? formatDate(dataReqInfo.lastDownloadAt)
+                          : "recently"}
+                        .
                       </p>
                     </div>
                     <Button
@@ -286,7 +324,9 @@ export function ProfilePrivacyTab({
               <div className="flex gap-3 p-3 rounded-lg bg-muted/50 border border-border">
                 <Download className="h-4 w-4 text-muted-foreground shrink-0 mt-0.5" />
                 <div>
-                  <p className="text-xs font-semibold text-foreground">How It Works</p>
+                  <p className="text-xs font-semibold text-foreground">
+                    How It Works
+                  </p>
                   <ul className="text-xs text-muted-foreground mt-1 space-y-1">
                     <li>1. Click "Download Now" to get a fresh export</li>
                     <li>2. Your data downloads as a JSON file</li>
@@ -321,8 +361,12 @@ export function ProfilePrivacyTab({
             <AlertTriangle className="h-4 w-4 text-destructive" />
           </div>
           <div>
-            <h2 className="text-lg font-semibold text-destructive">Danger Zone</h2>
-            <p className="text-sm text-muted-foreground">Permanent account deletion, cannot be undone</p>
+            <h2 className="text-lg font-semibold text-destructive">
+              Danger Zone
+            </h2>
+            <p className="text-sm text-muted-foreground">
+              Permanent account deletion, cannot be undone
+            </p>
           </div>
         </div>
         <Card className="border-destructive/30 bg-destructive/5">
@@ -339,10 +383,16 @@ export function ProfilePrivacyTab({
             ) : (
               <div className="flex flex-col gap-4 p-4 rounded-lg border border-destructive/30 bg-destructive/5">
                 <div>
-                  <p className="text-sm font-semibold text-foreground">Are you absolutely sure?</p>
+                  <p className="text-sm font-semibold text-foreground">
+                    Are you absolutely sure?
+                  </p>
                   <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
-                    This will permanently delete your account, all API keys, scan history, and data exports.
-                    Type <span className="font-mono font-semibold text-destructive">DELETE</span> to confirm.
+                    This will permanently delete your account, all API keys,
+                    scan history, and data exports. Type{" "}
+                    <span className="font-mono font-semibold text-destructive">
+                      DELETE
+                    </span>{" "}
+                    to confirm.
                   </p>
                 </div>
                 <Input
@@ -352,11 +402,21 @@ export function ProfilePrivacyTab({
                   className="bg-card font-mono"
                 />
                 <div className="flex items-center gap-2">
-                  <Button variant="destructive" disabled={deleteConfirmText !== 'DELETE' || deleting} onClick={handleDeleteAccount}>
+                  <Button
+                    variant="destructive"
+                    disabled={deleteConfirmText !== "DELETE" || deleting}
+                    onClick={handleDeleteAccount}
+                  >
                     <Trash2 className="mr-2 h-4 w-4" />
-                    {deleting ? 'Deleting...' : 'Permanently Delete Account'}
+                    {deleting ? "Deleting..." : "Permanently Delete Account"}
                   </Button>
-                  <Button variant="ghost" onClick={() => { setShowDeleteConfirm(false); setDeleteConfirmText('') }}>
+                  <Button
+                    variant="ghost"
+                    onClick={() => {
+                      setShowDeleteConfirm(false);
+                      setDeleteConfirmText("");
+                    }}
+                  >
                     Cancel
                   </Button>
                 </div>
@@ -366,5 +426,5 @@ export function ProfilePrivacyTab({
         </Card>
       </section>
     </div>
-  )
+  );
 }

@@ -1,45 +1,58 @@
-"use client"
+"use client";
 
-import { useState } from "react"
-import { Trash2, Loader2, AlertCircle, X } from "lucide-react"
-import { Button } from "@/components/ui/button"
-import { API } from "@/lib/config/constants"
+import { useState } from "react";
+import { Trash2, Loader2, AlertCircle, X } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { API } from "@/lib/config/constants";
 
 interface DeleteScanButtonProps {
-  scanId: number
-  onDeleted: () => void
-  isOwner: boolean
+  scanId: number;
+  onDeleted: () => void;
+  isOwner: boolean;
 }
 
-export function DeleteScanButton({ scanId, onDeleted, isOwner }: DeleteScanButtonProps) {
-  const [state, setState] = useState<"idle" | "confirming" | "deleting" | "deleted">("idle")
+export function DeleteScanButton({
+  scanId,
+  onDeleted,
+  isOwner,
+}: DeleteScanButtonProps) {
+  const [state, setState] = useState<
+    "idle" | "confirming" | "deleting" | "deleted"
+  >("idle");
 
   if (!isOwner) {
-    return null
+    return null;
   }
 
   async function handleDelete() {
-    setState("deleting")
+    setState("deleting");
     try {
-      const res = await fetch(`${API.HISTORY}/${scanId}/delete`, { method: "DELETE" })
+      const res = await fetch(`${API.HISTORY}/${scanId}/delete`, {
+        method: "DELETE",
+      });
       if (res.ok) {
-        setState("deleted")
-        setTimeout(() => onDeleted(), 500)
+        setState("deleted");
+        setTimeout(() => onDeleted(), 500);
       } else {
-        setState("idle")
+        setState("idle");
       }
     } catch {
-      setState("idle")
+      setState("idle");
     }
   }
 
   if (state === "deleted") {
     return (
-      <Button variant="outline" disabled size="sm" className="gap-2 bg-transparent text-muted-foreground">
+      <Button
+        variant="outline"
+        disabled
+        size="sm"
+        className="gap-2 bg-transparent text-muted-foreground"
+      >
         <Trash2 className="h-4 w-4" />
         <span className="hidden sm:inline">Deleted</span>
       </Button>
-    )
+    );
   }
 
   if (state === "confirming") {
@@ -77,7 +90,7 @@ export function DeleteScanButton({ scanId, onDeleted, isOwner }: DeleteScanButto
           </span>
         </Button>
       </div>
-    )
+    );
   }
 
   return (
@@ -90,5 +103,5 @@ export function DeleteScanButton({ scanId, onDeleted, isOwner }: DeleteScanButto
       <Trash2 className="h-4 w-4" />
       <span className="hidden sm:inline">Delete Scan</span>
     </Button>
-  )
+  );
 }

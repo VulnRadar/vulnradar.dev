@@ -1,18 +1,22 @@
-import { ArrowRight } from "lucide-react"
-import { Button } from "@/components/ui/button"
-import { ROUTES } from "@/lib/config/constants"
-import Link from "next/link"
+import { ArrowRight } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { ROUTES } from "@/lib/config/constants";
+import Link from "next/link";
 
 interface PricingCtaProps {
-  isLoggedIn: boolean
+  isLoggedIn: boolean;
 }
 
 export function PricingCta({ isLoggedIn }: PricingCtaProps) {
   return (
     <section className="border-t border-border/50 bg-muted/20">
       <div className="max-w-6xl mx-auto px-4 sm:px-6 py-16 sm:py-20 text-center">
-        <h2 className="text-2xl sm:text-3xl font-bold mb-4 tracking-tight">Ready to secure your applications?</h2>
-        <p className="text-muted-foreground mb-8 max-w-lg mx-auto">Start scanning for free today. No credit card required.</p>
+        <h2 className="text-2xl sm:text-3xl font-bold mb-4 tracking-tight">
+          Ready to secure your applications?
+        </h2>
+        <p className="text-muted-foreground mb-8 max-w-lg mx-auto">
+          Start scanning for free today. No credit card required.
+        </p>
         <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
           <Link href={isLoggedIn ? ROUTES.DASHBOARD : ROUTES.SIGNUP}>
             <Button size="lg" className="h-11 px-6 gap-2">
@@ -28,5 +32,5 @@ export function PricingCta({ isLoggedIn }: PricingCtaProps) {
         </div>
       </div>
     </section>
-  )
+  );
 }

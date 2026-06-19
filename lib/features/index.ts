@@ -1,1 +1,1 @@
-export * from './beta'
+export * from "./beta";

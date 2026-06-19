@@ -1,39 +1,51 @@
-import { NextResponse } from "next/server"
-import { getSession } from "@/lib/auth"
-import pool from "@/lib/database/db"
-import { STAFF_ROLES, ERROR_MESSAGES } from "@/lib/config/constants"
+import { NextResponse } from "next/server";
+import { getSession } from "@/lib/auth";
+import pool from "@/lib/database/db";
+import { STAFF_ROLES, ERROR_MESSAGES } from "@/lib/config/constants";
 
 // Check if user has admin/moderator role
-async function checkAdminAccess(userId: number): Promise<{ allowed: boolean; role: string }> {
-  const res = await pool.query("SELECT role FROM users WHERE id = $1", [userId])
-  if (res.rows.length === 0) return { allowed: false, role: "user" }
-  const role = res.rows[0].role || "user"
-  const allowed = [STAFF_ROLES.ADMIN, STAFF_ROLES.MODERATOR].includes(role)
-  return { allowed, role }
+async function checkAdminAccess(
+  userId: number,
+): Promise<{ allowed: boolean; role: string }> {
+  const res = await pool.query("SELECT role FROM users WHERE id = $1", [
+    userId,
+  ]);
+  if (res.rows.length === 0) return { allowed: false, role: "user" };
+  const role = res.rows[0].role || "user";
+  const allowed = [STAFF_ROLES.ADMIN, STAFF_ROLES.MODERATOR].includes(role);
+  return { allowed, role };
 }
 
 // List all teams with stats
 export async function GET(request: Request) {
-  const session = await getSession()
-  if (!session) return NextResponse.json({ error: ERROR_MESSAGES.UNAUTHORIZED }, { status: 401 })
+  const session = await getSession();
+  if (!session)
+    return NextResponse.json(
+      { error: ERROR_MESSAGES.UNAUTHORIZED },
+      { status: 401 },
+    );
 
-  const { allowed } = await checkAdminAccess(session.userId)
-  if (!allowed) return NextResponse.json({ error: ERROR_MESSAGES.FORBIDDEN }, { status: 403 })
+  const { allowed } = await checkAdminAccess(session.userId);
+  if (!allowed)
+    return NextResponse.json(
+      { error: ERROR_MESSAGES.FORBIDDEN },
+      { status: 403 },
+    );
 
-  const { searchParams } = new URL(request.url)
-  const search = searchParams.get("search") || ""
-  const page = parseInt(searchParams.get("page") || "1", 10)
-  const limit = parseInt(searchParams.get("limit") || "10", 10)
-  const offset = (page - 1) * limit
+  const { searchParams } = new URL(request.url);
+  const search = searchParams.get("search") || "";
+  const page = parseInt(searchParams.get("page") || "1", 10);
+  const limit = parseInt(searchParams.get("limit") || "10", 10);
+  const offset = (page - 1) * limit;
 
   // Count total teams
   const countQuery = search
     ? `SELECT COUNT(*) FROM teams WHERE LOWER(name) LIKE LOWER($1)`
-    : `SELECT COUNT(*) FROM teams`
-  const countParams = search ? [`%${search}%`] : []
-  const countRes = await pool.query(countQuery, countParams)
-  const totalTeams = parseInt(countRes.rows[0].count, 10)
-  const totalPages = Math.ceil(totalTeams / limit)
+    : `SELECT COUNT(*) FROM teams`;
+  const countParams = search ? [`%${search}%`] : [];
+  const countRes = await pool.query(countQuery, countParams);
+  const totalTeams = parseInt(countRes.rows[0].count, 10);
+  const totalPages = Math.ceil(totalTeams / limit);
 
   // Fetch teams with owner info and member count
   const teamsQuery = `
@@ -52,66 +64,101 @@ export async function GET(request: Request) {
     ${search ? "WHERE LOWER(t.name) LIKE LOWER($1)" : ""}
     ORDER BY t.created_at DESC
     LIMIT $${search ? 2 : 1} OFFSET $${search ? 3 : 2}
-  `
-  const teamsParams = search ? [`%${search}%`, limit, offset] : [limit, offset]
-  const teamsRes = await pool.query(teamsQuery, teamsParams)
+  `;
+  const teamsParams = search ? [`%${search}%`, limit, offset] : [limit, offset];
+  const teamsRes = await pool.query(teamsQuery, teamsParams);
 
   return NextResponse.json({
     teams: teamsRes.rows,
     page,
     totalPages,
     totalTeams,
-  })
+  });
 }
 
 // Update team (admin override)
 export async function PATCH(request: Request) {
-  const session = await getSession()
-  if (!session) return NextResponse.json({ error: ERROR_MESSAGES.UNAUTHORIZED }, { status: 401 })
+  const session = await getSession();
+  if (!session)
+    return NextResponse.json(
+      { error: ERROR_MESSAGES.UNAUTHORIZED },
+      { status: 401 },
+    );
 
-  const { allowed } = await checkAdminAccess(session.userId)
-  if (!allowed) return NextResponse.json({ error: ERROR_MESSAGES.FORBIDDEN }, { status: 403 })
+  const { allowed } = await checkAdminAccess(session.userId);
+  if (!allowed)
+    return NextResponse.json(
+      { error: ERROR_MESSAGES.FORBIDDEN },
+      { status: 403 },
+    );
 
-  const { teamId, name } = await request.json()
-  if (!teamId) return NextResponse.json({ error: "teamId required" }, { status: 400 })
-  if (name !== undefined && (typeof name !== "string" || name.trim().length < 2 || name.trim().length > 50)) {
-    return NextResponse.json({ error: "Team name must be 2-50 characters" }, { status: 400 })
+  const { teamId, name } = await request.json();
+  if (!teamId)
+    return NextResponse.json({ error: "teamId required" }, { status: 400 });
+  if (
+    name !== undefined &&
+    (typeof name !== "string" ||
+      name.trim().length < 2 ||
+      name.trim().length > 50)
+  ) {
+    return NextResponse.json(
+      { error: "Team name must be 2-50 characters" },
+      { status: 400 },
+    );
   }
 
   // Get current team data for audit
-  const teamRes = await pool.query("SELECT name FROM teams WHERE id = $1", [teamId])
+  const teamRes = await pool.query("SELECT name FROM teams WHERE id = $1", [
+    teamId,
+  ]);
   if (teamRes.rows.length === 0) {
-    return NextResponse.json({ error: "Team not found" }, { status: 404 })
+    return NextResponse.json({ error: "Team not found" }, { status: 404 });
   }
-  const oldName = teamRes.rows[0].name
+  const oldName = teamRes.rows[0].name;
 
   // Update team
-  await pool.query("UPDATE teams SET name = $1 WHERE id = $2", [name.trim(), teamId])
+  await pool.query("UPDATE teams SET name = $1 WHERE id = $2", [
+    name.trim(),
+    teamId,
+  ]);
 
   // Log audit
-  const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || null
+  const ip =
+    request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || null;
   await pool.query(
     `INSERT INTO admin_audit_log (admin_id, action, target_user_id, details, ip_address)
      VALUES ($1, 'edit_team', NULL, $2, $3)`,
-    [session.userId, `Renamed team from "${oldName}" to "${name.trim()}" (ID: ${teamId})`, ip]
-  )
+    [
+      session.userId,
+      `Renamed team from "${oldName}" to "${name.trim()}" (ID: ${teamId})`,
+      ip,
+    ],
+  );
 
-  return NextResponse.json({ success: true, name: name.trim() })
+  return NextResponse.json({ success: true, name: name.trim() });
 }
 
 // Delete team (admin override)
 export async function DELETE(request: Request) {
-  const session = await getSession()
-  if (!session) return NextResponse.json({ error: ERROR_MESSAGES.UNAUTHORIZED }, { status: 401 })
+  const session = await getSession();
+  if (!session)
+    return NextResponse.json(
+      { error: ERROR_MESSAGES.UNAUTHORIZED },
+      { status: 401 },
+    );
 
-  const { allowed, role } = await checkAdminAccess(session.userId)
+  const { allowed, role } = await checkAdminAccess(session.userId);
   // Only full admins can delete teams
   if (!allowed || role !== STAFF_ROLES.ADMIN) {
-    return NextResponse.json({ error: "Only admins can delete teams" }, { status: 403 })
+    return NextResponse.json(
+      { error: "Only admins can delete teams" },
+      { status: 403 },
+    );
   }
 
-  const { teamId } = await request.json()
-  if (!teamId) return NextResponse.json({ error: "teamId required" }, { status: 400 })
+  const { teamId } = await request.json();
+  if (!teamId)
+    return NextResponse.json({ error: "teamId required" }, { status: 400 });
 
   // Get team data for audit
   const teamRes = await pool.query(
@@ -120,34 +167,38 @@ export async function DELETE(request: Request) {
      FROM teams t
      LEFT JOIN users u ON u.id = t.owner_id
      WHERE t.id = $1`,
-    [teamId]
-  )
+    [teamId],
+  );
   if (teamRes.rows.length === 0) {
-    return NextResponse.json({ error: "Team not found" }, { status: 404 })
+    return NextResponse.json({ error: "Team not found" }, { status: 404 });
   }
-  const team = teamRes.rows[0]
+  const team = teamRes.rows[0];
 
-  const client = await pool.connect()
+  const client = await pool.connect();
   try {
-    await client.query("BEGIN")
-    
+    await client.query("BEGIN");
+
     // Delete team members first
-    await client.query("DELETE FROM team_members WHERE team_id = $1", [teamId])
-    
+    await client.query("DELETE FROM team_members WHERE team_id = $1", [teamId]);
+
     // Delete team
-    await client.query("DELETE FROM teams WHERE id = $1", [teamId])
-    
-    await client.query("COMMIT")
+    await client.query("DELETE FROM teams WHERE id = $1", [teamId]);
+
+    await client.query("COMMIT");
   } catch (err) {
-    await client.query("ROLLBACK")
-    console.error("Failed to delete team:", err)
-    return NextResponse.json({ error: "Failed to delete team" }, { status: 500 })
+    await client.query("ROLLBACK");
+    console.error("Failed to delete team:", err);
+    return NextResponse.json(
+      { error: "Failed to delete team" },
+      { status: 500 },
+    );
   } finally {
-    client.release()
+    client.release();
   }
 
   // Log audit
-  const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || null
+  const ip =
+    request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || null;
   await pool.query(
     `INSERT INTO admin_audit_log (admin_id, action, target_user_id, details, ip_address)
      VALUES ($1, 'delete_team', $2, $3, $4)`,
@@ -156,8 +207,8 @@ export async function DELETE(request: Request) {
       team.owner_id,
       `Deleted team "${team.name}" (${team.member_count} members, owner: ${team.owner_email})`,
       ip,
-    ]
-  )
+    ],
+  );
 
-  return NextResponse.json({ success: true })
+  return NextResponse.json({ success: true });
 }

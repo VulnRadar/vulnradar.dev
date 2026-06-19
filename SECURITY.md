@@ -26,17 +26,17 @@ We take all security reports seriously. To report a vulnerability:
 - Steps to reproduce or a proof-of-concept
 - Affected version(s) and commit SHA(s)
 - Your name/handle (for credit in the Acknowledgments section of
-   `public/.well-known/security.txt`, if you want it)
+  `public/.well-known/security.txt`, if you want it)
 - Whether you want public disclosure coordination
 
 ### What to expect
 
-| Phase | Timeframe |
-|-------|-----------|
-| Acknowledgment | < 48 hours |
-| Initial assessment | < 5 business days |
-| Patch development | depends on severity |
-| Public disclosure | coordinated with reporter, typically 90 days |
+| Phase              | Timeframe                                    |
+| ------------------ | -------------------------------------------- |
+| Acknowledgment     | < 48 hours                                   |
+| Initial assessment | < 5 business days                            |
+| Patch development  | depends on severity                          |
+| Public disclosure  | coordinated with reporter, typically 90 days |
 
 ### Scope
 

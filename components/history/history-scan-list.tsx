@@ -1,15 +1,15 @@
-"use client"
+"use client";
 
-import type { ScanRecord } from "./history-types"
-import { HistoryScanRow } from "./history-scan-row"
+import type { ScanRecord } from "./history-types";
+import { HistoryScanRow } from "./history-scan-row";
 
 interface HistoryScanListProps {
-  scans: ScanRecord[]
-  onViewScan: (scan: ScanRecord) => void
-  onRescan: (scan: ScanRecord) => void
-  onAddTag: (scanId: number, tag: string) => void
-  onRemoveTag: (scanId: number, tag: string) => void
-  rescanningScanId: number | null
+  scans: ScanRecord[];
+  onViewScan: (scan: ScanRecord) => void;
+  onRescan: (scan: ScanRecord) => void;
+  onAddTag: (scanId: number, tag: string) => void;
+  onRemoveTag: (scanId: number, tag: string) => void;
+  rescanningScanId: number | null;
 }
 
 export function HistoryScanList({
@@ -46,5 +46,5 @@ export function HistoryScanList({
         ))}
       </div>
     </div>
-  )
+  );
 }

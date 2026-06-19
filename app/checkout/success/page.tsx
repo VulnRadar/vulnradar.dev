@@ -1,8 +1,8 @@
-"use client"
+"use client";
 
-import { Suspense } from "react"
-import { Loader2 } from "lucide-react"
-import { CheckoutSuccessContent } from "./checkout-success-content"
+import { Suspense } from "react";
+import { Loader2 } from "lucide-react";
+import { CheckoutSuccessContent } from "./checkout-success-content";
 
 function LoadingFallback() {
   return (
@@ -12,7 +12,7 @@ function LoadingFallback() {
         <h2 className="text-xl font-semibold mb-2">Loading...</h2>
       </div>
     </div>
-  )
+  );
 }
 
 export default function CheckoutSuccessPage() {
@@ -20,5 +20,5 @@ export default function CheckoutSuccessPage() {
     <Suspense fallback={<LoadingFallback />}>
       <CheckoutSuccessContent />
     </Suspense>
-  )
+  );
 }

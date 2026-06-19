@@ -1,18 +1,18 @@
-"use client"
+"use client";
 
-import Link from "next/link"
-import { usePathname } from "next/navigation"
-import { cn } from "@/lib/ui/utils"
-import { BookOpen } from "lucide-react"
-import type { NavItem, TocItem } from "./docs-types"
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { cn } from "@/lib/ui/utils";
+import { BookOpen } from "lucide-react";
+import type { NavItem, TocItem } from "./docs-types";
 
 interface DocsMobileNavProps {
-  navItems: NavItem[]
-  tocItems: TocItem[]
-  activeSection: string
-  isOpen: boolean
-  onToggle: () => void
-  onClose: () => void
+  navItems: NavItem[];
+  tocItems: TocItem[];
+  activeSection: string;
+  isOpen: boolean;
+  onToggle: () => void;
+  onClose: () => void;
 }
 
 export function DocsMobileNavTrigger({ onToggle }: { onToggle: () => void }) {
@@ -26,7 +26,7 @@ export function DocsMobileNavTrigger({ onToggle }: { onToggle: () => void }) {
         <span className="hidden xs:inline">Docs</span>
       </button>
     </div>
-  )
+  );
 }
 
 export function DocsMobileNav({
@@ -36,9 +36,9 @@ export function DocsMobileNav({
   isOpen,
   onClose,
 }: DocsMobileNavProps) {
-  const pathname = usePathname()
+  const pathname = usePathname();
 
-  if (!isOpen) return null
+  if (!isOpen) return null;
 
   return (
     <div className="lg:hidden fixed inset-0 z-40 bg-background/95 backdrop-blur-sm">
@@ -48,16 +48,27 @@ export function DocsMobileNav({
           className="absolute top-4 right-4 p-2 text-muted-foreground hover:text-foreground"
         >
           <span className="sr-only">Close</span>
-          <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+          <svg
+            className="h-6 w-6"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M6 18L18 6M6 6l12 12"
+            />
           </svg>
         </button>
         <nav className="space-y-2">
           {navItems.map((item) => {
-            const Icon = item.icon
+            const Icon = item.icon;
             const isActive = item.exact
               ? pathname === item.href
-              : pathname.startsWith(item.href) && (item.href !== "/docs" || pathname === "/docs")
+              : pathname.startsWith(item.href) &&
+                (item.href !== "/docs" || pathname === "/docs");
 
             return (
               <Link
@@ -66,13 +77,15 @@ export function DocsMobileNav({
                 onClick={onClose}
                 className={cn(
                   "flex items-center gap-3 px-4 py-3 rounded-lg text-base font-medium transition-colors",
-                  isActive ? "bg-primary text-primary-foreground" : "text-foreground hover:bg-muted"
+                  isActive
+                    ? "bg-primary text-primary-foreground"
+                    : "text-foreground hover:bg-muted",
                 )}
               >
                 <Icon className="h-5 w-5" />
                 <span>{item.label}</span>
               </Link>
-            )
+            );
           })}
         </nav>
 
@@ -93,7 +106,7 @@ export function DocsMobileNav({
                     item.level === 2 && "pl-6",
                     activeSection === item.id
                       ? "text-primary font-medium bg-primary/5"
-                      : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+                      : "text-muted-foreground hover:text-foreground hover:bg-muted/50",
                   )}
                 >
                   {item.label}
@@ -104,5 +117,5 @@ export function DocsMobileNav({
         )}
       </div>
     </div>
-  )
+  );
 }

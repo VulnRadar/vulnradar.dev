@@ -67,7 +67,9 @@ html[data-scroll-locked] body {
   html {
     scroll-behavior: auto;
   }
-  *, *::before, *::after {
+  *,
+  *::before,
+  *::after {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
@@ -207,11 +209,18 @@ html[data-scroll-locked] body {
   }
   body {
     @apply bg-background text-foreground antialiased;
-    font-feature-settings: "rlig" 1, "calt" 1;
+    font-feature-settings:
+      "rlig" 1,
+      "calt" 1;
   }
 
   /* Typography scale - clean and readable */
-  h1, h2, h3, h4, h5, h6 {
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
     @apply font-semibold tracking-tight text-balance;
   }
   h1 {
@@ -245,11 +254,11 @@ html[data-scroll-locked] body {
 
   /* Selection - neutral gray for consistent highlight */
   ::selection {
-    background-color: hsl(220 10% 50% / 0.30);
+    background-color: hsl(220 10% 50% / 0.3);
     color: hsl(var(--foreground));
   }
   ::-moz-selection {
-    background-color: hsl(220 10% 50% / 0.30);
+    background-color: hsl(220 10% 50% / 0.3);
     color: hsl(var(--foreground));
   }
   .dark ::selection {
@@ -304,8 +313,12 @@ html[data-scroll-locked] body {
 }
 
 @keyframes fade-in {
-  from { opacity: 0; }
-  to { opacity: 1; }
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 @keyframes slide-up {
@@ -425,7 +438,7 @@ html[data-scroll-locked] body {
 .scanner-selected-hover:hover,
 .scanner-selected-hover:focus,
 .scanner-selected-hover[data-highlighted] {
-  background-color: hsl(220 10% 70% / 0.70) !important;
+  background-color: hsl(220 10% 70% / 0.7) !important;
 }
 .dark .scanner-selected-hover:hover,
 .dark .scanner-selected-hover:focus,
@@ -441,7 +454,5 @@ html[data-scroll-locked] body {
 .dark .scanner-hover:hover,
 .dark .scanner-hover:focus,
 .dark .scanner-hover[data-highlighted] {
-  background-color: hsl(220 8% 70% / 0.10) !important;
+  background-color: hsl(220 8% 70% / 0.1) !important;
 }
-
-

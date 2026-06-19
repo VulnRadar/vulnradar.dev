@@ -1,68 +1,88 @@
-"use client"
+"use client";
 
-import { useState, useEffect } from "react"
-import { Globe, Loader2, CheckSquare, Square, X, Search, ArrowRight } from "lucide-react"
-import { Button } from "@/components/ui/button"
+import { useState, useEffect } from "react";
+import {
+  Globe,
+  Loader2,
+  CheckSquare,
+  Square,
+  X,
+  Search,
+  ArrowRight,
+} from "lucide-react";
+import { Button } from "@/components/ui/button";
 
 interface CrawlUrlSelectorProps {
-  urls: string[]
-  isLoading: boolean
-  onConfirm: (selectedUrls: string[]) => void
-  onCancel: () => void
+  urls: string[];
+  isLoading: boolean;
+  onConfirm: (selectedUrls: string[]) => void;
+  onCancel: () => void;
 }
 
 function getPath(url: string) {
   try {
-    const u = new URL(url)
-    return u.pathname + u.search || "/"
+    const u = new URL(url);
+    return u.pathname + u.search || "/";
   } catch {
-    return url
+    return url;
   }
 }
 
 function getHostname(url: string) {
-  try { return new URL(url).hostname } catch { return url }
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return url;
+  }
 }
 
-export function CrawlUrlSelector({ urls, isLoading, onConfirm, onCancel }: CrawlUrlSelectorProps) {
-  const [selected, setSelected] = useState<Set<string>>(new Set(urls))
-  const [filter, setFilter] = useState("")
+export function CrawlUrlSelector({
+  urls,
+  isLoading,
+  onConfirm,
+  onCancel,
+}: CrawlUrlSelectorProps) {
+  const [selected, setSelected] = useState<Set<string>>(new Set(urls));
+  const [filter, setFilter] = useState("");
 
   // Select all URLs by default as they arrive from discovery
   useEffect(() => {
-    setSelected(new Set(urls))
-  }, [urls])
+    setSelected(new Set(urls));
+  }, [urls]);
 
-  const allSelected = selected.size === urls.length && urls.length > 0
-  const noneSelected = selected.size === 0
+  const allSelected = selected.size === urls.length && urls.length > 0;
+  const noneSelected = selected.size === 0;
 
   function toggleUrl(url: string) {
-    setSelected(prev => {
-      const next = new Set(prev)
-      if (next.has(url)) next.delete(url)
-      else next.add(url)
-      return next
-    })
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(url)) next.delete(url);
+      else next.add(url);
+      return next;
+    });
   }
 
   function selectAll() {
-    setSelected(new Set(urls))
+    setSelected(new Set(urls));
   }
 
   function deselectAll() {
-    setSelected(new Set())
+    setSelected(new Set());
   }
 
   const filtered = filter
-    ? urls.filter(u => u.toLowerCase().includes(filter.toLowerCase()))
-    : urls
+    ? urls.filter((u) => u.toLowerCase().includes(filter.toLowerCase()))
+    : urls;
 
-  const hostname = urls.length > 0 ? getHostname(urls[0]) : ""
+  const hostname = urls.length > 0 ? getHostname(urls[0]) : "";
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       {/* Backdrop */}
-      <div className="absolute inset-0 bg-background/80 backdrop-blur-sm" onClick={onCancel} />
+      <div
+        className="absolute inset-0 bg-background/80 backdrop-blur-sm"
+        onClick={onCancel}
+      />
 
       {/* Modal */}
       <div className="relative w-full max-w-lg rounded-xl border border-border bg-card shadow-xl flex flex-col max-h-[80vh]">
@@ -72,9 +92,13 @@ export function CrawlUrlSelector({ urls, isLoading, onConfirm, onCancel }: Crawl
             <Globe className="h-4 w-4 text-primary" />
           </div>
           <div className="flex-1 min-w-0">
-            <h2 className="text-sm font-semibold text-foreground">Select Pages to Scan</h2>
+            <h2 className="text-sm font-semibold text-foreground">
+              Select Pages to Scan
+            </h2>
             <p className="text-xs text-muted-foreground truncate">
-              {isLoading ? "Discovering pages..." : `${urls.length} pages found on ${hostname}`}
+              {isLoading
+                ? "Discovering pages..."
+                : `${urls.length} pages found on ${hostname}`}
             </p>
           </div>
           <button
@@ -91,8 +115,12 @@ export function CrawlUrlSelector({ urls, isLoading, onConfirm, onCancel }: Crawl
         {isLoading && (
           <div className="flex flex-col items-center gap-3 py-12">
             <Loader2 className="h-6 w-6 animate-spin text-primary" />
-            <p className="text-sm text-muted-foreground">Discovering pages...</p>
-            <p className="text-[10px] text-muted-foreground/60">{urls.length} found so far</p>
+            <p className="text-sm text-muted-foreground">
+              Discovering pages...
+            </p>
+            <p className="text-[10px] text-muted-foreground/60">
+              {urls.length} found so far
+            </p>
           </div>
         )}
 
@@ -107,7 +135,7 @@ export function CrawlUrlSelector({ urls, isLoading, onConfirm, onCancel }: Crawl
                   type="text"
                   placeholder="Filter pages..."
                   value={filter}
-                  onChange={e => setFilter(e.target.value)}
+                  onChange={(e) => setFilter(e.target.value)}
                   className="w-full h-7 pl-7 pr-3 rounded-md border border-border bg-background text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
                 />
               </div>
@@ -124,15 +152,17 @@ export function CrawlUrlSelector({ urls, isLoading, onConfirm, onCancel }: Crawl
             <div className="flex-1 overflow-y-auto min-h-0 px-2 py-2">
               <div className="flex flex-col gap-0.5">
                 {filtered.map((url, i) => {
-                  const isChecked = selected.has(url)
-                  const isFirst = i === 0
+                  const isChecked = selected.has(url);
+                  const isFirst = i === 0;
                   return (
                     <button
                       key={url}
                       type="button"
                       onClick={() => toggleUrl(url)}
                       className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-left transition-colors ${
-                        isChecked ? "bg-accent/50 hover:bg-accent" : "hover:bg-accent/50"
+                        isChecked
+                          ? "bg-accent/50 hover:bg-accent"
+                          : "hover:bg-accent/50"
                       }`}
                     >
                       {isChecked ? (
@@ -145,14 +175,18 @@ export function CrawlUrlSelector({ urls, isLoading, onConfirm, onCancel }: Crawl
                           {getPath(url)}
                         </span>
                         {isFirst && (
-                          <span className="text-[9px] text-muted-foreground">Entry page</span>
+                          <span className="text-[9px] text-muted-foreground">
+                            Entry page
+                          </span>
                         )}
                       </div>
                     </button>
-                  )
+                  );
                 })}
                 {filtered.length === 0 && (
-                  <p className="text-xs text-muted-foreground text-center py-4">No pages match your filter.</p>
+                  <p className="text-xs text-muted-foreground text-center py-4">
+                    No pages match your filter.
+                  </p>
                 )}
               </div>
             </div>
@@ -165,7 +199,12 @@ export function CrawlUrlSelector({ urls, isLoading, onConfirm, onCancel }: Crawl
             {selected.size} of {urls.length} selected
           </span>
           <div className="flex gap-2">
-            <Button variant="outline" size="sm" onClick={onCancel} className="bg-transparent text-xs">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={onCancel}
+              className="bg-transparent text-xs"
+            >
               Cancel
             </Button>
             <Button
@@ -181,5 +220,5 @@ export function CrawlUrlSelector({ urls, isLoading, onConfirm, onCancel }: Crawl
         </div>
       </div>
     </div>
-  )
+  );
 }

@@ -1,14 +1,14 @@
-﻿import { NextResponse } from "next/server"
-import { stripe } from "@/lib/billing/stripe"
-import { PRODUCTS } from "@/lib/billing/products"
-import { BILLING_ENABLED } from "@/lib/config/constants"
+﻿import { NextResponse } from "next/server";
+import { stripe } from "@/lib/billing/stripe";
+import { PRODUCTS } from "@/lib/billing/products";
+import { BILLING_ENABLED } from "@/lib/config/constants";
 
 /**
  * GET /api/v2/stripe/setup-products
- * 
+ *
  * Automatically creates all subscription products and prices in Stripe.
  * Run this once to set up your Stripe catalog.
- * 
+ *
  * This endpoint:
  * 1. Creates products if they don't exist
  * 2. Creates prices for each product
@@ -16,41 +16,48 @@ import { BILLING_ENABLED } from "@/lib/config/constants"
  */
 export async function GET() {
   if (!BILLING_ENABLED) {
-    return NextResponse.json({
-      success: false,
-      error: "Billing is disabled in config.yaml",
-    }, { status: 400 })
+    return NextResponse.json(
+      {
+        success: false,
+        error: "Billing is disabled in config.yaml",
+      },
+      { status: 400 },
+    );
   }
 
   if (!stripe) {
-    return NextResponse.json({
-      success: false,
-      error: "Stripe is not configured. Set STRIPE_SECRET_KEY in environment.",
-    }, { status: 500 })
+    return NextResponse.json(
+      {
+        success: false,
+        error:
+          "Stripe is not configured. Set STRIPE_SECRET_KEY in environment.",
+      },
+      { status: 500 },
+    );
   }
 
   try {
     const results: Array<{
-      productId: string
-      priceId: string
-      name: string
-      amount: number
-      interval: string
-      alreadyExists: boolean
-    }> = []
+      productId: string;
+      priceId: string;
+      name: string;
+      amount: number;
+      interval: string;
+      alreadyExists: boolean;
+    }> = [];
 
     for (const product of PRODUCTS) {
       // Check if product already exists by searching for metadata
       const existingProducts = await stripe.products.search({
         query: `metadata['vulnradar_id']:'${product.id}'`,
-      })
+      });
 
-      let stripeProduct
-      let alreadyExists = false
+      let stripeProduct;
+      let alreadyExists = false;
 
       if (existingProducts.data.length > 0) {
-        stripeProduct = existingProducts.data[0]
-        alreadyExists = true
+        stripeProduct = existingProducts.data[0];
+        alreadyExists = true;
       } else {
         // Create the product
         stripeProduct = await stripe.products.create({
@@ -60,23 +67,24 @@ export async function GET() {
             vulnradar_id: product.id,
             scans_per_day: product.scansPerDay.toString(),
           },
-        })
+        });
       }
 
       // Check if price already exists
       const existingPrices = await stripe.prices.list({
         product: stripeProduct.id,
         active: true,
-      })
+      });
 
-      let stripePrice
+      let stripePrice;
       const matchingPrice = existingPrices.data.find(
-        (p) => p.unit_amount === product.priceInCents && 
-               p.recurring?.interval === product.interval
-      )
+        (p) =>
+          p.unit_amount === product.priceInCents &&
+          p.recurring?.interval === product.interval,
+      );
 
       if (matchingPrice) {
-        stripePrice = matchingPrice
+        stripePrice = matchingPrice;
       } else {
         // Create the price
         stripePrice = await stripe.prices.create({
@@ -89,7 +97,7 @@ export async function GET() {
           metadata: {
             vulnradar_id: product.id,
           },
-        })
+        });
       }
 
       results.push({
@@ -99,7 +107,7 @@ export async function GET() {
         amount: product.priceInCents,
         interval: product.interval,
         alreadyExists,
-      })
+      });
     }
 
     return NextResponse.json({
@@ -111,12 +119,15 @@ export async function GET() {
         "The checkout flow will use these price IDs automatically",
         "You can view them at: https://dashboard.stripe.com/products",
       ],
-    })
+    });
   } catch (error) {
-    console.error("[Stripe] Error setting up products:", error)
-    return NextResponse.json({
-      success: false,
-      error: error instanceof Error ? error.message : "Unknown error",
-    }, { status: 500 })
+    console.error("[Stripe] Error setting up products:", error);
+    return NextResponse.json(
+      {
+        success: false,
+        error: error instanceof Error ? error.message : "Unknown error",
+      },
+      { status: 500 },
+    );
   }
 }

@@ -1,21 +1,21 @@
-"use client"
+"use client";
 
-import { useState, useMemo } from "react"
-import { ChevronRight, Filter, ArrowUpDown, Search, X } from "lucide-react"
-import { SeverityBadge } from "@/components/scanner/severity-badge"
-import type { Severity, Vulnerability, Category } from "@/lib/scanner/types"
-import { cn } from "@/lib/ui/utils"
-import { SEVERITY_LEVELS, SEVERITY_PRIORITY } from "@/lib/config/constants"
+import { useState, useMemo } from "react";
+import { ChevronRight, Filter, ArrowUpDown, Search, X } from "lucide-react";
+import { SeverityBadge } from "@/components/scanner/severity-badge";
+import type { Severity, Vulnerability, Category } from "@/lib/scanner/types";
+import { cn } from "@/lib/ui/utils";
+import { SEVERITY_LEVELS, SEVERITY_PRIORITY } from "@/lib/config/constants";
 
 const ALL_SEVERITIES: Severity[] = [
   SEVERITY_LEVELS.CRITICAL,
   SEVERITY_LEVELS.HIGH,
   SEVERITY_LEVELS.MEDIUM,
   SEVERITY_LEVELS.LOW,
-  SEVERITY_LEVELS.INFO
-] as Severity[]
+  SEVERITY_LEVELS.INFO,
+] as Severity[];
 
-const SEVERITY_ORDER: Record<Severity, number> = SEVERITY_PRIORITY
+const SEVERITY_ORDER: Record<Severity, number> = SEVERITY_PRIORITY;
 
 const SEVERITY_CONFIG: Record<Severity, { dot: string; label: string }> = {
   critical: { dot: "bg-red-500", label: "Critical" },
@@ -23,7 +23,7 @@ const SEVERITY_CONFIG: Record<Severity, { dot: string; label: string }> = {
   medium: { dot: "bg-yellow-500", label: "Medium" },
   low: { dot: "bg-blue-500", label: "Low" },
   info: { dot: "bg-muted-foreground", label: "Info" },
-}
+};
 
 const CATEGORY_CONFIG: Record<string, { bg: string; text: string }> = {
   headers: { bg: "bg-blue-500/10", text: "text-blue-500" },
@@ -32,61 +32,61 @@ const CATEGORY_CONFIG: Record<string, { bg: string; text: string }> = {
   cookies: { bg: "bg-orange-500/10", text: "text-orange-500" },
   configuration: { bg: "bg-cyan-500/10", text: "text-cyan-500" },
   "information-disclosure": { bg: "bg-rose-500/10", text: "text-rose-500" },
-}
+};
 
 interface ResultsListProps {
-  findings: Vulnerability[]
-  onSelectIssue: (issue: Vulnerability) => void
+  findings: Vulnerability[];
+  onSelectIssue: (issue: Vulnerability) => void;
 }
 
 export function ResultsList({ findings, onSelectIssue }: ResultsListProps) {
   const [activeSeverities, setActiveSeverities] = useState<Set<Severity>>(
     new Set(ALL_SEVERITIES),
-  )
-  const [activeCategory, setActiveCategory] = useState<Category | "all">("all")
-  const [sortAsc, setSortAsc] = useState(false)
-  const [searchQuery, setSearchQuery] = useState("")
+  );
+  const [activeCategory, setActiveCategory] = useState<Category | "all">("all");
+  const [sortAsc, setSortAsc] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
 
   // Get unique categories from findings
   const categories = useMemo(() => {
-    const cats = new Set<Category>()
-    for (const f of findings) cats.add(f.category)
-    return Array.from(cats)
-  }, [findings])
+    const cats = new Set<Category>();
+    for (const f of findings) cats.add(f.category);
+    return Array.from(cats);
+  }, [findings]);
 
   function toggleSeverity(severity: Severity) {
     setActiveSeverities((prev) => {
-      const next = new Set(prev)
+      const next = new Set(prev);
       if (next.has(severity)) {
-        if (next.size > 1) next.delete(severity)
+        if (next.size > 1) next.delete(severity);
       } else {
-        next.add(severity)
+        next.add(severity);
       }
-      return next
-    })
+      return next;
+    });
   }
 
   const filtered = useMemo(() => {
-    let result = findings.filter((f) => activeSeverities.has(f.severity))
+    let result = findings.filter((f) => activeSeverities.has(f.severity));
     if (activeCategory !== "all") {
-      result = result.filter((f) => f.category === activeCategory)
+      result = result.filter((f) => f.category === activeCategory);
     }
     if (searchQuery.trim()) {
-      const query = searchQuery.toLowerCase()
+      const query = searchQuery.toLowerCase();
       result = result.filter(
         (f) =>
           f.title.toLowerCase().includes(query) ||
-          f.description.toLowerCase().includes(query)
-      )
+          f.description.toLowerCase().includes(query),
+      );
     }
     // Always sort - sortAsc true = low to high, false = high to low
     // SEVERITY_ORDER: critical=5, high=4, medium=3, low=2, info=1
     return [...result].sort((a, b) => {
-      const orderA = SEVERITY_ORDER[a.severity] ?? 0
-      const orderB = SEVERITY_ORDER[b.severity] ?? 0
-      return sortAsc ? orderA - orderB : orderB - orderA
-    })
-  }, [findings, activeSeverities, activeCategory, sortAsc, searchQuery])
+      const orderA = SEVERITY_ORDER[a.severity] ?? 0;
+      const orderB = SEVERITY_ORDER[b.severity] ?? 0;
+      return sortAsc ? orderA - orderB : orderB - orderA;
+    });
+  }, [findings, activeSeverities, activeCategory, sortAsc, searchQuery]);
 
   return (
     <div className="flex flex-col gap-3">
@@ -120,7 +120,7 @@ export function ResultsList({ findings, onSelectIssue }: ResultsListProps) {
             "inline-flex items-center justify-center gap-1.5 h-9 px-3 rounded-lg border text-xs font-medium transition-colors shrink-0",
             sortAsc
               ? "bg-primary/10 border-primary/20 text-primary"
-              : "bg-card border-border text-muted-foreground hover:text-foreground"
+              : "bg-card border-border text-muted-foreground hover:text-foreground",
           )}
         >
           <ArrowUpDown className="h-3.5 w-3.5" />
@@ -135,9 +135,9 @@ export function ResultsList({ findings, onSelectIssue }: ResultsListProps) {
           <span className="font-medium">Severity</span>
         </div>
         {ALL_SEVERITIES.map((sev) => {
-          const count = findings.filter((f) => f.severity === sev).length
-          const active = activeSeverities.has(sev)
-          const config = SEVERITY_CONFIG[sev]
+          const count = findings.filter((f) => f.severity === sev).length;
+          const active = activeSeverities.has(sev);
+          const config = SEVERITY_CONFIG[sev];
           return (
             <button
               key={sev}
@@ -152,12 +152,16 @@ export function ResultsList({ findings, onSelectIssue }: ResultsListProps) {
             >
               <span className={cn("w-2 h-2 rounded-full", config.dot)} />
               <span>{config.label}</span>
-              <span className={cn(
-                "tabular-nums",
-                active ? "text-muted-foreground" : "text-muted-foreground/50"
-              )}>{count}</span>
+              <span
+                className={cn(
+                  "tabular-nums",
+                  active ? "text-muted-foreground" : "text-muted-foreground/50",
+                )}
+              >
+                {count}
+              </span>
             </button>
-          )
+          );
         })}
       </div>
 
@@ -180,9 +184,12 @@ export function ResultsList({ findings, onSelectIssue }: ResultsListProps) {
             All
           </button>
           {categories.map((cat) => {
-            const count = findings.filter((f) => f.category === cat).length
-            const config = CATEGORY_CONFIG[cat] || { bg: "bg-muted", text: "text-muted-foreground" }
-            const isActive = activeCategory === cat
+            const count = findings.filter((f) => f.category === cat).length;
+            const config = CATEGORY_CONFIG[cat] || {
+              bg: "bg-muted",
+              text: "text-muted-foreground",
+            };
+            const isActive = activeCategory === cat;
             return (
               <button
                 key={cat}
@@ -191,14 +198,19 @@ export function ResultsList({ findings, onSelectIssue }: ResultsListProps) {
                 className={cn(
                   "inline-flex items-center gap-1.5 h-7 rounded-full border px-2.5 text-xs font-medium transition-all capitalize",
                   isActive
-                    ? cn(config.bg, "border-transparent", config.text, "shadow-sm")
+                    ? cn(
+                        config.bg,
+                        "border-transparent",
+                        config.text,
+                        "shadow-sm",
+                      )
                     : "bg-transparent border-transparent text-muted-foreground opacity-50 hover:opacity-75",
                 )}
               >
                 {cat.replace("-", " ")}
                 <span className="tabular-nums opacity-70">{count}</span>
               </button>
-            )
+            );
           })}
         </div>
       )}
@@ -206,8 +218,11 @@ export function ResultsList({ findings, onSelectIssue }: ResultsListProps) {
       {/* Results Count */}
       <div className="flex items-center justify-between text-xs text-muted-foreground px-1">
         <span>
-          Showing <span className="font-medium text-foreground">{filtered.length}</span> of{" "}
-          <span className="font-medium text-foreground">{findings.length}</span> issues
+          Showing{" "}
+          <span className="font-medium text-foreground">{filtered.length}</span>{" "}
+          of{" "}
+          <span className="font-medium text-foreground">{findings.length}</span>{" "}
+          issues
         </span>
       </div>
 
@@ -218,14 +233,21 @@ export function ResultsList({ findings, onSelectIssue }: ResultsListProps) {
             <div className="flex items-center justify-center w-12 h-12 rounded-full bg-muted/50 mb-3">
               <Search className="h-5 w-5 text-muted-foreground" />
             </div>
-            <p className="text-sm font-medium text-foreground mb-1">No issues found</p>
+            <p className="text-sm font-medium text-foreground mb-1">
+              No issues found
+            </p>
             <p className="text-xs text-muted-foreground">
-              {searchQuery ? "Try adjusting your search" : "Try changing your filters"}
+              {searchQuery
+                ? "Try adjusting your search"
+                : "Try changing your filters"}
             </p>
           </div>
         ) : (
           filtered.map((issue, idx) => {
-            const catConfig = CATEGORY_CONFIG[issue.category] || { bg: "bg-muted", text: "text-muted-foreground" }
+            const catConfig = CATEGORY_CONFIG[issue.category] || {
+              bg: "bg-muted",
+              text: "text-muted-foreground",
+            };
             return (
               <button
                 key={issue.id}
@@ -234,7 +256,7 @@ export function ResultsList({ findings, onSelectIssue }: ResultsListProps) {
                 className={cn(
                   "group flex items-center gap-3 p-4 text-left transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:bg-muted/50",
                   idx === 0 && "rounded-t-xl",
-                  idx === filtered.length - 1 && "rounded-b-xl"
+                  idx === filtered.length - 1 && "rounded-b-xl",
                 )}
               >
                 {/* Severity indicator */}
@@ -253,21 +275,23 @@ export function ResultsList({ findings, onSelectIssue }: ResultsListProps) {
                 </div>
 
                 {/* Category badge */}
-                <span className={cn(
-                  "hidden sm:inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium capitalize shrink-0",
-                  catConfig.bg,
-                  catConfig.text
-                )}>
+                <span
+                  className={cn(
+                    "hidden sm:inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium capitalize shrink-0",
+                    catConfig.bg,
+                    catConfig.text,
+                  )}
+                >
                   {issue.category.replace("-", " ")}
                 </span>
 
                 {/* Arrow */}
                 <ChevronRight className="h-4 w-4 text-muted-foreground/50 shrink-0 transition-all group-hover:text-foreground group-hover:translate-x-0.5" />
               </button>
-            )
+            );
           })
         )}
       </div>
     </div>
-  )
+  );
 }

@@ -7,161 +7,161 @@
 // ============================================================================
 
 export interface AppConfig {
-  name: string
-  slug: string
-  version: string
-  engine_version: string
-  description: string
-  total_checks_label: string
-  url: string
-  repo: string
-  discord_invite_url: string
-  support_email: string
-  legal_email: string
-  security_email: string
-  enterprise_email: string
-  noreply_email: string
-  terms_updated_at: string
+  name: string;
+  slug: string;
+  version: string;
+  engine_version: string;
+  description: string;
+  total_checks_label: string;
+  url: string;
+  repo: string;
+  discord_invite_url: string;
+  support_email: string;
+  legal_email: string;
+  security_email: string;
+  enterprise_email: string;
+  noreply_email: string;
+  terms_updated_at: string;
 }
 
 export interface BrandingConfig {
-  logo_url: string
-  primary_color: string
-  footer_text: string
+  logo_url: string;
+  primary_color: string;
+  footer_text: string;
 }
 
 export interface CookieConfig {
   session: {
-    name: string
-    max_age_days: number
-  }
+    name: string;
+    max_age_days: number;
+  };
   version: {
-    name: string
-    max_age_days: number
-  }
+    name: string;
+    max_age_days: number;
+  };
   device_trust: {
-    name: string
-    max_age_days: number
-  }
+    name: string;
+    max_age_days: number;
+  };
   two_fa_pending: {
-    name: string
-    max_age_seconds: number
-  }
+    name: string;
+    max_age_seconds: number;
+  };
 }
 
 export interface AuthConfig {
-  session_timeout_days: number
-  password_reset_hours: number
-  email_verification_hours: number
-  device_trust_days: number
-  totp_validity_seconds: number
-  cleanup_interval_ms: number
+  session_timeout_days: number;
+  password_reset_hours: number;
+  email_verification_hours: number;
+  device_trust_days: number;
+  totp_validity_seconds: number;
+  cleanup_interval_ms: number;
 }
 
 export interface RateLimitEntry {
-  max_attempts?: number
-  max_requests?: number
-  window_minutes: number
+  max_attempts?: number;
+  max_requests?: number;
+  window_minutes: number;
 }
 
 export interface RateLimitsConfig {
-  login: RateLimitEntry
-  signup: RateLimitEntry
-  forgot_password: RateLimitEntry
-  api: RateLimitEntry
-  scan: RateLimitEntry
-  bulk_scan: RateLimitEntry
+  login: RateLimitEntry;
+  signup: RateLimitEntry;
+  forgot_password: RateLimitEntry;
+  api: RateLimitEntry;
+  scan: RateLimitEntry;
+  bulk_scan: RateLimitEntry;
 }
 
 export interface ScanningConfig {
-  max_url_length: number
-  max_urls_bulk: number
-  timeout_seconds: number
-  bulk_timeout_seconds: number
-  default_severity_threshold: string
+  max_url_length: number;
+  max_urls_bulk: number;
+  timeout_seconds: number;
+  bulk_timeout_seconds: number;
+  default_severity_threshold: string;
 }
 
 export interface ApiConfig {
-  key_prefix: string
-  default_daily_limit: number
-  current_version: string
-  supported_versions: string[]
+  key_prefix: string;
+  default_daily_limit: number;
+  current_version: string;
+  supported_versions: string[];
 }
 
 export interface DemoConfig {
-  scan_limit: number
-  window_hours: number
+  scan_limit: number;
+  window_hours: number;
 }
 
 export interface DatabaseConfig {
-  max_email_length: number
-  max_name_length: number
-  max_description_length: number
-  max_team_name_length: number
-  max_tags_per_scan: number
+  max_email_length: number;
+  max_name_length: number;
+  max_description_length: number;
+  max_team_name_length: number;
+  max_tags_per_scan: number;
 }
 
 export interface PaginationConfig {
-  default_page_size: number
-  max_page_size: number
-  default_page: number
+  default_page_size: number;
+  max_page_size: number;
+  default_page: number;
 }
 
 export interface BetaConfig {
-  enabled: boolean
-  banner_message: string
+  enabled: boolean;
+  banner_message: string;
 }
 
 export interface FeaturesConfig {
-  demo_mode: boolean
-  teams: boolean
-  api_keys: boolean
-  webhooks: boolean
-  scheduled_scans: boolean
-  bulk_scans: boolean
-  pdf_reports: boolean
-  email_notifications: boolean
+  demo_mode: boolean;
+  teams: boolean;
+  api_keys: boolean;
+  webhooks: boolean;
+  scheduled_scans: boolean;
+  bulk_scans: boolean;
+  pdf_reports: boolean;
+  email_notifications: boolean;
 }
 
 export interface BillingConfig {
   // Master switch - when false, disables all billing/premium features
   // Self-hosters can set this to false to give everyone unlimited access
-  enabled: boolean
+  enabled: boolean;
 
   // Plan limits (daily scans) - only applies when billing is enabled
   plan_limits: {
-    free: number
-    core_supporter: number
-    pro_supporter: number
-    elite_supporter: number
-  }
+    free: number;
+    core_supporter: number;
+    pro_supporter: number;
+    elite_supporter: number;
+  };
 
   // History retention in days (-1 = unlimited)
   history_retention: {
-    free: number
-    core_supporter: number
-    pro_supporter: number
-    elite_supporter: number
-  }
+    free: number;
+    core_supporter: number;
+    pro_supporter: number;
+    elite_supporter: number;
+  };
 
   // When billing is disabled, this is the limit for all users (-1 = unlimited)
-  unlimited_mode_limit: number
+  unlimited_mode_limit: number;
 }
 
 export interface VulnRadarConfig {
-  app: AppConfig
-  branding: BrandingConfig
-  cookies: CookieConfig
-  auth: AuthConfig
-  rate_limits: RateLimitsConfig
-  scanning: ScanningConfig
-  api: ApiConfig
-  demo: DemoConfig
-  database: DatabaseConfig
-  pagination: PaginationConfig
-  beta: BetaConfig
-  features: FeaturesConfig
-  billing: BillingConfig
+  app: AppConfig;
+  branding: BrandingConfig;
+  cookies: CookieConfig;
+  auth: AuthConfig;
+  rate_limits: RateLimitsConfig;
+  scanning: ScanningConfig;
+  api: ApiConfig;
+  demo: DemoConfig;
+  database: DatabaseConfig;
+  pagination: PaginationConfig;
+  beta: BetaConfig;
+  features: FeaturesConfig;
+  billing: BillingConfig;
 }
 
 // ============================================================================
@@ -252,7 +252,7 @@ import {
   CONFIG_BILLING_PRO_SUPPORTER_RETENTION,
   CONFIG_BILLING_ELITE_SUPPORTER_RETENTION,
   CONFIG_BILLING_UNLIMITED_MODE_LIMIT,
-} from "../config/config-values"
+} from "../config/config-values";
 
 export const DEFAULT_CONFIG: VulnRadarConfig = {
   app: {
@@ -304,12 +304,30 @@ export const DEFAULT_CONFIG: VulnRadarConfig = {
     cleanup_interval_ms: CONFIG_CLEANUP_INTERVAL_MS,
   },
   rate_limits: {
-    login: { max_attempts: CONFIG_RATE_LIMIT_LOGIN_ATTEMPTS, window_minutes: CONFIG_RATE_LIMIT_LOGIN_WINDOW_MINUTES },
-    signup: { max_attempts: CONFIG_RATE_LIMIT_SIGNUP_ATTEMPTS, window_minutes: CONFIG_RATE_LIMIT_SIGNUP_WINDOW_MINUTES },
-    forgot_password: { max_attempts: CONFIG_RATE_LIMIT_FORGOT_PASSWORD_ATTEMPTS, window_minutes: CONFIG_RATE_LIMIT_FORGOT_PASSWORD_WINDOW_MINUTES },
-    api: { max_requests: CONFIG_RATE_LIMIT_API_REQUESTS, window_minutes: CONFIG_RATE_LIMIT_API_WINDOW_MINUTES },
-    scan: { max_requests: CONFIG_RATE_LIMIT_SCAN_REQUESTS, window_minutes: CONFIG_RATE_LIMIT_SCAN_WINDOW_MINUTES },
-    bulk_scan: { max_requests: CONFIG_RATE_LIMIT_BULK_SCAN_REQUESTS, window_minutes: CONFIG_RATE_LIMIT_BULK_SCAN_WINDOW_MINUTES },
+    login: {
+      max_attempts: CONFIG_RATE_LIMIT_LOGIN_ATTEMPTS,
+      window_minutes: CONFIG_RATE_LIMIT_LOGIN_WINDOW_MINUTES,
+    },
+    signup: {
+      max_attempts: CONFIG_RATE_LIMIT_SIGNUP_ATTEMPTS,
+      window_minutes: CONFIG_RATE_LIMIT_SIGNUP_WINDOW_MINUTES,
+    },
+    forgot_password: {
+      max_attempts: CONFIG_RATE_LIMIT_FORGOT_PASSWORD_ATTEMPTS,
+      window_minutes: CONFIG_RATE_LIMIT_FORGOT_PASSWORD_WINDOW_MINUTES,
+    },
+    api: {
+      max_requests: CONFIG_RATE_LIMIT_API_REQUESTS,
+      window_minutes: CONFIG_RATE_LIMIT_API_WINDOW_MINUTES,
+    },
+    scan: {
+      max_requests: CONFIG_RATE_LIMIT_SCAN_REQUESTS,
+      window_minutes: CONFIG_RATE_LIMIT_SCAN_WINDOW_MINUTES,
+    },
+    bulk_scan: {
+      max_requests: CONFIG_RATE_LIMIT_BULK_SCAN_REQUESTS,
+      window_minutes: CONFIG_RATE_LIMIT_BULK_SCAN_WINDOW_MINUTES,
+    },
   },
   scanning: {
     max_url_length: CONFIG_MAX_URL_LENGTH,
@@ -370,4 +388,4 @@ export const DEFAULT_CONFIG: VulnRadarConfig = {
     },
     unlimited_mode_limit: CONFIG_BILLING_UNLIMITED_MODE_LIMIT,
   },
-}
+};

@@ -1,20 +1,20 @@
-"use client"
+"use client";
 
-import { useState, useEffect } from "react"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Badge } from "@/components/ui/badge"
-import { Switch } from "@/components/ui/switch"
-import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
-import { Card, CardContent, CardHeader } from "@/components/ui/card"
+import { useState, useEffect } from "react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select"
+} from "@/components/ui/select";
 import {
   Dialog,
   DialogContent,
@@ -22,8 +22,8 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog"
-import { SaveConfirmationModal } from "@/components/shared/save-confirmation-modal"
+} from "@/components/ui/dialog";
+import { SaveConfirmationModal } from "@/components/shared/save-confirmation-modal";
 import {
   Bell,
   Plus,
@@ -42,73 +42,112 @@ import {
   Users,
   Layers,
   RefreshCw,
-} from "lucide-react"
-import { cn } from "@/lib/ui/utils"
+} from "lucide-react";
+import { cn } from "@/lib/ui/utils";
 
 interface AdminNotification {
-  id: number
-  cookie_id: string
-  title: string
-  message: string
-  type: "banner" | "modal" | "toast" | "bell"
-  variant: "info" | "success" | "warning" | "error"
-  audience: "all" | "authenticated" | "unauthenticated" | "admin" | "staff"
-  path_pattern: string | null
-  starts_at: string
-  ends_at: string | null
-  is_active: boolean
-  is_dismissible: boolean
-  dismiss_duration_hours: number | null
-  action_label: string | null
-  action_url: string | null
-  action_external: boolean
-  priority: number
-  created_at: string
-  updated_at: string
+  id: number;
+  cookie_id: string;
+  title: string;
+  message: string;
+  type: "banner" | "modal" | "toast" | "bell";
+  variant: "info" | "success" | "warning" | "error";
+  audience: "all" | "authenticated" | "unauthenticated" | "admin" | "staff";
+  path_pattern: string | null;
+  starts_at: string;
+  ends_at: string | null;
+  is_active: boolean;
+  is_dismissible: boolean;
+  dismiss_duration_hours: number | null;
+  action_label: string | null;
+  action_url: string | null;
+  action_external: boolean;
+  priority: number;
+  created_at: string;
+  updated_at: string;
 }
 
 const VARIANT_CONFIG = {
-  info:    { bg: "bg-primary/10",        text: "text-primary",        border: "border-primary/20",       badgeBg: "bg-primary/10 text-primary border-primary/20",         icon: Info,          label: "Info" },
-  success: { bg: "bg-emerald-500/10",    text: "text-emerald-500",    border: "border-emerald-500/20",   badgeBg: "bg-emerald-500/10 text-emerald-500 border-emerald-500/20", icon: CheckCircle,   label: "Success" },
-  warning: { bg: "bg-amber-500/10",      text: "text-amber-500",      border: "border-amber-500/20",     badgeBg: "bg-amber-500/10 text-amber-500 border-amber-500/20",     icon: AlertTriangle, label: "Warning" },
-  error:   { bg: "bg-destructive/10",    text: "text-destructive",    border: "border-destructive/20",   badgeBg: "bg-destructive/10 text-destructive border-destructive/20", icon: XCircle,       label: "Error" },
-}
+  info: {
+    bg: "bg-primary/10",
+    text: "text-primary",
+    border: "border-primary/20",
+    badgeBg: "bg-primary/10 text-primary border-primary/20",
+    icon: Info,
+    label: "Info",
+  },
+  success: {
+    bg: "bg-emerald-500/10",
+    text: "text-emerald-500",
+    border: "border-emerald-500/20",
+    badgeBg: "bg-emerald-500/10 text-emerald-500 border-emerald-500/20",
+    icon: CheckCircle,
+    label: "Success",
+  },
+  warning: {
+    bg: "bg-amber-500/10",
+    text: "text-amber-500",
+    border: "border-amber-500/20",
+    badgeBg: "bg-amber-500/10 text-amber-500 border-amber-500/20",
+    icon: AlertTriangle,
+    label: "Warning",
+  },
+  error: {
+    bg: "bg-destructive/10",
+    text: "text-destructive",
+    border: "border-destructive/20",
+    badgeBg: "bg-destructive/10 text-destructive border-destructive/20",
+    icon: XCircle,
+    label: "Error",
+  },
+};
 
 const TYPE_CONFIG = {
   banner: { icon: Megaphone, label: "Banner" },
-  modal:  { icon: Layers,    label: "Modal" },
-  toast:  { icon: Bell,      label: "Toast" },
-  bell:   { icon: Bell,      label: "Bell" },
-}
+  modal: { icon: Layers, label: "Modal" },
+  toast: { icon: Bell, label: "Toast" },
+  bell: { icon: Bell, label: "Bell" },
+};
 
 const AUDIENCE_LABELS: Record<AdminNotification["audience"], string> = {
-  all:             "Everyone",
-  authenticated:   "Logged In",
+  all: "Everyone",
+  authenticated: "Logged In",
   unauthenticated: "Guests Only",
-  admin:           "Admins Only",
-  staff:           "Staff Only",
-}
+  admin: "Admins Only",
+  staff: "Staff Only",
+};
 
-function SectionHeader({ icon: Icon, label }: { icon: React.ElementType; label: string }) {
+function SectionHeader({
+  icon: Icon,
+  label,
+}: {
+  icon: React.ElementType;
+  label: string;
+}) {
   return (
     <div className="flex items-center gap-2 mb-3">
       <div className="flex items-center justify-center h-6 w-6 rounded bg-primary/10">
         <Icon className="h-3.5 w-3.5 text-primary" />
       </div>
-      <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{label}</span>
+      <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+        {label}
+      </span>
     </div>
-  )
+  );
 }
 
 export function NotificationsManager() {
-  const [notifications, setNotifications] = useState<AdminNotification[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const [editingNotification, setEditingNotification] = useState<AdminNotification | null>(null)
-  const [isCreating, setIsCreating] = useState(false)
-  const [saving, setSaving] = useState(false)
-  const [pendingDelete, setPendingDelete] = useState<AdminNotification | null>(null)
-  const [deleting, setDeleting] = useState(false)
+  const [notifications, setNotifications] = useState<AdminNotification[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [editingNotification, setEditingNotification] =
+    useState<AdminNotification | null>(null);
+  const [isCreating, setIsCreating] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [pendingDelete, setPendingDelete] = useState<AdminNotification | null>(
+    null,
+  );
+  const [deleting, setDeleting] = useState(false);
 
   const [formData, setFormData] = useState({
     title: "",
@@ -126,125 +165,182 @@ export function NotificationsManager() {
     action_url: "",
     action_external: false,
     priority: "0",
-  })
+  });
 
-  const set = (patch: Partial<typeof formData>) => setFormData((prev) => ({ ...prev, ...patch }))
+  const set = (patch: Partial<typeof formData>) =>
+    setFormData((prev) => ({ ...prev, ...patch }));
 
   const fetchNotifications = async () => {
-    setLoading(true)
-    setError(null)
+    setLoading(true);
+    setError(null);
     try {
-      const res = await fetch("/api/v2/admin/notifications")
-      if (!res.ok) throw new Error("Failed to fetch notifications")
-      const data = await res.json()
-      setNotifications(data.notifications || [])
+      const res = await fetch("/api/v2/admin/notifications");
+      if (!res.ok) throw new Error("Failed to fetch notifications");
+      const data = await res.json();
+      setNotifications(data.notifications || []);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load notifications")
+      setError(
+        err instanceof Error ? err.message : "Failed to load notifications",
+      );
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }
+  };
 
-  useEffect(() => { fetchNotifications() }, [])
+  useEffect(() => {
+    fetchNotifications();
+  }, []);
 
   const openCreateDialog = () => {
     setFormData({
-      title: "", message: "", type: "bell", variant: "info", audience: "all",
-      path_pattern: "", starts_at: new Date().toISOString().slice(0, 16), ends_at: "",
-      is_active: true, is_dismissible: true, dismiss_duration_hours: "",
-      action_label: "", action_url: "", action_external: false, priority: "0",
-    })
-    setEditingNotification(null)
-    setIsCreating(true)
-  }
+      title: "",
+      message: "",
+      type: "bell",
+      variant: "info",
+      audience: "all",
+      path_pattern: "",
+      starts_at: new Date().toISOString().slice(0, 16),
+      ends_at: "",
+      is_active: true,
+      is_dismissible: true,
+      dismiss_duration_hours: "",
+      action_label: "",
+      action_url: "",
+      action_external: false,
+      priority: "0",
+    });
+    setEditingNotification(null);
+    setIsCreating(true);
+  };
 
   const openEditDialog = (notif: AdminNotification) => {
     setFormData({
-      title: notif.title, message: notif.message, type: notif.type, variant: notif.variant,
-      audience: notif.audience, path_pattern: notif.path_pattern || "",
-      starts_at: notif.starts_at ? new Date(notif.starts_at).toISOString().slice(0, 16) : "",
-      ends_at: notif.ends_at ? new Date(notif.ends_at).toISOString().slice(0, 16) : "",
-      is_active: notif.is_active, is_dismissible: notif.is_dismissible,
+      title: notif.title,
+      message: notif.message,
+      type: notif.type,
+      variant: notif.variant,
+      audience: notif.audience,
+      path_pattern: notif.path_pattern || "",
+      starts_at: notif.starts_at
+        ? new Date(notif.starts_at).toISOString().slice(0, 16)
+        : "",
+      ends_at: notif.ends_at
+        ? new Date(notif.ends_at).toISOString().slice(0, 16)
+        : "",
+      is_active: notif.is_active,
+      is_dismissible: notif.is_dismissible,
       dismiss_duration_hours: notif.dismiss_duration_hours?.toString() || "",
-      action_label: notif.action_label || "", action_url: notif.action_url || "",
-      action_external: notif.action_external, priority: notif.priority.toString(),
-    })
-    setEditingNotification(notif)
-    setIsCreating(true)
-  }
+      action_label: notif.action_label || "",
+      action_url: notif.action_url || "",
+      action_external: notif.action_external,
+      priority: notif.priority.toString(),
+    });
+    setEditingNotification(notif);
+    setIsCreating(true);
+  };
 
-  const closeDialog = () => { setIsCreating(false); setEditingNotification(null) }
+  const closeDialog = () => {
+    setIsCreating(false);
+    setEditingNotification(null);
+  };
 
   const handleSave = async () => {
-    setSaving(true)
+    setSaving(true);
     try {
       const payload = {
-        title: formData.title, message: formData.message, type: formData.type,
-        variant: formData.variant, audience: formData.audience,
+        title: formData.title,
+        message: formData.message,
+        type: formData.type,
+        variant: formData.variant,
+        audience: formData.audience,
         path_pattern: formData.path_pattern || null,
-        starts_at: formData.starts_at ? new Date(formData.starts_at).toISOString() : null,
-        ends_at: formData.ends_at ? new Date(formData.ends_at).toISOString() : null,
-        is_active: formData.is_active, is_dismissible: formData.is_dismissible,
-        dismiss_duration_hours: formData.dismiss_duration_hours ? parseInt(formData.dismiss_duration_hours) : null,
-        action_label: formData.action_label || null, action_url: formData.action_url || null,
-        action_external: formData.action_external, priority: parseInt(formData.priority) || 0,
-      }
-      const url = editingNotification ? `/api/v2/admin/notifications/${editingNotification.id}` : "/api/v2/admin/notifications"
-      const res = await fetch(url, { method: editingNotification ? "PUT" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) })
-      if (!res.ok) throw new Error("Failed to save notification")
-      await fetchNotifications()
-      closeDialog()
+        starts_at: formData.starts_at
+          ? new Date(formData.starts_at).toISOString()
+          : null,
+        ends_at: formData.ends_at
+          ? new Date(formData.ends_at).toISOString()
+          : null,
+        is_active: formData.is_active,
+        is_dismissible: formData.is_dismissible,
+        dismiss_duration_hours: formData.dismiss_duration_hours
+          ? parseInt(formData.dismiss_duration_hours)
+          : null,
+        action_label: formData.action_label || null,
+        action_url: formData.action_url || null,
+        action_external: formData.action_external,
+        priority: parseInt(formData.priority) || 0,
+      };
+      const url = editingNotification
+        ? `/api/v2/admin/notifications/${editingNotification.id}`
+        : "/api/v2/admin/notifications";
+      const res = await fetch(url, {
+        method: editingNotification ? "PUT" : "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) throw new Error("Failed to save notification");
+      await fetchNotifications();
+      closeDialog();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to save")
+      setError(err instanceof Error ? err.message : "Failed to save");
     } finally {
-      setSaving(false)
+      setSaving(false);
     }
-  }
+  };
 
   const handleDelete = async () => {
-    if (!pendingDelete) return
-    setDeleting(true)
+    if (!pendingDelete) return;
+    setDeleting(true);
     try {
-      const res = await fetch(`/api/v2/admin/notifications/${pendingDelete.id}`, { method: "DELETE" })
-      if (!res.ok) throw new Error("Failed to delete")
-      await fetchNotifications()
-      setPendingDelete(null)
+      const res = await fetch(
+        `/api/v2/admin/notifications/${pendingDelete.id}`,
+        { method: "DELETE" },
+      );
+      if (!res.ok) throw new Error("Failed to delete");
+      await fetchNotifications();
+      setPendingDelete(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to delete")
+      setError(err instanceof Error ? err.message : "Failed to delete");
     } finally {
-      setDeleting(false)
+      setDeleting(false);
     }
-  }
+  };
 
   const handleToggleActive = async (notif: AdminNotification) => {
     try {
       const res = await fetch(`/api/v2/admin/notifications/${notif.id}`, {
-        method: "PUT", headers: { "Content-Type": "application/json" },
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ...notif, is_active: !notif.is_active }),
-      })
-      if (!res.ok) throw new Error("Failed to update")
-      await fetchNotifications()
+      });
+      if (!res.ok) throw new Error("Failed to update");
+      await fetchNotifications();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to update")
+      setError(err instanceof Error ? err.message : "Failed to update");
     }
-  }
+  };
 
-  const activeVariant = VARIANT_CONFIG[formData.variant]
+  const activeVariant = VARIANT_CONFIG[formData.variant];
 
   // Calculate stats
   const stats = {
     total: notifications.length,
-    active: notifications.filter(n => n.is_active).length,
-    inactive: notifications.filter(n => !n.is_active).length,
-    expiring: notifications.filter(n => n.ends_at && new Date(n.ends_at) > new Date() && new Date(n.ends_at) < new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)).length,
-  }
+    active: notifications.filter((n) => n.is_active).length,
+    inactive: notifications.filter((n) => !n.is_active).length,
+    expiring: notifications.filter(
+      (n) =>
+        n.ends_at &&
+        new Date(n.ends_at) > new Date() &&
+        new Date(n.ends_at) < new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+    ).length,
+  };
 
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
         <Loader2 className="h-6 w-6 animate-spin text-primary" />
       </div>
-    )
+    );
   }
 
   return (
@@ -305,13 +401,24 @@ export function NotificationsManager() {
                 <Bell className="h-4 w-4 text-primary" />
               </div>
               <div>
-                <h3 className="text-sm font-semibold text-foreground">Site Notifications</h3>
-                <p className="text-xs text-muted-foreground mt-0.5">Manage banners, modals, toasts, and bell notifications</p>
+                <h3 className="text-sm font-semibold text-foreground">
+                  Site Notifications
+                </h3>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Manage banners, modals, toasts, and bell notifications
+                </p>
               </div>
             </div>
             <div className="flex items-center gap-2">
-              <Button variant="outline" size="sm" className="gap-2 border-border/40" onClick={fetchNotifications}>
-                <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-2 border-border/40"
+                onClick={fetchNotifications}
+              >
+                <RefreshCw
+                  className={cn("h-4 w-4", loading && "animate-spin")}
+                />
                 <span className="hidden sm:inline">Refresh</span>
               </Button>
               <Button size="sm" onClick={openCreateDialog} className="gap-1.5">
@@ -329,64 +436,101 @@ export function NotificationsManager() {
               </div>
               <div className="text-center">
                 <p className="font-medium text-sm">No notifications yet</p>
-                <p className="text-xs mt-0.5">Click &quot;Create&quot; to add a site-wide notification.</p>
+                <p className="text-xs mt-0.5">
+                  Click &quot;Create&quot; to add a site-wide notification.
+                </p>
               </div>
             </div>
           ) : (
             <div className="divide-y divide-border/40">
               {notifications.map((notif) => {
-                const v = VARIANT_CONFIG[notif.variant]
-                const Icon = v.icon
-                const TypeIcon = TYPE_CONFIG[notif.type].icon
+                const v = VARIANT_CONFIG[notif.variant];
+                const Icon = v.icon;
+                const TypeIcon = TYPE_CONFIG[notif.type].icon;
                 return (
                   <div
                     key={notif.id}
                     className={cn(
                       "group relative flex items-start gap-3 p-4 transition-colors hover:bg-muted/20",
-                      !notif.is_active && "opacity-60"
+                      !notif.is_active && "opacity-60",
                     )}
                   >
                     {/* Colored accent bar */}
-                    <div className={cn("absolute inset-y-0 left-0 w-1 rounded-r-full", notif.is_active ? v.border.replace("border-", "bg-").replace("/20", "/60") : "bg-muted")} />
-                    
+                    <div
+                      className={cn(
+                        "absolute inset-y-0 left-0 w-1 rounded-r-full",
+                        notif.is_active
+                          ? v.border
+                              .replace("border-", "bg-")
+                              .replace("/20", "/60")
+                          : "bg-muted",
+                      )}
+                    />
+
                     {/* Variant icon */}
-                    <div className={cn("flex items-center justify-center h-10 w-10 rounded-lg shrink-0 ml-1", v.bg)}>
+                    <div
+                      className={cn(
+                        "flex items-center justify-center h-10 w-10 rounded-lg shrink-0 ml-1",
+                        v.bg,
+                      )}
+                    >
                       <Icon className={cn("h-5 w-5", v.text)} />
                     </div>
 
                     <div className="flex-1 min-w-0 space-y-2">
                       {/* Title and status row */}
                       <div className="flex items-center gap-2">
-                        <span className="font-semibold text-sm text-foreground truncate">{notif.title}</span>
+                        <span className="font-semibold text-sm text-foreground truncate">
+                          {notif.title}
+                        </span>
                         {!notif.is_active && (
-                          <Badge variant="secondary" className="text-[10px] px-1.5 py-0 shrink-0">Inactive</Badge>
+                          <Badge
+                            variant="secondary"
+                            className="text-[10px] px-1.5 py-0 shrink-0"
+                          >
+                            Inactive
+                          </Badge>
                         )}
                       </div>
-                      
+
                       {/* Badges row */}
                       <div className="flex items-center gap-1.5 flex-wrap">
-                        <Badge variant="outline" className="text-[10px] px-2 py-0.5 gap-1 border-border bg-muted/50 text-foreground">
+                        <Badge
+                          variant="outline"
+                          className="text-[10px] px-2 py-0.5 gap-1 border-border bg-muted/50 text-foreground"
+                        >
                           <TypeIcon className="h-3 w-3" />
                           {TYPE_CONFIG[notif.type].label}
                         </Badge>
-                        <Badge variant="outline" className="text-[10px] px-2 py-0.5 gap-1 border-border bg-muted/50 text-foreground">
+                        <Badge
+                          variant="outline"
+                          className="text-[10px] px-2 py-0.5 gap-1 border-border bg-muted/50 text-foreground"
+                        >
                           <Users className="h-3 w-3" />
                           {AUDIENCE_LABELS[notif.audience]}
                         </Badge>
                         {notif.ends_at && (
-                          <Badge variant="outline" className="text-[10px] px-2 py-0.5 gap-1 border-border bg-muted/50 text-foreground">
+                          <Badge
+                            variant="outline"
+                            className="text-[10px] px-2 py-0.5 gap-1 border-border bg-muted/50 text-foreground"
+                          >
                             <Clock className="h-3 w-3" />
-                            Expires {new Date(notif.ends_at).toLocaleDateString()}
+                            Expires{" "}
+                            {new Date(notif.ends_at).toLocaleDateString()}
                           </Badge>
                         )}
                       </div>
 
                       {/* Message */}
-                      <p className="text-sm text-muted-foreground line-clamp-2 leading-relaxed whitespace-pre-wrap">{notif.message}</p>
-                      
+                      <p className="text-sm text-muted-foreground line-clamp-2 leading-relaxed whitespace-pre-wrap">
+                        {notif.message}
+                      </p>
+
                       {/* Footer row */}
                       <div className="flex items-center gap-3 pt-1">
-                        <span className="text-[11px] text-muted-foreground/70 font-mono">ID: {notif.cookie_id}</span>
+                        <span className="text-[11px] text-muted-foreground/70 font-mono">
+                          ID: {notif.cookie_id}
+                        </span>
                         {notif.action_url && (
                           <div className="flex items-center gap-1 text-xs text-primary font-medium">
                             <ExternalLink className="h-3 w-3" />
@@ -405,10 +549,14 @@ export function NotificationsManager() {
                           "flex items-center justify-center h-8 w-8 rounded-md transition-colors",
                           notif.is_active
                             ? "text-emerald-500 hover:bg-emerald-500/10"
-                            : "text-muted-foreground hover:bg-muted"
+                            : "text-muted-foreground hover:bg-muted",
                         )}
                       >
-                        {notif.is_active ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
+                        {notif.is_active ? (
+                          <Eye className="h-4 w-4" />
+                        ) : (
+                          <EyeOff className="h-4 w-4" />
+                        )}
                       </button>
                       <button
                         onClick={() => openEditDialog(notif)}
@@ -424,7 +572,7 @@ export function NotificationsManager() {
                       </button>
                     </div>
                   </div>
-                )
+                );
               })}
             </div>
           )}
@@ -432,17 +580,35 @@ export function NotificationsManager() {
       </Card>
 
       {/* Create / Edit Dialog */}
-      <Dialog open={isCreating} onOpenChange={(open) => !open && closeDialog()} modal={true}>
+      <Dialog
+        open={isCreating}
+        onOpenChange={(open) => !open && closeDialog()}
+        modal={true}
+      >
         <DialogContent className="w-full max-w-2xl max-h-[95dvh] sm:max-h-[85vh] overflow-y-auto gap-0 p-0 rounded-xl">
           {/* Dialog header with variant color stripe */}
-          <div className={cn("px-5 py-4 border-b border-border rounded-t-xl", activeVariant.bg)}>
+          <div
+            className={cn(
+              "px-5 py-4 border-b border-border rounded-t-xl",
+              activeVariant.bg,
+            )}
+          >
             <DialogHeader>
-              <DialogTitle className={cn("flex items-center gap-2 text-base", activeVariant.text)}>
+              <DialogTitle
+                className={cn(
+                  "flex items-center gap-2 text-base",
+                  activeVariant.text,
+                )}
+              >
                 <activeVariant.icon className="h-5 w-5" />
-                {editingNotification ? "Edit Notification" : "Create Notification"}
+                {editingNotification
+                  ? "Edit Notification"
+                  : "Create Notification"}
               </DialogTitle>
               <DialogDescription className="sr-only">
-                {editingNotification ? "Edit an existing notification" : "Create a new site-wide notification"}
+                {editingNotification
+                  ? "Edit an existing notification"
+                  : "Create a new site-wide notification"}
               </DialogDescription>
             </DialogHeader>
           </div>
@@ -453,12 +619,29 @@ export function NotificationsManager() {
               <SectionHeader icon={Megaphone} label="Content" />
               <div className="space-y-3 p-4 rounded-xl border border-border bg-muted/20">
                 <div className="space-y-1.5">
-                  <Label htmlFor="title" className="text-xs font-medium">Title</Label>
-                  <Input id="title" value={formData.title} onChange={(e) => set({ title: e.target.value })} placeholder="Notification title" className="bg-background h-9" />
+                  <Label htmlFor="title" className="text-xs font-medium">
+                    Title
+                  </Label>
+                  <Input
+                    id="title"
+                    value={formData.title}
+                    onChange={(e) => set({ title: e.target.value })}
+                    placeholder="Notification title"
+                    className="bg-background h-9"
+                  />
                 </div>
                 <div className="space-y-1.5">
-                  <Label htmlFor="message" className="text-xs font-medium">Message</Label>
-                  <Textarea id="message" value={formData.message} onChange={(e) => set({ message: e.target.value })} placeholder="Notification message…" rows={3} className="bg-background resize-none" />
+                  <Label htmlFor="message" className="text-xs font-medium">
+                    Message
+                  </Label>
+                  <Textarea
+                    id="message"
+                    value={formData.message}
+                    onChange={(e) => set({ message: e.target.value })}
+                    placeholder="Notification message…"
+                    rows={3}
+                    className="bg-background resize-none"
+                  />
                 </div>
               </div>
             </div>
@@ -469,8 +652,15 @@ export function NotificationsManager() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-4 rounded-xl border border-border bg-muted/20">
                 <div className="space-y-1.5">
                   <Label className="text-xs font-medium">Type</Label>
-                  <Select value={formData.type} onValueChange={(v) => set({ type: v as AdminNotification["type"] })}>
-                    <SelectTrigger className="bg-background h-10"><SelectValue /></SelectTrigger>
+                  <Select
+                    value={formData.type}
+                    onValueChange={(v) =>
+                      set({ type: v as AdminNotification["type"] })
+                    }
+                  >
+                    <SelectTrigger className="bg-background h-10">
+                      <SelectValue />
+                    </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="bell">Bell Notification</SelectItem>
                       <SelectItem value="banner">Banner</SelectItem>
@@ -481,12 +671,29 @@ export function NotificationsManager() {
                 </div>
                 <div className="space-y-1.5">
                   <Label className="text-xs font-medium">Variant</Label>
-                  <Select value={formData.variant} onValueChange={(v) => set({ variant: v as AdminNotification["variant"] })}>
-                    <SelectTrigger className={cn("h-10 font-medium border", activeVariant.bg, activeVariant.text, activeVariant.border)}>
+                  <Select
+                    value={formData.variant}
+                    onValueChange={(v) =>
+                      set({ variant: v as AdminNotification["variant"] })
+                    }
+                  >
+                    <SelectTrigger
+                      className={cn(
+                        "h-10 font-medium border",
+                        activeVariant.bg,
+                        activeVariant.text,
+                        activeVariant.border,
+                      )}
+                    >
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      {(Object.entries(VARIANT_CONFIG) as [AdminNotification["variant"], typeof VARIANT_CONFIG.info][]).map(([key, cfg]) => (
+                      {(
+                        Object.entries(VARIANT_CONFIG) as [
+                          AdminNotification["variant"],
+                          typeof VARIANT_CONFIG.info,
+                        ][]
+                      ).map(([key, cfg]) => (
                         <SelectItem key={key} value={key}>
                           <div className="flex items-center gap-2">
                             <cfg.icon className={cn("h-3.5 w-3.5", cfg.text)} />
@@ -507,25 +714,56 @@ export function NotificationsManager() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div className="space-y-1.5">
                     <Label className="text-xs font-medium">Audience</Label>
-                    <Select value={formData.audience} onValueChange={(v) => set({ audience: v as AdminNotification["audience"] })}>
-                      <SelectTrigger className="bg-background h-10"><SelectValue /></SelectTrigger>
+                    <Select
+                      value={formData.audience}
+                      onValueChange={(v) =>
+                        set({ audience: v as AdminNotification["audience"] })
+                      }
+                    >
+                      <SelectTrigger className="bg-background h-10">
+                        <SelectValue />
+                      </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="all">Everyone</SelectItem>
-                        <SelectItem value="authenticated">Logged In Users</SelectItem>
-                        <SelectItem value="unauthenticated">Guests Only</SelectItem>
+                        <SelectItem value="authenticated">
+                          Logged In Users
+                        </SelectItem>
+                        <SelectItem value="unauthenticated">
+                          Guests Only
+                        </SelectItem>
                         <SelectItem value="admin">Admins Only</SelectItem>
                         <SelectItem value="staff">Staff Only</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
                   <div className="space-y-1.5">
-                    <Label htmlFor="priority" className="text-xs font-medium">Priority</Label>
-                    <Input id="priority" type="number" value={formData.priority} onChange={(e) => set({ priority: e.target.value })} placeholder="0 = default" className="bg-background h-10" />
+                    <Label htmlFor="priority" className="text-xs font-medium">
+                      Priority
+                    </Label>
+                    <Input
+                      id="priority"
+                      type="number"
+                      value={formData.priority}
+                      onChange={(e) => set({ priority: e.target.value })}
+                      placeholder="0 = default"
+                      className="bg-background h-10"
+                    />
                   </div>
                 </div>
                 <div className="space-y-1.5">
-                  <Label htmlFor="path_pattern" className="text-xs font-medium">Page Filter <span className="text-muted-foreground font-normal">(optional)</span></Label>
-                  <Input id="path_pattern" value={formData.path_pattern} onChange={(e) => set({ path_pattern: e.target.value })} placeholder="/dashboard* — leave empty for all pages" className="bg-background h-10" />
+                  <Label htmlFor="path_pattern" className="text-xs font-medium">
+                    Page Filter{" "}
+                    <span className="text-muted-foreground font-normal">
+                      (optional)
+                    </span>
+                  </Label>
+                  <Input
+                    id="path_pattern"
+                    value={formData.path_pattern}
+                    onChange={(e) => set({ path_pattern: e.target.value })}
+                    placeholder="/dashboard* — leave empty for all pages"
+                    className="bg-background h-10"
+                  />
                 </div>
               </div>
             </div>
@@ -536,28 +774,79 @@ export function NotificationsManager() {
               <div className="space-y-4 p-4 rounded-xl border border-border bg-muted/20">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div className="space-y-1.5">
-                    <Label htmlFor="starts_at" className="text-xs font-medium">Starts At</Label>
-                    <Input id="starts_at" type="datetime-local" value={formData.starts_at} onChange={(e) => set({ starts_at: e.target.value })} className="bg-background h-10" />
+                    <Label htmlFor="starts_at" className="text-xs font-medium">
+                      Starts At
+                    </Label>
+                    <Input
+                      id="starts_at"
+                      type="datetime-local"
+                      value={formData.starts_at}
+                      onChange={(e) => set({ starts_at: e.target.value })}
+                      className="bg-background h-10"
+                    />
                   </div>
                   <div className="space-y-1.5">
-                    <Label htmlFor="ends_at" className="text-xs font-medium">Ends At <span className="text-muted-foreground font-normal">(optional)</span></Label>
-                    <Input id="ends_at" type="datetime-local" value={formData.ends_at} onChange={(e) => set({ ends_at: e.target.value })} className="bg-background h-10" />
+                    <Label htmlFor="ends_at" className="text-xs font-medium">
+                      Ends At{" "}
+                      <span className="text-muted-foreground font-normal">
+                        (optional)
+                      </span>
+                    </Label>
+                    <Input
+                      id="ends_at"
+                      type="datetime-local"
+                      value={formData.ends_at}
+                      onChange={(e) => set({ ends_at: e.target.value })}
+                      className="bg-background h-10"
+                    />
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div className="flex items-center gap-3 p-3 rounded-lg bg-background border border-border">
-                    <Switch id="is_active" checked={formData.is_active} onCheckedChange={(v) => set({ is_active: v })} />
-                    <Label htmlFor="is_active" className="text-sm cursor-pointer font-medium">Active</Label>
+                    <Switch
+                      id="is_active"
+                      checked={formData.is_active}
+                      onCheckedChange={(v) => set({ is_active: v })}
+                    />
+                    <Label
+                      htmlFor="is_active"
+                      className="text-sm cursor-pointer font-medium"
+                    >
+                      Active
+                    </Label>
                   </div>
                   <div className="flex items-center gap-3 p-3 rounded-lg bg-background border border-border">
-                    <Switch id="is_dismissible" checked={formData.is_dismissible} onCheckedChange={(v) => set({ is_dismissible: v })} />
-                    <Label htmlFor="is_dismissible" className="text-sm cursor-pointer font-medium">Dismissible</Label>
+                    <Switch
+                      id="is_dismissible"
+                      checked={formData.is_dismissible}
+                      onCheckedChange={(v) => set({ is_dismissible: v })}
+                    />
+                    <Label
+                      htmlFor="is_dismissible"
+                      className="text-sm cursor-pointer font-medium"
+                    >
+                      Dismissible
+                    </Label>
                   </div>
                 </div>
                 {formData.is_dismissible && (
                   <div className="space-y-1.5">
-                    <Label htmlFor="dismiss_duration_hours" className="text-xs font-medium">Re-show after dismiss (hours)</Label>
-                    <Input id="dismiss_duration_hours" type="number" value={formData.dismiss_duration_hours} onChange={(e) => set({ dismiss_duration_hours: e.target.value })} placeholder="Leave empty for permanent dismiss" className="bg-background h-10" />
+                    <Label
+                      htmlFor="dismiss_duration_hours"
+                      className="text-xs font-medium"
+                    >
+                      Re-show after dismiss (hours)
+                    </Label>
+                    <Input
+                      id="dismiss_duration_hours"
+                      type="number"
+                      value={formData.dismiss_duration_hours}
+                      onChange={(e) =>
+                        set({ dismiss_duration_hours: e.target.value })
+                      }
+                      placeholder="Leave empty for permanent dismiss"
+                      className="bg-background h-10"
+                    />
                   </div>
                 )}
               </div>
@@ -565,22 +854,44 @@ export function NotificationsManager() {
 
             {/* Action button */}
             <div>
-              <SectionHeader icon={ExternalLink} label="Action Button (optional)" />
+              <SectionHeader
+                icon={ExternalLink}
+                label="Action Button (optional)"
+              />
               <div className="space-y-3 p-4 rounded-xl border border-border bg-muted/20">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div className="space-y-1.5">
                     <Label className="text-xs font-medium">Button Label</Label>
-                    <Input value={formData.action_label} onChange={(e) => set({ action_label: e.target.value })} placeholder="e.g. Learn more" className="bg-background h-10" />
+                    <Input
+                      value={formData.action_label}
+                      onChange={(e) => set({ action_label: e.target.value })}
+                      placeholder="e.g. Learn more"
+                      className="bg-background h-10"
+                    />
                   </div>
                   <div className="space-y-1.5">
                     <Label className="text-xs font-medium">URL / Path</Label>
-                    <Input value={formData.action_url} onChange={(e) => set({ action_url: e.target.value })} placeholder="https:// or /path" className="bg-background h-10" />
+                    <Input
+                      value={formData.action_url}
+                      onChange={(e) => set({ action_url: e.target.value })}
+                      placeholder="https:// or /path"
+                      className="bg-background h-10"
+                    />
                   </div>
                 </div>
                 {formData.action_url && (
                   <div className="flex items-center gap-3 p-3 rounded-lg bg-background border border-border w-fit">
-                    <Switch id="action_external" checked={formData.action_external} onCheckedChange={(v) => set({ action_external: v })} />
-                    <Label htmlFor="action_external" className="text-sm cursor-pointer font-medium">Open in new tab</Label>
+                    <Switch
+                      id="action_external"
+                      checked={formData.action_external}
+                      onCheckedChange={(v) => set({ action_external: v })}
+                    />
+                    <Label
+                      htmlFor="action_external"
+                      className="text-sm cursor-pointer font-medium"
+                    >
+                      Open in new tab
+                    </Label>
                   </div>
                 )}
               </div>
@@ -588,11 +899,22 @@ export function NotificationsManager() {
           </div>
 
           <DialogFooter className="flex-row px-4 sm:px-6 py-4 border-t border-border bg-muted/20 rounded-b-xl gap-2">
-            <Button variant="outline" onClick={closeDialog} className="flex-1 sm:flex-none">Cancel</Button>
+            <Button
+              variant="outline"
+              onClick={closeDialog}
+              className="flex-1 sm:flex-none"
+            >
+              Cancel
+            </Button>
             <Button
               onClick={handleSave}
               disabled={saving || !formData.title || !formData.message}
-              className={cn(activeVariant.bg, activeVariant.text, activeVariant.border, "border hover:opacity-90 flex-1 sm:flex-none")}
+              className={cn(
+                activeVariant.bg,
+                activeVariant.text,
+                activeVariant.border,
+                "border hover:opacity-90 flex-1 sm:flex-none",
+              )}
             >
               {saving && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
               {editingNotification ? "Save Changes" : "Create Notification"}
@@ -608,15 +930,34 @@ export function NotificationsManager() {
         onConfirm={handleDelete}
         title="Delete Notification"
         description="This will permanently delete this notification. This action cannot be undone."
-        changes={pendingDelete ? [
-          { field: "title", label: "Title", oldValue: pendingDelete.title, newValue: "Deleted" },
-          { field: "type", label: "Type", oldValue: pendingDelete.type, newValue: "—" },
-          { field: "audience", label: "Audience", oldValue: AUDIENCE_LABELS[pendingDelete.audience], newValue: "—" },
-        ] : []}
+        changes={
+          pendingDelete
+            ? [
+                {
+                  field: "title",
+                  label: "Title",
+                  oldValue: pendingDelete.title,
+                  newValue: "Deleted",
+                },
+                {
+                  field: "type",
+                  label: "Type",
+                  oldValue: pendingDelete.type,
+                  newValue: "—",
+                },
+                {
+                  field: "audience",
+                  label: "Audience",
+                  oldValue: AUDIENCE_LABELS[pendingDelete.audience],
+                  newValue: "—",
+                },
+              ]
+            : []
+        }
         loading={deleting}
         confirmText="Delete"
         variant="destructive"
       />
     </div>
-  )
+  );
 }

@@ -1,8 +1,8 @@
-import { APP_NAME, APP_DESCRIPTION, APP_URL } from '@/lib/config/constants'
+import { APP_NAME, APP_DESCRIPTION, APP_URL } from "@/lib/config/constants";
 
 export default function Head() {
-  const title = `${APP_NAME} - Web Vulnerability Scanner`
-  const image = `${APP_URL}/og-image-310.png`
+  const title = `${APP_NAME} - Web Vulnerability Scanner`;
+  const image = `${APP_URL}/og-image-310.png`;
 
   return (
     <>
@@ -12,7 +12,10 @@ export default function Head() {
       <title>{title}</title>
       <meta name="description" content={APP_DESCRIPTION} />
       <meta name="application-name" content={APP_NAME} />
-      <meta name="keywords" content="vulnerability scanner,security scanner,web security,penetration testing,security audit,website scanner" />
+      <meta
+        name="keywords"
+        content="vulnerability scanner,security scanner,web security,penetration testing,security audit,website scanner"
+      />
 
       {/* Open Graph */}
       <meta property="og:title" content={title} />
@@ -24,7 +27,10 @@ export default function Head() {
       <meta property="og:image" content={image} />
       <meta property="og:image:width" content="1200" />
       <meta property="og:image:height" content="630" />
-      <meta property="og:image:alt" content={`${APP_NAME} - Web Vulnerability Scanner`} />
+      <meta
+        property="og:image:alt"
+        content={`${APP_NAME} - Web Vulnerability Scanner`}
+      />
 
       {/* Twitter */}
       <meta name="twitter:card" content="summary_large_image" />
@@ -38,5 +44,5 @@ export default function Head() {
       <link rel="icon" href="/favicon.png" type="image/png" />
       <link rel="apple-touch-icon" href="/favicon.png" />
     </>
-  )
+  );
 }

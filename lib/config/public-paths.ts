@@ -1,4 +1,4 @@
-import { ROUTES, API_V2 } from "./constants"
+import { ROUTES, API_V2 } from "./constants";
 
 /**
  * Public paths that don't require authentication
@@ -78,4 +78,4 @@ export const PUBLIC_PATHS = [
 
   // ─── Public Finding Types Endpoint (v2) ────────────────────────
   API_V2.FINDING_TYPES || "/api/v2/finding-types",
-]
+];

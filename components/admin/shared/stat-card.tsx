@@ -1,17 +1,23 @@
-import { cn } from "@/lib/ui/utils"
+import { cn } from "@/lib/ui/utils";
 
 interface StatCardProps {
-  label: string
-  value: string
-  icon: React.ElementType
-  color: string
-  accent: string
+  label: string;
+  value: string;
+  icon: React.ElementType;
+  color: string;
+  accent: string;
 }
 
 /**
  * Dashboard stat card component - follows VulnRadar design system
  */
-export function StatCard({ label, value, icon: Icon, color, accent }: StatCardProps) {
+export function StatCard({
+  label,
+  value,
+  icon: Icon,
+  color,
+  accent,
+}: StatCardProps) {
   return (
     <div className="flex items-center gap-3 p-4 rounded-xl border border-border/40 bg-card/30 hover:bg-card/50 hover:border-border/60 transition-colors">
       <div className={cn("p-2.5 rounded-lg shrink-0", accent)}>
@@ -24,5 +30,5 @@ export function StatCard({ label, value, icon: Icon, color, accent }: StatCardPr
         <p className="text-[11px] text-muted-foreground truncate">{label}</p>
       </div>
     </div>
-  )
+  );
 }

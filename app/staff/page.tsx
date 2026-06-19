@@ -1,22 +1,40 @@
-"use client"
+"use client";
 
-import { useEffect, useState } from "react"
-import Image from "next/image"
-import { Shield, ShieldCheck, Headset, Users } from "lucide-react"
-import { cn } from "@/lib/ui/utils"
-import { APP_NAME, STAFF_ROLES, STAFF_ROLE_LABELS, API } from "@/lib/config/constants"
+import { useEffect, useState } from "react";
+import Image from "next/image";
+import { Shield, ShieldCheck, Headset, Users } from "lucide-react";
+import { cn } from "@/lib/ui/utils";
+import {
+  APP_NAME,
+  STAFF_ROLES,
+  STAFF_ROLE_LABELS,
+  API,
+} from "@/lib/config/constants";
 
 // Staff roles that should appear on the staff page (excluding regular users and badge-only roles)
-const DISPLAY_STAFF_ROLES = [STAFF_ROLES.ADMIN, STAFF_ROLES.MODERATOR, STAFF_ROLES.SUPPORT] as const
+const DISPLAY_STAFF_ROLES = [
+  STAFF_ROLES.ADMIN,
+  STAFF_ROLES.MODERATOR,
+  STAFF_ROLES.SUPPORT,
+] as const;
 
 interface StaffMember {
-  name: string
-  role: string
-  avatarUrl: string | null
+  name: string;
+  role: string;
+  avatarUrl: string | null;
 }
 
 // Role display configuration - only for actual staff roles (not badges)
-const ROLE_CONFIG: Record<string, { icon: typeof Shield; color: string; bg: string; border: string; glow: string }> = {
+const ROLE_CONFIG: Record<
+  string,
+  {
+    icon: typeof Shield;
+    color: string;
+    bg: string;
+    border: string;
+    glow: string;
+  }
+> = {
   admin: {
     icon: ShieldCheck,
     color: "text-red-400",
@@ -39,7 +57,7 @@ const ROLE_CONFIG: Record<string, { icon: typeof Shield; color: string; bg: stri
     glow: "shadow-blue-500/5",
   },
   // Note: beta_tester is now a badge, not a staff role shown on staff page
-}
+};
 
 function getInitials(name: string) {
   return name
@@ -47,28 +65,30 @@ function getInitials(name: string) {
     .map((w) => w[0])
     .join("")
     .toUpperCase()
-    .slice(0, 2)
+    .slice(0, 2);
 }
 
 export default function StaffPage() {
-  const [staff, setStaff] = useState<StaffMember[]>([])
-  const [loading, setLoading] = useState(true)
+  const [staff, setStaff] = useState<StaffMember[]>([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     fetch(API.STAFF)
       .then((r) => r.json())
       .then((d) => setStaff(d.staff || []))
       .catch(() => {})
-      .finally(() => setLoading(false))
-  }, [])
+      .finally(() => setLoading(false));
+  }, []);
 
   // Only group actual staff roles (admin, moderator, support)
   // beta_tester is a badge now, not shown on staff page
   const grouped = {
     [STAFF_ROLES.ADMIN]: staff.filter((s) => s.role === STAFF_ROLES.ADMIN),
-    [STAFF_ROLES.MODERATOR]: staff.filter((s) => s.role === STAFF_ROLES.MODERATOR),
+    [STAFF_ROLES.MODERATOR]: staff.filter(
+      (s) => s.role === STAFF_ROLES.MODERATOR,
+    ),
     [STAFF_ROLES.SUPPORT]: staff.filter((s) => s.role === STAFF_ROLES.SUPPORT),
-  }
+  };
 
   return (
     <>
@@ -82,7 +102,8 @@ export default function StaffPage() {
           {APP_NAME} Staff
         </h1>
         <p className="text-sm sm:text-base text-muted-foreground max-w-lg mx-auto leading-relaxed text-pretty">
-          The dedicated team behind {APP_NAME} who build, maintain, and support the platform every day.
+          The dedicated team behind {APP_NAME} who build, maintain, and support
+          the platform every day.
         </p>
       </div>
 
@@ -99,7 +120,9 @@ export default function StaffPage() {
           <div className="h-16 w-16 rounded-full bg-muted flex items-center justify-center">
             <Users className="h-7 w-7 text-muted-foreground/40" />
           </div>
-          <p className="text-sm text-muted-foreground">No staff members to display.</p>
+          <p className="text-sm text-muted-foreground">
+            No staff members to display.
+          </p>
         </div>
       )}
 
@@ -107,40 +130,53 @@ export default function StaffPage() {
       {!loading && staff.length > 0 && (
         <div className="flex flex-col gap-10">
           {DISPLAY_STAFF_ROLES.map((roleKey) => {
-            const members = grouped[roleKey]
-            if (members.length === 0) return null
-            const config = ROLE_CONFIG[roleKey]
-            const RoleIcon = config.icon
+            const members = grouped[roleKey];
+            if (members.length === 0) return null;
+            const config = ROLE_CONFIG[roleKey];
+            const RoleIcon = config.icon;
 
             const SECTION_TITLES: Record<string, string> = {
               [STAFF_ROLES.ADMIN]: "Administrators",
               [STAFF_ROLES.MODERATOR]: "Moderators",
               [STAFF_ROLES.SUPPORT]: "Support Team",
               [STAFF_ROLES.BETA_TESTER]: "Beta Testers",
-            }
+            };
             const SECTION_DESCS: Record<string, string> = {
               [STAFF_ROLES.ADMIN]: "Full platform access and management",
               [STAFF_ROLES.MODERATOR]: "User moderation and enforcement",
               [STAFF_ROLES.SUPPORT]: "Help and customer assistance",
               [STAFF_ROLES.BETA_TESTER]: "Early access and feature testing",
-            }
+            };
 
             return (
               <section key={roleKey}>
                 {/* Section header */}
                 <div className="flex items-center gap-3 mb-5">
-                  <div className={cn("flex items-center justify-center h-8 w-8 rounded-lg", config.bg)}>
+                  <div
+                    className={cn(
+                      "flex items-center justify-center h-8 w-8 rounded-lg",
+                      config.bg,
+                    )}
+                  >
                     <RoleIcon className={cn("h-4 w-4", config.color)} />
                   </div>
                   <div>
                     <h2 className="text-sm font-semibold text-foreground">
-                      {SECTION_TITLES[roleKey] || STAFF_ROLE_LABELS[roleKey] || roleKey}
+                      {SECTION_TITLES[roleKey] ||
+                        STAFF_ROLE_LABELS[roleKey] ||
+                        roleKey}
                     </h2>
                     <p className="text-[11px] text-muted-foreground">
                       {SECTION_DESCS[roleKey] || ""}
                     </p>
                   </div>
-                  <span className={cn("ml-auto text-xs font-medium px-2 py-0.5 rounded-full", config.bg, config.color)}>
+                  <span
+                    className={cn(
+                      "ml-auto text-xs font-medium px-2 py-0.5 rounded-full",
+                      config.bg,
+                      config.color,
+                    )}
+                  >
                     {members.length}
                   </span>
                 </div>
@@ -148,7 +184,7 @@ export default function StaffPage() {
                 {/* Member cards */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                   {members.map((member, i) => {
-                    const initials = getInitials(member.name)
+                    const initials = getInitials(member.name);
 
                     return (
                       <div
@@ -164,13 +200,24 @@ export default function StaffPage() {
                           className={cn(
                             "relative flex items-center justify-center w-12 h-12 rounded-full shrink-0 overflow-hidden ring-2",
                             config.bg,
-                            member.avatarUrl ? "ring-border" : `ring-transparent`,
+                            member.avatarUrl
+                              ? "ring-border"
+                              : `ring-transparent`,
                           )}
                         >
                           {member.avatarUrl ? (
-                            <Image src={member.avatarUrl} alt={member.name} width={48} height={48} loading="lazy" className="h-full w-full object-cover" />
+                            <Image
+                              src={member.avatarUrl}
+                              alt={member.name}
+                              width={48}
+                              height={48}
+                              loading="lazy"
+                              className="h-full w-full object-cover"
+                            />
                           ) : (
-                            <span className={cn("text-sm font-bold", config.color)}>
+                            <span
+                              className={cn("text-sm font-bold", config.color)}
+                            >
                               {initials}
                             </span>
                           )}
@@ -181,17 +228,23 @@ export default function StaffPage() {
                           <h3 className="text-sm font-semibold text-foreground truncate">
                             {member.name}
                           </h3>
-                          <div className={cn("inline-flex items-center gap-1 w-fit px-2 py-0.5 rounded-full text-[10px] font-medium", config.bg, config.color)}>
+                          <div
+                            className={cn(
+                              "inline-flex items-center gap-1 w-fit px-2 py-0.5 rounded-full text-[10px] font-medium",
+                              config.bg,
+                              config.color,
+                            )}
+                          >
                             <RoleIcon className="h-2.5 w-2.5" />
                             {STAFF_ROLE_LABELS[member.role] || member.role}
                           </div>
                         </div>
                       </div>
-                    )
+                    );
                   })}
                 </div>
               </section>
-            )
+            );
           })}
         </div>
       )}
@@ -205,5 +258,5 @@ export default function StaffPage() {
         </div>
       )}
     </>
-  )
+  );
 }
