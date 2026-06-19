@@ -264,15 +264,12 @@ async function copyTableData(originalPool, newPool, table, rowCount) {
       ...extraVals,
     ];
     try {
-      // ON CONFLICT (id) DO UPDATE ensures the row uses the exact source id.
-      // Without a target, ON CONFLICT DO NOTHING can silently skip rows on
-      // non-PK unique constraints (e.g. badges.name) and the count lies.
+      // ON CONFLICT DO NOTHING handles conflicts on ANY unique constraint
+      // (PK, name, etc.) by silently skipping. The count below reflects
+      // actual inserts, not attempts, so the user sees the real result.
       await newPool.query(
         `INSERT INTO "${table}" (${colList}) VALUES (${placeholders})
-         ON CONFLICT (id) DO UPDATE SET ${allCols
-           .filter((c) => c !== "id")
-           .map((c, i) => `"${c}" = $${i + 2}`)
-           .join(", ")}`,
+         ON CONFLICT DO NOTHING`,
         values,
       );
       inserted++;
@@ -295,6 +292,10 @@ async function copyTableData(originalPool, newPool, table, rowCount) {
   if (skipped > 0) {
     success(
       `  ${table}: ${inserted}/${rowCount} rows copied (${skipped} skipped due to source data issues)`,
+    );
+  } else if (inserted < rowCount) {
+    success(
+      `  ${table}: ${inserted}/${rowCount} rows copied (${rowCount - inserted} skipped — target already has rows with conflicting keys)`,
     );
   } else {
     success(`  ${table}: ${inserted}/${rowCount} rows copied`);
