@@ -49,6 +49,8 @@ export interface SaveConfirmationModalProps {
   isAdminAction?: boolean;
   affectedUser?: AffectedUser;
   confirmText?: string;
+  /** Alias for `confirmText` */
+  confirmLabel?: string;
   cancelText?: string;
   variant?: "default" | "destructive";
   /** Force email notification on with no toggle (for support actions) */

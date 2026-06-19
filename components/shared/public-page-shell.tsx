@@ -14,6 +14,8 @@ interface PublicPageShellProps {
   children: React.ReactNode;
   /** Label shown next to the logo for guests, e.g. "Demo", "Staff" */
   _badge?: string;
+  /** Alias for `_badge` (used by some pages) */
+  badge?: string;
   /** Max-width class for the main content area. Defaults to "max-w-5xl" */
   maxWidth?: string;
   /** Extra padding class for main. Defaults to "py-8" */

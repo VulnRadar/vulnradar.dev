@@ -39,8 +39,10 @@ export const ApiResponse = {
   unauthorized: (message = ERROR_MESSAGES.UNAUTHORIZED) =>
     NextResponse.json({ error: message, status: 401 }, { status: 401 }),
 
-  forbidden: (message: string = ERROR_MESSAGES.FORBIDDEN, meta?: Record<string, unknown>) =>
-    NextResponse.json({ error: message, status: 403 }, { status: 403 }),
+  forbidden: (
+    message: string = ERROR_MESSAGES.FORBIDDEN,
+    meta?: Record<string, unknown>,
+  ) => NextResponse.json({ error: message, status: 403 }, { status: 403 }),
 
   notFound: (message = ERROR_MESSAGES.NOT_FOUND) =>
     NextResponse.json({ error: message, status: 404 }, { status: 404 }),
