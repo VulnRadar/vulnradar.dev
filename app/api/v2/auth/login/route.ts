@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server"
+import { NextRequest, NextResponse } from "next/server"
 import { randomInt } from "node:crypto"
 import { getUserByEmail, verifyPassword, createSession } from "@/lib/auth"
 import pool from "@/lib/database/db"
@@ -69,7 +69,7 @@ export const POST = withErrorHandling(async (request: Request) => {
     // Check if device is trusted (skip 2FA for trusted devices)
     const userAgent = await getUserAgent()
     const deviceId = `${ip}-${userAgent}`.split("").reduce((a, b) => ((a << 5) - a) + b.charCodeAt(0), 0)
-    const deviceCookie = (request as any).cookies?.get?.(DEVICE_TRUST_COOKIE_NAME)?.value
+    const deviceCookie = (request as unknown as NextRequest).cookies?.get?.(DEVICE_TRUST_COOKIE_NAME)?.value
     
     if (deviceCookie && deviceCookie === String(deviceId)) {
       // Device is trusted - create session directly without 2FA

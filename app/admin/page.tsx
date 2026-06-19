@@ -117,7 +117,8 @@ function AdminContent() {
   const [auditPaging, setAuditPaging] = useState(false)
   const [allBadges, setAllBadges] = useState<BadgeDef[]>([])
   const teamsSearchInitRef = useRef(false)
-  
+  const fetchTeamsRef = useRef<((p?: number, search?: string) => Promise<void>) | null>(null)
+
    const showToast = useCallback((message: string, type: "success" | "error") => {
      setToast({ message, type })
    }, [])
@@ -190,7 +191,13 @@ function AdminContent() {
      setTeamsLoading(false)
    }, [teamsSearch])
 
-   const fetchUserDetail = useCallback(async (userId: number, skipUrlUpdate = false) => {
+  // Keep ref in sync with latest fetchTeams so debounced effect can call it
+  // without re-running on every callback recreation.
+  useEffect(() => {
+    fetchTeamsRef.current = fetchTeams
+  }, [fetchTeams])
+
+    const fetchUserDetail = useCallback(async (userId: number, skipUrlUpdate = false) => {
      setDetailLoading(true)
      try {
        const res = await fetch(`${API.ADMIN}?section=user-detail&userId=${userId}`)
@@ -389,7 +396,7 @@ function AdminContent() {
     }
     setTeamsLoading(true)
     const timeout = setTimeout(() => {
-      fetchTeams(1, teamsSearch)
+      fetchTeamsRef.current?.(1, teamsSearch)
     }, 300)
     return () => { clearTimeout(timeout); setTeamsLoading(false) }
   }, [teamsSearch])

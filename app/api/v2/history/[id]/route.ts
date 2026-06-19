@@ -12,7 +12,7 @@ export async function GET(
   const authHeader = request.headers.get("authorization")
   let authedUserId: number | null = null
   let apiKeyId: number | null = null
-  let keyData: any = null
+  let keyData: Awaited<ReturnType<typeof validateApiKey>> = null
 
   if (authHeader?.startsWith(BEARER_PREFIX)) {
     const token = authHeader.slice(7)
@@ -120,7 +120,7 @@ export async function PATCH(
   const authHeader = request.headers.get("authorization")
   let authedUserId: number | null = null
   let apiKeyId: number | null = null
-  let keyData: any = null
+  let keyData: Awaited<ReturnType<typeof validateApiKey>> = null
 
   if (authHeader?.startsWith(BEARER_PREFIX)) {
     const token = authHeader.slice(7)
@@ -187,7 +187,7 @@ export async function DELETE(
   const authHeader = request.headers.get("authorization")
   let authedUserId: number | null = null
   let apiKeyId: number | null = null
-  let keyData: any = null
+  let keyData: Awaited<ReturnType<typeof validateApiKey>> = null
 
   if (authHeader?.startsWith(BEARER_PREFIX)) {
     const token = authHeader.slice(7)

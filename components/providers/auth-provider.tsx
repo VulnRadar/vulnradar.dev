@@ -13,7 +13,7 @@ import {
 } from "@/lib/auth/permissions-client"
 
 interface AuthContextType {
-  me: any
+  me: Record<string, unknown> | null
   isLoading: boolean
   // Permission helpers
   isStaff: boolean

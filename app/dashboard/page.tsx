@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useCallback, useEffect, Suspense } from "react"
+import { useState, useCallback, useEffect, Suspense, useRef } from "react"
 import { useSearchParams } from "next/navigation"
 import dynamic from "next/dynamic"
 import { Header } from "@/components/scanner/header"
@@ -61,6 +61,7 @@ function DashboardLoading() {
 function DashboardContent() {
   const searchParams = useSearchParams()
   const { me } = useAuth()
+  const runScanRef = useRef<((url: string, crawlUrls?: string[], scanners?: string[]) => Promise<void>) | null>(null)
   const [status, setStatus] = useState<ScanStatus>("idle")
   const [showLimitModal, setShowLimitModal] = useState(false)
   const [result, setResult] = useState<ScanResult | null>(null)
@@ -155,7 +156,7 @@ function DashboardContent() {
       return
     }
 
-    runScan(url, undefined, scanners)
+    runScanRef.current?.(url, undefined, scanners)
   }, [])
 
   const runScan = useCallback(async (url: string, crawlUrls?: string[], scanners?: string[]) => {
@@ -228,6 +229,12 @@ function DashboardContent() {
       setStatus("failed")
     }
   }, [updateUrlWithScan])
+
+  // Keep ref in sync with latest runScan so handleScan (defined earlier)
+  // can call it without re-running on every callback recreation.
+  useEffect(() => {
+    runScanRef.current = runScan
+  }, [runScan])
 
   function handleCrawlConfirm(selectedUrls: string[]) {
     setShowCrawlSelector(false)

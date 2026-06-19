@@ -31,7 +31,7 @@ export function SignupForm({ onSuccess }: SignupFormProps) {
 
   useEffect(() => {
     if (!TURNSTILE_ENABLED || !scriptLoaded || !widgetRef.current || widgetIdRef.current) return
-    const turnstile = (window as any).turnstile
+    const turnstile = (window as unknown as { turnstile?: { render: (el: HTMLElement, opts: unknown) => string; remove: (id: string) => void } }).turnstile
     if (!turnstile) return
     try {
       widgetIdRef.current = turnstile.render(widgetRef.current, {

@@ -4,7 +4,7 @@ import checksData from "@/lib/scanner/checks-data.json"
 export async function GET() {
   try {
     // Extract all finding types (check IDs) from the checks data
-    const findingTypes = checksData.checks.map((check: any) => ({
+    const findingTypes = checksData.checks.map((check: { id: string; type: string; title: string; category: string; severity: string; description: string }) => ({
       id: check.id,
       type: check.type,
       title: check.title,
