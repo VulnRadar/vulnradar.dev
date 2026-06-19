@@ -326,7 +326,7 @@ export async function POST(request: NextRequest) {
   const skipped = validUrls.length - urlsToScan.length
 
   // Run scans sequentially to avoid overwhelming resources
-  const results: Array<{ url: string; success: boolean; scanHistoryId?: number | null; error?: string; summary?: any; findings_count?: number; duration?: number }> = []
+  const results: Array<{ url: string; success: boolean; scanHistoryId?: number | null; error?: string; summary?: unknown; findings_count?: number; duration?: number }> = []
 
   for (const scanUrl of urlsToScan) {
     // Increment daily count before each scan (skip for API key auth)

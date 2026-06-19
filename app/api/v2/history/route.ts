@@ -10,7 +10,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
   const authHeader = request.headers.get("authorization")
   let authedUserId: number | null = null
   let apiKeyId: number | null = null
-  let keyData: any = null
+  let keyData: Awaited<ReturnType<typeof validateApiKey>> = null
 
   if (authHeader?.startsWith(BEARER_PREFIX)) {
     const token = authHeader.slice(7)
@@ -88,7 +88,7 @@ export const DELETE = withErrorHandling(async (request: NextRequest) => {
   const authHeader = request.headers.get("authorization")
   let authedUserId: number | null = null
   let apiKeyId: number | null = null
-  let keyData: any = null
+  let keyData: Awaited<ReturnType<typeof validateApiKey>> = null
 
   if (authHeader?.startsWith(BEARER_PREFIX)) {
     const token = authHeader.slice(7)

@@ -14,7 +14,7 @@ export interface ApiErrorResponse {
 export interface ApiSuccessResponse<T> {
   data?: T
   message?: string
-  [key: string]: any
+  [key: string]: unknown
 }
 
 /**
@@ -101,7 +101,7 @@ export async function requireAuth() {
  * Validation helpers
  */
 export const Validate = {
-  required: (value: any, fieldName: string) => {
+  required: (value: unknown, fieldName: string) => {
     if (!value) {
       return `${fieldName} is required`
     }
@@ -122,7 +122,7 @@ export const Validate = {
     return null
   },
 
-  string: (value: any, fieldName: string, minLength = 1, maxLength?: number) => {
+  string: (value: unknown, fieldName: string, minLength = 1, maxLength?: number) => {
     if (typeof value !== "string" || value.trim().length < minLength) {
       return `${fieldName} must be at least ${minLength} characters`
     }
@@ -190,9 +190,9 @@ export async function parseBody<T>(request: Request): Promise<{ success: true; d
 /**
  * Safe database query wrapper
  */
-export async function safeQuery<T = any>(
+export async function safeQuery<T = unknown>(
   query: string,
-  params?: any[],
+  params?: unknown[],
 ): Promise<{ success: true; rows: T[] } | { success: false; error: string }> {
   try {
     const result = await pool.query(query, params)

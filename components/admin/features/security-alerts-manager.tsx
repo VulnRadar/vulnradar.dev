@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState, useEffect } from "react"
+import React, { useState, useEffect, useCallback } from "react"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -35,7 +35,7 @@ export function SecurityAlertsManager() {
   const [pendingResolve, setPendingResolve] = useState<{ alert: SecurityAlert; action: string } | null>(null)
   const [resolving, setResolving] = useState(false)
 
-  const fetchAlerts = async () => {
+  const fetchAlerts = useCallback(async () => {
     setLoading(true)
     try {
       const res = await fetch("/api/v2/admin/features", {
@@ -55,11 +55,11 @@ export function SecurityAlertsManager() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [selectedSeverity])
 
   useEffect(() => {
     fetchAlerts()
-  }, [selectedSeverity])
+  }, [fetchAlerts])
 
   const handleResolveAlert = async () => {
     if (!pendingResolve) return

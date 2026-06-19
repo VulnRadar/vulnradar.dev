@@ -11,7 +11,7 @@
  * - token-exposure JWT pattern deduplicated vs hardcoded-secrets
  */
 
-import type { Vulnerability, Category } from "./types"
+import type { Vulnerability, Category, Severity } from "./types"
 import checksData from "./checks-data.json"
 
 type CheckFn = (url: string, headers: Headers, body: string) => Vulnerability | null
@@ -2114,7 +2114,7 @@ function buildCheck(def: CheckDef): CheckFn | null {
     return {
       id: generateId(),
       title: def.title,
-      severity: def.severity.toLowerCase() as any,
+      severity: def.severity.toLowerCase() as Severity,
       category: def.category as Category,
       description: def.description,
       evidence,

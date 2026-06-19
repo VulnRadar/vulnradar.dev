@@ -149,7 +149,7 @@ export async function POST(req: NextRequest) {
         const { limit = 50, offset = 0, severity, user_id } = body
 
         let query = `SELECT * FROM security_alerts WHERE 1=1`
-        const params: any[] = []
+        const params: unknown[] = []
 
         if (severity) {
           query += ` AND severity = $${params.length + 1}`

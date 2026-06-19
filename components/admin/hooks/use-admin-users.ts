@@ -47,6 +47,8 @@ export function useAdminUsers({ toast, initialPageSize = 10 }: UseAdminUsersOpti
   
   // Search debounce ref
   const searchInitRef = useRef(false)
+  const refreshRef = useRef<((p?: number, search?: string, isInitial?: boolean, limit?: number) => Promise<void>) | null>(null)
+  const refreshBadgesRef = useRef<(() => Promise<void>) | null>(null)
 
   /**
    * Fetch users with pagination and search
@@ -196,22 +198,31 @@ export function useAdminUsers({ toast, initialPageSize = 10 }: UseAdminUsersOpti
       searchInitRef.current = true
       return
     }
-    
+
     setSearchLoading(true)
     const timeout = setTimeout(() => {
-      refresh(1, searchQuery, false)
+      refreshRef.current?.(1, searchQuery, false)
     }, 300)
-    
+
     return () => {
       clearTimeout(timeout)
       setSearchLoading(false)
     }
   }, [searchQuery])
 
+  // Keep refs in sync with latest callbacks so debounced/initial effects
+  // can call them without re-running on every callback recreation.
+  useEffect(() => {
+    refreshRef.current = refresh
+  }, [refresh])
+  useEffect(() => {
+    refreshBadgesRef.current = refreshBadges
+  }, [refreshBadges])
+
   // Initial load
   useEffect(() => {
-    refresh(1, "", true)
-    refreshBadges()
+    refreshRef.current?.(1, "", true)
+    refreshBadgesRef.current?.()
   }, [])
 
   return {

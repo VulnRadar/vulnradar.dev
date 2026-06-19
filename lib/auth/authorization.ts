@@ -1,6 +1,9 @@
+import { NextResponse } from "next/server"
 import pool from "@/lib/database/db"
 import { ApiResponse } from "@/lib/api/api-utils"
 import { TEAM_ROLES } from "@/lib/config/constants"
+
+type AuthError = NextResponse | undefined
 
 /**
  * Common authorization checks for resource ownership
@@ -14,7 +17,7 @@ export async function verifyOwnership(
   resourceId: number,
   userId: number,
   userIdColumn = "user_id",
-): Promise<{ owned: boolean; error?: any }> {
+): Promise<{ owned: boolean; error?: AuthError }> {
   try {
     const result = await pool.query(
       `SELECT id FROM ${resourceTable} WHERE id = $1 AND ${userIdColumn} = $2`,
@@ -39,7 +42,7 @@ export async function verifyTeamMembership(
   teamId: number,
   userId: number,
   requiredRole?: string,
-): Promise<{ isMember: boolean; role?: string; error?: any }> {
+): Promise<{ isMember: boolean; role?: string; error?: AuthError }> {
   try {
     const result = await pool.query(
       `SELECT role FROM team_members WHERE team_id = $1 AND user_id = $2`,
@@ -50,7 +53,7 @@ export async function verifyTeamMembership(
       return { isMember: false }
     }
 
-    const { role } = result.rows[0]
+    const { role } = result.rows[0] as { role?: string }
 
     if (requiredRole) {
       const roleHierarchy: Record<string, number> = {
@@ -59,7 +62,7 @@ export async function verifyTeamMembership(
         [TEAM_ROLES.MEMBER]: 1,
       }
 
-      if ((roleHierarchy[role] || 0) < (roleHierarchy[requiredRole] || 0)) {
+      if ((roleHierarchy[role || ""] || 0) < (roleHierarchy[requiredRole] || 0)) {
         return {
           isMember: true,
           role,
@@ -80,7 +83,7 @@ export async function verifyTeamMembership(
 /**
  * Verify user has permission (owner/admin) in team
  */
-export async function verifyTeamAdmin(teamId: number, userId: number): Promise<{ isAdmin: boolean; error?: any }> {
+export async function verifyTeamAdmin(teamId: number, userId: number): Promise<{ isAdmin: boolean; error?: AuthError }> {
   const result = await verifyTeamMembership(teamId, userId, TEAM_ROLES.ADMIN)
   return {
     isAdmin: result.isMember && [TEAM_ROLES.OWNER, TEAM_ROLES.ADMIN].includes(result.role || ""),
@@ -91,7 +94,7 @@ export async function verifyTeamAdmin(teamId: number, userId: number): Promise<{
 /**
  * Verify user is team owner
  */
-export async function verifyTeamOwner(teamId: number, userId: number): Promise<{ isOwner: boolean; error?: any }> {
+export async function verifyTeamOwner(teamId: number, userId: number): Promise<{ isOwner: boolean; error?: AuthError }> {
   const result = await verifyTeamMembership(teamId, userId, TEAM_ROLES.OWNER)
   return {
     isOwner: result.isMember && result.role === TEAM_ROLES.OWNER,

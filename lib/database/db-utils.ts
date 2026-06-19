@@ -5,6 +5,8 @@ import pool from "./db"
  * Reduces repetitive boilerplate across API endpoints
  */
 
+type DbRow = Record<string, unknown>
+
 // ============================================================================
 // User Operations
 // ============================================================================
@@ -12,7 +14,7 @@ import pool from "./db"
 export async function getAdminEmails(): Promise<string[]> {
   try {
     const result = await pool.query("SELECT email FROM users WHERE role = 'admin'")
-    return result.rows.map((row: any) => row.email)
+    return result.rows.map((row: DbRow) => row.email as string)
   } catch (_error) {
     console.error("Failed to fetch admin emails:", error)
     return []
@@ -22,10 +24,10 @@ export async function getAdminEmails(): Promise<string[]> {
 /**
  * Get user by ID with optional fields
  */
-export async function getUserById(userId: number, fields = "*"): Promise<any | null> {
+export async function getUserById(userId: number, fields = "*"): Promise<DbRow | null> {
   try {
     const result = await pool.query(`SELECT ${fields} FROM users WHERE id = $1`, [userId])
-    return result.rows[0] || null
+    return (result.rows[0] as DbRow) || null
   } catch (_error) {
     console.error("[DB] Failed to get user by ID:", error)
     return null
@@ -35,10 +37,10 @@ export async function getUserById(userId: number, fields = "*"): Promise<any | n
 /**
  * Get user by email
  */
-export async function getUserByEmail(email: string): Promise<any | null> {
+export async function getUserByEmail(email: string): Promise<DbRow | null> {
   try {
     const result = await pool.query("SELECT * FROM users WHERE email = $1", [email])
-    return result.rows[0] || null
+    return (result.rows[0] as DbRow) || null
   } catch (_error) {
     console.error("[DB] Failed to get user by email:", error)
     return null
@@ -48,7 +50,10 @@ export async function getUserByEmail(email: string): Promise<any | null> {
 /**
  * Update user fields
  */
-export async function updateUser(userId: number, updates: Record<string, any>): Promise<any | null> {
+export async function updateUser(
+  userId: number,
+  updates: Record<string, unknown>
+): Promise<DbRow | null> {
   try {
     const fields = Object.keys(updates)
     const values = Object.values(updates)
@@ -58,7 +63,7 @@ export async function updateUser(userId: number, updates: Record<string, any>): 
       `UPDATE users SET ${setClauses}, updated_at = NOW() WHERE id = $${fields.length + 1} RETURNING *`,
       [...values, userId]
     )
-    return result.rows[0] || null
+    return (result.rows[0] as DbRow) || null
   } catch (_error) {
     console.error("[DB] Failed to update user:", error)
     return null
@@ -91,7 +96,7 @@ export async function getUserSessionCount(userId: number): Promise<number> {
       "SELECT COUNT(*) as count FROM sessions WHERE user_id = $1 AND expires_at > NOW()",
       [userId]
     )
-    return parseInt(result.rows[0]?.count || 0, 10)
+    return parseInt((result.rows[0] as DbRow)?.count as string || "0", 10)
   } catch (_error) {
     console.error("[DB] Failed to get session count:", error)
     return 0
@@ -105,13 +110,13 @@ export async function getUserSessionCount(userId: number): Promise<number> {
 /**
  * Get Discord connection for user
  */
-export async function getDiscordConnection(userId: number): Promise<any | null> {
+export async function getDiscordConnection(userId: number): Promise<DbRow | null> {
   try {
     const result = await pool.query(
       "SELECT * FROM discord_connections WHERE user_id = $1",
       [userId]
     )
-    return result.rows[0] || null
+    return (result.rows[0] as DbRow) || null
   } catch (_error) {
     console.error("[DB] Failed to get Discord connection:", error)
     return null
@@ -141,10 +146,10 @@ export async function deleteDiscordConnection(userId: number): Promise<boolean> 
 /**
  * Get API key by hash
  */
-export async function getApiKeyByHash(hash: string): Promise<any | null> {
+export async function getApiKeyByHash(hash: string): Promise<DbRow | null> {
   try {
     const result = await pool.query("SELECT * FROM api_keys WHERE hash = $1", [hash])
-    return result.rows[0] || null
+    return (result.rows[0] as DbRow) || null
   } catch (_error) {
     console.error("[DB] Failed to get API key:", error)
     return null
@@ -154,13 +159,13 @@ export async function getApiKeyByHash(hash: string): Promise<any | null> {
 /**
  * Get all API keys for user
  */
-export async function getUserApiKeys(userId: number): Promise<any[]> {
+export async function getUserApiKeys(userId: number): Promise<DbRow[]> {
   try {
     const result = await pool.query(
       "SELECT * FROM api_keys WHERE user_id = $1 ORDER BY created_at DESC",
       [userId]
     )
-    return result.rows || []
+    return (result.rows as DbRow[]) || []
   } catch (_error) {
     console.error("[DB] Failed to get user API keys:", error)
     return []
@@ -193,7 +198,7 @@ export async function revokeApiKey(keyId: number): Promise<boolean> {
 export async function batchDelete(
   table: string,
   whereClause: string,
-  params: any[] = []
+  params: unknown[] = []
 ): Promise<number> {
   try {
     const result = await pool.query(`DELETE FROM ${table} WHERE ${whereClause}`, params)
@@ -209,9 +214,9 @@ export async function batchDelete(
  */
 export async function batchUpdate(
   table: string,
-  updates: Record<string, any>,
+  updates: Record<string, unknown>,
   whereClause: string,
-  params: any[] = []
+  params: unknown[] = []
 ): Promise<number> {
   try {
     const fields = Object.keys(updates)
@@ -228,4 +233,3 @@ export async function batchUpdate(
     return 0
   }
 }
-

@@ -422,7 +422,7 @@ function checkTLSCert(hostname: string, port: number = 443): Promise<Vulnerabili
         },
       )
 
-      socket.on("error", (error: any) => {
+      socket.on("error", (error: NodeJS.ErrnoException) => {
         // Capture certificate validation errors
         if (error.code === "CERT_HAS_EXPIRED") {
           findings.push(
