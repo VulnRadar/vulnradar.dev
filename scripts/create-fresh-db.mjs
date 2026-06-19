@@ -241,11 +241,20 @@ async function copyTableData(originalPool, newPool, table, rowCount) {
       ...targetNames.map((t) => {
         const v = row[mappingReverseGet(mapping, t)];
         if (v == null) return null;
-        if (jsonCols.has(t) && typeof v === "string") {
+        if (jsonCols.has(t)) {
+          // Always normalize to a JSON string so pg can cast to JSONB.
+          // Handles both TEXT source (parse + re-stringify) and JSONB source
+          // (already an object, just stringify). If anything is unserializable
+          // (NaN, circular refs, malformed text), set to null and warn.
           try {
-            return JSON.parse(v);
-          } catch {
-            warn(`  Invalid JSON in ${table}.${t}, setting to null`);
+            if (typeof v === "string") {
+              return JSON.stringify(JSON.parse(v));
+            }
+            return JSON.stringify(v);
+          } catch (err) {
+            warn(
+              `  Invalid JSON in ${table}.${t}: ${err.message.slice(0, 80)}`,
+            );
             return null;
           }
         }
@@ -472,9 +481,6 @@ async function main() {
   log("");
   success(`Created ${tables} table(s).`);
 
-  // ── Seed default badges ──────────────────────────────────────────────────
-  await seedDefaultBadges(newPool);
-
   // ── Step 3: optionally migrate data ───────────────────────────────────────
   const tablesWithData = source.tables
     .map((t) => ({ name: t, count: source.counts[t] }))
@@ -482,11 +488,23 @@ async function main() {
   const candidates = MIGRATE_TABLES.filter((t) =>
     tablesWithData.some((tw) => tw.name === t),
   );
+  const willMigrate =
+    candidates.length > 0 &&
+    (await askYesNo("Migrate data from source database?", true));
+
+  // Seed defaults ONLY if we're not bringing our own badges. Otherwise the
+  // source user_badges rows would reference source badge IDs that don't match
+  // the freshly-seeded ones.
+  if (!willMigrate || !tablesWithData.some((t) => t.name === "badges")) {
+    await seedDefaultBadges(newPool);
+  } else {
+    info("Skipping default badge seed (will copy from source).");
+  }
 
   if (candidates.length === 0) {
     log("");
     info("No data to migrate from source database.");
-  } else {
+  } else if (willMigrate) {
     section("Data Migration");
     log("  The following tables have data that can be migrated:");
     for (const t of candidates) {
@@ -494,12 +512,9 @@ async function main() {
       log(`    - ${t} (${meta.count} rows)`);
     }
     log("");
-
-    if (await askYesNo("Migrate data from source database?", true)) {
-      await migrateData(sourcePool, newPool, tablesWithData);
-    } else {
-      info("Skipped data migration.");
-    }
+    await migrateData(sourcePool, newPool, tablesWithData);
+  } else {
+    info("Skipped data migration.");
   }
 
   log("");
