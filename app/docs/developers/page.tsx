@@ -462,7 +462,7 @@ cp .env.example .env
 # Edit .env with your DATABASE_URL, API_KEY_ENCRYPTION_KEY, etc.
 
 # 4. Create the database schema
-node scripts/create-fresh-db.mjs
+npm run db:create
 
 # 5. Start the dev server
 npm run dev

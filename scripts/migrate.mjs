@@ -380,14 +380,16 @@ async function runV2Migration(pool, actual, v1Info) {
     "daily_scan_limit INTEGER DEFAULT NULL",
   ];
   for (const def of userAdditions) {
-    const colName = def.split(/\s+/)[0];
+    const parts = def.trim().split(/\s+/);
+    const colName = parts[0];
+    const colDef = parts.slice(1).join(" ");
     try {
       await pool.query(
-        `ALTER TABLE users ADD COLUMN IF NOT EXISTS ${colName} ${def.replace(colName, "").trim()}`,
+        `ALTER TABLE users ADD COLUMN IF NOT EXISTS ${colName} ${colDef}`,
       );
       success(`  Added users.${colName}`);
-    } catch {
-      /* already exists */
+    } catch (err) {
+      warn(`  Skipped users.${colName}: ${err.message}`);
     }
   }
 
@@ -397,14 +399,16 @@ async function runV2Migration(pool, actual, v1Info) {
     "key_encrypted TEXT",
   ];
   for (const def of apiKeyAdditions) {
-    const colName = def.split(/\s+/)[0];
+    const parts = def.trim().split(/\s+/);
+    const colName = parts[0];
+    const colDef = parts.slice(1).join(" ");
     try {
       await pool.query(
-        `ALTER TABLE api_keys ADD COLUMN IF NOT EXISTS ${colName} ${def.replace(colName, "").trim()}`,
+        `ALTER TABLE api_keys ADD COLUMN IF NOT EXISTS ${colName} ${colDef}`,
       );
       success(`  Added api_keys.${colName}`);
-    } catch {
-      /* already exists */
+    } catch (err) {
+      warn(`  Skipped api_keys.${colName}: ${err.message}`);
     }
   }
 
@@ -425,8 +429,10 @@ async function runV2Migration(pool, actual, v1Info) {
       await pool.query(
         `ALTER TABLE notification_preferences ADD COLUMN IF NOT EXISTS ${def}`,
       );
-    } catch {
-      /* already exists */
+    } catch (err) {
+      warn(
+        `  Could not ensure notification_preferences column (${def}): ${err instanceof Error ? err.message : String(err)}`,
+      );
     }
   }
   success("  notification_preferences columns ensured");

@@ -217,7 +217,7 @@ docker compose logs -f app   # watch startup`}
       <DocsSection id="schema" title="Initialize the Schema">
         <CodeBlock
           language="bash"
-          code={`docker compose exec app node scripts/create-fresh-db.mjs`}
+          code={`docker compose exec app npm run db:create`}
         />
         <p>
           This is idempotent (CREATE TABLE IF NOT EXISTS). Safe to re-run on
@@ -345,8 +345,8 @@ docker compose up -d`}
         <p>Watch logs for migrations or new env vars.</p>
         <DocsCallout variant="warning" title="After schema changes">
           If <code>instrumentation.ts</code> changed, run{" "}
-          <code>docker compose exec app node scripts/migrate.mjs</code> to apply
-          the diff. The script will ask before each change.
+          <code>docker compose exec app npm run db:migrate</code> to apply the
+          diff. The script will ask before each change.
         </DocsCallout>
       </DocsSection>
 
