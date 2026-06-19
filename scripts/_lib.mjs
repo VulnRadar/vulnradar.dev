@@ -1,0 +1,301 @@
+#!/usr/bin/env node
+
+/**
+ * VulnRadar — Shared helpers for scripts in this directory.
+ *
+ * Centralises:
+ *   - Coloured terminal output (log/info/success/warn/error)
+ *   - Banner / section headers
+ *   - .env.local loading (DATABASE_URL fallback)
+ *   - Interactive prompts (ask / askYesNo / askDanger)
+ *   - Version + project metadata (read from package.json)
+ *   - Postgres URL parsing + safe pool construction
+ *   - Schema introspection helpers
+ *
+ * Never import this file from a runtime/server path; it's CLI-only.
+ */
+
+import { readFileSync } from "node:fs";
+import { resolve, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
+import * as readline from "node:readline";
+import pg from "pg";
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+export const ROOT = resolve(__dirname, "..");
+
+// ── ANSI colours ────────────────────────────────────────────────────────────
+export const c = {
+  reset: "\x1b[0m",
+  bold: "\x1b[1m",
+  dim: "\x1b[2m",
+  red: "\x1b[31m",
+  green: "\x1b[32m",
+  yellow: "\x1b[33m",
+  cyan: "\x1b[36m",
+  magenta: "\x1b[35m",
+  white: "\x1b[37m",
+  bgRed: "\x1b[41m",
+  bgGreen: "\x1b[42m",
+  bgYellow: "\x1b[43m",
+  bgCyan: "\x1b[46m",
+};
+
+export const log = (msg) => console.log(msg);
+export const info = (msg) => log(`${c.cyan}[INFO]${c.reset} ${msg}`);
+export const success = (msg) => log(`${c.green}[OK]${c.reset}   ${msg}`);
+export const warn = (msg) => log(`${c.yellow}[WARN]${c.reset} ${msg}`);
+export const error = (msg) => log(`${c.red}[ERR]${c.reset}  ${msg}`);
+
+// ── Banner / section header ────────────────────────────────────────────────
+export function banner(title, subtitle) {
+  const top = `  ╔══${"═".repeat(title.length + 2)}══╗`;
+  const mid = `  ║  ${c.bold}${title}${c.reset}  ║`;
+  const sub = subtitle ? `  ║  ${c.dim}${subtitle}${c.reset}  ║` : null;
+  const bot = `  ╚══${"═".repeat(title.length + 2)}══╝`;
+  log("");
+  log(`${c.bold}${c.cyan}${top}${c.reset}`);
+  log(`${c.bold}${c.cyan}${mid}${c.reset}`);
+  if (sub) log(`${c.cyan}${sub}${c.reset}`);
+  log(`${c.bold}${c.cyan}${bot}${c.reset}`);
+  log("");
+}
+
+export function section(title) {
+  log("");
+  log(
+    `${c.bold}─── ${title} ${"─".repeat(Math.max(0, 60 - title.length))}${c.reset}`,
+  );
+  log("");
+}
+
+// ── .env.local loader (only sets vars not already in process.env) ──────────
+export function loadEnv() {
+  if (process.env.DATABASE_URL) return true;
+  try {
+    const envPath = resolve(ROOT, ".env.local");
+    const content = readFileSync(envPath, "utf-8");
+    for (const line of content.split("\n")) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith("#")) continue;
+      const eq = trimmed.indexOf("=");
+      if (eq === -1) continue;
+      const key = trimmed.slice(0, eq).trim();
+      let val = trimmed.slice(eq + 1).trim();
+      if (
+        (val.startsWith('"') && val.endsWith('"')) ||
+        (val.startsWith("'") && val.endsWith("'"))
+      ) {
+        val = val.slice(1, -1);
+      }
+      if (!process.env[key]) process.env[key] = val;
+    }
+    return Boolean(process.env.DATABASE_URL);
+  } catch {
+    return false;
+  }
+}
+
+// ── Interactive prompts ────────────────────────────────────────────────────
+function rawQuestion(prompt) {
+  return new Promise((resolve) => {
+    const rl = readline.createInterface({
+      input: process.stdin,
+      output: process.stdout,
+    });
+    rl.question(prompt, (answer) => {
+      rl.close();
+      resolve(answer);
+    });
+  });
+}
+
+export async function ask(question, defaultVal = "") {
+  const hint = defaultVal ? ` ${c.dim}(${defaultVal})${c.reset}` : "";
+  const answer = await rawQuestion(`${c.cyan}?${c.reset} ${question}${hint} `);
+  return answer.trim() || defaultVal;
+}
+
+export async function askYesNo(question, defaultYes = false) {
+  const hint = defaultYes
+    ? `${c.dim}(Y/n)${c.reset}`
+    : `${c.dim}(y/N)${c.reset}`;
+  const answer = (
+    await rawQuestion(`${c.cyan}?${c.reset} ${question} ${hint} `)
+  )
+    .trim()
+    .toLowerCase();
+  if (answer === "") return defaultYes;
+  return answer === "y" || answer === "yes";
+}
+
+export async function askDanger(question) {
+  const answer = (
+    await rawQuestion(
+      `${c.red}?${c.reset} ${question} ${c.dim}(y/N)${c.reset} `,
+    )
+  )
+    .trim()
+    .toLowerCase();
+  return answer === "y" || answer === "yes";
+}
+
+// ── Project metadata (from package.json — single source of truth) ──────────
+export function getProjectMeta() {
+  const pkg = JSON.parse(readFileSync(resolve(ROOT, "package.json"), "utf-8"));
+  return {
+    name: pkg.name ?? "vulnradar",
+    version: pkg.version ?? "0.0.0",
+    description: pkg.description ?? "",
+    node: pkg.engines?.node ?? ">=20",
+  };
+}
+
+// ── Database URL parsing ───────────────────────────────────────────────────
+export function parseDbUrl(url) {
+  const match = url.match(
+    /postgres(?:ql)?:\/\/([^:]+):([^@]+)@([^:/]+):?(\d+)?\/([^?]+)/,
+  );
+  if (!match) return null;
+  return {
+    user: match[1],
+    password: match[2],
+    host: match[3],
+    port: match[4] || "5432",
+    database: match[5],
+  };
+}
+
+export function summariseDbUrl(url) {
+  const parsed = parseDbUrl(url);
+  if (!parsed) return url;
+  return `${parsed.user}@${parsed.host}:${parsed.port}/${parsed.database}`;
+}
+
+// ── Pool factory (safe timeouts, friendly errors) ──────────────────────────
+export function createPool() {
+  return new pg.Pool({
+    connectionString: process.env.DATABASE_URL,
+    connectionTimeoutMillis: 10000,
+    statement_timeout: 30000,
+  });
+}
+
+export async function connect(pool) {
+  try {
+    await pool.query("SELECT 1");
+    return true;
+  } catch (err) {
+    error(`Failed to connect: ${err.message}`);
+    return false;
+  }
+}
+
+// ── Schema introspection helpers ──────────────────────────────────────────
+export async function getExistingTables(pool) {
+  const res = await pool.query(`
+    SELECT table_name
+    FROM information_schema.tables
+    WHERE table_schema = 'public'
+    ORDER BY table_name
+  `);
+  return res.rows.map((r) => r.table_name);
+}
+
+export async function getTableCounts(pool, tables) {
+  const counts = {};
+  for (const t of tables) {
+    try {
+      const res = await pool.query(`SELECT COUNT(*)::int AS n FROM "${t}"`);
+      counts[t] = res.rows[0].n;
+    } catch {
+      counts[t] = 0;
+    }
+  }
+  return counts;
+}
+
+export async function getDatabaseSummary(pool) {
+  const tables = await getExistingTables(pool);
+  const counts = await getTableCounts(pool, tables);
+  const totalRows = Object.values(counts).reduce((a, b) => a + b, 0);
+  return { tables, counts, totalRows };
+}
+
+// ── Formatting helpers ─────────────────────────────────────────────────────
+export function formatBytes(n) {
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+  return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+export function formatDuration(ms) {
+  if (ms < 1000) return `${ms}ms`;
+  if (ms < 60_000) return `${(ms / 1000).toFixed(1)}s`;
+  const m = Math.floor(ms / 60_000);
+  const s = Math.floor((ms % 60_000) / 1000);
+  return `${m}m ${s}s`;
+}
+
+// ── Top-of-script confirmation gate ────────────────────────────────────────
+/**
+ * Prints a structured "what this script will do" panel and asks the user to
+ * confirm before proceeding. Pass `destructive: true` to swap the prompt for
+ * the red danger variant.
+ *
+ * @param {object} opts
+ * @param {string} opts.title        — e.g. "Run database migration"
+ * @param {string} opts.tagline      — one-line description
+ * @param {string[]} opts.steps      — ordered list of what will happen
+ * @param {string[]} opts.warnings   — optional list of caveats
+ * @param {boolean} [opts.destructive]
+ * @param {string} [opts.target]     — e.g. "db 'vulnradar' on localhost"
+ * @returns {Promise<boolean>}
+ */
+export async function confirmIntro({
+  title,
+  tagline,
+  steps,
+  warnings = [],
+  destructive = false,
+  target,
+}) {
+  banner(title, tagline);
+
+  if (target) {
+    log(`  ${c.dim}Target:${c.reset}  ${c.bold}${target}${c.reset}`);
+    log("");
+  }
+
+  if (steps?.length) {
+    log(`  ${c.bold}What this script will do:${c.reset}`);
+    for (const step of steps) log(`    ${c.cyan}•${c.reset} ${step}`);
+    log("");
+  }
+
+  if (warnings.length) {
+    const prefix = destructive ? c.red : c.yellow;
+    const label = destructive ? "Destructive operations" : "Heads up";
+    log(`  ${prefix}${c.bold}${label}:${c.reset}`);
+    for (const w of warnings) log(`    ${prefix}!${c.reset} ${w}`);
+    log("");
+  }
+
+  const confirmFn = destructive ? askDanger : askYesNo;
+  const prompt = destructive
+    ? "Proceed? This is a destructive operation."
+    : "Proceed?";
+  return confirmFn(prompt, !destructive);
+}
+
+// ── Pre-flight: ensure DATABASE_URL is available ───────────────────────────
+export function requireDatabaseUrl() {
+  if (!process.env.DATABASE_URL) {
+    error("DATABASE_URL is not set.");
+    log("");
+    info("Set it in your environment or in .env.local at the project root.");
+    info("Example: DATABASE_URL=postgres://user:pass@host:5432/dbname");
+    log("");
+    process.exit(1);
+  }
+}
