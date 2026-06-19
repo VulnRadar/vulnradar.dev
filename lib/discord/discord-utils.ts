@@ -1,4 +1,4 @@
-import pool from "@/lib/database/db"
+﻿import pool from "@/lib/database/db"
 import { email2FACodeEmail, sendEmail } from "@/lib/email/email"
 import { randomInt } from "node:crypto"
 
@@ -28,7 +28,7 @@ export async function sendDiscordEmail2FACode(userId: number, userEmail: string)
       text: emailContent.text,
       html: emailContent.html,
     })
-  } catch (_error) {
+  } catch (error) {
     console.error("[Discord Email 2FA]", error)
     // Don't rethrow - this is background operation
   }

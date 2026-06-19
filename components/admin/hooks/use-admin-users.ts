@@ -1,4 +1,4 @@
-"use client"
+﻿"use client"
 
 import { useState, useCallback, useRef, useEffect } from "react"
 import type { AdminUser, AdminStats, UserDetail, BadgeDef } from "../types"
@@ -86,7 +86,7 @@ export function useAdminUsers({ toast, initialPageSize = 10 }: UseAdminUsersOpti
       const data = await fetchUserDetailService(userId)
       setSelectedUser(data)
       return data
-    } catch (_err) {
+    } catch (error) {
       toast.error("Failed to load user details.")
       return null
     } finally {

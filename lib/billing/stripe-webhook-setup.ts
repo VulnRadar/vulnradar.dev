@@ -1,4 +1,4 @@
-import "server-only"
+﻿import "server-only"
 
 import { stripe } from "./stripe"
 import { BILLING_ENABLED } from "@/lib/config/constants"
@@ -95,7 +95,7 @@ export async function ensureStripeWebhook(): Promise<{
       webhookSecret: newWebhook.secret,
       alreadyExists: false,
     }
-  } catch (_error) {
+  } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error"
     console.error("[Stripe Webhook Setup] Error:", message)
     return { success: false, error: message }

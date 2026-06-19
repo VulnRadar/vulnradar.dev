@@ -1,4 +1,4 @@
-// ============================================================================
+﻿// ============================================================================
 // Beta Features Module
 // ============================================================================
 // Manages beta feature flags using feature names (no database table needed)
@@ -78,7 +78,7 @@ export async function userHasBetaAccess(userId: number, featureName: string): Pr
     }
 
     return result.rows[0].beta_access === true
-  } catch (_error) {
+  } catch (error) {
     console.error("[Beta] Error checking access:", error)
     return false
   }
@@ -93,7 +93,7 @@ export async function grantBetaAccess(userId: number): Promise<void> {
       `UPDATE users SET beta_access = true WHERE id = $1`,
       [userId]
     )
-  } catch (_error) {
+  } catch (error) {
     console.error("[Beta] Error granting access:", error)
     throw error
   }
@@ -108,7 +108,7 @@ export async function revokeBetaAccess(userId: number): Promise<void> {
       `UPDATE users SET beta_access = false WHERE id = $1`,
       [userId]
     )
-  } catch (_error) {
+  } catch (error) {
     console.error("[Beta] Error revoking access:", error)
     throw error
   }

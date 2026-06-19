@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server"
+﻿import { NextResponse } from "next/server"
 import { stripe } from "@/lib/billing/stripe"
 import { PRODUCTS } from "@/lib/billing/products"
 import { BILLING_ENABLED } from "@/lib/config/constants"
@@ -112,7 +112,7 @@ export async function GET() {
         "You can view them at: https://dashboard.stripe.com/products",
       ],
     })
-  } catch (_error) {
+  } catch (error) {
     console.error("[Stripe] Error setting up products:", error)
     return NextResponse.json({
       success: false,

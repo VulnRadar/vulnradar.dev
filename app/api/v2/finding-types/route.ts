@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server"
+﻿import { NextResponse } from "next/server"
 import checksData from "@/lib/scanner/checks-data.json"
 
 export async function GET() {
@@ -18,7 +18,7 @@ export async function GET() {
       count: findingTypes.length,
       data: findingTypes,
     })
-  } catch (_error) {
+  } catch (error) {
     console.error("Error retrieving finding types:", error)
     return NextResponse.json(
       { success: false, error: "Failed to retrieve finding types" },

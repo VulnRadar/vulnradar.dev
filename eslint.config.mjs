@@ -54,14 +54,17 @@ export default [
       // interfaces (ProfileTabProps) require all props, even when a
       // specific tab doesn't use them. Prefixing with _ for every
       // unused prop would be noisy across 5+ tab files.
-      // - `vars` and `caughtErrors`: still checked (prefix with _ to silence)
+      // - `vars`: still checked (prefix with _ to silence)
+      // - `caughtErrors`: "none" — catch (error) is allowed even if
+      //   the body doesn't reference the error (e.g., console.error
+      //   is conditional, or the error is logged but not consumed)
       // - `args`: disabled because props are dictated by parent interface
       "@typescript-eslint/no-unused-vars": [
         "warn",
         {
           args: "none",
           varsIgnorePattern: "^_",
-          caughtErrorsIgnorePattern: "^_",
+          caughtErrors: "none",
           ignoreRestSiblings: true,
         },
       ],

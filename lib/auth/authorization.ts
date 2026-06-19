@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server"
+﻿import { NextResponse } from "next/server"
 import pool from "@/lib/database/db"
 import { ApiResponse } from "@/lib/api/api-utils"
 import { TEAM_ROLES } from "@/lib/config/constants"
@@ -27,7 +27,7 @@ export async function verifyOwnership(
     return {
       owned: result.rows.length > 0,
     }
-  } catch (_err) {
+  } catch (error) {
     return {
       owned: false,
       error: ApiResponse.serverError("Failed to verify ownership"),
@@ -72,7 +72,7 @@ export async function verifyTeamMembership(
     }
 
     return { isMember: true, role }
-  } catch (_err) {
+  } catch (error) {
     return {
       isMember: false,
       error: ApiResponse.serverError("Failed to verify team membership"),

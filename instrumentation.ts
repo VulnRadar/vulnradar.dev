@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Database initialization and schema management
  * Runs on server startup to ensure all required tables exist
  * 
@@ -736,7 +736,7 @@ export async function register() {
       }
       process.on("SIGTERM", gracefulShutdown)
       process.on("SIGINT", gracefulShutdown)
-    } catch (_error) {
+    } catch (error) {
       console.error(`[${APP_NAME}] Database migration failed:`, error)
     }
   }

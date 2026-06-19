@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server"
+﻿import { NextRequest, NextResponse } from "next/server"
 import { getSession } from "@/lib/auth"
 import pool from "@/lib/database/db"
 import { ERROR_MESSAGES, APP_VERSION } from "@/lib/config/constants"
@@ -33,7 +33,7 @@ export async function GET() {
       cooldownEndsAt: cooldownEnd.toISOString(),
       data: result.rows[0].data,
     })
-  } catch (_error) {
+  } catch (error) {
     return NextResponse.json({ hasData: false, canDownloadNew: true, lastDownloadAt: null })
   }
 }
@@ -281,7 +281,7 @@ export async function POST(_request: NextRequest) {
     }
 
     return NextResponse.json({ success: true, data: exportData })
-  } catch (_error) {
+  } catch (error) {
     return NextResponse.json({ error: "Failed to export data" }, { status: 500 })
   }
 }

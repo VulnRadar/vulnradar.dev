@@ -1,4 +1,4 @@
-"use client"
+﻿"use client"
 
 import React, { useState, useEffect } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -48,7 +48,7 @@ export function IPRulesManager() {
       })
       const data = await res.json()
       setRules(data.rules || [])
-    } catch (_error) {
+    } catch (error) {
       console.error("Error fetching access rules:", error)
     } finally {
       setLoading(false)
@@ -103,7 +103,7 @@ export function IPRulesManager() {
         setReason("")
         await fetchRules()
       }
-    } catch (_error) {
+    } catch (error) {
       console.error("Error adding rule:", error)
     } finally {
       setAdding(false)
@@ -128,7 +128,7 @@ export function IPRulesManager() {
         setPendingDelete(null)
         await fetchRules()
       }
-    } catch (_error) {
+    } catch (error) {
       console.error("Error deleting rule:", error)
     } finally {
       setDeleting(false)

@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server"
+﻿import { NextRequest, NextResponse } from "next/server"
 import { stripe } from "@/lib/billing/stripe"
 import { getSession } from "@/lib/auth"
 import { PRODUCTS, getPlanFromProductId } from "@/lib/billing/products"
@@ -97,7 +97,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       clientSecret: checkoutSession.client_secret,
     })
-  } catch (_error) {
+  } catch (error) {
     console.error("[Checkout] Error creating session:", error)
     return NextResponse.json(
       { error: "Failed to create checkout session" },

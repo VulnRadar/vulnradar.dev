@@ -1,4 +1,4 @@
-import pool from "./db"
+﻿import pool from "./db"
 
 /**
  * Generic CRUD utilities for common database operations
@@ -15,7 +15,7 @@ export async function getAdminEmails(): Promise<string[]> {
   try {
     const result = await pool.query("SELECT email FROM users WHERE role = 'admin'")
     return result.rows.map((row: DbRow) => row.email as string)
-  } catch (_error) {
+  } catch (error) {
     console.error("Failed to fetch admin emails:", error)
     return []
   }
@@ -28,7 +28,7 @@ export async function getUserById(userId: number, fields = "*"): Promise<DbRow |
   try {
     const result = await pool.query(`SELECT ${fields} FROM users WHERE id = $1`, [userId])
     return (result.rows[0] as DbRow) || null
-  } catch (_error) {
+  } catch (error) {
     console.error("[DB] Failed to get user by ID:", error)
     return null
   }
@@ -41,7 +41,7 @@ export async function getUserByEmail(email: string): Promise<DbRow | null> {
   try {
     const result = await pool.query("SELECT * FROM users WHERE email = $1", [email])
     return (result.rows[0] as DbRow) || null
-  } catch (_error) {
+  } catch (error) {
     console.error("[DB] Failed to get user by email:", error)
     return null
   }
@@ -64,7 +64,7 @@ export async function updateUser(
       [...values, userId]
     )
     return (result.rows[0] as DbRow) || null
-  } catch (_error) {
+  } catch (error) {
     console.error("[DB] Failed to update user:", error)
     return null
   }
@@ -81,7 +81,7 @@ export async function deleteExpiredSessions(): Promise<number> {
   try {
     const result = await pool.query("DELETE FROM sessions WHERE expires_at < NOW()")
     return result.rowCount || 0
-  } catch (_error) {
+  } catch (error) {
     console.error("[DB] Failed to delete expired sessions:", error)
     return 0
   }
@@ -97,7 +97,7 @@ export async function getUserSessionCount(userId: number): Promise<number> {
       [userId]
     )
     return parseInt((result.rows[0] as DbRow)?.count as string || "0", 10)
-  } catch (_error) {
+  } catch (error) {
     console.error("[DB] Failed to get session count:", error)
     return 0
   }
@@ -117,7 +117,7 @@ export async function getDiscordConnection(userId: number): Promise<DbRow | null
       [userId]
     )
     return (result.rows[0] as DbRow) || null
-  } catch (_error) {
+  } catch (error) {
     console.error("[DB] Failed to get Discord connection:", error)
     return null
   }
@@ -133,7 +133,7 @@ export async function deleteDiscordConnection(userId: number): Promise<boolean> 
       [userId]
     )
     return (result.rowCount || 0) > 0
-  } catch (_error) {
+  } catch (error) {
     console.error("[DB] Failed to delete Discord connection:", error)
     return false
   }
@@ -150,7 +150,7 @@ export async function getApiKeyByHash(hash: string): Promise<DbRow | null> {
   try {
     const result = await pool.query("SELECT * FROM api_keys WHERE hash = $1", [hash])
     return (result.rows[0] as DbRow) || null
-  } catch (_error) {
+  } catch (error) {
     console.error("[DB] Failed to get API key:", error)
     return null
   }
@@ -166,7 +166,7 @@ export async function getUserApiKeys(userId: number): Promise<DbRow[]> {
       [userId]
     )
     return (result.rows as DbRow[]) || []
-  } catch (_error) {
+  } catch (error) {
     console.error("[DB] Failed to get user API keys:", error)
     return []
   }
@@ -182,7 +182,7 @@ export async function revokeApiKey(keyId: number): Promise<boolean> {
       [keyId]
     )
     return (result.rowCount || 0) > 0
-  } catch (_error) {
+  } catch (error) {
     console.error("[DB] Failed to revoke API key:", error)
     return false
   }
@@ -203,7 +203,7 @@ export async function batchDelete(
   try {
     const result = await pool.query(`DELETE FROM ${table} WHERE ${whereClause}`, params)
     return result.rowCount || 0
-  } catch (_error) {
+  } catch (error) {
     console.error(`[DB] Failed to batch delete from ${table}:`, error)
     return 0
   }
@@ -228,7 +228,7 @@ export async function batchUpdate(
       [...values, ...params]
     )
     return result.rowCount || 0
-  } catch (_error) {
+  } catch (error) {
     console.error(`[DB] Failed to batch update ${table}:`, error)
     return 0
   }

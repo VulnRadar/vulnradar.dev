@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Database cleanup utilities
  * Handles automatic cleanup of expired records and old data
  */
@@ -193,7 +193,7 @@ export async function performDatabaseCleanup(): Promise<CleanupStats> {
     stats.oldStaffActivity = staffActivityRes.rowCount || 0
 
     return stats
-  } catch (_error) {
+  } catch (error) {
     console.error("[Database Cleanup] Error during cleanup:", error)
     throw error
   }
@@ -236,7 +236,7 @@ export function schedulePeriodicCleanup(_initialDelayMs: number = 60000): NodeJS
     try {
       const stats = await performDatabaseCleanup()
       console.log(`[Database Cleanup] Periodic cleanup completed: ${formatCleanupStats(stats)}`)
-    } catch (_error) {
+    } catch (error) {
       console.error("[Database Cleanup] Periodic cleanup failed:", error)
     }
   }, 24 * 60 * 60 * 1000) // Run every 24 hours

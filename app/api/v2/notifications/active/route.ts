@@ -1,4 +1,4 @@
-import pool from "@/lib/database/db"
+﻿import pool from "@/lib/database/db"
 
 export async function GET(req: Request) {
   try {
@@ -33,7 +33,7 @@ export async function GET(req: Request) {
     )
 
     return Response.json(result.rows)
-  } catch (_error) {
+  } catch (error) {
     console.error("Error fetching active notifications:", error)
     return Response.json({ error: "Failed to fetch notifications" }, { status: 500 })
   }

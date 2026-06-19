@@ -1,4 +1,4 @@
-// ============================================================================
+﻿// ============================================================================
 // Discord OAuth Callback - Handle OAuth response
 // ============================================================================
 
@@ -271,7 +271,7 @@ export async function GET(request: Request) {
 
       return NextResponse.redirect(`${baseUrl}/dashboard`)
     }
-  } catch (_error) {
+  } catch (error) {
     console.error("[Discord] OAuth callback error:", error)
     return NextResponse.redirect(`${baseUrl}/login?error=discord_failed`)
   }

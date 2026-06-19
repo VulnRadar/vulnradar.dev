@@ -1,4 +1,4 @@
-// ============================================================================
+﻿// ============================================================================
 // Daily Request Limit System
 // ============================================================================
 // Tracks and enforces daily request limits based on subscription plan
@@ -59,7 +59,7 @@ export async function getUserPlan(userId: number): Promise<PlanType> {
       return effectivePlan as PlanType
     }
     return "free"
-  } catch (_error) {
+  } catch (error) {
     console.error("[DailyLimits] Error getting user plan:", error)
     return "free"
   }
@@ -91,7 +91,7 @@ export async function getDailyRequestCount(userId: number): Promise<number> {
       [key]
     )
     return parseInt(result.rows[0]?.total || "0", 10)
-  } catch (_error) {
+  } catch (error) {
     console.error("[DailyLimits] Error getting request count:", error)
     return 0
   }
@@ -112,7 +112,7 @@ export async function incrementDailyCount(userId: number): Promise<number> {
       [key]
     )
     return await getDailyRequestCount(userId)
-  } catch (_error) {
+  } catch (error) {
     console.error("[DailyLimits] Error incrementing count:", error)
     return 0
   }
@@ -205,7 +205,7 @@ export async function cleanupOldLimits(daysToKeep: number = 7): Promise<number> 
        WHERE window_start < NOW() - INTERVAL '${daysToKeep} days'`
     )
     return result.rowCount || 0
-  } catch (_error) {
+  } catch (error) {
     console.error("[DailyLimits] Error cleaning up old limits:", error)
     return 0
   }
@@ -228,7 +228,7 @@ export async function getUsageStats(userId: number, days: number = 30): Promise<
       [userId]
     )
     return result.rows
-  } catch (_error) {
+  } catch (error) {
     console.error("[DailyLimits] Error getting usage stats:", error)
     return []
   }

@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server"
+﻿import { NextRequest, NextResponse } from "next/server"
 import pool from "@/lib/database/db"
 import { getSession } from "@/lib/auth"
 import { getClientIp } from "@/lib/api/request-utils"
@@ -137,7 +137,7 @@ export async function POST(request: NextRequest) {
       default:
         return NextResponse.json({ error: "Invalid action" }, { status: 400 })
     }
-  } catch (_error) {
+  } catch (error) {
     console.error("[Admin Blocked Data] Error:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
