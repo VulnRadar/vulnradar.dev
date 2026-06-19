@@ -1,6 +1,7 @@
 ﻿"use client";
 
 import React, { useState, useEffect, useCallback, useRef } from "react";
+import type { LucideIcon } from "lucide-react";
 import {
   Users,
   Activity,
@@ -578,7 +579,8 @@ function AdminContent() {
     },
   ];
 
-  const ALL_ADMIN_TABS = NAV_GROUPS.flatMap((g) => g.items);
+  const ALL_ADMIN_TABS: { key: string; label: string; icon: LucideIcon }[] =
+    NAV_GROUPS.flatMap((g) => g.items);
 
   const handleTabChange = (tabKey: string) => {
     setActiveTab(tabKey as typeof activeTab);
@@ -589,7 +591,7 @@ function AdminContent() {
     updateUrlWithUser(null, tabKey, false);
   };
 
-  const activeTabMeta = ALL_ADMIN_TABS.find((t) => t.key === activeTab);
+  const activeTabMeta = ALL_ADMIN_TABS.find((t: any) => t.key === activeTab);
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
@@ -616,7 +618,7 @@ function AdminContent() {
               <div className="lg:hidden -mx-4 px-4 mb-4">
                 <div className="overflow-x-auto scrollbar-hide">
                   <div className="flex items-center gap-1 border-b border-border pb-3 min-w-max">
-                    {ALL_ADMIN_TABS.map((tab) => (
+                    {ALL_ADMIN_TABS.map((tab: any) => (
                       <button
                         key={tab.key}
                         onClick={() => handleTabChange(tab.key)}
