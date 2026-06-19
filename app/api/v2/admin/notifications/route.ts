@@ -115,7 +115,7 @@ export async function POST(req: Request) {
       session.userId,
       "notification_created",
       `Created ${type} notification: "${title}" (audience: ${audience})`,
-      ip,
+      ip ?? undefined,
     );
 
     return NextResponse.json({ notification: result.rows[0] });

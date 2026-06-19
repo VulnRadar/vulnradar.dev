@@ -1232,7 +1232,7 @@ export async function PATCH(request: NextRequest) {
       if (!ownerCheck.rows[0])
         return NextResponse.json({ error: "Note not found" }, { status: 404 });
       const isOwner = ownerCheck.rows[0].admin_id === session.userId;
-      if (!isOwner && callerRole !== "admin")
+      if (!isOwner && session.role !== "admin")
         return NextResponse.json({ error: "Forbidden" }, { status: 403 });
       await pool.query("UPDATE admin_user_notes SET note = $1 WHERE id = $2", [
         safeNote,
@@ -1258,7 +1258,7 @@ export async function PATCH(request: NextRequest) {
       if (!ownerCheck.rows[0])
         return NextResponse.json({ error: "Note not found" }, { status: 404 });
       const isOwner = ownerCheck.rows[0].admin_id === session.userId;
-      if (!isOwner && callerRole !== "admin")
+      if (!isOwner && session.role !== "admin")
         return NextResponse.json({ error: "Forbidden" }, { status: 403 });
       await pool.query("DELETE FROM admin_user_notes WHERE id = $1", [noteId]);
       await logAction(

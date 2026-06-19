@@ -3,9 +3,14 @@ import { Crown, Shield, Eye } from "lucide-react";
 export interface Team {
   id: number;
   name: string;
+  slug: string;
+  owner_id: number;
+  owner_email: string;
+  owner_name: string | null;
+  owner_avatar_url: string | null;
+  member_count: number;
   created_at: string;
   role: string;
-  member_count: number;
 }
 
 export interface Member {

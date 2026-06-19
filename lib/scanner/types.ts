@@ -23,6 +23,7 @@ export interface Vulnerability {
     language: string;
     code: string;
   }[];
+  references?: string[];
 }
 
 export interface ScanResult {

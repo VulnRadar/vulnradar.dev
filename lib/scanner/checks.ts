@@ -2434,10 +2434,9 @@ const detectors: Record<string, DetectFn> = {
     return null;
   },
 
-  "internal-ip-exposed": (_url, _headers, body) => {
-    // Delegate to the existing, more sophisticated private-ip-exposure check
-    const baseCheck = checks["private-ip-exposure"];
-    return baseCheck ? baseCheck(_url, _headers, body) : null;
+  "internal-ip-exposed": (_url, _headers, _body) => {
+    // Delegated to the dedicated private-ip-exposure check at scan time.
+    return null;
   },
 
   "stack-trace-exposed": (_url, _headers, body) => {
