@@ -5,10 +5,10 @@
 // only ships legacy (.eslintrc) config. When Next.js ships native flat
 // config (planned for 16+), this shim can be removed.
 //
-// We also register @next/eslint-plugin-next directly so that Next.js's
-// plugin detection (which checks the resolved config for an "@next/next"
-// key in `plugins`) recognizes it. This eliminates the
-// "Next.js plugin was not detected" warning from `next build`.
+// `next build`'s internal linter is disabled in next.config.mjs
+// (eslint.ignoreDuringBuilds: true) because its plugin-detection
+// heuristic doesn't recognize the FlatCompat-wrapped Next.js plugin.
+// We run `npm run lint` (which uses `eslint .` directly) in CI instead.
 // ============================================================================
 
 import { dirname } from "node:path"
@@ -16,7 +16,6 @@ import { fileURLToPath } from "node:url"
 import { FlatCompat } from "@eslint/eslintrc"
 import tsPlugin from "@typescript-eslint/eslint-plugin"
 import tsParser from "@typescript-eslint/parser"
-import nextPlugin from "@next/eslint-plugin-next"
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
@@ -45,9 +44,6 @@ export default [
   {
     plugins: {
       "@typescript-eslint": tsPlugin,
-      // Register Next.js plugin so Next.js's plugin detection
-      // (`'@next/next' in plugins`) succeeds.
-      "@next/next": nextPlugin,
     },
     languageOptions: {
       parser: tsParser,

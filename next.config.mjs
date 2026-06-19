@@ -6,6 +6,15 @@ const nextConfig = {
   typescript: {
     ignoreBuildErrors: true,
   },
+  eslint: {
+    // Skip Next.js's internal linter during `next build`. We run ESLint
+    // separately via `npm run lint` (and the pre-existing `lint` CI step
+    // runs the same). Next.js's bundled linter can't reliably detect the
+    // Next.js plugin when using @eslint/eslintrc's FlatCompat shim
+    // (a known false positive until Next.js 16 ships native flat config),
+    // which makes the "Next.js plugin was not detected" warning noisy.
+    ignoreDuringBuilds: true,
+  },
   images: {
     unoptimized: true,
   },
