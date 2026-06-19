@@ -398,14 +398,13 @@ async function main() {
     return;
   }
 
-  // ── Create target database via postgres admin connection ─────────────────
+  // ── Create target database ────────────────────────────────────────────────
+  // We connect to the source database (not the 'postgres' admin DB) because
+  // many managed Postgres providers (Neon, Supabase, RDS) don't expose a
+  // 'postgres' database. CREATE DATABASE works from any existing connection.
   section("Step 1: Creating New Database");
   const adminPool = new pg.Pool({
-    user: sourceParsed.user,
-    password: sourceParsed.password,
-    host: sourceParsed.host,
-    port: parseInt(sourceParsed.port, 10),
-    database: "postgres",
+    connectionString: buildConnectionString(sourceParsed, chosenSource),
     connectionTimeoutMillis: 10000,
   });
 
