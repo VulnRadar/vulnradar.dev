@@ -54,7 +54,9 @@ export function useAdminTeams({ toast }: UseAdminTeamsOptions) {
         setPage(data.page || 1);
         setTotalPages(data.totalPages || 1);
       } catch (error) {
-        setError(err instanceof Error ? err.message : "Failed to load teams");
+        setError(
+          error instanceof Error ? error.message : "Failed to load teams",
+        );
       }
 
       setLoading(false);

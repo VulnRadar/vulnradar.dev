@@ -105,7 +105,7 @@ export async function PUT(
       session.userId,
       "notification_updated",
       `Updated notification: "${updatedNotif.title}" (ID: ${id})`,
-      ip,
+      ip ?? undefined,
     );
 
     return NextResponse.json({ notification: result.rows[0] });
@@ -158,7 +158,7 @@ export async function DELETE(
       session.userId,
       "notification_deleted",
       `Deleted notification: "${notifTitle}" (ID: ${id})`,
-      ip,
+      ip ?? undefined,
     );
 
     return NextResponse.json({ success: true });

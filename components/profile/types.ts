@@ -8,6 +8,7 @@ export interface UserBadge {
   icon: string | null;
   color: string | null;
   priority: number;
+  is_limited: boolean;
   awarded_at: string;
 }
 
@@ -20,6 +21,9 @@ export interface ProfileUser {
   avatarUrl?: string | null;
   role?: string;
   badges?: UserBadge[];
+  discordId?: string | null;
+  discordUsername?: string | null;
+  discordAvatar?: string | null;
 }
 
 export interface ApiKey {
@@ -43,6 +47,7 @@ export interface DataRequestInfo {
 export interface BillingInfo {
   billingEnabled: boolean;
   plan: string;
+  planName: string | null;
   subscriptionStatus: string | null;
   stripeCustomerId: string | null;
   subscription: {

@@ -398,9 +398,14 @@ function checkTLSCert(
 
             if (!authorized) {
               const authError = socket.authorizationError;
+              const authCode = String(
+                (authError as NodeJS.ErrnoException | null)?.code ??
+                  authError?.message ??
+                  "",
+              );
               if (
-                authError === "DEPTH_ZERO_SELF_SIGNED_CERT" ||
-                authError === "SELF_SIGNED_CERT_IN_CHAIN"
+                authCode === "DEPTH_ZERO_SELF_SIGNED_CERT" ||
+                authCode === "SELF_SIGNED_CERT_IN_CHAIN"
               ) {
                 findings.push(
                   makeVuln(
@@ -417,7 +422,7 @@ function checkTLSCert(
                     ],
                   ),
                 );
-              } else if (authError === "UNABLE_TO_VERIFY_LEAF_SIGNATURE") {
+              } else if (authCode === "UNABLE_TO_VERIFY_LEAF_SIGNATURE") {
                 findings.push(
                   makeVuln(
                     "Incomplete TLS Certificate Chain",

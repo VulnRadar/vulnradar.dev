@@ -286,7 +286,7 @@ export async function POST(request: Request) {
           ? new Date(subscription.cancel_at * 1000).toISOString()
           : null,
         currentPeriodEnd: new Date(
-          subscription.current_period_end * 1000,
+          (subscription as unknown as { current_period_end: number }).current_period_end * 1000,
         ).toISOString(),
       });
     }
