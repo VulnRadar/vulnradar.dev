@@ -579,8 +579,11 @@ function AdminContent() {
     },
   ];
 
-  const ALL_ADMIN_TABS: { key: string; label: string; icon: LucideIcon }[] =
-    NAV_GROUPS.flatMap((g) => g.items);
+  const ALL_ADMIN_TABS = NAV_GROUPS.flatMap((g) => g.items) as unknown as {
+    key: string;
+    label: string;
+    icon: LucideIcon;
+  }[];
 
   const handleTabChange = (tabKey: string) => {
     setActiveTab(tabKey as typeof activeTab);
