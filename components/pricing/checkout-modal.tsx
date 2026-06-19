@@ -9,7 +9,7 @@ import Link from "next/link";
 
 interface CheckoutModalProps {
   planId: string;
-  userId: string;
+  userId: number;
   billing: "monthly" | "yearly";
   onClose: () => void;
   onSuccess: () => void;

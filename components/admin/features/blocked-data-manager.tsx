@@ -200,7 +200,7 @@ export function BlockedDataManager() {
         description={`This will permanently delete all scan history for "${pendingDelete?.value}". This action cannot be undone.`}
         confirmLabel="Delete All Data"
         changes={deleteChangeItems}
-        isLoading={deletingScans !== null}
+        loading={deletingScans !== null}
         variant="destructive"
       />
 

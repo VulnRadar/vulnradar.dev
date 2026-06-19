@@ -61,7 +61,6 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
       await client.query("COMMIT");
       return ApiResponse.badRequest(
         "This verification link has expired. Please request a new one.",
-        400,
       );
     }
 

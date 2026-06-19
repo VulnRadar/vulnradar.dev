@@ -354,7 +354,7 @@ export async function POST(req: NextRequest) {
               FROM users WHERE stripe_customer_id = $8`,
               [
                 invoice.id,
-                invoice.payment_intent,
+                (invoice as unknown as { payment_intent?: string }).payment_intent ?? null,
                 invoice.amount_paid,
                 invoice.currency,
                 "succeeded",

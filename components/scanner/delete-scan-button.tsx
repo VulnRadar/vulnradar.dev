@@ -62,26 +62,19 @@ export function DeleteScanButton({
           variant="destructive"
           size="sm"
           onClick={handleDelete}
-          disabled={state === "deleting"}
+          disabled={false}
           className="gap-2"
         >
-          {state === "deleting" ? (
-            <>
-              <Loader2 className="h-4 w-4 animate-spin" />
-              <span className="hidden sm:inline">Deleting...</span>
-            </>
-          ) : (
-            <>
-              <AlertCircle className="h-4 w-4" />
-              <span className="hidden sm:inline">Confirm</span>
-            </>
-          )}
+          <>
+            <AlertCircle className="h-4 w-4" />
+            <span className="hidden sm:inline">Confirm</span>
+          </>
         </Button>
         <Button
           variant="outline"
           size="sm"
           onClick={() => setState("idle")}
-          disabled={state === "deleting"}
+          disabled={false}
           className="bg-transparent"
         >
           <span className="hidden sm:inline">Cancel</span>

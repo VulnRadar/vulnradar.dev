@@ -31,6 +31,7 @@ export interface ScanResult {
   scannedAt: string;
   duration: number;
   findings: Vulnerability[];
+  checksRun?: number;
   summary: {
     critical: number;
     high: number;
