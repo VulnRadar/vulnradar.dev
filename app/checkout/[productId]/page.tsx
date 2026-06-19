@@ -159,7 +159,6 @@ export default function CheckoutPage({
             variant="ghost"
             size="sm"
             onClick={() => {
-              setVerifying(false);
               setCheckoutComplete(true);
             }}
             className="text-muted-foreground hover:text-foreground"

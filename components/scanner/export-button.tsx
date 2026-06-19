@@ -61,7 +61,7 @@ export function ExportButton({ result }: ExportButtonProps) {
 
   function handleExportPdf() {
     const pdfBytes = generatePdfReport(result);
-    const blob = new Blob([pdfBytes], { type: "application/pdf" });
+    const blob = new Blob([new Uint8Array(pdfBytes)], { type: "application/pdf" });
     downloadBlob(blob, `${APP_SLUG}-${hostname}-${date}.pdf`);
     setExportedPdf(true);
     setTimeout(() => setExportedPdf(false), 2000);

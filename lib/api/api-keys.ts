@@ -163,6 +163,8 @@ export async function validateApiKey(key: string): Promise<{
         continue;
       }
     }
+
+    return null;
   } else {
     // Fallback: hash-based lookup if encryption is not configured
     const result = await pool.query(

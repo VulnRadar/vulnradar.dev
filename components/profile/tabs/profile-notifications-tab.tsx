@@ -150,24 +150,28 @@ export function ProfileNotificationsTab({
                   icon: LogIn,
                   label: "Login Alerts",
                   desc: "Notifications when someone signs into your account from a new device or location.",
+                  badge: "" as const,
                 },
                 {
                   key: "email_password_change" as const,
                   icon: Lock,
                   label: "Password Changes",
                   desc: "Alerts when your password is changed or a reset is requested.",
+                  badge: "" as const,
                 },
                 {
                   key: "email_2fa_change" as const,
                   icon: Fingerprint,
                   label: "2FA Changes",
                   desc: "Notifications when two-factor authentication is enabled, disabled, or modified.",
+                  badge: "" as const,
                 },
                 {
                   key: "email_session_revoked" as const,
                   icon: MonitorSmartphone,
                   label: "Session Alerts",
                   desc: "Alerts about active sessions and session revocations.",
+                  badge: "" as const,
                 },
               ] as const
             ).map(({ key, icon: Icon, label, desc, badge }) => (

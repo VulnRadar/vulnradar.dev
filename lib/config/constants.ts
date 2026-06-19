@@ -238,6 +238,7 @@ export const SUCCESS_MESSAGES = {
   TWO_FA_ENABLED: "Two-factor authentication enabled",
   TWO_FA_DISABLED: "Two-factor authentication disabled",
   DEVICE_REMEMBERED: "Device will be remembered for 30 days",
+  DELETED: "Resource deleted successfully",
 };
 
 // ============================================================================
@@ -586,6 +587,7 @@ export const API = {
   DATA_REQUEST_DOWNLOAD: `/api/${API_VERSION}/data-request/download`,
   ACCOUNT_DELETE: `/api/${API_VERSION}/account/delete`,
   ACCOUNT_NOTIFICATIONS: `/api/${API_VERSION}/account/notifications`,
+  ACCOUNT: `/api/${API_VERSION}/account/delete`,
   FINDING_TYPES: `/api/${API_VERSION}/finding-types`,
   COMPARE: `/api/${API_VERSION}/compare`,
   BILLING: `/api/${API_VERSION}/billing`,

@@ -197,7 +197,7 @@ export function NotificationBell() {
   const { me } = useAuth();
   const [open, setOpen] = useState(false);
   const [notifications, setNotifications] = useState<ApiNotification[]>([]);
-  const [dismissedIds, setDismissedIds] = useState<Set<number>>(new Set());
+  const [dismissedIds, setDismissedIds] = useState<Set<string>>(new Set());
   const [hydrated, setHydrated] = useState(false);
   const [loading, setLoading] = useState(true);
   const [showVersionNotif, setShowVersionNotif] = useState(false);
@@ -208,7 +208,7 @@ export function NotificationBell() {
     return pathname.startsWith(p);
   });
 
-  const isStaff = me?.role && STAFF_ROLE_VALUES.includes(me.role);
+  const isStaff = me?.role && (STAFF_ROLE_VALUES as readonly string[]).includes(me.role);
 
   // Check if there's a new version (cookie-based)
   useEffect(() => {
@@ -226,7 +226,7 @@ export function NotificationBell() {
       try {
         const parsed = JSON.parse(decodeURIComponent(dismissed));
         if (Array.isArray(parsed)) {
-          setDismissedIds(new Set(parsed.map(Number)));
+          setDismissedIds(new Set(parsed.map(String)));
         }
       } catch {
         // Invalid cookie, ignore

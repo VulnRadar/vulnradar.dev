@@ -18,8 +18,38 @@ import {
   type StaffPermission,
 } from "@/lib/auth/permissions-client";
 
+export interface MeResponse {
+  userId: number;
+  email: string;
+  name: string | null;
+  tosAcceptedAt: string | null;
+  totpEnabled: boolean;
+  twoFactorMethod: string | null;
+  isAdmin: boolean;
+  role: string;
+  avatarUrl: string | null;
+  onboardingCompleted: boolean;
+  backupCodesInvalid: boolean;
+  discordId: string | null;
+  discordUsername: string | null;
+  discordAvatar: string | null;
+  plan: string;
+  subscriptionStatus: string | null;
+  giftedSubscription: {
+    plan: string;
+    expiresAt: string;
+  } | null;
+  badges: Array<{
+    id: number;
+    name: string;
+    display_name: string;
+    color: string | null;
+    awarded_at: string;
+  }>;
+}
+
 interface AuthContextType {
-  me: Record<string, unknown> | null;
+  me: MeResponse | null;
   isLoading: boolean;
   // Permission helpers
   isStaff: boolean;
@@ -34,7 +64,7 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 const fetcher = (url: string) => fetch(url).then((r) => r.json());
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const { data: me, isLoading } = useSWR(API.AUTH.ME, fetcher, {
+  const { data: me, isLoading } = useSWR<MeResponse>(API.AUTH.ME, fetcher, {
     revalidateOnFocus: false,
     revalidateOnReconnect: false,
     dedupingInterval: 300000,
@@ -81,7 +111,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [me]);
 
   return (
-    <AuthContext.Provider value={{ me, isLoading, ...authHelpers }}>
+    <AuthContext.Provider value={{ me: me ?? null, isLoading, ...authHelpers }}>
       {children}
     </AuthContext.Provider>
   );

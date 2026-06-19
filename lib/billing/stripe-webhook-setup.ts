@@ -131,6 +131,3 @@ export function ensureStripeWebhookOnce(): Promise<{
   return webhookSetupPromise;
 }
 
-// Type import for Stripe
-import type Stripe from "stripe";
-
