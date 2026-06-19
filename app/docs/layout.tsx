@@ -2,7 +2,15 @@
 
 import { useState, useEffect, createContext, useContext } from "react";
 import { usePathname } from "next/navigation";
-import { BookOpen, Code2, Webhook, Gauge } from "lucide-react";
+import {
+  BookOpen,
+  Code2,
+  Webhook,
+  Gauge,
+  Cpu,
+  Server,
+  Settings,
+} from "lucide-react";
 import { Footer } from "@/components/scanner/footer";
 import { LandingNav } from "@/components/landing/landing-nav";
 import {
@@ -39,6 +47,9 @@ export type { TocItem };
 const mainNavItems: NavItem[] = [
   { href: "/docs", label: "Getting Started", icon: BookOpen, exact: true },
   { href: "/docs/setup", label: "Setup Guide", icon: BookOpen },
+  { href: "/docs/self-hosting", label: "Self-Hosting", icon: Server },
+  { href: "/docs/config", label: "Configuration", icon: Settings },
+  { href: "/docs/architecture", label: "Architecture", icon: Cpu },
   { href: "/docs/api", label: "API Reference", icon: Code2 },
   { href: "/docs/webhooks", label: "Webhooks", icon: Webhook },
   { href: "/docs/rate-limits", label: "Rate Limits", icon: Gauge },

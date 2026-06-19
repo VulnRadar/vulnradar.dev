@@ -35,6 +35,17 @@ const tocItems: TocItem[] = [
   { id: "building-sdks", label: "Building SDKs" },
   { id: "sdk-checklist", label: "SDK Checklist", level: 2 },
   { id: "community", label: "Community SDKs" },
+  { id: "development", label: "Development Guide" },
+  { id: "prerequisites", label: "Prerequisites", level: 2 },
+  { id: "quick-start", label: "Quick Start", level: 2 },
+  { id: "scripts", label: "Scripts", level: 2 },
+  { id: "linting", label: "Linting", level: 2 },
+  { id: "typecheck", label: "Type Checking", level: 2 },
+  { id: "commits", label: "Commit Conventions", level: 2 },
+  { id: "pull-requests", label: "Pull Request Process", level: 2 },
+  { id: "structure", label: "Project Structure", level: 2 },
+  { id: "pitfalls", label: "Common Pitfalls", level: 2 },
+  { id: "debugging", label: "Debugging", level: 2 },
   { id: "contributing", label: "Contributing" },
 ];
 
@@ -397,6 +408,449 @@ for finding in result.findings:
             </ul>
           </div>
         </Card>
+      </DocsSection>
+
+      {/* Development Guide */}
+      <DocsSection id="development" title="Development Guide" icon={Zap}>
+        <p className="text-muted-foreground">
+          Setup for contributing to VulnRadar. Covers local dev, scripts, commit
+          conventions, and common pitfalls.
+        </p>
+      </DocsSection>
+
+      <DocsSection
+        id="prerequisites"
+        title="Prerequisites"
+        icon={FileJson}
+        className="ml-0"
+      >
+        <ul className="list-disc pl-6 space-y-2 text-muted-foreground">
+          <li>
+            <strong>Node.js 20.x</strong> (matches <code>Dockerfile</code> and
+            CI; LTS recommended)
+          </li>
+          <li>
+            <strong>npm 10+</strong> (or <code>pnpm</code> / <code>yarn</code>{" "}
+            if you adapt the lockfile)
+          </li>
+          <li>
+            <strong>PostgreSQL 14+</strong> (local install or via Docker)
+          </li>
+          <li>
+            <strong>Git</strong>
+          </li>
+        </ul>
+      </DocsSection>
+
+      <DocsSection
+        id="quick-start"
+        title="Quick Start"
+        icon={Zap}
+        className="ml-0"
+      >
+        <CodeBlock
+          language="bash"
+          code={`# 1. Clone
+git clone https://github.com/VulnRadar/vulnradar.dev.git
+cd vulnradar.dev
+
+# 2. Install dependencies
+npm ci
+
+# 3. Set up environment
+cp .env.example .env
+# Edit .env with your DATABASE_URL, API_KEY_ENCRYPTION_KEY, etc.
+
+# 4. Create the database schema
+node scripts/create-fresh-db.mjs
+
+# 5. Start the dev server
+npm run dev
+# → http://localhost:3000`}
+        />
+        <p className="text-muted-foreground">
+          The first run auto-initializes the schema. You&apos;ll see{" "}
+          <code>Database initialized</code> in the console. To create an admin
+          user, sign up normally, then promote via SQL:
+        </p>
+        <CodeBlock
+          language="sql"
+          code={`UPDATE users SET role = 'admin' WHERE email = 'you@example.com';`}
+        />
+      </DocsSection>
+
+      <DocsSection id="scripts" title="Scripts" icon={Package} className="ml-0">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-border">
+                <th className="text-left py-2 font-semibold text-xs">Script</th>
+                <th className="text-left py-2 font-semibold text-xs">
+                  What it does
+                </th>
+              </tr>
+            </thead>
+            <tbody className="text-muted-foreground">
+              <tr className="border-b border-border/50">
+                <td className="py-2.5">
+                  <code>npm run dev</code>
+                </td>
+                <td className="py-2.5 text-xs">
+                  Start Next.js dev server (HMR) on port 3000
+                </td>
+              </tr>
+              <tr className="border-b border-border/50">
+                <td className="py-2.5">
+                  <code>npm run build</code>
+                </td>
+                <td className="py-2.5 text-xs">
+                  Production build (runs next build)
+                </td>
+              </tr>
+              <tr className="border-b border-border/50">
+                <td className="py-2.5">
+                  <code>npm run start</code>
+                </td>
+                <td className="py-2.5 text-xs">Run the production build</td>
+              </tr>
+              <tr className="border-b border-border/50">
+                <td className="py-2.5">
+                  <code>npm run lint</code>
+                </td>
+                <td className="py-2.5 text-xs">
+                  Run ESLint over the repo (no --fix)
+                </td>
+              </tr>
+              <tr className="border-b border-border/50">
+                <td className="py-2.5">
+                  <code>npm run lint:fix</code>
+                </td>
+                <td className="py-2.5 text-xs">
+                  Run ESLint with --fix (auto-fixes where safe)
+                </td>
+              </tr>
+              <tr className="border-b border-border/50">
+                <td className="py-2.5">
+                  <code>npm run typecheck</code>
+                </td>
+                <td className="py-2.5 text-xs">
+                  Run tsc --noEmit (build-time typecheck)
+                </td>
+              </tr>
+              <tr className="border-b border-border/50">
+                <td className="py-2.5">
+                  <code>npm run format</code>
+                </td>
+                <td className="py-2.5 text-xs">
+                  Format all source files with Prettier
+                </td>
+              </tr>
+              <tr className="border-b border-border/50">
+                <td className="py-2.5">
+                  <code>npm run format:check</code>
+                </td>
+                <td className="py-2.5 text-xs">
+                  Check formatting without writing
+                </td>
+              </tr>
+              <tr className="border-b border-border/50">
+                <td className="py-2.5">
+                  <code>npm run db:migrate</code>
+                </td>
+                <td className="py-2.5 text-xs">
+                  Run scripts/migrate.mjs (ad-hoc DB migrations)
+                </td>
+              </tr>
+              <tr className="border-b border-border/50">
+                <td className="py-2.5">
+                  <code>npm run db:create</code>
+                </td>
+                <td className="py-2.5 text-xs">
+                  Drop and recreate the database schema
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </DocsSection>
+
+      <DocsSection
+        id="linting"
+        title="Linting"
+        icon={FileJson}
+        className="ml-0"
+      >
+        <p className="text-muted-foreground">
+          ESLint 9 with flat config (<code>.eslint.config.mjs</code>). The
+          config wraps <code>next/core-web-vitals</code> for React/Next/TS
+          rules. Warnings are non-blocking; CI fails only on errors.
+        </p>
+        <CodeBlock
+          language="bash"
+          code={`npm run lint        # check
+npm run lint:fix    # auto-fix`}
+        />
+        <p className="text-muted-foreground">Common rule overrides:</p>
+        <ul className="list-disc pl-6 space-y-1 text-sm text-muted-foreground">
+          <li>
+            <code>@typescript-eslint/no-unused-vars</code> → <code>warn</code>{" "}
+            (with <code>^_</code> underscore convention)
+          </li>
+          <li>
+            <code>@typescript-eslint/no-explicit-any</code> → <code>warn</code>
+          </li>
+          <li>
+            <code>@next/next/no-html-link-for-pages</code> → off (we use{" "}
+            <code>&lt;Link&gt;</code> exclusively)
+          </li>
+          <li>
+            <code>react/no-unescaped-entities</code> → off (too noisy for our
+            content)
+          </li>
+        </ul>
+      </DocsSection>
+
+      <DocsSection
+        id="typecheck"
+        title="Type Checking"
+        icon={FileJson}
+        className="ml-0"
+      >
+        <p className="text-muted-foreground">
+          <code>tsc --noEmit</code> runs in CI but is{" "}
+          <strong>non-blocking</strong> (legacy <code>next.config.mjs</code> has{" "}
+          <code>typescript.ignoreBuildErrors: true</code>). The build is green
+          either way. New code should still type-check cleanly.
+        </p>
+      </DocsSection>
+
+      <DocsSection
+        id="commits"
+        title="Commit Conventions"
+        icon={GitBranch}
+        className="ml-0"
+      >
+        <p className="text-muted-foreground">
+          We follow <strong>Conventional Commits</strong>:
+        </p>
+        <CodeBlock
+          language="text"
+          code={`<type>(<scope>): <subject>
+
+<body>
+
+<footer>`}
+        />
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-border">
+                <th className="text-left py-2 font-semibold text-xs">Type</th>
+                <th className="text-left py-2 font-semibold text-xs">
+                  Used for
+                </th>
+              </tr>
+            </thead>
+            <tbody className="text-muted-foreground">
+              <tr className="border-b border-border/50">
+                <td className="py-2.5">
+                  <code>feat</code>
+                </td>
+                <td className="py-2.5 text-xs">New user-facing feature</td>
+              </tr>
+              <tr className="border-b border-border/50">
+                <td className="py-2.5">
+                  <code>fix</code>
+                </td>
+                <td className="py-2.5 text-xs">Bug fix</td>
+              </tr>
+              <tr className="border-b border-border/50">
+                <td className="py-2.5">
+                  <code>chore</code>
+                </td>
+                <td className="py-2.5 text-xs">
+                  Maintenance, deps, tooling, no production code change
+                </td>
+              </tr>
+              <tr className="border-b border-border/50">
+                <td className="py-2.5">
+                  <code>refactor</code>
+                </td>
+                <td className="py-2.5 text-xs">
+                  Code change with no behavior change
+                </td>
+              </tr>
+              <tr className="border-b border-border/50">
+                <td className="py-2.5">
+                  <code>docs</code>
+                </td>
+                <td className="py-2.5 text-xs">Documentation only</td>
+              </tr>
+              <tr className="border-b border-border/50">
+                <td className="py-2.5">
+                  <code>style</code>
+                </td>
+                <td className="py-2.5 text-xs">
+                  Formatting only (no logic change)
+                </td>
+              </tr>
+              <tr className="border-b border-border/50">
+                <td className="py-2.5">
+                  <code>test</code>
+                </td>
+                <td className="py-2.5 text-xs">Adding/updating tests</td>
+              </tr>
+              <tr className="border-b border-border/50">
+                <td className="py-2.5">
+                  <code>perf</code>
+                </td>
+                <td className="py-2.5 text-xs">Performance improvement</td>
+              </tr>
+              <tr className="border-b border-border/50">
+                <td className="py-2.5">
+                  <code>ci</code>
+                </td>
+                <td className="py-2.5 text-xs">CI/CD changes</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p className="text-muted-foreground">Examples:</p>
+        <ul className="list-disc pl-6 space-y-1 text-sm text-muted-foreground">
+          <li>
+            <code>feat(scan): add WebSocket CSWSH check</code>
+          </li>
+          <li>
+            <code>fix(auth): correct TOTP clock skew handling</code>
+          </li>
+          <li>
+            <code>chore(deps): bump next to 15.5.19</code>
+          </li>
+          <li>
+            <code>docs: add /docs/architecture page</code>
+          </li>
+        </ul>
+      </DocsSection>
+
+      <DocsSection
+        id="pull-requests"
+        title="Pull Request Process"
+        icon={GitBranch}
+        className="ml-0"
+      >
+        <ol className="list-decimal pl-6 space-y-2 text-muted-foreground">
+          <li>
+            Branch off <code>main</code> (
+            <code>git switch -c fix/short-name</code>)
+          </li>
+          <li>Make focused commits (one logical change per commit)</li>
+          <li>
+            Run <code>npm run lint</code>, <code>npm run typecheck</code>,{" "}
+            <code>npm run build</code> locally
+          </li>
+          <li>Use the PR template (.github/pull_request_template.md)</li>
+          <li>Wait for CI (lint + typecheck + build + auto-applied labels)</li>
+          <li>Request review from CODEOWNERS (security/critical paths)</li>
+          <li>After 1+ approval, squash-merge</li>
+        </ol>
+      </DocsSection>
+
+      <DocsSection
+        id="structure"
+        title="Project Structure"
+        icon={FileJson}
+        className="ml-0"
+      >
+        <ul className="list-disc pl-6 space-y-1 text-sm text-muted-foreground">
+          <li>
+            <code>app/</code> — Next.js App Router (file-system routing)
+          </li>
+          <li>
+            <code>components/</code> — React components
+          </li>
+          <li>
+            <code>lib/</code> — Server-side libraries
+          </li>
+          <li>
+            <code>hooks/</code> — Custom React hooks
+          </li>
+          <li>
+            <code>public/</code> — Static assets
+          </li>
+          <li>
+            <code>scripts/</code> — Admin / DB scripts
+          </li>
+          <li>
+            <code>instrumentation.ts</code> — Next.js startup hooks
+          </li>
+          <li>
+            <code>middleware.ts</code> — Auth middleware
+          </li>
+        </ul>
+        <p className="text-muted-foreground">
+          For a deeper tour, see the{" "}
+          <a href="/docs/architecture">Architecture</a> page.
+        </p>
+      </DocsSection>
+
+      <DocsSection
+        id="pitfalls"
+        title="Common Pitfalls"
+        icon={Zap}
+        className="ml-0"
+      >
+        <ol className="list-decimal pl-6 space-y-3 text-muted-foreground">
+          <li>
+            <strong>
+              Editing <code>lib/types/config.ts</code> defaults
+            </strong>{" "}
+            — they are derived from <code>config-values.ts</code>. Edit{" "}
+            <code>config-values.ts</code> instead.
+          </li>
+          <li>
+            <strong>Adding a new API route</strong> — copy an existing one in{" "}
+            <code>app/api/v2/.../route.ts</code>; wrap with{" "}
+            <code>withErrorHandling</code>, use <code>parseBody</code> +{" "}
+            <code>Validate</code> for input.
+          </li>
+          <li>
+            <strong>Adding a database table</strong> — add the{" "}
+            <code>CREATE TABLE</code> to{" "}
+            <code>scripts/create-fresh-db.mjs</code> (idempotent) and run{" "}
+            <code>npm run db:create</code> to test.
+          </li>
+          <li>
+            <strong>Adding a new icon</strong> — import from{" "}
+            <code>lucide-react</code>. Don&apos;t bundle from a different lib.
+          </li>
+          <li>
+            <strong>Adding a constant</strong> — if it&apos;s a value (not a
+            path or URL), add it to <code>config-values.ts</code> rather than a
+            magic number in the code.
+          </li>
+        </ol>
+      </DocsSection>
+
+      <DocsSection id="debugging" title="Debugging" icon={Zap} className="ml-0">
+        <ul className="list-disc pl-6 space-y-2 text-muted-foreground">
+          <li>
+            <strong>Server logs:</strong> visible in <code>npm run dev</code>{" "}
+            output
+          </li>
+          <li>
+            <strong>Database queries:</strong> add <code>console.log</code> in{" "}
+            <code>lib/database/db-utils.ts</code> (temporarily)
+          </li>
+          <li>
+            <strong>Auth issues:</strong> check the session cookie with browser
+            devtools
+          </li>
+          <li>
+            <strong>Build issues:</strong> <code>next.config.mjs</code> has{" "}
+            <code>output: standalone</code> disabled (Dockerfile copies{" "}
+            <code>.next</code> directly)
+          </li>
+        </ul>
       </DocsSection>
 
       {/* Contributing */}
