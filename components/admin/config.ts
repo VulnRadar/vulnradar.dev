@@ -258,16 +258,8 @@ export const ACTION_LABELS: Record<string, string> = {
   revoke_gift: "Gifted subscription revoked.",
 };
 
-// Audit log filter categories
-export const AUDIT_FILTER_CATEGORIES = [
-  { value: "all", label: "All Actions" },
-  { value: "role", label: "Role Changes" },
-  { value: "security", label: "Security" },
-  { value: "account", label: "Account Status" },
-  { value: "profile", label: "Profile Updates" },
-  { value: "badge", label: "Badges" },
-  { value: "data", label: "Data Management" },
-];
+// Audit log filter categories — defined in components/admin/utils.ts
+// (re-exported from the barrel to avoid duplicate declarations)
 
 // Default pagination sizes
 export const DEFAULT_PAGE_SIZE = 10;
