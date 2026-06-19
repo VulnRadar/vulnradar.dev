@@ -68,15 +68,21 @@ export function banner(title, subtitle) {
   const horizontal = "═".repeat(innerWidth + 4);
   const top = `  ╔${horizontal}╗`;
   const bot = `  ╚${horizontal}╝`;
-  const mid = `  ║  ${padToVisible(c.bold + title + c.reset, innerWidth)}  ║`;
-  const sub = subtitle
-    ? `  ║  ${padToVisible(c.dim + subtitle + c.reset, innerWidth)}  ║`
+  // Pad with spaces AFTER the styled title/subtitle so the right border ║
+  // stays inside the cyan color span (not white/default).
+  const titleLine = `  ║  ${c.bold}${title}${c.reset}${" ".repeat(
+    Math.max(0, innerWidth - title.length),
+  )}  ║`;
+  const subLine = subtitle
+    ? `  ║  ${c.dim}${subtitle}${c.reset}${" ".repeat(
+        Math.max(0, innerWidth - subtitle.length),
+      )}  ║`
     : null;
 
   log("");
   log(`${c.bold}${c.cyan}${top}${c.reset}`);
-  log(`${c.cyan}${mid}${c.reset}`);
-  if (sub) log(`${c.cyan}${sub}${c.reset}`);
+  log(`${c.cyan}${titleLine}${c.reset}`);
+  if (subLine) log(`${c.cyan}${subLine}${c.reset}`);
   log(`${c.bold}${c.cyan}${bot}${c.reset}`);
   log("");
 }
@@ -206,13 +212,17 @@ export function formatDbTarget(parsed) {
 }
 
 /**
- * Connect to the `postgres` admin database and list every non-template database
+ * Connect to the user's target database and list every non-template database
  * on the same host. Returns an array of { name, sizeBytes, owner }.
+ *
+ * Note: `pg_database` is a cluster-wide view, so we don't need to connect to
+ * a special admin database — any database in the cluster can see every
+ * database. This means it works on managed Postgres providers (Neon, Supabase,
+ * RDS) that don't expose the `postgres` admin database.
  */
 export async function listDatabases(parsed) {
-  const adminUrl = buildConnectionString(parsed, "postgres");
   const pool = new pg.Pool({
-    connectionString: adminUrl,
+    connectionString: buildConnectionString(parsed),
     connectionTimeoutMillis: 10000,
     statement_timeout: 10000,
   });
