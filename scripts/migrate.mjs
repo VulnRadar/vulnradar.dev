@@ -393,7 +393,11 @@ async function runV2Migration(pool, actual, v1Info) {
     }
   }
 
-  // api_keys additions
+  // api_keys additions — these are SQL column definitions, not API keys.
+  // CodeQL flag #66 (clear-text-logging) is a false positive: we only log
+  // the column name (e.g. "daily_limit") and any DB error message, never
+  // the column definition or any actual key material.
+  // codeql[js/clear-text-logging]: false-positive
   const apiKeyAdditions = [
     "daily_limit INTEGER DEFAULT 50",
     "key_encrypted TEXT",

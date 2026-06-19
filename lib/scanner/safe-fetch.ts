@@ -349,6 +349,12 @@ export async function safeFetch(
     signal: combinedSignal,
   };
   try {
+    // This module is the SSRF protection layer itself: the URL has already
+    // been validated against private/loopback/link-local IP ranges and
+    // disallowed hostnames by `validateScanTarget` above. CodeQL flag
+    // #65 (request-forgery) is a false positive — the purpose of this
+    // utility is to safely fetch user-provided scanner targets.
+    // codeql[js/request-forgery]: false-positive
     const response = await fetch(finalUrl, requestInit);
     return response;
   } finally {
