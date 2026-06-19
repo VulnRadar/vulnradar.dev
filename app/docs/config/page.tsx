@@ -578,10 +578,8 @@ lib/types/
             <code>docker compose up -d</code>
           </li>
           <li>
-            <code>
-              docker compose exec app node scripts/create-fresh-db.mjs
-            </code>{" "}
-            to initialize the schema
+            <code>docker compose exec app npm run db:create</code> to initialize
+            the schema
           </li>
           <li>
             (Optional) Create the first admin user, then promote via SQL:

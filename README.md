@@ -50,7 +50,7 @@ cp .env.example .env
 docker compose up -d
 
 # 4. Initialize database
-docker compose exec app node scripts/create-fresh-db.mjs
+docker compose exec app npm run db:create
 ```
 
 ## Configuration

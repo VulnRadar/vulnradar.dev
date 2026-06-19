@@ -212,12 +212,15 @@ async function copyTableData(originalPool, newPool, table, rowCount) {
   const defaults = COLUMN_DEFAULTS[table] || {};
   const extraCols = [];
   const extraVals = [];
-  for (const [name, info_] of targetInfo) {
+  for (const [name, targetColumnInfo] of targetInfo) {
     if (mapping.has(name)) continue;
     if (defaults[name] !== undefined) {
       extraCols.push(name);
       extraVals.push(defaults[name]);
-    } else if (info_.is_nullable === "NO" && !info_.column_default) {
+    } else if (
+      targetColumnInfo.is_nullable === "NO" &&
+      !targetColumnInfo.column_default
+    ) {
       warn(
         `  ${table}.${name} is NOT NULL with no default — skipping data copy.`,
       );
@@ -424,7 +427,7 @@ async function main() {
   log(`    ${c.green}2.${c.reset} Create all tables with fresh schema`);
   log(`    ${c.green}3.${c.reset} Optionally migrate data from source`);
   log(
-    `    ${c.green}4.${c.reset} Source database ${c.bold}${sourceParsed.database}${c.reset} is ${c.green}NEVER modified${c.reset}`,
+    `    ${c.green}4.${c.reset} Source database ${c.bold}${chosenSource}${c.reset} is ${c.green}NEVER modified${c.reset}`,
   );
   log("");
 
@@ -484,7 +487,7 @@ async function main() {
 
   // ── Connect to new database ───────────────────────────────────────────────
   const newUrl = process.env.DATABASE_URL.replace(
-    `/${sourceParsed.database}`,
+    `/${chosenSource}`,
     `/${newDbName}`,
   );
   const newPool = new pg.Pool({
