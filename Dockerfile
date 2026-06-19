@@ -7,9 +7,7 @@ WORKDIR /app
 ARG NEXT_PUBLIC_APP_URL
 
 # Install dependencies first (better layer caching)
-# Prefer package-lock.json (npm). If you use pnpm, keep a pnpm-lock.yaml and adapt if needed.
 COPY package.json package-lock.json ./
-# Install exact versions from package-lock.json
 RUN npm ci --silent
 
 # Copy source code
@@ -46,8 +44,10 @@ RUN addgroup --system --gid 1001 nodejs && \
 
 # Copy necessary files from builder
 COPY --from=builder /app/public ./public
-COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
-COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+COPY --from=builder --chown=nextjs:nodejs /app/.next ./.next
+COPY --from=builder --chown=nextjs:nodejs /app/node_modules ./node_modules
+COPY --from=builder --chown=nextjs:nodejs /app/package.json ./package.json
+COPY --from=builder --chown=nextjs:nodejs /app/next.config.mjs ./next.config.mjs
 
 # Install wget for health checks
 RUN apk add --no-cache wget
@@ -62,4 +62,4 @@ ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
 
 # Start the app (schema auto-creates via instrumentation.ts on startup)
-CMD ["node", "server.js"]
+CMD ["npm", "start"]
