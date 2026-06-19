@@ -22,12 +22,15 @@ export function useAdminPermissions(callerRole: string) {
       ),
       canEditUsers: hasStaffPermission(
         callerRole,
-        STAFF_PERMISSIONS.EDIT_USERS,
+        STAFF_PERMISSIONS.EDIT_USER_NAME,
       ),
-      canBanUsers: hasStaffPermission(callerRole, STAFF_PERMISSIONS.BAN_USERS),
+      canBanUsers: hasStaffPermission(
+        callerRole,
+        STAFF_PERMISSIONS.DISABLE_USER,
+      ),
       canDeleteUsers: hasStaffPermission(
         callerRole,
-        STAFF_PERMISSIONS.DELETE_USERS,
+        STAFF_PERMISSIONS.DELETE_USER,
       ),
 
       // Audit
@@ -39,36 +42,35 @@ export function useAdminPermissions(callerRole: string) {
       // Teams
       canManageTeams: hasStaffPermission(
         callerRole,
-        STAFF_PERMISSIONS.MANAGE_TEAMS,
+        STAFF_PERMISSIONS.MANAGE_ANY_TEAM,
       ),
 
       // Badges
       canManageBadges: hasStaffPermission(
         callerRole,
-        STAFF_PERMISSIONS.MANAGE_BADGES,
+        STAFF_PERMISSIONS.CREATE_BADGE,
       ),
 
       // Notifications
       canSendNotifications: hasStaffPermission(
         callerRole,
-        STAFF_PERMISSIONS.SEND_NOTIFICATIONS,
+        STAFF_PERMISSIONS.SEND_ANNOUNCEMENTS,
       ),
 
       // Staff management
       canViewStaff: hasStaffPermission(
         callerRole,
-        STAFF_PERMISSIONS.VIEW_STAFF,
+        STAFF_PERMISSIONS.ACCESS_STAFF_PAGE,
       ),
       canManageStaff: hasStaffPermission(
         callerRole,
-        STAFF_PERMISSIONS.MANAGE_STAFF,
+        STAFF_PERMISSIONS.EDIT_USER_ROLE,
       ),
 
       // Role helpers
       canManageRole: (targetRole: string) =>
         canManageRole(callerRole, targetRole),
-      getAvailableActions: (targetRole: string | null) =>
-        getAvailableActions(callerRole, targetRole),
+      getAvailableActions: () => getAvailableActions(callerRole),
     }),
     [callerRole],
   );
