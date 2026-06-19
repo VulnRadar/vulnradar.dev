@@ -1,4 +1,4 @@
-// ============================================================================
+﻿// ============================================================================
 // Roles & Permissions System (Clean Schema)
 // ============================================================================
 // Uses the `role` field on users table instead of separate tables.
@@ -89,7 +89,7 @@ export async function getUserRole(userId: number): Promise<RoleName> {
     )
     const role = result.rows[0]?.role
     return (role && role in ROLES) ? role as RoleName : "user"
-  } catch (_error) {
+  } catch (error) {
     console.error("[Permissions] Error getting user role:", error)
     return "user"
   }
@@ -143,7 +143,7 @@ export async function setUserRole(userId: number, roleName: RoleName): Promise<v
       `UPDATE users SET role = $1, updated_at = NOW() WHERE id = $2`,
       [roleName, userId]
     )
-  } catch (_error) {
+  } catch (error) {
     console.error("[Permissions] Error setting user role:", error)
     throw error
   }

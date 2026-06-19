@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server"
+﻿import { NextRequest, NextResponse } from "next/server"
 import { getSession } from "@/lib/auth"
 import pool from "@/lib/database/db"
 import { stripe } from "@/lib/billing/stripe"
@@ -54,7 +54,7 @@ export async function POST(request: NextRequest) {
       success: true,
       message: immediate ? "Subscription canceled immediately" : "Subscription will be canceled at period end",
     })
-  } catch (_error) {
+  } catch (error) {
     console.error("[Billing] Error canceling subscription:", error)
     return NextResponse.json({ error: "Failed to cancel subscription" }, { status: 500 })
   }

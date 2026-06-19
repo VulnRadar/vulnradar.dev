@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server"
+﻿import { NextRequest, NextResponse } from "next/server"
 import pool from "@/lib/database/db"
 import { getSession } from "@/lib/auth"
 import { getClientIp } from "@/lib/api/request-utils"
@@ -418,7 +418,7 @@ export async function POST(req: NextRequest) {
     }
 
     return NextResponse.json({ error: "Unknown section" }, { status: 400 })
-  } catch (_error) {
+  } catch (error) {
     console.error("[Admin API] Error:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }

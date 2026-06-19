@@ -55,8 +55,8 @@ export function SystemSettingsManager() {
       })
       setSettings(settingsMap)
       setChanges({})
-    } catch (_error) {
-      console.error("Error fetching settings:", _error)
+    } catch (error) {
+      console.error("Error fetching settings:", error)
     } finally {
       setLoading(false)
     }
@@ -93,8 +93,8 @@ export function SystemSettingsManager() {
         ...changes,
       }))
       setChanges({})
-    } catch (_error) {
-      console.error("Error saving settings:", _error)
+    } catch (error) {
+      console.error("Error saving settings:", error)
     } finally {
       setSaving(false)
     }

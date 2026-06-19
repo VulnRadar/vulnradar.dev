@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Safe Fetch Utility - SSRF Protection
  * 
  * Validates target URLs to prevent Server-Side Request Forgery (SSRF) attacks
@@ -208,7 +208,7 @@ export async function validateScanTarget(url: string): Promise<SafetyCheckResult
       }
       // No addresses returned; treat as safe but without a resolved IP
       return { safe: true }
-    } catch (_dnsError) {
+    } catch (error) {
       // DNS resolution failed - let the actual fetch handle it
       return { safe: true }
     }

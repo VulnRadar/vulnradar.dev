@@ -1,4 +1,4 @@
-"use client"
+﻿"use client"
 
 import React, { useState, useEffect } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -66,7 +66,7 @@ export function BlockedDataManager() {
       // Filter to only show blacklist rules
       const blacklistRules = (data.rules || []).filter((r: BlockedRule) => r.rule_type === "blacklist" && r.is_active)
       setBlockedRules(blacklistRules)
-    } catch (_error) {
+    } catch (error) {
       console.error("Error fetching blocked rules:", error)
     } finally {
       setLoading(false)
@@ -87,7 +87,7 @@ export function BlockedDataManager() {
       })
       const data = await res.json()
       setMatchingScans(prev => ({ ...prev, [ruleId]: data.scans || [] }))
-    } catch (_error) {
+    } catch (error) {
       console.error("Error fetching matching scans:", error)
       setToast({ message: "Failed to fetch matching scans", type: "error" })
     } finally {
@@ -129,7 +129,7 @@ export function BlockedDataManager() {
       } else {
         setToast({ message: data.error || "Failed to delete scans", type: "error" })
       }
-    } catch (_error) {
+    } catch (error) {
       console.error("Error deleting scans:", error)
       setToast({ message: "Failed to delete scans", type: "error" })
     } finally {

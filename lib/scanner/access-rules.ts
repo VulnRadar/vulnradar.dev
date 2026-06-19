@@ -1,4 +1,4 @@
-import pool from "@/lib/database/db"
+﻿import pool from "@/lib/database/db"
 
 export interface AccessRuleCheckResult {
   allowed: boolean
@@ -79,7 +79,7 @@ export async function checkAccessRules(url: string): Promise<AccessRuleCheckResu
     }
 
     return { allowed: true }
-  } catch (_error) {
+  } catch (error) {
     // On error, allow the scan to proceed (fail-open for availability)
     console.error("[VulnRadar] Access rules check failed:", error instanceof Error ? error.message : error)
     return { allowed: true }

@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server"
+﻿import { NextRequest, NextResponse } from "next/server"
 import { getSession } from "@/lib/auth"
 import pool from "@/lib/database/db"
 import Stripe from "stripe"
@@ -58,7 +58,7 @@ export async function GET(request: NextRequest) {
         sessionVerified,
       },
     })
-  } catch (_error) {
+  } catch (error) {
     console.error("[Checkout] Verify subscription error:", error)
     return NextResponse.json(
       { error: "Failed to verify subscription" },

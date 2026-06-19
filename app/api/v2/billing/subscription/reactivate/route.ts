@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server"
+﻿import { NextResponse } from "next/server"
 import { getSession } from "@/lib/auth"
 import pool from "@/lib/database/db"
 import { stripe } from "@/lib/billing/stripe"
@@ -37,7 +37,7 @@ export async function POST() {
       success: true,
       message: "Subscription reactivated successfully",
     })
-  } catch (_error) {
+  } catch (error) {
     console.error("[Billing] Error reactivating subscription:", error)
     return NextResponse.json({ error: "Failed to reactivate subscription" }, { status: 500 })
   }

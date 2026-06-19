@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server"
+﻿import { NextResponse } from "next/server"
 import { getSession, deleteAllSessions } from "@/lib/auth"
 
 export async function DELETE() {
@@ -22,7 +22,7 @@ export async function DELETE() {
     })
 
     return response
-  } catch (_error) {
+  } catch (error) {
     console.error("[Sessions] Error revoking sessions:", error)
     return NextResponse.json({ error: "Failed to revoke sessions" }, { status: 500 })
   }

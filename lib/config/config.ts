@@ -1,4 +1,4 @@
-// ============================================================================
+﻿// ============================================================================
 // Configuration Loader (Works in both Server and Client)
 // ============================================================================
 // Loads configuration from hardcoded defaults in lib/config/config-values.ts
@@ -28,7 +28,7 @@ export function loadConfig(): VulnRadarConfig {
   try {
     _config = DEFAULT_CONFIG
     return _config
-  } catch (_error) {
+  } catch (error) {
     _configLoadError = error instanceof Error ? error.message : "Unknown error"
     if (process.env.NODE_ENV === "development") {
       console.error(`[Config] Error loading config: ${_configLoadError}`)

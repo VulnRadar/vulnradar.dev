@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server"
+﻿import { NextRequest, NextResponse } from "next/server"
 import { checkRateLimit, getClientIP, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit"
 import { contactConfirmationEmail, contactEmail, sendEmail } from "@/lib/email/email"
 import { TURNSTILE_ENABLED, NOREPLY_EMAIL } from "@/lib/config/constants"
@@ -99,7 +99,7 @@ export async function POST(request: NextRequest) {
             html: confirmationPayload.html,
           }),
         ])
-      } catch (_error) {
+      } catch (error) {
         console.error("Contact email send failed", error)
       }
     }

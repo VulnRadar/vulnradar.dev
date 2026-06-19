@@ -1,4 +1,4 @@
-"use client"
+﻿"use client"
 
 import React, { useState, useEffect, useCallback } from "react"
 import { Card } from "@/components/ui/card"
@@ -50,7 +50,7 @@ export function SecurityAlertsManager() {
       })
       const data = await res.json()
       setAlerts(data.alerts || [])
-    } catch (_error) {
+    } catch (error) {
       console.error("Error fetching alerts:", error)
     } finally {
       setLoading(false)
@@ -76,7 +76,7 @@ export function SecurityAlertsManager() {
         }),
       })
       await fetchAlerts()
-    } catch (_error) {
+    } catch (error) {
       console.error("Error resolving alert:", error)
     } finally {
       setResolving(false)

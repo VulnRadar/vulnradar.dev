@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server"
+﻿import { NextRequest, NextResponse } from "next/server"
 import { allChecks, getFilteredChecks } from "@/lib/scanner/checks"
 import { runAsyncChecks } from "@/lib/scanner/async-checks"
 import { getSession } from "@/lib/auth"
@@ -503,7 +503,7 @@ export async function POST(request: NextRequest) {
     }
 
     return NextResponse.json(responseData)
-  } catch (_error) {
+  } catch (error) {
     console.error("[VulnRadar] Scan error:", error instanceof Error ? error.message : error)
     return NextResponse.json(
       { error: "An unexpected error occurred during the scan." },

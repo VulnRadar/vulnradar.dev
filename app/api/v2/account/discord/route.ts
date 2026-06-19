@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server"
+﻿import { NextResponse } from "next/server"
 import { getSession } from "@/lib/auth"
 import pool from "@/lib/database/db"
 
@@ -29,7 +29,7 @@ export async function GET() {
       guildJoined: connection.guild_joined,
       updatedAt: connection.updated_at,
     })
-  } catch (_error) {
+  } catch (error) {
     console.error("Discord connection check error:", error)
     return NextResponse.json({ error: "Failed to check Discord connection" }, { status: 500 })
   }
@@ -69,7 +69,7 @@ export async function DELETE() {
     )
 
     return NextResponse.json({ success: true, message: "Discord account disconnected" })
-  } catch (_error) {
+  } catch (error) {
     console.error("Discord disconnect error:", error)
     return NextResponse.json({ error: "Failed to disconnect Discord account" }, { status: 500 })
   }

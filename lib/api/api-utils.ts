@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server"
+﻿import { NextRequest, NextResponse } from "next/server"
 import { getSession } from "@/lib/auth/auth"
 import pool from "@/lib/database/db"
 import { ERROR_MESSAGES } from "@/lib/config/constants"
@@ -181,7 +181,7 @@ export async function parseBody<T>(request: Request): Promise<{ success: true; d
     }
     
     return { success: false, error: "Unsupported content-type" }
-  } catch (_error) {
+  } catch (error) {
     console.error("[Parse Body Error]", error)
     return { success: false, error: "Failed to parse request body" }
   }
@@ -204,15 +204,17 @@ export async function safeQuery<T = unknown>(
 }
 
 /**
- * Wrap async route handler with standardized error handling
+ * Wrap async route handler with standardized error handling.
+ * Accepts NextRequest (and its base Request) so route handlers can
+ * use Next.js-specific APIs like cookies, nextUrl, etc.
  */
 export function withErrorHandling(
-  handler: (req: Request) => Promise<NextResponse>,
+  handler: (req: NextRequest) => Promise<NextResponse>,
 ) {
-  return async (req: Request) => {
+  return async (req: NextRequest) => {
     try {
       return await handler(req)
-    } catch (_error) {
+    } catch (error) {
       console.error("[API Error]", error)
       return ApiResponse.serverError("An unexpected error occurred")
     }

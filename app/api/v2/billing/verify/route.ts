@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server"
+﻿import { NextRequest, NextResponse } from "next/server"
 import { getSession } from "@/lib/auth"
 import pool from "@/lib/database/db"
 import { stripe } from "@/lib/billing/stripe"
@@ -252,7 +252,7 @@ export async function POST(request: NextRequest) {
         isOnTrial: subscription.trial_end ? new Date(subscription.trial_end * 1000) > new Date() : false,
       }
     })
-  } catch (_error) {
+  } catch (error) {
     console.error("[Billing] Error verifying code:", error)
     return NextResponse.json({ error: "Failed to verify code" }, { status: 500 })
   }

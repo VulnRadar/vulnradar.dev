@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server"
+﻿import { NextRequest, NextResponse } from "next/server"
 import { checkRateLimit, getClientIP, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit"
 import { sendEmail, landingContactEmail, landingContactConfirmationEmail } from "@/lib/email/email"
 import { NOREPLY_EMAIL } from "@/lib/config/constants"
@@ -82,7 +82,7 @@ export async function POST(request: NextRequest) {
             html: userEmail.html,
           }),
         ])
-      } catch (_error) {
+      } catch (error) {
         console.error("Landing page contact email send failed", error)
       }
     }

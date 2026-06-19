@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server"
+﻿import { NextRequest, NextResponse } from "next/server"
 import { randomInt } from "node:crypto"
 import { getSession } from "@/lib/auth"
 import pool from "@/lib/database/db"
@@ -66,7 +66,7 @@ export async function POST(_request: NextRequest) {
       message: "Verification code sent to your email.",
       maskedEmail: masked 
     })
-  } catch (_error) {
+  } catch (error) {
     console.error("[Billing] Error sending verification code:", error)
     return NextResponse.json({ error: "Failed to send verification code" }, { status: 500 })
   }

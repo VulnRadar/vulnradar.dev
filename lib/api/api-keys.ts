@@ -1,4 +1,4 @@
-import { randomBytes } from "node:crypto"
+﻿import { randomBytes } from "node:crypto"
 import bcrypt from "bcryptjs"
 import pool from "@/lib/database/db"
 import { API_KEY_PREFIX, DEFAULT_API_KEY_DAILY_LIMIT, TERMS_UPDATED_AT } from "@/lib/config/constants"
@@ -115,7 +115,7 @@ export async function validateApiKey(key: string): Promise<{
                         needsTermsAcceptance: !hasAcceptedLatestTerms(row.tos_accepted_at),
                     }
                 }
-            } catch (_error) {
+            } catch (error) {
                 // Decryption failed for this key, try next one
                 continue
             }
@@ -146,7 +146,7 @@ export async function validateApiKey(key: string): Promise<{
                         needsTermsAcceptance: !hasAcceptedLatestTerms(row.tos_accepted_at),
                     }
                 }
-            } catch (_error) {
+            } catch (error) {
                 // Comparison failed for this key, try next one
                 continue
             }
@@ -177,7 +177,7 @@ export async function validateApiKey(key: string): Promise<{
                         needsTermsAcceptance: !hasAcceptedLatestTerms(row.tos_accepted_at),
                     }
                 }
-            } catch (_error) {
+            } catch (error) {
                 // Comparison failed for this key, try next one
                 continue
             }

@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server"
+﻿import { NextResponse } from "next/server"
 import pool from "@/lib/database/db"
 import { getSession } from "@/lib/auth"
 import { hasStaffPermission, STAFF_PERMISSIONS } from "@/lib/auth/permissions-client"
@@ -22,7 +22,7 @@ export async function GET() {
     )
 
     return NextResponse.json({ notifications: result.rows })
-  } catch (_error) {
+  } catch (error) {
     console.error("Error fetching notifications:", error)
     return NextResponse.json({ error: "Failed to fetch notifications" }, { status: 500 })
   }
@@ -93,7 +93,7 @@ export async function POST(req: Request) {
     await logAction(session.userId, "notification_created", `Created ${type} notification: "${title}" (audience: ${audience})`, ip)
 
     return NextResponse.json({ notification: result.rows[0] })
-  } catch (_error) {
+  } catch (error) {
     console.error("Error creating notification:", error)
     return NextResponse.json({ error: "Failed to create notification" }, { status: 500 })
   }

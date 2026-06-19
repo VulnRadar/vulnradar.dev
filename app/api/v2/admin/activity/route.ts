@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server"
+﻿import { NextRequest, NextResponse } from "next/server"
 import { getSession } from "@/lib/auth"
 import pool from "@/lib/database/db"
 import { STAFF_ROLE_HIERARCHY } from "@/lib/config/constants"
@@ -51,7 +51,7 @@ export async function POST(request: NextRequest) {
         is_active: true, // Just sent heartbeat, so is active
       },
     })
-  } catch (_error) {
+  } catch (error) {
     console.error("[Admin Activity] Heartbeat error:", error)
     return NextResponse.json({ error: "Failed to update activity" }, { status: 500 })
   }
@@ -101,7 +101,7 @@ export async function GET(_request: NextRequest) {
       staff: staffResult.rows,
       timestamp: new Date(),
     })
-  } catch (_error) {
+  } catch (error) {
     console.error("[Admin Activity] Fetch error:", error)
     return NextResponse.json({ error: "Failed to fetch activity" }, { status: 500 })
   }
