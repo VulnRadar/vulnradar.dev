@@ -212,6 +212,16 @@ export function formatDbTarget(parsed) {
 }
 
 /**
+ * Just the host:port (no user, no database). Useful for intro screens where
+ * the database will be picked afterwards, so showing the DB name is noise.
+ */
+export function formatDbHost(parsed) {
+  if (!parsed) return null;
+  const port = parsed.port || "5432";
+  return `${parsed.host}:${port}`;
+}
+
+/**
  * Connect to the user's target database and list every non-template database
  * on the same host. Returns an array of { name, sizeBytes, owner }.
  *
@@ -251,9 +261,16 @@ export async function listDatabases(parsed) {
 
 /**
  * Show a numbered list of databases on the same host and let the user pick.
- * Accepts a free-text answer to allow custom database names. Returns the
- * chosen database name. If the user picks the current database, returns it
- * unchanged.
+ *
+ * Flow:
+ *   1. Show the list
+ *   2. User picks (or `n` / `cancel` to abort → returns null)
+ *   3. Confirm: "Use <name>? (Y/n)"
+ *      - y  → return the chosen name
+ *      - n  → loop back to the picker
+ *      - c  → confirm cancel → returns null
+ *
+ * Returns the chosen database name, or null if the user cancelled.
  */
 export async function chooseDatabase(parsed, options = {}) {
   const {
@@ -268,48 +285,97 @@ export async function chooseDatabase(parsed, options = {}) {
     ? dbs.filter((d) => d.name !== currentDb)
     : dbs;
 
-  log("");
-  log(
-    `  ${c.bold}Databases on ${c.cyan}${parsed.host}:${parsed.port}${c.reset}:${c.reset}`,
-  );
-  for (let i = 0; i < choices.length; i++) {
-    const d = choices[i];
-    const isCurrent = d.name === currentDb;
-    const marker = isCurrent ? `${c.green}*${c.reset}` : " ";
-    const sizeStr = formatBytes(d.sizeBytes);
-    log(
-      `    ${marker} ${c.bold}${String(i + 1).padStart(2)}${c.reset}. ${d.name} ${c.dim}(${sizeStr})${c.reset}`,
-    );
-  }
-  if (allowCustom) {
-    log(`     ${c.dim} 0.  Enter a custom database name${c.reset}`);
-  }
-  if (currentDb) {
+  const renderList = () => {
     log("");
-    log(`  ${c.dim}* = current (${currentDb})${c.reset}`);
-  }
-  log("");
+    log(
+      `  ${c.bold}Databases on ${c.cyan}${parsed.host}:${parsed.port}${c.reset}:${c.reset}`,
+    );
+    for (let i = 0; i < choices.length; i++) {
+      const d = choices[i];
+      const isCurrent = d.name === currentDb;
+      const marker = isCurrent ? `${c.green}*${c.reset}` : " ";
+      const sizeStr = formatBytes(d.sizeBytes);
+      log(
+        `    ${marker} ${c.bold}${String(i + 1).padStart(2)}${c.reset}. ${d.name} ${c.dim}(${sizeStr})${c.reset}`,
+      );
+    }
+    if (allowCustom) {
+      log(`     ${c.dim} 0.  Enter a custom database name${c.reset}`);
+    }
+    log(`     ${c.dim} n.  Cancel (abort this script)${c.reset}`);
+    if (currentDb) {
+      log("");
+      log(`  ${c.dim}* = current (${currentDb})${c.reset}`);
+    }
+    log("");
+  };
+
+  renderList();
 
   while (true) {
     const raw = await rawQuestion(
-      `${c.cyan}?${c.reset} ${prompt} ${c.dim}[1-${choices.length}${allowCustom ? " or 0" : ""}]${c.reset} `,
+      `${c.cyan}?${c.reset} ${prompt} ${c.dim}[1-${choices.length}${allowCustom ? ", 0, n" : ", n"}]${c.reset} `,
     );
-    const trimmed = raw.trim();
+    const trimmed = raw.trim().toLowerCase();
 
-    if (trimmed === "" && currentDb) {
-      return currentDb;
-    }
-
+    // Cancel paths
     if (
-      allowCustom &&
-      (trimmed === "0" || trimmed.toLowerCase() === "custom")
+      trimmed === "n" ||
+      trimmed === "no" ||
+      trimmed === "q" ||
+      trimmed === "quit" ||
+      trimmed === "cancel" ||
+      trimmed === "exit"
     ) {
-      return await ask("Enter database name");
+      const sure = await askDanger("Cancel this operation?");
+      if (sure) {
+        warn("Cancelled.");
+        return null;
+      }
+      renderList();
+      continue;
     }
 
+    // Default to current DB on bare Enter
+    if (trimmed === "" && currentDb) {
+      const confirmed = await askYesNo(
+        `Use ${c.bold}${currentDb}${c.reset} ${c.dim}(current)${c.reset}?`,
+        true,
+      );
+      if (confirmed) return currentDb;
+      renderList();
+      continue;
+    }
+
+    // Custom name
+    if (allowCustom && (trimmed === "0" || trimmed === "custom")) {
+      const customName = await ask("Enter database name");
+      if (!customName) {
+        warn("Empty name. Try again.");
+        renderList();
+        continue;
+      }
+      const confirmed = await askYesNo(
+        `Use ${c.bold}${customName}${c.reset} ${c.dim}(custom)${c.reset}?`,
+        true,
+      );
+      if (confirmed) return customName;
+      renderList();
+      continue;
+    }
+
+    // Numeric pick
     const n = Number(trimmed);
     if (Number.isInteger(n) && n >= 1 && n <= choices.length) {
-      return choices[n - 1].name;
+      const picked = choices[n - 1].name;
+      const tag = picked === currentDb ? ` ${c.dim}(current)${c.reset}` : "";
+      const confirmed = await askYesNo(
+        `Use ${c.bold}${picked}${c.reset}${tag}?`,
+        true,
+      );
+      if (confirmed) return picked;
+      renderList();
+      continue;
     }
 
     warn("Invalid selection. Try again.");

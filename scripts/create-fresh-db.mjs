@@ -40,6 +40,7 @@ import {
   connect,
   parseDbUrl,
   formatDbTarget,
+  formatDbHost,
   buildConnectionString,
   chooseDatabase,
   getDatabaseSummary,
@@ -306,7 +307,7 @@ async function main() {
   const ok = await confirmIntro({
     title: `VulnRadar ${meta.version} — Create New Database`,
     tagline: "Creates a NEW database, leaves the original untouched.",
-    target: formatDbTarget(sourceParsed),
+    target: formatDbHost(sourceParsed),
     steps: [
       "Let you pick which database to copy FROM",
       "Ask for a name for the NEW database",
@@ -331,6 +332,10 @@ async function main() {
     currentDb: sourceParsed.database,
     prompt: "Which database to copy FROM",
   });
+  if (chosenSource === null) {
+    info("Cancelled.");
+    return;
+  }
   if (chosenSource !== sourceParsed.database) {
     process.env.DATABASE_URL = buildConnectionString(
       sourceParsed,
