@@ -46,16 +46,36 @@ export const info = (msg) => log(`${c.cyan}[INFO]${c.reset} ${msg}`);
 export const success = (msg) => log(`${c.green}[OK]${c.reset}   ${msg}`);
 export const warn = (msg) => log(`${c.yellow}[WARN]${c.reset} ${msg}`);
 export const error = (msg) => log(`${c.red}[ERR]${c.reset}  ${msg}`);
-
 // ── Banner / section header ────────────────────────────────────────────────
+/**
+ * Compute the visible length of a string (excluding ANSI escape codes).
+ * Used to build box-drawing borders that align regardless of color codes.
+ */
+function visibleLength(s) {
+  return s.replace(/\x1b\[[0-9;]*m/g, "").length;
+}
+
+function padToVisible(s, width) {
+  const pad = Math.max(0, width - visibleLength(s));
+  return s + " ".repeat(pad);
+}
+
 export function banner(title, subtitle) {
-  const top = `  ╔══${"═".repeat(title.length + 2)}══╗`;
-  const mid = `  ║  ${c.bold}${title}${c.reset}  ║`;
-  const sub = subtitle ? `  ║  ${c.dim}${subtitle}${c.reset}  ║` : null;
-  const bot = `  ╚══${"═".repeat(title.length + 2)}══╝`;
+  const innerWidth = Math.max(
+    visibleLength(title),
+    subtitle ? visibleLength(subtitle) : 0,
+  );
+  const horizontal = "═".repeat(innerWidth + 4);
+  const top = `  ╔${horizontal}╗`;
+  const bot = `  ╚${horizontal}╝`;
+  const mid = `  ║  ${padToVisible(c.bold + title + c.reset, innerWidth)}  ║`;
+  const sub = subtitle
+    ? `  ║  ${padToVisible(c.dim + subtitle + c.reset, innerWidth)}  ║`
+    : null;
+
   log("");
   log(`${c.bold}${c.cyan}${top}${c.reset}`);
-  log(`${c.bold}${c.cyan}${mid}${c.reset}`);
+  log(`${c.cyan}${mid}${c.reset}`);
   if (sub) log(`${c.cyan}${sub}${c.reset}`);
   log(`${c.bold}${c.cyan}${bot}${c.reset}`);
   log("");
@@ -68,7 +88,6 @@ export function section(title) {
   );
   log("");
 }
-
 // ── .env.local loader (only sets vars not already in process.env) ──────────
 export function loadEnv() {
   if (process.env.DATABASE_URL) return true;
