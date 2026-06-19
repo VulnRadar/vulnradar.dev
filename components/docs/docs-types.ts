@@ -1,60 +1,60 @@
-import { LucideIcon } from "lucide-react"
+import { LucideIcon } from "lucide-react";
 
 export interface TocItem {
-  id: string
-  label: string
-  level?: number
+  id: string;
+  label: string;
+  level?: number;
 }
 
 export interface NavItem {
-  href: string
-  label: string
-  icon: LucideIcon
-  exact?: boolean
+  href: string;
+  label: string;
+  icon: LucideIcon;
+  exact?: boolean;
 }
 
 export interface EndpointParam {
-  name: string
-  type: string
-  description: string
-  required?: boolean
+  name: string;
+  type: string;
+  description: string;
+  required?: boolean;
 }
 
 export interface EndpointError {
-  code: number
-  description: string
+  code: number;
+  description: string;
 }
 
 export interface Endpoint {
-  id: string
-  method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE"
-  path: string
-  title: string
-  description: string
-  requestBody?: string
-  responseExample: string
-  queryParams?: EndpointParam[]
-  pathParams?: EndpointParam[]
-  errors?: EndpointError[]
-  notes?: string[]
-  auth?: boolean
+  id: string;
+  method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
+  path: string;
+  title: string;
+  description: string;
+  requestBody?: string;
+  responseExample: string;
+  queryParams?: EndpointParam[];
+  pathParams?: EndpointParam[];
+  errors?: EndpointError[];
+  notes?: string[];
+  auth?: boolean;
 }
 
 export interface QuickStat {
-  value: string
-  label: string
+  value: string;
+  label: string;
 }
 
 export interface Feature {
-  icon: LucideIcon
-  title: string
-  description: string
+  icon: LucideIcon;
+  title: string;
+  description: string;
 }
 
 export interface Step {
-  step: number
-  title: string
-  description: string
+  step: number;
+  title: string;
+  description: string;
 }
 
 // Method colors for endpoint badges
@@ -64,7 +64,7 @@ export const METHOD_COLORS = {
   PUT: "bg-amber-600/20 text-amber-600 border-amber-600/30",
   PATCH: "bg-purple-600/20 text-purple-600 border-purple-600/30",
   DELETE: "bg-red-600/20 text-red-600 border-red-600/30",
-} as const
+} as const;
 
 // Severity colors
 export const SEVERITY_COLORS = {
@@ -73,4 +73,4 @@ export const SEVERITY_COLORS = {
   medium: "text-yellow-500",
   low: "text-blue-500",
   info: "text-gray-500",
-} as const
+} as const;

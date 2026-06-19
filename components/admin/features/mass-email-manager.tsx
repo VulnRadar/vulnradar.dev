@@ -1,28 +1,49 @@
-"use client"
+"use client";
 
-import { useState, useEffect } from "react"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent } from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
-import { Textarea } from "@/components/ui/textarea"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Badge } from "@/components/ui/badge"
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
+import { useState, useEffect } from "react";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import {
-  Mail, Send, Eye, Trash2, RefreshCw, Loader2,
-  FileEdit, CheckCircle2, Clock, Users, MailOpen,
-} from "lucide-react"
-import { cn } from "@/lib/ui/utils"
-import { SaveConfirmationModal } from "@/components/shared/save-confirmation-modal"
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Badge } from "@/components/ui/badge";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import {
+  Mail,
+  Send,
+  Eye,
+  Trash2,
+  RefreshCw,
+  Loader2,
+  FileEdit,
+  CheckCircle2,
+  Clock,
+  Users,
+  MailOpen,
+} from "lucide-react";
+import { cn } from "@/lib/ui/utils";
+import { SaveConfirmationModal } from "@/components/shared/save-confirmation-modal";
 
 interface Broadcast {
-  id: string
-  title: string
-  status: string
-  created_at: string
-  sent_at?: string
-  created_by_name?: string
-  sent_by_name?: string
+  id: string;
+  title: string;
+  status: string;
+  created_at: string;
+  sent_at?: string;
+  created_by_name?: string;
+  sent_by_name?: string;
 }
 
 const EMAIL_COLORS = {
@@ -35,7 +56,7 @@ const EMAIL_COLORS = {
   TEXT_DARK: "#475569",
   ACCENT_BLUE: "#2563eb",
   ACCENT_BLUE_LIGHT: "#3b82f6",
-}
+};
 
 function generatePreviewHtml(title: string, content: string): string {
   return `<!DOCTYPE html>
@@ -98,7 +119,7 @@ function generatePreviewHtml(title: string, content: string): string {
     </tr>
   </table>
 </body>
-</html>`
+</html>`;
 }
 
 const SEGMENT_LABELS: Record<string, string> = {
@@ -109,49 +130,50 @@ const SEGMENT_LABELS: Record<string, string> = {
   pro_supporter: "Pro Supporter",
   elite_supporter: "Elite Supporter",
   specific: "Specific Email",
-}
+};
 
 export function MassEmailManager() {
-  const [messages, setMessages] = useState<Broadcast[]>([])
-  const [loading, setLoading] = useState(false)
-  const [sending, setSending] = useState<string | null>(null)
-  const [deleting, setDeleting] = useState<string | null>(null)
-  const [pendingDelete, setPendingDelete] = useState<Broadcast | null>(null)
-  const [title, setTitle] = useState("")
-  const [content, setContent] = useState("")
-  const [segment, setSegment] = useState("all")
-  const [specificEmail, setSpecificEmail] = useState("")
-  const [previewOpen, setPreviewOpen] = useState(false)
+  const [messages, setMessages] = useState<Broadcast[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [sending, setSending] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState<string | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<Broadcast | null>(null);
+  const [title, setTitle] = useState("");
+  const [content, setContent] = useState("");
+  const [segment, setSegment] = useState("all");
+  const [specificEmail, setSpecificEmail] = useState("");
+  const [previewOpen, setPreviewOpen] = useState(false);
 
   useEffect(() => {
-    fetchMessages()
-  }, [])
+    fetchMessages();
+  }, []);
 
   async function fetchMessages() {
-    setLoading(true)
+    setLoading(true);
     try {
       const res = await fetch("/api/v2/admin/features", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "list", section: "broadcast" }),
-      })
-      const data = await res.json()
-      setMessages(data.messages || [])
+      });
+      const data = await res.json();
+      setMessages(data.messages || []);
     } catch (err) {
-      console.error("Error fetching messages:", err)
+      console.error("Error fetching messages:", err);
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
   }
 
   async function handleCreate() {
-    if (!title || !content) return
-    if (segment === "specific" && !specificEmail) return
-    setLoading(true)
+    if (!title || !content) return;
+    if (segment === "specific" && !specificEmail) return;
+    setLoading(true);
     try {
-      const segmentFilter = segment === "specific"
-        ? { segment: `email:${specificEmail}` }
-        : { segment }
+      const segmentFilter =
+        segment === "specific"
+          ? { segment: `email:${specificEmail}` }
+          : { segment };
 
       const res = await fetch("/api/v2/admin/features", {
         method: "POST",
@@ -164,74 +186,79 @@ export function MassEmailManager() {
           message_type: "email",
           segment_filter: segmentFilter,
         }),
-      })
+      });
       if (res.ok) {
-        setTitle("")
-        setContent("")
-        setSegment("all")
-        setSpecificEmail("")
-        fetchMessages()
+        setTitle("");
+        setContent("");
+        setSegment("all");
+        setSpecificEmail("");
+        fetchMessages();
       }
     } catch (err) {
-      console.error("Error creating message:", err)
+      console.error("Error creating message:", err);
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
   }
 
   async function handleSend(id: string) {
-    setSending(id)
+    setSending(id);
     try {
       await fetch("/api/v2/admin/features", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "send", section: "broadcast", id }),
-      })
-      fetchMessages()
+      });
+      fetchMessages();
     } catch (err) {
-      console.error("Error sending:", err)
+      console.error("Error sending:", err);
     } finally {
-      setSending(null)
+      setSending(null);
     }
   }
 
   async function handleResend(id: string) {
-    setSending(id)
+    setSending(id);
     try {
       await fetch("/api/v2/admin/features", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "resend", section: "broadcast", id }),
-      })
-      fetchMessages()
+      });
+      fetchMessages();
     } catch (err) {
-      console.error("Error resending:", err)
+      console.error("Error resending:", err);
     } finally {
-      setSending(null)
+      setSending(null);
     }
   }
 
   async function handleDelete() {
-    if (!pendingDelete) return
-    setDeleting(pendingDelete.id)
+    if (!pendingDelete) return;
+    setDeleting(pendingDelete.id);
     try {
       await fetch("/api/v2/admin/features", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "delete", section: "broadcast", id: pendingDelete.id }),
-      })
-      fetchMessages()
-      setPendingDelete(null)
+        body: JSON.stringify({
+          action: "delete",
+          section: "broadcast",
+          id: pendingDelete.id,
+        }),
+      });
+      fetchMessages();
+      setPendingDelete(null);
     } catch (err) {
-      console.error("Error deleting:", err)
+      console.error("Error deleting:", err);
     } finally {
-      setDeleting(null)
+      setDeleting(null);
     }
   }
 
-  const drafts = messages.filter((m) => m.status === "draft")
-  const sent = messages.filter((m) => m.status === "sent")
-  const isFormValid = title && content && (segment !== "specific" || specificEmail)
+  const drafts = messages.filter((m) => m.status === "draft");
+  const sent = messages.filter((m) => m.status === "sent");
+  const isFormValid =
+    title && content && (segment !== "specific" || specificEmail);
 
   return (
     <div className="space-y-4">
@@ -242,7 +269,9 @@ export function MassEmailManager() {
             <MailOpen className="h-4 w-4 text-primary" />
           </div>
           <div>
-            <p className="text-2xl font-bold text-foreground">{messages.length}</p>
+            <p className="text-2xl font-bold text-foreground">
+              {messages.length}
+            </p>
             <p className="text-xs text-muted-foreground">Total Broadcasts</p>
           </div>
         </div>
@@ -251,7 +280,9 @@ export function MassEmailManager() {
             <FileEdit className="h-4 w-4 text-amber-500" />
           </div>
           <div>
-            <p className="text-2xl font-bold text-foreground">{drafts.length}</p>
+            <p className="text-2xl font-bold text-foreground">
+              {drafts.length}
+            </p>
             <p className="text-xs text-muted-foreground">Drafts</p>
           </div>
         </div>
@@ -269,7 +300,9 @@ export function MassEmailManager() {
             <Users className="h-4 w-4 text-blue-500" />
           </div>
           <div>
-            <p className="text-2xl font-bold text-foreground">{new Set(messages.map((m) => m.created_by_name)).size}</p>
+            <p className="text-2xl font-bold text-foreground">
+              {new Set(messages.map((m) => m.created_by_name)).size}
+            </p>
             <p className="text-xs text-muted-foreground">Contributors</p>
           </div>
         </div>
@@ -283,14 +316,20 @@ export function MassEmailManager() {
               <Mail className="h-4 w-4 text-primary" />
             </div>
             <div>
-              <h3 className="text-sm font-semibold text-foreground">Compose Broadcast</h3>
-              <p className="text-xs text-muted-foreground mt-0.5">Write and send emails to user segments</p>
+              <h3 className="text-sm font-semibold text-foreground">
+                Compose Broadcast
+              </h3>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Write and send emails to user segments
+              </p>
             </div>
           </div>
         </div>
         <CardContent className="p-4 sm:p-5 space-y-4">
           <div>
-            <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2 block">Subject</label>
+            <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2 block">
+              Subject
+            </label>
             <Input
               placeholder="e.g., Important update from VulnRadar"
               value={title}
@@ -300,7 +339,9 @@ export function MassEmailManager() {
           </div>
 
           <div>
-            <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2 block">Content (HTML supported)</label>
+            <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2 block">
+              Content (HTML supported)
+            </label>
             <Textarea
               placeholder="Write your email content here... HTML tags are supported."
               value={content}
@@ -311,21 +352,27 @@ export function MassEmailManager() {
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2 block">Recipients</label>
+              <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2 block">
+                Recipients
+              </label>
               <Select value={segment} onValueChange={setSegment}>
                 <SelectTrigger className="h-10 bg-background/50 border-border/40">
                   <SelectValue placeholder="Select segment" />
                 </SelectTrigger>
                 <SelectContent>
                   {Object.entries(SEGMENT_LABELS).map(([value, label]) => (
-                    <SelectItem key={value} value={value}>{label}</SelectItem>
+                    <SelectItem key={value} value={value}>
+                      {label}
+                    </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
             {segment === "specific" && (
               <div>
-                <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2 block">Email Address</label>
+                <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2 block">
+                  Email Address
+                </label>
                 <Input
                   type="email"
                   placeholder="user@example.com"
@@ -340,7 +387,11 @@ export function MassEmailManager() {
           <div className="flex gap-3 pt-1">
             <Dialog open={previewOpen} onOpenChange={setPreviewOpen}>
               <DialogTrigger asChild>
-                <Button variant="outline" className="gap-2 border-border/40" disabled={!title && !content}>
+                <Button
+                  variant="outline"
+                  className="gap-2 border-border/40"
+                  disabled={!title && !content}
+                >
                   <Eye className="h-4 w-4" />
                   Preview
                 </Button>
@@ -362,7 +413,11 @@ export function MassEmailManager() {
               disabled={loading || !isFormValid}
               className="gap-2"
             >
-              {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileEdit className="h-4 w-4" />}
+              {loading ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <FileEdit className="h-4 w-4" />
+              )}
               Save as Draft
             </Button>
           </div>
@@ -377,13 +432,22 @@ export function MassEmailManager() {
               <Send className="h-4 w-4 text-primary" />
             </div>
             <div>
-              <h3 className="text-sm font-semibold text-foreground">Broadcasts</h3>
+              <h3 className="text-sm font-semibold text-foreground">
+                Broadcasts
+              </h3>
               <p className="text-xs text-muted-foreground mt-0.5">
-                {messages.length} total &mdash; {drafts.length} draft{drafts.length !== 1 ? "s" : ""}, {sent.length} sent
+                {messages.length} total &mdash; {drafts.length} draft
+                {drafts.length !== 1 ? "s" : ""}, {sent.length} sent
               </p>
             </div>
           </div>
-          <Button variant="outline" size="sm" className="gap-2 border-border/40 shrink-0" onClick={fetchMessages} disabled={loading}>
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-2 border-border/40 shrink-0"
+            onClick={fetchMessages}
+            disabled={loading}
+          >
             <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
             <span className="hidden sm:inline">Refresh</span>
           </Button>
@@ -398,39 +462,51 @@ export function MassEmailManager() {
             <div className="p-4 rounded-full bg-muted/50 mb-4">
               <MailOpen className="h-8 w-8 text-muted-foreground/50" />
             </div>
-            <p className="text-sm font-medium text-foreground">No broadcasts yet</p>
-            <p className="text-xs text-muted-foreground mt-1">Compose your first broadcast email above</p>
+            <p className="text-sm font-medium text-foreground">
+              No broadcasts yet
+            </p>
+            <p className="text-xs text-muted-foreground mt-1">
+              Compose your first broadcast email above
+            </p>
           </div>
         ) : (
           <div className="divide-y divide-border/40">
             {messages.map((msg) => {
-              const isDraft = msg.status === "draft"
-              const isSending = sending === msg.id
-              const isDeleting = deleting === msg.id
+              const isDraft = msg.status === "draft";
+              const isSending = sending === msg.id;
+              const isDeleting = deleting === msg.id;
               return (
-                <div key={msg.id} className="group flex items-start gap-4 px-4 sm:px-5 py-4 hover:bg-muted/20 transition-colors">
+                <div
+                  key={msg.id}
+                  className="group flex items-start gap-4 px-4 sm:px-5 py-4 hover:bg-muted/20 transition-colors"
+                >
                   {/* Icon */}
-                  <div className={cn(
-                    "p-2 rounded-lg shrink-0 mt-0.5",
-                    isDraft ? "bg-amber-500/10" : "bg-emerald-500/10"
-                  )}>
-                    {isDraft
-                      ? <FileEdit className="h-4 w-4 text-amber-500" />
-                      : <CheckCircle2 className="h-4 w-4 text-emerald-500" />
-                    }
+                  <div
+                    className={cn(
+                      "p-2 rounded-lg shrink-0 mt-0.5",
+                      isDraft ? "bg-amber-500/10" : "bg-emerald-500/10",
+                    )}
+                  >
+                    {isDraft ? (
+                      <FileEdit className="h-4 w-4 text-amber-500" />
+                    ) : (
+                      <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+                    )}
                   </div>
 
                   {/* Content */}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <p className="text-sm font-medium text-foreground truncate">{msg.title}</p>
+                      <p className="text-sm font-medium text-foreground truncate">
+                        {msg.title}
+                      </p>
                       <Badge
                         variant="outline"
                         className={cn(
                           "text-[10px] px-2 py-0.5 font-medium capitalize shrink-0",
                           isDraft
                             ? "bg-amber-500/10 text-amber-500 border-amber-500/20"
-                            : "bg-emerald-500/10 text-emerald-500 border-emerald-500/20"
+                            : "bg-emerald-500/10 text-emerald-500 border-emerald-500/20",
                         )}
                       >
                         {msg.status}
@@ -439,18 +515,38 @@ export function MassEmailManager() {
                     <div className="flex items-center gap-3 mt-1 flex-wrap">
                       <span className="text-xs text-muted-foreground flex items-center gap-1">
                         <Clock className="h-3 w-3" />
-                        {new Date(msg.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                        {new Date(msg.created_at).toLocaleDateString("en-US", {
+                          month: "short",
+                          day: "numeric",
+                          year: "numeric",
+                        })}
                       </span>
                       {msg.created_by_name && (
                         <span className="text-xs text-muted-foreground">
-                          by <span className="text-foreground font-medium">{msg.created_by_name}</span>
+                          by{" "}
+                          <span className="text-foreground font-medium">
+                            {msg.created_by_name}
+                          </span>
                         </span>
                       )}
                       {!isDraft && msg.sent_at && (
                         <span className="text-xs text-muted-foreground flex items-center gap-1">
                           <Send className="h-3 w-3" />
-                          Sent {new Date(msg.sent_at).toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
-                          {msg.sent_by_name && <span>by <span className="text-foreground font-medium">{msg.sent_by_name}</span></span>}
+                          Sent{" "}
+                          {new Date(msg.sent_at).toLocaleString("en-US", {
+                            month: "short",
+                            day: "numeric",
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })}
+                          {msg.sent_by_name && (
+                            <span>
+                              by{" "}
+                              <span className="text-foreground font-medium">
+                                {msg.sent_by_name}
+                              </span>
+                            </span>
+                          )}
                         </span>
                       )}
                     </div>
@@ -466,7 +562,11 @@ export function MassEmailManager() {
                           onClick={() => handleSend(msg.id)}
                           disabled={isSending || isDeleting}
                         >
-                          {isSending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
+                          {isSending ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          ) : (
+                            <Send className="h-3.5 w-3.5" />
+                          )}
                           Send
                         </Button>
                         <Button
@@ -477,7 +577,11 @@ export function MassEmailManager() {
                           disabled={isSending || isDeleting}
                           title="Delete draft"
                         >
-                          {isDeleting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+                          {isDeleting ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          ) : (
+                            <Trash2 className="h-3.5 w-3.5" />
+                          )}
                         </Button>
                       </>
                     ) : (
@@ -488,13 +592,17 @@ export function MassEmailManager() {
                         onClick={() => handleResend(msg.id)}
                         disabled={isSending}
                       >
-                        {isSending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+                        {isSending ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <RefreshCw className="h-3.5 w-3.5" />
+                        )}
                         Resend
                       </Button>
                     )}
                   </div>
                 </div>
-              )
+              );
             })}
           </div>
         )}
@@ -507,15 +615,36 @@ export function MassEmailManager() {
         onConfirm={handleDelete}
         title="Delete Broadcast"
         description="This will permanently delete this broadcast draft. This action cannot be undone."
-        changes={pendingDelete ? [
-          { field: "title", label: "Subject", oldValue: pendingDelete.title, newValue: "Deleted" },
-          { field: "status", label: "Status", oldValue: pendingDelete.status, newValue: "—" },
-          { field: "created_at", label: "Created", oldValue: new Date(pendingDelete.created_at).toLocaleDateString(), newValue: "—" },
-        ] : []}
+        changes={
+          pendingDelete
+            ? [
+                {
+                  field: "title",
+                  label: "Subject",
+                  oldValue: pendingDelete.title,
+                  newValue: "Deleted",
+                },
+                {
+                  field: "status",
+                  label: "Status",
+                  oldValue: pendingDelete.status,
+                  newValue: "—",
+                },
+                {
+                  field: "created_at",
+                  label: "Created",
+                  oldValue: new Date(
+                    pendingDelete.created_at,
+                  ).toLocaleDateString(),
+                  newValue: "—",
+                },
+              ]
+            : []
+        }
         loading={deleting === pendingDelete?.id}
         confirmText="Delete"
         variant="destructive"
       />
     </div>
-  )
+  );
 }

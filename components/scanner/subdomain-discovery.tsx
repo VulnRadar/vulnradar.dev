@@ -1,46 +1,66 @@
-"use client"
+"use client";
 
-import { useState, useEffect, useRef } from "react"
-import { useRouter } from "next/navigation"
-import { Globe, Loader2, Search, ExternalLink, ChevronDown, ChevronRight, Radar, RefreshCw, Clock, Crown } from "lucide-react"
-import { Button } from "@/components/ui/button"
-import { Progress } from "@/components/ui/progress"
-import { cn } from "@/lib/ui/utils"
-import { API } from "@/lib/config/constants"
-import { useAuth } from "@/components/providers/auth-provider"
-import { PremiumUpgradeModal, PREMIUM_FEATURES, hasFeatureAccess } from "@/components/modals/premium-upgrade-modal"
+import { useState, useEffect, useRef } from "react";
+import { useRouter } from "next/navigation";
+import {
+  Globe,
+  Loader2,
+  Search,
+  ExternalLink,
+  ChevronDown,
+  ChevronRight,
+  Radar,
+  RefreshCw,
+  Clock,
+  Crown,
+} from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Progress } from "@/components/ui/progress";
+import { cn } from "@/lib/ui/utils";
+import { API } from "@/lib/config/constants";
+import { useAuth } from "@/components/providers/auth-provider";
+import {
+  PremiumUpgradeModal,
+  PREMIUM_FEATURES,
+  hasFeatureAccess,
+} from "@/components/modals/premium-upgrade-modal";
 
 interface DiscoveredSubdomain {
-  subdomain: string
-  url: string
-  reachable: boolean
-  statusCode?: number
-  sources: string[]
+  subdomain: string;
+  url: string;
+  reachable: boolean;
+  statusCode?: number;
+  sources: string[];
 }
 
 interface DiscoveryResult {
-  domain: string
-  total: number
-  reachable: number
-  subdomains: DiscoveredSubdomain[]
-  sources?: Record<string, number>
-  cached?: boolean
-  cachedAt?: string
-  expiresAt?: string
+  domain: string;
+  total: number;
+  reachable: number;
+  subdomains: DiscoveredSubdomain[];
+  sources?: Record<string, number>;
+  cached?: boolean;
+  cachedAt?: string;
+  expiresAt?: string;
 }
 
 interface SubdomainDiscoveryProps {
-  url: string
-  onScanSubdomain?: (url: string) => void
+  url: string;
+  onScanSubdomain?: (url: string) => void;
 }
 
 const SOURCE_COLORS: Record<string, string> = {
-  "crt.sh": "bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20",
-  hackertarget: "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20",
-  "subdomain.center": "bg-violet-500/10 text-violet-600 dark:text-violet-400 border-violet-500/20",
-  rapiddns: "bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 border-cyan-500/20",
-  "brute-force": "bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20",
-}
+  "crt.sh":
+    "bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20",
+  hackertarget:
+    "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20",
+  "subdomain.center":
+    "bg-violet-500/10 text-violet-600 dark:text-violet-400 border-violet-500/20",
+  rapiddns:
+    "bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 border-cyan-500/20",
+  "brute-force":
+    "bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20",
+};
 
 // Tailwind safelist: bg-emerald-500 bg-blue-500 bg-amber-500 bg-red-500 text-emerald-600 text-blue-600 text-amber-600 text-red-600 dark:text-emerald-400 dark:text-blue-400 dark:text-amber-400 dark:text-red-400
 const STATUS_DOT: Record<string, string> = {
@@ -49,32 +69,34 @@ const STATUS_DOT: Record<string, string> = {
   blue: "bg-blue-500",
   amber: "bg-amber-500",
   red: "bg-red-500",
-}
+};
 const STATUS_TEXT: Record<string, string> = {
   gray: "text-muted-foreground",
   green: "text-emerald-600 dark:text-emerald-400",
   blue: "text-blue-600 dark:text-blue-400",
   amber: "text-amber-600 dark:text-amber-400",
   red: "text-red-600 dark:text-red-400",
-}
+};
 function statusBucket(code?: number): string {
-  if (!code) return "gray"
-  if (code >= 200 && code < 300) return "green"
-  if (code >= 300 && code < 400) return "blue"
-  if (code >= 400 && code < 500) return "amber"
-  return "red"
+  if (!code) return "gray";
+  if (code >= 200 && code < 300) return "green";
+  if (code >= 300 && code < 400) return "blue";
+  if (code >= 400 && code < 500) return "amber";
+  return "red";
 }
 
 function formatTimeRemaining(expiresAt: string): string {
-  const now = new Date()
-  const expires = new Date(expiresAt)
-  const diffMs = expires.getTime() - now.getTime()
-  if (diffMs <= 0) return "expired"
-  const diffMins = Math.floor(diffMs / 60000)
-  if (diffMins < 60) return `${diffMins}m`
-  const diffHours = Math.floor(diffMins / 60)
-  const remainingMins = diffMins % 60
-  return remainingMins > 0 ? `${diffHours}h ${remainingMins}m` : `${diffHours}h`
+  const now = new Date();
+  const expires = new Date(expiresAt);
+  const diffMs = expires.getTime() - now.getTime();
+  if (diffMs <= 0) return "expired";
+  const diffMins = Math.floor(diffMs / 60000);
+  if (diffMins < 60) return `${diffMins}m`;
+  const diffHours = Math.floor(diffMins / 60);
+  const remainingMins = diffMins % 60;
+  return remainingMins > 0
+    ? `${diffHours}h ${remainingMins}m`
+    : `${diffHours}h`;
 }
 
 // Progress simulation stages for discovery
@@ -85,138 +107,146 @@ const DISCOVERY_STAGES = [
   { progress: 60, message: "Querying subdomain.center..." },
   { progress: 75, message: "Running common prefix brute-force..." },
   { progress: 90, message: "Verifying reachability..." },
-]
+];
 
-export function SubdomainDiscovery({ url, onScanSubdomain }: SubdomainDiscoveryProps) {
-  const router = useRouter()
-  const { me, isStaff } = useAuth()
-  const [loading, setLoading] = useState(false)
-  const [refreshing, setRefreshing] = useState(false)
-  const [result, setResult] = useState<DiscoveryResult | null>(null)
-  const [error, setError] = useState<string | null>(null)
-  const [expanded, setExpanded] = useState(false)
-  const [showUpgradeModal, setShowUpgradeModal] = useState(false)
-  const [progress, setProgress] = useState(0)
-  const [progressMessage, setProgressMessage] = useState("")
-  const progressInterval = useRef<NodeJS.Timeout | null>(null)
-  
-  const userPlan = me?.plan || "free"
+export function SubdomainDiscovery({
+  url,
+  onScanSubdomain,
+}: SubdomainDiscoveryProps) {
+  const router = useRouter();
+  const { me, isStaff } = useAuth();
+  const [loading, setLoading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [result, setResult] = useState<DiscoveryResult | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [expanded, setExpanded] = useState(false);
+  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [progressMessage, setProgressMessage] = useState("");
+  const progressInterval = useRef<NodeJS.Timeout | null>(null);
+
+  const userPlan = me?.plan || "free";
   // Staff members have access to all premium features
-  const canRefreshDNS = isStaff || hasFeatureAccess(userPlan, PREMIUM_FEATURES.dns_refetch.requiredPlan)
-  
+  const canRefreshDNS =
+    isStaff ||
+    hasFeatureAccess(userPlan, PREMIUM_FEATURES.dns_refetch.requiredPlan);
+
   // Cleanup progress interval on unmount
   useEffect(() => {
     return () => {
       if (progressInterval.current) {
-        clearInterval(progressInterval.current)
+        clearInterval(progressInterval.current);
       }
-    }
-  }, [])
+    };
+  }, []);
 
   function startProgressSimulation() {
-    setProgress(0)
-    setProgressMessage(DISCOVERY_STAGES[0].message)
-    let stageIndex = 0
-    
+    setProgress(0);
+    setProgressMessage(DISCOVERY_STAGES[0].message);
+    let stageIndex = 0;
+
     progressInterval.current = setInterval(() => {
-      stageIndex++
+      stageIndex++;
       if (stageIndex < DISCOVERY_STAGES.length) {
-        setProgress(DISCOVERY_STAGES[stageIndex].progress)
-        setProgressMessage(DISCOVERY_STAGES[stageIndex].message)
+        setProgress(DISCOVERY_STAGES[stageIndex].progress);
+        setProgressMessage(DISCOVERY_STAGES[stageIndex].message);
       } else {
-        setProgress(95)
-        setProgressMessage("Finalizing results...")
+        setProgress(95);
+        setProgressMessage("Finalizing results...");
       }
-    }, 1500)
+    }, 1500);
   }
-  
+
   function stopProgressSimulation() {
     if (progressInterval.current) {
-      clearInterval(progressInterval.current)
-      progressInterval.current = null
+      clearInterval(progressInterval.current);
+      progressInterval.current = null;
     }
-    setProgress(100)
+    setProgress(100);
   }
 
   async function handleDiscover(forceRefresh = false) {
     // Check if user has premium access for refresh
     if (forceRefresh && !canRefreshDNS) {
-      setShowUpgradeModal(true)
-      return
+      setShowUpgradeModal(true);
+      return;
     }
-    
+
     if (forceRefresh) {
-      setRefreshing(true)
+      setRefreshing(true);
     } else {
-      setLoading(true)
-      startProgressSimulation()
+      setLoading(true);
+      startProgressSimulation();
     }
-    setError(null)
+    setError(null);
     try {
       const res = await fetch(API.SCAN_DISCOVER, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ url, forceRefresh }),
-      })
-      const data = await res.json()
+      });
+      const data = await res.json();
       if (!res.ok) {
         if (res.status === 401) {
-          setError("You need to be logged in to use Subdomain Discovery. Create a free account to unlock this feature.")
+          setError(
+            "You need to be logged in to use Subdomain Discovery. Create a free account to unlock this feature.",
+          );
         } else {
-          setError(data.error || "Discovery failed")
+          setError(data.error || "Discovery failed");
         }
       } else {
-        setResult(data)
-        setExpanded(true)
+        setResult(data);
+        setExpanded(true);
       }
     } catch {
-      setError("Failed to discover subdomains")
+      setError("Failed to discover subdomains");
     } finally {
-      stopProgressSimulation()
-      setLoading(false)
-      setRefreshing(false)
+      stopProgressSimulation();
+      setLoading(false);
+      setRefreshing(false);
     }
   }
 
   if (!result && !loading) {
     return (
       <>
-      <PremiumUpgradeModal
-        open={showUpgradeModal}
-        onOpenChange={setShowUpgradeModal}
-        feature={PREMIUM_FEATURES.dns_refetch}
-        currentPlan={userPlan}
-      />
-      <div className="rounded-xl border border-border bg-card p-4">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <div className="flex items-center justify-center w-9 h-9 rounded-lg bg-primary/10 shrink-0">
-              <Globe className="h-4 w-4 text-primary" />
+        <PremiumUpgradeModal
+          open={showUpgradeModal}
+          onOpenChange={setShowUpgradeModal}
+          feature={PREMIUM_FEATURES.dns_refetch}
+          currentPlan={userPlan}
+        />
+        <div className="rounded-xl border border-border bg-card p-4">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className="flex items-center justify-center w-9 h-9 rounded-lg bg-primary/10 shrink-0">
+                <Globe className="h-4 w-4 text-primary" />
+              </div>
+              <div>
+                <h3 className="text-sm font-semibold text-foreground">
+                  Subdomain Discovery
+                </h3>
+                <p className="text-xs text-muted-foreground">
+                  Find related subdomains using CT logs, passive DNS, and common
+                  prefix brute-force
+                </p>
+              </div>
             </div>
-            <div>
-              <h3 className="text-sm font-semibold text-foreground">Subdomain Discovery</h3>
-              <p className="text-xs text-muted-foreground">
-                Find related subdomains using CT logs, passive DNS, and common prefix brute-force
-              </p>
-            </div>
+            <Button
+              onClick={() => handleDiscover(false)}
+              disabled={loading}
+              size="sm"
+              variant="outline"
+              className="gap-2 bg-transparent shrink-0"
+            >
+              <Search className="h-3.5 w-3.5" />
+              Discover Subdomains
+            </Button>
           </div>
-          <Button
-            onClick={() => handleDiscover(false)}
-            disabled={loading}
-            size="sm"
-            variant="outline"
-            className="gap-2 bg-transparent shrink-0"
-          >
-            <Search className="h-3.5 w-3.5" />
-            Discover Subdomains
-          </Button>
+          {error && <p className="text-sm text-destructive mt-3">{error}</p>}
         </div>
-        {error && (
-          <p className="text-sm text-destructive mt-3">{error}</p>
-        )}
-      </div>
       </>
-    )
+    );
   }
 
   if (loading) {
@@ -227,142 +257,166 @@ export function SubdomainDiscovery({ url, onScanSubdomain }: SubdomainDiscoveryP
             <Loader2 className="h-5 w-5 animate-spin text-primary" />
           </div>
           <div className="text-center">
-            <p className="text-sm font-medium text-foreground">Discovering subdomains...</p>
-            <p className="text-xs text-muted-foreground mt-1">{progressMessage}</p>
+            <p className="text-sm font-medium text-foreground">
+              Discovering subdomains...
+            </p>
+            <p className="text-xs text-muted-foreground mt-1">
+              {progressMessage}
+            </p>
           </div>
           <div className="w-full max-w-xs">
             <Progress value={progress} className="h-2" />
-            <p className="text-[10px] text-muted-foreground text-center mt-1.5">{progress}% complete</p>
+            <p className="text-[10px] text-muted-foreground text-center mt-1.5">
+              {progress}% complete
+            </p>
           </div>
         </div>
       </div>
-    )
+    );
   }
 
-  if (!result) return null
+  if (!result) return null;
 
-  const reachable = result.subdomains.filter((s) => s.reachable)
-  const unreachable = result.subdomains.filter((s) => !s.reachable)
+  const reachable = result.subdomains.filter((s) => s.reachable);
+  const unreachable = result.subdomains.filter((s) => !s.reachable);
 
   return (
     <>
-    <PremiumUpgradeModal
-      open={showUpgradeModal}
-      onOpenChange={setShowUpgradeModal}
-      feature={PREMIUM_FEATURES.dns_refetch}
-      currentPlan={userPlan}
-    />
-    <div className="rounded-xl border border-border bg-card overflow-hidden">
-      <button
-        type="button"
-        onClick={() => setExpanded(!expanded)}
-        className="flex items-center gap-2 w-full px-4 py-3 text-left hover:bg-muted/50 transition-colors"
-      >
-        <Globe className="h-4 w-4 text-primary shrink-0" />
-        <span className="text-sm font-semibold text-foreground flex-1">
-          Subdomain Discovery
-        </span>
-        <span className="text-xs text-muted-foreground">
-          {result.reachable} reachable / {result.total} found
-        </span>
-        {expanded ? (
-          <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0" />
-        ) : (
-          <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
-        )}
-      </button>
-
-      {expanded && (
-        <div className="border-t border-border">
-          {/* Stats bar */}
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 px-4 py-2 bg-muted/30 border-b border-border">
-            <span className="text-xs text-muted-foreground">
-              Domain: <span className="font-medium text-foreground">{result.domain}</span>
-            </span>
-            <span className="text-xs text-emerald-600 dark:text-emerald-400">
-              {result.reachable} reachable
-            </span>
-            <span className="text-xs text-muted-foreground">
-              {result.total - result.reachable} unreachable
-            </span>
-            
-            {/* Cache status */}
-            {result.cached && result.expiresAt && (
-              <div className="flex items-center gap-2 ml-auto">
-                <div className="flex items-center gap-1.5">
-                  <Clock className="h-3.5 w-3.5 text-amber-500" />
-                  <span className="text-xs text-muted-foreground">
-                    Cached • Refreshes in <span className="font-medium text-foreground">{formatTimeRemaining(result.expiresAt)}</span>
-                  </span>
-                </div>
-                <button
-                  onClick={() => handleDiscover(true)}
-                  disabled={refreshing}
-                  className={cn(
-                    "inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium transition-colors disabled:opacity-50",
-                    canRefreshDNS 
-                      ? "text-foreground hover:bg-muted" 
-                      : "text-primary hover:bg-primary/10"
-                  )}
-                  title={canRefreshDNS ? "Force refresh cache now" : "Premium feature - Upgrade to Pro"}
-                >
-                  {refreshing ? (
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  ) : canRefreshDNS ? (
-                    <RefreshCw className="h-3.5 w-3.5" />
-                  ) : (
-                    <Crown className="h-3.5 w-3.5" />
-                  )}
-                  <span className="hidden sm:inline">{canRefreshDNS ? "Refresh Now" : "Pro"}</span>
-                </button>
-              </div>
-            )}
-          </div>
-
-          {/* Source breakdown */}
-          {result.sources && (
-            <div className="flex flex-wrap items-center gap-2 px-4 py-2 border-b border-border">
-              <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">
-                Sources:
-              </span>
-              {Object.entries(result.sources).map(([source, count]) => (
-                <span
-                  key={source}
-                  className={cn(
-                    "inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium border",
-                    SOURCE_COLORS[source] || "bg-muted text-muted-foreground border-border",
-                  )}
-                >
-                  {source}
-                  <span className="opacity-60">{count}</span>
-                </span>
-              ))}
-            </div>
+      <PremiumUpgradeModal
+        open={showUpgradeModal}
+        onOpenChange={setShowUpgradeModal}
+        feature={PREMIUM_FEATURES.dns_refetch}
+        currentPlan={userPlan}
+      />
+      <div className="rounded-xl border border-border bg-card overflow-hidden">
+        <button
+          type="button"
+          onClick={() => setExpanded(!expanded)}
+          className="flex items-center gap-2 w-full px-4 py-3 text-left hover:bg-muted/50 transition-colors"
+        >
+          <Globe className="h-4 w-4 text-primary shrink-0" />
+          <span className="text-sm font-semibold text-foreground flex-1">
+            Subdomain Discovery
+          </span>
+          <span className="text-xs text-muted-foreground">
+            {result.reachable} reachable / {result.total} found
+          </span>
+          {expanded ? (
+            <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0" />
+          ) : (
+            <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
           )}
+        </button>
 
-          {/* Reachable subdomains */}
-          {reachable.length > 0 && (
-            <div className="px-4 py-3 border-b border-border">
-              <p className="text-[10px] font-medium text-emerald-600 dark:text-emerald-400 uppercase tracking-wider mb-2">
-                Reachable
-              </p>
-              <div className="flex flex-col gap-1">
-                {reachable.map((sub) => (
-                  <SubdomainRow key={sub.subdomain} sub={sub} onScanSubdomain={onScanSubdomain} router={router} />
+        {expanded && (
+          <div className="border-t border-border">
+            {/* Stats bar */}
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 px-4 py-2 bg-muted/30 border-b border-border">
+              <span className="text-xs text-muted-foreground">
+                Domain:{" "}
+                <span className="font-medium text-foreground">
+                  {result.domain}
+                </span>
+              </span>
+              <span className="text-xs text-emerald-600 dark:text-emerald-400">
+                {result.reachable} reachable
+              </span>
+              <span className="text-xs text-muted-foreground">
+                {result.total - result.reachable} unreachable
+              </span>
+
+              {/* Cache status */}
+              {result.cached && result.expiresAt && (
+                <div className="flex items-center gap-2 ml-auto">
+                  <div className="flex items-center gap-1.5">
+                    <Clock className="h-3.5 w-3.5 text-amber-500" />
+                    <span className="text-xs text-muted-foreground">
+                      Cached • Refreshes in{" "}
+                      <span className="font-medium text-foreground">
+                        {formatTimeRemaining(result.expiresAt)}
+                      </span>
+                    </span>
+                  </div>
+                  <button
+                    onClick={() => handleDiscover(true)}
+                    disabled={refreshing}
+                    className={cn(
+                      "inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium transition-colors disabled:opacity-50",
+                      canRefreshDNS
+                        ? "text-foreground hover:bg-muted"
+                        : "text-primary hover:bg-primary/10",
+                    )}
+                    title={
+                      canRefreshDNS
+                        ? "Force refresh cache now"
+                        : "Premium feature - Upgrade to Pro"
+                    }
+                  >
+                    {refreshing ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : canRefreshDNS ? (
+                      <RefreshCw className="h-3.5 w-3.5" />
+                    ) : (
+                      <Crown className="h-3.5 w-3.5" />
+                    )}
+                    <span className="hidden sm:inline">
+                      {canRefreshDNS ? "Refresh Now" : "Pro"}
+                    </span>
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Source breakdown */}
+            {result.sources && (
+              <div className="flex flex-wrap items-center gap-2 px-4 py-2 border-b border-border">
+                <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">
+                  Sources:
+                </span>
+                {Object.entries(result.sources).map(([source, count]) => (
+                  <span
+                    key={source}
+                    className={cn(
+                      "inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium border",
+                      SOURCE_COLORS[source] ||
+                        "bg-muted text-muted-foreground border-border",
+                    )}
+                  >
+                    {source}
+                    <span className="opacity-60">{count}</span>
+                  </span>
                 ))}
               </div>
-            </div>
-          )}
+            )}
 
-          {/* Unreachable subdomains (collapsed by default) */}
-          {unreachable.length > 0 && (
-            <UnreachableSection subdomains={unreachable} />
-          )}
-        </div>
-      )}
-    </div>
+            {/* Reachable subdomains */}
+            {reachable.length > 0 && (
+              <div className="px-4 py-3 border-b border-border">
+                <p className="text-[10px] font-medium text-emerald-600 dark:text-emerald-400 uppercase tracking-wider mb-2">
+                  Reachable
+                </p>
+                <div className="flex flex-col gap-1">
+                  {reachable.map((sub) => (
+                    <SubdomainRow
+                      key={sub.subdomain}
+                      sub={sub}
+                      onScanSubdomain={onScanSubdomain}
+                      router={router}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Unreachable subdomains (collapsed by default) */}
+            {unreachable.length > 0 && (
+              <UnreachableSection subdomains={unreachable} />
+            )}
+          </div>
+        )}
+      </div>
     </>
-  )
+  );
 }
 
 function SubdomainRow({
@@ -370,21 +424,26 @@ function SubdomainRow({
   onScanSubdomain,
   router,
 }: {
-  sub: DiscoveredSubdomain
-  onScanSubdomain?: (url: string) => void
-  router: ReturnType<typeof useRouter>
+  sub: DiscoveredSubdomain;
+  onScanSubdomain?: (url: string) => void;
+  router: ReturnType<typeof useRouter>;
 }) {
   function handleScanClick() {
     if (onScanSubdomain) {
-      onScanSubdomain(sub.url)
+      onScanSubdomain(sub.url);
     } else {
-      router.push(`/dashboard?scan=${encodeURIComponent(sub.url)}`)
+      router.push(`/dashboard?scan=${encodeURIComponent(sub.url)}`);
     }
   }
 
   return (
     <div className="flex items-center gap-1.5 sm:gap-2 px-1.5 sm:px-2 py-1.5 rounded-md hover:bg-muted/50 transition-colors group">
-      <span className={cn("w-1.5 h-1.5 rounded-full shrink-0", STATUS_DOT[statusBucket(sub.statusCode)])} />
+      <span
+        className={cn(
+          "w-1.5 h-1.5 rounded-full shrink-0",
+          STATUS_DOT[statusBucket(sub.statusCode)],
+        )}
+      />
       <span className="text-[10px] sm:text-xs font-mono text-foreground truncate max-w-[140px] sm:max-w-none">
         {sub.subdomain}
       </span>
@@ -395,7 +454,8 @@ function SubdomainRow({
             key={source}
             className={cn(
               "hidden sm:inline-flex px-1 py-px rounded text-[9px] font-medium border",
-              SOURCE_COLORS[source] || "bg-muted text-muted-foreground border-border",
+              SOURCE_COLORS[source] ||
+                "bg-muted text-muted-foreground border-border",
             )}
           >
             {source}
@@ -404,7 +464,12 @@ function SubdomainRow({
       </div>
       <span className="flex-1" />
       {sub.statusCode && (
-        <span className={cn("text-[10px] font-mono", STATUS_TEXT[statusBucket(sub.statusCode)])}>
+        <span
+          className={cn(
+            "text-[10px] font-mono",
+            STATUS_TEXT[statusBucket(sub.statusCode)],
+          )}
+        >
           {sub.statusCode}
         </span>
       )}
@@ -426,11 +491,15 @@ function SubdomainRow({
         Scan
       </Button>
     </div>
-  )
+  );
 }
 
-function UnreachableSection({ subdomains }: { subdomains: DiscoveredSubdomain[] }) {
-  const [show, setShow] = useState(false)
+function UnreachableSection({
+  subdomains,
+}: {
+  subdomains: DiscoveredSubdomain[];
+}) {
+  const [show, setShow] = useState(false);
 
   return (
     <div className="px-4 py-3">
@@ -439,7 +508,11 @@ function UnreachableSection({ subdomains }: { subdomains: DiscoveredSubdomain[] 
         onClick={() => setShow(!show)}
         className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider hover:text-foreground transition-colors flex items-center gap-1"
       >
-        {show ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+        {show ? (
+          <ChevronDown className="h-3 w-3" />
+        ) : (
+          <ChevronRight className="h-3 w-3" />
+        )}
         {subdomains.length} unreachable
       </button>
       {show && (
@@ -459,7 +532,8 @@ function UnreachableSection({ subdomains }: { subdomains: DiscoveredSubdomain[] 
                     key={source}
                     className={cn(
                       "hidden sm:inline-flex px-1 py-px rounded text-[9px] font-medium border opacity-60",
-                      SOURCE_COLORS[source] || "bg-muted text-muted-foreground border-border",
+                      SOURCE_COLORS[source] ||
+                        "bg-muted text-muted-foreground border-border",
                     )}
                   >
                     {source}
@@ -471,5 +545,5 @@ function UnreachableSection({ subdomains }: { subdomains: DiscoveredSubdomain[] 
         </div>
       )}
     </div>
-  )
+  );
 }

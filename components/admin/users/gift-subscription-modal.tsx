@@ -1,23 +1,23 @@
-"use client"
+"use client";
 
-import { useState, useEffect } from "react"
-import { CrownIcon, X, Loader2, Ban } from "lucide-react"
-import { Button } from "@/components/ui/button"
+import { useState, useEffect } from "react";
+import { CrownIcon, X, Loader2, Ban } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
 interface GiftSubscriptionModalProps {
-  open: boolean
-  onClose: () => void
-  onGift: (plan: string, endDate: string) => void
-  onRevoke: () => void
-  isLoading: boolean
-  existingGift?: { plan: string; end_date: string } | null
+  open: boolean;
+  onClose: () => void;
+  onGift: (plan: string, endDate: string) => void;
+  onRevoke: () => void;
+  isLoading: boolean;
+  existingGift?: { plan: string; end_date: string } | null;
 }
 
 const PLAN_LABELS: Record<string, string> = {
   core_supporter: "Core Supporter",
   pro_supporter: "Pro Supporter",
   elite_supporter: "Elite Supporter",
-}
+};
 
 /**
  * Modal for gifting or managing subscriptions
@@ -30,27 +30,29 @@ export function GiftSubscriptionModal({
   isLoading,
   existingGift,
 }: GiftSubscriptionModalProps) {
-  const [giftPlan, setGiftPlan] = useState(existingGift?.plan || "pro_supporter")
+  const [giftPlan, setGiftPlan] = useState(
+    existingGift?.plan || "pro_supporter",
+  );
   const [giftEndDate, setGiftEndDate] = useState(
     existingGift?.end_date
       ? new Date(existingGift.end_date).toISOString().slice(0, 16)
-      : ""
-  )
-  const [confirmRevoke, setConfirmRevoke] = useState(false)
+      : "",
+  );
+  const [confirmRevoke, setConfirmRevoke] = useState(false);
 
   useEffect(() => {
     if (open) {
-      setGiftPlan(existingGift?.plan || "pro_supporter")
+      setGiftPlan(existingGift?.plan || "pro_supporter");
       setGiftEndDate(
         existingGift?.end_date
           ? new Date(existingGift.end_date).toISOString().slice(0, 16)
-          : ""
-      )
-      setConfirmRevoke(false)
+          : "",
+      );
+      setConfirmRevoke(false);
     }
-  }, [open, existingGift])
+  }, [open, existingGift]);
 
-  if (!open) return null
+  if (!open) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in">
@@ -63,7 +65,9 @@ export function GiftSubscriptionModal({
             </div>
             <div>
               <h3 className="text-sm font-semibold text-foreground">
-                {existingGift ? "Manage Gift Subscription" : "Gift a Subscription"}
+                {existingGift
+                  ? "Manage Gift Subscription"
+                  : "Gift a Subscription"}
               </h3>
               <p className="text-[11px] text-muted-foreground">
                 {existingGift
@@ -72,7 +76,12 @@ export function GiftSubscriptionModal({
               </p>
             </div>
           </div>
-          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={onClose}>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7"
+            onClick={onClose}
+          >
             <X className="h-4 w-4" />
           </Button>
         </div>
@@ -81,7 +90,10 @@ export function GiftSubscriptionModal({
         {existingGift && (
           <div className="mx-5 mt-4 flex items-center gap-2.5 px-3.5 py-2.5 rounded-lg border bg-primary/5 border-primary/20 text-primary text-xs font-medium">
             <CrownIcon className="h-3.5 w-3.5 shrink-0" />
-            Currently gifted: <span className="font-semibold ml-1">{PLAN_LABELS[existingGift.plan] || existingGift.plan}</span>
+            Currently gifted:{" "}
+            <span className="font-semibold ml-1">
+              {PLAN_LABELS[existingGift.plan] || existingGift.plan}
+            </span>
           </div>
         )}
 
@@ -89,7 +101,9 @@ export function GiftSubscriptionModal({
         <div className="p-5 flex flex-col gap-4">
           <div className="grid grid-cols-2 gap-3">
             <div className="flex flex-col gap-1.5">
-              <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Plan</label>
+              <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
+                Plan
+              </label>
               <select
                 value={giftPlan}
                 onChange={(e) => setGiftPlan(e.target.value)}
@@ -101,7 +115,9 @@ export function GiftSubscriptionModal({
               </select>
             </div>
             <div className="flex flex-col gap-1.5">
-              <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Expires</label>
+              <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
+                Expires
+              </label>
               <input
                 type="datetime-local"
                 value={giftEndDate}
@@ -121,15 +137,27 @@ export function GiftSubscriptionModal({
             <Button
               className="flex-1 gap-1.5"
               disabled={!giftEndDate || isLoading}
-              onClick={() => onGift(giftPlan, new Date(giftEndDate).toISOString())}
+              onClick={() =>
+                onGift(giftPlan, new Date(giftEndDate).toISOString())
+              }
             >
               {isLoading ? (
-                <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Saving...</>
+                <>
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" /> Saving...
+                </>
               ) : (
-                <><CrownIcon className="h-3.5 w-3.5" /> {existingGift ? "Update Gift" : "Gift Plan"}</>
+                <>
+                  <CrownIcon className="h-3.5 w-3.5" />{" "}
+                  {existingGift ? "Update Gift" : "Gift Plan"}
+                </>
               )}
             </Button>
-            <Button variant="ghost" className="flex-1" onClick={onClose} disabled={isLoading}>
+            <Button
+              variant="ghost"
+              className="flex-1"
+              onClick={onClose}
+              disabled={isLoading}
+            >
               Cancel
             </Button>
           </div>
@@ -151,7 +179,8 @@ export function GiftSubscriptionModal({
               ) : (
                 <div className="flex flex-col gap-2">
                   <p className="text-[11px] text-destructive text-center font-medium">
-                    Are you sure? This will immediately remove their gift access.
+                    Are you sure? This will immediately remove their gift
+                    access.
                   </p>
                   <div className="flex items-center gap-2">
                     <Button
@@ -160,7 +189,11 @@ export function GiftSubscriptionModal({
                       onClick={onRevoke}
                       disabled={isLoading}
                     >
-                      {isLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Ban className="h-3.5 w-3.5" />}
+                      {isLoading ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <Ban className="h-3.5 w-3.5" />
+                      )}
                       Yes, Revoke
                     </Button>
                     <Button
@@ -180,5 +213,5 @@ export function GiftSubscriptionModal({
         </div>
       </div>
     </div>
-  )
+  );
 }

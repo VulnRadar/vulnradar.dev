@@ -1,4 +1,4 @@
-import { ShieldCheck } from "lucide-react"
+import { ShieldCheck } from "lucide-react";
 
 export function BadgeEmptyState() {
   return (
@@ -8,12 +8,14 @@ export function BadgeEmptyState() {
           <ShieldCheck className="h-6 w-6 text-muted-foreground" />
         </div>
         <div>
-          <p className="text-sm font-medium text-foreground">No scans available</p>
+          <p className="text-sm font-medium text-foreground">
+            No scans available
+          </p>
           <p className="text-sm text-muted-foreground mt-1">
             Run a scan first, then come back here to generate your badge.
           </p>
         </div>
       </div>
     </div>
-  )
+  );
 }

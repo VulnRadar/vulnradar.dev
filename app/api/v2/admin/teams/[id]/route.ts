@@ -1,30 +1,41 @@
-import { NextResponse } from "next/server"
-import { getSession } from "@/lib/auth"
-import pool from "@/lib/database/db"
-import { STAFF_ROLES, ERROR_MESSAGES } from "@/lib/config/constants"
+import { NextResponse } from "next/server";
+import { getSession } from "@/lib/auth";
+import pool from "@/lib/database/db";
+import { STAFF_ROLES, ERROR_MESSAGES } from "@/lib/config/constants";
 
 // Check if user has admin/moderator role
 async function checkAdminAccess(userId: number): Promise<boolean> {
-  const res = await pool.query("SELECT role FROM users WHERE id = $1", [userId])
-  if (res.rows.length === 0) return false
-  const role = res.rows[0].role || "user"
-  return [STAFF_ROLES.ADMIN, STAFF_ROLES.MODERATOR].includes(role)
+  const res = await pool.query("SELECT role FROM users WHERE id = $1", [
+    userId,
+  ]);
+  if (res.rows.length === 0) return false;
+  const role = res.rows[0].role || "user";
+  return [STAFF_ROLES.ADMIN, STAFF_ROLES.MODERATOR].includes(role);
 }
 
 // Get team details with members
 export async function GET(
   request: Request,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ id: string }> },
 ) {
-  const session = await getSession()
-  if (!session) return NextResponse.json({ error: ERROR_MESSAGES.UNAUTHORIZED }, { status: 401 })
+  const session = await getSession();
+  if (!session)
+    return NextResponse.json(
+      { error: ERROR_MESSAGES.UNAUTHORIZED },
+      { status: 401 },
+    );
 
-  const allowed = await checkAdminAccess(session.userId)
-  if (!allowed) return NextResponse.json({ error: ERROR_MESSAGES.FORBIDDEN }, { status: 403 })
+  const allowed = await checkAdminAccess(session.userId);
+  if (!allowed)
+    return NextResponse.json(
+      { error: ERROR_MESSAGES.FORBIDDEN },
+      { status: 403 },
+    );
 
-  const { id } = await params
-  const teamId = parseInt(id, 10)
-  if (isNaN(teamId)) return NextResponse.json({ error: "Invalid team ID" }, { status: 400 })
+  const { id } = await params;
+  const teamId = parseInt(id, 10);
+  if (isNaN(teamId))
+    return NextResponse.json({ error: "Invalid team ID" }, { status: 400 });
 
   // Get team info
   const teamRes = await pool.query(
@@ -33,10 +44,10 @@ export async function GET(
      FROM teams t
      LEFT JOIN users u ON u.id = t.owner_id
      WHERE t.id = $1`,
-    [teamId]
-  )
+    [teamId],
+  );
   if (teamRes.rows.length === 0) {
-    return NextResponse.json({ error: "Team not found" }, { status: 404 })
+    return NextResponse.json({ error: "Team not found" }, { status: 404 });
   }
 
   // Get team members
@@ -59,11 +70,11 @@ export async function GET(
          WHEN 'viewer' THEN 4 
        END,
        tm.joined_at`,
-    [teamId]
-  )
+    [teamId],
+  );
 
   return NextResponse.json({
     team: teamRes.rows[0],
     members: membersRes.rows,
-  })
+  });
 }

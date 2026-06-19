@@ -1,19 +1,22 @@
-import { getSession } from "@/lib/auth"
-import pool from "@/lib/database/db"
-import { ApiResponse, withErrorHandling } from "@/lib/api/api-utils"
-import { ERROR_MESSAGES } from "@/lib/config/constants"
+import { getSession } from "@/lib/auth";
+import pool from "@/lib/database/db";
+import { ApiResponse, withErrorHandling } from "@/lib/api/api-utils";
+import { ERROR_MESSAGES } from "@/lib/config/constants";
 
 export const GET = withErrorHandling(async () => {
-  const session = await getSession()
+  const session = await getSession();
   if (!session) {
-    return ApiResponse.unauthorized(ERROR_MESSAGES.UNAUTHORIZED)
+    return ApiResponse.unauthorized(ERROR_MESSAGES.UNAUTHORIZED);
   }
 
-  const userId = session.userId
+  const userId = session.userId;
 
-  const userCheck = await pool.query("SELECT disabled_at FROM users WHERE id = $1", [userId])
+  const userCheck = await pool.query(
+    "SELECT disabled_at FROM users WHERE id = $1",
+    [userId],
+  );
   if (userCheck.rows[0]?.disabled_at) {
-    return ApiResponse.forbidden("Account suspended.")
+    return ApiResponse.forbidden("Account suspended.");
   }
 
   const [
@@ -80,19 +83,21 @@ export const GET = withErrorHandling(async () => {
        FROM scan_history WHERE user_id = $1`,
       [userId],
     ),
-  ])
+  ]);
 
   return ApiResponse.success({
     totalScans: totalScansRes.rows[0]?.count || 0,
     recentScans: recentScansRes.rows,
     severityBreakdown: severityBreakdownRes.rows[0],
     topVulnerabilities: topVulnsRes.rows,
-    dailyActivity: weeklyActivityRes.rows.map((row: { day: string; scans: number }) => ({
-      day: row.day,
-      scans: Number(row.scans) || 0,
-      issues: 0,
-    })),
+    dailyActivity: weeklyActivityRes.rows.map(
+      (row: { day: string; scans: number }) => ({
+        day: row.day,
+        scans: Number(row.scans) || 0,
+        issues: 0,
+      }),
+    ),
     sourceBreakdown: apiVsWebRes.rows,
     uniqueSites: uniqueSitesRes.rows[0]?.count || 0,
-  })
-})
+  });
+});

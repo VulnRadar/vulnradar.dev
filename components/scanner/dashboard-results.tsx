@@ -1,43 +1,51 @@
-import { Globe, ShieldCheck } from "lucide-react"
-import { Button } from "@/components/ui/button"
-import { RotateCcw } from "lucide-react"
-import dynamic from "next/dynamic"
-import type { ScanResult, Vulnerability } from "@/lib/scanner/types"
-import { HistoryNotes } from "@/components/history"
-import { ScanSummary } from "./scan-summary"
-import { ResultsList } from "./results-list"
-import { CrawlPagesInfo } from "./crawl-pages-info"
-import { SubdomainDiscovery } from "./subdomain-discovery"
+import { Globe, ShieldCheck } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { RotateCcw } from "lucide-react";
+import dynamic from "next/dynamic";
+import type { ScanResult, Vulnerability } from "@/lib/scanner/types";
+import { HistoryNotes } from "@/components/history";
+import { ScanSummary } from "./scan-summary";
+import { ResultsList } from "./results-list";
+import { CrawlPagesInfo } from "./crawl-pages-info";
+import { SubdomainDiscovery } from "./subdomain-discovery";
 
-const ExportButton = dynamic(() => import("./export-button").then(m => ({ default: m.ExportButton })))
-const ShareButton = dynamic(() => import("./share-button").then(m => ({ default: m.ShareButton })))
-const ResponseHeaders = dynamic(() => import("./response-headers").then(m => ({ default: m.ResponseHeaders })))
-const IssueDetail = dynamic(() => import("./issue-detail").then(m => ({ default: m.IssueDetail })))
+const ExportButton = dynamic(() =>
+  import("./export-button").then((m) => ({ default: m.ExportButton })),
+);
+const ShareButton = dynamic(() =>
+  import("./share-button").then((m) => ({ default: m.ShareButton })),
+);
+const ResponseHeaders = dynamic(() =>
+  import("./response-headers").then((m) => ({ default: m.ResponseHeaders })),
+);
+const IssueDetail = dynamic(() =>
+  import("./issue-detail").then((m) => ({ default: m.IssueDetail })),
+);
 
 interface CrawlPageData {
-  url: string
-  findings: Vulnerability[]
-  findings_count: number
-  summary: Record<string, number>
-  duration: number
+  url: string;
+  findings: Vulnerability[];
+  findings_count: number;
+  summary: Record<string, number>;
+  duration: number;
 }
 
 interface CrawlInfo {
-  pagesDiscovered: number
-  pagesScanned: number
-  pages: CrawlPageData[]
+  pagesDiscovered: number;
+  pagesScanned: number;
+  pages: CrawlPageData[];
 }
 
 interface DashboardResultsProps {
-  result: ScanResult
-  selectedIssue: Vulnerability | null
-  onSelectIssue: (issue: Vulnerability | null) => void
-  scanHistoryId: number | null
-  scanNotes: string
-  crawlInfo: CrawlInfo | null
-  onReset: () => void
-  onScanSubdomain: (url: string) => void
-  onSaveNotes: (notes: string) => Promise<void>
+  result: ScanResult;
+  selectedIssue: Vulnerability | null;
+  onSelectIssue: (issue: Vulnerability | null) => void;
+  scanHistoryId: number | null;
+  scanNotes: string;
+  crawlInfo: CrawlInfo | null;
+  onReset: () => void;
+  onScanSubdomain: (url: string) => void;
+  onSaveNotes: (notes: string) => Promise<void>;
 }
 
 export function DashboardResults({
@@ -52,7 +60,9 @@ export function DashboardResults({
   onSaveNotes,
 }: DashboardResultsProps) {
   if (selectedIssue) {
-    return <IssueDetail issue={selectedIssue} onBack={() => onSelectIssue(null)} />
+    return (
+      <IssueDetail issue={selectedIssue} onBack={() => onSelectIssue(null)} />
+    );
   }
 
   return (
@@ -65,11 +75,18 @@ export function DashboardResults({
           </div>
           <div className="min-w-0 flex-1">
             <p className="text-xs text-muted-foreground mb-0.5">Scanned URL</p>
-            <p className="text-sm font-medium text-foreground break-all font-mono">{result.url}</p>
+            <p className="text-sm font-medium text-foreground break-all font-mono">
+              {result.url}
+            </p>
           </div>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Button variant="outline" onClick={onReset} size="sm" className="bg-transparent">
+          <Button
+            variant="outline"
+            onClick={onReset}
+            size="sm"
+            className="bg-transparent"
+          >
             <RotateCcw className="h-4 w-4 sm:mr-2" />
             <span className="hidden sm:inline">New Scan</span>
           </Button>
@@ -88,20 +105,17 @@ export function DashboardResults({
       )}
 
       {/* Response headers */}
-      {result.responseHeaders && Object.keys(result.responseHeaders).length > 0 && (
-        <ResponseHeaders headers={result.responseHeaders} />
-      )}
+      {result.responseHeaders &&
+        Object.keys(result.responseHeaders).length > 0 && (
+          <ResponseHeaders headers={result.responseHeaders} />
+        )}
 
       {/* Subdomain discovery */}
       <SubdomainDiscovery url={result.url} onScanSubdomain={onScanSubdomain} />
 
       {/* Notes */}
       {scanHistoryId && (
-        <HistoryNotes
-          notes={scanNotes}
-          isOwner={true}
-          onSave={onSaveNotes}
-        />
+        <HistoryNotes notes={scanNotes} isOwner={true} onSave={onSaveNotes} />
       )}
 
       {/* Results list or empty state */}
@@ -119,5 +133,5 @@ export function DashboardResults({
         </div>
       )}
     </div>
-  )
+  );
 }

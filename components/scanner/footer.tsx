@@ -1,23 +1,41 @@
-"use client"
+"use client";
 
-import Link from "next/link"
-import { Heart, Mail } from "lucide-react"
-import { FaGithub } from "react-icons/fa"
-import { APP_VERSION, APP_NAME, APP_URL, APP_REPO, SUPPORT_EMAIL, ROUTES, BILLING_ENABLED } from "@/lib/config/constants"
-import { Button } from "@/components/ui/button"
-import { ThemedLogo } from "@/components/shared/themed-logo"
+import Link from "next/link";
+import { Heart, Mail } from "lucide-react";
+import { FaGithub } from "react-icons/fa";
+import {
+  APP_VERSION,
+  APP_NAME,
+  APP_URL,
+  APP_REPO,
+  SUPPORT_EMAIL,
+  ROUTES,
+  BILLING_ENABLED,
+} from "@/lib/config/constants";
+import { Button } from "@/components/ui/button";
+import { ThemedLogo } from "@/components/shared/themed-logo";
 
 export function Footer() {
   return (
     <footer className="border-t border-border bg-background mt-auto">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
-        <nav aria-label="Footer navigation" className="grid md:grid-cols-5 gap-10 mb-12">
+        <nav
+          aria-label="Footer navigation"
+          className="grid md:grid-cols-5 gap-10 mb-12"
+        >
           {/* Brand */}
           <div className="md:col-span-2">
             <div className="flex items-center gap-2.5 mb-4">
-              <ThemedLogo width={24} height={24} className="h-6 w-6" alt={`${APP_NAME} logo`} />
-              <span className="text-base font-semibold text-foreground">{APP_NAME}</span>
-              <span 
+              <ThemedLogo
+                width={24}
+                height={24}
+                className="h-6 w-6"
+                alt={`${APP_NAME} logo`}
+              />
+              <span className="text-base font-semibold text-foreground">
+                {APP_NAME}
+              </span>
+              <span
                 className="inline-flex items-center rounded-full bg-primary/10 border border-primary/30 px-2 py-0.5 text-[10px] font-medium font-mono text-primary"
                 suppressHydrationWarning
               >
@@ -25,10 +43,15 @@ export function Footer() {
               </span>
             </div>
             <p className="text-sm text-muted-foreground leading-relaxed mb-5 max-w-xs">
-              Professional web vulnerability scanning. Open-source, free forever.
+              Professional web vulnerability scanning. Open-source, free
+              forever.
             </p>
             <Link href={ROUTES.DONATE}>
-              <Button variant="outline" size="sm" className="gap-2 h-9 border-violet-500/30 bg-violet-500/10 text-violet-400 hover:bg-accent hover:text-accent-foreground hover:border-accent">
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-2 h-9 border-violet-500/30 bg-violet-500/10 text-violet-400 hover:bg-accent hover:text-accent-foreground hover:border-accent"
+              >
                 <Heart className="h-3.5 w-3.5 fill-violet-400" />
                 Support VulnRadar
               </Button>
@@ -37,39 +60,166 @@ export function Footer() {
 
           {/* Product */}
           <div>
-            <h3 className="font-semibold text-sm mb-4 text-foreground">Product</h3>
+            <h3 className="font-semibold text-sm mb-4 text-foreground">
+              Product
+            </h3>
             <ul className="space-y-2.5 text-sm text-muted-foreground">
-              <li><Link href={ROUTES.DASHBOARD} className="hover:text-foreground transition-colors">Scanner</Link></li>
-              <li><Link href={ROUTES.HISTORY} className="hover:text-foreground transition-colors">History</Link></li>
-              <li><Link href={ROUTES.COMPARE} className="hover:text-foreground transition-colors">Compare</Link></li>
-              <li><Link href={ROUTES.BADGE} className="hover:text-foreground transition-colors">Badges</Link></li>
-              {BILLING_ENABLED && <li><Link href={ROUTES.PRICING} className="hover:text-foreground transition-colors">Pricing</Link></li>}
+              <li>
+                <Link
+                  href={ROUTES.DASHBOARD}
+                  className="hover:text-foreground transition-colors"
+                >
+                  Scanner
+                </Link>
+              </li>
+              <li>
+                <Link
+                  href={ROUTES.HISTORY}
+                  className="hover:text-foreground transition-colors"
+                >
+                  History
+                </Link>
+              </li>
+              <li>
+                <Link
+                  href={ROUTES.COMPARE}
+                  className="hover:text-foreground transition-colors"
+                >
+                  Compare
+                </Link>
+              </li>
+              <li>
+                <Link
+                  href={ROUTES.BADGE}
+                  className="hover:text-foreground transition-colors"
+                >
+                  Badges
+                </Link>
+              </li>
+              {BILLING_ENABLED && (
+                <li>
+                  <Link
+                    href={ROUTES.PRICING}
+                    className="hover:text-foreground transition-colors"
+                  >
+                    Pricing
+                  </Link>
+                </li>
+              )}
             </ul>
           </div>
 
           {/* Resources */}
           <div>
-            <h3 className="font-semibold text-sm mb-4 text-foreground">Resources</h3>
+            <h3 className="font-semibold text-sm mb-4 text-foreground">
+              Resources
+            </h3>
             <ul className="space-y-2.5 text-sm text-muted-foreground">
-              <li><Link href={ROUTES.CONTACT} className="hover:text-foreground transition-colors">Contact</Link></li>
-              <li><Link href={ROUTES.DOCS} className="hover:text-foreground transition-colors">Documentation</Link></li>
-              <li><Link href={ROUTES.DOCS_API} className="hover:text-foreground transition-colors">API Reference</Link></li>
-              <li><Link href={ROUTES.DOCS_SETUP} className="hover:text-foreground transition-colors">Setup Guide</Link></li>
-              <li><Link href={ROUTES.CHANGELOG} className="hover:text-foreground transition-colors">Changelog</Link></li>
+              <li>
+                <Link
+                  href={ROUTES.CONTACT}
+                  className="hover:text-foreground transition-colors"
+                >
+                  Contact
+                </Link>
+              </li>
+              <li>
+                <Link
+                  href={ROUTES.DOCS}
+                  className="hover:text-foreground transition-colors"
+                >
+                  Documentation
+                </Link>
+              </li>
+              <li>
+                <Link
+                  href={ROUTES.DOCS_API}
+                  className="hover:text-foreground transition-colors"
+                >
+                  API Reference
+                </Link>
+              </li>
+              <li>
+                <Link
+                  href={ROUTES.DOCS_SETUP}
+                  className="hover:text-foreground transition-colors"
+                >
+                  Setup Guide
+                </Link>
+              </li>
+              <li>
+                <Link
+                  href={ROUTES.CHANGELOG}
+                  className="hover:text-foreground transition-colors"
+                >
+                  Changelog
+                </Link>
+              </li>
             </ul>
           </div>
 
           {/* Legal */}
           <div>
-            <h3 className="font-semibold text-sm mb-4 text-foreground">Legal</h3>
+            <h3 className="font-semibold text-sm mb-4 text-foreground">
+              Legal
+            </h3>
             <ul className="space-y-2.5 text-sm text-muted-foreground">
-              <li><Link href={ROUTES.LEGAL_TERMS} className="hover:text-foreground transition-colors">Terms of Service</Link></li>
-              <li><Link href={ROUTES.LEGAL_PRIVACY} className="hover:text-foreground transition-colors">Privacy Policy</Link></li>
-              <li><Link href={ROUTES.LEGAL_ACCEPTABLE_USE} className="hover:text-foreground transition-colors">Acceptable Use</Link></li>
-              <li><Link href={ROUTES.LEGAL_DISCLAIMER} className="hover:text-foreground transition-colors">Disclaimer</Link></li>
-              <li><Link href="/legal/dmca" className="hover:text-foreground transition-colors">DMCA Policy</Link></li>
-              <li><Link href="/legal/accessibility" className="hover:text-foreground transition-colors">Accessibility</Link></li>
-              <li><Link href={ROUTES.GDPR_REQUEST} className="hover:text-foreground transition-colors">GDPR / Data Request</Link></li>
+              <li>
+                <Link
+                  href={ROUTES.LEGAL_TERMS}
+                  className="hover:text-foreground transition-colors"
+                >
+                  Terms of Service
+                </Link>
+              </li>
+              <li>
+                <Link
+                  href={ROUTES.LEGAL_PRIVACY}
+                  className="hover:text-foreground transition-colors"
+                >
+                  Privacy Policy
+                </Link>
+              </li>
+              <li>
+                <Link
+                  href={ROUTES.LEGAL_ACCEPTABLE_USE}
+                  className="hover:text-foreground transition-colors"
+                >
+                  Acceptable Use
+                </Link>
+              </li>
+              <li>
+                <Link
+                  href={ROUTES.LEGAL_DISCLAIMER}
+                  className="hover:text-foreground transition-colors"
+                >
+                  Disclaimer
+                </Link>
+              </li>
+              <li>
+                <Link
+                  href="/legal/dmca"
+                  className="hover:text-foreground transition-colors"
+                >
+                  DMCA Policy
+                </Link>
+              </li>
+              <li>
+                <Link
+                  href="/legal/accessibility"
+                  className="hover:text-foreground transition-colors"
+                >
+                  Accessibility
+                </Link>
+              </li>
+              <li>
+                <Link
+                  href={ROUTES.GDPR_REQUEST}
+                  className="hover:text-foreground transition-colors"
+                >
+                  GDPR / Data Request
+                </Link>
+              </li>
             </ul>
           </div>
         </nav>
@@ -77,13 +227,24 @@ export function Footer() {
         {/* Bottom bar */}
         <div className="border-t border-border pt-8 flex flex-col sm:flex-row items-center justify-between gap-4">
           <p className="text-sm text-muted-foreground">
-            {"\u00A9"} {new Date().getFullYear()} {APP_NAME}. For authorized security testing only.
+            {"\u00A9"} {new Date().getFullYear()} {APP_NAME}. For authorized
+            security testing only.
           </p>
           <div className="flex items-center gap-5">
-            <a href={`https://github.com/${APP_REPO}`} target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-foreground transition-colors" aria-label="GitHub">
+            <a
+              href={`https://github.com/${APP_REPO}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-muted-foreground hover:text-foreground transition-colors"
+              aria-label="GitHub"
+            >
               <FaGithub className="h-4 w-4" />
             </a>
-            <a href={`mailto:${SUPPORT_EMAIL}`} className="text-muted-foreground hover:text-foreground transition-colors" aria-label="Email">
+            <a
+              href={`mailto:${SUPPORT_EMAIL}`}
+              className="text-muted-foreground hover:text-foreground transition-colors"
+              aria-label="Email"
+            >
               <Mail className="h-4 w-4" />
             </a>
             <span className="text-xs text-muted-foreground">
@@ -93,5 +254,5 @@ export function Footer() {
         </div>
       </div>
     </footer>
-  )
+  );
 }

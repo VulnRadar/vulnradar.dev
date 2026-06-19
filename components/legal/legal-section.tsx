@@ -1,7 +1,7 @@
 interface LegalSectionProps {
-  id?: string
-  title: string
-  children: React.ReactNode
+  id?: string;
+  title: string;
+  children: React.ReactNode;
 }
 
 export function LegalSection({ id, title, children }: LegalSectionProps) {
@@ -12,5 +12,5 @@ export function LegalSection({ id, title, children }: LegalSectionProps) {
         {children}
       </div>
     </section>
-  )
+  );
 }

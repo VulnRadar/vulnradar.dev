@@ -1,18 +1,18 @@
-"use client"
+"use client";
 
-import { ArrowLeft, Globe } from "lucide-react"
-import { Button } from "@/components/ui/button"
-import { ExportButton } from "@/components/scanner/export-button"
-import { ShareButton } from "@/components/scanner/share-button"
-import { DeleteScanButton } from "@/components/scanner/delete-scan-button"
-import type { ScanResult } from "@/lib/scanner/types"
+import { ArrowLeft, Globe } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { ExportButton } from "@/components/scanner/export-button";
+import { ShareButton } from "@/components/scanner/share-button";
+import { DeleteScanButton } from "@/components/scanner/delete-scan-button";
+import type { ScanResult } from "@/lib/scanner/types";
 
 interface HistoryDetailHeaderProps {
-  scanDetail: ScanResult
-  scanId: number
-  isOwner: boolean
-  onBack: () => void
-  onDeleted: () => void
+  scanDetail: ScanResult;
+  scanId: number;
+  isOwner: boolean;
+  onBack: () => void;
+  onDeleted: () => void;
 }
 
 export function HistoryDetailHeader({
@@ -30,12 +30,19 @@ export function HistoryDetailHeader({
         </div>
         <div className="min-w-0 flex-1">
           <p className="text-xs text-muted-foreground mb-0.5">Scanned URL</p>
-          <p className="text-sm font-medium text-foreground break-all font-mono">{scanDetail.url}</p>
+          <p className="text-sm font-medium text-foreground break-all font-mono">
+            {scanDetail.url}
+          </p>
         </div>
       </div>
-      
+
       <div className="flex flex-wrap gap-2">
-        <Button variant="outline" onClick={onBack} size="sm" className="bg-transparent">
+        <Button
+          variant="outline"
+          onClick={onBack}
+          size="sm"
+          className="bg-transparent"
+        >
           <ArrowLeft className="h-4 w-4 sm:mr-2" />
           <span className="hidden sm:inline">Back to History</span>
         </Button>
@@ -49,5 +56,5 @@ export function HistoryDetailHeader({
         />
       </div>
     </div>
-  )
+  );
 }

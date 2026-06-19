@@ -1,34 +1,44 @@
-﻿import { NextRequest, NextResponse } from "next/server"
-import { getSession } from "@/lib/auth"
-import pool from "@/lib/database/db"
-import { STAFF_ROLE_HIERARCHY } from "@/lib/config/constants"
-import { getClientIp } from "@/lib/api/request-utils"
+﻿import { NextRequest, NextResponse } from "next/server";
+import { getSession } from "@/lib/auth";
+import pool from "@/lib/database/db";
+import { STAFF_ROLE_HIERARCHY } from "@/lib/config/constants";
+import { getClientIp } from "@/lib/api/request-utils";
 
 // POST - Update staff member's activity heartbeat
 export async function POST(request: NextRequest) {
   try {
-    const session = await getSession()
-    if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    const session = await getSession();
+    if (!session)
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     // Verify user is staff
-    const userResult = await pool.query("SELECT role FROM users WHERE id = $1", [session.userId])
-    const user = userResult.rows[0]
-    if (!user) return NextResponse.json({ error: "User not found" }, { status: 404 })
+    const userResult = await pool.query(
+      "SELECT role FROM users WHERE id = $1",
+      [session.userId],
+    );
+    const user = userResult.rows[0];
+    if (!user)
+      return NextResponse.json({ error: "User not found" }, { status: 404 });
 
-    const role = user.role || "user"
-    if ((STAFF_ROLE_HIERARCHY[role] || 0) < (STAFF_ROLE_HIERARCHY.support || 1)) {
-      return NextResponse.json({ error: "Not authorized as staff" }, { status: 403 })
+    const role = user.role || "user";
+    if (
+      (STAFF_ROLE_HIERARCHY[role] || 0) < (STAFF_ROLE_HIERARCHY.support || 1)
+    ) {
+      return NextResponse.json(
+        { error: "Not authorized as staff" },
+        { status: 403 },
+      );
     }
 
-    let section = "dashboard"
+    let section = "dashboard";
     try {
-      const body = await request.json()
-      if (body?.section) section = body.section
+      const body = await request.json();
+      if (body?.section) section = body.section;
     } catch {
       // No body or invalid JSON - use default section
     }
-    const ip = await getClientIp()
-    const userAgent = request.headers.get("user-agent") || "unknown"
+    const ip = await getClientIp();
+    const userAgent = request.headers.get("user-agent") || "unknown";
 
     // Update or insert activity record
     const result = await pool.query(
@@ -41,8 +51,8 @@ export async function POST(request: NextRequest) {
          user_agent = $4,
          updated_at = NOW()
        RETURNING user_id, last_heartbeat, current_section`,
-      [session.userId, section || "dashboard", ip, userAgent]
-    )
+      [session.userId, section || "dashboard", ip, userAgent],
+    );
 
     return NextResponse.json({
       success: true,
@@ -50,27 +60,40 @@ export async function POST(request: NextRequest) {
         ...result.rows[0],
         is_active: true, // Just sent heartbeat, so is active
       },
-    })
+    });
   } catch (error) {
-    console.error("[Admin Activity] Heartbeat error:", error)
-    return NextResponse.json({ error: "Failed to update activity" }, { status: 500 })
+    console.error("[Admin Activity] Heartbeat error:", error);
+    return NextResponse.json(
+      { error: "Failed to update activity" },
+      { status: 500 },
+    );
   }
 }
 
 // GET - Fetch all active staff members
 export async function GET(_request: NextRequest) {
   try {
-    const session = await getSession()
-    if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    const session = await getSession();
+    if (!session)
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     // Verify user is staff
-    const userResult = await pool.query("SELECT role FROM users WHERE id = $1", [session.userId])
-    const user = userResult.rows[0]
-    if (!user) return NextResponse.json({ error: "User not found" }, { status: 404 })
+    const userResult = await pool.query(
+      "SELECT role FROM users WHERE id = $1",
+      [session.userId],
+    );
+    const user = userResult.rows[0];
+    if (!user)
+      return NextResponse.json({ error: "User not found" }, { status: 404 });
 
-    const role = user.role || "user"
-    if ((STAFF_ROLE_HIERARCHY[role] || 0) < (STAFF_ROLE_HIERARCHY.support || 1)) {
-      return NextResponse.json({ error: "Not authorized as staff" }, { status: 403 })
+    const role = user.role || "user";
+    if (
+      (STAFF_ROLE_HIERARCHY[role] || 0) < (STAFF_ROLE_HIERARCHY.support || 1)
+    ) {
+      return NextResponse.json(
+        { error: "Not authorized as staff" },
+        { status: 403 },
+      );
     }
 
     // Get all staff with their activity status
@@ -94,15 +117,18 @@ export async function GET(_request: NextRequest) {
          CASE WHEN sa.last_heartbeat IS NOT NULL AND EXTRACT(EPOCH FROM (NOW() - sa.last_heartbeat)) < 120 THEN 0 ELSE 1 END,
          sa.last_heartbeat DESC NULLS LAST,
          u.role IN ('admin') DESC,
-         u.email ASC`
-    )
+         u.email ASC`,
+    );
 
     return NextResponse.json({
       staff: staffResult.rows,
       timestamp: new Date(),
-    })
+    });
   } catch (error) {
-    console.error("[Admin Activity] Fetch error:", error)
-    return NextResponse.json({ error: "Failed to fetch activity" }, { status: 500 })
+    console.error("[Admin Activity] Fetch error:", error);
+    return NextResponse.json(
+      { error: "Failed to fetch activity" },
+      { status: 500 },
+    );
   }
 }

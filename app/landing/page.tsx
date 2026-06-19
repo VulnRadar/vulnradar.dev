@@ -1,13 +1,13 @@
-"use client"
+"use client";
 
-import { Footer } from "@/components/scanner/footer"
-import { LandingNav } from "@/components/landing/landing-nav"
-import { LandingHero } from "@/components/landing/landing-hero"
-import { LandingStats } from "@/components/landing/landing-stats"
-import { LandingFeatures } from "@/components/landing/landing-features"
-import { LandingHowItWorks } from "@/components/landing/landing-how-it-works"
-import { LandingUseCases } from "@/components/landing/landing-use-cases"
-import { LandingCta } from "@/components/landing/landing-cta"
+import { Footer } from "@/components/scanner/footer";
+import { LandingNav } from "@/components/landing/landing-nav";
+import { LandingHero } from "@/components/landing/landing-hero";
+import { LandingStats } from "@/components/landing/landing-stats";
+import { LandingFeatures } from "@/components/landing/landing-features";
+import { LandingHowItWorks } from "@/components/landing/landing-how-it-works";
+import { LandingUseCases } from "@/components/landing/landing-use-cases";
+import { LandingCta } from "@/components/landing/landing-cta";
 
 export default function LandingPage() {
   return (
@@ -23,5 +23,5 @@ export default function LandingPage() {
       </main>
       <Footer />
     </div>
-  )
+  );
 }

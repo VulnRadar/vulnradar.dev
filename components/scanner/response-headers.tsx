@@ -1,11 +1,17 @@
-"use client"
+"use client";
 
-import { useState } from "react"
-import { ChevronDown, ChevronRight, Server, ShieldCheck, ShieldX } from "lucide-react"
-import { cn } from "@/lib/ui/utils"
+import { useState } from "react";
+import {
+  ChevronDown,
+  ChevronRight,
+  Server,
+  ShieldCheck,
+  ShieldX,
+} from "lucide-react";
+import { cn } from "@/lib/ui/utils";
 
 interface ResponseHeadersProps {
-  headers: Record<string, string>
+  headers: Record<string, string>;
 }
 
 const SECURITY_HEADERS = [
@@ -20,20 +26,20 @@ const SECURITY_HEADERS = [
   "cross-origin-embedder-policy",
   "x-xss-protection",
   "x-dns-prefetch-control",
-]
+];
 
 export function ResponseHeaders({ headers }: ResponseHeadersProps) {
-  const [expanded, setExpanded] = useState(false)
+  const [expanded, setExpanded] = useState(false);
 
-  const entries = Object.entries(headers)
-  if (entries.length === 0) return null
+  const entries = Object.entries(headers);
+  if (entries.length === 0) return null;
 
   const securityPresent = SECURITY_HEADERS.filter((h) =>
-    entries.some(([k]) => k.toLowerCase() === h)
-  )
+    entries.some(([k]) => k.toLowerCase() === h),
+  );
   const securityMissing = SECURITY_HEADERS.filter(
-    (h) => !entries.some(([k]) => k.toLowerCase() === h)
-  )
+    (h) => !entries.some(([k]) => k.toLowerCase() === h),
+  );
 
   return (
     <div className="rounded-xl border border-border bg-card overflow-hidden">
@@ -47,7 +53,8 @@ export function ResponseHeaders({ headers }: ResponseHeadersProps) {
           Response Headers
         </span>
         <span className="text-xs text-muted-foreground">
-          {securityPresent.length}/{SECURITY_HEADERS.length} security headers present
+          {securityPresent.length}/{SECURITY_HEADERS.length} security headers
+          present
         </span>
         {expanded ? (
           <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0" />
@@ -60,7 +67,9 @@ export function ResponseHeaders({ headers }: ResponseHeadersProps) {
         <div className="border-t border-border">
           {/* Security headers summary */}
           <div className="px-4 py-3 border-b border-border bg-muted/30">
-            <p className="text-xs font-medium text-muted-foreground mb-2">Security Headers</p>
+            <p className="text-xs font-medium text-muted-foreground mb-2">
+              Security Headers
+            </p>
             <div className="flex flex-wrap gap-1.5">
               {securityPresent.map((h) => (
                 <span
@@ -86,7 +95,7 @@ export function ResponseHeaders({ headers }: ResponseHeadersProps) {
           {/* All headers */}
           <div className="max-h-80 overflow-y-auto">
             {entries.map(([key, value]) => {
-              const isSecurity = SECURITY_HEADERS.includes(key.toLowerCase())
+              const isSecurity = SECURITY_HEADERS.includes(key.toLowerCase());
               return (
                 <div
                   key={key}
@@ -102,11 +111,11 @@ export function ResponseHeaders({ headers }: ResponseHeadersProps) {
                     {value}
                   </span>
                 </div>
-              )
+              );
             })}
           </div>
         </div>
       )}
     </div>
-  )
+  );
 }

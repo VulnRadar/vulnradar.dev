@@ -1,5 +1,5 @@
-export * from "./contact-types"
-export { ContactQuickLinks } from "./contact-quick-links"
-export { ContactCategorySelector } from "./contact-category-selector"
-export { ContactForm } from "./contact-form"
-export { ContactSuccess } from "./contact-success"
+export * from "./contact-types";
+export { ContactQuickLinks } from "./contact-quick-links";
+export { ContactCategorySelector } from "./contact-category-selector";
+export { ContactForm } from "./contact-form";
+export { ContactSuccess } from "./contact-success";

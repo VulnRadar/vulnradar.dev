@@ -5,10 +5,10 @@ production deployment.
 
 ## Hardware Requirements
 
-| Workload | CPU | RAM | Disk |
-|---|---|---|---|
-| Demo / personal use | 1 vCPU | 1 GB | 20 GB |
-| Small team (10 users) | 2 vCPU | 2 GB | 50 GB |
+| Workload                 | CPU     | RAM   | Disk    |
+| ------------------------ | ------- | ----- | ------- |
+| Demo / personal use      | 1 vCPU  | 1 GB  | 20 GB   |
+| Small team (10 users)    | 2 vCPU  | 2 GB  | 50 GB   |
 | Public SaaS (100s users) | 4+ vCPU | 8+ GB | 200+ GB |
 
 A managed PostgreSQL (Neon, Supabase, RDS) is recommended over running your own DB.
@@ -34,22 +34,22 @@ node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 Edit **`lib/config/config-values.ts`** to set:
 
 ```ts
-export const CONFIG_APP_NAME = "YourBrand Scanner"
-export const CONFIG_APP_URL = "https://scanner.yourdomain.com"
-export const CONFIG_APP_REPO = "yourname/your-repo"
-export const CONFIG_DISCORD_INVITE_URL = ""  // optional
+export const CONFIG_APP_NAME = "YourBrand Scanner";
+export const CONFIG_APP_URL = "https://scanner.yourdomain.com";
+export const CONFIG_APP_REPO = "yourname/your-repo";
+export const CONFIG_DISCORD_INVITE_URL = ""; // optional
 
-export const CONFIG_SUPPORT_EMAIL = "support@yourdomain.com"
-export const CONFIG_LEGAL_EMAIL = "legal@yourdomain.com"
-export const CONFIG_SECURITY_EMAIL = "security@yourdomain.com"
-export const CONFIG_ENTERPRISE_EMAIL = "enterprise@yourdomain.com"
-export const CONFIG_NOREPLY_EMAIL = "noreply@yourdomain.com"
+export const CONFIG_SUPPORT_EMAIL = "support@yourdomain.com";
+export const CONFIG_LEGAL_EMAIL = "legal@yourdomain.com";
+export const CONFIG_SECURITY_EMAIL = "security@yourdomain.com";
+export const CONFIG_ENTERPRISE_EMAIL = "enterprise@yourdomain.com";
+export const CONFIG_NOREPLY_EMAIL = "noreply@yourdomain.com";
 ```
 
 If you don't want billing features, set:
 
 ```ts
-export const CONFIG_BILLING_ENABLED = false
+export const CONFIG_BILLING_ENABLED = false;
 ```
 
 ## 3. Create `.env`
@@ -105,6 +105,7 @@ docker compose logs -f app   # watch startup
 ```
 
 Look for:
+
 ```
 ✓ Database initialized
 ✓ Listening on http://0.0.0.0:3000
@@ -158,6 +159,7 @@ If you set `CONFIG_BILLING_ENABLED = true`:
 3. Restart: `docker compose restart app`
 
 Alternatively, use the auto-setup endpoint:
+
 ```bash
 curl https://scanner.yourdomain.com/api/v2/stripe/setup-webhook
 # returns the webhookSecret to paste into .env
@@ -189,13 +191,13 @@ Watch logs for migrations or new env vars.
 
 ## Troubleshooting
 
-| Symptom | Cause | Fix |
-|---|---|---|
-| `Database initialized` then crash | DB not reachable | Check `DATABASE_URL` and `DATABASE_SSL` |
-| Build fails with "API_KEY_ENCRYPTION_KEY required" | Missing env var at build | Dockerfile provides placeholder; check runtime env |
-| `Config validation failed at runtime` | Misconfigured `config-values.ts` | Check TypeScript errors: `npm run typecheck` |
-| 502 from reverse proxy | App not listening on 0.0.0.0:3000 | Check `APP_PORT` env var (default 3000) |
-| Stripe webhook 400s | Wrong signing secret | Re-copy from Stripe dashboard, restart app |
+| Symptom                                            | Cause                             | Fix                                                |
+| -------------------------------------------------- | --------------------------------- | -------------------------------------------------- |
+| `Database initialized` then crash                  | DB not reachable                  | Check `DATABASE_URL` and `DATABASE_SSL`            |
+| Build fails with "API_KEY_ENCRYPTION_KEY required" | Missing env var at build          | Dockerfile provides placeholder; check runtime env |
+| `Config validation failed at runtime`              | Misconfigured `config-values.ts`  | Check TypeScript errors: `npm run typecheck`       |
+| 502 from reverse proxy                             | App not listening on 0.0.0.0:3000 | Check `APP_PORT` env var (default 3000)            |
+| Stripe webhook 400s                                | Wrong signing secret              | Re-copy from Stripe dashboard, restart app         |
 
 ## Security Checklist
 

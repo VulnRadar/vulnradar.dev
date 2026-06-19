@@ -5,16 +5,16 @@
 // All values can be customized by editing config-values.ts directly.
 // ============================================================================
 
-import { VulnRadarConfig, DEFAULT_CONFIG } from "../types/config"
+import { VulnRadarConfig, DEFAULT_CONFIG } from "../types/config";
 
 // Config loading state
-let _config: VulnRadarConfig | null = null
-let _configLoadError: string | null = null
+let _config: VulnRadarConfig | null = null;
+let _configLoadError: string | null = null;
 
 // Clear config cache (useful for development hot reloads)
 export function clearConfigCache() {
-  _config = null
-  _configLoadError = null
+  _config = null;
+  _configLoadError = null;
 }
 
 /**
@@ -23,19 +23,19 @@ export function clearConfigCache() {
  */
 export function loadConfig(): VulnRadarConfig {
   // In development, skip cache to pick up config changes without restart
-  if (_config && process.env.NODE_ENV !== "development") return _config
+  if (_config && process.env.NODE_ENV !== "development") return _config;
 
   try {
-    _config = DEFAULT_CONFIG
-    return _config
+    _config = DEFAULT_CONFIG;
+    return _config;
   } catch (error) {
-    _configLoadError = error instanceof Error ? error.message : "Unknown error"
+    _configLoadError = error instanceof Error ? error.message : "Unknown error";
     if (process.env.NODE_ENV === "development") {
-      console.error(`[Config] Error loading config: ${_configLoadError}`)
-      console.warn("[Config] Using defaults")
+      console.error(`[Config] Error loading config: ${_configLoadError}`);
+      console.warn("[Config] Using defaults");
     }
-    _config = DEFAULT_CONFIG
-    return _config
+    _config = DEFAULT_CONFIG;
+    return _config;
   }
 }
 
@@ -45,32 +45,34 @@ export function loadConfig(): VulnRadarConfig {
  */
 export function getConfig(): VulnRadarConfig {
   if (!_config) {
-    return loadConfig()
+    return loadConfig();
   }
-  return _config
+  return _config;
 }
 
 /**
  * Get a specific config value with type safety
  */
-export function getConfigValue<K extends keyof VulnRadarConfig>(key: K): VulnRadarConfig[K] {
-  return getConfig()[key]
+export function getConfigValue<K extends keyof VulnRadarConfig>(
+  key: K,
+): VulnRadarConfig[K] {
+  return getConfig()[key];
 }
 
 /**
  * Check if config loaded successfully
  */
 export function getConfigError(): string | null {
-  return _configLoadError
+  return _configLoadError;
 }
 
 /**
  * Force reload config (useful for testing)
  */
 export function reloadConfig(): VulnRadarConfig {
-  _config = null
-  _configLoadError = null
-  return loadConfig()
+  _config = null;
+  _configLoadError = null;
+  return loadConfig();
 }
 
 // ============================================================================
@@ -78,7 +80,7 @@ export function reloadConfig(): VulnRadarConfig {
 // ============================================================================
 
 // Export the config object directly for easy access
-export const CONFIG = getConfig()
+export const CONFIG = getConfig();
 
 // Re-export types
-export type { VulnRadarConfig } from "../types/config"
+export type { VulnRadarConfig } from "../types/config";

@@ -1,18 +1,18 @@
-"use client"
+"use client";
 
-import { cn } from "@/lib/ui/utils"
-import { InlineCode } from "./docs-code-block"
+import { cn } from "@/lib/ui/utils";
+import { InlineCode } from "./docs-code-block";
 
 interface Column {
-  key: string
-  header: string
-  className?: string
+  key: string;
+  header: string;
+  className?: string;
 }
 
 interface DocsTableProps<T extends Record<string, unknown>> {
-  columns: Column[]
-  data: T[]
-  className?: string
+  columns: Column[];
+  data: T[];
+  className?: string;
 }
 
 export function DocsTable<T extends Record<string, unknown>>({
@@ -26,7 +26,13 @@ export function DocsTable<T extends Record<string, unknown>>({
         <thead>
           <tr className="border-b border-border">
             {columns.map((col) => (
-              <th key={col.key} className={cn("text-left py-2 font-semibold text-xs", col.className)}>
+              <th
+                key={col.key}
+                className={cn(
+                  "text-left py-2 font-semibold text-xs",
+                  col.className,
+                )}
+              >
                 {col.header}
               </th>
             ))}
@@ -36,7 +42,10 @@ export function DocsTable<T extends Record<string, unknown>>({
           {data.map((row, i) => (
             <tr key={i} className="border-b border-border/50">
               {columns.map((col) => (
-                <td key={col.key} className={cn("py-2.5 text-xs", col.className)}>
+                <td
+                  key={col.key}
+                  className={cn("py-2.5 text-xs", col.className)}
+                >
                   {String(row[col.key] ?? "")}
                 </td>
               ))}
@@ -45,18 +54,18 @@ export function DocsTable<T extends Record<string, unknown>>({
         </tbody>
       </table>
     </div>
-  )
+  );
 }
 
 interface EndpointTableRow {
-  endpoint: string
-  method: string
-  description: string
+  endpoint: string;
+  method: string;
+  description: string;
 }
 
 interface EndpointTableProps {
-  endpoints: EndpointTableRow[]
-  className?: string
+  endpoints: EndpointTableRow[];
+  className?: string;
 }
 
 export function EndpointTable({ endpoints, className }: EndpointTableProps) {
@@ -67,7 +76,9 @@ export function EndpointTable({ endpoints, className }: EndpointTableProps) {
           <tr className="border-b border-border">
             <th className="text-left py-2 font-semibold text-xs">Endpoint</th>
             <th className="text-left py-2 font-semibold text-xs">Method</th>
-            <th className="text-left py-2 font-semibold text-xs">Description</th>
+            <th className="text-left py-2 font-semibold text-xs">
+              Description
+            </th>
           </tr>
         </thead>
         <tbody className="text-muted-foreground">
@@ -83,18 +94,18 @@ export function EndpointTable({ endpoints, className }: EndpointTableProps) {
         </tbody>
       </table>
     </div>
-  )
+  );
 }
 
 interface FieldTableRow {
-  field: string
-  type: string
-  description: string
+  field: string;
+  type: string;
+  description: string;
 }
 
 interface FieldTableProps {
-  fields: FieldTableRow[]
-  className?: string
+  fields: FieldTableRow[];
+  className?: string;
 }
 
 export function FieldTable({ fields, className }: FieldTableProps) {
@@ -105,7 +116,9 @@ export function FieldTable({ fields, className }: FieldTableProps) {
           <tr className="border-b border-border">
             <th className="text-left py-2 font-semibold text-xs">Field</th>
             <th className="text-left py-2 font-semibold text-xs">Type</th>
-            <th className="text-left py-2 font-semibold text-xs">Description</th>
+            <th className="text-left py-2 font-semibold text-xs">
+              Description
+            </th>
           </tr>
         </thead>
         <tbody className="text-muted-foreground">
@@ -121,5 +134,5 @@ export function FieldTable({ fields, className }: FieldTableProps) {
         </tbody>
       </table>
     </div>
-  )
+  );
 }

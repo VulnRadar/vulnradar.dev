@@ -1,32 +1,32 @@
-"use client"
+"use client";
 
-import { Loader2 } from "lucide-react"
-import { cn } from "@/lib/ui/utils"
+import { Loader2 } from "lucide-react";
+import { cn } from "@/lib/ui/utils";
 
 interface ActionCardProps {
-  icon: React.ElementType
-  label: string
-  description: string
-  color: string
-  bg: string
-  variant?: "danger" | "success"
-  disabled?: boolean
-  loading?: boolean
-  onClick: () => void
+  icon: React.ElementType;
+  label: string;
+  description: string;
+  color: string;
+  bg: string;
+  variant?: "danger" | "success";
+  disabled?: boolean;
+  loading?: boolean;
+  onClick: () => void;
 }
 
 /**
  * Support action card button for admin actions
  */
 export function ActionCard({
-  icon: Icon, 
-  label, 
-  description, 
-  color, 
-  bg, 
-  variant, 
-  disabled, 
-  loading, 
+  icon: Icon,
+  label,
+  description,
+  color,
+  bg,
+  variant,
+  disabled,
+  loading,
   onClick,
 }: ActionCardProps) {
   return (
@@ -44,21 +44,35 @@ export function ActionCard({
       disabled={disabled || loading}
       onClick={onClick}
     >
-      <div className={cn("h-9 w-9 rounded-lg flex items-center justify-center shrink-0", bg)}>
-        {loading 
-          ? <Loader2 className={cn("h-4 w-4 animate-spin", color)} /> 
-          : <Icon className={cn("h-4 w-4", color)} />
-        }
+      <div
+        className={cn(
+          "h-9 w-9 rounded-lg flex items-center justify-center shrink-0",
+          bg,
+        )}
+      >
+        {loading ? (
+          <Loader2 className={cn("h-4 w-4 animate-spin", color)} />
+        ) : (
+          <Icon className={cn("h-4 w-4", color)} />
+        )}
       </div>
       <div className="flex-1 min-w-0">
-        <p className={cn(
-          "text-sm font-medium", 
-          variant === "danger" ? "text-destructive" : variant === "success" ? "text-emerald-500" : "text-foreground"
-        )}>
+        <p
+          className={cn(
+            "text-sm font-medium",
+            variant === "danger"
+              ? "text-destructive"
+              : variant === "success"
+                ? "text-emerald-500"
+                : "text-foreground",
+          )}
+        >
           {label}
         </p>
-        <p className="text-[10px] text-muted-foreground leading-tight mt-0.5">{description}</p>
+        <p className="text-[10px] text-muted-foreground leading-tight mt-0.5">
+          {description}
+        </p>
       </div>
     </button>
-  )
+  );
 }

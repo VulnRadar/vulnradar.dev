@@ -1,12 +1,16 @@
-"use client"
+"use client";
 
-import React from "react"
-import { PublicPageShell } from "@/components/shared/public-page-shell"
+import React from "react";
+import { PublicPageShell } from "@/components/shared/public-page-shell";
 
-export default function StaffLayout({ children }: { children: React.ReactNode }) {
+export default function StaffLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   return (
     <PublicPageShell badge="Staff" maxWidth="max-w-4xl" padding="py-10">
       {children}
     </PublicPageShell>
-  )
+  );
 }

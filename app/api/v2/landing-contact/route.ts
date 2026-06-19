@@ -1,67 +1,96 @@
-﻿import { NextRequest, NextResponse } from "next/server"
-import { checkRateLimit, getClientIP, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit"
-import { sendEmail, landingContactEmail, landingContactConfirmationEmail } from "@/lib/email/email"
-import { NOREPLY_EMAIL } from "@/lib/config/constants"
+﻿import { NextRequest, NextResponse } from "next/server";
+import {
+  checkRateLimit,
+  getClientIP,
+  RATE_LIMITS,
+} from "@/lib/rate-limiting/rate-limit";
+import {
+  sendEmail,
+  landingContactEmail,
+  landingContactConfirmationEmail,
+} from "@/lib/email/email";
+import { NOREPLY_EMAIL } from "@/lib/config/constants";
 
 function asTrimmedString(value: unknown): string | null {
   if (typeof value !== "string") {
-    return null
+    return null;
   }
-  const trimmed = value.trim()
-  return trimmed.length > 0 ? trimmed : null
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
 }
 
 export async function POST(request: NextRequest) {
   try {
-    const ip = await getClientIP()
-    const rl = await checkRateLimit({ key: `landing-contact:${ip}`, ...RATE_LIMITS.api })
+    const ip = await getClientIP();
+    const rl = await checkRateLimit({
+      key: `landing-contact:${ip}`,
+      ...RATE_LIMITS.api,
+    });
     if (!rl.allowed) {
       return NextResponse.json(
-        { error: `Too many requests. Please try again in ${Math.ceil(rl.retryAfterSeconds / 60)} minute(s).` },
+        {
+          error: `Too many requests. Please try again in ${Math.ceil(rl.retryAfterSeconds / 60)} minute(s).`,
+        },
         { status: 429 },
-      )
+      );
     }
 
-    const body = await request.json()
-    const email = asTrimmedString(body?.email)
-    const message = asTrimmedString(body?.message)
-    const turnstileToken = asTrimmedString(body?.turnstileToken)
+    const body = await request.json();
+    const email = asTrimmedString(body?.email);
+    const message = asTrimmedString(body?.message);
+    const turnstileToken = asTrimmedString(body?.turnstileToken);
 
     if (!turnstileToken) {
-      return NextResponse.json({ error: "Captcha verification required." }, { status: 400 })
+      return NextResponse.json(
+        { error: "Captcha verification required." },
+        { status: 400 },
+      );
     }
 
     // Verify Turnstile token
-    const turnstileRes = await fetch("https://challenges.cloudflare.com/turnstile/v0/siteverify", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        secret: process.env.TURNSTILE_SECRET_KEY,
-        response: turnstileToken,
-        remoteip: ip,
-      }),
-    })
+    const turnstileRes = await fetch(
+      "https://challenges.cloudflare.com/turnstile/v0/siteverify",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          secret: process.env.TURNSTILE_SECRET_KEY,
+          response: turnstileToken,
+          remoteip: ip,
+        }),
+      },
+    );
 
-    const turnstileData = await turnstileRes.json()
+    const turnstileData = await turnstileRes.json();
     if (!turnstileData.success) {
-      return NextResponse.json({ error: "Captcha verification failed. Please try again." }, { status: 400 })
+      return NextResponse.json(
+        { error: "Captcha verification failed. Please try again." },
+        { status: 400 },
+      );
     }
 
     if (!email || !message) {
-      return NextResponse.json({ error: "Email and message are required." }, { status: 400 })
+      return NextResponse.json(
+        { error: "Email and message are required." },
+        { status: 400 },
+      );
     }
 
-    const normalizedEmail = email.toLowerCase()
+    const normalizedEmail = email.toLowerCase();
 
     if (message.length > 5000) {
-      return NextResponse.json({ error: "Message is too long." }, { status: 400 })
+      return NextResponse.json(
+        { error: "Message is too long." },
+        { status: 400 },
+      );
     }
 
-    const noreplyEmail = process.env.SMTP_FROM || process.env.SMTP_USER || NOREPLY_EMAIL
+    const noreplyEmail =
+      process.env.SMTP_FROM || process.env.SMTP_USER || NOREPLY_EMAIL;
 
     // Generate emails using the email module
-    const adminEmail = landingContactEmail({ email: normalizedEmail, message })
-    const userEmail = landingContactConfirmationEmail(message)
+    const adminEmail = landingContactEmail({ email: normalizedEmail, message });
+    const userEmail = landingContactConfirmationEmail(message);
 
     const sendEmails = async () => {
       try {
@@ -81,19 +110,23 @@ export async function POST(request: NextRequest) {
             text: userEmail.text,
             html: userEmail.html,
           }),
-        ])
+        ]);
       } catch (error) {
-        console.error("Landing page contact email send failed", error)
+        console.error("Landing page contact email send failed", error);
       }
-    }
+    };
 
     queueMicrotask(() => {
-      void sendEmails()
-    })
+      void sendEmails();
+    });
 
-    return NextResponse.json({ message: "Thanks for reaching out. We'll get back to you soon!" })
+    return NextResponse.json({
+      message: "Thanks for reaching out. We'll get back to you soon!",
+    });
   } catch {
-    return NextResponse.json({ error: "Something went wrong." }, { status: 500 })
+    return NextResponse.json(
+      { error: "Something went wrong." },
+      { status: 500 },
+    );
   }
 }
-

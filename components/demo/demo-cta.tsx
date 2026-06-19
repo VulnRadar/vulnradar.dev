@@ -1,14 +1,14 @@
-"use client"
+"use client";
 
-import Link from "next/link"
-import { Button } from "@/components/ui/button"
-import { ArrowRight, LayoutDashboard } from "lucide-react"
-import { ROUTES } from "@/lib/config/constants"
-import { useAuth } from "@/components/providers/auth-provider"
+import Link from "next/link";
+import { Button } from "@/components/ui/button";
+import { ArrowRight, LayoutDashboard } from "lucide-react";
+import { ROUTES } from "@/lib/config/constants";
+import { useAuth } from "@/components/providers/auth-provider";
 
 export function DemoCTA() {
-  const { me } = useAuth()
-  const isLoggedIn = !!me?.userId
+  const { me } = useAuth();
+  const isLoggedIn = !!me?.userId;
 
   return (
     <section className="py-16 sm:py-20 border-t border-border/50 bg-muted/30">
@@ -49,5 +49,5 @@ export function DemoCTA() {
         </div>
       </div>
     </section>
-  )
+  );
 }

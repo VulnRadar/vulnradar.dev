@@ -1,18 +1,12 @@
-"use client"
+"use client";
 
-import { useState } from "react"
-import Image from "next/image"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
-import {
-  Check,
-  ExternalLink,
-  RefreshCw,
-  Unlink,
-  Users,
-} from "lucide-react"
-import type { ProfileTabProps } from "../types"
+import { useState } from "react";
+import Image from "next/image";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Check, ExternalLink, RefreshCw, Unlink, Users } from "lucide-react";
+import type { ProfileTabProps } from "../types";
 
 export function ProfileSocialTab({
   user,
@@ -22,24 +16,24 @@ export function ProfileSocialTab({
   setError,
   setSuccess,
 }: ProfileTabProps) {
-  const [reconnecting, setReconnecting] = useState(false)
+  const [reconnecting, setReconnecting] = useState(false);
 
   const handleDisconnectDiscord = async () => {
     try {
-      const res = await fetch("/api/v2/account/discord", { method: "DELETE" })
+      const res = await fetch("/api/v2/account/discord", { method: "DELETE" });
       if (res.ok) {
-        setSuccess("Discord account disconnected")
-        const authRes = await fetch("/api/v2/auth/me")
-        await authRes.json()
+        setSuccess("Discord account disconnected");
+        const authRes = await fetch("/api/v2/auth/me");
+        await authRes.json();
         // Trigger parent re-fetch of user data
-        window.location.reload()
+        window.location.reload();
       } else {
-        setError("Failed to disconnect Discord account")
+        setError("Failed to disconnect Discord account");
       }
     } catch {
-      setError("Failed to disconnect Discord account")
+      setError("Failed to disconnect Discord account");
     }
-  }
+  };
 
   return (
     <div className="flex flex-col gap-8">
@@ -100,8 +94,7 @@ export function ProfileSocialTab({
                       ) : (
                         <div className="h-14 w-14 rounded-full bg-[#5865F2] flex items-center justify-center ring-2 ring-[#5865F2]/30 ring-offset-2 ring-offset-background">
                           <span className="text-white text-lg font-semibold">
-                            {user.discordUsername?.[0]?.toUpperCase() ||
-                              "?"}
+                            {user.discordUsername?.[0]?.toUpperCase() || "?"}
                           </span>
                         </div>
                       )}
@@ -139,9 +132,9 @@ export function ProfileSocialTab({
                     variant="outline"
                     className="flex-1"
                     onClick={() => {
-                      setReconnecting(true)
+                      setReconnecting(true);
                       window.location.href =
-                        "/api/v2/auth/discord?action=connect"
+                        "/api/v2/auth/discord?action=connect";
                     }}
                     disabled={reconnecting}
                   >
@@ -160,8 +153,8 @@ export function ProfileSocialTab({
 
                 {/* Info note */}
                 <p className="text-xs text-muted-foreground">
-                  Disconnecting will disable Discord sign-in. You can
-                  reconnect at any time.
+                  Disconnecting will disable Discord sign-in. You can reconnect
+                  at any time.
                 </p>
               </>
             ) : (
@@ -209,7 +202,8 @@ export function ProfileSocialTab({
                 <Button
                   className="w-full bg-[#5865F2] hover:bg-[#4752C4] text-white"
                   onClick={() => {
-                    window.location.href = "/api/v2/auth/discord?action=connect"
+                    window.location.href =
+                      "/api/v2/auth/discord?action=connect";
                   }}
                 >
                   <svg
@@ -271,5 +265,5 @@ export function ProfileSocialTab({
         </Card>
       </section>
     </div>
-  )
+  );
 }

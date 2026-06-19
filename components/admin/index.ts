@@ -1,30 +1,30 @@
 // Admin components barrel export
 
 // Types
-export * from "./types"
-export * from "./types.responses"
+export * from "./types";
+export * from "./types.responses";
 
 // Config
-export * from "./config"
+export * from "./config";
 
 // Utils
-export * from "./utils"
+export * from "./utils";
 
 // API Client
-export * from "./api-client"
+export * from "./api-client";
 
 // Services
-export * from "./services"
+export * from "./services";
 
 // Hooks
-export * from "./hooks"
+export * from "./hooks";
 
 // Shared Components
-export * from "./shared"
+export * from "./shared";
 
 // Feature Components
-export * from "./users"
-export * from "./notifications"
+export * from "./users";
+export * from "./notifications";
 
 // Core Admin Components
-export { StaffHeartbeat } from './staff-heartbeat'
+export { StaffHeartbeat } from "./staff-heartbeat";

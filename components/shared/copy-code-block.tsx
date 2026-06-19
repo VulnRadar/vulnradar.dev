@@ -1,26 +1,26 @@
-"use client"
+"use client";
 
-import { Copy, Check } from "lucide-react"
-import { useState } from "react"
-import { Button } from "@/components/ui/button"
+import { Copy, Check } from "lucide-react";
+import { useState } from "react";
+import { Button } from "@/components/ui/button";
 
 interface CopyCodeBlockProps {
-  code: string
-  children?: React.ReactNode
+  code: string;
+  children?: React.ReactNode;
 }
 
 export function CopyCodeBlock({ code, children }: CopyCodeBlockProps) {
-  const [copied, setCopied] = useState(false)
+  const [copied, setCopied] = useState(false);
 
   const handleCopy = async () => {
     try {
-      await navigator.clipboard.writeText(code)
-      setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
+      await navigator.clipboard.writeText(code);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
     } catch (err) {
-      console.error("Failed to copy:", err)
+      console.error("Failed to copy:", err);
     }
-  }
+  };
 
   return (
     <div className="relative">
@@ -41,5 +41,5 @@ export function CopyCodeBlock({ code, children }: CopyCodeBlockProps) {
         )}
       </Button>
     </div>
-  )
+  );
 }

@@ -1,2 +1,2 @@
 // Admin notifications barrel export
-export * from "./notifications-manager"
+export * from "./notifications-manager";

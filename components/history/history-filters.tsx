@@ -1,23 +1,23 @@
-"use client"
+"use client";
 
-import { Search, Filter, Trash2 } from "lucide-react"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
+import { Search, Filter, Trash2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
+} from "@/components/ui/dropdown-menu";
 
 interface HistoryFiltersProps {
-  filter: string
-  onFilterChange: (value: string) => void
-  tagFilter: string | null
-  onTagFilterChange: (value: string | null) => void
-  allTags: string[]
-  onClearHistory: () => void
-  clearing: boolean
+  filter: string;
+  onFilterChange: (value: string) => void;
+  tagFilter: string | null;
+  onTagFilterChange: (value: string | null) => void;
+  allTags: string[];
+  onClearHistory: () => void;
+  clearing: boolean;
 }
 
 export function HistoryFilters({
@@ -44,9 +44,15 @@ export function HistoryFilters({
       {allTags.length > 0 && (
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="outline" size="sm" className="gap-2 bg-transparent h-10 shrink-0">
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-2 bg-transparent h-10 shrink-0"
+            >
               <Filter className="h-4 w-4" />
-              <span className="hidden sm:inline">{tagFilter || "All Tags"}</span>
+              <span className="hidden sm:inline">
+                {tagFilter || "All Tags"}
+              </span>
               <span className="sm:hidden">Tags</span>
             </Button>
           </DropdownMenuTrigger>
@@ -55,7 +61,10 @@ export function HistoryFilters({
               All Tags
             </DropdownMenuItem>
             {allTags.map((tag) => (
-              <DropdownMenuItem key={tag} onClick={() => onTagFilterChange(tag)}>
+              <DropdownMenuItem
+                key={tag}
+                onClick={() => onTagFilterChange(tag)}
+              >
                 {tag}
               </DropdownMenuItem>
             ))}
@@ -71,8 +80,10 @@ export function HistoryFilters({
         className="text-destructive hover:text-destructive shrink-0 bg-transparent h-10"
       >
         <Trash2 className="h-4 w-4 sm:mr-2" />
-        <span className="hidden sm:inline">{clearing ? "Clearing..." : "Clear All"}</span>
+        <span className="hidden sm:inline">
+          {clearing ? "Clearing..." : "Clear All"}
+        </span>
       </Button>
     </div>
-  )
+  );
 }

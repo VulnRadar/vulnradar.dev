@@ -1,5 +1,15 @@
-import nodemailer from "nodemailer"
-import { APP_NAME, APP_URL, SUPPORT_EMAIL, LOGO_URL, SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, SMTP_FROM } from "@/lib/config/constants"
+import nodemailer from "nodemailer";
+import {
+  APP_NAME,
+  APP_URL,
+  SUPPORT_EMAIL,
+  LOGO_URL,
+  SMTP_HOST,
+  SMTP_PORT,
+  SMTP_USER,
+  SMTP_PASS,
+  SMTP_FROM,
+} from "@/lib/config/constants";
 
 const COLORS = {
   BG_DARK: "#0a0e13",
@@ -29,30 +39,31 @@ const COLORS = {
   ACCENT_RED_LIGHT: "#fca5a5",
   ACCENT_RED_PALE: "#fecaca",
   WHITE: "#ffffff",
-} as const
+} as const;
 
 // Only create transporter if SMTP is configured
-const transporter = SMTP_HOST && SMTP_USER && SMTP_PASS
-  ? nodemailer.createTransport({
-      host: SMTP_HOST,
-      port: SMTP_PORT,
-      secure: false,
-      auth: { user: SMTP_USER, pass: SMTP_PASS },
-    })
-  : null
+const transporter =
+  SMTP_HOST && SMTP_USER && SMTP_PASS
+    ? nodemailer.createTransport({
+        host: SMTP_HOST,
+        port: SMTP_PORT,
+        secure: false,
+        auth: { user: SMTP_USER, pass: SMTP_PASS },
+      })
+    : null;
 
 interface SendEmailOptions {
-  to: string
-  subject: string
-  text: string
-  html: string
-  replyTo?: string
-  skipLayout?: boolean
+  to: string;
+  subject: string;
+  text: string;
+  html: string;
+  replyTo?: string;
+  skipLayout?: boolean;
 }
 
 interface SecurityAlertDetails {
-  ipAddress: string
-  userAgent: string
+  ipAddress: string;
+  userAgent: string;
 }
 
 function escapeHtml(value: string): string {
@@ -61,7 +72,7 @@ function escapeHtml(value: string): string {
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;")
+    .replace(/'/g, "&#39;");
 }
 
 function layout(content: string): string {
@@ -125,7 +136,7 @@ function layout(content: string): string {
     </tr>
   </table>
 </body>
-</html>`
+</html>`;
 }
 
 function securityDetailsBlock(details: SecurityAlertDetails): string {
@@ -143,7 +154,7 @@ function securityDetailsBlock(details: SecurityAlertDetails): string {
         </tr>
       </table>
     </div>
-  `
+  `;
 }
 
 function securityWarningBlock(): string {
@@ -154,29 +165,45 @@ function securityWarningBlock(): string {
         If you did not make this change, your account may be compromised. Please reset your password immediately and contact support at ${SUPPORT_EMAIL}
       </p>
     </div>
-  `
+  `;
 }
 
-export async function sendEmail({ to, subject, text, html, replyTo, skipLayout }: SendEmailOptions) {
+export async function sendEmail({
+  to,
+  subject,
+  text,
+  html,
+  replyTo,
+  skipLayout,
+}: SendEmailOptions) {
   // Check if SMTP is configured
   if (!transporter) {
-    console.warn("SMTP not configured. Email not sent:")
-    console.warn(`  To: ${to}`)
-    console.warn(`  Subject: ${subject}`)
-    console.warn(`  Text: ${text.substring(0, 200)}...`)
+    console.warn("SMTP not configured. Email not sent:");
+    console.warn(`  To: ${to}`);
+    console.warn(`  Subject: ${subject}`);
+    console.warn(`  Text: ${text.substring(0, 200)}...`);
 
     // In development, just log and return successfully
     if (process.env.NODE_ENV !== "production") {
-      console.warn("  (Skipping email send in development - SMTP not configured)")
-      return
+      console.warn(
+        "  (Skipping email send in development - SMTP not configured)",
+      );
+      return;
     }
 
-    throw new Error("Email service not configured")
+    throw new Error("Email service not configured");
   }
 
-  const from = `"${APP_NAME}" <${SMTP_FROM}>`
-  const finalHtml = skipLayout ? html : layout(html)
-  await transporter.sendMail({ from, to, subject, text, html: finalHtml, replyTo })
+  const from = `"${APP_NAME}" <${SMTP_FROM}>`;
+  const finalHtml = skipLayout ? html : layout(html);
+  await transporter.sendMail({
+    from,
+    to,
+    subject,
+    text,
+    html: finalHtml,
+    replyTo,
+  });
 }
 
 const CATEGORY_LABELS: Record<string, string> = {
@@ -188,14 +215,21 @@ const CATEGORY_LABELS: Record<string, string> = {
   enterprise: "Enterprise",
   staff_application: "Staff Application",
   feedback: "Feedback",
-}
+};
 
-export function contactEmail(input: { name: string; email: string; subject: string; message: string; category: string }) {
-  const name = escapeHtml(input.name)
-  const email = escapeHtml(input.email)
-  const subject = escapeHtml(input.subject)
-  const message = escapeHtml(input.message).replace(/\n/g, "<br />")
-  const category = CATEGORY_LABELS[input.category] || escapeHtml(input.category)
+export function contactEmail(input: {
+  name: string;
+  email: string;
+  subject: string;
+  message: string;
+  category: string;
+}) {
+  const name = escapeHtml(input.name);
+  const email = escapeHtml(input.email);
+  const subject = escapeHtml(input.subject);
+  const message = escapeHtml(input.message).replace(/\n/g, "<br />");
+  const category =
+    CATEGORY_LABELS[input.category] || escapeHtml(input.category);
 
   return {
     subject: `[Contact] ${input.subject}`,
@@ -231,12 +265,15 @@ export function contactEmail(input: { name: string; email: string; subject: stri
         </tr>
       </table>
     `,
-  }
+  };
 }
 
-export function contactConfirmationEmail(input: { name: string; category: string }) {
-  const name = escapeHtml(input.name)
-  const category = escapeHtml(input.category)
+export function contactConfirmationEmail(input: {
+  name: string;
+  category: string;
+}) {
+  const name = escapeHtml(input.name);
+  const category = escapeHtml(input.category);
 
   return {
     subject: "We received your message",
@@ -256,11 +293,11 @@ export function contactConfirmationEmail(input: { name: string; category: string
       </div>
       <p style="margin: 0; font-size: 13px; color: ${COLORS.TEXT_MUTED}; text-align: center;">Thank you for using ${APP_NAME}.</p>
     `,
-  }
+  };
 }
 
 export function emailVerificationEmail(name: string, verifyLink: string) {
-  const safeName = escapeHtml(name)
+  const safeName = escapeHtml(name);
   return {
     subject: `Verify your email - ${APP_NAME}`,
     text: `Welcome to ${APP_NAME}, ${name}!\n\nPlease verify your email address by clicking the link below:\n${verifyLink}\n\nThis link expires in 24 hours.\n\nIf you did not create an account, you can safely ignore this email.`,
@@ -287,7 +324,7 @@ export function emailVerificationEmail(name: string, verifyLink: string) {
         <p style="margin: 0; font-size: 12px; color: ${COLORS.ACCENT_BLUE_LIGHT}; word-break: break-all; line-height: 1.5; font-family: monospace;">${verifyLink}</p>
       </div>
     `,
-  }
+  };
 }
 
 export function passwordResetEmail(resetLink: string) {
@@ -313,13 +350,16 @@ export function passwordResetEmail(resetLink: string) {
         <p style="margin: 0; font-size: 12px; color: ${COLORS.ACCENT_BLUE_LIGHT}; word-break: break-all; line-height: 1.5; font-family: monospace;">${resetLink}</p>
       </div>
     `,
-  }
+  };
 }
 
-export function passwordChangedEmail(hasTwoFactor: boolean, details: SecurityAlertDetails) {
+export function passwordChangedEmail(
+  hasTwoFactor: boolean,
+  details: SecurityAlertDetails,
+) {
   const securityInfo = hasTwoFactor
     ? "Your account has two-factor authentication enabled. You will need your 6-digit authenticator code when logging in."
-    : "All active sessions have been logged out. You can now log in with your new password."
+    : "All active sessions have been logged out. You can now log in with your new password.";
 
   return {
     subject: `Password Changed - ${APP_NAME}`,
@@ -334,10 +374,14 @@ export function passwordChangedEmail(hasTwoFactor: boolean, details: SecurityAle
       ${securityDetailsBlock(details)}
       ${securityWarningBlock()}
     `,
-  }
+  };
 }
 
-export function teamInviteEmail(teamName: string, inviteLink: string, invitedBy: string) {
+export function teamInviteEmail(
+  teamName: string,
+  inviteLink: string,
+  invitedBy: string,
+) {
   return {
     subject: `You've been invited to join ${teamName} on ${APP_NAME}`,
     text: `${invitedBy} has invited you to join the team "${teamName}" on ${APP_NAME}.\n\nClick here to accept the invitation:\n${inviteLink}\n\nThis invitation expires in 7 days.`,
@@ -369,12 +413,12 @@ export function teamInviteEmail(teamName: string, inviteLink: string, invitedBy:
         <p style="margin: 0; font-size: 11px; color: ${COLORS.ACCENT_BLUE_LIGHT}; word-break: break-all; line-height: 1.5; font-family: monospace;">${inviteLink}</p>
       </div>
     `,
-  }
+  };
 }
 
 export function landingContactEmail(input: { email: string; message: string }) {
-  const email = escapeHtml(input.email)
-  const message = escapeHtml(input.message).replace(/\n/g, "<br />")
+  const email = escapeHtml(input.email);
+  const message = escapeHtml(input.message).replace(/\n/g, "<br />");
 
   return {
     subject: "[Landing Page] New Inquiry",
@@ -400,11 +444,11 @@ export function landingContactEmail(input: { email: string; message: string }) {
         </tr>
       </table>
     `,
-  }
+  };
 }
 
 export function landingContactConfirmationEmail(message: string) {
-  const escapedMessage = escapeHtml(message).replace(/\n/g, "<br />")
+  const escapedMessage = escapeHtml(message).replace(/\n/g, "<br />");
 
   return {
     subject: `We received your message - ${APP_NAME}`,
@@ -420,10 +464,14 @@ export function landingContactConfirmationEmail(message: string) {
         <p style="margin: 0; font-size: 13px; color: #cbd5e1; line-height: 1.6;">In the meantime, feel free to explore our <a href="${APP_URL}/docs" style="color: ${COLORS.ACCENT_BLUE_PALE}; text-decoration: none;">documentation</a> or start scanning by <a href="${APP_URL}/signup" style="color: ${COLORS.ACCENT_BLUE_PALE}; text-decoration: none;">creating an account</a>.</p>
       </div>
     `,
-  }
+  };
 }
 
-export function profileNameChangedEmail(oldName: string, newName: string, details: SecurityAlertDetails) {
+export function profileNameChangedEmail(
+  oldName: string,
+  newName: string,
+  details: SecurityAlertDetails,
+) {
   return {
     subject: `Profile Name Changed - ${APP_NAME}`,
     text: `Your ${APP_NAME} profile name has been changed.\n\nPrevious Name: ${oldName}\nNew Name: ${newName}\n\nIP Address: ${details.ipAddress}\nDevice: ${details.userAgent}\n\nIf you did not make this change, please reset your password immediately.`,
@@ -439,10 +487,14 @@ export function profileNameChangedEmail(oldName: string, newName: string, detail
       ${securityDetailsBlock(details)}
       ${securityWarningBlock()}
     `,
-  }
+  };
 }
 
-export function profileEmailChangedEmail(oldEmail: string, newEmail: string, details: SecurityAlertDetails) {
+export function profileEmailChangedEmail(
+  oldEmail: string,
+  newEmail: string,
+  details: SecurityAlertDetails,
+) {
   return {
     subject: `Email Address Changed - ${APP_NAME}`,
     text: `Your ${APP_NAME} account email has been changed.\n\nPrevious Email: ${oldEmail}\nNew Email: ${newEmail}\n\nIP Address: ${details.ipAddress}\nDevice: ${details.userAgent}\n\nIf you did not make this change, please contact support immediately.`,
@@ -458,7 +510,7 @@ export function profileEmailChangedEmail(oldEmail: string, newEmail: string, det
       ${securityDetailsBlock(details)}
       ${securityWarningBlock()}
     `,
-  }
+  };
 }
 
 export function profilePasswordChangedEmail(details: SecurityAlertDetails) {
@@ -474,7 +526,7 @@ export function profilePasswordChangedEmail(details: SecurityAlertDetails) {
       ${securityDetailsBlock(details)}
       ${securityWarningBlock()}
     `,
-  }
+  };
 }
 
 export function twoFactorEnabledEmail(details: SecurityAlertDetails) {
@@ -498,7 +550,7 @@ export function twoFactorEnabledEmail(details: SecurityAlertDetails) {
       ${securityDetailsBlock(details)}
       ${securityWarningBlock()}
     `,
-  }
+  };
 }
 
 export function twoFactorDisabledEmail(details: SecurityAlertDetails) {
@@ -515,7 +567,7 @@ export function twoFactorDisabledEmail(details: SecurityAlertDetails) {
       ${securityDetailsBlock(details)}
       ${securityWarningBlock()}
     `,
-  }
+  };
 }
 
 export function backupCodesRegeneratedEmail(details: SecurityAlertDetails) {
@@ -532,12 +584,16 @@ export function backupCodesRegeneratedEmail(details: SecurityAlertDetails) {
       ${securityDetailsBlock(details)}
       ${securityWarningBlock()}
     `,
-  }
+  };
 }
 
 // API Key emails
-export function apiKeyCreatedEmail(keyName: string, keyPrefix: string, details: SecurityAlertDetails) {
-  const safeName = escapeHtml(keyName)
+export function apiKeyCreatedEmail(
+  keyName: string,
+  keyPrefix: string,
+  details: SecurityAlertDetails,
+) {
+  const safeName = escapeHtml(keyName);
   return {
     subject: `API Key Created - ${APP_NAME}`,
     text: `A new API key "${keyName}" has been created on your ${APP_NAME} account.\n\nKey Prefix: ${keyPrefix}...\n\nIP Address: ${details.ipAddress}\nDevice: ${details.userAgent}\n\nIf you did not create this API key, please revoke it immediately and contact support.`,
@@ -553,11 +609,14 @@ export function apiKeyCreatedEmail(keyName: string, keyPrefix: string, details: 
       ${securityDetailsBlock(details)}
       ${securityWarningBlock()}
     `,
-  }
+  };
 }
 
-export function apiKeyDeletedEmail(keyName: string, details: SecurityAlertDetails) {
-  const safeName = escapeHtml(keyName)
+export function apiKeyDeletedEmail(
+  keyName: string,
+  details: SecurityAlertDetails,
+) {
+  const safeName = escapeHtml(keyName);
   return {
     subject: `API Key Revoked - ${APP_NAME}`,
     text: `The API key "${keyName}" has been revoked from your ${APP_NAME} account.\n\nThis key can no longer be used for API access.\n\nIP Address: ${details.ipAddress}\nDevice: ${details.userAgent}\n\nIf you did not revoke this API key, please contact support immediately.`,
@@ -573,13 +632,18 @@ export function apiKeyDeletedEmail(keyName: string, details: SecurityAlertDetail
       ${securityDetailsBlock(details)}
       ${securityWarningBlock()}
     `,
-  }
+  };
 }
 
 // Webhook emails
-export function webhookCreatedEmail(webhookName: string, webhookUrl: string, webhookType: string, details: SecurityAlertDetails) {
-  const safeName = escapeHtml(webhookName)
-  const safeType = escapeHtml(webhookType)
+export function webhookCreatedEmail(
+  webhookName: string,
+  webhookUrl: string,
+  webhookType: string,
+  details: SecurityAlertDetails,
+) {
+  const safeName = escapeHtml(webhookName);
+  const safeType = escapeHtml(webhookType);
   return {
     subject: `Webhook Created - ${APP_NAME}`,
     text: `A new ${webhookType} webhook "${webhookName}" has been created on your ${APP_NAME} account.\n\nIP Address: ${details.ipAddress}\nDevice: ${details.userAgent}\n\nIf you did not create this webhook, please delete it immediately.`,
@@ -598,11 +662,14 @@ export function webhookCreatedEmail(webhookName: string, webhookUrl: string, web
         <p style="margin: 0; font-size: 13px; color: #cbd5e1; line-height: 1.6;">If you did not create this webhook, please delete it from your profile settings immediately.</p>
       </div>
     `,
-  }
+  };
 }
 
-export function webhookDeletedEmail(webhookName: string, details: SecurityAlertDetails) {
-  const safeName = escapeHtml(webhookName)
+export function webhookDeletedEmail(
+  webhookName: string,
+  details: SecurityAlertDetails,
+) {
+  const safeName = escapeHtml(webhookName);
   return {
     subject: `Webhook Deleted - ${APP_NAME}`,
     text: `The webhook "${webhookName}" has been deleted from your ${APP_NAME} account.\n\nIP Address: ${details.ipAddress}\nDevice: ${details.userAgent}\n\nIf you did not delete this webhook, please contact support.`,
@@ -617,13 +684,17 @@ export function webhookDeletedEmail(webhookName: string, details: SecurityAlertD
       </div>
       ${securityDetailsBlock(details)}
     `,
-  }
+  };
 }
 
 // Scheduled scan emails
-export function scheduleCreatedEmail(url: string, frequency: string, details: SecurityAlertDetails) {
-  const safeUrl = escapeHtml(url)
-  const safeFrequency = escapeHtml(frequency)
+export function scheduleCreatedEmail(
+  url: string,
+  frequency: string,
+  details: SecurityAlertDetails,
+) {
+  const safeUrl = escapeHtml(url);
+  const safeFrequency = escapeHtml(frequency);
   return {
     subject: `Scheduled Scan Created - ${APP_NAME}`,
     text: `A new scheduled scan has been created for ${url} (${frequency}).\n\nIP Address: ${details.ipAddress}\nDevice: ${details.userAgent}\n\nIf you did not create this schedule, please delete it from your profile.`,
@@ -638,11 +709,14 @@ export function scheduleCreatedEmail(url: string, frequency: string, details: Se
       </div>
       ${securityDetailsBlock(details)}
     `,
-  }
+  };
 }
 
-export function scheduleDeletedEmail(url: string, details: SecurityAlertDetails) {
-  const safeUrl = escapeHtml(url)
+export function scheduleDeletedEmail(
+  url: string,
+  details: SecurityAlertDetails,
+) {
+  const safeUrl = escapeHtml(url);
   return {
     subject: `Scheduled Scan Deleted - ${APP_NAME}`,
     text: `The scheduled scan for ${url} has been deleted from your ${APP_NAME} account.\n\nIP Address: ${details.ipAddress}\nDevice: ${details.userAgent}`,
@@ -657,12 +731,16 @@ export function scheduleDeletedEmail(url: string, details: SecurityAlertDetails)
       </div>
       ${securityDetailsBlock(details)}
     `,
-  }
+  };
 }
 
 // Data request emails
-export function dataRequestCreatedEmail(requestType: string, details: SecurityAlertDetails) {
-  const typeLabel = requestType === "export" ? "Data Export" : "Account Deletion"
+export function dataRequestCreatedEmail(
+  requestType: string,
+  details: SecurityAlertDetails,
+) {
+  const typeLabel =
+    requestType === "export" ? "Data Export" : "Account Deletion";
   return {
     subject: `${typeLabel} Request Submitted - ${APP_NAME}`,
     text: `A ${typeLabel.toLowerCase()} request has been submitted for your ${APP_NAME} account.\n\nOur team will process your request within 30 days as required by privacy regulations.\n\nIP Address: ${details.ipAddress}\nDevice: ${details.userAgent}\n\nIf you did not make this request, please contact support immediately.`,
@@ -682,11 +760,15 @@ export function dataRequestCreatedEmail(requestType: string, details: SecurityAl
       ${securityDetailsBlock(details)}
       ${securityWarningBlock()}
     `,
-  }
+  };
 }
 
 // Security notification emails
-export function newLoginEmail(location: string, ipAddress: string, details: SecurityAlertDetails) {
+export function newLoginEmail(
+  location: string,
+  ipAddress: string,
+  details: SecurityAlertDetails,
+) {
   return {
     subject: `New login to your ${APP_NAME} account`,
     text: `Your account was just accessed from:\n\nLocation: ${location}\nIP Address: ${ipAddress}\nDevice: ${details.userAgent}\n\nIf this wasn't you, please secure your account immediately by changing your password.`,
@@ -709,10 +791,14 @@ export function newLoginEmail(location: string, ipAddress: string, details: Secu
         <p style="margin: 0; font-size: 13px; color: #fecaca; line-height: 1.6;">Change your password immediately. If you suspect unauthorized access, contact our support team right away.</p>
       </div>
     `,
-  }
+  };
 }
 
-export function failedLoginAttemptsEmail(attempts: number, ipAddress: string, details: SecurityAlertDetails) {
+export function failedLoginAttemptsEmail(
+  attempts: number,
+  ipAddress: string,
+  details: SecurityAlertDetails,
+) {
   return {
     subject: `Failed login attempts on your ${APP_NAME} account`,
     text: `We detected ${attempts} failed login attempts on your account.\n\nIP Address: ${ipAddress}\nDevice: ${details.userAgent}\n\nYour account has been temporarily protected. If this wasn't you, change your password immediately.`,
@@ -742,10 +828,13 @@ export function failedLoginAttemptsEmail(attempts: number, ipAddress: string, de
         <p style="margin: 0 0 8px 0; font-size: 13px; color: #fef3c7; line-height: 1.6;">If this was you, no action is needed. If you don't recognize these attempts, change your password and enable two-factor authentication immediately.</p>
       </div>
     `,
-  }
+  };
 }
 
-export function rateLimitedEmail(ipAddress: string, _details: SecurityAlertDetails) {
+export function rateLimitedEmail(
+  ipAddress: string,
+  _details: SecurityAlertDetails,
+) {
   return {
     subject: `API Rate Limit - ${APP_NAME}`,
     text: `Your ${APP_NAME} API key has been temporarily rate limited due to excessive requests.\n\nIP Address: ${ipAddress}\n\nYour account will resume normal operation shortly. If you believe this is an error, contact support.`,
@@ -766,10 +855,14 @@ export function rateLimitedEmail(ipAddress: string, _details: SecurityAlertDetai
         <p style="margin: 0; font-size: 13px; color: #cbd5e1; line-height: 1.6;">Your rate limit will reset after 24 hours. Review your API usage in your dashboard to optimize your requests.</p>
       </div>
     `,
-  }
+  };
 }
 
-export function apiKeyRotationEmail(keyName: string, newKeyCreatedAt: string, details: SecurityAlertDetails) {
+export function apiKeyRotationEmail(
+  keyName: string,
+  newKeyCreatedAt: string,
+  details: SecurityAlertDetails,
+) {
   return {
     subject: `API Key Rotated - ${APP_NAME}`,
     text: `An API key has been rotated on your ${APP_NAME} account.\n\nKey: ${keyName}\nCreated: ${newKeyCreatedAt}\n\nIf you did not perform this action, secure your account immediately.\n\nIP Address: ${details.ipAddress}`,
@@ -788,14 +881,14 @@ export function apiKeyRotationEmail(keyName: string, newKeyCreatedAt: string, de
         <p style="margin: 0; font-size: 13px; color: #cbd5e1; line-height: 1.6;">If you authorized this key rotation, no action is needed. If not, contact our support team immediately.</p>
       </div>
     `,
-  }
+  };
 }
 
 export function email2FACodeEmail(code: string) {
   return {
-  subject: `${code} - Your ${APP_NAME} Login Code`,
-  text: `Your ${APP_NAME} verification code is: ${code}\n\nThis code expires in 10 minutes.\n\nIf you did not request this code, someone may be trying to access your account. Please secure your account immediately.`,
-  html: `
+    subject: `${code} - Your ${APP_NAME} Login Code`,
+    text: `Your ${APP_NAME} verification code is: ${code}\n\nThis code expires in 10 minutes.\n\nIf you did not request this code, someone may be trying to access your account. Please secure your account immediately.`,
+    html: `
   <h1 style="margin: 0 0 8px 0; font-size: 20px; font-weight: 600; color: ${COLORS.TEXT_PRIMARY};">Your Login Code</h1>
   <p style="margin: 0 0 24px 0; font-size: 14px; color: ${COLORS.TEXT_SECONDARY}; line-height: 1.6;">Enter this code to complete your sign-in.</p>
   <div style="background-color: ${COLORS.BG_SECTION}; border-radius: 8px; padding: 24px; margin-bottom: 20px; text-align: center;">
@@ -808,8 +901,8 @@ export function email2FACodeEmail(code: string) {
   </div>
   ${securityWarningBlock()}
   `,
-  }
-  }
+  };
+}
 
 export function billingVerificationCodeEmail(code: string) {
   return {
@@ -831,7 +924,7 @@ export function billingVerificationCodeEmail(code: string) {
       <p style="margin: 0; font-size: 13px; color: #cbd5e1; line-height: 1.6;">Even if someone gains access to your account, they cannot view your payment details without access to your email.</p>
     </div>
     `,
-  }
+  };
 }
 
 export function email2FAEnabledEmail(details: SecurityAlertDetails) {
@@ -844,7 +937,7 @@ export function email2FAEnabledEmail(details: SecurityAlertDetails) {
       ${securityDetailsBlock(details)}
       ${securityWarningBlock()}
     `,
-  }
+  };
 }
 
 export function email2FADisabledEmail(details: SecurityAlertDetails) {
@@ -857,24 +950,24 @@ export function email2FADisabledEmail(details: SecurityAlertDetails) {
       ${securityDetailsBlock(details)}
       ${securityWarningBlock()}
     `,
-  }
+  };
 }
 
 // Admin notification to user (manual message)
 export interface AdminNotificationInput {
-  userName: string
-  adminName: string
-  title: string
-  message: string
-  type?: "info" | "warning" | "success" | "alert"
-  timestamp: Date
+  userName: string;
+  adminName: string;
+  title: string;
+  message: string;
+  type?: "info" | "warning" | "success" | "alert";
+  timestamp: Date;
 }
 
 export function adminNotificationEmail(input: AdminNotificationInput) {
-  const userName = escapeHtml(input.userName)
-  const adminName = escapeHtml(input.adminName)
-  const title = escapeHtml(input.title)
-  const message = escapeHtml(input.message).replace(/\n/g, "<br>")
+  const userName = escapeHtml(input.userName);
+  const adminName = escapeHtml(input.adminName);
+  const title = escapeHtml(input.title);
+  const message = escapeHtml(input.message).replace(/\n/g, "<br>");
   const timestamp = input.timestamp.toLocaleString("en-US", {
     weekday: "long",
     year: "numeric",
@@ -882,16 +975,36 @@ export function adminNotificationEmail(input: AdminNotificationInput) {
     day: "numeric",
     hour: "2-digit",
     minute: "2-digit",
-  })
+  });
 
   // Color scheme based on type
   const typeColors = {
-    info: { bg: COLORS.BG_INFO, border: COLORS.ACCENT_BLUE_LIGHT, text: COLORS.ACCENT_BLUE_PALE, icon: "ℹ️" },
-    warning: { bg: COLORS.BG_WARNING, border: COLORS.ACCENT_YELLOW, text: COLORS.ACCENT_YELLOW_PALE, icon: "⚠️" },
-    success: { bg: COLORS.BG_SUCCESS, border: COLORS.ACCENT_GREEN, text: COLORS.ACCENT_GREEN_PALE, icon: "✓" },
-    alert: { bg: COLORS.BG_DANGER, border: COLORS.ACCENT_RED, text: COLORS.ACCENT_RED_PALE, icon: "!" },
-  }
-  const colors = typeColors[input.type || "info"]
+    info: {
+      bg: COLORS.BG_INFO,
+      border: COLORS.ACCENT_BLUE_LIGHT,
+      text: COLORS.ACCENT_BLUE_PALE,
+      icon: "ℹ️",
+    },
+    warning: {
+      bg: COLORS.BG_WARNING,
+      border: COLORS.ACCENT_YELLOW,
+      text: COLORS.ACCENT_YELLOW_PALE,
+      icon: "⚠️",
+    },
+    success: {
+      bg: COLORS.BG_SUCCESS,
+      border: COLORS.ACCENT_GREEN,
+      text: COLORS.ACCENT_GREEN_PALE,
+      icon: "✓",
+    },
+    alert: {
+      bg: COLORS.BG_DANGER,
+      border: COLORS.ACCENT_RED,
+      text: COLORS.ACCENT_RED_PALE,
+      icon: "!",
+    },
+  };
+  const colors = typeColors[input.type || "info"];
 
   return {
     subject: `${title} - ${APP_NAME}`,
@@ -926,29 +1039,44 @@ export function adminNotificationEmail(input: AdminNotificationInput) {
         </p>
       </div>
     `,
-  }
+  };
 }
 
 // Admin account change notification
 export interface ScanCompleteSummary {
-  critical: number
-  high: number
-  medium: number
-  low: number
-  info: number
-  total: number
+  critical: number;
+  high: number;
+  medium: number;
+  low: number;
+  info: number;
+  total: number;
 }
 
-export function scanCompleteEmail(url: string, summary: ScanCompleteSummary, duration: number, scanHistoryId?: number) {
-  const safeUrl = escapeHtml(url)
-  const durationSecs = (duration / 1000).toFixed(1)
-  const viewLink = scanHistoryId ? `${APP_URL}/history/${scanHistoryId}` : `${APP_URL}/history`
-  
-  const severityBadge = (label: string, count: number, bgColor: string, textColor: string) => count > 0 ? `
+export function scanCompleteEmail(
+  url: string,
+  summary: ScanCompleteSummary,
+  duration: number,
+  scanHistoryId?: number,
+) {
+  const safeUrl = escapeHtml(url);
+  const durationSecs = (duration / 1000).toFixed(1);
+  const viewLink = scanHistoryId
+    ? `${APP_URL}/history/${scanHistoryId}`
+    : `${APP_URL}/history`;
+
+  const severityBadge = (
+    label: string,
+    count: number,
+    bgColor: string,
+    textColor: string,
+  ) =>
+    count > 0
+      ? `
     <td style="padding: 0 4px;">
       <span style="display: inline-block; padding: 6px 12px; background-color: ${bgColor}; border-radius: 6px; font-size: 13px; font-weight: 600; color: ${textColor};">${count} ${label}</span>
     </td>
-  ` : ""
+  `
+      : "";
 
   return {
     subject: `Scan Complete: ${summary.total} issue${summary.total !== 1 ? "s" : ""} found - ${APP_NAME}`,
@@ -985,12 +1113,16 @@ export function scanCompleteEmail(url: string, summary: ScanCompleteSummary, dur
         </table>
       </div>
       
-      ${summary.critical > 0 || summary.high > 0 ? `
+      ${
+        summary.critical > 0 || summary.high > 0
+          ? `
       <div style="background-color: ${COLORS.BG_DANGER}; border-left: 3px solid ${COLORS.ACCENT_RED}; border-radius: 6px; padding: 14px 16px; margin-bottom: 20px;">
         <p style="margin: 0 0 4px 0; font-size: 13px; color: ${COLORS.ACCENT_RED_LIGHT}; font-weight: 600;">Action Required</p>
         <p style="margin: 0; font-size: 13px; color: ${COLORS.ACCENT_RED_PALE}; line-height: 1.6;">Critical or high severity issues were detected. Review the findings and address them promptly.</p>
       </div>
-      ` : ""}
+      `
+          : ""
+      }
       
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
         <tr>
@@ -1000,12 +1132,19 @@ export function scanCompleteEmail(url: string, summary: ScanCompleteSummary, dur
         </tr>
       </table>
     `,
-  }
+  };
 }
 
-export function criticalFindingsEmail(url: string, criticalCount: number, highCount: number, scanHistoryId?: number) {
-  const safeUrl = escapeHtml(url)
-  const viewLink = scanHistoryId ? `${APP_URL}/history/${scanHistoryId}` : `${APP_URL}/history`
+export function criticalFindingsEmail(
+  url: string,
+  criticalCount: number,
+  highCount: number,
+  scanHistoryId?: number,
+) {
+  const safeUrl = escapeHtml(url);
+  const viewLink = scanHistoryId
+    ? `${APP_URL}/history/${scanHistoryId}`
+    : `${APP_URL}/history`;
 
   return {
     subject: `ALERT: ${criticalCount} Critical + ${highCount} High severity issues found - ${APP_NAME}`,
@@ -1051,14 +1190,22 @@ export function criticalFindingsEmail(url: string, criticalCount: number, highCo
         </tr>
       </table>
     `,
-  }
+  };
 }
 
-export function scheduledScanCompleteEmail(scheduleName: string, url: string, summary: ScanCompleteSummary, duration: number, scanHistoryId?: number) {
-  const safeName = escapeHtml(scheduleName)
-  const safeUrl = escapeHtml(url)
-  const durationSecs = (duration / 1000).toFixed(1)
-  const viewLink = scanHistoryId ? `${APP_URL}/history/${scanHistoryId}` : `${APP_URL}/history`
+export function scheduledScanCompleteEmail(
+  scheduleName: string,
+  url: string,
+  summary: ScanCompleteSummary,
+  duration: number,
+  scanHistoryId?: number,
+) {
+  const safeName = escapeHtml(scheduleName);
+  const safeUrl = escapeHtml(url);
+  const durationSecs = (duration / 1000).toFixed(1);
+  const viewLink = scanHistoryId
+    ? `${APP_URL}/history/${scanHistoryId}`
+    : `${APP_URL}/history`;
 
   return {
     subject: `Scheduled Scan "${scheduleName}" Complete - ${APP_NAME}`,
@@ -1092,19 +1239,19 @@ export function scheduledScanCompleteEmail(scheduleName: string, url: string, su
         </tr>
       </table>
     `,
-  }
+  };
 }
 
 export interface AdminChangeNotification {
-  userName: string
-  adminName: string
-  changes: { field: string; oldValue: string; newValue: string }[]
-  timestamp: Date
+  userName: string;
+  adminName: string;
+  changes: { field: string; oldValue: string; newValue: string }[];
+  timestamp: Date;
 }
 
 export function adminAccountChangeEmail(input: AdminChangeNotification) {
-  const userName = escapeHtml(input.userName)
-  const adminName = escapeHtml(input.adminName)
+  const userName = escapeHtml(input.userName);
+  const adminName = escapeHtml(input.adminName);
   const timestamp = input.timestamp.toLocaleString("en-US", {
     weekday: "long",
     year: "numeric",
@@ -1112,7 +1259,7 @@ export function adminAccountChangeEmail(input: AdminChangeNotification) {
     day: "numeric",
     hour: "2-digit",
     minute: "2-digit",
-  })
+  });
 
   const changesHtml = input.changes
     .map(
@@ -1125,13 +1272,15 @@ export function adminAccountChangeEmail(input: AdminChangeNotification) {
           <span style="display: inline-block; padding: 3px 8px; background-color: ${COLORS.BG_SUCCESS}; border-radius: 4px; font-size: 12px; color: ${COLORS.ACCENT_GREEN_LIGHT}; margin-left: 8px;">${escapeHtml(c.newValue || "—")}</span>
         </td>
       </tr>
-    `
+    `,
     )
-    .join("")
+    .join("");
 
   const changesText = input.changes
-    .map((c) => `  - ${c.field}: "${c.oldValue || "—"}" → "${c.newValue || "—"}"`)
-    .join("\n")
+    .map(
+      (c) => `  - ${c.field}: "${c.oldValue || "—"}" → "${c.newValue || "—"}"`,
+    )
+    .join("\n");
 
   return {
     subject: `Account Updated by Administrator - ${APP_NAME}`,
@@ -1168,5 +1317,5 @@ export function adminAccountChangeEmail(input: AdminChangeNotification) {
         </p>
       </div>
     `,
-  }
+  };
 }

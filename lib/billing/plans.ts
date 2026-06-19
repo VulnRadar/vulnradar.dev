@@ -5,26 +5,26 @@
 // ============================================================================
 
 export interface Plan {
-  id: string
-  name: string
-  description: string
-  priceInCents: number  // Monthly price
-  stripePriceId?: string  // Stripe Price ID (set after creating in Stripe)
-  features: string[]
+  id: string;
+  name: string;
+  description: string;
+  priceInCents: number; // Monthly price
+  stripePriceId?: string; // Stripe Price ID (set after creating in Stripe)
+  features: string[];
   limits: {
-    dailyScans: number
-    apiKeys: number
-    apiRequestsPerDay: number  // API rate limit per day
-    teams: number
-    teamMembers: number
-    webhooks: number
-    scheduledScans: number
-    bulkScanUrls: number
-  }
+    dailyScans: number;
+    apiKeys: number;
+    apiRequestsPerDay: number; // API rate limit per day
+    teams: number;
+    teamMembers: number;
+    webhooks: number;
+    scheduledScans: number;
+    bulkScanUrls: number;
+  };
   badge?: {
-    text: string
-    color: string
-  }
+    text: string;
+    color: string;
+  };
 }
 
 export const PLANS: Plan[] = [
@@ -46,7 +46,7 @@ export const PLANS: Plan[] = [
     limits: {
       dailyScans: 25,
       apiKeys: 1,
-      apiRequestsPerDay: 25,  // Free: 25 requests/day
+      apiRequestsPerDay: 25, // Free: 25 requests/day
       teams: 0,
       teamMembers: 0,
       webhooks: 0,
@@ -69,7 +69,7 @@ export const PLANS: Plan[] = [
     limits: {
       dailyScans: 100,
       apiKeys: 3,
-      apiRequestsPerDay: 100,  // Core: 100 requests/day
+      apiRequestsPerDay: 100, // Core: 100 requests/day
       teams: 0,
       teamMembers: 0,
       webhooks: 1,
@@ -96,7 +96,7 @@ export const PLANS: Plan[] = [
     limits: {
       dailyScans: 150,
       apiKeys: 10,
-      apiRequestsPerDay: 5000,  // Pro: 5,000 requests/day
+      apiRequestsPerDay: 5000, // Pro: 5,000 requests/day
       teams: 1,
       teamMembers: 3,
       webhooks: 5,
@@ -123,7 +123,7 @@ export const PLANS: Plan[] = [
     limits: {
       dailyScans: 500,
       apiKeys: -1, // Unlimited
-      apiRequestsPerDay: -1,  // Elite: Unlimited
+      apiRequestsPerDay: -1, // Elite: Unlimited
       teams: 3,
       teamMembers: 10,
       webhooks: -1, // Unlimited
@@ -135,35 +135,35 @@ export const PLANS: Plan[] = [
       color: "#f59e0b",
     },
   },
-]
+];
 
 /**
  * Get a plan by ID
  */
 export function getPlanById(planId: string): Plan | undefined {
-  return PLANS.find((p) => p.id === planId)
+  return PLANS.find((p) => p.id === planId);
 }
 
 /**
  * Get the free plan
  */
 export function getFreePlan(): Plan {
-  return PLANS.find((p) => p.id === "free")!
+  return PLANS.find((p) => p.id === "free")!;
 }
 
 /**
  * Check if a plan is paid
  */
 export function isPaidPlan(planId: string): boolean {
-  const plan = getPlanById(planId)
-  return plan ? plan.priceInCents > 0 : false
+  const plan = getPlanById(planId);
+  return plan ? plan.priceInCents > 0 : false;
 }
 
 /**
  * Get all paid plans
  */
 export function getPaidPlans(): Plan[] {
-  return PLANS.filter((p) => p.priceInCents > 0)
+  return PLANS.filter((p) => p.priceInCents > 0);
 }
 
 /**
@@ -171,6 +171,6 @@ export function getPaidPlans(): Plan[] {
  * Returns -1 for unlimited
  */
 export function getApiLimitForPlan(planId: string): number {
-  const plan = getPlanById(planId)
-  return plan?.limits.apiRequestsPerDay ?? 25 // Default to free plan limit
+  const plan = getPlanById(planId);
+  return plan?.limits.apiRequestsPerDay ?? 25; // Default to free plan limit
 }

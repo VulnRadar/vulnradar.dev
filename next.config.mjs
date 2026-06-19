@@ -29,9 +29,9 @@ const nextConfig = {
         ...config.resolve.fallback,
         fs: false,
         path: false,
-      }
+      };
     }
-    return config
+    return config;
   },
   async rewrites() {
     return [
@@ -43,7 +43,7 @@ const nextConfig = {
         source: "/security.txt",
         destination: "/api/security-txt",
       },
-    ]
+    ];
   },
   async headers() {
     return [
@@ -53,22 +53,22 @@ const nextConfig = {
           {
             key: "Content-Security-Policy",
             value:
-                "default-src 'self'; " +
-                // Removed trailing 'https:' wildcard — now explicit domains only
-                "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://challenges.cloudflare.com https://static.cloudflareinsights.com https://embed.tawk.to https://*.tawk.to; " +
-                "script-src-elem 'self' 'unsafe-inline' https://challenges.cloudflare.com https://static.cloudflareinsights.com https://embed.tawk.to https://*.tawk.to; " +
-                // Removed trailing 'https:' wildcard from style-src
-                "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://embed.tawk.to https://*.tawk.to; " +
-                "style-src-elem 'self' 'unsafe-inline' https://fonts.googleapis.com https://embed.tawk.to https://*.tawk.to; " +
-                "font-src 'self' https://fonts.gstatic.com https://static.cloudflareinsights.com; " +
-                "img-src 'self' data: blob: https:; " +
-                "connect-src 'self' https://challenges.cloudflare.com https://embed.tawk.to https://*.tawk.to https://va.tawk.to wss://*.tawk.to https://static.cloudflareinsights.com https: wss:; " +
-                "frame-src https://challenges.cloudflare.com https://embed.tawk.to https://*.tawk.to; " +
-                "frame-ancestors 'none'; " +
-                "base-uri 'self'; " +
-                "form-action 'self'; " +
-                "object-src 'none'; " +
-                "upgrade-insecure-requests",
+              "default-src 'self'; " +
+              // Removed trailing 'https:' wildcard — now explicit domains only
+              "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://challenges.cloudflare.com https://static.cloudflareinsights.com https://embed.tawk.to https://*.tawk.to; " +
+              "script-src-elem 'self' 'unsafe-inline' https://challenges.cloudflare.com https://static.cloudflareinsights.com https://embed.tawk.to https://*.tawk.to; " +
+              // Removed trailing 'https:' wildcard from style-src
+              "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://embed.tawk.to https://*.tawk.to; " +
+              "style-src-elem 'self' 'unsafe-inline' https://fonts.googleapis.com https://embed.tawk.to https://*.tawk.to; " +
+              "font-src 'self' https://fonts.gstatic.com https://static.cloudflareinsights.com; " +
+              "img-src 'self' data: blob: https:; " +
+              "connect-src 'self' https://challenges.cloudflare.com https://embed.tawk.to https://*.tawk.to https://va.tawk.to wss://*.tawk.to https://static.cloudflareinsights.com https: wss:; " +
+              "frame-src https://challenges.cloudflare.com https://embed.tawk.to https://*.tawk.to; " +
+              "frame-ancestors 'none'; " +
+              "base-uri 'self'; " +
+              "form-action 'self'; " +
+              "object-src 'none'; " +
+              "upgrade-insecure-requests",
           },
           {
             key: "X-Frame-Options",
@@ -84,7 +84,8 @@ const nextConfig = {
           },
           {
             key: "Permissions-Policy",
-            value: "camera=(), microphone=(), geolocation=(), payment=(), usb=()",
+            value:
+              "camera=(), microphone=(), geolocation=(), payment=(), usb=()",
           },
           {
             key: "X-XSS-Protection",
@@ -120,8 +121,8 @@ const nextConfig = {
           },
         ],
       },
-    ]
+    ];
   },
-}
+};
 
-export default nextConfig
+export default nextConfig;

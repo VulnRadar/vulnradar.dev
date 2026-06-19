@@ -1,15 +1,26 @@
-"use client"
+"use client";
 
-import { ArrowRight, Clock, TrendingDown, TrendingUp, Equal } from "lucide-react"
-import { type DiffResult, formatDate, formatTime, getRelativeTime } from "./compare-types"
-import { UrlDisplay } from "./compare-url-display"
+import {
+  ArrowRight,
+  Clock,
+  TrendingDown,
+  TrendingUp,
+  Equal,
+} from "lucide-react";
+import {
+  type DiffResult,
+  formatDate,
+  formatTime,
+  getRelativeTime,
+} from "./compare-types";
+import { UrlDisplay } from "./compare-url-display";
 
 interface CompareHeaderProps {
-  result: DiffResult
+  result: DiffResult;
 }
 
 export function CompareHeader({ result }: CompareHeaderProps) {
-  const delta = result.scanB.findings_count - result.scanA.findings_count
+  const delta = result.scanB.findings_count - result.scanA.findings_count;
 
   return (
     <div className="rounded-xl border border-border/50 bg-card/50 overflow-hidden">
@@ -21,15 +32,24 @@ export function CompareHeader({ result }: CompareHeaderProps) {
               Base
             </span>
             <Clock className="h-3 w-3 text-muted-foreground" />
-            <span className="text-xs text-muted-foreground">{getRelativeTime(result.scanA.scanned_at)}</span>
+            <span className="text-xs text-muted-foreground">
+              {getRelativeTime(result.scanA.scanned_at)}
+            </span>
           </div>
-          <UrlDisplay url={result.scanA.url} size="md" className="mb-2 max-w-full" />
+          <UrlDisplay
+            url={result.scanA.url}
+            size="md"
+            className="mb-2 max-w-full"
+          />
           <div className="flex items-baseline gap-2">
-            <span className="text-3xl font-bold tabular-nums">{result.scanA.findings_count}</span>
+            <span className="text-3xl font-bold tabular-nums">
+              {result.scanA.findings_count}
+            </span>
             <span className="text-sm text-muted-foreground">issues</span>
           </div>
           <p className="text-xs text-muted-foreground mt-2">
-            {formatDate(result.scanA.scanned_at)} at {formatTime(result.scanA.scanned_at)}
+            {formatDate(result.scanA.scanned_at)} at{" "}
+            {formatTime(result.scanA.scanned_at)}
           </p>
         </div>
 
@@ -40,7 +60,9 @@ export function CompareHeader({ result }: CompareHeaderProps) {
             {delta < 0 ? (
               <div className="flex items-center gap-1.5 text-emerald-500">
                 <TrendingDown className="h-4 w-4" />
-                <span className="text-sm font-semibold">{Math.abs(delta)} fewer</span>
+                <span className="text-sm font-semibold">
+                  {Math.abs(delta)} fewer
+                </span>
               </div>
             ) : delta > 0 ? (
               <div className="flex items-center gap-1.5 text-destructive">
@@ -63,18 +85,27 @@ export function CompareHeader({ result }: CompareHeaderProps) {
               Compare
             </span>
             <Clock className="h-3 w-3 text-muted-foreground" />
-            <span className="text-xs text-muted-foreground">{getRelativeTime(result.scanB.scanned_at)}</span>
+            <span className="text-xs text-muted-foreground">
+              {getRelativeTime(result.scanB.scanned_at)}
+            </span>
           </div>
-          <UrlDisplay url={result.scanB.url} size="md" className="mb-2 max-w-full" />
+          <UrlDisplay
+            url={result.scanB.url}
+            size="md"
+            className="mb-2 max-w-full"
+          />
           <div className="flex items-baseline gap-2">
-            <span className="text-3xl font-bold tabular-nums">{result.scanB.findings_count}</span>
+            <span className="text-3xl font-bold tabular-nums">
+              {result.scanB.findings_count}
+            </span>
             <span className="text-sm text-muted-foreground">issues</span>
           </div>
           <p className="text-xs text-muted-foreground mt-2">
-            {formatDate(result.scanB.scanned_at)} at {formatTime(result.scanB.scanned_at)}
+            {formatDate(result.scanB.scanned_at)} at{" "}
+            {formatTime(result.scanB.scanned_at)}
           </p>
         </div>
       </div>
     </div>
-  )
+  );
 }

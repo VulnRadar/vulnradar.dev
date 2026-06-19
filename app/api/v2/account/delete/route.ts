@@ -1,20 +1,20 @@
-import { getSession, destroySession } from "@/lib/auth"
-import pool from "@/lib/database/db"
-import { ApiResponse, withErrorHandling } from "@/lib/api/api-utils"
-import { ERROR_MESSAGES } from "@/lib/config/constants"
+import { getSession, destroySession } from "@/lib/auth";
+import pool from "@/lib/database/db";
+import { ApiResponse, withErrorHandling } from "@/lib/api/api-utils";
+import { ERROR_MESSAGES } from "@/lib/config/constants";
 
 export const POST = withErrorHandling(async () => {
-  const session = await getSession()
+  const session = await getSession();
   if (!session) {
-    return ApiResponse.unauthorized(ERROR_MESSAGES.UNAUTHORIZED)
+    return ApiResponse.unauthorized(ERROR_MESSAGES.UNAUTHORIZED);
   }
 
   // CASCADE in the DB schema will delete all related data:
   // sessions, api_keys, api_usage (via api_keys cascade), scan_history, data_requests
-  await pool.query("DELETE FROM users WHERE id = $1", [session.userId])
+  await pool.query("DELETE FROM users WHERE id = $1", [session.userId]);
 
   // Clear the session cookie
-  await destroySession()
+  await destroySession();
 
-  return ApiResponse.success({ message: "Account deleted successfully" })
-})
+  return ApiResponse.success({ message: "Account deleted successfully" });
+});

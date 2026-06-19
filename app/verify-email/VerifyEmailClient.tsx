@@ -1,37 +1,42 @@
-"use client"
+"use client";
 
-import { useEffect, useState, useRef } from "react"
-import { useRouter, useSearchParams } from "next/navigation"
+import { useEffect, useState, useRef } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   VerifyEmailLoading,
   VerifyEmailSuccess,
   VerifyEmailError,
   VerifyEmailExpired,
   VerifyEmailAlready,
-} from "@/components/auth"
-import { API } from "@/lib/config/client-constants"
+} from "@/components/auth";
+import { API } from "@/lib/config/client-constants";
 
-type VerifyStatus = "loading" | "success" | "error" | "expired" | "already-verified"
+type VerifyStatus =
+  | "loading"
+  | "success"
+  | "error"
+  | "expired"
+  | "already-verified";
 
 export default function VerifyEmailClient() {
-  const router = useRouter()
-  const searchParams = useSearchParams()
-  const token = searchParams.get("token")
-  const verificationAttempted = useRef(false)
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const token = searchParams.get("token");
+  const verificationAttempted = useRef(false);
 
-  const [status, setStatus] = useState<VerifyStatus>("loading")
-  const [message, setMessage] = useState("")
+  const [status, setStatus] = useState<VerifyStatus>("loading");
+  const [message, setMessage] = useState("");
 
   useEffect(() => {
     if (!token) {
-      setStatus("error")
-      setMessage("No verification token provided.")
-      return
+      setStatus("error");
+      setMessage("No verification token provided.");
+      return;
     }
 
     // Prevent double-execution in React strict mode
-    if (verificationAttempted.current) return
-    verificationAttempted.current = true
+    if (verificationAttempted.current) return;
+    verificationAttempted.current = true;
 
     async function verify() {
       try {
@@ -39,57 +44,57 @@ export default function VerifyEmailClient() {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ token }),
-        })
+        });
 
-        const data = await res.json()
+        const data = await res.json();
 
         if (data.alreadyVerified) {
-          setStatus("already-verified")
-          setMessage(data.message)
-          return
+          setStatus("already-verified");
+          setMessage(data.message);
+          return;
         }
 
         if (data.expired) {
-          setStatus("expired")
-          setMessage(data.error)
-          return
+          setStatus("expired");
+          setMessage(data.error);
+          return;
         }
 
         if (!res.ok) {
-          setStatus("error")
-          setMessage(data.error || "Verification failed.")
-          return
+          setStatus("error");
+          setMessage(data.error || "Verification failed.");
+          return;
         }
 
-        setStatus("success")
-        setMessage(data.message)
+        setStatus("success");
+        setMessage(data.message);
 
         // Redirect to dashboard after 2 seconds
         setTimeout(() => {
-          router.push("/dashboard")
-          router.refresh()
-        }, 2000)
+          router.push("/dashboard");
+          router.refresh();
+        }, 2000);
       } catch {
-        setStatus("error")
-        setMessage("Something went wrong. Please try again.")
+        setStatus("error");
+        setMessage("Something went wrong. Please try again.");
       }
     }
 
-    verify()
-  }, [token, router])
+    verify();
+  }, [token, router]);
 
   switch (status) {
     case "loading":
-      return <VerifyEmailLoading />
+      return <VerifyEmailLoading />;
     case "success":
-      return <VerifyEmailSuccess message={message} />
+      return <VerifyEmailSuccess message={message} />;
     case "error":
-      return <VerifyEmailError message={message} />
+      return <VerifyEmailError message={message} />;
     case "expired":
-      return <VerifyEmailExpired message={message} />
+      return <VerifyEmailExpired message={message} />;
     case "already-verified":
-      return <VerifyEmailAlready message={message} />
+      return <VerifyEmailAlready message={message} />;
     default:
-      return <VerifyEmailLoading />
+      return <VerifyEmailLoading />;
   }
 }

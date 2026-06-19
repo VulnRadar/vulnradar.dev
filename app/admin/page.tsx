@@ -1,6 +1,6 @@
-﻿"use client"
+﻿"use client";
 
-import React, { useState, useEffect, useCallback, useRef } from "react"
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import {
   Users,
   Activity,
@@ -19,23 +19,27 @@ import {
   History,
   Ban,
   Eye,
-} from "lucide-react"
-import { IPRulesManager } from "@/components/admin/features/ip-rules-manager"
-import { BlockedDataManager } from "@/components/admin/features/blocked-data-manager"
-import { SecurityAlertsManager } from "@/components/admin/features/security-alerts-manager"
-import { SystemSettingsManager } from "@/components/admin/features/system-settings-manager"
-import { MassEmailManager } from "@/components/admin/features/mass-email-manager"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
-import { Badge } from "@/components/ui/badge"
-import { Header } from "@/components/scanner/header"
-import { Footer } from "@/components/scanner/footer"
-import { cn } from "@/lib/ui/utils"
-import { PaginationControl } from "@/components/ui/pagination-control"
-import { STAFF_ROLES, STAFF_ROLE_LABELS, ROLE_BADGE_STYLES, API } from "@/lib/config/constants"
-import { NotificationsManager } from "@/components/admin/notifications"
-
+} from "lucide-react";
+import { IPRulesManager } from "@/components/admin/features/ip-rules-manager";
+import { BlockedDataManager } from "@/components/admin/features/blocked-data-manager";
+import { SecurityAlertsManager } from "@/components/admin/features/security-alerts-manager";
+import { SystemSettingsManager } from "@/components/admin/features/system-settings-manager";
+import { MassEmailManager } from "@/components/admin/features/mass-email-manager";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
+import { Header } from "@/components/scanner/header";
+import { Footer } from "@/components/scanner/footer";
+import { cn } from "@/lib/ui/utils";
+import { PaginationControl } from "@/components/ui/pagination-control";
+import {
+  STAFF_ROLES,
+  STAFF_ROLE_LABELS,
+  ROLE_BADGE_STYLES,
+  API,
+} from "@/lib/config/constants";
+import { NotificationsManager } from "@/components/admin/notifications";
 
 const VALID_TABS = [
   "users",
@@ -48,15 +52,26 @@ const VALID_TABS = [
   "security-alerts",
   "settings",
   "broadcast",
-] as const
+] as const;
 
 // Import from new admin architecture
-import type { AdminStats, AdminUser, UserDetail, AuditEntry, ActiveAdmin, BadgeDef } from "@/components/admin/types"
-import { UserAvatar, Toast as AdminToast, ConfirmDialog } from "@/components/admin/shared"
-import { UserDetailPanel } from "@/components/admin/users"
-import { AuditLog } from "@/components/admin/audit"
-import { StaffList } from "@/components/admin/staff"
-import { TeamsList } from "@/components/admin/teams"
+import type {
+  AdminStats,
+  AdminUser,
+  UserDetail,
+  AuditEntry,
+  ActiveAdmin,
+  BadgeDef,
+} from "@/components/admin/types";
+import {
+  UserAvatar,
+  Toast as AdminToast,
+  ConfirmDialog,
+} from "@/components/admin/shared";
+import { UserDetailPanel } from "@/components/admin/users";
+import { AuditLog } from "@/components/admin/audit";
+import { StaffList } from "@/components/admin/staff";
+import { TeamsList } from "@/components/admin/teams";
 
 type ActiveTab =
   | "users"
@@ -68,259 +83,348 @@ type ActiveTab =
   | "blocked-data"
   | "security-alerts"
   | "settings"
-  | "broadcast"
+  | "broadcast";
 
 type TeamMembersState = {
-  team: { id: number; name: string; owner_email: string; owner_name: string | null }
-  members: { user_id: number; role: string; email: string; name: string | null; avatar_url: string | null }[]
-}
+  team: {
+    id: number;
+    name: string;
+    owner_email: string;
+    owner_name: string | null;
+  };
+  members: {
+    user_id: number;
+    role: string;
+    email: string;
+    name: string | null;
+    avatar_url: string | null;
+  }[];
+};
 
 export default function AdminPage() {
-  return <AdminContent />
+  return <AdminContent />;
 }
 
 function AdminContent() {
-  const [loading, setLoading] = useState(true)
-  const [forbidden, setForbidden] = useState(false)
-  const [stats, setStats] = useState<AdminStats | null>(null)
-  const [users, setUsers] = useState<AdminUser[]>([])
-  const [page, setPage] = useState(1)
-  const [totalPages, setTotalPages] = useState(1)
-  const [usersPageSize, setUsersPageSize] = useState(10)
-  const [searchQuery, setSearchQuery] = useState("")
-  const [actionLoading, setActionLoading] = useState<string | null>(null)
-  const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null)
-  const [activeTab, setActiveTab] = useState<ActiveTab>("users")
-  const [selectedUser, setSelectedUser] = useState<UserDetail | null>(null)
-  const [detailLoading, setDetailLoading] = useState(false)
+  const [loading, setLoading] = useState(true);
+  const [forbidden, setForbidden] = useState(false);
+  const [stats, setStats] = useState<AdminStats | null>(null);
+  const [users, setUsers] = useState<AdminUser[]>([]);
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [usersPageSize, setUsersPageSize] = useState(10);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [toast, setToast] = useState<{
+    message: string;
+    type: "success" | "error";
+  } | null>(null);
+  const [activeTab, setActiveTab] = useState<ActiveTab>("users");
+  const [selectedUser, setSelectedUser] = useState<UserDetail | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
   const [confirmDialog, setConfirmDialog] = useState<{
-    title: string; description: string; confirmLabel: string; danger?: boolean
-    action: () => Promise<void>; children?: React.ReactNode
-  } | null>(null)
-  const [tempPassword, setTempPassword] = useState<string | null>(null)
-  const [auditLogs, setAuditLogs] = useState<AuditEntry[]>([])
-  const [auditPage, setAuditPage] = useState(1)
-  const [auditTotalPages, setAuditTotalPages] = useState(1)
-  const [auditPageSize, setAuditPageSize] = useState(10)
-  const [teams, setTeams] = useState<{ id: number; name: string; slug: string; created_at: string; owner_id: number; owner_email: string; owner_name: string | null; owner_avatar_url: string | null; member_count: number }[]>([])
-  const [teamsLoading, setTeamsLoading] = useState(false)
-  const [teamsPage, setTeamsPage] = useState(1)
-  const [teamsTotalPages, setTeamsTotalPages] = useState(1)
-  const [teamsPageSize, setTeamsPageSize] = useState(10)
-  const [teamsSearch, setTeamsSearch] = useState("")
-  const [teamMembers, setTeamMembers] = useState<TeamMembersState | null>(null)
-  const [teamMembersLoading, setTeamMembersLoading] = useState(false)
-  const [activeAdmins, setActiveAdmins] = useState<ActiveAdmin[]>([])
-  const [adminsLoading, setAdminsLoading] = useState(false)
-  const [searchLoading, setSearchLoading] = useState(false)
-  const [callerRole, setCallerRole] = useState<string>("user")
-  const [auditPaging, setAuditPaging] = useState(false)
-  const [allBadges, setAllBadges] = useState<BadgeDef[]>([])
-  const teamsSearchInitRef = useRef(false)
-  const fetchTeamsRef = useRef<((p?: number, search?: string) => Promise<void>) | null>(null)
+    title: string;
+    description: string;
+    confirmLabel: string;
+    danger?: boolean;
+    action: () => Promise<void>;
+    children?: React.ReactNode;
+  } | null>(null);
+  const [tempPassword, setTempPassword] = useState<string | null>(null);
+  const [auditLogs, setAuditLogs] = useState<AuditEntry[]>([]);
+  const [auditPage, setAuditPage] = useState(1);
+  const [auditTotalPages, setAuditTotalPages] = useState(1);
+  const [auditPageSize, setAuditPageSize] = useState(10);
+  const [teams, setTeams] = useState<
+    {
+      id: number;
+      name: string;
+      slug: string;
+      created_at: string;
+      owner_id: number;
+      owner_email: string;
+      owner_name: string | null;
+      owner_avatar_url: string | null;
+      member_count: number;
+    }[]
+  >([]);
+  const [teamsLoading, setTeamsLoading] = useState(false);
+  const [teamsPage, setTeamsPage] = useState(1);
+  const [teamsTotalPages, setTeamsTotalPages] = useState(1);
+  const [teamsPageSize, setTeamsPageSize] = useState(10);
+  const [teamsSearch, setTeamsSearch] = useState("");
+  const [teamMembers, setTeamMembers] = useState<TeamMembersState | null>(null);
+  const [teamMembersLoading, setTeamMembersLoading] = useState(false);
+  const [activeAdmins, setActiveAdmins] = useState<ActiveAdmin[]>([]);
+  const [adminsLoading, setAdminsLoading] = useState(false);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [callerRole, setCallerRole] = useState<string>("user");
+  const [auditPaging, setAuditPaging] = useState(false);
+  const [allBadges, setAllBadges] = useState<BadgeDef[]>([]);
+  const teamsSearchInitRef = useRef(false);
+  const fetchTeamsRef = useRef<
+    ((p?: number, search?: string) => Promise<void>) | null
+  >(null);
 
-   const showToast = useCallback((message: string, type: "success" | "error") => {
-     setToast({ message, type })
-   }, [])
+  const showToast = useCallback(
+    (message: string, type: "success" | "error") => {
+      setToast({ message, type });
+    },
+    [],
+  );
 
-   // Sync user/tab selection with URL hash
-   const updateUrlWithUser = useCallback((userId: number | null, tab?: string, replace = true) => {
-     if (typeof window === "undefined") return
-     const parts: string[] = []
-     if (tab) parts.push(tab)
-     if (userId) parts.push(`user-${userId}`)
-     const hash = parts.join("/")
-     const method = replace ? "replaceState" : "pushState"
-     window.history[method](null, "", `/admin${hash ? `#${hash}` : ""}`)
-   }, [])
+  // Sync user/tab selection with URL hash
+  const updateUrlWithUser = useCallback(
+    (userId: number | null, tab?: string, replace = true) => {
+      if (typeof window === "undefined") return;
+      const parts: string[] = [];
+      if (tab) parts.push(tab);
+      if (userId) parts.push(`user-${userId}`);
+      const hash = parts.join("/");
+      const method = replace ? "replaceState" : "pushState";
+      window.history[method](null, "", `/admin${hash ? `#${hash}` : ""}`);
+    },
+    [],
+  );
 
-   // FETCH FUNCTIONS - must be defined before handleHashChange
-   const fetchData = useCallback(async (p: number, search: string, isInitial: boolean, limit: number) => {
-     if (isInitial) setLoading(true)
-     else setSearchLoading(true)
-     try {
-       const params = new URLSearchParams({ page: String(p), limit: String(limit) })
-       if (search.trim()) params.set("search", search.trim())
-       const res = await fetch(`${API.ADMIN}?${params}`)
-       if (res.status === 403) { setForbidden(true); setLoading(false); setSearchLoading(false); return }
-       const data = await res.json()
-       setStats(data.stats)
-       setUsers(data.users)
-       setPage(data.page)
-       setTotalPages(data.totalPages)
-       if (data.callerRole) setCallerRole(data.callerRole)
-     } catch (error) { console.error("Failed to fetch admin data", error); setForbidden(true) }
-     setLoading(false)
-     setSearchLoading(false)
-   }, [])
+  // FETCH FUNCTIONS - must be defined before handleHashChange
+  const fetchData = useCallback(
+    async (p: number, search: string, isInitial: boolean, limit: number) => {
+      if (isInitial) setLoading(true);
+      else setSearchLoading(true);
+      try {
+        const params = new URLSearchParams({
+          page: String(p),
+          limit: String(limit),
+        });
+        if (search.trim()) params.set("search", search.trim());
+        const res = await fetch(`${API.ADMIN}?${params}`);
+        if (res.status === 403) {
+          setForbidden(true);
+          setLoading(false);
+          setSearchLoading(false);
+          return;
+        }
+        const data = await res.json();
+        setStats(data.stats);
+        setUsers(data.users);
+        setPage(data.page);
+        setTotalPages(data.totalPages);
+        if (data.callerRole) setCallerRole(data.callerRole);
+      } catch (error) {
+        console.error("Failed to fetch admin data", error);
+        setForbidden(true);
+      }
+      setLoading(false);
+      setSearchLoading(false);
+    },
+    [],
+  );
 
-   const fetchAudit = useCallback(async (p = 1, limit = auditPageSize) => {
-     setAuditPaging(true)
-     try {
-       const res = await fetch(`${API.ADMIN}?section=audit&page=${p}&limit=${limit}`)
-       const data = await res.json()
-       setAuditLogs(data.logs)
-       setAuditPage(data.page)
-       setAuditTotalPages(data.totalPages)
-     } catch (error) { console.error("Failed to fetch audit logs", error) }
-     setAuditPaging(false)
-   }, [auditPageSize])
+  const fetchAudit = useCallback(
+    async (p = 1, limit = auditPageSize) => {
+      setAuditPaging(true);
+      try {
+        const res = await fetch(
+          `${API.ADMIN}?section=audit&page=${p}&limit=${limit}`,
+        );
+        const data = await res.json();
+        setAuditLogs(data.logs);
+        setAuditPage(data.page);
+        setAuditTotalPages(data.totalPages);
+      } catch (error) {
+        console.error("Failed to fetch audit logs", error);
+      }
+      setAuditPaging(false);
+    },
+    [auditPageSize],
+  );
 
-   const fetchActiveAdmins = useCallback(async () => {
-     setAdminsLoading(true)
-     try {
-       const res = await fetch(`${API.ADMIN}?section=active-admins`)
-       const data = await res.json()
-       setActiveAdmins(data.admins || [])
-     } catch (error) { console.error("Failed to fetch active admins", error) }
-     setAdminsLoading(false)
-   }, [])
+  const fetchActiveAdmins = useCallback(async () => {
+    setAdminsLoading(true);
+    try {
+      const res = await fetch(`${API.ADMIN}?section=active-admins`);
+      const data = await res.json();
+      setActiveAdmins(data.admins || []);
+    } catch (error) {
+      console.error("Failed to fetch active admins", error);
+    }
+    setAdminsLoading(false);
+  }, []);
 
-   const fetchTeams = useCallback(async (p = 1, search?: string) => {
-     setTeamsLoading(true)
-     try {
-       const params = new URLSearchParams({ page: String(p), limit: "10" })
-       const searchTerm = search !== undefined ? search : teamsSearch
-       if (searchTerm.trim()) params.set("search", searchTerm.trim())
-       const res = await fetch(`/api/v2/admin/teams?${params}`)
-       const data = await res.json()
-       setTeams(data.teams || [])
-       setTeamsPage(data.page || 1)
-       setTeamsTotalPages(data.totalPages || 1)
-     } catch { /* ignore */ }
-     setTeamsLoading(false)
-   }, [teamsSearch])
+  const fetchTeams = useCallback(
+    async (p = 1, search?: string) => {
+      setTeamsLoading(true);
+      try {
+        const params = new URLSearchParams({ page: String(p), limit: "10" });
+        const searchTerm = search !== undefined ? search : teamsSearch;
+        if (searchTerm.trim()) params.set("search", searchTerm.trim());
+        const res = await fetch(`/api/v2/admin/teams?${params}`);
+        const data = await res.json();
+        setTeams(data.teams || []);
+        setTeamsPage(data.page || 1);
+        setTeamsTotalPages(data.totalPages || 1);
+      } catch {
+        /* ignore */
+      }
+      setTeamsLoading(false);
+    },
+    [teamsSearch],
+  );
 
   // Keep ref in sync with latest fetchTeams so debounced effect can call it
   // without re-running on every callback recreation.
   useEffect(() => {
-    fetchTeamsRef.current = fetchTeams
-  }, [fetchTeams])
+    fetchTeamsRef.current = fetchTeams;
+  }, [fetchTeams]);
 
-    const fetchUserDetail = useCallback(async (userId: number, skipUrlUpdate = false) => {
-     setDetailLoading(true)
-     try {
-       const res = await fetch(`${API.ADMIN}?section=user-detail&userId=${userId}`)
-       const data = await res.json()
-       setSelectedUser(data)
-       if (!skipUrlUpdate) updateUrlWithUser(userId, activeTab, false)
-     } catch { showToast("Failed to load user details.", "error") }
-     setDetailLoading(false)
-   }, [activeTab, updateUrlWithUser, showToast])
+  const fetchUserDetail = useCallback(
+    async (userId: number, skipUrlUpdate = false) => {
+      setDetailLoading(true);
+      try {
+        const res = await fetch(
+          `${API.ADMIN}?section=user-detail&userId=${userId}`,
+        );
+        const data = await res.json();
+        setSelectedUser(data);
+        if (!skipUrlUpdate) updateUrlWithUser(userId, activeTab, false);
+      } catch {
+        showToast("Failed to load user details.", "error");
+      }
+      setDetailLoading(false);
+    },
+    [activeTab, updateUrlWithUser, showToast],
+  );
 
-   const fetchAllBadges = useCallback(async () => {
-     try {
-       const res = await fetch(`${API.ADMIN}?section=badges`)
-       if (res.ok) {
-         const data = await res.json()
-         setAllBadges(data.badges || [])
-       }
-     } catch { /* ignore */ }
-   }, [])
+  const fetchAllBadges = useCallback(async () => {
+    try {
+      const res = await fetch(`${API.ADMIN}?section=badges`);
+      if (res.ok) {
+        const data = await res.json();
+        setAllBadges(data.badges || []);
+      }
+    } catch {
+      /* ignore */
+    }
+  }, []);
 
-   // Parse hash and load corresponding data
-   const handleHashChange = useCallback(() => {
-     if (typeof window === "undefined") return
-     const hash = window.location.hash.replace("#", "")
-     if (!hash) {
-       window.history.replaceState(null, "", "/admin#users")
-       setSelectedUser(null)
-       return
-     }
+  // Parse hash and load corresponding data
+  const handleHashChange = useCallback(() => {
+    if (typeof window === "undefined") return;
+    const hash = window.location.hash.replace("#", "");
+    if (!hash) {
+      window.history.replaceState(null, "", "/admin#users");
+      setSelectedUser(null);
+      return;
+    }
 
-     const parts = hash.split("/")
-     let foundUser = false
-     for (const part of parts) {
-       if (VALID_TABS.includes(part as (typeof VALID_TABS)[number])) {
-         setActiveTab(part as typeof activeTab)
-         if (part === "audit") fetchAudit()
-         if (part === "admins") fetchActiveAdmins()
-         if (part === "teams") fetchTeams()
-       }
-       if (part.startsWith("user-")) {
-         const id = parseInt(part.replace("user-", ""), 10)
-         if (!isNaN(id)) {
-           fetchUserDetail(id, true)
-           foundUser = true
-         }
-       }
-     }
-     if (!foundUser) setSelectedUser(null)
-   }, [fetchAudit, fetchActiveAdmins, fetchTeams, fetchUserDetail])
+    const parts = hash.split("/");
+    let foundUser = false;
+    for (const part of parts) {
+      if (VALID_TABS.includes(part as (typeof VALID_TABS)[number])) {
+        setActiveTab(part as typeof activeTab);
+        if (part === "audit") fetchAudit();
+        if (part === "admins") fetchActiveAdmins();
+        if (part === "teams") fetchTeams();
+      }
+      if (part.startsWith("user-")) {
+        const id = parseInt(part.replace("user-", ""), 10);
+        if (!isNaN(id)) {
+          fetchUserDetail(id, true);
+          foundUser = true;
+        }
+      }
+    }
+    if (!foundUser) setSelectedUser(null);
+  }, [fetchAudit, fetchActiveAdmins, fetchTeams, fetchUserDetail]);
 
   useEffect(() => {
-    handleHashChange()
-    window.addEventListener("hashchange", handleHashChange)
-    return () => window.removeEventListener("hashchange", handleHashChange)
-   }, [handleHashChange])
+    handleHashChange();
+    window.addEventListener("hashchange", handleHashChange);
+    return () => window.removeEventListener("hashchange", handleHashChange);
+  }, [handleHashChange]);
 
-   useEffect(() => {
-     if (activeTab === "audit") fetchAudit()
-     if (activeTab === "admins") fetchActiveAdmins()
-   }, [activeTab, fetchActiveAdmins, fetchAudit])
+  useEffect(() => {
+    if (activeTab === "audit") fetchAudit();
+    if (activeTab === "admins") fetchActiveAdmins();
+  }, [activeTab, fetchActiveAdmins, fetchAudit]);
 
-   useEffect(() => { fetchData(1, "", true, 10); fetchAllBadges() }, [fetchData, fetchAllBadges])
+  useEffect(() => {
+    fetchData(1, "", true, 10);
+    fetchAllBadges();
+  }, [fetchData, fetchAllBadges]);
 
   async function fetchTeamMembers(teamId: number) {
-    setTeamMembersLoading(true)
+    setTeamMembersLoading(true);
     try {
-      const res = await fetch(`/api/v2/admin/teams/${teamId}`)
-      const data = await res.json()
-      setTeamMembers(data)
-    } catch { showToast("Failed to load team members", "error") }
-    setTeamMembersLoading(false)
+      const res = await fetch(`/api/v2/admin/teams/${teamId}`);
+      const data = await res.json();
+      setTeamMembers(data);
+    } catch {
+      showToast("Failed to load team members", "error");
+    }
+    setTeamMembersLoading(false);
   }
 
   async function handleTeamRename(teamId: number, newName: string) {
-    setActionLoading(`team-rename-${teamId}`)
+    setActionLoading(`team-rename-${teamId}`);
     try {
       const res = await fetch(`/api/v2/admin/teams`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ teamId, name: newName }),
-      })
+      });
       if (res.ok) {
-        showToast("Team renamed successfully", "success")
-        fetchTeams(teamsPage)
+        showToast("Team renamed successfully", "success");
+        fetchTeams(teamsPage);
       } else {
-        const data = await res.json()
-        showToast(data.error || "Failed to rename team", "error")
+        const data = await res.json();
+        showToast(data.error || "Failed to rename team", "error");
       }
-    } catch { showToast("Failed to rename team", "error") }
-    setActionLoading(null)
+    } catch {
+      showToast("Failed to rename team", "error");
+    }
+    setActionLoading(null);
   }
 
   async function handleTeamDelete(teamId: number) {
-    setActionLoading(`team-delete-${teamId}`)
+    setActionLoading(`team-delete-${teamId}`);
     try {
       const res = await fetch(`/api/v2/admin/teams`, {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ teamId }),
-      })
+      });
       if (res.ok) {
-        showToast("Team deleted successfully", "success")
-        setConfirmDialog(null)
-        fetchTeams(teamsPage)
+        showToast("Team deleted successfully", "success");
+        setConfirmDialog(null);
+        fetchTeams(teamsPage);
       } else {
-        const data = await res.json()
-        showToast(data.error || "Failed to delete team", "error")
+        const data = await res.json();
+        showToast(data.error || "Failed to delete team", "error");
       }
-    } catch { showToast("Failed to delete team", "error") }
-    setActionLoading(null)
-   }
+    } catch {
+      showToast("Failed to delete team", "error");
+    }
+    setActionLoading(null);
+  }
 
-   async function handleAction(userId: number, action: string, extra?: Record<string, unknown>) {
-    setActionLoading(`${userId}-${action}`)
+  async function handleAction(
+    userId: number,
+    action: string,
+    extra?: Record<string, unknown>,
+  ) {
+    setActionLoading(`${userId}-${action}`);
     try {
       const res = await fetch(API.ADMIN, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ userId, action, ...extra }),
-      })
-      const data = await res.json()
+      });
+      const data = await res.json();
       if (res.ok) {
-        if (action === "reset_password" && data.tempPassword) setTempPassword(data.tempPassword)
+        if (action === "reset_password" && data.tempPassword)
+          setTempPassword(data.tempPassword);
         const labels: Record<string, string> = {
           set_role: "User role updated.",
           make_admin: "User promoted to admin.",
@@ -343,63 +447,77 @@ function AdminContent() {
           clear_rate_limits: "Rate limits cleared.",
           gift_subscription: "Subscription gifted successfully.",
           revoke_gift: "Gifted subscription revoked.",
+        };
+        if (action === "create_badge" || action === "delete_badge") {
+          fetchAllBadges();
         }
-        if (action === "create_badge" || action === "delete_badge") { fetchAllBadges() }
-        showToast(labels[action] || "Action completed.", "success")
+        showToast(labels[action] || "Action completed.", "success");
         // Skip refetch for badge award/revoke - onBadgesChanged handles optimistic UI update
         if (action !== "award_badge" && action !== "revoke_badge") {
-          await fetchData(page, searchQuery, false, usersPageSize)
+          await fetchData(page, searchQuery, false, usersPageSize);
           if (selectedUser && selectedUser.user.id === userId) {
-            if (action === "delete") { setSelectedUser(null); updateUrlWithUser(null, activeTab) }
-            else await fetchUserDetail(userId)
+            if (action === "delete") {
+              setSelectedUser(null);
+              updateUrlWithUser(null, activeTab);
+            } else await fetchUserDetail(userId);
           }
         }
       } else {
-        showToast(data.error || "Action failed.", "error")
+        showToast(data.error || "Action failed.", "error");
       }
-    } catch { showToast("Action failed.", "error") }
-    setActionLoading(null)
-    setConfirmDialog(null)
+    } catch {
+      showToast("Action failed.", "error");
+    }
+    setActionLoading(null);
+    setConfirmDialog(null);
   }
 
-  const searchInitRef = useRef(false)
+  const searchInitRef = useRef(false);
 
   // Debounced server-side search
   useEffect(() => {
     if (!searchInitRef.current) {
-      searchInitRef.current = true
-      return
+      searchInitRef.current = true;
+      return;
     }
-    setSearchLoading(true)
+    setSearchLoading(true);
     const timeout = setTimeout(async () => {
       try {
-        const params = new URLSearchParams({ page: "1" })
-        if (searchQuery.trim()) params.set("search", searchQuery.trim())
-        const res = await fetch(`${API.ADMIN}?${params}`)
+        const params = new URLSearchParams({ page: "1" });
+        if (searchQuery.trim()) params.set("search", searchQuery.trim());
+        const res = await fetch(`${API.ADMIN}?${params}`);
         if (res.ok) {
-          const data = await res.json()
-          setUsers(data.users)
-          setPage(data.page)
-          setTotalPages(data.totalPages)
+          const data = await res.json();
+          setUsers(data.users);
+          setPage(data.page);
+          setTotalPages(data.totalPages);
         }
-      } catch { /* ignore */ }
-      setSearchLoading(false)
-    }, 300)
-    return () => { clearTimeout(timeout); setSearchLoading(false) }
-  }, [searchQuery])
+      } catch {
+        /* ignore */
+      }
+      setSearchLoading(false);
+    }, 300);
+    return () => {
+      clearTimeout(timeout);
+      setSearchLoading(false);
+    };
+  }, [searchQuery]);
 
   // Debounced teams search
   useEffect(() => {
     if (!teamsSearchInitRef.current) {
-      teamsSearchInitRef.current = true
-      return
+      teamsSearchInitRef.current = true;
+      return;
     }
-    setTeamsLoading(true)
+    setTeamsLoading(true);
     const timeout = setTimeout(() => {
-      fetchTeamsRef.current?.(1, teamsSearch)
-    }, 300)
-    return () => { clearTimeout(timeout); setTeamsLoading(false) }
-  }, [teamsSearch])
+      fetchTeamsRef.current?.(1, teamsSearch);
+    }, 300);
+    return () => {
+      clearTimeout(timeout);
+      setTeamsLoading(false);
+    };
+  }, [teamsSearch]);
 
   // Forbidden screen
   if (forbidden) {
@@ -412,15 +530,21 @@ function AdminContent() {
               <ShieldOff className="h-7 w-7 text-destructive" />
             </div>
             <div>
-              <h1 className="text-xl font-semibold tracking-tight">Access Denied</h1>
-              <p className="text-sm text-muted-foreground mt-1 max-w-xs">You do not have administrator privileges to access this panel.</p>
+              <h1 className="text-xl font-semibold tracking-tight">
+                Access Denied
+              </h1>
+              <p className="text-sm text-muted-foreground mt-1 max-w-xs">
+                You do not have administrator privileges to access this panel.
+              </p>
             </div>
-            <Button asChild variant="outline"><a href="/dashboard">Back to Scanner</a></Button>
+            <Button asChild variant="outline">
+              <a href="/dashboard">Back to Scanner</a>
+            </Button>
           </div>
         </main>
         <Footer />
       </div>
-    )
+    );
   }
 
   const NAV_GROUPS = [
@@ -450,34 +574,33 @@ function AdminContent() {
     },
     {
       label: "System",
-      items: [
-        { key: "settings" as const, label: "Settings", icon: Settings },
-      ],
+      items: [{ key: "settings" as const, label: "Settings", icon: Settings }],
     },
-  ]
+  ];
 
-  const ALL_ADMIN_TABS = NAV_GROUPS.flatMap((g) => g.items)
+  const ALL_ADMIN_TABS = NAV_GROUPS.flatMap((g) => g.items);
 
   const handleTabChange = (tabKey: string) => {
-    setActiveTab(tabKey as typeof activeTab)
-    if (tabKey === "audit") fetchAudit()
-    if (tabKey === "admins") fetchActiveAdmins()
-    if (tabKey === "teams") fetchTeams()
-    setSelectedUser(null)
-    updateUrlWithUser(null, tabKey, false)
-  }
+    setActiveTab(tabKey as typeof activeTab);
+    if (tabKey === "audit") fetchAudit();
+    if (tabKey === "admins") fetchActiveAdmins();
+    if (tabKey === "teams") fetchTeams();
+    setSelectedUser(null);
+    updateUrlWithUser(null, tabKey, false);
+  };
 
-  const activeTabMeta = ALL_ADMIN_TABS.find((t) => t.key === activeTab)
+  const activeTabMeta = ALL_ADMIN_TABS.find((t) => t.key === activeTab);
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
       <Header />
       <main className="flex-1 w-full max-w-7xl mx-auto px-4 sm:px-6 py-8">
-
         {/* Page Header */}
         <div className="mb-6">
           <h1 className="text-2xl font-semibold tracking-tight">Admin Panel</h1>
-          <p className="text-sm text-muted-foreground mt-1">Manage users, monitor activity, and control system settings.</p>
+          <p className="text-sm text-muted-foreground mt-1">
+            Manage users, monitor activity, and control system settings.
+          </p>
         </div>
 
         {loading ? (
@@ -487,10 +610,8 @@ function AdminContent() {
           </div>
         ) : (
           <div className="flex flex-col lg:flex-row gap-6">
-
             {/* Sidebar */}
             <aside className="lg:w-52 shrink-0">
-
               {/* Mobile: horizontal icon strip */}
               <div className="lg:hidden -mx-4 px-4 mb-4">
                 <div className="overflow-x-auto scrollbar-hide">
@@ -504,7 +625,7 @@ function AdminContent() {
                           "flex items-center justify-center w-9 h-9 rounded-lg transition-all shrink-0",
                           activeTab === tab.key
                             ? "bg-primary/10 text-primary"
-                            : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+                            : "text-muted-foreground hover:text-foreground hover:bg-muted/50",
                         )}
                       >
                         <tab.icon className="h-4 w-4" />
@@ -516,7 +637,9 @@ function AdminContent() {
                 {activeTabMeta && (
                   <div className="flex items-center gap-2 pt-3">
                     <activeTabMeta.icon className="h-4 w-4 text-primary" />
-                    <span className="text-sm font-medium text-foreground">{activeTabMeta.label}</span>
+                    <span className="text-sm font-medium text-foreground">
+                      {activeTabMeta.label}
+                    </span>
                   </div>
                 )}
               </div>
@@ -535,15 +658,15 @@ function AdminContent() {
                           href={`/admin#${tab.key}`}
                           onClick={(e) => {
                             if (!e.ctrlKey && !e.metaKey) {
-                              e.preventDefault()
-                              handleTabChange(tab.key)
+                              e.preventDefault();
+                              handleTabChange(tab.key);
                             }
                           }}
                           className={cn(
                             "flex items-center gap-2.5 px-2.5 py-2 text-sm rounded-lg transition-all",
                             activeTab === tab.key
                               ? "bg-primary/10 text-primary font-medium"
-                              : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+                              : "text-muted-foreground hover:text-foreground hover:bg-muted/50",
                           )}
                         >
                           <tab.icon className="h-4 w-4 shrink-0" />
@@ -558,34 +681,83 @@ function AdminContent() {
 
             {/* Main content */}
             <div className="flex-1 min-w-0 flex flex-col gap-6">
-
               {/* Stats row — Users tab only */}
               {activeTab === "users" && stats && !selectedUser && (
                 <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
                   {[
-                    { icon: Users, value: stats.total_users, label: "Total Users", color: "primary" },
-                    { icon: Activity, value: stats.total_scans, label: "Total Scans", color: "primary" },
-                    { icon: BarChart3, value: stats.scans_24h, label: "Scans (24h)", color: "primary" },
-                    { icon: ShieldCheck, value: stats.users_with_2fa, label: "2FA Enabled", color: "emerald" },
-                    { icon: Ban, value: stats.disabled_users, label: "Disabled", color: "destructive" },
+                    {
+                      icon: Users,
+                      value: stats.total_users,
+                      label: "Total Users",
+                      color: "primary",
+                    },
+                    {
+                      icon: Activity,
+                      value: stats.total_scans,
+                      label: "Total Scans",
+                      color: "primary",
+                    },
+                    {
+                      icon: BarChart3,
+                      value: stats.scans_24h,
+                      label: "Scans (24h)",
+                      color: "primary",
+                    },
+                    {
+                      icon: ShieldCheck,
+                      value: stats.users_with_2fa,
+                      label: "2FA Enabled",
+                      color: "emerald",
+                    },
+                    {
+                      icon: Ban,
+                      value: stats.disabled_users,
+                      label: "Disabled",
+                      color: "destructive",
+                    },
                   ].map((stat, i) => (
-                    <div key={i} className="flex items-center gap-2.5 sm:gap-3 p-3 sm:p-4 rounded-xl border border-border/40 bg-card/30 hover:bg-card/50 hover:border-border/60 transition-colors">
-                      <div className={cn("p-2 sm:p-2.5 rounded-lg shrink-0", stat.color === "primary" ? "bg-primary/10" : stat.color === "emerald" ? "bg-emerald-500/10" : "bg-destructive/10")}>
-                        <stat.icon className={cn("h-3.5 w-3.5 sm:h-4 sm:w-4", stat.color === "primary" ? "text-primary" : stat.color === "emerald" ? "text-emerald-500" : "text-destructive")} />
+                    <div
+                      key={i}
+                      className="flex items-center gap-2.5 sm:gap-3 p-3 sm:p-4 rounded-xl border border-border/40 bg-card/30 hover:bg-card/50 hover:border-border/60 transition-colors"
+                    >
+                      <div
+                        className={cn(
+                          "p-2 sm:p-2.5 rounded-lg shrink-0",
+                          stat.color === "primary"
+                            ? "bg-primary/10"
+                            : stat.color === "emerald"
+                              ? "bg-emerald-500/10"
+                              : "bg-destructive/10",
+                        )}
+                      >
+                        <stat.icon
+                          className={cn(
+                            "h-3.5 w-3.5 sm:h-4 sm:w-4",
+                            stat.color === "primary"
+                              ? "text-primary"
+                              : stat.color === "emerald"
+                                ? "text-emerald-500"
+                                : "text-destructive",
+                          )}
+                        />
                       </div>
                       <div className="min-w-0">
-                        <p className="text-lg sm:text-2xl font-bold tracking-tight">{Number(stat.value).toLocaleString()}</p>
-                        <p className="text-[10px] sm:text-[11px] text-muted-foreground truncate">{stat.label}</p>
+                        <p className="text-lg sm:text-2xl font-bold tracking-tight">
+                          {Number(stat.value).toLocaleString()}
+                        </p>
+                        <p className="text-[10px] sm:text-[11px] text-muted-foreground truncate">
+                          {stat.label}
+                        </p>
                       </div>
                     </div>
                   ))}
                 </div>
               )}
 
-{/* Feature sections */}
-  {activeTab === "access-rules" && <IPRulesManager />}
-  {activeTab === "blocked-data" && <BlockedDataManager />}
-  {activeTab === "security-alerts" && <SecurityAlertsManager />}
+              {/* Feature sections */}
+              {activeTab === "access-rules" && <IPRulesManager />}
+              {activeTab === "blocked-data" && <BlockedDataManager />}
+              {activeTab === "security-alerts" && <SecurityAlertsManager />}
               {activeTab === "settings" && <SystemSettingsManager />}
               {activeTab === "broadcast" && <MassEmailManager />}
 
@@ -600,35 +772,120 @@ function AdminContent() {
                   onRefreshBadges={fetchAllBadges}
                   onBadgesChanged={(awardedIds, revokedIds) => {
                     setSelectedUser((prev) => {
-                      if (!prev) return prev
+                      if (!prev) return prev;
                       const awardedBadges = allBadges
                         .filter((b) => awardedIds.includes(b.id))
-                        .map((b) => ({ id: b.id, name: b.name, display_name: b.display_name, color: b.color, awarded_at: new Date().toISOString() }))
-                      const kept = prev.badges.filter((b) => !revokedIds.includes(b.id))
-                      return { ...prev, badges: [...kept, ...awardedBadges] }
-                    })
+                        .map((b) => ({
+                          id: b.id,
+                          name: b.name,
+                          display_name: b.display_name,
+                          color: b.color,
+                          awarded_at: new Date().toISOString(),
+                        }));
+                      const kept = prev.badges.filter(
+                        (b) => !revokedIds.includes(b.id),
+                      );
+                      return { ...prev, badges: [...kept, ...awardedBadges] };
+                    });
                   }}
-                  onClose={() => { setSelectedUser(null); setTempPassword(null); updateUrlWithUser(null, activeTab) }}
+                  onClose={() => {
+                    setSelectedUser(null);
+                    setTempPassword(null);
+                    updateUrlWithUser(null, activeTab);
+                  }}
                   onAction={async (userId, action, extra) => {
-                    if (extra && Object.keys(extra).length > 0) return handleAction(userId, action, extra)
-                    if (["set_role", "award_badge", "revoke_badge", "create_badge", "delete_badge", "update_name", "update_email", "update_plan", "enable", "clear_rate_limits", "gift_subscription", "revoke_gift", "add_note", "edit_note", "delete_note"].includes(action)) {
-                      return handleAction(userId, action, extra)
+                    if (extra && Object.keys(extra).length > 0)
+                      return handleAction(userId, action, extra);
+                    if (
+                      [
+                        "set_role",
+                        "award_badge",
+                        "revoke_badge",
+                        "create_badge",
+                        "delete_badge",
+                        "update_name",
+                        "update_email",
+                        "update_plan",
+                        "enable",
+                        "clear_rate_limits",
+                        "gift_subscription",
+                        "revoke_gift",
+                        "add_note",
+                        "edit_note",
+                        "delete_note",
+                      ].includes(action)
+                    ) {
+                      return handleAction(userId, action, extra);
                     }
-                    const confirmActions = ["delete", "disable", "reset_password", "revoke_sessions", "revoke_api_keys", "reset_2fa", "delete_scans"]
+                    const confirmActions = [
+                      "delete",
+                      "disable",
+                      "reset_password",
+                      "revoke_sessions",
+                      "revoke_api_keys",
+                      "reset_2fa",
+                      "delete_scans",
+                    ];
                     if (confirmActions.includes(action)) {
-                      const messages: Record<string, { title: string; desc: string; label: string; danger?: boolean }> = {
-                        delete: { title: "Delete User", desc: `This will permanently delete ${selectedUser.user.email} and all their data. This cannot be undone.`, label: "Delete User", danger: true },
-                        disable: { title: "Disable Account", desc: `This will suspend ${selectedUser.user.email}'s account and log them out of all sessions. They will not be able to log in until re-enabled.`, label: "Disable Account", danger: true },
-                        reset_password: { title: "Reset Password", desc: `This will generate a temporary password for ${selectedUser.user.email}. All sessions will be invalidated. Share the temporary password securely.`, label: "Reset Password" },
-                        revoke_sessions: { title: "Revoke All Sessions", desc: `This will force-logout ${selectedUser.user.email} from all devices and browsers.`, label: "Revoke Sessions" },
-                        revoke_api_keys: { title: "Revoke All API Keys", desc: `This will immediately revoke all active API keys for ${selectedUser.user.email}.`, label: "Revoke Keys" },
-                        reset_2fa: { title: "Reset Two-Factor Authentication", desc: `This will remove 2FA from ${selectedUser.user.email}'s account. They will need to set it up again.`, label: "Reset 2FA", danger: true },
-                        delete_scans: { title: "Delete All Scans", desc: `This will permanently delete all scan history for ${selectedUser.user.email}. This cannot be undone.`, label: "Delete Scans", danger: true },
-                      }
-                      const m = messages[action]
-                      setConfirmDialog({ title: m.title, description: m.desc, confirmLabel: m.label, danger: m.danger ?? false, action: () => handleAction(userId, action) })
+                      const messages: Record<
+                        string,
+                        {
+                          title: string;
+                          desc: string;
+                          label: string;
+                          danger?: boolean;
+                        }
+                      > = {
+                        delete: {
+                          title: "Delete User",
+                          desc: `This will permanently delete ${selectedUser.user.email} and all their data. This cannot be undone.`,
+                          label: "Delete User",
+                          danger: true,
+                        },
+                        disable: {
+                          title: "Disable Account",
+                          desc: `This will suspend ${selectedUser.user.email}'s account and log them out of all sessions. They will not be able to log in until re-enabled.`,
+                          label: "Disable Account",
+                          danger: true,
+                        },
+                        reset_password: {
+                          title: "Reset Password",
+                          desc: `This will generate a temporary password for ${selectedUser.user.email}. All sessions will be invalidated. Share the temporary password securely.`,
+                          label: "Reset Password",
+                        },
+                        revoke_sessions: {
+                          title: "Revoke All Sessions",
+                          desc: `This will force-logout ${selectedUser.user.email} from all devices and browsers.`,
+                          label: "Revoke Sessions",
+                        },
+                        revoke_api_keys: {
+                          title: "Revoke All API Keys",
+                          desc: `This will immediately revoke all active API keys for ${selectedUser.user.email}.`,
+                          label: "Revoke Keys",
+                        },
+                        reset_2fa: {
+                          title: "Reset Two-Factor Authentication",
+                          desc: `This will remove 2FA from ${selectedUser.user.email}'s account. They will need to set it up again.`,
+                          label: "Reset 2FA",
+                          danger: true,
+                        },
+                        delete_scans: {
+                          title: "Delete All Scans",
+                          desc: `This will permanently delete all scan history for ${selectedUser.user.email}. This cannot be undone.`,
+                          label: "Delete Scans",
+                          danger: true,
+                        },
+                      };
+                      const m = messages[action];
+                      setConfirmDialog({
+                        title: m.title,
+                        description: m.desc,
+                        confirmLabel: m.label,
+                        danger: m.danger ?? false,
+                        action: () => handleAction(userId, action),
+                      });
                     } else {
-                      return handleAction(userId, action)
+                      return handleAction(userId, action);
                     }
                   }}
                   tempPassword={tempPassword}
@@ -648,12 +905,22 @@ function AdminContent() {
                             <Users className="h-4 w-4 text-primary" />
                           </div>
                           <div>
-                            <CardTitle className="text-base font-semibold">User Directory</CardTitle>
-                            <p className="text-xs text-muted-foreground mt-0.5">Manage and view all registered users</p>
+                            <CardTitle className="text-base font-semibold">
+                              User Directory
+                            </CardTitle>
+                            <p className="text-xs text-muted-foreground mt-0.5">
+                              Manage and view all registered users
+                            </p>
                           </div>
                         </div>
-                        <Badge variant="secondary" className="text-xs font-medium h-6 px-2.5">
-                          {stats ? Number(stats.total_users).toLocaleString() : 0} users
+                        <Badge
+                          variant="secondary"
+                          className="text-xs font-medium h-6 px-2.5"
+                        >
+                          {stats
+                            ? Number(stats.total_users).toLocaleString()
+                            : 0}{" "}
+                          users
                         </Badge>
                       </div>
                       {/* Search and actions row */}
@@ -667,8 +934,20 @@ function AdminContent() {
                             className="pl-9 h-10 bg-background/50 border-border/40 focus:border-primary/50"
                           />
                         </div>
-                        <Button variant="outline" size="sm" className="h-10 px-3 gap-2 border-border/40 shrink-0" onClick={() => fetchData(page, searchQuery, false, usersPageSize)}>
-                          <RefreshCw className={cn("h-4 w-4", searchLoading && "animate-spin")} />
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-10 px-3 gap-2 border-border/40 shrink-0"
+                          onClick={() =>
+                            fetchData(page, searchQuery, false, usersPageSize)
+                          }
+                        >
+                          <RefreshCw
+                            className={cn(
+                              "h-4 w-4",
+                              searchLoading && "animate-spin",
+                            )}
+                          />
                           <span className="hidden sm:inline">Refresh</span>
                         </Button>
                       </div>
@@ -680,64 +959,151 @@ function AdminContent() {
                       <table className="w-full">
                         <thead>
                           <tr className="border-y border-border/50 bg-muted/30">
-                            <th className="px-5 py-3 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider text-left">User</th>
-                            <th className="px-4 py-3 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider text-left">Activity</th>
-                            <th className="px-4 py-3 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider text-left">Status</th>
-                            <th className="px-4 py-3 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider text-left">Joined</th>
-                            <th className="px-5 py-3 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider text-right">Actions</th>
+                            <th className="px-5 py-3 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider text-left">
+                              User
+                            </th>
+                            <th className="px-4 py-3 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider text-left">
+                              Activity
+                            </th>
+                            <th className="px-4 py-3 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider text-left">
+                              Status
+                            </th>
+                            <th className="px-4 py-3 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider text-left">
+                              Joined
+                            </th>
+                            <th className="px-5 py-3 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider text-right">
+                              Actions
+                            </th>
                           </tr>
                         </thead>
-                        <tbody className={cn("transition-opacity duration-200", searchLoading && "opacity-40 pointer-events-none")}>
+                        <tbody
+                          className={cn(
+                            "transition-opacity duration-200",
+                            searchLoading && "opacity-40 pointer-events-none",
+                          )}
+                        >
                           {users.map((u) => (
-                            <tr key={u.id} className="border-b border-border/40 last:border-0 hover:bg-muted/20 transition-colors group cursor-pointer" onClick={() => fetchUserDetail(u.id)}>
+                            <tr
+                              key={u.id}
+                              className="border-b border-border/40 last:border-0 hover:bg-muted/20 transition-colors group cursor-pointer"
+                              onClick={() => fetchUserDetail(u.id)}
+                            >
                               <td className="px-5 py-4">
                                 <div className="flex items-center gap-3">
-                                  <UserAvatar name={u.name} email={u.email} avatarUrl={u.avatar_url} />
+                                  <UserAvatar
+                                    name={u.name}
+                                    email={u.email}
+                                    avatarUrl={u.avatar_url}
+                                  />
                                   <div className="min-w-0">
-                                    <p className="text-sm font-medium truncate">{u.name || "Unnamed"}</p>
-                                    <p className="text-xs text-muted-foreground truncate font-mono">{u.email}</p>
+                                    <p className="text-sm font-medium truncate">
+                                      {u.name || "Unnamed"}
+                                    </p>
+                                    <p className="text-xs text-muted-foreground truncate font-mono">
+                                      {u.email}
+                                    </p>
                                   </div>
                                 </div>
                               </td>
                               <td className="px-4 py-4">
                                 <div className="flex flex-col gap-0.5">
-                                  <span className="text-sm font-medium">{u.scan_count} <span className="text-muted-foreground font-normal">scans</span></span>
-                                  <span className="text-xs text-muted-foreground">{u.api_key_count} API keys</span>
+                                  <span className="text-sm font-medium">
+                                    {u.scan_count}{" "}
+                                    <span className="text-muted-foreground font-normal">
+                                      scans
+                                    </span>
+                                  </span>
+                                  <span className="text-xs text-muted-foreground">
+                                    {u.api_key_count} API keys
+                                  </span>
                                 </div>
                               </td>
                               <td className="px-4 py-4">
                                 <div className="flex items-center gap-1.5 flex-wrap">
                                   {u.disabled_at ? (
-                                    <Badge className="bg-destructive/10 text-destructive border-destructive/20 text-[10px] px-2 py-0.5 font-medium">Disabled</Badge>
+                                    <Badge className="bg-destructive/10 text-destructive border-destructive/20 text-[10px] px-2 py-0.5 font-medium">
+                                      Disabled
+                                    </Badge>
                                   ) : (
-                                    <Badge className="bg-emerald-500/10 text-emerald-500 border-emerald-500/20 text-[10px] px-2 py-0.5 font-medium">Active</Badge>
+                                    <Badge className="bg-emerald-500/10 text-emerald-500 border-emerald-500/20 text-[10px] px-2 py-0.5 font-medium">
+                                      Active
+                                    </Badge>
                                   )}
-                                  {u.role && u.role !== STAFF_ROLES.USER && ROLE_BADGE_STYLES[u.role] && (
-                                    <Badge className={cn(ROLE_BADGE_STYLES[u.role], "text-[10px] px-2 py-0.5 font-medium")}>{STAFF_ROLE_LABELS[u.role] || u.role}</Badge>
-                                  )}
+                                  {u.role &&
+                                    u.role !== STAFF_ROLES.USER &&
+                                    ROLE_BADGE_STYLES[u.role] && (
+                                      <Badge
+                                        className={cn(
+                                          ROLE_BADGE_STYLES[u.role],
+                                          "text-[10px] px-2 py-0.5 font-medium",
+                                        )}
+                                      >
+                                        {STAFF_ROLE_LABELS[u.role] || u.role}
+                                      </Badge>
+                                    )}
                                   {(() => {
-                                    const effectivePlan = u.gifted_plan || u.plan
-                                    if (effectivePlan && effectivePlan !== "free") {
-                                      const planLabel = effectivePlan.replace("_supporter", "").charAt(0).toUpperCase() + effectivePlan.replace("_supporter", "").slice(1)
-                                      return <Badge className={cn("text-[10px] px-2 py-0.5 font-medium", u.gifted_plan ? "bg-amber-500/10 text-amber-500 border-amber-500/20" : "bg-primary/10 text-primary border-primary/20")}>{planLabel}{u.gifted_plan ? " (Gift)" : ""}</Badge>
+                                    const effectivePlan =
+                                      u.gifted_plan || u.plan;
+                                    if (
+                                      effectivePlan &&
+                                      effectivePlan !== "free"
+                                    ) {
+                                      const planLabel =
+                                        effectivePlan
+                                          .replace("_supporter", "")
+                                          .charAt(0)
+                                          .toUpperCase() +
+                                        effectivePlan
+                                          .replace("_supporter", "")
+                                          .slice(1);
+                                      return (
+                                        <Badge
+                                          className={cn(
+                                            "text-[10px] px-2 py-0.5 font-medium",
+                                            u.gifted_plan
+                                              ? "bg-amber-500/10 text-amber-500 border-amber-500/20"
+                                              : "bg-primary/10 text-primary border-primary/20",
+                                          )}
+                                        >
+                                          {planLabel}
+                                          {u.gifted_plan ? " (Gift)" : ""}
+                                        </Badge>
+                                      );
                                     }
-                                    return null
+                                    return null;
                                   })()}
-                                  {u.totp_enabled && <Badge className="bg-emerald-500/10 text-emerald-500 border-emerald-500/20 text-[10px] px-2 py-0.5 font-medium">2FA</Badge>}
+                                  {u.totp_enabled && (
+                                    <Badge className="bg-emerald-500/10 text-emerald-500 border-emerald-500/20 text-[10px] px-2 py-0.5 font-medium">
+                                      2FA
+                                    </Badge>
+                                  )}
                                 </div>
                               </td>
                               <td className="px-4 py-4 text-sm text-muted-foreground whitespace-nowrap">
-                                {new Date(u.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                                {new Date(u.created_at).toLocaleDateString(
+                                  "en-US",
+                                  {
+                                    month: "short",
+                                    day: "numeric",
+                                    year: "numeric",
+                                  },
+                                )}
                               </td>
                               <td className="px-5 py-4">
                                 <div className="flex items-center justify-end">
-                                  <Button variant="ghost" size="sm" className="h-8 gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity" asChild onClick={(e) => e.stopPropagation()}>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-8 gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity"
+                                    asChild
+                                    onClick={(e) => e.stopPropagation()}
+                                  >
                                     <a
                                       href={`/admin#users/user-${u.id}`}
                                       onClick={(e) => {
                                         if (!e.ctrlKey && !e.metaKey) {
-                                          e.preventDefault()
-                                          fetchUserDetail(u.id)
+                                          e.preventDefault();
+                                          fetchUserDetail(u.id);
                                         }
                                       }}
                                     >
@@ -751,14 +1117,21 @@ function AdminContent() {
                           ))}
                           {users.length === 0 && (
                             <tr>
-                              <td colSpan={5} className="px-5 py-20 text-center">
+                              <td
+                                colSpan={5}
+                                className="px-5 py-20 text-center"
+                              >
                                 <div className="flex flex-col items-center justify-center">
                                   <div className="p-4 rounded-full bg-muted/50 mb-4">
                                     <Search className="h-8 w-8 text-muted-foreground/40" />
                                   </div>
-                                  <p className="text-sm font-medium text-foreground mb-1">No users found</p>
+                                  <p className="text-sm font-medium text-foreground mb-1">
+                                    No users found
+                                  </p>
                                   <p className="text-xs text-muted-foreground max-w-sm">
-                                    {searchQuery ? `No results for "${searchQuery}". Try a different search term.` : "No users have registered yet."}
+                                    {searchQuery
+                                      ? `No results for "${searchQuery}". Try a different search term.`
+                                      : "No users have registered yet."}
                                   </p>
                                 </div>
                               </td>
@@ -769,15 +1142,24 @@ function AdminContent() {
                     </div>
 
                     {/* Mobile list */}
-                    <div className={cn("md:hidden flex flex-col transition-opacity duration-200", searchLoading && "opacity-40 pointer-events-none")}>
+                    <div
+                      className={cn(
+                        "md:hidden flex flex-col transition-opacity duration-200",
+                        searchLoading && "opacity-40 pointer-events-none",
+                      )}
+                    >
                       {users.length === 0 && (
                         <div className="flex flex-col items-center justify-center py-16 px-4">
                           <div className="p-4 rounded-full bg-muted/50 mb-4">
                             <Search className="h-8 w-8 text-muted-foreground/40" />
                           </div>
-                          <p className="text-sm font-medium text-foreground mb-1">No users found</p>
+                          <p className="text-sm font-medium text-foreground mb-1">
+                            No users found
+                          </p>
                           <p className="text-xs text-muted-foreground text-center">
-                            {searchQuery ? `No results for "${searchQuery}".` : "No users have registered yet."}
+                            {searchQuery
+                              ? `No results for "${searchQuery}".`
+                              : "No users have registered yet."}
                           </p>
                         </div>
                       )}
@@ -787,41 +1169,80 @@ function AdminContent() {
                           href={`/admin#users/user-${u.id}`}
                           onClick={(e) => {
                             if (!e.ctrlKey && !e.metaKey) {
-                              e.preventDefault()
-                              fetchUserDetail(u.id)
+                              e.preventDefault();
+                              fetchUserDetail(u.id);
                             }
                           }}
                           className="flex items-center gap-3 px-5 py-4 border-b border-border/40 last:border-0 hover:bg-muted/20 transition-colors"
                         >
-                          <UserAvatar name={u.name} email={u.email} size="sm" avatarUrl={u.avatar_url} />
+                          <UserAvatar
+                            name={u.name}
+                            email={u.email}
+                            size="sm"
+                            avatarUrl={u.avatar_url}
+                          />
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2 mb-0.5">
-                              <p className="text-sm font-medium truncate">{u.name || "Unnamed"}</p>
+                              <p className="text-sm font-medium truncate">
+                                {u.name || "Unnamed"}
+                              </p>
                               {u.disabled_at ? (
-                                <Badge className="bg-destructive/10 text-destructive border-destructive/20 text-[10px] px-1.5 shrink-0">Disabled</Badge>
-                              ) : u.role && u.role !== STAFF_ROLES.USER && ROLE_BADGE_STYLES[u.role] ? (
-                                <Badge className={cn(ROLE_BADGE_STYLES[u.role], "text-[10px] px-1.5 shrink-0")}>{STAFF_ROLE_LABELS[u.role]}</Badge>
+                                <Badge className="bg-destructive/10 text-destructive border-destructive/20 text-[10px] px-1.5 shrink-0">
+                                  Disabled
+                                </Badge>
+                              ) : u.role &&
+                                u.role !== STAFF_ROLES.USER &&
+                                ROLE_BADGE_STYLES[u.role] ? (
+                                <Badge
+                                  className={cn(
+                                    ROLE_BADGE_STYLES[u.role],
+                                    "text-[10px] px-1.5 shrink-0",
+                                  )}
+                                >
+                                  {STAFF_ROLE_LABELS[u.role]}
+                                </Badge>
                               ) : null}
                             </div>
-                            <p className="text-xs text-muted-foreground truncate font-mono">{u.email}</p>
+                            <p className="text-xs text-muted-foreground truncate font-mono">
+                              {u.email}
+                            </p>
                             <div className="flex items-center gap-3 mt-1.5 text-[11px] text-muted-foreground">
                               <span>{u.scan_count} scans</span>
                               <span className="text-border">|</span>
-                              <span>{new Date(u.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}</span>
+                              <span>
+                                {new Date(u.created_at).toLocaleDateString(
+                                  "en-US",
+                                  { month: "short", day: "numeric" },
+                                )}
+                              </span>
                               {(() => {
-                                const effectivePlan = u.gifted_plan || u.plan
+                                const effectivePlan = u.gifted_plan || u.plan;
                                 if (effectivePlan && effectivePlan !== "free") {
-                                  const label = effectivePlan.replace("_supporter", "").charAt(0).toUpperCase() + effectivePlan.replace("_supporter", "").slice(1)
+                                  const label =
+                                    effectivePlan
+                                      .replace("_supporter", "")
+                                      .charAt(0)
+                                      .toUpperCase() +
+                                    effectivePlan
+                                      .replace("_supporter", "")
+                                      .slice(1);
                                   return (
                                     <>
                                       <span className="text-border">|</span>
-                                      <Badge className={cn("text-[10px] px-1.5 py-0", u.gifted_plan ? "bg-amber-500/10 text-amber-500 border-amber-500/20" : "bg-primary/10 text-primary border-primary/20")}>
+                                      <Badge
+                                        className={cn(
+                                          "text-[10px] px-1.5 py-0",
+                                          u.gifted_plan
+                                            ? "bg-amber-500/10 text-amber-500 border-amber-500/20"
+                                            : "bg-primary/10 text-primary border-primary/20",
+                                        )}
+                                      >
                                         {label}
                                       </Badge>
                                     </>
-                                  )
+                                  );
                                 }
-                                return null
+                                return null;
                               })()}
                             </div>
                           </div>
@@ -836,9 +1257,14 @@ function AdminContent() {
                         <PaginationControl
                           currentPage={page}
                           totalPages={totalPages}
-                          onPageChange={(p) => fetchData(p, searchQuery, false, usersPageSize)}
+                          onPageChange={(p) =>
+                            fetchData(p, searchQuery, false, usersPageSize)
+                          }
                           pageSize={usersPageSize}
-                          onPageSizeChange={(s) => { setUsersPageSize(s); fetchData(1, searchQuery, false, s) }}
+                          onPageSizeChange={(s) => {
+                            setUsersPageSize(s);
+                            fetchData(1, searchQuery, false, s);
+                          }}
                         />
                       </div>
                     )}
@@ -892,10 +1318,7 @@ function AdminContent() {
               )}
 
               {/* Notifications */}
-              {activeTab === "notifications" && (
-                <NotificationsManager />
-              )}
-
+              {activeTab === "notifications" && <NotificationsManager />}
             </div>
           </div>
         )}
@@ -916,5 +1339,5 @@ function AdminContent() {
 
       {toast && <AdminToast toast={toast} onClose={() => setToast(null)} />}
     </div>
-  )
+  );
 }

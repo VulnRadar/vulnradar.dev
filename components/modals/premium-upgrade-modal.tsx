@@ -1,24 +1,28 @@
-"use client"
+"use client";
 
-import { Crown, Zap, Check } from "lucide-react"
-import { Button } from "@/components/ui/button"
+import { Crown, Zap, Check } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
   DialogDescription,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog"
-import { Badge } from "@/components/ui/badge"
-import Link from "next/link"
-import { ROUTES, BILLING_PLAN_LIMITS, BILLING_HISTORY_RETENTION } from "@/lib/config/constants"
-import { PLANS } from "@/lib/billing/plans"
+} from "@/components/ui/dialog";
+import { Badge } from "@/components/ui/badge";
+import Link from "next/link";
+import {
+  ROUTES,
+  BILLING_PLAN_LIMITS,
+  BILLING_HISTORY_RETENTION,
+} from "@/lib/config/constants";
+import { PLANS } from "@/lib/billing/plans";
 
 export interface PremiumFeature {
-  id: string
-  name: string
-  description: string
-  requiredPlan: "core_supporter" | "pro_supporter" | "elite_supporter"
+  id: string;
+  name: string;
+  description: string;
+  requiredPlan: "core_supporter" | "pro_supporter" | "elite_supporter";
 }
 
 // Define all premium features in one place
@@ -26,31 +30,36 @@ export const PREMIUM_FEATURES: Record<string, PremiumFeature> = {
   scan_limit: {
     id: "scan_limit",
     name: "Daily Scan Limit Reached",
-    description: "You've used all your free scans for today. Upgrade to get more daily scans and keep your security monitoring running.",
+    description:
+      "You've used all your free scans for today. Upgrade to get more daily scans and keep your security monitoring running.",
     requiredPlan: "core_supporter",
   },
   dns_refetch: {
     id: "dns_refetch",
     name: "DNS Re-fetch",
-    description: "Re-fetch DNS records during scans to get the most up-to-date information about your domain's DNS configuration.",
+    description:
+      "Re-fetch DNS records during scans to get the most up-to-date information about your domain's DNS configuration.",
     requiredPlan: "pro_supporter",
   },
   advanced_reporting: {
     id: "advanced_reporting",
     name: "Advanced Reporting",
-    description: "Generate detailed PDF/CSV reports with executive summaries and compliance mapping.",
+    description:
+      "Generate detailed PDF/CSV reports with executive summaries and compliance mapping.",
     requiredPlan: "pro_supporter",
   },
   custom_scan_profiles: {
     id: "custom_scan_profiles",
     name: "Custom Scan Profiles",
-    description: "Create and save custom scan configurations for different use cases.",
+    description:
+      "Create and save custom scan configurations for different use cases.",
     requiredPlan: "pro_supporter",
   },
   security_trends: {
     id: "security_trends",
     name: "Security Trends",
-    description: "Track your security score over time with historical trend analysis.",
+    description:
+      "Track your security score over time with historical trend analysis.",
     requiredPlan: "core_supporter",
   },
   bulk_export: {
@@ -62,32 +71,34 @@ export const PREMIUM_FEATURES: Record<string, PremiumFeature> = {
   priority_scanning: {
     id: "priority_scanning",
     name: "Priority Scanning",
-    description: "Skip the queue and get faster scan results with priority processing.",
+    description:
+      "Skip the queue and get faster scan results with priority processing.",
     requiredPlan: "elite_supporter",
   },
-}
+};
 
 // Derive plan labels and prices from centralized plans config
 const PLAN_LABELS: Record<string, string> = Object.fromEntries(
-  PLANS.map(p => [p.id, p.name.replace(" Supporter", "")])
-)
+  PLANS.map((p) => [p.id, p.name.replace(" Supporter", "")]),
+);
 
 const PLAN_PRICES: Record<string, number> = Object.fromEntries(
-  PLANS.map(p => [p.id, p.priceInCents / 100])
-)
+  PLANS.map((p) => [p.id, p.priceInCents / 100]),
+);
 
 // Helper to get retention label
 function getRetentionLabel(planId: string): string {
-  const retention = BILLING_HISTORY_RETENTION[planId as keyof typeof BILLING_HISTORY_RETENTION]
-  if (retention === -1) return "Unlimited scan history"
-  return `${retention}-day scan history`
+  const retention =
+    BILLING_HISTORY_RETENTION[planId as keyof typeof BILLING_HISTORY_RETENTION];
+  if (retention === -1) return "Unlimited scan history";
+  return `${retention}-day scan history`;
 }
 
 interface PremiumUpgradeModalProps {
-  open: boolean
-  onOpenChange: (open: boolean) => void
-  feature: PremiumFeature
-  currentPlan?: string
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  feature: PremiumFeature;
+  currentPlan?: string;
 }
 
 export function PremiumUpgradeModal({
@@ -96,25 +107,43 @@ export function PremiumUpgradeModal({
   feature,
   currentPlan: _currentPlan = "free",
 }: PremiumUpgradeModalProps) {
-  const requiredPlanLabel = PLAN_LABELS[feature.requiredPlan]
-  const requiredPlanPrice = PLAN_PRICES[feature.requiredPlan]
+  const requiredPlanLabel = PLAN_LABELS[feature.requiredPlan];
+  const requiredPlanPrice = PLAN_PRICES[feature.requiredPlan];
 
   // Get benefits dynamically from config
   const getPlanBenefits = (planId: string): string[] => {
-    const scanLimit = BILLING_PLAN_LIMITS[planId as keyof typeof BILLING_PLAN_LIMITS]
-    const retention = getRetentionLabel(planId)
-    
-    if (planId === "core_supporter") {
-      return [`${scanLimit} scans per day`, retention, "Email support", "Early access features"]
-    } else if (planId === "pro_supporter") {
-      return [`${scanLimit} scans per day`, retention, "Priority support", "5,000 API requests/day", "All Core features"]
-    } else if (planId === "elite_supporter") {
-      return [`${scanLimit} scans per day`, "Unlimited API access", "Dedicated support", "Beta features access", "All Pro features"]
-    }
-    return []
-  }
+    const scanLimit =
+      BILLING_PLAN_LIMITS[planId as keyof typeof BILLING_PLAN_LIMITS];
+    const retention = getRetentionLabel(planId);
 
-  const benefits = getPlanBenefits(feature.requiredPlan)
+    if (planId === "core_supporter") {
+      return [
+        `${scanLimit} scans per day`,
+        retention,
+        "Email support",
+        "Early access features",
+      ];
+    } else if (planId === "pro_supporter") {
+      return [
+        `${scanLimit} scans per day`,
+        retention,
+        "Priority support",
+        "5,000 API requests/day",
+        "All Core features",
+      ];
+    } else if (planId === "elite_supporter") {
+      return [
+        `${scanLimit} scans per day`,
+        "Unlimited API access",
+        "Dedicated support",
+        "Beta features access",
+        "All Pro features",
+      ];
+    }
+    return [];
+  };
+
+  const benefits = getPlanBenefits(feature.requiredPlan);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -172,13 +201,21 @@ export function PremiumUpgradeModal({
         </div>
       </DialogContent>
     </Dialog>
-  )
+  );
 }
 
 // Hook to check if user has access to a premium feature
-export function hasFeatureAccess(userPlan: string, requiredPlan: string): boolean {
-  const planHierarchy = ["free", "core_supporter", "pro_supporter", "elite_supporter"]
-  const userPlanIndex = planHierarchy.indexOf(userPlan)
-  const requiredPlanIndex = planHierarchy.indexOf(requiredPlan)
-  return userPlanIndex >= requiredPlanIndex
+export function hasFeatureAccess(
+  userPlan: string,
+  requiredPlan: string,
+): boolean {
+  const planHierarchy = [
+    "free",
+    "core_supporter",
+    "pro_supporter",
+    "elite_supporter",
+  ];
+  const userPlanIndex = planHierarchy.indexOf(userPlan);
+  const requiredPlanIndex = planHierarchy.indexOf(requiredPlan);
+  return userPlanIndex >= requiredPlanIndex;
 }

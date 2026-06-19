@@ -1,16 +1,21 @@
-"use client"
+"use client";
 
-import Link from "next/link"
-import { Button } from "@/components/ui/button"
-import { ThemedLogo } from "@/components/shared/themed-logo"
-import { APP_NAME, ROUTES, BILLING_ENABLED } from "@/lib/config/constants"
-import { backdrops, transitions } from "@/lib/ui/animations"
+import Link from "next/link";
+import { Button } from "@/components/ui/button";
+import { ThemedLogo } from "@/components/shared/themed-logo";
+import { APP_NAME, ROUTES, BILLING_ENABLED } from "@/lib/config/constants";
+import { backdrops, transitions } from "@/lib/ui/animations";
 
 export function DocsHeader() {
   return (
-    <header className={`sticky top-0 z-50 border-b border-border/50 ${backdrops.header}`}>
+    <header
+      className={`sticky top-0 z-50 border-b border-border/50 ${backdrops.header}`}
+    >
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 relative flex items-center">
-        <Link href="/" className={`flex items-center gap-2.5 z-10 group ${transitions.default}`}>
+        <Link
+          href="/"
+          className={`flex items-center gap-2.5 z-10 group ${transitions.default}`}
+        >
           <ThemedLogo
             width={28}
             height={28}
@@ -28,7 +33,10 @@ export function DocsHeader() {
               Pricing
             </Link>
           )}
-          <Link href="/docs" className={`text-sm text-foreground font-medium ${transitions.colors}`}>
+          <Link
+            href="/docs"
+            className={`text-sm text-foreground font-medium ${transitions.colors}`}
+          >
             Docs
           </Link>
           <Link
@@ -54,12 +62,16 @@ export function DocsHeader() {
                 stroke="currentColor"
                 strokeWidth={2}
               >
-                <path strokeLinecap="round" strokeLinejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6" />
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M13 7l5 5m0 0l-5 5m5-5H6"
+                />
               </svg>
             </Button>
           </Link>
         </div>
       </div>
     </header>
-  )
+  );
 }

@@ -1,7 +1,7 @@
 ﻿/**
  * Database initialization and schema management
  * Runs on server startup to ensure all required tables exist
- * 
+ *
  * SCHEMA PHILOSOPHY:
  * - Users table contains ALL user-specific data (role, plan, billing, settings)
  * - Separate tables only for: 1-to-many relationships, audit trails, shared definitions
@@ -9,53 +9,80 @@
  */
 export async function register() {
   if (process.env.NEXT_RUNTIME === "nodejs") {
-    const { default: pool } = await import("./lib/database/db")
-    const { APP_NAME, APP_VERSION, ENGINE_VERSION, VERSION_CHECK_URL, RELEASES_URL } = await import("./lib/config/constants")
+    const { default: pool } = await import("./lib/database/db");
+    const {
+      APP_NAME,
+      APP_VERSION,
+      ENGINE_VERSION,
+      VERSION_CHECK_URL,
+      RELEASES_URL,
+    } = await import("./lib/config/constants");
 
     // ── Startup version check ───────────────────────────────────────
-    console.log(`\x1b[36m[${APP_NAME}]\x1b[0m Starting ${APP_NAME} v${APP_VERSION} (Detection Engine v${ENGINE_VERSION})`)
+    console.log(
+      `\x1b[36m[${APP_NAME}]\x1b[0m Starting ${APP_NAME} v${APP_VERSION} (Detection Engine v${ENGINE_VERSION})`,
+    );
     try {
       const vRes = await fetch(VERSION_CHECK_URL, {
         signal: AbortSignal.timeout(5000),
-        headers: { "Accept": "application/vnd.github+json" },
-      })
+        headers: { Accept: "application/vnd.github+json" },
+      });
       if (vRes.ok) {
-        const release = await vRes.json()
-        const tagName = (release.tag_name as string) || ""
-        const latest = tagName.replace(/^v/, "")
-        const releaseUrl = (release.html_url as string) || `${RELEASES_URL}/tag/${tagName}`
-        const cur = APP_VERSION.split(".").map(Number)
-        const lat = latest.split(".").map(Number)
+        const release = await vRes.json();
+        const tagName = (release.tag_name as string) || "";
+        const latest = tagName.replace(/^v/, "");
+        const releaseUrl =
+          (release.html_url as string) || `${RELEASES_URL}/tag/${tagName}`;
+        const cur = APP_VERSION.split(".").map(Number);
+        const lat = latest.split(".").map(Number);
 
-        let status: "current" | "behind" | "ahead" = "current"
+        let status: "current" | "behind" | "ahead" = "current";
         for (let i = 0; i < 3; i++) {
-          if ((cur[i] || 0) > (lat[i] || 0)) { status = "ahead"; break }
-          if ((cur[i] || 0) < (lat[i] || 0)) { status = "behind"; break }
+          if ((cur[i] || 0) > (lat[i] || 0)) {
+            status = "ahead";
+            break;
+          }
+          if ((cur[i] || 0) < (lat[i] || 0)) {
+            status = "behind";
+            break;
+          }
         }
 
         if (status === "current") {
-          console.log(`\x1b[32m[${APP_NAME}]\x1b[0m You're running the latest version (v${APP_VERSION}).`)
+          console.log(
+            `\x1b[32m[${APP_NAME}]\x1b[0m You're running the latest version (v${APP_VERSION}).`,
+          );
         } else if (status === "behind") {
-          console.log(`\x1b[33m[${APP_NAME}]\x1b[0m Update available! You're on v${APP_VERSION}, latest is v${latest}.`)
-          console.log(`\x1b[33m[${APP_NAME}]\x1b[0m ${releaseUrl}`)
+          console.log(
+            `\x1b[33m[${APP_NAME}]\x1b[0m Update available! You're on v${APP_VERSION}, latest is v${latest}.`,
+          );
+          console.log(`\x1b[33m[${APP_NAME}]\x1b[0m ${releaseUrl}`);
         } else {
           const msgs = [
             "Whoa, you're running a version from the future!",
             "Nice try, time traveler.",
             "You're ahead of us... literally.",
             "Running unreleased code? You absolute legend.",
-          ]
-          console.log(`\x1b[35m[${APP_NAME}]\x1b[0m Running v${APP_VERSION}, but latest release is v${latest}.`)
-          console.log(`\x1b[35m[${APP_NAME}]\x1b[0m ${msgs[Math.floor(Math.random() * msgs.length)]}`)
+          ];
+          console.log(
+            `\x1b[35m[${APP_NAME}]\x1b[0m Running v${APP_VERSION}, but latest release is v${latest}.`,
+          );
+          console.log(
+            `\x1b[35m[${APP_NAME}]\x1b[0m ${msgs[Math.floor(Math.random() * msgs.length)]}`,
+          );
         }
       }
     } catch {
-      console.log(`\x1b[90m[${APP_NAME}]\x1b[0m Could not check for updates. Running v${APP_VERSION}.`)
+      console.log(
+        `\x1b[90m[${APP_NAME}]\x1b[0m Could not check for updates. Running v${APP_VERSION}.`,
+      );
     }
 
     if (!process.env.DATABASE_URL) {
-      console.error(`[${APP_NAME}] DATABASE_URL is not configured. Database initialization skipped.`)
-      return
+      console.error(
+        `[${APP_NAME}] DATABASE_URL is not configured. Database initialization skipped.`,
+      );
+      return;
     }
 
     try {
@@ -110,7 +137,7 @@ export async function register() {
         CREATE INDEX IF NOT EXISTS idx_users_role ON users(role);
         CREATE INDEX IF NOT EXISTS idx_users_plan ON users(plan);
         CREATE INDEX IF NOT EXISTS idx_users_stripe_customer ON users(stripe_customer_id);
-      `)
+      `);
 
       // ════════════════════════════════════════════════════════════════
       // SESSIONS - User login sessions (1 user : many sessions)
@@ -126,7 +153,7 @@ export async function register() {
         );
         CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id);
         CREATE INDEX IF NOT EXISTS idx_sessions_expires_at ON sessions(expires_at);
-      `)
+      `);
 
       // ════════════════════════════════════════════════════════════════
       // API KEYS - User API keys (1 user : many keys)
@@ -146,7 +173,7 @@ export async function register() {
         );
         CREATE INDEX IF NOT EXISTS idx_api_keys_user_id ON api_keys(user_id);
         CREATE INDEX IF NOT EXISTS idx_api_keys_key_hash ON api_keys(key_hash);
-      `)
+      `);
 
       // ════════════════════════════════════════════════════════════════
       // API USAGE - Tracks API key usage for rate limiting
@@ -159,7 +186,7 @@ export async function register() {
         );
         CREATE INDEX IF NOT EXISTS idx_api_usage_key_id ON api_usage(api_key_id);
         CREATE INDEX IF NOT EXISTS idx_api_usage_used_at ON api_usage(used_at);
-      `)
+      `);
 
       // ════════════════════════════════════════════════════════════════
       // SCAN HISTORY - Scan results (1 user : many scans)
@@ -182,7 +209,7 @@ export async function register() {
         CREATE INDEX IF NOT EXISTS idx_scan_history_user_id ON scan_history(user_id);
         CREATE INDEX IF NOT EXISTS idx_scan_history_scanned_at ON scan_history(scanned_at);
         CREATE INDEX IF NOT EXISTS idx_scan_history_share_token ON scan_history(share_token);
-      `)
+      `);
 
       // ════════════════════════════════════════════════════════════════
       // SCAN TAGS - Tags on scans (many-to-many via scan_id)
@@ -197,7 +224,7 @@ export async function register() {
         );
         CREATE INDEX IF NOT EXISTS idx_scan_tags_scan_id ON scan_tags(scan_id);
         CREATE INDEX IF NOT EXISTS idx_scan_tags_user_id ON scan_tags(user_id);
-      `)
+      `);
 
       // ════════════════════════════════════════════════════════════════
       // SCHEDULED SCANS - Recurring scan jobs
@@ -215,7 +242,7 @@ export async function register() {
         );
         CREATE INDEX IF NOT EXISTS idx_scheduled_scans_user_id ON scheduled_scans(user_id);
         CREATE INDEX IF NOT EXISTS idx_scheduled_scans_next_run ON scheduled_scans(next_run_at);
-      `)
+      `);
 
       // ════════════════════════════════════════════════════════════════
       // WEBHOOKS - User webhook endpoints
@@ -231,7 +258,7 @@ export async function register() {
           created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
         );
         CREATE INDEX IF NOT EXISTS idx_webhooks_user_id ON webhooks(user_id);
-      `)
+      `);
 
       // ════════════════════════════════════════════════════════════════
       // BADGES - Badge definitions (shared across all users)
@@ -249,7 +276,7 @@ export async function register() {
           created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
         );
         CREATE INDEX IF NOT EXISTS idx_badges_name ON badges(name);
-      `)
+      `);
 
       // ════════════════════════════════════════════════════════════════
       // USER BADGES - Junction table (user <-> badge)
@@ -263,7 +290,7 @@ export async function register() {
           PRIMARY KEY (user_id, badge_id)
         );
         CREATE INDEX IF NOT EXISTS idx_user_badges_user ON user_badges(user_id);
-      `)
+      `);
 
       // ════════════════════════════════════════════════════════════════
       // BILLING HISTORY - Payment audit trail
@@ -282,7 +309,7 @@ export async function register() {
           created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
         );
         CREATE INDEX IF NOT EXISTS idx_billing_history_user ON billing_history(user_id);
-      `)
+      `);
 
       // ════════════════════════════════════════════════════════════════
       // ADMIN AUDIT LOG - Admin action audit trail
@@ -299,7 +326,7 @@ export async function register() {
         );
         CREATE INDEX IF NOT EXISTS idx_admin_audit_admin_id ON admin_audit_log(admin_id);
         CREATE INDEX IF NOT EXISTS idx_admin_audit_created_at ON admin_audit_log(created_at);
-      `)
+      `);
 
       // ════════════════════════════════════════════════════════════════
       // ADMIN USER NOTES - Admin notes on users
@@ -313,7 +340,7 @@ export async function register() {
           created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
         );
         CREATE INDEX IF NOT EXISTS idx_admin_user_notes_user ON admin_user_notes(user_id);
-      `)
+      `);
 
       // ════════════════════════════════════════════════════════════════
       // DISCORD CONNECTIONS - OAuth integration with Discord
@@ -336,7 +363,7 @@ export async function register() {
         );
         CREATE INDEX IF NOT EXISTS idx_discord_user ON discord_connections(user_id);
         CREATE INDEX IF NOT EXISTS idx_discord_id ON discord_connections(discord_id);
-      `)
+      `);
 
       // ════════════════════════════════════════════════════════════════
       // STAFF ACTIVITY - Real-time admin dashboard activity tracking
@@ -355,7 +382,7 @@ export async function register() {
         );
         CREATE INDEX IF NOT EXISTS idx_staff_activity_user_heartbeat ON staff_activity(user_id, last_heartbeat DESC);
         CREATE INDEX IF NOT EXISTS idx_staff_activity_heartbeat ON staff_activity(last_heartbeat DESC);
-      `)
+      `);
 
       // ════════════════════════════════════════════════════════════════
       // AUTH TOKENS - Password reset & email verification
@@ -399,7 +426,7 @@ export async function register() {
         );
         CREATE INDEX IF NOT EXISTS idx_billing_verify_user ON billing_verification_codes(user_id);
         CREATE INDEX IF NOT EXISTS idx_billing_verify_expires ON billing_verification_codes(expires_at);
-      `)
+      `);
 
       // ════════════════════════════════════════════════════════════════
       // NOTIFICATION PREFERENCES
@@ -436,7 +463,7 @@ export async function register() {
           updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
         );
         CREATE INDEX IF NOT EXISTS idx_notif_prefs_user_id ON notification_preferences(user_id);
-      `)
+      `);
 
       // ════════════════════════════════════════════════════════════════
       // RATE LIMITING
@@ -450,7 +477,7 @@ export async function register() {
           UNIQUE(key, window_start)
         );
         CREATE INDEX IF NOT EXISTS idx_rate_limits_key ON rate_limits(key);
-      `)
+      `);
 
       // ════════════════════════════════════════════════════════════════
       // DEVICE TRUST - Trusted devices for 2FA
@@ -469,7 +496,7 @@ export async function register() {
           UNIQUE(user_id, device_fingerprint)
         );
         CREATE INDEX IF NOT EXISTS idx_device_trust_user_id ON device_trust(user_id);
-      `)
+      `);
 
       // ════════════════════════════════════════════════════════════════
       // DATA REQUESTS - GDPR data export
@@ -485,7 +512,7 @@ export async function register() {
           downloaded_at TIMESTAMP WITH TIME ZONE
         );
         CREATE INDEX IF NOT EXISTS idx_data_requests_user_id ON data_requests(user_id);
-      `)
+      `);
 
       // ════════════════════════════════════════════════════════════════
       // TEAMS
@@ -522,7 +549,7 @@ export async function register() {
           created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
         );
         CREATE INDEX IF NOT EXISTS idx_team_invites_token ON team_invites(token);
-      `)
+      `);
 
       // ════════════════════════════════════════════════════════════════
       // GIFTED SUBSCRIPTIONS - Manual plan gifts
@@ -541,7 +568,7 @@ export async function register() {
         );
         CREATE INDEX IF NOT EXISTS idx_gifted_subscriptions_user ON gifted_subscriptions(user_id);
         CREATE INDEX IF NOT EXISTS idx_gifted_subscriptions_expires ON gifted_subscriptions(expires_at) WHERE revoked_at IS NULL;
-      `)
+      `);
 
       // ════════════════════════════════════════════════════════════════
       // ADMIN NOTIFICATIONS - Site-wide notifications
@@ -572,7 +599,7 @@ export async function register() {
         CREATE INDEX IF NOT EXISTS idx_admin_notifications_active ON admin_notifications (is_active, starts_at, ends_at) WHERE is_active = true;
         CREATE INDEX IF NOT EXISTS idx_admin_notifications_type ON admin_notifications (type);
         CREATE INDEX IF NOT EXISTS idx_admin_notifications_cookie ON admin_notifications (cookie_id);
-      `)
+      `);
 
       // ════════════════════════════════════════════════════════════════
       // ACCESS RULES - IP and URL Whitelisting/Blacklisting
@@ -596,7 +623,7 @@ export async function register() {
         CREATE INDEX IF NOT EXISTS idx_access_rules_active ON access_rules(is_active, rule_type);
         CREATE INDEX IF NOT EXISTS idx_access_rules_value ON access_rules(value);
         CREATE INDEX IF NOT EXISTS idx_access_rules_type ON access_rules(value_type);
-      `)
+      `);
 
       // ════════════════════════════════════════════════════════════════
       // SECURITY ALERTS - Monitoring suspicious activity
@@ -619,7 +646,7 @@ export async function register() {
         CREATE INDEX IF NOT EXISTS idx_security_alerts_user ON security_alerts(user_id);
         CREATE INDEX IF NOT EXISTS idx_security_alerts_severity ON security_alerts(severity);
         CREATE INDEX IF NOT EXISTS idx_security_alerts_created ON security_alerts(created_at DESC);
-      `)
+      `);
 
       // ════════════════════════════════════════════════════════════════
       // SYSTEM SETTINGS - Global configuration
@@ -634,7 +661,7 @@ export async function register() {
           updated_by INTEGER REFERENCES users(id),
           updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
         );
-      `)
+      `);
 
       // ════════════════════════════════════════════════════════════════
       // BROADCAST MESSAGES - Mass communication
@@ -654,7 +681,7 @@ export async function register() {
         );
         CREATE INDEX IF NOT EXISTS idx_broadcast_messages_status ON broadcast_messages(status);
         CREATE INDEX IF NOT EXISTS idx_broadcast_messages_created ON broadcast_messages(created_at DESC);
-      `)
+      `);
 
       // ════════════════════════════════════════════════════════════════
       // BROADCAST RECIPIENTS - Tracking message delivery
@@ -671,7 +698,7 @@ export async function register() {
         );
         CREATE INDEX IF NOT EXISTS idx_broadcast_recipients_message ON broadcast_recipients(message_id);
         CREATE INDEX IF NOT EXISTS idx_broadcast_recipients_user ON broadcast_recipients(user_id);
-      `)
+      `);
 
       // ════════════════════════════════════════════════════════════════
       // SUBDOMAIN CACHE - Caches subdomain discovery results (4 hour TTL)
@@ -683,9 +710,9 @@ export async function register() {
           cached_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
         );
         CREATE INDEX IF NOT EXISTS idx_subdomain_cache_cached_at ON subdomain_cache(cached_at);
-      `)
+      `);
 
-      console.log(`[${APP_NAME}] Database schema verified successfully.`)
+      console.log(`[${APP_NAME}] Database schema verified successfully.`);
 
       // ── Seed Default Badges ─────────────────────────────────────
       try {
@@ -701,43 +728,56 @@ export async function register() {
             ('premium', 'Premium', 'Premium subscription member', 'star', '#fbbf24', 6, false),
             ('staff', 'Staff', 'VulnRadar team member', 'shield', '#6366f1', 15, true)
           ON CONFLICT (name) DO NOTHING;
-        `)
-        console.log(`[${APP_NAME}] Default badges seeded.`)
+        `);
+        console.log(`[${APP_NAME}] Default badges seeded.`);
       } catch (seedError) {
-        console.error(`[${APP_NAME}] Failed to seed badges (non-fatal):`, seedError)
+        console.error(
+          `[${APP_NAME}] Failed to seed badges (non-fatal):`,
+          seedError,
+        );
       }
 
       // ── Run initial cleanup ───────────────────────────────────────
       try {
-        const { performDatabaseCleanup, formatCleanupStats } = await import("./lib/database/cleanup")
-        const stats = await performDatabaseCleanup()
-        console.log(`[${APP_NAME}] Initial cleanup completed: ${formatCleanupStats(stats)}`)
+        const { performDatabaseCleanup, formatCleanupStats } =
+          await import("./lib/database/cleanup");
+        const stats = await performDatabaseCleanup();
+        console.log(
+          `[${APP_NAME}] Initial cleanup completed: ${formatCleanupStats(stats)}`,
+        );
       } catch (cleanupError) {
-        console.error(`[${APP_NAME}] Initial cleanup failed (non-fatal):`, cleanupError)
+        console.error(
+          `[${APP_NAME}] Initial cleanup failed (non-fatal):`,
+          cleanupError,
+        );
       }
 
       // ── Schedule periodic cleanup ─────────────────────────────────
       try {
-        const { schedulePeriodicCleanup } = await import("./lib/database/cleanup")
-        schedulePeriodicCleanup(5000)
-        console.log(`[${APP_NAME}] Scheduled periodic database cleanup.`)
+        const { schedulePeriodicCleanup } =
+          await import("./lib/database/cleanup");
+        schedulePeriodicCleanup(5000);
+        console.log(`[${APP_NAME}] Scheduled periodic database cleanup.`);
       } catch (scheduleError) {
-        console.error(`[${APP_NAME}] Failed to schedule periodic cleanup:`, scheduleError)
+        console.error(
+          `[${APP_NAME}] Failed to schedule periodic cleanup:`,
+          scheduleError,
+        );
       }
 
       // ── Graceful shutdown ─────────────────────────────────────────
       const gracefulShutdown = async () => {
         try {
-          await pool.end()
-          console.log(`[${APP_NAME}] Database pool closed on shutdown.`)
+          await pool.end();
+          console.log(`[${APP_NAME}] Database pool closed on shutdown.`);
         } catch (err) {
-          console.error(`[${APP_NAME}] Error closing database pool:`, err)
+          console.error(`[${APP_NAME}] Error closing database pool:`, err);
         }
-      }
-      process.on("SIGTERM", gracefulShutdown)
-      process.on("SIGINT", gracefulShutdown)
+      };
+      process.on("SIGTERM", gracefulShutdown);
+      process.on("SIGINT", gracefulShutdown);
     } catch (error) {
-      console.error(`[${APP_NAME}] Database migration failed:`, error)
+      console.error(`[${APP_NAME}] Database migration failed:`, error);
     }
   }
 }

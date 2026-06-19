@@ -1,3 +1,3 @@
 // Admin staff components barrel export
 
-export * from "./staff-list"
+export * from "./staff-list";

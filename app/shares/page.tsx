@@ -1,66 +1,77 @@
-"use client"
+"use client";
 
-import { useEffect, useState } from "react"
-import { Loader2 } from "lucide-react"
-import { Header } from "@/components/scanner/header"
-import { Footer } from "@/components/scanner/footer"
-import { PaginationControl, usePagination } from "@/components/ui/pagination-control"
-import { ShareModal } from "@/components/scanner/share-modal"
-import { API } from "@/lib/config/constants"
+import { useEffect, useState } from "react";
+import { Loader2 } from "lucide-react";
+import { Header } from "@/components/scanner/header";
+import { Footer } from "@/components/scanner/footer";
+import {
+  PaginationControl,
+  usePagination,
+} from "@/components/ui/pagination-control";
+import { ShareModal } from "@/components/scanner/share-modal";
+import { API } from "@/lib/config/constants";
 import {
   type Share,
   getShareUrl,
   SharesStats,
   SharesEmptyState,
   SharesTable,
-} from "@/components/shares"
+} from "@/components/shares";
 
 export default function SharesPage() {
-  const [shares, setShares] = useState<Share[]>([])
-  const [loading, setLoading] = useState(true)
-  const [revoking, setRevoking] = useState<number | null>(null)
-  const [pageSize, setPageSize] = useState(10)
-  const [currentPage, setCurrentPage] = useState(1)
-  const [shareModalOpen, setShareModalOpen] = useState(false)
-  const [selectedShare, setSelectedShare] = useState<Share | null>(null)
+  const [shares, setShares] = useState<Share[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [revoking, setRevoking] = useState<number | null>(null);
+  const [pageSize, setPageSize] = useState(10);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [shareModalOpen, setShareModalOpen] = useState(false);
+  const [selectedShare, setSelectedShare] = useState<Share | null>(null);
 
-  const { totalPages, getPage } = usePagination(shares, pageSize)
-  const paginatedShares = getPage(currentPage)
+  const { totalPages, getPage } = usePagination(shares, pageSize);
+  const paginatedShares = getPage(currentPage);
 
-  useEffect(() => { fetchShares() }, [])
+  useEffect(() => {
+    fetchShares();
+  }, []);
 
   async function fetchShares() {
-    setLoading(true)
+    setLoading(true);
     try {
-      const res = await fetch(API.SHARES)
+      const res = await fetch(API.SHARES);
       if (res.ok) {
-        const data = await res.json()
-        setShares(data.shares || [])
+        const data = await res.json();
+        setShares(data.shares || []);
       }
     } catch (err) {
-      console.error("Failed to fetch shares:", err)
+      console.error("Failed to fetch shares:", err);
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
   }
 
   async function revokeShare(scanId: number) {
-    if (!confirm("Are you sure you want to revoke access to this shared scan?")) return
-    setRevoking(scanId)
+    if (!confirm("Are you sure you want to revoke access to this shared scan?"))
+      return;
+    setRevoking(scanId);
     try {
-      const res = await fetch(`${API.HISTORY}/${scanId}/share`, { method: "DELETE" })
+      const res = await fetch(`${API.HISTORY}/${scanId}/share`, {
+        method: "DELETE",
+      });
       if (res.ok) {
         setShares((prev) => {
-          const updated = prev.filter((s) => s.id !== scanId)
-          const newTotalPages = Math.max(1, Math.ceil(updated.length / pageSize))
-          if (currentPage > newTotalPages) setCurrentPage(newTotalPages)
-          return updated
-        })
+          const updated = prev.filter((s) => s.id !== scanId);
+          const newTotalPages = Math.max(
+            1,
+            Math.ceil(updated.length / pageSize),
+          );
+          if (currentPage > newTotalPages) setCurrentPage(newTotalPages);
+          return updated;
+        });
       }
     } catch (err) {
-      console.error("Failed to revoke share:", err)
+      console.error("Failed to revoke share:", err);
     } finally {
-      setRevoking(null)
+      setRevoking(null);
     }
   }
 
@@ -71,7 +82,9 @@ export default function SharesPage() {
         <div className="flex flex-col gap-6">
           {/* Page title */}
           <div className="mb-2">
-            <h1 className="text-2xl font-semibold tracking-tight">Shared Scans</h1>
+            <h1 className="text-2xl font-semibold tracking-tight">
+              Shared Scans
+            </h1>
             <p className="text-sm text-muted-foreground mt-1">
               Manage your active shared scan results. Revoke access anytime.
             </p>
@@ -94,8 +107,8 @@ export default function SharesPage() {
                   revoking={revoking}
                   onRevoke={revokeShare}
                   onOpenShareModal={(share) => {
-                    setSelectedShare(share)
-                    setShareModalOpen(true)
+                    setSelectedShare(share);
+                    setShareModalOpen(true);
                   }}
                 />
               )}
@@ -106,7 +119,10 @@ export default function SharesPage() {
                   totalPages={totalPages}
                   onPageChange={setCurrentPage}
                   pageSize={pageSize}
-                  onPageSizeChange={(s) => { setPageSize(s); setCurrentPage(1) }}
+                  onPageSizeChange={(s) => {
+                    setPageSize(s);
+                    setCurrentPage(1);
+                  }}
                   totalItems={shares.length}
                 />
               )}
@@ -125,5 +141,5 @@ export default function SharesPage() {
         />
       )}
     </div>
-  )
+  );
 }

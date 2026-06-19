@@ -1,58 +1,60 @@
-"use client"
+"use client";
 
-import React from "react"
-import { useEffect, useState } from "react"
-import { usePathname } from "next/navigation"
-import { TosModal } from "@/components/modals/tos-modal"
-import { API, TERMS_UPDATED_AT } from "@/lib/config/constants"
+import React from "react";
+import { useEffect, useState } from "react";
+import { usePathname } from "next/navigation";
+import { TosModal } from "@/components/modals/tos-modal";
+import { API, TERMS_UPDATED_AT } from "@/lib/config/constants";
 
-const SKIP_TOS_PATHS = ["/login", "/signup", "/legal"]
+const SKIP_TOS_PATHS = ["/login", "/signup", "/legal"];
 
 export function TosGate({ children }: { children: React.ReactNode }) {
-  const pathname = usePathname()
-  const [status, setStatus] = useState<"loading" | "accepted" | "pending" | "needs_reaccept" | "skip">("loading")
+  const pathname = usePathname();
+  const [status, setStatus] = useState<
+    "loading" | "accepted" | "pending" | "needs_reaccept" | "skip"
+  >("loading");
 
-  const shouldSkip = SKIP_TOS_PATHS.some((p) => pathname.startsWith(p))
+  const shouldSkip = SKIP_TOS_PATHS.some((p) => pathname.startsWith(p));
 
   useEffect(() => {
     if (shouldSkip) {
-      setStatus("skip")
-      return
+      setStatus("skip");
+      return;
     }
 
     async function check() {
       try {
-        const res = await fetch(API.AUTH.ME)
+        const res = await fetch(API.AUTH.ME);
         if (!res.ok) {
           // Not logged in - let middleware handle redirect
-          setStatus("skip")
-          return
+          setStatus("skip");
+          return;
         }
-        const data = await res.json()
-        
+        const data = await res.json();
+
         if (!data.tosAcceptedAt) {
           // Never accepted terms
-          setStatus("pending")
-          return
+          setStatus("pending");
+          return;
         }
-        
+
         // Check if user accepted before the latest terms update
-        const userAcceptedDate = new Date(data.tosAcceptedAt)
-        const termsUpdatedDate = new Date(TERMS_UPDATED_AT)
-        
+        const userAcceptedDate = new Date(data.tosAcceptedAt);
+        const termsUpdatedDate = new Date(TERMS_UPDATED_AT);
+
         if (userAcceptedDate < termsUpdatedDate) {
           // User needs to re-accept updated terms
-          setStatus("needs_reaccept")
+          setStatus("needs_reaccept");
         } else {
-          setStatus("accepted")
+          setStatus("accepted");
         }
       } catch {
-        setStatus("skip")
+        setStatus("skip");
       }
     }
 
-    check()
-  }, [shouldSkip, pathname])
+    check();
+  }, [shouldSkip, pathname]);
 
   if (status === "loading") {
     return (
@@ -60,22 +62,25 @@ export function TosGate({ children }: { children: React.ReactNode }) {
         {children}
         <div className="fixed inset-0 z-50" aria-hidden />
       </>
-    )
+    );
   }
 
   if ((status === "pending" || status === "needs_reaccept") && !shouldSkip) {
     return (
       <>
-        <div className="pointer-events-none select-none opacity-20 blur-sm" aria-hidden>
+        <div
+          className="pointer-events-none select-none opacity-20 blur-sm"
+          aria-hidden
+        >
           {children}
         </div>
-        <TosModal 
-          onAccept={() => setStatus("accepted")} 
+        <TosModal
+          onAccept={() => setStatus("accepted")}
           isUpdate={status === "needs_reaccept"}
         />
       </>
-    )
+    );
   }
 
-  return <>{children}</>
+  return <>{children}</>;
 }

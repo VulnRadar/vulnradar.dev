@@ -1,5 +1,10 @@
-import { NextResponse } from "next/server"
-import { APP_VERSION, ENGINE_VERSION, VERSION_CHECK_URL, RELEASES_URL } from "@/lib/config/constants"
+import { NextResponse } from "next/server";
+import {
+  APP_VERSION,
+  ENGINE_VERSION,
+  VERSION_CHECK_URL,
+  RELEASES_URL,
+} from "@/lib/config/constants";
 
 // Fun messages for people somehow running a version from the future
 const TIME_TRAVELER_MESSAGES = [
@@ -11,15 +16,15 @@ const TIME_TRAVELER_MESSAGES = [
   "Hold up, this version doesn't exist yet. Are you a wizard?",
   "Running unreleased code? You absolute legend.",
   "You're living in the future and we're still fixing merge conflicts.",
-]
+];
 
 export async function GET() {
   try {
     const res = await fetch(VERSION_CHECK_URL, {
       signal: AbortSignal.timeout(5000),
-      headers: { "Accept": "application/vnd.github+json" },
+      headers: { Accept: "application/vnd.github+json" },
       next: { revalidate: 3600 }, // cache for 1 hour
-    })
+    });
 
     if (!res.ok) {
       return NextResponse.json({
@@ -29,47 +34,51 @@ export async function GET() {
         status: "unknown",
         message: "Could not check for updates right now.",
         release_url: RELEASES_URL,
-      })
+      });
     }
 
-    const release = await res.json()
-    const tagName = (release.tag_name as string) || ""
-    const latest = tagName.replace(/^v/, "")
-    const releaseUrl = (release.html_url as string) || `${RELEASES_URL}/tag/${tagName}`
+    const release = await res.json();
+    const tagName = (release.tag_name as string) || "";
+    const latest = tagName.replace(/^v/, "");
+    const releaseUrl =
+      (release.html_url as string) || `${RELEASES_URL}/tag/${tagName}`;
 
-    const currentParts = APP_VERSION.split(".").map(Number)
-    const latestParts = latest.split(".").map(Number)
+    const currentParts = APP_VERSION.split(".").map(Number);
+    const latestParts = latest.split(".").map(Number);
 
-    let status: "up-to-date" | "behind" | "ahead" | "unknown" = "unknown"
-    let message = ""
+    let status: "up-to-date" | "behind" | "ahead" | "unknown" = "unknown";
+    let message = "";
 
     // Compare semver
     for (let i = 0; i < 3; i++) {
-      const c = currentParts[i] || 0
-      const l = latestParts[i] || 0
+      const c = currentParts[i] || 0;
+      const l = latestParts[i] || 0;
       if (c > l) {
-        status = "ahead"
-        message = TIME_TRAVELER_MESSAGES[Math.floor(Math.random() * TIME_TRAVELER_MESSAGES.length)]
-        break
+        status = "ahead";
+        message =
+          TIME_TRAVELER_MESSAGES[
+            Math.floor(Math.random() * TIME_TRAVELER_MESSAGES.length)
+          ];
+        break;
       }
       if (c < l) {
-        status = "behind"
-        const behindMajor = latestParts[0] - currentParts[0]
-        const behindMinor = latestParts[1] - currentParts[1]
+        status = "behind";
+        const behindMajor = latestParts[0] - currentParts[0];
+        const behindMinor = latestParts[1] - currentParts[1];
         if (behindMajor > 0) {
-          message = `You are ${behindMajor} major version${behindMajor > 1 ? "s" : ""} behind. Update strongly recommended.`
+          message = `You are ${behindMajor} major version${behindMajor > 1 ? "s" : ""} behind. Update strongly recommended.`;
         } else if (behindMinor > 0) {
-          message = `A newer version (v${latest}) is available with new features and fixes.`
+          message = `A newer version (v${latest}) is available with new features and fixes.`;
         } else {
-          message = `A patch update (v${latest}) is available with bug fixes.`
+          message = `A patch update (v${latest}) is available with bug fixes.`;
         }
-        break
+        break;
       }
     }
 
     if (status === "unknown") {
-      status = "up-to-date"
-      message = "You're running the latest version."
+      status = "up-to-date";
+      message = "You're running the latest version.";
     }
 
     return NextResponse.json({
@@ -79,7 +88,7 @@ export async function GET() {
       status,
       message,
       release_url: releaseUrl,
-    })
+    });
   } catch {
     return NextResponse.json({
       current: APP_VERSION,
@@ -88,6 +97,6 @@ export async function GET() {
       status: "unknown",
       message: "Could not check for updates. Are you offline?",
       release_url: RELEASES_URL,
-    })
+    });
   }
 }

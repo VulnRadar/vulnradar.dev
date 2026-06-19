@@ -1,13 +1,18 @@
-import Image from "next/image"
+import Image from "next/image";
 
 interface ThemedLogoProps {
-  width?: number
-  height?: number
-  className?: string
-  alt?: string
+  width?: number;
+  height?: number;
+  className?: string;
+  alt?: string;
 }
 
-export function ThemedLogo({ width = 24, height = 24, className = "", alt = "VulnRadar logo" }: ThemedLogoProps) {
+export function ThemedLogo({
+  width = 24,
+  height = 24,
+  className = "",
+  alt = "VulnRadar logo",
+}: ThemedLogoProps) {
   // Use CSS-based theme detection to avoid hydration flash
   // Both images render, CSS hides the wrong one instantly based on .dark class
   return (
@@ -31,5 +36,5 @@ export function ThemedLogo({ width = 24, height = 24, className = "", alt = "Vul
         priority
       />
     </span>
-  )
+  );
 }

@@ -1,12 +1,15 @@
-import { NextResponse } from "next/server"
-import { getSession } from "@/lib/auth"
-import pool from "@/lib/database/db"
-import { ERROR_MESSAGES } from "@/lib/config/constants"
+import { NextResponse } from "next/server";
+import { getSession } from "@/lib/auth";
+import pool from "@/lib/database/db";
+import { ERROR_MESSAGES } from "@/lib/config/constants";
 
 export async function GET() {
-  const session = await getSession()
+  const session = await getSession();
   if (!session) {
-    return NextResponse.json({ error: ERROR_MESSAGES.UNAUTHORIZED }, { status: 401 })
+    return NextResponse.json(
+      { error: ERROR_MESSAGES.UNAUTHORIZED },
+      { status: 401 },
+    );
   }
 
   const result = await pool.query(
@@ -15,14 +18,14 @@ export async function GET() {
      ORDER BY downloaded_at DESC
      LIMIT 1`,
     [session.userId],
-  )
+  );
 
   if (result.rows.length === 0 || !result.rows[0].data) {
     return NextResponse.json(
       { error: "No data export found." },
       { status: 404 },
-    )
+    );
   }
 
-  return NextResponse.json(result.rows[0].data)
+  return NextResponse.json(result.rows[0].data);
 }

@@ -1,43 +1,43 @@
-"use client"
+"use client";
 
-import { useState } from "react"
-import { useRouter } from "next/navigation"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent } from "@/components/ui/card"
-import { Users, Loader2, AlertTriangle } from "lucide-react"
-import Link from "next/link"
-import { APP_NAME, API } from "@/lib/config/constants"
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Users, Loader2, AlertTriangle } from "lucide-react";
+import Link from "next/link";
+import { APP_NAME, API } from "@/lib/config/constants";
 
 interface TeamJoinFormProps {
-  token: string
-  onSuccess: () => void
+  token: string;
+  onSuccess: () => void;
 }
 
 export function TeamJoinForm({ token, onSuccess }: TeamJoinFormProps) {
-  const router = useRouter()
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState("")
+  const router = useRouter();
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
   async function handleAccept() {
-    setLoading(true)
-    setError("")
+    setLoading(true);
+    setError("");
     try {
       const res = await fetch(API.TEAMS_ACCEPT_INVITE, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ token }),
-      })
-      const data = await res.json()
+      });
+      const data = await res.json();
       if (!res.ok) {
-        setError(data.error || "Failed to accept invite")
-        return
+        setError(data.error || "Failed to accept invite");
+        return;
       }
-      onSuccess()
-      setTimeout(() => router.push("/teams"), 2000)
+      onSuccess();
+      setTimeout(() => router.push("/teams"), 2000);
     } catch {
-      setError("Something went wrong. Please try again.")
+      setError("Something went wrong. Please try again.");
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
   }
 
@@ -51,7 +51,9 @@ export function TeamJoinForm({ token, onSuccess }: TeamJoinFormProps) {
 
         {/* Title */}
         <div className="text-center space-y-2">
-          <h1 className="text-xl font-semibold tracking-tight">Team Invitation</h1>
+          <h1 className="text-xl font-semibold tracking-tight">
+            Team Invitation
+          </h1>
           <p className="text-sm text-muted-foreground leading-relaxed">
             You have been invited to join a team on {APP_NAME}.
           </p>
@@ -67,9 +69,9 @@ export function TeamJoinForm({ token, onSuccess }: TeamJoinFormProps) {
 
         {/* Action buttons */}
         <div className="flex gap-3 w-full">
-          <Button 
-            onClick={handleAccept} 
-            disabled={loading} 
+          <Button
+            onClick={handleAccept}
+            disabled={loading}
             className="flex-1 h-11 font-medium"
           >
             {loading ? (
@@ -97,5 +99,5 @@ export function TeamJoinForm({ token, onSuccess }: TeamJoinFormProps) {
         </p>
       </CardContent>
     </Card>
-  )
+  );
 }

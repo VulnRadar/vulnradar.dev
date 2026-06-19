@@ -1,30 +1,37 @@
-"use client"
+"use client";
 
-import { useEffect, useState } from "react"
-import Link from "next/link"
-import { AlertTriangle, Home, RotateCcw, Terminal, Copy, Check } from "lucide-react"
-import { ThemedLogo } from "@/components/shared/themed-logo"
-import { Button } from "@/components/ui/button"
-import { APP_NAME } from "@/lib/config/constants"
+import { useEffect, useState } from "react";
+import Link from "next/link";
+import {
+  AlertTriangle,
+  Home,
+  RotateCcw,
+  Terminal,
+  Copy,
+  Check,
+} from "lucide-react";
+import { ThemedLogo } from "@/components/shared/themed-logo";
+import { Button } from "@/components/ui/button";
+import { APP_NAME } from "@/lib/config/constants";
 
 export default function Error({
   error,
   reset,
 }: {
-  error: Error & { digest?: string }
-  reset: () => void
+  error: Error & { digest?: string };
+  reset: () => void;
 }) {
-  const [copied, setCopied] = useState(false)
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
-    console.error("[VulnRadar] Unhandled error:", error)
-  }, [error])
+    console.error("[VulnRadar] Unhandled error:", error);
+  }, [error]);
 
   function copyErrorId() {
     if (error.digest) {
-      navigator.clipboard.writeText(error.digest)
-      setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
+      navigator.clipboard.writeText(error.digest);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
     }
   }
 
@@ -36,8 +43,15 @@ export default function Error({
       <div className="relative w-full max-w-lg flex flex-col items-center gap-8">
         {/* Logo */}
         <div className="flex items-center gap-2">
-          <ThemedLogo width={32} height={32} className="h-8 w-8" alt={`${APP_NAME} logo`} />
-          <span className="text-2xl font-bold text-foreground font-mono tracking-tight">{APP_NAME}</span>
+          <ThemedLogo
+            width={32}
+            height={32}
+            className="h-8 w-8"
+            alt={`${APP_NAME} logo`}
+          />
+          <span className="text-2xl font-bold text-foreground font-mono tracking-tight">
+            {APP_NAME}
+          </span>
         </div>
 
         {/* Error visual */}
@@ -50,10 +64,15 @@ export default function Error({
           </div>
 
           <div className="flex flex-col gap-3">
-            <h1 className="text-7xl font-bold text-foreground font-mono">500</h1>
-            <h2 className="text-xl font-semibold text-foreground text-balance">Internal Server Error</h2>
+            <h1 className="text-7xl font-bold text-foreground font-mono">
+              500
+            </h1>
+            <h2 className="text-xl font-semibold text-foreground text-balance">
+              Internal Server Error
+            </h2>
             <p className="text-sm text-muted-foreground leading-relaxed max-w-sm text-pretty">
-              Something broke on our end. This has been logged and we'll look into it. Try again or head back to safety.
+              Something broke on our end. This has been logged and we'll look
+              into it. Try again or head back to safety.
             </p>
           </div>
 
@@ -69,13 +88,20 @@ export default function Error({
                   onClick={copyErrorId}
                   className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
                 >
-                  {copied ? <Check className="h-3 w-3 text-emerald-500" /> : <Copy className="h-3 w-3" />}
-                  <span className="hidden sm:inline">{copied ? "Copied" : "Copy"}</span>
+                  {copied ? (
+                    <Check className="h-3 w-3 text-emerald-500" />
+                  ) : (
+                    <Copy className="h-3 w-3" />
+                  )}
+                  <span className="hidden sm:inline">
+                    {copied ? "Copied" : "Copy"}
+                  </span>
                 </button>
               </div>
               <div className="px-3 py-2.5">
                 <p className="text-xs font-mono text-muted-foreground">
-                  <span className="text-destructive">error.digest</span> = <span className="text-foreground">{`"${error.digest}"`}</span>
+                  <span className="text-destructive">error.digest</span> ={" "}
+                  <span className="text-foreground">{`"${error.digest}"`}</span>
                 </p>
               </div>
             </div>
@@ -89,7 +115,10 @@ export default function Error({
             Try Again
           </Button>
           <Button asChild variant="outline" className="flex-1 bg-transparent">
-            <Link href="/dashboard" className="flex items-center justify-center gap-2">
+            <Link
+              href="/dashboard"
+              className="flex items-center justify-center gap-2"
+            >
               <Home className="h-4 w-4" />
               Go to Dashboard
             </Link>
@@ -115,5 +144,5 @@ export default function Error({
         </div>
       </div>
     </div>
-  )
+  );
 }

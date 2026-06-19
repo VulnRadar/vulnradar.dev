@@ -1,11 +1,11 @@
-import { NextResponse } from "next/server"
-import { getSession } from "@/lib/auth"
-import pool from "@/lib/database/db"
+import { NextResponse } from "next/server";
+import { getSession } from "@/lib/auth";
+import pool from "@/lib/database/db";
 
 export async function GET() {
-  const session = await getSession()
+  const session = await getSession();
   if (!session) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   // Return ALL scans, not just shared ones. Include share_token if it exists.
@@ -16,7 +16,7 @@ export async function GET() {
      ORDER BY scanned_at DESC
      LIMIT 50`,
     [session.userId],
-  )
+  );
 
   const scans = result.rows.map((row) => ({
     id: row.id,
@@ -24,9 +24,13 @@ export async function GET() {
     share_token: row.share_token,
     findings_count: row.findings_count,
     scanned_at: row.scanned_at,
-    summary: typeof row.summary === "string" ? JSON.parse(row.summary) : row.summary,
-    findings: typeof row.findings === "string" ? JSON.parse(row.findings) : (row.findings || []),
-  }))
+    summary:
+      typeof row.summary === "string" ? JSON.parse(row.summary) : row.summary,
+    findings:
+      typeof row.findings === "string"
+        ? JSON.parse(row.findings)
+        : row.findings || [],
+  }));
 
-  return NextResponse.json(scans)
+  return NextResponse.json(scans);
 }

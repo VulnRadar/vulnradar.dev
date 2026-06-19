@@ -1,40 +1,42 @@
-"use client"
+"use client";
 
-import { useState } from "react"
-import { Share2, Loader2 } from "lucide-react"
-import { Button } from "@/components/ui/button"
-import { API } from "@/lib/config/constants"
-import { ShareModal } from "./share-modal"
+import { useState } from "react";
+import { Share2, Loader2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { API } from "@/lib/config/constants";
+import { ShareModal } from "./share-modal";
 
 interface ShareButtonProps {
-  scanId: number
+  scanId: number;
 }
 
 export function ShareButton({ scanId }: ShareButtonProps) {
-  const [loading, setLoading] = useState(false)
-  const [shareUrl, setShareUrl] = useState<string | null>(null)
-  const [modalOpen, setModalOpen] = useState(false)
+  const [loading, setLoading] = useState(false);
+  const [shareUrl, setShareUrl] = useState<string | null>(null);
+  const [modalOpen, setModalOpen] = useState(false);
 
   async function handleShare() {
     // If we already have a share URL, just open the modal
     if (shareUrl) {
-      setModalOpen(true)
-      return
+      setModalOpen(true);
+      return;
     }
 
-    setLoading(true)
+    setLoading(true);
     try {
-      const res = await fetch(`${API.HISTORY}/${scanId}/share`, { method: "POST" })
-      const data = await res.json()
+      const res = await fetch(`${API.HISTORY}/${scanId}/share`, {
+        method: "POST",
+      });
+      const data = await res.json();
       if (res.ok && data.token) {
-        const url = `${window.location.origin}/shared/${data.token}`
-        setShareUrl(url)
-        setModalOpen(true)
+        const url = `${window.location.origin}/shared/${data.token}`;
+        setShareUrl(url);
+        setModalOpen(true);
       }
     } catch {
       // Silently fail
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
   }
 
@@ -68,5 +70,5 @@ export function ShareButton({ scanId }: ShareButtonProps) {
         />
       )}
     </>
-  )
+  );
 }

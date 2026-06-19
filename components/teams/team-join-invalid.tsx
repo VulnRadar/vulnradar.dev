@@ -1,9 +1,9 @@
-"use client"
+"use client";
 
-import { Button } from "@/components/ui/button"
-import { Card, CardContent } from "@/components/ui/card"
-import { AlertTriangle, ArrowRight } from "lucide-react"
-import Link from "next/link"
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { AlertTriangle, ArrowRight } from "lucide-react";
+import Link from "next/link";
 
 export function TeamJoinInvalid() {
   return (
@@ -16,7 +16,9 @@ export function TeamJoinInvalid() {
 
         {/* Error message */}
         <div className="text-center space-y-2">
-          <h1 className="text-xl font-semibold tracking-tight">Invalid Invite Link</h1>
+          <h1 className="text-xl font-semibold tracking-tight">
+            Invalid Invite Link
+          </h1>
           <p className="text-sm text-muted-foreground leading-relaxed">
             This invitation link is missing a valid token or has expired.
           </p>
@@ -31,5 +33,5 @@ export function TeamJoinInvalid() {
         </Link>
       </CardContent>
     </Card>
-  )
+  );
 }

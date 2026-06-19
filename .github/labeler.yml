@@ -31,7 +31,8 @@ ci:
 config:
   - label: "config"
     changed-files:
-      - any-glob-to-any-file: ["lib/config/**", ".env.example", "**/config.{ts,js,mjs}"]
+      - any-glob-to-any-file:
+          ["lib/config/**", ".env.example", "**/config.{ts,js,mjs}"]
 
 security:
   - label: "security"

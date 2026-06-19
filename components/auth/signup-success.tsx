@@ -1,48 +1,48 @@
-"use client"
+"use client";
 
-import { useState, useEffect } from "react"
-import Link from "next/link"
-import { Loader2, Mail, CheckCircle2 } from "lucide-react"
-import { Button } from "@/components/ui/button"
-import { APP_NAME } from "@/lib/config/constants"
-import { API } from "@/lib/config/client-constants"
+import { useState, useEffect } from "react";
+import Link from "next/link";
+import { Loader2, Mail, CheckCircle2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { APP_NAME } from "@/lib/config/constants";
+import { API } from "@/lib/config/client-constants";
 
 interface SignupSuccessProps {
-  email: string
+  email: string;
 }
 
 export function SignupSuccess({ email }: SignupSuccessProps) {
-  const [resending, setResending] = useState(false)
-  const [resendCooldown, setResendCooldown] = useState(0)
-  const [resendMessage, setResendMessage] = useState("")
+  const [resending, setResending] = useState(false);
+  const [resendCooldown, setResendCooldown] = useState(0);
+  const [resendMessage, setResendMessage] = useState("");
 
   useEffect(() => {
-    if (resendCooldown <= 0) return
-    const timer = setTimeout(() => setResendCooldown((c) => c - 1), 1000)
-    return () => clearTimeout(timer)
-  }, [resendCooldown])
+    if (resendCooldown <= 0) return;
+    const timer = setTimeout(() => setResendCooldown((c) => c - 1), 1000);
+    return () => clearTimeout(timer);
+  }, [resendCooldown]);
 
   async function handleResend() {
-    if (resending || resendCooldown > 0) return
-    setResending(true)
-    setResendMessage("")
+    if (resending || resendCooldown > 0) return;
+    setResending(true);
+    setResendMessage("");
     try {
       const res = await fetch(API.AUTH.RESEND_VERIFICATION, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email }),
-      })
-      const data = await res.json()
+      });
+      const data = await res.json();
       if (res.ok) {
-        setResendMessage("Verification email sent! Check your inbox.")
-        setResendCooldown(60)
+        setResendMessage("Verification email sent! Check your inbox.");
+        setResendCooldown(60);
       } else {
-        setResendMessage(data.error || "Failed to resend. Try again.")
+        setResendMessage(data.error || "Failed to resend. Try again.");
       }
     } catch {
-      setResendMessage("Something went wrong. Please try again.")
+      setResendMessage("Something went wrong. Please try again.");
     } finally {
-      setResending(false)
+      setResending(false);
     }
   }
 
@@ -53,7 +53,9 @@ export function SignupSuccess({ email }: SignupSuccessProps) {
       </div>
 
       <div className="space-y-1.5">
-        <h1 className="text-xl font-semibold tracking-tight">Check your email</h1>
+        <h1 className="text-xl font-semibold tracking-tight">
+          Check your email
+        </h1>
         <p className="text-sm text-muted-foreground">
           We sent a verification link to{" "}
           <span className="font-medium text-foreground">{email}</span>
@@ -63,7 +65,8 @@ export function SignupSuccess({ email }: SignupSuccessProps) {
       <div className="w-full flex items-start gap-3 p-3.5 bg-muted/40 rounded-lg border border-border/40 text-left">
         <CheckCircle2 className="h-4 w-4 text-primary mt-0.5 shrink-0" />
         <p className="text-sm text-muted-foreground leading-relaxed">
-          Click the link in your email to verify your account and start using {APP_NAME}.
+          Click the link in your email to verify your account and start using{" "}
+          {APP_NAME}.
         </p>
       </div>
 
@@ -90,7 +93,9 @@ export function SignupSuccess({ email }: SignupSuccessProps) {
           )}
         </Button>
         {resendMessage && (
-          <p className={`text-xs ${resendMessage.includes("sent") ? "text-emerald-500" : "text-destructive"}`}>
+          <p
+            className={`text-xs ${resendMessage.includes("sent") ? "text-emerald-500" : "text-destructive"}`}
+          >
             {resendMessage}
           </p>
         )}
@@ -100,5 +105,5 @@ export function SignupSuccess({ email }: SignupSuccessProps) {
         <Link href="/login">Back to Sign In</Link>
       </Button>
     </div>
-  )
+  );
 }

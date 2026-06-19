@@ -2,78 +2,82 @@
 // Discord OAuth Callback - Handle OAuth response
 // ============================================================================
 
-import { NextResponse } from "next/server"
-import { getSession, createSession } from "@/lib/auth"
-import pool from "@/lib/database/db"
-import { cookies } from "next/headers"
-import crypto from "crypto"
-import { loadConfig } from "@/lib/config/config"
+import { NextResponse } from "next/server";
+import { getSession, createSession } from "@/lib/auth";
+import pool from "@/lib/database/db";
+import { cookies } from "next/headers";
+import crypto from "crypto";
+import { loadConfig } from "@/lib/config/config";
 import {
   sendDiscordEmail2FACode,
   updateDiscordTokens,
   getDiscordUserConnection,
   getUserTwoFAConfig,
-} from "@/lib/discord/discord-utils"
-import { DEVICE_TRUST_COOKIE_NAME } from "@/lib/config/constants"
+} from "@/lib/discord/discord-utils";
+import { DEVICE_TRUST_COOKIE_NAME } from "@/lib/config/constants";
 
-const DISCORD_CLIENT_ID = process.env.DISCORD_CLIENT_ID
-const DISCORD_CLIENT_SECRET = process.env.DISCORD_CLIENT_SECRET
-const DISCORD_BOT_TOKEN = process.env.DISCORD_BOT_TOKEN
-const DISCORD_GUILD_ID = process.env.DISCORD_GUILD_ID
+const DISCORD_CLIENT_ID = process.env.DISCORD_CLIENT_ID;
+const DISCORD_CLIENT_SECRET = process.env.DISCORD_CLIENT_SECRET;
+const DISCORD_BOT_TOKEN = process.env.DISCORD_BOT_TOKEN;
+const DISCORD_GUILD_ID = process.env.DISCORD_GUILD_ID;
 
 interface DiscordTokenResponse {
-  access_token: string
-  token_type: string
-  expires_in: number
-  refresh_token: string
-  scope: string
+  access_token: string;
+  token_type: string;
+  expires_in: number;
+  refresh_token: string;
+  scope: string;
 }
 
 interface DiscordUser {
-  id: string
-  username: string
-  discriminator: string
-  avatar: string | null
-  email?: string
-  verified?: boolean
+  id: string;
+  username: string;
+  discriminator: string;
+  avatar: string | null;
+  email?: string;
+  verified?: boolean;
 }
 
 // GET /api/v2/auth/discord/callback - Handle OAuth callback
 export async function GET(request: Request) {
-  const { searchParams } = new URL(request.url)
-  const code = searchParams.get("code")
-  const state = searchParams.get("state")
-  const error = searchParams.get("error")
+  const { searchParams } = new URL(request.url);
+  const code = searchParams.get("code");
+  const state = searchParams.get("state");
+  const error = searchParams.get("error");
 
   // Get base URL from config or request
-  const config = loadConfig()
-  const baseUrl = config.app?.url || new URL(request.url).origin
-  const redirectUri = `${baseUrl}/api/v2/auth/discord/callback`
+  const config = loadConfig();
+  const baseUrl = config.app?.url || new URL(request.url).origin;
+  const redirectUri = `${baseUrl}/api/v2/auth/discord/callback`;
 
   // Handle errors from Discord
   if (error) {
-    return NextResponse.redirect(`${baseUrl}/login?error=discord_denied`)
+    return NextResponse.redirect(`${baseUrl}/login?error=discord_denied`);
   }
 
   if (!code || !state) {
-    return NextResponse.redirect(`${baseUrl}/login?error=discord_invalid`)
+    return NextResponse.redirect(`${baseUrl}/login?error=discord_invalid`);
   }
 
   if (!DISCORD_CLIENT_ID || !DISCORD_CLIENT_SECRET) {
-    return NextResponse.redirect(`${baseUrl}/login?error=discord_not_configured`)
+    return NextResponse.redirect(
+      `${baseUrl}/login?error=discord_not_configured`,
+    );
   }
 
   // Parse state to get action
-  let action: string
+  let action: string;
   try {
-    const stateData = JSON.parse(Buffer.from(state, "base64url").toString())
-    action = stateData.action || "connect"
+    const stateData = JSON.parse(Buffer.from(state, "base64url").toString());
+    action = stateData.action || "connect";
     // Check if state is too old (5 minutes)
     if (Date.now() - stateData.ts > 5 * 60 * 1000) {
-      return NextResponse.redirect(`${baseUrl}/login?error=discord_expired`)
+      return NextResponse.redirect(`${baseUrl}/login?error=discord_expired`);
     }
   } catch {
-    return NextResponse.redirect(`${baseUrl}/login?error=discord_invalid_state`)
+    return NextResponse.redirect(
+      `${baseUrl}/login?error=discord_invalid_state`,
+    );
   }
 
   try {
@@ -88,32 +92,39 @@ export async function GET(request: Request) {
         code,
         redirect_uri: redirectUri,
       }),
-    })
+    });
 
     if (!tokenResponse.ok) {
-      console.error("[Discord] Token exchange failed:", await tokenResponse.text())
-      return NextResponse.redirect(`${baseUrl}/login?error=discord_token_failed`)
+      console.error(
+        "[Discord] Token exchange failed:",
+        await tokenResponse.text(),
+      );
+      return NextResponse.redirect(
+        `${baseUrl}/login?error=discord_token_failed`,
+      );
     }
 
-    const tokens: DiscordTokenResponse = await tokenResponse.json()
+    const tokens: DiscordTokenResponse = await tokenResponse.json();
 
     // Get Discord user info
     const userResponse = await fetch("https://discord.com/api/users/@me", {
       headers: { Authorization: `Bearer ${tokens.access_token}` },
-    })
+    });
 
     if (!userResponse.ok) {
-      console.error("[Discord] User fetch failed:", await userResponse.text())
-      return NextResponse.redirect(`${baseUrl}/login?error=discord_user_failed`)
+      console.error("[Discord] User fetch failed:", await userResponse.text());
+      return NextResponse.redirect(
+        `${baseUrl}/login?error=discord_user_failed`,
+      );
     }
 
-    const discordUser: DiscordUser = await userResponse.json()
+    const discordUser: DiscordUser = await userResponse.json();
 
     // Calculate token expiry
-    const tokenExpiresAt = new Date(Date.now() + tokens.expires_in * 1000)
+    const tokenExpiresAt = new Date(Date.now() + tokens.expires_in * 1000);
 
     // Try to auto-join Discord server if configured
-    let guildJoined = false
+    let guildJoined = false;
     if (DISCORD_BOT_TOKEN && DISCORD_GUILD_ID) {
       try {
         const joinResponse = await fetch(
@@ -125,28 +136,33 @@ export async function GET(request: Request) {
               "Content-Type": "application/json",
             },
             body: JSON.stringify({ access_token: tokens.access_token }),
-          }
-        )
-        guildJoined = joinResponse.ok || joinResponse.status === 204
+          },
+        );
+        guildJoined = joinResponse.ok || joinResponse.status === 204;
       } catch (e) {
-        console.error("[Discord] Guild join failed:", e)
+        console.error("[Discord] Guild join failed:", e);
       }
     }
 
     if (action === "connect") {
       // Connect Discord to existing account
-      const session = await getSession()
+      const session = await getSession();
       if (!session) {
-        return NextResponse.redirect(`${baseUrl}/login?error=session_expired`)
+        return NextResponse.redirect(`${baseUrl}/login?error=session_expired`);
       }
 
       // Check if this Discord account is already connected to another user
       const existingConnection = await pool.query(
         "SELECT user_id FROM discord_connections WHERE discord_id = $1",
-        [discordUser.id]
-      )
-      if (existingConnection.rows.length > 0 && existingConnection.rows[0].user_id !== session.userId) {
-        return NextResponse.redirect(`${baseUrl}/profile?tab=account&error=discord_already_linked`)
+        [discordUser.id],
+      );
+      if (
+        existingConnection.rows.length > 0 &&
+        existingConnection.rows[0].user_id !== session.userId
+      ) {
+        return NextResponse.redirect(
+          `${baseUrl}/profile?tab=account&error=discord_already_linked`,
+        );
       }
 
       // Upsert discord connection
@@ -169,39 +185,44 @@ export async function GET(request: Request) {
           tokens.refresh_token,
           tokenExpiresAt,
           guildJoined,
-        ]
-      )
+        ],
+      );
 
       // Update user's discord_id
-      await pool.query("UPDATE users SET discord_id = $1 WHERE id = $2", [discordUser.id, session.userId])
+      await pool.query("UPDATE users SET discord_id = $1 WHERE id = $2", [
+        discordUser.id,
+        session.userId,
+      ]);
 
       // Build Discord avatar URL
-      const discordAvatarUrl = discordUser.avatar 
+      const discordAvatarUrl = discordUser.avatar
         ? `https://cdn.discordapp.com/avatars/${discordUser.id}/${discordUser.avatar}.png`
-        : null
+        : null;
 
       // Redirect with Discord profile info so user can choose to use it
-      const redirectUrl = new URL(`${baseUrl}/profile`)
-      redirectUrl.searchParams.set("tab", "social")
-      redirectUrl.searchParams.set("discord_connected", "true")
-      redirectUrl.searchParams.set("discord_username", discordUser.username)
+      const redirectUrl = new URL(`${baseUrl}/profile`);
+      redirectUrl.searchParams.set("tab", "social");
+      redirectUrl.searchParams.set("discord_connected", "true");
+      redirectUrl.searchParams.set("discord_username", discordUser.username);
       if (discordAvatarUrl) {
-        redirectUrl.searchParams.set("discord_avatar", discordAvatarUrl)
+        redirectUrl.searchParams.set("discord_avatar", discordAvatarUrl);
       }
       if (discordUser.email) {
-        redirectUrl.searchParams.set("discord_email", discordUser.email)
+        redirectUrl.searchParams.set("discord_email", discordUser.email);
       }
 
-      return NextResponse.redirect(redirectUrl.toString())
+      return NextResponse.redirect(redirectUrl.toString());
     } else {
       // Login with Discord
       // Check if Discord account is linked to a user
-      const userId = await getDiscordUserConnection(discordUser.id)
+      const userId = await getDiscordUserConnection(discordUser.id);
 
       // Discord login ONLY works if account is already connected
       // Users must first create an account and connect Discord in profile settings
       if (!userId) {
-        return NextResponse.redirect(`${baseUrl}/login?error=discord_not_linked`)
+        return NextResponse.redirect(
+          `${baseUrl}/login?error=discord_not_linked`,
+        );
       }
 
       // Update tokens
@@ -210,28 +231,32 @@ export async function GET(request: Request) {
         tokens.access_token,
         tokens.refresh_token,
         tokenExpiresAt,
-        guildJoined
-      )
+        guildJoined,
+      );
 
       // Check if user has 2FA enabled
-      const user2FA = await getUserTwoFAConfig(userId)
+      const user2FA = await getUserTwoFAConfig(userId);
 
       if (user2FA?.totp_enabled) {
         // Check if device is trusted (skip 2FA for trusted devices)
-        const cookieStore = await cookies()
-        const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown"
-        const userAgent = request.headers.get("user-agent") || "unknown"
-        const deviceId = `${ip}-${userAgent}`.split("").reduce((a, b) => ((a << 5) - a) + b.charCodeAt(0), 0)
-        const deviceCookie = cookieStore.get(DEVICE_TRUST_COOKIE_NAME)?.value
-        
+        const cookieStore = await cookies();
+        const ip =
+          request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
+          "unknown";
+        const userAgent = request.headers.get("user-agent") || "unknown";
+        const deviceId = `${ip}-${userAgent}`
+          .split("")
+          .reduce((a, b) => (a << 5) - a + b.charCodeAt(0), 0);
+        const deviceCookie = cookieStore.get(DEVICE_TRUST_COOKIE_NAME)?.value;
+
         if (deviceCookie && deviceCookie === String(deviceId)) {
           // Device is trusted - create session directly without 2FA
-          await createSession(userId, ip, userAgent)
-          return NextResponse.redirect(`${baseUrl}/dashboard`)
+          await createSession(userId, ip, userAgent);
+          return NextResponse.redirect(`${baseUrl}/dashboard`);
         }
-        
+
         // User has 2FA enabled - store pending login and redirect to 2FA verification
-        const pendingToken = crypto.randomBytes(32).toString("hex")
+        const pendingToken = crypto.randomBytes(32).toString("hex");
 
         // Store pending Discord login in a cookie (expires in 5 minutes)
         cookieStore.set(
@@ -249,30 +274,34 @@ export async function GET(request: Request) {
             sameSite: "lax",
             maxAge: 300, // 5 minutes
             path: "/",
-          }
-        )
+          },
+        );
 
         // Send email 2FA code in background (non-blocking)
         if (user2FA.two_factor_method === "email") {
           setImmediate(() => {
             sendDiscordEmail2FACode(userId, user2FA.email).catch((err) => {
-              console.error("[Discord] Background email send failed:", err)
-            })
-          })
+              console.error("[Discord] Background email send failed:", err);
+            });
+          });
         }
 
-        return NextResponse.redirect(`${baseUrl}/login?discord_2fa=pending&method=${user2FA.two_factor_method}`)
+        return NextResponse.redirect(
+          `${baseUrl}/login?discord_2fa=pending&method=${user2FA.two_factor_method}`,
+        );
       }
 
       // No 2FA - create session directly
-      const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown"
-      const userAgent = request.headers.get("user-agent") || "unknown"
-      await createSession(userId, ip, userAgent)
+      const ip =
+        request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
+        "unknown";
+      const userAgent = request.headers.get("user-agent") || "unknown";
+      await createSession(userId, ip, userAgent);
 
-      return NextResponse.redirect(`${baseUrl}/dashboard`)
+      return NextResponse.redirect(`${baseUrl}/dashboard`);
     }
   } catch (error) {
-    console.error("[Discord] OAuth callback error:", error)
-    return NextResponse.redirect(`${baseUrl}/login?error=discord_failed`)
+    console.error("[Discord] OAuth callback error:", error);
+    return NextResponse.redirect(`${baseUrl}/login?error=discord_failed`);
   }
 }

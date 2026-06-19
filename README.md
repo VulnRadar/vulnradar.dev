@@ -57,10 +57,10 @@ docker compose exec app node scripts/create-fresh-db.mjs
 
 VulnRadar has **two configuration layers** (see [docs/CONFIG.md](docs/CONFIG.md) for the full reference):
 
-| Layer | File | Purpose |
-|---|---|---|
-| **Static app config** | `lib/config/config-values.ts` | App name, URL, emails, rate limits, feature flags, billing plans. Edit and rebuild. |
-| **Runtime secrets** | `.env` (or `docker-compose.yml` env) | `DATABASE_URL`, `API_KEY_ENCRYPTION_KEY`, `STRIPE_SECRET_KEY`, SMTP credentials, Discord OAuth. |
+| Layer                 | File                                 | Purpose                                                                                         |
+| --------------------- | ------------------------------------ | ----------------------------------------------------------------------------------------------- |
+| **Static app config** | `lib/config/config-values.ts`        | App name, URL, emails, rate limits, feature flags, billing plans. Edit and rebuild.             |
+| **Runtime secrets**   | `.env` (or `docker-compose.yml` env) | `DATABASE_URL`, `API_KEY_ENCRYPTION_KEY`, `STRIPE_SECRET_KEY`, SMTP credentials, Discord OAuth. |
 
 **Single source of truth:** `lib/config/config-values.ts` exports the raw `CONFIG_*` constants. `lib/types/config.ts` derives the `DEFAULT_CONFIG` typed object from those constants, and `lib/config/constants.ts` re-exports them as the conventional `APP_NAME`, `ROUTES`, `API`, `ERROR_MESSAGES`, `SUCCESS_MESSAGES`, etc. used throughout the app. Self-hosters edit `config-values.ts` to customize their deployment.
 

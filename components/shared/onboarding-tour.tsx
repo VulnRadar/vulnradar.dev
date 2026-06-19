@@ -1,8 +1,8 @@
-"use client"
+"use client";
 
-import { useState, useEffect } from "react"
-import { Button } from "@/components/ui/button"
-import { cn } from "@/lib/ui/utils"
+import { useState, useEffect } from "react";
+import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/ui/utils";
 import {
   Radar,
   Shield,
@@ -15,8 +15,8 @@ import {
   ChevronLeft,
   X,
   Sparkles,
-} from "lucide-react"
-import { APP_NAME, TOTAL_CHECKS_LABEL, API } from "@/lib/config/constants"
+} from "lucide-react";
+import { APP_NAME, TOTAL_CHECKS_LABEL, API } from "@/lib/config/constants";
 
 const STEPS = [
   {
@@ -34,13 +34,15 @@ const STEPS = [
   {
     icon: Clock,
     title: "Track Your History",
-    description: "Every scan is saved to your History. You can filter, tag, and organize scans. Use tags like 'production' or 'staging' to keep things organized.",
+    description:
+      "Every scan is saved to your History. You can filter, tag, and organize scans. Use tags like 'production' or 'staging' to keep things organized.",
     color: "text-blue-500",
   },
   {
     icon: GitCompareArrows,
     title: "Compare Scans",
-    description: "Select two scans of the same URL to see what changed. Great for verifying that you fixed vulnerabilities or checking for regressions.",
+    description:
+      "Select two scans of the same URL to see what changed. Great for verifying that you fixed vulnerabilities or checking for regressions.",
     color: "text-amber-500",
   },
   {
@@ -52,13 +54,15 @@ const STEPS = [
   {
     icon: Bell,
     title: "Webhooks & Schedules",
-    description: "Set up webhook notifications to Discord, Slack, or any URL. Schedule recurring scans to automatically monitor your sites on a daily or weekly basis.",
+    description:
+      "Set up webhook notifications to Discord, Slack, or any URL. Schedule recurring scans to automatically monitor your sites on a daily or weekly basis.",
     color: "text-rose-500",
   },
   {
     icon: Users,
     title: "Team Collaboration",
-    description: "Create a team and invite members to share scan results. Team owners and admins can manage access and view all team scans in one place.",
+    description:
+      "Create a team and invite members to share scan results. Team owners and admins can manage access and view all team scans in one place.",
     color: "text-cyan-500",
   },
   {
@@ -67,38 +71,38 @@ const STEPS = [
     description: `Head to the Scanner and run your first scan. If you need help, check out the Docs page or reach out via the Contact page. Happy scanning with ${APP_NAME}!`,
     color: "text-primary",
   },
-]
+];
 
 export function OnboardingTour() {
-  const [show, setShow] = useState(false)
-  const [step, setStep] = useState(0)
+  const [show, setShow] = useState(false);
+  const [step, setStep] = useState(0);
 
   useEffect(() => {
     fetch(API.AUTH.ME)
       .then((r) => r.json())
       .then((d) => {
         if (d.userId && !d.onboardingCompleted) {
-          setShow(true)
+          setShow(true);
         }
       })
-      .catch(() => {})
-  }, [])
+      .catch(() => {});
+  }, []);
 
   async function handleComplete() {
-    setShow(false)
-    await fetch(API.AUTH.ONBOARDING, { method: "POST" })
+    setShow(false);
+    await fetch(API.AUTH.ONBOARDING, { method: "POST" });
   }
 
   function handleSkip() {
-    handleComplete()
+    handleComplete();
   }
 
-  if (!show) return null
+  if (!show) return null;
 
-  const current = STEPS[step]
-  const Icon = current.icon
-  const isLast = step === STEPS.length - 1
-  const isFirst = step === 0
+  const current = STEPS[step];
+  const Icon = current.icon;
+  const isLast = step === STEPS.length - 1;
+  const isFirst = step === 0;
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-background/80 backdrop-blur-sm">
@@ -125,7 +129,9 @@ export function OnboardingTour() {
 
           {/* Content */}
           <div className="px-8 pt-10 pb-8 flex flex-col items-center text-center">
-            <div className={cn("p-4 rounded-2xl bg-muted/50 mb-6", current.color)}>
+            <div
+              className={cn("p-4 rounded-2xl bg-muted/50 mb-6", current.color)}
+            >
               <Icon className="h-10 w-10" />
             </div>
 
@@ -163,7 +169,9 @@ export function OnboardingTour() {
                   onClick={() => setStep(i)}
                   className={cn(
                     "h-1.5 rounded-full transition-all duration-300",
-                    i === step ? "w-6 bg-primary" : "w-1.5 bg-muted-foreground/30 hover:bg-muted-foreground/50",
+                    i === step
+                      ? "w-6 bg-primary"
+                      : "w-1.5 bg-muted-foreground/30 hover:bg-muted-foreground/50",
                   )}
                   aria-label={`Go to step ${i + 1}`}
                 />
@@ -176,7 +184,11 @@ export function OnboardingTour() {
                 <Sparkles className="h-3.5 w-3.5" />
               </Button>
             ) : (
-              <Button size="sm" className="gap-1" onClick={() => setStep(step + 1)}>
+              <Button
+                size="sm"
+                className="gap-1"
+                onClick={() => setStep(step + 1)}
+              >
                 Next
                 <ChevronRight className="h-3.5 w-3.5" />
               </Button>
@@ -185,5 +197,5 @@ export function OnboardingTour() {
         </div>
       </div>
     </div>
-  )
+  );
 }

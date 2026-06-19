@@ -5,57 +5,61 @@
 // All subscription data is stored directly on the users table (clean schema)
 // ============================================================================
 
-import { stripe, isStripeEnabled } from "./stripe"
-import pool from "@/lib/database/db"
-import { getPlanById, getFreePlan } from "./plans"
-import type { Plan } from "./plans"
+import { stripe, isStripeEnabled } from "./stripe";
+import pool from "@/lib/database/db";
+import { getPlanById, getFreePlan } from "./plans";
+import type { Plan } from "./plans";
 
 export interface UserSubscription {
-  userId: number
-  stripeCustomerId: string | null
-  stripeSubscriptionId: string | null
-  plan: string
-  subscriptionStatus: string
-  currentPeriodEnd: Date | null
-  cancelAtPeriodEnd: boolean
+  userId: number;
+  stripeCustomerId: string | null;
+  stripeSubscriptionId: string | null;
+  plan: string;
+  subscriptionStatus: string;
+  currentPeriodEnd: Date | null;
+  cancelAtPeriodEnd: boolean;
 }
 
 /**
  * Get user's subscription data (from users table + gifted subscriptions)
  */
-export async function getUserSubscription(userId: number): Promise<UserSubscription | null> {
+export async function getUserSubscription(
+  userId: number,
+): Promise<UserSubscription | null> {
   try {
     const [userResult, giftResult] = await Promise.all([
       pool.query(
         `SELECT id, plan, stripe_customer_id, stripe_subscription_id, 
                 subscription_status, current_period_end, cancel_at_period_end
          FROM users WHERE id = $1`,
-        [userId]
+        [userId],
       ),
       pool.query(
         `SELECT plan, expires_at FROM gifted_subscriptions 
          WHERE user_id = $1 AND revoked_at IS NULL AND expires_at > NOW()`,
-        [userId]
-      )
-    ])
-    
-    if (!userResult.rows[0]) return null
-    
-    const row = userResult.rows[0]
-    const giftedSub = giftResult.rows[0]
-    
+        [userId],
+      ),
+    ]);
+
+    if (!userResult.rows[0]) return null;
+
+    const row = userResult.rows[0];
+    const giftedSub = giftResult.rows[0];
+
     return {
       userId: row.id,
       stripeCustomerId: row.stripe_customer_id,
       stripeSubscriptionId: row.stripe_subscription_id,
       plan: giftedSub?.plan || row.plan || "free", // Gifted plan takes priority
-      subscriptionStatus: giftedSub ? "gifted" : (row.subscription_status || "active"),
+      subscriptionStatus: giftedSub
+        ? "gifted"
+        : row.subscription_status || "active",
       currentPeriodEnd: row.current_period_end,
       cancelAtPeriodEnd: row.cancel_at_period_end || false,
-    }
+    };
   } catch (error) {
-    console.error("[Billing] Error getting subscription:", error)
-    return null
+    console.error("[Billing] Error getting subscription:", error);
+    return null;
   }
 }
 
@@ -63,21 +67,24 @@ export async function getUserSubscription(userId: number): Promise<UserSubscript
  * Get user's current plan (respects gifted subscriptions first)
  */
 export async function getUserPlan(userId: number): Promise<Plan> {
-  const subscription = await getUserSubscription(userId)
+  const subscription = await getUserSubscription(userId);
   if (!subscription) {
-    return getFreePlan()
+    return getFreePlan();
   }
-  
+
   // Gifted plans should always return their plan, even if status doesn't indicate "active"
-  if (subscription.subscriptionStatus === "gifted" || (subscription.plan && subscription.plan !== "free")) {
-    return getPlanById(subscription.plan) || getFreePlan()
+  if (
+    subscription.subscriptionStatus === "gifted" ||
+    (subscription.plan && subscription.plan !== "free")
+  ) {
+    return getPlanById(subscription.plan) || getFreePlan();
   }
-  
+
   if (subscription.subscriptionStatus !== "active") {
-    return getFreePlan()
+    return getFreePlan();
   }
-  
-  return getPlanById(subscription.plan) || getFreePlan()
+
+  return getPlanById(subscription.plan) || getFreePlan();
 }
 
 /**
@@ -86,66 +93,70 @@ export async function getUserPlan(userId: number): Promise<Plan> {
 export async function updateUserSubscription(
   userId: number,
   data: Partial<{
-    stripeCustomerId: string | null
-    stripeSubscriptionId: string | null
-    plan: string
-    subscriptionStatus: string
-    currentPeriodEnd: Date | null
-    cancelAtPeriodEnd: boolean
-  }>
+    stripeCustomerId: string | null;
+    stripeSubscriptionId: string | null;
+    plan: string;
+    subscriptionStatus: string;
+    currentPeriodEnd: Date | null;
+    cancelAtPeriodEnd: boolean;
+  }>,
 ): Promise<void> {
   try {
-    const setClauses: string[] = []
-    const values: unknown[] = []
-    let paramIndex = 1
+    const setClauses: string[] = [];
+    const values: unknown[] = [];
+    let paramIndex = 1;
 
     if (data.stripeCustomerId !== undefined) {
-      setClauses.push(`stripe_customer_id = $${paramIndex++}`)
-      values.push(data.stripeCustomerId)
+      setClauses.push(`stripe_customer_id = $${paramIndex++}`);
+      values.push(data.stripeCustomerId);
     }
     if (data.stripeSubscriptionId !== undefined) {
-      setClauses.push(`stripe_subscription_id = $${paramIndex++}`)
-      values.push(data.stripeSubscriptionId)
+      setClauses.push(`stripe_subscription_id = $${paramIndex++}`);
+      values.push(data.stripeSubscriptionId);
     }
     if (data.plan !== undefined) {
-      setClauses.push(`plan = $${paramIndex++}`)
-      values.push(data.plan)
+      setClauses.push(`plan = $${paramIndex++}`);
+      values.push(data.plan);
     }
     if (data.subscriptionStatus !== undefined) {
-      setClauses.push(`subscription_status = $${paramIndex++}`)
-      values.push(data.subscriptionStatus)
+      setClauses.push(`subscription_status = $${paramIndex++}`);
+      values.push(data.subscriptionStatus);
     }
     if (data.currentPeriodEnd !== undefined) {
-      setClauses.push(`current_period_end = $${paramIndex++}`)
-      values.push(data.currentPeriodEnd)
+      setClauses.push(`current_period_end = $${paramIndex++}`);
+      values.push(data.currentPeriodEnd);
     }
     if (data.cancelAtPeriodEnd !== undefined) {
-      setClauses.push(`cancel_at_period_end = $${paramIndex++}`)
-      values.push(data.cancelAtPeriodEnd)
+      setClauses.push(`cancel_at_period_end = $${paramIndex++}`);
+      values.push(data.cancelAtPeriodEnd);
     }
 
-    if (setClauses.length === 0) return
+    if (setClauses.length === 0) return;
 
-    setClauses.push(`updated_at = NOW()`)
-    values.push(userId)
+    setClauses.push(`updated_at = NOW()`);
+    values.push(userId);
 
     await pool.query(
       `UPDATE users SET ${setClauses.join(", ")} WHERE id = $${paramIndex}`,
-      values
-    )
+      values,
+    );
   } catch (error) {
-    console.error("[Billing] Error updating subscription:", error)
-    throw error
+    console.error("[Billing] Error updating subscription:", error);
+    throw error;
   }
 }
 
 /**
  * Create a Stripe customer for a user
  */
-export async function createStripeCustomer(userId: number, email: string, name?: string): Promise<string | null> {
+export async function createStripeCustomer(
+  userId: number,
+  email: string,
+  name?: string,
+): Promise<string | null> {
   if (!isStripeEnabled() || !stripe) {
-    console.warn("[Billing] Stripe not enabled, skipping customer creation")
-    return null
+    console.warn("[Billing] Stripe not enabled, skipping customer creation");
+    return null;
   }
 
   try {
@@ -155,13 +166,13 @@ export async function createStripeCustomer(userId: number, email: string, name?:
       metadata: {
         userId: String(userId),
       },
-    })
+    });
 
-    await updateUserSubscription(userId, { stripeCustomerId: customer.id })
-    return customer.id
+    await updateUserSubscription(userId, { stripeCustomerId: customer.id });
+    return customer.id;
   } catch (error) {
-    console.error("[Billing] Error creating Stripe customer:", error)
-    return null
+    console.error("[Billing] Error creating Stripe customer:", error);
+    return null;
   }
 }
 
@@ -173,23 +184,23 @@ export async function createSubscriptionCheckout(
   planId: string,
   email: string,
   successUrl: string,
-  cancelUrl: string
+  cancelUrl: string,
 ): Promise<string | null> {
   if (!isStripeEnabled() || !stripe) {
-    throw new Error("Stripe is not configured")
+    throw new Error("Stripe is not configured");
   }
 
-  const plan = getPlanById(planId)
+  const plan = getPlanById(planId);
   if (!plan || plan.priceInCents === 0) {
-    throw new Error("Invalid plan")
+    throw new Error("Invalid plan");
   }
 
   // Get or create Stripe customer
-  const subscription = await getUserSubscription(userId)
-  let customerId = subscription?.stripeCustomerId
+  const subscription = await getUserSubscription(userId);
+  let customerId = subscription?.stripeCustomerId;
 
   if (!customerId) {
-    customerId = await createStripeCustomer(userId, email)
+    customerId = await createStripeCustomer(userId, email);
   }
 
   try {
@@ -227,12 +238,12 @@ export async function createSubscriptionCheckout(
           planId: plan.id,
         },
       },
-    })
+    });
 
-    return session.url
+    return session.url;
   } catch (error) {
-    console.error("[Billing] Error creating checkout session:", error)
-    throw error
+    console.error("[Billing] Error creating checkout session:", error);
+    throw error;
   }
 }
 
@@ -241,27 +252,27 @@ export async function createSubscriptionCheckout(
  */
 export async function createBillingPortalSession(
   userId: number,
-  returnUrl: string
+  returnUrl: string,
 ): Promise<string | null> {
   if (!isStripeEnabled() || !stripe) {
-    throw new Error("Stripe is not configured")
+    throw new Error("Stripe is not configured");
   }
 
-  const subscription = await getUserSubscription(userId)
+  const subscription = await getUserSubscription(userId);
   if (!subscription?.stripeCustomerId) {
-    throw new Error("No billing account found")
+    throw new Error("No billing account found");
   }
 
   try {
     const session = await stripe.billingPortal.sessions.create({
       customer: subscription.stripeCustomerId,
       return_url: returnUrl,
-    })
+    });
 
-    return session.url
+    return session.url;
   } catch (error) {
-    console.error("[Billing] Error creating portal session:", error)
-    throw error
+    console.error("[Billing] Error creating portal session:", error);
+    throw error;
   }
 }
 
@@ -270,23 +281,23 @@ export async function createBillingPortalSession(
  */
 export async function cancelSubscription(userId: number): Promise<void> {
   if (!isStripeEnabled() || !stripe) {
-    throw new Error("Stripe is not configured")
+    throw new Error("Stripe is not configured");
   }
 
-  const subscription = await getUserSubscription(userId)
+  const subscription = await getUserSubscription(userId);
   if (!subscription?.stripeSubscriptionId) {
-    throw new Error("No active subscription found")
+    throw new Error("No active subscription found");
   }
 
   try {
     await stripe.subscriptions.update(subscription.stripeSubscriptionId, {
       cancel_at_period_end: true,
-    })
+    });
 
-    await updateUserSubscription(userId, { cancelAtPeriodEnd: true })
+    await updateUserSubscription(userId, { cancelAtPeriodEnd: true });
   } catch (error) {
-    console.error("[Billing] Error canceling subscription:", error)
-    throw error
+    console.error("[Billing] Error canceling subscription:", error);
+    throw error;
   }
 }
 
@@ -299,37 +310,46 @@ export async function recordBillingHistory(
   amountCents: number,
   status: string,
   description?: string,
-  invoicePdfUrl?: string
+  invoicePdfUrl?: string,
 ): Promise<void> {
   try {
     await pool.query(
       `INSERT INTO billing_history (user_id, stripe_invoice_id, amount_cents, status, description, invoice_pdf_url)
        VALUES ($1, $2, $3, $4, $5, $6)
        ON CONFLICT (stripe_invoice_id) DO NOTHING`,
-      [userId, stripeInvoiceId, amountCents, status, description, invoicePdfUrl]
-    )
+      [
+        userId,
+        stripeInvoiceId,
+        amountCents,
+        status,
+        description,
+        invoicePdfUrl,
+      ],
+    );
   } catch (error) {
-    console.error("[Billing] Error recording billing history:", error)
+    console.error("[Billing] Error recording billing history:", error);
   }
 }
 
 /**
  * Get billing history for a user
  */
-export async function getBillingHistory(userId: number): Promise<{
-  id: number
-  amountCents: number
-  currency: string
-  status: string
-  description: string | null
-  invoicePdfUrl: string | null
-  createdAt: Date
-}[]> {
+export async function getBillingHistory(userId: number): Promise<
+  {
+    id: number;
+    amountCents: number;
+    currency: string;
+    status: string;
+    description: string | null;
+    invoicePdfUrl: string | null;
+    createdAt: Date;
+  }[]
+> {
   try {
     const result = await pool.query(
       `SELECT * FROM billing_history WHERE user_id = $1 ORDER BY created_at DESC LIMIT 50`,
-      [userId]
-    )
+      [userId],
+    );
     return result.rows.map((row) => ({
       id: row.id,
       amountCents: row.amount_cents,
@@ -338,23 +358,26 @@ export async function getBillingHistory(userId: number): Promise<{
       description: row.description,
       invoicePdfUrl: row.invoice_pdf_url,
       createdAt: row.created_at,
-    }))
+    }));
   } catch (error) {
-    console.error("[Billing] Error getting billing history:", error)
-    return []
+    console.error("[Billing] Error getting billing history:", error);
+    return [];
   }
 }
 
 // Backwards compatibility - alias for upsertSubscription
-export const upsertSubscription = async (userId: number, data: Partial<{
-  stripeCustomerId: string | null
-  stripeSubscriptionId: string | null
-  plan: string
-  status: string
-  currentPeriodStart: Date | null
-  currentPeriodEnd: Date | null
-  cancelAtPeriodEnd: boolean
-}>) => {
+export const upsertSubscription = async (
+  userId: number,
+  data: Partial<{
+    stripeCustomerId: string | null;
+    stripeSubscriptionId: string | null;
+    plan: string;
+    status: string;
+    currentPeriodStart: Date | null;
+    currentPeriodEnd: Date | null;
+    cancelAtPeriodEnd: boolean;
+  }>,
+) => {
   await updateUserSubscription(userId, {
     stripeCustomerId: data.stripeCustomerId,
     stripeSubscriptionId: data.stripeSubscriptionId,
@@ -362,5 +385,5 @@ export const upsertSubscription = async (userId: number, data: Partial<{
     subscriptionStatus: data.status,
     currentPeriodEnd: data.currentPeriodEnd,
     cancelAtPeriodEnd: data.cancelAtPeriodEnd,
-  })
-}
+  });
+};

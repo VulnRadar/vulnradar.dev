@@ -1,10 +1,10 @@
-﻿import pool from "@/lib/database/db"
+﻿import pool from "@/lib/database/db";
 
 export interface AccessRuleCheckResult {
-  allowed: boolean
-  reason?: string
-  ruleType?: "blacklist" | "whitelist"
-  matchedValue?: string
+  allowed: boolean;
+  reason?: string;
+  ruleType?: "blacklist" | "whitelist";
+  matchedValue?: string;
 }
 
 // (normalizeDomain removed in cleanup; access-rules.ts now uses external normalization)
@@ -12,7 +12,7 @@ export interface AccessRuleCheckResult {
 /**
  * Check if a URL or its domain/IP is blocked by access rules.
  * Returns allowed: false if the URL matches an active blacklist rule.
- * 
+ *
  * Matching logic:
  * - If rule is "example.com", it blocks:
  *   - example.com (exact)
@@ -20,29 +20,32 @@ export interface AccessRuleCheckResult {
  *   - example.com/any/path (any path)
  *   - sub.example.com/any/path (subdomain with path)
  */
-export async function checkAccessRules(url: string): Promise<AccessRuleCheckResult> {
+export async function checkAccessRules(
+  url: string,
+): Promise<AccessRuleCheckResult> {
   try {
-    const parsedUrl = new URL(url)
-    const hostname = parsedUrl.hostname.toLowerCase()
-    
+    const parsedUrl = new URL(url);
+    const hostname = parsedUrl.hostname.toLowerCase();
+
     // Extract potential IP address
-    const ipMatch = hostname.match(/^(\d{1,3}\.){3}\d{1,3}$/)
-    const ipAddress = ipMatch ? hostname : null
+    const ipMatch = hostname.match(/^(\d{1,3}\.){3}\d{1,3}$/);
+    const ipAddress = ipMatch ? hostname : null;
 
     // Query for active blacklist rules that match this URL or domain
     // For domain matching: if rule is "example.com", match:
     // - hostname = "example.com" (exact match)
     // - hostname ends with ".example.com" (subdomain match)
     // Build query based on whether we have an IP to check
-    const queryParams: string[] = [hostname]
-    let ipCondition = 'false' // Default: no IP match possible
-    
+    const queryParams: string[] = [hostname];
+    let ipCondition = "false"; // Default: no IP match possible
+
     if (ipAddress) {
-      queryParams.push(ipAddress)
-      ipCondition = `(value_type = 'ip' AND LOWER(value) = LOWER($2))`
+      queryParams.push(ipAddress);
+      ipCondition = `(value_type = 'ip' AND LOWER(value) = LOWER($2))`;
     }
-    
-    const result = await pool.query(`
+
+    const result = await pool.query(
+      `
       SELECT value, value_type, reason
       FROM access_rules
       WHERE rule_type = 'blacklist'
@@ -58,31 +61,43 @@ export async function checkAccessRules(url: string): Promise<AccessRuleCheckResu
           OR ${ipCondition}
         )
       LIMIT 1
-    `, queryParams)
+    `,
+      queryParams,
+    );
 
     if (result.rows.length > 0) {
-      const rule = result.rows[0]
-      
+      const rule = result.rows[0];
+
       // Increment hit count (non-blocking)
-      pool.query(`
+      pool
+        .query(
+          `
         UPDATE access_rules 
         SET hit_count = hit_count + 1, last_hit_at = NOW()
         WHERE LOWER(value) = LOWER($1) AND rule_type = 'blacklist'
-      `, [rule.value]).catch(() => {})
+      `,
+          [rule.value],
+        )
+        .catch(() => {});
 
       return {
         allowed: false,
-        reason: rule.reason || `This ${rule.value_type === 'ip' ? 'IP address' : 'URL/domain'} has been blocked.`,
+        reason:
+          rule.reason ||
+          `This ${rule.value_type === "ip" ? "IP address" : "URL/domain"} has been blocked.`,
         ruleType: "blacklist",
         matchedValue: rule.value,
-      }
+      };
     }
 
-    return { allowed: true }
+    return { allowed: true };
   } catch (error) {
     // On error, allow the scan to proceed (fail-open for availability)
-    console.error("[VulnRadar] Access rules check failed:", error instanceof Error ? error.message : error)
-    return { allowed: true }
+    console.error(
+      "[VulnRadar] Access rules check failed:",
+      error instanceof Error ? error.message : error,
+    );
+    return { allowed: true };
   }
 }
 
@@ -90,12 +105,14 @@ export async function checkAccessRules(url: string): Promise<AccessRuleCheckResu
  * Check multiple URLs against access rules.
  * Returns the first blocked URL if any, otherwise allowed: true.
  */
-export async function checkAccessRulesMultiple(urls: string[]): Promise<AccessRuleCheckResult & { blockedUrl?: string }> {
+export async function checkAccessRulesMultiple(
+  urls: string[],
+): Promise<AccessRuleCheckResult & { blockedUrl?: string }> {
   for (const url of urls) {
-    const result = await checkAccessRules(url)
+    const result = await checkAccessRules(url);
     if (!result.allowed) {
-      return { ...result, blockedUrl: url }
+      return { ...result, blockedUrl: url };
     }
   }
-  return { allowed: true }
+  return { allowed: true };
 }

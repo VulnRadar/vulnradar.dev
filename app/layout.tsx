@@ -1,44 +1,67 @@
-import React from "react"
-import type { Metadata, Viewport } from 'next'
-import { Inter, JetBrains_Mono } from 'next/font/google'
-import { ThemeProvider } from '@/components/providers/theme-provider'
-import { TosGate } from '@/components/auth/tos-gate'
-import { BackupCodesModal } from '@/components/shared/notification-center'
-import { DiscordProfileModalWrapper } from '@/components/modals/discord-profile-modal-wrapper'
-import { AuthProvider } from '@/components/providers/auth-provider'
-import { StaffHeartbeat } from '@/components/admin/staff-heartbeat'
-import { SiteNotificationsWrapper } from '@/components/shared/site-notifications'
-import { APP_NAME, APP_DESCRIPTION, APP_URL, STAFF_ROLES } from '@/lib/config/constants'
+import React from "react";
+import type { Metadata, Viewport } from "next";
+import { Inter, JetBrains_Mono } from "next/font/google";
+import { ThemeProvider } from "@/components/providers/theme-provider";
+import { TosGate } from "@/components/auth/tos-gate";
+import { BackupCodesModal } from "@/components/shared/notification-center";
+import { DiscordProfileModalWrapper } from "@/components/modals/discord-profile-modal-wrapper";
+import { AuthProvider } from "@/components/providers/auth-provider";
+import { StaffHeartbeat } from "@/components/admin/staff-heartbeat";
+import { SiteNotificationsWrapper } from "@/components/shared/site-notifications";
+import {
+  APP_NAME,
+  APP_DESCRIPTION,
+  APP_URL,
+  STAFF_ROLES,
+} from "@/lib/config/constants";
 
-import './globals.css'
+import "./globals.css";
 
-const _inter = Inter({ subsets: ['latin'], variable: '--font-inter' })
-const _jetbrainsMono = JetBrains_Mono({ subsets: ['latin'], variable: '--font-jetbrains-mono' })
+const _inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
+const _jetbrainsMono = JetBrains_Mono({
+  subsets: ["latin"],
+  variable: "--font-jetbrains-mono",
+});
 
 export const metadata: Metadata = {
   title: {
     default: `${APP_NAME} - Web Vulnerability Scanner`,
-    template: '%s | ' + APP_NAME,
+    template: "%s | " + APP_NAME,
   },
   description: APP_DESCRIPTION,
   applicationName: APP_NAME,
-  keywords: ['vulnerability scanner', 'security scanner', 'web security', 'penetration testing', 'security audit', 'website scanner'],
+  keywords: [
+    "vulnerability scanner",
+    "security scanner",
+    "web security",
+    "penetration testing",
+    "security audit",
+    "website scanner",
+  ],
   authors: [{ name: APP_NAME }],
   icons: {
     icon: [
-      { url: '/favicon.ico', sizes: 'any' },
-      { url: '/favicon-dark.svg', type: 'image/svg+xml', media: '(prefers-color-scheme: dark)' },
-      { url: '/favicon-light.svg', type: 'image/svg+xml', media: '(prefers-color-scheme: light)' },
+      { url: "/favicon.ico", sizes: "any" },
+      {
+        url: "/favicon-dark.svg",
+        type: "image/svg+xml",
+        media: "(prefers-color-scheme: dark)",
+      },
+      {
+        url: "/favicon-light.svg",
+        type: "image/svg+xml",
+        media: "(prefers-color-scheme: light)",
+      },
     ],
-    apple: '/favicon.png',
+    apple: "/favicon.png",
   },
   openGraph: {
     title: `${APP_NAME} - Web Vulnerability Scanner`,
     description: APP_DESCRIPTION,
     siteName: APP_NAME,
-    type: 'website',
+    type: "website",
     url: APP_URL,
-    locale: 'en_US',
+    locale: "en_US",
     images: [
       {
         url: `${APP_URL}/og-image-310.png`,
@@ -49,10 +72,10 @@ export const metadata: Metadata = {
     ],
   },
   twitter: {
-    card: 'summary_large_image',
+    card: "summary_large_image",
     title: `${APP_NAME} - Web Vulnerability Scanner`,
     description: APP_DESCRIPTION,
-    site: '@' + APP_NAME,
+    site: "@" + APP_NAME,
     images: [`${APP_URL}/og-image-310.png`],
   },
   robots: {
@@ -60,75 +83,82 @@ export const metadata: Metadata = {
     follow: true,
   },
   other: {
-    'security-contact': `${APP_URL}/.well-known/security.txt`,
-    'theme-color': '#2563eb',
+    "security-contact": `${APP_URL}/.well-known/security.txt`,
+    "theme-color": "#2563eb",
   },
   metadataBase: new URL(APP_URL),
-}
+};
 
 export const viewport: Viewport = {
   themeColor: [
-    { media: '(prefers-color-scheme: light)', color: '#f5f7fa' },
-    { media: '(prefers-color-scheme: dark)', color: '#0d1117' },
+    { media: "(prefers-color-scheme: light)", color: "#f5f7fa" },
+    { media: "(prefers-color-scheme: dark)", color: "#0d1117" },
   ],
-}
+};
 
 export default function RootLayout({
-                                     children,
-                                   }: Readonly<{
-  children: React.ReactNode
+  children,
+}: Readonly<{
+  children: React.ReactNode;
 }>) {
   return (
-      <html lang="en" className="dark" suppressHydrationWarning data-scroll-behavior="smooth">
+    <html
+      lang="en"
+      className="dark"
+      suppressHydrationWarning
+      data-scroll-behavior="smooth"
+    >
       <head>
-        <script dangerouslySetInnerHTML={{ __html: `try{var d=localStorage.getItem("vr_auth_cache");if(d&&d.length>2){var p=JSON.parse(d),s=document.createElement("style");s.id="vr-auth-css";var r="";if(p&&p.userId){r+=".vr-auth-only{visibility:visible!important;pointer-events:auto!important}"}if(p&&p.role&&${JSON.stringify([STAFF_ROLES.ADMIN, STAFF_ROLES.MODERATOR, STAFF_ROLES.SUPPORT])}.includes(p.role)){r+=".vr-staff-only{display:flex!important}"}if(r){s.textContent=r;document.head.appendChild(s)}}}catch(e){}` }} />
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `try{var d=localStorage.getItem("vr_auth_cache");if(d&&d.length>2){var p=JSON.parse(d),s=document.createElement("style");s.id="vr-auth-css";var r="";if(p&&p.userId){r+=".vr-auth-only{visibility:visible!important;pointer-events:auto!important}"}if(p&&p.role&&${JSON.stringify([STAFF_ROLES.ADMIN, STAFF_ROLES.MODERATOR, STAFF_ROLES.SUPPORT])}.includes(p.role)){r+=".vr-staff-only{display:flex!important}"}if(r){s.textContent=r;document.head.appendChild(s)}}}catch(e){}`,
+          }}
+        />
       </head>
       <body className="font-sans antialiased" suppressHydrationWarning>
-      <ThemeProvider
+        <ThemeProvider
           attribute="class"
           defaultTheme="dark"
           enableSystem
           disableTransitionOnChange
-      >
-        <AuthProvider>
-          <StaffHeartbeat />
-          <SiteNotificationsWrapper />
-          <TosGate>
-            {children}
-          </TosGate>
-          <BackupCodesModal />
-          <DiscordProfileModalWrapper />
-        </AuthProvider>
-      </ThemeProvider>
-      {/*        <Script id="tawk-to" strategy="lazyOnload">*/}
-      {/*          {`var Tawk_API=Tawk_API||{}, Tawk_LoadStart=new Date();*/}
-      {/*Tawk_API.onLoad = function(){*/}
-      {/*  if(window.innerWidth < 640){*/}
-      {/*    Tawk_API.setProperty('fontSize', 14);*/}
-      {/*    var el = document.querySelector('iframe[title="chat widget"]');*/}
-      {/*    if(el){*/}
-      {/*      el.style.minWidth = '80px';*/}
-      {/*      el.style.minHeight = '80px';*/}
-      {/*    }*/}
-      {/*  }*/}
-      {/*};*/}
-      {/*Tawk_API.customStyle = {*/}
-      {/*  visibility: {*/}
-      {/*    desktop: { position: 'br', xOffset: 20, yOffset: 20 },*/}
-      {/*    mobile: { position: 'br', xOffset: 10, yOffset: 10 },*/}
-      {/*  },*/}
-      {/*  zIndex: 999*/}
-      {/*};*/}
-      {/*(function(){*/}
-      {/*var s1=document.createElement("script"),s0=document.getElementsByTagName("script")[0];*/}
-      {/*s1.async=true;*/}
-      {/*s1.src='https://embed.tawk.to/6993aa8073d8cb1c357e314e/1jhkd41di';*/}
-      {/*s1.charset='UTF-8';*/}
-      {/*s1.setAttribute('crossorigin','*');*/}
-      {/*s0.parentNode.insertBefore(s1,s0);*/}
-      {/*})();`}*/}
-      {/*        </Script>*/}
+        >
+          <AuthProvider>
+            <StaffHeartbeat />
+            <SiteNotificationsWrapper />
+            <TosGate>{children}</TosGate>
+            <BackupCodesModal />
+            <DiscordProfileModalWrapper />
+          </AuthProvider>
+        </ThemeProvider>
+        {/*        <Script id="tawk-to" strategy="lazyOnload">*/}
+        {/*          {`var Tawk_API=Tawk_API||{}, Tawk_LoadStart=new Date();*/}
+        {/*Tawk_API.onLoad = function(){*/}
+        {/*  if(window.innerWidth < 640){*/}
+        {/*    Tawk_API.setProperty('fontSize', 14);*/}
+        {/*    var el = document.querySelector('iframe[title="chat widget"]');*/}
+        {/*    if(el){*/}
+        {/*      el.style.minWidth = '80px';*/}
+        {/*      el.style.minHeight = '80px';*/}
+        {/*    }*/}
+        {/*  }*/}
+        {/*};*/}
+        {/*Tawk_API.customStyle = {*/}
+        {/*  visibility: {*/}
+        {/*    desktop: { position: 'br', xOffset: 20, yOffset: 20 },*/}
+        {/*    mobile: { position: 'br', xOffset: 10, yOffset: 10 },*/}
+        {/*  },*/}
+        {/*  zIndex: 999*/}
+        {/*};*/}
+        {/*(function(){*/}
+        {/*var s1=document.createElement("script"),s0=document.getElementsByTagName("script")[0];*/}
+        {/*s1.async=true;*/}
+        {/*s1.src='https://embed.tawk.to/6993aa8073d8cb1c357e314e/1jhkd41di';*/}
+        {/*s1.charset='UTF-8';*/}
+        {/*s1.setAttribute('crossorigin','*');*/}
+        {/*s0.parentNode.insertBefore(s1,s0);*/}
+        {/*})();`}*/}
+        {/*        </Script>*/}
       </body>
-      </html>
-  )
+    </html>
+  );
 }

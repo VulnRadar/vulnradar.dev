@@ -1,21 +1,30 @@
-"use client"
+"use client";
 
-import Link from "next/link"
-import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
-import { ArrowRight, Terminal, CheckCircle, Activity, LayoutDashboard } from "lucide-react"
-import { TOTAL_CHECKS_LABEL, ROUTES } from "@/lib/config/constants"
-import { useAuth } from "@/components/providers/auth-provider"
+import Link from "next/link";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import {
+  ArrowRight,
+  Terminal,
+  CheckCircle,
+  Activity,
+  LayoutDashboard,
+} from "lucide-react";
+import { TOTAL_CHECKS_LABEL, ROUTES } from "@/lib/config/constants";
+import { useAuth } from "@/components/providers/auth-provider";
 
 export function LandingHero() {
-  const { me } = useAuth()
-  const isLoggedIn = !!me?.userId
+  const { me } = useAuth();
+  const isLoggedIn = !!me?.userId;
 
   return (
     <section className="relative">
       <div className="max-w-6xl mx-auto px-4 sm:px-6 pt-16 pb-20 sm:pt-24 sm:pb-28">
         <div className="max-w-3xl mx-auto text-center">
-          <Badge variant="outline" className="mb-5 gap-1.5 py-1 px-3 border-primary/30 bg-primary/5 text-xs">
+          <Badge
+            variant="outline"
+            className="mb-5 gap-1.5 py-1 px-3 border-primary/30 bg-primary/5 text-xs"
+          >
             <Activity className="h-3 w-3 text-primary" />
             {TOTAL_CHECKS_LABEL} vulnerability checks
           </Badge>
@@ -26,7 +35,8 @@ export function LandingHero() {
           </h1>
 
           <p className="text-base sm:text-lg text-muted-foreground max-w-xl mx-auto mb-8 text-pretty">
-            Detect vulnerabilities in seconds. Get actionable insights. Ship secure code with confidence.
+            Detect vulnerabilities in seconds. Get actionable insights. Ship
+            secure code with confidence.
           </p>
 
           <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
@@ -55,7 +65,11 @@ export function LandingHero() {
 
           {!isLoggedIn && (
             <div className="mt-10 flex flex-wrap items-center justify-center gap-x-6 gap-y-3 text-sm text-muted-foreground">
-              {["No credit card required", "Free forever tier", "Open source"].map((item) => (
+              {[
+                "No credit card required",
+                "Free forever tier",
+                "Open source",
+              ].map((item) => (
                 <div key={item} className="flex items-center gap-1.5">
                   <CheckCircle className="h-3.5 w-3.5 text-primary" />
                   <span>{item}</span>
@@ -66,5 +80,5 @@ export function LandingHero() {
         </div>
       </div>
     </section>
-  )
+  );
 }

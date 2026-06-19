@@ -1,242 +1,333 @@
-import { NextRequest, NextResponse } from "next/server"
-import { getSession } from "@/lib/auth"
-import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit"
-import { canMakeRequest, incrementDailyCount, getRateLimitHeaders } from "@/lib/rate-limiting/daily-limits"
-import { validateApiKey, checkRateLimit as checkApiKeyRateLimit, recordUsage } from "@/lib/api/api-keys"
-import { allChecks } from "@/lib/scanner/checks"
-import { runAsyncChecks } from "@/lib/scanner/async-checks"
-import pool from "@/lib/database/db"
-import { APP_NAME, SEVERITY_LEVELS, BEARER_PREFIX } from "@/lib/config/constants"
-import type { Vulnerability, Severity } from "@/lib/scanner/types"
-import { getProtocolFromUrl } from "@/lib/scanner/protocols"
-import { runWebSocketChecks } from "@/lib/scanner/protocols/websocket"
-import { runFtpChecks } from "@/lib/scanner/protocols/ftp"
-import { validateScanTarget, safeFetch } from "@/lib/scanner/safe-fetch"
-import { checkAccessRules } from "@/lib/scanner/access-rules"
+import { NextRequest, NextResponse } from "next/server";
+import { getSession } from "@/lib/auth";
+import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
+import {
+  canMakeRequest,
+  incrementDailyCount,
+  getRateLimitHeaders,
+} from "@/lib/rate-limiting/daily-limits";
+import {
+  validateApiKey,
+  checkRateLimit as checkApiKeyRateLimit,
+  recordUsage,
+} from "@/lib/api/api-keys";
+import { allChecks } from "@/lib/scanner/checks";
+import { runAsyncChecks } from "@/lib/scanner/async-checks";
+import pool from "@/lib/database/db";
+import {
+  APP_NAME,
+  SEVERITY_LEVELS,
+  BEARER_PREFIX,
+} from "@/lib/config/constants";
+import type { Vulnerability, Severity } from "@/lib/scanner/types";
+import { getProtocolFromUrl } from "@/lib/scanner/protocols";
+import { runWebSocketChecks } from "@/lib/scanner/protocols/websocket";
+import { runFtpChecks } from "@/lib/scanner/protocols/ftp";
+import { validateScanTarget, safeFetch } from "@/lib/scanner/safe-fetch";
+import { checkAccessRules } from "@/lib/scanner/access-rules";
 
-const SEVERITY_ORDER: Record<Severity, number> = { critical: 0, high: 1, medium: 2, low: 3, info: 4 }
-const SUPPORTED_PROTOCOLS = ["http:", "https:", "ws:", "wss:", "ftp:", "ftps:"]
-const MAX_BODY_SIZE = 1 * 1024 * 1024
+const SEVERITY_ORDER: Record<Severity, number> = {
+  critical: 0,
+  high: 1,
+  medium: 2,
+  low: 3,
+  info: 4,
+};
+const SUPPORTED_PROTOCOLS = ["http:", "https:", "ws:", "wss:", "ftp:", "ftps:"];
+const MAX_BODY_SIZE = 1 * 1024 * 1024;
 
-async function safeReadBody(response: Response, maxBytes: number): Promise<string> {
-  const reader = response.body?.getReader()
-  if (!reader) return ""
-  const decoder = new TextDecoder("utf-8", { fatal: false })
-  const chunks: string[] = []
-  let totalBytes = 0
+async function safeReadBody(
+  response: Response,
+  maxBytes: number,
+): Promise<string> {
+  const reader = response.body?.getReader();
+  if (!reader) return "";
+  const decoder = new TextDecoder("utf-8", { fatal: false });
+  const chunks: string[] = [];
+  let totalBytes = 0;
   try {
     while (true) {
-      const { done, value } = await reader.read()
-      if (done) break
-      totalBytes += value.byteLength
+      const { done, value } = await reader.read();
+      if (done) break;
+      totalBytes += value.byteLength;
       if (totalBytes > maxBytes) {
-        const overshoot = totalBytes - maxBytes
-        const trimmed = value.slice(0, value.byteLength - overshoot)
-        if (trimmed.byteLength > 0) chunks.push(decoder.decode(trimmed, { stream: false }))
-        break
+        const overshoot = totalBytes - maxBytes;
+        const trimmed = value.slice(0, value.byteLength - overshoot);
+        if (trimmed.byteLength > 0)
+          chunks.push(decoder.decode(trimmed, { stream: false }));
+        break;
       }
-      chunks.push(decoder.decode(value, { stream: true }))
+      chunks.push(decoder.decode(value, { stream: true }));
     }
-  } catch { /* return partial */ } finally {
-    try { reader.cancel() } catch { /* ignore */ }
+  } catch {
+    /* return partial */
+  } finally {
+    try {
+      reader.cancel();
+    } catch {
+      /* ignore */
+    }
   }
-  return chunks.join("")
+  return chunks.join("");
 }
 
 function getProtocolType(url: string): "http" | "websocket" | "ftp" {
-  const protocol = getProtocolFromUrl(url)
-  if (protocol === "ws" || protocol === "wss") return "websocket"
-  if (protocol === "ftp" || protocol === "ftps") return "ftp"
-  return "http"
+  const protocol = getProtocolFromUrl(url);
+  if (protocol === "ws" || protocol === "wss") return "websocket";
+  if (protocol === "ftp" || protocol === "ftps") return "ftp";
+  return "http";
 }
 
-async function runSingleScan(url: string, userId: number, isApiKeyAuth: boolean) {
-  const startTime = Date.now()
-  
+async function runSingleScan(
+  url: string,
+  userId: number,
+  isApiKeyAuth: boolean,
+) {
+  const startTime = Date.now();
+
   // SSRF protection - validate target is not internal/private
-  const safetyCheck = await validateScanTarget(url)
+  const safetyCheck = await validateScanTarget(url);
   if (!safetyCheck.safe) {
-    return { url, success: false, error: safetyCheck.reason || "URL blocked for security reasons" }
+    return {
+      url,
+      success: false,
+      error: safetyCheck.reason || "URL blocked for security reasons",
+    };
   }
 
   // Check access rules (blacklist/whitelist)
-  const accessCheck = await checkAccessRules(url)
+  const accessCheck = await checkAccessRules(url);
   if (!accessCheck.allowed) {
-    return { 
-      url, 
-      success: false, 
+    return {
+      url,
+      success: false,
       error: "This target cannot be scanned.",
-      details: "This domain or IP address has been restricted from scanning for security, privacy, or compliance reasons. Access controls are enforced to protect sensitive infrastructure and user data."
-    }
+      details:
+        "This domain or IP address has been restricted from scanning for security, privacy, or compliance reasons. Access controls are enforced to protect sensitive infrastructure and user data.",
+    };
   }
-  
-  const protocolType = getProtocolType(url)
 
-  let response: Response | null = null
-  let responseBody = ""
-  let headers = new Headers()
-  let capturedHeaders: Record<string, string> = {}
-  const protocolSpecificFindings: Vulnerability[] = []
+  const protocolType = getProtocolType(url);
+
+  let response: Response | null = null;
+  let responseBody = "";
+  let headers = new Headers();
+  let capturedHeaders: Record<string, string> = {};
+  const protocolSpecificFindings: Vulnerability[] = [];
 
   // Handle different protocol types
   if (protocolType === "websocket") {
     // For WebSocket URLs, convert to HTTP(S) for initial check
     try {
       // Parse WebSocket URL and reconstruct as HTTP(S)
-      const wsUrl = new URL(url)
+      const wsUrl = new URL(url);
       if (wsUrl.protocol !== "ws:" && wsUrl.protocol !== "wss:") {
-        throw new Error("Invalid WebSocket protocol")
+        throw new Error("Invalid WebSocket protocol");
       }
-      
+
       // Validate the hostname and pathname
       if (!wsUrl.hostname || !wsUrl.hostname.length) {
-        throw new Error("Invalid hostname")
+        throw new Error("Invalid hostname");
       }
-      
+
       // Construct HTTP(S) URL from individual components
-      const protocol = wsUrl.protocol === "wss:" ? "https" : "http"
-      const hostname = wsUrl.hostname
-      const port = wsUrl.port ? `:${wsUrl.port}` : ""
-      const pathname = wsUrl.pathname || ""
-      const search = wsUrl.search || ""
-      
-      const safeUrl = new URL(`${protocol}://${hostname}${port}${pathname}${search}`)
-      
+      const protocol = wsUrl.protocol === "wss:" ? "https" : "http";
+      const hostname = wsUrl.hostname;
+      const port = wsUrl.port ? `:${wsUrl.port}` : "";
+      const pathname = wsUrl.pathname || "";
+      const search = wsUrl.search || "";
+
+      const safeUrl = new URL(
+        `${protocol}://${hostname}${port}${pathname}${search}`,
+      );
+
       // Validate the constructed URL
       if (safeUrl.protocol !== "http:" && safeUrl.protocol !== "https:") {
-        throw new Error("Invalid protocol")
+        throw new Error("Invalid protocol");
       }
-      
+
       // Use safeFetch which validates the URL internally to prevent SSRF
       // Pass the original hostname as the only allowed hostname to prevent redirect-based SSRF
-      response = await safeFetch(safeUrl.href, {
-        method: "GET",
-        headers: { "User-Agent": `${APP_NAME}/1.0 (Security Scanner)` },
-        redirect: "follow",
-        signal: AbortSignal.timeout(15000),
-      }, [hostname])
-      responseBody = await safeReadBody(response, MAX_BODY_SIZE)
-      headers = response.headers
-      headers.forEach((v, k) => { capturedHeaders[k] = v })
+      response = await safeFetch(
+        safeUrl.href,
+        {
+          method: "GET",
+          headers: { "User-Agent": `${APP_NAME}/1.0 (Security Scanner)` },
+          redirect: "follow",
+          signal: AbortSignal.timeout(15000),
+        },
+        [hostname],
+      );
+      responseBody = await safeReadBody(response, MAX_BODY_SIZE);
+      headers = response.headers;
+      headers.forEach((v, k) => {
+        capturedHeaders[k] = v;
+      });
     } catch {
       // WebSocket endpoint may not respond to HTTP - that's ok
     }
     // Add WebSocket-specific security checks
-    protocolSpecificFindings.push(...runWebSocketChecks(url, headers))
+    protocolSpecificFindings.push(...runWebSocketChecks(url, headers));
   } else if (protocolType === "ftp") {
     // FTP protocol checks - limited to protocol-level security
-    protocolSpecificFindings.push(...runFtpChecks(url))
+    protocolSpecificFindings.push(...runFtpChecks(url));
   } else {
     // Standard HTTP/HTTPS fetch
     try {
       // Validate URL before fetch to prevent SSRF
-      const urlObj = new URL(url)
+      const urlObj = new URL(url);
       if (urlObj.protocol !== "http:" && urlObj.protocol !== "https:") {
-        throw new Error("Invalid protocol")
+        throw new Error("Invalid protocol");
       }
-      
+
       // Use safeFetch which validates the URL internally to prevent SSRF
       // Pass the original hostname as the only allowed hostname to prevent redirect-based SSRF
-      response = await safeFetch(urlObj.href, {
-        method: "GET",
-        headers: { "User-Agent": `${APP_NAME}/1.0 (Security Scanner)` },
-        redirect: "follow",
-        signal: AbortSignal.timeout(15000),
-      }, [urlObj.hostname])
+      response = await safeFetch(
+        urlObj.href,
+        {
+          method: "GET",
+          headers: { "User-Agent": `${APP_NAME}/1.0 (Security Scanner)` },
+          redirect: "follow",
+          signal: AbortSignal.timeout(15000),
+        },
+        [urlObj.hostname],
+      );
     } catch (e) {
-      const msg = e instanceof Error ? e.message : "Unknown error"
-      return { url, success: false, error: `Could not reach: ${msg}` }
+      const msg = e instanceof Error ? e.message : "Unknown error";
+      return { url, success: false, error: `Could not reach: ${msg}` };
     }
 
-    responseBody = await safeReadBody(response, MAX_BODY_SIZE)
-    headers = response.headers
-    headers.forEach((v, k) => { capturedHeaders[k] = v })
+    responseBody = await safeReadBody(response, MAX_BODY_SIZE);
+    headers = response.headers;
+    headers.forEach((v, k) => {
+      capturedHeaders[k] = v;
+    });
   }
 
   // Sync checks (only run on HTTP-like protocols)
-  const bodyForChecks = responseBody.length > 1_000_000 ? responseBody.slice(0, 1_000_000) : responseBody
-  const syncFindings: Vulnerability[] = []
+  const bodyForChecks =
+    responseBody.length > 1_000_000
+      ? responseBody.slice(0, 1_000_000)
+      : responseBody;
+  const syncFindings: Vulnerability[] = [];
   if (protocolType === "http" || protocolType === "websocket") {
     for (const check of allChecks) {
       try {
-        const r = check(url, headers, bodyForChecks)
-        if (r) syncFindings.push(r)
-      } catch { /* skip */ }
+        const r = check(url, headers, bodyForChecks);
+        if (r) syncFindings.push(r);
+      } catch {
+        /* skip */
+      }
     }
   }
 
   // Async checks (only run on HTTP)
-  let asyncFindings: Vulnerability[] = []
+  let asyncFindings: Vulnerability[] = [];
   if (protocolType === "http") {
     try {
       asyncFindings = await Promise.race([
         runAsyncChecks(url),
-        new Promise<Vulnerability[]>((resolve) => setTimeout(() => resolve([]), 15000)),
-      ])
-    } catch { /* non-fatal */ }
+        new Promise<Vulnerability[]>((resolve) =>
+          setTimeout(() => resolve([]), 15000),
+        ),
+      ]);
+    } catch {
+      /* non-fatal */
+    }
   }
 
-  const findings = [...protocolSpecificFindings, ...syncFindings, ...asyncFindings].sort(
-    (a, b) => SEVERITY_ORDER[a.severity] - SEVERITY_ORDER[b.severity],
-  )
+  const findings = [
+    ...protocolSpecificFindings,
+    ...syncFindings,
+    ...asyncFindings,
+  ].sort((a, b) => SEVERITY_ORDER[a.severity] - SEVERITY_ORDER[b.severity]);
 
-  const duration = Date.now() - startTime
+  const duration = Date.now() - startTime;
   const summary = {
-    critical: findings.filter((f) => f.severity === SEVERITY_LEVELS.CRITICAL).length,
+    critical: findings.filter((f) => f.severity === SEVERITY_LEVELS.CRITICAL)
+      .length,
     high: findings.filter((f) => f.severity === SEVERITY_LEVELS.HIGH).length,
-    medium: findings.filter((f) => f.severity === SEVERITY_LEVELS.MEDIUM).length,
+    medium: findings.filter((f) => f.severity === SEVERITY_LEVELS.MEDIUM)
+      .length,
     low: findings.filter((f) => f.severity === SEVERITY_LEVELS.LOW).length,
     info: findings.filter((f) => f.severity === SEVERITY_LEVELS.INFO).length,
     total: findings.length,
-  }
+  };
 
   // Save to history
-  let scanHistoryId: number | null = null
+  let scanHistoryId: number | null = null;
   try {
-    const { DEFAULT_SCAN_NOTE } = await import("@/lib/config/constants")
+    const { DEFAULT_SCAN_NOTE } = await import("@/lib/config/constants");
     const insertResult = await pool.query(
       `INSERT INTO scan_history (user_id, url, summary, findings, findings_count, duration, scanned_at, source, response_headers, notes)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id`,
       // source must be either 'api' or 'web'
-      [userId, url, JSON.stringify(summary), JSON.stringify(findings), summary.total, duration, new Date().toISOString(), isApiKeyAuth ? "api" : "web", JSON.stringify(capturedHeaders), DEFAULT_SCAN_NOTE],
-    )
-    scanHistoryId = insertResult.rows[0]?.id || null
+      [
+        userId,
+        url,
+        JSON.stringify(summary),
+        JSON.stringify(findings),
+        summary.total,
+        duration,
+        new Date().toISOString(),
+        isApiKeyAuth ? "api" : "web",
+        JSON.stringify(capturedHeaders),
+        DEFAULT_SCAN_NOTE,
+      ],
+    );
+    scanHistoryId = insertResult.rows[0]?.id || null;
   } catch (err) {
-    console.error("[VulnRadar] Failed to save bulk scan history:", err instanceof Error ? err.message : err)
+    console.error(
+      "[VulnRadar] Failed to save bulk scan history:",
+      err instanceof Error ? err.message : err,
+    );
   }
 
-  return { url, success: true, scanHistoryId, summary, findings_count: summary.total, duration }
+  return {
+    url,
+    success: true,
+    scanHistoryId,
+    summary,
+    findings_count: summary.total,
+    duration,
+  };
 }
 
 export async function POST(request: NextRequest) {
   // Auth: check API key first (Bearer token), then fall back to session cookie
-  const authHeader = request.headers.get("authorization")
-  let apiKeyId: number | null = null
-  let apiKeyDailyLimit: number | null = null
-  let isApiKeyAuth = false
-  let authedUserId: number | null = null
+  const authHeader = request.headers.get("authorization");
+  let apiKeyId: number | null = null;
+  let apiKeyDailyLimit: number | null = null;
+  let isApiKeyAuth = false;
+  let authedUserId: number | null = null;
 
   if (authHeader?.startsWith(BEARER_PREFIX)) {
-    const token = authHeader.slice(7)
-    const keyData = await validateApiKey(token)
+    const token = authHeader.slice(7);
+    const keyData = await validateApiKey(token);
 
     if (!keyData) {
       return NextResponse.json(
         { error: "Invalid or revoked API key." },
         { status: 401 },
-      )
+      );
     }
 
     // Check if user needs to accept updated terms
     if (keyData.needsTermsAcceptance) {
       return NextResponse.json(
-        { error: "Please accept our updated Terms of Service. Log in to your account to review and accept the new terms before using the API." },
+        {
+          error:
+            "Please accept our updated Terms of Service. Log in to your account to review and accept the new terms before using the API.",
+        },
         { status: 403 },
-      )
+      );
     }
 
     // Check API key rate limit
-    const rateLimit = await checkApiKeyRateLimit(keyData.keyId, keyData.dailyLimit)
+    const rateLimit = await checkApiKeyRateLimit(
+      keyData.keyId,
+      keyData.dailyLimit,
+    );
 
     if (!rateLimit.allowed) {
       return NextResponse.json(
@@ -260,86 +351,134 @@ export async function POST(request: NextRequest) {
             ),
           },
         },
-      )
+      );
     }
 
-    apiKeyId = keyData.keyId
-    apiKeyDailyLimit = keyData.dailyLimit
-    isApiKeyAuth = true
-    authedUserId = keyData.userId
+    apiKeyId = keyData.keyId;
+    apiKeyDailyLimit = keyData.dailyLimit;
+    isApiKeyAuth = true;
+    authedUserId = keyData.userId;
   } else {
-    const session = await getSession()
+    const session = await getSession();
     if (!session) {
       return NextResponse.json(
-        { error: "Unauthorized. Provide an API key via Authorization: Bearer <key> header, or sign in." },
+        {
+          error:
+            "Unauthorized. Provide an API key via Authorization: Bearer <key> header, or sign in.",
+        },
         { status: 401 },
-      )
+      );
     }
-    authedUserId = session.userId
+    authedUserId = session.userId;
 
-    const rl = await checkRateLimit({ key: `bulkscan:${session.userId}`, ...RATE_LIMITS.bulkScan })
+    const rl = await checkRateLimit({
+      key: `bulkscan:${session.userId}`,
+      ...RATE_LIMITS.bulkScan,
+    });
     if (!rl.allowed) {
       return NextResponse.json(
-        { error: `Bulk scan rate limit reached. Try again in ${Math.ceil(rl.retryAfterSeconds / 60)} minute(s).` },
+        {
+          error: `Bulk scan rate limit reached. Try again in ${Math.ceil(rl.retryAfterSeconds / 60)} minute(s).`,
+        },
         { status: 429 },
-      )
+      );
     }
   }
 
-  const { urls } = await request.json()
+  const { urls } = await request.json();
 
   if (!Array.isArray(urls) || urls.length === 0) {
-    return NextResponse.json({ error: "Provide an array of URLs." }, { status: 400 })
+    return NextResponse.json(
+      { error: "Provide an array of URLs." },
+      { status: 400 },
+    );
   }
   if (urls.length > 10) {
-    return NextResponse.json({ error: "Maximum 10 URLs per bulk scan." }, { status: 400 })
+    return NextResponse.json(
+      { error: "Maximum 10 URLs per bulk scan." },
+      { status: 400 },
+    );
   }
 
-  const validUrls: string[] = []
+  const validUrls: string[] = [];
   for (const u of urls) {
     try {
-      const parsed = new URL(u)
-      if (!SUPPORTED_PROTOCOLS.includes(parsed.protocol)) continue
+      const parsed = new URL(u);
+      if (!SUPPORTED_PROTOCOLS.includes(parsed.protocol)) continue;
       // Store the normalized href so downstream logic and safeFetch see a canonical URL
-      validUrls.push(parsed.href)
-    } catch { /* skip invalid URLs */ }
+      validUrls.push(parsed.href);
+    } catch {
+      /* skip invalid URLs */
+    }
   }
 
   if (validUrls.length === 0) {
-    return NextResponse.json({ error: "No valid URLs provided." }, { status: 400 })
+    return NextResponse.json(
+      { error: "No valid URLs provided." },
+      { status: 400 },
+    );
   }
 
   // Check daily quota: each URL in the bulk scan counts as 1 scan (skip for API key auth)
   const quotaCheck = isApiKeyAuth
-    ? { allowed: true, limit: -1, used: 0, remaining: validUrls.length, resetsAt: "" }
-    : await canMakeRequest(authedUserId!)
+    ? {
+        allowed: true,
+        limit: -1,
+        used: 0,
+        remaining: validUrls.length,
+        resetsAt: "",
+      }
+    : await canMakeRequest(authedUserId!);
   if (!quotaCheck.allowed) {
     return NextResponse.json(
-      { error: "Daily scan limit reached. Upgrade your plan or wait until midnight UTC for the limit to reset." },
+      {
+        error:
+          "Daily scan limit reached. Upgrade your plan or wait until midnight UTC for the limit to reset.",
+      },
       { status: 429, headers: getRateLimitHeaders(quotaCheck) },
-    )
+    );
   }
 
   // How many URLs can we actually run given remaining quota?
-  const remaining = quotaCheck.limit === -1 ? validUrls.length : Math.min(validUrls.length, quotaCheck.remaining)
-  const urlsToScan = validUrls.slice(0, remaining)
-  const skipped = validUrls.length - urlsToScan.length
+  const remaining =
+    quotaCheck.limit === -1
+      ? validUrls.length
+      : Math.min(validUrls.length, quotaCheck.remaining);
+  const urlsToScan = validUrls.slice(0, remaining);
+  const skipped = validUrls.length - urlsToScan.length;
 
   // Run scans sequentially to avoid overwhelming resources
-  const results: Array<{ url: string; success: boolean; scanHistoryId?: number | null; error?: string; summary?: unknown; findings_count?: number; duration?: number }> = []
+  const results: Array<{
+    url: string;
+    success: boolean;
+    scanHistoryId?: number | null;
+    error?: string;
+    summary?: unknown;
+    findings_count?: number;
+    duration?: number;
+  }> = [];
 
   for (const scanUrl of urlsToScan) {
     // Increment daily count before each scan (skip for API key auth)
     if (!isApiKeyAuth) {
-      await incrementDailyCount(authedUserId!)
+      await incrementDailyCount(authedUserId!);
     }
-    const scanResult = await runSingleScan(scanUrl, authedUserId!, isApiKeyAuth)
-    results.push(scanResult)
+    const scanResult = await runSingleScan(
+      scanUrl,
+      authedUserId!,
+      isApiKeyAuth,
+    );
+    results.push(scanResult);
   }
 
   // Add skipped URLs as quota-exceeded entries
   for (const scanUrl of validUrls.slice(remaining)) {
-    results.push({ url: scanUrl, success: false, error: "Daily scan limit reached. Upgrade your plan or wait until midnight UTC for the limit to reset." })
+    results.push({
+      url: scanUrl,
+      success: false,
+      error:
+        "Daily scan limit reached. Upgrade your plan or wait until midnight UTC for the limit to reset.",
+    });
   }
 
   const responseData = {
@@ -348,21 +487,23 @@ export async function POST(request: NextRequest) {
     failed: results.filter((r) => !r.success).length,
     skipped,
     results,
-  }
+  };
 
   // Record API key usage and add rate limit headers
   if (isApiKeyAuth && apiKeyId && typeof apiKeyDailyLimit === "number") {
-    await recordUsage(apiKeyId)
-    const rateLimit = await checkApiKeyRateLimit(apiKeyId, apiKeyDailyLimit)
+    await recordUsage(apiKeyId);
+    const rateLimit = await checkApiKeyRateLimit(apiKeyId, apiKeyDailyLimit);
     return NextResponse.json(responseData, {
       headers: {
         "X-RateLimit-Limit": String(rateLimit.limit),
         "X-RateLimit-Remaining": String(rateLimit.remaining),
         "X-RateLimit-Reset": rateLimit.resetsAt,
       },
-    })
+    });
   }
 
-  const finalQuota = await canMakeRequest(authedUserId!)
-  return NextResponse.json(responseData, { headers: getRateLimitHeaders(finalQuota) })
+  const finalQuota = await canMakeRequest(authedUserId!);
+  return NextResponse.json(responseData, {
+    headers: getRateLimitHeaders(finalQuota),
+  });
 }

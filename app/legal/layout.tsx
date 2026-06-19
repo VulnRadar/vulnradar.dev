@@ -1,11 +1,15 @@
-"use client"
+"use client";
 
-import React from "react"
-import { LandingNav } from "@/components/landing/landing-nav"
-import { Footer } from "@/components/scanner/footer"
-import { LegalNav } from "@/components/legal"
+import React from "react";
+import { LandingNav } from "@/components/landing/landing-nav";
+import { Footer } from "@/components/scanner/footer";
+import { LegalNav } from "@/components/legal";
 
-export default function LegalLayout({ children }: { children: React.ReactNode }) {
+export default function LegalLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   return (
     <div className="min-h-screen flex flex-col bg-background">
       <LandingNav />
@@ -15,5 +19,5 @@ export default function LegalLayout({ children }: { children: React.ReactNode })
       </main>
       <Footer />
     </div>
-  )
+  );
 }

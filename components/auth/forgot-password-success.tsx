@@ -1,5 +1,5 @@
-import Link from "next/link"
-import { Mail, ArrowLeft } from "lucide-react"
+import Link from "next/link";
+import { Mail, ArrowLeft } from "lucide-react";
 
 export function ForgotPasswordSuccess() {
   return (
@@ -9,7 +9,8 @@ export function ForgotPasswordSuccess() {
           <Mail className="h-4 w-4 text-primary" />
         </div>
         <p className="text-sm text-muted-foreground leading-relaxed">
-          Be sure to check your spam folder if you {"don't"} see the email within a few minutes.
+          Be sure to check your spam folder if you {"don't"} see the email
+          within a few minutes.
         </p>
       </div>
 
@@ -21,5 +22,5 @@ export function ForgotPasswordSuccess() {
         Back to login
       </Link>
     </div>
-  )
+  );
 }
