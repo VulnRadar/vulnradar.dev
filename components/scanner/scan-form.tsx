@@ -184,7 +184,7 @@ export function ScanForm({
   const [error, setError] = useState("");
   const [mode, setMode] = useState<ScanMode>("quick");
   const [protocol, setProtocol] = useState<ScanProtocol>("https://");
-  const [selectedScanners, setSelectedScanners] = useState<Set<string>>(
+  const [selectedScanners, setSelectedScanners] = useState<Set<ScannerCategoryId>>(
     new Set(ALL_CATEGORY_IDS),
   );
   const [selectorOpen, setSelectorOpen] = useState(false);
@@ -193,12 +193,13 @@ export function ScanForm({
 
   // Get available categories for current protocol
   const protocolConfig = SCAN_PROTOCOLS.find((p) => p.value === protocol);
-  const availableCategories = protocolConfig?.categories || [];
+  const availableCategories: readonly ScannerCategoryId[] =
+    protocolConfig?.categories ?? [];
 
   const allSelected = selectedScanners.size === ALL_CATEGORY_IDS.length;
   const noneSelected = selectedScanners.size === 0;
 
-  function toggleScanner(id: string) {
+  function toggleScanner(id: ScannerCategoryId) {
     setSelectedScanners((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
