@@ -40,6 +40,7 @@ import {
   requireDatabaseUrl,
   parseDbUrl,
   formatDbTarget,
+  formatDbHost,
   buildConnectionString,
   chooseDatabase,
   ROOT,
@@ -515,7 +516,7 @@ async function main() {
   const ok = await confirmIntro({
     title: `VulnRadar ${meta.version} — Database Migration`,
     tagline: "Compares live schema to instrumentation.ts and applies the diff.",
-    target: formatDbTarget(sourceParsed),
+    target: formatDbHost(sourceParsed),
     steps: [
       "Connect to the database and read every table/column",
       "Detect v1 -> v2 drift and offer the upgrade path",
@@ -539,6 +540,10 @@ async function main() {
     currentDb: sourceParsed.database,
     prompt: "Which database to migrate",
   });
+  if (chosenDb === null) {
+    info("Cancelled. Your database was not modified.");
+    return;
+  }
   if (chosenDb !== sourceParsed.database) {
     process.env.DATABASE_URL = buildConnectionString(sourceParsed, chosenDb);
   }
