@@ -1,7 +1,11 @@
 /** @type {import('next').NextConfig} */
 
 const nextConfig = {
-  output: "standalone",
+  // No `output: "standalone"` so `next start` works for non-Docker
+  // deployments (Vercel, bare Node, local prod-like). For Docker
+  // deployments, the Dockerfile copies .next + node_modules instead of
+  // relying on a standalone bundle — image is larger but `npm start`
+  // works the same everywhere.
   serverExternalPackages: ["fs", "path"],
   typescript: {
     ignoreBuildErrors: true,

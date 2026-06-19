@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "node .next/standalone/server.js",
+    "start": "next start",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write \"**/*.{ts,tsx,js,jsx,mjs,cjs,json,md,css,yml,yaml}\"",
@@ -93,6 +93,7 @@
     "eslint": "^9.18.0",
     "eslint-config-next": "^15.5.18",
     "postcss": "8.5.10",
+    "prettier": "3.8.4",
     "typescript": "6.0.2"
   },
   "overrides": {
