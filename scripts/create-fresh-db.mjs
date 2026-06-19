@@ -66,6 +66,7 @@ const MIGRATE_TABLES = [
   "team_invites",
   "audit_log",
   "billing_history",
+  "badges", // before user_badges (FK)
   "user_badges",
   "gifted_subscriptions",
   "admin_notifications",
@@ -244,7 +245,8 @@ async function copyTableData(originalPool, newPool, table, rowCount) {
           try {
             return JSON.parse(v);
           } catch {
-            return v;
+            warn(`  Invalid JSON in ${table}.${t}, setting to null`);
+            return null;
           }
         }
         return v;
@@ -280,7 +282,6 @@ async function migrateData(originalPool, newPool, tablesWithData) {
 
   // MIGRATE_TABLES is already in FK-safe order.
   for (const table of MIGRATE_TABLES) {
-    if (!tablesWithData.includes(table)) continue;
     const meta = tablesWithData.find((t) => t.name === table);
     if (!meta || meta.count === 0) continue;
     await copyTableData(originalPool, newPool, table, meta.count);
