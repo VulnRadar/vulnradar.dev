@@ -769,7 +769,6 @@ function AdminContent() {
                   actionLoading={actionLoading}
                   callerRole={callerRole}
                   allBadges={allBadges}
-                  onRefreshBadges={fetchAllBadges}
                   onBadgesChanged={(awardedIds, revokedIds) => {
                     setSelectedUser((prev) => {
                       if (!prev) return prev;
