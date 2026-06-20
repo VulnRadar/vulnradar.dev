@@ -1,7 +1,7 @@
 import "server-only";
 
 import type Stripe from "stripe";
-import { stripe } from "./stripe";
+import { getStripe } from "./stripe";
 import { BILLING_ENABLED } from "@/lib/config/constants";
 
 type WebhookEvent = Parameters<
@@ -56,6 +56,11 @@ export async function ensureStripeWebhook(): Promise<{
   }
 
   const webhookUrl = `${appUrl}/api/v2/webhooks/stripe`;
+
+  const stripe = getStripe();
+  if (!stripe) {
+    return { success: false, error: "Stripe is not configured" };
+  }
 
   try {
     // List existing webhooks to check if ours already exists

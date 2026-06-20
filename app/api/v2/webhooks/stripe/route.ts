@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { stripe } from "@/lib/billing/stripe";
+import { getStripe } from "@/lib/billing/stripe";
 import { getPlanFromProductId } from "@/lib/billing/products";
 import pool from "@/lib/database/db";
 import Stripe from "stripe";
@@ -61,6 +61,14 @@ async function revokePremiumBadge(userId: number) {
 }
 
 export async function POST(req: NextRequest) {
+  const stripe = getStripe();
+  if (!stripe) {
+    return NextResponse.json(
+      { error: "Stripe is not configured" },
+      { status: 503 },
+    );
+  }
+
   const body = await req.text();
   const signature = req.headers.get("stripe-signature")!;
 

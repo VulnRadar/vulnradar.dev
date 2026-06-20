@@ -1,10 +1,18 @@
 ﻿import { NextRequest, NextResponse } from "next/server";
-import { stripe } from "@/lib/billing/stripe";
+import { getStripe } from "@/lib/billing/stripe";
 import { getSession } from "@/lib/auth";
 import { PRODUCTS, getPlanFromProductId } from "@/lib/billing/products";
 import pool from "@/lib/database/db";
 
 export async function POST(request: NextRequest) {
+  const stripe = getStripe();
+  if (!stripe) {
+    return NextResponse.json(
+      { error: "Stripe is not configured" },
+      { status: 503 },
+    );
+  }
+
   try {
     const session = await getSession();
     if (!session?.userId) {
