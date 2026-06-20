@@ -50,6 +50,7 @@ export function BadgeScanList({
             placeholder="Search by domain..."
             value={searchQuery}
             onChange={(e) => onSearchChange(e.target.value)}
+            aria-label="Search recent scans by domain"
             className="w-full pl-9 pr-3 py-2.5 rounded-lg border border-border bg-card text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/40 transition-all"
           />
         </div>

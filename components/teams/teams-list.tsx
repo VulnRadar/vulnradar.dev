@@ -54,6 +54,7 @@ export function TeamsList({
             placeholder="Search teams..."
             value={searchQuery}
             onChange={(e) => onSearchChange(e.target.value)}
+            aria-label="Search teams by name"
             className="pl-9"
           />
         </div>

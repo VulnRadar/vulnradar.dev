@@ -216,6 +216,7 @@ export function AuditLog({
               placeholder="Search by admin, user, or action..."
               value={auditSearch}
               onChange={(e) => setAuditSearch(e.target.value)}
+              aria-label="Search audit log by admin, user, or action"
               className="pl-9 h-10 bg-background/50 border-border/40 focus:border-primary/50"
             />
           </div>

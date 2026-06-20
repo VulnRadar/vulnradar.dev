@@ -136,6 +136,7 @@ export function CrawlUrlSelector({
                   placeholder="Filter pages..."
                   value={filter}
                   onChange={(e) => setFilter(e.target.value)}
+                  aria-label="Filter pages by URL"
                   className="w-full h-7 pl-7 pr-3 rounded-md border border-border bg-background text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
                 />
               </div>

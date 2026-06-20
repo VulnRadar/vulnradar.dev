@@ -10,6 +10,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Loader2, ShieldAlert, Mail } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
 
@@ -307,14 +308,20 @@ export function BillingVerificationModal({
             <div className="space-y-4">
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
-                  <label className="text-sm font-medium text-foreground">
+                  <Label
+                    htmlFor="billing-verification-code"
+                    className="text-sm font-medium text-foreground"
+                  >
                     6-digit code
-                  </label>
+                  </Label>
                   <span className="text-xs text-muted-foreground">
                     Expires in 5 min
                   </span>
                 </div>
                 <Input
+                  id="billing-verification-code"
+                  inputMode="numeric"
+                  pattern="[0-9]{6}"
                   placeholder="000000"
                   value={code}
                   onChange={(e) =>

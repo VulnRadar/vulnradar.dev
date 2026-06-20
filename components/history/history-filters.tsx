@@ -37,6 +37,7 @@ export function HistoryFilters({
           placeholder="Search by URL..."
           value={filter}
           onChange={(e) => onFilterChange(e.target.value)}
+          aria-label="Filter scan history by URL"
           className="pl-9 bg-card/50 h-10"
         />
       </div>

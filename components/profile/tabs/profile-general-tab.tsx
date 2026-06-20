@@ -159,7 +159,10 @@ export function ProfileGeneralTab({
           <CardContent className="pt-6 flex flex-col gap-5">
             {/* Profile Picture */}
             <div className="flex flex-col gap-2">
-              <Label className="text-sm font-medium text-muted-foreground">
+              <Label
+                htmlFor="avatar-upload"
+                className="text-sm font-medium text-muted-foreground"
+              >
                 Profile Picture
               </Label>
               <div className="flex items-center gap-4">
@@ -223,6 +226,7 @@ export function ProfileGeneralTab({
                 </div>
                 <input
                   ref={avatarInputRef}
+                  id="avatar-upload"
                   type="file"
                   accept="image/*"
                   onChange={handleAvatarFileSelect}
@@ -320,7 +324,10 @@ export function ProfileGeneralTab({
               <div className="flex flex-col gap-3">
                 <div className="flex flex-col gap-1.5">
                   <div className="flex items-center justify-between">
-                    <Label className="text-xs font-medium text-muted-foreground">
+                    <Label
+                      htmlFor="display-name-input"
+                      className="text-xs font-medium text-muted-foreground"
+                    >
                       Display Name
                     </Label>
                     {pendingChanges.name !== undefined &&
@@ -334,6 +341,7 @@ export function ProfileGeneralTab({
                       )}
                   </div>
                   <Input
+                    id="display-name-input"
                     value={nameInput}
                     onChange={(e) => handleNameChange(e.target.value)}
                     className="bg-card h-10"
@@ -343,7 +351,10 @@ export function ProfileGeneralTab({
                 </div>
                 <div className="flex flex-col gap-1.5">
                   <div className="flex items-center justify-between">
-                    <Label className="text-xs font-medium text-muted-foreground">
+                    <Label
+                      htmlFor="email-address-input"
+                      className="text-xs font-medium text-muted-foreground"
+                    >
                       Email Address
                     </Label>
                     {pendingChanges.email !== undefined &&
@@ -357,6 +368,7 @@ export function ProfileGeneralTab({
                       )}
                   </div>
                   <Input
+                    id="email-address-input"
                     type="email"
                     value={emailInput}
                     onChange={(e) => handleEmailChange(e.target.value)}

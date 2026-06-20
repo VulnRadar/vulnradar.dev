@@ -106,6 +106,7 @@ export default function ComparePage() {
                   placeholder="Search by URL..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
+                  aria-label="Search scan history by URL"
                   className="pl-9 bg-card/50 border-border/50"
                 />
               </div>

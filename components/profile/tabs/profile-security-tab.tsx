@@ -383,13 +383,17 @@ export function ProfileSecurityTab(props: ProfileTabProps) {
 
                   {showRegenerateBackup && backupCodes.length === 0 && (
                     <div className="flex flex-col gap-3 p-4 rounded-lg bg-secondary/30 border border-border">
-                      <p className="text-sm font-medium">
+                      <Label
+                        htmlFor="regen-backup-password"
+                        className="text-sm font-medium"
+                      >
                         Enter your password to regenerate backup codes
-                      </p>
+                      </Label>
                       <p className="text-xs text-muted-foreground">
                         This will invalidate all existing backup codes.
                       </p>
                       <Input
+                        id="regen-backup-password"
                         type="password"
                         placeholder="Current password"
                         value={regenPassword}
@@ -456,10 +460,14 @@ export function ProfileSecurityTab(props: ProfileTabProps) {
                     </Button>
                   ) : (
                     <div className="flex flex-col gap-3 p-4 rounded-lg bg-destructive/5 border border-destructive/20">
-                      <p className="text-sm font-medium">
+                      <Label
+                        htmlFor="disable-app-2fa-password"
+                        className="text-sm font-medium"
+                      >
                         Enter your password to disable authenticator app 2FA
-                      </p>
+                      </Label>
                       <Input
+                        id="disable-app-2fa-password"
                         type="password"
                         placeholder="Current password"
                         value={disablePassword}
@@ -684,10 +692,14 @@ export function ProfileSecurityTab(props: ProfileTabProps) {
                     </Button>
                   ) : (
                     <div className="flex flex-col gap-3 p-4 rounded-lg bg-destructive/5 border border-destructive/20">
-                      <p className="text-sm font-medium">
+                      <Label
+                        htmlFor="disable-email-2fa-password"
+                        className="text-sm font-medium"
+                      >
                         Enter your password to disable email 2FA
-                      </p>
+                      </Label>
                       <Input
+                        id="disable-email-2fa-password"
                         type="password"
                         placeholder="Current password"
                         value={disablePassword}
@@ -764,14 +776,18 @@ export function ProfileSecurityTab(props: ProfileTabProps) {
                     </Button>
                   ) : (
                     <div className="flex flex-col gap-3 p-4 rounded-lg bg-secondary/30 border border-border">
-                      <p className="text-sm font-medium">
+                      <Label
+                        htmlFor="enable-email-2fa-password"
+                        className="text-sm font-medium"
+                      >
                         Enter your password to enable email 2FA
-                      </p>
+                      </Label>
                       <p className="text-xs text-muted-foreground">
                         A 6-digit code will be sent to your email every time you
                         log in.
                       </p>
                       <Input
+                        id="enable-email-2fa-password"
                         type="password"
                         placeholder="Current password"
                         value={

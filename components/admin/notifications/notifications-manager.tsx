@@ -651,14 +651,19 @@ export function NotificationsManager() {
               <SectionHeader icon={Layers} label="Display" />
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-4 rounded-xl border border-border bg-muted/20">
                 <div className="space-y-1.5">
-                  <Label className="text-xs font-medium">Type</Label>
+                  <Label htmlFor="notif-type" className="text-xs font-medium">
+                    Type
+                  </Label>
                   <Select
                     value={formData.type}
                     onValueChange={(v) =>
                       set({ type: v as AdminNotification["type"] })
                     }
                   >
-                    <SelectTrigger className="bg-background h-10">
+                    <SelectTrigger
+                      id="notif-type"
+                      className="bg-background h-10"
+                    >
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -670,7 +675,12 @@ export function NotificationsManager() {
                   </Select>
                 </div>
                 <div className="space-y-1.5">
-                  <Label className="text-xs font-medium">Variant</Label>
+                  <Label
+                    htmlFor="notif-variant"
+                    className="text-xs font-medium"
+                  >
+                    Variant
+                  </Label>
                   <Select
                     value={formData.variant}
                     onValueChange={(v) =>
@@ -678,6 +688,7 @@ export function NotificationsManager() {
                     }
                   >
                     <SelectTrigger
+                      id="notif-variant"
                       className={cn(
                         "h-10 font-medium border",
                         activeVariant.bg,
