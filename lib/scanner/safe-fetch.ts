@@ -161,6 +161,23 @@ export function isBlockedHostname(hostname: string): boolean {
 }
 
 /**
+ * R6: Combined SSRF helper — returns true if the target hostname is
+ * either an explicit private/internal IP literal or a blocked hostname
+ * suffix. Replaces the duplicate implementations previously living in
+ * lib/scanner/async-checks.ts (manual octet parsing) and ad-hoc checks
+ * scattered across webhooks/schedules routes.
+ */
+export function isPrivateHostname(hostname: string): boolean {
+  const cleaned = hostname.toLowerCase().replace(/\.$/, "");
+  // IP literal — use the regex-based isPrivateIP for full RFC coverage.
+  if (isIP(cleaned)) {
+    return isPrivateIP(cleaned);
+  }
+  // Blocked hostnames (localhost, .local, .internal, .lan, *.localhost).
+  return isBlockedHostname(cleaned);
+}
+
+/**
  * Validate a URL for safe scanning
  * Returns safety status and reason if blocked
  */

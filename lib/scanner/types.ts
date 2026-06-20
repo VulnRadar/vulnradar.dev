@@ -6,7 +6,8 @@ export type Category =
   | "content"
   | "cookies"
   | "configuration"
-  | "information-disclosure";
+  | "information-disclosure"
+  | "dns";
 
 export interface Vulnerability {
   id: string;
