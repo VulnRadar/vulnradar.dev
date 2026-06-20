@@ -28,6 +28,7 @@ import {
   BillingVerificationModal,
   type SensitiveBillingData,
 } from "../modals/billing-verification-modal";
+import { useModalA11y } from "@/lib/hooks/use-modal-a11y";
 
 export function ProfileBillingTab({
   user,
@@ -43,6 +44,16 @@ export function ProfileBillingTab({
   const [cancelType, setCancelType] = useState<"period_end" | "immediate">(
     "period_end",
   );
+
+  const {
+    dialogProps: cancelDialogProps,
+    titleProps: cancelTitleProps,
+    descriptionProps: cancelDescriptionProps,
+  } = useModalA11y({
+    open: showCancelDialog,
+    onClose: () => setShowCancelDialog(false),
+    hasDescription: true,
+  });
   const [cancelingSubscription, setCancelingSubscription] = useState(false);
   const [reactivatingSubscription, setReactivatingSubscription] =
     useState(false);
@@ -885,16 +896,23 @@ export function ProfileBillingTab({
           <div
             className="bg-card border border-border rounded-xl shadow-2xl w-full max-w-md p-6 mx-4"
             onClick={(e) => e.stopPropagation()}
+            {...cancelDialogProps}
           >
             <div className="flex items-center gap-3 mb-4">
               <div className="h-10 w-10 rounded-full bg-destructive/10 flex items-center justify-center">
                 <XCircle className="h-5 w-5 text-destructive" />
               </div>
               <div>
-                <h3 className="text-lg font-semibold text-foreground">
+                <h3
+                  className="text-lg font-semibold text-foreground"
+                  {...cancelTitleProps}
+                >
                   Cancel Subscription
                 </h3>
-                <p className="text-sm text-muted-foreground">
+                <p
+                  className="text-sm text-muted-foreground"
+                  {...cancelDescriptionProps}
+                >
                   Choose how you&apos;d like to cancel
                 </p>
               </div>

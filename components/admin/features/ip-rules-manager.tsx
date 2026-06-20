@@ -27,6 +27,7 @@ import {
   SaveConfirmationModal,
   type ChangeItem,
 } from "@/components/shared/save-confirmation-modal";
+import { useModalA11y } from "@/lib/hooks/use-modal-a11y";
 import { cn } from "@/lib/ui/utils";
 
 interface AccessRule {
@@ -195,6 +196,10 @@ export function IPRulesManager() {
   ).length;
   const totalHits = rules.reduce((sum, r) => sum + r.hit_count, 0);
 
+  const { dialogProps: ipDialogProps, titleProps: ipTitleProps } = useModalA11y(
+    { open: !!selectedRule, onClose: () => setSelectedRule(null) },
+  );
+
   return (
     <>
       {/* Detail Modal */}
@@ -206,6 +211,7 @@ export function IPRulesManager() {
           <div
             className="bg-card border border-border rounded-xl p-6 w-full max-w-lg mx-4 shadow-2xl max-h-[80vh] overflow-y-auto"
             onClick={(e) => e.stopPropagation()}
+            {...ipDialogProps}
           >
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-3">
@@ -238,7 +244,10 @@ export function IPRulesManager() {
                   )}
                 </div>
                 <div>
-                  <h3 className="text-base font-semibold text-foreground">
+                  <h3
+                    className="text-base font-semibold text-foreground"
+                    {...ipTitleProps}
+                  >
                     Rule Details
                   </h3>
                   <p className="text-xs text-muted-foreground mt-0.5">

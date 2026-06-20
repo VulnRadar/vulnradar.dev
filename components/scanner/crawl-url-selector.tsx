@@ -11,6 +11,7 @@ import {
   ArrowRight,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useModalA11y } from "@/lib/hooks/use-modal-a11y";
 
 interface CrawlUrlSelectorProps {
   urls: string[];
@@ -76,6 +77,12 @@ export function CrawlUrlSelector({
 
   const hostname = urls.length > 0 ? getHostname(urls[0]) : "";
 
+  const { dialogProps: crawlDialogProps, titleProps: crawlTitleProps } =
+    useModalA11y({
+      open: urls.length > 0 || isLoading,
+      onClose: onCancel,
+    });
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       {/* Backdrop */}
@@ -85,14 +92,20 @@ export function CrawlUrlSelector({
       />
 
       {/* Modal */}
-      <div className="relative w-full max-w-lg rounded-xl border border-border bg-card shadow-xl flex flex-col max-h-[80vh]">
+      <div
+        className="relative w-full max-w-lg rounded-xl border border-border bg-card shadow-xl flex flex-col max-h-[80vh]"
+        {...crawlDialogProps}
+      >
         {/* Header */}
         <div className="flex items-center gap-3 px-5 py-4 border-b border-border">
           <div className="flex items-center justify-center w-9 h-9 rounded-lg bg-primary/10">
             <Globe className="h-4 w-4 text-primary" />
           </div>
           <div className="flex-1 min-w-0">
-            <h2 className="text-sm font-semibold text-foreground">
+            <h2
+              className="text-sm font-semibold text-foreground"
+              {...crawlTitleProps}
+            >
               Select Pages to Scan
             </h2>
             <p className="text-xs text-muted-foreground truncate">
