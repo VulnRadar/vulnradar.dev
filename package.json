@@ -15,8 +15,11 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "db:migrate": "node scripts/migrate.mjs",
-    "db:create": "node scripts/create-fresh-db.mjs"
+    "db:migrate": "node scripts/migrate/migrate.mjs",
+    "db:migrate:dry-run": "node scripts/migrate/migrate.mjs --dry-run",
+    "db:create": "node scripts/create-fresh-db/create-fresh-db.mjs",
+    "db:create:dry-run": "node scripts/create-fresh-db/create-fresh-db.mjs --dry-run",
+    "audit:v2-tables": "node scripts/_lib/audit-v2-tables.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "5.2.2",
