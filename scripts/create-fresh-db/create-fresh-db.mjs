@@ -3,18 +3,22 @@
 /**
  * VulnRadar — Safe Database Migration (Side-by-Side)
  *
- * Creates a NEW database with the fresh schema, then optionally copies data
- * from the original database. The original database is never modified.
+ * Creates a NEW database at a chosen schema version, then optionally copies
+ * data from the original database. The original database is never modified.
  *
- *   1. Connects to the original (source) database
- *   2. Asks for the new (target) database name
- *   3. Creates the new database via the postgres admin connection
- *   4. Applies the schema from instrumentation.ts
- *   5. Seeds default badges
- *   6. Optionally copies user data table-by-table (with column-mapping)
+ *   1. Lets you pick which schema version to start with (v1 or v2).
+ *   2. Lets you pick which database to copy FROM (or skip the copy).
+ *   3. Asks for a name for the NEW database.
+ *   4. Creates the target database via the admin connection.
+ *   5. Applies the schema for the chosen version.
+ *   6. Seeds default badges (v2 only).
+ *   7. Optionally copies user data table-by-table (filtered to the
+ *      target schema; v2-only tables are flagged in red, not copied).
+ *   8. Writes the meta row so the migrator sees the new schema version.
  *
  * Usage:
- *   npm run db:create
+ *   npm run db:create              # interactive (full flow)
+ *   npm run db:create:dry-run      # preview only, no DB changes
  *
  * Requires DATABASE_URL in .env.local or as an environment variable.
  */
@@ -46,25 +50,42 @@ import {
   getDatabaseSummary,
   confirmIntro,
   requireDatabaseUrl,
-} from "./_lib.mjs";
+} from "../_lib/_lib.mjs";
 
-const ROOT = resolve(import.meta.dirname, "..");
+const ROOT = resolve(import.meta.dirname, "..", "..");
+const SCHEMAS_DIR = resolve(import.meta.dirname, "schemas");
+
+// Only two flags: --dry-run (preview) and --help. The schema version is
+// always picked interactively.
+let DRY_RUN = false;
+
+// Schema files for each known version. v2.3.0 isn't a separate version —
+// it has the same schema as v2 (only api_keys.key_locator differs, and
+// instrumentation.ts auto-adds that on app boot). So v2 is the latest.
+const SCHEMA_FILES = {
+  "1.0.0": resolve(SCHEMAS_DIR, "instrumentation-v1.ts"),
+  "2.0.0": resolve(ROOT, "instrumentation.ts"),
+};
 
 // Tables that contain user data worth migrating (in FK-safe order).
+// Names match the actual schema: `admin_audit_log` (not `audit_log`),
+// `scheduled_scans` (not `scan_schedules`). At runtime, the script
+// filters this list against the target DB's actual tables — anything
+// not in the target is flagged in red, not attempted.
 const MIGRATE_TABLES = [
+  // v1 baseline
   "users",
   "sessions",
   "password_reset_tokens",
-  "backup_codes",
   "api_keys",
   "scan_history",
-  "scan_schedules",
   "scan_tags",
-  "scan_tag_assignments",
+  "scheduled_scans",
   "teams",
   "team_members",
   "team_invites",
-  "audit_log",
+  "admin_audit_log",
+  // v2-only
   "billing_history",
   "badges", // before user_badges (FK)
   "user_badges",
@@ -80,9 +101,6 @@ const COLUMN_DEFAULTS = {
     findings_count: "0",
     duration: "0",
     source: "'web'",
-  },
-  users: {
-    subscription_source: "'manual'",
   },
 };
 
@@ -108,14 +126,20 @@ const JSON_COLUMNS = {
 };
 
 // ── Step 2: apply schema to the new database ────────────────────────────────
-async function applySchemaToNewPool(newPool) {
-  const instrPath = resolve(ROOT, "instrumentation.ts");
+async function applySchemaToNewPool(newPool, version) {
+  const instrPath = SCHEMA_FILES[version];
+  if (!instrPath) {
+    error(`No schema file registered for version ${version}.`);
+    return { tables: 0, indexes: 0, tableNames: [] };
+  }
   let content;
   try {
     content = readFileSync(instrPath, "utf-8");
   } catch (err) {
-    error(`Failed to read instrumentation.ts: ${err.message}`);
-    return { tables: 0, indexes: 0 };
+    error(
+      `Failed to read schema file for ${version} (${instrPath}): ${err.message}`,
+    );
+    return { tables: 0, indexes: 0, tableNames: [] };
   }
 
   // Pull every await pool.query(`...`) template literal out of the file and
@@ -135,6 +159,7 @@ async function applySchemaToNewPool(newPool) {
 
   let created = 0;
   let indexes = 0;
+  const tableNames = [];
   for (const stmt of statements) {
     try {
       await newPool.query(stmt);
@@ -146,6 +171,7 @@ async function applySchemaToNewPool(newPool) {
         if (m) {
           success(`  Created table: ${m[1]}`);
           created++;
+          tableNames.push(m[1]);
         }
       } else if (upper.includes("CREATE INDEX")) {
         indexes++;
@@ -157,7 +183,38 @@ async function applySchemaToNewPool(newPool) {
     }
   }
   log(`  ${c.dim}${indexes} index(es) created${c.reset}`);
-  return { tables: created, indexes };
+  return { tables: created, indexes, tableNames };
+}
+
+/**
+ * Write the initial meta row so the migrator sees the new database at
+ * the chosen schema version. Replaces any existing row (idempotent).
+ */
+async function writeInitialMetaRow(newPool, schemaVersion, appVersion) {
+  try {
+    await newPool.query(`
+      CREATE TABLE IF NOT EXISTS vulnradar_schema_meta (
+        id INTEGER PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+        schema_version VARCHAR(20) NOT NULL,
+        app_version     VARCHAR(20) NOT NULL,
+        applied_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `);
+    await newPool.query(
+      `INSERT INTO vulnradar_schema_meta (id, schema_version, app_version, applied_at)
+       VALUES (1, $1, $2, NOW())
+       ON CONFLICT (id) DO UPDATE
+         SET schema_version = EXCLUDED.schema_version,
+             app_version     = EXCLUDED.app_version,
+             applied_at      = EXCLUDED.applied_at`,
+      [schemaVersion, appVersion],
+    );
+    success(
+      `  Wrote meta row: schema_version=${schemaVersion}, app_version=${appVersion}`,
+    );
+  } catch (err) {
+    warn(`  Could not write meta row: ${err.message}`);
+  }
 }
 
 async function seedDefaultBadges(newPool) {
@@ -313,24 +370,119 @@ function mappingReverseGet(mapping, targetName) {
   return targetName;
 }
 
-async function migrateData(originalPool, newPool, tablesWithData) {
+async function migrateData(originalPool, newPool, tablesWithData, newDbTables) {
   section("Step 3: Data Migration");
   info(`Transferring data from source to target...`);
   log("");
 
-  // MIGRATE_TABLES is already in FK-safe order.
-  for (const table of MIGRATE_TABLES) {
+  // Filter MIGRATE_TABLES against what's actually in the new DB. Tables
+  // not in the target (e.g. v2-only tables when copying to a v1 target)
+  // can't be transferred and are skipped with a warning.
+  const targetSet = new Set(newDbTables);
+  const canCopy = MIGRATE_TABLES.filter((t) => targetSet.has(t));
+  const cannotCopy = MIGRATE_TABLES.filter((t) => !targetSet.has(t));
+
+  for (const table of canCopy) {
     const meta = tablesWithData.find((t) => t.name === table);
     if (!meta || meta.count === 0) continue;
     await copyTableData(originalPool, newPool, table, meta.count);
+  }
+
+  if (cannotCopy.length > 0) {
+    log("");
+    for (const table of cannotCopy) {
+      const srcCount = tablesWithData.find((t) => t.name === table)?.count ?? 0;
+      if (srcCount > 0) {
+        warn(
+          `  ${c.red}!${c.reset} ${c.bold}${table}${c.reset} ${c.dim}(${srcCount} source rows)${c.reset} — ${c.red}table does not exist in target schema${c.reset}`,
+        );
+      }
+    }
   }
   log("");
   success("Data migration complete.");
 }
 
+/**
+ * Show a clear data-migration plan: which tables WILL transfer (green)
+ * and which CANNOT (red). Helps the user understand what they're about
+ * to do before approving.
+ */
+function showDataMigrationPlan(tablesWithData, newDbTables) {
+  const targetSet = new Set(newDbTables);
+  const canCopy = [];
+  const cannotCopy = [];
+  for (const table of MIGRATE_TABLES) {
+    const src = tablesWithData.find((t) => t.name === table);
+    if (!src || src.count === 0) continue;
+    if (targetSet.has(table)) {
+      canCopy.push({ table, count: src.count });
+    } else {
+      cannotCopy.push({ table, count: src.count });
+    }
+  }
+  log("");
+  log(`  ${c.bold}Data migration plan:${c.reset}`);
+  log("");
+  if (canCopy.length === 0 && cannotCopy.length === 0) {
+    log(`    ${c.dim}(no data to migrate)${c.reset}`);
+  } else {
+    for (const { table, count } of canCopy) {
+      log(
+        `    ${c.green}✓${c.reset} ${c.bold}${table}${c.reset}  ${c.dim}(${count} row${count === 1 ? "" : "s"})${c.reset}`,
+      );
+    }
+    for (const { table, count } of cannotCopy) {
+      log(
+        `    ${c.red}✗${c.reset} ${c.bold}${table}${c.reset}  ${c.dim}(${count} row${count === 1 ? "" : "s"})${c.reset}  ${c.red}— table not in target schema${c.reset}`,
+      );
+    }
+  }
+  log("");
+}
+
+/**
+ * Query the new DB for the list of public-schema tables.
+ */
+async function getNewDbTables(newPool) {
+  const res = await newPool.query(`
+    SELECT table_name
+    FROM information_schema.tables
+    WHERE table_schema = 'public'
+    ORDER BY table_name
+  `);
+  return res.rows.map((r) => r.table_name);
+}
+
 // ── Main ───────────────────────────────────────────────────────────────────
 async function main() {
   const meta = getProjectMeta();
+
+  // Args — only two flags: --dry-run and --help. The version is always
+  // picked interactively (no --version flag on purpose; the user wanted
+  // a simple command surface).
+  const args = process.argv.slice(2);
+  let targetVersion = null;
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i];
+    if (a === "--dry-run" || a === "-n") {
+      DRY_RUN = true;
+    } else if (a === "--help" || a === "-h") {
+      log(`
+VulnRadar — Safe Database Migration (Side-by-Side)
+
+Usage:
+  npm run db:create                        # interactive (full flow)
+  npm run db:create:dry-run                # preview only, no DB changes
+
+The script will ask which schema version to start at (1.0.0 or 2.0.0).
+`);
+      process.exit(0);
+    } else {
+      error(`Unknown flag: ${a}. Only --dry-run and --help are supported.`);
+      process.exit(1);
+    }
+  }
 
   loadEnv();
   requireDatabaseUrl();
@@ -343,17 +495,146 @@ async function main() {
     process.exit(1);
   }
 
+  // ── Dry-run short-circuit (before any interactive prompts) ──────────────
+  if (DRY_RUN) {
+    banner(
+      `VulnRadar ${meta.version} — Create New Database [DRY-RUN]`,
+      "Preview only. No database will be created, no schema applied, no data copied.",
+    );
+
+    if (!targetVersion) targetVersion = "2.0.0";
+    const dryRunSource = sourceParsed.database;
+    const dryRunTarget = `${dryRunSource}_v${targetVersion.split(".")[0]}_dryrun`;
+    log(`  ${c.dim}Would create:${c.reset} ${c.bold}${dryRunTarget}${c.reset}`);
+    log(
+      `  ${c.dim}Would apply schema:${c.reset} ${c.bold}v${targetVersion}${c.reset} ${c.dim}(${SCHEMA_FILES[targetVersion].split(/[\\/]/).pop()})${c.reset}`,
+    );
+    log(
+      `  ${c.dim}Source database:${c.reset} ${c.bold}${dryRunSource}${c.reset} ${c.dim}(from DATABASE_URL)${c.reset}`,
+    );
+    log("");
+
+    info("Connecting to source database for plan preview...");
+    const sourcePool = createPool();
+    if (!(await connect(sourcePool))) {
+      await sourcePool.end();
+      process.exit(1);
+    }
+    const source = await getDatabaseSummary(sourcePool);
+
+    const schemaFileContent = readFileSync(
+      SCHEMA_FILES[targetVersion],
+      "utf-8",
+    );
+    const tableMatches = [
+      ...schemaFileContent.matchAll(
+        /CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(\w+)/gi,
+      ),
+    ];
+    const targetTables = new Set(tableMatches.map((m) => m[1]));
+
+    const tablesWithData = source.tables
+      .map((t) => ({ name: t, count: source.counts[t] }))
+      .filter((t) => t.count > 0);
+    const canCopy = tablesWithData.filter((t) => targetTables.has(t.name));
+    const cannotCopy = tablesWithData.filter((t) => !targetTables.has(t.name));
+
+    log(`  ${c.bold}Schema plan (v${targetVersion}):${c.reset}`);
+    log(
+      `    ${c.cyan}•${c.reset} ${c.bold}${targetTables.size}${c.reset} tables would be created`,
+    );
+    log(
+      `    ${c.cyan}•${c.reset} vulnradar_schema_meta would be created (with row schema_version=v${targetVersion}, app_version=v${meta.version})`,
+    );
+    log("");
+
+    log(`  ${c.bold}Data migration plan:${c.reset}`);
+    log(
+      `    ${c.dim}Source: ${dryRunSource} (${source.tables.length} tables, ${source.totalRows} total rows)${c.reset}`,
+    );
+    log("");
+    if (canCopy.length === 0 && cannotCopy.length === 0) {
+      log(`    ${c.dim}(no data to migrate)${c.reset}`);
+    } else {
+      for (const t of canCopy) {
+        log(
+          `    ${c.green}✓${c.reset} ${c.bold}${t.name}${c.reset}  ${c.dim}(${t.count} row${t.count === 1 ? "" : "s"})${c.reset}`,
+        );
+      }
+      for (const t of cannotCopy) {
+        log(
+          `    ${c.red}✗${c.reset} ${c.bold}${t.name}${c.reset}  ${c.dim}(${t.count} row${t.count === 1 ? "" : "s"})${c.reset}  ${c.red}— table not in v${targetVersion}${c.reset}`,
+        );
+      }
+    }
+    log("");
+
+    success(
+      "[DRY-RUN] No changes were made. Run `npm run db:create` to apply.",
+    );
+    await sourcePool.end();
+    return;
+  }
+
+  // Pick the target version if not given on the command line.
+  if (!targetVersion) {
+    const KNOWN = ["1.0.0", "2.0.0"];
+    log("");
+    log(
+      `  ${c.bold}Which schema version should the NEW database start at?${c.reset}`,
+    );
+    log("");
+    log(
+      `    ${c.bold}1.${c.reset} ${c.bold}1.0.0${c.reset}  ${c.dim}v1 baseline (19 tables, pre-MVP)${c.reset}`,
+    );
+    log(
+      `    ${c.bold}2.${c.reset} ${c.bold}2.0.0${c.reset}  ${c.dim}v2 / current production (34 tables)${c.reset}  ${c.cyan}← recommended for app v${meta.version}${c.reset}`,
+    );
+    log(`     ${c.dim} n. Cancel${c.reset}`);
+    log("");
+    while (true) {
+      const answer = (
+        await ask(
+          `Pick schema version [1, 2, or name; default = 2.0.0]`,
+          "2.0.0",
+        )
+      ).trim();
+      if (answer.toLowerCase() === "n" || answer.toLowerCase() === "cancel") {
+        info("Cancelled.");
+        process.exit(0);
+      }
+      if (KNOWN.includes(answer)) {
+        targetVersion = answer;
+        break;
+      }
+      const n = Number(answer);
+      if (Number.isInteger(n) && n >= 1 && n <= KNOWN.length) {
+        targetVersion = KNOWN[n - 1];
+        break;
+      }
+      warn(`Unknown version: '${answer}'. Try again.`);
+    }
+  } else if (!SCHEMA_FILES[targetVersion]) {
+    error(
+      `Unknown version: ${targetVersion}. Known: ${Object.keys(SCHEMA_FILES).join(", ")}`,
+    );
+    process.exit(1);
+  }
+
   const ok = await confirmIntro({
     title: `VulnRadar ${meta.version} — Create New Database`,
-    tagline: "Creates a NEW database, leaves the original untouched.",
+    tagline: `Creates a NEW database at schema v${targetVersion}, leaves the original untouched.`,
     target: formatDbHost(sourceParsed),
     steps: [
-      "Let you pick which database to copy FROM",
-      "Ask for a name for the NEW database",
-      "Create the target database via the postgres admin connection",
-      "Apply the schema from instrumentation.ts",
-      "Seed default badges",
+      "Let you pick which database to copy FROM (or skip)",
+      `Ask for a name for the NEW database (default ends in _v${targetVersion.split(".")[0]})`,
+      "Create the target database via the admin connection",
+      `Apply the ${targetVersion} schema (${SCHEMA_FILES[targetVersion].split(/[\\/]/).pop()})`,
+      targetVersion === "2.0.0"
+        ? "Seed default badges"
+        : "(no badges seed for v1)",
       "Optionally copy user data table-by-table",
+      "Write the initial meta row (vulnradar_schema_meta)",
     ],
     warnings: [
       "The source database is never modified.",
@@ -409,7 +690,7 @@ async function main() {
   }
   log("");
 
-  const defaultNewName = `${chosenSource}_v2`;
+  const defaultNewName = `${chosenSource}_v${targetVersion.split(".")[0]}`;
   const newDbName = await ask(
     "Enter name for the NEW database",
     defaultNewName,
@@ -436,6 +717,10 @@ async function main() {
     await sourcePool.end();
     return;
   }
+
+  // (The dry-run short-circuit is at the top of main(), before any
+  // interactive prompts. See the block starting at the // ── Dry-run
+  // short-circuit comment, right after the DATABASE_URL parse.)
 
   // ── Create target database ────────────────────────────────────────────────
   // We connect to the source database (not the 'postgres' admin DB) because
@@ -505,58 +790,117 @@ async function main() {
   }
 
   // ── Step 2: apply schema ─────────────────────────────────────────────────
-  section("Step 2: Creating Schema");
-  const { tables } = await applySchemaToNewPool(newPool);
+  section(`Step 2: Creating Schema (v${targetVersion})`);
+  const { tables, tableNames } = await applySchemaToNewPool(
+    newPool,
+    targetVersion,
+  );
   log("");
-  success(`Created ${tables} table(s).`);
+  success(
+    `Created ${tables} table(s) + 1 meta table in ${c.bold}${newDbName}${c.reset}.`,
+  );
+  // Add the meta table to the in-memory list (it's created in Step 4 below,
+  // but we want the data-migration plan to know it exists).
+  const newDbTables = [...tableNames, "vulnradar_schema_meta"];
 
   // ── Step 3: optionally migrate data ───────────────────────────────────────
   const tablesWithData = source.tables
     .map((t) => ({ name: t, count: source.counts[t] }))
     .filter((t) => t.count > 0);
-  const candidates = MIGRATE_TABLES.filter((t) =>
-    tablesWithData.some((tw) => tw.name === t),
+
+  // Compute the data-migration plan once, so the user can see it before
+  // approving. The "will copy" set is filtered against the target DB's
+  // actual tables (so v2-only tables don't get inserted into a v1 DB).
+  const targetSet = new Set(newDbTables);
+  const canCopy = MIGRATE_TABLES.filter(
+    (t) => targetSet.has(t) && tablesWithData.some((tw) => tw.name === t),
+  );
+  const cannotCopy = MIGRATE_TABLES.filter(
+    (t) => !targetSet.has(t) && tablesWithData.some((tw) => tw.name === t),
   );
   const willMigrate =
-    candidates.length > 0 &&
+    canCopy.length > 0 &&
     (await askYesNo("Migrate data from source database?", true));
 
   // Seed defaults ONLY if we're not bringing our own badges. Otherwise the
   // source user_badges rows would reference source badge IDs that don't match
-  // the freshly-seeded ones.
-  if (!willMigrate || !tablesWithData.some((t) => t.name === "badges")) {
+  // the freshly-seeded ones. v1 doesn't have badges at all.
+  if (
+    targetVersion === "2.0.0" &&
+    (!willMigrate || !tablesWithData.some((t) => t.name === "badges"))
+  ) {
     await seedDefaultBadges(newPool);
+  } else if (targetVersion === "1.0.0") {
+    info("(skipping default badges — v1 schema has no badges table)");
   } else {
     info("Skipping default badge seed (will copy from source).");
   }
 
-  if (candidates.length === 0) {
+  if (canCopy.length === 0 && cannotCopy.length === 0) {
     log("");
     info("No data to migrate from source database.");
   } else if (willMigrate) {
-    section("Data Migration");
-    log("  The following tables have data that can be migrated:");
-    for (const t of candidates) {
-      const meta = tablesWithData.find((x) => x.name === t);
-      log(`    - ${t} (${meta.count} rows)`);
-    }
+    section("Step 3: Data Migration");
+    showDataMigrationPlan(tablesWithData, newDbTables);
     log("");
-    await migrateData(sourcePool, newPool, tablesWithData);
+    await migrateData(sourcePool, newPool, tablesWithData, newDbTables);
   } else {
+    log("");
     info("Skipped data migration.");
+    if (cannotCopy.length > 0) {
+      log("");
+      warn(
+        `${cannotCopy.length} table(s) in the source have no equivalent in the target schema and would NOT have been copied:`,
+      );
+      for (const t of cannotCopy) {
+        const src = tablesWithData.find((x) => x.name === t);
+        log(
+          `    ${c.red}!${c.reset} ${c.bold}${t}${c.reset}  ${c.dim}(${src?.count ?? 0} source rows)${c.reset}  ${c.red}— table not in v${targetVersion}${c.reset}`,
+        );
+      }
+    }
   }
 
   log("");
   success("Done.");
+
+  // ── Step 4: write the meta row so the migrator sees the new schema version
+  section("Step 4: Schema metadata");
+  await writeInitialMetaRow(newPool, targetVersion, meta.version);
+
+  // ── Summary ─────────────────────────────────────────────────────────────
+  log("");
+  log(`  ${c.bold}Summary:${c.reset}`);
+  log(
+    `    ${c.cyan}•${c.reset} Created ${c.bold}${newDbName}${c.reset} (${tables} tables, v${targetVersion} schema)`,
+  );
+  if (willMigrate) {
+    log(
+      `    ${c.cyan}•${c.reset} Copied ${c.bold}${canCopy.length}${c.reset} table(s) from source`,
+    );
+    if (cannotCopy.length > 0) {
+      log(
+        `    ${c.cyan}•${c.reset} ${c.red}Skipped ${cannotCopy.length} table(s)${c.reset} ${c.dim}(not in v${targetVersion})${c.reset}`,
+      );
+    }
+  } else if (canCopy.length > 0 || cannotCopy.length > 0) {
+    log(`    ${c.cyan}•${c.reset} ${c.dim}Skipped data migration${c.reset}`);
+  }
+  log(
+    `    ${c.cyan}•${c.reset} Wrote meta row: schema_version=v${targetVersion}, app_version=v${meta.version}`,
+  );
   log("");
   log(`  ${c.bold}Next steps:${c.reset}`);
   log(
     `    1. Update ${c.bold}.env.local${c.reset} DATABASE_URL to point to ${c.bold}${newDbName}${c.reset}`,
   );
   log(
-    `    2. Run ${c.bold}npm run dev${c.reset} to verify the app starts cleanly`,
+    `    2. Run ${c.bold}npm run db:migrate${c.reset} to verify the migrator recognises the new schema`,
   );
-  log(`    3. If everything looks good, drop the old database manually`);
+  log(
+    `    3. Run ${c.bold}npm run dev${c.reset} to verify the app starts cleanly`,
+  );
+  log(`    4. If everything looks good, drop the old database manually`);
   log("");
 
   await newPool.end();
