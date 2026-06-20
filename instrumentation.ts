@@ -7,6 +7,24 @@
  * - Separate tables only for: 1-to-many relationships, audit trails, shared definitions
  * - No unnecessary junction tables - use simple foreign keys where possible
  */
+
+/**
+ * Compare two "X.Y.Z" semver-style strings. Returns -1 if a < b, 0 if
+ * a == b, 1 if a > b. Missing segments default to 0. Used to compare
+ * schema versions stored in vulnradar_schema_meta.
+ */
+function compareVersions(a: string, b: string): number {
+  const av = a.split(".").map((s) => Number.parseInt(s, 10) || 0);
+  const bv = b.split(".").map((s) => Number.parseInt(s, 10) || 0);
+  const len = Math.max(av.length, bv.length);
+  for (let i = 0; i < len; i++) {
+    const x = av[i] ?? 0;
+    const y = bv[i] ?? 0;
+    if (x !== y) return x < y ? -1 : 1;
+  }
+  return 0;
+}
+
 export async function register() {
   if (process.env.NEXT_RUNTIME === "nodejs") {
     // Phase 8 Commit 1: fail-fast on missing required env vars. Previously the
@@ -20,10 +38,117 @@ export async function register() {
     const {
       APP_NAME,
       APP_VERSION,
+      MIN_SCHEMA_VERSION,
       ENGINE_VERSION,
       VERSION_CHECK_URL,
       RELEASES_URL,
     } = await import("./lib/config/constants");
+
+    // ── Schema version check (BEFORE any table creation) ───────────────
+    // The app requires MIN_SCHEMA_VERSION. If the connected database is
+    // older (or has no meta row at all), block startup so the app
+    // doesn't crash trying to create indexes on columns that don't
+    // exist (e.g. CREATE INDEX idx_users_plan on a v1 DB where
+    // users.plan doesn't exist). The friendly error tells the user
+    // exactly which command to run to fix it.
+    try {
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS vulnradar_schema_meta (
+          id INTEGER PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+          schema_version VARCHAR(20) NOT NULL,
+          app_version     VARCHAR(20) NOT NULL,
+          applied_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
+      `);
+
+      const metaRes = await pool.query(`
+        SELECT schema_version, app_version, applied_at
+        FROM vulnradar_schema_meta
+        WHERE id = 1
+      `);
+
+      if (metaRes.rows.length === 0) {
+        const BOX_INNER = 72;
+        const pad = (text: string) => {
+          const visible = text.length;
+          const right = BOX_INNER - 2 - visible;
+          return "║  " + text + " ".repeat(Math.max(0, right)) + "║";
+        };
+        const top = "╔" + "═".repeat(BOX_INNER) + "╗";
+        const bot = "╚" + "═".repeat(BOX_INNER) + "╝";
+        const blank = "║" + " ".repeat(BOX_INNER) + "║";
+        const lines = [
+          top,
+          pad("SCHEMA VERSION NOT SET"),
+          blank,
+          pad("This database has no schema version recorded."),
+          blank,
+          pad("The database was probably created without going"),
+          pad("through the migration tool. To start the app, do one of:"),
+          blank,
+          pad("  1. Run the migration to detect and set the version:"),
+          pad("       npm run db:migrate"),
+          blank,
+          pad("  2. Or create a fresh database:"),
+          pad("       npm run db:create"),
+          blank,
+          pad("If you want to use a different database, update your"),
+          pad("DATABASE_URL in .env.local."),
+          bot,
+        ];
+        console.error("");
+        console.error("\x1b[31m\x1b[1m");
+        for (const ln of lines) console.error(ln);
+        console.error("\x1b[0m");
+        process.exit(1);
+      }
+
+      const dbSchema = metaRes.rows[0].schema_version as string;
+      const cmp = compareVersions(dbSchema, MIN_SCHEMA_VERSION);
+      if (cmp < 0) {
+        const BOX_INNER = 72;
+        const pad = (text: string) => {
+          const visible = text.length;
+          const right = BOX_INNER - 2 - visible;
+          return "║  " + text + " ".repeat(Math.max(0, right)) + "║";
+        };
+        const top = "╔" + "═".repeat(BOX_INNER) + "╗";
+        const bot = "╚" + "═".repeat(BOX_INNER) + "╝";
+        const blank = "║" + " ".repeat(BOX_INNER) + "║";
+        const lines = [
+          top,
+          pad("SCHEMA VERSION MISMATCH"),
+          blank,
+          pad("Database schema:    v" + dbSchema),
+          pad("App requires:        v" + MIN_SCHEMA_VERSION),
+          blank,
+          pad("This app cannot start on this database."),
+          pad("It expects columns and tables that don't exist yet."),
+          blank,
+          pad("To fix:"),
+          pad("  1. Run the migration to upgrade the database:"),
+          pad("       npm run db:migrate"),
+          blank,
+          pad("  2. Or, if you want to use a different (newer) database,"),
+          pad("     update DATABASE_URL in .env.local."),
+          blank,
+          pad("The app will not start until the database is upgraded."),
+          bot,
+        ];
+        console.error("");
+        console.error("\x1b[31m\x1b[1m");
+        for (const ln of lines) console.error(ln);
+        console.error("\x1b[0m");
+        process.exit(1);
+      }
+
+      console.log(
+        `[${APP_NAME}] Schema version: v${dbSchema} (required: v${MIN_SCHEMA_VERSION}) ✓`,
+      );
+    } catch (schemaError) {
+      console.error(`[${APP_NAME}] Schema version check failed:`, schemaError);
+      process.exit(1);
+    }
 
     // ── Startup version check ───────────────────────────────────────
     console.log(
