@@ -166,6 +166,85 @@ export function supportsCrawl(protocol: SupportedProtocol): boolean {
   return PROTOCOL_CONFIGS[protocol].supportsCrawl;
 }
 
+// ============================================================================
+// R7: Client-facing SCAN_PROTOCOLS — display labels + applicable categories
+// for the scanner form UI. Previously duplicated in components/scanner/scan-form.tsx
+// with subtle drift (SCAN_PROTOCOLS added a "dns" category that PROTOCOL_CONFIGS
+// did not). Kept here as the single source so adding a new protocol means
+// editing one place.
+// ============================================================================
+
+export interface ScanProtocolOption {
+  /** URL scheme prefix including the colon and slashes (e.g. "https://") */
+  value: string;
+  /** Short display label for the UI */
+  label: string;
+  /** One-line description shown in tooltips and dropdowns */
+  description: string;
+  /** Scanner categories applicable for this protocol */
+  categories: Category[];
+}
+
+export const SCAN_PROTOCOLS: readonly ScanProtocolOption[] = [
+  {
+    value: "https://",
+    label: "HTTPS",
+    description: "Secure HTTP (recommended)",
+    categories: [
+      "headers",
+      "ssl",
+      "cookies",
+      "content",
+      "information-disclosure",
+      "configuration",
+      "dns",
+    ],
+  },
+  {
+    value: "http://",
+    label: "HTTP",
+    description: "Unencrypted HTTP",
+    categories: [
+      "headers",
+      "cookies",
+      "content",
+      "information-disclosure",
+      "configuration",
+      "dns",
+    ],
+  },
+  {
+    value: "wss://",
+    label: "WSS",
+    description: "Secure WebSocket",
+    categories: ["ssl", "headers"],
+  },
+  {
+    value: "ws://",
+    label: "WS",
+    description: "WebSocket",
+    categories: ["headers"],
+  },
+  {
+    value: "ftp://",
+    label: "FTP",
+    description: "File Transfer Protocol",
+    categories: ["configuration"],
+  },
+  {
+    value: "ftps://",
+    label: "FTPS",
+    description: "Secure FTP",
+    categories: ["ssl", "configuration"],
+  },
+];
+
+export type ScanProtocol = (typeof SCAN_PROTOCOLS)[number]["value"];
+
+export function isHttpProtocol(protocol: ScanProtocol): boolean {
+  return protocol === "https://" || protocol === "http://";
+}
+
 /**
  * Generate protocol-specific findings for insecure protocols
  */

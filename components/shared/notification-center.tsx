@@ -22,6 +22,7 @@ import {
   VERSION_COOKIE_NAME,
 } from "@/lib/config/constants";
 import { Sparkles } from "lucide-react";
+import { apiGet } from "@/lib/api/client";
 
 const STAFF_ROLE_VALUES = Object.values(STAFF_ROLES);
 
@@ -243,14 +244,13 @@ export function NotificationBell() {
           authenticated: me?.userId ? "true" : "false",
           staff: isStaff ? "true" : "false",
         });
-        const res = await fetch(`/api/v2/notifications/active?${params}`);
-        if (res.ok) {
-          const data = await res.json();
-          // Only show "bell" type notifications in the bell dropdown
-          setNotifications(
-            data.filter((n: ApiNotification) => n.type === "bell"),
-          );
-        }
+        const data = await apiGet<ApiNotification[]>(
+          `/api/v2/notifications/active?${params}`,
+        );
+        // Only show "bell" type notifications in the bell dropdown
+        setNotifications(
+          data.filter((n: ApiNotification) => n.type === "bell"),
+        );
       } catch (err) {
         console.error("Failed to fetch notifications:", err);
       } finally {

@@ -36,67 +36,13 @@ import {
 import { TOTAL_CHECKS_LABEL } from "@/lib/config/constants";
 import { cn } from "@/lib/ui/utils";
 import type { ScanStatus } from "@/lib/scanner/types";
-
-// Protocol definitions with their applicable scanner categories
-export const SCAN_PROTOCOLS = [
-  {
-    value: "https://",
-    label: "HTTPS",
-    description: "Secure HTTP (recommended)",
-    categories: [
-      "headers",
-      "ssl",
-      "cookies",
-      "content",
-      "information-disclosure",
-      "configuration",
-      "dns",
-    ],
-  },
-  {
-    value: "http://",
-    label: "HTTP",
-    description: "Unencrypted HTTP",
-    categories: [
-      "headers",
-      "cookies",
-      "content",
-      "information-disclosure",
-      "configuration",
-      "dns",
-    ],
-  },
-  {
-    value: "wss://",
-    label: "WSS",
-    description: "Secure WebSocket",
-    categories: ["ssl", "headers"],
-  },
-  {
-    value: "ws://",
-    label: "WS",
-    description: "WebSocket",
-    categories: ["headers"],
-  },
-  {
-    value: "ftp://",
-    label: "FTP",
-    description: "File Transfer Protocol",
-    categories: ["configuration"],
-  },
-  {
-    value: "ftps://",
-    label: "FTPS",
-    description: "Secure FTP",
-    categories: ["ssl", "configuration"],
-  },
-] as const;
-
-export type ScanProtocol = (typeof SCAN_PROTOCOLS)[number]["value"];
-
-export function isHttpProtocol(protocol: ScanProtocol): boolean {
-  return protocol === "https://" || protocol === "http://";
-}
+// R7: SCAN_PROTOCOLS, ScanProtocol, and isHttpProtocol moved to
+// lib/scanner/protocols/index.ts (single source of truth).
+import {
+  SCAN_PROTOCOLS,
+  type ScanProtocol,
+  isHttpProtocol,
+} from "@/lib/scanner/protocols";
 
 export type ScanMode = "quick" | "deep" | "bulk";
 

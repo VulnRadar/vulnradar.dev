@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { usePathname } from "next/navigation";
+import { apiPost } from "@/lib/api/client";
 
 interface AdminHeartbeatOptions {
   interval?: number; // ms between heartbeats, default 60s
@@ -48,11 +49,7 @@ export function useAdminHeartbeat({
       else if (path.startsWith("/staff")) section = "staff";
 
       try {
-        await fetch("/api/v2/admin/activity", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ section }),
-        });
+        await apiPost("/api/v2/admin/activity", { section });
       } catch {
         // Silently fail — never disrupt the UI
       }
