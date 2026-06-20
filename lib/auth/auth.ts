@@ -14,17 +14,66 @@ const CLEANUP_INTERVAL = AUTH_CLEANUP_INTERVAL;
 let lastCleanupTime = 0;
 
 // Password hashing using scrypt (built-in, no extra dependency)
+// Hash format: "N:r:p:salt:hash" — params are stored so we can
+// upgrade cost over time without invalidating older hashes.
+// Defaults match OWASP 2024+ recommendations for interactive logins.
+const SCRYPT_N = 1 << 17; // 131072 — was 16384 prior to Phase 2
+const SCRYPT_R = 8;
+const SCRYPT_P = 1;
+const SCRYPT_MAXMEM = 128 * 1024 * 1024; // 128 MiB
+const SCRYPT_KEYLEN = 64;
+
+function scryptOpts(n: number) {
+  return {
+    N: n,
+    r: SCRYPT_R,
+    p: SCRYPT_P,
+    maxmem: SCRYPT_MAXMEM,
+  } as const;
+}
+
 export function hashPassword(password: string): string {
   const salt = randomBytes(16).toString("hex");
-  const hash = scryptSync(password, salt, 64).toString("hex");
-  return `${salt}:${hash}`;
+  const hash = scryptSync(
+    password,
+    salt,
+    SCRYPT_KEYLEN,
+    scryptOpts(SCRYPT_N),
+  ).toString("hex");
+  return `${SCRYPT_N}:${SCRYPT_R}:${SCRYPT_P}:${salt}:${hash}`;
 }
 
 export function verifyPassword(password: string, stored: string): boolean {
-  const [salt, hash] = stored.split(":");
+  const parts = stored.split(":");
+  if (parts.length !== 5) {
+    // Legacy format "salt:hash" — verify with legacy defaults.
+    const [salt, hash] = parts;
+    if (!salt || !hash) return false;
+    const hashBuffer = Buffer.from(hash, "hex");
+    const suppliedBuffer = scryptSync(password, salt, SCRYPT_KEYLEN);
+    return (
+      hashBuffer.length === suppliedBuffer.length &&
+      timingSafeEqual(hashBuffer, suppliedBuffer)
+    );
+  }
+  const [nStr, rStr, pStr, salt, hash] = parts;
+  const n = Number.parseInt(nStr, 10);
+  const r = Number.parseInt(rStr, 10);
+  const p = Number.parseInt(pStr, 10);
+  if (!Number.isFinite(n) || !Number.isFinite(r) || !Number.isFinite(p)) {
+    return false;
+  }
   const hashBuffer = Buffer.from(hash, "hex");
-  const suppliedBuffer = scryptSync(password, salt, 64);
-  return timingSafeEqual(hashBuffer, suppliedBuffer);
+  const suppliedBuffer = scryptSync(password, salt, SCRYPT_KEYLEN, {
+    N: n,
+    r,
+    p,
+    maxmem: SCRYPT_MAXMEM,
+  });
+  return (
+    hashBuffer.length === suppliedBuffer.length &&
+    timingSafeEqual(hashBuffer, suppliedBuffer)
+  );
 }
 
 // Session management

@@ -163,6 +163,7 @@ export async function register() {
           id SERIAL PRIMARY KEY,
           user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
           key_hash VARCHAR(255) NOT NULL UNIQUE,
+          key_locator VARCHAR(32),
           key_encrypted TEXT,
           key_prefix VARCHAR(64) NOT NULL,
           name VARCHAR(100) NOT NULL DEFAULT 'Default',
@@ -173,6 +174,11 @@ export async function register() {
         );
         CREATE INDEX IF NOT EXISTS idx_api_keys_user_id ON api_keys(user_id);
         CREATE INDEX IF NOT EXISTS idx_api_keys_key_hash ON api_keys(key_hash);
+        CREATE INDEX IF NOT EXISTS idx_api_keys_key_locator ON api_keys(key_locator);
+        ALTER TABLE api_keys ADD COLUMN IF NOT EXISTS key_locator VARCHAR(32);
+        CREATE INDEX IF NOT EXISTS idx_api_keys_key_locator_backfill
+          ON api_keys(key_locator)
+          WHERE key_locator IS NULL;
       `);
 
       // ════════════════════════════════════════════════════════════════

@@ -6,21 +6,45 @@ import { TEAM_ROLES } from "@/lib/config/constants";
 type AuthError = NextResponse | undefined;
 
 /**
+ * Whitelist of resources that can be checked for ownership.
+ * Adding a new resource here is the ONLY way to introduce a new
+ * table/column pair to verifyOwnership — there is no longer any
+ * way for callers to interpolate arbitrary SQL identifiers.
+ */
+const OWNERSHIP = {
+  scan_history: { ownerCol: "user_id" },
+  api_keys: { ownerCol: "user_id" },
+  shares: { ownerCol: "user_id" },
+  schedules: { ownerCol: "user_id" },
+  webhooks: { ownerCol: "user_id" },
+  notifications: { ownerCol: "user_id" },
+  sessions: { ownerCol: "user_id" },
+  teams: { ownerCol: "owner_id" },
+} as const satisfies Record<string, { ownerCol: string }>;
+
+export type OwnableResource = keyof typeof OWNERSHIP;
+
+/**
  * Common authorization checks for resource ownership
  */
 
 /**
- * Verify user owns a resource (scan history, team, etc.)
+ * Verify user owns a resource (scan history, team, etc.).
+ *
+ * Security: resource must be one of the whitelisted OwnableResource
+ * keys; userIdColumn is derived from the whitelist (no caller
+ * interpolation). This eliminates the SQL-injection vector that
+ * existed when both arguments were concatenated as raw SQL.
  */
 export async function verifyOwnership(
-  resourceTable: string,
+  resource: OwnableResource,
   resourceId: number,
   userId: number,
-  userIdColumn = "user_id",
 ): Promise<{ owned: boolean; error?: AuthError }> {
+  const { ownerCol } = OWNERSHIP[resource];
   try {
     const result = await pool.query(
-      `SELECT id FROM ${resourceTable} WHERE id = $1 AND ${userIdColumn} = $2`,
+      `SELECT id FROM ${resource} WHERE id = $1 AND ${ownerCol} = $2`,
       [resourceId, userId],
     );
 
