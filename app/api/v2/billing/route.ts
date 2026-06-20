@@ -5,7 +5,7 @@
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import pool from "@/lib/database/db";
-import { stripe } from "@/lib/billing/stripe";
+import { getStripe } from "@/lib/billing/stripe";
 import {
   canMakeRequest,
   PLAN_LIMITS,
@@ -18,6 +18,14 @@ export async function GET() {
   const session = await getSession();
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const stripe = getStripe();
+  if (!stripe) {
+    return NextResponse.json(
+      { error: "Stripe is not configured" },
+      { status: 503 },
+    );
   }
 
   try {
@@ -227,6 +235,14 @@ export async function POST(request: Request) {
   const session = await getSession();
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const stripe = getStripe();
+  if (!stripe) {
+    return NextResponse.json(
+      { error: "Stripe is not configured" },
+      { status: 503 },
+    );
   }
 
   try {

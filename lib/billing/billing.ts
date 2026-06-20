@@ -5,7 +5,7 @@
 // All subscription data is stored directly on the users table (clean schema)
 // ============================================================================
 
-import { stripe, isStripeEnabled } from "./stripe";
+import { getStripe } from "./stripe";
 import pool from "@/lib/database/db";
 import { getPlanById, getFreePlan } from "./plans";
 import type { Plan } from "./plans";
@@ -154,7 +154,8 @@ export async function createStripeCustomer(
   email: string,
   name?: string,
 ): Promise<string | null> {
-  if (!isStripeEnabled() || !stripe) {
+  const stripe = getStripe();
+  if (!stripe) {
     console.warn("[Billing] Stripe not enabled, skipping customer creation");
     return null;
   }
@@ -186,7 +187,8 @@ export async function createSubscriptionCheckout(
   successUrl: string,
   cancelUrl: string,
 ): Promise<string | null> {
-  if (!isStripeEnabled() || !stripe) {
+  const stripe = getStripe();
+  if (!stripe) {
     throw new Error("Stripe is not configured");
   }
 
@@ -254,7 +256,8 @@ export async function createBillingPortalSession(
   userId: number,
   returnUrl: string,
 ): Promise<string | null> {
-  if (!isStripeEnabled() || !stripe) {
+  const stripe = getStripe();
+  if (!stripe) {
     throw new Error("Stripe is not configured");
   }
 
@@ -280,7 +283,8 @@ export async function createBillingPortalSession(
  * Cancel subscription at period end
  */
 export async function cancelSubscription(userId: number): Promise<void> {
-  if (!isStripeEnabled() || !stripe) {
+  const stripe = getStripe();
+  if (!stripe) {
     throw new Error("Stripe is not configured");
   }
 

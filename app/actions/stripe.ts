@@ -1,6 +1,6 @@
 "use server";
 
-import { stripe } from "@/lib/billing/stripe";
+import { getStripe } from "@/lib/billing/stripe";
 import { PRODUCTS, getPlanFromProductId } from "@/lib/billing/products";
 
 export async function startCheckoutSession(productId: string, userId?: number) {
@@ -15,6 +15,12 @@ export async function startCheckoutSession(productId: string, userId?: number) {
 
   // Get the plan ID (e.g., "pro_supporter" from "pro_supporter_monthly")
   const planId = getPlanFromProductId(productId);
+
+  // R1: Stripe lazy accessor — bail out gracefully when not configured.
+  const stripe = getStripe();
+  if (!stripe) {
+    throw new Error("Stripe is not configured on this server.");
+  }
 
   // Create Checkout Session for subscription
   // Email is entered by user in Stripe checkout - we only track by userId

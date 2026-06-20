@@ -4,21 +4,20 @@ import { BILLING_ENABLED } from "@/lib/config/constants";
 
 let stripeInstance: Stripe | null = null;
 
-export const stripe = new Proxy({} as Stripe, {
-  get(_, prop) {
-    if (!stripeInstance) {
-      const key = process.env.STRIPE_SECRET_KEY;
-
-      if (!key) {
-        throw new Error("STRIPE_SECRET_KEY is not set");
-      }
-
-      stripeInstance = new Stripe(key);
-    }
-
-    return stripeInstance[prop as keyof Stripe];
-  },
-});
+/**
+ * R1: Lazy accessor returning the Stripe SDK instance or null when not
+ * configured. Callers should pair this with isStripeEnabled() at the
+ * top of their handler so they can return a typed 503-style response
+ * instead of crashing on first property access.
+ */
+export function getStripe(): Stripe | null {
+  if (!isStripeEnabled()) return null;
+  if (stripeInstance) return stripeInstance;
+  const key = process.env.STRIPE_SECRET_KEY;
+  if (!key) return null;
+  stripeInstance = new Stripe(key);
+  return stripeInstance;
+}
 
 /**
  * Check if Stripe is enabled and configured

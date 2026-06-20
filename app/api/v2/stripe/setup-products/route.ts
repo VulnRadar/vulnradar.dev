@@ -1,5 +1,6 @@
 ﻿import { NextResponse } from "next/server";
-import { stripe } from "@/lib/billing/stripe";
+import type Stripe from "stripe";
+import { getStripe } from "@/lib/billing/stripe";
 import { PRODUCTS } from "@/lib/billing/products";
 import { BILLING_ENABLED } from "@/lib/config/constants";
 
@@ -25,6 +26,7 @@ export async function GET() {
     );
   }
 
+  const stripe = getStripe();
   if (!stripe) {
     return NextResponse.json(
       {
@@ -78,7 +80,7 @@ export async function GET() {
 
       let stripePrice;
       const matchingPrice = existingPrices.data.find(
-        (p) =>
+        (p: Stripe.Price) =>
           p.unit_amount === product.priceInCents &&
           p.recurring?.interval === product.interval,
       );
