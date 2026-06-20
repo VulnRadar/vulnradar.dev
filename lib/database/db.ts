@@ -6,10 +6,24 @@ if (!process.env.DATABASE_URL) {
   );
 }
 
+// Phase 8C Commit 1 (C-1): rejectUnauthorized was `false` even when
+// DATABASE_SSL=true, which allowed any on-path attacker to MITM the DB
+// connection. CA bundle can be overridden via DATABASE_SSL_CA for
+// self-signed certs. The plain `false` (no SSL) path is unchanged for
+// local-dev convenience.
+const useSSL = process.env.DATABASE_SSL === "true";
+const ssl: false | { rejectUnauthorized: boolean; ca?: string } = useSSL
+  ? {
+      rejectUnauthorized: true,
+      ...(process.env.DATABASE_SSL_CA
+        ? { ca: process.env.DATABASE_SSL_CA }
+        : {}),
+    }
+  : false;
+
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl:
-    process.env.DATABASE_SSL === "true" ? { rejectUnauthorized: false } : false,
+  ssl,
   max: 10,
   idleTimeoutMillis: 30000,
   connectionTimeoutMillis: 5000,

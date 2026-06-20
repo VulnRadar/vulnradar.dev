@@ -36,6 +36,10 @@ jobs:
       - name: Run ESLint
         run: npm run lint
 
+      - name: Check Prettier formatting
+        # Phase 8D Commit 8: format drift should block merges.
+        run: npm run format:check
+
   typecheck:
     name: Typecheck
     runs-on: ubuntu-latest
@@ -62,6 +66,31 @@ jobs:
       - name: Audit production dependencies
         # Phase 8 Commit 1: block merges on high/critical CVEs in runtime deps.
         run: npm audit --audit-level=high --omit=dev
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: [lint, typecheck]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Phase 8C Commit 1 (C-4): first test job. Runs the security-critical
+      # unit suite added in this commit. Coverage is informational only
+      # for now; thresholds are enforced locally via `npm run test:coverage`.
+      - name: Run unit tests
+        run: npm run test
 
   build:
     name: Build
