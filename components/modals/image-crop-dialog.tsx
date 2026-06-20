@@ -209,6 +209,7 @@ export function ImageCropDialog({
               className="h-8 w-8 shrink-0"
               onClick={handleReset}
               title="Reset"
+              aria-label="Reset zoom"
             >
               <RotateCcw className="h-3.5 w-3.5" />
             </Button>

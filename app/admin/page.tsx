@@ -619,6 +619,10 @@ function AdminContent() {
                         key={tab.key}
                         onClick={() => handleTabChange(tab.key)}
                         title={tab.label}
+                        aria-label={tab.label}
+                        aria-current={
+                          activeTab === tab.key ? "page" : undefined
+                        }
                         className={cn(
                           "flex items-center justify-center w-9 h-9 rounded-lg transition-all shrink-0",
                           activeTab === tab.key

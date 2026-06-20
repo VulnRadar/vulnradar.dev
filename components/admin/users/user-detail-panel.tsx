@@ -372,6 +372,7 @@ export function UserDetailPanel({
               size="icon"
               className="h-8 w-8 shrink-0 -ml-1 -mt-0.5"
               onClick={onClose}
+              aria-label="Back to user list"
             >
               <ArrowLeft className="h-4 w-4" />
             </Button>
@@ -830,6 +831,7 @@ export function UserDetailPanel({
               size="icon"
               className="h-7 w-7 shrink-0"
               onClick={() => navigator.clipboard.writeText(tempPassword)}
+              aria-label="Copy temporary password"
             >
               <ClipboardCopy className="h-3.5 w-3.5" />
             </Button>
@@ -1360,6 +1362,7 @@ export function UserDetailPanel({
                                         setPendingDeleteBadge(badge)
                                       }
                                       title={`Delete "${badge.display_name}" permanently`}
+                                      aria-label={`Delete ${badge.display_name} badge permanently`}
                                     >
                                       <Trash2 className="h-3.5 w-3.5" />
                                     </Button>

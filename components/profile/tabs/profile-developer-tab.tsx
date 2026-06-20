@@ -225,6 +225,8 @@ export function ProfileDeveloperTab({
                           size="icon"
                           onClick={() => setShowKey(!showKey)}
                           className="shrink-0"
+                          aria-label={showKey ? "Hide API key" : "Show API key"}
+                          aria-pressed={showKey}
                         >
                           {showKey ? (
                             <EyeOff className="h-4 w-4" />
@@ -237,6 +239,7 @@ export function ProfileDeveloperTab({
                           size="icon"
                           onClick={handleCopyKey}
                           className="shrink-0"
+                          aria-label="Copy API key"
                         >
                           {copiedKey ? (
                             <Check className="h-4 w-4 text-green-500" />
@@ -521,6 +524,7 @@ export function ProfileDeveloperTab({
                           setTestingWebhookId(null);
                         }}
                         title="Send test webhook"
+                        aria-label={`Send test webhook to ${wh.name}`}
                       >
                         {testingWebhookId === wh.id ? (
                           <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -543,6 +547,7 @@ export function ProfileDeveloperTab({
                           );
                         }}
                         title="Delete webhook"
+                        aria-label={`Delete webhook ${wh.name}`}
                       >
                         <Trash2 className="h-3.5 w-3.5" />
                       </Button>
@@ -684,9 +689,10 @@ export function ProfileDeveloperTab({
                           body: JSON.stringify({ id: sch.id }),
                         });
                         setSchedules((prev) =>
-                          prev.filter((s) => s.id !== sch.id),
+                          prev.filter((s) => s.id !== s.id),
                         );
                       }}
+                      aria-label={`Delete scheduled scan for ${sch.url}`}
                     >
                       <Trash2 className="h-3.5 w-3.5" />
                     </Button>

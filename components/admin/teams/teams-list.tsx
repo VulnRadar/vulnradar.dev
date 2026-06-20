@@ -140,6 +140,7 @@ export function TeamsList({
               <button
                 onClick={closeTeamModal}
                 className="p-2 rounded-lg hover:bg-muted transition-colors"
+                aria-label="Close team members dialog"
               >
                 <X className="h-4 w-4" />
               </button>
