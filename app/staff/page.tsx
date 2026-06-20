@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Image from "next/image";
 import { Shield, ShieldCheck, Headset, Users } from "lucide-react";
 import { cn } from "@/lib/ui/utils";
 import {
@@ -19,9 +18,8 @@ const DISPLAY_STAFF_ROLES = [
 ] as const;
 
 interface StaffMember {
-  name: string;
+  displayName: string;
   role: string;
-  avatarUrl: string | null;
 }
 
 // Role display configuration - only for actual staff roles (not badges)
@@ -184,7 +182,7 @@ export default function StaffPage() {
                 {/* Member cards */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                   {members.map((member, i) => {
-                    const initials = getInitials(member.name);
+                    const initials = getInitials(member.displayName);
 
                     return (
                       <div
@@ -195,38 +193,24 @@ export default function StaffPage() {
                           config.glow,
                         )}
                       >
-                        {/* Avatar */}
+                        {/* Initials badge (avatar URL no longer exposed by /api/v2/staff) */}
                         <div
                           className={cn(
-                            "relative flex items-center justify-center w-12 h-12 rounded-full shrink-0 overflow-hidden ring-2",
+                            "relative flex items-center justify-center w-12 h-12 rounded-full shrink-0 overflow-hidden ring-2 ring-border",
                             config.bg,
-                            member.avatarUrl
-                              ? "ring-border"
-                              : `ring-transparent`,
                           )}
                         >
-                          {member.avatarUrl ? (
-                            <Image
-                              src={member.avatarUrl}
-                              alt={member.name}
-                              width={48}
-                              height={48}
-                              loading="lazy"
-                              className="h-full w-full object-cover"
-                            />
-                          ) : (
-                            <span
-                              className={cn("text-sm font-bold", config.color)}
-                            >
-                              {initials}
-                            </span>
-                          )}
+                          <span
+                            className={cn("text-sm font-bold", config.color)}
+                          >
+                            {initials}
+                          </span>
                         </div>
 
                         {/* Info */}
                         <div className="flex flex-col gap-1 min-w-0">
                           <h3 className="text-sm font-semibold text-foreground truncate">
-                            {member.name}
+                            {member.displayName}
                           </h3>
                           <div
                             className={cn(

@@ -4,6 +4,7 @@ import pool from "@/lib/database/db";
 import { sendNotificationEmail } from "@/lib/notifications/notifications";
 import { webhookCreatedEmail, webhookDeletedEmail } from "@/lib/email/email";
 import { ERROR_MESSAGES } from "@/lib/config/constants";
+import { validateScanTarget } from "@/lib/scanner/safe-fetch";
 
 function detectWebhookType(url: string): string {
   if (
@@ -148,6 +149,20 @@ export async function PATCH(request: NextRequest) {
   }
 
   const webhook = result.rows[0];
+
+  // H-1: Re-run SSRF validation on the stored URL — the URL may have been
+  // written via DB migration, admin path, or any code path that bypasses
+  // POST validation. This closes the SSRF hole in the test endpoint.
+  const targetCheck = await validateScanTarget(webhook.url);
+  if (!targetCheck.safe) {
+    return NextResponse.json(
+      {
+        success: false,
+        error: targetCheck.reason || "Webhook target blocked",
+      },
+      { status: 400 },
+    );
+  }
 
   // Build test payload based on webhook type
   const testPayload =

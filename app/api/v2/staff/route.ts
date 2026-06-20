@@ -7,23 +7,24 @@ const STAFF_ROLES_FOR_DISPLAY = ["admin", "moderator", "support"];
 
 export async function GET() {
   try {
+    // H-7: Minimal exposure — return only display name + role. No
+    // avatar, no email, no created_at ordering (which would leak
+    // seniority / hiring order). Pages render names as "Staff Member"
+    // when name is null.
     const result = await pool.query(
-      `SELECT name, role, avatar_url FROM users 
-       WHERE role = ANY($1) 
-       ORDER BY
-        CASE role WHEN 'admin' THEN 0 WHEN 'moderator' THEN 1 WHEN 'support' THEN 2 END,
-        created_at ASC`,
+      `SELECT name, role FROM users
+       WHERE role = ANY($1)`,
       [STAFF_ROLES_FOR_DISPLAY],
     );
 
     const staff = result.rows.map((row) => ({
-      name: row.name || "Staff Member",
+      displayName: row.name || "Staff Member",
       role: row.role,
-      avatarUrl: row.avatar_url || null,
     }));
 
     return NextResponse.json({ staff });
-  } catch {
-    return NextResponse.json({ staff: [] });
+  } catch (err) {
+    console.error("[staff] list failed:", err);
+    return NextResponse.json({ staff: [] }, { status: 500 });
   }
 }

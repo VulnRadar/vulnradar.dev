@@ -18,6 +18,7 @@ import {
 } from "@/lib/config/constants";
 import { email2FACodeEmail, sendEmail, newLoginEmail } from "@/lib/email/email";
 import { sendNotificationEmail } from "@/lib/notifications/notifications";
+import { findTrustedDevice } from "@/lib/auth/device-trust";
 
 export const POST = withErrorHandling(async (request: Request) => {
   // Parse body
@@ -81,16 +82,17 @@ export const POST = withErrorHandling(async (request: Request) => {
   const twoFactorMethod = userInfo?.two_factor_method || "app";
 
   if (has2FA) {
-    // Check if device is trusted (skip 2FA for trusted devices)
+    // H-3: device-trust cookie is now an opaque 32-byte random token
+    // (256 bits) stored server-side in device_trust. The previous
+    // implementation used a 32-bit hash of `${ip}-${userAgent}` which
+    // is brute-forceable for any attacker who can read the IP/UA
+    // pair (e.g. via login-alert email leakage).
     const userAgent = await getUserAgent();
-    const deviceId = `${ip}-${userAgent}`
-      .split("")
-      .reduce((a, b) => (a << 5) - a + b.charCodeAt(0), 0);
     const deviceCookie = (request as unknown as NextRequest).cookies?.get?.(
       DEVICE_TRUST_COOKIE_NAME,
     )?.value;
 
-    if (deviceCookie && deviceCookie === String(deviceId)) {
+    if (deviceCookie && (await findTrustedDevice(user.id, deviceCookie))) {
       // Device is trusted - create session directly without 2FA
       await createSession(user.id, ip, userAgent);
 

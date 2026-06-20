@@ -4,6 +4,7 @@ import pool from "@/lib/database/db";
 import { sendNotificationEmail } from "@/lib/notifications/notifications";
 import { scheduleCreatedEmail, scheduleDeletedEmail } from "@/lib/email/email";
 import { ERROR_MESSAGES } from "@/lib/config/constants";
+import { validateScanTarget } from "@/lib/scanner/safe-fetch";
 
 const FREQ_INTERVALS: Record<string, string> = {
   daily: "1 day",
@@ -16,6 +17,9 @@ const FREQ_INTERVALS_DAYS: Record<string, number> = {
   weekly: 7,
   monthly: 30,
 };
+
+// H-2: cap URL length on scheduled scans to prevent DoS / log abuse.
+const MAX_SCHEDULE_URL_LENGTH = 2048;
 
 export async function GET() {
   const session = await getSession();
@@ -45,10 +49,28 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "URL is required" }, { status: 400 });
   }
 
+  if (url.length > MAX_SCHEDULE_URL_LENGTH) {
+    return NextResponse.json(
+      { error: `URL exceeds maximum length of ${MAX_SCHEDULE_URL_LENGTH}` },
+      { status: 400 },
+    );
+  }
+
   try {
     new URL(url);
   } catch {
     return NextResponse.json({ error: "Invalid URL" }, { status: 400 });
+  }
+
+  // H-2: validate the URL is a public HTTP(S) target before storing it.
+  // The scheduled scan worker (future) will fetch this URL — we must not
+  // allow private/loopback/link-local/metadata targets.
+  const targetCheck = await validateScanTarget(url);
+  if (!targetCheck.safe) {
+    return NextResponse.json(
+      { error: targetCheck.reason || "URL blocked" },
+      { status: 400 },
+    );
   }
 
   const freq = frequency && FREQ_INTERVALS[frequency] ? frequency : "weekly";
