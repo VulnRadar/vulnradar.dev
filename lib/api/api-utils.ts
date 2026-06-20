@@ -178,6 +178,14 @@ export const Validate = {
 };
 
 /**
+ * L-10: Hard cap on JSON request bodies. Without this, a client can
+ * send a multi-GB JSON body that the server will buffer before
+ * rejecting. 1 MiB is more than enough for our route shapes (the
+ * largest legitimate payload is a few KB).
+ */
+const MAX_REQUEST_BODY_BYTES = 1 * 1024 * 1024;
+
+/**
  * Request body parsing with error handling
  */
 export async function parseBody<T>(
@@ -185,6 +193,18 @@ export async function parseBody<T>(
 ): Promise<{ success: true; data: T } | { success: false; error: string }> {
   try {
     const contentType = request.headers.get("content-type") || "";
+    const contentLength = request.headers.get("content-length");
+
+    // L-10: Reject oversized payloads before reading them.
+    if (contentLength !== null) {
+      const len = Number.parseInt(contentLength, 10);
+      if (Number.isFinite(len) && len > MAX_REQUEST_BODY_BYTES) {
+        return {
+          success: false,
+          error: `Request body exceeds ${MAX_REQUEST_BODY_BYTES} bytes`,
+        };
+      }
+    }
 
     // Only parse JSON if content-type indicates JSON
     if (contentType.includes("application/json")) {

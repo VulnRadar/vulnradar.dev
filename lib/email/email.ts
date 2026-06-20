@@ -181,7 +181,10 @@ export async function sendEmail({
     console.warn("SMTP not configured. Email not sent:");
     console.warn(`  To: ${to}`);
     console.warn(`  Subject: ${subject}`);
-    console.warn(`  Text: ${text.substring(0, 200)}...`);
+    // L-2: Log only metadata (length), never the email body. Email
+    // bodies can contain reset links, 2FA codes, or share tokens —
+    // they must never appear in logs even truncated.
+    console.warn(`  Length: ${text.length} chars`);
 
     // In development, just log and return successfully
     if (process.env.NODE_ENV !== "production") {

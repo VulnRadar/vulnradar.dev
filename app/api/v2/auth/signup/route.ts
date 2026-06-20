@@ -110,8 +110,11 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     }
   });
 
-  // Generate verification token
+  // Generate verification token (raw token is emailed; we store the hash)
   const token = crypto.randomBytes(32).toString("hex");
+  // M-2: hash the token before storage so a DB dump doesn't yield
+  // working verification tokens.
+  const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
   const expiresAt = new Date(
     Date.now() + EMAIL_VERIFICATION_TOKEN_LIFETIME * 1000,
   );
@@ -121,10 +124,10 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     user.id,
   ]);
 
-  // Store token
+  // Store hashed token
   await pool.query(
     "INSERT INTO email_verification_tokens (user_id, token_hash, expires_at) VALUES ($1, $2, $3)",
-    [user.id, token, expiresAt],
+    [user.id, tokenHash, expiresAt],
   );
 
   // Create default notification preferences (all enabled except tips_guides) for the new user

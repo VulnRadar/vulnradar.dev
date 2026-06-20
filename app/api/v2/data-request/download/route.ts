@@ -27,5 +27,12 @@ export async function GET() {
     );
   }
 
-  return NextResponse.json(result.rows[0].data);
+  // M-8: never let proxies or browsers cache PII exports. Clients
+  // should pull this once and store locally.
+  return NextResponse.json(result.rows[0].data, {
+    headers: {
+      "Cache-Control": "no-store, no-cache, must-revalidate, private",
+      Pragma: "no-cache",
+    },
+  });
 }
