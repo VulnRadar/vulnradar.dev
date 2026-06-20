@@ -80,7 +80,7 @@ See [docs/architecture](https://vulnradar.dev/docs/architecture) for:
 
 See [docs/development](https://vulnradar.dev/docs/development) for:
 
-- Prerequisites (Node 20+, PostgreSQL 14+)
+- Prerequisites (**Node 22 LTS** recommended, Node 20 LTS also supported — odd versions like 21/23 are not supported by `vitest@4`; see `.nvmrc`); PostgreSQL 14+)
 - Local setup (`npm install`, `.env`, `npm run dev`)
 - Scripts (`dev`, `build`, `lint`, `lint:fix`, `typecheck`, `db:migrate`, `db:create`)
 - Linting & formatting (ESLint 9 + flat config)
