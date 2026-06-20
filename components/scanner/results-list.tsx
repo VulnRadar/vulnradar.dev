@@ -100,6 +100,7 @@ export function ResultsList({ findings, onSelectIssue }: ResultsListProps) {
             placeholder="Search issues..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
+            aria-label="Filter scan findings by keyword"
             className="w-full h-9 pl-9 pr-8 rounded-lg border border-border bg-card text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent"
           />
           {searchQuery && (

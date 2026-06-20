@@ -937,6 +937,7 @@ function AdminContent() {
                             placeholder="Search by name or email..."
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
+                            aria-label="Search users by name or email"
                             className="pl-9 h-10 bg-background/50 border-border/40 focus:border-primary/50"
                           />
                         </div>

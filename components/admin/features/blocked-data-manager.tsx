@@ -351,6 +351,7 @@ export function BlockedDataManager() {
                 placeholder="Search blocked URLs or IPs..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
+                aria-label="Search blocked URLs or IPs"
                 className="pl-10 bg-background/50 border-border/40"
               />
             </div>
