@@ -9,10 +9,23 @@
  * - Body pre-parsed once into head/scripts segments to avoid repeated full-body regex scans
  * - Early exit for tiny/empty bodies on body-dependent checks
  * - token-exposure JWT pattern deduplicated vs hardcoded-secrets
+ *
+ * O5: Shared helpers (generateId, h, hasHeader, escapeRegExp) live in
+ * ./checks/_helpers.ts. Future per-category split: ./checks/{headers,
+ * ssl, content, cookies, configuration, information-disclosure, dns}.ts
+ * each owning the detectors for one Category and re-exporting a typed
+ * Record<string, DetectFn> that this file merges.
  */
 
 import type { Vulnerability, Category, Severity } from "./types";
 import checksData from "./checks-data.json";
+import {
+  generateId,
+  getHeader,
+  hasHeader,
+  escapeRegExp,
+  type DetectFn,
+} from "./checks/_helpers";
 
 type CheckFn = (
   url: string,
@@ -20,30 +33,9 @@ type CheckFn = (
   body: string,
 ) => Vulnerability | null;
 
-// ── Helpers ────────────────────────────────────────────────────────────────
-
-let idCounter = 0;
-function generateId(): string {
-  return `vuln-${Date.now()}-${idCounter++}`;
-}
-
-function h(headers: Headers, key: string): string | null {
-  return headers.get(key);
-}
-
-function hasHeader(headers: Headers, key: string): boolean {
-  return headers.has(key);
-}
-
-function escapeRegExp(input: string): string {
-  return input.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-// ── Detection Functions ────────────────────────────────────────────────────
-// Each function returns evidence string (truthy = found) or null (not found).
-// The framework wraps the evidence into a full Vulnerability object using JSON metadata.
-
-type DetectFn = (url: string, headers: Headers, body: string) => string | null;
+// Inline alias so existing detector code (h, hasHeader, escapeRegExp)
+// keeps working without renaming inside 2,700+ lines.
+const h = getHeader;
 
 const detectors: Record<string, DetectFn> = {
   // ═══════════════════════════════════════════════════════════════════════════
