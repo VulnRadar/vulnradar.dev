@@ -7,6 +7,26 @@
 
 type DbRow = Record<string, unknown>;
 
+/**
+ * R2: Typed shape for the most-used user columns. Callers that need
+ * the full row can still fall back to DbRow, but most lookups only
+ * touch these fields.
+ */
+export interface UserRow {
+  id: number;
+  email: string;
+  password_hash: string;
+  name: string | null;
+  plan: string | null;
+  role: string | null;
+  disabled_at: string | null;
+  email_verified_at: string | null;
+  totp_secret: string | null;
+  totp_enabled: boolean | null;
+  two_factor_method: string | null;
+  tos_accepted_at: string | null;
+}
+
 // ============================================================================
 // User Operations
 // ============================================================================
@@ -43,14 +63,21 @@ export async function getUserById(
 }
 
 /**
- * Get user by email
+ * Get user by email. Normalizes input (lowercase + trim) and selects
+ * the columns most callers actually need. Login uses password_hash;
+ * profile lookups use the rest. This is the canonical helper — callers
+ * in lib/auth re-export from here to avoid two divergent copies.
  */
-export async function getUserByEmail(email: string): Promise<DbRow | null> {
+export async function getUserByEmail(email: string): Promise<UserRow | null> {
   try {
-    const result = await pool.query("SELECT * FROM users WHERE email = $1", [
-      email,
-    ]);
-    return (result.rows[0] as DbRow) || null;
+    const result = await pool.query(
+      `SELECT id, email, password_hash, name, plan, role, disabled_at,
+              email_verified_at, totp_secret, totp_enabled,
+              two_factor_method, tos_accepted_at
+         FROM users WHERE email = $1`,
+      [email.toLowerCase().trim()],
+    );
+    return (result.rows[0] as UserRow) || null;
   } catch (error) {
     console.error("[DB] Failed to get user by email:", error);
     return null;

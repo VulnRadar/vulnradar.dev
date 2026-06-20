@@ -186,14 +186,7 @@ export async function createUser(
   return result.rows[0];
 }
 
-export async function getUserByEmail(email: string) {
-  const result = await pool.query(
-    "SELECT id, email, password_hash, name FROM users WHERE email = $1",
-    [email.toLowerCase().trim()],
-  );
-
-  return result.rows[0] || null;
-}
+export { getUserByEmail } from "@/lib/database/db-utils";
 
 // Cleanup expired sessions
 export async function cleanupExpiredSessions(): Promise<void> {

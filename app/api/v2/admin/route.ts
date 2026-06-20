@@ -1,6 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { randomBytes, scryptSync } from "node:crypto";
-import { getSession } from "@/lib/auth";
+// R3/D1: requireStaff and logAction moved to lib/auth/authorization.ts
+// (single source of truth). Local wrappers kept as aliases so the 40+
+// existing call sites below don't need to change.
+import {
+  requireStaff as _requireStaff,
+  logAction,
+} from "@/lib/auth/authorization";
+
 import pool from "@/lib/database/db";
 import { getClientIp } from "@/lib/api/request-utils";
 import {
@@ -45,30 +52,7 @@ async function getUserName(userId: number): Promise<string> {
 }
 
 async function requireStaff() {
-  const session = await getSession();
-  if (!session) return null;
-  const result = await pool.query("SELECT role FROM users WHERE id = $1", [
-    session.userId,
-  ]);
-  const user = result.rows[0];
-  if (!user) return null;
-  const role = user.role || "user";
-  if ((STAFF_ROLE_HIERARCHY[role] || 0) < (STAFF_ROLE_HIERARCHY.support || 1))
-    return null;
-  return { ...session, role };
-}
-
-async function logAction(
-  adminId: number,
-  targetUserId: number | null,
-  action: string,
-  details?: string,
-  ip?: string,
-) {
-  await pool.query(
-    "INSERT INTO admin_audit_log (admin_id, target_user_id, action, details, ip_address) VALUES ($1, $2, $3, $4, $5)",
-    [adminId, targetUserId, action, details || null, ip || null],
-  );
+  return _requireStaff();
 }
 
 // GET: Admin dashboard stats + user list + audit log
