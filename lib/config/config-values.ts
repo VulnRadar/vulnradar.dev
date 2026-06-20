@@ -8,9 +8,9 @@
 // App metadata - UPDATE THESE FOR YOUR DEPLOYMENT
 export const CONFIG_APP_NAME = "VulnRadar";
 export const CONFIG_APP_SLUG = "vulnradar";
-export const CONFIG_APP_VERSION = "2.3.0";
-// The minimum database schema version this app requires. App 2.3.0 uses
-// the v2 schema (v2.3.0 = v2 in the migration framework — the only
+export const CONFIG_APP_VERSION = "2.3.1";
+// The minimum database schema version this app requires. App 2.3.1 uses
+// the v2 schema (v2.3.x = v2 in the migration framework — the only
 // difference is api_keys.key_locator, which instrumentation.ts auto-adds).
 // When you bump CONFIG_APP_VERSION to a release with a real schema change,
 // also bump this to the new schema version and add the migration in
