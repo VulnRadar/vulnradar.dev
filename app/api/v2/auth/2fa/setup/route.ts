@@ -16,8 +16,16 @@ import { ERROR_MESSAGES, SUCCESS_MESSAGES } from "@/lib/config/constants";
 function generateBackupCodes(count = 8): string[] {
   const codes: string[] = [];
   for (let i = 0; i < count; i++) {
-    const code = crypto.randomBytes(4).toString("hex").toUpperCase();
-    codes.push(`${code.slice(0, 4)}-${code.slice(4)}`);
+    // Phase 8C Commit 2 (H-3): 10 bytes (80 bits) per code. The
+    // previous `randomBytes(4)` (32 bits) is below NIST 800-63B
+    // guidance for backup verification codes. The 2FA verify
+    // endpoint rate-limits to 5 attempts per 5 minutes per
+    // user+IP, so 32-bit codes were computationally in scope.
+    const code = crypto.randomBytes(10).toString("hex").toUpperCase();
+    // 20 hex chars, split as XXXXX-XXXXX-XXXXX-XXXXX.
+    codes.push(
+      `${code.slice(0, 5)}-${code.slice(5, 10)}-${code.slice(10, 15)}-${code.slice(15, 20)}`,
+    );
   }
   return codes;
 }

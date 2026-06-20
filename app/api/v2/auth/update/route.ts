@@ -187,24 +187,22 @@ export async function PATCH(request: NextRequest) {
 
     // Update avatar
     if (typeof avatarUrl === "string") {
-      // Allow clearing avatar (empty string), data URLs, or Discord CDN URLs
-      const isValidAvatar =
-        !avatarUrl ||
-        avatarUrl.startsWith("data:image/") ||
-        avatarUrl.startsWith("https://cdn.discordapp.com/");
-
-      if (!isValidAvatar) {
-        return NextResponse.json(
-          { error: "Invalid avatar format." },
-          { status: 400 },
-        );
-      }
-      // Limit data URLs to ~10MB base64 (base64 is ~33% larger than raw)
-      if (avatarUrl.startsWith("data:image/") && avatarUrl.length > 7_000_000) {
-        return NextResponse.json(
-          { error: "Avatar is too large. Please use an image under 10MB." },
-          { status: 400 },
-        );
+      // Phase 8C Commit 2 (H-1): strict avatar validation. The previous
+      // check only verified the data: URL prefix — it would happily accept
+      // `data:image/svg+xml;base64,<SVG with inline script>` and store it
+      // in the DB, ready to render as XSS. Now uses lib/uploads/avatar.ts
+      // to enforce MIME allowlist (png/jpeg only — SVG is rejected),
+      // magic-bytes check, and a 5 MiB cap.
+      if (avatarUrl === "") {
+        // Allowed: user is clearing the avatar.
+      } else if (avatarUrl.startsWith("https://cdn.discordapp.com/")) {
+        // Allowed: pre-cleared Discord CDN URL from OAuth.
+      } else {
+        const { validateAvatarDataUrl } = await import("@/lib/uploads/avatar");
+        const result = validateAvatarDataUrl(avatarUrl);
+        if (!result.valid) {
+          return NextResponse.json({ error: result.reason }, { status: 400 });
+        }
       }
       await pool.query("UPDATE users SET avatar_url = $1 WHERE id = $2", [
         avatarUrl || null,

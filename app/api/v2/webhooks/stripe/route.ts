@@ -148,7 +148,7 @@ export async function POST(req: NextRequest) {
           // Fallback: Update by email if userId lookup failed
           if ((!result || result.rowCount === 0) && customerEmail) {
             result = await pool.query(
-              `UPDATE users SET 
+              `UPDATE users SET
                 plan = $1,
                 stripe_customer_id = $2,
                 stripe_subscription_id = $3,
@@ -158,12 +158,19 @@ export async function POST(req: NextRequest) {
               [plan || "free", customerId, subscriptionId, customerEmail],
             );
             if (result.rowCount && result.rowCount > 0) {
-              console.log(`[Stripe] User ${customerEmail} upgraded to ${plan}`);
+              // Phase 8C Commit 2 (H-2): log userId (already known from
+              // RETURNING) instead of customerEmail. PII stays out of
+              // log aggregators.
+              console.log(
+                `[Stripe] User ID ${result.rows[0].id} upgraded to ${plan} (by-email fallback)`,
+              );
               // Grant premium badge
               await grantPremiumBadge(result.rows[0].id);
             } else {
+              // No PII in this branch either — we don't have a userId to
+              // log, but we can log the Stripe event id for correlation.
               console.log(
-                `[Stripe] checkout.session.completed but no user found for email ${customerEmail}`,
+                `[Stripe] checkout.session.completed but no user found (event ${event.id})`,
               );
             }
           }
@@ -274,8 +281,10 @@ export async function POST(req: NextRequest) {
               ],
             );
             if (result.rowCount && result.rowCount > 0) {
+              // Phase 8C Commit 2 (H-2): log userId from RETURNING
+              // instead of customer.email. PII stays out of logs.
               console.log(
-                `[Stripe] Subscription created for ${customer.email}, plan: ${plan}`,
+                `[Stripe] Subscription created for user ID ${result.rows[0].id}, plan: ${plan}`,
               );
               // Grant premium badge for paid plans
               if (plan && plan !== "free") {
@@ -283,7 +292,7 @@ export async function POST(req: NextRequest) {
               }
             } else {
               console.log(
-                `[Stripe] Subscription created but no user found for email ${customer.email}`,
+                `[Stripe] Subscription created but no user found (event ${event.id})`,
               );
             }
           }
