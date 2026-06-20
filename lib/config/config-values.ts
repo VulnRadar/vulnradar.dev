@@ -8,7 +8,7 @@
 // App metadata - UPDATE THESE FOR YOUR DEPLOYMENT
 export const CONFIG_APP_NAME = "VulnRadar";
 export const CONFIG_APP_SLUG = "vulnradar";
-export const CONFIG_APP_VERSION = "2.2.3";
+export const CONFIG_APP_VERSION = "3.0.0";
 export const CONFIG_ENGINE_VERSION = "2.1.0";
 export const CONFIG_APP_DESCRIPTION =
   "Scan websites for security vulnerabilities. Get instant reports with severity ratings, actionable fix guidance, and team collaboration tools.";

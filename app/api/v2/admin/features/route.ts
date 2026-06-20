@@ -349,15 +349,15 @@ export async function POST(req: NextRequest) {
 
             if (segment && segment !== "all") {
               if (segment === "premium") {
-                userQuery += ` AND subscription_tier != 'free'`;
+                userQuery += ` AND plan != 'free'`;
               } else if (segment === "free") {
-                userQuery += ` AND subscription_tier = 'free'`;
+                userQuery += ` AND plan = 'free'`;
               } else if (segment === "core_supporter") {
-                userQuery += ` AND subscription_tier = 'core_supporter'`;
+                userQuery += ` AND plan = 'core_supporter'`;
               } else if (segment === "pro_supporter") {
-                userQuery += ` AND subscription_tier = 'pro_supporter'`;
+                userQuery += ` AND plan = 'pro_supporter'`;
               } else if (segment === "elite_supporter") {
-                userQuery += ` AND subscription_tier = 'elite_supporter'`;
+                userQuery += ` AND plan = 'elite_supporter'`;
               } else if (
                 typeof segment === "string" &&
                 segment.startsWith("email:")
@@ -479,15 +479,15 @@ export async function POST(req: NextRequest) {
 
             if (segment && segment !== "all") {
               if (segment === "premium") {
-                userQuery += ` AND subscription_tier != 'free'`;
+                userQuery += ` AND plan != 'free'`;
               } else if (segment === "free") {
-                userQuery += ` AND subscription_tier = 'free'`;
+                userQuery += ` AND plan = 'free'`;
               } else if (segment === "core_supporter") {
-                userQuery += ` AND subscription_tier = 'core_supporter'`;
+                userQuery += ` AND plan = 'core_supporter'`;
               } else if (segment === "pro_supporter") {
-                userQuery += ` AND subscription_tier = 'pro_supporter'`;
+                userQuery += ` AND plan = 'pro_supporter'`;
               } else if (segment === "elite_supporter") {
-                userQuery += ` AND subscription_tier = 'elite_supporter'`;
+                userQuery += ` AND plan = 'elite_supporter'`;
               } else if (
                 typeof segment === "string" &&
                 segment.startsWith("email:")

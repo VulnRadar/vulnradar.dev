@@ -33,7 +33,7 @@ Professional web vulnerability scanner. Completely free, forever.
 
 ## Self-Hosting
 
-VulnRadar is GPL-3.0 and can be self-hosted with Docker. See the [Self-Hosting Guide](docs/SELF_HOSTING.md) for full instructions.
+VulnRadar is GPL-3.0 and can be self-hosted with Docker. See the [Self-Hosting Guide](https://vulnradar.dev/docs/self-hosting) for full instructions.
 
 Quick start:
 
@@ -55,7 +55,7 @@ docker compose exec app npm run db:create
 
 ## Configuration
 
-VulnRadar has **two configuration layers** (see [docs/CONFIG.md](docs/CONFIG.md) for the full reference):
+VulnRadar has **two configuration layers** (see the [Config Reference](https://vulnradar.dev/docs/config) for the full reference):
 
 | Layer                 | File                                 | Purpose                                                                                         |
 | --------------------- | ------------------------------------ | ----------------------------------------------------------------------------------------------- |
@@ -66,19 +66,19 @@ VulnRadar has **two configuration layers** (see [docs/CONFIG.md](docs/CONFIG.md)
 
 ## Architecture
 
-See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for:
+See [docs/architecture](https://vulnradar.dev/docs/architecture) for:
 
 - Project structure (`app/`, `lib/`, `components/`, `hooks/`)
 - Configuration system (above)
-- Database layer (PostgreSQL via `@neondatabase/serverless`)
+- Database layer (PostgreSQL via the `pg` driver)
 - Authentication flow (sessions, 2FA, API keys)
 - Scanner engine (310+ security checks)
 - API layer (REST v1 + v2)
-- CI/CD pipeline (GitHub Actions + CodeQL + Dependabot)
+- CI/CD pipeline (GitHub Actions + Dependabot)
 
 ## Development
 
-See [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) for:
+See [docs/development](https://vulnradar.dev/docs/development) for:
 
 - Prerequisites (Node 20+, PostgreSQL 14+)
 - Local setup (`npm install`, `.env`, `npm run dev`)
@@ -90,20 +90,18 @@ See [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) for:
 ## Tech Stack
 
 - **Framework:** Next.js 15.5 (App Router)
-- **UI:** React 19, TypeScript 6, Tailwind CSS 3, Radix UI primitives
-- **Database:** PostgreSQL via `@neondatabase/serverless` driver
-- **Auth:** iron-session, bcrypt, TOTP (otplib)
+- **UI:** React 19, TypeScript 5.9, Tailwind CSS 3, Radix UI primitives
+- **Database:** PostgreSQL via the `pg` driver
+- **Auth:** Custom session cookies (HMAC-signed), bcryptjs for password hashing, custom TOTP (RFC 6238)
 - **Payments:** Stripe
 - **Scanner:** Custom TypeScript engine with HTTP/HTTPS/WebSocket/FTP checks
-- **CI:** GitHub Actions + CodeQL + Dependabot
+- **CI:** GitHub Actions + Dependabot
 
 ## Security
 
 - [Security Policy](SECURITY.md)
-- [Security.txt](public/.well-known/security.txt)
-- [CodeQL Analysis](https://github.com/VulnRadar/vulnradar.dev/security/code-scanning)
+- [Security.txt](https://vulnradar.dev/.well-known/security.txt)
 - [Dependency Scanning](https://github.com/VulnRadar/vulnradar.dev/network/dependencies)
-- [Secret Scanning with Push Protection](https://docs.github.com/en/code-security/secret-scanning/about-secret-scanning)
 
 To report a vulnerability, email **security@vulnradar.dev** (do NOT open a public issue).
 

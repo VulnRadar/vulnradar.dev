@@ -9,6 +9,13 @@
  */
 export async function register() {
   if (process.env.NEXT_RUNTIME === "nodejs") {
+    // Phase 8 Commit 1: fail-fast on missing required env vars. Previously the
+    // process would start with no schema, then 500 on every request. Now
+    // startup aborts with a clear error message pointing at the missing var.
+    const { validateEnv } = await import("./lib/config/env");
+    const env = validateEnv();
+    void env; // referenced for side-effect (throws on invalid env)
+
     const { default: pool } = await import("./lib/database/db");
     const {
       APP_NAME,
@@ -79,10 +86,12 @@ export async function register() {
     }
 
     if (!process.env.DATABASE_URL) {
-      console.error(
-        `[${APP_NAME}] DATABASE_URL is not configured. Database initialization skipped.`,
+      // Phase 8 Commit 1: throw instead of silently returning. validateEnv()
+      // already catches this, but keep a defensive check in case the schema
+      // is bypassed in test contexts.
+      throw new Error(
+        `[${APP_NAME}] DATABASE_URL is not configured. Set it in .env or your deployment environment.`,
       );
-      return;
     }
 
     try {
