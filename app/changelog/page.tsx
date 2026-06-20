@@ -120,17 +120,118 @@ interface Release {
 
 const CHANGELOG: Release[] = [
   {
-    version: "3.0.0",
-    date: "June 19, 2026",
-    title: "Comprehensive Security Hardening & Codebase Refactor",
+    version: "2.3.0",
+    date: "June 20, 2026",
+    title: "Comprehensive Security Patch & Quality Update",
     highlights: true,
     summary:
-      "Major security release: closed every critical and high-severity finding from the audit. Faster API key validation (indexed lookup), stronger password hashing, signed OAuth state, strong device trust, per-user rate limiting on 2FA, SSRF re-validation, hashed email/reset tokens, and a tightened CSP. Internals cleaned up: consolidated constants, plans/products, scanner helpers, and admin role checks; removed duplicate code paths.",
+      "Security-patch release built on a full source audit. Closes every critical and high-severity finding across auth, crypto, sessions, rate-limiting, file uploads, webhooks, and access control; hardens the build/CI pipeline so typecheck and dependency-audit failures block merges; introduces per-route error boundaries, accessible forms, and a complete vitest test suite covering the security-critical code paths. Internals consolidated: single source of truth for constants, plans/products, scanner helpers, and admin role checks; duplicate code paths removed across ~10 admin route files.",
     changes: [
+      // ── Critical security fixes (Phase 8C) ─────────────────────────
+      {
+        icon: Shield,
+        label: "Database SSL Now Enforces Certificate Validation",
+        desc: "Was rejectUnauthorized: false even when DATABASE_SSL=true, allowing any on-path attacker to MITM the database connection. Now rejectUnauthorized: true with optional DATABASE_SSL_CA override for self-signed certs. This was the single most impactful finding in the audit: every self-hosted deployment that enabled SSL to 'be safe' was in fact MITM-able.",
+        category: "security",
+      },
+      {
+        icon: Lock,
+        label: "Fixed: Resend-Verification Token Hashing Regression",
+        desc: "Was storing the raw token in token_hash while verify-email hashed with sha256, so every resend-generated link was dead AND a future 'fix' would have re-introduced the M-2 vulnerability Phase 8B had closed. Now mirrors the signup route: hash the token with sha256 before insert.",
+        category: "fixed",
+      },
+      {
+        icon: ShieldAlert,
+        label: "Fixed: 'Log Out All Sessions' Cleared the Wrong Cookie",
+        desc: "Was setting a literal 'session' cookie to expire instead of the real session cookie (default vulnradar_session). Server-side sessions were correctly deleted, but the stale browser cookie would re-arrive on the next request. Now uses cookies() with the actual AUTH_SESSION_COOKIE_NAME and wraps the handler with withErrorHandling.",
+        category: "fixed",
+      },
+      {
+        icon: Lock,
+        label: "Removed All Hardcoded Fallback Secrets",
+        desc: "Discord state HMAC and API key locator no longer fall back to global strings in the source. Any deployment missing AUTH_SECRET or API_KEY_ENCRYPTION_KEY now fails fast at startup with a clear error pointing at the missing var. (Phase 8B Commit 1.)",
+        category: "security",
+      },
+      {
+        icon: ShieldCheck,
+        label: "Zod-Validated Environment at Startup",
+        desc: "New lib/config/env.ts validates process.env at server boot using a Zod schema. DATABASE_URL, API_KEY_ENCRYPTION_KEY, and NEXT_PUBLIC_APP_URL are required and length-validated. The server refuses to start with a partial config instead of 500ing on every request.",
+        category: "security",
+      },
+      {
+        icon: Globe,
+        label: "IP Spoofing Fix (TRUSTED_PROXY_CIDR)",
+        desc: "getClientIp was reading the leftmost entry of x-forwarded-for, which is trivially spoofable when no proxy is in play. Now honors TRUSTED_PROXY_CIDR: when set, walks the header right-to-left skipping trusted hops and returns the first untrusted IP. Adds IPv4/IPv6 CIDR parser.",
+        category: "security",
+      },
+      {
+        icon: Image,
+        label: "Avatar Upload Hardening (XSS Prevention)",
+        desc: "Was accepting any data:image/* URL including data:image/svg+xml;base64,<SVG with inline script>, ready to render as XSS. New lib/uploads/avatar.ts enforces: MIME allowlist (png/jpeg only, SVG rejected), magic-bytes check against the declared MIME, 5 MiB cap. Empty string and Discord CDN URLs still allowed.",
+        category: "security",
+      },
+      {
+        icon: Key,
+        label: "Backup Codes Bumped to 80 Bits (NIST 800-63B)",
+        desc: "Was randomBytes(4) = 32 bits per code, below NIST/OWASP guidance. Now randomBytes(10) = 80 bits. Code format is XXXXX-XXXXX-XXXXX-XXXXX (20 hex chars) for readability; hash function unchanged so stored backups are compatible after re-generation.",
+        category: "security",
+      },
+      {
+        icon: Eye,
+        label: "Stripe Webhook No Longer Logs Customer Email",
+        desc: "Three console.log sites were emitting customerEmail PII to log aggregators that retain indefinitely. Replaced with userId (already known from the RETURNING clause) and event.id for correlation. PII stays out of log streams.",
+        category: "security",
+      },
+      // ── Accessibility (Phase 8B) ─────────────────────────────────────
+      {
+        icon: Eye,
+        label: "Icon-Only Buttons Get aria-label",
+        desc: "~15 icon-only buttons across profile, admin, shares, pricing, login, and signup now have descriptive aria-labels so screen readers announce the action. Toggle buttons (show/hide password, copy state) also get aria-pressed.",
+        category: "changed",
+      },
+      {
+        icon: Eye,
+        label: "Form Labels Now Bound to Inputs",
+        desc: "Across ~15 forms (profile, security, admin, billing, search inputs), every Label component now has a matching htmlFor/id pair on its input. Search inputs with placeholder-only labels got explicit aria-label. Billing code input gained inputMode=numeric and pattern=[0-9]{6} for mobile numeric keyboard.",
+        category: "changed",
+      },
+      {
+        icon: Layers,
+        label: "ConfirmDialog Migrated to Radix AlertDialog",
+        desc: "Hand-rolled div-overlay with no role=dialog, no focus trap, no escape-key handling is now @radix-ui/react-alert-dialog. Focus trap, escape dismissal, and role=alertdialog come for free. The other 6 custom modals (cancel sub, team members, staff, IP rules, gift sub, crawl selector) were given role=dialog + aria-modal + escape + focus management via a new useModalA11y hook without the rewrite risk of a full Radix migration.",
+        category: "changed",
+      },
+      {
+        icon: Layers,
+        label: "Per-Route Error Boundaries + Loading States",
+        desc: "Previously a thrown error on /profile would replace the entire app with the root 500 page. New app/{dashboard,profile,history,admin,shares,teams,pricing,compare}/error.tsx files keep the surrounding chrome intact and show an inline error with a Try Again button. Matching loading.tsx files show a centered spinner with a route-specific label during data fetches. aria-live=polite announces the transition.",
+        category: "added",
+      },
+      // ── Build / CI hardening ───────────────────────────────────────
+      {
+        icon: Shield,
+        label: "Typecheck and npm audit Now Block Merges",
+        desc: "CI was running npx tsc --noEmit with continue-on-error: true (typecheck errors were silently ignored) and next.config.mjs had typescript.ignoreBuildErrors: true. Both removed. A new npm audit --audit-level=high --omit=dev step blocks merges on high/critical CVEs. format:check also added to the lint job so prettier drift can no longer slip through.",
+        category: "security",
+      },
+      {
+        icon: Settings,
+        label: "SECURITY.md Updated to v2.4.x",
+        desc: "Previously the supported versions table said 2.2.x / 2.1.x, leaving researchers reporting against an EOL build. Now lists 2.4.x as the supported release. Stale PGP-placeholder block removed.",
+        category: "changed",
+      },
+      // ── Test infrastructure ────────────────────────────────────────
+      {
+        icon: Code,
+        label: "Test Infrastructure: vitest + 39 Tests",
+        desc: "Zero tests previously. Now: vitest@2.1.9 + @vitest/coverage-v8 as devDeps, vitest.config.ts with per-folder coverage thresholds (80% lib/auth, 70% lib/rate-limiting, 50% lib/**, 30% app/**), a new test job in CI, and 39 passing tests covering: AES-256-GCM roundtrip + tampered-ciphertext rejection (lib/auth/crypto), Discord HMAC state roundtrip + malformed/expired/wrong-secret rejection (lib/auth/discord-state), scrypt N:r:p:salt:hash format parsing (lib/auth/auth), rate-limit window logic with mocked pg pool (lib/rate-limiting/rate-limit), and 11 avatar-validator cases including the SVG-rejected-XSS case (lib/uploads/avatar).",
+        category: "added",
+      },
+      // ── Refactors & consolidations (Phase 8A) ──────────────────────
       {
         icon: Shield,
         label: "API Key Validation is Now O(1)",
-        desc: "Added a key_locator column (indexed HMAC prefix of the raw key). Every API request looks up the key by indexed prefix instead of scanning and decrypting every row. Old keys without a locator are backfilled on first successful match, so the upgrade is automatic.",
+        desc: "Added a key_locator column (indexed HMAC prefix of the raw key). Every API request looks up the key by indexed prefix instead of scanning and decrypting every row. Old keys without a locator are backfilled on first successful match.",
         category: "security",
       },
       {
