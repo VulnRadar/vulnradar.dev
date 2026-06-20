@@ -120,6 +120,58 @@ interface Release {
 
 const CHANGELOG: Release[] = [
   {
+    version: "2.3.1",
+    date: "June 20, 2026",
+    title: "Tooling Hardening, Node 22 LTS, Schema Version Gate",
+    highlights: false,
+    summary:
+      "Stability release. Splits the monolithic db scripts into a version-aware framework (scripts/_lib + scripts/migrate + scripts/create-fresh-db), adds a startup-time schema version gate so apps running against a stale database refuse to boot with a clear red error box, pins the project to Node 22 LTS, and bumps 75 npm packages to their latest within-major versions. No app-facing feature changes; no DB schema changes (2.3.0 and 2.3.1 share the same DDL).",
+    changes: [
+      {
+        icon: GitMerge,
+        label: "Scripts Restructured Into Version-Aware Framework",
+        desc: "scripts/_lib.mjs, scripts/migrate.mjs, and scripts/create-fresh-db.mjs (3 files, ~1950 lines) are now a clean framework: scripts/_lib/ for shared helpers (9 focused modules), scripts/migrate/ for the version-aware migrator (CLI, registry, planner, runner, detector, meta, 2 version files), scripts/create-fresh-db/ for fresh DB creation with a v1/v2 picker, plus a scripts/README.md. The Python drift detector is gone; replaced with a pure-Node scripts/_lib/audit-v2-tables.mjs registered as 'npm run audit:v2-tables'.",
+        category: "changed",
+      },
+      {
+        icon: Shield,
+        label: "Schema Version Gate at App Startup",
+        desc: "instrumentation.ts now reads vulnradar_schema_meta before doing anything else. If the row is missing or its schema_version is below CONFIG_MIN_SCHEMA_VERSION, the app prints a red-bordered error box to stderr and process.exit(1) with the exact 'npm run db:migrate' or 'npm run db:create' command to fix it. Replaces the old behaviour where stale databases would crash deep inside request handlers with cryptic 'column does not exist' errors.",
+        category: "security",
+      },
+      {
+        icon: Database,
+        label: "Migration DDL Now Matches instrumentation.ts Exactly",
+        desc: "Audited every one of the 15 v2 tables in scripts/migrate/versions/_snippets.mjs against the canonical DDL in instrumentation.ts. 11 of 15 had column mismatches; the worst was staff_activity (the migration was creating an action-log version while the app expected a heartbeat version). 9 orphan tables (RBAC, subscriptions, beta_features) were never implemented in the app and have been removed. Two dead user columns (stripe_subscription_metadata, subscription_source) are gone. npm run audit:v2-tables is a pure-Node drift detector that exits 1 on any future mismatch.",
+        category: "fixed",
+      },
+      {
+        icon: Settings,
+        label: "Migration Always Runs, Even On Same Version",
+        desc: "Same-version re-runs are now an explicit safety net. CREATE TABLE IF NOT EXISTS, ADD COLUMN IF NOT EXISTS, and CREATE INDEX IF NOT EXISTS are all idempotent, so re-running catches any missed steps (e.g. a manually-edited table, a partial migration, an old codebase that was never properly versioned). The meta row is also re-written on every successful run to keep the app_version field current.",
+        category: "changed",
+      },
+      {
+        icon: ServerCog,
+        label: "Node 22 LTS Is the New Minimum",
+        desc: ".nvmrc + .node-version pin 22, package.json#engines is '>=20.0.0 <21.0.0 || >=22.0.0', and all 4 CI jobs (lint, typecheck, test, build) now use Node 22. Odd versions (21, 23) are explicitly excluded because vitest@4, balanced-match@4, brace-expansion@5, and minimatch@10 all list exactly that set in their engines field. There is no fix on the consumer side. Bug reports on other Node versions will not be investigated.",
+        category: "changed",
+      },
+      {
+        icon: Package,
+        label: "75 npm Packages Bumped to Latest Within Major",
+        desc: "All @radix-ui/*, @types/*, @hookform/resolvers 5.4.0, @neondatabase/serverless 1.1.0, autoprefixer 10.5.0, date-fns 4.4.0, jspdf-autotable 5.0.8, lucide-react 1.21.0, pg 8.22.0, react 19.2.7, react-dom 19.2.7, react-hook-form 7.80.0, react-resizable-panels 4.11.2, stripe 22.2.2, tailwind-merge 3.6.0, zod 4.4.3. Plus 2 major bumps (vite 5→8, vitest 2→4) that landed via dependabot PRs and tested clean.",
+        category: "changed",
+      },
+      {
+        icon: Wrench,
+        label: ".npmrc Auto-Approves Native Postinstalls",
+        desc: "npm 10+ blocks install scripts by default. .npmrc now allow-scripts for bcrypt, esbuild, sharp, unrs-resolver, and core-js so the native postinstalls run automatically on every install. Without these, the app would break at runtime with no esbuild binary or missing sharp. Also sets audit-level=high, fund=false, and update-notifier=false for cleaner CI logs.",
+        category: "changed",
+      },
+    ],
+  },
+  {
     version: "2.3.0",
     date: "June 20, 2026",
     title: "Comprehensive Security Patch & Quality Update",
