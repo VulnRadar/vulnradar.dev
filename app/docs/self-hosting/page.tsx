@@ -5,7 +5,6 @@ import { useDocsContext, type TocItem } from "../layout";
 import {
   DocsHero,
   DocsSection,
-  DocsSubSection,
   DocsCallout,
   CodeBlock,
   DocsTable,

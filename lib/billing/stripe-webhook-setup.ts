@@ -68,9 +68,7 @@ export async function ensureStripeWebhook(): Promise<{
     if (existingWebhook) {
       // Webhook already exists - check if it has all required events
       const hasAllEvents = REQUIRED_EVENTS.every((event) =>
-        existingWebhook.enabled_events?.includes(
-          event as WebhookEvent,
-        ),
+        existingWebhook.enabled_events?.includes(event as WebhookEvent),
       );
 
       if (hasAllEvents) {
@@ -83,8 +81,7 @@ export async function ensureStripeWebhook(): Promise<{
 
       // Update webhook to include all required events
       const updated = await stripe.webhookEndpoints.update(existingWebhook.id, {
-        enabled_events:
-          REQUIRED_EVENTS as unknown as WebhookEvent[],
+        enabled_events: REQUIRED_EVENTS as unknown as WebhookEvent[],
       });
 
       return {
@@ -97,8 +94,7 @@ export async function ensureStripeWebhook(): Promise<{
     // Create new webhook endpoint
     const newWebhook = await stripe.webhookEndpoints.create({
       url: webhookUrl,
-      enabled_events:
-        REQUIRED_EVENTS as unknown as WebhookEvent[],
+      enabled_events: REQUIRED_EVENTS as unknown as WebhookEvent[],
       description: `VulnRadar billing webhook - auto-created for ${appUrl}`,
     });
 
@@ -130,4 +126,3 @@ export function ensureStripeWebhookOnce(): Promise<{
   }
   return webhookSetupPromise;
 }
-

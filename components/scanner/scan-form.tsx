@@ -184,9 +184,9 @@ export function ScanForm({
   const [error, setError] = useState("");
   const [mode, setMode] = useState<ScanMode>("quick");
   const [protocol, setProtocol] = useState<ScanProtocol>("https://");
-  const [selectedScanners, setSelectedScanners] = useState<Set<ScannerCategoryId>>(
-    new Set(ALL_CATEGORY_IDS),
-  );
+  const [selectedScanners, setSelectedScanners] = useState<
+    Set<ScannerCategoryId>
+  >(new Set(ALL_CATEGORY_IDS));
   const [selectorOpen, setSelectorOpen] = useState(false);
   const [bulkUrls, setBulkUrls] = useState("");
   const [bulkError, setBulkError] = useState("");

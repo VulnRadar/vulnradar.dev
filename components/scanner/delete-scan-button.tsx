@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Trash2, Loader2, AlertCircle, X } from "lucide-react";
+import { Trash2, AlertCircle, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { API } from "@/lib/config/constants";
 
