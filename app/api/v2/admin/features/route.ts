@@ -1,8 +1,10 @@
 ﻿import { NextRequest, NextResponse } from "next/server";
 import pool from "@/lib/database/db";
-import { getSession } from "@/lib/auth";
 import { getClientIp } from "@/lib/api/request-utils";
-import { STAFF_ROLE_HIERARCHY } from "@/lib/config/constants";
+import {
+  requireAdmin as _requireAdmin,
+  logAction,
+} from "@/lib/auth/authorization";
 import { sendEmail } from "@/lib/email/email";
 
 // Robustly remove all HTML tags by repeatedly applying the regex until no more tags are found
@@ -17,31 +19,9 @@ function stripHtmlTags(html: string): string {
   return result;
 }
 
-async function logAction(
-  adminId: number,
-  targetUserId: number | null,
-  action: string,
-  details?: string,
-  ip?: string,
-) {
-  await pool.query(
-    "INSERT INTO admin_audit_log (admin_id, target_user_id, action, details, ip_address) VALUES ($1, $2, $3, $4, $5)",
-    [adminId, targetUserId, action, details || null, ip || null],
-  );
-}
-
+// R3/D1: requireAdmin moved to lib/auth/authorization.ts (single source).
 async function requireAdmin() {
-  const session = await getSession();
-  if (!session) return null;
-  const result = await pool.query("SELECT id, role FROM users WHERE id = $1", [
-    session.userId,
-  ]);
-  const user = result.rows[0];
-  if (!user) return null;
-  const role = user.role || "user";
-  if ((STAFF_ROLE_HIERARCHY[role] || 0) < (STAFF_ROLE_HIERARCHY.admin || 3))
-    return null;
-  return { ...session, id: user.id, role };
+  return _requireAdmin();
 }
 
 /**

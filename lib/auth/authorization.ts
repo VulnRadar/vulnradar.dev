@@ -1,9 +1,72 @@
 ﻿import { NextResponse } from "next/server";
 import pool from "@/lib/database/db";
+import { getSession } from "@/lib/auth";
 import { ApiResponse } from "@/lib/api/api-utils";
-import { TEAM_ROLES } from "@/lib/config/constants";
+import { STAFF_ROLE_HIERARCHY, TEAM_ROLES } from "@/lib/config/constants";
 
 type AuthError = NextResponse | undefined;
+
+/**
+ * R3/D1: Admin role helpers — single source of truth for admin/staff
+ * role checks. Returns the session augmented with `id` and `role`, or
+ * null when the caller is unauthenticated or lacks the required role.
+ *
+ * Each handler should pair this with an early-return:
+ *   const admin = await requireStaff();
+ *   if (!admin) return ApiResponse.forbidden("Staff only");
+ */
+export async function requireStaff() {
+  const session = await getSession();
+  if (!session) return null;
+  const result = await pool.query("SELECT role FROM users WHERE id = $1", [
+    session.userId,
+  ]);
+  const user = result.rows[0] as { role?: string } | undefined;
+  if (!user) return null;
+  const role = user.role || "user";
+  if ((STAFF_ROLE_HIERARCHY[role] || 0) < (STAFF_ROLE_HIERARCHY.support || 1)) {
+    return null;
+  }
+  return { ...session, role };
+}
+
+export async function requireAdmin() {
+  const session = await getSession();
+  if (!session) return null;
+  const result = await pool.query("SELECT id, role FROM users WHERE id = $1", [
+    session.userId,
+  ]);
+  const user = result.rows[0] as { id: number; role?: string } | undefined;
+  if (!user) return null;
+  const role = user.role || "user";
+  if ((STAFF_ROLE_HIERARCHY[role] || 0) < (STAFF_ROLE_HIERARCHY.admin || 3)) {
+    return null;
+  }
+  return { ...session, id: user.id, role };
+}
+
+/**
+ * R3/D1: Audit-log helper — replaces the ~5 local `logAction` copies
+ * scattered across admin route files. Callers should use this for any
+ * state-changing admin action so the admin_audit_log stays consistent.
+ */
+export async function logAuditAction(
+  adminId: number,
+  targetUserId: number | null,
+  action: string,
+  details?: string,
+  ip?: string,
+): Promise<void> {
+  await pool.query(
+    "INSERT INTO admin_audit_log (admin_id, target_user_id, action, details, ip_address) VALUES ($1, $2, $3, $4, $5)",
+    [adminId, targetUserId, action, details || null, ip || null],
+  );
+}
+
+// R3/D1: backward-compatible alias — admin route files already import
+// `logAction`. Keep the call-site name identical so callers don't need
+// to rename 60+ invocations.
+export { logAuditAction as logAction };
 
 /**
  * Whitelist of resources that can be checked for ownership.
