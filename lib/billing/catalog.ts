@@ -170,7 +170,9 @@ export const PRODUCTS: readonly Product[] = PLANS.flatMap((plan) => {
     interval: "month",
     scansPerDay: plan.limits.dailyScans,
   };
-  const yearlyPrice = Math.round(plan.priceInCents * 12 * (1 - YEARLY_DISCOUNT));
+  const yearlyPrice = Math.round(
+    plan.priceInCents * 12 * (1 - YEARLY_DISCOUNT),
+  );
   const yearly: Product = {
     id: `${plan.id}_yearly`,
     planId: plan.id,
