@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { CrownIcon, X, Loader2, Ban } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useModalA11y } from "@/lib/hooks/use-modal-a11y";
 
 interface GiftSubscriptionModalProps {
   open: boolean;
@@ -52,11 +53,23 @@ export function GiftSubscriptionModal({
     }
   }, [open, existingGift]);
 
+  const { dialogProps, titleProps, descriptionProps } = useModalA11y({
+    open,
+    onClose,
+  });
+
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in">
-      <div className="bg-card border border-border rounded-xl w-full max-w-md mx-4 shadow-2xl animate-in zoom-in-95 overflow-hidden">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in"
+      onClick={onClose}
+    >
+      <div
+        className="bg-card border border-border rounded-xl w-full max-w-md mx-4 shadow-2xl animate-in zoom-in-95 overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
+        {...dialogProps}
+      >
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-border">
           <div className="flex items-center gap-3">
@@ -64,12 +77,18 @@ export function GiftSubscriptionModal({
               <CrownIcon className="h-4 w-4 text-primary" />
             </div>
             <div>
-              <h3 className="text-sm font-semibold text-foreground">
+              <h3
+                className="text-sm font-semibold text-foreground"
+                {...titleProps}
+              >
                 {existingGift
                   ? "Manage Gift Subscription"
                   : "Gift a Subscription"}
               </h3>
-              <p className="text-[11px] text-muted-foreground">
+              <p
+                className="text-[11px] text-muted-foreground"
+                {...descriptionProps}
+              >
                 {existingGift
                   ? `Active until ${new Date(existingGift.end_date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`
                   : "Grant temporary premium access"}

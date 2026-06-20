@@ -2,7 +2,16 @@
 
 import { useState } from "react";
 import { AlertTriangle, ShieldCheck, Loader2 } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { cn } from "@/lib/ui/utils";
 
 interface ConfirmDialogProps {
@@ -17,7 +26,13 @@ interface ConfirmDialogProps {
 }
 
 /**
- * Confirmation dialog component for dangerous/important actions
+ * Confirmation dialog for dangerous/important admin actions.
+ *
+ * Phase 8 Commit 4: migrated from a hand-rolled `<div>` overlay to
+ * `@radix-ui/react-alert-dialog`. Radix provides focus trap, escape-key
+ * dismissal, click-outside-to-close, and `aria-modal`/`role="alertdialog"`
+ * for free, so screen readers and keyboard users get the right semantics
+ * without us maintaining them by hand.
  */
 export function ConfirmDialog({
   open,
@@ -31,61 +46,70 @@ export function ConfirmDialog({
 }: ConfirmDialogProps) {
   const [isLoading, setIsLoading] = useState(false);
 
-  if (!open) return null;
-
-  const handleConfirm = async () => {
+  const handleConfirm = async (e: React.MouseEvent<HTMLButtonElement>) => {
+    // Prevent the default form submission / dialog close so the spinner
+    // can stay visible while the async action runs.
+    e.preventDefault();
     setIsLoading(true);
     try {
       await onConfirm();
     } catch {
-      // Error handling is done in the action itself
+      // Error handling is done in the action itself.
     } finally {
       setIsLoading(false);
     }
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in">
-      <div className="bg-card border border-border/50 rounded-xl p-6 w-full max-w-md mx-4 shadow-2xl animate-in zoom-in-95">
-        <div className="flex items-start gap-3 mb-3">
-          <div
-            className={cn(
-              "h-10 w-10 rounded-lg flex items-center justify-center shrink-0",
-              danger ? "bg-destructive/10" : "bg-primary/10",
-            )}
-          >
-            {danger ? (
-              <AlertTriangle className="h-5 w-5 text-destructive" />
-            ) : (
-              <ShieldCheck className="h-5 w-5 text-primary" />
-            )}
+    <AlertDialog open={open} onOpenChange={(o) => !o && onCancel()}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <div className="flex items-start gap-3">
+            <div
+              className={cn(
+                "h-10 w-10 rounded-lg flex items-center justify-center shrink-0",
+                danger ? "bg-destructive/10" : "bg-primary/10",
+              )}
+            >
+              {danger ? (
+                <AlertTriangle
+                  className="h-5 w-5 text-destructive"
+                  aria-hidden="true"
+                />
+              ) : (
+                <ShieldCheck
+                  className="h-5 w-5 text-primary"
+                  aria-hidden="true"
+                />
+              )}
+            </div>
+            <div>
+              <AlertDialogTitle>{title}</AlertDialogTitle>
+              <AlertDialogDescription>{description}</AlertDialogDescription>
+            </div>
           </div>
-          <div>
-            <h3 className="text-lg font-semibold text-foreground">{title}</h3>
-            <p className="text-sm text-muted-foreground mt-1 leading-relaxed">
-              {description}
-            </p>
-          </div>
-        </div>
+        </AlertDialogHeader>
         {children}
-        <div className="flex items-center justify-end gap-2 mt-5 pt-4 border-t border-border/50">
-          <Button variant="ghost" onClick={onCancel} disabled={isLoading}>
-            Cancel
-          </Button>
-          <Button
-            className={
-              danger
-                ? "bg-destructive hover:bg-destructive/90 text-destructive-foreground"
-                : ""
-            }
+        <AlertDialogFooter>
+          <AlertDialogCancel disabled={isLoading}>Cancel</AlertDialogCancel>
+          <AlertDialogAction
             onClick={handleConfirm}
             disabled={isLoading}
+            className={cn(
+              danger &&
+                "bg-destructive hover:bg-destructive/90 text-destructive-foreground",
+            )}
           >
-            {isLoading && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+            {isLoading && (
+              <Loader2
+                className="h-4 w-4 mr-2 animate-spin"
+                aria-hidden="true"
+              />
+            )}
             {confirmLabel}
-          </Button>
-        </div>
-      </div>
-    </div>
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   );
 }

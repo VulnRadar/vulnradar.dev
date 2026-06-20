@@ -19,6 +19,7 @@ import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/ui/utils";
 import { PaginationControl } from "@/components/ui/pagination-control";
 import { UserAvatar, ConfirmDialog } from "@/components/admin/shared";
+import { useModalA11y } from "@/lib/hooks/use-modal-a11y";
 import {
   hasStaffPermission,
   STAFF_PERMISSIONS,
@@ -109,6 +110,9 @@ export function TeamsList({
     setTeamMembers(null);
   };
 
+  const { dialogProps: teamDialogProps, titleProps: teamTitleProps } =
+    useModalA11y({ open: !!modalTeam, onClose: closeTeamModal });
+
   return (
     <>
       {/* Team members modal — rendered outside card flow to prevent layout shift */}
@@ -120,6 +124,7 @@ export function TeamsList({
           <div
             className="bg-card border border-border rounded-xl p-6 w-full max-w-lg mx-4 shadow-2xl max-h-[80vh] overflow-y-auto"
             onClick={(e) => e.stopPropagation()}
+            {...teamDialogProps}
           >
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-3">
@@ -127,7 +132,10 @@ export function TeamsList({
                   <UsersRound className="h-4 w-4 text-primary" />
                 </div>
                 <div>
-                  <h3 className="text-base font-semibold text-foreground">
+                  <h3
+                    className="text-base font-semibold text-foreground"
+                    {...teamTitleProps}
+                  >
                     {modalTeam.name}
                   </h3>
                   <p className="text-xs text-muted-foreground">

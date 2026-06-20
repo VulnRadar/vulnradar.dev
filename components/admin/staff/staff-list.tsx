@@ -27,6 +27,7 @@ import {
   usePagination,
 } from "@/components/ui/pagination-control";
 import { UserAvatar, ActionBadge } from "@/components/admin/shared";
+import { useModalA11y } from "@/lib/hooks/use-modal-a11y";
 import { STAFF_ROLE_LABELS, ROLE_BADGE_STYLES } from "@/lib/config/constants";
 import type { ActiveAdmin } from "@/components/admin/types";
 
@@ -72,6 +73,15 @@ export function StaffList({
     return { isActive, isRecentlyActive, statusDisplay };
   };
 
+  const {
+    dialogProps: staffDialogProps,
+    titleProps: staffTitleProps,
+    descriptionProps: staffDescriptionProps,
+  } = useModalA11y({
+    open: !!selectedAdmin,
+    onClose: () => setSelectedAdmin(null),
+  });
+
   return (
     <>
       {/* Staff detail modal */}
@@ -83,6 +93,7 @@ export function StaffList({
           <div
             className="bg-card border border-border rounded-xl w-full max-w-2xl mx-4 shadow-2xl max-h-[85vh] overflow-hidden flex flex-col"
             onClick={(e) => e.stopPropagation()}
+            {...staffDialogProps}
           >
             {/* Modal header */}
             <div className="p-6 border-b border-border/50">
@@ -113,10 +124,16 @@ export function StaffList({
                     })()}
                   </div>
                   <div>
-                    <h3 className="text-lg font-semibold text-foreground">
+                    <h3
+                      className="text-lg font-semibold text-foreground"
+                      {...staffTitleProps}
+                    >
                       {selectedAdmin.name || selectedAdmin.email.split("@")[0]}
                     </h3>
-                    <p className="text-sm text-muted-foreground font-mono">
+                    <p
+                      className="text-sm text-muted-foreground font-mono"
+                      {...staffDescriptionProps}
+                    >
                       {selectedAdmin.email}
                     </p>
                     <div className="flex items-center gap-2 mt-2">
