@@ -1,4 +1,4 @@
-﻿import { NextRequest, NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth/auth";
 import pool from "@/lib/database/db";
 import { ERROR_MESSAGES } from "@/lib/config/constants";
@@ -249,13 +249,17 @@ export async function safeQuery<T = unknown>(
  * Wrap async route handler with standardized error handling.
  * Accepts NextRequest (and its base Request) so route handlers can
  * use Next.js-specific APIs like cookies, nextUrl, etc.
+ *
+ * Returns a function with the same shape as the original, so it works
+ * for routes that take just `(req)`, routes that take `(req, ctx)` for
+ * dynamic params, and routes that take `(_req, { params })`.
  */
-export function withErrorHandling(
-  handler: (req: NextRequest) => Promise<NextResponse>,
-) {
-  return async (req: NextRequest) => {
+export function withErrorHandling<TArgs extends unknown[]>(
+  handler: (...args: TArgs) => Promise<NextResponse>,
+): (...args: TArgs) => Promise<NextResponse> {
+  return async (...args: TArgs) => {
     try {
-      return await handler(req);
+      return await handler(...args);
     } catch (error) {
       console.error("[API Error]", error);
       return ApiResponse.serverError("An unexpected error occurred");
