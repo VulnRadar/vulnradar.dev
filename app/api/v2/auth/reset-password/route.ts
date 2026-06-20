@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+import { createHash } from "node:crypto";
 import pool from "@/lib/database/db";
 import { hashPassword } from "@/lib/auth";
 import { passwordChangedEmail } from "@/lib/email/email";
@@ -10,6 +11,12 @@ import {
   Validate,
   withErrorHandling,
 } from "@/lib/api/api-utils";
+
+// M-2: hash the incoming token with the same function used at
+// generation time so we never compare raw tokens against the DB.
+function hashToken(token: string): string {
+  return createHash("sha256").update(token).digest("hex");
+}
 
 export const POST = withErrorHandling(async (request: NextRequest) => {
   const ip = await getClientIp();
@@ -26,6 +33,8 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   ]);
   if (validationError) return ApiResponse.badRequest(validationError);
 
+  const tokenHash = hashToken(token);
+
   // Find valid token - atomic check and mark as used in single transaction
   const client = await pool.connect();
   try {
@@ -37,7 +46,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
        JOIN users u ON prt.user_id = u.id
        WHERE prt.token_hash = $1 AND prt.used_at IS NULL
        FOR UPDATE`,
-      [token],
+      [tokenHash],
     );
 
     if (tokenRes.rows.length === 0) {

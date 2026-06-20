@@ -113,12 +113,14 @@ export async function POST(request: NextRequest) {
     // Auth: check API key first (Bearer token), then fall back to session cookie
     const authHeader = request.headers.get("authorization");
     let apiKeyId: number | null = null;
+    let apiKeyDailyLimit = 50;
     let isApiKeyAuth = false;
     let authedUserId: number | null = null;
+    let keyData: Awaited<ReturnType<typeof validateApiKey>> | null = null;
 
     if (authHeader?.startsWith(BEARER_PREFIX)) {
       const token = authHeader.slice(7);
-      const keyData = await validateApiKey(token);
+      keyData = await validateApiKey(token);
 
       if (!keyData) {
         return NextResponse.json(
@@ -167,6 +169,7 @@ export async function POST(request: NextRequest) {
       }
 
       apiKeyId = keyData.keyId;
+      apiKeyDailyLimit = keyData.dailyLimit;
       isApiKeyAuth = true;
       authedUserId = keyData.userId;
     } else {
@@ -647,7 +650,8 @@ export async function POST(request: NextRequest) {
     // Record API key usage and add rate limit headers
     if (isApiKeyAuth && apiKeyId) {
       await recordUsage(apiKeyId);
-      const rateLimit = await checkRateLimit(apiKeyId, 50);
+      // M-5: use plan-derived dailyLimit instead of hardcoded 50.
+      const rateLimit = await checkRateLimit(apiKeyId, apiKeyDailyLimit);
       return NextResponse.json(responseData, {
         headers: {
           "X-RateLimit-Limit": String(rateLimit.limit),

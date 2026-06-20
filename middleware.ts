@@ -3,19 +3,20 @@ import { PUBLIC_PATHS } from "./lib/config/public-paths";
 import { AUTH_SESSION_COOKIE_NAME, ROUTES } from "./lib/config/constants";
 
 const SECURITY_HEADERS: Record<string, string> = {
+  // L-1: CSP tightened to remove the broad `https:` wildcards. We
+  // keep only the explicit origins each integration actually needs.
+  // Note: 'unsafe-eval' and 'unsafe-inline' are still required for
+  // Next.js to function in dev/prod.
   "Content-Security-Policy": [
     "default-src 'self'",
-    // Note: 'unsafe-eval' and 'unsafe-inline' required for Next.js to function properly
-    "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://challenges.cloudflare.com https://static.cloudflareinsights.com https://embed.tawk.to https://*.tawk.to https:",
-    "script-src-elem 'self' 'unsafe-inline' https://challenges.cloudflare.com https://static.cloudflareinsights.com https://embed.tawk.to https://*.tawk.to https:",
-    // Allow tawk widget CSS
-    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://embed.tawk.to https://*.tawk.to https:",
-    "style-src-elem 'self' 'unsafe-inline' https://fonts.googleapis.com https://embed.tawk.to https://*.tawk.to https:",
-    // Allow fonts from Google, Cloudflare Insights, and any https: host (broad)
-    "font-src 'self' https://fonts.gstatic.com https://static.cloudflareinsights.com https:",
+    "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://challenges.cloudflare.com https://static.cloudflareinsights.com https://embed.tawk.to https://*.tawk.to",
+    "script-src-elem 'self' 'unsafe-inline' https://challenges.cloudflare.com https://static.cloudflareinsights.com https://embed.tawk.to https://*.tawk.to",
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://embed.tawk.to https://*.tawk.to",
+    "style-src-elem 'self' 'unsafe-inline' https://fonts.googleapis.com https://embed.tawk.to https://*.tawk.to",
+    "font-src 'self' https://fonts.gstatic.com https://static.cloudflareinsights.com",
     "img-src 'self' data: blob: https:",
-    "connect-src 'self' https://challenges.cloudflare.com https://embed.tawk.to https://*.tawk.to wss://*.tawk.to https://va.tawk.to https://static.cloudflareinsights.com https:",
-    "frame-src https://challenges.cloudflare.com https://embed.tawk.to https://*.tawk.to https:",
+    "connect-src 'self' https://challenges.cloudflare.com https://embed.tawk.to https://*.tawk.to wss://*.tawk.to https://va.tawk.to https://static.cloudflareinsights.com",
+    "frame-src https://challenges.cloudflare.com https://embed.tawk.to https://*.tawk.to",
     "frame-ancestors 'none'",
     "base-uri 'self'",
     "form-action 'self'",

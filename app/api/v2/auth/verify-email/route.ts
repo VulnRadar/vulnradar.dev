@@ -1,7 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
+import { createHash } from "node:crypto";
 import pool from "@/lib/database/db";
 import { ApiResponse, parseBody, withErrorHandling } from "@/lib/api/api-utils";
 import { SUCCESS_MESSAGES } from "@/lib/config/constants";
+
+// M-2: hash incoming token with the same function used at generation.
+function hashToken(token: string): string {
+  return createHash("sha256").update(token).digest("hex");
+}
 
 export const POST = withErrorHandling(async (request: NextRequest) => {
   const parsed = await parseBody<{ token: string }>(request);
@@ -12,6 +18,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     return ApiResponse.badRequest("Verification token is required.");
   }
 
+  const tokenHash = hashToken(token);
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
@@ -23,7 +30,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
        JOIN users u ON evt.user_id = u.id
        WHERE evt.token_hash = $1 AND evt.used_at IS NULL
        FOR UPDATE`,
-      [token],
+      [tokenHash],
     );
 
     if (tokenRes.rows.length === 0) {
@@ -31,7 +38,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
       // Check if token exists but was already used
       const usedTokenRes = await client.query(
         "SELECT id, used_at FROM email_verification_tokens WHERE token_hash = $1",
-        [token],
+        [tokenHash],
       );
       if (usedTokenRes.rows.length > 0) {
         return ApiResponse.badRequest(
