@@ -4,6 +4,7 @@ import { sendEmail, emailVerificationEmail } from "@/lib/email/email";
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
 import { getClientIp } from "@/lib/api/request-utils";
 import crypto from "crypto";
+import { createHash } from "node:crypto";
 import {
   ApiResponse,
   parseBody,
@@ -69,13 +70,19 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
 
   // Generate new token
   const token = crypto.randomBytes(32).toString("hex");
+  // Phase 8C Commit 1 (C-2): regression fix — store sha256(token) so
+  // verify-email can match. Previously this route stored the raw token
+  // while verify-email hashed it, so all resend-generated links were
+  // dead. This also closes the M-2 vuln the previous Phase 8B fix
+  // opened in signup — same hashing on both sides.
+  const tokenHash = createHash("sha256").update(token).digest("hex");
   const expiresAt = new Date(
     Date.now() + EMAIL_VERIFICATION_TOKEN_LIFETIME * 1000,
   );
 
   await pool.query(
     "INSERT INTO email_verification_tokens (user_id, token_hash, expires_at) VALUES ($1, $2, $3)",
-    [user.id, token, expiresAt],
+    [user.id, tokenHash, expiresAt],
   );
 
   // Send verification email in background (don't block the response)

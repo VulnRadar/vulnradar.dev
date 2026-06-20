@@ -1,35 +1,34 @@
 ﻿import { NextResponse } from "next/server";
+import { cookies } from "next/headers";
 import { getSession, deleteAllSessions } from "@/lib/auth";
+import { AUTH_SESSION_COOKIE_NAME } from "@/lib/config/constants";
+import { ApiResponse, withErrorHandling } from "@/lib/api/api-utils";
 
-export async function DELETE() {
-  try {
-    const session = await getSession();
-    if (!session?.userId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    // Delete all sessions for this user (including current one)
-    await deleteAllSessions(session.userId);
-
-    // Clear the current session cookie
-    const response = NextResponse.json({
-      success: true,
-      message: "All sessions revoked",
-    });
-    response.cookies.set("session", "", {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
-      maxAge: 0,
-      path: "/",
-    });
-
-    return response;
-  } catch (error) {
-    console.error("[Sessions] Error revoking sessions:", error);
-    return NextResponse.json(
-      { error: "Failed to revoke sessions" },
-      { status: 500 },
-    );
+export const DELETE = withErrorHandling(async () => {
+  const session = await getSession();
+  if (!session?.userId) {
+    return ApiResponse.unauthorized();
   }
-}
+
+  // Delete all sessions for this user (including current one)
+  await deleteAllSessions(session.userId);
+
+  // Phase 8C Commit 1 (C-3): clear the actual session cookie. The
+  // previous code used the literal "session" name, which doesn't match
+  // the cookie set by `createSession` (default `vulnradar_session`).
+  // Use the cookie store directly to clear the correct cookie with
+  // the same options used at creation.
+  const cookieStore = await cookies();
+  cookieStore.set(AUTH_SESSION_COOKIE_NAME, "", {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    maxAge: 0,
+    path: "/",
+  });
+
+  return NextResponse.json({
+    success: true,
+    message: "All sessions revoked",
+  });
+});
