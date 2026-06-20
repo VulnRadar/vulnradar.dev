@@ -81,6 +81,7 @@ export function CheckoutModal({
             size="icon"
             className="h-8 w-8 rounded-full hover:bg-muted flex-shrink-0"
             onClick={onClose}
+            aria-label="Close checkout"
           >
             <X className="h-4 w-4" />
           </Button>

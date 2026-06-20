@@ -106,6 +106,8 @@ export function SharesRow({
           className="h-8 w-8"
           onClick={handleCopy}
           title="Copy link"
+          aria-label="Copy share link"
+          aria-pressed={copied}
         >
           {copied ? (
             <Check className="h-4 w-4 text-emerald-500" />
@@ -115,7 +117,12 @@ export function SharesRow({
         </Button>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon" className="h-8 w-8">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8"
+              aria-label="Open share actions menu"
+            >
               <MoreHorizontal className="h-4 w-4" />
             </Button>
           </DropdownMenuTrigger>

@@ -81,6 +81,7 @@ export function GiftSubscriptionModal({
             size="icon"
             className="h-7 w-7"
             onClick={onClose}
+            aria-label="Close gift subscription dialog"
           >
             <X className="h-4 w-4" />
           </Button>
