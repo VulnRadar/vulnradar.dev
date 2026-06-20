@@ -1,4 +1,4 @@
-﻿import { randomBytes } from "node:crypto";
+﻿import { randomBytes, createHmac } from "node:crypto";
 import bcrypt from "bcryptjs";
 import pool from "@/lib/database/db";
 import {
@@ -18,6 +18,26 @@ function generateDeprecatedPlaceholder(): string {
   return `deprecated_${randomBytes(48).toString("hex")}`;
 }
 
+// Derive a server-side secret for key locator HMAC.
+// Falls back to a fixed constant only when the encryption key is missing
+// (still safe: the locator is purely an indexed lookup prefix; the actual
+// auth check is HMAC compare plus bcrypt / AES-GCM).
+function getLocatorSecret(): Buffer {
+  const enc = process.env.API_KEY_ENCRYPTION_KEY;
+  if (enc && enc.length === 64) {
+    return Buffer.from(enc, "hex");
+  }
+  return Buffer.from("vulnradar-key-locator-v1", "utf8");
+}
+
+// Compute a deterministic 8-hex-char locator for indexed O(1) lookup.
+// HMAC-SHA256(rawKey, secret) → first 4 bytes → hex.
+function computeKeyLocator(rawKey: string): string {
+  const hmac = createHmac("sha256", getLocatorSecret());
+  hmac.update(rawKey);
+  return hmac.digest("hex").slice(0, 8);
+}
+
 // Generate a new API key - returns the raw key (only shown once) and metadata
 // dailyLimit defaults to DEFAULT_API_KEY_DAILY_LIMIT if not specified
 export async function generateApiKey(
@@ -30,6 +50,7 @@ export async function generateApiKey(
   // Generate a random key: vr_live_<64 hex chars>
   const raw = `${API_KEY_PREFIX}${randomBytes(32).toString("hex")}`;
   const prefix = raw.slice(0, API_KEY_PREFIX.length + 8); // show prefix + some chars
+  const locator = computeKeyLocator(raw);
 
   let keyHash: string;
   let keyEncrypted: string | null = null;
@@ -44,10 +65,10 @@ export async function generateApiKey(
   }
 
   const result = await pool.query(
-    `INSERT INTO api_keys (user_id, key_hash, key_prefix, name, daily_limit, key_encrypted)
-         VALUES ($1, $2, $3, $4, $5, $6)
+    `INSERT INTO api_keys (user_id, key_hash, key_locator, key_prefix, name, daily_limit, key_encrypted)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)
              RETURNING id, key_prefix, name, daily_limit, created_at`,
-    [userId, keyHash, prefix, name, limit, keyEncrypted],
+    [userId, keyHash, locator, prefix, name, limit, keyEncrypted],
   );
 
   return {
@@ -89,9 +110,7 @@ function hasAcceptedLatestTerms(termsAcceptedAt: string | null): boolean {
   }
 }
 
-// Validate an API key and return the user/key info, or null
-// Returns { needsTermsAcceptance: true } if user hasn't accepted latest terms
-export async function validateApiKey(key: string): Promise<{
+interface KeyValidationResult {
   keyId: number;
   userId: number;
   email: string;
@@ -99,106 +118,166 @@ export async function validateApiKey(key: string): Promise<{
   keyName: string;
   dailyLimit: number;
   needsTermsAcceptance?: boolean;
-} | null> {
+}
+
+function rowToResult(row: {
+  key_id: number;
+  user_id: number;
+  name: string;
+  daily_limit: number;
+  email: string;
+  user_name: string;
+  tos_accepted_at: string | null;
+}): KeyValidationResult {
+  return {
+    keyId: row.key_id,
+    userId: row.user_id,
+    email: row.email,
+    userName: row.user_name,
+    keyName: row.name,
+    dailyLimit: row.daily_limit,
+    needsTermsAcceptance: !hasAcceptedLatestTerms(row.tos_accepted_at),
+  };
+}
+
+// Validate an API key and return the user/key info, or null.
+// Uses an indexed key_locator for O(1) lookup instead of a full-table scan.
+// Returns { needsTermsAcceptance: true } if user hasn't accepted latest terms.
+export async function validateApiKey(
+  key: string,
+): Promise<KeyValidationResult | null> {
+  const locator = computeKeyLocator(key);
+
   if (isEncryptionConfigured()) {
-    // If encryption is configured, fetch all encrypted keys and decrypt to compare
-    const result = await pool.query(
-      `SELECT ak.id as key_id, ak.user_id, ak.name, ak.daily_limit, ak.revoked_at, ak.key_encrypted,
-                    u.email, u.name as user_name, u.tos_accepted_at
-             FROM api_keys ak
-                      JOIN users u ON ak.user_id = u.id
-             WHERE ak.key_encrypted IS NOT NULL`,
+    // Primary path: O(1) indexed lookup by HMAC locator.
+    const locatorResult = await pool.query(
+      `SELECT ak.id as key_id, ak.user_id, ak.name, ak.daily_limit,
+              ak.revoked_at, ak.key_encrypted,
+              u.email, u.name as user_name, u.tos_accepted_at
+         FROM api_keys ak
+              JOIN users u ON ak.user_id = u.id
+        WHERE ak.key_locator = $1
+          AND ak.key_encrypted IS NOT NULL`,
+      [locator],
     );
 
-    // Try to find a matching key by decryption
-    for (const row of result.rows) {
+    for (const row of locatorResult.rows) {
       try {
-        const decryptedKey = decryptApiKey(row.key_encrypted);
-        if (decryptedKey === key) {
+        const decrypted = decryptApiKey(row.key_encrypted);
+        if (decrypted === key) {
           if (row.revoked_at) return null;
-
-          return {
-            keyId: row.key_id,
-            userId: row.user_id,
-            email: row.email,
-            userName: row.user_name,
-            keyName: row.name,
-            dailyLimit: row.daily_limit,
-            needsTermsAcceptance: !hasAcceptedLatestTerms(row.tos_accepted_at),
-          };
+          return rowToResult(row);
         }
-      } catch (error) {
-        // Decryption failed for this key, try next one
+      } catch {
         continue;
       }
     }
 
-    // Fallback: try hash-based lookup (for old keys without encryption)
-    const hashResult = await pool.query(
-      `SELECT ak.id as key_id, ak.user_id, ak.name, ak.daily_limit, ak.revoked_at, ak.key_hash,
-                    u.email, u.name as user_name, u.tos_accepted_at
-             FROM api_keys ak
-                      JOIN users u ON ak.user_id = u.id
-             WHERE ak.key_hash IS NOT NULL AND ak.key_encrypted IS NULL`,
+    // Backfill: key matched a row that has no locator yet (legacy row).
+    // Compute locator from decrypted key and persist it for future lookups.
+    const legacyResult = await pool.query(
+      `SELECT ak.id as key_id, ak.user_id, ak.name, ak.daily_limit,
+              ak.revoked_at, ak.key_encrypted, ak.key_locator,
+              u.email, u.name as user_name, u.tos_accepted_at
+         FROM api_keys ak
+              JOIN users u ON ak.user_id = u.id
+        WHERE ak.key_locator IS NULL
+          AND ak.key_encrypted IS NOT NULL`,
     );
+    for (const row of legacyResult.rows) {
+      try {
+        const decrypted = decryptApiKey(row.key_encrypted);
+        if (decrypted === key) {
+          // Persist locator so subsequent lookups are O(1).
+          await pool
+            .query(
+              "UPDATE api_keys SET key_locator = $1 WHERE id = $2 AND key_locator IS NULL",
+              [computeKeyLocator(decrypted), row.key_id],
+            )
+            .catch(() => undefined);
+          if (row.revoked_at) return null;
+          return rowToResult(row);
+        }
+      } catch {
+        continue;
+      }
+    }
 
-    // Try to find a matching key by bcrypt comparison
+    // Fallback: hash-based bcrypt lookup (old keys without encryption).
+    const hashResult = await pool.query(
+      `SELECT ak.id as key_id, ak.user_id, ak.name, ak.daily_limit,
+              ak.revoked_at, ak.key_hash,
+              u.email, u.name as user_name, u.tos_accepted_at
+         FROM api_keys ak
+              JOIN users u ON ak.user_id = u.id
+        WHERE ak.key_hash IS NOT NULL
+          AND ak.key_locator IS NULL
+          AND ak.key_encrypted IS NULL`,
+    );
     for (const row of hashResult.rows) {
       try {
         if (await verifyKey(key, row.key_hash)) {
           if (row.revoked_at) return null;
-
-          return {
-            keyId: row.key_id,
-            userId: row.user_id,
-            email: row.email,
-            userName: row.user_name,
-            keyName: row.name,
-            dailyLimit: row.daily_limit,
-            needsTermsAcceptance: !hasAcceptedLatestTerms(row.tos_accepted_at),
-          };
+          return rowToResult(row);
         }
-      } catch (error) {
-        // Comparison failed for this key, try next one
-        continue;
-      }
-    }
-
-    return null;
-  } else {
-    // Fallback: hash-based lookup if encryption is not configured
-    const result = await pool.query(
-      `SELECT ak.id as key_id, ak.user_id, ak.name, ak.daily_limit, ak.revoked_at, ak.key_hash,
-                    u.email, u.name as user_name, u.tos_accepted_at
-             FROM api_keys ak
-                      JOIN users u ON ak.user_id = u.id
-             WHERE ak.key_hash IS NOT NULL`,
-    );
-
-    // Try to find a matching key by bcrypt comparison
-    for (const row of result.rows) {
-      try {
-        if (await verifyKey(key, row.key_hash)) {
-          if (row.revoked_at) return null;
-
-          return {
-            keyId: row.key_id,
-            userId: row.user_id,
-            email: row.email,
-            userName: row.user_name,
-            keyName: row.name,
-            dailyLimit: row.daily_limit,
-            needsTermsAcceptance: !hasAcceptedLatestTerms(row.tos_accepted_at),
-          };
-        }
-      } catch (error) {
-        // Comparison failed for this key, try next one
+      } catch {
         continue;
       }
     }
 
     return null;
   }
+
+  // No encryption configured: O(1) locator lookup for bcrypt-hashed keys.
+  const locatorResult = await pool.query(
+    `SELECT ak.id as key_id, ak.user_id, ak.name, ak.daily_limit,
+            ak.revoked_at, ak.key_hash,
+            u.email, u.name as user_name, u.tos_accepted_at
+       FROM api_keys ak
+            JOIN users u ON ak.user_id = u.id
+      WHERE ak.key_locator = $1
+        AND ak.key_hash IS NOT NULL`,
+    [locator],
+  );
+  for (const row of locatorResult.rows) {
+    try {
+      if (await verifyKey(key, row.key_hash)) {
+        if (row.revoked_at) return null;
+        return rowToResult(row);
+      }
+    } catch {
+      continue;
+    }
+  }
+
+  // Legacy bcrypt keys without locator: full scan (backfill on match).
+  const legacyHashResult = await pool.query(
+    `SELECT ak.id as key_id, ak.user_id, ak.name, ak.daily_limit,
+            ak.revoked_at, ak.key_hash,
+            u.email, u.name as user_name, u.tos_accepted_at
+       FROM api_keys ak
+            JOIN users u ON ak.user_id = u.id
+      WHERE ak.key_hash IS NOT NULL
+        AND ak.key_locator IS NULL`,
+  );
+  for (const row of legacyHashResult.rows) {
+    try {
+      if (await verifyKey(key, row.key_hash)) {
+        await pool
+          .query(
+            "UPDATE api_keys SET key_locator = $1 WHERE id = $2 AND key_locator IS NULL",
+            [locator, row.key_id],
+          )
+          .catch(() => undefined);
+        if (row.revoked_at) return null;
+        return rowToResult(row);
+      }
+    } catch {
+      continue;
+    }
+  }
+
+  return null;
 }
 
 // Check rate limit - returns { allowed, remaining, limit, resetsAt }
