@@ -54,6 +54,7 @@ import {
   ServerCrash,
   ServerCog,
   GitMerge,
+  Code,
   Bug,
   Target,
   Radar,
@@ -118,6 +119,154 @@ interface Release {
 }
 
 const CHANGELOG: Release[] = [
+  {
+    version: "3.0.0",
+    date: "June 19, 2026",
+    title: "Comprehensive Security Hardening & Codebase Refactor",
+    highlights: true,
+    summary:
+      "Major security release: closed every critical and high-severity finding from the audit. Faster API key validation (indexed lookup), stronger password hashing, signed OAuth state, strong device trust, per-user rate limiting on 2FA, SSRF re-validation, hashed email/reset tokens, and a tightened CSP. Internals cleaned up: consolidated constants, plans/products, scanner helpers, and admin role checks; removed duplicate code paths.",
+    changes: [
+      {
+        icon: Shield,
+        label: "API Key Validation is Now O(1)",
+        desc: "Added a key_locator column (indexed HMAC prefix of the raw key). Every API request looks up the key by indexed prefix instead of scanning and decrypting every row. Old keys without a locator are backfilled on first successful match, so the upgrade is automatic.",
+        category: "security",
+      },
+      {
+        icon: Lock,
+        label: "Stronger Password Hashing",
+        desc: "scrypt cost bumped from the Node default to OWASP 2024+ baseline (N=131072). Hash format now stores the cost so old and new hashes verify correctly. Existing logins keep working.",
+        category: "security",
+      },
+      {
+        icon: ShieldCheck,
+        label: "Signed Discord OAuth State",
+        desc: "Discord OAuth state is now HMAC-signed with a server-side secret and random nonce. Prevents forged callbacks from logging in as any linked Discord user.",
+        category: "security",
+      },
+      {
+        icon: Fingerprint,
+        label: "Strong Device Trust Cookies",
+        desc: "Replaced the brute-forceable 32-bit hash of IP+User-Agent with an opaque 256-bit random token stored server-side in device_trust. Trusted devices are looked up by exact match, not fingerprint.",
+        category: "security",
+      },
+      {
+        icon: ShieldAlert,
+        label: "Re-authentication for Sensitive Changes",
+        desc: "Changing name, email, or avatar now requires the current password (verified against the stored hash). A stolen session cookie alone can no longer take over an account by changing the email.",
+        category: "security",
+      },
+      {
+        icon: Timer,
+        label: "2FA Rate Limit + Timing-Safe Compare",
+        desc: "2FA verify endpoint is now rate-limited per user (5 attempts / 5 min) and uses a constant-time compare on the pending cookie. Closes the brute-force window on 6-digit TOTP codes.",
+        category: "security",
+      },
+      {
+        icon: Network,
+        label: "SSRF Re-Validation",
+        desc: "Webhook test endpoint and schedule creation now re-run URL/SSRF validation before fetching. Blocks private, loopback, and link-local targets even if the URL was inserted via a non-standard code path.",
+        category: "security",
+      },
+      {
+        icon: Eye,
+        label: "Minimal Staff Endpoint",
+        desc: "Public staff page now exposes only display name and role. No avatar URLs, no emails, no seniority ordering that would help target admins for phishing.",
+        category: "security",
+      },
+      {
+        icon: Lock,
+        label: "Email & Reset Tokens Hashed at Rest",
+        desc: "Verification and password-reset tokens are SHA-256 hashed before INSERT. A database dump no longer yields working tokens. Verify routes hash the incoming token with the same function.",
+        category: "security",
+      },
+      {
+        icon: Mail,
+        label: "No Email Bodies in Logs",
+        desc: "Email send failures log only to/subject/length metadata. Bodies can contain reset links, 2FA codes, or share tokens and must never appear in logs.",
+        category: "security",
+      },
+      {
+        icon: Shield,
+        label: "Tightened Content Security Policy",
+        desc: "Removed the broad https: wildcards from script-src, style-src, and font-src. Each integration now lists its explicit origin (Cloudflare, Tawk, Google Fonts).",
+        category: "security",
+      },
+      {
+        icon: ServerCrash,
+        label: "1 MiB Request Body Cap",
+        desc: "parseBody rejects payloads over 1 MiB based on the Content-Length header before reading them. Prevents multi-GB JSON bodies from being buffered by the server.",
+        category: "security",
+      },
+      {
+        icon: Timer,
+        label: "Per-Email Forgot-Password Rate Limit",
+        desc: "On top of the per-IP limit, forgot-password is now rate-limited per email (3 / hour). Stops residential NATs or botnets from spamming resets for many distinct addresses.",
+        category: "security",
+      },
+      {
+        icon: FileDown,
+        label: "Data Exports Never Cached",
+        desc: "GDPR data export download endpoint sets Cache-Control: no-store so browsers and proxies can't cache PII exports.",
+        category: "security",
+      },
+      {
+        icon: Gauge,
+        label: "Correct Rate-Limit Headers",
+        desc: "API rate-limit headers now reflect the user's actual plan-based daily limit instead of a hardcoded 50.",
+        category: "fixed",
+      },
+      {
+        icon: Settings,
+        label: "Stripe Lazy Accessor",
+        desc: "Replaced the Proxy that threw on first property access with getStripe(): Stripe | null. Routes now bail out cleanly with 503 when Stripe isn't configured.",
+        category: "changed",
+      },
+      {
+        icon: Settings,
+        label: "Single Source of Truth for Constants",
+        desc: "Client-safe constants (staff roles, API routes, app routes, severity levels) live in one file. Server-only re-exports them so existing imports keep working.",
+        category: "changed",
+      },
+      {
+        icon: Database,
+        label: "Plans & Products Consolidated",
+        desc: "Billing tiers are now defined once. The Stripe product list (monthly + yearly variants) is derived automatically, so adding a tier updates both with one edit.",
+        category: "changed",
+      },
+      {
+        icon: Shield,
+        label: "Admin Role Helpers Consolidated",
+        desc: "requireStaff, requireAdmin, and logAuditAction moved to lib/auth/authorization.ts. Eliminated ~80 lines of duplicated auth-check boilerplate across 5 admin route files.",
+        category: "changed",
+      },
+      {
+        icon: Zap,
+        label: "Notifications Source of Truth",
+        desc: "Notification preferences are now defined by a single NOTIFICATION_COLUMNS map. The type, the column list, and the type-to-column lookup are all derived from it.",
+        category: "changed",
+      },
+      {
+        icon: Code,
+        label: "SSRF Helpers Consolidated",
+        desc: "The manual-octet isPrivateHostname in async-checks.ts is gone. All SSRF checks now go through the single helper in lib/scanner/safe-fetch.ts.",
+        category: "changed",
+      },
+      {
+        icon: Globe,
+        label: "SCAN_PROTOCOLS Moved to Protocols Module",
+        desc: "Client and scanner code now share a single protocol list. Added 'dns' to the Category union so they no longer drift.",
+        category: "changed",
+      },
+      {
+        icon: Code,
+        label: "Client API Helpers Promoted",
+        desc: "apiGet / apiPost / apiPatch / apiDelete / apiClient moved from components/admin to lib/api/client.ts. Three raw-fetch call sites updated to use them.",
+        category: "changed",
+      },
+    ],
+  },
   {
     version: "2.2.3",
     date: "April 9, 2026",
