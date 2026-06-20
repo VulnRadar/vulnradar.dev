@@ -12,6 +12,7 @@ import {
   Zap,
   Lightbulb,
   BookOpen,
+  ServerCog,
 } from "lucide-react";
 import { FaGithub } from "react-icons/fa";
 import {
@@ -424,14 +425,31 @@ for finding in result.findings:
         icon={FileJson}
         className="ml-0"
       >
+        <div className="rounded-lg border-2 border-amber-500/40 bg-amber-500/5 p-4 mb-6">
+          <p className="text-sm font-semibold text-amber-700 dark:text-amber-300 mb-2">
+            Node.js 22 LTS is the only supported runtime
+          </p>
+          <p className="text-sm text-muted-foreground">
+            Odd-numbered versions (21, 23) are explicitly excluded by vitest@4,
+            balanced-match@4, brace-expansion@5, and minimatch@10 in their{" "}
+            <code className="text-xs">engines</code> field. Node 20 LTS works in
+            CI and is listed as compatible, but the team standardises on 22 for
+            parity. Bug reports on Node versions other than 22 LTS will not be
+            investigated — upgrade first, then reproduce. See{" "}
+            <a href="#node-version-policy" className="underline">
+              Node Version Policy
+            </a>{" "}
+            below.
+          </p>
+        </div>
         <ul className="list-disc pl-6 space-y-2 text-muted-foreground">
           <li>
-            <strong>Node.js 20.x</strong> (matches <code>Dockerfile</code> and
-            CI; LTS recommended)
+            <strong>Node.js 22 LTS</strong> (matches <code>Dockerfile</code>,
+            CI, and the <code>.nvmrc</code> at the repo root; Node 20 LTS is
+            also compatible)
           </li>
           <li>
-            <strong>npm 10+</strong> (or <code>pnpm</code> / <code>yarn</code>{" "}
-            if you adapt the lockfile)
+            <strong>npm 10+</strong> (ships with Node 22)
           </li>
           <li>
             <strong>PostgreSQL 14+</strong> (local install or via Docker)
@@ -440,6 +458,70 @@ for finding in result.findings:
             <strong>Git</strong>
           </li>
         </ul>
+      </DocsSection>
+
+      <DocsSection
+        id="node-version-policy"
+        title="Node Version Policy"
+        icon={ServerCog}
+        className="ml-0"
+      >
+        <p className="text-muted-foreground">
+          VulnRadar targets <strong>Node.js 22 LTS</strong> and lists Node 20
+          LTS as a secondary compatible runtime. Odd-numbered releases (21, 23)
+          and any pre-20 build are not supported and are not investigated in bug
+          reports. This is not a stylistic choice — it is a consequence of the
+          dependency graph.
+        </p>
+        <p className="text-muted-foreground mt-3">
+          The following packages list an explicit{" "}
+          <code className="text-xs">engines</code> field that excludes versions
+          outside the supported set, and we cannot override their constraints
+          from the consumer side:
+        </p>
+        <ul className="list-disc pl-6 space-y-2 text-muted-foreground mt-2">
+          <li>
+            <code>vitest@4</code>:{" "}
+            <code>^20.0.0 || ^22.0.0 || &gt;=24.0.0</code>
+          </li>
+          <li>
+            <code>balanced-match@4</code>: <code>18 || 20 || &gt;=22</code>
+          </li>
+          <li>
+            <code>brace-expansion@5</code>: <code>18 || 20 || &gt;=22</code>
+          </li>
+          <li>
+            <code>minimatch@10</code>: <code>18 || 20 || &gt;=22</code>
+          </li>
+        </ul>
+        <p className="text-muted-foreground mt-4">
+          Switching to the supported Node version is part of fixing the report.
+          Before opening an issue or running a debug session, confirm with{" "}
+          <code>node --version</code> and switch if needed:
+        </p>
+        <CodeBlock
+          language="bash"
+          code={`# nvm / fnm / volta / asdf will all auto-pick this from the repo root
+nvm use          # reads .nvmrc (which says 22)
+
+# or install + use explicitly
+nvm install 22
+nvm use 22
+node --version  # should print v22.x.x`}
+        />
+        <div className="rounded-lg border border-red-500/30 bg-red-500/5 p-4 mt-4">
+          <p className="text-sm font-semibold text-red-700 dark:text-red-300 mb-1">
+            Bug reports on unsupported Node versions will be closed without
+            investigation.
+          </p>
+          <p className="text-sm text-muted-foreground">
+            We do not have the bandwidth to bisect engine-mismatch bugs against
+            versions the dependency graph has explicitly opted out of. The fix
+            is <code>nvm use</code>, not a code change. If a real bug exists on
+            Node 22 LTS, it will reproduce there too — open the report against
+            22 and we will look at it.
+          </p>
+        </div>
       </DocsSection>
 
       <DocsSection

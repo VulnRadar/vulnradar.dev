@@ -119,8 +119,8 @@ export default function SetupPage() {
         <Card className="p-6 border-border/40 space-y-3">
           {[
             {
-              title: "Node.js 18.17+",
-              desc: "JavaScript runtime",
+              title: "Node.js 22 LTS",
+              desc: "JavaScript runtime — odd versions (21, 23) are not supported by vitest@4 and friends; see the Node Version Policy on the Developers page",
               link: "https://nodejs.org",
               cmd: "node --version",
             },
@@ -476,7 +476,7 @@ features:
         <Card className="p-6 border-border/40">
           <h3 className="font-semibold mb-4">Self-Hosted (Linux/Ubuntu)</h3>
           <ol className="list-decimal list-inside space-y-2 text-sm text-muted-foreground">
-            <li>Provision a server with Node.js 18.17+ and PostgreSQL 14+</li>
+            <li>Provision a server with Node.js 22 LTS and PostgreSQL 14+</li>
             <li>Clone the repository on the server</li>
             <li>
               Install dependencies with{" "}

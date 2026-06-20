@@ -30,6 +30,7 @@
 - [ ] Lint passes (`npm run lint`)
 - [ ] Typecheck passes (`npm run typecheck`)
 - [ ] Build passes (`npm run build`)
+- [ ] `node --version` is **v22.x.x** (run `nvm use` in the repo root; CI runs Node 22 LTS)
 - [ ] Manual testing performed (describe below)
 
 ### Manual test steps
