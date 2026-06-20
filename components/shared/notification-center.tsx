@@ -208,7 +208,8 @@ export function NotificationBell() {
     return pathname.startsWith(p);
   });
 
-  const isStaff = me?.role && (STAFF_ROLE_VALUES as readonly string[]).includes(me.role);
+  const isStaff =
+    me?.role && (STAFF_ROLE_VALUES as readonly string[]).includes(me.role);
 
   // Check if there's a new version (cookie-based)
   useEffect(() => {
