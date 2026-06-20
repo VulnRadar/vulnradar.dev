@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { timingSafeEqual } from "node:crypto";
 import { createSession, verifyPassword } from "@/lib/auth";
 import { verifyTOTP } from "@/lib/auth/totp";
 import pool from "@/lib/database/db";
@@ -11,12 +12,14 @@ import {
   withErrorHandling,
 } from "@/lib/api/api-utils";
 import { getClientIp, getUserAgent } from "@/lib/api/request-utils";
+import { checkRateLimit } from "@/lib/rate-limiting/rate-limit";
 import {
   AUTH_2FA_PENDING_COOKIE,
   DEVICE_TRUST_COOKIE_NAME,
   DEVICE_TRUST_MAX_AGE,
   ERROR_MESSAGES,
 } from "@/lib/config/constants";
+import { upsertTrustedDevice } from "@/lib/auth/device-trust";
 
 export const POST = withErrorHandling(async (request: NextRequest) => {
   const ip = await getClientIp();
@@ -67,11 +70,42 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     }
   }
 
+  // H-6: rate-limit 2FA attempts per userId (5 / 5 min). The previous
+  // implementation only rate-limited the email-2FA *send* endpoint; the
+  // primary /verify endpoint had no per-user cap, allowing brute force
+  // of 6-digit TOTP codes (10^6 ≈ 20 bits) once an attacker knew or
+  // guessed a userId.
+  if (effectiveUserId) {
+    const rl = await checkRateLimit({
+      key: `2fa-verify:${effectiveUserId}:${ip}`,
+      maxAttempts: 5,
+      windowSeconds: 5 * 60,
+    });
+    if (!rl.allowed) {
+      return ApiResponse.tooManyRequests(
+        `Too many 2FA attempts. Try again in ${Math.ceil(rl.retryAfterSeconds / 60)} minute(s).`,
+      );
+    }
+  }
+
   if (!isDiscordLogin) {
     if (!userId) {
       return ApiResponse.badRequest("User ID is required");
     }
-    if (!pending || pending !== String(userId)) {
+    // H-6: timing-safe compare of the pending cookie. The previous
+    // implementation used `pending !== String(userId)` which is fine
+    // for distinct string equality but exposes a side-channel if the
+    // format ever changes (e.g. hashed pending). The constant-length
+    // compare below is the safe default.
+    if (!pending) {
+      return ApiResponse.unauthorized(ERROR_MESSAGES.INVALID_2FA_SESSION);
+    }
+    const expected = Buffer.from(String(userId), "utf8");
+    const actual = Buffer.from(pending, "utf8");
+    if (
+      expected.length !== actual.length ||
+      !timingSafeEqual(expected, actual)
+    ) {
       return ApiResponse.unauthorized(ERROR_MESSAGES.INVALID_2FA_SESSION);
     }
   }
@@ -185,10 +219,14 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   // If user wants to remember this device, set device trust cookie
   // Use the rememberDevice value from the form submission for both normal and Discord logins
   if (rememberDevice === true) {
-    const deviceId = `${ip}-${userAgent}`
-      .split("")
-      .reduce((a, b) => (a << 5) - a + b.charCodeAt(0), 0);
-    response.cookies.set(DEVICE_TRUST_COOKIE_NAME, String(deviceId), {
+    // H-3: 256-bit opaque random token stored server-side in device_trust.
+    const fingerprint = await upsertTrustedDevice(
+      effectiveUserId,
+      null,
+      ip,
+      userAgent,
+    );
+    response.cookies.set(DEVICE_TRUST_COOKIE_NAME, fingerprint, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: "lax",

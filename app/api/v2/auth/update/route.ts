@@ -39,6 +39,39 @@ export async function PATCH(request: NextRequest) {
     const body = await request.json();
     const { name, email, currentPassword, newPassword, avatarUrl } = body;
 
+    // H-4: Any sensitive profile change (name, email, avatar, password)
+    // requires the user to re-authenticate with their current password.
+    // Without this, a stolen session cookie is enough to take over the
+    // account by changing the email and then triggering a password reset.
+    const sensitiveChangeRequested =
+      (typeof name === "string" && name.trim()) ||
+      (typeof email === "string" && email.trim()) ||
+      typeof avatarUrl === "string" ||
+      Boolean(newPassword);
+    if (sensitiveChangeRequested) {
+      if (typeof currentPassword !== "string" || !currentPassword) {
+        return NextResponse.json(
+          {
+            error: "Current password is required to change profile details.",
+          },
+          { status: 403 },
+        );
+      }
+      const pwResult = await pool.query(
+        "SELECT password_hash FROM users WHERE id = $1",
+        [session.userId],
+      );
+      if (
+        pwResult.rows.length === 0 ||
+        !verifyPassword(currentPassword, pwResult.rows[0].password_hash)
+      ) {
+        return NextResponse.json(
+          { error: "Current password is incorrect." },
+          { status: 403 },
+        );
+      }
+    }
+
     // Get IP and user agent for security emails
     const ip =
       request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
@@ -181,37 +214,11 @@ export async function PATCH(request: NextRequest) {
 
     // Update password
     if (newPassword) {
-      if (!currentPassword) {
-        return NextResponse.json(
-          { error: "Current password is required to set a new password." },
-          { status: 400 },
-        );
-      }
-
+      // H-4: current password has already been verified above.
       if (newPassword.length < 8) {
         return NextResponse.json(
           { error: "New password must be at least 8 characters." },
           { status: 400 },
-        );
-      }
-
-      // Verify current password
-      const userResult = await pool.query(
-        "SELECT password_hash FROM users WHERE id = $1",
-        [session.userId],
-      );
-      if (userResult.rows.length === 0) {
-        return NextResponse.json({ error: "User not found." }, { status: 404 });
-      }
-
-      const isValid = verifyPassword(
-        currentPassword,
-        userResult.rows[0].password_hash,
-      );
-      if (!isValid) {
-        return NextResponse.json(
-          { error: "Current password is incorrect." },
-          { status: 403 },
         );
       }
 

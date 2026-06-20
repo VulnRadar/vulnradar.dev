@@ -5,6 +5,7 @@
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { loadConfig } from "@/lib/config/config";
+import { signDiscordState } from "@/lib/auth/discord-state";
 
 const DISCORD_CLIENT_ID = process.env.DISCORD_CLIENT_ID;
 
@@ -35,9 +36,8 @@ export async function GET(request: Request) {
 
   // Build Discord OAuth URL
   const scopes = ["identify", "email", "guilds.join"];
-  const state = Buffer.from(
-    JSON.stringify({ action, ts: Date.now() }),
-  ).toString("base64url");
+  // H-5: state is HMAC-signed (see lib/auth/discord-state.ts).
+  const state = signDiscordState({ action });
 
   const discordAuthUrl = new URL("https://discord.com/api/oauth2/authorize");
   discordAuthUrl.searchParams.set("client_id", DISCORD_CLIENT_ID);

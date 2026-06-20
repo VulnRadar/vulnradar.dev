@@ -15,6 +15,8 @@ import {
   getUserTwoFAConfig,
 } from "@/lib/discord/discord-utils";
 import { DEVICE_TRUST_COOKIE_NAME } from "@/lib/config/constants";
+import { verifyDiscordState } from "@/lib/auth/discord-state";
+import { findTrustedDevice } from "@/lib/auth/device-trust";
 
 const DISCORD_CLIENT_ID = process.env.DISCORD_CLIENT_ID;
 const DISCORD_CLIENT_SECRET = process.env.DISCORD_CLIENT_SECRET;
@@ -65,20 +67,19 @@ export async function GET(request: Request) {
     );
   }
 
-  // Parse state to get action
-  let action: string;
-  try {
-    const stateData = JSON.parse(Buffer.from(state, "base64url").toString());
-    action = stateData.action || "connect";
-    // Check if state is too old (5 minutes)
-    if (Date.now() - stateData.ts > 5 * 60 * 1000) {
-      return NextResponse.redirect(`${baseUrl}/login?error=discord_expired`);
-    }
-  } catch {
-    return NextResponse.redirect(
-      `${baseUrl}/login?error=discord_invalid_state`,
-    );
+  // H-5: Verify HMAC-signed state before parsing. The previous
+  // implementation trusted the base64url-encoded JSON, which any caller
+  // who observed a `state` value (or guessed one) could forge to log in
+  // as a different linked user.
+  const verified = verifyDiscordState(state);
+  if (!verified.ok) {
+    const reason =
+      verified.reason === "expired"
+        ? "discord_expired"
+        : "discord_invalid_state";
+    return NextResponse.redirect(`${baseUrl}/login?error=${reason}`);
   }
+  const action = verified.payload.action || "connect";
 
   try {
     // Exchange code for tokens
@@ -244,12 +245,11 @@ export async function GET(request: Request) {
           request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
           "unknown";
         const userAgent = request.headers.get("user-agent") || "unknown";
-        const deviceId = `${ip}-${userAgent}`
-          .split("")
-          .reduce((a, b) => (a << 5) - a + b.charCodeAt(0), 0);
         const deviceCookie = cookieStore.get(DEVICE_TRUST_COOKIE_NAME)?.value;
 
-        if (deviceCookie && deviceCookie === String(deviceId)) {
+        // H-3: device-trust is now an opaque 256-bit random token stored
+        // server-side in device_trust, not a hash of IP+UA.
+        if (deviceCookie && (await findTrustedDevice(userId, deviceCookie))) {
           // Device is trusted - create session directly without 2FA
           await createSession(userId, ip, userAgent);
           return NextResponse.redirect(`${baseUrl}/dashboard`);
