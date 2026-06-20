@@ -368,14 +368,10 @@ export const TEAM_ROLE_PERMISSIONS = {
 // ============================================================================
 // VULNERABILITY SEVERITY LEVELS
 // ============================================================================
-
-export const SEVERITY_LEVELS = {
-  CRITICAL: "critical",
-  HIGH: "high",
-  MEDIUM: "medium",
-  LOW: "low",
-  INFO: "info",
-} as const;
+//
+// SEVERITY_LEVELS lives in lib/config/client-constants.ts (single source).
+// Re-exported here for server-side convenience.
+export { SEVERITY_LEVELS } from "@/lib/config/client-constants";
 
 export const SEVERITY_PRIORITY = {
   critical: 5,
@@ -437,163 +433,27 @@ export const DEMO_SCAN_LIMIT = CONFIG_DEMO_SCAN_LIMIT;
 export const DEMO_SCAN_WINDOW = 60 * 60 * CONFIG_DEMO_WINDOW_HOURS;
 
 // ============================================================================
-// STAFF / ADMIN ROLES
-// NOTE: Also defined in client-constants.ts for client components
-// Keep these in sync if modified
+// STAFF / ADMIN ROLES, ROLE BADGE STYLES, ROUTES, API, API_VERSION
 // ============================================================================
-export const STAFF_ROLES = {
-  USER: "user",
-  BETA_TESTER: "beta_tester",
-  SUPPORT: "support",
-  MODERATOR: "moderator",
-  ADMIN: "admin",
-} as const;
+// All client-safe constants live in lib/config/client-constants.ts as
+// the single source of truth. Server-side this module re-exports them
+// so existing imports (`from "@/lib/config/constants"`) keep working
+// unchanged while adding new routes stays a single-file edit.
 
-export type StaffRole = (typeof STAFF_ROLES)[keyof typeof STAFF_ROLES];
+export {
+  STAFF_ROLES,
+  type StaffRole,
+  STAFF_ROLE_HIERARCHY,
+  STAFF_ROLE_LABELS,
+  ROLE_BADGE_STYLES,
+  ROUTES,
+  API_VERSION,
+  API,
+} from "@/lib/config/client-constants";
 
-export const STAFF_ROLE_HIERARCHY: Record<string, number> = {
-  user: 0,
-  beta_tester: 0,
-  support: 1,
-  moderator: 2,
-  admin: 3,
-};
-
-export const STAFF_ROLE_LABELS: Record<string, string> = {
-  user: "User",
-  beta_tester: "Beta Tester",
-  support: "Support",
-  moderator: "Moderator",
-  admin: "Admin",
-};
-
-// ============================================================================
-// ROLE BADGE STYLES (used across admin, shared, staff pages)
-// ============================================================================
-
-export const ROLE_BADGE_STYLES: Record<string, string> = {
-  admin: "bg-primary/10 text-primary border-primary/20",
-  moderator:
-    "bg-[hsl(var(--severity-medium))]/10 text-[hsl(var(--severity-medium))] border-[hsl(var(--severity-medium))]/20",
-  support: "bg-blue-500/10 text-blue-500 border-blue-500/20",
-  beta_tester: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
-  user: "bg-muted text-muted-foreground border-border",
-};
-
-// ============================================================================
-// APPLICATION ROUTES
-// NOTE: Also defined in client-constants.ts for client components
-// Keep these in sync if modified
-// ============================================================================
-
-export const ROUTES = {
-  HOME: "/",
-  LOGIN: "/login",
-  SIGNUP: "/signup",
-  FORGOT_PASSWORD: "/forgot-password",
-  RESET_PASSWORD: "/reset-password",
-  VERIFY_EMAIL: "/verify-email",
-  DASHBOARD: "/dashboard",
-  HISTORY: "/history",
-  COMPARE: "/compare",
-  BADGE: "/badge",
-  SHARES: "/shares",
-  PROFILE: "/profile",
-  ADMIN: "/admin",
-  TEAMS: "/teams",
-  TEAMS_JOIN: "/teams/join",
-  CONTACT: "/contact",
-  CHANGELOG: "/changelog",
-  DEMO: "/demo",
-  STAFF: "/staff",
-  DONATE: "/donate",
-  PRICING: "/pricing",
-  DOCS: "/docs",
-  DOCS_API: "/docs/api",
-  DOCS_SETUP: "/docs/setup",
-  LANDING: "/landing",
-  LEGAL_TERMS: "/legal/terms",
-  LEGAL_PRIVACY: "/legal/privacy",
-  LEGAL_DISCLAIMER: "/legal/disclaimer",
-  LEGAL_ACCEPTABLE_USE: "/legal/acceptable-use",
-  GDPR_REQUEST: "/legal/privacy#gdpr",
-} as const;
-
-// ============================================================================
-// API VERSION CONSTANT
-// NOTE: Also defined in client-constants.ts for client components
-// This is the single source of truth for the active API version
-// ============================================================================
-
-export const API_VERSION = "v2";
-
-// ============================================================================
-// API ENDPOINTS (dynamically versioned)
-// NOTE: Also defined in client-constants.ts for client components
-// Keep these in sync if modified
-// ============================================================================
-
-export const API = {
-  // Shorthand for common endpoints
-  ME: `/api/${API_VERSION}/auth/me`,
-  AUTH: {
-    ME: `/api/${API_VERSION}/auth/me`,
-    LOGIN: `/api/${API_VERSION}/auth/login`,
-    SIGNUP: `/api/${API_VERSION}/auth/signup`,
-    LOGOUT: `/api/${API_VERSION}/auth/logout`,
-    UPDATE: `/api/${API_VERSION}/auth/update`,
-    FORGOT_PASSWORD: `/api/${API_VERSION}/auth/forgot-password`,
-    RESET_PASSWORD: `/api/${API_VERSION}/auth/reset-password`,
-    VERIFY_EMAIL: `/api/${API_VERSION}/auth/verify-email`,
-    RESEND_VERIFICATION: `/api/${API_VERSION}/auth/resend-verification`,
-    ACCEPT_TOS: `/api/${API_VERSION}/auth/accept-tos`,
-    ONBOARDING: `/api/${API_VERSION}/auth/onboarding`,
-    TWO_FA: {
-      SETUP: `/api/${API_VERSION}/auth/2fa/setup`,
-      VERIFY: `/api/${API_VERSION}/auth/2fa/verify`,
-      DISABLE: `/api/${API_VERSION}/auth/2fa/disable`,
-      EMAIL_SETUP: `/api/${API_VERSION}/auth/2fa/email-setup`,
-      EMAIL_SEND: `/api/${API_VERSION}/auth/2fa/email-send`,
-      BACKUP_CODES: `/api/${API_VERSION}/auth/2fa/backup-codes`,
-    },
-    SESSIONS: `/api/${API_VERSION}/auth/sessions`,
-  },
-  SCAN: `/api/${API_VERSION}/scan`,
-  SCAN_BULK: `/api/${API_VERSION}/scan/bulk`,
-  SCAN_TAGS: `/api/${API_VERSION}/scan/tags`,
-  SCAN_DISCOVER: `/api/${API_VERSION}/scan/discover`,
-  SCAN_CRAWL: `/api/${API_VERSION}/scan/crawl`,
-  SCAN_CRAWL_DISCOVER: `/api/${API_VERSION}/scan/crawl/discover`,
-  DEMO_SCAN: `/api/${API_VERSION}/demo-scan`,
-  HISTORY: `/api/${API_VERSION}/history`,
-  DASHBOARD: `/api/${API_VERSION}/dashboard`,
-  SHARES: `/api/${API_VERSION}/shares`,
-  SHARED: `/api/${API_VERSION}/shared`,
-  KEYS: `/api/${API_VERSION}/keys`,
-  WEBHOOKS: `/api/${API_VERSION}/webhooks`,
-  SCHEDULES: `/api/${API_VERSION}/schedules`,
-  TEAMS: `/api/${API_VERSION}/teams`,
-  TEAMS_MEMBERS: `/api/${API_VERSION}/teams/members`,
-  TEAMS_MEMBER_SCANS: `/api/${API_VERSION}/teams/member-scans`,
-  TEAMS_ACCEPT_INVITE: `/api/${API_VERSION}/teams/accept-invite`,
-  CONTACT: `/api/${API_VERSION}/contact`,
-  LANDING_CONTACT: `/api/${API_VERSION}/landing-contact`,
-  ADMIN: `/api/${API_VERSION}/admin`,
-  STAFF: `/api/${API_VERSION}/staff`,
-  VERSION: "/api/version",
-  BADGE: `/api/${API_VERSION}/badge`,
-  BADGE_SCANS: `/api/${API_VERSION}/badge/scans`,
-  DATA_REQUEST: `/api/${API_VERSION}/data-request`,
-  DATA_REQUEST_DOWNLOAD: `/api/${API_VERSION}/data-request/download`,
-  ACCOUNT_DELETE: `/api/${API_VERSION}/account/delete`,
-  ACCOUNT_NOTIFICATIONS: `/api/${API_VERSION}/account/notifications`,
-  ACCOUNT: `/api/${API_VERSION}/account/delete`,
-  FINDING_TYPES: `/api/${API_VERSION}/finding-types`,
-  COMPARE: `/api/${API_VERSION}/compare`,
-  BILLING: `/api/${API_VERSION}/billing`,
-  SUBSCRIPTION_CANCEL: `/api/${API_VERSION}/billing/subscription/cancel`,
-  SUBSCRIPTION_REACTIVATE: `/api/${API_VERSION}/billing/subscription/reactivate`,
-} as const;
+// Additions that only exist on the server side are now in client-constants.ts.
+// (PRICING_ROUTE and GDPR_REQUEST_ROUTE are aliases of ROUTES.PRICING and
+// ROUTES.GDPR_REQUEST respectively.)
 
 // ============================================================================
 // API V2 ENDPOINTS

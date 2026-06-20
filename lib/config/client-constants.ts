@@ -116,6 +116,10 @@ export const API = {
   ACCOUNT: `/api/${API_VERSION}/account/delete`,
   FINDING_TYPES: `/api/${API_VERSION}/finding-types`,
   COMPARE: `/api/${API_VERSION}/compare`,
+  BILLING: `/api/${API_VERSION}/billing`,
+  SUBSCRIPTION_CANCEL: `/api/${API_VERSION}/billing/subscription/cancel`,
+  SUBSCRIPTION_REACTIVATE: `/api/${API_VERSION}/billing/subscription/reactivate`,
+  VERSION: "/api/version",
 } as const;
 
 // ============================================================================
@@ -141,11 +145,13 @@ export const ROUTES = {
   DEMO: "/demo",
   CONTACT: "/contact",
   DONATE: "/donate",
+  PRICING: "/pricing",
   LANDING: "/landing",
   LEGAL_TERMS: "/legal/terms",
   LEGAL_PRIVACY: "/legal/privacy",
   LEGAL_DISCLAIMER: "/legal/disclaimer",
   LEGAL_ACCEPTABLE_USE: "/legal/acceptable-use",
+  GDPR_REQUEST: "/legal/privacy#gdpr",
   CHANGELOG: "/changelog",
   DOCS: "/docs",
   DOCS_API: "/docs/api",
