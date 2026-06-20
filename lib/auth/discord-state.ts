@@ -14,11 +14,17 @@ import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 const STATE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
 function getStateSecret(): string {
-  return (
-    process.env.AUTH_SECRET ||
-    process.env.API_KEY_ENCRYPTION_KEY ||
-    "vulnradar-discord-state-v1"
-  );
+  // Phase 8 Commit 1: removed the hardcoded `"vulnradar-discord-state-v1"`
+  // fallback. Anyone who read the source could forge a state value if it
+  // was used as the HMAC key. Fail closed — require one of the real secrets.
+  const secret = process.env.AUTH_SECRET || process.env.API_KEY_ENCRYPTION_KEY;
+  if (!secret) {
+    throw new Error(
+      "[discord-state] Either AUTH_SECRET or API_KEY_ENCRYPTION_KEY must be " +
+        "configured to sign OAuth state. Set one in .env.",
+    );
+  }
+  return secret;
 }
 
 export interface DiscordStatePayload {

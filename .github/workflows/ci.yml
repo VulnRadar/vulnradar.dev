@@ -55,8 +55,13 @@ jobs:
         run: npm ci
 
       - name: Run TypeScript typecheck
+        # Phase 8 Commit 1: removed `continue-on-error: true`. Typecheck must
+        # block merges; any type error is a bug.
         run: npx tsc --noEmit
-        continue-on-error: true
+
+      - name: Audit production dependencies
+        # Phase 8 Commit 1: block merges on high/critical CVEs in runtime deps.
+        run: npm audit --audit-level=high --omit=dev
 
   build:
     name: Build

@@ -19,15 +19,19 @@ function generateDeprecatedPlaceholder(): string {
 }
 
 // Derive a server-side secret for key locator HMAC.
-// Falls back to a fixed constant only when the encryption key is missing
-// (still safe: the locator is purely an indexed lookup prefix; the actual
-// auth check is HMAC compare plus bcrypt / AES-GCM).
+// Phase 8 Commit 1: removed the hardcoded `"vulnradar-key-locator-v1"`
+// fallback. A global default in the source would let anyone who read the
+// source compute the locator for any stolen key. Require the real secret.
 function getLocatorSecret(): Buffer {
   const enc = process.env.API_KEY_ENCRYPTION_KEY;
   if (enc && enc.length === 64) {
     return Buffer.from(enc, "hex");
   }
-  return Buffer.from("vulnradar-key-locator-v1", "utf8");
+  throw new Error(
+    "[api-keys] API_KEY_ENCRYPTION_KEY must be set to a 64-character hex " +
+      "string (32 bytes) to compute API key locators. " +
+      "Generate with: node -e \"console.log(require('crypto').randomBytes(32).toString('hex'))\"",
+  );
 }
 
 // Compute a deterministic 8-hex-char locator for indexed O(1) lookup.

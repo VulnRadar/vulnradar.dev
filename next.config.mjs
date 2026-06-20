@@ -8,7 +8,10 @@ const nextConfig = {
   // works the same everywhere.
   serverExternalPackages: ["fs", "path"],
   typescript: {
-    ignoreBuildErrors: true,
+    // Phase 8 Commit 1: removed `ignoreBuildErrors: true`. Typecheck errors
+    // must block the build. CI runs `tsc --noEmit` separately as a hard
+    // gate; allowing the build to swallow type errors would silently ship
+    // broken code.
   },
   eslint: {
     // Skip Next.js's internal linter during `next build`. We run ESLint

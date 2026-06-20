@@ -4,8 +4,9 @@
 
 | Version | Supported          |
 | ------- | ------------------ |
-| 2.2.x   | :white_check_mark: |
-| 2.1.x   | :white_check_mark: |
+| 3.0.x   | :white_check_mark: |
+| 2.2.x   | :x:                |
+| 2.1.x   | :x:                |
 | 2.0.x   | :x:                |
 | < 2.0   | :x:                |
 
@@ -65,14 +66,9 @@ See `public/.well-known/security.txt` for the latest list.
 
 ## PGP Key
 
-```
------BEGIN PGP PUBLIC KEY BLOCK-----
-[Available on request from security@vulnradar.dev]
------END PGP PUBLIC KEY BLOCK-----
-```
-
-(We will publish a public key here once a stable signing key is established.
-For now, request the key via email reply.)
+We accept reports encrypted to the PGP key published in
+`public/.well-known/security.txt`. If you need the key fingerprint
+separately, request it via email reply.
 
 ## Security.txt
 
