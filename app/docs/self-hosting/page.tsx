@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import Link from "next/link";
 import { useDocsContext, type TocItem } from "../layout";
 import {
   DocsHero,
@@ -16,9 +17,8 @@ const tocItems: TocItem[] = [
   { id: "prerequisites", label: "Prerequisites" },
   { id: "clone", label: "Clone and Configure" },
   { id: "env", label: "Create .env" },
-  { id: "docker", label: "Configure docker-compose" },
+  { id: "docker", label: "docker-compose" },
   { id: "start", label: "Start the Stack" },
-  { id: "schema", label: "Initialize the Schema" },
   { id: "admin", label: "First Admin User" },
   { id: "tls", label: "TLS (Reverse Proxy)" },
   { id: "stripe", label: "Configure Stripe Webhook" },
@@ -63,13 +63,13 @@ export default function SelfHostingPage() {
 
       <DocsSection id="overview" title="Overview">
         <p>
-          The fastest way to run VulnRadar yourself. Assumes a single Linux
-          server with Docker. For Kubernetes, multi-region, or bare-metal
-          setups, adapt accordingly.
+          The fastest path to running VulnRadar yourself. Assumes a single
+          Linux server with Docker. For Kubernetes, multi-region, or
+          bare-metal setups, adapt accordingly.
         </p>
         <DocsCallout variant="info" title="Time estimate">
-          ~30 minutes if you already have Docker + a domain pointed at your
-          server.
+          About 30 minutes if you already have Docker + a domain pointed at
+          your server.
         </DocsCallout>
       </DocsSection>
 
@@ -95,7 +95,7 @@ export default function SelfHostingPage() {
               disk: "50 GB",
             },
             {
-              workload: "Public SaaS (100s users)",
+              workload: "Public SaaS (100s of users)",
               cpu: "4+ vCPU",
               ram: "8+ GB",
               disk: "200+ GB",
@@ -103,20 +103,19 @@ export default function SelfHostingPage() {
           ]}
         />
         <DocsCallout variant="info">
-          A managed PostgreSQL (Neon, Supabase, RDS) is recommended over running
-          your own DB.
+          A managed PostgreSQL (Neon, Supabase, RDS) is recommended over
+          running your own DB.
         </DocsCallout>
       </DocsSection>
 
       <DocsSection id="prerequisites" title="Prerequisites">
         <ul className="list-disc pl-6 space-y-2 text-muted-foreground">
-          <li>
-            Linux server (Ubuntu 22.04 LTS recommended) or any host with Docker
-          </li>
+          <li>Linux server (Ubuntu 22.04+ recommended) or any host with Docker</li>
           <li>Docker 24+ and Docker Compose v2</li>
           <li>A domain name with DNS pointing to the server</li>
           <li>
-            (Production) A reverse proxy: Caddy, Traefik, or nginx with TLS
+            (Production) A reverse proxy — Caddy, Traefik, or nginx — for
+            TLS termination
           </li>
         </ul>
       </DocsSection>
@@ -127,13 +126,11 @@ export default function SelfHostingPage() {
           code={`git clone https://github.com/VulnRadar/vulnradar.dev.git
 cd vulnradar.dev
 
-# Generate a 32-byte API encryption key
+# Generate a 32-byte API encryption key (64 hex chars)
 node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 # → paste into API_KEY_ENCRYPTION_KEY`}
         />
-        <p>
-          Edit <code>lib/config/config-values.ts</code> to set:
-        </p>
+        <p>Edit <code>lib/config/config-values.ts</code> to set:</p>
         <CodeBlock
           language="typescript"
           code={`export const CONFIG_APP_NAME = "YourBrand Scanner";
@@ -152,6 +149,13 @@ export const CONFIG_NOREPLY_EMAIL = "noreply@yourdomain.com";`}
           language="typescript"
           code={`export const CONFIG_BILLING_ENABLED = false;`}
         />
+        <p>
+          Full reference on the{" "}
+          <Link href="/docs/config" className="text-primary hover:underline">
+            Configuration
+          </Link>{" "}
+          page.
+        </p>
       </DocsSection>
 
       <DocsSection id="env" title="Create .env">
@@ -162,7 +166,7 @@ export const CONFIG_NOREPLY_EMAIL = "noreply@yourdomain.com";`}
           code={`# Required
 DATABASE_URL=postgresql://vulnradar:STRONG_PASSWORD@postgres:5432/vulnradar
 DATABASE_SSL=false
-API_KEY_ENCRYPTION_KEY=<paste your 64-char hex from step 2>
+API_KEY_ENCRYPTION_KEY=<paste your 64-char hex>
 NEXT_PUBLIC_APP_URL=https://scanner.yourdomain.com
 
 # Optional: SMTP for transactional email
@@ -178,11 +182,11 @@ DISCORD_CLIENT_SECRET=...
 DISCORD_BOT_TOKEN=...
 DISCORD_GUILD_ID=...
 
-# Optional: Cloudflare Turnstile captcha
+# Optional: Cloudflare Turnstile
 NEXT_PUBLIC_TURNSTILE_SITE_KEY=...
 TURNSTILE_SECRET_KEY=...
 
-# Optional: Stripe billing (only if CONFIG_BILLING_ENABLED=true)
+# Optional: Stripe (only if CONFIG_BILLING_ENABLED=true)
 STRIPE_SECRET_KEY=sk_live_...
 STRIPE_PUBLISHABLE_KEY=pk_live_...
 NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=pk_live_...
@@ -190,13 +194,16 @@ STRIPE_WEBHOOK_SECRET=whsec_...`}
         />
       </DocsSection>
 
-      <DocsSection id="docker" title="Configure docker-compose">
+      <DocsSection id="docker" title="docker-compose">
         <p>
-          The default <code>docker-compose.yml</code> works out of the box. The
-          app reads <code>.env</code> from the host (via <code>env_file</code>).
-          For production, set secrets via Docker secrets or your secret manager
-          instead of a <code>.env</code> file on disk.
+          The default <code>docker-compose.yml</code> provisions Postgres +
+          the app container + a healthcheck + a smoke test. The app reads{" "}
+          <code>.env</code> via <code>env_file</code>.
         </p>
+        <DocsCallout variant="info">
+          For production, prefer Docker secrets or a secret manager over a
+          plain <code>.env</code> file on disk.
+        </DocsCallout>
       </DocsSection>
 
       <DocsSection id="start" title="Start the Stack">
@@ -205,39 +212,23 @@ STRIPE_WEBHOOK_SECRET=whsec_...`}
           code={`docker compose up -d
 docker compose logs -f app   # watch startup`}
         />
-        <p>Look for:</p>
-        <CodeBlock
-          language="text"
-          code={`✓ Database initialized
-✓ Listening on http://0.0.0.0:3000`}
-        />
-      </DocsSection>
-
-      <DocsSection id="schema" title="Initialize the Schema">
-        <CodeBlock
-          language="bash"
-          code={`docker compose exec app npm run db:create`}
-        />
         <p>
-          This is idempotent (CREATE TABLE IF NOT EXISTS). Safe to re-run on
-          every deploy.
+          On boot, <code>instrumentation.ts</code> runs{" "}
+          <code>CREATE TABLE IF NOT EXISTS</code> for every table. The meta
+          row in <code>vulnradar_schema_meta</code> is written on the first
+          successful migration. Look for{" "}
+          <code>Database schema verified successfully</code> in the logs.
         </p>
-        <DocsCallout variant="info" title="Migrations on existing databases">
-          If you&apos;re upgrading an existing deployment with data, use{" "}
-          <code>npm run db:migrate</code> instead — it diffs the live schema
-          against <code>instrumentation.ts</code> and applies only the changes,
-          with confirmation before each step.
-        </DocsCallout>
       </DocsSection>
 
       <DocsSection id="admin" title="First Admin User">
         <ol className="list-decimal pl-6 space-y-2 text-muted-foreground">
           <li>
-            Visit <code>https://scanner.yourdomain.com/signup</code> and create
-            an account
+            Visit <code>https://scanner.yourdomain.com/signup</code> and
+            create an account.
           </li>
           <li>
-            From your DB client, promote the user:
+            Connect to Postgres and promote the user:
             <CodeBlock
               language="sql"
               code={`UPDATE users
@@ -254,8 +245,8 @@ WHERE email = 'you@yourdomain.com';`}
 
       <DocsSection id="tls" title="TLS (Reverse Proxy)">
         <p>
-          VulnRadar does not terminate TLS itself. Put a reverse proxy in front.
-          Minimal Caddy config:
+          VulnRadar does not terminate TLS itself. Put a reverse proxy in
+          front. Minimal Caddy config:
         </p>
         <CodeBlock
           language="caddyfile"
@@ -264,13 +255,14 @@ WHERE email = 'you@yourdomain.com';`}
     encode zstd gzip
 }`}
         />
-        <p>Caddy auto-provisions a Let&apos;s Encrypt cert.</p>
+        <p>Caddy auto-provisions a Let&apos;s Encrypt certificate.</p>
         <p>
           For nginx, see the{" "}
           <a
             href="https://nextjs.org/docs/app/building-your-application/deploying#nginx"
             target="_blank"
             rel="noopener noreferrer"
+            className="text-primary hover:underline"
           >
             official nginx + Next.js guide
           </a>
@@ -279,12 +271,14 @@ WHERE email = 'you@yourdomain.com';`}
       </DocsSection>
 
       <DocsSection id="stripe" title="Configure Stripe Webhook (If Billing)">
-        <p>
-          If you set <code>CONFIG_BILLING_ENABLED = true</code>:
-        </p>
+        <DocsCallout variant="info">
+          Skip this section if <code>CONFIG_BILLING_ENABLED = false</code>.
+        </DocsCallout>
+
+        <h4 className="font-semibold mb-3 mt-2">Option A: Stripe dashboard</h4>
         <ol className="list-decimal pl-6 space-y-2 text-muted-foreground">
           <li>
-            In your Stripe dashboard, create a webhook:
+            In the Stripe dashboard, create a webhook:
             <ul className="list-disc pl-6 mt-2 space-y-1">
               <li>
                 URL:{" "}
@@ -303,33 +297,50 @@ WHERE email = 'you@yourdomain.com';`}
             </ul>
           </li>
           <li>
-            Copy the signing secret into <code>STRIPE_WEBHOOK_SECRET</code> in{" "}
-            <code>.env</code>
+            Copy the signing secret into <code>STRIPE_WEBHOOK_SECRET</code>{" "}
+            in <code>.env</code>.
           </li>
           <li>
             <code>docker compose restart app</code>
           </li>
         </ol>
-        <p>Alternatively, use the auto-setup endpoint:</p>
+
+        <h4 className="font-semibold mb-3 mt-6">Option B: auto-setup endpoint</h4>
+        <p className="text-sm text-muted-foreground mb-2">
+          <code>GET /api/v2/stripe/setup-webhook</code> registers the webhook
+          in Stripe and returns the signing secret — but only when the secret
+          is not yet stored. After first run it returns{" "}
+          <code>{`{ success: true, configured: true }`}</code> with no secret.
+          The endpoint requires an admin session unless the webhook is
+          already configured.
+        </p>
+        <DocsCallout variant="warning">
+          Using <code>curl</code> against this endpoint without an admin
+          session cookie will get 401. Log in as admin in a browser, copy
+          the session cookie, and pass it as{" "}
+          <code>-b &quot;cookie.txt&quot;</code> in curl.
+        </DocsCallout>
         <CodeBlock
           language="bash"
-          code={`curl https://scanner.yourdomain.com/api/v2/stripe/setup-webhook
-# returns the webhookSecret to paste into .env`}
+          code={`# Log in via the web UI as an admin user, then export the cookie:
+curl -b cookies.txt https://scanner.yourdomain.com/api/v2/stripe/setup-webhook
+# First call: returns { success: true, webhookSecret: "whsec_..." }
+# Paste the secret into STRIPE_WEBHOOK_SECRET in .env and restart.`}
         />
       </DocsSection>
 
       <DocsSection id="backups" title="Backups">
         <CodeBlock
           language="bash"
-          code={`# Database
+          code={`# Database dump
 docker compose exec postgres pg_dump -U vulnradar vulnradar > backup-$(date +%F).sql
 
 # Restore
 cat backup-2026-06-18.sql | docker compose exec -T postgres psql -U vulnradar vulnradar`}
         />
         <p>
-          Automate with cron + <code>docker compose exec</code>. Or use a
-          managed Postgres with automated backups.
+          Automate with cron + <code>docker compose exec</code>, or use a
+          managed Postgres with built-in automated backups.
         </p>
       </DocsSection>
 
@@ -341,11 +352,11 @@ git pull
 docker compose build app
 docker compose up -d`}
         />
-        <p>Watch logs for migrations or new env vars.</p>
+        <p>Watch the logs for new env-var requirements or schema changes.</p>
         <DocsCallout variant="warning" title="After schema changes">
-          If <code>instrumentation.ts</code> changed, run{" "}
-          <code>docker compose exec app npm run db:migrate</code> to apply the
-          diff. The script will ask before each change.
+          If <code>instrumentation.ts</code> changed in the new release, run{" "}
+          <code>npm run db:migrate</code> inside the app container to apply
+          the diff interactively. The script is idempotent; safe to re-run.
         </DocsCallout>
       </DocsSection>
 
@@ -353,34 +364,44 @@ docker compose up -d`}
         <DocsTable
           columns={[
             { key: "symptom", header: "Symptom" },
-            { key: "cause", header: "Cause" },
+            { key: "cause", header: "Likely cause" },
             { key: "fix", header: "Fix" },
           ]}
           data={[
             {
-              symptom: "Database initialized then crash",
-              cause: "DB not reachable",
-              fix: "Check DATABASE_URL and DATABASE_SSL",
+              symptom: "App crashes after schema verify",
+              cause: "DATABASE_URL unreachable",
+              fix: "Check DATABASE_URL and DATABASE_SSL; confirm Postgres accepts the connection.",
             },
             {
-              symptom: "Build fails: API_KEY_ENCRYPTION_KEY required",
-              cause: "Missing env var at build",
-              fix: "Dockerfile provides placeholder; check runtime env",
+              symptom: "Schema version mismatch on startup",
+              cause: "vulnradar_schema_meta.schema_version < CONFIG_MIN_SCHEMA_VERSION",
+              fix: "Run npm run db:migrate (or upgrade CONFIG_MIN_SCHEMA_VERSION to match if you just want to skip).",
             },
             {
-              symptom: "Config validation failed at runtime",
-              cause: "Misconfigured config-values.ts",
-              fix: "Check TypeScript errors: npm run typecheck",
+              symptom: "API_KEY_ENCRYPTION_KEY invalid",
+              cause: "Not 64 hex chars, or unset",
+              fix: "Generate one: node -e \"console.log(require('crypto').randomBytes(32).toString('hex'))\"",
+            },
+            {
+              symptom: "Build fails: TypeScript errors in lib/config",
+              cause: "Renamed a CONFIG_* constant without updating the typed DEFAULT_CONFIG",
+              fix: "Run npm run typecheck; the error points at the exact field.",
             },
             {
               symptom: "502 from reverse proxy",
-              cause: "App not listening on 0.0.0.0:3000",
-              fix: "Check APP_PORT env var (default 3000)",
+              cause: "App not listening on the expected port",
+              fix: "Check APP_PORT (default 3000); confirm the app container is up via docker compose ps.",
             },
             {
               symptom: "Stripe webhook 400s",
-              cause: "Wrong signing secret",
-              fix: "Re-copy from Stripe dashboard, restart app",
+              cause: "Wrong signing secret or missing STRIPE_WEBHOOK_SECRET",
+              fix: "Re-copy from Stripe dashboard, restart app.",
+            },
+            {
+              symptom: "Login succeeds but 2FA code never arrives",
+              cause: "SMTP not configured",
+              fix: "Set SMTP_HOST/PORT/USER/PASS/FROM in .env and restart, or disable 2FA via /api/v2/auth/2fa/disable.",
             },
           ]}
         />
@@ -389,15 +410,15 @@ docker compose up -d`}
       <DocsSection id="security" title="Security Checklist">
         <ul className="space-y-2 text-muted-foreground">
           {[
-            "TLS via reverse proxy (Caddy/Traefik/nginx)",
-            "Strong API_KEY_ENCRYPTION_KEY (32 random bytes)",
+            "TLS via reverse proxy (Caddy / Traefik / nginx)",
+            "Strong API_KEY_ENCRYPTION_KEY (32 random bytes, base16)",
             "Strong POSTGRES_PASSWORD",
-            "SMTP credentials use app-specific password (not account password)",
-            "Stripe restricted keys (only needed permissions)",
-            "Discord OAuth uses HTTPS redirect URI",
-            "Backups automated daily",
-            "CONFIG_BILLING_ENABLED = false if you don't want paid tiers",
-            "https://yourdomain.com/.well-known/security.txt reachable",
+            "SMTP credentials use an app-specific password",
+            "Stripe uses restricted keys (only required permissions)",
+            "Discord OAuth redirect URI is HTTPS",
+            "Backups automated daily with off-host retention",
+            "CONFIG_BILLING_ENABLED = false if you do not need paid tiers",
+            "https://yourdomain.com/.well-known/security.txt is reachable",
             "Cloudflare Turnstile enabled to prevent signup abuse",
           ].map((item) => (
             <li key={item} className="flex items-start gap-2">
@@ -406,10 +427,13 @@ docker compose up -d`}
             </li>
           ))}
         </ul>
-        <p className="text-sm text-muted-foreground mt-4">
-          See <a href="/docs/security">SECURITY.md</a> for the full security
-          policy and how to report vulnerabilities.
-        </p>
+        <DocsCallout variant="info">
+          <p>
+            The full security policy and disclosure procedure live in{" "}
+            <code>SECURITY.md</code> at the repo root and are served at{" "}
+            <code>/.well-known/security.txt</code>.
+          </p>
+        </DocsCallout>
       </DocsSection>
     </div>
   );
