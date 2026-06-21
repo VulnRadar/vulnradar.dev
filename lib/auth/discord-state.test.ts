@@ -59,7 +59,15 @@ describe("signDiscordState / verifyDiscordState", () => {
     withSecret(() => {
       const state = signDiscordState({ action: "link" });
       const [payload, sig] = state.split(".");
-      const tampered = `${payload}.${sig!.slice(0, -1)}A`;
+      // Flip a byte in the middle of the decoded signature. The naive
+      // mutation (replace the last char with a constant) is flaky because
+      // base64url's last char only encodes 2 meaningful bits per 6-bit
+      // group, so a quarter of the time the decoded byte is unchanged
+      // and the HMAC still matches. Decoding + XOR + re-encoding is
+      // deterministic.
+      const sigBytes = Buffer.from(sig!, "base64url");
+      sigBytes[10] ^= 0xff;
+      const tampered = `${payload}.${sigBytes.toString("base64url")}`;
       const result = verifyDiscordState(tampered);
       expect(result).toEqual({ ok: false, reason: "bad-signature" });
     });
