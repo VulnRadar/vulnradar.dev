@@ -21,128 +21,93 @@ import {
   type Endpoint,
 } from "@/components/docs";
 
-// Define all endpoints
 const endpoints: Endpoint[] = [
   {
     id: "post-scan",
     method: "POST",
     path: "/scan",
-    title: "Create Scan",
+    title: "Create a Scan",
     description:
-      "Initiate a vulnerability scan on a target URL. Supports HTTP, HTTPS, WebSocket (ws/wss), and FTP (ftp/ftps) protocols. Returns comprehensive security findings with severity ratings and remediation advice.",
+      "Initiate a vulnerability scan against a target URL. Supports http, https, ws, wss, ftp, and ftps. Returns findings with severity, category, evidence, and a fix recipe.",
     requestBody: `{
-  "url": "https://example.com",    // Required - Target URL to scan
-  "scanners": ["headers", "ssl"]   // Optional - Specific scanners to run
+  "url": "https://example.com",
+  "scanners": ["headers", "ssl"]
 }`,
     responseExample: `{
   "url": "https://example.com",
   "scannedAt": "2026-03-10T15:30:00.000Z",
-  "duration": 1234,
+  "duration": 1423,
   "findings": [
     {
-      "type": "hsts-missing",
+      "id": "hsts-missing",
       "title": "HSTS Header Missing",
       "severity": "medium",
-      "description": "HTTP Strict Transport Security header is not set",
-      "remediation": "Add 'Strict-Transport-Security: max-age=31536000; includeSubDomains'"
+      "category": "headers",
+      "description": "HTTP Strict Transport Security header is not set.",
+      "evidence": "GET / response did not include a Strict-Transport-Security header.",
+      "riskImpact": "Without HSTS, a man-in-the-middle can downgrade the connection to HTTP on the first visit.",
+      "explanation": "HSTS tells browsers and compliant clients to only ever speak HTTPS to your domain.",
+      "fixSteps": [
+        "Add the header to every HTTPS response",
+        "Set max-age to at least 31536000 (1 year)",
+        "Include subDomains and preload once you are confident"
+      ],
+      "codeExamples": [
+        {
+          "label": "nginx",
+          "language": "nginx",
+          "code": "add_header Strict-Transport-Security \"max-age=31536000; includeSubDomains; preload\" always;"
+        }
+      ]
     }
   ],
-  "summary": {
-    "critical": 0, "high": 1, "medium": 2, "low": 3, "info": 1, "total": 7
-  },
+  "checksRun": 215,
+  "summary": { "critical": 0, "high": 1, "medium": 2, "low": 3, "info": 1, "total": 7 },
   "scanHistoryId": 12345
 }`,
     notes: [
-      "Supported protocols: http://, https://, ws://, wss://, ftp://, ftps://",
-      "If 'scanners' is omitted, all available scanners will run",
-      "Scan results are automatically saved to your history",
+      "scanners accepts category names: headers, ssl, content, cookies, configuration, information-disclosure, dns. Omit to run all.",
+      "Protocols: http://, https://, ws://, wss://, ftp://, ftps://.",
+      "SSRF protection rejects localhost and private IP targets.",
+      "Scan results are saved to scan_history.",
     ],
     errors: [
-      { code: 400, description: "Missing or invalid URL parameter" },
-      { code: 401, description: "Invalid, missing, or revoked API key" },
-      { code: 422, description: "Target URL unreachable or blocking requests" },
-      { code: 429, description: "Rate limit exceeded (varies by plan)" },
+      { code: 400, description: "Missing or invalid URL" },
+      { code: 401, description: "Unauthorized (session cookie or Bearer API key required)" },
+      { code: 422, description: "Target unreachable or blocking requests" },
+      { code: 429, description: "Daily quota exceeded" },
     ],
   },
   {
-    id: "get-history",
-    method: "GET",
-    path: "/history",
-    title: "List Scans",
+    id: "post-scan-bulk",
+    method: "POST",
+    path: "/scan/bulk",
+    title: "Bulk Scan",
     description:
-      "Retrieve all scans for the authenticated user. Returns up to 100 most recent scans ordered by date descending.",
-    responseExample: `{
-  "scans": [
-    {
-      "id": 1,
-      "url": "https://example.com",
-      "summary": { "critical": 0, "high": 1, "medium": 2, "low": 3, "info": 1, "total": 7 },
-      "findings_count": 7,
-      "duration": 1234,
-      "scanned_at": "2026-03-10T15:30:00.000Z",
-      "source": "api",
-      "tags": ["production", "weekly-scan"]
-    }
+      "Submit up to 100 URLs in one request. Each URL counts as one daily quota unit.",
+    requestBody: `{
+  "urls": [
+    "https://example.com",
+    "https://example.org",
+    "https://example.net"
   ]
 }`,
-    errors: [
-      { code: 401, description: "Unauthorized - must be authenticated" },
-    ],
-  },
-  {
-    id: "get-history-id",
-    method: "GET",
-    path: "/history/[id]",
-    title: "Get Scan Details",
-    description:
-      "Retrieve detailed information for a specific scan by ID, including all findings and response headers. Team members can access scans from other team members.",
-    pathParams: [{ name: "id", type: "number", description: "The scan ID" }],
     responseExample: `{
-  "url": "https://example.com",
-  "scannedAt": "2026-03-10T15:30:00.000Z",
-  "duration": 1234,
-  "summary": { "critical": 0, "high": 1, "medium": 2, "low": 3, "info": 1, "total": 7 },
-  "findings": [
-    {
-      "type": "hsts-missing",
-      "title": "HSTS Header Missing",
-      "severity": "medium",
-      "description": "HTTP Strict Transport Security header is not set",
-      "remediation": "Add 'Strict-Transport-Security: max-age=31536000'"
-    }
+  "results": [
+    { "url": "https://example.com", "summary": { "critical": 0, "high": 1, "medium": 2, "low": 1, "info": 0, "total": 4 } },
+    { "url": "https://example.org", "summary": { "critical": 0, "high": 0, "medium": 0, "low": 1, "info": 2, "total": 3 } }
   ],
-  "responseHeaders": {
-    "content-type": "text/html; charset=utf-8",
-    "server": "nginx/1.18.0"
-  }
+  "totalScans": 3,
+  "totalFindings": 12
 }`,
-    errors: [
-      { code: 401, description: "Unauthorized - must be authenticated" },
-      { code: 404, description: "Scan not found or access denied" },
+    notes: [
+      "Max 100 URLs per request (CONFIG_MAX_URLS_BULK).",
+      "Returns after all URLs complete; long batches use CONFIG_BULK_SCAN_TIMEOUT_SECONDS.",
     ],
-  },
-  {
-    id: "delete-history-id",
-    method: "DELETE",
-    path: "/history/[id]",
-    title: "Delete Scan",
-    description:
-      "Permanently delete a scan from your history. This action cannot be undone. Only the scan owner or team admins can delete scans.",
-    pathParams: [
-      { name: "id", type: "number", description: "The scan ID to delete" },
-    ],
-    responseExample: `{
-  "success": true,
-  "message": "Scan deleted successfully"
-}`,
     errors: [
-      { code: 401, description: "Unauthorized - must be authenticated" },
-      {
-        code: 403,
-        description:
-          "Forbidden - you don't have permission to delete this scan",
-      },
-      { code: 404, description: "Scan not found" },
+      { code: 400, description: "Missing or invalid urls array" },
+      { code: 401, description: "Unauthorized" },
+      { code: 429, description: "Rate limit or daily quota" },
     ],
   },
   {
@@ -151,41 +116,42 @@ const endpoints: Endpoint[] = [
     path: "/scan/crawl",
     title: "Deep Crawl Scan",
     description:
-      "Crawl an entire website and scan multiple pages for vulnerabilities. Discovers internal links automatically or accepts a pre-selected list of URLs. Maximum 20 pages per crawl.",
+      "Crawl the target and scan each discovered page. Either provide a pre-selected URL list or let the crawler discover links. Up to 15 pages per crawl.",
     requestBody: `{
-  "url": "https://example.com",           // Required - Entry URL
-  "urls": [                               // Optional - Pre-selected URLs
-    "https://example.com/about",
-    "https://example.com/contact"
-  ]
+  "url": "https://example.com",
+  "urls": ["https://example.com/about", "https://example.com/contact"]
 }`,
     responseExample: `{
   "url": "https://example.com",
   "scannedAt": "2026-03-10T15:30:00.000Z",
   "duration": 8500,
+  "findings": [ /* aggregate findings across all pages */ ],
   "summary": { "critical": 0, "high": 2, "medium": 5, "low": 3, "info": 2, "total": 12 },
+  "scanHistoryId": 12346,
   "crawl": {
-    "totalPages": 5,
+    "pagesDiscovered": 18,
+    "pagesScanned": 12,
+    "pagesSkipped": 6,
     "pages": [
       {
         "url": "https://example.com",
-        "findings": [...],
         "summary": { "critical": 0, "high": 1, "medium": 1, "low": 0, "info": 1, "total": 3 },
-        "duration": 1200
+        "duration": 1200,
+        "findings": []
       }
     ]
-  },
-  "scanHistoryId": 12346
+  }
 }`,
     notes: [
-      "If 'urls' is omitted, the crawler discovers links automatically (max 20 pages)",
-      "All discovered pages must be on the same domain as the entry URL",
-      "Deep crawls count as multiple requests against your rate limit",
+      "Max 15 pages (MAX_PAGES in app/api/v2/scan/crawl/route.ts).",
+      "All pages must share the entry URL's hostname (same-origin).",
+      "For session auth, each scanned page counts as one daily quota unit.",
+      "For Bearer auth, the entire crawl counts as one quota unit.",
     ],
     errors: [
       { code: 400, description: "Missing or invalid URL" },
       { code: 401, description: "Unauthorized" },
-      { code: 429, description: "Rate limit exceeded" },
+      { code: 429, description: "Rate limit or daily quota" },
     ],
   },
   {
@@ -194,9 +160,9 @@ const endpoints: Endpoint[] = [
     path: "/scan/crawl/discover",
     title: "Discover URLs",
     description:
-      "Discover all internal pages on a website without scanning them. Useful for letting users select which pages to include in a deep crawl.",
+      "Discover links from a target without scanning them. Useful for previewing what a crawl would cover.",
     requestBody: `{
-  "url": "https://example.com"  // Required - Entry URL
+  "url": "https://example.com"
 }`,
     responseExample: `{
   "urls": [
@@ -208,12 +174,150 @@ const endpoints: Endpoint[] = [
   "total": 4
 }`,
     notes: [
-      "Discovery does not count against your scan rate limit",
-      "Returns up to 100 discovered URLs",
+      "Returns up to 20 URLs (MAX_PAGES in app/api/v2/scan/crawl/discover/route.ts).",
+      "Counts as 1 daily quota unit on either auth path.",
+      "Subject to the standard per-IP scan rate limit (100/hour).",
     ],
     errors: [
       { code: 400, description: "Missing or invalid URL" },
       { code: 401, description: "Unauthorized" },
+      { code: 429, description: "Rate limit or daily quota" },
+    ],
+  },
+  {
+    id: "post-scan-discover",
+    method: "POST",
+    path: "/scan/discover",
+    title: "Discover Subdomains",
+    description:
+      "Enumerate subdomains for a domain. Aggregates results from crt.sh, HackerTarget, Subdomain.Center, RapidDNS, and brute-force DNS.",
+    requestBody: `{
+  "url": "https://example.com",
+  "forceRefresh": false
+}`,
+    responseExample: `{
+  "subdomains": [
+    { "host": "www.example.com", "source": "crt.sh" },
+    { "host": "api.example.com", "source": "rapiddns" },
+    { "host": "staging.example.com", "source": "brute" }
+  ]
+}`,
+    notes: [
+      "forceRefresh: true bypasses the subdomain_cache table.",
+      "Results are cached for 24h per domain by default.",
+    ],
+    errors: [
+      { code: 400, description: "Missing or invalid URL" },
+      { code: 401, description: "Unauthorized" },
+      { code: 429, description: "Rate limit" },
+    ],
+  },
+  {
+    id: "get-history",
+    method: "GET",
+    path: "/history",
+    title: "List Scan History",
+    description:
+      "Returns up to 100 most recent scans for the authenticated user. Retention follows the user's plan (Free: 30 days, Core: 90, Pro/Elite: forever). Staff roles bypass retention.",
+    responseExample: `{
+  "scans": [
+    {
+      "id": 1,
+      "url": "https://example.com",
+      "summary": { "critical": 0, "high": 1, "medium": 2, "low": 3, "info": 1, "total": 7 },
+      "findings_count": 7,
+      "duration": 1423,
+      "scanned_at": "2026-03-10T15:30:00.000Z",
+      "source": "api",
+      "tags": ["production", "weekly-scan"]
+    }
+  ]
+}`,
+    notes: [
+      "Team members can see scans from other team members in the same team.",
+      "Use /history/[id] for full details (findings, response headers).",
+    ],
+    errors: [
+      { code: 401, description: "Unauthorized" },
+    ],
+  },
+  {
+    id: "get-history-id",
+    method: "GET",
+    path: "/history/[id]",
+    title: "Get Scan Details",
+    description:
+      "Return full scan details: findings, response headers, scan metadata. Owner or same-team member can view.",
+    pathParams: [{ name: "id", type: "number", description: "Scan ID" }],
+    responseExample: `{
+  "url": "https://example.com",
+  "scannedAt": "2026-03-10T15:30:00.000Z",
+  "duration": 1423,
+  "summary": { "critical": 0, "high": 1, "medium": 2, "low": 3, "info": 1, "total": 7 },
+  "findings": [
+    { /* full Vulnerability object — see /scan response */ }
+  ],
+  "responseHeaders": {
+    "content-type": "text/html; charset=utf-8",
+    "server": "nginx/1.18.0"
+  }
+}`,
+    errors: [
+      { code: 401, description: "Unauthorized" },
+      { code: 404, description: "Scan not found or access denied" },
+    ],
+  },
+  {
+    id: "delete-history",
+    method: "DELETE",
+    path: "/history",
+    title: "Delete All Scan History",
+    description:
+      "Permanently delete every scan and tag for the authenticated user. Cannot be undone.",
+    responseExample: `{
+  "success": true,
+  "deleted": 47
+}`,
+    errors: [
+      { code: 401, description: "Unauthorized" },
+    ],
+  },
+  {
+    id: "delete-history-id",
+    method: "DELETE",
+    path: "/history/[id]",
+    title: "Delete a Single Scan",
+    description:
+      "Permanently delete a single scan by ID. Owner only.",
+    pathParams: [{ name: "id", type: "number", description: "Scan ID to delete" }],
+    responseExample: `{
+  "success": true,
+  "message": "Scan deleted successfully"
+}`,
+    errors: [
+      { code: 401, description: "Unauthorized" },
+      { code: 403, description: "Forbidden — not the scan owner" },
+      { code: 404, description: "Scan not found" },
+    ],
+  },
+  {
+    id: "patch-history-id",
+    method: "PATCH",
+    path: "/history/[id]",
+    title: "Update Scan Notes",
+    description: "Update the user note on a scan. Owner only.",
+    pathParams: [{ name: "id", type: "number", description: "Scan ID" }],
+    requestBody: `{
+  "notes": "Investigating HSTS issue with infra team"
+}`,
+    responseExample: `{
+  "success": true
+}`,
+    errors: [
+      { code: 400, description: "Notes longer than 2000 characters" },
+      { code: 401, description: "Unauthorized" },
+      { code: 403, description: "Forbidden — not the scan owner" },
+      { code: 404, description: "Scan not found" },
     ],
   },
   {
@@ -222,18 +326,18 @@ const endpoints: Endpoint[] = [
     path: "/api/version",
     title: "Version Check",
     description:
-      "Check if the running instance is up to date. Compares the installed version against the latest release. No authentication required. Note: This endpoint is not versioned.",
+      "Compare installed version against the latest GitHub release. Unauthenticated. Cached upstream of GitHub for 1 hour.",
     responseExample: `{
   "current": "${APP_VERSION}",
-  "latest": "${APP_VERSION}",
   "engine": "${ENGINE_VERSION}",
+  "latest": "${APP_VERSION}",
   "status": "up-to-date",
-  "message": "You're running the latest version."
+  "message": "You're running the latest version.",
+  "release_url": "https://github.com/${APP_NAME.toLowerCase()}/${APP_NAME.toLowerCase()}.dev/releases/tag/v${APP_VERSION}"
 }`,
     notes: [
-      "No authentication required - public endpoint",
-      "Status can be: up-to-date, behind, or ahead",
-      "Useful for self-hosted deployments to check for updates",
+      "status: up-to-date | behind | ahead | unknown",
+      "When status is unknown, current/latest may still be populated from cache.",
     ],
     errors: [],
   },
@@ -243,37 +347,120 @@ const endpoints: Endpoint[] = [
     path: "/api/v2/finding-types",
     title: "Finding Types",
     description:
-      "Returns all security check definitions. Use this to understand what findings your integration should handle, display human-readable titles, and categorize results by severity.",
+      "Returns the full catalogue of detection checks. Use this to display human-readable titles, categorize findings, or build SDKs that know every check ID ahead of time.",
     responseExample: `{
-  "version": "${APP_VERSION}",
-  "count": 110,
-  "types": [
+  "success": true,
+  "count": 311,
+  "data": [
     {
       "id": "hsts-missing",
-      "type": "security_header",
+      "type": "header",
       "title": "HSTS Header Missing",
-      "category": "Security Headers",
-      "severity": "medium"
+      "category": "headers",
+      "severity": "medium",
+      "description": "HTTP Strict Transport Security header is not set."
     },
     {
       "id": "csp-missing",
-      "type": "security_header",
-      "title": "Content Security Policy Missing",
-      "category": "Security Headers",
-      "severity": "medium"
+      "type": "header",
+      "title": "Content Security Policy Header Missing",
+      "category": "headers",
+      "severity": "medium",
+      "description": "Content Security Policy header is not set."
     }
   ]
 }`,
     notes: [
-      "No authentication required - public endpoint",
-      "Useful for SDK development and custom integrations",
-      "Returns all 110+ security check definitions",
+      "Unauthenticated.",
+      "Backed by lib/scanner/checks-data.json (311 entries).",
+      "type values: header | combined | content | etc. (per-checks-data.json schema).",
     ],
     errors: [],
   },
+  {
+    id: "get-keys",
+    method: "GET",
+    path: "/keys",
+    title: "List API Keys",
+    description: "List API keys for the authenticated user. Secret values are never returned.",
+    responseExample: `{
+  "keys": [
+    {
+      "id": 1,
+      "name": "CI",
+      "prefix": "vr_live_abc12345",
+      "created_at": "2026-03-10T15:30:00.000Z",
+      "last_used_at": "2026-03-10T16:00:00.000Z",
+      "daily_limit": 150,
+      "revoked_at": null
+    }
+  ]
+}`,
+    errors: [{ code: 401, description: "Unauthorized (session required)" }],
+  },
+  {
+    id: "post-keys",
+    method: "POST",
+    path: "/keys",
+    title: "Create API Key",
+    description:
+      "Generate a new API key. The raw value is returned ONLY in this response — copy and store it immediately. Up to 3 active keys per user.",
+    requestBody: `{
+  "name": "CI"
+}`,
+    responseExample: `{
+  "id": 1,
+  "name": "CI",
+  "key": {
+    "raw_key": "vr_live_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "prefix": "vr_live_xxxxxxxx",
+    "daily_limit": 50
+  }
+}`,
+    notes: [
+      "raw_key is shown exactly once. The server stores only the encrypted form + a SHA-256 fingerprint.",
+      "Default daily_limit comes from CONFIG_DEFAULT_API_KEY_DAILY_LIMIT (50).",
+    ],
+    errors: [
+      { code: 400, description: "Maximum of 3 active keys reached" },
+      { code: 401, description: "Unauthorized" },
+    ],
+  },
+  {
+    id: "post-keys-rotate",
+    method: "POST",
+    path: "/keys/[id]/rotate",
+    title: "Rotate API Key",
+    description:
+      "Hard-delete the key and create a new one with the same name. Returns the new raw key once.",
+    pathParams: [{ name: "id", type: "number", description: "Key ID to rotate" }],
+    responseExample: `{
+  "id": 2,
+  "name": "CI",
+  "key": { "raw_key": "vr_live_…", "prefix": "vr_live_…", "daily_limit": 50 }
+}`,
+    errors: [
+      { code: 401, description: "Unauthorized" },
+      { code: 404, description: "Key not found" },
+    ],
+  },
+  {
+    id: "post-keys-revoke",
+    method: "POST",
+    path: "/keys/[id]/revoke",
+    title: "Revoke API Key",
+    description: "Set revoked_at on the key. The key stops working immediately.",
+    pathParams: [{ name: "id", type: "number", description: "Key ID to revoke" }],
+    responseExample: `{
+  "success": true
+}`,
+    errors: [
+      { code: 401, description: "Unauthorized" },
+      { code: 404, description: "Key not found" },
+    ],
+  },
 ];
 
-// Table of contents
 const tocItems: TocItem[] = [
   { id: "overview", label: "Overview" },
   { id: "authentication", label: "Authentication" },
@@ -285,7 +472,6 @@ const tocItems: TocItem[] = [
   { id: "best-practices", label: "Best Practices" },
 ];
 
-// Code examples by language
 const codeExamples = {
   curl: {
     scan: `curl -X POST "${APP_URL}/api/v2/scan" \\
@@ -378,27 +564,36 @@ export default function APIDocsPage() {
 
   return (
     <div className="space-y-16">
-      {/* Hero */}
       <DocsHero
         badge="v2 API"
         title="API Reference"
         description={`Complete documentation for the ${APP_NAME} REST API. Integrate automated vulnerability scanning into your applications, CI/CD pipelines, or custom security tools.`}
         stats={[
-          { value: "v2", label: "API Version" },
-          { value: "By Plan", label: "Rate Limit" },
-          { value: "Bearer", label: "Auth Method" },
+          { value: "v2", label: "Current API version" },
+          { value: "By plan", label: "Daily quota" },
+          { value: "Bearer", label: "Auth method" },
         ]}
       />
 
-      {/* Authentication */}
-      <DocsSection id="authentication" title="Authentication">
+      <DocsSection id="overview" title="Overview">
         <p className="text-sm sm:text-base text-muted-foreground">
-          All API requests require authentication using a Bearer token. Generate
-          API keys from your account settings.
+          The v2 API is the current, supported version. v1 is{" "}
+          <strong>deprecated</strong> with sunset 2026-12-01
+          (<code>lib/api/api-deprecation.ts</code>); new integrations should
+          target v2.
         </p>
+        <p className="text-sm sm:text-base text-muted-foreground">
+          All endpoints live under{" "}
+          <code>{APP_URL}/api/v2/</code>. Authentication is either a
+          session cookie or a Bearer API key with the{" "}
+          <code>vr_live_</code> prefix (default{" "}
+          <code>CONFIG_API_KEY_PREFIX</code>).
+        </p>
+      </DocsSection>
 
+      <DocsSection id="authentication" title="Authentication">
         <Card className="p-4 sm:p-6 border-border/40">
-          <h3 className="font-semibold mb-4">Bearer Token Authentication</h3>
+          <h3 className="font-semibold mb-4">Bearer token</h3>
           <p className="text-sm text-muted-foreground mb-4">
             Include your API key in the Authorization header:
           </p>
@@ -408,37 +603,34 @@ export default function APIDocsPage() {
           />
 
           <div className="mt-6 pt-6 border-t border-border/40">
-            <h4 className="font-semibold mb-3 text-sm">Getting Your API Key</h4>
+            <h4 className="font-semibold mb-3 text-sm">Getting an API key</h4>
             <ol className="list-decimal list-inside space-y-2 text-sm text-muted-foreground">
-              <li>Log in to your {APP_NAME} account</li>
+              <li>Sign in to your {APP_NAME} account.</li>
               <li>
-                Navigate to <strong className="text-foreground">Profile</strong>{" "}
-                &rarr; <strong className="text-foreground">API Keys</strong>
+                Open <strong className="text-foreground">Profile</strong>{" "}
+                → <strong className="text-foreground">API Keys</strong>.
               </li>
               <li>
                 Click{" "}
-                <strong className="text-foreground">Generate New Key</strong>
+                <strong className="text-foreground">Generate New Key</strong>.
               </li>
               <li>
-                Copy and store the key securely (it will only be shown once)
+                Copy and store the raw key (shown only once). Server stores
+                only an AES-256-GCM-encrypted form + a SHA-256 fingerprint.
               </li>
             </ol>
           </div>
 
-          <DocsCallout
-            variant="warning"
-            title="Security Warning"
-            className="mt-6"
-          >
+          <DocsCallout variant="warning" title="Security" className="mt-6">
             <p>
-              Never share API keys publicly or commit them to version control.
-              Each account is limited to 3 active API keys.
+              Never share API keys or commit them to version control. Each
+              account is limited to 3 active API keys. Rotate via{" "}
+              <code>POST /api/v2/keys/[id]/rotate</code>.
             </p>
           </DocsCallout>
         </Card>
       </DocsSection>
 
-      {/* Endpoints */}
       <DocsSection id="endpoints" title="Endpoints">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 -mt-2">
           <div className="text-xs sm:text-sm text-muted-foreground">
@@ -447,20 +639,21 @@ export default function APIDocsPage() {
               {APP_URL}/api/v2
             </code>
           </div>
+          <div className="text-xs text-muted-foreground">
+            {endpoints.length} documented
+          </div>
         </div>
 
-        <div className="space-y-6">
+        <div className="space-y-6 mt-4">
           {endpoints.map((endpoint) => (
             <EndpointCard key={endpoint.id} {...endpoint} />
           ))}
         </div>
       </DocsSection>
 
-      {/* Code Examples */}
       <DocsSection id="code-examples" title="Code Examples">
         <p className="text-muted-foreground">
-          Complete examples for the most common API operations in multiple
-          languages.
+          Reference implementations in three languages.
         </p>
 
         <Card className="p-6 border-border/40">
@@ -486,21 +679,21 @@ export default function APIDocsPage() {
 
           <div className="space-y-8">
             <div>
-              <h4 className="font-semibold mb-3 text-sm">Create a Scan</h4>
+              <h4 className="font-semibold mb-3 text-sm">Create a scan</h4>
               <CodeBlock
                 code={codeExamples[activeCodeTab].scan}
                 language={activeCodeTab === "curl" ? "bash" : activeCodeTab}
               />
             </div>
             <div>
-              <h4 className="font-semibold mb-3 text-sm">List Scan History</h4>
+              <h4 className="font-semibold mb-3 text-sm">List scan history</h4>
               <CodeBlock
                 code={codeExamples[activeCodeTab].history}
                 language={activeCodeTab === "curl" ? "bash" : activeCodeTab}
               />
             </div>
             <div>
-              <h4 className="font-semibold mb-3 text-sm">Get Scan Details</h4>
+              <h4 className="font-semibold mb-3 text-sm">Get scan details</h4>
               <CodeBlock
                 code={codeExamples[activeCodeTab].detail}
                 language={activeCodeTab === "curl" ? "bash" : activeCodeTab}
@@ -510,39 +703,47 @@ export default function APIDocsPage() {
         </Card>
       </DocsSection>
 
-      {/* Rate Limiting */}
       <DocsSection id="rate-limiting" title="Rate Limiting">
         <Card className="p-6 border-border/40">
           <p className="text-muted-foreground mb-6">
-            API rate limits vary by subscription plan. Rate limit information is
-            included in response headers.
+            Per-API-key daily quota plus per-IP burst limits on auth
+            endpoints. Full reference on the{" "}
+            <a href="/docs/rate-limits" className="text-primary hover:underline">
+              Rate Limits
+            </a>{" "}
+            page.
           </p>
 
           <div className="space-y-6">
             <div>
               <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">
-                Rate Limits by Plan
+                Daily quotas by plan
               </h4>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 {[
-                  { value: "25", label: "Free" },
-                  { value: "100", label: "Core" },
-                  { value: "5,000", label: "Pro" },
-                  { value: "Unlimited", label: "Elite", highlight: true },
+                  { scans: "25", api: "25", label: "Free" },
+                  { scans: "100", api: "100", label: "Core" },
+                  { scans: "150", api: "5,000", label: "Pro" },
+                  { scans: "500", api: "Unlimited", label: "Elite", highlight: true },
                 ].map((plan) => (
                   <div
                     key={plan.label}
-                    className="p-3 rounded-lg bg-secondary/30 border border-border/40 text-center"
+                    className={cn(
+                      "p-3 rounded-lg border text-center",
+                      plan.highlight
+                        ? "bg-primary/5 border-primary/30"
+                        : "bg-secondary/30 border-border/40",
+                    )}
                   >
-                    <div
-                      className={cn(
-                        "text-lg font-bold",
-                        plan.highlight ? "text-primary" : "text-foreground",
-                      )}
-                    >
-                      {plan.value}
+                    <div className="text-sm font-mono">
+                      <span className="font-bold">{plan.scans}</span>
+                      <span className="text-muted-foreground"> scans</span>
                     </div>
-                    <div className="text-xs text-muted-foreground">
+                    <div className="text-sm font-mono">
+                      <span className="font-bold">{plan.api}</span>
+                      <span className="text-muted-foreground"> API</span>
+                    </div>
+                    <div className="text-xs text-muted-foreground mt-1">
                       {plan.label}
                     </div>
                   </div>
@@ -552,48 +753,53 @@ export default function APIDocsPage() {
 
             <div>
               <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">
-                Response Headers
+                Response headers
               </h4>
               <CodeBlock
-                code={`X-RateLimit-Limit: 100
-X-RateLimit-Remaining: 99
-X-RateLimit-Reset: 2026-03-11T15:30:00Z
-Retry-After: 86400`}
+                code={`HTTP/1.1 200 OK
+X-RateLimit-Limit: 150
+X-RateLimit-Remaining: 147
+X-RateLimit-Used: 3
+X-RateLimit-Policy: daily
+X-RateLimit-Reset: 2026-03-12T00:00:00.000Z`}
                 language="http"
               />
             </div>
 
             <div>
               <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">
-                Rate Limit Exceeded Response
+                429 response
               </h4>
               <CodeBlock
                 code={`{
-  "error": "Rate limit exceeded",
-  "limit": 100,
-  "used": 100,
+  "error": "Daily scan limit reached. Resets at 2026-03-12T00:00:00Z.",
+  "limit": 150,
+  "used": 150,
   "remaining": 0,
-  "resets_at": "2026-03-11T15:30:00Z"
+  "resets_at": "2026-03-12T00:00:00Z"
 }`}
+                language="json"
               />
             </div>
 
             <DocsCallout variant="info" title="Web Sessions vs API Keys">
               <p>
-                Scans performed via the web interface use separate rate limits.
-                API rate limits only apply to API key requests.
+                Session-cookie scans use a separate counter (per-user daily
+                quota). API-key scans use a per-key counter. Both share the
+                same <code>X-RateLimit-*</code> headers but the{" "}
+                <code>Reset</code> semantics differ — see the Rate Limits
+                page.
               </p>
             </DocsCallout>
           </div>
         </Card>
       </DocsSection>
 
-      {/* Error Handling */}
       <DocsSection id="error-handling" title="Error Handling">
         <Card className="p-6 border-border/40">
           <p className="text-muted-foreground mb-6">
-            The API uses standard HTTP status codes and returns detailed error
-            messages in JSON format.
+            Standard HTTP status codes. Error responses include a JSON body
+            with at minimum an <code>error</code> string.
           </p>
 
           <div className="space-y-4">
@@ -602,43 +808,43 @@ Retry-After: 86400`}
                 code: 400,
                 title: "Bad Request",
                 description:
-                  "Missing or invalid request parameters. Check your request body and query parameters.",
+                  "Missing or invalid request body. Check the field names and types.",
               },
               {
                 code: 401,
                 title: "Unauthorized",
                 description:
-                  "Invalid, missing, or revoked API key. Verify your Authorization header is correct.",
+                  "No session cookie, no Bearer token, or token is revoked/expired.",
               },
               {
                 code: 403,
                 title: "Forbidden",
                 description:
-                  "You don't have permission to access this resource.",
+                  "Authenticated, but not authorized for this resource (e.g. trying to delete another user's scan).",
               },
               {
                 code: 404,
                 title: "Not Found",
                 description:
-                  "Resource doesn't exist or you don't have access. Check the resource ID.",
+                  "Resource does not exist or is not accessible to the caller.",
               },
               {
                 code: 422,
                 title: "Unprocessable Entity",
                 description:
-                  "Target URL is unreachable, blocking requests, or not publicly accessible.",
+                  "Target URL is unreachable, blocks requests, is on a private IP, or fails SSRF checks.",
               },
               {
                 code: 429,
                 title: "Too Many Requests",
                 description:
-                  "Rate limit exceeded. Wait until the reset time before making more requests.",
+                  "Daily quota exceeded or per-IP burst limit hit. Honor Retry-After.",
               },
               {
                 code: 500,
                 title: "Server Error",
                 description:
-                  "Unexpected server error. Try again later or contact support if the issue persists.",
+                  "Unexpected server-side failure. Retry with backoff; contact support if persistent.",
               },
             ].map((error) => (
               <div
@@ -663,47 +869,48 @@ Retry-After: 86400`}
         </Card>
       </DocsSection>
 
-      {/* Best Practices */}
       <DocsSection id="best-practices" title="Best Practices">
         <Card className="p-6 border-border/40">
           <div className="grid gap-6 sm:grid-cols-2">
             {[
               {
-                title: "Secure Key Storage",
+                title: "Secure key storage",
                 description:
-                  "Never hardcode API keys. Use environment variables or secure vaults. Rotate keys periodically.",
+                  "Never hardcode API keys. Use environment variables or a secrets vault. Rotate via /keys/[id]/rotate periodically.",
               },
               {
-                title: "Handle Rate Limits",
+                title: "Honor rate-limit headers",
                 description:
-                  "Implement exponential backoff for 429 responses. Check X-RateLimit headers to plan requests.",
+                  "Read X-RateLimit-Remaining after each call. Slow down before you hit 429.",
               },
               {
-                title: "Validate URLs",
+                title: "Validate URLs first",
                 description:
-                  "Ensure URLs are valid and publicly accessible before scanning. Avoid internal networks.",
+                  "Ensure URLs are valid, public, and not on localhost / private networks before scanning. Avoid SSRF by pre-validating.",
               },
               {
-                title: "Retry Failed Requests",
+                title: "Retry 5xx with backoff",
                 description:
-                  "Implement retry logic with exponential backoff for transient failures (422, 500).",
+                  "Transient server errors (500, 502, 503) should be retried with exponential backoff. 429 should respect Retry-After.",
               },
               {
-                title: "Cache Results",
+                title: "Cache findings",
                 description:
-                  "Cache scan results locally to avoid unnecessary API calls and reduce rate limit usage.",
+                  "Use /api/v2/finding-types to look up stable IDs and titles. Cache scan results to avoid re-scanning unchanged targets.",
               },
               {
-                title: "Monitor Usage",
+                title: "Watch your quota",
                 description:
-                  "Track your API usage to stay within limits. Set up alerts when approaching the daily cap.",
+                  "Subscribe to webhook notifications for scan-complete events. Set up alerts when X-RateLimit-Used exceeds 80% of limit.",
               },
             ].map((practice, i) => (
               <div
                 key={i}
                 className="p-4 rounded-lg bg-secondary/20 border border-border/40"
               >
-                <h4 className="font-semibold text-sm mb-2">{practice.title}</h4>
+                <h4 className="font-semibold text-sm mb-2">
+                  {practice.title}
+                </h4>
                 <p className="text-xs text-muted-foreground">
                   {practice.description}
                 </p>

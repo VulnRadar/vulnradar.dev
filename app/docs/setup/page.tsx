@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import Link from "next/link";
 import { Card } from "@/components/ui/card";
 import { CheckCircle, AlertTriangle } from "lucide-react";
 import {
@@ -29,9 +30,9 @@ const tocItems: TocItem[] = [
   { id: "running", label: "Running the App" },
   { id: "verification", label: "Verification" },
   { id: "troubleshooting", label: "Troubleshooting" },
-  { id: "deployment", label: "Deployment Options" },
+  { id: "deployment", label: "Deployment" },
   { id: "docker", label: "Docker Deployment" },
-  { id: "migration", label: "Migration Tool" },
+  { id: "migration", label: "Schema Migration" },
   { id: "version", label: "Version Check" },
 ];
 
@@ -66,14 +67,12 @@ export default function SetupPage() {
 
   return (
     <div className="space-y-16">
-      {/* Hero */}
       <DocsHero
         badge="Self-Hosting"
         title="Setup Guide"
-        description={`Complete guide to installing and configuring ${APP_NAME} for your environment. Choose from local development, Docker, or cloud deployment.`}
+        description={`Install and configure ${APP_NAME} locally or in production. Three deployment paths: local Node, Docker, or a generic Node host.`}
       />
 
-      {/* Quick Options */}
       <div className="grid grid-cols-3 gap-2 sm:gap-4 -mt-10">
         <a
           href="#installation"
@@ -83,7 +82,7 @@ export default function SetupPage() {
             Local Dev
           </div>
           <div className="text-[10px] sm:text-xs text-muted-foreground">
-            Clone locally
+            Clone + npm
           </div>
         </a>
         <a
@@ -102,15 +101,14 @@ export default function SetupPage() {
           className="p-2.5 sm:p-4 rounded-lg bg-card border border-border/40 hover:border-accent transition-colors"
         >
           <div className="text-sm sm:text-lg font-bold text-primary mb-0.5 sm:mb-1">
-            Vercel
+            Bare Node
           </div>
           <div className="text-[10px] sm:text-xs text-muted-foreground">
-            One-click
+            systemd / PM2
           </div>
         </a>
       </div>
 
-      {/* Prerequisites */}
       <DocsSection id="prerequisites" title="Prerequisites">
         <p className="text-muted-foreground">
           Before you begin, ensure you have the following installed:
@@ -120,24 +118,24 @@ export default function SetupPage() {
           {[
             {
               title: "Node.js 22 LTS",
-              desc: "JavaScript runtime — odd versions (21, 23) are not supported by vitest@4 and friends; see the Node Version Policy on the Developers page",
+              desc: "JavaScript runtime. The project supports Node 20 LTS and Node 22 LTS (engines field in package.json). Odd versions like 21 and 23 are excluded by vitest@4 and friends; see the Node Version Policy on the Developers page.",
               link: "https://nodejs.org",
               cmd: "node --version",
             },
             {
               title: "npm 9+ or pnpm 8+",
-              desc: "Package manager (comes with Node.js)",
+              desc: "Package manager (ships with Node.js).",
               cmd: "npm --version",
             },
             {
               title: "PostgreSQL 14+",
-              desc: "Database server",
+              desc: "Database server. Single Postgres instance handles app, sessions, and rate-limit tables.",
               link: "https://www.postgresql.org/download",
               cmd: "psql --version",
             },
             {
               title: "Git 2.0+",
-              desc: "Version control",
+              desc: "Version control.",
               link: "https://git-scm.com",
               cmd: "git --version",
             },
@@ -174,17 +172,9 @@ export default function SetupPage() {
         </Card>
       </DocsSection>
 
-      {/* Installation */}
       <DocsSection id="installation" title="Installation Steps">
-        <p className="text-muted-foreground">
-          Follow these steps to clone and prepare the repository:
-        </p>
-
         <Card className="p-6 border-border/40">
           <h3 className="font-semibold mb-4">Step 1: Clone the Repository</h3>
-          <p className="text-sm text-muted-foreground mb-3">
-            Clone {APP_NAME} from GitHub:
-          </p>
           <CodeBlock
             code={`git clone https://github.com/${APP_REPO}.git\ncd ${APP_SLUG}.dev`}
             language="bash"
@@ -193,27 +183,26 @@ export default function SetupPage() {
 
         <Card className="p-6 border-border/40">
           <h3 className="font-semibold mb-4">Step 2: Install Dependencies</h3>
-          <p className="text-sm text-muted-foreground mb-3">
-            Install all required npm packages:
+          <CodeBlock code="npm ci" language="bash" />
+          <p className="text-xs text-muted-foreground mt-2">
+            Allow-scripts for native packages (bcrypt, esbuild, sharp,
+            unrs-resolver, core-js) are whitelisted in <code>.npmrc</code>.
           </p>
-          <CodeBlock code="npm install\n# or\npnpm install" language="bash" />
         </Card>
       </DocsSection>
 
-      {/* Database Setup */}
       <DocsSection id="database" title="Database Setup">
         <p className="text-muted-foreground">
-          Configure PostgreSQL for {APP_NAME}:
+          Configure PostgreSQL for {APP_NAME}.
         </p>
 
         <Card className="p-6 border-border/40">
           <h3 className="font-semibold mb-4">
-            Step 1: Create Database and User
+            Option A: Dedicated database (no Docker)
           </h3>
           <CodeBlock
             code={`psql -U postgres
 
-# Inside psql:
 CREATE DATABASE vulnradar;
 CREATE USER vulnradar_user WITH PASSWORD 'strong_password_here';
 GRANT ALL PRIVILEGES ON DATABASE vulnradar TO vulnradar_user;
@@ -223,154 +212,119 @@ GRANT ALL PRIVILEGES ON DATABASE vulnradar TO vulnradar_user;
         </Card>
 
         <Card className="p-6 border-border/40">
-          <h3 className="font-semibold mb-4">Step 2: Auto-Schema Setup</h3>
+          <h3 className="font-semibold mb-4">Option B: Docker Compose (recommended)</h3>
           <p className="text-sm text-muted-foreground mb-3">
-            {APP_NAME} automatically creates all required tables when the
-            application starts. Simply run:
+            The included <code>docker-compose.yml</code> provisions Postgres
+            with credentials <code>vulnradar:vulnradar</code> on port 5432.
+            See the <a href="#docker">Docker section</a> below.
           </p>
-          <CodeBlock code="npm run dev" language="bash" />
-          <p className="text-xs text-muted-foreground mt-2">
-            The{" "}
-            <code className="bg-secondary px-1 rounded text-xs">
-              instrumentation.ts
-            </code>{" "}
-            file handles all schema creation on startup.
+        </Card>
+
+        <Card className="p-6 border-border/40">
+          <h3 className="font-semibold mb-4">Schema auto-creates on boot</h3>
+          <p className="text-sm text-muted-foreground">
+            <code>instrumentation.ts</code> runs{" "}
+            <code>CREATE TABLE IF NOT EXISTS</code> for every table on first
+            server boot. No manual migration is required for a fresh
+            database. For databases upgraded from an older schema, see{" "}
+            <a href="#migration">Schema Migration</a>.
           </p>
         </Card>
       </DocsSection>
 
-      {/* Environment Configuration */}
       <DocsSection id="environment" title="Environment Configuration">
         <p className="text-muted-foreground">
-          Configure environment variables for your {APP_NAME} installation:
+          Secrets and per-deployment overrides go in{" "}
+          <code>.env</code> (or <code>.env.local</code> for local-only
+          overrides; Next.js loads <code>.env.local</code> with higher
+          precedence than <code>.env</code>).
         </p>
 
         <Card className="p-6 border-border/40">
-          <h3 className="font-semibold mb-4">Create .env.local File</h3>
-          <p className="text-sm text-muted-foreground mb-3">
-            Create a{" "}
-            <code className="bg-secondary px-2 py-1 rounded text-xs">
-              .env.local
-            </code>{" "}
-            file in the project root:
+          <h3 className="font-semibold mb-4">Create .env from the template</h3>
+          <CodeBlock code="cp .env.example .env" language="bash" />
+          <p className="text-sm text-muted-foreground mt-4">
+            Open <code>.env</code> and fill in at minimum:
           </p>
           <CodeBlock
-            code={`# DATABASE (Required)
-DATABASE_URL=postgresql://vulnradar:your-secure-password-here@localhost:5432/vulnradar
+            code={`# Database
+DATABASE_URL=postgresql://vulnradar:your-password@localhost:5432/vulnradar
 DATABASE_SSL=false
 
-# APPLICATION (Required)
+# Public URL
 NEXT_PUBLIC_APP_URL=http://localhost:3000
 
-# API KEY ENCRYPTION (Required)
-# Generate with: node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
-API_KEY_ENCRYPTION_KEY=your-64-character-hex-key
-
-# SMTP EMAIL (Optional)
-SMTP_HOST=smtp.example.com
-SMTP_PORT=587
-SMTP_USER=noreply@yourdomain.com
-SMTP_PASS=your-smtp-password
-SMTP_FROM=noreply@yourdomain.com
-
-# STRIPE BILLING (Optional)
-STRIPE_SECRET_KEY=sk_test_xxx
-STRIPE_PUBLISHABLE_KEY=pk_test_xxx
-NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=pk_test_xxx
-STRIPE_WEBHOOK_SECRET=whsec_xxx
-
-# DISCORD OAUTH (Optional)
-DISCORD_CLIENT_ID=your-discord-client-id
-DISCORD_CLIENT_SECRET=your-discord-client-secret`}
+# API key encryption (REQUIRED). Generate with:
+#   node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+API_KEY_ENCRYPTION_KEY=your-64-character-hex-key`}
             language="bash"
           />
-
-          <div className="space-y-4 mt-4">
-            <div>
-              <h4 className="font-semibold text-sm mb-2">Required Variables</h4>
-              <div className="space-y-2 text-xs text-muted-foreground">
-                <p>
-                  <code className="bg-secondary px-1 rounded">
-                    DATABASE_URL
-                  </code>{" "}
-                  - PostgreSQL connection string
-                </p>
-                <p>
-                  <code className="bg-secondary px-1 rounded">
-                    NEXT_PUBLIC_APP_URL
-                  </code>{" "}
-                  - Your app&apos;s public URL
-                </p>
-                <p>
-                  <code className="bg-secondary px-1 rounded">
-                    API_KEY_ENCRYPTION_KEY
-                  </code>{" "}
-                  - 64-char hex key for API key encryption
-                </p>
-              </div>
-            </div>
-          </div>
+          <p className="text-sm text-muted-foreground mt-4">
+            Optional: SMTP, Stripe, Discord, Turnstile. Full reference on the{" "}
+            <Link href="/docs/config" className="text-primary hover:underline">
+              Configuration
+            </Link>{" "}
+            page.
+          </p>
         </Card>
 
-        <DocsCallout variant="info" title="Environment File Security">
+        <DocsCallout variant="info" title="Never commit .env">
           <p>
-            Never commit{" "}
-            <code className="bg-secondary px-1 rounded">.env.local</code> to
-            version control. Add it to{" "}
-            <code className="bg-secondary px-1 rounded">.gitignore</code>.
+            <code>.env</code> and <code>.env.local</code> are git-ignored by
+            default. If you fork the repo, double-check{" "}
+            <code>.gitignore</code>.
           </p>
         </DocsCallout>
       </DocsSection>
 
-      {/* Application Configuration */}
-      <DocsSection id="config" title="Application Configuration">
+      <DocsSection id="config" title="App Configuration">
         <p className="text-muted-foreground">
-          Customize {APP_NAME} by editing{" "}
-          <code className="bg-secondary px-2 py-1 rounded text-xs">
-            config.yaml
-          </code>
-          :
+          Non-secret deployment tunables live in{" "}
+          <code>lib/config/config-values.ts</code>. Edit that file before the
+          first build. Restart the process to pick up changes.
         </p>
 
-        <Card className="p-6 border-border/40">
-          <h3 className="font-semibold mb-4">config.yaml Overview</h3>
-          <CodeBlock
-            code={`app:
-  name: "VulnRadar"           # Application name shown in UI
-  slug: "vulnradar"           # URL-safe identifier
-  version: "${APP_VERSION}"   # Application version
-  url: "${APP_URL}"
-  repo: "${APP_REPO}"
-
-billing:
-  enabled: false              # Enable/disable Stripe billing
-
-features:
-  discord_oauth: true         # Enable Discord sign-in
-  turnstile: true             # Enable Cloudflare Turnstile`}
-            language="yaml"
-          />
-        </Card>
-
-        <DocsCallout variant="success" title="No Environment Variables Needed">
+        <DocsCallout variant="info" title="There is no YAML config file">
           <p>
-            {APP_NAME} reads app metadata from{" "}
-            <code className="bg-secondary px-1 rounded">config.yaml</code>{" "}
-            instead of{" "}
-            <code className="bg-secondary px-1 rounded">NEXT_PUBLIC_*</code>{" "}
+            Earlier (pre-v2.3.0) planning docs referenced a{" "}
+            <code>config.yaml</code> file. The current implementation does not
+            use one. All non-secret configuration is in{" "}
+            <code>lib/config/config-values.ts</code>; all secrets are
             environment variables.
           </p>
         </DocsCallout>
+
+        <Card className="p-6 border-border/40">
+          <h3 className="font-semibold mb-4">Common changes</h3>
+          <ul className="list-disc pl-6 space-y-1 text-sm text-muted-foreground">
+            <li>
+              <code>CONFIG_APP_NAME</code>, <code>CONFIG_APP_URL</code>,{" "}
+              <code>CONFIG_APP_DESCRIPTION</code> — branding
+            </li>
+            <li>
+              <code>CONFIG_SUPPORT_EMAIL</code>,{" "}
+              <code>CONFIG_LEGAL_EMAIL</code>,{" "}
+              <code>CONFIG_SECURITY_EMAIL</code> — outbound email addresses
+            </li>
+            <li>
+              <code>CONFIG_BILLING_ENABLED = false</code> — disable Stripe
+              entirely
+            </li>
+            <li>
+              <code>CONFIG_FEATURE_DEMO_MODE = false</code> — hide the{" "}
+              <code>/demo</code> page
+            </li>
+          </ul>
+          <p className="text-sm text-muted-foreground mt-4">
+            Full reference: <Link href="/docs/config">/docs/config</Link>.
+          </p>
+        </Card>
       </DocsSection>
 
-      {/* Running the Application */}
       <DocsSection id="running" title="Running the Application">
         <Card className="p-6 border-border/40">
-          <h3 className="font-semibold mb-4">Development Server</h3>
-          <p className="text-sm text-muted-foreground mb-3">
-            Start with hot reload:
-          </p>
-          <CodeBlock code="npm run dev\n# or\npnpm dev" language="bash" />
+          <h3 className="font-semibold mb-4">Development (with hot reload)</h3>
+          <CodeBlock code="npm run dev" language="bash" />
           <p className="text-xs text-muted-foreground mt-2">
             Available at{" "}
             <a
@@ -383,65 +337,107 @@ features:
         </Card>
 
         <Card className="p-6 border-border/40">
-          <h3 className="font-semibold mb-4">Production Build</h3>
+          <h3 className="font-semibold mb-4">Production</h3>
           <CodeBlock code="npm run build\nnpm start" language="bash" />
+          <p className="text-xs text-muted-foreground mt-2">
+            Listens on port 3000 by default. Put behind a reverse proxy
+            (Caddy, Traefik, nginx) for TLS.
+          </p>
         </Card>
       </DocsSection>
 
-      {/* Verification */}
-      <DocsSection id="verification" title="Verification Steps">
-        <p className="text-muted-foreground">
-          Verify that {APP_NAME} is running correctly:
-        </p>
-
+      <DocsSection id="verification" title="Verification">
         <Card className="p-6 border-border/40 space-y-4">
-          {[
-            {
-              step: "1. Access the Application",
-              desc: "Open http://localhost:3000 - you should see the landing page",
-            },
-            {
-              step: "2. Create a Test Account",
-              desc: 'Click "Sign Up" and create a test account with a valid email',
-            },
-            {
-              step: "3. Check Database Connection",
-              desc: "Verify user data was created in the database",
-            },
-            {
-              step: "4. Generate an API Key",
-              desc: "Navigate to Account Settings → API Keys to create a new key",
-            },
-          ].map((item, i) => (
-            <div key={i}>
-              <h3 className="font-semibold mb-2">{item.step}</h3>
-              <p className="text-sm text-muted-foreground">{item.desc}</p>
-            </div>
-          ))}
+          <div>
+            <h3 className="font-semibold mb-2">1. Access the app</h3>
+            <p className="text-sm text-muted-foreground">
+              Open <code>http://localhost:3000</code>. The landing page
+              renders and middleware redirects unauthenticated users to{" "}
+              <code>/landing</code>.
+            </p>
+          </div>
+          <div>
+            <h3 className="font-semibold mb-2">2. Sign up the first user</h3>
+            <p className="text-sm text-muted-foreground">
+              Visit <code>/signup</code>. Email verification is required
+              before login if SMTP is configured.
+            </p>
+          </div>
+          <div>
+            <h3 className="font-semibold mb-2">3. Promote to admin</h3>
+            <p className="text-sm text-muted-foreground mb-2">
+              Connect to Postgres and set the role:
+            </p>
+            <CodeBlock
+              code={`docker compose exec postgres psql -U vulnradar -d vulnradar -c \\
+  "UPDATE users SET role = 'admin' WHERE email = 'you@example.com'"`}
+              language="bash"
+            />
+          </div>
+          <div>
+            <h3 className="font-semibold mb-2">4. Generate an API key</h3>
+            <p className="text-sm text-muted-foreground">
+              Open <Link href="/profile">/profile</Link> → API Keys → Generate
+              New Key. The raw key is shown once; copy it immediately.
+            </p>
+          </div>
+          <div>
+            <h3 className="font-semibold mb-2">5. Run a scan</h3>
+            <CodeBlock
+              code={`curl -X POST "${APP_URL}/api/v2/scan" \\
+  -H "Authorization: Bearer YOUR_API_KEY" \\
+  -H "Content-Type: application/json" \\
+  -d '{"url":"https://example.com"}'`}
+              language="bash"
+            />
+          </div>
         </Card>
       </DocsSection>
 
-      {/* Troubleshooting */}
       <DocsSection id="troubleshooting" title="Troubleshooting">
         <Card className="p-6 border-border/40 space-y-4">
           {[
             {
-              title: "Database Connection Error",
-              error: "connect ECONNREFUSED 127.0.0.1:5432",
-              solution:
-                "# Check if PostgreSQL is running\nsudo systemctl status postgresql\n\n# Start if not running\nsudo systemctl start postgresql",
+              title: "Database connection refused",
+              error: "ECONNREFUSED 127.0.0.1:5432",
+              solution: `# Local install
+sudo systemctl status postgresql
+sudo systemctl start postgresql
+
+# Docker
+docker compose ps postgres
+docker compose logs postgres`,
             },
             {
-              title: "Port Already in Use",
+              title: "Port 3000 already in use",
               error: "EADDRINUSE: address already in use :::3000",
-              solution:
-                "# Find what's using port 3000\nlsof -i :3000\n\n# Use different port\nnpm run dev -- -p 3001",
+              solution: `# Find the process
+lsof -i :3000
+
+# Or use a different port (Next.js CLI flag)
+npm run dev -- -p 3001`,
             },
             {
-              title: "Module Not Found Errors",
+              title: "Module not found after fresh clone",
               error: "Cannot find module 'next'",
-              solution:
-                "# Clear and reinstall\nrm -rf node_modules package-lock.json\nnpm install",
+              solution: `# Remove stale lockfile + reinstall
+rm -rf node_modules .next
+npm ci`,
+            },
+            {
+              title: "Schema version mismatch at startup",
+              error: "Schema version mismatch: expected v2.0.0, found v1.0.0",
+              solution: `# Run the migration tool (interactive)
+npm run db:migrate
+
+# Or, in dry-run first
+npm run db:migrate:dry-run`,
+            },
+            {
+              title: "Validation: API_KEY_ENCRYPTION_KEY invalid",
+              error: "Invalid API_KEY_ENCRYPTION_KEY (must be 64 hex chars)",
+              solution: `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+# Paste the output into .env, restart.`,
             },
           ].map((item, i) => (
             <div key={i}>
@@ -450,7 +446,7 @@ features:
                 <h3 className="font-semibold">{item.title}</h3>
               </div>
               <p className="text-sm text-muted-foreground mb-2">
-                Error: &quot;{item.error}&quot;
+                Error: <code>{item.error}</code>
               </p>
               <CodeBlock code={item.solution} language="bash" />
             </div>
@@ -458,57 +454,55 @@ features:
         </Card>
       </DocsSection>
 
-      {/* Deployment */}
       <DocsSection id="deployment" title="Deployment Options">
         <Card className="p-6 border-border/40">
-          <h3 className="font-semibold mb-4">Vercel (Recommended)</h3>
+          <h3 className="font-semibold mb-4">Vercel</h3>
           <p className="text-sm text-muted-foreground mb-3">
-            {APP_NAME} is optimized for Vercel:
+            VulnRadar is a standard Next.js 15 App Router app and runs on
+            Vercel out of the box. Use Neon or any other serverless Postgres
+            for the database. Configure environment variables in the Vercel
+            dashboard before deploying.
           </p>
           <ol className="list-decimal list-inside space-y-2 text-sm text-muted-foreground">
-            <li>Push your code to GitHub</li>
-            <li>Connect your repository to Vercel</li>
-            <li>Add environment variables in Vercel settings</li>
-            <li>Deploy with a single click</li>
+            <li>Push the repo to GitHub.</li>
+            <li>Import the project in Vercel.</li>
+            <li>Add the required env vars (see above).</li>
+            <li>Deploy.</li>
           </ol>
         </Card>
 
         <Card className="p-6 border-border/40">
-          <h3 className="font-semibold mb-4">Self-Hosted (Linux/Ubuntu)</h3>
+          <h3 className="font-semibold mb-4">Self-hosted (Linux)</h3>
           <ol className="list-decimal list-inside space-y-2 text-sm text-muted-foreground">
-            <li>Provision a server with Node.js 22 LTS and PostgreSQL 14+</li>
-            <li>Clone the repository on the server</li>
+            <li>Provision a server with Node 22 LTS and PostgreSQL 14+.</li>
+            <li>Clone the repo, install dependencies (<code>npm ci</code>).</li>
+            <li>Configure <code>.env</code>.</li>
             <li>
-              Install dependencies with{" "}
-              <code className="bg-secondary px-1 rounded text-xs">
-                npm install
-              </code>
+              <code>npm run build &amp;&amp; npm start</code>
             </li>
             <li>
-              Configure{" "}
-              <code className="bg-secondary px-1 rounded text-xs">
-                .env.local
-              </code>
+              Manage the process with PM2 or systemd. Reverse-proxy (Caddy,
+              Traefik, nginx) for TLS.
             </li>
-            <li>
-              Build and start with{" "}
-              <code className="bg-secondary px-1 rounded text-xs">
-                npm run build && npm start
-              </code>
-            </li>
-            <li>Use PM2 or systemd to manage the process</li>
           </ol>
+        </Card>
+
+        <Card className="p-6 border-border/40">
+          <h3 className="font-semibold mb-4">Docker Compose</h3>
+          <p className="text-sm text-muted-foreground">
+            See the Docker section below.
+          </p>
         </Card>
       </DocsSection>
 
-      {/* Docker Setup */}
       <DocsSection id="docker" title="Docker Deployment">
         <p className="text-muted-foreground">
-          Deploy {APP_NAME} using Docker in 5 minutes.
+          Deploy {APP_NAME} with the included <code>docker-compose.yml</code>{" "}
+          (Postgres + app + healthcheck + smoke test).
         </p>
 
         <DocsCallout variant="success" title="Prerequisites">
-          <p>Docker and Docker Compose installed. Verify with:</p>
+          <p>Docker 24+ and Docker Compose v2.</p>
           <CodeBlock
             code="docker --version\ndocker compose version"
             language="bash"
@@ -518,9 +512,7 @@ features:
 
         <div className="space-y-3">
           <Card className="p-6 border-border/40">
-            <h3 className="font-semibold mb-4">
-              Step 1: Create Project Directory
-            </h3>
+            <h3 className="font-semibold mb-4">Step 1: Project directory</h3>
             <CodeBlock
               code="mkdir -p ~/vulnradar\ncd ~/vulnradar"
               language="bash"
@@ -529,78 +521,102 @@ features:
 
           <Card className="p-6 border-border/40">
             <h3 className="font-semibold mb-4">
-              Step 2: Download docker-compose.yml
+              Step 2: Get <code>docker-compose.yml</code>
             </h3>
+            <p className="text-sm text-muted-foreground mb-3">
+              Either pull the prebuilt image from GHCR:
+            </p>
             <CodeBlock
-              code={`curl -O https://raw.githubusercontent.com/${APP_REPO}/main/docker-compose.yml`}
+              code={`curl -O https://raw.githubusercontent.com/${APP_REPO}/main/docker-compose.yml\ncurl -O https://raw.githubusercontent.com/${APP_REPO}/main/.env.example`}
+              language="bash"
+            />
+            <p className="text-sm text-muted-foreground mt-3">
+              Or build from source locally:
+            </p>
+            <CodeBlock
+              code={`git clone https://github.com/${APP_REPO}.git\ncd ${APP_SLUG}.dev\ncp .env.example .env`}
               language="bash"
             />
           </Card>
 
           <Card className="p-6 border-border/40">
-            <h3 className="font-semibold mb-4">Step 3: Create .env File</h3>
-            <p className="text-sm text-muted-foreground mb-3">
-              Create a{" "}
-              <code className="bg-secondary px-1 rounded text-xs">.env</code>{" "}
-              file:
-            </p>
+            <h3 className="font-semibold mb-4">Step 3: Configure .env</h3>
             <CodeBlock
               code={`# Required
 DATABASE_URL=postgresql://vulnradar:your-strong-password@postgres:5432/vulnradar
 NEXT_PUBLIC_APP_URL=https://yourdomain.com
 API_KEY_ENCRYPTION_KEY=your-64-character-hex-key
 
-# Docker-only
+# Used by docker-compose.yml to provision Postgres
 POSTGRES_DB=vulnradar
 POSTGRES_USER=vulnradar
 POSTGRES_PASSWORD=your-strong-password
-APP_PORT=3000`}
+
+# Ports
+APP_PORT=3000
+DB_PORT=5432`}
               language="bash"
             />
           </Card>
 
           <Card className="p-6 border-border/40">
-            <h3 className="font-semibold mb-4">Step 4: Build and Start</h3>
+            <h3 className="font-semibold mb-4">Step 4: Start</h3>
             <CodeBlock code="docker compose up -d" language="bash" />
-            <p className="text-xs text-muted-foreground mt-2">
-              Verify containers are running:
-            </p>
-            <CodeBlock code="docker ps" language="bash" className="mt-2" />
+            <CodeBlock
+              code="docker compose ps"
+              language="bash"
+              className="mt-2"
+            />
           </Card>
 
           <Card className="p-6 border-border/40">
             <h3 className="font-semibold mb-4">Step 5: Verify</h3>
-            <CodeBlock code="docker logs -f vulnradar-app" language="bash" />
+            <CodeBlock
+              code="docker compose logs -f app"
+              language="bash"
+            />
             <p className="text-xs text-muted-foreground mt-2">
-              Wait for:{" "}
-              <code className="bg-secondary px-1 rounded text-xs">
-                ready - started server on
-              </code>
+              Look for the startup banner and{" "}
+              <code>Database schema verified successfully</code>.
             </p>
           </Card>
         </div>
 
-        <DocsCallout variant="error" title="HTTPS Required">
+        <DocsCallout variant="error" title="HTTPS required">
           <p>
-            {APP_NAME} requires HTTPS. Set up a reverse proxy (nginx, Traefik,
-            or Caddy) for TLS termination.
+            Put the app behind a reverse proxy (Caddy, Traefik, nginx) for
+            TLS termination. Cookie flags (<code>secure</code>) and CSP
+            headers assume HTTPS in production.
           </p>
         </DocsCallout>
 
         <Card className="p-6 border-border/40">
-          <h3 className="font-semibold mb-4">Common Operations</h3>
+          <h3 className="font-semibold mb-4">Common operations</h3>
           <div className="space-y-4">
             {[
-              { title: "View Live Logs", cmd: "docker logs -f vulnradar-app" },
-              { title: "Stop All Containers", cmd: "docker compose down" },
-              { title: "Full Reset", cmd: "docker compose down -v" },
               {
-                title: "Update to Latest",
-                cmd: "docker compose up -d --build",
+                title: "Tail logs",
+                cmd: "docker compose logs -f app",
               },
               {
-                title: "Restart Application",
-                cmd: "docker compose restart vulnradar-app",
+                title: "Stop (keep data)",
+                cmd: "docker compose down",
+              },
+              {
+                title: "Full reset (drop volumes)",
+                cmd: "docker compose down -v",
+              },
+              {
+                title: "Update",
+                cmd: "docker compose pull && docker compose up -d",
+              },
+              {
+                title: "Restart only the app",
+                cmd: "docker compose restart app",
+              },
+              {
+                title: "Open a psql shell",
+                cmd: "docker compose exec postgres psql -U vulnradar -d vulnradar",
               },
             ].map((item, i) => (
               <div key={i}>
@@ -612,77 +628,104 @@ APP_PORT=3000`}
         </Card>
       </DocsSection>
 
-      {/* Migration Tool */}
-      <DocsSection id="migration" title="Migration Tool">
+      <DocsSection id="migration" title="Schema Migration">
         <p className="text-muted-foreground">
-          Keep your database schema in sync when updating {APP_NAME}.
+          When upgrading between schema versions (e.g. v1 → v2), use the
+          interactive migration tool. The migrator reads{" "}
+          <code>vulnradar_schema_meta</code> to detect the current schema,
+          picks the target version, builds a DDL plan, and applies it in a
+          single transaction.
         </p>
 
         <Card className="p-6 border-border/40">
-          <h3 className="font-semibold mb-4">Running Migrations</h3>
-          <p className="text-sm text-muted-foreground mb-3">
-            After pulling a new version:
+          <h3 className="font-semibold mb-4">Run a migration</h3>
+          <CodeBlock
+            code={`# Preview the plan first
+npm run db:migrate:dry-run
+
+# Then run for real (interactive)
+npm run db:migrate`}
+            language="bash"
+          />
+          <p className="text-xs text-muted-foreground mt-2">
+            Flags accepted by the CLI: <code>--dry-run</code>,{" "}
+            <code>--help</code>. The target version is selected
+            interactively; downgrades require typing{" "}
+            <code>yes-delete-data</code>.
           </p>
-          <CodeBlock code="npm run db:migrate" language="bash" />
-          <p className="text-sm text-muted-foreground mt-4 mb-3">
-            The tool will:
-          </p>
-          <ol className="list-decimal list-inside space-y-2 text-sm text-muted-foreground">
-            <li>
-              Parse expected schema from{" "}
-              <code className="bg-secondary px-1 rounded text-xs">
-                instrumentation.ts
-              </code>
-            </li>
-            <li>Query your actual database tables</li>
-            <li>Show comparison with color-coded status</li>
-            <li>Offer to add missing columns interactively</li>
-          </ol>
         </Card>
 
-        <DocsCallout variant="warning" title="Important">
+        <Card className="p-6 border-border/40">
+          <h3 className="font-semibold mb-4">Side-by-side clone</h3>
+          <p className="text-sm text-muted-foreground mb-3">
+            To create a new database (e.g. for testing an upgrade on a copy
+            of production), use <code>db:create</code>:
+          </p>
+          <CodeBlock
+            code={`# Preview
+npm run db:create:dry-run
+
+# Interactive: choose source DB, target DB name, copy data?
+npm run db:create`}
+            language="bash"
+          />
+        </Card>
+
+        <DocsCallout variant="warning" title="Schema drift detector">
           <p>
-            All destructive actions default to No and require explicit{" "}
-            <code className="bg-secondary px-1 rounded">y</code> confirmation.
+            <code>npm run audit:v2-tables</code> compares{" "}
+            <code>instrumentation.ts</code> against{" "}
+            <code>scripts/migrate/versions/_snippets.mjs</code>. If they drift,
+            the migrator will fail until both are in sync. Wire this into CI.
           </p>
         </DocsCallout>
       </DocsSection>
 
-      {/* Version Checking */}
-      <DocsSection id="version" title="Version Checking">
+      <DocsSection id="version" title="Version Check">
         <p className="text-muted-foreground">
-          {APP_NAME} includes automatic version checking for self-hosted
-          instances.
+          {APP_NAME} compares its installed version against the latest GitHub
+          release once per hour.
         </p>
 
         <Card className="p-6 border-border/40">
-          <h3 className="font-semibold mb-4">Automatic Startup Check</h3>
-          <p className="text-sm text-muted-foreground mb-3">
-            On startup, the server logs:
+          <h3 className="font-semibold mb-4">Programmatic check</h3>
+          <CodeBlock code={`curl ${APP_URL}/api/version`} language="bash" />
+          <p className="text-xs text-muted-foreground mt-2">
+            Unauthenticated. Cached for 1 hour upstream of GitHub.
           </p>
           <CodeBlock
-            code={`[${APP_NAME}] Starting ${APP_NAME} v${APP_VERSION} (Detection Engine v${ENGINE_VERSION})
-[${APP_NAME}] You're running the latest version (v${APP_VERSION}).`}
-            language="text"
+            code={`{
+  "current": "${APP_VERSION}",
+  "engine": "${ENGINE_VERSION}",
+  "latest": "${APP_VERSION}",
+  "status": "up-to-date",
+  "message": "You're running the latest version.",
+  "release_url": "https://github.com/${APP_REPO}/releases/tag/v${APP_VERSION}"
+}`}
+            language="json"
+            className="mt-3"
           />
         </Card>
 
         <Card className="p-6 border-border/40">
-          <h3 className="font-semibold mb-4">API Version Endpoint</h3>
-          <p className="text-sm text-muted-foreground mb-3">
-            Check version programmatically:
-          </p>
-          <CodeBlock code={`curl ${APP_URL}/api/version`} language="bash" />
-          <p className="text-sm text-muted-foreground mt-3 mb-3">Returns:</p>
-          <CodeBlock
-            code={`{
-  "current": "${APP_VERSION}",
-  "latest": "${APP_VERSION}",
-  "engine": "${ENGINE_VERSION}",
-  "status": "up-to-date"
-}`}
-            language="json"
-          />
+          <h3 className="font-semibold mb-4">Status values</h3>
+          <ul className="list-disc pl-6 space-y-1 text-sm text-muted-foreground">
+            <li>
+              <code>up-to-date</code> — running the latest release
+            </li>
+            <li>
+              <code>behind</code> — newer release exists;{" "}
+              <code>release_url</code> points to it
+            </li>
+            <li>
+              <code>ahead</code> — running a version newer than the latest
+              release (development / RC)
+            </li>
+            <li>
+              <code>unknown</code> — GitHub unreachable, rate-limited, or
+              the repo does not exist
+            </li>
+          </ul>
         </Card>
       </DocsSection>
     </div>

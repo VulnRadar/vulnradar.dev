@@ -5,18 +5,15 @@ import Link from "next/link";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
-  Shield,
   Globe,
-  Clock,
   Key,
-  Layers,
-  FileCode,
-  Zap,
+  Webhook,
+  Gauge,
+  Server,
+  Cpu,
+  Settings,
   Code2,
-  Terminal,
-  BookOpen,
   ArrowRight,
-  CheckCircle,
 } from "lucide-react";
 import {
   APP_NAME,
@@ -46,114 +43,164 @@ const tocItems: TocItem[] = [
 
 const platformFeatures: Feature[] = [
   {
-    icon: Shield,
+    icon: Cpu,
     title: TOTAL_CHECKS_LABEL,
-    description: "Comprehensive vulnerability detection engine",
+    description: "Detection checks across HTTP, TLS, cookies, headers, content",
   },
   {
     icon: Globe,
-    title: "Multi-Protocol Support",
-    description: "HTTP, HTTPS, WebSocket, FTP scanning",
-  },
-  {
-    icon: Clock,
-    title: "Real-Time Results",
-    description: "Instant scan results with detailed findings",
+    title: "Six Protocols",
+    description: "http, https, ws, wss, ftp, ftps",
   },
   {
     icon: Key,
     title: "API Access",
-    description: "RESTful API with Bearer token authentication",
+    description: "REST v2 with Bearer tokens, encrypted at rest",
   },
   {
-    icon: Layers,
-    title: "Deep Crawl Mode",
-    description: "Scan entire sites with automatic link discovery",
+    icon: Webhook,
+    title: "Webhooks",
+    description: "Discord, Slack, and generic HTTPS endpoints",
   },
   {
-    icon: FileCode,
-    title: "Open Source",
-    description: "MIT licensed - self-host with full control",
+    icon: Server,
+    title: "Self-Hostable",
+    description: "Single Next.js process + PostgreSQL, GPL-3.0",
+  },
+  {
+    icon: Settings,
+    title: "Configurable",
+    description: "Static config in TypeScript, secrets in environment",
   },
 ];
 
 const quickStartSteps: Step[] = [
   {
     step: 1,
-    title: "Create Account",
-    description: `Sign up at ${APP_URL.replace("https://", "")}`,
+    title: "Create an account",
+    description: "Sign up at the app or self-host and create the first user via signup.",
   },
   {
     step: 2,
-    title: "Generate API Key",
-    description: "Profile → API Keys → Generate New Key",
+    title: "Generate an API key",
+    description: "Open Profile -> API Keys -> Generate New Key. Store the raw key; it is shown only once.",
   },
   {
     step: 3,
-    title: "Make Your First Scan",
-    description: "POST to /api/v2/scan with your target URL",
+    title: "Make your first scan",
+    description: "POST /api/v2/scan with the target URL and your Bearer token.",
   },
   {
     step: 4,
-    title: "View Results",
-    description: "Detailed findings with severity and remediation steps",
+    title: "Read the results",
+    description: "Findings are ranked by severity, each with a CVSS score and a fix recipe.",
   },
 ];
 
 const docSections = [
   {
-    icon: Zap,
+    icon: Code2,
     title: "API Reference",
     subtitle: "v2 REST API",
     description:
-      "Complete API documentation with authentication, endpoints, code examples in cURL, JavaScript, and Python.",
+      "Complete reference for the v2 REST API: authentication, scan endpoints, history, webhooks, billing.",
     features: [
-      "Bearer token authentication",
-      "Scan, history, and crawl endpoints",
-      "Rate limiting (varies by plan)",
-      "Detailed error handling",
+      "Bearer token authentication (AES-256 at rest)",
+      "Scan, bulk, crawl, and history endpoints",
+      "Per-key daily quotas and rate-limit headers",
     ],
     href: "/docs/api",
   },
   {
-    icon: Code2,
+    icon: Server,
     title: "Setup Guide",
-    subtitle: "Self-hosting",
-    description: `Step-by-step instructions for deploying ${APP_NAME} on your own infrastructure with PostgreSQL.`,
+    subtitle: "Local + Docker",
+    description:
+      "Step-by-step instructions for installing VulnRadar locally or shipping a production build.",
     features: [
-      "Prerequisites and installation",
-      "Database and email configuration",
-      "Docker and Vercel deployment",
-      "Migration and version checking",
+      "Prerequisites (Node 22 LTS, PostgreSQL 14+)",
+      "Environment variables and config",
+      "Docker and bare-Node deployment",
     ],
     href: "/docs/setup",
   },
   {
-    icon: Terminal,
-    title: "Developer Guide",
-    subtitle: "SDKs & Integration",
+    icon: Gauge,
+    title: "Rate Limits",
+    subtitle: "Daily quotas",
     description:
-      "Build custom integrations, create SDKs, and access the Finding Types API for dynamic vulnerability data.",
+      "Per-API-key daily quotas, per-IP rate limits, and the headers you receive on every response.",
     features: [
-      "Finding Types endpoint",
-      "SDK development patterns",
-      "Official Python & TypeScript SDKs",
-      "Community contributions",
+      "Plan-based daily quotas (Free/Core/Pro/Elite)",
+      "Per-IP limits on auth endpoints",
+      "Retry-After and X-RateLimit-* headers",
+    ],
+    href: "/docs/rate-limits",
+  },
+  {
+    icon: Settings,
+    title: "Configuration",
+    subtitle: "lib/config/config-values.ts",
+    description:
+      "All non-secret tunables live in lib/config/config-values.ts. Secrets live in environment variables.",
+    features: [
+      "App metadata, branding, emails",
+      "Rate limits, feature flags, billing limits",
+      "Self-hosting checklist",
+    ],
+    href: "/docs/config",
+  },
+  {
+    icon: Cpu,
+    title: "Architecture",
+    subtitle: "Codebase map",
+    description:
+      "Project layout, key subsystems, request lifecycle, and the CI/CD pipeline.",
+    features: [
+      "lib/, app/, scripts/, components/",
+      "Auth, scanner, billing, permissions",
+      "GitHub Actions and Dockerfile",
+    ],
+    href: "/docs/architecture",
+  },
+  {
+    icon: Webhook,
+    title: "Webhooks",
+    subtitle: "Discord / Slack / Generic",
+    description:
+      "Receive real-time notifications when scans complete. Five webhooks per user, HTTPS only.",
+    features: [
+      "Auto-detect by URL pattern",
+      "Platform-specific payload formats",
+      "SSRF protection on webhook URLs",
+    ],
+    href: "/docs/webhooks",
+  },
+  {
+    icon: Code2,
+    title: "Developers",
+    subtitle: "Contributing",
+    description:
+      "Local development workflow, scripts, lint/typecheck/test, PR conventions, and the Node version policy.",
+    features: [
+      "npm scripts reference",
+      "Adding tables, checks, and routes",
+      "Node 22 LTS, vitest 4",
     ],
     href: "/docs/developers",
   },
   {
-    icon: BookOpen,
-    title: "Changelog",
-    subtitle: "Version History",
-    description: `Track all updates, new features, bug fixes, and improvements across ${APP_NAME} versions.`,
+    icon: Server,
+    title: "Self-Hosting",
+    subtitle: "Production deployment",
+    description:
+      "Run VulnRadar on your own infrastructure: docker-compose, backups, Stripe webhook setup, updates.",
     features: [
-      "Release notes and migration guides",
-      "Breaking changes highlighted",
-      "Feature announcements",
-      "Security advisories",
+      "docker-compose with PostgreSQL + app",
+      "Backups via pg_dump",
+      "Update flow and migrations",
     ],
-    href: "/changelog",
+    href: "/docs/self-hosting",
   },
 ];
 
@@ -193,28 +240,25 @@ export default function DocsPage() {
 
   return (
     <div className="space-y-12 sm:space-y-16">
-      {/* Hero Section */}
       <DocsHero
         badge={`v${APP_VERSION}`}
         title={`${APP_NAME} Documentation`}
-        description={`Complete guide to using ${APP_NAME} for web vulnerability scanning. Learn how to integrate our API, self-host the platform, and build custom security workflows.`}
+        description={`Complete guide to using ${APP_NAME} for web vulnerability scanning. Integrate the API, self-host the platform, or extend the engine.`}
         stats={[
-          { value: TOTAL_CHECKS_LABEL, label: "Security Checks" },
-          { value: "v2", label: "API Version" },
+          { value: TOTAL_CHECKS_LABEL, label: "Detection Checks" },
           { value: "6", label: "Protocols" },
-          { value: "MIT", label: "License" },
+          { value: "v2", label: "API Version" },
+          { value: "GPL-3.0", label: "License" },
         ]}
       />
 
-      {/* Key Features */}
       <DocsSection id="features" title="Platform Features">
         <DocsFeatureGrid features={platformFeatures} />
       </DocsSection>
 
-      {/* Quick Start */}
       <DocsSection id="quick-start" title="Quick Start">
         <p className="text-sm text-muted-foreground">
-          Get scanning in under 2 minutes.
+          First scan in under a minute.
         </p>
 
         <Card className="p-4 sm:p-6 border-border/50 bg-card/50">
@@ -241,7 +285,6 @@ export default function DocsPage() {
         </Card>
       </DocsSection>
 
-      {/* Documentation Navigation */}
       <DocsSection id="documentation" title="Documentation">
         <div className="grid grid-cols-1 gap-3 sm:gap-4 md:grid-cols-2">
           {docSections.map((section) => (
@@ -266,12 +309,9 @@ export default function DocsPage() {
                 {section.description}
               </p>
               <ul className="text-[10px] sm:text-xs text-muted-foreground space-y-1 mb-3 sm:mb-4">
-                {section.features.slice(0, 2).map((item, i) => (
-                  <li
-                    key={i}
-                    className="flex items-center gap-1.5 line-clamp-1"
-                  >
-                    <CheckCircle className="h-2.5 w-2.5 sm:h-3 sm:w-3 text-primary flex-shrink-0" />
+                {section.features.map((item, i) => (
+                  <li key={i} className="flex items-center gap-1.5 line-clamp-1">
+                    <span className="h-1 w-1 rounded-full bg-primary flex-shrink-0" />
                     <span className="line-clamp-1">{item}</span>
                   </li>
                 ))}
@@ -295,17 +335,15 @@ export default function DocsPage() {
         </div>
       </DocsSection>
 
-      {/* Support */}
       <DocsSection id="support" title="Support">
         <Card className="p-4 sm:p-5 border-border/50 bg-card/50">
           <div className="flex flex-col gap-3 sm:gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="min-w-0">
               <h3 className="text-xs sm:text-sm font-medium text-foreground mb-1">
-                Need Help?
+                Need help?
               </h3>
               <p className="text-xs sm:text-sm text-muted-foreground leading-relaxed">
-                Have questions or need assistance? Reach out through our contact
-                form or check the community resources.
+                Reach out via the contact form or open an issue on GitHub.
               </p>
             </div>
             <div className="flex flex-wrap gap-2 flex-shrink-0">
@@ -324,7 +362,7 @@ export default function DocsPage() {
                 className="text-xs sm:text-sm"
               >
                 <a
-                  href="https://github.com/VulnRadar/vulnradar.dev"
+                  href={`https://github.com/${APP_NAME.toLowerCase()}/${APP_NAME.toLowerCase()}.dev`}
                   target="_blank"
                   rel="noopener noreferrer"
                 >
@@ -338,14 +376,14 @@ export default function DocsPage() {
         <Card className="p-3 border-border/50 bg-card/30">
           <div className="flex flex-col gap-3 sm:gap-4 sm:flex-row sm:items-center sm:justify-between text-xs sm:text-sm text-muted-foreground">
             <div className="flex flex-wrap items-center gap-2 sm:gap-4 font-mono text-[10px] sm:text-xs">
-              <span className="line-clamp-1">
+              <span>
                 <span className="text-foreground">App:</span> {APP_VERSION}
               </span>
-              <span className="line-clamp-1">
+              <span>
                 <span className="text-foreground">Engine:</span>{" "}
                 {ENGINE_VERSION}
               </span>
-              <span className="line-clamp-1">
+              <span>
                 <span className="text-foreground">API:</span> v2
               </span>
             </div>
@@ -355,7 +393,7 @@ export default function DocsPage() {
               rel="noopener noreferrer"
               className="text-primary hover:underline text-xs sm:text-sm whitespace-nowrap"
             >
-              Check version status →
+              Check version status
             </a>
           </div>
         </Card>
