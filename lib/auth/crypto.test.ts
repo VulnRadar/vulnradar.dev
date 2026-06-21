@@ -6,7 +6,7 @@ import {
 } from "@/lib/auth/crypto";
 
 /**
- * Phase 8C Commit 1 (C-4): first test suite for security-critical code.
+first test suite for security-critical code.
  *
  * Verifies AES-256-GCM roundtrip, IV uniqueness, and tampered-ciphertext
  * rejection.

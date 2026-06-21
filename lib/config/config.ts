@@ -1,9 +1,8 @@
 ﻿// ============================================================================
 // Configuration Loader (Works in both Server and Client)
-// ============================================================================
+
 // Loads configuration from hardcoded defaults in lib/config/config-values.ts
 // All values can be customized by editing config-values.ts directly.
-// ============================================================================
 
 import { VulnRadarConfig, DEFAULT_CONFIG } from "../types/config";
 
@@ -75,9 +74,7 @@ export function reloadConfig(): VulnRadarConfig {
   return loadConfig();
 }
 
-// ============================================================================
 // Convenience Exports
-// ============================================================================
 
 // Export the config object directly for easy access
 export const CONFIG = getConfig();

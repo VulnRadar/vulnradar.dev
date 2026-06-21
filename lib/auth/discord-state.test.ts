@@ -7,7 +7,7 @@ import {
 } from "@/lib/auth/discord-state";
 
 /**
- * Phase 8C Commit 1 (C-4): tests for HMAC-signed Discord OAuth state.
+tests for HMAC-signed Discord OAuth state.
  *
  * Verifies the round-trip, that tampered / malformed / expired states
  * are rejected, and that the wrong secret can't verify.

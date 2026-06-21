@@ -3,7 +3,7 @@ import { z } from "zod";
 /**
  * Centralized runtime environment validation.
  *
- * Phase 8 Commit 1: replaces the previous pattern of "silently fall back to
+replaces the previous pattern of "silently fall back to
  * hardcoded secrets" in `lib/auth/discord-state.ts` and `lib/api/api-keys.ts`.
  * Callers fail fast at startup with a clear error message instead of running
  * with a forgeable global default.
@@ -64,7 +64,7 @@ const OptionalSchema = z.object({
   // Database
   DATABASE_SSL: z.string().optional(),
 
-  // Proxy / IP trust (Phase 8 Commit 1)
+  // Proxy / IP trust
   TRUSTED_PROXY_CIDR: z.string().optional(),
 });
 

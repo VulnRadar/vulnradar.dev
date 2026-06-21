@@ -1,6 +1,5 @@
 ﻿// ============================================================================
 // Discord OAuth Callback - Handle OAuth response
-// ============================================================================
 
 import { NextResponse } from "next/server";
 import { getSession, createSession } from "@/lib/auth";

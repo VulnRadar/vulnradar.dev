@@ -1,9 +1,8 @@
 ﻿// ============================================================================
 // Billing & Subscription Management
-// ============================================================================
+
 // Handles Stripe subscriptions, customer management, and billing history
 // All subscription data is stored directly on the users table (clean schema)
-// ============================================================================
 
 import { getStripe } from "./stripe";
 import pool from "@/lib/database/db";

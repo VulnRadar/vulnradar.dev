@@ -187,7 +187,7 @@ export async function PATCH(request: NextRequest) {
 
     // Update avatar
     if (typeof avatarUrl === "string") {
-      // Phase 8C Commit 2 (H-1): strict avatar validation. The previous
+      // strict avatar validation. The previous
       // check only verified the data: URL prefix — it would happily accept
       // `data:image/svg+xml;base64,<SVG with inline script>` and store it
       // in the DB, ready to render as XSS. Now uses lib/uploads/avatar.ts

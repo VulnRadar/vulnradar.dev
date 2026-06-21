@@ -9,9 +9,8 @@
  *   <div className={transitions.default}>...</div>
  */
 
-// ============================================================================
 // TIMING / DURATION
-// ============================================================================
+
 export const durations = {
   instant: "duration-75", // 75ms - micro-interactions
   fast: "duration-150", // 150ms - buttons, toggles
@@ -21,9 +20,8 @@ export const durations = {
   slower: "duration-700", // 700ms - emphasis animations
 } as const;
 
-// ============================================================================
 // EASING FUNCTIONS
-// ============================================================================
+
 export const easings = {
   default: "ease-out",
   smooth: "ease-in-out",
@@ -31,9 +29,8 @@ export const easings = {
   spring: "ease-[cubic-bezier(0.175,0.885,0.32,1.275)]",
 } as const;
 
-// ============================================================================
 // STANDARD TRANSITIONS (combine duration + easing)
-// ============================================================================
+
 export const transitions = {
   // Basic transitions
   none: "",
@@ -56,9 +53,8 @@ export const transitions = {
   page: "transition-all duration-500 ease-out", // page transitions
 } as const;
 
-// ============================================================================
 // HOVER EFFECTS
-// ============================================================================
+
 export const hovers = {
   // Opacity
   opacity: "hover:opacity-80",
@@ -90,9 +86,8 @@ export const hovers = {
   nav: "hover:text-foreground hover:bg-muted/50",
 } as const;
 
-// ============================================================================
 // FOCUS STATES
-// ============================================================================
+
 export const focus = {
   ring: "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
   within:
@@ -100,9 +95,8 @@ export const focus = {
   none: "focus:outline-none focus-visible:outline-none",
 } as const;
 
-// ============================================================================
 // ANIMATION CLASSES (for keyframe animations)
-// ============================================================================
+
 export const animations = {
   // Fade
   fadeIn: "animate-fade-in",
@@ -130,9 +124,8 @@ export const animations = {
   float: "animate-float",
 } as const;
 
-// ============================================================================
 // COMBINED INTERACTIVE STATES
-// ============================================================================
+
 export const interactive = {
   // Buttons
   button: `${transitions.fast} ${hovers.button} ${focus.ring}`,
@@ -151,9 +144,8 @@ export const interactive = {
   input: `${transitions.colors} ${focus.ring}`,
 } as const;
 
-// ============================================================================
 // BACKDROP / OVERLAY
-// ============================================================================
+
 export const backdrops = {
   modal: "bg-black/80 backdrop-blur-md",
   modalSubtle: "bg-black/60 backdrop-blur-sm",
@@ -163,9 +155,8 @@ export const backdrops = {
   card: "bg-card/95 backdrop-blur-sm",
 } as const;
 
-// ============================================================================
 // GLOW / GRADIENT EFFECTS
-// ============================================================================
+
 export const effects = {
   // Glows
   glow: "shadow-[0_0_20px_-5px_hsl(var(--primary)/0.3)]",
@@ -186,9 +177,8 @@ export const effects = {
   orbSecondary: "bg-blue-500",
 } as const;
 
-// ============================================================================
 // STAGGER DELAYS (for list animations)
-// ============================================================================
+
 export const stagger = {
   none: "",
   delay1: "animation-delay-[100ms]",
@@ -198,9 +188,7 @@ export const stagger = {
   delay5: "animation-delay-[500ms]",
 } as const;
 
-// ============================================================================
 // UTILITY FUNCTIONS
-// ============================================================================
 
 /**
  * Combine multiple animation/transition classes

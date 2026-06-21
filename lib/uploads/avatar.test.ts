@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { validateAvatarDataUrl } from "@/lib/uploads/avatar";
 
 /**
- * Phase 8C Commit 2 (H-1): tests for avatar upload validation.
+tests for avatar upload validation.
  *
  * Verifies the MIME allowlist (png/jpeg only, SVG rejected),
  * magic-bytes enforcement, and size cap.

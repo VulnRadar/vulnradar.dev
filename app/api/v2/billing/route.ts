@@ -1,6 +1,5 @@
 ﻿// ============================================================================
 // Billing API - Usage tracking and subscription management
-// ============================================================================
 
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";

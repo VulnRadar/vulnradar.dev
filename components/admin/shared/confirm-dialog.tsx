@@ -28,7 +28,7 @@ interface ConfirmDialogProps {
 /**
  * Confirmation dialog for dangerous/important admin actions.
  *
- * Phase 8 Commit 4: migrated from a hand-rolled `<div>` overlay to
+migrated from a hand-rolled `<div>` overlay to
  * `@radix-ui/react-alert-dialog`. Radix provides focus trap, escape-key
  * dismissal, click-outside-to-close, and `aria-modal`/`role="alertdialog"`
  * for free, so screen readers and keyboard users get the right semantics

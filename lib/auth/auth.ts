@@ -17,7 +17,7 @@ let lastCleanupTime = 0;
 // Hash format: "N:r:p:salt:hash" — params are stored so we can
 // upgrade cost over time without invalidating older hashes.
 // Defaults match OWASP 2024+ recommendations for interactive logins.
-const SCRYPT_N = 1 << 17; // 131072 — was 16384 prior to Phase 2
+const SCRYPT_N = 1 << 17; // 131072. Bumped from 16384 in the 2.3.0 release.
 const SCRYPT_R = 8;
 const SCRYPT_P = 1;
 const SCRYPT_MAXMEM = 128 * 1024 * 1024; // 128 MiB

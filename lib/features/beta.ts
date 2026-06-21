@@ -1,6 +1,6 @@
 ﻿// ============================================================================
 // Beta Features Module
-// ============================================================================
+
 // Manages beta feature flags using feature names (no database table needed)
 // Beta access is now tracked via users.beta_access boolean column
 

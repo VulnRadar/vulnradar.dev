@@ -1,9 +1,7 @@
-// ============================================================================
 // APP CONSTANTS - Centralized configuration for the entire application
-// ============================================================================
+
 // This file imports from config-values.ts which contains hardcoded defaults.
 // Self-hosters: Modify lib/config/config-values.ts to customize your deployment.
-// ============================================================================
 
 import {
   CONFIG_APP_NAME,
@@ -90,9 +88,7 @@ import {
   CONFIG_BILLING_UNLIMITED_MODE_LIMIT,
 } from "./config-values";
 
-// ============================================================================
 // APPLICATION METADATA (from config-values.ts -> config.yaml)
-// ============================================================================
 
 export const APP_NAME = CONFIG_APP_NAME;
 export const APP_SLUG = CONFIG_APP_SLUG;
@@ -111,17 +107,13 @@ export const DEFAULT_SCAN_NOTE = `${APP_NAME} v${APP_VERSION} (Detection Engine 
 export const VERSION_CHECK_URL = `https://api.github.com/repos/${APP_REPO}/releases/latest`;
 export const RELEASES_URL = `https://github.com/${APP_REPO}/releases`;
 
-// ============================================================================
 // BRANDING (from config-values.ts)
-// ============================================================================
 
 export const LOGO_URL = process.env.LOGO_URL || `${APP_URL}${CONFIG_LOGO_URL}`;
 export const BRANDING_PRIMARY_COLOR = CONFIG_PRIMARY_COLOR;
 export const BRANDING_FOOTER_TEXT = CONFIG_FOOTER_TEXT;
 
-// ============================================================================
 // COOKIE NAMES AND SETTINGS (from config-values.ts)
-// ============================================================================
 
 // Version notification
 export const VERSION_COOKIE_NAME = CONFIG_VERSION_COOKIE_NAME;
@@ -140,9 +132,7 @@ export const DEVICE_TRUST_COOKIE_NAME = CONFIG_DEVICE_TRUST_COOKIE_NAME;
 export const DEVICE_TRUST_MAX_AGE =
   60 * 60 * 24 * CONFIG_DEVICE_TRUST_MAX_AGE_DAYS;
 
-// ============================================================================
 // TIME INTERVALS (from config-values.ts)
-// ============================================================================
 
 // Authentication timeouts
 export const TOTP_CODE_VALIDITY = CONFIG_TOTP_VALIDITY_SECONDS;
@@ -168,9 +158,7 @@ export const RATE_LIMIT_SIGNUP_WINDOW =
 export const SCAN_TIMEOUT = CONFIG_SCAN_TIMEOUT_SECONDS;
 export const BULK_SCAN_TIMEOUT = CONFIG_BULK_SCAN_TIMEOUT_SECONDS;
 
-// ============================================================================
 // HTTP HEADERS
-// ============================================================================
 
 export const COMMON_HEADERS = {
   "Content-Type": "application/json",
@@ -178,9 +166,7 @@ export const COMMON_HEADERS = {
   "X-Frame-Options": "SAMEORIGIN",
 };
 
-// ============================================================================
 // ERROR MESSAGES
-// ============================================================================
 
 export const ERROR_MESSAGES = {
   // Authentication - Professional, clear messages
@@ -226,9 +212,7 @@ export const ERROR_MESSAGES = {
   METHOD_NOT_ALLOWED: "This HTTP method is not supported for this endpoint.",
 };
 
-// ============================================================================
 // SUCCESS MESSAGES
-// ============================================================================
 
 export const SUCCESS_MESSAGES = {
   LOGIN: "Logged in successfully",
@@ -243,9 +227,7 @@ export const SUCCESS_MESSAGES = {
   DELETED: "Resource deleted successfully",
 };
 
-// ============================================================================
 // REGEX PATTERNS
-// ============================================================================
 
 export const PATTERNS = {
   EMAIL: /^[^\s@]+@[^\s@]+\.[^\s@]+$/,
@@ -257,9 +239,7 @@ export const PATTERNS = {
   TOTP_CODE: /^\d{6}$/,
 };
 
-// ============================================================================
 // RATE LIMIT CONFIGS (from config-values.ts)
-// ============================================================================
 
 export const RATE_LIMITS = {
   login: {
@@ -288,9 +268,7 @@ export const RATE_LIMITS = {
   },
 };
 
-// ============================================================================
 // DATABASE CONSTRAINTS (from config-values.ts)
-// ============================================================================
 
 export const DATABASE = {
   MAX_EMAIL_LENGTH: CONFIG_MAX_EMAIL_LENGTH,
@@ -300,9 +278,7 @@ export const DATABASE = {
   MAX_TAGS_PER_SCAN: CONFIG_MAX_TAGS_PER_SCAN,
 };
 
-// ============================================================================
 // SECURITY SCANNING CONSTRAINTS (from config-values.ts)
-// ============================================================================
 
 export const SCANNING = {
   MAX_URL_LENGTH: CONFIG_MAX_URL_LENGTH,
@@ -312,9 +288,7 @@ export const SCANNING = {
   DEFAULT_SEVERITY_THRESHOLD: CONFIG_DEFAULT_SEVERITY_THRESHOLD,
 };
 
-// ============================================================================
 // PAGINATION (from config-values.ts)
-// ============================================================================
 
 export const PAGINATION = {
   DEFAULT_PAGE_SIZE: CONFIG_PAGINATION_DEFAULT_PAGE_SIZE,
@@ -322,12 +296,10 @@ export const PAGINATION = {
   DEFAULT_PAGE: CONFIG_PAGINATION_DEFAULT_PAGE,
 };
 
-// ============================================================================
 // BILLING / PREMIUM (from config-values.ts)
-// ============================================================================
+
 // When BILLING_ENABLED is false, all users get unlimited access
 // Self-hosters can disable this to remove all premium restrictions
-// ============================================================================
 
 export const BILLING_ENABLED = CONFIG_BILLING_ENABLED;
 export const BILLING_PLAN_LIMITS = {
@@ -344,9 +316,7 @@ export const BILLING_HISTORY_RETENTION = {
 };
 export const BILLING_UNLIMITED_MODE_LIMIT = CONFIG_BILLING_UNLIMITED_MODE_LIMIT;
 
-// ============================================================================
 // TEAM ROLES
-// ============================================================================
 
 export const TEAM_ROLES = {
   OWNER: "owner",
@@ -367,9 +337,8 @@ export const TEAM_ROLE_PERMISSIONS = {
   [TEAM_ROLES.VIEWER]: ["view_reports"],
 };
 
-// ============================================================================
 // VULNERABILITY SEVERITY LEVELS
-// ============================================================================
+
 //
 // SEVERITY_LEVELS lives in lib/config/client-constants.ts (single source).
 // Re-exported here for server-side convenience.
@@ -383,9 +352,7 @@ export const SEVERITY_PRIORITY = {
   info: 1,
 };
 
-// ============================================================================
 // EMAIL / SMTP CONFIG (from config.yaml + env vars)
-// ============================================================================
 
 export const SUPPORT_EMAIL = process.env.SUPPORT_EMAIL || CONFIG_SUPPORT_EMAIL;
 export const LEGAL_EMAIL = CONFIG_LEGAL_EMAIL;
@@ -400,9 +367,7 @@ export const SMTP_PASS = process.env.SMTP_PASS || "";
 export const SMTP_FROM =
   process.env.SMTP_FROM || process.env.SMTP_USER || SMTP_USER;
 
-// ============================================================================
 // API KEY CONFIGURATION (from config-values.ts)
-// ============================================================================
 
 export const API_KEY_PREFIX = CONFIG_API_KEY_PREFIX;
 export const DEFAULT_API_KEY_DAILY_LIMIT = CONFIG_DEFAULT_API_KEY_DAILY_LIMIT;
@@ -415,28 +380,22 @@ export const BEARER_PREFIX = "Bearer ";
 // TOTP issuer
 export const TOTP_ISSUER = APP_NAME;
 
-// ============================================================================
 // BETA MODE CONFIGURATION (from config-values.ts)
-// ============================================================================
 
 export const BETA_MODE = CONFIG_BETA_ENABLED;
 export const BETA_BANNER_MESSAGE = CONFIG_BETA_BANNER_MESSAGE;
 
-// ============================================================================
 // TURNSTILE / CAPTCHA CONFIG
-// ============================================================================
 
 export const TURNSTILE_ENABLED = !!process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY;
 
-// ============================================================================
 // DEMO SCAN LIMITS (from config-values.ts)
-// ============================================================================
+
 export const DEMO_SCAN_LIMIT = CONFIG_DEMO_SCAN_LIMIT;
 export const DEMO_SCAN_WINDOW = 60 * 60 * CONFIG_DEMO_WINDOW_HOURS;
 
-// ============================================================================
 // STAFF / ADMIN ROLES, ROLE BADGE STYLES, ROUTES, API, API_VERSION
-// ============================================================================
+
 // All client-safe constants live in lib/config/client-constants.ts as
 // the single source of truth. Server-side this module re-exports them
 // so existing imports (`from "@/lib/config/constants"`) keep working
@@ -457,9 +416,7 @@ export {
 // (PRICING_ROUTE and GDPR_REQUEST_ROUTE are aliases of ROUTES.PRICING and
 // ROUTES.GDPR_REQUEST respectively.)
 
-// ============================================================================
 // API V2 ENDPOINTS
-// ============================================================================
 
 export const API_V2 = {
   AUTH: {
@@ -509,9 +466,7 @@ export const API_V2 = {
   FINDING_TYPES: "/api/v2/finding-types",
 } as const;
 
-// ============================================================================
 // FEATURE FLAGS (from config-values.ts)
-// ============================================================================
 
 export const FEATURES = {
   DEMO_MODE: CONFIG_FEATURE_DEMO_MODE,
@@ -524,8 +479,6 @@ export const FEATURES = {
   EMAIL_NOTIFICATIONS: CONFIG_FEATURE_EMAIL_NOTIFICATIONS,
 } as const;
 
-// ============================================================================
 // RE-EXPORT CONFIG FOR CONVENIENCE
-// ============================================================================
 
 export { getConfig, CONFIG } from "./config";

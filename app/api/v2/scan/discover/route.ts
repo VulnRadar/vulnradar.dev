@@ -5,9 +5,8 @@ import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
 import dns from "dns/promises";
 import pool from "@/lib/database/db";
 
-// ============================================================================
 // Subdomain Cache - 4 hour TTL using database for persistence across instances
-// ============================================================================
+
 const CACHE_TTL_HOURS = 4;
 
 interface CacheResult {

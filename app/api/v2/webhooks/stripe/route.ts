@@ -158,7 +158,7 @@ export async function POST(req: NextRequest) {
               [plan || "free", customerId, subscriptionId, customerEmail],
             );
             if (result.rowCount && result.rowCount > 0) {
-              // Phase 8C Commit 2 (H-2): log userId (already known from
+              // log userId (already known from
               // RETURNING) instead of customerEmail. PII stays out of
               // log aggregators.
               console.log(
@@ -281,7 +281,7 @@ export async function POST(req: NextRequest) {
               ],
             );
             if (result.rowCount && result.rowCount > 0) {
-              // Phase 8C Commit 2 (H-2): log userId from RETURNING
+              // log userId from RETURNING
               // instead of customer.email. PII stays out of logs.
               console.log(
                 `[Stripe] Subscription created for user ID ${result.rows[0].id}, plan: ${plan}`,

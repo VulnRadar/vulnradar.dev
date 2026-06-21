@@ -1,5 +1,8 @@
 /**
- * Avatar upload validation (Phase 8C Commit 2 — H-1).
+ * Avatar upload validation.
+ *
+ * Enforces a strict allowlist of safe image formats and rejects anything
+ * that could be interpreted as code (data: URLs, SVGs, etc).
  *
  * Validates an avatar `data:image/...;base64,...` URL from the
  * profile-update route. We intentionally avoid the `sharp` native

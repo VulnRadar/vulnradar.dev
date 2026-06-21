@@ -8,7 +8,7 @@ const nextConfig = {
   // works the same everywhere.
   serverExternalPackages: ["fs", "path"],
   typescript: {
-    // Phase 8 Commit 1: removed `ignoreBuildErrors: true`. Typecheck errors
+    // removed `ignoreBuildErrors: true`. Typecheck errors
     // must block the build. CI runs `tsc --noEmit` separately as a hard
     // gate; allowing the build to swallow type errors would silently ship
     // broken code.

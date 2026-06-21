@@ -10,7 +10,7 @@ import { AUTH_HEADER, BEARER_PREFIX } from "@/lib/config/constants";
  * Returns true if `ip` falls within any of the comma-separated CIDR ranges
  * listed in `cidrList` (e.g. "10.0.0.0/8,172.16.0.0/12,192.168.0.0/16").
  *
- * Phase 8 Commit 1: used to walk `x-forwarded-for` from the right and skip
+used to walk `x-forwarded-for` from the right and skip
  * trusted hops when TRUSTED_PROXY_CIDR is configured. Without this, an
  * attacker could spoof their IP by sending a custom `x-forwarded-for` header.
  */
@@ -103,7 +103,7 @@ function ipInCidr(
 /**
  * Extract client IP from request headers.
  *
- * Phase 8 Commit 1: trusts `x-forwarded-for` correctly when running behind
+trusts `x-forwarded-for` correctly when running behind
  * a known proxy. Set `TRUSTED_PROXY_CIDR` to a comma-separated list of
  * CIDR ranges (e.g. "10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,127.0.0.0/8")
  * to enable right-to-left trust-chain parsing.
