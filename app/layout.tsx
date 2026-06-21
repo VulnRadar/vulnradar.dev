@@ -41,17 +41,8 @@ export const metadata: Metadata = {
   authors: [{ name: APP_NAME }],
   icons: {
     icon: [
+      { url: "/favicon.svg", type: "image/svg+xml", sizes: "any" },
       { url: "/favicon.ico", sizes: "any" },
-      {
-        url: "/favicon-dark.svg",
-        type: "image/svg+xml",
-        media: "(prefers-color-scheme: dark)",
-      },
-      {
-        url: "/favicon-light.svg",
-        type: "image/svg+xml",
-        media: "(prefers-color-scheme: light)",
-      },
     ],
     apple: "/favicon.png",
   },
