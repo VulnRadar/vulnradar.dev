@@ -19,7 +19,7 @@ function generateDeprecatedPlaceholder(): string {
 }
 
 // Derive a server-side secret for key locator HMAC.
-// Phase 8 Commit 1: removed the hardcoded `"vulnradar-key-locator-v1"`
+// removed the hardcoded `"vulnradar-key-locator-v1"`
 // fallback. A global default in the source would let anyone who read the
 // source compute the locator for any stolen key. Require the real secret.
 function getLocatorSecret(): Buffer {

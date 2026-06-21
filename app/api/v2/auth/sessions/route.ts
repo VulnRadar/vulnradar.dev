@@ -13,7 +13,7 @@ export const DELETE = withErrorHandling(async () => {
   // Delete all sessions for this user (including current one)
   await deleteAllSessions(session.userId);
 
-  // Phase 8C Commit 1 (C-3): clear the actual session cookie. The
+  // clear the actual session cookie. The
   // previous code used the literal "session" name, which doesn't match
   // the cookie set by `createSession` (default `vulnradar_session`).
   // Use the cookie store directly to clear the correct cookie with

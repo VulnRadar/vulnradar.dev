@@ -6,7 +6,7 @@ if (!process.env.DATABASE_URL) {
   );
 }
 
-// Phase 8C Commit 1 (C-1): rejectUnauthorized was `false` even when
+// rejectUnauthorized was `false` even when
 // DATABASE_SSL=true, which allowed any on-path attacker to MITM the DB
 // connection. CA bundle can be overridden via DATABASE_SSL_CA for
 // self-signed certs. The plain `false` (no SSL) path is unchanged for

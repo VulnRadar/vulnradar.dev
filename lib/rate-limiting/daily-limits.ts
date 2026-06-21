@@ -1,10 +1,9 @@
 ﻿// ============================================================================
 // Daily Request Limit System
-// ============================================================================
+
 // Tracks and enforces daily request limits based on subscription plan
 // Uses the rate_limits table for tracking (clean schema)
 // When billing is disabled (config.yaml), all users get unlimited access
-// ============================================================================
 
 import pool from "@/lib/database/db";
 import {

@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 
 /**
- * Phase 8C Commit 1 (C-4): tests for the rate-limit window logic.
+tests for the rate-limit window logic.
  *
  * The rate-limit module is the only one we test that touches the
  * database. We mock the pg pool so the test is hermetic and fast.

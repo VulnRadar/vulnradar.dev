@@ -1,17 +1,13 @@
-// ============================================================================
 // CLIENT-ONLY CONSTANTS (Source of Truth for Client-Safe Values)
-// ============================================================================
+
 // These constants are safe to use in client components and don't depend
 // on server-only config loading. Role definitions, routes, and UI styles.
 //
 // NOTE: constants.ts re-exports these values for convenience. If you need
 // client-safe constants in client components, import from here directly
 // to avoid potential bundling issues with server-only code.
-// ============================================================================
 
-// ============================================================================
 // STAFF / ADMIN ROLES
-// ============================================================================
 
 export const STAFF_ROLES = {
   USER: "user",
@@ -39,9 +35,7 @@ export const STAFF_ROLE_LABELS: Record<string, string> = {
   admin: "Admin",
 };
 
-// ============================================================================
 // ROLE BADGE STYLES (used across admin, shared, staff pages)
-// ============================================================================
 
 export const ROLE_BADGE_STYLES: Record<string, string> = {
   admin: "bg-primary/10 text-primary border-primary/20",
@@ -52,15 +46,11 @@ export const ROLE_BADGE_STYLES: Record<string, string> = {
   user: "bg-muted text-muted-foreground border-border",
 };
 
-// ============================================================================
 // API VERSION - Change this to switch all API calls between versions
-// ============================================================================
 
 export const API_VERSION = "v2";
 
-// ============================================================================
 // API ENDPOINTS (dynamically versioned)
-// ============================================================================
 
 export const API = {
   AUTH: {
@@ -122,9 +112,7 @@ export const API = {
   VERSION: "/api/version",
 } as const;
 
-// ============================================================================
 // APPLICATION ROUTES
-// ============================================================================
 
 export const ROUTES = {
   HOME: "/",
@@ -160,9 +148,7 @@ export const ROUTES = {
   ADMIN: "/admin",
 } as const;
 
-// ============================================================================
 // SEVERITY LEVELS & COLORS
-// ============================================================================
 
 export const SEVERITY_LEVELS = {
   CRITICAL: "critical",
@@ -191,9 +177,7 @@ export const SEVERITY_LABELS = {
   info: "Informational",
 };
 
-// ============================================================================
 // UI / DESIGN CONSTANTS
-// ============================================================================
 
 export const ANIMATION_DURATION = {
   FAST: 150,

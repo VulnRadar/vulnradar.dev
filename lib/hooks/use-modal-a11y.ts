@@ -7,7 +7,7 @@ import { useEffect, useId, useRef } from "react";
  * (`role="dialog"`, `aria-modal`, `aria-labelledby`, `aria-describedby`)
  * plus escape-key dismissal and basic focus management.
  *
- * Phase 8 Commit 4: the codebase has ~6 hand-rolled `<div>` modals that
+the codebase has ~6 hand-rolled `<div>` modals that
  * lack these attributes. A full migration to `@radix-ui/react-dialog` is
  * deferred (behavior-parity risk per modal). This hook gives screen
  * readers and keyboard users the same semantics without changing the

@@ -1,10 +1,8 @@
-// ============================================================================
 // Configuration Type Definitions
-// ============================================================================
+
 // Source of truth: lib/config/config-values.ts (raw `CONFIG_*` constants).
 // `DEFAULT_CONFIG` is derived from those constants to eliminate duplication
 // and prevent drift between hardcoded values and the type definition.
-// ============================================================================
 
 export interface AppConfig {
   name: string;
@@ -164,9 +162,8 @@ export interface VulnRadarConfig {
   billing: BillingConfig;
 }
 
-// ============================================================================
 // Default Configuration (derived from lib/config/config-values.ts)
-// ============================================================================
+
 // DO NOT duplicate values here. Edit lib/config/config-values.ts instead.
 import {
   CONFIG_APP_NAME,

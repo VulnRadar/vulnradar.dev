@@ -9,7 +9,7 @@ import { APP_NAME } from "@/lib/config/constants";
 /**
  * Per-route error boundary for /dashboard.
  *
- * Phase 8 Commit 5: an unhandled error on the dashboard used to bubble
+an unhandled error on the dashboard used to bubble
  * up to the root `app/error.tsx` and replace the entire layout, which
  * is jarring. This boundary keeps the surrounding chrome (header,
  * sidebar) intact and shows an inline error inside the page body.

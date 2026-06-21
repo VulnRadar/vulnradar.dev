@@ -166,13 +166,11 @@ export function supportsCrawl(protocol: SupportedProtocol): boolean {
   return PROTOCOL_CONFIGS[protocol].supportsCrawl;
 }
 
-// ============================================================================
 // R7: Client-facing SCAN_PROTOCOLS — display labels + applicable categories
 // for the scanner form UI. Previously duplicated in components/scanner/scan-form.tsx
 // with subtle drift (SCAN_PROTOCOLS added a "dns" category that PROTOCOL_CONFIGS
 // did not). Kept here as the single source so adding a new protocol means
 // editing one place.
-// ============================================================================
 
 export interface ScanProtocolOption {
   /** URL scheme prefix including the colon and slashes (e.g. "https://") */

@@ -3,7 +3,7 @@ import { Loader2 } from "lucide-react";
 /**
  * Shared loading spinner for route-level `loading.tsx` files.
  *
- * Phase 8 Commit 5: provides a consistent, centered loading indicator
+provides a consistent, centered loading indicator
  * for client-side route transitions. Each route that may take a moment
  * to fetch its initial data exports its own `loading.tsx` that wraps
  * this component.

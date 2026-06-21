@@ -4,9 +4,8 @@ import path from "node:path";
 /**
  * Vitest config for the VulnRadar security-critical unit suite.
  *
- * Phase 8C Commit 1 (C-4): adds the test runner and coverage
- * thresholds. The initial suite covers the auth/crypto primitives;
- * the route-handler tests are added in Phase 8D Commit 10.
+ * The initial suite covers the auth/crypto primitives; route-handler
+ * tests are added on top as the API stabilises.
  */
 export default defineConfig({
   test: {

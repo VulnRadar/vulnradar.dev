@@ -27,9 +27,7 @@ export interface UserRow {
   tos_accepted_at: string | null;
 }
 
-// ============================================================================
 // User Operations
-// ============================================================================
 
 export async function getAdminEmails(): Promise<string[]> {
   try {
@@ -109,9 +107,7 @@ export async function updateUser(
   }
 }
 
-// ============================================================================
 // Session Operations
-// ============================================================================
 
 /**
  * Delete expired sessions
@@ -144,9 +140,7 @@ export async function getUserSessionCount(userId: number): Promise<number> {
   }
 }
 
-// ============================================================================
 // Discord Connection Operations
-// ============================================================================
 
 /**
  * Get Discord connection for user
@@ -184,9 +178,7 @@ export async function deleteDiscordConnection(
   }
 }
 
-// ============================================================================
 // API Key Operations
-// ============================================================================
 
 /**
  * Get API key by hash
@@ -235,9 +227,7 @@ export async function revokeApiKey(keyId: number): Promise<boolean> {
   }
 }
 
-// ============================================================================
 // Batch Operations
-// ============================================================================
 
 /**
  * Batch delete records

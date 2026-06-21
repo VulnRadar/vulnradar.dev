@@ -70,10 +70,10 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
 
   // Generate new token
   const token = crypto.randomBytes(32).toString("hex");
-  // Phase 8C Commit 1 (C-2): regression fix — store sha256(token) so
+  // regression fix — store sha256(token) so
   // verify-email can match. Previously this route stored the raw token
   // while verify-email hashed it, so all resend-generated links were
-  // dead. This also closes the M-2 vuln the previous Phase 8B fix
+  // dead. This also closes the M-2 vuln the previous
   // opened in signup — same hashing on both sides.
   const tokenHash = createHash("sha256").update(token).digest("hex");
   const expiresAt = new Date(

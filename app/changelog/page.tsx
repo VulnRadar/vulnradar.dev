@@ -201,7 +201,7 @@ const CHANGELOG: Release[] = [
       {
         icon: Lock,
         label: "Removed All Hardcoded Fallback Secrets",
-        desc: "Discord state HMAC and API key locator no longer fall back to global strings in the source. Any deployment missing AUTH_SECRET or API_KEY_ENCRYPTION_KEY now fails fast at startup with a clear error pointing at the missing var. (Phase 8B Commit 1.)",
+        desc: "Discord state HMAC and API key locator no longer fall back to global strings in the source. Any deployment missing AUTH_SECRET or API_KEY_ENCRYPTION_KEY now fails fast at startup with a clear error pointing at the missing var. ",
         category: "security",
       },
       {

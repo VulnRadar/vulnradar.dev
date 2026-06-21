@@ -1,8 +1,6 @@
-// ============================================================================
 // API Deprecation Utilities
-// ============================================================================
+
 // Adds deprecation headers to v1 API responses to guide users to v2
-// ============================================================================
 
 import { NextResponse } from "next/server";
 import { APP_URL } from "@/lib/config/constants";

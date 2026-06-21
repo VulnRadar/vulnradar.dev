@@ -10,9 +10,7 @@
  * - User-friendly recommendations for improvement
  */
 
-// ============================================================================
 // TYPES & INTERFACES
-// ============================================================================
 
 export interface PasswordFeedback {
   suggestions: string[];
@@ -46,9 +44,7 @@ export interface PasswordStrength {
   percentage: number;
 }
 
-// ============================================================================
 // CONSTANTS
-// ============================================================================
 
 // Top ~250 most common passwords across data breaches
 const COMMON_PASSWORDS = new Set([
@@ -251,9 +247,7 @@ const _COMMON_SEQUENCES = [
   "890",
 ];
 
-// ============================================================================
 // UTILITY FUNCTIONS
-// ============================================================================
 
 /**
  * Get cryptographically secure random values (works in both Node.js and browser)
@@ -383,9 +377,7 @@ function formatCrackTime(seconds: number): string {
   return `${Math.round(seconds / 31536000)} years`;
 }
 
-// ============================================================================
 // MAIN ANALYSIS FUNCTION
-// ============================================================================
 
 /**
  * Comprehensive password strength analysis with detailed vulnerability detection

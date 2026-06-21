@@ -1,9 +1,8 @@
 ﻿// ============================================================================
 // Roles & Permissions System (Clean Schema)
-// ============================================================================
+
 // Uses the `role` field on users table instead of separate tables.
 // Roles: 'user', 'beta_tester', 'support', 'moderator', 'admin'
-// ============================================================================
 
 import pool from "@/lib/database/db";
 

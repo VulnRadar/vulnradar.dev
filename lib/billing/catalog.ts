@@ -1,13 +1,11 @@
-// ============================================================================
 // Billing Catalog (Source of Truth)
-// ============================================================================
+
 // O4: Previously split across plans.ts and products.ts. Two divergent
 // source-of-truth declarations for the same billing tiers led to
 // drift (PRODUCTS had yearly variants that PLANS didn't know about).
 // This module defines the Plan tier once and derives both the
 // Stripe-facing Product list (monthly + yearly variants) and the
 // application-facing Plan list (features + limits + badge).
-// ============================================================================
 
 export type PlanId =
   | "free"
@@ -141,9 +139,8 @@ export const PLANS: readonly Plan[] = [
   },
 ];
 
-// ============================================================================
 // Stripe-facing Products (derived from PLANS)
-// ============================================================================
+
 // Each paid plan generates two products: one monthly, one yearly with
 // a 20% discount. Free has no product.
 
@@ -185,9 +182,7 @@ export const PRODUCTS: readonly Product[] = PLANS.flatMap((plan) => {
   return [monthly, yearly];
 });
 
-// ============================================================================
 // Lookup helpers
-// ============================================================================
 
 export function getPlanById(planId: string): Plan | undefined {
   return PLANS.find((p) => p.id === planId);

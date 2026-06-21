@@ -27,7 +27,7 @@ function compareVersions(a: string, b: string): number {
 
 export async function register() {
   if (process.env.NEXT_RUNTIME === "nodejs") {
-    // Phase 8 Commit 1: fail-fast on missing required env vars. Previously the
+    // fail-fast on missing required env vars. Previously the
     // process would start with no schema, then 500 on every request. Now
     // startup aborts with a clear error message pointing at the missing var.
     const { validateEnv } = await import("./lib/config/env");
@@ -211,7 +211,7 @@ export async function register() {
     }
 
     if (!process.env.DATABASE_URL) {
-      // Phase 8 Commit 1: throw instead of silently returning. validateEnv()
+      // throw instead of silently returning. validateEnv()
       // already catches this, but keep a defensive check in case the schema
       // is bypassed in test contexts.
       throw new Error(

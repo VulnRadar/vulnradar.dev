@@ -16,7 +16,7 @@ import { ERROR_MESSAGES, SUCCESS_MESSAGES } from "@/lib/config/constants";
 function generateBackupCodes(count = 8): string[] {
   const codes: string[] = [];
   for (let i = 0; i < count; i++) {
-    // Phase 8C Commit 2 (H-3): 10 bytes (80 bits) per code. The
+    // 10 bytes (80 bits) per code. The
     // previous `randomBytes(4)` (32 bits) is below NIST 800-63B
     // guidance for backup verification codes. The 2FA verify
     // endpoint rate-limits to 5 attempts per 5 minutes per

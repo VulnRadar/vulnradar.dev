@@ -1,6 +1,5 @@
-// ============================================================================
 // ESLint Flat Config (wraps Next.js's legacy eslint-config-next)
-// ============================================================================
+
 // Uses @eslint/eslintrc's FlatCompat shim because eslint-config-next 15.x
 // only ships legacy (.eslintrc) config. When Next.js ships native flat
 // config (planned for 16+), this shim can be removed.
@@ -9,7 +8,6 @@
 // (eslint.ignoreDuringBuilds: true) because its plugin-detection
 // heuristic doesn't recognize the FlatCompat-wrapped Next.js plugin.
 // We run `npm run lint` (which uses `eslint .` directly) in CI instead.
-// ============================================================================
 
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";

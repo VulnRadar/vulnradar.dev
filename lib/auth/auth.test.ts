@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 
 /**
- * Phase 8C Commit 1 (C-4): tests for the scrypt password format.
+tests for the scrypt password format.
  *
  * We test the format parsing and verification in isolation. Calling
  * the real `scryptSync(N=2^17)` would block the test runner for ~150ms

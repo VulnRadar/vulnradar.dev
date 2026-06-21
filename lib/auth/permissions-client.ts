@@ -206,9 +206,7 @@ export function canAccessStaffPage(role: string | null | undefined): boolean {
   return hasStaffPermission(role, STAFF_PERMISSIONS.ACCESS_STAFF_PAGE);
 }
 
-// ============================================================================
 // ADMIN ACTION DEFINITIONS
-// ============================================================================
 
 export interface AdminAction {
   id: string;

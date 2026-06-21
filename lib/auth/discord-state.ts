@@ -14,8 +14,8 @@ import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 const STATE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
 function getStateSecret(): string {
-  // Phase 8 Commit 1: removed the hardcoded `"vulnradar-discord-state-v1"`
-  // fallback. Anyone who read the source could forge a state value if it
+  // The namespace used to be a hardcoded `"vulnradar-discord-state-v1"`
+  // string. Anyone who read the source could forge a state value if it
   // was used as the HMAC key. Fail closed — require one of the real secrets.
   const secret = process.env.AUTH_SECRET || process.env.API_KEY_ENCRYPTION_KEY;
   if (!secret) {

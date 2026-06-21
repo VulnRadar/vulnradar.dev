@@ -1,6 +1,4 @@
-// ============================================================================
 // Discord OAuth - Initiate OAuth flow
-// ============================================================================
 
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
