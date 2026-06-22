@@ -26,14 +26,10 @@ beforeEach(() => {
 
 describe("checkRateLimit", () => {
   it("allows the first attempt in a window and inserts a fresh row", async () => {
-    // Query 1: cleanup DELETE (no return shape used)
+    // Query 1: cleanup DELETE for this key
     mockQuery.mockResolvedValueOnce({ rows: [] });
-    // Query 2: SELECT current count for this key
-    mockQuery.mockResolvedValueOnce({ rows: [] });
-    // Query 3: DELETE any stale row for this key
-    mockQuery.mockResolvedValueOnce({ rows: [] });
-    // Query 4: INSERT fresh row
-    mockQuery.mockResolvedValueOnce({ rows: [] });
+    // Query 2: atomic INSERT/UPSERT with RETURNING count (first insert)
+    mockQuery.mockResolvedValueOnce({ rows: [{ count: "1" }] });
 
     const result = await checkRateLimit({
       key: "test:1",
@@ -47,13 +43,12 @@ describe("checkRateLimit", () => {
   });
 
   it("denies when count >= maxAttempts and reports retryAfter", async () => {
-    const windowStart = new Date(Date.now() - 5000);
     // Query 1: cleanup DELETE
     mockQuery.mockResolvedValueOnce({ rows: [] });
-    // Query 2: SELECT current count
-    mockQuery.mockResolvedValueOnce({
-      rows: [{ id: 1, count: 3, window_start: windowStart.toISOString() }],
-    });
+    // Query 2: atomic UPSERT returns count=4 (was 3, +1 for this attempt)
+    mockQuery.mockResolvedValueOnce({ rows: [{ count: "4" }] });
+    // Query 3: rollback UPDATE pins the counter back at the cap
+    mockQuery.mockResolvedValueOnce({ rows: [] });
 
     const result = await checkRateLimit({
       key: "test:2",
@@ -64,19 +59,14 @@ describe("checkRateLimit", () => {
     expect(result.allowed).toBe(false);
     expect(result.remaining).toBe(0);
     expect(result.retryAfterSeconds).toBeGreaterThan(0);
-    // 60s window - 5s elapsed = ~55s remaining
-    expect(result.retryAfterSeconds).toBeLessThanOrEqual(55);
+    expect(result.retryAfterSeconds).toBeLessThanOrEqual(60);
   });
 
   it("increments and allows when count < maxAttempts", async () => {
     // Query 1: cleanup DELETE
     mockQuery.mockResolvedValueOnce({ rows: [] });
-    // Query 2: SELECT current count
-    mockQuery.mockResolvedValueOnce({
-      rows: [{ id: 7, count: 1, window_start: new Date().toISOString() }],
-    });
-    // Query 3: UPDATE increment
-    mockQuery.mockResolvedValueOnce({ rows: [] });
+    // Query 2: atomic UPSERT returns count=2 (was 1, +1)
+    mockQuery.mockResolvedValueOnce({ rows: [{ count: "2" }] });
 
     const result = await checkRateLimit({
       key: "test:3",
@@ -85,18 +75,17 @@ describe("checkRateLimit", () => {
     });
 
     expect(result.allowed).toBe(true);
-    // count=1 was the current; the function returns maxAttempts - count - 1
-    // because the in-flight UPDATE will bring it to count+1.
+    // count=2 post-increment; remaining = maxAttempts - count = 1
     expect(result.remaining).toBe(1);
   });
 
   it("never allows more than maxAttempts even with a stale row", async () => {
     // Query 1: cleanup DELETE
     mockQuery.mockResolvedValueOnce({ rows: [] });
-    // Query 2: SELECT current count (huge)
-    mockQuery.mockResolvedValueOnce({
-      rows: [{ id: 1, count: 999, window_start: new Date().toISOString() }],
-    });
+    // Query 2: atomic UPSERT returns count=1000 (was 999, +1)
+    mockQuery.mockResolvedValueOnce({ rows: [{ count: "1000" }] });
+    // Query 3: rollback UPDATE
+    mockQuery.mockResolvedValueOnce({ rows: [] });
 
     const result = await checkRateLimit({
       key: "test:4",

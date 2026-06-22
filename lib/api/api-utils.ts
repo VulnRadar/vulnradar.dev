@@ -240,7 +240,14 @@ export async function safeQuery<T = unknown>(
     const result = await pool.query(query, params);
     return { success: true, rows: result.rows };
   } catch (err) {
-    console.error("[DB Query Error]", query, err);
+    // Don't echo the full query text back to logs — it often contains
+    // column names that can leak schema, and in some legacy call sites
+    // interpolated values that may include user input. Log the params
+    // length instead so error context is still preserved.
+    console.error("[DB Query Error]", {
+      message: err instanceof Error ? err.message : "non-Error thrown",
+      paramCount: params?.length ?? 0,
+    });
     return { success: false, error: "Database query failed" };
   }
 }

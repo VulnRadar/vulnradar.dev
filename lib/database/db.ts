@@ -1,8 +1,8 @@
 import { Pool } from "pg";
 
 if (!process.env.DATABASE_URL) {
-  console.error(
-    "[VulnRadar] DATABASE_URL environment variable is not set. Please add it to your .env.local file or Vercel project settings.",
+  throw new Error(
+    "DATABASE_URL environment variable is not set. Add it to your .env.local file or Vercel project settings.",
   );
 }
 
@@ -30,7 +30,10 @@ const pool = new Pool({
 });
 
 pool.on("error", (err) => {
-  console.error("[VulnRadar] Unexpected database pool error:", err);
+  console.error(
+    "[VulnRadar] Unexpected database pool error:",
+    err instanceof Error ? err.message : "non-Error thrown",
+  );
 });
 
 export default pool;

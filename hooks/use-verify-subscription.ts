@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { PLANS } from "@/lib/billing/plans";
 
 interface VerifySubscriptionOptions {
@@ -26,11 +26,16 @@ export function useVerifySubscription(
   const [planName, setPlanName] = useState<string | null>(null);
   const [planId, setPlanId] = useState<string | null>(null);
 
-  const verify = useCallback(async () => {
-    setVerifying(true);
-    let isCancelled = false;
+  // Cancellation flag kept in a ref so it survives the whole polling cycle
+  // (the old `let isCancelled` was declared inside `verify()` and was
+  // captured by a return-cleanup that nothing ever ran, so unmount during
+  // polling leaked async state writes to a stale component).
+  const cancelledRef = useRef(false);
 
-    // Poll to verify subscription is active
+  const verify = useCallback(async () => {
+    cancelledRef.current = false;
+    setVerifying(true);
+
     const pollIntervals = [
       ...Array(5).fill(500),
       ...Array(5).fill(1000),
@@ -42,7 +47,7 @@ export function useVerifySubscription(
       : "/api/v2/checkout/verify-subscription";
 
     for (let i = 0; i < pollIntervals.length; i++) {
-      if (isCancelled) return;
+      if (cancelledRef.current) return;
 
       try {
         const response = await fetch(url);
@@ -50,17 +55,14 @@ export function useVerifySubscription(
           const data = await response.json();
           const currentPlan = data.data?.plan || "free";
 
-          // Check if subscription is active
           const isActive = currentPlan !== "free";
-
-          // If expecting a specific plan, check for that
           const matchesExpected = expectedPlanId
             ? currentPlan === expectedPlanId
             : isActive;
 
           if (matchesExpected) {
             const plan = PLANS.find((p) => p.id === currentPlan);
-            if (!isCancelled) {
+            if (!cancelledRef.current) {
               setPlanId(currentPlan);
               setPlanName(plan?.name || currentPlan);
               setVerified(true);
@@ -76,15 +78,10 @@ export function useVerifySubscription(
       await new Promise((resolve) => setTimeout(resolve, pollIntervals[i]));
     }
 
-    // Assume success after polling (webhook may be slow)
-    if (!isCancelled) {
+    if (!cancelledRef.current) {
       setVerified(true);
       setVerifying(false);
     }
-
-    return () => {
-      isCancelled = true;
-    };
   }, [sessionId, expectedPlanId]);
 
   const startVerification = useCallback(() => {
@@ -95,6 +92,11 @@ export function useVerifySubscription(
     if (autoStart) {
       verify();
     }
+    // On unmount (or when deps change), flip the flag so any in-flight
+    // polling loop bails before its next setState.
+    return () => {
+      cancelledRef.current = true;
+    };
   }, [autoStart, verify]);
 
   return {

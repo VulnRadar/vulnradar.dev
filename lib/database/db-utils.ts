@@ -181,21 +181,6 @@ export async function deleteDiscordConnection(
 // API Key Operations
 
 /**
- * Get API key by hash
- */
-export async function getApiKeyByHash(hash: string): Promise<DbRow | null> {
-  try {
-    const result = await pool.query("SELECT * FROM api_keys WHERE hash = $1", [
-      hash,
-    ]);
-    return (result.rows[0] as DbRow) || null;
-  } catch (error) {
-    console.error("[DB] Failed to get API key:", error);
-    return null;
-  }
-}
-
-/**
  * Get all API keys for user
  */
 export async function getUserApiKeys(userId: number): Promise<DbRow[]> {

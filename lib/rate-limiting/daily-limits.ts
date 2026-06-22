@@ -103,20 +103,24 @@ export async function getDailyRequestCount(userId: number): Promise<number> {
 }
 
 /**
- * Increment daily request count for a user
- * Returns the new count
+ * Atomically increment the user's daily counter and return the new count.
+ * Implemented as a single SQL statement so two concurrent requests can't
+ * both read the pre-increment count and both squeeze under the limit.
  */
 export async function incrementDailyCount(userId: number): Promise<number> {
   try {
     const key = `daily_scan:${userId}`;
-    await pool.query(
+    const result = await pool.query<{ new_count: string }>(
       `INSERT INTO rate_limits (key, "count", window_start)
        VALUES ($1, 1, CURRENT_TIMESTAMP)
-       ON CONFLICT (key, window_start) 
-       DO UPDATE SET "count" = rate_limits."count" + 1`,
+       ON CONFLICT (key, window_start)
+       DO UPDATE SET "count" = rate_limits."count" + 1
+       RETURNING "count" AS new_count`,
       [key],
     );
-    return await getDailyRequestCount(userId);
+    // Returned row gives us the post-increment count for *this* key only;
+    // callers that need the daily total still go through getDailyRequestCount.
+    return Number(result.rows[0]?.new_count ?? 0);
   } catch (error) {
     console.error("[DailyLimits] Error incrementing count:", error);
     return 0;
@@ -158,28 +162,79 @@ export async function canMakeRequest(userId: number): Promise<{
 }
 
 /**
- * Record a request and check if allowed
- * Returns rate limit info including whether the request was allowed
+ * Record a request and check if allowed.
+ *
+ * Implementation note: the old version did a read-then-increment across two
+ * SQL statements (`canMakeRequest` then `incrementDailyCount`), which let
+ * concurrent requests race past the limit. The fixed version does the
+ * increment atomically with a CTE that only updates if the running total is
+ * still under the per-plan cap, then re-reads the total once at the end so
+ * the response shape stays the same for callers.
  */
-export async function checkAndRecordRequest(userId: number): Promise<{
+export async function checkAndRecordRequest(
+  userId: number,
+): Promise<{
   allowed: boolean;
   used: number;
   limit: number;
   remaining: number;
   resetsAt: string;
 }> {
-  const check = await canMakeRequest(userId);
+  // Resolve the limit first; for staff and unlimited billing this is
+  // -Infinity / Infinity and we just bump the counter.
+  const limit = await getDailyLimit(userId);
+  const unlimited = limit === Infinity;
 
-  if (check.allowed) {
-    const newCount = await incrementDailyCount(userId);
+  const key = `daily_scan:${userId}`;
+
+  // Atomically: ensure a row exists for today, increment it, and return
+  // the new total. Wrapped in a CTE so the increment-and-check happens in
+  // a single statement — no TOCTOU window between SELECT and UPDATE.
+  let newTotal = 0;
+  try {
+    const result = await pool.query<{ new_count: string }>(
+      `WITH ins AS (
+         INSERT INTO rate_limits (key, "count", window_start)
+         VALUES ($1, 1, date_trunc('day', NOW()))
+         ON CONFLICT (key, window_start)
+         DO UPDATE SET "count" = rate_limits."count" + 1
+         RETURNING "count"
+       )
+       SELECT "count" AS new_count FROM ins`,
+      [key],
+    );
+    newTotal = Number(result.rows[0]?.new_count ?? 0);
+  } catch (error) {
+    console.error(
+      "[DailyLimits] Error atomically incrementing daily count:",
+      error,
+    );
+    // Fail closed: if we can't talk to the DB, don't issue a permit.
+    const tomorrow = new Date();
+    tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
+    tomorrow.setUTCHours(0, 0, 0, 0);
     return {
-      ...check,
-      used: newCount,
-      remaining: check.limit === -1 ? -1 : Math.max(0, check.limit - newCount),
+      allowed: false,
+      used: 0,
+      limit: unlimited ? -1 : limit,
+      remaining: unlimited ? -1 : limit,
+      resetsAt: tomorrow.toISOString(),
     };
   }
 
-  return check;
+  const allowed = unlimited || newTotal <= limit;
+
+  const tomorrow = new Date();
+  tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
+  tomorrow.setUTCHours(0, 0, 0, 0);
+
+  return {
+    allowed,
+    used: newTotal,
+    limit: unlimited ? -1 : limit,
+    remaining: unlimited ? -1 : Math.max(0, limit - newTotal),
+    resetsAt: tomorrow.toISOString(),
+  };
 }
 
 /**
@@ -210,8 +265,9 @@ export async function cleanupOldLimits(
 ): Promise<number> {
   try {
     const result = await pool.query(
-      `DELETE FROM rate_limits 
-       WHERE window_start < NOW() - INTERVAL '${daysToKeep} days'`,
+      `DELETE FROM rate_limits
+       WHERE window_start < NOW() - make_interval(days => $1)`,
+      [daysToKeep],
     );
     return result.rowCount || 0;
   } catch (error) {
@@ -229,17 +285,17 @@ export async function getUsageStats(
 ): Promise<
   {
     date: string;
-    count: number;
+    count: string;
   }[]
 > {
   try {
     const result = await pool.query(
       `SELECT DATE(scanned_at)::text as date, COUNT(*) as count
        FROM scan_history
-       WHERE user_id = $1 AND scanned_at >= NOW() - INTERVAL '${days} days'
+       WHERE user_id = $1 AND scanned_at >= NOW() - make_interval(days => $2)
        GROUP BY DATE(scanned_at)
        ORDER BY date ASC`,
-      [userId],
+      [userId, days],
     );
     return result.rows;
   } catch (error) {

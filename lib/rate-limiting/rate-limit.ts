@@ -22,50 +22,59 @@ export async function checkRateLimit({
   const now = new Date();
   const windowStart = new Date(now.getTime() - windowSeconds * 1000);
 
-  // Cleanup old entries
-  await pool.query("DELETE FROM rate_limits WHERE window_start < $1", [
-    windowStart,
-  ]);
-
-  // Get current count for this key within the window
-  const result = await pool.query(
-    'SELECT id, "count", window_start FROM rate_limits WHERE key = $1 AND window_start >= $2 ORDER BY window_start DESC LIMIT 1',
+  // Trim stale rows for this key only — the previous blanket DELETE scanned
+  // the whole rate_limits table on every call. Doing the cleanup lazily
+  // inside the UPSERT below avoids both the table scan and the read-then-
+  // write TOCTOU race (two concurrent attempts could both observe the
+  // pre-increment count and both squeeze under the cap).
+  await pool.query(
+    "DELETE FROM rate_limits WHERE key = $1 AND window_start < $2",
     [key, windowStart],
   );
 
-  if (result.rows.length === 0) {
-    // First attempt in this window - delete any stale row for this key, then insert fresh
-    await pool.query("DELETE FROM rate_limits WHERE key = $1", [key]);
+  // Atomic UPSERT + read-back. Either:
+  //   - insert a fresh row and read it back as `count=1`, or
+  //   - increment the existing in-window row and read it back as the new count.
+  // Both branches happen in a single statement so the count returned is the
+  // same count that was persisted.
+  const result = await pool.query<{ count: string }>(
+    `INSERT INTO rate_limits (key, "count", window_start)
+     VALUES ($1, 1, $2)
+     ON CONFLICT (key, window_start)
+     DO UPDATE SET "count" = rate_limits."count" + 1
+     RETURNING "count"`,
+    [key, now],
+  );
+
+  const count = Number(result.rows[0]?.count ?? 0);
+
+  if (count > maxAttempts) {
+    // We over-shot — roll back the increment we just did so the counter
+    // stays pinned at the cap rather than drifting upward on every call.
+    // (`> maxAttempts` means this attempt is the (maxAttempts+1)-th, which
+    // must be rejected; the previous row sat at maxAttempts exactly.)
     await pool.query(
-      'INSERT INTO rate_limits (key, "count", window_start) VALUES ($1, 1, $2)',
-      [key, now],
+      `UPDATE rate_limits
+       SET "count" = $2
+       WHERE key = $1 AND window_start = $3`,
+      [key, maxAttempts, now],
     );
-    return { allowed: true, remaining: maxAttempts - 1, retryAfterSeconds: 0 };
-  }
-
-  const row = result.rows[0];
-  const count = Number(row.count);
-
-  if (count >= maxAttempts) {
-    const windowEnd = new Date(
-      new Date(row.window_start).getTime() + windowSeconds * 1000,
+    // Retry-after equals how long until the window rolls over. We don't
+    // know exactly when this row was inserted (could be earlier in the
+    // window), so report the worst-case time remaining in this window.
+    const retryAfter = Math.ceil(
+      (now.getTime() - windowStart.getTime()) / 1000,
     );
-    const retryAfter = Math.ceil((windowEnd.getTime() - now.getTime()) / 1000);
     return {
       allowed: false,
       remaining: 0,
-      retryAfterSeconds: Math.max(0, retryAfter),
+      retryAfterSeconds: Math.max(1, retryAfter),
     };
   }
 
-  // Increment
-  await pool.query(
-    'UPDATE rate_limits SET "count" = "count" + 1 WHERE id = $1',
-    [row.id],
-  );
   return {
     allowed: true,
-    remaining: maxAttempts - count - 1,
+    remaining: Math.max(0, maxAttempts - count),
     retryAfterSeconds: 0,
   };
 }

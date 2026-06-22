@@ -124,29 +124,48 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   let verified = false;
 
   if (backupCode && method === "app") {
-    // Verify backup code against hashed codes (only for app-based 2FA)
+    // Verify backup code against hashed codes (only for app-based 2FA).
+    // Hold a row-level lock for the entire read-modify-write cycle so two
+    // concurrent attempts can't both observe the same hash, both splice it
+    // out, and both UPDATE — which would otherwise let a single backup
+    // code be replayed once.
     const normalizedInput = backupCode
       .trim()
       .toUpperCase()
       .replace(/[\s-]/g, "");
-    const storedHashes: string[] = user.backup_codes
-      ? JSON.parse(user.backup_codes)
-      : [];
-    const matchIndex = storedHashes.findIndex((hash: string) => {
-      try {
-        return verifyPassword(normalizedInput, hash);
-      } catch {
-        return false;
+    const lockClient = await pool.connect();
+    try {
+      await lockClient.query("BEGIN");
+      const lockResult = await lockClient.query(
+        "SELECT backup_codes FROM users WHERE id = $1 FOR UPDATE",
+        [effectiveUserId],
+      );
+      const storedHashes: string[] = lockResult.rows[0]?.backup_codes
+        ? JSON.parse(lockResult.rows[0].backup_codes)
+        : [];
+      const matchIndex = storedHashes.findIndex((hash: string) => {
+        try {
+          return verifyPassword(normalizedInput, hash);
+        } catch {
+          return false;
+        }
+      });
+      if (matchIndex < 0) {
+        await lockClient.query("ROLLBACK");
+      } else {
+        storedHashes.splice(matchIndex, 1);
+        await lockClient.query(
+          "UPDATE users SET backup_codes = $1 WHERE id = $2",
+          [JSON.stringify(storedHashes), effectiveUserId],
+        );
+        verified = true;
+        await lockClient.query("COMMIT");
       }
-    });
-    if (matchIndex >= 0) {
-      verified = true;
-      // Consume the backup code (one-time use)
-      storedHashes.splice(matchIndex, 1);
-      await pool.query("UPDATE users SET backup_codes = $1 WHERE id = $2", [
-        JSON.stringify(storedHashes),
-        effectiveUserId,
-      ]);
+    } catch (lockErr) {
+      await lockClient.query("ROLLBACK").catch(() => {});
+      throw lockErr;
+    } finally {
+      lockClient.release();
     }
   } else if (code) {
     const codeError = Validate.multiple([
