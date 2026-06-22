@@ -4,7 +4,7 @@ import pool from "@/lib/database/db";
 import { sendNotificationEmail } from "@/lib/notifications/notifications";
 import { webhookCreatedEmail, webhookDeletedEmail } from "@/lib/email/email";
 import { ERROR_MESSAGES } from "@/lib/config/constants";
-import { validateScanTarget } from "@/lib/scanner/safe-fetch";
+import { safeFetch, validateScanTarget } from "@/lib/scanner/safe-fetch";
 
 function detectWebhookType(url: string): string {
   if (
@@ -220,7 +220,21 @@ export async function PATCH(request: NextRequest) {
           };
 
   try {
-    const res = await fetch(webhook.url, {
+    // SSRF guard: re-validate the user-supplied webhook URL via safeFetch so
+    // a registered webhook can't be used to probe internal services
+    // (the URL was validated at registration but DNS or routing could have
+    // changed since, and safeFetch also blocks redirects to private IPs).
+    const safety = await validateScanTarget(webhook.url);
+    if (!safety.safe) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: `Webhook target blocked: ${safety.reason || "unsafe URL"}`,
+        },
+        { status: 400 },
+      );
+    }
+    const res = await safeFetch(webhook.url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(testPayload),

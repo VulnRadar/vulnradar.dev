@@ -142,13 +142,31 @@ export async function POST(req: NextRequest) {
           mappedUpdates.value = mappedUpdates.ip_address;
           delete mappedUpdates.ip_address;
         }
-        const fields = Object.keys(mappedUpdates)
-          .map((k, i) => `${k} = $${i + 2}`)
+        // Whitelist allowed columns — anything else is silently dropped to
+        // prevent SQL injection via dynamic column names.
+        const ALLOWED_COLUMNS = new Set([
+          "value",
+          "description",
+          "reason",
+          "is_active",
+          "expires_at",
+        ]);
+        const safeEntries = Object.entries(mappedUpdates).filter(([k]) =>
+          ALLOWED_COLUMNS.has(k),
+        );
+        if (safeEntries.length === 0) {
+          return NextResponse.json(
+            { error: "No updatable fields provided" },
+            { status: 400 },
+          );
+        }
+        const fields = safeEntries
+          .map(([k], i) => `${k} = $${i + 2}`)
           .join(", ");
 
         await pool.query(`UPDATE access_rules SET ${fields} WHERE id = $1`, [
           id,
-          ...Object.values(mappedUpdates),
+          ...safeEntries.map(([, v]) => v),
         ]);
         await logAction(
           user.id,
@@ -384,8 +402,8 @@ export async function POST(req: NextRequest) {
                 );
               } catch (err) {
                 console.error(
-                  `[Broadcast] Failed to send to ${recipient.email}:`,
-                  err,
+                  `[Broadcast] Failed to send to userId ${recipient.id}:`,
+                  err instanceof Error ? err.message : "non-Error thrown",
                 );
               }
             }
@@ -514,8 +532,8 @@ export async function POST(req: NextRequest) {
                 );
               } catch (err) {
                 console.error(
-                  `[Broadcast] Failed to send to ${recipient.email}:`,
-                  err,
+                  `[Broadcast] Failed to send to userId ${recipient.id}:`,
+                  err instanceof Error ? err.message : "non-Error thrown",
                 );
               }
             }

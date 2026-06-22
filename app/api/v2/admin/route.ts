@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { randomBytes, scryptSync } from "node:crypto";
+import { randomBytes } from "node:crypto";
 // R3/D1: requireStaff and logAction moved to lib/auth/authorization.ts
 // (single source of truth). Local wrappers kept as aliases so the 40+
 // existing call sites below don't need to change.
@@ -7,6 +7,7 @@ import {
   requireStaff as _requireStaff,
   logAction,
 } from "@/lib/auth/authorization";
+import { hashPassword } from "@/lib/auth/auth";
 
 import pool from "@/lib/database/db";
 import { getClientIp } from "@/lib/api/request-utils";
@@ -357,6 +358,11 @@ export async function PATCH(request: NextRequest) {
     );
 
   const ip = await getClientIp();
+  // Parse the body once at the top. Several sub-actions previously called
+  // `await request.json()` a second time inside the switch — the body stream
+  // is single-use, so the second call rejected with `SyntaxError: Unexpected
+  // end of JSON input`, silently turning those actions into no-ops.
+  const body = await request.json();
   const {
     action,
     userId,
@@ -373,7 +379,11 @@ export async function PATCH(request: NextRequest) {
     note,
     noteId,
     notifyUser,
-  } = await request.json();
+    title: notifTitle,
+    message: notifMessage,
+    type: notifType,
+    limit: scanLimit,
+  } = body;
   // Normalize badgeId to number (client may send as string)
   const badgeId = rawBadgeId != null ? Number(rawBadgeId) : undefined;
 
@@ -529,9 +539,13 @@ export async function PATCH(request: NextRequest) {
         );
       }
       const tempPassword = randomBytes(6).toString("base64url").slice(0, 12);
-      const salt = randomBytes(16).toString("hex");
-      const hash = scryptSync(tempPassword, salt, 64).toString("hex");
-      const passwordHash = `${salt}:${hash}`;
+      // Use the canonical hashPassword() so admin resets use the same
+      // scrypt cost (N=131072) as the normal signup/login path. The old
+      // inline scrypt call used the lib's default N=16384 — eight times
+      // weaker than the post-2.3.0 baseline — and stored a 2-part hash
+      // (`salt:hash`) that verifyPassword treats as legacy and silently
+      // downgrades params on next login.
+      const passwordHash = hashPassword(tempPassword);
       await pool.query("UPDATE users SET password_hash = $1 WHERE id = $2", [
         passwordHash,
         userId,
@@ -982,11 +996,7 @@ export async function PATCH(request: NextRequest) {
     }
 
     case "send_notification": {
-      const {
-        title,
-        message: notifMessage,
-        type: notifType,
-      } = await request.json();
+      const title = notifTitle;
       if (!title || !notifMessage)
         return NextResponse.json(
           { error: "title and message required" },
@@ -1160,7 +1170,6 @@ export async function PATCH(request: NextRequest) {
     }
 
     case "set_scan_limit": {
-      const { limit: scanLimit } = await request.json();
       if (typeof scanLimit !== "number" || scanLimit < 0 || scanLimit > 10000) {
         return NextResponse.json(
           { error: "Invalid scan limit (0-10000)" },
@@ -1552,95 +1561,130 @@ export async function PATCH(request: NextRequest) {
       const userEmail = targetUser.email;
       const userName = targetUser.name || userEmail;
 
-      // Delete respecting FK relationships
+      // Run all deletes inside a single transaction so a mid-way failure
+      // doesn't leave the user in a half-deleted state (and to avoid 33+
+      // separate connections if the pool happens to be near max). The
+      // previous implementation ran each DELETE on its own implicit
+      // transaction, so any failure mid-sequence orphaned rows and made
+      // a re-delete attempt FK-violate.
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
 
-      // Sessions & auth
-      await pool.query("DELETE FROM sessions WHERE user_id = $1", [userId]);
-      await pool.query("DELETE FROM password_reset_tokens WHERE user_id = $1", [
-        userId,
-      ]);
-      await pool.query(
-        "DELETE FROM email_verification_tokens WHERE user_id = $1",
-        [userId],
-      );
-      await pool.query("DELETE FROM email_2fa_codes WHERE user_id = $1", [
-        userId,
-      ]);
-      await pool.query("DELETE FROM device_trust WHERE user_id = $1", [userId]);
+        // Sessions & auth
+        await client.query("DELETE FROM sessions WHERE user_id = $1", [
+          userId,
+        ]);
+        await client.query(
+          "DELETE FROM password_reset_tokens WHERE user_id = $1",
+          [userId],
+        );
+        await client.query(
+          "DELETE FROM email_verification_tokens WHERE user_id = $1",
+          [userId],
+        );
+        await client.query("DELETE FROM email_2fa_codes WHERE user_id = $1", [
+          userId,
+        ]);
+        await client.query("DELETE FROM device_trust WHERE user_id = $1", [
+          userId,
+        ]);
 
-      // API
-      await pool.query(
-        "DELETE FROM api_usage WHERE api_key_id IN (SELECT id FROM api_keys WHERE user_id = $1)",
-        [userId],
-      );
-      await pool.query("DELETE FROM api_keys WHERE user_id = $1", [userId]);
+        // API
+        await client.query(
+          "DELETE FROM api_usage WHERE api_key_id IN (SELECT id FROM api_keys WHERE user_id = $1)",
+          [userId],
+        );
+        await client.query("DELETE FROM api_keys WHERE user_id = $1", [
+          userId,
+        ]);
 
-      // Scans
-      await pool.query("DELETE FROM scan_tags WHERE user_id = $1", [userId]);
-      await pool.query("DELETE FROM scheduled_scans WHERE user_id = $1", [
-        userId,
-      ]);
-      await pool.query("DELETE FROM scan_history WHERE user_id = $1", [userId]);
+        // Scans
+        await client.query("DELETE FROM scan_tags WHERE user_id = $1", [
+          userId,
+        ]);
+        await client.query("DELETE FROM scheduled_scans WHERE user_id = $1", [
+          userId,
+        ]);
+        await client.query("DELETE FROM scan_history WHERE user_id = $1", [
+          userId,
+        ]);
 
-      // Integrations
-      await pool.query("DELETE FROM webhooks WHERE user_id = $1", [userId]);
-      await pool.query("DELETE FROM discord_connections WHERE user_id = $1", [
-        userId,
-      ]);
+        // Integrations
+        await client.query("DELETE FROM webhooks WHERE user_id = $1", [userId]);
+        await client.query(
+          "DELETE FROM discord_connections WHERE user_id = $1",
+          [userId],
+        );
 
-      // Billing
-      await pool.query("DELETE FROM billing_history WHERE user_id = $1", [
-        userId,
-      ]);
-      await pool.query("DELETE FROM gifted_subscriptions WHERE user_id = $1", [
-        userId,
-      ]);
+        // Billing
+        await client.query("DELETE FROM billing_history WHERE user_id = $1", [
+          userId,
+        ]);
+        await client.query(
+          "DELETE FROM gifted_subscriptions WHERE user_id = $1",
+          [userId],
+        );
 
-      // Teams
-      await pool.query("DELETE FROM team_members WHERE user_id = $1", [userId]);
-      await pool.query("DELETE FROM team_invites WHERE invited_by = $1", [
-        userId,
-      ]);
-      await pool.query("DELETE FROM teams WHERE owner_id = $1", [userId]);
+        // Teams
+        await client.query("DELETE FROM team_members WHERE user_id = $1", [
+          userId,
+        ]);
+        await client.query("DELETE FROM team_invites WHERE invited_by = $1", [
+          userId,
+        ]);
+        await client.query("DELETE FROM teams WHERE owner_id = $1", [userId]);
 
-      // Notifications / prefs
-      await pool.query(
-        "DELETE FROM notification_preferences WHERE user_id = $1",
-        [userId],
-      );
+        // Notifications / prefs
+        await client.query(
+          "DELETE FROM notification_preferences WHERE user_id = $1",
+          [userId],
+        );
 
-      // Security / monitoring
-      await pool.query("DELETE FROM security_alerts WHERE user_id = $1", [
-        userId,
-      ]);
-      await pool.query("DELETE FROM staff_activity WHERE user_id = $1", [
-        userId,
-      ]);
+        // Security / monitoring
+        await client.query("DELETE FROM security_alerts WHERE user_id = $1", [
+          userId,
+        ]);
+        await client.query("DELETE FROM staff_activity WHERE user_id = $1", [
+          userId,
+        ]);
 
-      // GDPR
-      await pool.query("DELETE FROM data_requests WHERE user_id = $1", [
-        userId,
-      ]);
+        // GDPR
+        await client.query("DELETE FROM data_requests WHERE user_id = $1", [
+          userId,
+        ]);
 
-      // Badges
-      await pool.query("DELETE FROM user_badges WHERE user_id = $1", [userId]);
+        // Badges
+        await client.query("DELETE FROM user_badges WHERE user_id = $1", [
+          userId,
+        ]);
 
-      // Admin metadata
-      await pool.query("DELETE FROM admin_user_notes WHERE user_id = $1", [
-        userId,
-      ]);
-      await pool.query(
-        "DELETE FROM admin_audit_log WHERE target_user_id = $1",
-        [userId],
-      );
+        // Admin metadata
+        await client.query(
+          "DELETE FROM admin_user_notes WHERE user_id = $1",
+          [userId],
+        );
+        await client.query(
+          "DELETE FROM admin_audit_log WHERE target_user_id = $1",
+          [userId],
+        );
 
-      // Broadcast tracking
-      await pool.query("DELETE FROM broadcast_recipients WHERE user_id = $1", [
-        userId,
-      ]);
+        // Broadcast tracking
+        await client.query(
+          "DELETE FROM broadcast_recipients WHERE user_id = $1",
+          [userId],
+        );
 
-      // Finally delete user
-      await pool.query("DELETE FROM users WHERE id = $1", [userId]);
+        // Finally delete user
+        await client.query("DELETE FROM users WHERE id = $1", [userId]);
+
+        await client.query("COMMIT");
+      } catch (txError) {
+        await client.query("ROLLBACK");
+        throw txError;
+      } finally {
+        client.release();
+      }
 
       await logAction(
         session.userId,

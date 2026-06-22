@@ -625,21 +625,39 @@ export async function POST(request: NextRequest) {
               });
             }
 
-            fetch(webhookUrl, {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                "User-Agent": `${APP_NAME}-Webhook/1.0`,
-              },
-              body,
-              signal: AbortSignal.timeout(10000),
-            }).catch((err) => {
-              console.error("[VulnRadar] Webhook delivery failed", {
-                url: webhookUrl,
-                type: webhookType,
-                error: err instanceof Error ? err.message : String(err),
+            // SSRF guard: re-validate the registered webhook URL through
+            // safeFetch before POSTing. The URL was checked at registration,
+            // but DNS / routing may have changed and safeFetch also blocks
+            // redirects to private IPs (the old plain `fetch` happily
+            // followed a 302 to e.g. http://169.254.169.254/...).
+            validateScanTarget(webhookUrl)
+              .then((safety) => {
+                if (!safety.safe) {
+                  console.error(
+                    "[VulnRadar] Webhook target blocked at delivery time",
+                    {
+                      type: webhookType,
+                      reason: safety.reason,
+                    },
+                  );
+                  return;
+                }
+                return safeFetch(webhookUrl, {
+                  method: "POST",
+                  headers: {
+                    "Content-Type": "application/json",
+                    "User-Agent": `${APP_NAME}-Webhook/1.0`,
+                  },
+                  body,
+                  signal: AbortSignal.timeout(10000),
+                });
+              })
+              .catch((err) => {
+                console.error("[VulnRadar] Webhook delivery failed", {
+                  type: webhookType,
+                  error: err instanceof Error ? err.message : String(err),
+                });
               });
-            });
           }
         })
         .catch(() => {});

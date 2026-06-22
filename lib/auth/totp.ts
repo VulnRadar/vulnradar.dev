@@ -1,4 +1,4 @@
-import { createHmac, randomBytes } from "node:crypto";
+import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { TOTP_ISSUER } from "@/lib/config/constants";
 
 // Generate a random base32 secret
@@ -7,19 +7,42 @@ export function generateSecret(): string {
   return base32Encode(bytes);
 }
 
-// Verify a TOTP code (checks current and +/- 1 window)
+// Verify a TOTP code (checks current and +/- 1 window) using a constant-time
+// compare so the comparison doesn't leak which window matched via timing.
 export function verifyTOTP(
   secret: string,
   token: string,
   timeStep = 30,
   window = 1,
 ): boolean {
-  const time = Math.floor(Date.now() / 1000 / timeStep);
-  for (let i = -window; i <= window; i++) {
-    const code = hotpGenerate(secret, time + i);
-    if (code === token) return true;
+  // Normalize input — TOTP codes are always 6 digits
+  if (typeof token !== "string" || !/^\d{6}$/.test(token)) {
+    // Still do a comparison against a dummy token to keep the timing path
+    // similar regardless of whether the input shape was valid.
+    const dummy = hotpGenerate(secret, Math.floor(Date.now() / 1000 / timeStep));
+    timingSafeEqual(Buffer.from(dummy), Buffer.from(dummy));
+    return false;
   }
-  return false;
+
+  const time = Math.floor(Date.now() / 1000 / timeStep);
+  const expectedBuffers: Buffer[] = [];
+  for (let i = -window; i <= window; i++) {
+    expectedBuffers.push(
+      Buffer.from(hotpGenerate(secret, time + i), "utf8"),
+    );
+  }
+  const actual = Buffer.from(token, "utf8");
+  // Always compare against every candidate so all paths take the same time.
+  let matched = false;
+  for (const candidate of expectedBuffers) {
+    if (
+      candidate.length === actual.length &&
+      timingSafeEqual(candidate, actual)
+    ) {
+      matched = true;
+    }
+  }
+  return matched;
 }
 
 // Generate the otpauth:// URI for QR code generation

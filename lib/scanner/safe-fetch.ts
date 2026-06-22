@@ -62,7 +62,7 @@ const PRIVATE_IPV4_PATTERNS = [
   /^10\./, // Private A (10.0.0.0/8)
   /^172\.(1[6-9]|2[0-9]|3[0-1])\./, // Private B (172.16.0.0/12)
   /^192\.168\./, // Private C (192.168.0.0/16)
-  /^169\.254\./, // Link-local (169.254.0.0/16)
+  /^169\.254\./, // Link-local (169.254.0.0/16) — covers cloud metadata 169.254.169.254
   /^0\./, // Current network (0.0.0.0/8)
   /^2(2[4-9]|3[0-9])\./, // Multicast (224.0.0.0/4 = 224-239.x.x.x)
   /^(24[0-9]|25[0-5])\./, // Reserved/broadcast first octet range 240-255
@@ -79,6 +79,17 @@ const PRIVATE_IPV6_PATTERNS = [
   /^::ffff:10\./i, // IPv4-mapped private A
   /^::ffff:172\.(1[6-9]|2[0-9]|3[0-1])\./i, // IPv4-mapped private B
   /^::ffff:192\.168\./i, // IPv4-mapped private C
+  /^::ffff:169\.254\./i, // IPv4-mapped link-local (cloud metadata bypass)
+  /^::ffff:0\./i, // IPv4-mapped "current network"
+  /^::ffff:2(2[4-9]|3[0-9])\./i, // IPv4-mapped multicast
+  /^::ffff:(24[0-9]|25[0-5])\./i, // IPv4-mapped reserved/broadcast
+  /^64:ff9b::/i, // RFC 6052 IPv4/IPv6 translation (well-known prefix)
+  /^100::/i, // Discard prefix (RFC 6666)
+  /^2001:db8::/i, // Documentation prefix (RFC 3849)
+  /^2001::/i, // Teredo tunneling (RFC 4380) — covers 2001::/32
+  /^fc00:/i, // Duplicate of above; kept for readability of grouped private ranges
+  /^fec0:/i, // IPv6 site-local (deprecated RFC 3879)
+  /^ff0[0-9a-f]::/i, // IPv6 multicast (ff00::/8)
 ];
 
 export interface SafetyCheckResult {
