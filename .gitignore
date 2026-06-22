@@ -7,6 +7,10 @@ node_modules/
 .opencode
 graphify-out
 
+# Agent instructions — never commit; per-developer files
+AGENTS.md
+DESIGN.md
+
 # Editor / IDE
 .idea/
 .vscode/
