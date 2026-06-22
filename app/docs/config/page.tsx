@@ -71,8 +71,8 @@ export default function ConfigPage() {
       <DocsSection id="overview" title="Overview">
         <p>
           VulnRadar has a two-layer configuration model designed to keep secrets
-          out of source code while making non-secret deployment settings easy
-          to customize for self-hosters.
+          out of source code while making non-secret deployment settings easy to
+          customize for self-hosters.
         </p>
         <DocsCallout variant="info" title="TL;DR">
           Most things you want to change live in{" "}
@@ -134,9 +134,9 @@ lib/types/
 
       <DocsSection id="layer-1" title="Layer 1: Static App Config">
         <p>
-          Edit <code>lib/config/config-values.ts</code> when self-hosting.
-          These values are baked into the build at compile time. No runtime
-          reload — restart the process to pick up changes.
+          Edit <code>lib/config/config-values.ts</code> when self-hosting. These
+          values are baked into the build at compile time. No runtime reload —
+          restart the process to pick up changes.
         </p>
 
         <DocsSubSection title="App metadata">
@@ -152,16 +152,16 @@ lib/types/
               <code>CONFIG_APP_VERSION</code> — Public version string
             </li>
             <li>
-              <code>CONFIG_MIN_SCHEMA_VERSION</code> — Minimum schema
-              version this app accepts (default: <code>2.0.0</code>). Must
-              match the value in <code>vulnradar_schema_meta</code>.
+              <code>CONFIG_MIN_SCHEMA_VERSION</code> — Minimum schema version
+              this app accepts (default: <code>2.0.0</code>). Must match the
+              value in <code>vulnradar_schema_meta</code>.
             </li>
             <li>
               <code>CONFIG_ENGINE_VERSION</code> — Detection engine version
             </li>
             <li>
-              <code>CONFIG_TOTAL_CHECKS_LABEL</code> — Marketing badge
-              (default: <code>310+</code>)
+              <code>CONFIG_TOTAL_CHECKS_LABEL</code> — Marketing badge (default:{" "}
+              <code>310+</code>)
             </li>
             <li>
               <code>CONFIG_APP_URL</code> — Public URL
@@ -194,13 +194,12 @@ lib/types/
               <code>CONFIG_ENTERPRISE_EMAIL</code>
             </li>
             <li>
-              <code>CONFIG_NOREPLY_EMAIL</code> — sender for transactional
-              email
+              <code>CONFIG_NOREPLY_EMAIL</code> — sender for transactional email
             </li>
             <li>
-              <code>CONFIG_TERMS_UPDATED_AT</code> — ISO date; bumped when
-              terms change. API-key creation refuses keys from users who
-              have not accepted this date.
+              <code>CONFIG_TERMS_UPDATED_AT</code> — ISO date; bumped when terms
+              change. API-key creation refuses keys from users who have not
+              accepted this date.
             </li>
           </ul>
         </DocsSubSection>
@@ -211,9 +210,9 @@ lib/types/
               <code>CONFIG_LOGO_URL</code> — Path under <code>/public</code>
             </li>
             <li>
-              <code>CONFIG_PRIMARY_COLOR</code> — Hex color (informational;
-              the actual brand color is set via the <code>--primary</code>{" "}
-              CSS variable in <code>app/globals.css</code>)
+              <code>CONFIG_PRIMARY_COLOR</code> — Hex color (informational; the
+              actual brand color is set via the <code>--primary</code> CSS
+              variable in <code>app/globals.css</code>)
             </li>
             <li>
               <code>CONFIG_FOOTER_TEXT</code>
@@ -271,8 +270,8 @@ lib/types/
         <DocsSubSection title="Rate limits">
           <p className="text-sm text-muted-foreground">
             All values are per-IP unless noted. The window is in minutes.
-            Internally <code>lib/config/constants.ts</code> multiplies by 60
-            for the per-second window.
+            Internally <code>lib/config/constants.ts</code> multiplies by 60 for
+            the per-second window.
           </p>
           <DocsTable
             columns={[
@@ -341,17 +340,16 @@ lib/types/
         <DocsSubSection title="API">
           <ul className="list-disc pl-6 space-y-1 text-sm text-muted-foreground">
             <li>
-              <code>CONFIG_API_KEY_PREFIX</code> (default:{" "}
-              <code>vr_live_</code>)
+              <code>CONFIG_API_KEY_PREFIX</code> (default: <code>vr_live_</code>
+              )
             </li>
             <li>
               <code>CONFIG_DEFAULT_API_KEY_DAILY_LIMIT</code> (default:{" "}
-              <code>50</code>) — applied when creating a new key; per-key
-              limit overrides take precedence
+              <code>50</code>) — applied when creating a new key; per-key limit
+              overrides take precedence
             </li>
             <li>
-              <code>CONFIG_API_CURRENT_VERSION</code> (default:{" "}
-              <code>v2</code>)
+              <code>CONFIG_API_CURRENT_VERSION</code> (default: <code>v2</code>)
             </li>
             <li>
               <code>CONFIG_API_SUPPORTED_VERSIONS</code> (default:{" "}
@@ -364,8 +362,8 @@ lib/types/
 
         <DocsSubSection title="Demo mode">
           <p className="text-sm text-muted-foreground">
-            The <code>/demo</code> page lets unauthenticated visitors run
-            scans. Rate-limited per IP.
+            The <code>/demo</code> page lets unauthenticated visitors run scans.
+            Rate-limited per IP.
           </p>
           <ul className="list-disc pl-6 space-y-1 text-sm text-muted-foreground">
             <li>
@@ -486,14 +484,13 @@ lib/types/
         <DocsSubSection title="Billing">
           <p className="text-sm text-muted-foreground">
             Plan catalogs (limits per plan) live in{" "}
-            <code>lib/billing/catalog.ts</code>. The values below only
-            configure the upper bounds and the retention window.
+            <code>lib/billing/catalog.ts</code>. The values below only configure
+            the upper bounds and the retention window.
           </p>
           <ul className="list-disc pl-6 space-y-1 text-sm text-muted-foreground">
             <li>
-              <code>CONFIG_BILLING_ENABLED</code> (default:{" "}
-              <code>true</code>). Set to <code>false</code> to give every
-              user unlimited scans (or{" "}
+              <code>CONFIG_BILLING_ENABLED</code> (default: <code>true</code>).
+              Set to <code>false</code> to give every user unlimited scans (or{" "}
               <code>CONFIG_BILLING_UNLIMITED_MODE_LIMIT</code> if set).
             </li>
             <li>
@@ -543,8 +540,8 @@ lib/types/
           block). Runtime validation is performed by{" "}
           <code>lib/config/env.ts</code> using Zod and called from{" "}
           <code>instrumentation.ts</code> at server startup. A missing or
-          malformed required variable crashes the process before it accepts
-          any requests.
+          malformed required variable crashes the process before it accepts any
+          requests.
         </p>
 
         <DocsSubSection title="Required">
@@ -566,8 +563,7 @@ lib/types/
           <ul className="list-disc pl-6 space-y-1 text-sm text-muted-foreground">
             <li>
               <code>AUTH_SECRET</code> — used to HMAC-sign the Discord OAuth
-              state. Falls back to <code>API_KEY_ENCRYPTION_KEY</code> if
-              unset.
+              state. Falls back to <code>API_KEY_ENCRYPTION_KEY</code> if unset.
             </li>
           </ul>
         </DocsSubSection>
@@ -582,8 +578,8 @@ lib/types/
               and the CA is not in the system trust store)
             </li>
             <li>
-              <code>TRUSTED_PROXY_CIDR</code> — comma-separated CIDRs used
-              when reading <code>X-Forwarded-For</code> for client-IP. Example:{" "}
+              <code>TRUSTED_PROXY_CIDR</code> — comma-separated CIDRs used when
+              reading <code>X-Forwarded-For</code> for client-IP. Example:{" "}
               <code>10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,127.0.0.0/8</code>
             </li>
           </ul>
@@ -591,9 +587,9 @@ lib/types/
 
         <DocsSubSection title="Email (SMTP)">
           <p className="text-sm text-muted-foreground">
-            Required for password reset, email verification, billing verify,
-            and webhook lifecycle emails. Without SMTP configured, those flows
-            fail silently.
+            Required for password reset, email verification, billing verify, and
+            webhook lifecycle emails. Without SMTP configured, those flows fail
+            silently.
           </p>
           <ul className="list-disc pl-6 space-y-1 text-sm text-muted-foreground">
             <li>
@@ -628,14 +624,13 @@ lib/types/
         <DocsSubSection title="Discord OAuth">
           <ul className="list-disc pl-6 space-y-1 text-sm text-muted-foreground">
             <li>
-              <code>DISCORD_CLIENT_ID</code>,{" "}
-              <code>DISCORD_CLIENT_SECRET</code> — required for{" "}
-              <code>/api/v2/auth/discord</code>
+              <code>DISCORD_CLIENT_ID</code>, <code>DISCORD_CLIENT_SECRET</code>{" "}
+              — required for <code>/api/v2/auth/discord</code>
             </li>
             <li>
               <code>DISCORD_BOT_TOKEN</code>, <code>DISCORD_GUILD_ID</code> —
-              optional; if both are set, the bot auto-adds connecting users
-              to the guild
+              optional; if both are set, the bot auto-adds connecting users to
+              the guild
             </li>
           </ul>
         </DocsSubSection>
@@ -650,8 +645,8 @@ lib/types/
             </li>
           </ul>
           <p className="text-sm text-muted-foreground">
-            Turnstile is auto-enabled when the site key is present. It
-            protects signup, password reset, contact form, and landing-contact.
+            Turnstile is auto-enabled when the site key is present. It protects
+            signup, password reset, contact form, and landing-contact.
           </p>
         </DocsSubSection>
 
@@ -659,16 +654,15 @@ lib/types/
           <ul className="list-disc pl-6 space-y-1 text-sm text-muted-foreground">
             <li>
               <code>CONTACT_EMAIL</code>, <code>SUPPORT_EMAIL</code> — override
-              the addresses used by contact/support emails (defaults come
-              from <code>CONFIG_*</code>).
+              the addresses used by contact/support emails (defaults come from{" "}
+              <code>CONFIG_*</code>).
             </li>
           </ul>
         </DocsSubSection>
 
         <DocsSubSection title="Docker-only">
           <p className="text-sm text-muted-foreground">
-            Read by <code>docker-compose.yml</code>; not used by the app
-            itself.
+            Read by <code>docker-compose.yml</code>; not used by the app itself.
           </p>
           <ul className="list-disc pl-6 space-y-1 text-sm text-muted-foreground">
             <li>
@@ -691,12 +685,14 @@ lib/types/
           </li>
           <li>
             Generate an encryption key:{" "}
-            <code>node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"</code>
+            <code>
+              node -e
+              "console.log(require('crypto').randomBytes(32).toString('hex'))"
+            </code>
           </li>
           <li>
-            Create <code>.env</code> from{" "}
-            <code>cp .env.example .env</code> and fill in DATABASE_URL,
-            API_KEY_ENCRYPTION_KEY, NEXT_PUBLIC_APP_URL.
+            Create <code>.env</code> from <code>cp .env.example .env</code> and
+            fill in DATABASE_URL, API_KEY_ENCRYPTION_KEY, NEXT_PUBLIC_APP_URL.
           </li>
           <li>
             Provision Postgres (via <code>docker compose up -d postgres</code>{" "}
@@ -705,8 +701,7 @@ lib/types/
           <li>
             Start the app (<code>npm run dev</code> or{" "}
             <code>docker compose up app</code>). Schema auto-creates on first
-            boot; meta row is written on first scan via{" "}
-            <code>db:migrate</code>.
+            boot; meta row is written on first scan via <code>db:migrate</code>.
           </li>
           <li>
             Sign up the first user via <code>/signup</code>, then promote via
@@ -738,14 +733,12 @@ lib/types/
             Renaming or removing a constant fails typecheck.
           </li>
           <li>
-            <strong>Server startup:</strong>{" "}
-            <code>lib/config/env.ts</code> validates every required
-            environment variable with Zod. A missing or malformed value
-            throws before any request is served.
+            <strong>Server startup:</strong> <code>lib/config/env.ts</code>{" "}
+            validates every required environment variable with Zod. A missing or
+            malformed value throws before any request is served.
           </li>
           <li>
-            <strong>First scan:</strong>{" "}
-            <code>instrumentation.ts</code> reads{" "}
+            <strong>First scan:</strong> <code>instrumentation.ts</code> reads{" "}
             <code>vulnradar_schema_meta</code> and refuses to start if{" "}
             <code>schema_version</code> is below{" "}
             <code>CONFIG_MIN_SCHEMA_VERSION</code>.

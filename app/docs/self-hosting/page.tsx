@@ -63,13 +63,13 @@ export default function SelfHostingPage() {
 
       <DocsSection id="overview" title="Overview">
         <p>
-          The fastest path to running VulnRadar yourself. Assumes a single
-          Linux server with Docker. For Kubernetes, multi-region, or
-          bare-metal setups, adapt accordingly.
+          The fastest path to running VulnRadar yourself. Assumes a single Linux
+          server with Docker. For Kubernetes, multi-region, or bare-metal
+          setups, adapt accordingly.
         </p>
         <DocsCallout variant="info" title="Time estimate">
-          About 30 minutes if you already have Docker + a domain pointed at
-          your server.
+          About 30 minutes if you already have Docker + a domain pointed at your
+          server.
         </DocsCallout>
       </DocsSection>
 
@@ -103,19 +103,21 @@ export default function SelfHostingPage() {
           ]}
         />
         <DocsCallout variant="info">
-          A managed PostgreSQL (Neon, Supabase, RDS) is recommended over
-          running your own DB.
+          A managed PostgreSQL (Neon, Supabase, RDS) is recommended over running
+          your own DB.
         </DocsCallout>
       </DocsSection>
 
       <DocsSection id="prerequisites" title="Prerequisites">
         <ul className="list-disc pl-6 space-y-2 text-muted-foreground">
-          <li>Linux server (Ubuntu 22.04+ recommended) or any host with Docker</li>
+          <li>
+            Linux server (Ubuntu 22.04+ recommended) or any host with Docker
+          </li>
           <li>Docker 24+ and Docker Compose v2</li>
           <li>A domain name with DNS pointing to the server</li>
           <li>
-            (Production) A reverse proxy — Caddy, Traefik, or nginx — for
-            TLS termination
+            (Production) A reverse proxy — Caddy, Traefik, or nginx — for TLS
+            termination
           </li>
         </ul>
       </DocsSection>
@@ -130,7 +132,9 @@ cd vulnradar.dev
 node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 # → paste into API_KEY_ENCRYPTION_KEY`}
         />
-        <p>Edit <code>lib/config/config-values.ts</code> to set:</p>
+        <p>
+          Edit <code>lib/config/config-values.ts</code> to set:
+        </p>
         <CodeBlock
           language="typescript"
           code={`export const CONFIG_APP_NAME = "YourBrand Scanner";
@@ -196,13 +200,13 @@ STRIPE_WEBHOOK_SECRET=whsec_...`}
 
       <DocsSection id="docker" title="docker-compose">
         <p>
-          The default <code>docker-compose.yml</code> provisions Postgres +
-          the app container + a healthcheck + a smoke test. The app reads{" "}
+          The default <code>docker-compose.yml</code> provisions Postgres + the
+          app container + a healthcheck + a smoke test. The app reads{" "}
           <code>.env</code> via <code>env_file</code>.
         </p>
         <DocsCallout variant="info">
-          For production, prefer Docker secrets or a secret manager over a
-          plain <code>.env</code> file on disk.
+          For production, prefer Docker secrets or a secret manager over a plain{" "}
+          <code>.env</code> file on disk.
         </DocsCallout>
       </DocsSection>
 
@@ -214,8 +218,8 @@ docker compose logs -f app   # watch startup`}
         />
         <p>
           On boot, <code>instrumentation.ts</code> runs{" "}
-          <code>CREATE TABLE IF NOT EXISTS</code> for every table. The meta
-          row in <code>vulnradar_schema_meta</code> is written on the first
+          <code>CREATE TABLE IF NOT EXISTS</code> for every table. The meta row
+          in <code>vulnradar_schema_meta</code> is written on the first
           successful migration. Look for{" "}
           <code>Database schema verified successfully</code> in the logs.
         </p>
@@ -224,8 +228,8 @@ docker compose logs -f app   # watch startup`}
       <DocsSection id="admin" title="First Admin User">
         <ol className="list-decimal pl-6 space-y-2 text-muted-foreground">
           <li>
-            Visit <code>https://scanner.yourdomain.com/signup</code> and
-            create an account.
+            Visit <code>https://scanner.yourdomain.com/signup</code> and create
+            an account.
           </li>
           <li>
             Connect to Postgres and promote the user:
@@ -245,8 +249,8 @@ WHERE email = 'you@yourdomain.com';`}
 
       <DocsSection id="tls" title="TLS (Reverse Proxy)">
         <p>
-          VulnRadar does not terminate TLS itself. Put a reverse proxy in
-          front. Minimal Caddy config:
+          VulnRadar does not terminate TLS itself. Put a reverse proxy in front.
+          Minimal Caddy config:
         </p>
         <CodeBlock
           language="caddyfile"
@@ -297,28 +301,29 @@ WHERE email = 'you@yourdomain.com';`}
             </ul>
           </li>
           <li>
-            Copy the signing secret into <code>STRIPE_WEBHOOK_SECRET</code>{" "}
-            in <code>.env</code>.
+            Copy the signing secret into <code>STRIPE_WEBHOOK_SECRET</code> in{" "}
+            <code>.env</code>.
           </li>
           <li>
             <code>docker compose restart app</code>
           </li>
         </ol>
 
-        <h4 className="font-semibold mb-3 mt-6">Option B: auto-setup endpoint</h4>
+        <h4 className="font-semibold mb-3 mt-6">
+          Option B: auto-setup endpoint
+        </h4>
         <p className="text-sm text-muted-foreground mb-2">
-          <code>GET /api/v2/stripe/setup-webhook</code> registers the webhook
-          in Stripe and returns the signing secret — but only when the secret
-          is not yet stored. After first run it returns{" "}
+          <code>GET /api/v2/stripe/setup-webhook</code> registers the webhook in
+          Stripe and returns the signing secret — but only when the secret is
+          not yet stored. After first run it returns{" "}
           <code>{`{ success: true, configured: true }`}</code> with no secret.
-          The endpoint requires an admin session unless the webhook is
-          already configured.
+          The endpoint requires an admin session unless the webhook is already
+          configured.
         </p>
         <DocsCallout variant="warning">
-          Using <code>curl</code> against this endpoint without an admin
-          session cookie will get 401. Log in as admin in a browser, copy
-          the session cookie, and pass it as{" "}
-          <code>-b &quot;cookie.txt&quot;</code> in curl.
+          Using <code>curl</code> against this endpoint without an admin session
+          cookie will get 401. Log in as admin in a browser, copy the session
+          cookie, and pass it as <code>-b &quot;cookie.txt&quot;</code> in curl.
         </DocsCallout>
         <CodeBlock
           language="bash"
@@ -355,8 +360,8 @@ docker compose up -d`}
         <p>Watch the logs for new env-var requirements or schema changes.</p>
         <DocsCallout variant="warning" title="After schema changes">
           If <code>instrumentation.ts</code> changed in the new release, run{" "}
-          <code>npm run db:migrate</code> inside the app container to apply
-          the diff interactively. The script is idempotent; safe to re-run.
+          <code>npm run db:migrate</code> inside the app container to apply the
+          diff interactively. The script is idempotent; safe to re-run.
         </DocsCallout>
       </DocsSection>
 
@@ -375,7 +380,8 @@ docker compose up -d`}
             },
             {
               symptom: "Schema version mismatch on startup",
-              cause: "vulnradar_schema_meta.schema_version < CONFIG_MIN_SCHEMA_VERSION",
+              cause:
+                "vulnradar_schema_meta.schema_version < CONFIG_MIN_SCHEMA_VERSION",
               fix: "Run npm run db:migrate (or upgrade CONFIG_MIN_SCHEMA_VERSION to match if you just want to skip).",
             },
             {
@@ -385,7 +391,8 @@ docker compose up -d`}
             },
             {
               symptom: "Build fails: TypeScript errors in lib/config",
-              cause: "Renamed a CONFIG_* constant without updating the typed DEFAULT_CONFIG",
+              cause:
+                "Renamed a CONFIG_* constant without updating the typed DEFAULT_CONFIG",
               fix: "Run npm run typecheck; the error points at the exact field.",
             },
             {

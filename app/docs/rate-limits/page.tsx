@@ -95,16 +95,15 @@ export default function RateLimitsPage() {
 
       <DocsSection id="overview" title="Overview">
         <p>
-          Two separate limit systems protect the platform. They are enforced
-          in different places and behave differently on overflow.
+          Two separate limit systems protect the platform. They are enforced in
+          different places and behave differently on overflow.
         </p>
         <ul className="list-disc pl-6 space-y-2 text-sm text-muted-foreground">
           <li>
             <strong>Per-IP rate limits</strong> —{" "}
-            <code>lib/rate-limiting/rate-limit.ts</code>. Sliding window in
-            the <code>rate_limits</code> table. Used by auth endpoints
-            (signup, login, forgot-password), the API as a whole, and the
-            scan routes.
+            <code>lib/rate-limiting/rate-limit.ts</code>. Sliding window in the{" "}
+            <code>rate_limits</code> table. Used by auth endpoints (signup,
+            login, forgot-password), the API as a whole, and the scan routes.
           </li>
           <li>
             <strong>Per-plan daily quotas</strong> —{" "}
@@ -115,7 +114,11 @@ export default function RateLimitsPage() {
         </ul>
       </DocsSection>
 
-      <DocsSection id="limits-by-plan" title="Daily Quotas by Plan" icon={Gauge}>
+      <DocsSection
+        id="limits-by-plan"
+        title="Daily Quotas by Plan"
+        icon={Gauge}
+      >
         <p className="text-muted-foreground">
           Two separate counters: <strong>scans/day</strong> enforced for
           session-authenticated users, and <strong>API requests/day</strong>{" "}
@@ -152,19 +155,19 @@ export default function RateLimitsPage() {
 
         <DocsCallout variant="info" title="Where the numbers come from">
           <p>
-            Daily quotas are defined in <code>lib/billing/catalog.ts</code>{" "}
-            (one entry per plan: <code>dailyScans</code> and{" "}
+            Daily quotas are defined in <code>lib/billing/catalog.ts</code> (one
+            entry per plan: <code>dailyScans</code> and{" "}
             <code>apiRequestsPerDay</code>). New API keys default to{" "}
-            <code>CONFIG_DEFAULT_API_KEY_DAILY_LIMIT = 50</code>{" "}
-            (<code>lib/config/config-values.ts</code>).
+            <code>CONFIG_DEFAULT_API_KEY_DAILY_LIMIT = 50</code> (
+            <code>lib/config/config-values.ts</code>).
           </p>
         </DocsCallout>
 
         <DocsCallout variant="info" title="Staff accounts have no limit">
           <p>
             Users with role <code>admin</code>, <code>moderator</code>, or{" "}
-            <code>support</code> are exempt from daily quotas
-            (<code>daily-limits.ts</code> returns <code>Infinity</code>).
+            <code>support</code> are exempt from daily quotas (
+            <code>daily-limits.ts</code> returns <code>Infinity</code>).
           </p>
         </DocsCallout>
       </DocsSection>
@@ -174,8 +177,8 @@ export default function RateLimitsPage() {
           IP-based rate limits are configured in{" "}
           <code>lib/config/config-values.ts</code> as{" "}
           <code>CONFIG_RATE_LIMIT_*_ATTEMPTS</code> +{" "}
-          <code>_WINDOW_MINUTES</code> pairs. The window is converted to
-          seconds at boot.
+          <code>_WINDOW_MINUTES</code> pairs. The window is converted to seconds
+          at boot.
         </p>
 
         <DocsTable
@@ -185,14 +188,26 @@ export default function RateLimitsPage() {
             { key: "window", header: "Window (min)" },
           ]}
           data={[
-            { endpoint: "POST /api/v2/auth/login", attempts: "5", window: "15" },
-            { endpoint: "POST /api/v2/auth/signup", attempts: "3", window: "60" },
+            {
+              endpoint: "POST /api/v2/auth/login",
+              attempts: "5",
+              window: "15",
+            },
+            {
+              endpoint: "POST /api/v2/auth/signup",
+              attempts: "3",
+              window: "60",
+            },
             {
               endpoint: "POST /api/v2/auth/forgot-password",
               attempts: "3",
               window: "10",
             },
-            { endpoint: "POST /api/v2/auth/2fa/verify", attempts: "5", window: "5" },
+            {
+              endpoint: "POST /api/v2/auth/2fa/verify",
+              attempts: "5",
+              window: "5",
+            },
             {
               endpoint: "POST /api/v2/auth/2fa/email-send",
               attempts: "1",
@@ -218,10 +233,11 @@ export default function RateLimitsPage() {
 
         <DocsCallout variant="success" title="Crawl count semantics">
           <p>
-            For Bearer-authenticated deep crawls (<code>/api/v2/scan/crawl</code>
+            For Bearer-authenticated deep crawls (
+            <code>/api/v2/scan/crawl</code>
             ), the call itself counts as <strong>1</strong> daily quota unit.
-            For session-authenticated crawls, each scanned page counts as 1
-            unit (10 pages = 10 quota units). Discovery (
+            For session-authenticated crawls, each scanned page counts as 1 unit
+            (10 pages = 10 quota units). Discovery (
             <code>/api/v2/scan/crawl/discover</code>) counts as 1 unit
             regardless of how many URLs it returns.
           </p>
@@ -261,7 +277,7 @@ X-RateLimit-Reset: 2026-03-12T00:00:00.000Z`}
               },
               {
                 header: "X-RateLimit-Policy",
-                desc: "Always \"daily\" — distinguishes this from any future per-minute policies",
+                desc: 'Always "daily" — distinguishes this from any future per-minute policies',
               },
               {
                 header: "X-RateLimit-Reset",
@@ -287,10 +303,10 @@ X-RateLimit-Reset: 2026-03-12T00:00:00.000Z`}
         <DocsCallout variant="info" title="Reset semantics differ by auth">
           <p>
             For <strong>session auth</strong>, the daily counter resets at{" "}
-            <strong>00:00 UTC</strong>. For <strong>API-key auth</strong>,
-            the counter is a rolling 24-hour window anchored to the oldest
-            usage in the current period. The same{" "}
-            <code>X-RateLimit-Reset</code> header reflects whichever applies.
+            <strong>00:00 UTC</strong>. For <strong>API-key auth</strong>, the
+            counter is a rolling 24-hour window anchored to the oldest usage in
+            the current period. The same <code>X-RateLimit-Reset</code> header
+            reflects whichever applies.
           </p>
         </DocsCallout>
       </DocsSection>
@@ -377,7 +393,11 @@ def scan_with_retry(url, max_retries=3):
         </Card>
       </DocsSection>
 
-      <DocsSection id="best-practices" title="Best Practices" icon={ShieldCheck}>
+      <DocsSection
+        id="best-practices"
+        title="Best Practices"
+        icon={ShieldCheck}
+      >
         <Card className="p-6 border-border/40">
           <div className="grid gap-6 sm:grid-cols-2">
             {[

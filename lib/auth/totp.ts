@@ -19,7 +19,10 @@ export function verifyTOTP(
   if (typeof token !== "string" || !/^\d{6}$/.test(token)) {
     // Still do a comparison against a dummy token to keep the timing path
     // similar regardless of whether the input shape was valid.
-    const dummy = hotpGenerate(secret, Math.floor(Date.now() / 1000 / timeStep));
+    const dummy = hotpGenerate(
+      secret,
+      Math.floor(Date.now() / 1000 / timeStep),
+    );
     timingSafeEqual(Buffer.from(dummy), Buffer.from(dummy));
     return false;
   }
@@ -27,9 +30,7 @@ export function verifyTOTP(
   const time = Math.floor(Date.now() / 1000 / timeStep);
   const expectedBuffers: Buffer[] = [];
   for (let i = -window; i <= window; i++) {
-    expectedBuffers.push(
-      Buffer.from(hotpGenerate(secret, time + i), "utf8"),
-    );
+    expectedBuffers.push(Buffer.from(hotpGenerate(secret, time + i), "utf8"));
   }
   const actual = Buffer.from(token, "utf8");
   // Always compare against every candidate so all paths take the same time.
