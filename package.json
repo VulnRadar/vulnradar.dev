@@ -95,7 +95,7 @@
   },
   "devDependencies": {
     "@types/jsonwebtoken": "9.0.10",
-    "@types/node": "24.13.2",
+    "@types/node": "26.0.0",
     "@types/nodemailer": "8.0.1",
     "@types/pg": "8.20.0",
     "@types/react": "19.2.17",
@@ -104,7 +104,7 @@
     "eslint-config-next": "^15.5.19",
     "postcss": "8.5.15",
     "prettier": "3.8.4",
-    "typescript": "5.9.3"
+    "typescript": "6.0.3"
   },
   "overrides": {
     "postcss": "8.5.15",
