@@ -212,11 +212,13 @@ GRANT ALL PRIVILEGES ON DATABASE vulnradar TO vulnradar_user;
         </Card>
 
         <Card className="p-6 border-border/40">
-          <h3 className="font-semibold mb-4">Option B: Docker Compose (recommended)</h3>
+          <h3 className="font-semibold mb-4">
+            Option B: Docker Compose (recommended)
+          </h3>
           <p className="text-sm text-muted-foreground mb-3">
             The included <code>docker-compose.yml</code> provisions Postgres
-            with credentials <code>vulnradar:vulnradar</code> on port 5432.
-            See the <a href="#docker">Docker section</a> below.
+            with credentials <code>vulnradar:vulnradar</code> on port 5432. See
+            the <a href="#docker">Docker section</a> below.
           </p>
         </Card>
 
@@ -225,8 +227,8 @@ GRANT ALL PRIVILEGES ON DATABASE vulnradar TO vulnradar_user;
           <p className="text-sm text-muted-foreground">
             <code>instrumentation.ts</code> runs{" "}
             <code>CREATE TABLE IF NOT EXISTS</code> for every table on first
-            server boot. No manual migration is required for a fresh
-            database. For databases upgraded from an older schema, see{" "}
+            server boot. No manual migration is required for a fresh database.
+            For databases upgraded from an older schema, see{" "}
             <a href="#migration">Schema Migration</a>.
           </p>
         </Card>
@@ -234,10 +236,10 @@ GRANT ALL PRIVILEGES ON DATABASE vulnradar TO vulnradar_user;
 
       <DocsSection id="environment" title="Environment Configuration">
         <p className="text-muted-foreground">
-          Secrets and per-deployment overrides go in{" "}
-          <code>.env</code> (or <code>.env.local</code> for local-only
-          overrides; Next.js loads <code>.env.local</code> with higher
-          precedence than <code>.env</code>).
+          Secrets and per-deployment overrides go in <code>.env</code> (or{" "}
+          <code>.env.local</code> for local-only overrides; Next.js loads{" "}
+          <code>.env.local</code> with higher precedence than <code>.env</code>
+          ).
         </p>
 
         <Card className="p-6 border-border/40">
@@ -271,8 +273,7 @@ API_KEY_ENCRYPTION_KEY=your-64-character-hex-key`}
         <DocsCallout variant="info" title="Never commit .env">
           <p>
             <code>.env</code> and <code>.env.local</code> are git-ignored by
-            default. If you fork the repo, double-check{" "}
-            <code>.gitignore</code>.
+            default. If you fork the repo, double-check <code>.gitignore</code>.
           </p>
         </DocsCallout>
       </DocsSection>
@@ -302,9 +303,8 @@ API_KEY_ENCRYPTION_KEY=your-64-character-hex-key`}
               <code>CONFIG_APP_DESCRIPTION</code> — branding
             </li>
             <li>
-              <code>CONFIG_SUPPORT_EMAIL</code>,{" "}
-              <code>CONFIG_LEGAL_EMAIL</code>,{" "}
-              <code>CONFIG_SECURITY_EMAIL</code> — outbound email addresses
+              <code>CONFIG_SUPPORT_EMAIL</code>, <code>CONFIG_LEGAL_EMAIL</code>
+              , <code>CONFIG_SECURITY_EMAIL</code> — outbound email addresses
             </li>
             <li>
               <code>CONFIG_BILLING_ENABLED = false</code> — disable Stripe
@@ -340,8 +340,8 @@ API_KEY_ENCRYPTION_KEY=your-64-character-hex-key`}
           <h3 className="font-semibold mb-4">Production</h3>
           <CodeBlock code="npm run build\nnpm start" language="bash" />
           <p className="text-xs text-muted-foreground mt-2">
-            Listens on port 3000 by default. Put behind a reverse proxy
-            (Caddy, Traefik, nginx) for TLS.
+            Listens on port 3000 by default. Put behind a reverse proxy (Caddy,
+            Traefik, nginx) for TLS.
           </p>
         </Card>
       </DocsSection>
@@ -351,16 +351,16 @@ API_KEY_ENCRYPTION_KEY=your-64-character-hex-key`}
           <div>
             <h3 className="font-semibold mb-2">1. Access the app</h3>
             <p className="text-sm text-muted-foreground">
-              Open <code>http://localhost:3000</code>. The landing page
-              renders and middleware redirects unauthenticated users to{" "}
+              Open <code>http://localhost:3000</code>. The landing page renders
+              and middleware redirects unauthenticated users to{" "}
               <code>/landing</code>.
             </p>
           </div>
           <div>
             <h3 className="font-semibold mb-2">2. Sign up the first user</h3>
             <p className="text-sm text-muted-foreground">
-              Visit <code>/signup</code>. Email verification is required
-              before login if SMTP is configured.
+              Visit <code>/signup</code>. Email verification is required before
+              login if SMTP is configured.
             </p>
           </div>
           <div>
@@ -458,10 +458,10 @@ npm run db:migrate:dry-run`,
         <Card className="p-6 border-border/40">
           <h3 className="font-semibold mb-4">Vercel</h3>
           <p className="text-sm text-muted-foreground mb-3">
-            VulnRadar is a standard Next.js 15 App Router app and runs on
-            Vercel out of the box. Use Neon or any other serverless Postgres
-            for the database. Configure environment variables in the Vercel
-            dashboard before deploying.
+            VulnRadar is a standard Next.js 15 App Router app and runs on Vercel
+            out of the box. Use Neon or any other serverless Postgres for the
+            database. Configure environment variables in the Vercel dashboard
+            before deploying.
           </p>
           <ol className="list-decimal list-inside space-y-2 text-sm text-muted-foreground">
             <li>Push the repo to GitHub.</li>
@@ -475,8 +475,12 @@ npm run db:migrate:dry-run`,
           <h3 className="font-semibold mb-4">Self-hosted (Linux)</h3>
           <ol className="list-decimal list-inside space-y-2 text-sm text-muted-foreground">
             <li>Provision a server with Node 22 LTS and PostgreSQL 14+.</li>
-            <li>Clone the repo, install dependencies (<code>npm ci</code>).</li>
-            <li>Configure <code>.env</code>.</li>
+            <li>
+              Clone the repo, install dependencies (<code>npm ci</code>).
+            </li>
+            <li>
+              Configure <code>.env</code>.
+            </li>
             <li>
               <code>npm run build &amp;&amp; npm start</code>
             </li>
@@ -571,10 +575,7 @@ DB_PORT=5432`}
 
           <Card className="p-6 border-border/40">
             <h3 className="font-semibold mb-4">Step 5: Verify</h3>
-            <CodeBlock
-              code="docker compose logs -f app"
-              language="bash"
-            />
+            <CodeBlock code="docker compose logs -f app" language="bash" />
             <p className="text-xs text-muted-foreground mt-2">
               Look for the startup banner and{" "}
               <code>Database schema verified successfully</code>.
@@ -584,9 +585,9 @@ DB_PORT=5432`}
 
         <DocsCallout variant="error" title="HTTPS required">
           <p>
-            Put the app behind a reverse proxy (Caddy, Traefik, nginx) for
-            TLS termination. Cookie flags (<code>secure</code>) and CSP
-            headers assume HTTPS in production.
+            Put the app behind a reverse proxy (Caddy, Traefik, nginx) for TLS
+            termination. Cookie flags (<code>secure</code>) and CSP headers
+            assume HTTPS in production.
           </p>
         </DocsCallout>
 
@@ -632,9 +633,9 @@ DB_PORT=5432`}
         <p className="text-muted-foreground">
           When upgrading between schema versions (e.g. v1 → v2), use the
           interactive migration tool. The migrator reads{" "}
-          <code>vulnradar_schema_meta</code> to detect the current schema,
-          picks the target version, builds a DDL plan, and applies it in a
-          single transaction.
+          <code>vulnradar_schema_meta</code> to detect the current schema, picks
+          the target version, builds a DDL plan, and applies it in a single
+          transaction.
         </p>
 
         <Card className="p-6 border-border/40">
@@ -649,17 +650,16 @@ npm run db:migrate`}
           />
           <p className="text-xs text-muted-foreground mt-2">
             Flags accepted by the CLI: <code>--dry-run</code>,{" "}
-            <code>--help</code>. The target version is selected
-            interactively; downgrades require typing{" "}
-            <code>yes-delete-data</code>.
+            <code>--help</code>. The target version is selected interactively;
+            downgrades require typing <code>yes-delete-data</code>.
           </p>
         </Card>
 
         <Card className="p-6 border-border/40">
           <h3 className="font-semibold mb-4">Side-by-side clone</h3>
           <p className="text-sm text-muted-foreground mb-3">
-            To create a new database (e.g. for testing an upgrade on a copy
-            of production), use <code>db:create</code>:
+            To create a new database (e.g. for testing an upgrade on a copy of
+            production), use <code>db:create</code>:
           </p>
           <CodeBlock
             code={`# Preview
@@ -722,8 +722,8 @@ npm run db:create`}
               release (development / RC)
             </li>
             <li>
-              <code>unknown</code> — GitHub unreachable, rate-limited, or
-              the repo does not exist
+              <code>unknown</code> — GitHub unreachable, rate-limited, or the
+              repo does not exist
             </li>
           </ul>
         </Card>

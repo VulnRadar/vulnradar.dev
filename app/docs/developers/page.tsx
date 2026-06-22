@@ -14,11 +14,7 @@ import {
   ServerCog,
 } from "lucide-react";
 import { FaGithub } from "react-icons/fa";
-import {
-  APP_NAME,
-  APP_URL,
-  TOTAL_CHECKS_LABEL,
-} from "@/lib/config/constants";
+import { APP_NAME, APP_URL, TOTAL_CHECKS_LABEL } from "@/lib/config/constants";
 import { useDocsContext, type TocItem } from "../layout";
 import {
   DocsHero,
@@ -115,7 +111,8 @@ const findingTypeFields = [
   {
     field: "category",
     type: "string",
-    description: "Detection category: headers, ssl, content, cookies, configuration, information-disclosure, dns",
+    description:
+      "Detection category: headers, ssl, content, cookies, configuration, information-disclosure, dns",
   },
   {
     field: "severity",
@@ -185,13 +182,11 @@ export default function DevelopersPage() {
       />
 
       <DocsSection id="overview" title="Overview">
-        <p>
-          This page covers two audiences:
-        </p>
+        <p>This page covers two audiences:</p>
         <ul className="list-disc pl-6 space-y-2 text-muted-foreground mt-3">
           <li>
-            <strong>SDK authors</strong> integrating with{" "}
-            <code>/api/v2/*</code> from another language.
+            <strong>SDK authors</strong> integrating with <code>/api/v2/*</code>{" "}
+            from another language.
           </li>
           <li>
             <strong>Contributors</strong> working on the VulnRadar codebase
@@ -201,16 +196,16 @@ export default function DevelopersPage() {
         <p className="mt-4">
           Endpoints, request/response shapes, and rate-limit semantics live on
           the <Link href="/docs/api">API Reference</Link> and{" "}
-          <Link href="/docs/rate-limits">Rate Limits</Link> pages. The rest
-          of this page is the integration manual.
+          <Link href="/docs/rate-limits">Rate Limits</Link> pages. The rest of
+          this page is the integration manual.
         </p>
       </DocsSection>
 
       <DocsSection id="finding-types" title="Finding Types API" icon={FileJson}>
         <p className="text-muted-foreground">
           The Finding Types endpoint returns the full catalogue of detection
-          checks. Use it to display human-readable titles, categorize
-          findings, or build SDKs that know every check ID ahead of time.
+          checks. Use it to display human-readable titles, categorize findings,
+          or build SDKs that know every check ID ahead of time.
         </p>
 
         <Card className="p-6 border-border/40">
@@ -268,8 +263,8 @@ export default function DevelopersPage() {
               />
               <p className="text-xs text-muted-foreground mt-2">
                 Backed by <code>lib/scanner/checks-data.json</code>. Source of
-                truth for finding metadata; update that file when adding a
-                new check.
+                truth for finding metadata; update that file when adding a new
+                check.
               </p>
             </div>
 
@@ -303,10 +298,7 @@ export default function DevelopersPage() {
 
           <div>
             <h4 className="font-semibold mb-3">2. Base URL</h4>
-            <CodeBlock
-              code={`${APP_URL}/api/v2`}
-              language="text"
-            />
+            <CodeBlock code={`${APP_URL}/api/v2`} language="text" />
           </div>
 
           <div>
@@ -346,18 +338,18 @@ export default function DevelopersPage() {
 
         <DocsCallout variant="info" title="Building your own SDK?">
           <p>
-            No official SDKs are published at this time. A community SDK in
-            any language is welcome — open an issue on GitHub with a link
-            and we will list it here. Requirements: GPL-3.0 compatible
-            license, type-safe models, real tests against a live instance.
+            No official SDKs are published at this time. A community SDK in any
+            language is welcome — open an issue on GitHub with a link and we
+            will list it here. Requirements: GPL-3.0 compatible license,
+            type-safe models, real tests against a live instance.
           </p>
         </DocsCallout>
       </DocsSection>
 
       <DocsSection id="development" title="Development Guide" icon={Zap}>
         <p className="text-muted-foreground">
-          Setup for contributing to VulnRadar. Covers local dev, scripts,
-          commit conventions, common pitfalls.
+          Setup for contributing to VulnRadar. Covers local dev, scripts, commit
+          conventions, common pitfalls.
         </p>
       </DocsSection>
 
@@ -372,18 +364,18 @@ export default function DevelopersPage() {
             Node.js 22 LTS is the standardised runtime
           </p>
           <p className="text-sm text-muted-foreground">
-            The package.json engines field accepts Node 20 LTS and Node 22
-            LTS (odd-numbered releases like 21 and 23 are excluded by
-            vitest@4 and friends). CI runs on Node 22. The Dockerfile uses{" "}
-            <code>node:20-alpine</code> for the runtime image. Local dev
-            should match CI: Node 22 LTS. See the Node Version Policy below
-            for the why and how.
+            The package.json engines field accepts Node 20 LTS and Node 22 LTS
+            (odd-numbered releases like 21 and 23 are excluded by vitest@4 and
+            friends). CI runs on Node 22. The Dockerfile uses{" "}
+            <code>node:20-alpine</code> for the runtime image. Local dev should
+            match CI: Node 22 LTS. See the Node Version Policy below for the why
+            and how.
           </p>
         </div>
         <ul className="list-disc pl-6 space-y-2 text-muted-foreground">
           <li>
-            <strong>Node.js 22 LTS</strong> (the <code>.nvmrc</code> at the
-            repo root says <code>22</code>)
+            <strong>Node.js 22 LTS</strong> (the <code>.nvmrc</code> at the repo
+            root says <code>22</code>)
           </li>
           <li>
             <strong>npm 10+</strong> (ships with Node 22)
@@ -404,10 +396,10 @@ export default function DevelopersPage() {
         className="ml-0"
       >
         <p className="text-muted-foreground">
-          VulnRadar standardises on <strong>Node.js 22 LTS</strong>. Node 20
-          LTS is also supported (engines field in package.json accepts both).
-          Odd-numbered releases (21, 23) and pre-20 builds are not supported
-          and are not investigated in bug reports.
+          VulnRadar standardises on <strong>Node.js 22 LTS</strong>. Node 20 LTS
+          is also supported (engines field in package.json accepts both).
+          Odd-numbered releases (21, 23) and pre-20 builds are not supported and
+          are not investigated in bug reports.
         </p>
         <p className="text-muted-foreground mt-3">
           The following packages list an explicit <code>engines</code> field
@@ -444,9 +436,9 @@ node --version  # should print v22.x.x`}
         <DocsCallout variant="warning">
           <p>
             Bug reports on unsupported Node versions will be closed without
-            investigation. The fix is <code>nvm use</code>, not a code
-            change. If a real bug exists on Node 22 LTS, it will reproduce
-            there too — open the report against 22 and we will look at it.
+            investigation. The fix is <code>nvm use</code>, not a code change.
+            If a real bug exists on Node 22 LTS, it will reproduce there too —
+            open the report against 22 and we will look at it.
           </p>
         </DocsCallout>
       </DocsSection>
@@ -626,8 +618,8 @@ npm run lint:fix    # auto-fix`}
         <p className="text-muted-foreground">
           <code>tsc --noEmit</code> is a hard gate in CI. The build also fails
           on TypeScript errors via Next.js (<code>next.config.mjs</code> has{" "}
-          <code>typescript.ignoreBuildErrors</code> unset). All merged code
-          must type-check cleanly.
+          <code>typescript.ignoreBuildErrors</code> unset). All merged code must
+          type-check cleanly.
         </p>
       </DocsSection>
 
@@ -637,9 +629,7 @@ npm run lint:fix    # auto-fix`}
         icon={GitBranch}
         className="ml-0"
       >
-        <p className="text-muted-foreground">
-          Conventional Commits format:
-        </p>
+        <p className="text-muted-foreground">Conventional Commits format:</p>
         <CodeBlock
           language="text"
           code={`<type>(<scope>): <subject>
@@ -713,8 +703,12 @@ npm run lint:fix    # auto-fix`}
             Run <code>npm run lint</code>, <code>npm run typecheck</code>,{" "}
             <code>npm test</code>, and <code>npm run build</code> locally
           </li>
-          <li>Use the PR template (<code>.github/pull_request_template.md</code>)</li>
-          <li>Wait for CI (lint + typecheck + test + build + auto-applied labels)</li>
+          <li>
+            Use the PR template (<code>.github/pull_request_template.md</code>)
+          </li>
+          <li>
+            Wait for CI (lint + typecheck + test + build + auto-applied labels)
+          </li>
           <li>Request review from CODEOWNERS on security-critical paths</li>
           <li>After 1+ approval, squash-merge</li>
         </ol>
@@ -747,8 +741,8 @@ npm run lint:fix    # auto-fix`}
             <code>create-fresh-db/</code>, <code>_lib/</code>)
           </li>
           <li>
-            <code>instrumentation.ts</code> — Next.js startup hooks (schema
-            init + version check)
+            <code>instrumentation.ts</code> — Next.js startup hooks (schema init
+            + version check)
           </li>
           <li>
             <code>middleware.ts</code> — Auth middleware
@@ -773,17 +767,18 @@ npm run lint:fix    # auto-fix`}
       >
         <ol className="list-decimal pl-6 space-y-3 text-muted-foreground">
           <li>
-            <strong>Editing <code>lib/types/config.ts</code> defaults</strong>{" "}
+            <strong>
+              Editing <code>lib/types/config.ts</code> defaults
+            </strong>{" "}
             — they are derived from <code>config-values.ts</code>. Edit{" "}
             <code>config-values.ts</code> instead.
           </li>
           <li>
             <strong>Adding a database table</strong> — add the{" "}
             <code>CREATE TABLE IF NOT EXISTS</code> to{" "}
-            <code>instrumentation.ts</code> (the canonical source) AND mirror
-            it to <code>scripts/migrate/versions/_snippets.mjs</code>.
-            <code>npm run audit:v2-tables</code> detects drift between the
-            two.
+            <code>instrumentation.ts</code> (the canonical source) AND mirror it
+            to <code>scripts/migrate/versions/_snippets.mjs</code>.
+            <code>npm run audit:v2-tables</code> detects drift between the two.
           </li>
           <li>
             <strong>Adding a new API route</strong> — copy an existing one in{" "}
@@ -793,8 +788,8 @@ npm run lint:fix    # auto-fix`}
             helper from <code>lib/rate-limiting/</code>.
           </li>
           <li>
-            <strong>Adding a new icon</strong> — use{" "}
-            <code>lucide-react</code> (default) or <code>react-icons</code>
+            <strong>Adding a new icon</strong> — use <code>lucide-react</code>{" "}
+            (default) or <code>react-icons</code>
             (already installed). Don&apos;t bundle a new icon set.
           </li>
           <li>
@@ -808,8 +803,8 @@ npm run lint:fix    # auto-fix`}
       <DocsSection id="debugging" title="Debugging" icon={Zap} className="ml-0">
         <ul className="list-disc pl-6 space-y-2 text-muted-foreground">
           <li>
-            <strong>Server logs:</strong> stdout from{" "}
-            <code>npm run dev</code> or <code>docker compose logs -f app</code>
+            <strong>Server logs:</strong> stdout from <code>npm run dev</code>{" "}
+            or <code>docker compose logs -f app</code>
           </li>
           <li>
             <strong>Database queries:</strong> temporarily add{" "}
@@ -817,15 +812,14 @@ npm run lint:fix    # auto-fix`}
             (or any <code>pool.query</code> caller)
           </li>
           <li>
-            <strong>Auth issues:</strong> inspect the session cookie in
-            browser devtools (name: <code>vulnradar_session</code>)
+            <strong>Auth issues:</strong> inspect the session cookie in browser
+            devtools (name: <code>vulnradar_session</code>)
           </li>
           <li>
             <strong>Build issues:</strong> the Dockerfile does{" "}
-            <strong>not</strong> use Next.js <code>output: standalone</code>;
-            it copies <code>.next</code> + <code>node_modules</code> from
-            the build stage. Comments in <code>next.config.mjs</code>{" "}
-            explain why.
+            <strong>not</strong> use Next.js <code>output: standalone</code>; it
+            copies <code>.next</code> + <code>node_modules</code> from the build
+            stage. Comments in <code>next.config.mjs</code> explain why.
           </li>
         </ul>
       </DocsSection>

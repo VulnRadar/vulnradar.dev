@@ -67,10 +67,9 @@ export default function ArchitecturePage() {
           lives in this repository.
         </p>
         <DocsCallout variant="info" title="Single source of truth">
-          Almost every tunable lives in{" "}
-          <code>lib/config/config-values.ts</code>. The rest of the config
-          system is built from those constants. Edit there, not in random
-          files.
+          Almost every tunable lives in <code>lib/config/config-values.ts</code>
+          . The rest of the config system is built from those constants. Edit
+          there, not in random files.
         </DocsCallout>
       </DocsSection>
 
@@ -165,13 +164,13 @@ export default function ArchitecturePage() {
               <code>loadConfig</code>, <code>getConfigValue</code>)
             </li>
             <li>
-              <code>lib/config/constants.ts</code> — re-exports + derived
-              maps (<code>RATE_LIMITS</code>, <code>BILLING_PLAN_LIMITS</code>,{" "}
+              <code>lib/config/constants.ts</code> — re-exports + derived maps (
+              <code>RATE_LIMITS</code>, <code>BILLING_PLAN_LIMITS</code>,{" "}
               <code>ROUTES</code>, <code>API</code>)
             </li>
             <li>
-              <code>lib/config/client-constants.ts</code> — client-safe
-              subset (no server-only secrets)
+              <code>lib/config/client-constants.ts</code> — client-safe subset
+              (no server-only secrets)
             </li>
           </ul>
         </DocsSubSection>
@@ -186,8 +185,7 @@ export default function ArchitecturePage() {
             <li>
               <strong>Pool:</strong> single instance in{" "}
               <code>lib/database/db.ts</code> (max 10, 5s connect timeout,{" "}
-              <code>DATABASE_SSL</code>/<code>DATABASE_SSL_CA</code>{" "}
-              respected)
+              <code>DATABASE_SSL</code>/<code>DATABASE_SSL_CA</code> respected)
             </li>
             <li>
               <strong>Schema:</strong> 34 tables created by{" "}
@@ -202,8 +200,7 @@ export default function ArchitecturePage() {
               <code>CONFIG_MIN_SCHEMA_VERSION</code>
             </li>
             <li>
-              <strong>Migration:</strong>{" "}
-              <code>npm run db:migrate</code> runs{" "}
+              <strong>Migration:</strong> <code>npm run db:migrate</code> runs{" "}
               <code>scripts/migrate/migrate.mjs</code> (interactive, with{" "}
               <code>--dry-run</code>)
             </li>
@@ -224,28 +221,25 @@ export default function ArchitecturePage() {
         <DocsSubSection title="3. Authentication">
           <ul className="list-disc pl-6 space-y-2 text-muted-foreground">
             <li>
-              <strong>Sessions:</strong> DB-backed (table{" "}
-              <code>sessions</code>), cookie value is a 64-hex random id,
-              httpOnly + sameSite=lax + 7-day TTL. See{" "}
-              <code>lib/auth/auth.ts</code>.
+              <strong>Sessions:</strong> DB-backed (table <code>sessions</code>
+              ), cookie value is a 64-hex random id, httpOnly + sameSite=lax +
+              7-day TTL. See <code>lib/auth/auth.ts</code>.
             </li>
             <li>
-              <strong>Password hashing:</strong>{" "}
-              <code>node:crypto</code> scrypt (N=131072, r=8, p=1, 16-byte
-              salt, 64-byte derived key). Format:{" "}
+              <strong>Password hashing:</strong> <code>node:crypto</code> scrypt
+              (N=131072, r=8, p=1, 16-byte salt, 64-byte derived key). Format:{" "}
               <code>N:r:p:saltHex:hashHex</code>.
             </li>
             <li>
-              <strong>2FA:</strong> hand-rolled TOTP (RFC 6238, SHA-1, 6
-              digits, 30s step, ±1 window) in <code>lib/auth/totp.ts</code>.
-              Backup codes (8 per user, hashed via scrypt). Email 2FA
-              alternative in <code>lib/email/email.ts</code>.
+              <strong>2FA:</strong> hand-rolled TOTP (RFC 6238, SHA-1, 6 digits,
+              30s step, ±1 window) in <code>lib/auth/totp.ts</code>. Backup
+              codes (8 per user, hashed via scrypt). Email 2FA alternative in{" "}
+              <code>lib/email/email.ts</code>.
             </li>
             <li>
-              <strong>Password reset / email verify:</strong> 32-byte hex
-              tokens stored as <code>sha256(token)</code> in their respective
-              tables; lifetimes are{" "}
-              <code>CONFIG_PASSWORD_RESET_HOURS=1</code> and{" "}
+              <strong>Password reset / email verify:</strong> 32-byte hex tokens
+              stored as <code>sha256(token)</code> in their respective tables;
+              lifetimes are <code>CONFIG_PASSWORD_RESET_HOURS=1</code> and{" "}
               <code>CONFIG_EMAIL_VERIFICATION_HOURS=24</code>.
             </li>
             <li>
@@ -272,30 +266,30 @@ export default function ArchitecturePage() {
           <p>The detection engine is split into four files:</p>
           <ul className="list-disc pl-6 space-y-2 text-muted-foreground">
             <li>
-              <code>lib/scanner/checks.ts</code> — 215 sync detector
-              functions; one <code>Finding</code> per match
+              <code>lib/scanner/checks.ts</code> — 215 sync detector functions;
+              one <code>Finding</code> per match
             </li>
             <li>
               <code>lib/scanner/checks-data.json</code> — human-readable
-              metadata (title, description, severity, category, fix steps,
-              code examples) for every detector. 311 entries.
+              metadata (title, description, severity, category, fix steps, code
+              examples) for every detector. 311 entries.
             </li>
             <li>
               <code>lib/scanner/async-checks.ts</code> — network-dependent
-              checks run in parallel: DNS (SPF, DMARC, DKIM, DNSSEC via
-              Google + Cloudflare DoH), TLS handshake (self-signed / expired /
-              weak protocol), live-fetch (robots.txt sensitive paths,
-              security.txt presence)
+              checks run in parallel: DNS (SPF, DMARC, DKIM, DNSSEC via Google +
+              Cloudflare DoH), TLS handshake (self-signed / expired / weak
+              protocol), live-fetch (robots.txt sensitive paths, security.txt
+              presence)
             </li>
             <li>
-              <code>lib/scanner/protocols/</code> — protocol-specific
-              warnings: <code>https.ts</code>, <code>websocket.ts</code>{" "}
-              (8 check IDs), <code>ftp.ts</code> (4 check IDs)
+              <code>lib/scanner/protocols/</code> — protocol-specific warnings:{" "}
+              <code>https.ts</code>, <code>websocket.ts</code> (8 check IDs),{" "}
+              <code>ftp.ts</code> (4 check IDs)
             </li>
             <li>
               <code>lib/scanner/safe-fetch.ts</code> — SSRF protection: blocks
-              private IP ranges, localhost, .local/.internal/.lan hostnames;
-              15s default fetch timeout
+              private IP ranges, localhost, .local/.internal/.lan hostnames; 15s
+              default fetch timeout
             </li>
             <li>
               <code>lib/scanner/access-rules.ts</code> — IP/URL blacklist +
@@ -303,25 +297,24 @@ export default function ArchitecturePage() {
             </li>
             <li>
               <code>lib/scanner/safety-rating.ts</code> — maps findings to{" "}
-              <code>safe</code> / <code>caution</code> / <code>unsafe</code>{" "}
-              for badges
+              <code>safe</code> / <code>caution</code> / <code>unsafe</code> for
+              badges
             </li>
           </ul>
           <p>
-            Categories (<code>lib/scanner/types.ts</code>):{" "}
-            <code>headers</code>, <code>ssl</code>, <code>content</code>,{" "}
-            <code>cookies</code>, <code>configuration</code>,{" "}
-            <code>information-disclosure</code>, <code>dns</code>. Severities:{" "}
-            <code>info</code>, <code>low</code>, <code>medium</code>,{" "}
-            <code>high</code>, <code>critical</code>.
+            Categories (<code>lib/scanner/types.ts</code>): <code>headers</code>
+            , <code>ssl</code>, <code>content</code>, <code>cookies</code>,{" "}
+            <code>configuration</code>, <code>information-disclosure</code>,{" "}
+            <code>dns</code>. Severities: <code>info</code>, <code>low</code>,{" "}
+            <code>medium</code>, <code>high</code>, <code>critical</code>.
           </p>
         </DocsSubSection>
 
         <DocsSubSection title="5. API Layer">
           <p>
-            REST v2 is the current API. v1 is{" "}
-            <strong>deprecated</strong> with sunset 2026-12-01 (see{" "}
-            <code>lib/api/api-deprecation.ts</code>). Each route handler:
+            REST v2 is the current API. v1 is <strong>deprecated</strong> with
+            sunset 2026-12-01 (see <code>lib/api/api-deprecation.ts</code>).
+            Each route handler:
           </p>
           <ul className="list-disc pl-6 space-y-2 text-muted-foreground">
             <li>
@@ -334,14 +327,14 @@ export default function ArchitecturePage() {
               <code>validateApiKey()</code> (Bearer)
             </li>
             <li>
-              Validates input with Zod schemas using the{" "}
-              <code>Validate</code> helper
+              Validates input with Zod schemas using the <code>Validate</code>{" "}
+              helper
             </li>
             <li>
-              Applies a rate limit via <code>checkRateLimit</code>{" "}
-              (<code>lib/rate-limiting/rate-limit.ts</code>) and/or a daily
-              quota via <code>checkAndRecordRequest</code>{" "}
-              (<code>lib/rate-limiting/daily-limits.ts</code>)
+              Applies a rate limit via <code>checkRateLimit</code> (
+              <code>lib/rate-limiting/rate-limit.ts</code>) and/or a daily quota
+              via <code>checkAndRecordRequest</code> (
+              <code>lib/rate-limiting/daily-limits.ts</code>)
             </li>
             <li>
               Returns <code>NextResponse.json</code> with a standard shape on
@@ -353,12 +346,11 @@ export default function ArchitecturePage() {
         <DocsSubSection title="6. Billing">
           <ul className="list-disc pl-6 space-y-2 text-muted-foreground">
             <li>
-              Plans are defined once in{" "}
-              <code>lib/billing/catalog.ts</code>:{" "}
+              Plans are defined once in <code>lib/billing/catalog.ts</code>:{" "}
               <code>free</code>, <code>core_supporter</code>,{" "}
-              <code>pro_supporter</code>, <code>elite_supporter</code>.
-              Each paid plan auto-generates monthly + yearly variants (yearly
-              is 20% off).
+              <code>pro_supporter</code>, <code>elite_supporter</code>. Each
+              paid plan auto-generates monthly + yearly variants (yearly is 20%
+              off).
             </li>
             <li>
               Stripe products are auto-created on first call to{" "}
@@ -369,8 +361,7 @@ export default function ArchitecturePage() {
               Subscription state lives on the <code>users</code> row:{" "}
               <code>plan</code>, <code>stripe_customer_id</code>,{" "}
               <code>stripe_subscription_id</code>,{" "}
-              <code>subscription_status</code>,{" "}
-              <code>current_period_end</code>,{" "}
+              <code>subscription_status</code>, <code>current_period_end</code>,{" "}
               <code>cancel_at_period_end</code>
             </li>
             <li>
@@ -400,18 +391,16 @@ export default function ArchitecturePage() {
           <ul className="list-disc pl-6 space-y-2 text-muted-foreground mt-3">
             <li>
               <code>lib/auth/permissions.ts</code> — server-safe role +
-              permission maps (<code>ROLES</code>,{" "}
-              <code>ROLE_PERMISSIONS</code>, <code>userHasPermission</code>,
-              <code>canManageRole</code>)
+              permission maps (<code>ROLES</code>, <code>ROLE_PERMISSIONS</code>
+              , <code>userHasPermission</code>,<code>canManageRole</code>)
             </li>
             <li>
               <code>lib/auth/permissions-client.ts</code> — mirror for client
               components
             </li>
             <li>
-              <code>lib/auth/authorization.ts</code> — route-handler
-              helpers: <code>requireStaff(role?)</code>,{" "}
-              <code>requireAdmin()</code>,{" "}
+              <code>lib/auth/authorization.ts</code> — route-handler helpers:{" "}
+              <code>requireStaff(role?)</code>, <code>requireAdmin()</code>,{" "}
               <code>verifyOwnership(resource, id)</code>,{" "}
               <code>verifyTeamMembership/Admin/Owner</code>,{" "}
               <code>logAuditAction()</code>

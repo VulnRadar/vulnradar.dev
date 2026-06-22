@@ -171,9 +171,7 @@ export async function canMakeRequest(userId: number): Promise<{
  * still under the per-plan cap, then re-reads the total once at the end so
  * the response shape stays the same for callers.
  */
-export async function checkAndRecordRequest(
-  userId: number,
-): Promise<{
+export async function checkAndRecordRequest(userId: number): Promise<{
   allowed: boolean;
   used: number;
   limit: number;

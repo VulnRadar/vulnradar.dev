@@ -1572,9 +1572,7 @@ export async function PATCH(request: NextRequest) {
         await client.query("BEGIN");
 
         // Sessions & auth
-        await client.query("DELETE FROM sessions WHERE user_id = $1", [
-          userId,
-        ]);
+        await client.query("DELETE FROM sessions WHERE user_id = $1", [userId]);
         await client.query(
           "DELETE FROM password_reset_tokens WHERE user_id = $1",
           [userId],
@@ -1595,9 +1593,7 @@ export async function PATCH(request: NextRequest) {
           "DELETE FROM api_usage WHERE api_key_id IN (SELECT id FROM api_keys WHERE user_id = $1)",
           [userId],
         );
-        await client.query("DELETE FROM api_keys WHERE user_id = $1", [
-          userId,
-        ]);
+        await client.query("DELETE FROM api_keys WHERE user_id = $1", [userId]);
 
         // Scans
         await client.query("DELETE FROM scan_tags WHERE user_id = $1", [
@@ -1660,10 +1656,9 @@ export async function PATCH(request: NextRequest) {
         ]);
 
         // Admin metadata
-        await client.query(
-          "DELETE FROM admin_user_notes WHERE user_id = $1",
-          [userId],
-        );
+        await client.query("DELETE FROM admin_user_notes WHERE user_id = $1", [
+          userId,
+        ]);
         await client.query(
           "DELETE FROM admin_audit_log WHERE target_user_id = $1",
           [userId],

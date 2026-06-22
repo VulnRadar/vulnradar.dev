@@ -78,12 +78,14 @@ const quickStartSteps: Step[] = [
   {
     step: 1,
     title: "Create an account",
-    description: "Sign up at the app or self-host and create the first user via signup.",
+    description:
+      "Sign up at the app or self-host and create the first user via signup.",
   },
   {
     step: 2,
     title: "Generate an API key",
-    description: "Open Profile -> API Keys -> Generate New Key. Store the raw key; it is shown only once.",
+    description:
+      "Open Profile -> API Keys -> Generate New Key. Store the raw key; it is shown only once.",
   },
   {
     step: 3,
@@ -93,7 +95,8 @@ const quickStartSteps: Step[] = [
   {
     step: 4,
     title: "Read the results",
-    description: "Findings are ranked by severity, each with a CVSS score and a fix recipe.",
+    description:
+      "Findings are ranked by severity, each with a CVSS score and a fix recipe.",
   },
 ];
 
@@ -310,7 +313,10 @@ export default function DocsPage() {
               </p>
               <ul className="text-[10px] sm:text-xs text-muted-foreground space-y-1 mb-3 sm:mb-4">
                 {section.features.map((item, i) => (
-                  <li key={i} className="flex items-center gap-1.5 line-clamp-1">
+                  <li
+                    key={i}
+                    className="flex items-center gap-1.5 line-clamp-1"
+                  >
                     <span className="h-1 w-1 rounded-full bg-primary flex-shrink-0" />
                     <span className="line-clamp-1">{item}</span>
                   </li>

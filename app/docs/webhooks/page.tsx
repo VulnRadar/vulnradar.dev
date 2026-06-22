@@ -60,13 +60,10 @@ export default function WebhooksPage() {
         ]}
       />
 
-      <DocsSection
-        id="overview"
-        title="Overview"
-      >
+      <DocsSection id="overview" title="Overview">
         <p>
-          Webhooks fire after every successful scan triggered by a session or
-          an API key. Delivery is best-effort: one POST per webhook with a
+          Webhooks fire after every successful scan triggered by a session or an
+          API key. Delivery is best-effort: one POST per webhook with a
           10-second timeout. Failures are logged but not retried. The server
           enforces a per-user cap of <strong>5</strong> webhooks.
         </p>
@@ -78,15 +75,16 @@ export default function WebhooksPage() {
         icon={Bell}
       >
         <p className="text-muted-foreground">
-          {APP_NAME} detects the platform by matching the URL pattern.
-          Override with the <code>type</code> body field if needed.
+          {APP_NAME} detects the platform by matching the URL pattern. Override
+          with the <code>type</code> body field if needed.
         </p>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {[
             {
               name: "Discord",
-              pattern: "discord.com/api/webhooks/* or discordapp.com/api/webhooks/*",
+              pattern:
+                "discord.com/api/webhooks/* or discordapp.com/api/webhooks/*",
               description: "Rich embeds with color-coded severity",
               color: "bg-indigo-500/10 text-indigo-500 border-indigo-500/20",
             },
@@ -197,7 +195,10 @@ export default function WebhooksPage() {
   "status": 204
 }`}
             errors={[
-              { code: 400, description: "Your endpoint returned a non-2xx status" },
+              {
+                code: 400,
+                description: "Your endpoint returned a non-2xx status",
+              },
               { code: 404, description: "Webhook not found" },
             ]}
           />
@@ -256,9 +257,8 @@ export default function WebhooksPage() {
           />
           <p className="text-xs text-muted-foreground mt-3">
             Embed color: <code>0xef4444</code> (red, any critical),{" "}
-            <code>0xf97316</code> (orange, any high),{" "}
-            <code>0xeab308</code> (yellow, any medium),{" "}
-            <code>0x22c55e</code> (green, otherwise).
+            <code>0xf97316</code> (orange, any high), <code>0xeab308</code>{" "}
+            (yellow, any medium), <code>0x22c55e</code> (green, otherwise).
           </p>
         </Card>
 
@@ -335,28 +335,28 @@ export default function WebhooksPage() {
             <strong>SSRF protection:</strong> webhooks cannot target localhost,
             <code>127.0.0.1</code>, <code>0.0.0.0</code>, <code>[::1]</code>,
             <code>169.254.169.254</code> (AWS metadata),{" "}
-            <code>metadata.google.internal</code>, <code>*.local</code>,
-            private IP ranges (10/8, 172.16/12, 192.168/16), or any hostname
-            that resolves to them.
+            <code>metadata.google.internal</code>, <code>*.local</code>, private
+            IP ranges (10/8, 172.16/12, 192.168/16), or any hostname that
+            resolves to them.
           </li>
           <li>
-            <strong>Timeout:</strong> 10 seconds per delivery
-            (<code>AbortSignal.timeout(10000)</code>).
+            <strong>Timeout:</strong> 10 seconds per delivery (
+            <code>AbortSignal.timeout(10000)</code>).
           </li>
           <li>
-            <strong>No retries:</strong> failures are logged to stderr with
-            the webhook URL, type, and error message. Build idempotency into
-            your consumer.
+            <strong>No retries:</strong> failures are logged to stderr with the
+            webhook URL, type, and error message. Build idempotency into your
+            consumer.
           </li>
           <li>
-            <strong>Per-user cap:</strong> 5 webhooks per user
-            (<code>webhooks/route.ts:86</code>). Delete one before creating
+            <strong>Per-user cap:</strong> 5 webhooks per user (
+            <code>webhooks/route.ts:86</code>). Delete one before creating
             another.
           </li>
           <li>
             <strong>Session-only API:</strong> Bearer keys cannot manage
-            webhooks — only logged-in users can create, list, test, and
-            delete them.
+            webhooks — only logged-in users can create, list, test, and delete
+            them.
           </li>
         </ul>
       </DocsSection>
@@ -370,15 +370,13 @@ export default function WebhooksPage() {
               Webhook. Copy the URL.
             </li>
             <li>
-              Log in to {APP_NAME}, open{" "}
-              <code>/profile</code> → Webhooks → Add Webhook.
+              Log in to {APP_NAME}, open <code>/profile</code> → Webhooks → Add
+              Webhook.
             </li>
+            <li>Paste the URL and an optional label. Type is auto-detected.</li>
             <li>
-              Paste the URL and an optional label. Type is auto-detected.
-            </li>
-            <li>
-              Click <strong>Test</strong>. A test payload posts to Discord;
-              you should see a colored embed within a few seconds.
+              Click <strong>Test</strong>. A test payload posts to Discord; you
+              should see a colored embed within a few seconds.
             </li>
           </ol>
         </Card>
@@ -388,7 +386,9 @@ export default function WebhooksPage() {
             Local development: receive on <code>webhook.site</code>
           </h3>
           <ol className="list-decimal pl-6 space-y-2 text-sm text-muted-foreground">
-            <li>Open <code>https://webhook.site</code> and copy the URL.</li>
+            <li>
+              Open <code>https://webhook.site</code> and copy the URL.
+            </li>
             <li>
               Paste it as a webhook in {APP_NAME}. It is detected as{" "}
               <code>generic</code>.

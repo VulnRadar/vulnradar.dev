@@ -73,7 +73,10 @@ const endpoints: Endpoint[] = [
     ],
     errors: [
       { code: 400, description: "Missing or invalid URL" },
-      { code: 401, description: "Unauthorized (session cookie or Bearer API key required)" },
+      {
+        code: 401,
+        description: "Unauthorized (session cookie or Bearer API key required)",
+      },
       { code: 422, description: "Target unreachable or blocking requests" },
       { code: 429, description: "Daily quota exceeded" },
     ],
@@ -237,9 +240,7 @@ const endpoints: Endpoint[] = [
       "Team members can see scans from other team members in the same team.",
       "Use /history/[id] for full details (findings, response headers).",
     ],
-    errors: [
-      { code: 401, description: "Unauthorized" },
-    ],
+    errors: [{ code: 401, description: "Unauthorized" }],
   },
   {
     id: "get-history-id",
@@ -278,18 +279,17 @@ const endpoints: Endpoint[] = [
   "success": true,
   "deleted": 47
 }`,
-    errors: [
-      { code: 401, description: "Unauthorized" },
-    ],
+    errors: [{ code: 401, description: "Unauthorized" }],
   },
   {
     id: "delete-history-id",
     method: "DELETE",
     path: "/history/[id]",
     title: "Delete a Single Scan",
-    description:
-      "Permanently delete a single scan by ID. Owner only.",
-    pathParams: [{ name: "id", type: "number", description: "Scan ID to delete" }],
+    description: "Permanently delete a single scan by ID. Owner only.",
+    pathParams: [
+      { name: "id", type: "number", description: "Scan ID to delete" },
+    ],
     responseExample: `{
   "success": true,
   "message": "Scan deleted successfully"
@@ -382,7 +382,8 @@ const endpoints: Endpoint[] = [
     method: "GET",
     path: "/keys",
     title: "List API Keys",
-    description: "List API keys for the authenticated user. Secret values are never returned.",
+    description:
+      "List API keys for the authenticated user. Secret values are never returned.",
     responseExample: `{
   "keys": [
     {
@@ -433,7 +434,9 @@ const endpoints: Endpoint[] = [
     title: "Rotate API Key",
     description:
       "Hard-delete the key and create a new one with the same name. Returns the new raw key once.",
-    pathParams: [{ name: "id", type: "number", description: "Key ID to rotate" }],
+    pathParams: [
+      { name: "id", type: "number", description: "Key ID to rotate" },
+    ],
     responseExample: `{
   "id": 2,
   "name": "CI",
@@ -449,8 +452,11 @@ const endpoints: Endpoint[] = [
     method: "POST",
     path: "/keys/[id]/revoke",
     title: "Revoke API Key",
-    description: "Set revoked_at on the key. The key stops working immediately.",
-    pathParams: [{ name: "id", type: "number", description: "Key ID to revoke" }],
+    description:
+      "Set revoked_at on the key. The key stops working immediately.",
+    pathParams: [
+      { name: "id", type: "number", description: "Key ID to revoke" },
+    ],
     responseExample: `{
   "success": true
 }`,
@@ -578,14 +584,13 @@ export default function APIDocsPage() {
       <DocsSection id="overview" title="Overview">
         <p className="text-sm sm:text-base text-muted-foreground">
           The v2 API is the current, supported version. v1 is{" "}
-          <strong>deprecated</strong> with sunset 2026-12-01
-          (<code>lib/api/api-deprecation.ts</code>); new integrations should
+          <strong>deprecated</strong> with sunset 2026-12-01 (
+          <code>lib/api/api-deprecation.ts</code>); new integrations should
           target v2.
         </p>
         <p className="text-sm sm:text-base text-muted-foreground">
-          All endpoints live under{" "}
-          <code>{APP_URL}/api/v2/</code>. Authentication is either a
-          session cookie or a Bearer API key with the{" "}
+          All endpoints live under <code>{APP_URL}/api/v2/</code>.
+          Authentication is either a session cookie or a Bearer API key with the{" "}
           <code>vr_live_</code> prefix (default{" "}
           <code>CONFIG_API_KEY_PREFIX</code>).
         </p>
@@ -607,16 +612,16 @@ export default function APIDocsPage() {
             <ol className="list-decimal list-inside space-y-2 text-sm text-muted-foreground">
               <li>Sign in to your {APP_NAME} account.</li>
               <li>
-                Open <strong className="text-foreground">Profile</strong>{" "}
-                → <strong className="text-foreground">API Keys</strong>.
+                Open <strong className="text-foreground">Profile</strong> →{" "}
+                <strong className="text-foreground">API Keys</strong>.
               </li>
               <li>
                 Click{" "}
                 <strong className="text-foreground">Generate New Key</strong>.
               </li>
               <li>
-                Copy and store the raw key (shown only once). Server stores
-                only an AES-256-GCM-encrypted form + a SHA-256 fingerprint.
+                Copy and store the raw key (shown only once). Server stores only
+                an AES-256-GCM-encrypted form + a SHA-256 fingerprint.
               </li>
             </ol>
           </div>
@@ -706,9 +711,12 @@ export default function APIDocsPage() {
       <DocsSection id="rate-limiting" title="Rate Limiting">
         <Card className="p-6 border-border/40">
           <p className="text-muted-foreground mb-6">
-            Per-API-key daily quota plus per-IP burst limits on auth
-            endpoints. Full reference on the{" "}
-            <a href="/docs/rate-limits" className="text-primary hover:underline">
+            Per-API-key daily quota plus per-IP burst limits on auth endpoints.
+            Full reference on the{" "}
+            <a
+              href="/docs/rate-limits"
+              className="text-primary hover:underline"
+            >
               Rate Limits
             </a>{" "}
             page.
@@ -724,7 +732,12 @@ export default function APIDocsPage() {
                   { scans: "25", api: "25", label: "Free" },
                   { scans: "100", api: "100", label: "Core" },
                   { scans: "150", api: "5,000", label: "Pro" },
-                  { scans: "500", api: "Unlimited", label: "Elite", highlight: true },
+                  {
+                    scans: "500",
+                    api: "Unlimited",
+                    label: "Elite",
+                    highlight: true,
+                  },
                 ].map((plan) => (
                   <div
                     key={plan.label}
@@ -785,10 +798,9 @@ X-RateLimit-Reset: 2026-03-12T00:00:00.000Z`}
             <DocsCallout variant="info" title="Web Sessions vs API Keys">
               <p>
                 Session-cookie scans use a separate counter (per-user daily
-                quota). API-key scans use a per-key counter. Both share the
-                same <code>X-RateLimit-*</code> headers but the{" "}
-                <code>Reset</code> semantics differ — see the Rate Limits
-                page.
+                quota). API-key scans use a per-key counter. Both share the same{" "}
+                <code>X-RateLimit-*</code> headers but the <code>Reset</code>{" "}
+                semantics differ — see the Rate Limits page.
               </p>
             </DocsCallout>
           </div>
@@ -798,8 +810,8 @@ X-RateLimit-Reset: 2026-03-12T00:00:00.000Z`}
       <DocsSection id="error-handling" title="Error Handling">
         <Card className="p-6 border-border/40">
           <p className="text-muted-foreground mb-6">
-            Standard HTTP status codes. Error responses include a JSON body
-            with at minimum an <code>error</code> string.
+            Standard HTTP status codes. Error responses include a JSON body with
+            at minimum an <code>error</code> string.
           </p>
 
           <div className="space-y-4">
@@ -908,9 +920,7 @@ X-RateLimit-Reset: 2026-03-12T00:00:00.000Z`}
                 key={i}
                 className="p-4 rounded-lg bg-secondary/20 border border-border/40"
               >
-                <h4 className="font-semibold text-sm mb-2">
-                  {practice.title}
-                </h4>
+                <h4 className="font-semibold text-sm mb-2">{practice.title}</h4>
                 <p className="text-xs text-muted-foreground">
                   {practice.description}
                 </p>
