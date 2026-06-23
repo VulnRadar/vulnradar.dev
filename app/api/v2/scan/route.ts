@@ -1,5 +1,5 @@
 ﻿import { NextRequest, NextResponse } from "next/server";
-import { allChecks, getFilteredChecks } from "@/lib/scanner/checks";
+import { allChecks, getChecksByCategory } from "@/lib/scanner/registry";
 import { runAsyncChecks } from "@/lib/scanner/async-checks";
 import { getSession } from "@/lib/auth";
 import {
@@ -29,6 +29,7 @@ import {
 } from "@/lib/scanner/protocols";
 import { runWebSocketChecks } from "@/lib/scanner/protocols/websocket";
 import { runFtpChecks } from "@/lib/scanner/protocols/ftp";
+import { grabBanner, bannerVersion } from "@/lib/scanner/protocols/banner";
 import { validateScanTarget, safeFetch } from "@/lib/scanner/safe-fetch";
 import { checkAccessRules } from "@/lib/scanner/access-rules";
 import { sendNotificationEmail } from "@/lib/notifications/notifications";
@@ -44,7 +45,23 @@ const SEVERITY_ORDER: Record<Severity, number> = {
 
 const MAX_BODY_SIZE = 1 * 1024 * 1024; // 1 MB max response body
 
-const SUPPORTED_PROTOCOLS = ["http:", "https:", "ws:", "wss:", "ftp:", "ftps:"];
+const SUPPORTED_PROTOCOLS = [
+  "http:",
+  "https:",
+  "ws:",
+  "wss:",
+  "ftp:",
+  "ftps:",
+  "ssh:",
+  "sftp:",
+  "smtp:",
+  "smtps:",
+  "imap:",
+  "imaps:",
+  "pop3:",
+  "pop3s:",
+  "mongodb:",
+];
 
 function isValidUrl(input: string): boolean {
   try {
@@ -55,11 +72,28 @@ function isValidUrl(input: string): boolean {
   }
 }
 
-function getProtocolType(url: string): "http" | "websocket" | "ftp" {
+function getProtocolType(
+  url: string,
+):
+  | "http"
+  | "websocket"
+  | "ftp"
+  | "ssh"
+  | "smtp"
+  | "imap"
+  | "pop3"
+  | "mongodb"
+  | "other" {
   const protocol = getProtocolFromUrl(url);
   if (protocol === "ws" || protocol === "wss") return "websocket";
   if (protocol === "ftp" || protocol === "ftps") return "ftp";
-  return "http";
+  if (protocol === "ssh" || protocol === "sftp") return "ssh";
+  if (protocol === "smtp" || protocol === "smtps") return "smtp";
+  if (protocol === "imap" || protocol === "imaps") return "imap";
+  if (protocol === "pop3" || protocol === "pop3s") return "pop3";
+  if (protocol === "mongodb") return "mongodb";
+  if (protocol === "https" || protocol === "http") return "http";
+  return "other";
 }
 
 /**
@@ -312,6 +346,56 @@ export async function POST(request: NextRequest) {
     } else if (protocolType === "ftp") {
       // FTP protocol checks - limited to protocol-level security
       protocolSpecificFindings.push(...runFtpChecks(url));
+    } else if (
+      protocolType === "ssh" ||
+      protocolType === "smtp" ||
+      protocolType === "imap" ||
+      protocolType === "pop3" ||
+      protocolType === "mongodb"
+    ) {
+      // Banner-grab protocols — open a TCP socket, read the greeting,
+      // and feed it into the protocol-specific findings already produced
+      // by getProtocolFindings().
+      try {
+        const parsed = new URL(url);
+        const port = parsed.port
+          ? parseInt(parsed.port, 10)
+          : protocolType === "ssh"
+            ? 22
+            : protocolType === "smtp"
+              ? 587
+              : protocolType === "imap"
+                ? 143
+                : protocolType === "pop3"
+                  ? 110
+                  : 27017;
+        const banner = await grabBanner(protocolType, parsed.hostname, port);
+        if (banner) {
+          const version = bannerVersion(banner.banner);
+          if (version) {
+            protocolSpecificFindings.push({
+              id: `banner-version-${Date.now()}`,
+              title: `${protocolType.toUpperCase()} service discloses version`,
+              description: `Banner reveals software version to anyone who connects.`,
+              severity: "info",
+              category: "configuration",
+              evidence: banner.banner.slice(0, 256),
+              riskImpact:
+                "Version disclosure helps attackers match known CVEs to your service.",
+              explanation:
+                "Most SMTP/SSH/IMAP/POP3 daemons emit a version string on connect. Use the `smtpd_banner`, `DebianBanner no`, or `Banner /etc/issue.net` directives to suppress it.",
+              fixSteps: [
+                "Set the server banner to a generic string.",
+                "Restrict the service to authenticated internal users where possible.",
+              ],
+              codeExamples: [],
+            });
+          }
+        }
+      } catch {
+        // Banner grab failed — that's OK, the protocol-level findings
+        // already cover the high-severity issues.
+      }
     } else {
       // Standard HTTP/HTTPS fetch
       try {
@@ -358,7 +442,7 @@ export async function POST(request: NextRequest) {
 
     // Run synchronous body/header checks (cap body at 1MB for regex safety)
     const checks = selectedScanners
-      ? getFilteredChecks(selectedScanners)
+      ? getChecksByCategory(selectedScanners as never[])
       : allChecks;
     const bodyForChecks =
       responseBody.length > 1_000_000

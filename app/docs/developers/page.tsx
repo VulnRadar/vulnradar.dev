@@ -239,7 +239,7 @@ export default function DevelopersPage() {
               <CodeBlock
                 code={`{
   "success": true,
-  "count": 311,
+  "count": 709,
   "data": [
     {
       "id": "hsts-missing",

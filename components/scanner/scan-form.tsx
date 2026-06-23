@@ -16,7 +16,6 @@ import {
   FileCode,
   Eye,
   Settings,
-  Mail,
   ChevronDown,
   List,
 } from "lucide-react";
@@ -35,7 +34,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { TOTAL_CHECKS_LABEL } from "@/lib/config/constants";
 import { cn } from "@/lib/ui/utils";
-import type { ScanStatus } from "@/lib/scanner/types";
+import type { Category, ScanStatus } from "@/lib/scanner/types";
 // R7: SCAN_PROTOCOLS, ScanProtocol, and isHttpProtocol moved to
 // lib/scanner/protocols/index.ts (single source of truth).
 import {
@@ -43,9 +42,13 @@ import {
   type ScanProtocol,
   isHttpProtocol,
 } from "@/lib/scanner/protocols";
+import { Cpu, KeyRound, Boxes, MailCheck, Network } from "lucide-react";
 
 export type ScanMode = "quick" | "deep" | "bulk";
 
+// Scanner categories shown in the protocol selector. Mirrors the 12
+// categories in lib/scanner/types.ts (Category). Each entry maps to one
+// of those categories; the user picks which families of checks to run.
 export const SCANNER_CATEGORIES = [
   {
     id: "headers",
@@ -87,11 +90,47 @@ export const SCANNER_CATEGORIES = [
   },
   {
     id: "dns",
-    label: "DNS & Email",
-    icon: Mail,
-    description: "SPF, DMARC, DKIM, DNSSEC records",
+    label: "DNS Records",
+    icon: Network,
+    description: "A/AAAA/MX/CAA/SOA/NS recon",
   },
-] as const;
+  {
+    id: "email",
+    label: "Email Security",
+    icon: MailCheck,
+    description: "SPF, DMARC, DKIM, DNSSEC, MTA-STS, TLS-RPT, BIMI",
+  },
+  {
+    id: "tls",
+    label: "TLS Details",
+    icon: Lock,
+    description: "Cipher suites, OCSP stapling, CT logs, key sizes",
+  },
+  {
+    id: "code",
+    label: "Code (SAST)",
+    icon: Cpu,
+    description:
+      "eval / innerHTML / SSTI / SQLi / XSS sinks / hardcoded secrets",
+  },
+  {
+    id: "secrets-extended",
+    label: "Secrets",
+    icon: KeyRound,
+    description: "API keys, JWTs, private keys, connection strings, PII",
+  },
+  {
+    id: "api",
+    label: "API Surface",
+    icon: Boxes,
+    description: "GraphQL, REST, OpenAPI/Swagger, JSONP, rate limiting",
+  },
+] as const satisfies readonly {
+  id: Category;
+  label: string;
+  icon: typeof Shield;
+  description: string;
+}[];
 
 export type ScannerCategoryId = (typeof SCANNER_CATEGORIES)[number]["id"];
 

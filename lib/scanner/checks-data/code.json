@@ -1,0 +1,2160 @@
+[
+  {
+    "id": "dom-xss-sinks",
+    "type": "body-pattern",
+    "title": "Potential DOM-Based XSS Sinks",
+    "category": "code",
+    "severity": "HIGH",
+    "description": "Patterns where user-controlled input flows into dangerous DOM sinks detected.",
+    "evidence": "Detected dangerous DOM sink patterns.",
+    "riskImpact": "DOM-based XSS allows attackers to execute arbitrary JavaScript by crafting malicious URLs.",
+    "explanation": "DOM XSS occurs when JavaScript takes data from an attacker-controllable source and passes it to a dangerous sink.",
+    "fixSteps": [
+      "Never assign URL parameters directly to innerHTML.",
+      "Use textContent instead of innerHTML.",
+      "Sanitize HTML input with DOMPurify.",
+      "Use parameterized DOM APIs."
+    ],
+    "codeExamples": [
+      {
+        "label": "Safe DOM",
+        "language": "javascript",
+        "code": "// UNSAFE:\nelement.innerHTML = location.hash.slice(1);\n// SAFE:\nelement.textContent = location.hash.slice(1);"
+      }
+    ]
+  },
+  {
+    "id": "insecure-form-submission",
+    "type": "combined",
+    "title": "Form Submits Data Over Insecure HTTP",
+    "category": "code",
+    "severity": "CRITICAL",
+    "description": "An HTTPS page contains a form that submits data to an HTTP endpoint.",
+    "evidence": "Found form posting to HTTP on HTTPS page.",
+    "riskImpact": "User credentials and form inputs are transmitted in plaintext.",
+    "explanation": "When a secure page sends form data to an insecure endpoint, all submitted data travels unencrypted.",
+    "fixSteps": [
+      "Change all form action URLs to use HTTPS.",
+      "Use relative URLs so forms inherit the page protocol.",
+      "Implement HSTS."
+    ],
+    "codeExamples": [
+      {
+        "label": "Fix",
+        "language": "html",
+        "code": "<!-- BAD -->\n<form action=\"http://example.com/login\" method=\"POST\">\n<!-- GOOD -->\n<form action=\"/login\" method=\"POST\">"
+      }
+    ]
+  },
+  {
+    "id": "prototype-pollution",
+    "type": "body-pattern",
+    "title": "Potential Prototype Pollution Sinks Detected",
+    "category": "code",
+    "severity": "MEDIUM",
+    "description": "Vulnerable library functions that could allow modification of Object.prototype.",
+    "evidence": "Prototype pollution sink patterns detected.",
+    "riskImpact": "Prototype pollution can lead to XSS, privilege escalation, or denial of service.",
+    "explanation": "Vulnerable functions like Lodash merge/set or jQuery.extend with deep merging can be exploited via __proto__ keys.",
+    "fixSteps": [
+      "Update vulnerable libraries: Lodash to 4.17.12+, jQuery to 3.4.0+.",
+      "Use Object.create(null) for dictionary objects.",
+      "Sanitize user input to reject __proto__ and constructor keys.",
+      "Use Map instead of plain objects for user-controlled data."
+    ],
+    "codeExamples": [
+      {
+        "label": "Safe merge",
+        "language": "javascript",
+        "code": "function safeMerge(target, source) {\n  for (const key of Object.keys(source)) {\n    if (key === '__proto__' || key === 'constructor' || key === 'prototype') continue;\n    target[key] = source[key];\n  }\n}"
+      }
+    ]
+  },
+  {
+    "id": "command-injection",
+    "type": "body-pattern",
+    "title": "Potential Command Injection Vectors",
+    "category": "code",
+    "severity": "HIGH",
+    "description": "Code patterns that execute system commands, potentially vulnerable to command injection.",
+    "evidence": "Command execution patterns detected.",
+    "riskImpact": "Command injection allows attackers to execute arbitrary system commands.",
+    "explanation": "Executing system commands with user-controlled input is extremely dangerous.",
+    "fixSteps": [
+      "Never pass user input to system command functions.",
+      "Use language-native APIs instead of shell commands.",
+      "Run with minimal privileges."
+    ],
+    "codeExamples": [
+      {
+        "label": "Safe alternative",
+        "language": "typescript",
+        "code": "// BAD: exec(`rm ${userFile}`);\n// GOOD:\nimport { unlink } from 'fs/promises';\nawait unlink(sanitizedPath);"
+      }
+    ]
+  },
+  {
+    "id": "xxe-vulnerability",
+    "type": "body-pattern",
+    "title": "XML External Entity (XXE) Declaration Detected",
+    "category": "code",
+    "severity": "HIGH",
+    "description": "XML entity declarations using SYSTEM keyword that can enable XXE attacks.",
+    "evidence": "XXE entity declaration patterns found.",
+    "riskImpact": "XXE can lead to file disclosure, SSRF, denial of service, and sometimes remote code execution.",
+    "explanation": "XML External Entity attacks exploit XML parsers that process external entities.",
+    "fixSteps": [
+      "Disable external entity processing in all XML parsers.",
+      "Use JSON instead of XML when possible.",
+      "Keep XML parsing libraries updated."
+    ],
+    "codeExamples": [
+      {
+        "label": "Disable XXE (Node.js)",
+        "language": "javascript",
+        "code": "const doc = libxmljs.parseXml(xmlString, { noent: false, nonet: true });"
+      }
+    ]
+  },
+  {
+    "id": "path-traversal",
+    "type": "body-pattern",
+    "title": "Potential Path Traversal Vulnerability",
+    "category": "code",
+    "severity": "HIGH",
+    "description": "File operations with user-controlled paths that could allow directory traversal.",
+    "evidence": "Suspicious file operation patterns.",
+    "riskImpact": "Path traversal allows attackers to read arbitrary files on the server.",
+    "explanation": "Path traversal occurs when user input is used to construct file paths without validation.",
+    "fixSteps": [
+      "Never use user input directly in file paths.",
+      "Validate resolved path is within expected directory.",
+      "Use an allowlist of permitted files.",
+      "Reject input containing '..' or absolute paths."
+    ],
+    "codeExamples": [
+      {
+        "label": "Safe path handling",
+        "language": "typescript",
+        "code": "import path from 'path';\nconst baseDir = '/var/app/uploads';\nconst safePath = path.resolve(baseDir, userInput);\nif (!safePath.startsWith(baseDir)) throw new Error('Invalid path');"
+      }
+    ]
+  },
+  {
+    "id": "insecure-auth",
+    "type": "combined",
+    "title": "Insecure Authentication Mechanisms Detected",
+    "category": "code",
+    "severity": "HIGH",
+    "description": "Authentication security issues that could compromise user sessions.",
+    "evidence": "Authentication security issues detected.",
+    "riskImpact": "Weak authentication allows credential theft, session hijacking, or authentication bypass.",
+    "explanation": "Secure authentication requires proper cookie flags, token handling in headers, and avoiding Basic authentication.",
+    "fixSteps": [
+      "Use secure session cookies with HttpOnly, Secure, SameSite=Strict.",
+      "Never pass authentication tokens in URLs.",
+      "Replace HTTP Basic Auth with token-based authentication."
+    ],
+    "codeExamples": [
+      {
+        "label": "Secure cookie",
+        "language": "typescript",
+        "code": "response.headers.set('Set-Cookie', `sessionId=${token}; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=3600`);"
+      }
+    ]
+  },
+  {
+    "id": "insecure-deserialization",
+    "type": "body-pattern",
+    "title": "Potential Insecure Deserialization",
+    "category": "code",
+    "severity": "HIGH",
+    "description": "Deserialization operations on potentially untrusted data.",
+    "evidence": "Deserialization patterns detected.",
+    "riskImpact": "Insecure deserialization can allow remote code execution.",
+    "explanation": "Deserializing untrusted data can instantiate arbitrary objects or execute code.",
+    "fixSteps": [
+      "Only deserialize data from trusted sources.",
+      "Use safe formats like JSON.",
+      "Implement integrity checks (signatures/HMACs).",
+      "Use allowlists for deserializable classes."
+    ],
+    "codeExamples": [
+      {
+        "label": "Safe JSON parsing",
+        "language": "typescript",
+        "code": "const schema = z.object({ id: z.number(), name: z.string() });\nconst data = schema.parse(JSON.parse(input));"
+      }
+    ]
+  },
+  {
+    "id": "websocket-unencrypted",
+    "type": "body-pattern",
+    "title": "Unencrypted WebSocket (ws://)",
+    "category": "code",
+    "severity": "MEDIUM",
+    "description": "WebSocket using unencrypted ws:// protocol.",
+    "evidence": "ws:// connection detected.",
+    "riskImpact": "WebSocket data transmitted in plaintext.",
+    "explanation": "ws:// connections are not encrypted unlike wss://.",
+    "fixSteps": ["Use wss:// for all WebSocket connections."],
+    "codeExamples": []
+  },
+  {
+    "id": "eval-in-scripts",
+    "type": "body-pattern",
+    "title": "eval() Usage in Inline Scripts",
+    "category": "code",
+    "severity": "MEDIUM",
+    "description": "Direct eval() calls found in inline scripts.",
+    "evidence": "eval() detected in scripts.",
+    "riskImpact": "eval() can execute arbitrary code if input is attacker-controlled.",
+    "explanation": "eval() interprets strings as code, creating injection risks.",
+    "fixSteps": ["Replace eval() with JSON.parse() or safe alternatives."],
+    "codeExamples": []
+  },
+  {
+    "id": "postmessage-wildcard",
+    "type": "body-pattern",
+    "title": "postMessage with Wildcard Origin",
+    "category": "code",
+    "severity": "HIGH",
+    "description": "postMessage() called with wildcard (*) origin.",
+    "evidence": "postMessage with * origin.",
+    "riskImpact": "Any website can receive messages intended for specific origins.",
+    "explanation": "Using * as targetOrigin allows any website to receive the message.",
+    "fixSteps": ["Specify the exact target origin instead of *."],
+    "codeExamples": []
+  },
+  {
+    "id": "innerhtml-xss-sink",
+    "type": "body-pattern",
+    "title": "innerHTML DOM XSS Sink",
+    "category": "code",
+    "severity": "MEDIUM",
+    "description": "Multiple innerHTML assignments detected.",
+    "evidence": "innerHTML assignments found.",
+    "riskImpact": "User input reaching innerHTML can execute arbitrary scripts.",
+    "explanation": "innerHTML parses and executes HTML, making it a common XSS vector.",
+    "fixSteps": [
+      "Use textContent for text, or sanitize HTML before assignment."
+    ],
+    "codeExamples": []
+  },
+  {
+    "id": "outerhtml-xss-sink",
+    "type": "body-pattern",
+    "title": "outerHTML DOM XSS Sink",
+    "category": "code",
+    "severity": "MEDIUM",
+    "description": "outerHTML assignment detected.",
+    "evidence": "outerHTML assignment found.",
+    "riskImpact": "Similar to innerHTML, can execute arbitrary scripts.",
+    "explanation": "outerHTML replaces the element entirely with parsed HTML.",
+    "fixSteps": ["Avoid outerHTML with user input, use safe DOM methods."],
+    "codeExamples": []
+  },
+  {
+    "id": "document-write-sink",
+    "type": "body-pattern",
+    "title": "document.write DOM XSS Sink",
+    "category": "code",
+    "severity": "HIGH",
+    "description": "document.write() call detected.",
+    "evidence": "document.write usage found.",
+    "riskImpact": "Can completely overwrite page content with attacker-controlled HTML.",
+    "explanation": "document.write is a powerful and dangerous DOM manipulation method.",
+    "fixSteps": [
+      "Replace with appendChild or insertAdjacentHTML with sanitization."
+    ],
+    "codeExamples": []
+  },
+  {
+    "id": "insertadjacenthtml-sink",
+    "type": "body-pattern",
+    "title": "insertAdjacentHTML DOM Sink",
+    "category": "code",
+    "severity": "MEDIUM",
+    "description": "insertAdjacentHTML() usage detected.",
+    "evidence": "insertAdjacentHTML found.",
+    "riskImpact": "Can inject HTML at various positions in the DOM.",
+    "explanation": "Like innerHTML, this method parses HTML strings.",
+    "fixSteps": [
+      "Sanitize input or use insertAdjacentText for text-only insertion."
+    ],
+    "codeExamples": []
+  },
+  {
+    "id": "unsafe-setattribute",
+    "type": "body-pattern",
+    "title": "Unsafe setAttribute Usage",
+    "category": "code",
+    "severity": "MEDIUM",
+    "description": "setAttribute used with event handlers or URL attributes.",
+    "evidence": "setAttribute with sensitive attributes.",
+    "riskImpact": "Can create XSS by setting onclick, onload, href, src attributes.",
+    "explanation": "Event handler attributes execute JavaScript when triggered.",
+    "fixSteps": [
+      "Use property assignment or sanitize values before setAttribute."
+    ],
+    "codeExamples": []
+  },
+  {
+    "id": "ssrf-indicators",
+    "type": "body-pattern",
+    "title": "Potential SSRF Indicators",
+    "category": "code",
+    "severity": "MEDIUM",
+    "description": "URL parameters that may be used for server-side requests.",
+    "evidence": "SSRF indicators found.",
+    "riskImpact": "Attacker could make server fetch internal resources.",
+    "explanation": "SSRF allows attackers to access internal services through the server.",
+    "fixSteps": ["Validate and whitelist allowed URLs, block internal IPs."],
+    "codeExamples": []
+  },
+  {
+    "id": "path-traversal-indicators",
+    "type": "body-pattern",
+    "title": "Path Traversal Indicators",
+    "category": "code",
+    "severity": "HIGH",
+    "description": "Path traversal sequences in URL parameters.",
+    "evidence": "Path traversal patterns found.",
+    "riskImpact": "Could access files outside intended directory.",
+    "explanation": "../sequences can escape the web root to read sensitive files.",
+    "fixSteps": [
+      "Validate paths, use basename(), never concatenate user input."
+    ],
+    "codeExamples": []
+  },
+  {
+    "id": "ssti-indicators",
+    "type": "body-pattern",
+    "title": "Template Injection Indicators",
+    "category": "code",
+    "severity": "HIGH",
+    "description": "Template syntax detected in output.",
+    "evidence": "Template syntax in output.",
+    "riskImpact": "Server-Side Template Injection can lead to RCE.",
+    "explanation": "Unescaped template expressions can execute arbitrary code.",
+    "fixSteps": ["Escape all user input before template rendering."],
+    "codeExamples": []
+  },
+  {
+    "id": "ldap-injection-indicators",
+    "type": "body-pattern",
+    "title": "LDAP Injection Indicators",
+    "category": "code",
+    "severity": "MEDIUM",
+    "description": "LDAP filter characters in URL parameters.",
+    "evidence": "LDAP injection indicators.",
+    "riskImpact": "Could manipulate LDAP queries to bypass auth or extract data.",
+    "explanation": "LDAP filters use special characters like () & | * for queries.",
+    "fixSteps": ["Escape LDAP special characters in user input."],
+    "codeExamples": []
+  },
+  {
+    "id": "xml-external-entity",
+    "type": "body-pattern",
+    "title": "XML External Entity Declaration",
+    "category": "code",
+    "severity": "HIGH",
+    "description": "XML entity declaration found in response.",
+    "evidence": "XXE indicators found.",
+    "riskImpact": "XXE can read local files, perform SSRF, or cause DoS.",
+    "explanation": "External entities can reference local files or URLs.",
+    "fixSteps": ["Disable external entity processing in XML parser."],
+    "codeExamples": []
+  },
+  {
+    "id": "command-injection-indicators",
+    "type": "body-pattern",
+    "title": "Command Injection Parameter Names",
+    "category": "code",
+    "severity": "MEDIUM",
+    "description": "Command-related parameter names detected.",
+    "evidence": "Command injection indicators.",
+    "riskImpact": "Could execute arbitrary OS commands.",
+    "explanation": "Parameters named cmd, exec, etc. may be passed to shell.",
+    "fixSteps": [
+      "Never pass user input to shell commands, use parameterized APIs."
+    ],
+    "codeExamples": []
+  },
+  {
+    "id": "eval-usage",
+    "type": "body-pattern",
+    "title": "eval() Usage Detected",
+    "category": "code",
+    "severity": "HIGH",
+    "description": "JavaScript eval() function calls detected.",
+    "evidence": "eval() found.",
+    "riskImpact": "eval executes arbitrary code, enabling code injection.",
+    "explanation": "eval() is one of the most dangerous JavaScript functions.",
+    "fixSteps": ["Replace eval with JSON.parse or safer alternatives."],
+    "codeExamples": []
+  },
+  {
+    "id": "function-constructor",
+    "type": "body-pattern",
+    "title": "Function Constructor Usage",
+    "category": "code",
+    "severity": "HIGH",
+    "description": "new Function() usage detected.",
+    "evidence": "Function constructor found.",
+    "riskImpact": "Similar to eval(), can execute arbitrary code.",
+    "explanation": "Function constructor creates functions from strings.",
+    "fixSteps": [
+      "Avoid Function constructor, use direct function definitions."
+    ],
+    "codeExamples": []
+  },
+  {
+    "id": "settimeout-string",
+    "type": "body-pattern",
+    "title": "setTimeout/setInterval with String",
+    "category": "code",
+    "severity": "MEDIUM",
+    "description": "Timer functions with string argument.",
+    "evidence": "Timer with string argument.",
+    "riskImpact": "String arguments are eval'd, enabling code injection.",
+    "explanation": "setTimeout('code', 0) is equivalent to eval('code').",
+    "fixSteps": ["Pass functions, not strings, to setTimeout/setInterval."],
+    "codeExamples": []
+  },
+  {
+    "id": "geolocation-usage",
+    "type": "body-pattern",
+    "title": "Geolocation API Usage",
+    "category": "code",
+    "severity": "INFO",
+    "description": "Geolocation API access detected.",
+    "evidence": "Geolocation API used.",
+    "riskImpact": "Privacy concern - ensure user consent.",
+    "explanation": "Geolocation reveals user's physical location.",
+    "fixSteps": ["Ensure explicit user consent before accessing location."],
+    "codeExamples": []
+  },
+  {
+    "id": "clipboard-access",
+    "type": "body-pattern",
+    "title": "Clipboard API Access",
+    "category": "code",
+    "severity": "INFO",
+    "description": "Clipboard API or copy command detected.",
+    "evidence": "Clipboard access found.",
+    "riskImpact": "Could read or manipulate clipboard data.",
+    "explanation": "Clipboard may contain sensitive data.",
+    "fixSteps": ["Only access clipboard on explicit user action."],
+    "codeExamples": []
+  },
+  {
+    "id": "webcam-microphone-access",
+    "type": "body-pattern",
+    "title": "Media Device Access",
+    "category": "code",
+    "severity": "INFO",
+    "description": "Camera/microphone API access detected.",
+    "evidence": "Media device access found.",
+    "riskImpact": "Privacy concern - ensure user consent.",
+    "explanation": "getUserMedia accesses camera and microphone.",
+    "fixSteps": ["Ensure explicit user consent before accessing media."],
+    "codeExamples": []
+  },
+  {
+    "id": "reflected-input",
+    "type": "body-pattern",
+    "title": "Potentially Reflected Dangerous Content",
+    "category": "code",
+    "severity": "HIGH",
+    "description": "Dangerous patterns in page output.",
+    "evidence": "Reflected dangerous patterns.",
+    "riskImpact": "May indicate successful XSS reflection.",
+    "explanation": "These patterns shouldn't appear in normal output.",
+    "fixSteps": ["Encode all output, investigate source of patterns."],
+    "codeExamples": []
+  },
+  {
+    "id": "html-injection-patterns",
+    "type": "body-pattern",
+    "title": "HTML Injection Patterns Detected",
+    "category": "code",
+    "severity": "HIGH",
+    "description": "HTML injection patterns found in output.",
+    "evidence": "HTML injection patterns.",
+    "riskImpact": "May indicate successful HTML injection.",
+    "explanation": "These patterns suggest tag injection is possible.",
+    "fixSteps": ["Escape all HTML output, use CSP."],
+    "codeExamples": []
+  },
+  {
+    "id": "regex-dos-pattern",
+    "type": "body-pattern",
+    "title": "Potential ReDoS Pattern",
+    "category": "code",
+    "severity": "MEDIUM",
+    "description": "Regex pattern that may be vulnerable to ReDoS.",
+    "evidence": "Potentially slow regex.",
+    "riskImpact": "CPU exhaustion via crafted input.",
+    "explanation": "Nested quantifiers cause exponential backtracking.",
+    "fixSteps": ["Review and simplify regex patterns."],
+    "codeExamples": []
+  },
+  {
+    "id": "localstorage-sensitive",
+    "type": "body-pattern",
+    "title": "Sensitive Data in localStorage",
+    "category": "code",
+    "severity": "MEDIUM",
+    "description": "Sensitive data patterns being stored in localStorage.",
+    "evidence": "Sensitive localStorage usage.",
+    "riskImpact": "Data accessible to any script on the page.",
+    "explanation": "localStorage is not encrypted and accessible via XSS.",
+    "fixSteps": ["Use secure, HttpOnly cookies for sensitive data."],
+    "codeExamples": []
+  },
+  {
+    "id": "sessionstorage-tokens",
+    "type": "body-pattern",
+    "title": "Tokens in sessionStorage",
+    "category": "code",
+    "severity": "MEDIUM",
+    "description": "Authentication tokens stored in sessionStorage.",
+    "evidence": "Tokens in sessionStorage.",
+    "riskImpact": "Vulnerable to XSS-based token theft.",
+    "explanation": "sessionStorage is accessible via JavaScript.",
+    "fixSteps": ["Store tokens in HttpOnly cookies."],
+    "codeExamples": []
+  },
+  {
+    "id": "indexeddb-sensitive",
+    "type": "body-pattern",
+    "title": "IndexedDB Storing Sensitive Data",
+    "category": "code",
+    "severity": "LOW",
+    "description": "IndexedDB usage with potentially sensitive data.",
+    "evidence": "IndexedDB sensitive data.",
+    "riskImpact": "Data persists and is accessible to scripts.",
+    "explanation": "IndexedDB can store large amounts of data.",
+    "fixSteps": ["Encrypt sensitive data before storing in IndexedDB."],
+    "codeExamples": []
+  },
+  {
+    "id": "window-name-storage",
+    "type": "body-pattern",
+    "title": "Data Storage in window.name",
+    "category": "code",
+    "severity": "MEDIUM",
+    "description": "window.name used for data storage.",
+    "evidence": "window.name storage.",
+    "riskImpact": "Data persists across navigations and can leak.",
+    "explanation": "window.name is shared across origins in some cases.",
+    "fixSteps": ["Clear window.name, use proper storage APIs."],
+    "codeExamples": []
+  },
+  {
+    "id": "service-worker-insecure",
+    "type": "body-pattern",
+    "title": "Service Worker Registration",
+    "category": "code",
+    "severity": "INFO",
+    "description": "Service worker registration detected.",
+    "evidence": "Service worker found.",
+    "riskImpact": "Compromised SW can intercept all requests.",
+    "explanation": "Service workers are powerful and persistent.",
+    "fixSteps": ["Ensure SW is properly secured and scoped."],
+    "codeExamples": []
+  },
+  {
+    "id": "push-api-usage",
+    "type": "body-pattern",
+    "title": "Push Notification API Usage",
+    "category": "code",
+    "severity": "INFO",
+    "description": "Push API/notifications usage detected.",
+    "evidence": "Push API usage.",
+    "riskImpact": "Privacy concern if abused.",
+    "explanation": "Push notifications require user consent.",
+    "fixSteps": ["Ensure notifications are used appropriately."],
+    "codeExamples": []
+  },
+  {
+    "id": "payment-request-api",
+    "type": "body-pattern",
+    "title": "Payment Request API Usage",
+    "category": "code",
+    "severity": "INFO",
+    "description": "Payment Request API detected.",
+    "evidence": "Payment API usage.",
+    "riskImpact": "Ensure secure payment handling.",
+    "explanation": "Payment API handles financial transactions.",
+    "fixSteps": ["Follow PCI DSS guidelines for payment handling."],
+    "codeExamples": []
+  },
+  {
+    "id": "credential-management-api",
+    "type": "body-pattern",
+    "title": "Credential Management API Usage",
+    "category": "code",
+    "severity": "INFO",
+    "description": "Credential Management API detected.",
+    "evidence": "Credential API usage.",
+    "riskImpact": "Handles sensitive credential storage.",
+    "explanation": "This API stores and retrieves credentials.",
+    "fixSteps": ["Use properly with HTTPS and security best practices."],
+    "codeExamples": []
+  },
+  {
+    "id": "webauthn-usage",
+    "type": "body-pattern",
+    "title": "WebAuthn/Passkey Implementation",
+    "category": "code",
+    "severity": "INFO",
+    "description": "WebAuthn API usage detected.",
+    "evidence": "WebAuthn API found.",
+    "riskImpact": "Strong authentication method.",
+    "explanation": "WebAuthn enables passwordless authentication.",
+    "fixSteps": ["Ensure proper implementation."],
+    "codeExamples": []
+  },
+  {
+    "id": "crypto-subtle-usage",
+    "type": "body-pattern",
+    "title": "SubtleCrypto API Usage",
+    "category": "code",
+    "severity": "INFO",
+    "description": "Web Crypto API usage detected.",
+    "evidence": "SubtleCrypto API.",
+    "riskImpact": "Ensure proper key management.",
+    "explanation": "Web Crypto provides cryptographic operations.",
+    "fixSteps": ["Use secure random generation and proper key storage."],
+    "codeExamples": []
+  },
+  {
+    "id": "wasm-usage",
+    "type": "body-pattern",
+    "title": "WebAssembly Usage Detected",
+    "category": "code",
+    "severity": "INFO",
+    "description": "WebAssembly modules detected.",
+    "evidence": "WASM usage found.",
+    "riskImpact": "WASM code harder to audit.",
+    "explanation": "WebAssembly runs compiled code in browser.",
+    "fixSteps": ["Ensure WASM source is trusted."],
+    "codeExamples": []
+  },
+  {
+    "id": "console-log-production",
+    "type": "body-pattern",
+    "title": "Console Logging in Production",
+    "category": "code",
+    "severity": "LOW",
+    "description": "Extensive console.log statements detected.",
+    "evidence": "Console logging found.",
+    "riskImpact": "May expose sensitive debug information.",
+    "explanation": "Console logs can reveal internal state.",
+    "fixSteps": ["Remove or disable console.log in production."],
+    "codeExamples": []
+  },
+  {
+    "id": "debugger-statement",
+    "type": "body-pattern",
+    "title": "Debugger Statement in Code",
+    "category": "code",
+    "severity": "LOW",
+    "description": "JavaScript debugger statement found.",
+    "evidence": "Debugger statement.",
+    "riskImpact": "Pauses execution in dev tools.",
+    "explanation": "Debugger statements should be removed.",
+    "fixSteps": ["Remove debugger statements in production."],
+    "codeExamples": []
+  },
+  {
+    "id": "error-boundary-missing",
+    "type": "body-pattern",
+    "title": "React Error Boundary Issues",
+    "category": "code",
+    "severity": "LOW",
+    "description": "React components may lack error boundaries.",
+    "evidence": "React without error handling.",
+    "riskImpact": "Unhandled errors may crash the app.",
+    "explanation": "Error boundaries prevent full-page crashes.",
+    "fixSteps": ["Implement React error boundaries."],
+    "codeExamples": []
+  },
+  {
+    "id": "code-fetch-without-credentials",
+    "type": "header",
+    "title": "fetch() call without credentials mode",
+    "category": "headers",
+    "severity": "low",
+    "description": "fetch(url, { credentials: 'omit' }) prevents cookies from being sent, but auth tokens via cookies won't work.",
+    "evidence": "Async / body / header check for code-fetch-without-credentials.",
+    "riskImpact": "Explicitly set credentials: 'include' or 'same-origin'",
+    "explanation": "fetch(url, { credentials: 'omit' }) prevents cookies from being sent, but auth tokens via cookies won't work.",
+    "fixSteps": ["Explicitly set credentials: 'include' or 'same-origin'"],
+    "codeExamples": [],
+    "references": []
+  },
+  {
+    "id": "code-axios-defaults-baseurl",
+    "type": "header",
+    "title": "axios.defaults.baseURL set to dev server",
+    "category": "headers",
+    "severity": "info",
+    "description": "Hard-coded axios.defaults.baseURL = 'http://localhost:3000' will leak into production builds.",
+    "evidence": "Async / body / header check for code-axios-defaults-baseurl.",
+    "riskImpact": "Move API base URLs to environment variables",
+    "explanation": "Hard-coded axios.defaults.baseURL = 'http://localhost:3000' will leak into production builds.",
+    "fixSteps": ["Move API base URLs to environment variables"],
+    "codeExamples": [],
+    "references": []
+  },
+  {
+    "id": "code-fetch-no-timeout",
+    "type": "header",
+    "title": "fetch() without AbortSignal.timeout",
+    "category": "headers",
+    "severity": "low",
+    "description": "fetch() with no timeout can hang indefinitely under network failure.",
+    "evidence": "Async / body / header check for code-fetch-no-timeout.",
+    "riskImpact": "Add signal: AbortSignal.timeout(5000) to every fetch",
+    "explanation": "fetch() with no timeout can hang indefinitely under network failure.",
+    "fixSteps": ["Add signal: AbortSignal.timeout(5000) to every fetch"],
+    "codeExamples": [],
+    "references": []
+  },
+  {
+    "id": "code-dangerously-setinnerhtml",
+    "type": "header",
+    "title": "dangerouslySetInnerHTML usage",
+    "category": "headers",
+    "severity": "high",
+    "description": "React's dangerouslySetInnerHTML bypasses React's escaping. Combine with user input = XSS.",
+    "evidence": "Async / body / header check for code-dangerously-setinnerhtml.",
+    "riskImpact": "Replace dangerouslySetInnerHTML with safe React rendering; if needed, sanitize with DOMPurify",
+    "explanation": "React's dangerouslySetInnerHTML bypasses React's escaping. Combine with user input = XSS.",
+    "fixSteps": [
+      "Replace dangerouslySetInnerHTML with safe React rendering; if needed, sanitize with DOMPurify"
+    ],
+    "codeExamples": [],
+    "references": []
+  },
+  {
+    "id": "code-eval-setinterval-string",
+    "type": "header",
+    "title": "setInterval with string arg",
+    "category": "headers",
+    "severity": "high",
+    "description": "setInterval('code', 1000) is implicitly eval(). Pass a function reference instead.",
+    "evidence": "Async / body / header check for code-eval-setinterval-string.",
+    "riskImpact": "Use setInterval(function() {}, 1000) instead of setInterval('...', 1000)",
+    "explanation": "setInterval('code', 1000) is implicitly eval(). Pass a function reference instead.",
+    "fixSteps": [
+      "Use setInterval(function() {}, 1000) instead of setInterval('...', 1000)"
+    ],
+    "codeExamples": [],
+    "references": []
+  },
+  {
+    "id": "code-object-assign-from-user",
+    "type": "header",
+    "title": "Object.assign target from user",
+    "category": "headers",
+    "severity": "medium",
+    "description": "Object.assign(target, userInput) with a user-supplied target can pollute Object.prototype.",
+    "evidence": "Async / body / header check for code-object-assign-from-user.",
+    "riskImpact": "Never let the user control the Object.assign target; use spread instead",
+    "explanation": "Object.assign(target, userInput) with a user-supplied target can pollute Object.prototype.",
+    "fixSteps": [
+      "Never let the user control the Object.assign target; use spread instead"
+    ],
+    "codeExamples": [],
+    "references": []
+  },
+  {
+    "id": "code-spread-into-globals",
+    "type": "header",
+    "title": "Spread into globals",
+    "category": "headers",
+    "severity": "low",
+    "description": "Spreading user input into a globals object can leak fields like __proto__.",
+    "evidence": "Async / body / header check for code-spread-into-globals.",
+    "riskImpact": "Sanitize keys; reject any that contain __proto__, constructor, prototype",
+    "explanation": "Spreading user input into a globals object can leak fields like __proto__.",
+    "fixSteps": [
+      "Sanitize keys; reject any that contain __proto__, constructor, prototype"
+    ],
+    "codeExamples": [],
+    "references": []
+  },
+  {
+    "id": "code-cookie-without-httponly",
+    "type": "header",
+    "title": "document.cookie write missing HttpOnly",
+    "category": "headers",
+    "severity": "medium",
+    "description": "document.cookie = 'sid=...'; sets a cookie without HttpOnly, allowing JS access.",
+    "evidence": "Async / body / header check for code-cookie-without-httponly.",
+    "riskImpact": "Set HttpOnly; if the cookie must be readable by JS, prefer localStorage",
+    "explanation": "document.cookie = 'sid=...'; sets a cookie without HttpOnly, allowing JS access.",
+    "fixSteps": [
+      "Set HttpOnly; if the cookie must be readable by JS, prefer localStorage"
+    ],
+    "codeExamples": [],
+    "references": []
+  },
+  {
+    "id": "code-cookie-write-no-secure",
+    "type": "header",
+    "title": "document.cookie write missing Secure flag",
+    "category": "headers",
+    "severity": "medium",
+    "description": "Cookies set via document.cookie without Secure can be sent over HTTP.",
+    "evidence": "Async / body / header check for code-cookie-write-no-secure.",
+    "riskImpact": "Add Secure; to every cookie set via document.cookie",
+    "explanation": "Cookies set via document.cookie without Secure can be sent over HTTP.",
+    "fixSteps": ["Add Secure; to every cookie set via document.cookie"],
+    "codeExamples": [],
+    "references": []
+  },
+  {
+    "id": "code-cookie-write-no-samesite",
+    "type": "header",
+    "title": "document.cookie write missing SameSite",
+    "category": "headers",
+    "severity": "low",
+    "description": "Cookies without SameSite are sent on cross-site requests (CSRF).",
+    "evidence": "Async / body / header check for code-cookie-write-no-samesite.",
+    "riskImpact": "Add SameSite=Lax or SameSite=Strict",
+    "explanation": "Cookies without SameSite are sent on cross-site requests (CSRF).",
+    "fixSteps": ["Add SameSite=Lax or SameSite=Strict"],
+    "codeExamples": [],
+    "references": []
+  },
+  {
+    "id": "code-window-open-without-noopener",
+    "type": "header",
+    "title": "window.open() without noopener",
+    "category": "headers",
+    "severity": "medium",
+    "description": "window.open(url, '_blank') without 'noopener' lets the new tab navigate the source page.",
+    "evidence": "Async / body / header check for code-window-open-without-noopener.",
+    "riskImpact": "Use window.open(url, '_blank', 'noopener,noreferrer')",
+    "explanation": "window.open(url, '_blank') without 'noopener' lets the new tab navigate the source page.",
+    "fixSteps": ["Use window.open(url, '_blank', 'noopener,noreferrer')"],
+    "codeExamples": [],
+    "references": []
+  },
+  {
+    "id": "code-location-assign-with-user-input",
+    "type": "header",
+    "title": "location.assign(userInput)",
+    "category": "headers",
+    "severity": "high",
+    "description": "Assigning to location.* with user-supplied data is an open-redirect vector.",
+    "evidence": "Async / body / header check for code-location-assign-with-user-input.",
+    "riskImpact": "Validate destination host against an allowlist before navigation",
+    "explanation": "Assigning to location.* with user-supplied data is an open-redirect vector.",
+    "fixSteps": [
+      "Validate destination host against an allowlist before navigation"
+    ],
+    "codeExamples": [],
+    "references": []
+  },
+  {
+    "id": "code-vue-v-html",
+    "type": "header",
+    "title": "Vue v-html directive",
+    "category": "headers",
+    "severity": "high",
+    "description": "Vue's v-html bypasses Vue's escaping. XSS risk if the bound expression includes user input.",
+    "evidence": "Async / body / header check for code-vue-v-html.",
+    "riskImpact": "Use {{ }} interpolation; sanitize HTML with DOMPurify if you must use v-html",
+    "explanation": "Vue's v-html bypasses Vue's escaping. XSS risk if the bound expression includes user input.",
+    "fixSteps": [
+      "Use {{ }} interpolation; sanitize HTML with DOMPurify if you must use v-html"
+    ],
+    "codeExamples": [],
+    "references": []
+  },
+  {
+    "id": "code-angular-bypass-security",
+    "type": "header",
+    "title": "Angular bypassSecurityTrustHtml",
+    "category": "headers",
+    "severity": "high",
+    "description": "bypassSecurityTrustHtml marks content as safe, defeating Angular's sanitiser.",
+    "evidence": "Async / body / header check for code-angular-bypass-security.",
+    "riskImpact": "Avoid bypassSecurityTrust* unless absolutely necessary; sanitize with DomSanitizer",
+    "explanation": "bypassSecurityTrustHtml marks content as safe, defeating Angular's sanitiser.",
+    "fixSteps": [
+      "Avoid bypassSecurityTrust* unless absolutely necessary; sanitize with DomSanitizer"
+    ],
+    "codeExamples": [],
+    "references": []
+  },
+  {
+    "id": "code-jquery-html",
+    "type": "header",
+    "title": "jQuery .html() with user input",
+    "category": "headers",
+    "severity": "high",
+    "description": "$el.html(userInput) executes arbitrary HTML. Always escape or use .text().",
+    "evidence": "Async / body / header check for code-jquery-html.",
+    "riskImpact": "Use .text() or escape user input via a DOMPurify-like library",
+    "explanation": "$el.html(userInput) executes arbitrary HTML. Always escape or use .text().",
+    "fixSteps": [
+      "Use .text() or escape user input via a DOMPurify-like library"
+    ],
+    "codeExamples": [],
+    "references": []
+  },
+  {
+    "id": "code-jquery-global-event",
+    "type": "header",
+    "title": "jQuery global event handler",
+    "category": "headers",
+    "severity": "low",
+    "description": "$(document).on('click', sel, fn) can be triggered by an attacker-controlled selector.",
+    "evidence": "Async / body / header check for code-jquery-global-event.",
+    "riskImpact": "Bind handlers to specific elements, not document",
+    "explanation": "$(document).on('click', sel, fn) can be triggered by an attacker-controlled selector.",
+    "fixSteps": ["Bind handlers to specific elements, not document"],
+    "codeExamples": [],
+    "references": []
+  },
+  {
+    "id": "code-local-storage-pii",
+    "type": "header",
+    "title": "localStorage storing PII",
+    "category": "headers",
+    "severity": "medium",
+    "description": "localStorage is not encrypted and is readable by any JS that runs in the same origin.",
+    "evidence": "Async / body / header check for code-local-storage-pii.",
+    "riskImpact": "Don't store PII, tokens, or session identifiers in localStorage",
+    "explanation": "localStorage is not encrypted and is readable by any JS that runs in the same origin.",
+    "fixSteps": [
+      "Don't store PII, tokens, or session identifiers in localStorage"
+    ],
+    "codeExamples": [],
+    "references": []
+  },
+  {
+    "id": "code-service-worker-no-csp",
+    "type": "header",
+    "title": "Service worker registered without CSP",
+    "category": "headers",
+    "severity": "low",
+    "description": "Service workers can intercept any request on the same origin. CSP without worker-src / script-src leaves them open.",
+    "evidence": "Async / body / header check for code-service-worker-no-csp.",
+    "riskImpact": "Add worker-src 'self'; restrict script-src to your origin",
+    "explanation": "Service workers can intercept any request on the same origin. CSP without worker-src / script-src leaves them open.",
+    "fixSteps": ["Add worker-src 'self'; restrict script-src to your origin"],
+    "codeExamples": [],
+    "references": []
+  },
+  {
+    "id": "code-cookie-write-via-jquery",
+    "type": "header",
+    "title": "jQuery cookie plugin usage",
+    "category": "headers",
+    "severity": "low",
+    "description": "jQuery.cookie() sets cookies via JS and bypasses HttpOnly-equivalent protections.",
+    "evidence": "Async / body / header check for code-cookie-write-via-jquery.",
+    "riskImpact": "Use the server's Set-Cookie header instead",
+    "explanation": "jQuery.cookie() sets cookies via JS and bypasses HttpOnly-equivalent protections.",
+    "fixSteps": ["Use the server's Set-Cookie header instead"],
+    "codeExamples": [],
+    "references": []
+  },
+  {
+    "id": "code-stripe-publishable-key",
+    "type": "header",
+    "title": "Stripe publishable key exposed",
+    "category": "headers",
+    "severity": "info",
+    "description": "Stripe publishable keys (pk_live_*) are designed to be client-side. Not a secret.",
+    "evidence": "Async / body / header check for code-stripe-publishable-key.",
+    "riskImpact": "This is informational",
+    "explanation": "Stripe publishable keys (pk_live_*) are designed to be client-side. Not a secret.",
+    "fixSteps": ["This is informational"],
+    "codeExamples": [],
+    "references": []
+  },
+  {
+    "id": "code-react-refs-innerhtml",
+    "type": "header",
+    "title": "React ref + innerHTML",
+    "category": "headers",
+    "severity": "medium",
+    "description": "Setting element.innerHTML via a ref after hydration bypasses React's rendering.",
+    "evidence": "Async / body / header check for code-react-refs-innerhtml.",
+    "riskImpact": "Use React state to update DOM instead of mutating via refs",
+    "explanation": "Setting element.innerHTML via a ref after hydration bypasses React's rendering.",
+    "fixSteps": ["Use React state to update DOM instead of mutating via refs"],
+    "codeExamples": [],
+    "references": []
+  },
+  {
+    "id": "code-angular-interpolation-bypass",
+    "type": "header",
+    "title": "Angular interpolation bypass",
+    "category": "headers",
+    "severity": "medium",
+    "description": "AngularJS (1.x) template injection: user-controlled values rendered via {{ }} or ng-bind-html-unsafe are XSS sinks.",
+    "evidence": "Async / body / header check for code-angular-interpolation-bypass.",
+    "riskImpact": "Migrate off AngularJS 1.x; never bind user data into ng-bind-html-unsafe",
+    "explanation": "AngularJS (1.x) template injection: user-controlled values rendered via {{ }} or ng-bind-html-unsafe are XSS sinks.",
+    "fixSteps": [
+      "Migrate off AngularJS 1.x; never bind user data into ng-bind-html-unsafe"
+    ],
+    "codeExamples": [],
+    "references": []
+  },
+  {
+    "id": "code-xss-insertadjacentelement",
+    "type": "body-pattern",
+    "title": "insertAdjacentElement XSS sink",
+    "category": "code",
+    "severity": "high",
+    "description": "insertAdjacentElement splices a live DOM node into the document. When the node is built from attacker-controlled input, it bypasses HTML-string sanitizers because no HTML parsing is performed.",
+    "evidence": "Async / body / header check for code-xss-insertadjacentelement.",
+    "riskImpact": "Attacker-controlled DOM nodes can execute JavaScript in the page origin without HTML-parser sanitizers firing.",
+    "explanation": "Same as description.",
+    "fixSteps": [
+      "Treat any element passed to insertAdjacentElement as untrusted; build it server-side with escaping.",
+      "Prefer insertAdjacentText for plain-text interpolation.",
+      "If nodes must be created from strings, sanitize with DOMPurify before parsing into a node."
+    ],
+    "codeExamples": [],
+    "references": [
+      "https://developer.mozilla.org/en-US/docs/Web/API/Element/insertAdjacentElement",
+      "https://owasp.org/www-community/attacks/xss/"
+    ]
+  },
+  {
+    "id": "code-xss-createcontextualfragment",
+    "type": "body-pattern",
+    "title": "Range.createContextualFragment XSS sink",
+    "category": "code",
+    "severity": "high",
+    "description": "Range.createContextualFragment(fragString) parses HTML and returns a DocumentFragment. Passing user-controlled HTML directly into the fragment lets attackers inject <script> or event-handler nodes that execute immediately on insertion.",
+    "evidence": "Async / body / header check for code-xss-createcontextualfragment.",
+    "riskImpact": "Attacker-controlled HTML strings execute JavaScript in the page origin the moment the fragment is inserted.",
+    "explanation": "Same as description.",
+    "fixSteps": [
+      "Sanitize the HTML string with DOMPurify before passing it to createContextualFragment.",
+      "Prefer DOMParser.parseFromString with explicit text/html and sanitization.",
+      "Use textContent for text-only insertion."
+    ],
+    "codeExamples": [],
+    "references": [
+      "https://developer.mozilla.org/en-US/docs/Web/API/Range/createContextualFragment"
+    ]
+  },
+  {
+    "id": "code-xss-documentwrite-jsonparse",
+    "type": "body-pattern",
+    "title": "document.write with JSON.parse(userInput)",
+    "category": "code",
+    "severity": "critical",
+    "description": "Combining document.write with JSON.parse(userInput) reflects attacker-controlled string values straight into the document, where any <script> or on* attribute is executed before any sanitizer can intercept it.",
+    "evidence": "Async / body / header check for code-xss-documentwrite-jsonparse.",
+    "riskImpact": "document.write runs synchronously during parse; injected scripts execute in the page origin and persist.",
+    "explanation": "Same as description.",
+    "fixSteps": [
+      "Never reflect parsed user JSON into document.write.",
+      "Render values via textContent into a known-safe container after DOMContentLoaded.",
+      "Add a strict CSP with script-src 'self' to block inline injection."
+    ],
+    "codeExamples": [],
+    "references": ["https://owasp.org/www-community/attacks/xss/"]
+  },
+  {
+    "id": "code-xss-dangerouslysetinnerhtml-dynamic",
+    "type": "body-pattern",
+    "title": "dangerouslySetInnerHTML with computed value",
+    "category": "code",
+    "severity": "high",
+    "description": "dangerouslySetInnerHTML={{ __html: buildHtml(userInput) }} constructs the HTML string at render time from attacker-controlled parts, defeating any earlier sanitization that operated on the raw field alone.",
+    "evidence": "Async / body / header check for code-xss-dangerouslysetinnerhtml-dynamic.",
+    "riskImpact": "Computed or concatenated HTML strings can smuggle <script>, <iframe>, or event handlers past component-level sanitizers.",
+    "explanation": "Same as description.",
+    "fixSteps": [
+      "Sanitize the final computed string with DOMPurify before passing it to dangerouslySetInnerHTML.",
+      "Avoid string concatenation; render React components for trusted structure.",
+      "Consider Trusted Types policy with require-trusted-types-for 'script'."
+    ],
+    "codeExamples": [],
+    "references": [
+      "https://react.dev/reference/react-dom/components/common#dangerously-setting-the-inner-html"
+    ]
+  },
+  {
+    "id": "code-xss-vue-v-html-dynamic",
+    "type": "body-pattern",
+    "title": "Vue v-html with computed expression",
+    "category": "code",
+    "severity": "high",
+    "description": "<div v-html=\"computed(userInput)\"></div> evaluates a computed expression that mixes user data into HTML; any <script> or event-handler tags are inserted verbatim.",
+    "evidence": "Async / body / header check for code-xss-vue-v-html-dynamic.",
+    "riskImpact": "Attacker-controlled HTML executes JavaScript in the Vue app origin.",
+    "explanation": "Same as description.",
+    "fixSteps": [
+      "Sanitize the computed string with DOMPurify before binding to v-html.",
+      "Use Mustache interpolation {{ value }} unless the HTML is provably safe.",
+      "Adopt Trusted Types to gate v-html assignments."
+    ],
+    "codeExamples": [],
+    "references": ["https://vuejs.org/api/built-in-directives.html#v-html"]
+  },
+  {
+    "id": "code-xss-angular-bypass-dynamic",
+    "type": "body-pattern",
+    "title": "Angular bypassSecurityTrust* with user input",
+    "category": "code",
+    "severity": "high",
+    "description": "Calling bypassSecurityTrustHtml(userInput) or bypassSecurityTrustScript(userInput) tells Angular the value is safe, completely defeating its built-in DomSanitizer.",
+    "evidence": "Async / body / header check for code-xss-angular-bypass-dynamic.",
+    "riskImpact": "Attacker-controlled HTML or URL is rendered as-is, enabling stored XSS or javascript: navigation.",
+    "explanation": "Same as description.",
+    "fixSteps": [
+      "Sanitize the value with DomSanitizer.sanitize(SecurityContext.HTML, ...) before trusting it.",
+      "Avoid passing user input directly into bypassSecurityTrust* APIs.",
+      "Render Angular templates with interpolation; reserve bypass for known-static strings."
+    ],
+    "codeExamples": [],
+    "references": ["https://angular.dev/api/core/DomSanitizer"]
+  },
+  {
+    "id": "code-xss-domparser-parsefromstring",
+    "type": "body-pattern",
+    "title": "DOMParser.parseFromString user HTML",
+    "category": "code",
+    "severity": "medium",
+    "description": "new DOMParser().parseFromString(userInput, 'text/html') parses arbitrary HTML into a Document. Subsequent node import via adoptNode or document.importNode preserves <script> elements, which can execute when reattached.",
+    "evidence": "Async / body / header check for code-xss-domparser-parsefromstring.",
+    "riskImpact": "Scripts parsed via DOMParser can survive adoption into the host document and execute.",
+    "explanation": "Same as description.",
+    "fixSteps": [
+      "Sanitize the parsed result with DOMPurify before adopting any nodes.",
+      "Strip <script> elements after parseFromString.",
+      "Prefer textContent rendering to direct DOM adoption."
+    ],
+    "codeExamples": [],
+    "references": [
+      "https://developer.mozilla.org/en-US/docs/Web/API/DOMParser/parseFromString"
+    ]
+  },
+  {
+    "id": "code-xss-template-tag",
+    "type": "body-pattern",
+    "title": "Tagged template literal HTML rendering",
+    "category": "code",
+    "severity": "medium",
+    "description": "html`<div>${userInput}</div>`-style tagged templates interpolate strings into HTML. If the tag function simply concatenates without escaping, the resulting HTML is an XSS sink whenever any interpolation is attacker-controlled.",
+    "evidence": "Async / body / header check for code-xss-template-tag.",
+    "riskImpact": "Unescaped interpolation in tagged HTML templates injects arbitrary HTML and scripts.",
+    "explanation": "Same as description.",
+    "fixSteps": [
+      "Escape every interpolation in the tag function (encode & < > \" ').",
+      "Use a vetted library like lit-html that escapes interpolations by default.",
+      "Reject interpolations that begin with raw HTML unless explicitly marked safe."
+    ],
+    "codeExamples": [],
+    "references": [
+      "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Template_literals#tagged_templates"
+    ]
+  },
+  {
+    "id": "code-cmdi-spawn-shell-true",
+    "type": "body-pattern",
+    "title": "child_process.spawn with shell:true",
+    "category": "code",
+    "severity": "critical",
+    "description": "spawn(cmd, { shell: true }) or spawn(\"sh -c \" + cmd) re-routes the command through /bin/sh, so any unescaped metacharacter in arguments (& ; | $ ` \\n) executes attacker commands.",
+    "evidence": "Async / body / header check for code-cmdi-spawn-shell-true.",
+    "riskImpact": "Attacker-controlled arguments gain full shell-injection capability, leading to RCE on the host.",
+    "explanation": "Same as description.",
+    "fixSteps": [
+      "Pass args as a separate array; spawn with shell:false and let Node escape them.",
+      "Validate every argument against a strict allowlist before invoking.",
+      "Run the child process under a non-root user and inside a sandboxed environment."
+    ],
+    "codeExamples": [],
+    "references": [
+      "https://nodejs.org/api/child_process.html#child_processspawncommand-args-options"
+    ]
+  },
+  {
+    "id": "code-cmdi-exec",
+    "type": "body-pattern",
+    "title": "child_process.exec usage",
+    "category": "code",
+    "severity": "critical",
+    "description": "child_process.exec runs its argument through /bin/sh -c. Any user input that reaches the command string is interpreted by the shell, enabling arbitrary command injection.",
+    "evidence": "Async / body / header check for code-cmdi-exec.",
+    "riskImpact": "Direct OS command execution in the context of the Node.js process; full server compromise likely.",
+    "explanation": "Same as description.",
+    "fixSteps": [
+      "Replace exec with execFile or spawn and pass arguments as an array.",
+      "Validate and allowlist every command argument.",
+      "Avoid string concatenation or template literals when building the command."
+    ],
+    "codeExamples": [],
+    "references": [
+      "https://nodejs.org/api/child_process.html#child_processexeccommand-options-callback"
+    ]
+  },
+  {
+    "id": "code-cmdi-os-exec",
+    "type": "body-pattern",
+    "title": "os.exec / os.system / os.popen usage",
+    "category": "code",
+    "severity": "critical",
+    "description": "Python's os.system, os.exec*, and os.popen pass their string argument to the shell. Any user-controlled portion executes as a shell command.",
+    "evidence": "Async / body / header check for code-cmdi-os-exec.",
+    "riskImpact": "Attacker can chain arbitrary shell commands and read or destroy server files.",
+    "explanation": "Same as description.",
+    "fixSteps": [
+      "Use subprocess.run([...], shell=False) with argument arrays.",
+      "Validate inputs against an allowlist of permitted values.",
+      "Avoid shlex.join on attacker-controlled strings; allowlist first."
+    ],
+    "codeExamples": [],
+    "references": ["https://docs.python.org/3/library/os.html#os.system"]
+  },
+  {
+    "id": "code-cmdi-bin-sh-concat",
+    "type": "body-pattern",
+    "title": "String-built /bin/sh invocation",
+    "category": "code",
+    "severity": "critical",
+    "description": "Patterns like os.system(\"/bin/sh -c '\" + userInput + \"'\") or exec(\"sh -c \" + userInput) build a shell command via concatenation or interpolation, embedding attacker input into a parsed shell string.",
+    "evidence": "Async / body / header check for code-cmdi-bin-sh-concat.",
+    "riskImpact": "Concatenated shell strings let attackers break out of quotes and execute arbitrary commands.",
+    "explanation": "Same as description.",
+    "fixSteps": [
+      "Eliminate the shell entirely: use execve, subprocess.run(args), or Node's spawn with an arg array.",
+      "If a shell is mandatory, use shlex.quote or equivalent escaping on every variable.",
+      "Validate the final command against an allowlist of permitted executables and flags."
+    ],
+    "codeExamples": [],
+    "references": ["https://cwe.mitre.org/data/definitions/78.html"]
+  },
+  {
+    "id": "code-cmdi-popen",
+    "type": "body-pattern",
+    "title": "subprocess.Popen / os.popen with user input",
+    "category": "code",
+    "severity": "high",
+    "description": "subprocess.Popen(builtString, shell=True) and os.popen(builtString) both run their input through a shell. Even partial user influence over arguments enables command injection via metacharacters.",
+    "evidence": "Async / body / header check for code-cmdi-popen.",
+    "riskImpact": "Shell injection through Popen/popen gives the attacker a shell on the host.",
+    "explanation": "Same as description.",
+    "fixSteps": [
+      "Always pass shell=False and an args list to Popen.",
+      "Run untrusted input through shlex.quote before any shell-escape necessity.",
+      "Set close_fds=True and use minimal env to reduce side effects."
+    ],
+    "codeExamples": [],
+    "references": [
+      "https://docs.python.org/3/library/subprocess.html#subprocess.Popen"
+    ]
+  },
+  {
+    "id": "code-cmdi-process-spawn",
+    "type": "body-pattern",
+    "title": "child_process.spawn/execFile concatenated args",
+    "category": "code",
+    "severity": "high",
+    "description": "spawn(\"git \" + userArg) or execFile(`tool ${userArg}`) builds an argument string via concatenation. Although execFile itself does not invoke a shell, the embedded space allows attackers to inject additional flags or arguments.",
+    "evidence": "Async / body / header check for code-cmdi-process-spawn.",
+    "riskImpact": "Argument injection lets attackers invoke unintended subcommands, read arbitrary files, or trigger built-in shell escapes.",
+    "explanation": "Same as description.",
+    "fixSteps": [
+      "Pass user input as a discrete array element: spawn(cmd, [userArg]).",
+      "Allowlist each argument value before passing to execFile.",
+      "Use -- separator to stop flag parsing when relevant."
+    ],
+    "codeExamples": [],
+    "references": [
+      "https://nodejs.org/api/child_process.html#child_processspawncommand-args-options"
+    ]
+  },
+  {
+    "id": "code-sqli-mongodb-where",
+    "type": "body-pattern",
+    "title": "MongoDB $where injection",
+    "category": "code",
+    "severity": "high",
+    "description": "MongoDB queries of the form { $where: \"this.field == '\" + userInput + \"'\" } or { $where: Function(\"return this.x == '\" + userInput + \"'\") } embed user input into JavaScript that runs server-side on every document in the collection.",
+    "evidence": "Async / body / header check for code-sqli-mongodb-where.",
+    "riskImpact": "Attacker can run arbitrary JavaScript on the MongoDB server, leaking documents and bypassing authentication.",
+    "explanation": "Same as description.",
+    "fixSteps": [
+      "Avoid $where entirely; use standard query operators with typed values.",
+      "If aggregation is required, prefer $expr with sanitized expressions.",
+      "Disable server-side JavaScript via --noscripting on mongod."
+    ],
+    "codeExamples": [],
+    "references": [
+      "https://www.mongodb.com/docs/manual/reference/operator/query/where/"
+    ]
+  },
+  {
+    "id": "code-sqli-mongodb-regex",
+    "type": "body-pattern",
+    "title": "MongoDB $regex from user input",
+    "category": "code",
+    "severity": "medium",
+    "description": "Building a MongoDB query with { field: { $regex: userInput } } or new RegExp(userInput) lets attackers supply patterns that match every document (.*) or trigger catastrophic backtracking, leaking data or causing DoS.",
+    "evidence": "Async / body / header check for code-sqli-mongodb-regex.",
+    "riskImpact": "Wildcard or pathological regex patterns expose every document or stall the server.",
+    "explanation": "Same as description.",
+    "fixSteps": [
+      "Escape regex metacharacters before compiling user input with RegExp.",
+      "Anchor patterns with ^ and bound their length; reject unbounded inputs.",
+      "Prefer $text indexes over $regex for user-driven search."
+    ],
+    "codeExamples": [],
+    "references": [
+      "https://www.mongodb.com/docs/manual/reference/operator/query/regex/"
+    ]
+  },
+  {
+    "id": "code-sqli-raw-query-string",
+    "type": "body-pattern",
+    "title": "Raw query string concatenation",
+    "category": "code",
+    "severity": "critical",
+    "description": "db.query(\"SELECT * FROM users WHERE id = '\" + userId + \"'\") or knex.raw(`SELECT * FROM x WHERE id = ${userId}`) build a SQL string from user input, enabling classic SQL injection.",
+    "evidence": "Async / body / header check for code-sqli-raw-query-string.",
+    "riskImpact": "Classic SQL injection: data exfiltration, authentication bypass, and potentially full RCE on the database server.",
+    "explanation": "Same as description.",
+    "fixSteps": [
+      "Use parameterized queries or prepared statements with placeholders.",
+      "Replace knex.raw with knex('table').where({ id: userId }).",
+      "Run a query allowlist review for every knex.raw / sequelize.literal / db.query call site."
+    ],
+    "codeExamples": [],
+    "references": ["https://owasp.org/www-community/attacks/SQL_Injection"]
+  },
+  {
+    "id": "code-sqli-template-literal-query",
+    "type": "body-pattern",
+    "title": "SQL via template literal interpolation",
+    "category": "code",
+    "severity": "critical",
+    "description": "Tag-less template literals like pool.query(`SELECT * FROM t WHERE id = ${id}`) interpolate user input directly into SQL text. Tagged sql`` libraries are safe; bare backticks are not.",
+    "evidence": "Async / body / header check for code-sqli-template-literal-query.",
+    "riskImpact": "Template-literal SQL injection exposes all rows the caller can see and can pivot to RCE on the database host.",
+    "explanation": "Same as description.",
+    "fixSteps": [
+      "Switch to a tagged template SQL helper (sql`...`) that auto-parameterizes.",
+      "Or use placeholders: pool.query('SELECT * FROM t WHERE id = $1', [id]).",
+      "Add a lint rule banning untagged template SQL."
+    ],
+    "codeExamples": [],
+    "references": ["https://github.com/Poordeveloper/node-sql-template-tag"]
+  },
+  {
+    "id": "code-sqli-mongoose-find-user",
+    "type": "body-pattern",
+    "title": "Mongoose find with user JSON",
+    "category": "code",
+    "severity": "high",
+    "description": "Model.find(JSON.parse(req.body)) passes a user-supplied object directly into a Mongo query. Attackers can inject query operators like $where, $regex, or $ne to bypass access control.",
+    "evidence": "Async / body / header check for code-sqli-mongoose-find-user.",
+    "riskImpact": "Attacker injects NoSQL operators to bypass filters, leak other users' documents, or trigger $where JavaScript.",
+    "explanation": "Same as description.",
+    "fixSteps": [
+      "Use an explicit schema (Joi/Zod) to strip unknown keys before reaching find().",
+      "Apply express-mongo-sanitize or mongo-sanitize to remove $-prefixed operators.",
+      "Validate types: ensure ids are strings, numbers, or ObjectIds only."
+    ],
+    "codeExamples": [],
+    "references": ["https://www.npmjs.com/package/express-mongo-sanitize"]
+  },
+  {
+    "id": "code-sqli-sequelize-literal",
+    "type": "body-pattern",
+    "title": "Sequelize.literal with user input",
+    "category": "code",
+    "severity": "high",
+    "description": "Sequelize.literal(userInput) or Sequelize.fn('CONCAT', userInput, 'x') interpolates raw SQL. When the literal contains user data, the resulting WHERE clause is vulnerable to SQL injection.",
+    "evidence": "Async / body / header check for code-sqli-sequelize-literal.",
+    "riskImpact": "SQL injection via Sequelize.literal breaks parameterized query boundaries and can exfiltrate the entire database.",
+    "explanation": "Same as description.",
+    "fixSteps": [
+      "Use Sequelize replacements: { replacements: [userInput] } instead of literal().",
+      "Allowlist column or operator names before passing to literal().",
+      "Wrap identifiers with Sequelize.literal only when names are static."
+    ],
+    "codeExamples": [],
+    "references": ["https://sequelize.org/docs/v6/core-concepts/raw-queries/"]
+  },
+  {
+    "id": "code-deser-yaml-load",
+    "type": "body-pattern",
+    "title": "yaml.load without safe loader",
+    "category": "code",
+    "severity": "critical",
+    "description": "yaml.load(input) uses the unsafe Loader by default and instantiates arbitrary Python objects via !!python/object tags. yaml.safe_load rejects those tags.",
+    "evidence": "Async / body / header check for code-deser-yaml-load.",
+    "riskImpact": "Crafted YAML can execute arbitrary Python during parsing, leading to full RCE on the host.",
+    "explanation": "Same as description.",
+    "fixSteps": [
+      "Use yaml.safe_load(input) for any untrusted YAML.",
+      "Or pin a safe Loader: yaml.load(input, Loader=yaml.SafeLoader).",
+      "Validate the YAML schema with a strict parser (e.g. pydantic) before deserialization."
+    ],
+    "codeExamples": [],
+    "references": ["https://pyyaml.org/wiki/PyYAMLDocumentation"]
+  },
+  {
+    "id": "code-deser-pickle-loads",
+    "type": "body-pattern",
+    "title": "pickle.loads on untrusted bytes",
+    "category": "code",
+    "severity": "critical",
+    "description": "pickle.loads(untrusted_bytes) reconstructs arbitrary Python objects and executes their __reduce__ method. Crafted pickles achieve arbitrary code execution at parse time.",
+    "evidence": "Async / body / header check for code-deser-pickle-loads.",
+    "riskImpact": "Untrusted pickle data triggers arbitrary code execution in the Python interpreter.",
+    "explanation": "Same as description.",
+    "fixSteps": [
+      "Never unpickle data from untrusted sources; use JSON or msgpack instead.",
+      "If unavoidable, verify an HMAC signature on the pickled bytes before loading.",
+      "Use pickle.loads only in isolated processes with restricted privileges."
+    ],
+    "codeExamples": [],
+    "references": ["https://docs.python.org/3/library/pickle.html"]
+  },
+  {
+    "id": "code-deser-base64-eval",
+    "type": "body-pattern",
+    "title": "atob/base64 + eval chain",
+    "category": "code",
+    "severity": "critical",
+    "description": "Patterns like eval(atob(payload)) or eval(Buffer.from(payload,'base64').toString()) decode and immediately execute attacker-supplied JavaScript. The base64 layer adds nothing; eval still runs the result.",
+    "evidence": "Async / body / header check for code-deser-base64-eval.",
+    "riskImpact": "Encoded eval() bypasses naive content filters and runs arbitrary JavaScript in the page or server.",
+    "explanation": "Same as description.",
+    "fixSteps": [
+      "Remove eval entirely; decode with atob only if you need data, then JSON.parse.",
+      "Use a sandboxed interpreter like vm2 with strict context if you must run untrusted code.",
+      "Add CSP script-src 'self' to block injected source code."
+    ],
+    "codeExamples": [],
+    "references": ["https://owasp.org/www-community/attacks/Code_Injection"]
+  },
+  {
+    "id": "code-deser-jsonparse-newfunction",
+    "type": "body-pattern",
+    "title": "JSON.parse piped into new Function",
+    "category": "code",
+    "severity": "critical",
+    "description": "new Function('return ' + JSON.parse(input)) or new Function(JSON.parse(input).body) constructs a function body from parsed JSON. The parsed JSON still ships attacker-controlled source code.",
+    "evidence": "Async / body / header check for code-deser-jsonparse-newfunction.",
+    "riskImpact": "Function constructor evaluates attacker-controlled source, enabling arbitrary code execution.",
+    "explanation": "Same as description.",
+    "fixSteps": [
+      "Avoid new Function for untrusted input; use real functions or modules.",
+      "If dynamic logic is required, evaluate it through a safe DSL like JSONLogic.",
+      "Add CSP to block inline scripts even if injection succeeds."
+    ],
+    "codeExamples": [],
+    "references": [
+      "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Function/Function"
+    ]
+  },
+  {
+    "id": "code-deser-node-serialize",
+    "type": "body-pattern",
+    "title": "node-serialize deserialize()",
+    "category": "code",
+    "severity": "critical",
+    "description": "node-serializes serialize/deserialize supports an IIFE payload (rce: _$ND_FUNC$$ = function(){...}()). The deserialize() call evaluates that payload and executes attacker JavaScript on the server.",
+    "evidence": "Async / body / header check for code-deser-node-serialize.",
+    "riskImpact": "Untrusted serialized input is evaluated, leading directly to remote code execution.",
+    "explanation": "Same as description.",
+    "fixSteps": [
+      "Replace node-serialize with JSON.parse; node-serialize is unmaintained and unsafe.",
+      "Validate any unserialized data with a strict schema (Zod, Joi).",
+      "Block the package via package.json overrides or denoising rules."
+    ],
+    "codeExamples": [],
+    "references": ["https://www.npmjs.com/package/node-serialize"]
+  },
+  {
+    "id": "code-deser-php-unserialize",
+    "type": "body-pattern",
+    "title": "PHP unserialize on user input",
+    "category": "code",
+    "severity": "critical",
+    "description": "unserialize($_COOKIE['x']) or unserialize($request->body) can trigger __wakeup, __destruct, or other magic methods on attacker-chosen classes, leading to RCE via POP gadget chains.",
+    "evidence": "Async / body / header check for code-deser-php-unserialize.",
+    "riskImpact": "Object injection via PHP unserialize enables property-oriented programming chains and remote code execution.",
+    "explanation": "Same as description.",
+    "fixSteps": [
+      "Use json_decode for any untrusted data instead of unserialize.",
+      "If serialization is required, pass ['allowed_classes' => false] as the second argument.",
+      "Audit any class with magic methods (__wakeup, __destruct) for side effects."
+    ],
+    "codeExamples": [],
+    "references": ["https://www.php.net/manual/en/function.unserialize.php"]
+  },
+  {
+    "id": "code-ssrf-fetch-port",
+    "type": "body-pattern",
+    "title": "fetch() targeting localhost / loopback / link-local",
+    "category": "code",
+    "severity": "high",
+    "description": "fetch(\"http://127.0.0.1:8080/...\"), fetch(\"http://[::1]:...\"), or fetch(\"http://169.254.169.254/...\") target loopback or cloud metadata endpoints. When the URL is even partially user-controlled, the request can be redirected to internal services.",
+    "evidence": "Async / body / header check for code-ssrf-fetch-port.",
+    "riskImpact": "Attacker reaches internal services such as admin panels, databases, or cloud metadata APIs.",
+    "explanation": "Same as description.",
+    "fixSteps": [
+      "Resolve the destination hostname and reject private/loopback/link-local ranges before fetching.",
+      "Use an outbound HTTP proxy that enforces an allowlist of external hosts.",
+      "Disable HTTP redirects or re-validate the host after each redirect."
+    ],
+    "codeExamples": [],
+    "references": [
+      "https://owasp.org/www-community/attacks/Server_Side_Request_Forgery"
+    ]
+  },
+  {
+    "id": "code-ssrf-fetch-user-input",
+    "type": "body-pattern",
+    "title": "fetch() URL built from user input",
+    "category": "code",
+    "severity": "high",
+    "description": "fetch(req.query.url) or fetch(`https://api.example.com/${userPath}`) lets attackers redirect the request to internal hosts (http://localhost, http://169.254.169.254) or arbitrary external services.",
+    "evidence": "Async / body / header check for code-ssrf-fetch-user-input.",
+    "riskImpact": "Server-side request forgery to internal services, cloud metadata endpoints, or other external systems.",
+    "explanation": "Same as description.",
+    "fixSteps": [
+      "Build URLs from server-side allowlists, not from raw user input.",
+      "Resolve the host and reject private/loopback IP ranges before issuing the fetch.",
+      "Use a forward proxy that enforces the destination allowlist."
+    ],
+    "codeExamples": [],
+    "references": [
+      "https://cheatsheetseries.owasp.org/cheatsheets/Server_Side_Request_Forgery_Prevention_Cheat_Sheet.html"
+    ]
+  },
+  {
+    "id": "code-ssrf-axios-user-input",
+    "type": "body-pattern",
+    "title": "axios.get with user-controlled URL",
+    "category": "code",
+    "severity": "high",
+    "description": "axios.get(req.body.url) or axios({ url: `https://api/${userId}` }) issues HTTP from the server with attacker-controlled destinations, enabling SSRF and credential theft from metadata endpoints.",
+    "evidence": "Async / body / header check for code-ssrf-axios-user-input.",
+    "riskImpact": "Outbound requests reach internal services or cloud metadata APIs that the attacker cannot otherwise reach.",
+    "explanation": "Same as description.",
+    "fixSteps": [
+      "Validate the URL against an allowlist of permitted hosts and paths.",
+      "Resolve the host and block private IP ranges (RFC 1918, loopback, link-local).",
+      "Disable axios follow-redirects or re-validate after each redirect."
+    ],
+    "codeExamples": [],
+    "references": ["https://github.com/axios/axios"]
+  },
+  {
+    "id": "code-ssrf-xhr-user-input",
+    "type": "body-pattern",
+    "title": "XMLHttpRequest URL from user input",
+    "category": "code",
+    "severity": "medium",
+    "description": "xhr.open(\"GET\", userInput) or fetch via XHR with a user-supplied URL allows attackers to drive requests to arbitrary hosts when called server-side (e.g. in Node + jsdom or in service workers).",
+    "evidence": "Async / body / header check for code-ssrf-xhr-user-input.",
+    "riskImpact": "Server-side XHR can reach internal services or leak response contents through error messages.",
+    "explanation": "Same as description.",
+    "fixSteps": [
+      "Restrict XHR destinations to an allowlist of trusted hosts.",
+      "Resolve the URL host and reject private IP ranges.",
+      "Use the Fetch API with redirect: 'manual' to prevent silent host hopping."
+    ],
+    "codeExamples": [],
+    "references": [
+      "https://developer.mozilla.org/en-US/docs/Web/API/XMLHttpRequest/open"
+    ]
+  },
+  {
+    "id": "code-ssrf-got-user-input",
+    "type": "body-pattern",
+    "title": "got / node-fetch / undici with user URL",
+    "category": "code",
+    "severity": "high",
+    "description": "got(req.query.url), undici.fetch(userUrl), or node-fetch(requestUrl) perform HTTP from the server process. Without URL allowlisting, attackers route requests to internal infrastructure.",
+    "evidence": "Async / body / header check for code-ssrf-got-user-input.",
+    "riskImpact": "SSRF via popular HTTP clients exposes internal services and cloud metadata endpoints.",
+    "explanation": "Same as description.",
+    "fixSteps": [
+      "Validate the URL against an allowlist of permitted hosts and ports.",
+      "Resolve the hostname and reject loopback / RFC1918 / link-local addresses.",
+      "Disable automatic redirects or re-validate after each hop."
+    ],
+    "codeExamples": [],
+    "references": ["https://github.com/sindresorhus/got"]
+  },
+  {
+    "id": "code-redos-nested-quantifier",
+    "type": "body-pattern",
+    "title": "Nested quantifier regex (ReDoS)",
+    "category": "code",
+    "severity": "high",
+    "description": "Patterns like (a+)+, ([a-z]+)*, or (\\d+\\.\\d+)* contain nested quantifiers that produce exponential backtracking on crafted input, hanging the event loop or worker.",
+    "evidence": "Async / body / header check for code-redos-nested-quantifier.",
+    "riskImpact": "Single crafted input causes the regex engine to consume CPU indefinitely, blocking the service.",
+    "explanation": "Same as description.",
+    "fixSteps": [
+      "Eliminate nested quantifiers; use possessive groups or atomic groups where supported.",
+      "Validate the input length before running the regex.",
+      "Run the regex in a worker thread with a timeout."
+    ],
+    "codeExamples": [],
+    "references": [
+      "https://owasp.org/www-community/attacks/Regular_expression_Denial_of_Service_-_ReDoS"
+    ]
+  },
+  {
+    "id": "code-redos-catastrophic-backtrack",
+    "type": "body-pattern",
+    "title": "Catastrophic backtracking pattern (ReDoS)",
+    "category": "code",
+    "severity": "high",
+    "description": "Regexes with alternation overlap and greedy quantifiers such as (a|a)+ or (\\w+)*\\b produce catastrophic backtracking on inputs like 'aaaaaaaaaaaa!'. Detection looks for patterns with overlapping alternates inside a quantified group.",
+    "evidence": "Async / body / header check for code-redos-catastrophic-backtrack.",
+    "riskImpact": "Service can be frozen by a single request that triggers the bad regex.",
+    "explanation": "Same as description.",
+    "fixSteps": [
+      "Rewrite alternations so alternatives cannot match the same input (use distinct anchors or character classes).",
+      "Test the regex with a ReDoS tool such as vuln-regex-detector before shipping.",
+      "Cap regex execution time with re2 or a worker timeout."
+    ],
+    "codeExamples": [],
+    "references": ["https://github.com/davisjam/vuln-regex-detector"]
+  },
+  {
+    "id": "code-redos-greedy-quantifier",
+    "type": "body-pattern",
+    "title": "Greedy quantifier on unanchored pattern (ReDoS)",
+    "category": "code",
+    "severity": "medium",
+    "description": "Patterns like .*foo or .+\\d+ apply greedy quantifiers to wildcards; long inputs without the trailing literal force the engine to backtrack through every split, producing near-linear but expensive match times.",
+    "evidence": "Async / body / header check for code-redos-greedy-quantifier.",
+    "riskImpact": "Long attacker-controlled strings cause noticeable latency spikes even when the regex does not fully match.",
+    "explanation": "Same as description.",
+    "fixSteps": [
+      "Replace .* with [^\\n]* or a bounded character class.",
+      "Anchor the trailing literal at the end of the input.",
+      "Limit the length of regex subjects via a validator."
+    ],
+    "codeExamples": [],
+    "references": ["https://www.regular-expressions.info/catastrophic.html"]
+  },
+  {
+    "id": "code-redos-alternation-overlap",
+    "type": "body-pattern",
+    "title": "Alternation overlap regex (ReDoS)",
+    "category": "code",
+    "severity": "medium",
+    "description": "Patterns with overlapping alternation such as (a|ab)+ or (\\w|\\d|\\s)+ cause the regex engine to try every combination before failing. On inputs that never match, this backtracking is exponential.",
+    "evidence": "Async / body / header check for code-redos-alternation-overlap.",
+    "riskImpact": "Single request can stall a server thread or event-loop tick.",
+    "explanation": "Same as description.",
+    "fixSteps": [
+      "Order alternations by specificity (longest match first) to reduce overlaps.",
+      "Use atomic groups or possessive quantifiers where supported.",
+      "Switch to a non-backtracking engine (RE2) for untrusted input."
+    ],
+    "codeExamples": [],
+    "references": ["https://www.regular-expressions.info/alternation.html"]
+  },
+  {
+    "id": "code-redirect-window-location-href",
+    "type": "body-pattern",
+    "title": "window.location.href = userInput",
+    "category": "code",
+    "severity": "high",
+    "description": "Assigning window.location.href to a user-supplied URL performs a top-level navigation to the attacker-chosen host, enabling phishing and credential theft via open redirect.",
+    "evidence": "Async / body / header check for code-redirect-window-location-href.",
+    "riskImpact": "Attacker hosts a convincing phishing page at the destination and uses the open redirect as the launchpad.",
+    "explanation": "Same as description.",
+    "fixSteps": [
+      "Compare the destination origin against an allowlist before assigning.",
+      "Use URL parsing to extract and validate the host component.",
+      "Prefer server-issued 302 redirects with allowlisted destinations."
+    ],
+    "codeExamples": [],
+    "references": [
+      "https://owasp.org/www-community/attacks/Unvalidated_Redirects_and_Forwards_Cheat_Sheet"
+    ]
+  },
+  {
+    "id": "code-redirect-location-replace",
+    "type": "body-pattern",
+    "title": "location.replace(userInput)",
+    "category": "code",
+    "severity": "high",
+    "description": "location.replace(userUrl) navigates the current page to the attacker-supplied URL while removing the original entry from history. The open-redirect impact is identical to window.location but harder for the victim to back out of.",
+    "evidence": "Async / body / header check for code-redirect-location-replace.",
+    "riskImpact": "Phishing campaigns can replace the legitimate history entry, making the back button useless.",
+    "explanation": "Same as description.",
+    "fixSteps": [
+      "Validate the destination host against a strict allowlist.",
+      "Use URL parsing to extract and compare origins.",
+      "Log all redirect destinations for audit."
+    ],
+    "codeExamples": [],
+    "references": [
+      "https://developer.mozilla.org/en-US/docs/Web/API/Location/replace"
+    ]
+  },
+  {
+    "id": "code-redirect-top-location",
+    "type": "body-pattern",
+    "title": "top.location / parent.location assignment",
+    "category": "code",
+    "severity": "high",
+    "description": "top.location = userInput or parent.location.href = userInput navigates the top-most frame from inside an iframe. When the URL is attacker-controlled, it enables clickjacking-aided redirects and breaks frame-busting controls.",
+    "evidence": "Async / body / header check for code-redirect-top-location.",
+    "riskImpact": "Cross-frame navigation to attacker-controlled pages bypasses frame protections and supports phishing chains.",
+    "explanation": "Same as description.",
+    "fixSteps": [
+      "Restrict top-level navigation to same-origin hosts.",
+      "Set Content-Security-Policy: frame-ancestors to limit who can frame your pages.",
+      "Avoid JavaScript-driven top navigation entirely when possible."
+    ],
+    "codeExamples": [],
+    "references": [
+      "https://owasp.org/www-community/attacks/Cross_Frame_Scripting"
+    ]
+  },
+  {
+    "id": "code-proto-pollution-deep-merge",
+    "type": "body-pattern",
+    "title": "deep-extend / deepmerge prototype pollution",
+    "category": "code",
+    "severity": "high",
+    "description": "Lodash's _.merge and _.mergeWith, jQuery's $.extend(true, ...), and libraries such as deep-extend recursively copy enumerable keys. When the source contains __proto__, constructor.prototype, or prototype, the copy writes to Object.prototype.",
+    "evidence": "Async / body / header check for code-proto-pollution-deep-merge.",
+    "riskImpact": "Polluting Object.prototype can lead to XSS, authentication bypass, denial of service, or remote code execution.",
+    "explanation": "Same as description.",
+    "fixSteps": [
+      "Upgrade Lodash to 4.17.21+ or use lodash-es with the same patch.",
+      "Replace jQuery $.extend(true, ...) with structuredClone after sanitizing keys.",
+      "Sanitize keys: skip __proto__, constructor, prototype before merging."
+    ],
+    "codeExamples": [],
+    "references": ["https://github.com/lodash/lodash/pull/4759"]
+  },
+  {
+    "id": "code-proto-pollution-lodash-merge",
+    "type": "body-pattern",
+    "title": "Lodash _.merge / _.defaultsDeep prototype pollution",
+    "category": "code",
+    "severity": "high",
+    "description": "_.merge(target, userInput) and _.defaultsDeep(target, userInput) recursively copy properties from user input. Before Lodash 4.17.12 the copy wrote through __proto__, allowing attackers to set arbitrary properties on Object.prototype.",
+    "evidence": "Async / body / header check for code-proto-pollution-lodash-merge.",
+    "riskImpact": "Object.prototype pollution enables XSS, authentication bypass, and DoS via type-confusion gadgets.",
+    "explanation": "Same as description.",
+    "fixSteps": [
+      "Upgrade Lodash to 4.17.21 or later.",
+      "Switch to structuredClone for trusted internal data and validate keys for the rest.",
+      "Block keys __proto__, constructor, prototype in any merge helper."
+    ],
+    "codeExamples": [],
+    "references": ["https://snyk.io/vuln/SNYK-JS-LODASH-590103"]
+  },
+  {
+    "id": "code-proto-pollution-object-assign-proto",
+    "type": "body-pattern",
+    "title": "Object.assign with __proto__ key",
+    "category": "code",
+    "severity": "medium",
+    "description": "Object.assign(target, JSON.parse(userInput)) or spread {...userInput} into a target object copies a __proto__ key literally; combined with a subsequent access, this can pollute Object.prototype in engines that honor the assignment.",
+    "evidence": "Async / body / header check for code-proto-pollution-object-assign-proto.",
+    "riskImpact": "Object.prototype pollution enables XSS, type confusion, and bypass of authorization checks.",
+    "explanation": "Same as description.",
+    "fixSteps": [
+      "Use Object.create(null) as the target for untrusted key sets.",
+      "Filter keys against an allowlist before Object.assign.",
+      "Adopt Object.hasOwn or hasOwnProperty checks on every read."
+    ],
+    "codeExamples": [],
+    "references": [
+      "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Object/assign"
+    ]
+  },
+  {
+    "id": "code-proto-pollution-recursive-merge",
+    "type": "body-pattern",
+    "title": "Custom recursive merge prototype pollution",
+    "category": "code",
+    "severity": "high",
+    "description": "Hand-rolled recursive merge functions that iterate Object.keys(source) and recurse into nested values will write through __proto__ and pollute Object.prototype when the source is attacker-controlled.",
+    "evidence": "Async / body / header check for code-proto-pollution-recursive-merge.",
+    "riskImpact": "Same downstream impact as library-driven prototype pollution: XSS, auth bypass, DoS.",
+    "explanation": "Same as description.",
+    "fixSteps": [
+      "Skip keys named __proto__, constructor, or prototype in the merge loop.",
+      "Use Object.hasOwn(target, key) to guard against inherited keys.",
+      "Replace the custom helper with a vetted library patched against pollution."
+    ],
+    "codeExamples": [],
+    "references": ["https://github.com/HoLyVieR/prototype-pollution-nsec18"]
+  },
+  {
+    "id": "code-jwt-verify-no-secret",
+    "type": "body-pattern",
+    "title": "jwt.verify called without a secret",
+    "category": "code",
+    "severity": "critical",
+    "description": "jwt.verify(token) without a secret/key/algorithms option accepts an unsigned or 'alg: none' token. Some libraries will also silently accept any signing key, breaking the trust boundary.",
+    "evidence": "Async / body / header check for code-jwt-verify-no-secret.",
+    "riskImpact": "Tokens forged by attackers pass verification and grant arbitrary identities or privileges.",
+    "explanation": "Same as description.",
+    "fixSteps": [
+      "Always pass an explicit secret or public key plus algorithms: ['HS256'] or ['RS256'].",
+      "Reject tokens whose alg is 'none'.",
+      "Centralize verification in a single middleware to enforce consistent options."
+    ],
+    "codeExamples": [],
+    "references": [
+      "https://auth0.com/blog/critical-vulnerabilities-in-json-web-token-libraries/"
+    ]
+  },
+  {
+    "id": "code-jwt-decode-only",
+    "type": "body-pattern",
+    "title": "jwt.decode used instead of jwt.verify",
+    "category": "code",
+    "severity": "high",
+    "description": "jwt.decode(token) parses the JWT without verifying the signature. Relying on the decoded payload for auth decisions is equivalent to trusting client-supplied identity.",
+    "evidence": "Async / body / header check for code-jwt-decode-only.",
+    "riskImpact": "Attackers can mint tokens with arbitrary claims (admin:true) and pass your authorization checks.",
+    "explanation": "Same as description.",
+    "fixSteps": [
+      "Replace jwt.decode with jwt.verify and pass the secret or public key.",
+      "If you only need to read claims for telemetry, use a clearly-named helper like peekUntrustedClaims.",
+      "Add a lint rule that flags jwt.decode in production code paths."
+    ],
+    "codeExamples": [],
+    "references": [
+      "https://github.com/auth0/node-jsonwebtoken#jwtverifytoken-secretorpublickey-options-callback"
+    ]
+  },
+  {
+    "id": "code-jwt-hs256-weak-secret",
+    "type": "body-pattern",
+    "title": "HS256 signed with weak or hardcoded secret",
+    "category": "code",
+    "severity": "high",
+    "description": "jwt.sign(payload, 'secret') or jwt.sign(payload, process.env.JWT_SECRET) where JWT_SECRET is a short, low-entropy string enables offline brute-force of the HMAC key.",
+    "evidence": "Async / body / header check for code-jwt-hs256-weak-secret.",
+    "riskImpact": "Attackers recover the HS256 secret and forge tokens for any identity, bypassing authentication entirely.",
+    "explanation": "Same as description.",
+    "fixSteps": [
+      "Use a 256-bit (32-byte) random secret generated with crypto.randomBytes.",
+      "Rotate secrets regularly and store them in a secret manager, not env files.",
+      "Consider migrating to RS256 or EdDSA so verifiers only need the public key."
+    ],
+    "codeExamples": [],
+    "references": ["https://datatracker.ietf.org/doc/html/rfc7518#section-3.2"]
+  },
+  {
+    "id": "code-jwt-none-algorithm",
+    "type": "body-pattern",
+    "title": "JWT 'alg: none' or algorithm confusion",
+    "category": "code",
+    "severity": "critical",
+    "description": "jwt.verify(token, secret, { algorithms: ['none'] }) or failing to pin algorithms allows an attacker to switch alg to 'none' or to a weaker asymmetric/HMAC algorithm that the verifier accepts.",
+    "evidence": "Async / body / header check for code-jwt-none-algorithm.",
+    "riskImpact": "Tokens are accepted without signatures or with a key the attacker controls, granting impersonation.",
+    "explanation": "Same as description.",
+    "fixSteps": [
+      "Always set algorithms explicitly: { algorithms: ['HS256'] } or ['RS256'].",
+      "Reject any token whose header.alg differs from the expected list.",
+      "Use jose or PyJWT >= 2.4 which enforce algorithms by default."
+    ],
+    "codeExamples": [],
+    "references": [
+      "https://github.com/auth0/node-jsonwebtoken/security/advisories/GHSA-qwph-4952-7xr6"
+    ]
+  },
+  {
+    "id": "code-csp-no-trustedtypes",
+    "type": "body-pattern",
+    "title": "No Trusted Types policy created",
+    "category": "code",
+    "severity": "medium",
+    "description": "Pages that write to innerHTML, document.write, or eval without first creating a trustedTypes policy leave every string-to-DOM sink undefended. Trusted Types forces a sanitizing policy to gate these sinks.",
+    "evidence": "Async / body / header check for code-csp-no-trustedtypes.",
+    "riskImpact": "DOM XSS via injected strings cannot be blocked without Trusted Types enforcement.",
+    "explanation": "Same as description.",
+    "fixSteps": [
+      "Create a default policy: trustedTypes.createPolicy('default', { createHTML: s => DOMPurify.sanitize(s) }).",
+      "Add require-trusted-types-for 'script' to your CSP header.",
+      "Replace direct innerHTML writes with policy.createHTML(userInput)."
+    ],
+    "codeExamples": [],
+    "references": ["https://w3c.github.io/trusted-types/dist/spec/"]
+  },
+  {
+    "id": "code-csp-no-require-trusted-types",
+    "type": "body-pattern",
+    "title": "CSP missing require-trusted-types-for",
+    "category": "code",
+    "severity": "medium",
+    "description": "The CSP directive require-trusted-types-for 'script' is required to enforce Trusted Types. Without it, browsers ignore policy violations on DOM sinks.",
+    "evidence": "Async / body / header check for code-csp-no-require-trusted-types.",
+    "riskImpact": "Trusted Types policies are not enforced; injected strings still flow to innerHTML and eval.",
+    "explanation": "Same as description.",
+    "fixSteps": [
+      "Add require-trusted-types-for 'script' to the Content-Security-Policy header.",
+      "Combine with trustedTypes default policy to sanitize legacy sinks.",
+      "Audit reports to trusted-types-violation to find remaining sinks."
+    ],
+    "codeExamples": [],
+    "references": [
+      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Security-Policy/require-trusted-types-for"
+    ]
+  },
+  {
+    "id": "code-csp-missing-trusted-types",
+    "type": "body-pattern",
+    "title": "No Content-Security-Policy enforces Trusted Types",
+    "category": "code",
+    "severity": "medium",
+    "description": "Pages that render user-controlled HTML but lack both a Trusted Types policy and the CSP directive to enforce it leave classic DOM XSS vectors undefended.",
+    "evidence": "Async / body / header check for code-csp-missing-trusted-types.",
+    "riskImpact": "Attacker-controlled HTML strings reach innerHTML / insertAdjacentHTML unchecked, enabling stored DOM XSS.",
+    "explanation": "Same as description.",
+    "fixSteps": [
+      "Set CSP: require-trusted-types-for 'script'; trusted-types default.",
+      "Register a sanitizing policy (DOMPurify) and use it everywhere.",
+      "Subscribe to securitypolicyviolation events to detect leaks."
+    ],
+    "codeExamples": [],
+    "references": ["https://web.dev/articles/trusted-types"]
+  },
+  {
+    "id": "code-auth-localstorage-tokens",
+    "type": "body-pattern",
+    "title": "Auth tokens stored in localStorage",
+    "category": "code",
+    "severity": "high",
+    "description": "localStorage.setItem('token', jwt) makes the JWT accessible to any script that runs in the same origin. A single XSS payload can exfiltrate it via fetch.",
+    "evidence": "Async / body / header check for code-auth-localstorage-tokens.",
+    "riskImpact": "XSS enables full account takeover by reading the JWT from localStorage.",
+    "explanation": "Same as description.",
+    "fixSteps": [
+      "Move auth tokens to HttpOnly; Secure; SameSite=Strict cookies set by the server.",
+      "If a token must live client-side, encrypt it with a server-issued key before storage.",
+      "Adopt BFF pattern so the browser never sees raw tokens."
+    ],
+    "codeExamples": [],
+    "references": ["https://owasp.org/www-community/HttpOnly"]
+  },
+  {
+    "id": "code-auth-sessionstorage-passwords",
+    "type": "body-pattern",
+    "title": "Passwords stored in sessionStorage",
+    "category": "code",
+    "severity": "critical",
+    "description": "sessionStorage.setItem('password', pwd) or sessionStorage.setItem('pwd', val) keeps plaintext credentials in the browser for the lifetime of the tab. Any XSS reads it instantly.",
+    "evidence": "Async / body / header check for code-auth-sessionstorage-passwords.",
+    "riskImpact": "Plaintext password exfiltration via XSS yields direct credential reuse against other services.",
+    "explanation": "Same as description.",
+    "fixSteps": [
+      "Never persist plaintext passwords client-side; send them once to the server over HTTPS.",
+      "Issue an opaque session token via Set-Cookie HttpOnly; Secure; SameSite=Strict.",
+      "Adopt WebAuthn for passwordless flows where possible."
+    ],
+    "codeExamples": [],
+    "references": [
+      "https://cheatsheetseries.owasp.org/cheatsheets/Credential_Storage_Cheat_Sheet.html"
+    ]
+  },
+  {
+    "id": "code-cookie-samesite-none-http",
+    "type": "body-pattern",
+    "title": "SameSite=None cookie on HTTP page",
+    "category": "code",
+    "severity": "high",
+    "description": "Cookies set with SameSite=None but without the Secure flag are rejected by browsers, but client-side code can still emit them on HTTP origins. The cookie then flows cross-site over insecure transports.",
+    "evidence": "Async / body / header check for code-cookie-samesite-none-http.",
+    "riskImpact": "Cross-site requests over HTTP can carry the cookie, enabling CSRF and session hijacking on downgrade.",
+    "explanation": "Same as description.",
+    "fixSteps": [
+      "Pair SameSite=None with Secure; on the same origin.",
+      "Use SameSite=Lax or Strict for any cookie that does not need cross-site delivery.",
+      "Set cookies from the server via Set-Cookie, not document.cookie."
+    ],
+    "codeExamples": [],
+    "references": [
+      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Set-Cookie/SameSite"
+    ]
+  },
+  {
+    "id": "code-cookie-missing-secure-http",
+    "type": "body-pattern",
+    "title": "Cookie written without Secure flag on HTTP",
+    "category": "code",
+    "severity": "medium",
+    "description": "document.cookie = 'sid=' + token without '; Secure' allows the cookie to be transmitted over HTTP. Network observers and downgrade attackers can read or replay it.",
+    "evidence": "Async / body / header check for code-cookie-missing-secure-http.",
+    "riskImpact": "Cookie captured on an unencrypted hop enables session hijacking without ever breaking TLS at the user.",
+    "explanation": "Same as description.",
+    "fixSteps": [
+      "Append '; Secure' to every document.cookie write for sensitive values.",
+      "Better: set the cookie from the server via Set-Cookie with Secure; HttpOnly; SameSite.",
+      "Add HSTS so the browser refuses plain-HTTP requests for the host."
+    ],
+    "codeExamples": [],
+    "references": ["https://developer.mozilla.org/en-US/docs/Web/HTTP/Cookies"]
+  },
+  {
+    "id": "code-clickjack-target-blank-js-href",
+    "type": "body-pattern",
+    "title": "target=_blank with javascript: href",
+    "category": "code",
+    "severity": "high",
+    "description": "Anchor patterns like <a target=\"_blank\" href=\"javascript:...\"> combine reverse tabnabbing risk with javascript: URL execution. Even with noopener, javascript: still runs in the new tab.",
+    "evidence": "Async / body / header check for code-clickjack-target-blank-js-href.",
+    "riskImpact": "Opening a javascript: URL in a new tab executes attacker code in that tab's origin context.",
+    "explanation": "Same as description.",
+    "fixSteps": [
+      "Validate href against an allowlist of http(s) URLs; reject javascript:, data:, vbscript:.",
+      "Set rel=\"noopener noreferrer\" on every target=\"_blank\" anchor.",
+      "Adopt Trusted Types to gate javascript: URLs."
+    ],
+    "codeExamples": [],
+    "references": ["https://owasp.org/www-community/attacks/Reverse_Tabnabbing"]
+  },
+  {
+    "id": "code-clickjack-x-frame-options",
+    "type": "body-pattern",
+    "title": "Missing X-Frame-Options / frame-ancestors CSP",
+    "category": "code",
+    "severity": "medium",
+    "description": "Pages without X-Frame-Options: DENY (or a CSP frame-ancestors 'none') can be embedded inside an attacker-controlled iframe, enabling clickjacking against authenticated users.",
+    "evidence": "Async / body / header check for code-clickjack-x-frame-options.",
+    "riskImpact": "Attacker overlays a transparent iframe on a decoy page; clicks land on the victim's session, performing unintended actions.",
+    "explanation": "Same as description.",
+    "fixSteps": [
+      "Send X-Frame-Options: DENY (or SAMEORIGIN if same-origin framing is required).",
+      "Set Content-Security-Policy: frame-ancestors 'none' (or 'self').",
+      "Combine with SameSite=Lax cookies to reduce cross-site risk."
+    ],
+    "codeExamples": [],
+    "references": [
+      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/X-Frame-Options"
+    ]
+  },
+  {
+    "id": "code-timing-no-constant-time-compare",
+    "type": "body-pattern",
+    "title": "Non-constant-time signature comparison",
+    "category": "code",
+    "severity": "high",
+    "description": "if (providedSig === storedSig) compares HMACs or tokens with JavaScript ===, which short-circuits on the first differing byte. Attackers measure timing to recover the signature byte-by-byte.",
+    "evidence": "Async / body / header check for code-timing-no-constant-time-compare.",
+    "riskImpact": "Timing oracle leaks signature bytes, allowing an attacker to forge valid signatures or replay tokens.",
+    "explanation": "Same as description.",
+    "fixSteps": [
+      "Use crypto.timingSafeEqual(Buffer.from(a), Buffer.from(b)) for any secret comparison.",
+      "Hash both sides with SHA-256 first if lengths differ, then compare.",
+      "Add a unit test that fails if comparison timing varies by input."
+    ],
+    "codeExamples": [],
+    "references": [
+      "https://nodejs.org/api/crypto.html#cryptotimingsafeequala-b"
+    ]
+  },
+  {
+    "id": "code-timing-hmac-equality",
+    "type": "body-pattern",
+    "title": "HMAC verification with === operator",
+    "category": "code",
+    "severity": "high",
+    "description": "if (hmac(secret, msg) === providedTag) uses == / === to compare authentication tags. JavaScript string comparison is not constant time and leaks the prefix of a correct tag.",
+    "evidence": "Async / body / header check for code-timing-hmac-equality.",
+    "riskImpact": "Network-local attackers recover the HMAC byte-by-byte and forge authenticated requests.",
+    "explanation": "Same as description.",
+    "fixSteps": [
+      "Compare HMAC outputs with crypto.timingSafeEqual.",
+      "Convert both sides to Buffer of equal length; reject length mismatches.",
+      "Prefer library helpers (e.g. noble-ed25519 verify) that already do this."
+    ],
+    "codeExamples": [],
+    "references": [
+      "https://paragonie.com/blog/2015/11/02/why-hash-youre-using-not-secure"
+    ]
+  },
+  {
+    "id": "code-cloud-aws-hardcoded-credentials",
+    "type": "body-pattern",
+    "title": "Hardcoded AWS credentials in @aws-sdk",
+    "category": "code",
+    "severity": "critical",
+    "description": "Patterns like new S3Client({ accessKeyId: 'AKIA...', secretAccessKey: '...' }) embed long-lived IAM keys directly into source. Once the source is logged or committed, the keys are compromised.",
+    "evidence": "Async / body / header check for code-cloud-aws-hardcoded-credentials.",
+    "riskImpact": "Leaked keys grant whoever holds them the same AWS permissions as the application, including S3, IAM, and STS.",
+    "explanation": "Same as description.",
+    "fixSteps": [
+      "Remove hardcoded keys; let the SDK pull credentials from the environment, IAM role, or SSO.",
+      "Rotate the exposed credentials immediately and audit CloudTrail for misuse.",
+      "Adopt short-lived STS tokens via AssumeRole with web identity or OIDC."
+    ],
+    "codeExamples": [],
+    "references": [
+      "https://docs.aws.amazon.com/sdk-for-javascript/v3/developer-guide/loading-node-credentials-iam-role.html"
+    ]
+  },
+  {
+    "id": "code-cloud-aws-s3-upload-no-acl",
+    "type": "body-pattern",
+    "title": "S3 upload without ACL restriction",
+    "category": "code",
+    "severity": "high",
+    "description": "s3.upload({ Bucket, Key, Body, ACL: 'public-read' }) or PutObjectCommand with explicit public ACLs creates world-readable objects. Worse, buckets without Block Public Access can leak every object.",
+    "evidence": "Async / body / header check for code-cloud-aws-s3-upload-no-acl.",
+    "riskImpact": "Public S3 objects leak customer data, backups, or sensitive logs at internet scale.",
+    "explanation": "Same as description.",
+    "fixSteps": [
+      "Default to ACL 'private' and serve downloads via short-lived presigned URLs.",
+      "Enable S3 Block Public Access at the account and bucket level.",
+      "Use SSE-KMS with a key policy that denies unencrypted uploads."
+    ],
+    "codeExamples": [],
+    "references": [
+      "https://docs.aws.amazon.com/AmazonS3/latest/userguide/access-control-best-practices.html"
+    ]
+  },
+  {
+    "id": "code-cloud-azure-blob-upload-no-acl",
+    "type": "body-pattern",
+    "title": "Azure Blob upload with container public access",
+    "category": "code",
+    "severity": "high",
+    "description": "Azure blob uploads that set container access level to 'blob' or 'container' make every object publicly listable. Anonymous enumeration of the container then leaks all uploaded files.",
+    "evidence": "Async / body / header check for code-cloud-azure-blob-upload-no-acl.",
+    "riskImpact": "Public containers expose uploaded documents, backups, and user-generated content to anyone who guesses the URL.",
+    "explanation": "Same as description.",
+    "fixSteps": [
+      "Set container access level to 'private' and use SAS tokens or AAD for access.",
+      "Generate short-lived user delegation SAS URLs instead of account SAS.",
+      "Audit storage account firewalls and disable public network access where possible."
+    ],
+    "codeExamples": [],
+    "references": [
+      "https://learn.microsoft.com/azure/storage/blobs/anonymous-read-access-configure"
+    ]
+  }
+]

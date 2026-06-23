@@ -270,9 +270,10 @@ export default function ArchitecturePage() {
               one <code>Finding</code> per match
             </li>
             <li>
-              <code>lib/scanner/checks-data.json</code> — human-readable
+              <code>lib/scanner/checks-data/*.json</code> — human-readable
               metadata (title, description, severity, category, fix steps, code
-              examples) for every detector. 311 entries.
+              examples) for every detector. 700+ entries across 12 per-category
+              files.
             </li>
             <li>
               <code>lib/scanner/async-checks.ts</code> — network-dependent

@@ -350,7 +350,21 @@ const endpoints: Endpoint[] = [
       "Returns the full catalogue of detection checks. Use this to display human-readable titles, categorize findings, or build SDKs that know every check ID ahead of time.",
     responseExample: `{
   "success": true,
-  "count": 311,
+  "count": 709,
+  "categories": {
+    "headers": 107,
+    "content": 194,
+    "code": 127,
+    "configuration": 48,
+    "information-disclosure": 33,
+    "secrets-extended": 54,
+    "api": 43,
+    "email": 28,
+    "tls": 20,
+    "dns": 23,
+    "cookies": 22,
+    "ssl": 10
+  },
   "data": [
     {
       "id": "hsts-missing",
@@ -372,8 +386,9 @@ const endpoints: Endpoint[] = [
 }`,
     notes: [
       "Unauthenticated.",
-      "Backed by lib/scanner/checks-data.json (311 entries).",
-      "type values: header | combined | content | etc. (per-checks-data.json schema).",
+      "Backed by lib/scanner/checks-data/*.json (709+ entries across 12 categories).",
+      "Each category has its own JSON file and inline detector module under lib/scanner/checks/.",
+      "type values: header | combined | content | etc. (per-checks-data/<category>.json schema).",
     ],
     errors: [],
   },

@@ -1,0 +1,736 @@
+[
+  {
+    "id": "server-header-disclosure",
+    "type": "combined",
+    "title": "Server Technology Information Disclosure",
+    "category": "configuration",
+    "severity": "INFO",
+    "description": "The server reveals technology information through response headers.",
+    "evidence": "Server or X-Powered-By headers are present.",
+    "riskImpact": "Knowing the exact server software and version allows attackers to search for and exploit known vulnerabilities.",
+    "explanation": "HTTP response headers like Server and X-Powered-By reveal the technology stack. While not a vulnerability itself, it aids reconnaissance.",
+    "fixSteps": [
+      "Remove or obscure the Server header.",
+      "Remove the X-Powered-By header entirely.",
+      "In Express.js, use helmet or app.disable('x-powered-by')."
+    ],
+    "codeExamples": [
+      {
+        "label": "Next.js",
+        "language": "javascript",
+        "code": "const nextConfig = { poweredByHeader: false };"
+      },
+      {
+        "label": "Nginx",
+        "language": "nginx",
+        "code": "server_tokens off;\nproxy_hide_header X-Powered-By;"
+      },
+      {
+        "label": "Apache",
+        "language": "apache",
+        "code": "ServerTokens Prod\nServerSignature Off\nHeader unset X-Powered-By"
+      },
+      {
+        "label": "Caddy",
+        "language": "plaintext",
+        "code": "header -Server\nheader -X-Powered-By"
+      },
+      {
+        "label": "Express (Node.js)",
+        "language": "javascript",
+        "code": "app.disable('x-powered-by');\n// Or use helmet:\n// import helmet from 'helmet';\n// app.use(helmet());"
+      },
+      {
+        "label": "Deno (Hono)",
+        "language": "typescript",
+        "code": "app.use('*', async (c, next) => {\n  await next();\n  c.res.headers.delete('X-Powered-By');\n  c.res.headers.delete('Server');\n});"
+      },
+      {
+        "label": "Bun (Elysia)",
+        "language": "typescript",
+        "code": "app.onAfterHandle(({ set }) => {\n  delete set.headers['X-Powered-By'];\n});"
+      }
+    ]
+  },
+  {
+    "id": "cache-control-missing",
+    "type": "combined",
+    "title": "Missing Cache-Control Headers",
+    "category": "configuration",
+    "severity": "LOW",
+    "description": "No Cache-Control or Pragma headers are set. Sensitive responses may be cached.",
+    "evidence": "Neither 'Cache-Control' nor 'Pragma' headers are present.",
+    "riskImpact": "Sensitive data might be stored in browser caches or shared proxy caches.",
+    "explanation": "Cache-Control headers instruct browsers and CDNs on how to cache responses. For sensitive data, set no-store.",
+    "fixSteps": [
+      "Set 'Cache-Control: no-store' for sensitive responses.",
+      "Use proper cache headers for static assets.",
+      "Add 'Pragma: no-cache' as a fallback."
+    ],
+    "codeExamples": [
+      {
+        "label": "Route Handler",
+        "language": "typescript",
+        "code": "return Response.json(data, {\n  headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate', 'Pragma': 'no-cache' },\n});"
+      }
+    ]
+  },
+  {
+    "id": "nel-missing",
+    "type": "header",
+    "title": "Missing Network Error Logging (NEL)",
+    "category": "configuration",
+    "severity": "INFO",
+    "description": "Neither NEL nor Report-To headers are present for network error monitoring.",
+    "evidence": "No NEL or Report-To headers found.",
+    "riskImpact": "Without NEL, you won't be notified of DNS failures, TCP connection issues, or TLS errors that prevent users from reaching your site.",
+    "explanation": "Network Error Logging (NEL) is a reporting mechanism that lets browsers report network errors to a specified endpoint. Combined with Report-To, it gives visibility into connectivity issues affecting real users.",
+    "fixSteps": [
+      "Add Report-To and NEL headers to your response.",
+      "Configure a reporting endpoint to receive and process the error reports."
+    ],
+    "codeExamples": [
+      {
+        "label": "Headers",
+        "language": "http",
+        "code": "Report-To: {\"group\":\"nel\",\"max_age\":86400,\"endpoints\":[{\"url\":\"https://example.com/report\"}]}\nNEL: {\"report_to\":\"nel\",\"max_age\":86400}"
+      }
+    ]
+  },
+  {
+    "id": "nel-header-missing",
+    "type": "header-missing",
+    "title": "Network Error Logging Not Configured",
+    "category": "configuration",
+    "severity": "LOW",
+    "description": "NEL header is not set, so network errors go undetected.",
+    "evidence": "NEL header not present.",
+    "riskImpact": "Network errors and failed requests are invisible without NEL.",
+    "explanation": "NEL allows browsers to report network errors to a specified endpoint.",
+    "fixSteps": [
+      "Configure a NEL header with a reporting endpoint.",
+      "Set up a Report-To group first."
+    ],
+    "codeExamples": []
+  },
+  {
+    "id": "report-to-header-missing",
+    "type": "header-missing",
+    "title": "Report-To Header Missing",
+    "category": "configuration",
+    "severity": "LOW",
+    "description": "Report-To header is not configured.",
+    "evidence": "Report-To header not present.",
+    "riskImpact": "CSP violations and other errors cannot be reported to your server.",
+    "explanation": "Report-To defines endpoints where browsers send violation and error reports.",
+    "fixSteps": ["Add Report-To header with a JSON reporting group."],
+    "codeExamples": []
+  },
+  {
+    "id": "x-powered-by-exposed",
+    "type": "header-present",
+    "title": "X-Powered-By Header Exposed",
+    "category": "configuration",
+    "severity": "LOW",
+    "description": "X-Powered-By header reveals technology stack.",
+    "evidence": "X-Powered-By header detected.",
+    "riskImpact": "Attackers can target known vulnerabilities for the disclosed technology.",
+    "explanation": "This header reveals backend framework or language information.",
+    "fixSteps": ["Remove the X-Powered-By header in your server config."],
+    "codeExamples": []
+  },
+  {
+    "id": "x-aspnet-version-exposed",
+    "type": "header-present",
+    "title": "X-AspNet-Version Header Exposed",
+    "category": "configuration",
+    "severity": "LOW",
+    "description": "ASP.NET version disclosed via header.",
+    "evidence": "X-AspNet-Version header detected.",
+    "riskImpact": "Reveals exact ASP.NET version for targeted attacks.",
+    "explanation": "This header is added by ASP.NET and discloses the framework version.",
+    "fixSteps": ["Remove X-AspNet-Version in web.config."],
+    "codeExamples": []
+  },
+  {
+    "id": "x-aspnetmvc-version-exposed",
+    "type": "header-present",
+    "title": "X-AspNetMvc-Version Header Exposed",
+    "category": "configuration",
+    "severity": "LOW",
+    "description": "ASP.NET MVC version disclosed.",
+    "evidence": "X-AspNetMvc-Version header detected.",
+    "riskImpact": "Reveals exact MVC framework version.",
+    "explanation": "This header discloses the ASP.NET MVC version in use.",
+    "fixSteps": ["Remove X-AspNetMvc-Version header."],
+    "codeExamples": []
+  },
+  {
+    "id": "via-header-exposed",
+    "type": "header-present",
+    "title": "Via Header Reveals Proxy Info",
+    "category": "configuration",
+    "severity": "LOW",
+    "description": "Via header discloses proxy information.",
+    "evidence": "Via header detected.",
+    "riskImpact": "Reveals internal infrastructure and proxy chain.",
+    "explanation": "The Via header is added by proxies, exposing network topology.",
+    "fixSteps": ["Strip Via header at the edge proxy."],
+    "codeExamples": []
+  },
+  {
+    "id": "x-runtime-exposed",
+    "type": "header-present",
+    "title": "X-Runtime Header Exposed",
+    "category": "configuration",
+    "severity": "LOW",
+    "description": "X-Runtime header exposes request processing time.",
+    "evidence": "X-Runtime header detected.",
+    "riskImpact": "Timing information can be used for timing attacks.",
+    "explanation": "Processing time can reveal information about backend operations.",
+    "fixSteps": ["Remove X-Runtime header in production."],
+    "codeExamples": []
+  },
+  {
+    "id": "x-request-id-exposed",
+    "type": "header-present",
+    "title": "X-Request-Id Exposed to Clients",
+    "category": "configuration",
+    "severity": "LOW",
+    "description": "Internal request ID is visible to clients.",
+    "evidence": "X-Request-Id header is exposed.",
+    "riskImpact": "Request IDs can be used to correlate requests and understand backend architecture.",
+    "explanation": "While useful for debugging, exposing request IDs provides unnecessary information to attackers.",
+    "fixSteps": ["Consider removing X-Request-Id from public responses."],
+    "codeExamples": []
+  },
+  {
+    "id": "x-backend-server-exposed",
+    "type": "header-present",
+    "title": "Backend Server Identity Exposed",
+    "category": "configuration",
+    "severity": "MEDIUM",
+    "description": "Headers reveal backend server identity.",
+    "evidence": "Backend server identification header detected.",
+    "riskImpact": "Reveals specific server hostnames, enabling targeted attacks.",
+    "explanation": "Headers like X-Backend-Server, X-Served-By expose internal hostnames.",
+    "fixSteps": ["Remove backend identification headers at the load balancer."],
+    "codeExamples": []
+  },
+  {
+    "id": "age-header-reveals-cdn",
+    "type": "header-present",
+    "title": "CDN Cache Age Reveals Architecture",
+    "category": "configuration",
+    "severity": "LOW",
+    "description": "Age header exposes CDN caching details.",
+    "evidence": "Age header detected in response.",
+    "riskImpact": "Reveals CDN usage and caching behavior.",
+    "explanation": "Age header shows how long content has been cached.",
+    "fixSteps": ["Consider stripping Age header at edge."],
+    "codeExamples": []
+  },
+  {
+    "id": "x-debug-header-exposed",
+    "type": "header-present",
+    "title": "Debug Header Detected in Production",
+    "category": "configuration",
+    "severity": "HIGH",
+    "description": "Debug or diagnostic header found in response.",
+    "evidence": "Debug header detected.",
+    "riskImpact": "Debug headers reveal internal state, session tokens, and diagnostic data.",
+    "explanation": "Debug headers left in production expose information useful for attacks.",
+    "fixSteps": ["Remove all debug headers in production deployments."],
+    "codeExamples": []
+  },
+  {
+    "id": "cache-control-public-sensitive",
+    "type": "combined",
+    "title": "Sensitive Page Cached Publicly",
+    "category": "configuration",
+    "severity": "MEDIUM",
+    "description": "Page with sensitive forms has Cache-Control: public.",
+    "evidence": "Cache-Control: public on page with forms.",
+    "riskImpact": "Sensitive data may be cached by CDNs and shared caches.",
+    "explanation": "Pages with password fields or POST forms should use Cache-Control: no-store.",
+    "fixSteps": ["Use Cache-Control: no-store for sensitive pages."],
+    "codeExamples": []
+  },
+  {
+    "id": "access-control-expose-broad",
+    "type": "header-present",
+    "title": "CORS Exposes Many Headers",
+    "category": "configuration",
+    "severity": "LOW",
+    "description": "Access-Control-Expose-Headers exposes a broad set of headers.",
+    "evidence": "Multiple headers exposed via CORS.",
+    "riskImpact": "Exposed headers may leak sensitive server information.",
+    "explanation": "Only expose headers that client JavaScript actually needs.",
+    "fixSteps": ["Restrict exposed headers to the minimum required."],
+    "codeExamples": []
+  },
+  {
+    "id": "access-control-max-age-long",
+    "type": "header-present",
+    "title": "CORS Preflight Cache Too Long",
+    "category": "configuration",
+    "severity": "LOW",
+    "description": "Access-Control-Max-Age is set very high.",
+    "evidence": "CORS preflight cached excessively.",
+    "riskImpact": "CORS policy changes take very long to take effect for returning users.",
+    "explanation": "Long max-age means browsers won't re-check CORS policy for extended periods.",
+    "fixSteps": [
+      "Set Access-Control-Max-Age to a reasonable value (e.g., 3600)."
+    ],
+    "codeExamples": []
+  },
+  {
+    "id": "etag-inode-leak",
+    "type": "header-present",
+    "title": "ETag Leaks Inode Information",
+    "category": "configuration",
+    "severity": "LOW",
+    "description": "ETag header contains inode-size-timestamp format.",
+    "evidence": "ETag with inode format detected.",
+    "riskImpact": "Inode numbers reveal filesystem details.",
+    "explanation": "Apache sometimes includes inode numbers in ETags.",
+    "fixSteps": ["Configure FileETag to exclude inode: FileETag MTime Size"],
+    "codeExamples": []
+  },
+  {
+    "id": "server-version-detailed",
+    "type": "header-present",
+    "title": "Server Header Reveals Detailed Version",
+    "category": "configuration",
+    "severity": "MEDIUM",
+    "description": "Server header includes specific version numbers.",
+    "evidence": "Server header with version numbers.",
+    "riskImpact": "Exact version numbers help attackers find known CVEs.",
+    "explanation": "Server headers like 'Apache/2.4.41' reveal exploitable version info.",
+    "fixSteps": [
+      "Configure server to send minimal Server header.",
+      "Use ServerTokens Prod in Apache."
+    ],
+    "codeExamples": []
+  },
+  {
+    "id": "clickjacking-frameable",
+    "type": "combined",
+    "title": "Page Is Frameable (No Protection)",
+    "category": "configuration",
+    "severity": "MEDIUM",
+    "description": "No clickjacking protection headers detected.",
+    "evidence": "No framing protection detected.",
+    "riskImpact": "Page can be embedded in iframes by malicious sites.",
+    "explanation": "Without X-Frame-Options or CSP frame-ancestors, clickjacking is possible.",
+    "fixSteps": ["Add X-Frame-Options: DENY or CSP frame-ancestors 'self'."],
+    "codeExamples": []
+  },
+  {
+    "id": "x-amz-request-id",
+    "type": "header-value",
+    "title": "AWS Request ID Exposed",
+    "category": "configuration",
+    "severity": "LOW",
+    "description": "AWS request ID headers present.",
+    "evidence": "AWS headers exposed.",
+    "riskImpact": "Confirms AWS infrastructure usage.",
+    "explanation": "x-amz-request-id reveals AWS backend.",
+    "fixSteps": ["Remove AWS headers at edge/proxy layer."],
+    "codeExamples": []
+  },
+  {
+    "id": "cf-ray-header",
+    "type": "header-value",
+    "title": "Cloudflare CF-Ray Header",
+    "category": "configuration",
+    "severity": "INFO",
+    "description": "Cloudflare CF-Ray header present.",
+    "evidence": "CF-Ray header found.",
+    "riskImpact": "Confirms Cloudflare CDN usage.",
+    "explanation": "CF-Ray is Cloudflare's request identifier.",
+    "fixSteps": ["Generally harmless, can be removed at edge."],
+    "codeExamples": []
+  },
+  {
+    "id": "x-vercel-id",
+    "type": "header-value",
+    "title": "Vercel Deployment ID Exposed",
+    "category": "configuration",
+    "severity": "INFO",
+    "description": "Vercel deployment ID header present.",
+    "evidence": "x-vercel-id found.",
+    "riskImpact": "Reveals Vercel hosting.",
+    "explanation": "x-vercel-id identifies Vercel deployments.",
+    "fixSteps": ["Can be hidden via custom headers config."],
+    "codeExamples": []
+  },
+  {
+    "id": "x-cache-header",
+    "type": "header-value",
+    "title": "X-Cache Header Reveals Caching",
+    "category": "configuration",
+    "severity": "INFO",
+    "description": "X-Cache header reveals caching behavior.",
+    "evidence": "X-Cache header found.",
+    "riskImpact": "Reveals CDN caching status.",
+    "explanation": "Hit/miss status helps attackers understand caching.",
+    "fixSteps": ["Remove X-Cache header at edge if concerned."],
+    "codeExamples": []
+  },
+  {
+    "id": "etag-inode",
+    "type": "header-value",
+    "title": "ETag Contains Inode Information",
+    "category": "configuration",
+    "severity": "LOW",
+    "description": "ETag appears to contain filesystem inode.",
+    "evidence": "Inode in ETag.",
+    "riskImpact": "Reveals internal filesystem details.",
+    "explanation": "Apache's default ETag includes inode-size-timestamp.",
+    "fixSteps": ["Configure FileETag to use only size and timestamp."],
+    "codeExamples": []
+  },
+  {
+    "id": "date-time-skew",
+    "type": "header-value",
+    "title": "Server Time Significantly Different",
+    "category": "configuration",
+    "severity": "LOW",
+    "description": "Server date differs significantly from client.",
+    "evidence": "Server time skew detected.",
+    "riskImpact": "May indicate NTP issues, affects time-based security.",
+    "explanation": "Time skew can break TOTP, certs, and session expiry.",
+    "fixSteps": ["Sync server time with NTP."],
+    "codeExamples": []
+  },
+  {
+    "id": "document-policy-missing",
+    "type": "header-missing",
+    "title": "Missing Document-Policy Header",
+    "category": "configuration",
+    "severity": "INFO",
+    "description": "Document-Policy header not set.",
+    "evidence": "Document-Policy missing.",
+    "riskImpact": "Browser may not restrict certain document features.",
+    "explanation": "Document-Policy controls various document features.",
+    "fixSteps": ["Add Document-Policy header if needed."],
+    "codeExamples": []
+  },
+  {
+    "id": "origin-agent-cluster",
+    "type": "header-missing",
+    "title": "Missing Origin-Agent-Cluster",
+    "category": "configuration",
+    "severity": "INFO",
+    "description": "Origin-Agent-Cluster header not set.",
+    "evidence": "Origin-Agent-Cluster missing.",
+    "riskImpact": "Browser may not isolate origins in separate processes.",
+    "explanation": "This header requests per-origin process isolation.",
+    "fixSteps": ["Add Origin-Agent-Cluster: ?1 for isolation."],
+    "codeExamples": []
+  },
+  {
+    "id": "x-dns-prefetch-control-off",
+    "type": "header-value",
+    "title": "DNS Prefetch Disabled",
+    "category": "configuration",
+    "severity": "INFO",
+    "description": "X-DNS-Prefetch-Control is set to off.",
+    "evidence": "DNS prefetch disabled.",
+    "riskImpact": "May slightly impact performance.",
+    "explanation": "DNS prefetching speeds up navigation.",
+    "fixSteps": ["Consider enabling unless privacy is a concern."],
+    "codeExamples": []
+  },
+  {
+    "id": "debug-via-cookie",
+    "type": "header",
+    "title": "Debug flag set via cookie",
+    "category": "headers",
+    "severity": "medium",
+    "description": "A debug=true cookie flips debug behaviour — easy to forget when staging.",
+    "evidence": "Async / body / header check for debug-via-cookie.",
+    "riskImpact": "Avoid debug toggles via cookie; use environment variables instead",
+    "explanation": "A debug=true cookie flips debug behaviour — easy to forget when staging.",
+    "fixSteps": [
+      "Avoid debug toggles via cookie; use environment variables instead"
+    ],
+    "codeExamples": [],
+    "references": []
+  },
+  {
+    "id": "cookie-too-large",
+    "type": "header",
+    "title": "Set-Cookie header > 4KB",
+    "category": "headers",
+    "severity": "low",
+    "description": "Browsers drop cookies larger than ~4KB.",
+    "evidence": "Async / body / header check for cookie-too-large.",
+    "riskImpact": "Store less data in cookies; use server-side session storage",
+    "explanation": "Browsers drop cookies larger than ~4KB.",
+    "fixSteps": ["Store less data in cookies; use server-side session storage"],
+    "codeExamples": [],
+    "references": []
+  },
+  {
+    "id": "vary-header-missing",
+    "type": "header",
+    "title": "Vary Header Missing on Compressed Responses",
+    "category": "headers",
+    "severity": "low",
+    "description": "When serving different content based on Accept-Encoding, the Vary header is required to avoid cache poisoning.",
+    "evidence": "Async / body / header check for vary-header-missing.",
+    "riskImpact": "Add Vary: Accept-Encoding to all compressed responses",
+    "explanation": "When serving different content based on Accept-Encoding, the Vary header is required to avoid cache poisoning.",
+    "fixSteps": ["Add Vary: Accept-Encoding to all compressed responses"],
+    "codeExamples": [],
+    "references": []
+  },
+  {
+    "id": "vary-header-missing-user-agent",
+    "type": "header",
+    "title": "Vary: User-Agent missing on responsive pages",
+    "category": "headers",
+    "severity": "info",
+    "description": "Pages that return different content based on User-Agent should include Vary: User-Agent.",
+    "evidence": "Async / body / header check for vary-header-missing-user-agent.",
+    "riskImpact": "Add Vary: User-Agent when serving mobile/desktop variants",
+    "explanation": "Pages that return different content based on User-Agent should include Vary: User-Agent.",
+    "fixSteps": ["Add Vary: User-Agent when serving mobile/desktop variants"],
+    "codeExamples": [],
+    "references": []
+  },
+  {
+    "id": "vary-header-cookie",
+    "type": "header",
+    "title": "Vary: Cookie missing on auth-gated content",
+    "category": "headers",
+    "severity": "medium",
+    "description": "Pages that change based on session cookies must include Vary: Cookie to avoid serving one user's content to another.",
+    "evidence": "Async / body / header check for vary-header-cookie.",
+    "riskImpact": "Add Vary: Cookie to all auth-dependent responses",
+    "explanation": "Pages that change based on session cookies must include Vary: Cookie to avoid serving one user's content to another.",
+    "fixSteps": ["Add Vary: Cookie to all auth-dependent responses"],
+    "codeExamples": [],
+    "references": []
+  },
+  {
+    "id": "transfer-encoding-chunked",
+    "type": "header",
+    "title": "Transfer-Encoding: chunked in use",
+    "category": "headers",
+    "severity": "info",
+    "description": "Transfer-Encoding: chunked is fine, but worth tracking.",
+    "evidence": "Async / body / header check for transfer-encoding-chunked.",
+    "riskImpact": "Prefer Content-Length where possible for cacheability",
+    "explanation": "Transfer-Encoding: chunked is fine, but worth tracking.",
+    "fixSteps": ["Prefer Content-Length where possible for cacheability"],
+    "codeExamples": [],
+    "references": []
+  },
+  {
+    "id": "server-timing-allow-origin-public",
+    "type": "header",
+    "title": "Server-Timing exposed publicly",
+    "category": "headers",
+    "severity": "low",
+    "description": "Server-Timing without Timing-Allow-Origin: * is browser-restricted, but the value is still logged server-side.",
+    "evidence": "Async / body / header check for server-timing-allow-origin-public.",
+    "riskImpact": "Drop Server-Timing for non-debug builds",
+    "explanation": "Server-Timing without Timing-Allow-Origin: * is browser-restricted, but the value is still logged server-side.",
+    "fixSteps": ["Drop Server-Timing for non-debug builds"],
+    "codeExamples": [],
+    "references": []
+  },
+  {
+    "id": "content-disposition-inline",
+    "type": "header",
+    "title": "Content-Disposition: inline for downloadable content",
+    "category": "headers",
+    "severity": "info",
+    "description": "PDFs, images, etc. served as inline can be exfiltrated by iframes.",
+    "evidence": "Async / body / header check for content-disposition-inline.",
+    "riskImpact": "Add Content-Disposition: attachment; filename=... for sensitive downloads",
+    "explanation": "PDFs, images, etc. served as inline can be exfiltrated by iframes.",
+    "fixSteps": [
+      "Add Content-Disposition: attachment; filename=... for sensitive downloads"
+    ],
+    "codeExamples": [],
+    "references": []
+  },
+  {
+    "id": "x-xss-protection-block",
+    "type": "header",
+    "title": "X-XSS-Protection set to '1; mode=block'",
+    "category": "headers",
+    "severity": "info",
+    "description": "X-XSS-Protection is deprecated and the Chrome auditor has been removed. Modern browsers ignore this header.",
+    "evidence": "Async / body / header check for x-xss-protection-block.",
+    "riskImpact": "Remove X-XSS-Protection; rely on CSP instead",
+    "explanation": "X-XSS-Protection is deprecated and the Chrome auditor has been removed. Modern browsers ignore this header.",
+    "fixSteps": ["Remove X-XSS-Protection; rely on CSP instead"],
+    "codeExamples": [],
+    "references": []
+  },
+  {
+    "id": "server-timing-cache-timings",
+    "type": "header-value",
+    "title": "Server-Timing exposes cache timings",
+    "category": "configuration",
+    "severity": "low",
+    "description": "Server-Timing values like cache;dur=12 or edge;dur=4 expose internal cache hit/miss timing to the client.",
+    "evidence": "Async / body / header check for server-timing-cache-timings.",
+    "riskImpact": "Drop cache-specific Server-Timing entries outside of debug builds",
+    "explanation": "Server-Timing values like cache;dur=12 or edge;dur=4 expose internal cache hit/miss timing to the client.",
+    "fixSteps": [
+      "Drop cache-specific Server-Timing entries outside of debug builds"
+    ],
+    "codeExamples": [],
+    "references": []
+  },
+  {
+    "id": "vary-cookie-on-static-resource",
+    "type": "combined",
+    "title": "Vary: Cookie set on static resource",
+    "category": "configuration",
+    "severity": "low",
+    "description": "A static asset (image, JS, CSS) served with Vary: Cookie forces every cache to store one copy per Cookie value, defeating caching.",
+    "evidence": "Async / body / header check for vary-cookie-on-static-resource.",
+    "riskImpact": "Drop Vary: Cookie from responses on static asset paths",
+    "explanation": "A static asset (image, JS, CSS) served with Vary: Cookie forces every cache to store one copy per Cookie value, defeating caching.",
+    "fixSteps": ["Drop Vary: Cookie from responses on static asset paths"],
+    "codeExamples": [],
+    "references": []
+  },
+  {
+    "id": "vary-origin-missing-cors",
+    "type": "combined",
+    "title": "CORS endpoint missing Vary: Origin",
+    "category": "configuration",
+    "severity": "medium",
+    "description": "An endpoint that reflects Access-Control-Allow-Origin per request must also include Vary: Origin so caches don't serve one origin's response to another.",
+    "evidence": "Async / body / header check for vary-origin-missing-cors.",
+    "riskImpact": "Add Vary: Origin alongside dynamic Access-Control-Allow-Origin",
+    "explanation": "An endpoint that reflects Access-Control-Allow-Origin per request must also include Vary: Origin so caches don't serve one origin's response to another.",
+    "fixSteps": [
+      "Add Vary: Origin alongside dynamic Access-Control-Allow-Origin"
+    ],
+    "codeExamples": [],
+    "references": []
+  },
+  {
+    "id": "x-cache-status-cloudflare",
+    "type": "header-value",
+    "title": "X-Cache-Status reveals Cloudflare caching",
+    "category": "configuration",
+    "severity": "info",
+    "description": "Cloudflare's X-Cache-Status header reveals HIT/MISS/EXPIRED status and exposes CDN behaviour.",
+    "evidence": "Async / body / header check for x-cache-status-cloudflare.",
+    "riskImpact": "Strip X-Cache-Status at the origin if you don't want cache status exposed",
+    "explanation": "Cloudflare's X-Cache-Status header reveals HIT/MISS/EXPIRED status and exposes CDN behaviour.",
+    "fixSteps": [
+      "Strip X-Cache-Status at the origin if you don't want cache status exposed"
+    ],
+    "codeExamples": [],
+    "references": []
+  },
+  {
+    "id": "x-amz-cf-id",
+    "type": "header-value",
+    "title": "X-Amz-Cf-Id CloudFront request ID exposed",
+    "category": "configuration",
+    "severity": "info",
+    "description": "CloudFront's X-Amz-Cf-Id header reveals an AWS CloudFront request identifier on every response.",
+    "evidence": "Async / body / header check for x-amz-cf-id.",
+    "riskImpact": "Strip X-Amz-Cf-Id at the edge via Lambda@Edge if you don't want CloudFront request IDs leaked",
+    "explanation": "CloudFront's X-Amz-Cf-Id header reveals an AWS CloudFront request identifier on every response.",
+    "fixSteps": [
+      "Strip X-Amz-Cf-Id at the edge via Lambda@Edge if you don't want CloudFront request IDs leaked"
+    ],
+    "codeExamples": [],
+    "references": []
+  },
+  {
+    "id": "x-vercel-cache",
+    "type": "header-value",
+    "title": "X-Vercel-Cache reveals Vercel edge caching",
+    "category": "configuration",
+    "severity": "info",
+    "description": "Vercel's X-Vercel-Cache header exposes HIT/MISS/BYPASS status on every response.",
+    "evidence": "Async / body / header check for x-vercel-cache.",
+    "riskImpact": "Drop X-Vercel-Cache at the edge or set Cache-Control: private to avoid leaking cache status",
+    "explanation": "Vercel's X-Vercel-Cache header exposes HIT/MISS/BYPASS status on every response.",
+    "fixSteps": [
+      "Drop X-Vercel-Cache at the edge or set Cache-Control: private to avoid leaking cache status"
+    ],
+    "codeExamples": [],
+    "references": []
+  },
+  {
+    "id": "x-nextjs-cache",
+    "type": "header-value",
+    "title": "X-Nextjs-Cache reveals Next.js ISR cache",
+    "category": "configuration",
+    "severity": "info",
+    "description": "Next.js sets X-Nextjs-Cache: HIT | MISS | STALE | BYPASS to indicate ISR/SSG cache state. Helpful for debugging, leaks architecture detail.",
+    "evidence": "Async / body / header check for x-nextjs-cache.",
+    "riskImpact": "Remove the header in next.config.js or behind an env flag for production",
+    "explanation": "Next.js sets X-Nextjs-Cache: HIT | MISS | STALE | BYPASS to indicate ISR/SSG cache state. Helpful for debugging, leaks architecture detail.",
+    "fixSteps": [
+      "Remove the header in next.config.js or behind an env flag for production"
+    ],
+    "codeExamples": [],
+    "references": []
+  },
+  {
+    "id": "x-netlify-cache",
+    "type": "header-value",
+    "title": "X-Netlify-Cache exposes Netlify CDN cache state",
+    "category": "configuration",
+    "severity": "info",
+    "description": "Netlify's X-Netlify-Cache header exposes HIT/MISS/PASS/REVALIDATE status on responses.",
+    "evidence": "Async / body / header check for x-netlify-cache.",
+    "riskImpact": "Strip X-Netlify-Cache via _headers if you don't want CDN cache state exposed",
+    "explanation": "Netlify's X-Netlify-Cache header exposes HIT/MISS/PASS/REVALIDATE status on responses.",
+    "fixSteps": [
+      "Strip X-Netlify-Cache via _headers if you don't want CDN cache state exposed"
+    ],
+    "codeExamples": [],
+    "references": []
+  },
+  {
+    "id": "x-cache-hits",
+    "type": "header-value",
+    "title": "X-Cache-Hits exposes repeated cache hits",
+    "category": "configuration",
+    "severity": "info",
+    "description": "Some CDNs (Cloudflare, Fastly) include X-Cache-Hits to indicate how many times an asset was served from cache.",
+    "evidence": "Async / body / header check for x-cache-hits.",
+    "riskImpact": "Strip X-Cache-Hits if you don't want cache-usage patterns exposed",
+    "explanation": "Some CDNs (Cloudflare, Fastly) include X-Cache-Hits to indicate how many times an asset was served from cache.",
+    "fixSteps": [
+      "Strip X-Cache-Hits if you don't want cache-usage patterns exposed"
+    ],
+    "codeExamples": [],
+    "references": []
+  },
+  {
+    "id": "ratelimit-policy-missing",
+    "type": "header-missing",
+    "title": "RateLimit-Policy header missing",
+    "category": "configuration",
+    "severity": "low",
+    "description": "The draft RateLimit fields (RateLimit-Limit, RateLimit-Remaining, RateLimit-Reset) require a RateLimit-Policy header for clients to interpret windowing rules.",
+    "evidence": "Async / body / header check for ratelimit-policy-missing.",
+    "riskImpact": "Add RateLimit-Policy alongside RateLimit-Limit so clients know the limit window and quota",
+    "explanation": "The draft RateLimit fields (RateLimit-Limit, RateLimit-Remaining, RateLimit-Reset) require a RateLimit-Policy header for clients to interpret windowing rules.",
+    "fixSteps": [
+      "Add RateLimit-Policy alongside RateLimit-Limit so clients know the limit window and quota"
+    ],
+    "codeExamples": [],
+    "references": [
+      "https://datatracker.ietf.org/doc/draft-ietf-httpapi-ratelimit-headers/"
+    ]
+  }
+]

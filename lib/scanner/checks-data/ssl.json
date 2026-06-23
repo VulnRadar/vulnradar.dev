@@ -1,0 +1,191 @@
+[
+  {
+    "id": "deprecated-tls",
+    "type": "url-check",
+    "title": "Site Accessible Over Unencrypted HTTP",
+    "category": "ssl",
+    "severity": "HIGH",
+    "description": "The site was scanned over plain HTTP. All traffic is transmitted without encryption.",
+    "evidence": "URL scheme is HTTP.",
+    "riskImpact": "All data transmitted between the user and server can be intercepted, read, and modified by anyone on the network path.",
+    "explanation": "HTTP transmits data in plaintext, making it trivial for attackers to intercept credentials, session tokens, personal data.",
+    "fixSteps": [
+      "Obtain and install an SSL/TLS certificate.",
+      "Configure your server to redirect all HTTP traffic to HTTPS.",
+      "Update all internal links to HTTPS.",
+      "Enable HSTS."
+    ],
+    "codeExamples": [
+      {
+        "label": "HTTPS redirect",
+        "language": "nginx",
+        "code": "server { listen 80; return 301 https://domain.com$request_uri; }"
+      }
+    ]
+  },
+  {
+    "id": "unencrypted-connection",
+    "type": "url-check",
+    "title": "Site Served Over Unencrypted HTTP",
+    "category": "ssl",
+    "severity": "CRITICAL",
+    "description": "The site is accessible over plain HTTP without TLS encryption.",
+    "evidence": "URL scheme is HTTP.",
+    "riskImpact": "All data including credentials are transmitted in plaintext.",
+    "explanation": "HTTP transmits everything in cleartext. On any shared network, attackers can passively read all traffic.",
+    "fixSteps": [
+      "Obtain and install a TLS certificate.",
+      "Configure HTTPS.",
+      "Set up HTTP to HTTPS redirects.",
+      "Enable HSTS."
+    ],
+    "codeExamples": [
+      {
+        "label": "Nginx redirect",
+        "language": "nginx",
+        "code": "server { listen 80; server_name example.com; return 301 https://$server_name$request_uri; }"
+      }
+    ]
+  },
+  {
+    "id": "expect-ct-missing",
+    "type": "header",
+    "title": "Missing Expect-CT Header",
+    "category": "ssl",
+    "severity": "INFO",
+    "description": "Expect-CT header is not present. This header helps detect misissued certificates.",
+    "evidence": "No Expect-CT header found.",
+    "riskImpact": "Without Expect-CT, the browser won't enforce Certificate Transparency, meaning misissued certificates could go undetected.",
+    "explanation": "Expect-CT allows sites to opt-in to Certificate Transparency enforcement before it becomes mandatory. It helps detect certificates that were not logged in public CT logs.",
+    "fixSteps": [
+      "Add Expect-CT header with enforce and max-age directives.",
+      "Include a report-uri for monitoring before enforcing."
+    ],
+    "codeExamples": [
+      {
+        "label": "Header",
+        "language": "http",
+        "code": "Expect-CT: max-age=86400, enforce, report-uri=\"https://example.com/ct-report\""
+      }
+    ]
+  },
+  {
+    "id": "ssl-http-and-https-both",
+    "type": "header",
+    "title": "Site accessible on both HTTP and HTTPS",
+    "category": "headers",
+    "severity": "medium",
+    "description": "Without HSTS or auto-redirect, the HTTP version is reachable and exploitable for SSL stripping.",
+    "evidence": "Async / body / header check for ssl-http-and-https-both.",
+    "riskImpact": "301 redirect HTTP→HTTPS; enable HSTS with includeSubDomains; preload",
+    "explanation": "Without HSTS or auto-redirect, the HTTP version is reachable and exploitable for SSL stripping.",
+    "fixSteps": [
+      "301 redirect HTTP→HTTPS; enable HSTS with includeSubDomains; preload"
+    ],
+    "codeExamples": [],
+    "references": []
+  },
+  {
+    "id": "ssl-https-only-cookie-on-http",
+    "type": "header",
+    "title": "Secure cookie on HTTP endpoint",
+    "category": "headers",
+    "severity": "high",
+    "description": "A cookie with Secure attribute on an HTTP-only site is still rejected by browsers.",
+    "evidence": "Async / body / header check for ssl-https-only-cookie-on-http.",
+    "riskImpact": "Force HTTPS via redirect + HSTS",
+    "explanation": "A cookie with Secure attribute on an HTTP-only site is still rejected by browsers.",
+    "fixSteps": ["Force HTTPS via redirect + HSTS"],
+    "codeExamples": [],
+    "references": []
+  },
+  {
+    "id": "https-unusual-port",
+    "type": "url-check",
+    "title": "HTTPS served on non-standard port",
+    "category": "ssl",
+    "severity": "low",
+    "description": "HTTPS endpoints served on ports other than 443 are common for internal / staging services but should never be the public-facing entry point. Mixed-port services confuse users and bypass default HSTS / preload expectations.",
+    "evidence": "Async / body / header check for https-unusual-port.",
+    "riskImpact": "Front non-443 HTTPS with a reverse proxy on 443, or document the port in user-facing URLs.",
+    "explanation": "HTTPS endpoints served on ports other than 443 are common for internal / staging services but should never be the public-facing entry point. Mixed-port services confuse users and bypass default HSTS / preload expectations.",
+    "fixSteps": [
+      "Move public HTTPS endpoints to port 443 behind a reverse proxy.",
+      "Keep non-standard ports bound to internal-only listeners.",
+      "If a non-standard port must be exposed, add explicit HSTS for that hostname."
+    ],
+    "codeExamples": [],
+    "references": ["https://datatracker.ietf.org/doc/html/rfc2818"]
+  },
+  {
+    "id": "x-forwarded-method-override",
+    "type": "header",
+    "title": "HTTP method override via X-Forwarded-Method / X-HTTP-Method-Override",
+    "category": "ssl",
+    "severity": "medium",
+    "description": "Proxies that honor X-Forwarded-Method or X-HTTP-Method-Override allow clients to silently rewrite the HTTP method of a forwarded request. Combined with a TLS-terminating load balancer, this can bypass upstream method-based authorization.",
+    "evidence": "Async / body / header check for x-forwarded-method-override.",
+    "riskImpact": "Strip method-override headers at the load balancer; reject any request that overrides the originally-observed method.",
+    "explanation": "Proxies that honor X-Forwarded-Method or X-HTTP-Method-Override allow clients to silently rewrite the HTTP method of a forwarded request. Combined with a TLS-terminating load balancer, this can bypass upstream method-based authorization.",
+    "fixSteps": [
+      "Configure the reverse proxy to strip X-Forwarded-Method and X-HTTP-Method-Override from inbound requests.",
+      "Reject any inbound request whose body or path claims a different method than the wire-level method.",
+      "Document allowed method-override behavior in your API gateway."
+    ],
+    "codeExamples": [],
+    "references": ["https://datatracker.ietf.org/doc/html/rfc7231#section-4"]
+  },
+  {
+    "id": "http3-alt-svc-header",
+    "type": "header",
+    "title": "HTTP/3 advertised via Alt-Svc header",
+    "category": "ssl",
+    "severity": "info",
+    "description": "An Alt-Svc response header advertising h3 or h3-29 indicates the server supports HTTP/3 over QUIC. The presence of Alt-Svc is informational but should be validated against your actual deployment.",
+    "evidence": "Async / body / header check for http3-alt-svc-header.",
+    "riskImpact": "No action required if HTTP/3 is intended; otherwise strip the header to avoid advertising an unsupported protocol.",
+    "explanation": "An Alt-Svc response header advertising h3 or h3-29 indicates the server supports HTTP/3 over QUIC. The presence of Alt-Svc is informational but should be validated against your actual deployment.",
+    "fixSteps": [
+      "Confirm HTTP/3 is actually deployed end-to-end (CDN, origin, certificates).",
+      "If HTTP/3 is not yet ready, disable Alt-Svc emission at the proxy."
+    ],
+    "codeExamples": [],
+    "references": ["https://datatracker.ietf.org/doc/html/rfc7838"]
+  },
+  {
+    "id": "ocsp-stapling-enabled",
+    "type": "header",
+    "title": "OCSP stapling response present",
+    "category": "ssl",
+    "severity": "info",
+    "description": "TLS servers can staple the OCSP response for their certificate inside the TLS handshake. When present, browsers do not need to make a separate OCSP request, preserving privacy and reducing handshake latency.",
+    "evidence": "Async / body / header check for ocsp-stapling-enabled.",
+    "riskImpact": "No action required; this is informational. If stapling is missing, enable ssl_stapling on nginx / equivalent on your server.",
+    "explanation": "TLS servers can staple the OCSP response for their certificate inside the TLS handshake. When present, browsers do not need to make a separate OCSP request, preserving privacy and reducing handshake latency.",
+    "fixSteps": [
+      "Verify ssl_stapling on; ssl_stapling_verify on; (nginx) or equivalent.",
+      "Ensure the certificate chain includes the intermediate so stapling works.",
+      "Monitor the OCSP responder URL for outages that disable stapling."
+    ],
+    "codeExamples": [],
+    "references": ["https://datatracker.ietf.org/doc/html/rfc6960"]
+  },
+  {
+    "id": "mixed-protocol-content",
+    "type": "body-pattern",
+    "title": "Mixed-protocol content (HTTPS page loading HTTP resources)",
+    "category": "ssl",
+    "severity": "medium",
+    "description": "Pages served over HTTPS that include subresources (scripts, images, iframes, XHR) loaded over plain HTTP trigger mixed-content blocking in browsers and expose the page to MITM downgrade of those subresources.",
+    "evidence": "Async / body / header check for mixed-protocol-content.",
+    "riskImpact": "Upgrade every internal subresource to HTTPS and add a CSP with upgrade-insecure-requests.",
+    "explanation": "Pages served over HTTPS that include subresources (scripts, images, iframes, XHR) loaded over plain HTTP trigger mixed-content blocking in browsers and expose the page to MITM downgrade of those subresources.",
+    "fixSteps": [
+      "Replace http:// URLs in templates with protocol-relative or https:// URLs.",
+      "Add a Content-Security-Policy header with 'upgrade-insecure-requests'.",
+      "Audit third-party widgets and ad tags for HTTP-only assets."
+    ],
+    "codeExamples": [],
+    "references": ["https://www.w3.org/TR/mixed-content/"]
+  }
+]

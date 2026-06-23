@@ -1,0 +1,688 @@
+[
+  {
+    "id": "api-rest-allow-methods-trace",
+    "type": "header",
+    "title": "REST endpoint allows TRACE method",
+    "category": "headers",
+    "severity": "medium",
+    "description": "HTTP TRACE reflects the request body and is exploitable for Cross-Site Tracing (XST).",
+    "evidence": "Async / body / header check for api-rest-allow-methods-trace.",
+    "riskImpact": "Disable TRACE on the server / reverse proxy",
+    "explanation": "HTTP TRACE reflects the request body and is exploitable for Cross-Site Tracing (XST).",
+    "fixSteps": ["Disable TRACE on the server / reverse proxy"],
+    "codeExamples": [],
+    "references": []
+  },
+  {
+    "id": "api-rest-allow-methods-delete",
+    "type": "header",
+    "title": "REST endpoint allows DELETE",
+    "category": "headers",
+    "severity": "info",
+    "description": "REST endpoint exposes DELETE without authentication.",
+    "evidence": "Async / body / header check for api-rest-allow-methods-delete.",
+    "riskImpact": "Require authentication on state-changing verbs (DELETE/PATCH/PUT/POST)",
+    "explanation": "REST endpoint exposes DELETE without authentication.",
+    "fixSteps": [
+      "Require authentication on state-changing verbs (DELETE/PATCH/PUT/POST)"
+    ],
+    "codeExamples": [],
+    "references": []
+  },
+  {
+    "id": "api-graphql-suggestions-enabled",
+    "type": "header",
+    "title": "GraphQL introspection field suggestions",
+    "category": "headers",
+    "severity": "low",
+    "description": "Field suggestions on error responses let attackers enumerate the schema.",
+    "evidence": "Async / body / header check for api-graphql-suggestions-enabled.",
+    "riskImpact": "Disable GraphQL field suggestions in production",
+    "explanation": "Field suggestions on error responses let attackers enumerate the schema.",
+    "fixSteps": ["Disable GraphQL field suggestions in production"],
+    "codeExamples": [],
+    "references": []
+  },
+  {
+    "id": "api-graphql-no-depth-limit",
+    "type": "header",
+    "title": "GraphQL schema missing depth-limit directive",
+    "category": "headers",
+    "severity": "medium",
+    "description": "Without depth-limit, malicious queries can blow up the server with deeply nested queries.",
+    "evidence": "Async / body / header check for api-graphql-no-depth-limit.",
+    "riskImpact": "Add depth-limit / cost-analysis middleware (graphql-depth-limit, graphql-query-complexity)",
+    "explanation": "Without depth-limit, malicious queries can blow up the server with deeply nested queries.",
+    "fixSteps": [
+      "Add depth-limit / cost-analysis middleware (graphql-depth-limit, graphql-query-complexity)"
+    ],
+    "codeExamples": [],
+    "references": []
+  },
+  {
+    "id": "api-graphql-no-rate-limit",
+    "type": "header",
+    "title": "GraphQL endpoint has no rate-limit headers",
+    "category": "headers",
+    "severity": "medium",
+    "description": "GraphQL POST endpoints need rate-limiting because one query can touch many resolvers.",
+    "evidence": "Async / body / header check for api-graphql-no-rate-limit.",
+    "riskImpact": "Rate-limit by query cost / depth, not just request count",
+    "explanation": "GraphQL POST endpoints need rate-limiting because one query can touch many resolvers.",
+    "fixSteps": ["Rate-limit by query cost / depth, not just request count"],
+    "codeExamples": [],
+    "references": []
+  },
+  {
+    "id": "api-graphql-persisted-queries",
+    "type": "header",
+    "title": "GraphQL persisted queries not enabled",
+    "category": "headers",
+    "severity": "info",
+    "description": "Persisted queries (APQ) lock the schema surface to known queries.",
+    "evidence": "Async / body / header check for api-graphql-persisted-queries.",
+    "riskImpact": "Enable Apollo Persisted Queries / Relay Compiler",
+    "explanation": "Persisted queries (APQ) lock the schema surface to known queries.",
+    "fixSteps": ["Enable Apollo Persisted Queries / Relay Compiler"],
+    "codeExamples": [],
+    "references": []
+  },
+  {
+    "id": "api-openapi-server-url-leak",
+    "type": "header",
+    "title": "OpenAPI server URL leaks internal host",
+    "category": "headers",
+    "severity": "low",
+    "description": "swagger.json often contains the internal / staging host in the 'servers' array.",
+    "evidence": "Async / body / header check for api-openapi-server-url-leak.",
+    "riskImpact": "Strip internal hosts from public OpenAPI documents",
+    "explanation": "swagger.json often contains the internal / staging host in the 'servers' array.",
+    "fixSteps": ["Strip internal hosts from public OpenAPI documents"],
+    "codeExamples": [],
+    "references": []
+  },
+  {
+    "id": "api-cors-preflight-cache-missing",
+    "type": "header",
+    "title": "CORS preflight result not cached",
+    "category": "headers",
+    "severity": "low",
+    "description": "Missing Access-Control-Max-Age forces browsers to send preflight OPTIONS on every cross-origin request.",
+    "evidence": "Async / body / header check for api-cors-preflight-cache-missing.",
+    "riskImpact": "Add Access-Control-Max-Age: 600 (10 minutes) for stable CORS configs",
+    "explanation": "Missing Access-Control-Max-Age forces browsers to send preflight OPTIONS on every cross-origin request.",
+    "fixSteps": [
+      "Add Access-Control-Max-Age: 600 (10 minutes) for stable CORS configs"
+    ],
+    "codeExamples": [],
+    "references": []
+  },
+  {
+    "id": "api-bearer-header-leak",
+    "type": "header",
+    "title": "Bearer token in URL or cookie",
+    "category": "headers",
+    "severity": "high",
+    "description": "Authorization: Bearer is fine, but Bearer tokens in URL or cookies can leak via logs.",
+    "evidence": "Async / body / header check for api-bearer-header-leak.",
+    "riskImpact": "Send Bearer tokens only in the Authorization header",
+    "explanation": "Authorization: Bearer is fine, but Bearer tokens in URL or cookies can leak via logs.",
+    "fixSteps": ["Send Bearer tokens only in the Authorization header"],
+    "codeExamples": [],
+    "references": ["https://datatracker.ietf.org/doc/html/rfc6750"]
+  },
+  {
+    "id": "api-no-cors-preflight-required",
+    "type": "header",
+    "title": "CORS preflight required for simple request",
+    "category": "headers",
+    "severity": "low",
+    "description": "Non-simple headers (Authorization, X-Custom) trigger a preflight OPTIONS.",
+    "evidence": "Async / body / header check for api-no-cors-preflight-required.",
+    "riskImpact": "Document this in your API guide; consider a session-token pattern that uses cookies",
+    "explanation": "Non-simple headers (Authorization, X-Custom) trigger a preflight OPTIONS.",
+    "fixSteps": [
+      "Document this in your API guide; consider a session-token pattern that uses cookies"
+    ],
+    "codeExamples": [],
+    "references": []
+  },
+  {
+    "id": "api-rate-limit-not-429",
+    "type": "header",
+    "title": "Rate limit response missing 429 status",
+    "category": "headers",
+    "severity": "low",
+    "description": "Rate-limited responses should return HTTP 429 with Retry-After.",
+    "evidence": "Async / body / header check for api-rate-limit-not-429.",
+    "riskImpact": "Return 429 + Retry-After when limits are exceeded",
+    "explanation": "Rate-limited responses should return HTTP 429 with Retry-After.",
+    "fixSteps": ["Return 429 + Retry-After when limits are exceeded"],
+    "codeExamples": [],
+    "references": []
+  },
+  {
+    "id": "api-jsonp-callback",
+    "type": "header",
+    "title": "JSONP callback parameter accepted",
+    "category": "headers",
+    "severity": "medium",
+    "description": "JSONP allows arbitrary JS to be loaded in the victim's origin. Prefer CORS.",
+    "evidence": "Async / body / header check for api-jsonp-callback.",
+    "riskImpact": "Disable JSONP; serve CORS-allowed JSON instead",
+    "explanation": "JSONP allows arbitrary JS to be loaded in the victim's origin. Prefer CORS.",
+    "fixSteps": ["Disable JSONP; serve CORS-allowed JSON instead"],
+    "codeExamples": [],
+    "references": [
+      "https://blog.mozilla.org/security/2014/08/26/jsonp-content-type-confusion-xss/"
+    ]
+  },
+  {
+    "id": "api-cors-origin-allow-all",
+    "type": "header",
+    "title": "CORS origin allow-all",
+    "category": "headers",
+    "severity": "high",
+    "description": "Access-Control-Allow-Origin: * with credentials is unsafe; without credentials it may still be too permissive for an internal API.",
+    "evidence": "Async / body / header check for api-cors-origin-allow-all.",
+    "riskImpact": "Replace wildcard with the smallest allowlist of origins that need access",
+    "explanation": "Access-Control-Allow-Origin: * with credentials is unsafe; without credentials it may still be too permissive for an internal API.",
+    "fixSteps": [
+      "Replace wildcard with the smallest allowlist of origins that need access"
+    ],
+    "codeExamples": [],
+    "references": []
+  },
+  {
+    "id": "api-rest-allow-methods-put-no-auth",
+    "type": "header",
+    "title": "REST endpoint allows PUT without authentication",
+    "category": "api",
+    "severity": "high",
+    "description": "PUT changes server state. Without authentication, anyone reachable to the endpoint can overwrite resources (config, user profiles, files).",
+    "evidence": "Async / body / header check for api-rest-allow-methods-put-no-auth.",
+    "riskImpact": "Require authentication on PUT and reject anonymous writes at the proxy or framework layer.",
+    "explanation": "PUT changes server state. Without authentication, anyone reachable to the endpoint can overwrite resources (config, user profiles, files).",
+    "fixSteps": [
+      "Require authentication on PUT and reject anonymous writes at the proxy or framework layer."
+    ],
+    "codeExamples": [],
+    "references": [
+      "https://owasp.org/API-Security/editions/2023/en/0xa3-broken-object-property-level-authorization/"
+    ]
+  },
+  {
+    "id": "api-rest-allow-methods-patch-no-auth",
+    "type": "header",
+    "title": "REST endpoint allows PATCH without authentication",
+    "category": "api",
+    "severity": "high",
+    "description": "PATCH partially mutates a resource. Unauthenticated PATCH endpoints allow attackers to flip boolean fields, escalate privileges, or change ownership markers.",
+    "evidence": "Async / body / header check for api-rest-allow-methods-patch-no-auth.",
+    "riskImpact": "Require authentication on PATCH and validate the JSON merge patch against an explicit allowlist of fields.",
+    "explanation": "PATCH partially mutates a resource. Unauthenticated PATCH endpoints allow attackers to flip boolean fields, escalate privileges, or change ownership markers.",
+    "fixSteps": [
+      "Require authentication on PATCH and validate the JSON merge patch against an explicit allowlist of fields."
+    ],
+    "codeExamples": [],
+    "references": []
+  },
+  {
+    "id": "api-rest-allow-methods-options-exposed",
+    "type": "header",
+    "title": "OPTIONS response exposes full method allowlist",
+    "category": "api",
+    "severity": "low",
+    "description": "A verbose OPTIONS response (Allow: GET, POST, PUT, PATCH, DELETE) leaks the entire verb surface to attackers, simplifying endpoint enumeration.",
+    "evidence": "Async / body / header check for api-rest-allow-methods-options-exposed.",
+    "riskImpact": "Restrict Allow to only the verbs you actually serve and disable unused HTTP methods on the listener.",
+    "explanation": "A verbose OPTIONS response (Allow: GET, POST, PUT, PATCH, DELETE) leaks the entire verb surface to attackers, simplifying endpoint enumeration.",
+    "fixSteps": [
+      "Restrict Allow to only the verbs you actually serve and disable unused HTTP methods on the listener."
+    ],
+    "codeExamples": [],
+    "references": []
+  },
+  {
+    "id": "api-graphql-introspection-enabled",
+    "type": "header",
+    "title": "GraphQL introspection enabled in production",
+    "category": "api",
+    "severity": "high",
+    "description": "__schema / __type queries dump the entire schema, including internal fields, admin-only mutations, and deprecation hints that aid targeted attacks.",
+    "evidence": "Async / body / header check for api-graphql-introspection-enabled.",
+    "riskImpact": "Disable introspection in production (Apollo: introspection: false, GraphQL.NET: ExposeMetadata=false).",
+    "explanation": "__schema / __type queries dump the entire schema, including internal fields, admin-only mutations, and deprecation hints that aid targeted attacks.",
+    "fixSteps": [
+      "Disable introspection in production (Apollo: introspection: false, GraphQL.NET: ExposeMetadata=false)."
+    ],
+    "codeExamples": [],
+    "references": ["https://graphql.org/learn/introspection/"]
+  },
+  {
+    "id": "api-graphql-batch-queries",
+    "type": "header",
+    "title": "GraphQL batch (array) queries accepted",
+    "category": "api",
+    "severity": "medium",
+    "description": "Accepting an array of queries lets a single HTTP request fan out to N independent operations, multiplying rate-limit cost and bypassing per-request throttles.",
+    "evidence": "Async / body / header check for api-graphql-batch-queries.",
+    "riskImpact": "Disable batch queries or charge each item in the array against the rate-limit budget.",
+    "explanation": "Accepting an array of queries lets a single HTTP request fan out to N independent operations, multiplying rate-limit cost and bypassing per-request throttles.",
+    "fixSteps": [
+      "Disable batch queries or charge each item in the array against the rate-limit budget."
+    ],
+    "codeExamples": [],
+    "references": []
+  },
+  {
+    "id": "api-graphql-no-alias-depth-limit",
+    "type": "header",
+    "title": "GraphQL alias-based depth bypass",
+    "category": "api",
+    "severity": "medium",
+    "description": "A naive depth-limit can be evaded with aliases that rename the same field many times. Each alias resolves independently, multiplying cost.",
+    "evidence": "Async / body / header check for api-graphql-no-alias-depth-limit.",
+    "riskImpact": "Combine depth-limit with query-cost analysis (graphql-query-complexity) and per-field cost limits.",
+    "explanation": "A naive depth-limit can be evaded with aliases that rename the same field many times. Each alias resolves independently, multiplying cost.",
+    "fixSteps": [
+      "Combine depth-limit with query-cost analysis (graphql-query-complexity) and per-field cost limits."
+    ],
+    "codeExamples": [],
+    "references": ["https://github.com/graphql/graphiql/issues/841"]
+  },
+  {
+    "id": "api-graphql-error-stack-trace",
+    "type": "header",
+    "title": "GraphQL error response leaks stack trace",
+    "category": "api",
+    "severity": "medium",
+    "description": "Stack traces in error.extensions.stacktrace expose file paths, framework versions, and SQL fragments to any unauthenticated caller.",
+    "evidence": "Async / body / header check for api-graphql-error-stack-trace.",
+    "riskImpact": "Mask stacktrace in production and log it server-side only (Apollo: formatError, graphql-playground: HideStackTrace).",
+    "explanation": "Stack traces in error.extensions.stacktrace expose file paths, framework versions, and SQL fragments to any unauthenticated caller.",
+    "fixSteps": [
+      "Mask stacktrace in production and log it server-side only (Apollo: formatError, graphql-playground: HideStackTrace)."
+    ],
+    "codeExamples": [],
+    "references": []
+  },
+  {
+    "id": "api-graphql-query-cost-not-enforced",
+    "type": "header",
+    "title": "GraphQL query cost / complexity not enforced",
+    "category": "api",
+    "severity": "high",
+    "description": "Without cost analysis, a query that joins every table or fires N+1 resolvers can pin a CPU for minutes. Depth-limit alone misses wide queries.",
+    "evidence": "Async / body / header check for api-graphql-query-cost-not-enforced.",
+    "riskImpact": "Add graphql-query-complexity or graphql-cost-analysis and reject queries above your budget.",
+    "explanation": "Without cost analysis, a query that joins every table or fires N+1 resolvers can pin a CPU for minutes. Depth-limit alone misses wide queries.",
+    "fixSteps": [
+      "Add graphql-query-complexity or graphql-cost-analysis and reject queries above your budget."
+    ],
+    "codeExamples": [],
+    "references": ["https://github.com/slicknode/graphql-query-complexity"]
+  },
+  {
+    "id": "api-openapi-security-scheme-weak",
+    "type": "header",
+    "title": "OpenAPI security scheme is weak or missing",
+    "category": "api",
+    "severity": "high",
+    "description": "An OpenAPI document with no securitySchemes, or one that lists only apiKey in header, signals that the API does not enforce real authentication.",
+    "evidence": "Async / body / header check for api-openapi-security-scheme-weak.",
+    "riskImpact": "Declare a strong security scheme (OAuth2 + JWT or mTLS) and require it on every operation.",
+    "explanation": "An OpenAPI document with no securitySchemes, or one that lists only apiKey in header, signals that the API does not enforce real authentication.",
+    "fixSteps": [
+      "Declare a strong security scheme (OAuth2 + JWT or mTLS) and require it on every operation."
+    ],
+    "codeExamples": [],
+    "references": ["https://swagger.io/docs/specification/authentication/"]
+  },
+  {
+    "id": "api-openapi-default-values-sensitive",
+    "type": "header",
+    "title": "OpenAPI schema declares defaults for sensitive fields",
+    "category": "api",
+    "severity": "medium",
+    "description": "Defaults such as isAdmin: false, role: user, or apiKey: REPLACE_ME teach attackers the shape of state and embed credentials in client SDKs.",
+    "evidence": "Async / body / header check for api-openapi-default-values-sensitive.",
+    "riskImpact": "Remove default values from any field marked x-sensitive or whose name contains token / password / role.",
+    "explanation": "Defaults such as isAdmin: false, role: user, or apiKey: REPLACE_ME teach attackers the shape of state and embed credentials in client SDKs.",
+    "fixSteps": [
+      "Remove default values from any field marked x-sensitive or whose name contains token / password / role."
+    ],
+    "codeExamples": [],
+    "references": []
+  },
+  {
+    "id": "api-jwt-alg-none",
+    "type": "header",
+    "title": "JWT verifier accepts alg=none",
+    "category": "api",
+    "severity": "critical",
+    "description": "A token with alg=none carries no signature. Verifiers that accept it let attackers forge any subject, role, or expiry they want.",
+    "evidence": "Async / body / header check for api-jwt-alg-none.",
+    "riskImpact": "Pin alg to RS256/ES256 explicitly; reject any token whose header alg is none or mismatched to the key type.",
+    "explanation": "A token with alg=none carries no signature. Verifiers that accept it let attackers forge any subject, role, or expiry they want.",
+    "fixSteps": [
+      "Pin alg to RS256/ES256 explicitly; reject any token whose header alg is none or mismatched to the key type."
+    ],
+    "codeExamples": [],
+    "references": ["https://datatracker.ietf.org/doc/html/rfc8725"]
+  },
+  {
+    "id": "api-jwt-hs256-weak-secret",
+    "type": "header",
+    "title": "JWT HS256 signed with weak or hard-coded secret",
+    "category": "api",
+    "severity": "critical",
+    "description": "HS256 trusts a shared secret. If the secret is short, default, or checked into source, attackers can sign forged tokens offline.",
+    "evidence": "Async / body / header check for api-jwt-hs256-weak-secret.",
+    "riskImpact": "Use 256-bit+ random secrets from a KMS, rotate periodically, or switch to RS256 with a private key.",
+    "explanation": "HS256 trusts a shared secret. If the secret is short, default, or checked into source, attackers can sign forged tokens offline.",
+    "fixSteps": [
+      "Use 256-bit+ random secrets from a KMS, rotate periodically, or switch to RS256 with a private key."
+    ],
+    "codeExamples": [],
+    "references": [
+      "https://auth0.com/blog/critical-vulnerabilities-in-json-web-token-libraries/"
+    ]
+  },
+  {
+    "id": "api-jwt-missing-exp-claim",
+    "type": "header",
+    "title": "JWT issued without exp claim",
+    "category": "api",
+    "severity": "high",
+    "description": "Tokens without an explicit expiry live forever once stolen. Replay attacks succeed indefinitely and revocation is impossible.",
+    "evidence": "Async / body / header check for api-jwt-missing-exp-claim.",
+    "riskImpact": "Always include exp (<=1h for access tokens) and validate exp server-side on every request.",
+    "explanation": "Tokens without an explicit expiry live forever once stolen. Replay attacks succeed indefinitely and revocation is impossible.",
+    "fixSteps": [
+      "Always include exp (<=1h for access tokens) and validate exp server-side on every request."
+    ],
+    "codeExamples": [],
+    "references": []
+  },
+  {
+    "id": "api-cors-credentials-with-wildcard-origin",
+    "type": "header",
+    "title": "CORS allows credentials with wildcard or reflected origin",
+    "category": "api",
+    "severity": "critical",
+    "description": "Sending Access-Control-Allow-Credentials: true alongside Access-Control-Allow-Origin: * (or a reflected Origin) lets any site issue authenticated requests as the victim.",
+    "evidence": "Async / body / header check for api-cors-credentials-with-wildcard-origin.",
+    "riskImpact": "Replace wildcard with an explicit allowlist of origins and only set Allow-Credentials when the request matches.",
+    "explanation": "Sending Access-Control-Allow-Credentials: true alongside Access-Control-Allow-Origin: * (or a reflected Origin) lets any site issue authenticated requests as the victim.",
+    "fixSteps": [
+      "Replace wildcard with an explicit allowlist of origins and only set Allow-Credentials when the request matches."
+    ],
+    "codeExamples": [],
+    "references": [
+      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Access-Control-Allow-Credentials"
+    ]
+  },
+  {
+    "id": "api-cors-null-origin-reflected",
+    "type": "header",
+    "title": "CORS reflects Origin: null",
+    "category": "api",
+    "severity": "high",
+    "description": "Echoing the literal string 'null' as Access-Control-Allow-Origin is exploitable because sandboxed iframes, file://, and data: URIs all send Origin: null.",
+    "evidence": "Async / body / header check for api-cors-null-origin-reflected.",
+    "riskImpact": "Never echo 'null'; reject it or require an explicit origin match against your allowlist.",
+    "explanation": "Echoing the literal string 'null' as Access-Control-Allow-Origin is exploitable because sandboxed iframes, file://, and data: URIs all send Origin: null.",
+    "fixSteps": [
+      "Never echo 'null'; reject it or require an explicit origin match against your allowlist."
+    ],
+    "codeExamples": [],
+    "references": ["https://portswigger.net/web-security/cors"]
+  },
+  {
+    "id": "api-cors-preflight-cache-over-24h",
+    "type": "header",
+    "title": "CORS preflight cache exceeds 24 hours",
+    "category": "api",
+    "severity": "low",
+    "description": "Access-Control-Max-Age above 86400 pins browsers to a stale allowlist. New disallowed headers or origins take up to Max-Age seconds to take effect.",
+    "evidence": "Async / body / header check for api-cors-preflight-cache-over-24h.",
+    "riskImpact": "Cap Max-Age at 600 (10 min) for production APIs; use shorter windows when rolling out CORS changes.",
+    "explanation": "Access-Control-Max-Age above 86400 pins browsers to a stale allowlist. New disallowed headers or origins take up to Max-Age seconds to take effect.",
+    "fixSteps": [
+      "Cap Max-Age at 600 (10 min) for production APIs; use shorter windows when rolling out CORS changes."
+    ],
+    "codeExamples": [],
+    "references": []
+  },
+  {
+    "id": "api-rate-limit-per-ip-no-auth",
+    "type": "header",
+    "title": "Rate-limit keyed only on client IP, no auth required",
+    "category": "api",
+    "severity": "medium",
+    "description": "Per-IP throttling is fine for anonymous traffic, but auth-less endpoints behind a shared NAT or proxy can be exhausted by one noisy neighbour.",
+    "evidence": "Async / body / header check for api-rate-limit-per-ip-no-auth.",
+    "riskImpact": "Require authentication on sensitive endpoints and key rate-limits on the authenticated principal.",
+    "explanation": "Per-IP throttling is fine for anonymous traffic, but auth-less endpoints behind a shared NAT or proxy can be exhausted by one noisy neighbour.",
+    "fixSteps": [
+      "Require authentication on sensitive endpoints and key rate-limits on the authenticated principal."
+    ],
+    "codeExamples": [],
+    "references": []
+  },
+  {
+    "id": "api-rate-limit-headers-not-enforced-on-paths",
+    "type": "header",
+    "title": "Rate-limit headers present but only enforced on some paths",
+    "category": "api",
+    "severity": "medium",
+    "description": "Returning X-RateLimit-* headers without enforcing the cap is theatre. Callers see budgets they cannot exceed in the response but can hammer the server anyway.",
+    "evidence": "Async / body / header check for api-rate-limit-headers-not-enforced-on-paths.",
+    "riskImpact": "Verify that every endpoint emitting rate-limit headers actually blocks or throttles at the limit.",
+    "explanation": "Returning X-RateLimit-* headers without enforcing the cap is theatre. Callers see budgets they cannot exceed in the response but can hammer the server anyway.",
+    "fixSteps": [
+      "Verify that every endpoint emitting rate-limit headers actually blocks or throttles at the limit."
+    ],
+    "codeExamples": [],
+    "references": []
+  },
+  {
+    "id": "api-soap-soapaction-injection",
+    "type": "header",
+    "title": "SOAPAction header injection / SSRF",
+    "category": "api",
+    "severity": "high",
+    "description": "If the SOAPAction header is passed verbatim to a downstream HTTP call without validation, attackers can pivot the request to internal services.",
+    "evidence": "Async / body / header check for api-soap-soapaction-injection.",
+    "riskImpact": "Strict-allowlist the SOAPAction value; never concatenate it into outbound URLs.",
+    "explanation": "If the SOAPAction header is passed verbatim to a downstream HTTP call without validation, attackers can pivot the request to internal services.",
+    "fixSteps": [
+      "Strict-allowlist the SOAPAction value; never concatenate it into outbound URLs."
+    ],
+    "codeExamples": [],
+    "references": []
+  },
+  {
+    "id": "api-soap-xxe-enabled",
+    "type": "header",
+    "title": "SOAP/XML parser has external entities enabled (XXE)",
+    "category": "api",
+    "severity": "critical",
+    "description": "XML parsers with DOCTYPE / external entity processing enabled allow attackers to read local files, hit SSRF endpoints, and exfiltrate via DTD.",
+    "evidence": "Async / body / header check for api-soap-xxe-enabled.",
+    "riskImpact": "Disable DTD processing and external entity resolution on every XML/SOAP parser; use a hardened factory.",
+    "explanation": "XML parsers with DOCTYPE / external entity processing enabled allow attackers to read local files, hit SSRF endpoints, and exfiltrate via DTD.",
+    "fixSteps": [
+      "Disable DTD processing and external entity resolution on every XML/SOAP parser; use a hardened factory."
+    ],
+    "codeExamples": [],
+    "references": [
+      "https://owasp.org/www-community/vulnerabilities/XML_External_Entity_Processing"
+    ]
+  },
+  {
+    "id": "api-soap-wsdl-publicly-accessible",
+    "type": "header",
+    "title": "WSDL publicly accessible",
+    "category": "api",
+    "severity": "medium",
+    "description": "Auto-published WSDL files enumerate every operation, parameter type, and binding - a blueprint for crafting SOAP-level attacks.",
+    "evidence": "Async / body / header check for api-soap-wsdl-publicly-accessible.",
+    "riskImpact": "Restrict ?wsdl behind authentication or remove it from production endpoints.",
+    "explanation": "Auto-published WSDL files enumerate every operation, parameter type, and binding - a blueprint for crafting SOAP-level attacks.",
+    "fixSteps": [
+      "Restrict ?wsdl behind authentication or remove it from production endpoints."
+    ],
+    "codeExamples": [],
+    "references": []
+  },
+  {
+    "id": "api-websocket-no-origin-validation",
+    "type": "header",
+    "title": "WebSocket upgrade does not validate Origin",
+    "category": "api",
+    "severity": "high",
+    "description": "A WebSocket handshake that ignores the Origin header lets any malicious site open an authenticated WS connection and stream events to the victim.",
+    "evidence": "Async / body / header check for api-websocket-no-origin-validation.",
+    "riskImpact": "Validate the Origin header against an allowlist in the HTTP upgrade handler before completing the handshake.",
+    "explanation": "A WebSocket handshake that ignores the Origin header lets any malicious site open an authenticated WS connection and stream events to the victim.",
+    "fixSteps": [
+      "Validate the Origin header against an allowlist in the HTTP upgrade handler before completing the handshake."
+    ],
+    "codeExamples": [],
+    "references": ["https://portswigger.net/web-security/websockets"]
+  },
+  {
+    "id": "api-websocket-no-max-message-size",
+    "type": "header",
+    "title": "WebSocket has no max message size",
+    "category": "api",
+    "severity": "medium",
+    "description": "Without a max message size, a single client can pin server memory by sending an oversized frame, or trigger decompressor-bombs if payloads are gzipped.",
+    "evidence": "Async / body / header check for api-websocket-no-max-message-size.",
+    "riskImpact": "Set maxPayload to a sane limit (e.g., 64KB) and reject larger frames at the server.",
+    "explanation": "Without a max message size, a single client can pin server memory by sending an oversized frame, or trigger decompressor-bombs if payloads are gzipped.",
+    "fixSteps": [
+      "Set maxPayload to a sane limit (e.g., 64KB) and reject larger frames at the server."
+    ],
+    "codeExamples": [],
+    "references": []
+  },
+  {
+    "id": "api-websocket-no-idle-timeout",
+    "type": "header",
+    "title": "WebSocket has no idle / disconnect timeout",
+    "category": "api",
+    "severity": "low",
+    "description": "Idle WS connections accumulate as file descriptors and sockets. Eventually the process hits FD limits and refuses new connections.",
+    "evidence": "Async / body / header check for api-websocket-no-idle-timeout.",
+    "riskImpact": "Close idle sockets after 60s of inactivity and ping every 30s to keep them warm.",
+    "explanation": "Idle WS connections accumulate as file descriptors and sockets. Eventually the process hits FD limits and refuses new connections.",
+    "fixSteps": [
+      "Close idle sockets after 60s of inactivity and ping every 30s to keep them warm."
+    ],
+    "codeExamples": [],
+    "references": []
+  },
+  {
+    "id": "api-rest-no-idempotency-key",
+    "type": "header",
+    "title": "POST endpoint accepts no Idempotency-Key",
+    "category": "api",
+    "severity": "medium",
+    "description": "Without an Idempotency-Key header, network retries can double-charge payments, duplicate records, or fire emails twice.",
+    "evidence": "Async / body / header check for api-rest-no-idempotency-key.",
+    "riskImpact": "Require Idempotency-Key on POST /payments, /webhooks and dedupe by key for >=24h.",
+    "explanation": "Without an Idempotency-Key header, network retries can double-charge payments, duplicate records, or fire emails twice.",
+    "fixSteps": [
+      "Require Idempotency-Key on POST /payments, /webhooks and dedupe by key for >=24h."
+    ],
+    "codeExamples": [],
+    "references": [
+      "https://datatracker.ietf.org/doc/html/draft-ietf-httpapi-idempotency-key-header"
+    ]
+  },
+  {
+    "id": "api-rest-mass-assignment-risk",
+    "type": "header",
+    "title": "REST endpoint mass-assignment risk",
+    "category": "api",
+    "severity": "high",
+    "description": "Endpoints that bind a request body directly to a model (e.g., user.role, isAdmin, internalId) without an explicit allowlist let clients escalate privileges.",
+    "evidence": "Async / body / header check for api-rest-mass-assignment-risk.",
+    "riskImpact": "Use explicit DTOs / allowlists; never spread req.body onto ORM models.",
+    "explanation": "Endpoints that bind a request body directly to a model (e.g., user.role, isAdmin, internalId) without an explicit allowlist let clients escalate privileges.",
+    "fixSteps": [
+      "Use explicit DTOs / allowlists; never spread req.body onto ORM models."
+    ],
+    "codeExamples": [],
+    "references": [
+      "https://cheatsheetseries.owasp.org/cheatsheets/Mass_Assignment_Cheat_Sheet.html"
+    ]
+  },
+  {
+    "id": "api-rest-pagination-headers-missing",
+    "type": "header",
+    "title": "REST list endpoint missing pagination headers",
+    "category": "api",
+    "severity": "low",
+    "description": "List endpoints without X-Total-Count or Link: rel=\"next\" force clients to fetch until empty, enabling unbounded dumps and denial-of-service via huge queries.",
+    "evidence": "Async / body / header check for api-rest-pagination-headers-missing.",
+    "riskImpact": "Cap page size (<=100), return total count and Link rel=next/prev headers.",
+    "explanation": "List endpoints without X-Total-Count or Link: rel=\"next\" force clients to fetch until empty, enabling unbounded dumps and denial-of-service via huge queries.",
+    "fixSteps": [
+      "Cap page size (<=100), return total count and Link rel=next/prev headers."
+    ],
+    "codeExamples": [],
+    "references": []
+  },
+  {
+    "id": "api-rest-etag-missing",
+    "type": "header",
+    "title": "REST endpoint missing ETag / conditional GET",
+    "category": "api",
+    "severity": "info",
+    "description": "Without ETags, clients re-download unchanged resources, wasting bandwidth and amplifying scrape traffic.",
+    "evidence": "Async / body / header check for api-rest-etag-missing.",
+    "riskImpact": "Emit strong ETags on GET responses and honour If-None-Match.",
+    "explanation": "Without ETags, clients re-download unchanged resources, wasting bandwidth and amplifying scrape traffic.",
+    "fixSteps": [
+      "Emit strong ETags on GET responses and honour If-None-Match."
+    ],
+    "codeExamples": [],
+    "references": []
+  },
+  {
+    "id": "api-graphql-subscription-auth-missing",
+    "type": "header",
+    "title": "GraphQL subscription missing per-field auth",
+    "category": "api",
+    "severity": "high",
+    "description": "Subscriptions bypass query-time authorization checks. A user subscribed to onUserUpdated can be fed events for other tenants if authZ is on the resolver, not the source stream.",
+    "evidence": "Async / body / header check for api-graphql-subscription-auth-missing.",
+    "riskImpact": "Authorize on the subscribe step and re-check on every event emitted by the async iterator.",
+    "explanation": "Subscriptions bypass query-time authorization checks. A user subscribed to onUserUpdated can be fed events for other tenants if authZ is on the resolver, not the source stream.",
+    "fixSteps": [
+      "Authorize on the subscribe step and re-check on every event emitted by the async iterator."
+    ],
+    "codeExamples": [],
+    "references": ["https://www.apollographql.com/docs/graphql-subscriptions/"]
+  },
+  {
+    "id": "api-rest-no-hateoas-links",
+    "type": "header",
+    "title": "REST response missing _links / HATEOAS navigation",
+    "category": "api",
+    "severity": "info",
+    "description": "Without discoverable links in responses, clients hard-code URLs and break when paths change. Not a security issue but a maintainability one.",
+    "evidence": "Async / body / header check for api-rest-no-hateoas-links.",
+    "riskImpact": "Embed HAL / JSON-LD _links so clients follow relations instead of strings.",
+    "explanation": "Without discoverable links in responses, clients hard-code URLs and break when paths change. Not a security issue but a maintainability one.",
+    "fixSteps": [
+      "Embed HAL / JSON-LD _links so clients follow relations instead of strings."
+    ],
+    "codeExamples": [],
+    "references": []
+  }
+]
