@@ -1,30 +1,21 @@
 ﻿import { NextResponse } from "next/server";
-import checksData from "@/lib/scanner/checks-data.json";
+import { allCheckDefs, getCategoryCounts } from "@/lib/scanner/registry";
 
 export async function GET() {
   try {
-    // Extract all finding types (check IDs) from the checks data
-    const findingTypes = checksData.checks.map(
-      (check: {
-        id: string;
-        type: string;
-        title: string;
-        category: string;
-        severity: string;
-        description: string;
-      }) => ({
-        id: check.id,
-        type: check.type,
-        title: check.title,
-        category: check.category,
-        severity: check.severity,
-        description: check.description,
-      }),
-    );
+    const findingTypes = allCheckDefs.map((check) => ({
+      id: check.id,
+      type: check.type,
+      title: check.title,
+      category: check.category,
+      severity: check.severity,
+      description: check.description,
+    }));
 
     return NextResponse.json({
       success: true,
       count: findingTypes.length,
+      categories: getCategoryCounts(),
       data: findingTypes,
     });
   } catch (error) {

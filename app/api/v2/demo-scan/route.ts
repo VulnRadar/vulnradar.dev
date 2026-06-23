@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { allChecks } from "@/lib/scanner/checks";
+import { allChecks } from "@/lib/scanner/registry";
 import { runAsyncChecks } from "@/lib/scanner/async-checks";
 import type { ScanResult, Severity, Vulnerability } from "@/lib/scanner/types";
 import {

@@ -11,7 +11,7 @@ import {
   checkRateLimit as checkApiKeyRateLimit,
   recordUsage,
 } from "@/lib/api/api-keys";
-import { allChecks, getFilteredChecks } from "@/lib/scanner/checks";
+import { allChecks, getChecksByCategory } from "@/lib/scanner/registry";
 import { runAsyncChecks } from "@/lib/scanner/async-checks";
 import pool from "@/lib/database/db";
 import {
@@ -257,7 +257,9 @@ async function scanSingleUrl(
     capturedHeaders[k] = v;
   });
 
-  const checks = scanners ? getFilteredChecks(scanners) : allChecks;
+  const checks = scanners
+    ? getChecksByCategory(scanners as never[])
+    : allChecks;
   const bodyForChecks =
     responseBody.length > 1_000_000
       ? responseBody.slice(0, 1_000_000)

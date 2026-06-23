@@ -1,0 +1,3224 @@
+[
+  {
+    "id": "mixed-content",
+    "type": "combined",
+    "title": "Mixed Content Detected",
+    "category": "content",
+    "severity": "MEDIUM",
+    "description": "The HTTPS page loads resources over insecure HTTP connections.",
+    "evidence": "Found HTTP resource references on HTTPS page.",
+    "riskImpact": "Resources loaded over HTTP on an HTTPS page can be intercepted by attackers.",
+    "explanation": "Mixed content occurs when an HTTPS page includes resources fetched over HTTP. Browsers may block some types and warn about others.",
+    "fixSteps": [
+      "Update all resource URLs to use HTTPS or protocol-relative URLs.",
+      "Use the CSP directive upgrade-insecure-requests.",
+      "Audit all external resource references."
+    ],
+    "codeExamples": [
+      {
+        "label": "CSP Auto-Upgrade",
+        "language": "html",
+        "code": "<meta http-equiv=\"Content-Security-Policy\" content=\"upgrade-insecure-requests\">"
+      }
+    ]
+  },
+  {
+    "id": "open-redirect",
+    "type": "body-pattern",
+    "title": "Potential Open Redirect Parameters",
+    "category": "content",
+    "severity": "MEDIUM",
+    "description": "The page contains URL parameters or JavaScript patterns commonly associated with open redirect vulnerabilities.",
+    "evidence": "Found redirect-related patterns in page source.",
+    "riskImpact": "Open redirects can be used in phishing attacks by making malicious URLs appear to originate from your trusted domain.",
+    "explanation": "Open redirect vulnerabilities occur when a web application takes a user-supplied URL parameter and redirects to it without validation.",
+    "fixSteps": [
+      "Validate all redirect URLs against an allowlist.",
+      "Use relative URLs for redirects.",
+      "Reject any redirect URL that points to an external domain.",
+      "Implement server-side URL validation."
+    ],
+    "codeExamples": [
+      {
+        "label": "Validation",
+        "language": "typescript",
+        "code": "const ALLOWED = ['yourdomain.com'];\nconst url = new URL(redirect);\nif (!ALLOWED.includes(url.hostname)) throw new Error('Invalid');"
+      }
+    ]
+  },
+  {
+    "id": "sri-missing",
+    "type": "body-pattern",
+    "title": "Missing Subresource Integrity (SRI)",
+    "category": "content",
+    "severity": "MEDIUM",
+    "description": "External scripts are loaded without Subresource Integrity hashes.",
+    "evidence": "Found external scripts without integrity attribute.",
+    "riskImpact": "If a CDN or third-party host is compromised, attackers could serve malicious scripts.",
+    "explanation": "SRI allows browsers to verify that files fetched from CDNs haven't been tampered with.",
+    "fixSteps": [
+      "Generate SRI hashes for all external scripts and stylesheets.",
+      "Add 'integrity' and 'crossorigin' attributes.",
+      "Use tools like srihash.org to generate hashes."
+    ],
+    "codeExamples": [
+      {
+        "label": "HTML",
+        "language": "html",
+        "code": "<script src=\"https://cdn.example.com/lib.js\" integrity=\"sha384-...\" crossorigin=\"anonymous\"></script>"
+      }
+    ]
+  },
+  {
+    "id": "form-action-http",
+    "type": "body-pattern",
+    "title": "Form Submitting Over HTTP",
+    "category": "content",
+    "severity": "HIGH",
+    "description": "One or more forms submit data over unencrypted HTTP.",
+    "evidence": "Found form(s) with HTTP action.",
+    "riskImpact": "Form data including passwords and personal information are transmitted in plaintext.",
+    "explanation": "When a form's action URL uses HTTP instead of HTTPS, all submitted data is sent in plaintext.",
+    "fixSteps": [
+      "Update all form action URLs to use HTTPS.",
+      "Use relative URLs for form actions.",
+      "Add upgrade-insecure-requests CSP directive."
+    ],
+    "codeExamples": [
+      {
+        "label": "Fix",
+        "language": "html",
+        "code": "<!-- Bad -->\n<form action=\"http://example.com/submit\">\n<!-- Good -->\n<form action=\"/submit\">"
+      }
+    ]
+  },
+  {
+    "id": "email-exposure",
+    "type": "body-pattern",
+    "title": "Email Address Exposure",
+    "category": "content",
+    "severity": "INFO",
+    "description": "Email addresses were found in the page source.",
+    "evidence": "Found email addresses in page source.",
+    "riskImpact": "Exposed email addresses can be harvested by bots for spam or targeted phishing.",
+    "explanation": "Bots constantly crawl websites looking for email addresses in the HTML source.",
+    "fixSteps": [
+      "Replace plaintext emails with contact forms.",
+      "Use JavaScript to dynamically render email addresses.",
+      "Encode email addresses using HTML entities.",
+      "Consider Cloudflare email obfuscation."
+    ],
+    "codeExamples": [
+      {
+        "label": "React Obfuscation",
+        "language": "tsx",
+        "code": "function ObfuscatedEmail({ user, domain }: { user: string; domain: string }) {\n  return <button onClick={() => window.location.href = `mailto:${user}@${domain}`}>{user} [at] {domain}</button>;\n}"
+      }
+    ]
+  },
+  {
+    "id": "directory-listing",
+    "type": "body-pattern",
+    "title": "Directory Listing Appears Enabled",
+    "category": "content",
+    "severity": "HIGH",
+    "description": "The response contains patterns indicating directory listing is enabled.",
+    "evidence": "Response contains directory listing indicators.",
+    "riskImpact": "Attackers can browse your server's file structure, discovering sensitive files.",
+    "explanation": "Directory listing allows anyone to see all files in a directory when no index file is present.",
+    "fixSteps": [
+      "Disable directory listing in your web server configuration.",
+      "Ensure every directory has an index file.",
+      "Review exposed directories for sensitive files."
+    ],
+    "codeExamples": [
+      {
+        "label": "Nginx",
+        "language": "nginx",
+        "code": "autoindex off;"
+      },
+      {
+        "label": "Apache",
+        "language": "apache",
+        "code": "Options -Indexes"
+      }
+    ]
+  },
+  {
+    "id": "sensitive-files",
+    "type": "body-pattern",
+    "title": "Sensitive File References Detected",
+    "category": "content",
+    "severity": "MEDIUM",
+    "description": "The page references files commonly associated with sensitive configuration or development artifacts.",
+    "evidence": "References to sensitive files found.",
+    "riskImpact": "References to sensitive files may indicate they are accessible.",
+    "explanation": "Sensitive files like .env, .git/, and configuration files should never be referenced in public pages.",
+    "fixSteps": [
+      "Remove all references to sensitive files from public HTML.",
+      "Block access in your web server configuration.",
+      "Ensure .env, .git, and other config files are in .gitignore."
+    ],
+    "codeExamples": [
+      {
+        "label": "Nginx",
+        "language": "nginx",
+        "code": "location ~ /\\. { deny all; return 404; }\nlocation ~ \\.(env|sql|bak|config|log)$ { deny all; return 404; }"
+      }
+    ]
+  },
+  {
+    "id": "outdated-js-libs",
+    "type": "body-pattern",
+    "title": "Potentially Outdated JavaScript Libraries",
+    "category": "content",
+    "severity": "HIGH",
+    "description": "The page references JavaScript libraries with known security vulnerabilities.",
+    "evidence": "Detected outdated libraries with known CVEs.",
+    "riskImpact": "Outdated libraries contain publicly known vulnerabilities that attackers can exploit.",
+    "explanation": "Using outdated client-side libraries exposes your application to known attack vectors.",
+    "fixSteps": [
+      "Update all JavaScript libraries to their latest stable versions.",
+      "Use npm audit or Snyk to track vulnerabilities.",
+      "Set up Dependabot or Renovate for automated updates.",
+      "Remove unused libraries."
+    ],
+    "codeExamples": [
+      {
+        "label": "npm audit",
+        "language": "bash",
+        "code": "npm audit\nnpm audit fix\nnpm audit fix --force"
+      }
+    ]
+  },
+  {
+    "id": "robots-txt-exposure",
+    "type": "body-pattern",
+    "title": "Sensitive Paths Exposed in Robots.txt",
+    "category": "content",
+    "severity": "INFO",
+    "description": "The robots.txt file reveals potentially sensitive directory paths.",
+    "evidence": "Sensitive disallowed paths found in robots.txt.",
+    "riskImpact": "Robots.txt effectively creates a map of sensitive areas for attackers to probe.",
+    "explanation": "Robots.txt files are publicly accessible and listing sensitive paths tells attackers exactly where to look.",
+    "fixSteps": [
+      "Remove sensitive paths from robots.txt.",
+      "Ensure all sensitive endpoints require proper authentication.",
+      "Use auth and authorization rather than path hiding."
+    ],
+    "codeExamples": [
+      {
+        "label": "Secure robots.txt",
+        "language": "text",
+        "code": "User-agent: *\nDisallow: /api/\nSitemap: https://yourdomain.com/sitemap.xml"
+      }
+    ]
+  },
+  {
+    "id": "cms-fingerprinting",
+    "type": "combined",
+    "title": "CMS / Technology Fingerprinting",
+    "category": "content",
+    "severity": "INFO",
+    "description": "The site exposes CMS or technology stack details that aid attacker reconnaissance.",
+    "evidence": "CMS or technology identifiers found.",
+    "riskImpact": "Knowing the CMS type and version allows attackers to search for specific exploits.",
+    "explanation": "CMS fingerprinting reveals the underlying technology, version, and sometimes plugin information.",
+    "fixSteps": [
+      "Remove or obscure the generator meta tag.",
+      "Hide version numbers from public-facing pages.",
+      "Keep your CMS and all plugins updated.",
+      "Remove default installation files."
+    ],
+    "codeExamples": [
+      {
+        "label": "WordPress",
+        "language": "php",
+        "code": "remove_action('wp_head', 'wp_generator');\nadd_filter('the_generator', '__return_empty_string');"
+      }
+    ]
+  },
+  {
+    "id": "security-txt-missing",
+    "type": "body-pattern",
+    "title": "Missing security.txt File",
+    "category": "content",
+    "severity": "INFO",
+    "description": "No reference to a security.txt file was found.",
+    "evidence": "No reference to /.well-known/security.txt found.",
+    "riskImpact": "Security researchers may not know how to responsibly report vulnerabilities.",
+    "explanation": "The security.txt file (RFC 9116) provides a standardized way for security researchers to find contact information.",
+    "fixSteps": [
+      "Create a /.well-known/security.txt file.",
+      "Include Contact, Preferred-Languages, Expires fields.",
+      "Sign the file with PGP if possible."
+    ],
+    "codeExamples": [
+      {
+        "label": "security.txt",
+        "language": "text",
+        "code": "Contact: mailto:security@yourdomain.com\nExpires: 2026-12-31T23:59:00.000Z\nPreferred-Languages: en"
+      }
+    ]
+  },
+  {
+    "id": "dangerous-inline-js",
+    "type": "body-pattern",
+    "title": "Potentially Dangerous Inline JavaScript",
+    "category": "content",
+    "severity": "MEDIUM",
+    "description": "The page contains inline JavaScript with potentially dangerous patterns like eval(), document.write().",
+    "evidence": "Found inline script blocks with dangerous patterns.",
+    "riskImpact": "Dangerous JavaScript patterns can be exploited via XSS.",
+    "explanation": "Patterns like eval(), document.write(), and direct innerHTML assignment with user input are common XSS vectors.",
+    "fixSteps": [
+      "Replace eval() with JSON.parse().",
+      "Use textContent instead of innerHTML.",
+      "Move inline scripts to external files.",
+      "Use DOMPurify to sanitize HTML."
+    ],
+    "codeExamples": [
+      {
+        "label": "Safe alternatives",
+        "language": "javascript",
+        "code": "const data = JSON.parse(jsonString);\nelement.textContent = userInput;\nimport DOMPurify from 'dompurify';\nelement.innerHTML = DOMPurify.sanitize(htmlContent);"
+      }
+    ]
+  },
+  {
+    "id": "reverse-tabnabbing",
+    "type": "body-pattern",
+    "title": "Reverse Tabnabbing Vulnerability",
+    "category": "content",
+    "severity": "MEDIUM",
+    "description": "Links with target=\"_blank\" are missing rel=\"noopener\".",
+    "evidence": "Anchor tags use target=\"_blank\" without rel=\"noopener\".",
+    "riskImpact": "The opened page gains access to window.opener, allowing it to redirect your page to a phishing site.",
+    "explanation": "When a link opens a new tab with target='_blank', the new page receives a reference to window.opener.",
+    "fixSteps": [
+      "Add rel=\"noopener noreferrer\" to all links with target=\"_blank\"."
+    ],
+    "codeExamples": [
+      {
+        "label": "Safe link",
+        "language": "html",
+        "code": "<a href=\"https://example.com\" target=\"_blank\" rel=\"noopener noreferrer\">Visit</a>"
+      }
+    ]
+  },
+  {
+    "id": "source-maps",
+    "type": "body-pattern",
+    "title": "JavaScript Source Maps Exposed",
+    "category": "content",
+    "severity": "LOW",
+    "description": "Source map references found in the page.",
+    "evidence": "Detected sourceMappingURL directives or .js.map file references.",
+    "riskImpact": "Source maps reveal original variable names, function logic, comments, and application structure.",
+    "explanation": "Source maps are generated during the build process to aid debugging. In production, they expose your entire unminified source code.",
+    "fixSteps": [
+      "Disable source map generation in production builds.",
+      "Upload source maps privately to your error tracking service.",
+      "Configure your bundler to strip sourceMappingURL comments in production."
+    ],
+    "codeExamples": [
+      {
+        "label": "Next.js",
+        "language": "javascript",
+        "code": "const nextConfig = { productionBrowserSourceMaps: false };"
+      }
+    ]
+  },
+  {
+    "id": "sensitive-comments",
+    "type": "body-pattern",
+    "title": "Sensitive Information in HTML Comments",
+    "category": "content",
+    "severity": "MEDIUM",
+    "description": "HTML comments containing potentially sensitive information detected.",
+    "evidence": "Detected comments with sensitive keywords.",
+    "riskImpact": "HTML comments are visible to anyone viewing page source.",
+    "explanation": "Developers often leave TODO notes, debug information, or temporary credentials in HTML comments.",
+    "fixSteps": [
+      "Remove all HTML comments containing sensitive information.",
+      "Use a build process that strips comments.",
+      "Move debug notes to internal documentation."
+    ],
+    "codeExamples": [
+      {
+        "label": "HTML Minification",
+        "language": "javascript",
+        "code": "const htmlnano = require('htmlnano');\nhtmlnano.process(html, { removeComments: 'all' });"
+      }
+    ]
+  },
+  {
+    "id": "private-ip-exposure",
+    "type": "body-pattern",
+    "title": "Internal/Private IP Addresses Exposed",
+    "category": "content",
+    "severity": "LOW",
+    "description": "Internal or private IP addresses found in the page source.",
+    "evidence": "Detected private IP addresses.",
+    "riskImpact": "Internal IP addresses reveal your network topology.",
+    "explanation": "Private IP addresses and localhost references in public-facing pages leak information about your internal network structure.",
+    "fixSteps": [
+      "Remove hardcoded internal IP addresses.",
+      "Use environment-specific configuration.",
+      "Review reverse proxy configurations."
+    ],
+    "codeExamples": [
+      {
+        "label": "Environment config",
+        "language": "typescript",
+        "code": "const API_URL = process.env.NODE_ENV === 'production'\n  ? 'https://api.yourdomain.com'\n  : 'http://localhost:3001';"
+      }
+    ]
+  },
+  {
+    "id": "debug-indicators",
+    "type": "combined",
+    "title": "Debug Mode or Error Information Exposed",
+    "category": "content",
+    "severity": "HIGH",
+    "description": "Debug/error indicators that reveal internal application details detected.",
+    "evidence": "Debug headers, stack traces, or error messages found.",
+    "riskImpact": "Debug output exposes internal file paths, framework versions, database types, and application logic.",
+    "explanation": "Debug mode and verbose error messages are invaluable during development but catastrophic in production.",
+    "fixSteps": [
+      "Disable debug mode in production.",
+      "Configure custom error pages.",
+      "Remove fingerprinting headers.",
+      "Set up error monitoring (Sentry)."
+    ],
+    "codeExamples": [
+      {
+        "label": "Express.js",
+        "language": "javascript",
+        "code": "app.disable('x-powered-by');\napp.use((err, req, res, next) => {\n  res.status(500).json({ error: process.env.NODE_ENV === 'production' ? 'Internal Server Error' : err.message });\n});"
+      },
+      {
+        "label": "Next.js",
+        "language": "javascript",
+        "code": "const nextConfig = { poweredByHeader: false };"
+      }
+    ]
+  },
+  {
+    "id": "insecure-iframes",
+    "type": "combined",
+    "title": "Insecure Iframe Sources on HTTPS Page",
+    "category": "content",
+    "severity": "MEDIUM",
+    "description": "Iframes loading content over HTTP on an HTTPS page.",
+    "evidence": "Found iframes using http:// src on HTTPS page.",
+    "riskImpact": "HTTP iframes on HTTPS pages create mixed content, allowing MITM attackers to modify iframe content.",
+    "explanation": "Browsers display your page as secure but an HTTP iframe can be intercepted and modified by network attackers.",
+    "fixSteps": [
+      "Change all iframe src attributes to use HTTPS.",
+      "Use CSP: frame-src https:.",
+      "Consider using the sandbox attribute."
+    ],
+    "codeExamples": [
+      {
+        "label": "CSP",
+        "language": "text",
+        "code": "Content-Security-Policy: frame-src https: 'self';"
+      }
+    ]
+  },
+  {
+    "id": "token-exposure",
+    "type": "body-pattern",
+    "title": "Authentication Tokens Exposed in Page Source",
+    "category": "content",
+    "severity": "HIGH",
+    "description": "Tokens or session identifiers exposed in the HTML source.",
+    "evidence": "JWT tokens, Bearer tokens, or session IDs found in page source.",
+    "riskImpact": "Exposed tokens allow session hijacking.",
+    "explanation": "Authentication tokens should never appear in HTML source. They can be captured by browser extensions, cached by CDNs, or logged by proxies.",
+    "fixSteps": [
+      "Store tokens in HTTP-only Secure cookies.",
+      "If tokens must be passed to JavaScript, inject them via a secure API call.",
+      "Never pass tokens in URL query parameters."
+    ],
+    "codeExamples": [
+      {
+        "label": "Secure cookie",
+        "language": "typescript",
+        "code": "response.cookies.set('session', token, { httpOnly: true, secure: true, sameSite: 'lax', maxAge: 86400, path: '/' });"
+      }
+    ]
+  },
+  {
+    "id": "autocomplete-sensitive",
+    "type": "body-pattern",
+    "title": "Missing Autocomplete Attributes on Sensitive Fields",
+    "category": "content",
+    "severity": "LOW",
+    "description": "Sensitive input fields without proper autocomplete attributes.",
+    "evidence": "Password or credit card fields missing autocomplete directives.",
+    "riskImpact": "Browsers may cache sensitive form data on shared or compromised devices.",
+    "explanation": "The autocomplete attribute tells browsers how to handle form autofill.",
+    "fixSteps": [
+      "Add autocomplete=\"new-password\" for registration fields.",
+      "Add autocomplete=\"current-password\" for login fields.",
+      "Add appropriate autocomplete values for payment fields."
+    ],
+    "codeExamples": [
+      {
+        "label": "Proper autocomplete",
+        "language": "html",
+        "code": "<input type=\"password\" autocomplete=\"current-password\" />\n<input type=\"password\" autocomplete=\"new-password\" />"
+      }
+    ]
+  },
+  {
+    "id": "form-target-blank",
+    "type": "body-pattern",
+    "title": "Forms Targeting New Windows",
+    "category": "content",
+    "severity": "LOW",
+    "description": "Forms with target=\"_blank\" can be abused for phishing via reverse tabnabbing.",
+    "evidence": "Form element(s) submit to a new window/tab.",
+    "riskImpact": "Form submissions opening new windows can confuse users and be exploited.",
+    "explanation": "Forms that open results in new tabs create the same reverse tabnabbing risk as anchor links.",
+    "fixSteps": [
+      "Remove target=\"_blank\" from forms unless necessary.",
+      "Consider handling form submission via fetch instead."
+    ],
+    "codeExamples": [
+      {
+        "label": "AJAX submission",
+        "language": "javascript",
+        "code": "form.addEventListener('submit', async (e) => {\n  e.preventDefault();\n  await fetch(form.action, { method: 'POST', body: new FormData(form) });\n});"
+      }
+    ]
+  },
+  {
+    "id": "meta-refresh",
+    "type": "body-pattern",
+    "title": "Meta Refresh Redirect Detected",
+    "category": "content",
+    "severity": "LOW",
+    "description": "Meta refresh redirects can be abused for open redirect attacks and phishing.",
+    "evidence": "Meta http-equiv=\"refresh\" tag(s) with URL redirects.",
+    "riskImpact": "Meta refresh redirects bypass standard navigation controls.",
+    "explanation": "Meta refresh tags automatically redirect users after a delay. Unlike server-side redirects, they execute in the browser.",
+    "fixSteps": [
+      "Replace meta refresh with server-side 301/302 redirects.",
+      "Never allow user-controlled input in meta refresh URLs."
+    ],
+    "codeExamples": [
+      {
+        "label": "Server redirect",
+        "language": "typescript",
+        "code": "import { redirect } from 'next/navigation';\nredirect('/new-page');"
+      }
+    ]
+  },
+  {
+    "id": "base-tag-insecure",
+    "type": "body-pattern",
+    "title": "Insecure Base Tag Detected",
+    "category": "content",
+    "severity": "HIGH",
+    "description": "The page uses a <base> tag with an HTTP URL, making all relative URLs resolve insecurely.",
+    "evidence": "Found <base> tag(s) pointing to insecure HTTP origin.",
+    "riskImpact": "All relative links, scripts, images resolve against the insecure base URL.",
+    "explanation": "The HTML <base> tag sets the base URL for all relative URLs in the document.",
+    "fixSteps": [
+      "Change the <base> tag to use HTTPS.",
+      "Remove the <base> tag if not needed.",
+      "Implement CSP base-uri directive."
+    ],
+    "codeExamples": [
+      {
+        "label": "CSP restriction",
+        "language": "text",
+        "code": "Content-Security-Policy: base-uri 'self'"
+      }
+    ]
+  },
+  {
+    "id": "excessive-permissions",
+    "type": "combined",
+    "title": "Overly Permissive Permissions-Policy",
+    "category": "content",
+    "severity": "MEDIUM",
+    "description": "The Permissions-Policy header grants wildcard (*) access to browser features.",
+    "evidence": "Permissions-Policy contains wildcard (*) grants.",
+    "riskImpact": "Wildcard permissions allow any embedded content to access sensitive browser features.",
+    "explanation": "Using * as the allowlist defeats the purpose entirely.",
+    "fixSteps": [
+      "Replace * with 'self'.",
+      "Explicitly list only the origins that need access.",
+      "Disable features you don't use with empty allowlists."
+    ],
+    "codeExamples": [
+      {
+        "label": "Restrictive policy",
+        "language": "text",
+        "code": "Permissions-Policy: camera=(), microphone=(), geolocation=(self)"
+      }
+    ]
+  },
+  {
+    "id": "postmessage-no-origin",
+    "type": "body-pattern",
+    "title": "postMessage Listener Without Origin Validation",
+    "category": "content",
+    "severity": "HIGH",
+    "description": "postMessage event listeners don't appear to validate the message origin.",
+    "evidence": "Message listener(s) missing origin checks.",
+    "riskImpact": "Any website can send messages to your page via postMessage.",
+    "explanation": "If the receiving page doesn't verify event.origin, any malicious page can send crafted messages.",
+    "fixSteps": [
+      "Always check event.origin against a whitelist.",
+      "Validate the structure and type of event.data.",
+      "Use event.source to verify the sender."
+    ],
+    "codeExamples": [
+      {
+        "label": "Safe listener",
+        "language": "javascript",
+        "code": "window.addEventListener('message', (event) => {\n  if (event.origin !== 'https://trusted-domain.com') return;\n  handleMessage(event.data);\n});"
+      }
+    ]
+  },
+  {
+    "id": "sensitive-endpoints",
+    "type": "body-pattern",
+    "title": "Sensitive Endpoints Referenced in Page Source",
+    "category": "content",
+    "severity": "LOW",
+    "description": "References to potentially sensitive endpoints in the page source.",
+    "evidence": "Detected sensitive endpoint references.",
+    "riskImpact": "References to admin panels, debug endpoints help attackers map your attack surface.",
+    "explanation": "Even if endpoints are protected, exposing their paths gives attackers specific targets.",
+    "fixSteps": [
+      "Remove references to internal/admin endpoints from client-side code.",
+      "Use server-side rendering for admin navigation.",
+      "Move API documentation behind authentication."
+    ],
+    "codeExamples": [
+      {
+        "label": "Conditional render",
+        "language": "tsx",
+        "code": "{session?.isAdmin && <Link href=\"/admin\">Admin Panel</Link>}"
+      }
+    ]
+  },
+  {
+    "id": "dangerous-html-attrs",
+    "type": "body-pattern",
+    "title": "Dangerous HTML Attributes Detected",
+    "category": "content",
+    "severity": "HIGH",
+    "description": "Potentially dangerous HTML attributes like inline event handlers, javascript: URIs.",
+    "evidence": "Found dangerous HTML attributes.",
+    "riskImpact": "Inline event handlers and javascript: URIs are common XSS vectors.",
+    "explanation": "Inline event handlers, javascript: protocol links, and data: URIs embedding HTML/JS are all classic XSS injection points.",
+    "fixSteps": [
+      "Remove all javascript: protocol links.",
+      "Move inline event handlers to external JavaScript files.",
+      "Implement CSP with 'unsafe-inline' disabled."
+    ],
+    "codeExamples": [
+      {
+        "label": "Safe pattern",
+        "language": "html",
+        "code": "<!-- BAD -->\n<a href=\"javascript:void(0)\" onclick=\"doStuff()\">Click</a>\n<!-- GOOD -->\n<button type=\"button\" id=\"action-btn\">Click</button>"
+      }
+    ]
+  },
+  {
+    "id": "jwt-in-url",
+    "type": "body-pattern",
+    "title": "JWT Token Exposed in URL",
+    "category": "content",
+    "severity": "CRITICAL",
+    "description": "A JSON Web Token was found embedded in a URL within the page HTML.",
+    "evidence": "Found JWT in URL parameter.",
+    "riskImpact": "The token appears in browser history, proxy logs, server logs, and Referer headers.",
+    "explanation": "JWTs in URLs persist in numerous locations, creating many avenues for token theft.",
+    "fixSteps": [
+      "Transmit tokens in HTTP headers (Authorization: Bearer) instead of URLs.",
+      "Use HTTP-only secure cookies.",
+      "Implement short-lived single-use tokens."
+    ],
+    "codeExamples": [
+      {
+        "label": "Fetch with header",
+        "language": "javascript",
+        "code": "// BAD: Token in URL\nfetch('/api/data?token=eyJ...');\n// GOOD: Token in header\nfetch('/api/data', { headers: { 'Authorization': 'Bearer ' + token } });"
+      }
+    ]
+  },
+  {
+    "id": "sensitive-meta-tags",
+    "type": "body-pattern",
+    "title": "Sensitive Information in Meta Tags",
+    "category": "content",
+    "severity": "LOW",
+    "description": "Meta tags that expose sensitive or unnecessary information.",
+    "evidence": "Sensitive meta tags found.",
+    "riskImpact": "Meta tag contents are visible in page source.",
+    "explanation": "Generator tags reveal exact software versions with known CVEs. CSRF tokens in meta tags are accessible to any script.",
+    "fixSteps": [
+      "Remove generator meta tags in production.",
+      "Move CSRF tokens to HTTP-only cookies.",
+      "Never store API keys in meta tags."
+    ],
+    "codeExamples": [
+      {
+        "label": "WordPress",
+        "language": "php",
+        "code": "remove_action('wp_head', 'wp_generator');"
+      }
+    ]
+  },
+  {
+    "id": "storage-api-sensitive",
+    "type": "body-pattern",
+    "title": "Sensitive Data Stored in Browser Storage APIs",
+    "category": "content",
+    "severity": "HIGH",
+    "description": "JavaScript stores sensitive values (tokens, secrets) in localStorage or sessionStorage.",
+    "evidence": "Sensitive data in browser storage APIs.",
+    "riskImpact": "Any XSS vulnerability allows attackers to steal all data from browser storage.",
+    "explanation": "Web Storage APIs are fully accessible to JavaScript. If an attacker exploits any XSS, they can read all stored values.",
+    "fixSteps": [
+      "Move authentication tokens to HTTP-only, Secure, SameSite cookies.",
+      "Never store passwords, API keys, or PII in browser storage.",
+      "Implement CSP to reduce XSS risk."
+    ],
+    "codeExamples": [
+      {
+        "label": "Secure cookie instead",
+        "language": "javascript",
+        "code": "// BAD: localStorage.setItem('token', jwt);\n// GOOD: Set via server Set-Cookie: session=abc; HttpOnly; Secure; SameSite=Strict"
+      }
+    ]
+  },
+  {
+    "id": "cdn-no-sri",
+    "type": "body-pattern",
+    "title": "CDN Resources Loaded Without Subresource Integrity",
+    "category": "content",
+    "severity": "MEDIUM",
+    "description": "Scripts loaded from CDNs lack integrity attributes.",
+    "evidence": "CDN scripts without SRI.",
+    "riskImpact": "A compromised CDN could serve malicious scripts to all your users.",
+    "explanation": "SRI lets you provide a cryptographic hash of the expected file content. The browser verifies before executing.",
+    "fixSteps": [
+      "Add integrity and crossorigin attributes to all CDN resources.",
+      "Consider self-hosting critical libraries as an alternative."
+    ],
+    "codeExamples": [
+      {
+        "label": "SRI example",
+        "language": "html",
+        "code": "<script src=\"https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.min.js\" integrity=\"sha384-...\" crossorigin=\"anonymous\"></script>"
+      }
+    ]
+  },
+  {
+    "id": "og-injection",
+    "type": "body-pattern",
+    "title": "Suspicious Content in Open Graph Tags",
+    "category": "content",
+    "severity": "MEDIUM",
+    "description": "Open Graph meta tags contain suspicious content that could indicate injection.",
+    "evidence": "Suspicious OG tag content found.",
+    "riskImpact": "Malicious OG content can be exploited by link preview services.",
+    "explanation": "Some preview renderers process OG values in ways that can be exploited.",
+    "fixSteps": [
+      "Sanitize all Open Graph tag content.",
+      "Validate og:url and og:image point to your own domains.",
+      "Never include user-controlled input in OG tags without encoding."
+    ],
+    "codeExamples": [
+      {
+        "label": "Safe OG tags",
+        "language": "html",
+        "code": "<meta property=\"og:url\" content=\"https://example.com/page\" />\n<meta property=\"og:image\" content=\"https://example.com/image.jpg\" />"
+      }
+    ]
+  },
+  {
+    "id": "sw-insecure",
+    "type": "body-pattern",
+    "title": "Service Worker Registered Over Insecure HTTP",
+    "category": "content",
+    "severity": "HIGH",
+    "description": "A service worker is being registered from an HTTP URL.",
+    "evidence": "Service worker URL uses http://.",
+    "riskImpact": "A MITM attacker could replace the service worker with malicious code that persists.",
+    "explanation": "Service workers intercept all network requests. A compromised one gives attackers persistent control.",
+    "fixSteps": [
+      "Serve the service worker file over HTTPS.",
+      "Use relative URLs for registration."
+    ],
+    "codeExamples": [
+      {
+        "label": "Safe registration",
+        "language": "javascript",
+        "code": "// BAD: navigator.serviceWorker.register('http://example.com/sw.js');\n// GOOD: navigator.serviceWorker.register('/sw.js');"
+      }
+    ]
+  },
+  {
+    "id": "window-opener-abuse",
+    "type": "body-pattern",
+    "title": "Window.opener Access Detected",
+    "category": "content",
+    "severity": "MEDIUM",
+    "description": "JavaScript accesses window.opener properties, exploitable for reverse tabnabbing.",
+    "evidence": "Found window.opener access patterns.",
+    "riskImpact": "Can redirect the parent tab to a phishing page without the user noticing.",
+    "explanation": "When a page is opened via window.open() or target='_blank', it may have a reference to the opening window.",
+    "fixSteps": [
+      "Add rel='noopener noreferrer' to external links.",
+      "Set window.opener = null at the top of pages.",
+      "Use Cross-Origin-Opener-Policy: same-origin."
+    ],
+    "codeExamples": [
+      {
+        "label": "Safe link",
+        "language": "html",
+        "code": "<a href=\"https://external.com\" target=\"_blank\" rel=\"noopener noreferrer\">External</a>"
+      }
+    ]
+  },
+  {
+    "id": "websocket-insecure",
+    "type": "body-pattern",
+    "title": "Insecure WebSocket Connection (ws://)",
+    "category": "content",
+    "severity": "HIGH",
+    "description": "WebSocket connections using unencrypted ws:// instead of wss://.",
+    "evidence": "Insecure ws:// WebSocket connections detected.",
+    "riskImpact": "Unencrypted WebSocket connections can be intercepted. WebSocket connections don't enforce same-origin policy.",
+    "explanation": "ws:// transmits data in plaintext. WebSocket connections aren't bound by same-origin policy, making them vulnerable to cross-site hijacking.",
+    "fixSteps": [
+      "Use wss:// for all WebSocket connections.",
+      "Validate the Origin header on the server.",
+      "Implement CSRF token verification in the handshake."
+    ],
+    "codeExamples": [
+      {
+        "label": "Secure WebSocket",
+        "language": "javascript",
+        "code": "// BAD: new WebSocket('ws://example.com/feed');\n// GOOD: new WebSocket('wss://example.com/feed');"
+      }
+    ]
+  },
+  {
+    "id": "document-domain",
+    "type": "body-pattern",
+    "title": "Deprecated document.domain Usage Detected",
+    "category": "content",
+    "severity": "MEDIUM",
+    "description": "The page sets document.domain, a deprecated practice that relaxes same-origin policy.",
+    "evidence": "Found document.domain assignment.",
+    "riskImpact": "Setting document.domain weakens same-origin isolation.",
+    "explanation": "document.domain was historically used for cross-subdomain communication. Chrome has deprecated it. Use postMessage instead.",
+    "fixSteps": [
+      "Replace document.domain with postMessage().",
+      "Use CORS headers for cross-origin API requests.",
+      "Consider Channel Messaging API."
+    ],
+    "codeExamples": [
+      {
+        "label": "Use postMessage",
+        "language": "javascript",
+        "code": "// BAD: document.domain = 'example.com';\n// GOOD:\nwindow.parent.postMessage({ type: 'data', payload: result }, 'https://parent.example.com');"
+      }
+    ]
+  },
+  {
+    "id": "weak-crypto",
+    "type": "body-pattern",
+    "title": "Weak or Broken Cryptography Detected",
+    "category": "content",
+    "severity": "HIGH",
+    "description": "Weak or broken cryptographic algorithms in client-side JavaScript.",
+    "evidence": "Weak cryptography patterns detected.",
+    "riskImpact": "Weak cryptography provides a false sense of security. MD5/SHA-1 can be forged, DES/RC4 broken, Math.random() is predictable.",
+    "explanation": "Cryptographic algorithms become weak as computing power increases. MD5 collisions can be generated in seconds.",
+    "fixSteps": [
+      "Replace MD5/SHA-1 with SHA-256 or SHA-3.",
+      "Replace DES/RC4 with AES-256-GCM.",
+      "Use crypto.getRandomValues() instead of Math.random().",
+      "Use the SubtleCrypto API."
+    ],
+    "codeExamples": [
+      {
+        "label": "Web Crypto API",
+        "language": "javascript",
+        "code": "// BAD: Math.random().toString(36);\n// GOOD:\nconst array = new Uint8Array(32);\ncrypto.getRandomValues(array);\nconst token = Array.from(array, b => b.toString(16).padStart(2, '0')).join('');"
+      }
+    ]
+  },
+  {
+    "id": "password-no-paste",
+    "type": "body-pattern",
+    "title": "Password Fields Block Pasting",
+    "category": "content",
+    "severity": "LOW",
+    "description": "Password fields have paste functionality disabled, discouraging password manager use.",
+    "evidence": "Password field(s) with onpaste=\"return false\".",
+    "riskImpact": "Users cannot paste from password managers, leading to weaker passwords.",
+    "explanation": "Both NCSC (UK) and NIST guidelines explicitly recommend against disabling paste on password fields.",
+    "fixSteps": [
+      "Remove all onpaste event handlers from password fields.",
+      "Allow paste on all form fields, especially password fields."
+    ],
+    "codeExamples": [
+      {
+        "label": "Allow paste",
+        "language": "html",
+        "code": "<!-- BAD -->\n<input type=\"password\" onpaste=\"return false\">\n<!-- GOOD -->\n<input type=\"password\" autocomplete=\"current-password\">"
+      }
+    ]
+  },
+  {
+    "id": "exposed-error-messages",
+    "type": "body-pattern",
+    "title": "Application Error Messages Exposed to Users",
+    "category": "content",
+    "severity": "MEDIUM",
+    "description": "Detailed error messages visible in the page HTML.",
+    "evidence": "Error message patterns detected.",
+    "riskImpact": "Detailed errors reveal file paths, database types, library versions.",
+    "explanation": "Verbose error messages reveal the technology stack and internal structure.",
+    "fixSteps": [
+      "Configure production to display generic error pages.",
+      "Log detailed errors server-side only.",
+      "Implement custom error handlers."
+    ],
+    "codeExamples": [
+      {
+        "label": "Next.js error handling",
+        "language": "tsx",
+        "code": "'use client'\nexport default function Error() {\n  return <div><h1>Something went wrong</h1><p>Please try again later.</p></div>;\n}"
+      }
+    ]
+  },
+  {
+    "id": "xxe-server-xml",
+    "type": "body-pattern",
+    "title": "Server-Side XML Parsing Detected",
+    "category": "content",
+    "severity": "MEDIUM",
+    "description": "Server-side XML parsing library usage found. Ensure external entity processing is disabled.",
+    "evidence": "Server-side XML parsing patterns.",
+    "riskImpact": "If external entities are not disabled, XXE attacks can read local files or perform SSRF.",
+    "explanation": "Server-side XML parsers can be vulnerable to XXE if not properly configured.",
+    "fixSteps": [
+      "Disable external entity processing.",
+      "Validate that noent: false and nonet: true are set.",
+      "Consider using JSON instead of XML."
+    ],
+    "codeExamples": [
+      {
+        "label": "Safe xml2js config",
+        "language": "javascript",
+        "code": "const parser = new xml2js.Parser({ strict: true, normalize: true, xmlns: false });"
+      }
+    ]
+  },
+  {
+    "id": "ssrf-vectors",
+    "type": "body-pattern",
+    "title": "Potential Server-Side Request Forgery (SSRF) Vectors",
+    "category": "content",
+    "severity": "HIGH",
+    "description": "User-controlled input may be used in server-side HTTP requests.",
+    "evidence": "Suspicious request patterns found.",
+    "riskImpact": "SSRF allows attackers to access internal resources, cloud metadata services, or internal networks.",
+    "explanation": "SSRF occurs when an application fetches a remote resource without validating the user-supplied URL.",
+    "fixSteps": [
+      "Validate URLs against an allowlist.",
+      "Block requests to private IP ranges.",
+      "Disable redirects or validate redirect destinations."
+    ],
+    "codeExamples": [
+      {
+        "label": "SSRF prevention",
+        "language": "typescript",
+        "code": "const ALLOWED = ['api.example.com'];\nconst url = new URL(userUrl);\nif (!ALLOWED.includes(url.hostname)) throw new Error('Invalid URL');"
+      }
+    ]
+  },
+  {
+    "id": "graphql-introspection",
+    "type": "body-pattern",
+    "title": "GraphQL Introspection Enabled in Production",
+    "category": "content",
+    "severity": "MEDIUM",
+    "description": "GraphQL introspection is enabled, exposing the entire API schema.",
+    "evidence": "Found GraphQL introspection queries or GraphiQL interface.",
+    "riskImpact": "Attackers can discover all queries, mutations, types, and fields.",
+    "explanation": "Introspection is useful for development but should be disabled in production.",
+    "fixSteps": [
+      "Disable introspection in production.",
+      "Use environment variables to conditionally enable.",
+      "Implement authentication before allowing introspection.",
+      "Consider persisted queries."
+    ],
+    "codeExamples": [
+      {
+        "label": "Disable introspection",
+        "language": "typescript",
+        "code": "const server = new ApolloServer({ typeDefs, resolvers, introspection: process.env.NODE_ENV !== 'production' });"
+      }
+    ]
+  },
+  {
+    "id": "sri-stylesheet-missing",
+    "type": "body-pattern",
+    "title": "External Stylesheets Missing SRI",
+    "category": "content",
+    "severity": "LOW",
+    "description": "External stylesheets are loaded without Subresource Integrity hashes.",
+    "evidence": "External stylesheet(s) without integrity attribute.",
+    "riskImpact": "A compromised CDN could serve malicious CSS that alters page appearance for phishing or exfiltrates data via CSS selectors.",
+    "explanation": "While less dangerous than script injection, malicious CSS can overlay fake login forms, hide content, or exfiltrate data via attribute selectors.",
+    "fixSteps": [
+      "Add integrity attributes to all external stylesheet <link> tags.",
+      "Use crossorigin='anonymous' alongside."
+    ],
+    "codeExamples": [
+      {
+        "label": "HTML",
+        "language": "html",
+        "code": "<link rel=\"stylesheet\" href=\"https://cdn.example.com/styles.css\" integrity=\"sha384-...\" crossorigin=\"anonymous\">"
+      }
+    ]
+  },
+  {
+    "id": "iframe-sandbox-missing",
+    "type": "body-pattern",
+    "title": "Iframes Missing Sandbox Attribute",
+    "category": "content",
+    "severity": "LOW",
+    "description": "Multiple iframes found without the sandbox attribute, allowing embedded content full capabilities.",
+    "evidence": "Iframe(s) without sandbox attribute.",
+    "riskImpact": "Unsandboxed iframes have full access to browser features, forms, scripts, and popups.",
+    "explanation": "The sandbox attribute restricts what an iframe can do. Without it, embedded content has nearly the same capabilities as the parent page.",
+    "fixSteps": [
+      "Add the sandbox attribute to all iframes.",
+      "Only enable needed capabilities: allow-scripts, allow-same-origin, etc."
+    ],
+    "codeExamples": [
+      {
+        "label": "Sandboxed iframe",
+        "language": "html",
+        "code": "<iframe src=\"https://embed.example.com\" sandbox=\"allow-scripts allow-same-origin\" loading=\"lazy\"></iframe>"
+      }
+    ]
+  },
+  {
+    "id": "password-input-no-name",
+    "type": "body-pattern",
+    "title": "Password Fields Missing Name/Autocomplete Attributes",
+    "category": "content",
+    "severity": "LOW",
+    "description": "Password input fields are missing name or autocomplete attributes, hindering password manager functionality.",
+    "evidence": "Password field(s) missing name or autocomplete attributes.",
+    "riskImpact": "Password managers may not correctly identify or fill these fields, discouraging their use.",
+    "explanation": "Password managers rely on input name and autocomplete attributes to correctly identify and autofill fields.",
+    "fixSteps": [
+      "Add name and autocomplete attributes to all password fields.",
+      "Use autocomplete='current-password' for login and 'new-password' for registration."
+    ],
+    "codeExamples": [
+      {
+        "label": "Proper password field",
+        "language": "html",
+        "code": "<input type=\"password\" name=\"password\" autocomplete=\"current-password\" />"
+      }
+    ]
+  },
+  {
+    "id": "sensitive-form-no-csrf",
+    "type": "body-pattern",
+    "title": "POST Forms Without CSRF Tokens",
+    "category": "content",
+    "severity": "MEDIUM",
+    "description": "POST form(s) found without apparent CSRF token fields. Note: This check skips framework apps (Next.js, Nuxt) that handle CSRF differently.",
+    "evidence": "POST form(s) without CSRF token fields.",
+    "riskImpact": "Without CSRF tokens, attackers can trick users into submitting forms from malicious sites.",
+    "explanation": "CSRF attacks forge requests from authenticated users. CSRF tokens ensure form submissions originate from your site.",
+    "fixSteps": [
+      "Add a hidden CSRF token field to all POST forms.",
+      "Validate the token on the server for every form submission.",
+      "Use the SameSite cookie attribute as additional protection."
+    ],
+    "codeExamples": [
+      {
+        "label": "CSRF token",
+        "language": "html",
+        "code": "<form method=\"POST\" action=\"/submit\">\n  <input type=\"hidden\" name=\"csrf_token\" value=\"{{token}}\" />\n</form>"
+      }
+    ]
+  },
+  {
+    "id": "exposed-api-version",
+    "type": "combined",
+    "title": "API Version Information Exposed",
+    "category": "content",
+    "severity": "INFO",
+    "description": "API version numbers or build identifiers are exposed in headers or page source.",
+    "evidence": "Version info exposed.",
+    "riskImpact": "Version numbers help attackers identify specific vulnerabilities for that version.",
+    "explanation": "Exposing exact version numbers aids attacker reconnaissance. Remove or obfuscate version info in production.",
+    "fixSteps": [
+      "Remove version headers like X-API-Version.",
+      "Don't include build IDs in client-facing code.",
+      "Use generic version references if needed."
+    ],
+    "codeExamples": [
+      {
+        "label": "Remove headers",
+        "language": "typescript",
+        "code": "// Don't set version headers in production\nif (process.env.NODE_ENV !== 'production') {\n  response.headers.set('X-API-Version', version);\n}"
+      }
+    ]
+  },
+  {
+    "id": "html-lang-missing",
+    "type": "body-pattern",
+    "title": "Missing HTML lang Attribute",
+    "category": "content",
+    "severity": "INFO",
+    "description": "The <html> tag does not include a lang attribute, impacting accessibility and SEO.",
+    "evidence": "The <html> tag does not include a lang attribute.",
+    "riskImpact": "Screen readers may not announce content in the correct language. Search engines may misidentify the page language.",
+    "explanation": "The lang attribute on <html> tells browsers and assistive technologies the primary language of the page.",
+    "fixSteps": [
+      "Add lang attribute to the <html> tag: <html lang=\"en\">.",
+      "Use appropriate BCP 47 language codes."
+    ],
+    "codeExamples": [
+      {
+        "label": "HTML",
+        "language": "html",
+        "code": "<html lang=\"en\">"
+      }
+    ]
+  },
+  {
+    "id": "open-form-action",
+    "type": "body-pattern",
+    "title": "Forms Submitting to External Domains",
+    "category": "content",
+    "severity": "MEDIUM",
+    "description": "Form(s) found that submit data to external third-party domains (excluding known payment providers).",
+    "evidence": "Form(s) submitting to external domains.",
+    "riskImpact": "Form data may be sent to untrusted external servers.",
+    "explanation": "Forms with external action URLs send user data outside your domain. While legitimate for payment forms, unexpected external submissions may indicate compromise.",
+    "fixSteps": [
+      "Review all external form actions for legitimacy.",
+      "Use server-side proxying for third-party form submissions.",
+      "Add CSP form-action to restrict allowed targets."
+    ],
+    "codeExamples": [
+      {
+        "label": "CSP form-action",
+        "language": "text",
+        "code": "Content-Security-Policy: form-action 'self' https://checkout.stripe.com;"
+      }
+    ]
+  },
+  {
+    "id": "local-storage-sensitive",
+    "type": "body-pattern",
+    "title": "Sensitive Data in Browser Storage",
+    "category": "content",
+    "severity": "HIGH",
+    "description": "Sensitive data (tokens, passwords, API keys) being stored in localStorage or sessionStorage.",
+    "evidence": "Sensitive data stored in browser storage.",
+    "riskImpact": "Any XSS vulnerability allows complete theft of stored sensitive data.",
+    "explanation": "Browser storage APIs have no access controls. Any script on the page can read all stored values.",
+    "fixSteps": [
+      "Move tokens to HTTP-only cookies.",
+      "Never store passwords or API keys client-side."
+    ],
+    "codeExamples": [
+      {
+        "label": "Use cookies",
+        "language": "typescript",
+        "code": "// Instead of localStorage, use HTTP-only cookies\nresponse.cookies.set('session', token, { httpOnly: true, secure: true, sameSite: 'strict' });"
+      }
+    ]
+  },
+  {
+    "id": "viewport-user-scalable-no",
+    "type": "body-pattern",
+    "title": "Viewport Prevents User Zoom",
+    "category": "content",
+    "severity": "INFO",
+    "description": "The viewport meta tag disables user scaling (user-scalable=no or maximum-scale=1), which is an accessibility issue.",
+    "evidence": "Viewport restricts zoom.",
+    "riskImpact": "Users with visual impairments cannot zoom the page, violating WCAG accessibility guidelines.",
+    "explanation": "Disabling zoom creates an accessibility barrier for users who need to enlarge content.",
+    "fixSteps": [
+      "Remove user-scalable=no from viewport meta.",
+      "Remove or increase maximum-scale.",
+      "Allow natural pinch-to-zoom behavior."
+    ],
+    "codeExamples": [
+      {
+        "label": "Accessible viewport",
+        "language": "html",
+        "code": "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">"
+      }
+    ]
+  },
+  {
+    "id": "exposed-stack-trace",
+    "type": "body-pattern",
+    "title": "Stack Trace Exposed in Page Source",
+    "category": "content",
+    "severity": "HIGH",
+    "description": "A stack trace with file paths and line numbers was found in the page source.",
+    "evidence": "Stack trace with file paths and line numbers in page source.",
+    "riskImpact": "Stack traces reveal exact file paths, function names, and line numbers that attackers use to understand application internals.",
+    "explanation": "Stack traces should never be visible in production. They reveal the complete execution path and internal file structure.",
+    "fixSteps": [
+      "Configure production error handling to suppress stack traces.",
+      "Use error monitoring services (Sentry) for server-side tracking.",
+      "Return generic error messages to clients."
+    ],
+    "codeExamples": [
+      {
+        "label": "Safe error response",
+        "language": "typescript",
+        "code": "catch (err) {\n  console.error(err); // Log server-side\n  return Response.json({ error: 'Internal server error' }, { status: 500 });\n}"
+      }
+    ]
+  },
+  {
+    "id": "hardcoded-ip-addresses",
+    "type": "body-pattern",
+    "title": "Hardcoded IP Addresses in Page Source",
+    "category": "content",
+    "severity": "LOW",
+    "description": "Multiple distinct IP addresses found hardcoded in page source (excluding localhost and common non-sensitive IPs).",
+    "evidence": "IP addresses found in page source.",
+    "riskImpact": "Hardcoded IPs reveal server infrastructure and network topology.",
+    "explanation": "IP addresses in client-facing code suggest hardcoded infrastructure references that should use DNS or environment variables.",
+    "fixSteps": [
+      "Replace hardcoded IPs with domain names.",
+      "Use environment variables for server addresses.",
+      "Configure DNS properly."
+    ],
+    "codeExamples": [
+      {
+        "label": "Use DNS",
+        "language": "typescript",
+        "code": "const API = process.env.API_URL; // Not a hardcoded IP"
+      }
+    ]
+  },
+  {
+    "id": "document-write-usage",
+    "type": "body-pattern",
+    "title": "document.write() Usage Detected",
+    "category": "content",
+    "severity": "LOW",
+    "description": "document.write()/document.writeln() usage found. These are deprecated and can be exploited for XSS.",
+    "evidence": "document.write()/document.writeln() usage.",
+    "riskImpact": "document.write() can be hijacked to inject malicious content if any input is attacker-controlled.",
+    "explanation": "document.write() is deprecated, blocks HTML parsing, and is a common XSS vector.",
+    "fixSteps": [
+      "Replace document.write() with DOM APIs (createElement, appendChild).",
+      "Use innerHTML with DOMPurify if HTML insertion is needed."
+    ],
+    "codeExamples": [
+      {
+        "label": "Safe alternative",
+        "language": "javascript",
+        "code": "// BAD: document.write('<p>' + text + '</p>');\n// GOOD:\nconst p = document.createElement('p');\np.textContent = text;\ndocument.body.appendChild(p);"
+      }
+    ]
+  },
+  {
+    "id": "preconnect-third-party",
+    "type": "body-pattern",
+    "title": "Excessive Third-Party Domain Connections",
+    "category": "content",
+    "severity": "INFO",
+    "description": "The page connects to a large number of distinct third-party domains (10+), increasing attack surface.",
+    "evidence": "Connections to many third-party domains.",
+    "riskImpact": "Each third-party domain is a potential attack vector. If any is compromised, it can affect your users.",
+    "explanation": "Every external domain you load resources from expands your attack surface. A compromise of any CDN, analytics, or advertising domain can lead to script injection.",
+    "fixSteps": [
+      "Audit all third-party connections and remove unnecessary ones.",
+      "Self-host critical resources where possible.",
+      "Use SRI for all external scripts.",
+      "Implement a strict CSP to limit allowed domains."
+    ],
+    "codeExamples": [
+      {
+        "label": "CSP allowlist",
+        "language": "text",
+        "code": "Content-Security-Policy: script-src 'self' https://trusted-cdn.com;"
+      }
+    ]
+  },
+  {
+    "id": "input-no-maxlength",
+    "type": "body-pattern",
+    "title": "Text Inputs Missing maxlength Attribute",
+    "category": "content",
+    "severity": "INFO",
+    "description": "Multiple text inputs and textareas found without maxlength, allowing unbounded input.",
+    "evidence": "Text input(s)/textarea(s) without maxlength.",
+    "riskImpact": "Unbounded input fields can be used for denial-of-service or buffer-based attacks on backend systems.",
+    "explanation": "Without maxlength, users (or attackers) can submit extremely long strings that may cause performance issues or exploit backend vulnerabilities.",
+    "fixSteps": [
+      "Add maxlength attribute to all text inputs and textareas.",
+      "Validate input length on the server side as well."
+    ],
+    "codeExamples": [
+      {
+        "label": "HTML",
+        "language": "html",
+        "code": "<input type=\"text\" maxlength=\"255\" />\n<textarea maxlength=\"5000\"></textarea>"
+      }
+    ]
+  },
+  {
+    "id": "lazy-loading-missing",
+    "type": "body-pattern",
+    "title": "Images Missing Lazy Loading",
+    "category": "content",
+    "severity": "INFO",
+    "description": "Many images found without loading='lazy' attribute, impacting page load performance.",
+    "evidence": "Image(s) without loading='lazy' attribute.",
+    "riskImpact": "All images load immediately, increasing initial page load time and bandwidth usage.",
+    "explanation": "Native lazy loading defers offscreen images until the user scrolls near them, improving initial load performance.",
+    "fixSteps": [
+      "Add loading='lazy' to images that are below the fold.",
+      "Keep loading='eager' for above-the-fold images."
+    ],
+    "codeExamples": [
+      {
+        "label": "Lazy loading",
+        "language": "html",
+        "code": "<img src=\"image.jpg\" loading=\"lazy\" alt=\"Description\" />"
+      }
+    ]
+  },
+  {
+    "id": "unsafe-target-blank",
+    "type": "body-pattern",
+    "title": "Links with target=\"_blank\" Missing rel=\"noopener\"",
+    "category": "content",
+    "severity": "LOW",
+    "description": "Multiple links with target=\"_blank\" are missing rel=\"noopener\", enabling reverse tabnabbing.",
+    "evidence": "Link(s) with target=\"_blank\" missing rel=\"noopener\".",
+    "riskImpact": "The opened page can redirect the original tab to a phishing page via window.opener.",
+    "explanation": "Modern browsers mitigate this by default, but explicit rel=\"noopener\" ensures safety across all browsers.",
+    "fixSteps": [
+      "Add rel=\"noopener noreferrer\" to all external links with target=\"_blank\"."
+    ],
+    "codeExamples": [
+      {
+        "label": "Safe link",
+        "language": "html",
+        "code": "<a href=\"https://external.com\" target=\"_blank\" rel=\"noopener noreferrer\">Link</a>"
+      }
+    ]
+  },
+  {
+    "id": "cookie-no-secure-prefix",
+    "type": "header",
+    "title": "Sensitive Cookies Missing __Host-/__Secure- Prefix",
+    "category": "content",
+    "severity": "LOW",
+    "description": "Session or authentication cookies do not use the __Host- or __Secure- cookie prefix.",
+    "evidence": "Sensitive cookies without secure prefix.",
+    "riskImpact": "Without these prefixes, cookies may be vulnerable to overwriting by subdomains or non-HTTPS contexts, enabling session fixation attacks.",
+    "explanation": "__Host- prefix ensures the cookie is set from a secure origin, has Path=/, and cannot be overwritten by subdomains. __Secure- ensures the cookie was set over HTTPS. These are defense-in-depth measures against cookie injection.",
+    "fixSteps": [
+      "Rename sensitive cookies to use __Host- prefix (strictest) or __Secure- prefix.",
+      "Ensure the cookie has Secure, Path=/, and no Domain attribute for __Host-."
+    ],
+    "codeExamples": [
+      {
+        "label": "Set-Cookie",
+        "language": "http",
+        "code": "Set-Cookie: __Host-session=abc123; Secure; Path=/; HttpOnly; SameSite=Strict"
+      }
+    ]
+  },
+  {
+    "id": "feature-policy-deprecated",
+    "type": "header",
+    "title": "Deprecated Feature-Policy Header",
+    "category": "content",
+    "severity": "INFO",
+    "description": "Feature-Policy header is used without the modern Permissions-Policy replacement.",
+    "evidence": "Feature-Policy header present but not Permissions-Policy.",
+    "riskImpact": "Feature-Policy is deprecated and may not be respected by modern browsers. Your intended permissions restrictions may not be enforced.",
+    "explanation": "Feature-Policy was renamed to Permissions-Policy with a different syntax. While some browsers still read Feature-Policy, it's being phased out.",
+    "fixSteps": [
+      "Replace Feature-Policy with Permissions-Policy using the new syntax.",
+      "You can send both headers during the transition period."
+    ],
+    "codeExamples": [
+      {
+        "label": "Permissions-Policy",
+        "language": "http",
+        "code": "Permissions-Policy: camera=(), microphone=(), geolocation=()"
+      }
+    ]
+  },
+  {
+    "id": "set-cookie-samesite-none-no-secure",
+    "type": "combined",
+    "title": "Cookie SameSite=None Without Secure",
+    "category": "content",
+    "severity": "MEDIUM",
+    "description": "Cookie has SameSite=None but lacks Secure flag.",
+    "evidence": "SameSite=None cookie without Secure attribute.",
+    "riskImpact": "Cookie will be rejected by modern browsers.",
+    "explanation": "Browsers require SameSite=None cookies to also have the Secure attribute.",
+    "fixSteps": ["Add Secure flag to all SameSite=None cookies."],
+    "codeExamples": []
+  },
+  {
+    "id": "cookie-max-age-excessive",
+    "type": "combined",
+    "title": "Cookie With Excessively Long Expiration",
+    "category": "content",
+    "severity": "LOW",
+    "description": "Cookie set to expire far in the future (over 1 year).",
+    "evidence": "Cookie with excessive max-age.",
+    "riskImpact": "Long-lived cookies increase the window for session theft.",
+    "explanation": "Cookies that persist for years are a security risk.",
+    "fixSteps": [
+      "Set reasonable max-age values; use session cookies where possible."
+    ],
+    "codeExamples": []
+  },
+  {
+    "id": "aws-metadata-reference",
+    "type": "body-pattern",
+    "title": "AWS Metadata Endpoint Reference",
+    "category": "content",
+    "severity": "CRITICAL",
+    "description": "Reference to AWS metadata endpoint (169.254.169.254) detected.",
+    "evidence": "AWS metadata IP found.",
+    "riskImpact": "SSRF to metadata endpoint can steal IAM credentials.",
+    "explanation": "The AWS metadata service provides instance credentials.",
+    "fixSteps": ["Block metadata access from applications; use IMDSv2."],
+    "codeExamples": []
+  },
+  {
+    "id": "git-directory-exposed",
+    "type": "body-pattern",
+    "title": ".git Directory Paths Exposed",
+    "category": "content",
+    "severity": "HIGH",
+    "description": ".git directory paths found in page source.",
+    "evidence": ".git/ paths detected.",
+    "riskImpact": "Exposed .git allows downloading entire source code history.",
+    "explanation": "If .git is accessible, attackers can reconstruct your entire repository.",
+    "fixSteps": ["Block access to .git directory in web server config."],
+    "codeExamples": []
+  },
+  {
+    "id": "env-file-reference",
+    "type": "body-pattern",
+    "title": ".env File Reference Detected",
+    "category": "content",
+    "severity": "CRITICAL",
+    "description": "References to .env file found in page source.",
+    "evidence": ".env file reference detected.",
+    "riskImpact": "Exposed .env files contain database credentials, API keys, and secrets.",
+    "explanation": ".env files should never be web-accessible.",
+    "fixSteps": ["Block .env access in web server config."],
+    "codeExamples": []
+  },
+  {
+    "id": "backup-file-reference",
+    "type": "body-pattern",
+    "title": "Backup File References Detected",
+    "category": "content",
+    "severity": "MEDIUM",
+    "description": "References to backup files found.",
+    "evidence": "Backup file extension references detected.",
+    "riskImpact": "Backup files may contain source code or database dumps.",
+    "explanation": "Backup files on servers can expose previous code versions.",
+    "fixSteps": ["Remove backup files from production servers."],
+    "codeExamples": []
+  },
+  {
+    "id": "phpinfo-exposed",
+    "type": "body-pattern",
+    "title": "phpinfo() Page Exposed",
+    "category": "content",
+    "severity": "CRITICAL",
+    "description": "phpinfo() page or reference detected.",
+    "evidence": "phpinfo() detected in page.",
+    "riskImpact": "phpinfo() exposes complete server configuration, PHP settings, and environment variables.",
+    "explanation": "This diagnostic page should never be accessible in production.",
+    "fixSteps": [
+      "Remove phpinfo() files from production.",
+      "Block access in web server config."
+    ],
+    "codeExamples": []
+  },
+  {
+    "id": "wp-login-exposed",
+    "type": "body-pattern",
+    "title": "WordPress Admin Paths Exposed",
+    "category": "content",
+    "severity": "LOW",
+    "description": "WordPress admin/login page paths exposed.",
+    "evidence": "wp-login.php or wp-admin/ references detected.",
+    "riskImpact": "Reveals WordPress installation and admin panel location.",
+    "explanation": "Default WordPress admin paths are common brute-force targets.",
+    "fixSteps": [
+      "Use a security plugin to hide or rename wp-login.php.",
+      "Implement rate limiting on login attempts."
+    ],
+    "codeExamples": []
+  },
+  {
+    "id": "graphql-endpoint-exposed",
+    "type": "body-pattern",
+    "title": "GraphQL Endpoint Exposed",
+    "category": "content",
+    "severity": "MEDIUM",
+    "description": "GraphQL endpoint or introspection references found.",
+    "evidence": "GraphQL references detected.",
+    "riskImpact": "Reveals API structure and available queries.",
+    "explanation": "GraphQL introspection lets anyone discover your full API schema.",
+    "fixSteps": [
+      "Disable introspection in production.",
+      "Implement query depth limiting."
+    ],
+    "codeExamples": []
+  },
+  {
+    "id": "swagger-docs-exposed",
+    "type": "body-pattern",
+    "title": "API Documentation Publicly Accessible",
+    "category": "content",
+    "severity": "MEDIUM",
+    "description": "Swagger/OpenAPI documentation endpoints referenced.",
+    "evidence": "API documentation references detected.",
+    "riskImpact": "API docs reveal all endpoints, parameters, and data models.",
+    "explanation": "Public API documentation helps attackers understand your API surface.",
+    "fixSteps": ["Restrict API docs access to authenticated users."],
+    "codeExamples": []
+  },
+  {
+    "id": "sql-error-in-page",
+    "type": "body-pattern",
+    "title": "SQL Error Messages Exposed",
+    "category": "content",
+    "severity": "HIGH",
+    "description": "SQL error messages found in response.",
+    "evidence": "Database error messages detected.",
+    "riskImpact": "SQL errors reveal database type, table names, and query structure.",
+    "explanation": "Unhandled SQL errors expose database internals useful for SQL injection.",
+    "fixSteps": [
+      "Catch database errors and show generic messages.",
+      "Use parameterized queries."
+    ],
+    "codeExamples": []
+  },
+  {
+    "id": "php-error-in-page",
+    "type": "body-pattern",
+    "title": "PHP Error Messages Exposed",
+    "category": "content",
+    "severity": "HIGH",
+    "description": "PHP error or warning messages found.",
+    "evidence": "PHP errors detected in page output.",
+    "riskImpact": "PHP errors reveal file paths and code structure.",
+    "explanation": "Visible PHP errors expose server internals.",
+    "fixSteps": ["Set display_errors=Off and log_errors=On."],
+    "codeExamples": []
+  },
+  {
+    "id": "asp-error-in-page",
+    "type": "body-pattern",
+    "title": "ASP.NET Error Page Exposed",
+    "category": "content",
+    "severity": "HIGH",
+    "description": "ASP.NET error page detected.",
+    "evidence": "ASP.NET error page in response.",
+    "riskImpact": "Error pages reveal framework version, file paths, and stack traces.",
+    "explanation": "Default ASP.NET error pages show detailed diagnostic information.",
+    "fixSteps": ["Configure custom error pages in web.config."],
+    "codeExamples": []
+  },
+  {
+    "id": "django-debug-page",
+    "type": "body-pattern",
+    "title": "Django Debug Page Exposed",
+    "category": "content",
+    "severity": "CRITICAL",
+    "description": "Django debug page with framework details detected.",
+    "evidence": "Django debug page detected.",
+    "riskImpact": "Django debug pages expose settings, database configuration, and full stack traces.",
+    "explanation": "Django DEBUG mode should never be enabled in production.",
+    "fixSteps": ["Set DEBUG=False in settings.py."],
+    "codeExamples": []
+  },
+  {
+    "id": "laravel-debug-page",
+    "type": "body-pattern",
+    "title": "Laravel Debug Page Exposed",
+    "category": "content",
+    "severity": "CRITICAL",
+    "description": "Laravel Whoops debug page detected.",
+    "evidence": "Laravel debug page detected.",
+    "riskImpact": "Exposes environment variables, database credentials, and full stack traces.",
+    "explanation": "Laravel debug mode shows complete application internals.",
+    "fixSteps": ["Set APP_DEBUG=false in .env."],
+    "codeExamples": []
+  },
+  {
+    "id": "spring-boot-actuator",
+    "type": "body-pattern",
+    "title": "Spring Boot Actuator Endpoints Exposed",
+    "category": "content",
+    "severity": "HIGH",
+    "description": "Spring Boot Actuator endpoints found in page source.",
+    "evidence": "Actuator endpoint references detected.",
+    "riskImpact": "Actuator endpoints expose env vars, beans, mappings, and health status.",
+    "explanation": "Spring Boot Actuator provides operational endpoints that should be secured.",
+    "fixSteps": [
+      "Restrict actuator endpoints to internal access only.",
+      "Use Spring Security to protect actuator."
+    ],
+    "codeExamples": []
+  },
+  {
+    "id": "mixed-content-form-action",
+    "type": "body-pattern",
+    "title": "Form Submits to HTTP on HTTPS Page",
+    "category": "content",
+    "severity": "HIGH",
+    "description": "HTTPS page contains form posting to HTTP endpoint.",
+    "evidence": "Form action pointing to http:// URL.",
+    "riskImpact": "Form data transmitted unencrypted.",
+    "explanation": "Mixed content forms leak sensitive data over insecure connections.",
+    "fixSteps": ["Ensure all form actions use HTTPS."],
+    "codeExamples": []
+  },
+  {
+    "id": "iframe-no-sandbox",
+    "type": "body-pattern",
+    "title": "Iframes Without Sandbox Attribute",
+    "category": "content",
+    "severity": "MEDIUM",
+    "description": "Iframe elements missing sandbox attribute.",
+    "evidence": "Iframe(s) without sandbox restriction.",
+    "riskImpact": "Unsandboxed iframes have full page permissions.",
+    "explanation": "Sandbox restricts what embedded content can do.",
+    "fixSteps": ["Add sandbox attribute with minimal permissions."],
+    "codeExamples": []
+  },
+  {
+    "id": "external-script-no-sri",
+    "type": "body-pattern",
+    "title": "External Scripts Missing SRI",
+    "category": "content",
+    "severity": "MEDIUM",
+    "description": "External scripts loaded without integrity hash.",
+    "evidence": "Script(s) with external src missing integrity.",
+    "riskImpact": "Compromised CDN can inject malicious code.",
+    "explanation": "SRI ensures scripts match expected content hashes.",
+    "fixSteps": [
+      "Add integrity and crossorigin attributes to external scripts."
+    ],
+    "codeExamples": []
+  },
+  {
+    "id": "inline-event-handlers",
+    "type": "body-pattern",
+    "title": "Excessive Inline Event Handlers",
+    "category": "content",
+    "severity": "LOW",
+    "description": "Multiple inline event handler attributes found.",
+    "evidence": "Inline event handlers detected.",
+    "riskImpact": "Inline handlers bypass CSP and complicate security auditing.",
+    "explanation": "Inline event handlers are equivalent to inline scripts for XSS purposes.",
+    "fixSteps": ["Use addEventListener() instead of inline handlers."],
+    "codeExamples": []
+  },
+  {
+    "id": "document-domain-usage",
+    "type": "body-pattern",
+    "title": "Deprecated document.domain Usage",
+    "category": "content",
+    "severity": "MEDIUM",
+    "description": "document.domain assignment found.",
+    "evidence": "document.domain usage detected.",
+    "riskImpact": "Relaxes same-origin policy between subdomains.",
+    "explanation": "document.domain is deprecated and weakens isolation.",
+    "fixSteps": ["Use postMessage() for cross-subdomain communication."],
+    "codeExamples": []
+  },
+  {
+    "id": "postmessage-star-origin",
+    "type": "body-pattern",
+    "title": "postMessage() With Wildcard Origin",
+    "category": "content",
+    "severity": "HIGH",
+    "description": "postMessage called with * origin target.",
+    "evidence": "postMessage with wildcard origin.",
+    "riskImpact": "Sensitive data sent to any listening window.",
+    "explanation": "Using * as target origin means any page can receive the message.",
+    "fixSteps": ["Specify the exact target origin instead of *."],
+    "codeExamples": []
+  },
+  {
+    "id": "jwt-in-html",
+    "type": "body-pattern",
+    "title": "JWT Token in Page Source",
+    "category": "content",
+    "severity": "HIGH",
+    "description": "JSON Web Token found in HTML source.",
+    "evidence": "JWT pattern detected in HTML.",
+    "riskImpact": "Exposed tokens allow session hijacking.",
+    "explanation": "JWTs in page source can be stolen by XSS attacks.",
+    "fixSteps": ["Never embed JWTs in HTML; use HttpOnly cookies."],
+    "codeExamples": []
+  },
+  {
+    "id": "private-key-in-source",
+    "type": "body-pattern",
+    "title": "Private Key Material Exposed",
+    "category": "content",
+    "severity": "CRITICAL",
+    "description": "Private key found in page source.",
+    "evidence": "Private key header detected.",
+    "riskImpact": "Private keys allow impersonation, decryption, and signing.",
+    "explanation": "Private keys must never be exposed in client-facing code.",
+    "fixSteps": [
+      "Immediately rotate the exposed key.",
+      "Store keys in secure key management systems."
+    ],
+    "codeExamples": []
+  },
+  {
+    "id": "base64-credentials",
+    "type": "body-pattern",
+    "title": "Base64 Credentials in Page Source",
+    "category": "content",
+    "severity": "HIGH",
+    "description": "Basic authentication credentials (Base64) found.",
+    "evidence": "Basic auth Base64 strings detected.",
+    "riskImpact": "Base64 credentials are trivially decodable.",
+    "explanation": "Basic auth headers encode credentials in Base64 which is not encryption.",
+    "fixSteps": [
+      "Remove hardcoded credentials from page source.",
+      "Use token-based authentication."
+    ],
+    "codeExamples": []
+  },
+  {
+    "id": "connection-string-exposed",
+    "type": "body-pattern",
+    "title": "Database Connection String Exposed",
+    "category": "content",
+    "severity": "CRITICAL",
+    "description": "Database connection string with credentials found.",
+    "evidence": "Connection string with credentials detected.",
+    "riskImpact": "Direct database access with leaked credentials.",
+    "explanation": "Connection strings contain hostname, username, password, and database name.",
+    "fixSteps": [
+      "Move connection strings to environment variables.",
+      "Rotate exposed credentials immediately."
+    ],
+    "codeExamples": []
+  },
+  {
+    "id": "s3-bucket-exposed",
+    "type": "body-pattern",
+    "title": "AWS S3 Bucket Reference Exposed",
+    "category": "content",
+    "severity": "MEDIUM",
+    "description": "AWS S3 bucket reference found in page source.",
+    "evidence": "S3 bucket URL detected.",
+    "riskImpact": "S3 buckets may be publicly accessible or misconfigured.",
+    "explanation": "Exposed bucket names can be tested for misconfigured permissions.",
+    "fixSteps": [
+      "Use CloudFront or a CDN in front of S3 buckets.",
+      "Ensure proper bucket policies."
+    ],
+    "codeExamples": []
+  },
+  {
+    "id": "firebase-config-exposed",
+    "type": "body-pattern",
+    "title": "Firebase Configuration Exposed",
+    "category": "content",
+    "severity": "LOW",
+    "description": "Firebase configuration object found in page source.",
+    "evidence": "Firebase config with API key detected.",
+    "riskImpact": "While Firebase keys are designed to be public, exposed config may indicate unsecured backend rules.",
+    "explanation": "Firebase config is semi-public but should be paired with security rules.",
+    "fixSteps": [
+      "Ensure Firestore/RTDB security rules are properly configured."
+    ],
+    "codeExamples": []
+  },
+  {
+    "id": "sourcemap-reference",
+    "type": "body-pattern",
+    "title": "Source Map References Detected",
+    "category": "content",
+    "severity": "MEDIUM",
+    "description": "JavaScript source map URL references found.",
+    "evidence": "sourceMappingURL detected.",
+    "riskImpact": "Source maps reveal original unminified source code.",
+    "explanation": "Source maps in production allow viewing original code with variable names and comments.",
+    "fixSteps": ["Remove sourceMappingURL in production builds."],
+    "codeExamples": []
+  },
+  {
+    "id": "open-redirect-params",
+    "type": "body-pattern",
+    "title": "Potential Open Redirect Parameters",
+    "category": "content",
+    "severity": "MEDIUM",
+    "description": "URL redirect parameters found in page links.",
+    "evidence": "Redirect parameters detected.",
+    "riskImpact": "Open redirects enable phishing attacks.",
+    "explanation": "Unvalidated redirect parameters can send users to malicious sites.",
+    "fixSteps": [
+      "Validate redirect URLs against an allowlist.",
+      "Use relative paths for redirects."
+    ],
+    "codeExamples": []
+  },
+  {
+    "id": "sri-link-stylesheet-missing",
+    "type": "body-pattern",
+    "title": "External Stylesheets Missing SRI",
+    "category": "content",
+    "severity": "LOW",
+    "description": "External stylesheets loaded without integrity hash.",
+    "evidence": "External stylesheet(s) without SRI.",
+    "riskImpact": "Compromised CDN could serve malicious CSS.",
+    "explanation": "While less dangerous than script injection, malicious CSS can overlay fake forms.",
+    "fixSteps": ["Add integrity and crossorigin to external stylesheet links."],
+    "codeExamples": []
+  },
+  {
+    "id": "autocomplete-sensitive-fields",
+    "type": "body-pattern",
+    "title": "Sensitive Fields Missing Autocomplete",
+    "category": "content",
+    "severity": "LOW",
+    "description": "Sensitive input fields without autocomplete attribute.",
+    "evidence": "Sensitive inputs missing autocomplete.",
+    "riskImpact": "Browsers may cache or suggest sensitive data inappropriately.",
+    "explanation": "autocomplete tells browsers how to handle field data.",
+    "fixSteps": [
+      "Add appropriate autocomplete values to all sensitive fields."
+    ],
+    "codeExamples": []
+  },
+  {
+    "id": "form-method-get-sensitive",
+    "type": "body-pattern",
+    "title": "Password Form Uses GET Method",
+    "category": "content",
+    "severity": "HIGH",
+    "description": "Form with password field uses GET method.",
+    "evidence": "GET form with password field.",
+    "riskImpact": "Credentials appear in URL, browser history, and server logs.",
+    "explanation": "GET requests encode form data in the URL query string.",
+    "fixSteps": [
+      "Change form method to POST for all forms with sensitive data."
+    ],
+    "codeExamples": []
+  },
+  {
+    "id": "meta-referrer-unsafe",
+    "type": "body-pattern",
+    "title": "Meta Referrer Tag Leaks URLs",
+    "category": "content",
+    "severity": "MEDIUM",
+    "description": "Meta referrer tag set to an unsafe value.",
+    "evidence": "Unsafe meta referrer value.",
+    "riskImpact": "Full URLs including paths and query params leaked as referrer.",
+    "explanation": "unsafe-url sends the complete URL to all destinations.",
+    "fixSteps": ["Use strict-origin-when-cross-origin or no-referrer."],
+    "codeExamples": []
+  },
+  {
+    "id": "session-cookie-flags",
+    "type": "header-value",
+    "title": "Session Cookie Missing Security Flags",
+    "category": "content",
+    "severity": "HIGH",
+    "description": "Session cookie missing HttpOnly, Secure, or SameSite.",
+    "evidence": "Session cookie security issues.",
+    "riskImpact": "Session can be stolen via XSS or sent over HTTP.",
+    "explanation": "Security flags protect cookies from common attacks.",
+    "fixSteps": ["Add HttpOnly, Secure, and SameSite=Lax to session cookies."],
+    "codeExamples": []
+  },
+  {
+    "id": "exposed-session-id",
+    "type": "body-pattern",
+    "title": "Session ID in URL",
+    "category": "content",
+    "severity": "HIGH",
+    "description": "Session identifier found in URL.",
+    "evidence": "Session ID in URL.",
+    "riskImpact": "Session ID leaked in referrer, history, logs.",
+    "explanation": "URL-based session IDs are vulnerable to session fixation.",
+    "fixSteps": ["Store session IDs only in cookies with proper flags."],
+    "codeExamples": []
+  },
+  {
+    "id": "password-in-get",
+    "type": "body-pattern",
+    "title": "Password in GET Request URL",
+    "category": "content",
+    "severity": "CRITICAL",
+    "description": "Password parameter found in URL.",
+    "evidence": "Password in URL.",
+    "riskImpact": "Credentials exposed in browser history, server logs, referrer.",
+    "explanation": "GET parameters appear in URL and are logged everywhere.",
+    "fixSteps": ["Use POST for all forms with passwords."],
+    "codeExamples": []
+  },
+  {
+    "id": "weak-password-policy",
+    "type": "body-pattern",
+    "title": "Weak Password Length Constraint",
+    "category": "content",
+    "severity": "MEDIUM",
+    "description": "Password field allows very short passwords.",
+    "evidence": "Weak password minlength.",
+    "riskImpact": "Users can set easily guessable passwords.",
+    "explanation": "Short passwords are vulnerable to brute force attacks.",
+    "fixSteps": ["Require minimum 8-12 characters for passwords."],
+    "codeExamples": []
+  },
+  {
+    "id": "remember-me-token",
+    "type": "body-pattern",
+    "title": "Remember-Me Token in URL",
+    "category": "content",
+    "severity": "MEDIUM",
+    "description": "Remember-me token exposed in URL.",
+    "evidence": "Remember token in URL.",
+    "riskImpact": "Persistent auth token leaked in referrer and logs.",
+    "explanation": "Remember-me tokens should be in cookies, not URLs.",
+    "fixSteps": ["Store remember-me tokens in secure, HttpOnly cookies."],
+    "codeExamples": []
+  },
+  {
+    "id": "oauth-state-missing",
+    "type": "body-pattern",
+    "title": "OAuth URL Missing State Parameter",
+    "category": "content",
+    "severity": "HIGH",
+    "description": "OAuth authorization URL without state parameter.",
+    "evidence": "OAuth without state.",
+    "riskImpact": "Vulnerable to CSRF attacks on OAuth flow.",
+    "explanation": "State parameter prevents cross-site request forgery in OAuth.",
+    "fixSteps": ["Always include a cryptographically random state parameter."],
+    "codeExamples": []
+  },
+  {
+    "id": "api-version-exposed",
+    "type": "body-pattern",
+    "title": "Multiple API Versions Exposed",
+    "category": "content",
+    "severity": "LOW",
+    "description": "Multiple API version endpoints referenced.",
+    "evidence": "Multiple API versions found.",
+    "riskImpact": "Older API versions may have unpatched vulnerabilities.",
+    "explanation": "Legacy API versions often lack security updates.",
+    "fixSteps": ["Sunset old API versions, redirect to latest."],
+    "codeExamples": []
+  },
+  {
+    "id": "debug-endpoint",
+    "type": "body-pattern",
+    "title": "Debug Endpoints Referenced",
+    "category": "content",
+    "severity": "HIGH",
+    "description": "Debug or profiler endpoints found in source.",
+    "evidence": "Debug endpoints referenced.",
+    "riskImpact": "Debug endpoints often expose sensitive information.",
+    "explanation": "Debug pages may show configs, stack traces, environment.",
+    "fixSteps": ["Remove or restrict debug endpoints in production."],
+    "codeExamples": []
+  },
+  {
+    "id": "admin-endpoint",
+    "type": "body-pattern",
+    "title": "Admin Endpoints Referenced",
+    "category": "content",
+    "severity": "MEDIUM",
+    "description": "Admin or management endpoints found in source.",
+    "evidence": "Admin endpoints referenced.",
+    "riskImpact": "Reveals admin panel locations to attackers.",
+    "explanation": "Knowing admin URLs helps attackers target them.",
+    "fixSteps": ["Use obscure paths, add authentication, IP restrictions."],
+    "codeExamples": []
+  },
+  {
+    "id": "internal-ip-exposed",
+    "type": "body-pattern",
+    "title": "Internal IP Address Exposed",
+    "category": "content",
+    "severity": "MEDIUM",
+    "description": "Private/internal IP address in page source.",
+    "evidence": "Internal IP found.",
+    "riskImpact": "Reveals internal network topology.",
+    "explanation": "Private IPs (10.x, 172.16-31.x, 192.168.x) are internal.",
+    "fixSteps": ["Sanitize server responses to remove internal IPs."],
+    "codeExamples": []
+  },
+  {
+    "id": "stack-trace-exposed",
+    "type": "body-pattern",
+    "title": "Stack Trace in Response",
+    "category": "content",
+    "severity": "HIGH",
+    "description": "Stack trace exposed in page output.",
+    "evidence": "Stack trace found.",
+    "riskImpact": "Reveals code paths, file locations, and framework details.",
+    "explanation": "Stack traces help attackers understand app internals.",
+    "fixSteps": ["Use custom error pages, log errors server-side only."],
+    "codeExamples": []
+  },
+  {
+    "id": "email-enumeration",
+    "type": "body-pattern",
+    "title": "User Enumeration via Email",
+    "category": "content",
+    "severity": "MEDIUM",
+    "description": "Error message reveals email existence.",
+    "evidence": "Email enumeration possible.",
+    "riskImpact": "Attackers can verify which emails are registered.",
+    "explanation": "Different messages for valid/invalid emails enable enumeration.",
+    "fixSteps": ["Use generic messages like 'If this email exists...'"],
+    "codeExamples": []
+  },
+  {
+    "id": "verbose-error-messages",
+    "type": "body-pattern",
+    "title": "Verbose Error Messages",
+    "category": "content",
+    "severity": "MEDIUM",
+    "description": "Detailed error messages in page output.",
+    "evidence": "Verbose errors found.",
+    "riskImpact": "Technical details help attackers understand the system.",
+    "explanation": "Error details reveal implementation specifics.",
+    "fixSteps": ["Show generic errors to users, log details server-side."],
+    "codeExamples": []
+  },
+  {
+    "id": "cdn-fallback-missing",
+    "type": "body-pattern",
+    "title": "CDN Scripts Without Fallback",
+    "category": "content",
+    "severity": "LOW",
+    "description": "CDN-hosted scripts without local fallback.",
+    "evidence": "CDN scripts without fallback.",
+    "riskImpact": "Site breaks if CDN is unavailable or compromised.",
+    "explanation": "SRI helps but local fallback ensures availability.",
+    "fixSteps": ["Add onerror fallback to local copy for critical scripts."],
+    "codeExamples": []
+  },
+  {
+    "id": "outdated-jquery",
+    "type": "body-pattern",
+    "title": "Potentially Outdated jQuery",
+    "category": "content",
+    "severity": "MEDIUM",
+    "description": "jQuery version may have known vulnerabilities.",
+    "evidence": "Outdated jQuery detected.",
+    "riskImpact": "Old jQuery versions have XSS vulnerabilities.",
+    "explanation": "jQuery < 3.5.0 has known security issues.",
+    "fixSteps": ["Update to latest jQuery version."],
+    "codeExamples": []
+  },
+  {
+    "id": "outdated-angular",
+    "type": "body-pattern",
+    "title": "AngularJS 1.x Detected",
+    "category": "content",
+    "severity": "HIGH",
+    "description": "End-of-life AngularJS framework detected.",
+    "evidence": "AngularJS 1.x found.",
+    "riskImpact": "No longer receives security updates.",
+    "explanation": "AngularJS reached EOL Dec 2021, migrate to Angular.",
+    "fixSteps": ["Migrate to Angular (2+) or another modern framework."],
+    "codeExamples": []
+  },
+  {
+    "id": "prototype-js-outdated",
+    "type": "body-pattern",
+    "title": "Prototype.js Detected",
+    "category": "content",
+    "severity": "MEDIUM",
+    "description": "Outdated Prototype.js library detected.",
+    "evidence": "Prototype.js found.",
+    "riskImpact": "Unmaintained library with known vulnerabilities.",
+    "explanation": "Prototype.js is no longer maintained.",
+    "fixSteps": ["Remove Prototype.js, use modern alternatives."],
+    "codeExamples": []
+  },
+  {
+    "id": "mootools-outdated",
+    "type": "body-pattern",
+    "title": "MooTools Detected",
+    "category": "content",
+    "severity": "MEDIUM",
+    "description": "Outdated MooTools library detected.",
+    "evidence": "MooTools found.",
+    "riskImpact": "Unmaintained library with potential security issues.",
+    "explanation": "MooTools has limited maintenance.",
+    "fixSteps": ["Migrate to a modern, maintained framework."],
+    "codeExamples": []
+  },
+  {
+    "id": "document-cookie-access",
+    "type": "body-pattern",
+    "title": "Excessive document.cookie Access",
+    "category": "content",
+    "severity": "LOW",
+    "description": "Multiple document.cookie accesses detected.",
+    "evidence": "document.cookie usage.",
+    "riskImpact": "Cookies may contain sensitive data accessible to scripts.",
+    "explanation": "HttpOnly cookies prevent JavaScript access.",
+    "fixSteps": ["Use HttpOnly flag for sensitive cookies."],
+    "codeExamples": []
+  },
+  {
+    "id": "credit-card-pattern",
+    "type": "body-pattern",
+    "title": "Credit Card Number Pattern",
+    "category": "content",
+    "severity": "CRITICAL",
+    "description": "Potential credit card number in page source.",
+    "evidence": "Credit card pattern found.",
+    "riskImpact": "PCI DSS violation, data breach.",
+    "explanation": "Card numbers should never appear in HTML.",
+    "fixSteps": ["Never display full card numbers, mask or tokenize."],
+    "codeExamples": []
+  },
+  {
+    "id": "ssn-pattern",
+    "type": "body-pattern",
+    "title": "SSN Pattern Detected",
+    "category": "content",
+    "severity": "CRITICAL",
+    "description": "Social Security Number pattern in content.",
+    "evidence": "SSN pattern found.",
+    "riskImpact": "Severe privacy violation, identity theft risk.",
+    "explanation": "SSNs should never appear in page content.",
+    "fixSteps": ["Mask SSNs, never display in full."],
+    "codeExamples": []
+  },
+  {
+    "id": "phone-number-leak",
+    "type": "body-pattern",
+    "title": "Multiple Phone Numbers Exposed",
+    "category": "content",
+    "severity": "LOW",
+    "description": "Many phone numbers found in page source.",
+    "evidence": "Phone numbers found.",
+    "riskImpact": "Privacy concern, potential data leak.",
+    "explanation": "Bulk phone numbers may indicate data exposure.",
+    "fixSteps": ["Review if phone numbers should be displayed."],
+    "codeExamples": []
+  },
+  {
+    "id": "email-address-leak",
+    "type": "body-pattern",
+    "title": "Many Email Addresses Exposed",
+    "category": "content",
+    "severity": "LOW",
+    "description": "Large number of email addresses in page.",
+    "evidence": "Many emails found.",
+    "riskImpact": "Privacy concern, spam/phishing target list.",
+    "explanation": "Bulk emails may indicate data exposure.",
+    "fixSteps": ["Review if emails should be displayed publicly."],
+    "codeExamples": []
+  },
+  {
+    "id": "bearer-token-exposed",
+    "type": "body-pattern",
+    "title": "Bearer Token Exposed in Source",
+    "category": "content",
+    "severity": "CRITICAL",
+    "description": "Bearer token found in page source.",
+    "evidence": "Bearer token exposed.",
+    "riskImpact": "Direct credential exposure.",
+    "explanation": "Bearer tokens grant API access.",
+    "fixSteps": ["Never embed tokens in HTML, use secure storage."],
+    "codeExamples": []
+  },
+  {
+    "id": "api-key-in-url",
+    "type": "body-pattern",
+    "title": "API Key in URL Parameter",
+    "category": "content",
+    "severity": "HIGH",
+    "description": "API key found in URL parameter.",
+    "evidence": "API key in URL.",
+    "riskImpact": "Key leaked in referrer, history, logs.",
+    "explanation": "API keys in URLs are exposed in many places.",
+    "fixSteps": ["Pass API keys in headers instead of URLs."],
+    "codeExamples": []
+  },
+  {
+    "id": "aws-credentials-exposed",
+    "type": "body-pattern",
+    "title": "AWS Credentials Pattern Detected",
+    "category": "content",
+    "severity": "CRITICAL",
+    "description": "AWS access key pattern found in source.",
+    "evidence": "AWS credentials pattern.",
+    "riskImpact": "Full AWS account compromise possible.",
+    "explanation": "AWS keys grant access to cloud resources.",
+    "fixSteps": ["Rotate exposed credentials immediately."],
+    "codeExamples": []
+  },
+  {
+    "id": "private-key-exposed",
+    "type": "body-pattern",
+    "title": "Private Key Detected in Source",
+    "category": "content",
+    "severity": "CRITICAL",
+    "description": "Private key pattern found in page.",
+    "evidence": "Private key pattern.",
+    "riskImpact": "Complete compromise of encrypted data.",
+    "explanation": "Private keys should never be in HTML.",
+    "fixSteps": ["Rotate keys, investigate how they were exposed."],
+    "codeExamples": []
+  },
+  {
+    "id": "database-connection-string",
+    "type": "body-pattern",
+    "title": "Database Connection String Exposed",
+    "category": "content",
+    "severity": "CRITICAL",
+    "description": "Database connection string found in source.",
+    "evidence": "DB connection string.",
+    "riskImpact": "Direct database access for attackers.",
+    "explanation": "Connection strings contain credentials.",
+    "fixSteps": ["Rotate credentials, fix the exposure."],
+    "codeExamples": []
+  },
+  {
+    "id": "stripe-key-exposed",
+    "type": "body-pattern",
+    "title": "Stripe Key Exposed",
+    "category": "content",
+    "severity": "HIGH",
+    "description": "Stripe API key pattern found.",
+    "evidence": "Stripe key exposed.",
+    "riskImpact": "May allow payment manipulation.",
+    "explanation": "Live Stripe keys can process real payments.",
+    "fixSteps": ["Rotate keys, use publishable keys only in frontend."],
+    "codeExamples": []
+  },
+  {
+    "id": "twilio-credentials-exposed",
+    "type": "body-pattern",
+    "title": "Twilio Credentials Pattern",
+    "category": "content",
+    "severity": "HIGH",
+    "description": "Twilio SID/token pattern found.",
+    "evidence": "Twilio credentials.",
+    "riskImpact": "Unauthorized SMS/calls, billing fraud.",
+    "explanation": "Twilio credentials allow API access.",
+    "fixSteps": ["Rotate credentials immediately."],
+    "codeExamples": []
+  },
+  {
+    "id": "sendgrid-key-exposed",
+    "type": "body-pattern",
+    "title": "SendGrid API Key Exposed",
+    "category": "content",
+    "severity": "HIGH",
+    "description": "SendGrid API key pattern found.",
+    "evidence": "SendGrid key exposed.",
+    "riskImpact": "Email sending abuse, phishing.",
+    "explanation": "SendGrid keys allow email sending.",
+    "fixSteps": ["Rotate API key immediately."],
+    "codeExamples": []
+  },
+  {
+    "id": "slack-webhook-exposed",
+    "type": "body-pattern",
+    "title": "Slack Webhook URL Exposed",
+    "category": "content",
+    "severity": "MEDIUM",
+    "description": "Slack webhook URL found in source.",
+    "evidence": "Slack webhook exposed.",
+    "riskImpact": "Spam messages to Slack channel.",
+    "explanation": "Anyone with webhook URL can post messages.",
+    "fixSteps": ["Rotate webhook URL, keep it server-side."],
+    "codeExamples": []
+  },
+  {
+    "id": "discord-webhook-exposed",
+    "type": "body-pattern",
+    "title": "Discord Webhook URL Exposed",
+    "category": "content",
+    "severity": "MEDIUM",
+    "description": "Discord webhook URL found in source.",
+    "evidence": "Discord webhook exposed.",
+    "riskImpact": "Spam messages to Discord channel.",
+    "explanation": "Anyone with webhook URL can post messages.",
+    "fixSteps": ["Regenerate webhook, keep it server-side."],
+    "codeExamples": []
+  },
+  {
+    "id": "github-token-exposed",
+    "type": "body-pattern",
+    "title": "GitHub Token Pattern Detected",
+    "category": "content",
+    "severity": "CRITICAL",
+    "description": "GitHub personal access token found.",
+    "evidence": "GitHub token pattern.",
+    "riskImpact": "Repository access, code manipulation.",
+    "explanation": "GitHub tokens grant repo access.",
+    "fixSteps": ["Revoke token immediately, use fine-grained tokens."],
+    "codeExamples": []
+  },
+  {
+    "id": "google-api-key-exposed",
+    "type": "body-pattern",
+    "title": "Google API Key Exposed",
+    "category": "content",
+    "severity": "MEDIUM",
+    "description": "Google API key found in source.",
+    "evidence": "Google API key.",
+    "riskImpact": "Quota theft, billing abuse.",
+    "explanation": "Unrestricted Google keys can be abused.",
+    "fixSteps": ["Restrict key to specific APIs and referrers."],
+    "codeExamples": []
+  },
+  {
+    "id": "mailchimp-key-exposed",
+    "type": "body-pattern",
+    "title": "Mailchimp API Key Exposed",
+    "category": "content",
+    "severity": "HIGH",
+    "description": "Mailchimp API key pattern found.",
+    "evidence": "Mailchimp key exposed.",
+    "riskImpact": "Email list access, campaign manipulation.",
+    "explanation": "Mailchimp keys grant full account access.",
+    "fixSteps": ["Regenerate API key immediately."],
+    "codeExamples": []
+  },
+  {
+    "id": "heroku-api-key-exposed",
+    "type": "body-pattern",
+    "title": "Heroku API Key Exposed",
+    "category": "content",
+    "severity": "CRITICAL",
+    "description": "Heroku API key pattern found.",
+    "evidence": "Heroku API key.",
+    "riskImpact": "Full Heroku account control.",
+    "explanation": "Heroku keys allow app deployment and deletion.",
+    "fixSteps": ["Regenerate API key immediately."],
+    "codeExamples": []
+  },
+  {
+    "id": "npm-token-exposed",
+    "type": "body-pattern",
+    "title": "NPM Token Exposed",
+    "category": "content",
+    "severity": "HIGH",
+    "description": "NPM authentication token found.",
+    "evidence": "NPM token exposed.",
+    "riskImpact": "Package publishing, supply chain attack.",
+    "explanation": "NPM tokens allow package publishing.",
+    "fixSteps": ["Revoke token, publish with 2FA."],
+    "codeExamples": []
+  },
+  {
+    "id": "docker-hub-token-exposed",
+    "type": "body-pattern",
+    "title": "Docker Hub Token Exposed",
+    "category": "content",
+    "severity": "HIGH",
+    "description": "Docker Hub credentials found.",
+    "evidence": "Docker token exposed.",
+    "riskImpact": "Container image manipulation.",
+    "explanation": "Docker tokens allow image push/pull.",
+    "fixSteps": ["Regenerate token immediately."],
+    "codeExamples": []
+  },
+  {
+    "id": "sql-error-exposed",
+    "type": "body-pattern",
+    "title": "SQL Error Message Exposed",
+    "category": "content",
+    "severity": "HIGH",
+    "description": "SQL error message found in response.",
+    "evidence": "SQL error in output.",
+    "riskImpact": "Reveals database structure, aids SQL injection.",
+    "explanation": "SQL errors expose schema and query details.",
+    "fixSteps": ["Use custom error pages, log errors server-side."],
+    "codeExamples": []
+  },
+  {
+    "id": "nosql-error-exposed",
+    "type": "body-pattern",
+    "title": "NoSQL Error Message Exposed",
+    "category": "content",
+    "severity": "HIGH",
+    "description": "NoSQL/MongoDB error found in response.",
+    "evidence": "NoSQL error exposed.",
+    "riskImpact": "Reveals database type and query structure.",
+    "explanation": "NoSQL errors aid injection attacks.",
+    "fixSteps": ["Use custom error pages, handle errors gracefully."],
+    "codeExamples": []
+  },
+  {
+    "id": "ldap-error-exposed",
+    "type": "body-pattern",
+    "title": "LDAP Error Message Exposed",
+    "category": "content",
+    "severity": "MEDIUM",
+    "description": "LDAP error message in response.",
+    "evidence": "LDAP error exposed.",
+    "riskImpact": "Reveals directory structure.",
+    "explanation": "LDAP errors may expose user enumeration.",
+    "fixSteps": ["Return generic error messages."],
+    "codeExamples": []
+  },
+  {
+    "id": "xml-error-exposed",
+    "type": "body-pattern",
+    "title": "XML Parser Error Exposed",
+    "category": "content",
+    "severity": "MEDIUM",
+    "description": "XML parser error in response.",
+    "evidence": "XML error exposed.",
+    "riskImpact": "May reveal XXE vulnerability.",
+    "explanation": "XML errors can indicate parser misconfiguration.",
+    "fixSteps": ["Handle XML errors gracefully."],
+    "codeExamples": []
+  },
+  {
+    "id": "json-hijacking-vulnerable",
+    "type": "body-pattern",
+    "title": "JSON Array at Top Level",
+    "category": "content",
+    "severity": "MEDIUM",
+    "description": "API returns JSON array as top-level response.",
+    "evidence": "Top-level JSON array.",
+    "riskImpact": "Legacy browsers vulnerable to JSON hijacking.",
+    "explanation": "Older browsers could include JSON in script tags.",
+    "fixSteps": ["Wrap array in object, or use CORS properly."],
+    "codeExamples": []
+  },
+  {
+    "id": "jsonp-endpoint",
+    "type": "body-pattern",
+    "title": "JSONP Endpoint Detected",
+    "category": "content",
+    "severity": "MEDIUM",
+    "description": "JSONP callback parameter found.",
+    "evidence": "JSONP detected.",
+    "riskImpact": "JSONP can leak data cross-origin.",
+    "explanation": "JSONP bypasses same-origin policy by design.",
+    "fixSteps": ["Replace JSONP with CORS for cross-origin requests."],
+    "codeExamples": []
+  },
+  {
+    "id": "dom-clobbering-vulnerable",
+    "type": "body-pattern",
+    "title": "Potential DOM Clobbering",
+    "category": "content",
+    "severity": "MEDIUM",
+    "description": "HTML elements with IDs that could clobber globals.",
+    "evidence": "Potential DOM clobbering.",
+    "riskImpact": "JavaScript globals can be overwritten.",
+    "explanation": "HTML id/name attributes create global variables.",
+    "fixSteps": ["Avoid relying on global variable names from DOM."],
+    "codeExamples": []
+  },
+  {
+    "id": "srcdoc-iframe",
+    "type": "body-pattern",
+    "title": "Iframe with srcdoc Attribute",
+    "category": "content",
+    "severity": "LOW",
+    "description": "Iframe using srcdoc for inline HTML.",
+    "evidence": "srcdoc iframe.",
+    "riskImpact": "Inline HTML in iframes can be complex to secure.",
+    "explanation": "srcdoc allows HTML directly in iframe.",
+    "fixSteps": ["Ensure srcdoc content is properly sanitized."],
+    "codeExamples": []
+  },
+  {
+    "id": "sandbox-allow-scripts",
+    "type": "body-pattern",
+    "title": "Iframe Sandbox Allows Scripts",
+    "category": "content",
+    "severity": "LOW",
+    "description": "Sandboxed iframe with allow-scripts.",
+    "evidence": "Sandbox allows scripts.",
+    "riskImpact": "Sandboxed content can still execute JavaScript.",
+    "explanation": "allow-scripts re-enables JavaScript in sandbox.",
+    "fixSteps": ["Only add allow-scripts if absolutely necessary."],
+    "codeExamples": []
+  },
+  {
+    "id": "svg-script-injection",
+    "type": "body-pattern",
+    "title": "SVG with Script Content",
+    "category": "content",
+    "severity": "HIGH",
+    "description": "SVG containing script elements.",
+    "evidence": "SVG with scripts.",
+    "riskImpact": "XSS via SVG images.",
+    "explanation": "SVG can contain executable JavaScript.",
+    "fixSteps": ["Sanitize SVG uploads, use CSP."],
+    "codeExamples": []
+  },
+  {
+    "id": "data-uri-script",
+    "type": "body-pattern",
+    "title": "Script with data: URI",
+    "category": "content",
+    "severity": "HIGH",
+    "description": "Script tag using data: URI source.",
+    "evidence": "data: script source.",
+    "riskImpact": "Inline script execution via data URI.",
+    "explanation": "data: URIs can embed script content.",
+    "fixSteps": ["Block data: in CSP script-src."],
+    "codeExamples": []
+  },
+  {
+    "id": "blob-url-script",
+    "type": "body-pattern",
+    "title": "Script from blob: URL",
+    "category": "content",
+    "severity": "MEDIUM",
+    "description": "Script loaded from blob: URL.",
+    "evidence": "blob: script source.",
+    "riskImpact": "Dynamic script generation.",
+    "explanation": "Blob URLs can be used to execute dynamic scripts.",
+    "fixSteps": ["Consider blocking blob: in CSP."],
+    "codeExamples": []
+  },
+  {
+    "id": "window-opener-leak",
+    "type": "body-pattern",
+    "title": "Links Missing noopener",
+    "category": "content",
+    "severity": "MEDIUM",
+    "description": "External links without rel=noopener.",
+    "evidence": "Missing noopener.",
+    "riskImpact": "Linked page can access window.opener.",
+    "explanation": "target=_blank without noopener leaks opener.",
+    "fixSteps": ["Add rel='noopener noreferrer' to external links."],
+    "codeExamples": []
+  },
+  {
+    "id": "autocomplete-password",
+    "type": "body-pattern",
+    "title": "Password Field Missing autocomplete",
+    "category": "content",
+    "severity": "LOW",
+    "description": "Password field without autocomplete attribute.",
+    "evidence": "Password without autocomplete.",
+    "riskImpact": "Browser may not offer to save password.",
+    "explanation": "autocomplete helps password managers.",
+    "fixSteps": ["Set autocomplete='current-password' or 'new-password'."],
+    "codeExamples": []
+  },
+  {
+    "id": "form-autocomplete-off",
+    "type": "body-pattern",
+    "title": "Form Disables Autocomplete",
+    "category": "content",
+    "severity": "INFO",
+    "description": "Form has autocomplete=off.",
+    "evidence": "Autocomplete disabled.",
+    "riskImpact": "Prevents password manager functionality.",
+    "explanation": "Users may enter weaker manual passwords.",
+    "fixSteps": ["Allow autocomplete unless there's a specific reason."],
+    "codeExamples": []
+  },
+  {
+    "id": "input-maxlength-short",
+    "type": "body-pattern",
+    "title": "Password Field with Short maxlength",
+    "category": "content",
+    "severity": "MEDIUM",
+    "description": "Password input with very short maxlength.",
+    "evidence": "Short password limit.",
+    "riskImpact": "Artificially limits password strength.",
+    "explanation": "Short passwords are easier to crack.",
+    "fixSteps": ["Allow at least 64-128 character passwords."],
+    "codeExamples": []
+  },
+  {
+    "id": "hidden-password-field",
+    "type": "body-pattern",
+    "title": "Hidden Password Input Field",
+    "category": "content",
+    "severity": "MEDIUM",
+    "description": "Password field with type=hidden.",
+    "evidence": "Hidden password field.",
+    "riskImpact": "May expose password in page source.",
+    "explanation": "Hidden inputs are visible in HTML source.",
+    "fixSteps": ["Never store passwords in hidden fields."],
+    "codeExamples": []
+  },
+  {
+    "id": "password-visible-default",
+    "type": "body-pattern",
+    "title": "Password Field Type is Text",
+    "category": "content",
+    "severity": "HIGH",
+    "description": "Password stored in text input instead of password type.",
+    "evidence": "Password in text field.",
+    "riskImpact": "Password visible on screen.",
+    "explanation": "Password fields should mask input.",
+    "fixSteps": ["Use type='password' for password inputs."],
+    "codeExamples": []
+  },
+  {
+    "id": "readonly-sensitive-field",
+    "type": "body-pattern",
+    "title": "Sensitive Data in Readonly Field",
+    "category": "content",
+    "severity": "LOW",
+    "description": "Sensitive data in readonly input field.",
+    "evidence": "Readonly sensitive data.",
+    "riskImpact": "Users can still copy, data in DOM.",
+    "explanation": "Readonly doesn't prevent data access.",
+    "fixSteps": ["Consider masking or removing sensitive readonly data."],
+    "codeExamples": []
+  },
+  {
+    "id": "file-upload-no-restrictions",
+    "type": "body-pattern",
+    "title": "File Upload Without Type Restrictions",
+    "category": "content",
+    "severity": "MEDIUM",
+    "description": "File input without accept attribute.",
+    "evidence": "Unrestricted file upload.",
+    "riskImpact": "Malicious file uploads possible.",
+    "explanation": "Accept attribute provides client-side hint.",
+    "fixSteps": ["Set accept attribute and validate on server."],
+    "codeExamples": []
+  },
+  {
+    "id": "multiple-file-upload",
+    "type": "body-pattern",
+    "title": "Multiple File Upload Enabled",
+    "category": "content",
+    "severity": "INFO",
+    "description": "File input allows multiple files.",
+    "evidence": "Multiple file upload.",
+    "riskImpact": "DoS via many file uploads.",
+    "explanation": "Multiple files increases attack surface.",
+    "fixSteps": ["Limit file count and total size server-side."],
+    "codeExamples": []
+  },
+  {
+    "id": "sourcemap-exposed",
+    "type": "body-pattern",
+    "title": "Source Map Files Exposed",
+    "category": "content",
+    "severity": "MEDIUM",
+    "description": "JavaScript source maps are publicly accessible.",
+    "evidence": "Source maps exposed.",
+    "riskImpact": "Reveals original source code.",
+    "explanation": "Source maps help reverse-engineer code.",
+    "fixSteps": ["Remove source maps in production or restrict access."],
+    "codeExamples": []
+  },
+  {
+    "id": "source-code-comment",
+    "type": "body-pattern",
+    "title": "Developer Comments in HTML",
+    "category": "content",
+    "severity": "LOW",
+    "description": "HTML comments containing developer notes.",
+    "evidence": "Developer comments found.",
+    "riskImpact": "May reveal internal information.",
+    "explanation": "Comments are visible in page source.",
+    "fixSteps": ["Remove developer comments in production."],
+    "codeExamples": []
+  },
+  {
+    "id": "todo-fixme-comments",
+    "type": "body-pattern",
+    "title": "TODO/FIXME Comments Exposed",
+    "category": "content",
+    "severity": "LOW",
+    "description": "TODO or FIXME comments in page source.",
+    "evidence": "TODO/FIXME comments.",
+    "riskImpact": "Reveals incomplete security work.",
+    "explanation": "May indicate known issues.",
+    "fixSteps": ["Address and remove TODO comments before production."],
+    "codeExamples": []
+  },
+  {
+    "id": "iframe-lazy-loading",
+    "type": "body-pattern",
+    "title": "Iframe Missing Lazy Loading",
+    "category": "content",
+    "severity": "INFO",
+    "description": "Below-fold iframes without loading=lazy.",
+    "evidence": "Iframe without lazy loading.",
+    "riskImpact": "Performance impact.",
+    "explanation": "Lazy loading defers iframe loading.",
+    "fixSteps": ["Add loading='lazy' to non-critical iframes."],
+    "codeExamples": []
+  },
+  {
+    "id": "preconnect-missing",
+    "type": "body-pattern",
+    "title": "Missing Preconnect for Third-Party",
+    "category": "content",
+    "severity": "INFO",
+    "description": "Third-party resources without preconnect hint.",
+    "evidence": "Missing preconnect.",
+    "riskImpact": "Slower third-party resource loading.",
+    "explanation": "Preconnect establishes early connections.",
+    "fixSteps": ["Add preconnect for critical third-party origins."],
+    "codeExamples": []
+  },
+  {
+    "id": "dns-prefetch-missing",
+    "type": "body-pattern",
+    "title": "Missing DNS Prefetch for Third-Party",
+    "category": "content",
+    "severity": "INFO",
+    "description": "External domains without dns-prefetch.",
+    "evidence": "Missing dns-prefetch.",
+    "riskImpact": "Slower DNS resolution.",
+    "explanation": "DNS prefetch resolves domains early.",
+    "fixSteps": ["Add dns-prefetch for third-party domains."],
+    "codeExamples": []
+  },
+  {
+    "id": "sri-missing-critical",
+    "type": "body-pattern",
+    "title": "Critical Script Missing SRI",
+    "category": "content",
+    "severity": "HIGH",
+    "description": "CDN script without Subresource Integrity.",
+    "evidence": "Script without SRI.",
+    "riskImpact": "CDN compromise affects your site.",
+    "explanation": "SRI verifies resource integrity.",
+    "fixSteps": ["Add integrity attribute to CDN scripts."],
+    "codeExamples": []
+  },
+  {
+    "id": "sri-missing-stylesheet",
+    "type": "body-pattern",
+    "title": "CDN Stylesheet Missing SRI",
+    "category": "content",
+    "severity": "MEDIUM",
+    "description": "CDN CSS without Subresource Integrity.",
+    "evidence": "Stylesheet without SRI.",
+    "riskImpact": "CSS injection via compromised CDN.",
+    "explanation": "SRI applies to stylesheets too.",
+    "fixSteps": ["Add integrity attribute to CDN stylesheets."],
+    "codeExamples": []
+  },
+  {
+    "id": "password-input-toggle",
+    "type": "header",
+    "title": "Password input without autocomplete='current-password'",
+    "category": "headers",
+    "severity": "low",
+    "description": "Password inputs should declare autocomplete='current-password' so password managers can fill them.",
+    "evidence": "Async / body / header check for password-input-toggle.",
+    "riskImpact": "Add autocomplete='current-password' to password fields",
+    "explanation": "Password inputs should declare autocomplete='current-password' so password managers can fill them.",
+    "fixSteps": ["Add autocomplete='current-password' to password fields"],
+    "codeExamples": [],
+    "references": []
+  },
+  {
+    "id": "email-input-no-autocomplete",
+    "type": "header",
+    "title": "Email input without autocomplete='email'",
+    "category": "headers",
+    "severity": "low",
+    "description": "Email inputs should declare autocomplete='email' so password managers / iOS can offer to fill them.",
+    "evidence": "Async / body / header check for email-input-no-autocomplete.",
+    "riskImpact": "Add autocomplete='email' to email fields",
+    "explanation": "Email inputs should declare autocomplete='email' so password managers / iOS can offer to fill them.",
+    "fixSteps": ["Add autocomplete='email' to email fields"],
+    "codeExamples": [],
+    "references": []
+  },
+  {
+    "id": "cc-input-no-autocomplete",
+    "type": "header",
+    "title": "Credit-card input without autocomplete='cc-number'",
+    "category": "headers",
+    "severity": "low",
+    "description": "Credit-card number inputs should declare autocomplete='cc-number'.",
+    "evidence": "Async / body / header check for cc-input-no-autocomplete.",
+    "riskImpact": "Add autocomplete='cc-number' to credit-card number fields",
+    "explanation": "Credit-card number inputs should declare autocomplete='cc-number'.",
+    "fixSteps": ["Add autocomplete='cc-number' to credit-card number fields"],
+    "codeExamples": [],
+    "references": []
+  },
+  {
+    "id": "search-input-no-type",
+    "type": "header",
+    "title": "Search input without type='search'",
+    "category": "headers",
+    "severity": "low",
+    "description": "Search inputs should be type='search' so the browser can offer semantic features.",
+    "evidence": "Async / body / header check for search-input-no-type.",
+    "riskImpact": "Add type='search' to search inputs",
+    "explanation": "Search inputs should be type='search' so the browser can offer semantic features.",
+    "fixSteps": ["Add type='search' to search inputs"],
+    "codeExamples": [],
+    "references": []
+  },
+  {
+    "id": "tel-input-no-autocomplete",
+    "type": "header",
+    "title": "Tel input without autocomplete='tel'",
+    "category": "headers",
+    "severity": "low",
+    "description": "Tel inputs should declare autocomplete='tel'.",
+    "evidence": "Async / body / header check for tel-input-no-autocomplete.",
+    "riskImpact": "Add autocomplete='tel'",
+    "explanation": "Tel inputs should declare autocomplete='tel'.",
+    "fixSteps": ["Add autocomplete='tel'"],
+    "codeExamples": [],
+    "references": []
+  },
+  {
+    "id": "img-no-alt",
+    "type": "header",
+    "title": "Image missing alt attribute",
+    "category": "headers",
+    "severity": "low",
+    "description": "Every <img> should have an alt attribute (even if empty for decorative images).",
+    "evidence": "Async / body / header check for img-no-alt.",
+    "riskImpact": "Add alt='' for decorative or alt='description' for meaningful images",
+    "explanation": "Every <img> should have an alt attribute (even if empty for decorative images).",
+    "fixSteps": [
+      "Add alt='' for decorative or alt='description' for meaningful images"
+    ],
+    "codeExamples": [],
+    "references": []
+  },
+  {
+    "id": "link-no-rel",
+    "type": "header",
+    "title": "<a target=_blank> without rel=noopener",
+    "category": "headers",
+    "severity": "high",
+    "description": "External links opened in a new tab without rel=noopener allow the new tab to navigate the original via window.opener.",
+    "evidence": "Async / body / header check for link-no-rel.",
+    "riskImpact": "Add rel='noopener noreferrer' to all target=_blank links",
+    "explanation": "External links opened in a new tab without rel=noopener allow the new tab to navigate the original via window.opener.",
+    "fixSteps": ["Add rel='noopener noreferrer' to all target=_blank links"],
+    "codeExamples": [],
+    "references": []
+  },
+  {
+    "id": "form-no-action-https",
+    "type": "header",
+    "title": "Form submits to insecure URL",
+    "category": "headers",
+    "severity": "medium",
+    "description": "<form action='http://...'> on an HTTPS page downgrades credentials on submit.",
+    "evidence": "Async / body / header check for form-no-action-https.",
+    "riskImpact": "Use relative paths or absolute https:// URLs in form actions",
+    "explanation": "<form action='http://...'> on an HTTPS page downgrades credentials on submit.",
+    "fixSteps": [
+      "Use relative paths or absolute https:// URLs in form actions"
+    ],
+    "codeExamples": [],
+    "references": []
+  },
+  {
+    "id": "meta-redirect-no-url",
+    "type": "header",
+    "title": "Meta refresh without URL",
+    "category": "headers",
+    "severity": "info",
+    "description": "<meta http-equiv=refresh content='5'> without url= is informational; with url= it's a redirect.",
+    "evidence": "Async / body / header check for meta-redirect-no-url.",
+    "riskImpact": "Use HTTP 301/302 instead of meta refresh",
+    "explanation": "<meta http-equiv=refresh content='5'> without url= is informational; with url= it's a redirect.",
+    "fixSteps": ["Use HTTP 301/302 instead of meta refresh"],
+    "codeExamples": [],
+    "references": []
+  },
+  {
+    "id": "iframe-missing-allowfullscreen",
+    "type": "header",
+    "title": "Iframe missing allowfullscreen attribute",
+    "category": "headers",
+    "severity": "info",
+    "description": "Iframes without allowfullscreen can't fill the viewport on mobile.",
+    "evidence": "Async / body / header check for iframe-missing-allowfullscreen.",
+    "riskImpact": "Add allowfullscreen attribute",
+    "explanation": "Iframes without allowfullscreen can't fill the viewport on mobile.",
+    "fixSteps": ["Add allowfullscreen attribute"],
+    "codeExamples": [],
+    "references": []
+  },
+  {
+    "id": "iframe-missing-loading-lazy",
+    "type": "header",
+    "title": "Iframe missing loading='lazy'",
+    "category": "headers",
+    "severity": "info",
+    "description": "Off-screen iframes should load lazily.",
+    "evidence": "Async / body / header check for iframe-missing-loading-lazy.",
+    "riskImpact": "Add loading='lazy' to below-the-fold iframes",
+    "explanation": "Off-screen iframes should load lazily.",
+    "fixSteps": ["Add loading='lazy' to below-the-fold iframes"],
+    "codeExamples": [],
+    "references": []
+  },
+  {
+    "id": "autocomplete-username",
+    "type": "header",
+    "title": "Login form missing autocomplete='username'",
+    "category": "headers",
+    "severity": "low",
+    "description": "Username inputs should declare autocomplete='username' so password managers can fill them.",
+    "evidence": "Async / body / header check for autocomplete-username.",
+    "riskImpact": "Add autocomplete='username'",
+    "explanation": "Username inputs should declare autocomplete='username' so password managers can fill them.",
+    "fixSteps": ["Add autocomplete='username'"],
+    "codeExamples": [],
+    "references": []
+  },
+  {
+    "id": "image-protocol-relative",
+    "type": "header",
+    "title": "Image URL is protocol-relative",
+    "category": "headers",
+    "severity": "info",
+    "description": "//cdn.example.com/x.png is fine but consider explicit https:// for clarity.",
+    "evidence": "Async / body / header check for image-protocol-relative.",
+    "riskImpact": "Prefer explicit https:// URLs in modern apps",
+    "explanation": "//cdn.example.com/x.png is fine but consider explicit https:// for clarity.",
+    "fixSteps": ["Prefer explicit https:// URLs in modern apps"],
+    "codeExamples": [],
+    "references": []
+  },
+  {
+    "id": "open-graph-image-not-https",
+    "type": "header",
+    "title": "Open Graph image URL not HTTPS",
+    "category": "headers",
+    "severity": "low",
+    "description": "og:image should use HTTPS to avoid mixed content on social embeds.",
+    "evidence": "Async / body / header check for open-graph-image-not-https.",
+    "riskImpact": "Use https:// for og:image URLs",
+    "explanation": "og:image should use HTTPS to avoid mixed content on social embeds.",
+    "fixSteps": ["Use https:// for og:image URLs"],
+    "codeExamples": [],
+    "references": []
+  },
+  {
+    "id": "canonical-link-missing",
+    "type": "header",
+    "title": "<link rel='canonical'> Missing",
+    "category": "headers",
+    "severity": "low",
+    "description": "Missing canonical link makes SEO harder and lets scrapers re-host without attribution.",
+    "evidence": "Async / body / header check for canonical-link-missing.",
+    "riskImpact": "Add <link rel='canonical' href='...'> to <head>",
+    "explanation": "Missing canonical link makes SEO harder and lets scrapers re-host without attribution.",
+    "fixSteps": ["Add <link rel='canonical' href='...'> to <head>"],
+    "codeExamples": [],
+    "references": []
+  },
+  {
+    "id": "viewport-meta-missing",
+    "type": "header",
+    "title": "<meta name='viewport'> Missing",
+    "category": "headers",
+    "severity": "low",
+    "description": "Pages without a viewport meta render poorly on mobile.",
+    "evidence": "Async / body / header check for viewport-meta-missing.",
+    "riskImpact": "Add <meta name='viewport' content='width=device-width, initial-scale=1'>",
+    "explanation": "Pages without a viewport meta render poorly on mobile.",
+    "fixSteps": [
+      "Add <meta name='viewport' content='width=device-width, initial-scale=1'>"
+    ],
+    "codeExamples": [],
+    "references": []
+  },
+  {
+    "id": "charset-meta-missing",
+    "type": "header",
+    "title": "<meta charset> Missing",
+    "category": "headers",
+    "severity": "medium",
+    "description": "Pages without an explicit charset risk XSS via UTF-7 exploits (legacy IE).",
+    "evidence": "Async / body / header check for charset-meta-missing.",
+    "riskImpact": "Add <meta charset='utf-8'> as the first element of <head>",
+    "explanation": "Pages without an explicit charset risk XSS via UTF-7 exploits (legacy IE).",
+    "fixSteps": ["Add <meta charset='utf-8'> as the first element of <head>"],
+    "codeExamples": [],
+    "references": []
+  },
+  {
+    "id": "doctype-missing",
+    "type": "header",
+    "title": "<!DOCTYPE html> Missing",
+    "category": "headers",
+    "severity": "low",
+    "description": "Pages without DOCTYPE html trigger quirks mode in legacy browsers.",
+    "evidence": "Async / body / header check for doctype-missing.",
+    "riskImpact": "Add <!DOCTYPE html> at the top of the document",
+    "explanation": "Pages without DOCTYPE html trigger quirks mode in legacy browsers.",
+    "fixSteps": ["Add <!DOCTYPE html> at the top of the document"],
+    "codeExamples": [],
+    "references": []
+  },
+  {
+    "id": "inline-style-attr",
+    "type": "header",
+    "title": "Inline style attribute",
+    "category": "headers",
+    "severity": "low",
+    "description": "Inline styles can't be inspected by CSP and complicate theming.",
+    "evidence": "Async / body / header check for inline-style-attr.",
+    "riskImpact": "Move inline styles to external stylesheets",
+    "explanation": "Inline styles can't be inspected by CSP and complicate theming.",
+    "fixSteps": ["Move inline styles to external stylesheets"],
+    "codeExamples": [],
+    "references": []
+  },
+  {
+    "id": "target-blank-no-noopener",
+    "type": "header",
+    "title": "target=_blank without rel=noopener",
+    "category": "headers",
+    "severity": "high",
+    "description": "Without rel=noopener the new tab can navigate the source page via window.opener.",
+    "evidence": "Async / body / header check for target-blank-no-noopener.",
+    "riskImpact": "Add rel='noopener noreferrer'",
+    "explanation": "Without rel=noopener the new tab can navigate the source page via window.opener.",
+    "fixSteps": ["Add rel='noopener noreferrer'"],
+    "codeExamples": [],
+    "references": []
+  },
+  {
+    "id": "email-mailto-spam",
+    "type": "header",
+    "title": "Plain mailto: link",
+    "category": "headers",
+    "severity": "info",
+    "description": "Plain mailto: links get harvested by spam bots.",
+    "evidence": "Async / body / header check for email-mailto-spam.",
+    "riskImpact": "Use a contact form instead of a plain mailto: link",
+    "explanation": "Plain mailto: links get harvested by spam bots.",
+    "fixSteps": ["Use a contact form instead of a plain mailto: link"],
+    "codeExamples": [],
+    "references": []
+  },
+  {
+    "id": "iframe-third-party-without-sandbox",
+    "type": "header",
+    "title": "Third-party iframe without sandbox",
+    "category": "headers",
+    "severity": "medium",
+    "description": "Third-party widgets (Stripe, YouTube) loaded without sandbox can run arbitrary scripts.",
+    "evidence": "Async / body / header check for iframe-third-party-without-sandbox.",
+    "riskImpact": "Add sandbox='allow-scripts allow-same-origin allow-forms' to third-party iframes",
+    "explanation": "Third-party widgets (Stripe, YouTube) loaded without sandbox can run arbitrary scripts.",
+    "fixSteps": [
+      "Add sandbox='allow-scripts allow-same-origin allow-forms' to third-party iframes"
+    ],
+    "codeExamples": [],
+    "references": []
+  },
+  {
+    "id": "autofocus-positive-tabindex",
+    "type": "body-pattern",
+    "title": "Autofocus combined with positive tabindex",
+    "category": "content",
+    "severity": "low",
+    "description": "Combining autofocus with tabindex > 0 produces confusing focus order for keyboard and screen reader users.",
+    "evidence": "Async / body / header check for autofocus-positive-tabindex.",
+    "riskImpact": "Remove positive tabindex from autofocused elements; let the natural tab order stand",
+    "explanation": "Combining autofocus with tabindex > 0 produces confusing focus order for keyboard and screen reader users.",
+    "fixSteps": [
+      "Remove positive tabindex from autofocused elements; let the natural tab order stand"
+    ],
+    "codeExamples": [],
+    "references": []
+  },
+  {
+    "id": "aria-hidden-focusable-children",
+    "type": "body-pattern",
+    "title": "aria-hidden=true with focusable children",
+    "category": "content",
+    "severity": "medium",
+    "description": "When aria-hidden=true is applied to a container that still contains focusable elements, keyboard users can tab into invisible controls.",
+    "evidence": "Async / body / header check for aria-hidden-focusable-children.",
+    "riskImpact": "Add tabindex=-1 to focusable descendants, or remove aria-hidden from the parent",
+    "explanation": "When aria-hidden=true is applied to a container that still contains focusable elements, keyboard users can tab into invisible controls.",
+    "fixSteps": [
+      "Add tabindex=-1 to focusable descendants, or remove aria-hidden from the parent"
+    ],
+    "codeExamples": [],
+    "references": []
+  },
+  {
+    "id": "form-formnovalidate-bypass",
+    "type": "body-pattern",
+    "title": "formnovalidate attribute on submit button",
+    "category": "content",
+    "severity": "medium",
+    "description": "A submit button with formnovalidate bypasses HTML5 input constraints (required, pattern, type=email). Server-side validation must catch this.",
+    "evidence": "Async / body / header check for form-formnovalidate-bypass.",
+    "riskImpact": "Always validate on the server; never rely on browser-side form validation alone",
+    "explanation": "A submit button with formnovalidate bypasses HTML5 input constraints (required, pattern, type=email). Server-side validation must catch this.",
+    "fixSteps": [
+      "Always validate on the server; never rely on browser-side form validation alone"
+    ],
+    "codeExamples": [],
+    "references": []
+  },
+  {
+    "id": "form-action-javascript-scheme",
+    "type": "body-pattern",
+    "title": "Form action uses javascript: scheme",
+    "category": "content",
+    "severity": "high",
+    "description": "A <form action=\"javascript:...\"> executes JavaScript on submit and is a classic XSS vector if the action is partially attacker-controlled.",
+    "evidence": "Async / body / header check for form-action-javascript-scheme.",
+    "riskImpact": "Replace action=\"javascript:...\" with action=\"/endpoint\" and handle submit via JS or server",
+    "explanation": "A <form action=\"javascript:...\"> executes JavaScript on submit and is a classic XSS vector if the action is partially attacker-controlled.",
+    "fixSteps": [
+      "Replace action=\"javascript:...\" with action=\"/endpoint\" and handle submit via JS or server"
+    ],
+    "codeExamples": [],
+    "references": []
+  },
+  {
+    "id": "form-action-mailto-scheme",
+    "type": "body-pattern",
+    "title": "Form action uses mailto: scheme",
+    "category": "content",
+    "severity": "low",
+    "description": "A <form action=\"mailto:...\"> opens the user's mail client, leaks the recipient address, and is unreliable for data submission.",
+    "evidence": "Async / body / header check for form-action-mailto-scheme.",
+    "riskImpact": "Use a server endpoint or contact form instead of mailto: for form submission",
+    "explanation": "A <form action=\"mailto:...\"> opens the user's mail client, leaks the recipient address, and is unreliable for data submission.",
+    "fixSteps": [
+      "Use a server endpoint or contact form instead of mailto: for form submission"
+    ],
+    "codeExamples": [],
+    "references": []
+  },
+  {
+    "id": "form-action-tel-scheme",
+    "type": "body-pattern",
+    "title": "Form action uses tel: scheme",
+    "category": "content",
+    "severity": "low",
+    "description": "A <form action=\"tel:...\"> triggers the user's dialer. Acceptable for click-to-call buttons but not for full form submission.",
+    "evidence": "Async / body / header check for form-action-tel-scheme.",
+    "riskImpact": "Use tel: on anchor tags or buttons, not on form action attributes",
+    "explanation": "A <form action=\"tel:...\"> triggers the user's dialer. Acceptable for click-to-call buttons but not for full form submission.",
+    "fixSteps": [
+      "Use tel: on anchor tags or buttons, not on form action attributes"
+    ],
+    "codeExamples": [],
+    "references": []
+  },
+  {
+    "id": "iframe-srcdoc-no-sandbox",
+    "type": "body-pattern",
+    "title": "Iframe srcdoc without sandbox attribute",
+    "category": "content",
+    "severity": "medium",
+    "description": "Iframes using srcdoc without the sandbox attribute run inline HTML in the parent origin's context, expanding the attack surface.",
+    "evidence": "Async / body / header check for iframe-srcdoc-no-sandbox.",
+    "riskImpact": "Add sandbox='allow-scripts allow-same-origin' (or stricter) to all srcdoc iframes",
+    "explanation": "Iframes using srcdoc without the sandbox attribute run inline HTML in the parent origin's context, expanding the attack surface.",
+    "fixSteps": [
+      "Add sandbox='allow-scripts allow-same-origin' (or stricter) to all srcdoc iframes"
+    ],
+    "codeExamples": [],
+    "references": []
+  },
+  {
+    "id": "iframe-allow-scripts-allow-same-origin",
+    "type": "body-pattern",
+    "title": "Sandboxed iframe allows both scripts and same-origin",
+    "category": "content",
+    "severity": "high",
+    "description": "Combining sandbox='allow-scripts allow-same-origin' removes most of the sandbox protection and lets the iframe access the parent origin.",
+    "evidence": "Async / body / header check for iframe-allow-scripts-allow-same-origin.",
+    "riskImpact": "Drop allow-same-origin (or allow-scripts) - together they fully re-enable same-origin script execution",
+    "explanation": "Combining sandbox='allow-scripts allow-same-origin' removes most of the sandbox protection and lets the iframe access the parent origin.",
+    "fixSteps": [
+      "Drop allow-same-origin (or allow-scripts) - together they fully re-enable same-origin script execution"
+    ],
+    "codeExamples": [],
+    "references": []
+  },
+  {
+    "id": "svg-onload-handler",
+    "type": "body-pattern",
+    "title": "SVG with inline onload handler",
+    "category": "content",
+    "severity": "high",
+    "description": "An <svg onload=\"...\"> attribute fires JavaScript when the SVG renders and is equivalent to inline script for XSS purposes.",
+    "evidence": "Async / body / header check for svg-onload-handler.",
+    "riskImpact": "Move event handlers to addEventListener in external JS; sanitize SVG uploads",
+    "explanation": "An <svg onload=\"...\"> attribute fires JavaScript when the SVG renders and is equivalent to inline script for XSS purposes.",
+    "fixSteps": [
+      "Move event handlers to addEventListener in external JS; sanitize SVG uploads"
+    ],
+    "codeExamples": [],
+    "references": []
+  },
+  {
+    "id": "svg-external-entity-reference",
+    "type": "body-pattern",
+    "title": "SVG with external entity reference (XXE)",
+    "category": "content",
+    "severity": "critical",
+    "description": "An <svg> with an external entity reference like <!ENTITY xxe SYSTEM \"file:///...\"> can leak local files when the SVG is rendered server-side.",
+    "evidence": "Async / body / header check for svg-external-entity-reference.",
+    "riskImpact": "Strip DOCTYPE and external entities when ingesting SVG; use a hardened parser",
+    "explanation": "An <svg> with an external entity reference like <!ENTITY xxe SYSTEM \"file:///...\"> can leak local files when the SVG is rendered server-side.",
+    "fixSteps": [
+      "Strip DOCTYPE and external entities when ingesting SVG; use a hardened parser"
+    ],
+    "codeExamples": [],
+    "references": []
+  }
+]

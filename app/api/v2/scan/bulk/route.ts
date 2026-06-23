@@ -11,7 +11,7 @@ import {
   checkRateLimit as checkApiKeyRateLimit,
   recordUsage,
 } from "@/lib/api/api-keys";
-import { allChecks } from "@/lib/scanner/checks";
+import { allChecks } from "@/lib/scanner/registry";
 import { runAsyncChecks } from "@/lib/scanner/async-checks";
 import pool from "@/lib/database/db";
 import {

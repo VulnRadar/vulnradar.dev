@@ -1,0 +1,2069 @@
+[
+  {
+    "id": "hsts-missing",
+    "type": "combined",
+    "title": "Missing HTTP Strict Transport Security (HSTS)",
+    "category": "headers",
+    "severity": "HIGH",
+    "description": "The server does not send the Strict-Transport-Security header, which tells browsers to only connect via HTTPS.",
+    "evidence": "Header 'Strict-Transport-Security' is not present in the response.",
+    "riskImpact": "Attackers could intercept traffic via man-in-the-middle attacks by downgrading the connection from HTTPS to HTTP.",
+    "explanation": "HSTS instructs browsers to only access the site over HTTPS for a specified duration. Without it, users who type the URL without 'https://' or follow an HTTP link are vulnerable to SSL-stripping attacks.",
+    "fixSteps": [
+      "Add the Strict-Transport-Security header to all HTTPS responses.",
+      "Set a max-age of at least 31536000 (1 year).",
+      "Consider adding includeSubDomains and preload directives.",
+      "Ensure your entire site works over HTTPS before enabling."
+    ],
+    "codeExamples": [
+      {
+        "label": "Next.js (next.config.mjs)",
+        "language": "javascript",
+        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
+      },
+      {
+        "label": "Nginx",
+        "language": "nginx",
+        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+      },
+      {
+        "label": "Apache",
+        "language": "apache",
+        "code": "Header always set Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\""
+      },
+      {
+        "label": "Caddy",
+        "language": "plaintext",
+        "code": "header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\""
+      },
+      {
+        "label": "Express (Node.js)",
+        "language": "javascript",
+        "code": "app.use((req, res, next) => {\n  res.setHeader('Strict-Transport-Security', 'max-age=63072000; includeSubDomains; preload');\n  next();\n});"
+      },
+      {
+        "label": "Deno (Hono)",
+        "language": "typescript",
+        "code": "app.use('*', async (c, next) => {\n  await next();\n  c.header('Strict-Transport-Security', 'max-age=63072000; includeSubDomains; preload');\n});"
+      },
+      {
+        "label": "Bun (Elysia)",
+        "language": "typescript",
+        "code": "app.onAfterHandle(({ set }) => {\n  set.headers['Strict-Transport-Security'] = 'max-age=63072000; includeSubDomains; preload';\n});"
+      }
+    ]
+  },
+  {
+    "id": "csp-missing",
+    "type": "header-missing",
+    "targetHeader": "content-security-policy",
+    "title": "Missing Content Security Policy (CSP)",
+    "category": "headers",
+    "severity": "HIGH",
+    "description": "No Content-Security-Policy header was found. CSP helps prevent cross-site scripting (XSS) and data injection attacks.",
+    "evidence": "Header 'Content-Security-Policy' is not present in the response.",
+    "riskImpact": "Without CSP, the site is more vulnerable to XSS attacks because browsers have no policy to restrict which scripts and resources can execute.",
+    "explanation": "Content Security Policy is a defense-in-depth mechanism that restricts which resources the browser is allowed to load. By defining a strict policy, you prevent attackers from injecting malicious scripts.",
+    "fixSteps": [
+      "Define a Content-Security-Policy header with restrictive defaults.",
+      "Start with a report-only policy to identify issues.",
+      "Use 'self' as the default-src and explicitly allow trusted origins.",
+      "Avoid 'unsafe-inline' and 'unsafe-eval' where possible; use nonces or hashes instead."
+    ],
+    "codeExamples": [
+      {
+        "label": "Next.js",
+        "language": "javascript",
+        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Content-Security-Policy', value: \"default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self';\" }],\n    }];\n  },\n};"
+      },
+      {
+        "label": "Nginx",
+        "language": "nginx",
+        "code": "add_header Content-Security-Policy \"default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:;\" always;"
+      },
+      {
+        "label": "Apache",
+        "language": "apache",
+        "code": "Header always set Content-Security-Policy \"default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:;\""
+      },
+      {
+        "label": "Caddy",
+        "language": "plaintext",
+        "code": "header Content-Security-Policy \"default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:;\""
+      },
+      {
+        "label": "Express (Node.js)",
+        "language": "javascript",
+        "code": "app.use((req, res, next) => {\n  res.setHeader('Content-Security-Policy',\n    \"default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:;\");\n  next();\n});"
+      },
+      {
+        "label": "Deno (Hono)",
+        "language": "typescript",
+        "code": "app.use('*', async (c, next) => {\n  await next();\n  c.header('Content-Security-Policy',\n    \"default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:;\");\n});"
+      },
+      {
+        "label": "Bun (Elysia)",
+        "language": "typescript",
+        "code": "app.onAfterHandle(({ set }) => {\n  set.headers['Content-Security-Policy'] =\n    \"default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:;\";\n});"
+      },
+      {
+        "label": "HTML Meta Tag",
+        "language": "html",
+        "code": "<meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'self'; script-src 'self';\">"
+      }
+    ]
+  },
+  {
+    "id": "clickjack-missing",
+    "type": "combined",
+    "title": "Missing Clickjacking Protection",
+    "category": "headers",
+    "severity": "MEDIUM",
+    "description": "Neither X-Frame-Options nor CSP frame-ancestors directive is set, leaving the site vulnerable to clickjacking.",
+    "evidence": "Header 'X-Frame-Options' is not present and 'frame-ancestors' directive was not found in CSP.",
+    "riskImpact": "Attackers can embed your site in a hidden iframe and trick users into clicking on elements they don't intend to.",
+    "explanation": "Clickjacking is an attack where a malicious site embeds your site in a transparent iframe. Users think they're interacting with the visible page but are actually clicking on your site.",
+    "fixSteps": [
+      "Add X-Frame-Options: DENY or SAMEORIGIN to your responses.",
+      "Alternatively, use the CSP frame-ancestors directive for more granular control.",
+      "DENY prevents all framing; SAMEORIGIN allows framing only from the same origin."
+    ],
+    "codeExamples": [
+      {
+        "label": "Next.js",
+        "language": "javascript",
+        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'X-Frame-Options', value: 'DENY' }],\n    }];\n  },\n};"
+      },
+      {
+        "label": "Nginx",
+        "language": "nginx",
+        "code": "add_header X-Frame-Options \"DENY\" always;"
+      },
+      {
+        "label": "Apache",
+        "language": "apache",
+        "code": "Header always set X-Frame-Options \"DENY\""
+      },
+      {
+        "label": "Caddy",
+        "language": "plaintext",
+        "code": "header X-Frame-Options \"DENY\""
+      },
+      {
+        "label": "Express (Node.js)",
+        "language": "javascript",
+        "code": "app.use((req, res, next) => {\n  res.setHeader('X-Frame-Options', 'DENY');\n  next();\n});"
+      },
+      {
+        "label": "Deno (Hono)",
+        "language": "typescript",
+        "code": "app.use('*', async (c, next) => {\n  await next();\n  c.header('X-Frame-Options', 'DENY');\n});"
+      },
+      {
+        "label": "Bun (Elysia)",
+        "language": "typescript",
+        "code": "app.onAfterHandle(({ set }) => {\n  set.headers['X-Frame-Options'] = 'DENY';\n});"
+      }
+    ]
+  },
+  {
+    "id": "xcto-missing",
+    "type": "header-missing",
+    "targetHeader": "x-content-type-options",
+    "title": "Missing X-Content-Type-Options Header",
+    "category": "headers",
+    "severity": "MEDIUM",
+    "description": "The X-Content-Type-Options header is not set. This header prevents MIME-type sniffing.",
+    "evidence": "Header 'X-Content-Type-Options' is not present in the response.",
+    "riskImpact": "Browsers may interpret files as a different MIME type than declared, which can lead to XSS attacks.",
+    "explanation": "MIME sniffing is when browsers try to determine the content type by examining the content rather than trusting the Content-Type header. Setting X-Content-Type-Options to 'nosniff' prevents this.",
+    "fixSteps": [
+      "Add the header X-Content-Type-Options: nosniff to all responses.",
+      "Ensure all resources are served with the correct Content-Type header."
+    ],
+    "codeExamples": [
+      {
+        "label": "Next.js",
+        "language": "javascript",
+        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'X-Content-Type-Options', value: 'nosniff' }],\n    }];\n  },\n};"
+      },
+      {
+        "label": "Nginx",
+        "language": "nginx",
+        "code": "add_header X-Content-Type-Options \"nosniff\" always;"
+      },
+      {
+        "label": "Apache",
+        "language": "apache",
+        "code": "Header always set X-Content-Type-Options \"nosniff\""
+      },
+      {
+        "label": "Caddy",
+        "language": "plaintext",
+        "code": "header X-Content-Type-Options \"nosniff\""
+      },
+      {
+        "label": "Express (Node.js)",
+        "language": "javascript",
+        "code": "app.use((req, res, next) => {\n  res.setHeader('X-Content-Type-Options', 'nosniff');\n  next();\n});"
+      },
+      {
+        "label": "Deno (Hono)",
+        "language": "typescript",
+        "code": "app.use('*', async (c, next) => {\n  await next();\n  c.header('X-Content-Type-Options', 'nosniff');\n});"
+      },
+      {
+        "label": "Bun (Elysia)",
+        "language": "typescript",
+        "code": "app.onAfterHandle(({ set }) => {\n  set.headers['X-Content-Type-Options'] = 'nosniff';\n});"
+      }
+    ]
+  },
+  {
+    "id": "referrer-policy-missing",
+    "type": "header-missing",
+    "targetHeader": "referrer-policy",
+    "title": "Missing Referrer-Policy Header",
+    "category": "headers",
+    "severity": "LOW",
+    "description": "The Referrer-Policy header is not set. This controls how much referrer information is sent with requests.",
+    "evidence": "Header 'Referrer-Policy' is not present in the response.",
+    "riskImpact": "Sensitive information in URLs (tokens, IDs) may be leaked to third-party sites through the Referer header.",
+    "explanation": "By default, browsers send the full URL in the Referer header when navigating between pages. If your URLs contain sensitive data, this data leaks to any external site the user visits next.",
+    "fixSteps": [
+      "Add Referrer-Policy: strict-origin-when-cross-origin (recommended).",
+      "For maximum privacy, use no-referrer or same-origin.",
+      "Avoid using unsafe-url which sends the full URL to all origins."
+    ],
+    "codeExamples": [
+      {
+        "label": "Next.js",
+        "language": "javascript",
+        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' }],\n    }];\n  },\n};"
+      },
+      {
+        "label": "Nginx",
+        "language": "nginx",
+        "code": "add_header Referrer-Policy \"strict-origin-when-cross-origin\" always;"
+      },
+      {
+        "label": "Apache",
+        "language": "apache",
+        "code": "Header always set Referrer-Policy \"strict-origin-when-cross-origin\""
+      },
+      {
+        "label": "Caddy",
+        "language": "plaintext",
+        "code": "header Referrer-Policy \"strict-origin-when-cross-origin\""
+      },
+      {
+        "label": "Express (Node.js)",
+        "language": "javascript",
+        "code": "app.use((req, res, next) => {\n  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');\n  next();\n});"
+      },
+      {
+        "label": "Deno (Hono)",
+        "language": "typescript",
+        "code": "app.use('*', async (c, next) => {\n  await next();\n  c.header('Referrer-Policy', 'strict-origin-when-cross-origin');\n});"
+      },
+      {
+        "label": "Bun (Elysia)",
+        "language": "typescript",
+        "code": "app.onAfterHandle(({ set }) => {\n  set.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin';\n});"
+      },
+      {
+        "label": "HTML Meta Tag",
+        "language": "html",
+        "code": "<meta name=\"referrer\" content=\"strict-origin-when-cross-origin\">"
+      }
+    ]
+  },
+  {
+    "id": "permissions-policy-missing",
+    "type": "combined",
+    "title": "Missing Permissions-Policy Header",
+    "category": "headers",
+    "severity": "LOW",
+    "description": "The Permissions-Policy (formerly Feature-Policy) header is not set.",
+    "evidence": "Neither 'Permissions-Policy' nor 'Feature-Policy' headers are present in the response.",
+    "riskImpact": "Third-party scripts or iframes could access powerful browser APIs like camera, microphone, or geolocation.",
+    "explanation": "Permissions-Policy allows you to selectively enable or disable browser features for your page and any embedded iframes.",
+    "fixSteps": [
+      "Add a Permissions-Policy header that disables features you don't use.",
+      "Common features to restrict: camera, microphone, geolocation, payment, usb.",
+      "Set features to () (empty) to disable, or self to allow only same-origin."
+    ],
+    "codeExamples": [
+      {
+        "label": "Next.js",
+        "language": "javascript",
+        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Permissions-Policy', value: 'camera=(), microphone=(), geolocation=(), payment=()' }],\n    }];\n  },\n};"
+      },
+      {
+        "label": "Nginx",
+        "language": "nginx",
+        "code": "add_header Permissions-Policy \"camera=(), microphone=(), geolocation=(), payment=()\" always;"
+      },
+      {
+        "label": "Apache",
+        "language": "apache",
+        "code": "Header always set Permissions-Policy \"camera=(), microphone=(), geolocation=(), payment=()\""
+      },
+      {
+        "label": "Caddy",
+        "language": "plaintext",
+        "code": "header Permissions-Policy \"camera=(), microphone=(), geolocation=(), payment=()\""
+      },
+      {
+        "label": "Express (Node.js)",
+        "language": "javascript",
+        "code": "app.use((req, res, next) => {\n  res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=(), payment=()');\n  next();\n});"
+      },
+      {
+        "label": "Deno (Hono)",
+        "language": "typescript",
+        "code": "app.use('*', async (c, next) => {\n  await next();\n  c.header('Permissions-Policy', 'camera=(), microphone=(), geolocation=(), payment=()');\n});"
+      },
+      {
+        "label": "Bun (Elysia)",
+        "language": "typescript",
+        "code": "app.onAfterHandle(({ set }) => {\n  set.headers['Permissions-Policy'] = 'camera=(), microphone=(), geolocation=(), payment=()';\n});"
+      }
+    ]
+  },
+  {
+    "id": "cors-wildcard",
+    "type": "combined",
+    "title": "Wildcard CORS Policy",
+    "category": "headers",
+    "severity": "MEDIUM",
+    "description": "The Access-Control-Allow-Origin header is set to '*', allowing any origin to make cross-origin requests.",
+    "evidence": "Access-Control-Allow-Origin: *",
+    "riskImpact": "Any website can make requests to your API, potentially stealing sensitive data.",
+    "explanation": "CORS controls which external domains can access your API. A wildcard '*' means any website can make requests.",
+    "fixSteps": [
+      "Replace the wildcard with specific trusted origins.",
+      "Validate the Origin header against an allowlist.",
+      "Never combine * with Allow-Credentials: true."
+    ],
+    "codeExamples": [
+      {
+        "label": "Next.js CORS",
+        "language": "typescript",
+        "code": "const ALLOWED = ['https://yourdomain.com'];\nconst origin = request.headers.get('origin');\nif (ALLOWED.includes(origin)) {\n  headers['Access-Control-Allow-Origin'] = origin;\n}"
+      },
+      {
+        "label": "Nginx",
+        "language": "nginx",
+        "code": "set $cors_origin '';\nif ($http_origin ~* '^https://(www\\.)?yourdomain\\.com$') {\n    set $cors_origin $http_origin;\n}\nadd_header Access-Control-Allow-Origin $cors_origin always;"
+      },
+      {
+        "label": "Apache",
+        "language": "apache",
+        "code": "SetEnvIf Origin \"^https://(www\\.)?yourdomain\\.com$\" CORS_ORIGIN=$0\nHeader always set Access-Control-Allow-Origin \"%{CORS_ORIGIN}e\" env=CORS_ORIGIN"
+      },
+      {
+        "label": "Express (Node.js)",
+        "language": "javascript",
+        "code": "import cors from 'cors';\napp.use(cors({\n  origin: ['https://yourdomain.com'],\n  credentials: true,\n}));"
+      },
+      {
+        "label": "Deno (Hono)",
+        "language": "typescript",
+        "code": "import { cors } from 'hono/cors';\napp.use('*', cors({\n  origin: ['https://yourdomain.com'],\n  credentials: true,\n}));"
+      },
+      {
+        "label": "Bun (Elysia)",
+        "language": "typescript",
+        "code": "import { cors } from '@elysiajs/cors';\napp.use(cors({\n  origin: ['https://yourdomain.com'],\n  credentials: true,\n}));"
+      }
+    ]
+  },
+  {
+    "id": "xxss-protection-missing",
+    "type": "combined",
+    "title": "Missing X-XSS-Protection Header",
+    "category": "headers",
+    "severity": "LOW",
+    "description": "The X-XSS-Protection header is not set and no Content-Security-Policy is present.",
+    "evidence": "Header 'X-XSS-Protection' is not present and no CSP fallback exists.",
+    "riskImpact": "Older browsers that still support the XSS auditor won't have it activated.",
+    "explanation": "While the XSS auditor is deprecated in modern browsers, having protection headers is still recommended.",
+    "fixSteps": [
+      "Implement a strong Content-Security-Policy (preferred approach).",
+      "Set X-XSS-Protection: 0 (to avoid the buggy auditor).",
+      "Focus on input validation and output encoding."
+    ],
+    "codeExamples": [
+      {
+        "label": "CSP preferred",
+        "language": "text",
+        "code": "Content-Security-Policy: default-src 'self'; script-src 'self'"
+      }
+    ]
+  },
+  {
+    "id": "cors-credentials-wildcard",
+    "type": "combined",
+    "title": "Dangerous CORS Configuration",
+    "category": "headers",
+    "severity": "CRITICAL",
+    "description": "The server allows credentials with a wildcard origin.",
+    "evidence": "Access-Control-Allow-Origin: * combined with Access-Control-Allow-Credentials: true",
+    "riskImpact": "Any website can make authenticated cross-origin requests to your API.",
+    "explanation": "When ACAO is * with credentials allowed, any website can make authenticated requests. This completely bypasses the Same-Origin Policy.",
+    "fixSteps": [
+      "Never combine wildcard with Allow-Credentials: true.",
+      "Explicitly list allowed origins.",
+      "Validate the Origin header against an allowlist."
+    ],
+    "codeExamples": [
+      {
+        "label": "Secure CORS",
+        "language": "typescript",
+        "code": "const ALLOWED = ['https://yourdomain.com'];\nif (ALLOWED.includes(origin)) {\n  res.setHeader('Access-Control-Allow-Origin', origin);\n  res.setHeader('Access-Control-Allow-Credentials', 'true');\n}"
+      }
+    ]
+  },
+  {
+    "id": "coop-missing",
+    "type": "header-missing",
+    "targetHeader": "cross-origin-opener-policy",
+    "title": "Missing Cross-Origin-Opener-Policy (COOP)",
+    "category": "headers",
+    "severity": "LOW",
+    "description": "The server does not set the Cross-Origin-Opener-Policy header.",
+    "evidence": "Header 'Cross-Origin-Opener-Policy' is not present.",
+    "riskImpact": "Without COOP, other origins that open your site retain a reference to your window object.",
+    "explanation": "COOP ensures your top-level document does not share a browsing context group with cross-origin documents.",
+    "fixSteps": [
+      "Add 'Cross-Origin-Opener-Policy: same-origin'.",
+      "Use 'same-origin-allow-popups' if you need cross-origin popups (OAuth).",
+      "Test thoroughly as COOP can break third-party popup integrations."
+    ],
+    "codeExamples": [
+      {
+        "label": "Next.js",
+        "language": "javascript",
+        "code": "const nextConfig = { async headers() { return [{ source: '/(.*)', headers: [{ key: 'Cross-Origin-Opener-Policy', value: 'same-origin' }] }]; } };"
+      }
+    ]
+  },
+  {
+    "id": "corp-missing",
+    "type": "header-missing",
+    "targetHeader": "cross-origin-resource-policy",
+    "title": "Missing Cross-Origin-Resource-Policy (CORP)",
+    "category": "headers",
+    "severity": "INFO",
+    "description": "No Cross-Origin-Resource-Policy header is set.",
+    "evidence": "Header 'Cross-Origin-Resource-Policy' is not present.",
+    "riskImpact": "Your resources can be embedded by any origin.",
+    "explanation": "CORP complements COOP and COEP to enable cross-origin isolation.",
+    "fixSteps": [
+      "Add 'Cross-Origin-Resource-Policy: same-origin' for maximum protection.",
+      "Use 'same-site' if resources need to be shared across subdomains.",
+      "Use 'cross-origin' only for public CDN assets."
+    ],
+    "codeExamples": [
+      {
+        "label": "Next.js",
+        "language": "javascript",
+        "code": "const nextConfig = { async headers() { return [{ source: '/(.*)', headers: [{ key: 'Cross-Origin-Resource-Policy', value: 'same-origin' }] }]; } };"
+      }
+    ]
+  },
+  {
+    "id": "csp-report-only",
+    "type": "combined",
+    "title": "CSP Report-Only Without Enforcement",
+    "category": "headers",
+    "severity": "MEDIUM",
+    "description": "CSP-Report-Only is set but no enforcing CSP header exists.",
+    "evidence": "Header 'Content-Security-Policy-Report-Only' present, but 'Content-Security-Policy' is absent.",
+    "riskImpact": "The site is logging CSP violations but not actually blocking them.",
+    "explanation": "CSP-Report-Only is meant for testing before deployment. Running it without an enforcing CSP means zero protection.",
+    "fixSteps": [
+      "Deploy an enforcing Content-Security-Policy header alongside report-only.",
+      "Start with a restrictive policy and relax based on report-only findings."
+    ],
+    "codeExamples": [
+      {
+        "label": "Both headers",
+        "language": "text",
+        "code": "Content-Security-Policy: default-src 'self'; script-src 'self'\nContent-Security-Policy-Report-Only: default-src 'self'; report-uri /csp-report"
+      }
+    ]
+  },
+  {
+    "id": "no-clickjack-protection",
+    "type": "combined",
+    "title": "No Clickjacking Protection Detected",
+    "category": "headers",
+    "severity": "MEDIUM",
+    "description": "No X-Frame-Options, no CSP frame-ancestors, and no JavaScript frame-busting detected.",
+    "evidence": "Missing all clickjacking protections.",
+    "riskImpact": "Attackers can embed this page in a transparent iframe and trick users.",
+    "explanation": "Clickjacking overlays a legitimate page beneath a decoy.",
+    "fixSteps": [
+      "Add X-Frame-Options: DENY header.",
+      "Add frame-ancestors 'self' to your CSP.",
+      "Use both for maximum compatibility."
+    ],
+    "codeExamples": [
+      {
+        "label": "Nginx",
+        "language": "nginx",
+        "code": "add_header X-Frame-Options \"DENY\" always;\nadd_header Content-Security-Policy \"frame-ancestors 'self';\" always;"
+      }
+    ]
+  },
+  {
+    "id": "weak-csp-directives",
+    "type": "combined",
+    "title": "Content Security Policy Contains Weak Directives",
+    "category": "headers",
+    "severity": "HIGH",
+    "description": "The CSP header contains weak directives that reduce its effectiveness.",
+    "evidence": "Weak CSP directives detected.",
+    "riskImpact": "Weak directives create exploitable gaps that allow attackers to bypass the policy.",
+    "explanation": "A CSP is only as strong as its weakest directive.",
+    "fixSteps": [
+      "Replace 'unsafe-inline' with nonce-based or hash-based script loading.",
+      "Remove 'unsafe-eval' and refactor code.",
+      "Replace wildcard sources with explicit trusted domains.",
+      "Remove data: from script-src."
+    ],
+    "codeExamples": [
+      {
+        "label": "Strong CSP",
+        "language": "text",
+        "code": "Content-Security-Policy: default-src 'self'; script-src 'self' 'nonce-{random}'; style-src 'self' 'nonce-{random}'; img-src 'self' data:;"
+      }
+    ]
+  },
+  {
+    "id": "csp-framework-required",
+    "type": "combined",
+    "title": "CSP Contains Framework-Required Directives",
+    "category": "headers",
+    "severity": "INFO",
+    "description": "The CSP includes directives required by the frontend framework. This is expected for Next.js, React, Vue, or Angular applications.",
+    "evidence": "Framework-required CSP directives detected.",
+    "riskImpact": "Framework-required directives slightly reduce XSS protection, but are necessary for the framework to function.",
+    "explanation": "Modern frameworks require 'unsafe-inline' and/or 'unsafe-eval' for their runtime features. While these weaken CSP, they're necessary trade-offs.",
+    "fixSteps": [
+      "Ensure all user input is properly sanitized.",
+      "Keep framework and dependencies up to date.",
+      "Use strict CSP for other directives.",
+      "Consider strict-dynamic with nonces."
+    ],
+    "codeExamples": [
+      {
+        "label": "Next.js CSP",
+        "language": "javascript",
+        "code": "const csp = [\n  \"default-src 'self'\",\n  \"script-src 'self' 'unsafe-inline' 'unsafe-eval'\",\n  \"style-src 'self' 'unsafe-inline'\",\n  \"frame-ancestors 'none'\",\n  \"base-uri 'self'\",\n].join('; ');"
+      }
+    ]
+  },
+  {
+    "id": "cors-wildcard-credentials",
+    "type": "combined",
+    "title": "CORS Wildcard Origin with Credentials Allowed",
+    "category": "headers",
+    "severity": "CRITICAL",
+    "description": "The server allows any origin (*) to make credentialed cross-origin requests.",
+    "evidence": "Access-Control-Allow-Origin: * combined with Access-Control-Allow-Credentials: true",
+    "riskImpact": "Any website can make authenticated requests to your API and read the responses.",
+    "explanation": "While browsers should block this specific combination, it indicates a severe CORS misunderstanding.",
+    "fixSteps": [
+      "Never combine wildcard origin with credentials: true.",
+      "Validate the Origin header against an explicit allowlist.",
+      "Reflect the specific requesting origin only if trusted."
+    ],
+    "codeExamples": [
+      {
+        "label": "Node.js / Express",
+        "language": "javascript",
+        "code": "const allowedOrigins = ['https://app.example.com'];\napp.use((req, res, next) => {\n  const origin = req.headers.origin;\n  if (allowedOrigins.includes(origin)) {\n    res.setHeader('Access-Control-Allow-Origin', origin);\n    res.setHeader('Access-Control-Allow-Credentials', 'true');\n  }\n  next();\n});"
+      }
+    ]
+  },
+  {
+    "id": "dns-prefetch-on",
+    "type": "combined",
+    "title": "DNS Prefetch Explicitly Enabled",
+    "category": "headers",
+    "severity": "LOW",
+    "description": "X-DNS-Prefetch-Control is set to 'on', leaking which links exist on the page.",
+    "evidence": "X-DNS-Prefetch-Control: on",
+    "riskImpact": "DNS prefetching leaks which links exist to DNS servers and network observers.",
+    "explanation": "DNS prefetching resolves domain names for all links before the user clicks them.",
+    "fixSteps": [
+      "Set X-DNS-Prefetch-Control: off for pages with sensitive links.",
+      "Leave unset for public pages."
+    ],
+    "codeExamples": [
+      {
+        "label": "Disable",
+        "language": "text",
+        "code": "X-DNS-Prefetch-Control: off"
+      }
+    ]
+  },
+  {
+    "id": "rate-limiting-missing",
+    "type": "combined",
+    "title": "No Rate Limiting Headers Detected",
+    "category": "headers",
+    "severity": "MEDIUM",
+    "description": "Sensitive endpoints exist but no rate limiting headers are present.",
+    "evidence": "No rate limiting headers found.",
+    "riskImpact": "Without rate limiting, attackers can perform brute force, credential stuffing, and API abuse.",
+    "explanation": "Rate limiting is essential for protecting authentication endpoints and APIs.",
+    "fixSteps": [
+      "Implement rate limiting on all authentication endpoints.",
+      "Add rate limiting to public APIs.",
+      "Return standard rate limit headers."
+    ],
+    "codeExamples": [
+      {
+        "label": "Rate limiting",
+        "language": "typescript",
+        "code": "import rateLimit from 'express-rate-limit';\nconst limiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 100, standardHeaders: true });"
+      }
+    ]
+  },
+  {
+    "id": "csp-frame-ancestors-missing",
+    "type": "combined",
+    "title": "Missing CSP frame-ancestors Directive",
+    "category": "headers",
+    "severity": "MEDIUM",
+    "description": "Neither CSP frame-ancestors nor X-Frame-Options header is present.",
+    "evidence": "No frame-ancestors directive and no X-Frame-Options header.",
+    "riskImpact": "Attackers can embed your site in an iframe for clickjacking.",
+    "explanation": "CSP frame-ancestors or X-Frame-Options prevents your site from being framed.",
+    "fixSteps": [
+      "Add frame-ancestors 'none' or 'self' to your CSP.",
+      "Or add X-Frame-Options: DENY.",
+      "CSP frame-ancestors is preferred."
+    ],
+    "codeExamples": [
+      {
+        "label": "CSP",
+        "language": "text",
+        "code": "Content-Security-Policy: frame-ancestors 'none';"
+      }
+    ]
+  },
+  {
+    "id": "coep-missing",
+    "type": "header-missing",
+    "targetHeader": "cross-origin-embedder-policy",
+    "title": "Missing Cross-Origin-Embedder-Policy (COEP)",
+    "category": "headers",
+    "severity": "INFO",
+    "description": "No Cross-Origin-Embedder-Policy header is set. COEP is required alongside COOP for cross-origin isolation.",
+    "evidence": "Header 'Cross-Origin-Embedder-Policy' is not present.",
+    "riskImpact": "Without COEP, the site cannot achieve cross-origin isolation, leaving it potentially vulnerable to Spectre-class attacks.",
+    "explanation": "COEP requires all cross-origin resources to explicitly grant permission via CORS or CORP headers. Together with COOP, it enables cross-origin isolation.",
+    "fixSteps": [
+      "Add 'Cross-Origin-Embedder-Policy: require-corp' for full isolation.",
+      "Use 'credentialless' for a less restrictive alternative.",
+      "Ensure all cross-origin resources have proper CORS/CORP headers first."
+    ],
+    "codeExamples": [
+      {
+        "label": "Next.js",
+        "language": "javascript",
+        "code": "const nextConfig = { async headers() { return [{ source: '/(.*)', headers: [{ key: 'Cross-Origin-Embedder-Policy', value: 'require-corp' }] }]; } };"
+      }
+    ]
+  },
+  {
+    "id": "cors-origin-reflection",
+    "type": "combined",
+    "title": "CORS Origin Reflection with Credentials",
+    "category": "headers",
+    "severity": "HIGH",
+    "description": "The server reflects the Origin header in Access-Control-Allow-Origin with credentials allowed. This may indicate insecure origin validation.",
+    "evidence": "ACAO reflects a specific origin with Allow-Credentials: true.",
+    "riskImpact": "If the server blindly reflects any Origin, any website can make authenticated cross-origin requests.",
+    "explanation": "Some servers reflect the incoming Origin header without validating it against an allowlist. This effectively acts as a wildcard with credentials.",
+    "fixSteps": [
+      "Validate the Origin header against a strict allowlist.",
+      "Never blindly reflect the Origin.",
+      "Log and monitor rejected CORS requests."
+    ],
+    "codeExamples": [
+      {
+        "label": "Validate origin",
+        "language": "typescript",
+        "code": "const ALLOWED = ['https://yourdomain.com'];\nconst origin = request.headers.get('origin');\nif (!ALLOWED.includes(origin)) return new Response(null, { status: 403 });"
+      }
+    ]
+  },
+  {
+    "id": "clear-site-data-missing",
+    "type": "combined",
+    "title": "Logout Page Missing Clear-Site-Data Header",
+    "category": "headers",
+    "severity": "LOW",
+    "description": "A logout page was detected but it does not send the Clear-Site-Data header to clear cookies, storage, and cache.",
+    "evidence": "Logout page detected without Clear-Site-Data header.",
+    "riskImpact": "Without Clear-Site-Data, session artifacts may persist after logout on shared devices.",
+    "explanation": "The Clear-Site-Data header instructs the browser to clear cookies, storage, and cache. It should be sent on logout to ensure complete session termination.",
+    "fixSteps": [
+      "Add 'Clear-Site-Data: \"cookies\", \"storage\", \"cache\"' to logout response headers.",
+      "Ensure the header is only sent on logout, not every page."
+    ],
+    "codeExamples": [
+      {
+        "label": "Logout route",
+        "language": "typescript",
+        "code": "return new Response(null, {\n  status: 302,\n  headers: {\n    'Location': '/login',\n    'Clear-Site-Data': '\"cookies\", \"storage\", \"cache\"',\n  },\n});"
+      }
+    ]
+  },
+  {
+    "id": "csp-unsafe-eval-non-framework",
+    "type": "combined",
+    "title": "CSP Contains unsafe-eval Outside Framework Context",
+    "category": "headers",
+    "severity": "HIGH",
+    "description": "The CSP includes 'unsafe-eval' but no frontend framework indicators were detected. This is a significant security weakness.",
+    "evidence": "CSP contains 'unsafe-eval' but no framework indicators detected.",
+    "riskImpact": "unsafe-eval allows eval(), Function(), and setTimeout with strings, enabling code injection via XSS.",
+    "explanation": "While frameworks like Next.js/Vue need unsafe-eval, a non-framework site should never need it.",
+    "fixSteps": [
+      "Remove 'unsafe-eval' from your CSP.",
+      "Refactor code to avoid eval() and new Function().",
+      "Use strict CSP with nonces."
+    ],
+    "codeExamples": [
+      {
+        "label": "Strict CSP",
+        "language": "text",
+        "code": "Content-Security-Policy: default-src 'self'; script-src 'self' 'nonce-{random}'"
+      }
+    ]
+  },
+  {
+    "id": "csp-form-action-missing",
+    "type": "combined",
+    "title": "CSP Missing form-action Directive",
+    "category": "headers",
+    "severity": "LOW",
+    "description": "The CSP header exists but does not contain a form-action directive to restrict form submission targets.",
+    "evidence": "CSP exists but no form-action directive.",
+    "riskImpact": "Forms can submit data to any URL, enabling form hijacking via injected <form> tags.",
+    "explanation": "Without form-action, an attacker who injects HTML can add a <form> that submits to their server, exfiltrating data.",
+    "fixSteps": [
+      "Add 'form-action self' to your CSP.",
+      "Explicitly list allowed form action targets."
+    ],
+    "codeExamples": [
+      {
+        "label": "CSP",
+        "language": "text",
+        "code": "Content-Security-Policy: ... form-action 'self';"
+      }
+    ]
+  },
+  {
+    "id": "csp-base-uri-missing",
+    "type": "combined",
+    "title": "CSP Missing base-uri Directive",
+    "category": "headers",
+    "severity": "LOW",
+    "description": "The CSP header exists but does not contain a base-uri directive.",
+    "evidence": "CSP exists but no base-uri directive.",
+    "riskImpact": "An attacker who injects a <base> tag can redirect all relative URLs to their server.",
+    "explanation": "Without base-uri, injected <base> tags can hijack relative resource loading.",
+    "fixSteps": ["Add 'base-uri self' to your CSP."],
+    "codeExamples": [
+      {
+        "label": "CSP",
+        "language": "text",
+        "code": "Content-Security-Policy: ... base-uri 'self';"
+      }
+    ]
+  },
+  {
+    "id": "csp-object-src-missing",
+    "type": "combined",
+    "title": "CSP Missing object-src Directive",
+    "category": "headers",
+    "severity": "LOW",
+    "description": "The CSP header exists but does not contain an object-src directive to block plugins.",
+    "evidence": "CSP exists but no object-src directive.",
+    "riskImpact": "Flash, Java applets, and other plugins can be loaded, which are known attack vectors.",
+    "explanation": "object-src controls the loading of plugins like Flash and Java. These should be blocked in modern websites.",
+    "fixSteps": [
+      "Add 'object-src none' to your CSP.",
+      "If default-src is 'none', object-src is implicitly blocked."
+    ],
+    "codeExamples": [
+      {
+        "label": "CSP",
+        "language": "text",
+        "code": "Content-Security-Policy: ... object-src 'none';"
+      }
+    ]
+  },
+  {
+    "id": "hsts-no-preload",
+    "type": "header",
+    "title": "HSTS Missing Preload Directive",
+    "category": "headers",
+    "severity": "LOW",
+    "description": "Strict-Transport-Security header is present but not configured for HSTS preload list inclusion.",
+    "evidence": "HSTS header lacks preload, includeSubDomains, or sufficient max-age.",
+    "riskImpact": "Without preload, the first visit to your site can still be over HTTP, allowing MITM attacks during that initial request.",
+    "explanation": "The HSTS preload list is built into browsers. Once your domain is on the list, browsers will never make an insecure request to it, even on the very first visit. This eliminates the bootstrap MITM vulnerability window.",
+    "fixSteps": [
+      "Set HSTS to: max-age=31536000; includeSubDomains; preload",
+      "Ensure all subdomains support HTTPS before enabling includeSubDomains.",
+      "Submit your domain at hstspreload.org once the header is correct."
+    ],
+    "codeExamples": [
+      {
+        "label": "Nginx",
+        "language": "nginx",
+        "code": "add_header Strict-Transport-Security \"max-age=31536000; includeSubDomains; preload\" always;"
+      }
+    ]
+  },
+  {
+    "id": "csp-no-upgrade-insecure",
+    "type": "header",
+    "title": "CSP Missing upgrade-insecure-requests",
+    "category": "headers",
+    "severity": "LOW",
+    "description": "Content-Security-Policy does not include the upgrade-insecure-requests directive.",
+    "evidence": "CSP header present without upgrade-insecure-requests.",
+    "riskImpact": "HTTP resources embedded on your HTTPS page may not be automatically upgraded, causing mixed content warnings or insecure resource loading.",
+    "explanation": "The upgrade-insecure-requests CSP directive instructs the browser to automatically rewrite HTTP URLs to HTTPS before making requests. This is a safety net for any accidentally hard-coded HTTP resources.",
+    "fixSteps": [
+      "Add 'upgrade-insecure-requests' to your CSP header.",
+      "This is safe to add as a first step even before fully auditing all resource URLs."
+    ],
+    "codeExamples": [
+      {
+        "label": "CSP Header",
+        "language": "http",
+        "code": "Content-Security-Policy: upgrade-insecure-requests; default-src 'self';"
+      }
+    ]
+  },
+  {
+    "id": "coep-credentialless",
+    "type": "header",
+    "title": "COEP Not Using credentialless or require-corp",
+    "category": "headers",
+    "severity": "INFO",
+    "description": "Cross-Origin-Embedder-Policy is set but does not use 'credentialless' or 'require-corp'.",
+    "evidence": "COEP header present with unexpected value.",
+    "riskImpact": "Without proper COEP, your page may not achieve cross-origin isolation, which is required for SharedArrayBuffer and high-resolution timers.",
+    "explanation": "COEP with 'require-corp' or 'credentialless' enables cross-origin isolation when combined with COOP. This prevents Spectre-style side-channel attacks.",
+    "fixSteps": [
+      "Set COEP to 'credentialless' (more compatible) or 'require-corp' (stricter).",
+      "Ensure all cross-origin resources either have CORP headers or use credentialless."
+    ],
+    "codeExamples": [
+      {
+        "label": "Header",
+        "language": "http",
+        "code": "Cross-Origin-Embedder-Policy: credentialless"
+      }
+    ]
+  },
+  {
+    "id": "csp-report-uri-deprecated",
+    "type": "header",
+    "title": "CSP Uses Deprecated report-uri",
+    "category": "headers",
+    "severity": "INFO",
+    "description": "CSP uses the deprecated 'report-uri' directive without the modern 'report-to' directive.",
+    "evidence": "CSP contains report-uri but no report-to.",
+    "riskImpact": "report-uri is deprecated and may be removed from browsers. Your CSP violation reports may stop working.",
+    "explanation": "The report-to directive replaces report-uri and integrates with the Reporting API. It supports features like report batching and is the future standard.",
+    "fixSteps": [
+      "Add report-to directive alongside report-uri for backward compatibility.",
+      "Configure a Report-To header with your reporting endpoint."
+    ],
+    "codeExamples": []
+  },
+  {
+    "id": "nosniff-incorrect",
+    "type": "header",
+    "title": "X-Content-Type-Options Has Incorrect Value",
+    "category": "headers",
+    "severity": "MEDIUM",
+    "description": "X-Content-Type-Options header is set but does not have the expected 'nosniff' value.",
+    "evidence": "X-Content-Type-Options has an unexpected value.",
+    "riskImpact": "An incorrect value means the MIME type sniffing protection is not active, potentially allowing script injection via MIME type confusion.",
+    "explanation": "The only valid value for X-Content-Type-Options is 'nosniff'. Any other value is ignored by browsers, giving a false sense of security.",
+    "fixSteps": [
+      "Set X-Content-Type-Options to exactly 'nosniff' (case-insensitive).",
+      "Ensure no extra whitespace or other values are appended."
+    ],
+    "codeExamples": [
+      {
+        "label": "Header",
+        "language": "http",
+        "code": "X-Content-Type-Options: nosniff"
+      }
+    ]
+  },
+  {
+    "id": "timing-allow-wildcard",
+    "type": "header-present",
+    "title": "Timing-Allow-Origin Wildcard",
+    "category": "headers",
+    "severity": "LOW",
+    "description": "Timing-Allow-Origin set to wildcard.",
+    "evidence": "Timing-Allow-Origin: * detected.",
+    "riskImpact": "Exposes detailed timing data to any origin via the Resource Timing API.",
+    "explanation": "This header controls which origins can read performance timing data.",
+    "fixSteps": ["Restrict to trusted domains only."],
+    "codeExamples": []
+  },
+  {
+    "id": "csp-unsafe-inline-script",
+    "type": "combined",
+    "title": "CSP Allows unsafe-inline Scripts",
+    "category": "headers",
+    "severity": "HIGH",
+    "description": "CSP script-src permits inline scripts without nonce or hash.",
+    "evidence": "CSP contains unsafe-inline in script-src.",
+    "riskImpact": "Inline scripts negate most XSS protections CSP provides.",
+    "explanation": "unsafe-inline without nonce/hash allows any inline script to execute.",
+    "fixSteps": ["Use nonce-based or hash-based CSP instead of unsafe-inline."],
+    "codeExamples": []
+  },
+  {
+    "id": "csp-unsafe-eval-detected",
+    "type": "combined",
+    "title": "CSP Allows unsafe-eval",
+    "category": "headers",
+    "severity": "HIGH",
+    "description": "Content Security Policy permits eval().",
+    "evidence": "CSP contains unsafe-eval.",
+    "riskImpact": "eval() can execute attacker-injected strings as code.",
+    "explanation": "unsafe-eval allows dynamic code execution via eval() and Function().",
+    "fixSteps": ["Remove unsafe-eval and refactor code to avoid eval()."],
+    "codeExamples": []
+  },
+  {
+    "id": "csp-wildcard-source",
+    "type": "combined",
+    "title": "CSP Uses Wildcard Source",
+    "category": "headers",
+    "severity": "MEDIUM",
+    "description": "Content Security Policy uses wildcard (*) as a source.",
+    "evidence": "CSP contains wildcard source directive.",
+    "riskImpact": "Any origin can serve content, defeating CSP protections.",
+    "explanation": "Wildcard sources allow loading resources from any origin.",
+    "fixSteps": ["Replace * with specific trusted domains."],
+    "codeExamples": []
+  },
+  {
+    "id": "csp-data-uri-allowed",
+    "type": "combined",
+    "title": "CSP Allows data: URIs in Scripts",
+    "category": "headers",
+    "severity": "HIGH",
+    "description": "CSP script-src allows data: URIs.",
+    "evidence": "CSP script-src includes data: source.",
+    "riskImpact": "data: URIs can contain executable JavaScript, bypassing CSP.",
+    "explanation": "Allowing data: in script-src enables XSS via data:text/html payloads.",
+    "fixSteps": ["Remove data: from script-src directive."],
+    "codeExamples": []
+  },
+  {
+    "id": "csp-no-default-src",
+    "type": "combined",
+    "title": "CSP Missing default-src Fallback",
+    "category": "headers",
+    "severity": "MEDIUM",
+    "description": "CSP has no default-src directive.",
+    "evidence": "CSP lacks default-src fallback.",
+    "riskImpact": "Undeclared resource types are completely unrestricted.",
+    "explanation": "default-src acts as a fallback for all unspecified directives.",
+    "fixSteps": ["Add default-src 'self' as a baseline to your CSP."],
+    "codeExamples": []
+  },
+  {
+    "id": "cors-null-origin-allowed",
+    "type": "combined",
+    "title": "CORS Allows null Origin",
+    "category": "headers",
+    "severity": "HIGH",
+    "description": "Access-Control-Allow-Origin set to null.",
+    "evidence": "ACAO: null detected.",
+    "riskImpact": "Sandboxed iframes and data: URLs use null origin.",
+    "explanation": "Allowing null origin enables CORS bypass from sandboxed contexts.",
+    "fixSteps": ["Never allow null as a CORS origin."],
+    "codeExamples": []
+  },
+  {
+    "id": "referrer-policy-unsafe",
+    "type": "header-present",
+    "title": "Unsafe Referrer-Policy Value",
+    "category": "headers",
+    "severity": "MEDIUM",
+    "description": "Referrer-Policy uses a value that leaks full URLs.",
+    "evidence": "Unsafe referrer policy value detected.",
+    "riskImpact": "Full URLs including query params leaked to third parties.",
+    "explanation": "unsafe-url and no-referrer-when-downgrade send full referrer to all destinations.",
+    "fixSteps": ["Use strict-origin-when-cross-origin or no-referrer."],
+    "codeExamples": []
+  },
+  {
+    "id": "x-xss-protection-disabled",
+    "type": "header-present",
+    "title": "X-XSS-Protection Explicitly Disabled",
+    "category": "headers",
+    "severity": "LOW",
+    "description": "X-XSS-Protection set to 0.",
+    "evidence": "X-XSS-Protection: 0 detected.",
+    "riskImpact": "While deprecated, explicitly disabling XSS filter removes a defense layer in older browsers.",
+    "explanation": "Setting X-XSS-Protection to 0 turns off the built-in XSS auditor.",
+    "fixSteps": ["Remove the header entirely or set to 1; mode=block."],
+    "codeExamples": []
+  },
+  {
+    "id": "csp-unsafe-hashes",
+    "type": "header-value",
+    "title": "CSP Uses unsafe-hashes",
+    "category": "headers",
+    "severity": "MEDIUM",
+    "description": "CSP policy includes unsafe-hashes directive.",
+    "evidence": "unsafe-hashes in CSP.",
+    "riskImpact": "Allows inline event handlers which can be exploited for XSS.",
+    "explanation": "unsafe-hashes enables specific inline handlers but weakens CSP.",
+    "fixSteps": ["Migrate inline handlers to external scripts with nonces."],
+    "codeExamples": []
+  },
+  {
+    "id": "coep-header-missing",
+    "type": "header-missing",
+    "title": "Missing Cross-Origin-Embedder-Policy",
+    "category": "headers",
+    "severity": "LOW",
+    "description": "COEP header not set.",
+    "evidence": "COEP header missing.",
+    "riskImpact": "Cannot use SharedArrayBuffer, may affect isolation.",
+    "explanation": "COEP helps with cross-origin isolation.",
+    "fixSteps": ["Add Cross-Origin-Embedder-Policy: require-corp."],
+    "codeExamples": []
+  },
+  {
+    "id": "csp-frame-src-missing",
+    "type": "combined",
+    "title": "CSP Missing frame-src Directive",
+    "category": "headers",
+    "severity": "LOW",
+    "description": "CSP lacks frame-src directive for iframe sources.",
+    "evidence": "CSP without frame-src.",
+    "riskImpact": "Any content can be loaded in iframes.",
+    "explanation": "frame-src controls which origins can be loaded in frames.",
+    "fixSteps": ["Add frame-src 'self' or 'none' to CSP."],
+    "codeExamples": []
+  },
+  {
+    "id": "csp-object-src-unsafe",
+    "type": "combined",
+    "title": "CSP Allows Object/Embed Sources",
+    "category": "headers",
+    "severity": "MEDIUM",
+    "description": "CSP allows plugins via object-src.",
+    "evidence": "object-src not set to none.",
+    "riskImpact": "Flash and other plugins can be exploited.",
+    "explanation": "object-src should be 'none' unless plugins are required.",
+    "fixSteps": ["Set object-src 'none' in CSP."],
+    "codeExamples": []
+  },
+  {
+    "id": "csp-script-src-self-only",
+    "type": "combined",
+    "title": "CSP script-src Too Restrictive",
+    "category": "headers",
+    "severity": "INFO",
+    "description": "CSP script-src only allows 'self'.",
+    "evidence": "Restrictive script-src.",
+    "riskImpact": "May break functionality if external scripts needed.",
+    "explanation": "Very restrictive CSP may require code changes.",
+    "fixSteps": ["Verify site functions correctly with this CSP."],
+    "codeExamples": []
+  },
+  {
+    "id": "csp-upgrade-insecure-missing",
+    "type": "combined",
+    "title": "CSP Missing upgrade-insecure-requests",
+    "category": "headers",
+    "severity": "LOW",
+    "description": "CSP lacks upgrade-insecure-requests directive.",
+    "evidence": "No upgrade-insecure-requests.",
+    "riskImpact": "HTTP resources not automatically upgraded to HTTPS.",
+    "explanation": "This directive upgrades HTTP requests to HTTPS.",
+    "fixSteps": ["Add upgrade-insecure-requests to CSP."],
+    "codeExamples": []
+  },
+  {
+    "id": "csp-block-all-mixed-content",
+    "type": "combined",
+    "title": "CSP Should Block Mixed Content",
+    "category": "headers",
+    "severity": "LOW",
+    "description": "CSP lacks block-all-mixed-content directive.",
+    "evidence": "Mixed content not blocked by CSP.",
+    "riskImpact": "HTTP resources may still load on HTTPS pages.",
+    "explanation": "This directive blocks all mixed content.",
+    "fixSteps": ["Add block-all-mixed-content to CSP."],
+    "codeExamples": []
+  },
+  {
+    "id": "cors-credentials-with-wildcard",
+    "type": "combined",
+    "title": "CORS Credentials with Wildcard Origin",
+    "category": "headers",
+    "severity": "CRITICAL",
+    "description": "CORS allows credentials with wildcard origin.",
+    "evidence": "ACAO: * with credentials.",
+    "riskImpact": "Browsers block this, but misconfiguration indicates issues.",
+    "explanation": "Credentials cannot be used with wildcard origins.",
+    "fixSteps": ["Specify exact origins when using credentials."],
+    "codeExamples": []
+  },
+  {
+    "id": "cors-methods-too-permissive",
+    "type": "header-present",
+    "title": "CORS Allows All Methods",
+    "category": "headers",
+    "severity": "MEDIUM",
+    "description": "Access-Control-Allow-Methods is too permissive.",
+    "evidence": "Broad CORS methods allowed.",
+    "riskImpact": "PUT, DELETE, PATCH may be unintentionally exposed.",
+    "explanation": "Only allow methods your API actually uses.",
+    "fixSteps": ["Restrict to GET, POST, and specific needed methods."],
+    "codeExamples": []
+  },
+  {
+    "id": "frame-busting-header-only",
+    "type": "combined",
+    "title": "Clickjacking Protection Header-Only",
+    "category": "headers",
+    "severity": "LOW",
+    "description": "Clickjacking protection via header but no JS backup.",
+    "evidence": "Header-only frame protection.",
+    "riskImpact": "Older browsers may not support headers.",
+    "explanation": "JavaScript frame busting provides backup.",
+    "fixSteps": ["Add JS frame busting for legacy browser support."],
+    "codeExamples": []
+  },
+  {
+    "id": "x-frame-options-invalid",
+    "type": "header-present",
+    "title": "Invalid X-Frame-Options Value",
+    "category": "headers",
+    "severity": "MEDIUM",
+    "description": "X-Frame-Options has invalid value.",
+    "evidence": "Invalid XFO value.",
+    "riskImpact": "Clickjacking protection may not work.",
+    "explanation": "Only DENY, SAMEORIGIN, ALLOW-FROM are valid.",
+    "fixSteps": ["Use DENY or SAMEORIGIN for X-Frame-Options."],
+    "codeExamples": []
+  },
+  {
+    "id": "cache-control-no-store-missing",
+    "type": "combined",
+    "title": "Sensitive Page Missing no-store",
+    "category": "headers",
+    "severity": "MEDIUM",
+    "description": "Page with credentials lacks Cache-Control: no-store.",
+    "evidence": "Missing no-store on sensitive page.",
+    "riskImpact": "Sensitive data may be cached.",
+    "explanation": "no-store prevents all caching.",
+    "fixSteps": ["Add Cache-Control: no-store to sensitive pages."],
+    "codeExamples": []
+  },
+  {
+    "id": "pragma-no-cache-legacy",
+    "type": "header-present",
+    "title": "Legacy Pragma Header Used",
+    "category": "headers",
+    "severity": "INFO",
+    "description": "Pragma: no-cache header present.",
+    "evidence": "Pragma header used.",
+    "riskImpact": "Legacy header, HTTP/1.0 only.",
+    "explanation": "Cache-Control is preferred for HTTP/1.1+.",
+    "fixSteps": ["Use Cache-Control instead of Pragma."],
+    "codeExamples": []
+  },
+  {
+    "id": "expires-past",
+    "type": "header-present",
+    "title": "Expires Header Set to Past",
+    "category": "headers",
+    "severity": "INFO",
+    "description": "Expires header set to date in the past.",
+    "evidence": "Past Expires date.",
+    "riskImpact": "Signals no caching to legacy proxies.",
+    "explanation": "Past expiry prevents legacy caching.",
+    "fixSteps": ["Use Cache-Control for modern caching control."],
+    "codeExamples": []
+  },
+  {
+    "id": "accept-ch-missing",
+    "type": "header",
+    "title": "Accept-CH Client Hints Header Missing",
+    "category": "headers",
+    "severity": "low",
+    "description": "Accept-CH lets servers request Sec-CH-UA / Sec-CH-UA-* hints from the browser to vary responses by client.",
+    "evidence": "Async / body / header check for accept-ch-missing.",
+    "riskImpact": "Add Accept-CH: Sec-CH-UA, Sec-CH-UA-Mobile, Sec-CH-UA-Platform",
+    "explanation": "Accept-CH lets servers request Sec-CH-UA / Sec-CH-UA-* hints from the browser to vary responses by client.",
+    "fixSteps": [
+      "Add Accept-CH: Sec-CH-UA, Sec-CH-UA-Mobile, Sec-CH-UA-Platform"
+    ],
+    "codeExamples": [],
+    "references": [
+      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Accept-CH"
+    ]
+  },
+  {
+    "id": "accept-ch-lifetime-missing",
+    "type": "header",
+    "title": "Accept-CH-Lifetime Missing",
+    "category": "headers",
+    "severity": "info",
+    "description": "Accept-CH-Lifetime tells the browser how long to remember the Accept-CH policy.",
+    "evidence": "Async / body / header check for accept-ch-lifetime-missing.",
+    "riskImpact": "Add Accept-CH-Lifetime: 86400 (1 day) or longer",
+    "explanation": "Accept-CH-Lifetime tells the browser how long to remember the Accept-CH policy.",
+    "fixSteps": ["Add Accept-CH-Lifetime: 86400 (1 day) or longer"],
+    "codeExamples": [],
+    "references": [
+      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Accept-CH-Lifetime"
+    ]
+  },
+  {
+    "id": "critical-ch-missing",
+    "type": "header",
+    "title": "Critical-CH Missing",
+    "category": "headers",
+    "severity": "info",
+    "description": "Critical-CH lets servers require client hints to be present before the response is rendered.",
+    "evidence": "Async / body / header check for critical-ch-missing.",
+    "riskImpact": "Add Critical-CH: Sec-CH-UA, Sec-CH-UA-Mobile",
+    "explanation": "Critical-CH lets servers require client hints to be present before the response is rendered.",
+    "fixSteps": ["Add Critical-CH: Sec-CH-UA, Sec-CH-UA-Mobile"],
+    "codeExamples": [],
+    "references": []
+  },
+  {
+    "id": "cross-origin-opener-policy-report-only-missing",
+    "type": "header",
+    "title": "COOP-Report-Only Header Missing",
+    "category": "headers",
+    "severity": "info",
+    "description": "COOP-Report-Only lets you preview COOP changes without breaking browsers that lack support.",
+    "evidence": "Async / body / header check for cross-origin-opener-policy-report-only-missing.",
+    "riskImpact": "Add Cross-Origin-Opener-Policy-Report-Only to monitor before enforcing",
+    "explanation": "COOP-Report-Only lets you preview COOP changes without breaking browsers that lack support.",
+    "fixSteps": [
+      "Add Cross-Origin-Opener-Policy-Report-Only to monitor before enforcing"
+    ],
+    "codeExamples": [],
+    "references": []
+  },
+  {
+    "id": "cross-origin-resource-policy-report-only-missing",
+    "type": "header",
+    "title": "CORP-Report-Only Missing",
+    "category": "headers",
+    "severity": "info",
+    "description": "CORP-Report-Only lets you monitor CORP violations without breaking the site.",
+    "evidence": "Async / body / header check for cross-origin-resource-policy-report-only-missing.",
+    "riskImpact": "Add Cross-Origin-Resource-Policy-Report-Only: same-site",
+    "explanation": "CORP-Report-Only lets you monitor CORP violations without breaking the site.",
+    "fixSteps": ["Add Cross-Origin-Resource-Policy-Report-Only: same-site"],
+    "codeExamples": [],
+    "references": []
+  },
+  {
+    "id": "origin-isolation-header-missing",
+    "type": "header",
+    "title": "Origin-Isolation Header Missing (OPUS)",
+    "category": "headers",
+    "severity": "info",
+    "description": "Origin-Isolation is a Chrome-Origin-Trial that opts into stricter process-per-origin isolation.",
+    "evidence": "Async / body / header check for origin-isolation-header-missing.",
+    "riskImpact": "Enable the Origin-Isolation origin trial if you're targeting modern Chrome",
+    "explanation": "Origin-Isolation is a Chrome-Origin-Trial that opts into stricter process-per-origin isolation.",
+    "fixSteps": [
+      "Enable the Origin-Isolation origin trial if you're targeting modern Chrome"
+    ],
+    "codeExamples": [],
+    "references": []
+  },
+  {
+    "id": "early-data-header-missing",
+    "type": "header",
+    "title": "Early-Data Header (0RTT) Not Advertised",
+    "category": "headers",
+    "severity": "info",
+    "description": "Early-Data lets browsers send TLS 1.3 0-RTT requests. Replay protection is the server's responsibility.",
+    "evidence": "Async / body / header check for early-data-header-missing.",
+    "riskImpact": "If supporting 0-RTT, ensure your endpoints are idempotent or use Early-Data: 1 with strict validation",
+    "explanation": "Early-Data lets browsers send TLS 1.3 0-RTT requests. Replay protection is the server's responsibility.",
+    "fixSteps": [
+      "If supporting 0-RTT, ensure your endpoints are idempotent or use Early-Data: 1 with strict validation"
+    ],
+    "codeExamples": [],
+    "references": ["https://datatracker.ietf.org/doc/html/rfc8470"]
+  },
+  {
+    "id": "sec-fetch-version-missing",
+    "type": "header",
+    "title": "Sec-Fetch-* Request Headers Not Echoed",
+    "category": "headers",
+    "severity": "info",
+    "description": "Sec-Fetch-Site / Sec-Fetch-Mode / Sec-Fetch-Dest are sent by modern browsers. Servers can use them to differentiate bots from real users.",
+    "evidence": "Async / body / header check for sec-fetch-version-missing.",
+    "riskImpact": "Consider logging Sec-Fetch-* headers for anomaly detection",
+    "explanation": "Sec-Fetch-Site / Sec-Fetch-Mode / Sec-Fetch-Dest are sent by modern browsers. Servers can use them to differentiate bots from real users.",
+    "fixSteps": ["Consider logging Sec-Fetch-* headers for anomaly detection"],
+    "codeExamples": [],
+    "references": []
+  },
+  {
+    "id": "trigger-header-missing",
+    "type": "header",
+    "title": "Trigger Header Missing",
+    "category": "headers",
+    "severity": "info",
+    "description": "Trigger lets you chain network requests after the main response (CSP reporting, prefetch, etc.).",
+    "evidence": "Async / body / header check for trigger-header-missing.",
+    "riskImpact": "Add Trigger: <your-rule> if you want browser-driven background fetches",
+    "explanation": "Trigger lets you chain network requests after the main response (CSP reporting, prefetch, etc.).",
+    "fixSteps": [
+      "Add Trigger: <your-rule> if you want browser-driven background fetches"
+    ],
+    "codeExamples": [],
+    "references": []
+  },
+  {
+    "id": "link-rel-dns-prefetch-missing",
+    "type": "header",
+    "title": "dns-prefetch Link Header Missing",
+    "category": "headers",
+    "severity": "info",
+    "description": "Link: rel=dns-prefetch hints the browser to resolve external hostnames early.",
+    "evidence": "Async / body / header check for link-rel-dns-prefetch-missing.",
+    "riskImpact": "Add Link: <https://cdn.example.com>; rel=dns-prefetch for known external dependencies",
+    "explanation": "Link: rel=dns-prefetch hints the browser to resolve external hostnames early.",
+    "fixSteps": [
+      "Add Link: <https://cdn.example.com>; rel=dns-prefetch for known external dependencies"
+    ],
+    "codeExamples": [],
+    "references": []
+  },
+  {
+    "id": "link-rel-preconnect-missing",
+    "type": "header",
+    "title": "preconnect Link Header Missing",
+    "category": "headers",
+    "severity": "low",
+    "description": "Link: rel=preconnect opens a TCP+TLS connection to a third party before the resource is requested.",
+    "evidence": "Async / body / header check for link-rel-preconnect-missing.",
+    "riskImpact": "Add Link: <https://cdn.example.com>; rel=preconnect for any third-party above-the-fold resource",
+    "explanation": "Link: rel=preconnect opens a TCP+TLS connection to a third party before the resource is requested.",
+    "fixSteps": [
+      "Add Link: <https://cdn.example.com>; rel=preconnect for any third-party above-the-fold resource"
+    ],
+    "codeExamples": [],
+    "references": []
+  },
+  {
+    "id": "link-rel-preload-missing",
+    "type": "header",
+    "title": "preload Link Header Missing",
+    "category": "headers",
+    "severity": "info",
+    "description": "Link: rel=preload hints the browser to fetch a critical resource early.",
+    "evidence": "Async / body / header check for link-rel-preload-missing.",
+    "riskImpact": "Consider preload for critical CSS / fonts / above-the-fold images",
+    "explanation": "Link: rel=preload hints the browser to fetch a critical resource early.",
+    "fixSteps": [
+      "Consider preload for critical CSS / fonts / above-the-fold images"
+    ],
+    "codeExamples": [],
+    "references": []
+  },
+  {
+    "id": "access-control-allow-credentials-with-wildcard",
+    "type": "header",
+    "title": "CORS Allow-Credentials + Wildcard",
+    "category": "headers",
+    "severity": "high",
+    "description": "ACAO: * combined with ACAC: true is a CORS misconfiguration. The wildcard origin blocks credentials per spec; modern browsers reject the request, but legacy clients may accept.",
+    "evidence": "Async / body / header check for access-control-allow-credentials-with-wildcard.",
+    "riskImpact": "Replace wildcard with an explicit origin allowlist",
+    "explanation": "ACAO: * combined with ACAC: true is a CORS misconfiguration. The wildcard origin blocks credentials per spec; modern browsers reject the request, but legacy clients may accept.",
+    "fixSteps": ["Replace wildcard with an explicit origin allowlist"],
+    "codeExamples": [],
+    "references": [
+      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Access-Control-Allow-Credentials"
+    ]
+  },
+  {
+    "id": "access-control-allow-headers-wildcard",
+    "type": "header",
+    "title": "CORS Allow-Headers Wildcard",
+    "category": "headers",
+    "severity": "medium",
+    "description": "ACA-Headers: * lets any browser send any header. Restrict to the headers you actually use.",
+    "evidence": "Async / body / header check for access-control-allow-headers-wildcard.",
+    "riskImpact": "Replace * with an explicit allowlist",
+    "explanation": "ACA-Headers: * lets any browser send any header. Restrict to the headers you actually use.",
+    "fixSteps": ["Replace * with an explicit allowlist"],
+    "codeExamples": [],
+    "references": []
+  },
+  {
+    "id": "access-control-allow-methods-wildcard",
+    "type": "header",
+    "title": "CORS Allow-Methods Wildcard",
+    "category": "headers",
+    "severity": "medium",
+    "description": "ACA-Methods: * lets any origin call any method. Restrict to the verbs you actually expose.",
+    "evidence": "Async / body / header check for access-control-allow-methods-wildcard.",
+    "riskImpact": "Replace * with an explicit allowlist (e.g. GET, POST)",
+    "explanation": "ACA-Methods: * lets any origin call any method. Restrict to the verbs you actually expose.",
+    "fixSteps": ["Replace * with an explicit allowlist (e.g. GET, POST)"],
+    "codeExamples": [],
+    "references": []
+  },
+  {
+    "id": "cross-origin-embedder-policy-credentialless-missing",
+    "type": "header",
+    "title": "COEP credentialless Missing",
+    "category": "headers",
+    "severity": "info",
+    "description": "COEP: credentialless enables cross-origin isolation without forcing CORP on every embedded resource.",
+    "evidence": "Async / body / header check for cross-origin-embedder-policy-credentialless-missing.",
+    "riskImpact": "Consider Cross-Origin-Embedder-Policy: credentialless",
+    "explanation": "COEP: credentialless enables cross-origin isolation without forcing CORP on every embedded resource.",
+    "fixSteps": ["Consider Cross-Origin-Embedder-Policy: credentialless"],
+    "codeExamples": [],
+    "references": [
+      "https://developer.chrome.com/blog/coep-credentialless-origin-trial"
+    ]
+  },
+  {
+    "id": "cross-origin-opener-policy-same-origin-allow-popups",
+    "type": "header",
+    "title": "COOP unsafe-popups",
+    "category": "headers",
+    "severity": "low",
+    "description": "COOP: same-origin-allow-popups allows popups opened by your page to share a browsing context group.",
+    "evidence": "Async / body / header check for cross-origin-opener-policy-same-origin-allow-popups.",
+    "riskImpact": "Use COOP: same-origin for stricter isolation unless you need popup window references",
+    "explanation": "COOP: same-origin-allow-popups allows popups opened by your page to share a browsing context group.",
+    "fixSteps": [
+      "Use COOP: same-origin for stricter isolation unless you need popup window references"
+    ],
+    "codeExamples": [],
+    "references": []
+  },
+  {
+    "id": "referrer-policy-no-referrer-strict-origin-when-cross-origin",
+    "type": "header",
+    "title": "Referrer-Policy unsafe fallback",
+    "category": "headers",
+    "severity": "low",
+    "description": "Referrer-Policy: no-referrer-when-downgrade leaks full URL to HTTPS→HTTP downgrades.",
+    "evidence": "Async / body / header check for referrer-policy-no-referrer-strict-origin-when-cross-origin.",
+    "riskImpact": "Upgrade to strict-origin-when-cross-origin or stricter",
+    "explanation": "Referrer-Policy: no-referrer-when-downgrade leaks full URL to HTTPS→HTTP downgrades.",
+    "fixSteps": ["Upgrade to strict-origin-when-cross-origin or stricter"],
+    "codeExamples": [],
+    "references": []
+  },
+  {
+    "id": "strict-transport-security-include-subdomains",
+    "type": "header",
+    "title": "HSTS includeSubDomains Missing",
+    "category": "headers",
+    "severity": "high",
+    "description": "HSTS without includeSubDomains leaves subdomain takeover as a downgrade path.",
+    "evidence": "Async / body / header check for strict-transport-security-include-subdomains.",
+    "riskImpact": "Add includeSubDomains and preload once every subdomain is HTTPS",
+    "explanation": "HSTS without includeSubDomains leaves subdomain takeover as a downgrade path.",
+    "fixSteps": [
+      "Add includeSubDomains and preload once every subdomain is HTTPS"
+    ],
+    "codeExamples": [],
+    "references": []
+  },
+  {
+    "id": "x-content-type-options-not-nosniff",
+    "type": "header",
+    "title": "X-Content-Type-Options not 'nosniff'",
+    "category": "headers",
+    "severity": "medium",
+    "description": "X-Content-Type-Options must be exactly 'nosniff' to block MIME sniffing. Any other value is ignored.",
+    "evidence": "Async / body / header check for x-content-type-options-not-nosniff.",
+    "riskImpact": "Set X-Content-Type-Options: nosniff",
+    "explanation": "X-Content-Type-Options must be exactly 'nosniff' to block MIME sniffing. Any other value is ignored.",
+    "fixSteps": ["Set X-Content-Type-Options: nosniff"],
+    "codeExamples": [],
+    "references": []
+  },
+  {
+    "id": "x-frame-options-allowall",
+    "type": "header",
+    "title": "X-Frame-Options: ALLOWALL",
+    "category": "headers",
+    "severity": "high",
+    "description": "ALLOWALL (Chromium extension) explicitly disables framing protection. Use CSP frame-ancestors instead.",
+    "evidence": "Async / body / header check for x-frame-options-allowall.",
+    "riskImpact": "Remove X-Frame-Options or set DENY/SAMEORIGIN; rely on CSP frame-ancestors for modern browsers",
+    "explanation": "ALLOWALL (Chromium extension) explicitly disables framing protection. Use CSP frame-ancestors instead.",
+    "fixSteps": [
+      "Remove X-Frame-Options or set DENY/SAMEORIGIN; rely on CSP frame-ancestors for modern browsers"
+    ],
+    "codeExamples": [],
+    "references": []
+  },
+  {
+    "id": "csp-incompatible-directives",
+    "type": "header",
+    "title": "CSP contains unsupported / legacy directives",
+    "category": "headers",
+    "severity": "low",
+    "description": "CSP allow-http (Chrome 41-65), reflected-xss (removed), and others are ignored.",
+    "evidence": "Async / body / header check for csp-incompatible-directives.",
+    "riskImpact": "Remove legacy directives like allow-http and reflected-xss",
+    "explanation": "CSP allow-http (Chrome 41-65), reflected-xss (removed), and others are ignored.",
+    "fixSteps": ["Remove legacy directives like allow-http and reflected-xss"],
+    "codeExamples": [],
+    "references": []
+  },
+  {
+    "id": "csp-too-long",
+    "type": "header",
+    "title": "CSP Header > 4KB",
+    "category": "headers",
+    "severity": "low",
+    "description": "CSP headers longer than ~4KB are silently dropped by some browsers.",
+    "evidence": "Async / body / header check for csp-too-long.",
+    "riskImpact": "Split into multiple CSPs via report-to, or use nonces instead of inline source lists",
+    "explanation": "CSP headers longer than ~4KB are silently dropped by some browsers.",
+    "fixSteps": [
+      "Split into multiple CSPs via report-to, or use nonces instead of inline source lists"
+    ],
+    "codeExamples": [],
+    "references": []
+  },
+  {
+    "id": "permissions-policy-geolocation-blocked",
+    "type": "header",
+    "title": "Permissions-Policy geolocation allowed",
+    "category": "headers",
+    "severity": "info",
+    "description": "Geolocation should default to 'self' unless your app needs it.",
+    "evidence": "Async / body / header check for permissions-policy-geolocation-blocked.",
+    "riskImpact": "Set Permissions-Policy: geolocation=(self) or geolocation=() to block entirely",
+    "explanation": "Geolocation should default to 'self' unless your app needs it.",
+    "fixSteps": [
+      "Set Permissions-Policy: geolocation=(self) or geolocation=() to block entirely"
+    ],
+    "codeExamples": [],
+    "references": []
+  },
+  {
+    "id": "permissions-policy-camera-blocked",
+    "type": "header",
+    "title": "Permissions-Policy camera allowed",
+    "category": "headers",
+    "severity": "info",
+    "description": "Camera should default to 'self' or be blocked.",
+    "evidence": "Async / body / header check for permissions-policy-camera-blocked.",
+    "riskImpact": "Set Permissions-Policy: camera=() to block entirely",
+    "explanation": "Camera should default to 'self' or be blocked.",
+    "fixSteps": ["Set Permissions-Policy: camera=() to block entirely"],
+    "codeExamples": [],
+    "references": []
+  },
+  {
+    "id": "permissions-policy-microphone-blocked",
+    "type": "header",
+    "title": "Permissions-Policy microphone allowed",
+    "category": "headers",
+    "severity": "info",
+    "description": "Microphone should default to 'self' or be blocked.",
+    "evidence": "Async / body / header check for permissions-policy-microphone-blocked.",
+    "riskImpact": "Set Permissions-Policy: microphone=() to block entirely",
+    "explanation": "Microphone should default to 'self' or be blocked.",
+    "fixSteps": ["Set Permissions-Policy: microphone=() to block entirely"],
+    "codeExamples": [],
+    "references": []
+  },
+  {
+    "id": "permissions-policy-payment-blocked",
+    "type": "header",
+    "title": "Permissions-Policy payment allowed",
+    "category": "headers",
+    "severity": "info",
+    "description": "Payment Request API should default to 'self'.",
+    "evidence": "Async / body / header check for permissions-policy-payment-blocked.",
+    "riskImpact": "Set Permissions-Policy: payment=(self) to scope to your origin",
+    "explanation": "Payment Request API should default to 'self'.",
+    "fixSteps": [
+      "Set Permissions-Policy: payment=(self) to scope to your origin"
+    ],
+    "codeExamples": [],
+    "references": []
+  },
+  {
+    "id": "permissions-policy-usb-blocked",
+    "type": "header",
+    "title": "Permissions-Policy USB allowed",
+    "category": "headers",
+    "severity": "info",
+    "description": "WebUSB should default to 'self'.",
+    "evidence": "Async / body / header check for permissions-policy-usb-blocked.",
+    "riskImpact": "Set Permissions-Policy: usb=(self)",
+    "explanation": "WebUSB should default to 'self'.",
+    "fixSteps": ["Set Permissions-Policy: usb=(self)"],
+    "codeExamples": [],
+    "references": []
+  },
+  {
+    "id": "permissions-policy-bluetooth-blocked",
+    "type": "header",
+    "title": "Permissions-Policy bluetooth allowed",
+    "category": "headers",
+    "severity": "info",
+    "description": "Web Bluetooth should default to 'self'.",
+    "evidence": "Async / body / header check for permissions-policy-bluetooth-blocked.",
+    "riskImpact": "Set Permissions-Policy: bluetooth=(self)",
+    "explanation": "Web Bluetooth should default to 'self'.",
+    "fixSteps": ["Set Permissions-Policy: bluetooth=(self)"],
+    "codeExamples": [],
+    "references": []
+  },
+  {
+    "id": "permissions-policy-serial-blocked",
+    "type": "header",
+    "title": "Permissions-Policy serial allowed",
+    "category": "headers",
+    "severity": "info",
+    "description": "Web Serial should default to 'self'.",
+    "evidence": "Async / body / header check for permissions-policy-serial-blocked.",
+    "riskImpact": "Set Permissions-Policy: serial=(self)",
+    "explanation": "Web Serial should default to 'self'.",
+    "fixSteps": ["Set Permissions-Policy: serial=(self)"],
+    "codeExamples": [],
+    "references": []
+  },
+  {
+    "id": "permissions-policy-screen-wake-lock-blocked",
+    "type": "header",
+    "title": "Permissions-Policy wake-lock allowed",
+    "category": "headers",
+    "severity": "info",
+    "description": "Wake Lock should default to 'self'.",
+    "evidence": "Async / body / header check for permissions-policy-screen-wake-lock-blocked.",
+    "riskImpact": "Set Permissions-Policy: screen-wake-lock=(self)",
+    "explanation": "Wake Lock should default to 'self'.",
+    "fixSteps": ["Set Permissions-Policy: screen-wake-lock=(self)"],
+    "codeExamples": [],
+    "references": []
+  },
+  {
+    "id": "permissions-policy-publickey-credentials-get-blocked",
+    "type": "header",
+    "title": "Permissions-Policy publickey-credentials-get allowed",
+    "category": "headers",
+    "severity": "info",
+    "description": "Passkey / WebAuthn should default to 'self'.",
+    "evidence": "Async / body / header check for permissions-policy-publickey-credentials-get-blocked.",
+    "riskImpact": "Set Permissions-Policy: publickey-credentials-get=(self)",
+    "explanation": "Passkey / WebAuthn should default to 'self'.",
+    "fixSteps": ["Set Permissions-Policy: publickey-credentials-get=(self)"],
+    "codeExamples": [],
+    "references": []
+  },
+  {
+    "id": "permissions-policy-unload-blocked",
+    "type": "header",
+    "title": "Permissions-Policy unload allowed",
+    "category": "headers",
+    "severity": "info",
+    "description": "Permissions-Policy: unload=() is recommended to prevent third parties from intercepting the page-unload event.",
+    "evidence": "Async / body / header check for permissions-policy-unload-blocked.",
+    "riskImpact": "Set Permissions-Policy: unload=()",
+    "explanation": "Permissions-Policy: unload=() is recommended to prevent third parties from intercepting the page-unload event.",
+    "fixSteps": ["Set Permissions-Policy: unload=()"],
+    "codeExamples": [],
+    "references": []
+  },
+  {
+    "id": "permissions-policy-clipboard-read-blocked",
+    "type": "header",
+    "title": "Permissions-Policy clipboard-read allowed",
+    "category": "headers",
+    "severity": "info",
+    "description": "Permissions-Policy does not restrict the clipboard-read feature.",
+    "evidence": "Async / body / header check for permissions-policy-clipboard-read-blocked.",
+    "riskImpact": "Set Permissions-Policy: clipboard-read=() to fully block clipboard reading",
+    "explanation": "Permissions-Policy does not restrict the clipboard-read feature.",
+    "fixSteps": [
+      "Set Permissions-Policy: clipboard-read=() to fully block clipboard reading"
+    ],
+    "codeExamples": [],
+    "references": [
+      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Permissions-Policy/clipboard-read"
+    ]
+  },
+  {
+    "id": "permissions-policy-clipboard-write-blocked",
+    "type": "header",
+    "title": "Permissions-Policy clipboard-write allowed",
+    "category": "headers",
+    "severity": "info",
+    "description": "Permissions-Policy does not restrict the clipboard-write feature.",
+    "evidence": "Async / body / header check for permissions-policy-clipboard-write-blocked.",
+    "riskImpact": "Set Permissions-Policy: clipboard-write=(self) to scope clipboard write to your origin",
+    "explanation": "Permissions-Policy does not restrict the clipboard-write feature.",
+    "fixSteps": [
+      "Set Permissions-Policy: clipboard-write=(self) to scope clipboard write to your origin"
+    ],
+    "codeExamples": [],
+    "references": [
+      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Permissions-Policy/clipboard-write"
+    ]
+  },
+  {
+    "id": "permissions-policy-accelerometer-blocked",
+    "type": "header",
+    "title": "Permissions-Policy accelerometer allowed",
+    "category": "headers",
+    "severity": "info",
+    "description": "Permissions-Policy does not restrict the accelerometer sensor.",
+    "evidence": "Async / body / header check for permissions-policy-accelerometer-blocked.",
+    "riskImpact": "Set Permissions-Policy: accelerometer=() to block device motion sensors",
+    "explanation": "Permissions-Policy does not restrict the accelerometer sensor.",
+    "fixSteps": [
+      "Set Permissions-Policy: accelerometer=() to block device motion sensors"
+    ],
+    "codeExamples": [],
+    "references": [
+      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Permissions-Policy/accelerometer"
+    ]
+  },
+  {
+    "id": "permissions-policy-gyroscope-blocked",
+    "type": "header",
+    "title": "Permissions-Policy gyroscope allowed",
+    "category": "headers",
+    "severity": "info",
+    "description": "Permissions-Policy does not restrict the gyroscope sensor.",
+    "evidence": "Async / body / header check for permissions-policy-gyroscope-blocked.",
+    "riskImpact": "Set Permissions-Policy: gyroscope=() to block orientation sensors",
+    "explanation": "Permissions-Policy does not restrict the gyroscope sensor.",
+    "fixSteps": [
+      "Set Permissions-Policy: gyroscope=() to block orientation sensors"
+    ],
+    "codeExamples": [],
+    "references": [
+      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Permissions-Policy/gyroscope"
+    ]
+  },
+  {
+    "id": "permissions-policy-magnetometer-blocked",
+    "type": "header",
+    "title": "Permissions-Policy magnetometer allowed",
+    "category": "headers",
+    "severity": "info",
+    "description": "Permissions-Policy does not restrict the magnetometer sensor.",
+    "evidence": "Async / body / header check for permissions-policy-magnetometer-blocked.",
+    "riskImpact": "Set Permissions-Policy: magnetometer=() to block compass sensors",
+    "explanation": "Permissions-Policy does not restrict the magnetometer sensor.",
+    "fixSteps": [
+      "Set Permissions-Policy: magnetometer=() to block compass sensors"
+    ],
+    "codeExamples": [],
+    "references": [
+      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Permissions-Policy/magnetometer"
+    ]
+  },
+  {
+    "id": "permissions-policy-ambient-light-sensor-blocked",
+    "type": "header",
+    "title": "Permissions-Policy ambient-light-sensor allowed",
+    "category": "headers",
+    "severity": "info",
+    "description": "Permissions-Policy does not restrict the ambient-light-sensor feature.",
+    "evidence": "Async / body / header check for permissions-policy-ambient-light-sensor-blocked.",
+    "riskImpact": "Set Permissions-Policy: ambient-light-sensor=() to block ambient light sensors",
+    "explanation": "Permissions-Policy does not restrict the ambient-light-sensor feature.",
+    "fixSteps": [
+      "Set Permissions-Policy: ambient-light-sensor=() to block ambient light sensors"
+    ],
+    "codeExamples": [],
+    "references": [
+      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Permissions-Policy/ambient-light-sensor"
+    ]
+  },
+  {
+    "id": "permissions-policy-display-capture-blocked",
+    "type": "header",
+    "title": "Permissions-Policy display-capture allowed",
+    "category": "headers",
+    "severity": "info",
+    "description": "Permissions-Policy does not restrict display-capture (screen capture).",
+    "evidence": "Async / body / header check for permissions-policy-display-capture-blocked.",
+    "riskImpact": "Set Permissions-Policy: display-capture=() to block screen capture",
+    "explanation": "Permissions-Policy does not restrict display-capture (screen capture).",
+    "fixSteps": [
+      "Set Permissions-Policy: display-capture=() to block screen capture"
+    ],
+    "codeExamples": [],
+    "references": [
+      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Permissions-Policy/display-capture"
+    ]
+  },
+  {
+    "id": "permissions-policy-fullscreen-blocked",
+    "type": "header",
+    "title": "Permissions-Policy fullscreen allowed",
+    "category": "headers",
+    "severity": "info",
+    "description": "Permissions-Policy does not restrict the fullscreen feature.",
+    "evidence": "Async / body / header check for permissions-policy-fullscreen-blocked.",
+    "riskImpact": "Set Permissions-Policy: fullscreen=(self) to scope fullscreen requests to your origin",
+    "explanation": "Permissions-Policy does not restrict the fullscreen feature.",
+    "fixSteps": [
+      "Set Permissions-Policy: fullscreen=(self) to scope fullscreen requests to your origin"
+    ],
+    "codeExamples": [],
+    "references": [
+      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Permissions-Policy/fullscreen"
+    ]
+  },
+  {
+    "id": "permissions-policy-midi-blocked",
+    "type": "header",
+    "title": "Permissions-Policy midi allowed",
+    "category": "headers",
+    "severity": "info",
+    "description": "Permissions-Policy does not restrict Web MIDI access.",
+    "evidence": "Async / body / header check for permissions-policy-midi-blocked.",
+    "riskImpact": "Set Permissions-Policy: midi=() to block MIDI device access",
+    "explanation": "Permissions-Policy does not restrict Web MIDI access.",
+    "fixSteps": ["Set Permissions-Policy: midi=() to block MIDI device access"],
+    "codeExamples": [],
+    "references": [
+      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Permissions-Policy/midi"
+    ]
+  },
+  {
+    "id": "permissions-policy-picture-in-picture-blocked",
+    "type": "header",
+    "title": "Permissions-Policy picture-in-picture allowed",
+    "category": "headers",
+    "severity": "info",
+    "description": "Permissions-Policy does not restrict the picture-in-picture feature.",
+    "evidence": "Async / body / header check for permissions-policy-picture-in-picture-blocked.",
+    "riskImpact": "Set Permissions-Policy: picture-in-picture=(self) to scope PiP to your origin",
+    "explanation": "Permissions-Policy does not restrict the picture-in-picture feature.",
+    "fixSteps": [
+      "Set Permissions-Policy: picture-in-picture=(self) to scope PiP to your origin"
+    ],
+    "codeExamples": [],
+    "references": [
+      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Permissions-Policy/picture-in-picture"
+    ]
+  },
+  {
+    "id": "permissions-policy-storage-access-blocked",
+    "type": "header",
+    "title": "Permissions-Policy storage-access allowed",
+    "category": "headers",
+    "severity": "info",
+    "description": "Permissions-Policy does not restrict the Storage Access API used by third-party iframes.",
+    "evidence": "Async / body / header check for permissions-policy-storage-access-blocked.",
+    "riskImpact": "Set Permissions-Policy: storage-access=() to block third-party storage access requests",
+    "explanation": "Permissions-Policy does not restrict the Storage Access API used by third-party iframes.",
+    "fixSteps": [
+      "Set Permissions-Policy: storage-access=() to block third-party storage access requests"
+    ],
+    "codeExamples": [],
+    "references": [
+      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Permissions-Policy/storage-access"
+    ]
+  },
+  {
+    "id": "permissions-policy-window-management-blocked",
+    "type": "header",
+    "title": "Permissions-Policy window-management allowed",
+    "category": "headers",
+    "severity": "info",
+    "description": "Permissions-Policy does not restrict the Window Management API for multi-screen layouts.",
+    "evidence": "Async / body / header check for permissions-policy-window-management-blocked.",
+    "riskImpact": "Set Permissions-Policy: window-management=() to block window placement APIs",
+    "explanation": "Permissions-Policy does not restrict the Window Management API for multi-screen layouts.",
+    "fixSteps": [
+      "Set Permissions-Policy: window-management=() to block window placement APIs"
+    ],
+    "codeExamples": [],
+    "references": [
+      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Permissions-Policy/window-management"
+    ]
+  },
+  {
+    "id": "speculation-rules-missing",
+    "type": "header",
+    "title": "Speculation-Rules header not used",
+    "category": "headers",
+    "severity": "info",
+    "description": "The Speculation-Rules response header (or <script type=speculationrules>) enables the browser to prerender or prefetch pages for instant navigation, but it is not in use.",
+    "evidence": "Async / body / header check for speculation-rules-missing.",
+    "riskImpact": "Add Speculation-Rules header or <script type=speculationrules> for prerender hints",
+    "explanation": "The Speculation-Rules response header (or <script type=speculationrules>) enables the browser to prerender or prefetch pages for instant navigation, but it is not in use.",
+    "fixSteps": [
+      "Add Speculation-Rules header or <script type=speculationrules> for prerender hints"
+    ],
+    "codeExamples": [],
+    "references": [
+      "https://developer.mozilla.org/en-US/docs/Web/API/Speculation_Rules_API"
+    ]
+  },
+  {
+    "id": "server-timing-sensitive-key-leak",
+    "type": "header",
+    "title": "Server-Timing exposes sensitive key",
+    "category": "headers",
+    "severity": "low",
+    "description": "The Server-Timing response header includes custom keys that may expose internal metrics like db, sql, redis, cache, or query durations.",
+    "evidence": "Async / body / header check for server-timing-sensitive-key-leak.",
+    "riskImpact": "Drop or sanitize Server-Timing entries with sensitive names in production",
+    "explanation": "The Server-Timing response header includes custom keys that may expose internal metrics like db, sql, redis, cache, or query durations.",
+    "fixSteps": [
+      "Drop or sanitize Server-Timing entries with sensitive names in production"
+    ],
+    "codeExamples": [],
+    "references": [
+      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Server-Timing"
+    ]
+  },
+  {
+    "id": "server-timing-no-allow-origin",
+    "type": "header",
+    "title": "Server-Timing without Timing-Allow-Origin",
+    "category": "headers",
+    "severity": "info",
+    "description": "Server-Timing without Timing-Allow-Origin is silently restricted by browsers, but the value still appears server-side in logs.",
+    "evidence": "Async / body / header check for server-timing-no-allow-origin.",
+    "riskImpact": "Either pair with Timing-Allow-Origin for debugging or drop Server-Timing entirely in production",
+    "explanation": "Server-Timing without Timing-Allow-Origin is silently restricted by browsers, but the value still appears server-side in logs.",
+    "fixSteps": [
+      "Either pair with Timing-Allow-Origin for debugging or drop Server-Timing entirely in production"
+    ],
+    "codeExamples": [],
+    "references": []
+  },
+  {
+    "id": "sec-ch-ua-arch-missing",
+    "type": "header",
+    "title": "Sec-CH-UA-Arch client hint not requested",
+    "category": "headers",
+    "severity": "info",
+    "description": "Sec-CH-UA-Arch lets servers see CPU architecture (e.g. arm, x86). Useful for shipping optimized binaries.",
+    "evidence": "Async / body / header check for sec-ch-ua-arch-missing.",
+    "riskImpact": "Add Accept-CH: Sec-CH-UA-Arch if you ship per-arch binaries",
+    "explanation": "Sec-CH-UA-Arch lets servers see CPU architecture (e.g. arm, x86). Useful for shipping optimized binaries.",
+    "fixSteps": ["Add Accept-CH: Sec-CH-UA-Arch if you ship per-arch binaries"],
+    "codeExamples": [],
+    "references": [
+      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Sec-CH-UA-Arch"
+    ]
+  },
+  {
+    "id": "sec-ch-ua-bitness-missing",
+    "type": "header",
+    "title": "Sec-CH-UA-Bitness client hint not requested",
+    "category": "headers",
+    "severity": "info",
+    "description": "Sec-CH-UA-Bitness reports CPU bitness (e.g. 64). Combine with Sec-CH-UA-Arch for binary selection.",
+    "evidence": "Async / body / header check for sec-ch-ua-bitness-missing.",
+    "riskImpact": "Add Accept-CH: Sec-CH-UA-Bitness alongside Sec-CH-UA-Arch if you ship per-arch binaries",
+    "explanation": "Sec-CH-UA-Bitness reports CPU bitness (e.g. 64). Combine with Sec-CH-UA-Arch for binary selection.",
+    "fixSteps": [
+      "Add Accept-CH: Sec-CH-UA-Bitness alongside Sec-CH-UA-Arch if you ship per-arch binaries"
+    ],
+    "codeExamples": [],
+    "references": [
+      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Sec-CH-UA-Bitness"
+    ]
+  },
+  {
+    "id": "sec-ch-ua-model-missing",
+    "type": "header",
+    "title": "Sec-CH-UA-Model client hint not requested",
+    "category": "headers",
+    "severity": "info",
+    "description": "Sec-CH-UA-Model reports the device model (e.g. Pixel 7). Useful for mobile-specific fixes.",
+    "evidence": "Async / body / header check for sec-ch-ua-model-missing.",
+    "riskImpact": "Add Accept-CH: Sec-CH-UA-Model if you ship device-specific workarounds",
+    "explanation": "Sec-CH-UA-Model reports the device model (e.g. Pixel 7). Useful for mobile-specific fixes.",
+    "fixSteps": [
+      "Add Accept-CH: Sec-CH-UA-Model if you ship device-specific workarounds"
+    ],
+    "codeExamples": [],
+    "references": [
+      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Sec-CH-UA-Model"
+    ]
+  },
+  {
+    "id": "sec-ch-ua-platform-version-missing",
+    "type": "header",
+    "title": "Sec-CH-UA-Platform-Version client hint not requested",
+    "category": "headers",
+    "severity": "info",
+    "description": "Sec-CH-UA-Platform-Version reports the OS version (e.g. 15.1). Pairs with Sec-CH-UA-Platform.",
+    "evidence": "Async / body / header check for sec-ch-ua-platform-version-missing.",
+    "riskImpact": "Add Accept-CH: Sec-CH-UA-Platform-Version for OS-version-specific behaviour",
+    "explanation": "Sec-CH-UA-Platform-Version reports the OS version (e.g. 15.1). Pairs with Sec-CH-UA-Platform.",
+    "fixSteps": [
+      "Add Accept-CH: Sec-CH-UA-Platform-Version for OS-version-specific behaviour"
+    ],
+    "codeExamples": [],
+    "references": [
+      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Sec-CH-UA-Platform-Version"
+    ]
+  },
+  {
+    "id": "cookie-host-prefix-attribute-mismatch",
+    "type": "header",
+    "title": "__Host- cookie prefix with wrong attributes",
+    "category": "headers",
+    "severity": "medium",
+    "description": "A cookie using the __Host- prefix must have Secure, Path=/, and no Domain attribute. Otherwise the browser silently rejects it.",
+    "evidence": "Async / body / header check for cookie-host-prefix-attribute-mismatch.",
+    "riskImpact": "Add Secure and Path=/ and remove Domain from any __Host- prefixed cookie",
+    "explanation": "A cookie using the __Host- prefix must have Secure, Path=/, and no Domain attribute. Otherwise the browser silently rejects it.",
+    "fixSteps": [
+      "Add Secure and Path=/ and remove Domain from any __Host- prefixed cookie"
+    ],
+    "codeExamples": [],
+    "references": ["https://developer.mozilla.org/en-US/docs/Web/HTTP/Cookies"]
+  }
+]

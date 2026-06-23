@@ -1,0 +1,379 @@
+[
+  {
+    "id": "dns-resolves",
+    "type": "header",
+    "title": "DNS A/AAAA Records",
+    "category": "dns",
+    "severity": "info",
+    "description": "Async check: resolves A and AAAA records for the target hostname and flags private/loopback addresses that should never appear in DNS for a public target.",
+    "evidence": "Executed via dns/promises.resolve4 and resolve6.",
+    "riskImpact": "Private IPs in public DNS can leak internal infrastructure and indicate takeover risk for dangling records.",
+    "explanation": "DNS resolution is the first step of every scan. If the resolver returns RFC1918 / loopback / link-local addresses for a hostname the user typed, the target isn't publicly reachable and the scan is blocked.",
+    "fixSteps": [
+      "Remove A/AAAA records pointing at internal IPs.",
+      "Audit CNAMEs for dangling-takeover risk (cloudfront, heroku, etc.).",
+      "Use split-horizon DNS only where appropriate."
+    ],
+    "codeExamples": [
+      {
+        "label": "dig",
+        "language": "bash",
+        "code": "dig +short example.com A\tdig +short example.com AAAA"
+      }
+    ]
+  },
+  {
+    "id": "dns-caa-record-missing",
+    "type": "header",
+    "title": "CAA Record Missing",
+    "category": "headers",
+    "severity": "low",
+    "description": "CAA records constrain which CAs can issue certificates for your domain.",
+    "evidence": "Async / body / header check for dns-caa-record-missing.",
+    "riskImpact": "Publish a CAA record: 0 issue 'letsencrypt.org'",
+    "explanation": "CAA records constrain which CAs can issue certificates for your domain.",
+    "fixSteps": ["Publish a CAA record: 0 issue 'letsencrypt.org'"],
+    "codeExamples": [],
+    "references": ["https://tools.ietf.org/html/rfc8659"]
+  },
+  {
+    "id": "dns-ns-record-count",
+    "type": "header",
+    "title": "Less than 2 authoritative nameservers",
+    "category": "headers",
+    "severity": "high",
+    "description": "RFC 1035 requires at least two authoritative nameservers for redundancy.",
+    "evidence": "Async / body / header check for dns-ns-record-count.",
+    "riskImpact": "Add a second NS provider (or two SOA records at different subnets)",
+    "explanation": "RFC 1035 requires at least two authoritative nameservers for redundancy.",
+    "fixSteps": [
+      "Add a second NS provider (or two SOA records at different subnets)"
+    ],
+    "codeExamples": [],
+    "references": []
+  },
+  {
+    "id": "dns-mx-record-missing",
+    "type": "header",
+    "title": "MX Record Missing",
+    "category": "headers",
+    "severity": "medium",
+    "description": "Domains that send mail should have an MX record; missing MX means backscatter or rejected mail.",
+    "evidence": "Async / body / header check for dns-mx-record-missing.",
+    "riskImpact": "Add an MX record if you send mail from this domain",
+    "explanation": "Domains that send mail should have an MX record; missing MX means backscatter or rejected mail.",
+    "fixSteps": ["Add an MX record if you send mail from this domain"],
+    "codeExamples": [],
+    "references": []
+  },
+  {
+    "id": "dns-mx-backup-record",
+    "type": "header",
+    "title": "No backup MX (priority > 20)",
+    "category": "headers",
+    "severity": "low",
+    "description": "Backup MX servers (priority > 20) catch mail when the primary is down.",
+    "evidence": "Async / body / header check for dns-mx-backup-record.",
+    "riskImpact": "Add a backup MX with priority 20 or 30",
+    "explanation": "Backup MX servers (priority > 20) catch mail when the primary is down.",
+    "fixSteps": ["Add a backup MX with priority 20 or 30"],
+    "codeExamples": [],
+    "references": []
+  },
+  {
+    "id": "dns-srv-records-missing",
+    "type": "header",
+    "title": "No SRV records for common services",
+    "category": "headers",
+    "severity": "info",
+    "description": "SRV records publish service endpoints (_autodiscover._tcp, _sip._udp, etc.).",
+    "evidence": "Async / body / header check for dns-srv-records-missing.",
+    "riskImpact": "If you use Exchange / SIP / XMPP, publish the SRV records",
+    "explanation": "SRV records publish service endpoints (_autodiscover._tcp, _sip._udp, etc.).",
+    "fixSteps": ["If you use Exchange / SIP / XMPP, publish the SRV records"],
+    "codeExamples": [],
+    "references": []
+  },
+  {
+    "id": "dns-soa-refresh-high",
+    "type": "header",
+    "title": "SOA refresh > 24h",
+    "category": "headers",
+    "severity": "low",
+    "description": "SOA refresh > 24h slows propagation when you change NS records.",
+    "evidence": "Async / body / header check for dns-soa-refresh-high.",
+    "riskImpact": "Lower refresh to 3600-7200 seconds for faster rollovers",
+    "explanation": "SOA refresh > 24h slows propagation when you change NS records.",
+    "fixSteps": ["Lower refresh to 3600-7200 seconds for faster rollovers"],
+    "codeExamples": [],
+    "references": []
+  },
+  {
+    "id": "dns-tlsa-record-missing",
+    "type": "header",
+    "title": "TLSA (DANE) Record Missing",
+    "category": "headers",
+    "severity": "info",
+    "description": "TLSA records pin the certificate for TLS-over-DNS. Optional but defense-in-depth.",
+    "evidence": "Async / body / header check for dns-tlsa-record-missing.",
+    "riskImpact": "Publish a TLSA record at _443._tcp.yourdomain.com if you want DANE",
+    "explanation": "TLSA records pin the certificate for TLS-over-DNS. Optional but defense-in-depth.",
+    "fixSteps": [
+      "Publish a TLSA record at _443._tcp.yourdomain.com if you want DANE"
+    ],
+    "codeExamples": [],
+    "references": ["https://datatracker.ietf.org/doc/html/rfc6698"]
+  },
+  {
+    "id": "dns-open-dns-resolver",
+    "type": "header",
+    "title": "Authoritative DNS exposed on public IPs",
+    "category": "headers",
+    "severity": "low",
+    "description": "Authoritative nameservers reachable on the public internet can be queried directly, leaking your zone data.",
+    "evidence": "Async / body / header check for dns-open-dns-resolver.",
+    "riskImpact": "Restrict AXFR to internal IPs only",
+    "explanation": "Authoritative nameservers reachable on the public internet can be queried directly, leaking your zone data.",
+    "fixSteps": ["Restrict AXFR to internal IPs only"],
+    "codeExamples": [],
+    "references": []
+  },
+  {
+    "id": "dns-dangling-cname",
+    "type": "header",
+    "title": "Dangling CNAME Record (subdomain takeover risk)",
+    "category": "headers",
+    "severity": "high",
+    "description": "A CNAME pointing to a defunct service (heroku, aws, fastly) lets an attacker register the orphan and serve content on your subdomain.",
+    "evidence": "Async / body / header check for dns-dangling-cname.",
+    "riskImpact": "Audit CNAMEs against the cloud providers you use; remove dangling entries",
+    "explanation": "A CNAME pointing to a defunct service (heroku, aws, fastly) lets an attacker register the orphan and serve content on your subdomain.",
+    "fixSteps": [
+      "Audit CNAMEs against the cloud providers you use; remove dangling entries"
+    ],
+    "codeExamples": [],
+    "references": []
+  },
+  {
+    "id": "dns-zone-transfer-allowed",
+    "type": "header",
+    "title": "DNS Zone Transfer (AXFR) Allowed",
+    "category": "headers",
+    "severity": "high",
+    "description": "AXFR responses leak your entire zone. Restrict to authorized secondaries only.",
+    "evidence": "Async / body / header check for dns-zone-transfer-allowed.",
+    "riskImpact": "Set allow-transfer { <slave-ips>; }; in BIND, or equivalent in your DNS provider",
+    "explanation": "AXFR responses leak your entire zone. Restrict to authorized secondaries only.",
+    "fixSteps": [
+      "Set allow-transfer { <slave-ips>; }; in BIND, or equivalent in your DNS provider"
+    ],
+    "codeExamples": [],
+    "references": []
+  },
+  {
+    "id": "dns-recursion-enabled",
+    "type": "header",
+    "title": "Authoritative DNS Allows Recursion",
+    "category": "headers",
+    "severity": "medium",
+    "description": "Authoritative nameservers shouldn't also be recursive resolvers (open resolver risk).",
+    "evidence": "Async / body / header check for dns-recursion-enabled.",
+    "riskImpact": "Set allow-recursion { none; }; or split authoritative and recursive roles",
+    "explanation": "Authoritative nameservers shouldn't also be recursive resolvers (open resolver risk).",
+    "fixSteps": [
+      "Set allow-recursion { none; }; or split authoritative and recursive roles"
+    ],
+    "codeExamples": [],
+    "references": []
+  },
+  {
+    "id": "dns-nxdomain-hijack-risk",
+    "type": "header",
+    "title": "NXDOMAIN Hijack Risk (ISP NXDOMAIN Replacement)",
+    "category": "headers",
+    "severity": "info",
+    "description": "Some ISPs replace NXDOMAIN responses with ads. DNSSEC + a validating resolver prevents this.",
+    "evidence": "Async / body / header check for dns-nxdomain-hijack-risk.",
+    "riskImpact": "Enable DNSSEC and use a validating resolver (1.1.1.1, 8.8.8.8)",
+    "explanation": "Some ISPs replace NXDOMAIN responses with ads. DNSSEC + a validating resolver prevents this.",
+    "fixSteps": [
+      "Enable DNSSEC and use a validating resolver (1.1.1.1, 8.8.8.8)"
+    ],
+    "codeExamples": [],
+    "references": []
+  },
+  {
+    "id": "dns-naptr-record-present",
+    "type": "header",
+    "title": "NAPTR Records Present",
+    "category": "dns",
+    "severity": "info",
+    "description": "NAPTR (Naming Authority Pointer) records enable ENUM, SIP, and service discovery. Their presence reveals telephony or federation endpoints.",
+    "evidence": "Async / body / header check for dns-naptr-record-present.",
+    "riskImpact": "Discovered NAPTR targets can be probed by attackers for unauthorized federation or toll-fraud attempts.",
+    "explanation": "NAPTR (Naming Authority Pointer) records enable ENUM, SIP, and service discovery. Their presence reveals telephony or federation endpoints.",
+    "fixSteps": [
+      "Confirm NAPTR records are intentional and only point at approved carriers.",
+      "Restrict SIP/ENUM exposure with allowlists on your SBC."
+    ],
+    "codeExamples": [],
+    "references": ["https://datatracker.ietf.org/doc/html/rfc3403"]
+  },
+  {
+    "id": "dns-loc-record-present",
+    "type": "header",
+    "title": "LOC Records Disclose Geographic Location",
+    "category": "dns",
+    "severity": "low",
+    "description": "LOC records publish the geographic coordinates of a host. Public LOC records disclose physical location to anyone querying DNS.",
+    "evidence": "Async / body / header check for dns-loc-record-present.",
+    "riskImpact": "Attackers can use disclosed coordinates to map your infrastructure geography and plan physical or social-engineering attacks.",
+    "explanation": "LOC records publish the geographic coordinates of a host. Public LOC records disclose physical location to anyone querying DNS.",
+    "fixSteps": [
+      "Remove LOC records unless required by a public service.",
+      "If kept, round coordinates to nearest 0.1 degree to reduce precision."
+    ],
+    "codeExamples": [],
+    "references": ["https://datatracker.ietf.org/doc/html/rfc1876"]
+  },
+  {
+    "id": "dns-sshfp-record-missing",
+    "type": "header",
+    "title": "SSHFP Records Missing",
+    "category": "dns",
+    "severity": "info",
+    "description": "SSHFP records publish SSH host-key fingerprints in DNS, enabling DNSSEC-validated TOFU and preventing MITM on SSH.",
+    "evidence": "Async / body / header check for dns-sshfp-record-missing.",
+    "riskImpact": "Without SSHFP + DNSSEC, SSH clients cannot cryptographically verify host identity on first connect.",
+    "explanation": "SSHFP records publish SSH host-key fingerprints in DNS, enabling DNSSEC-validated TOFU and preventing MITM on SSH.",
+    "fixSteps": [
+      "Generate SSHFP records with ssh-keygen -r <hostname>.",
+      "Publish them under <hostname> as SSHFP type 2 (SHA-256).",
+      "Enable DNSSEC and use VerifyHostKeyDNS yes in ssh_config."
+    ],
+    "codeExamples": [],
+    "references": ["https://datatracker.ietf.org/doc/html/rfc4255"]
+  },
+  {
+    "id": "dns-ds-record-missing",
+    "type": "header",
+    "title": "DNSSEC Delegation Signer (DS) Record Missing",
+    "category": "dns",
+    "severity": "medium",
+    "description": "DS records in the parent zone prove the chain of trust for DNSSEC. Missing DS means your signed zone is not validated by resolvers.",
+    "evidence": "Async / body / header check for dns-ds-record-missing.",
+    "riskImpact": "Without DS, resolvers treat your domain as DNSSEC-insecure, defeating the spoofing protection DNSSEC provides.",
+    "explanation": "DS records in the parent zone prove the chain of trust for DNSSEC. Missing DS means your signed zone is not validated by resolvers.",
+    "fixSteps": [
+      "Publish a DS record at the parent zone pointing at your DNSKEY.",
+      "Confirm with dig +short DS <your domain>."
+    ],
+    "codeExamples": [],
+    "references": ["https://datatracker.ietf.org/doc/html/rfc4034"]
+  },
+  {
+    "id": "dns-dnskey-record-missing",
+    "type": "header",
+    "title": "DNSSEC DNSKEY Record Missing",
+    "category": "dns",
+    "severity": "medium",
+    "description": "DNSKEY publishes the public key used to verify RRSIGs. Without it, no resolver can validate signatures for the zone.",
+    "evidence": "Async / body / header check for dns-dnskey-record-missing.",
+    "riskImpact": "Missing DNSKEY means DNSSEC validation cannot proceed past your zone, breaking trust-chain for subdomains.",
+    "explanation": "DNSKEY publishes the public key used to verify RRSIGs. Without it, no resolver can validate signatures for the zone.",
+    "fixSteps": [
+      "Enable DNSSEC at your DNS provider and publish both KSK and ZSK.",
+      "Roll keys per your operator policy (typically annually for KSK)."
+    ],
+    "codeExamples": [],
+    "references": ["https://datatracker.ietf.org/doc/html/rfc4034"]
+  },
+  {
+    "id": "dns-rrsig-record-missing",
+    "type": "header",
+    "title": "DNSSEC RRSIG Record Missing",
+    "category": "dns",
+    "severity": "medium",
+    "description": "RRSIG records carry the cryptographic signature over a RRset. Without RRSIGs, validating resolvers reject your responses as bogus.",
+    "evidence": "Async / body / header check for dns-rrsig-record-missing.",
+    "riskImpact": "Missing RRSIG causes SERVFAIL for DNSSEC-validating resolvers, breaking reachability for security-conscious users.",
+    "explanation": "RRSIG records carry the cryptographic signature over a RRset. Without RRSIGs, validating resolvers reject your responses as bogus.",
+    "fixSteps": [
+      "Re-sign the zone with your DNSSEC-aware authoritative server (BIND, Knot, etc.).",
+      "Verify with dig +dnssec <your domain> and check the ad flag in the response."
+    ],
+    "codeExamples": [],
+    "references": ["https://datatracker.ietf.org/doc/html/rfc4034"]
+  },
+  {
+    "id": "dns-nsec-zone-walking",
+    "type": "header",
+    "title": "NSEC/NSEC3 Zone Walking Enabled",
+    "category": "dns",
+    "severity": "medium",
+    "description": "NSEC records form a linked list of existing names that can be walked to enumerate every name in the zone. NSEC3 with opt-out partially mitigates but still leaks hashed names.",
+    "evidence": "Async / body / header check for dns-nsec-zone-walking.",
+    "riskImpact": "Attackers can enumerate internal hostnames (admin, staging, dev, vpn) you did not intend to publish.",
+    "explanation": "NSEC records form a linked list of existing names that can be walked to enumerate every name in the zone. NSEC3 with opt-out partially mitigates but still leaks hashed names.",
+    "fixSteps": [
+      "Use NSEC3 with opt-out and a strong, randomly rotated salt.",
+      "Consider NSEC5 or aggressive cache-minimum if your server supports it.",
+      "Avoid NSEC for zones that must hide internal names."
+    ],
+    "codeExamples": [],
+    "references": ["https://datatracker.ietf.org/doc/html/rfc5155"]
+  },
+  {
+    "id": "dns-dangling-cname-cdn-paas",
+    "type": "header",
+    "title": "Dangling CNAME (CDN/PaaS Takeover)",
+    "category": "dns",
+    "severity": "high",
+    "description": "CNAMEs pointing at GitHub Pages (github.io), Heroku (herokuapp.com), AWS CloudFront, Azure CDN (azurewebsites.net/azureedge.net), Fastly, or Netlify that no longer resolve let attackers register the orphan and serve content from your subdomain.",
+    "evidence": "Async / body / header check for dns-dangling-cname-cdn-paas.",
+    "riskImpact": "Subdomain takeover via these providers enables phishing, cookie theft, and bypass of CSP/origin controls.",
+    "explanation": "CNAMEs pointing at GitHub Pages (github.io), Heroku (herokuapp.com), AWS CloudFront, Azure CDN (azurewebsites.net/azureedge.net), Fastly, or Netlify that no longer resolve let attackers register the orphan and serve content from your subdomain.",
+    "fixSteps": [
+      "Inventory all CNAMEs targeting GitHub, Heroku, AWS, Azure, Fastly, and Netlify.",
+      "Remove CNAMEs whose backing service no longer exists.",
+      "Use can-i-take-over-xyz to confirm takeover viability per provider."
+    ],
+    "codeExamples": [],
+    "references": ["https://github.com/EdOverflow/can-i-take-over-xyz"]
+  },
+  {
+    "id": "dns-dangling-cname-saas",
+    "type": "header",
+    "title": "Dangling CNAME (SaaS Takeover)",
+    "category": "dns",
+    "severity": "high",
+    "description": "CNAMEs pointing at Zendesk, HelpScout, Intercom, Drift, statuspage.io, pingdom, Pantheon, Acquia, or WP Engine that no longer resolve let attackers claim the namespace on your subdomain.",
+    "evidence": "Async / body / header check for dns-dangling-cname-saas.",
+    "riskImpact": "SaaS subdomain takeover enables phishing and impersonation of support/help-center pages, eroding customer trust.",
+    "explanation": "CNAMEs pointing at Zendesk, HelpScout, Intercom, Drift, statuspage.io, pingdom, Pantheon, Acquia, or WP Engine that no longer resolve let attackers claim the namespace on your subdomain.",
+    "fixSteps": [
+      "Audit all CNAMEs targeting customer-support SaaS providers.",
+      "Remove dangling entries; if the integration is still required, re-register and re-point.",
+      "Monitor for stale CNAMEs with automated tooling (subjack, nuclei, can-i-take-over-xyz)."
+    ],
+    "codeExamples": [],
+    "references": ["https://github.com/EdOverflow/can-i-take-over-xyz"]
+  },
+  {
+    "id": "dns-doh-provider-detected",
+    "type": "header",
+    "title": "DNS-over-HTTPS Provider Detected",
+    "category": "dns",
+    "severity": "info",
+    "description": "DNS-over-HTTPS (DoH) endpoints reachable from your origin (1.1.1.1, 8.8.8.8, 9.9.9.9, dns.quad9.net) indicate upstream resolvers used by your stack and confirm DoH connectivity.",
+    "evidence": "Async / body / header check for dns-doh-provider-detected.",
+    "riskImpact": "Public DoH providers in your DNS path leak query patterns to third parties; document them in your data-flow diagram.",
+    "explanation": "DNS-over-HTTPS (DoH) endpoints reachable from your origin (1.1.1.1, 8.8.8.8, 9.9.9.9, dns.quad9.net) indicate upstream resolvers used by your stack and confirm DoH connectivity.",
+    "fixSteps": [
+      "Document which DoH provider your resolvers use in the security policy.",
+      "For sensitive workloads, run a validating recursive resolver (Unbound, Knot Resolver) and only allow egress to your chosen upstream."
+    ],
+    "codeExamples": [],
+    "references": ["https://datatracker.ietf.org/doc/html/rfc8484"]
+  }
+]

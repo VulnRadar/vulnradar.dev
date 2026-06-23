@@ -1,0 +1,568 @@
+[
+  {
+    "id": "html-comment-leaks",
+    "type": "body-pattern",
+    "title": "HTML Comments Contain Sensitive Keywords",
+    "category": "information-disclosure",
+    "severity": "MEDIUM",
+    "description": "HTML comments containing sensitive keywords (passwords, API keys, TODO notes).",
+    "evidence": "Sensitive keywords found in HTML comments.",
+    "riskImpact": "HTML comments are visible to anyone who views page source.",
+    "explanation": "Developers often leave comments referencing sensitive systems or credentials.",
+    "fixSteps": [
+      "Remove all comments containing sensitive information.",
+      "Use a build step that strips HTML comments.",
+      "Move developer notes to server-side files."
+    ],
+    "codeExamples": [
+      {
+        "label": "Webpack",
+        "language": "javascript",
+        "code": "new TerserPlugin({ terserOptions: { output: { comments: false } }, extractComments: false })"
+      }
+    ]
+  },
+  {
+    "id": "sql-error-exposure",
+    "type": "body-pattern",
+    "title": "SQL Database Error Messages Exposed",
+    "category": "information-disclosure",
+    "severity": "HIGH",
+    "description": "Database error messages visible in the page.",
+    "evidence": "SQL error patterns in page content.",
+    "riskImpact": "SQL errors reveal database type, version, schema details, and query structure.",
+    "explanation": "Exposed SQL errors indicate the application may be vulnerable to SQL injection and is leaking infrastructure details.",
+    "fixSteps": [
+      "Implement proper error handling.",
+      "Never display raw database errors to users.",
+      "Use parameterized queries for all database operations."
+    ],
+    "codeExamples": [
+      {
+        "label": "Parameterized query",
+        "language": "typescript",
+        "code": "// BAD: `SELECT * FROM users WHERE id = ${userId}`\n// GOOD:\nconst result = await db.query('SELECT * FROM users WHERE id = ?', [userId]);"
+      }
+    ]
+  },
+  {
+    "id": "timing-allow-origin-wide",
+    "type": "header",
+    "title": "Timing-Allow-Origin Set to Wildcard",
+    "category": "information-disclosure",
+    "severity": "LOW",
+    "description": "Timing-Allow-Origin header is set to '*', allowing any origin to read detailed timing data.",
+    "evidence": "Timing-Allow-Origin: *",
+    "riskImpact": "Attackers can use high-resolution timing data from the Resource Timing API to infer information about your application's backend, cache behavior, and authentication state.",
+    "explanation": "The Timing-Allow-Origin header controls which origins can read timing data via the Resource Timing API. Setting it to '*' gives all sites access to this information.",
+    "fixSteps": [
+      "Restrict Timing-Allow-Origin to specific trusted origins instead of '*'.",
+      "Remove the header entirely if cross-origin timing data is not needed."
+    ],
+    "codeExamples": []
+  },
+  {
+    "id": "server-header-truncated",
+    "type": "header",
+    "title": "Server header truncated",
+    "category": "headers",
+    "severity": "info",
+    "description": "Server: gunicorn/19.9.0 (truncated) — the truncated string indicates a configured but possibly lying value.",
+    "evidence": "Async / body / header check for server-header-truncated.",
+    "riskImpact": "Validate that your reverse proxy is not echoing real upstream version",
+    "explanation": "Server: gunicorn/19.9.0 (truncated) — the truncated string indicates a configured but possibly lying value.",
+    "fixSteps": [
+      "Validate that your reverse proxy is not echoing real upstream version"
+    ],
+    "codeExamples": [],
+    "references": []
+  },
+  {
+    "id": "php-version-exposed-in-cookie",
+    "type": "header",
+    "title": "PHP session cookie naming exposes runtime",
+    "category": "headers",
+    "severity": "info",
+    "description": "PHPSESSID in cookie name reveals PHP.",
+    "evidence": "Async / body / header check for php-version-exposed-in-cookie.",
+    "riskImpact": "Rename the session cookie to a generic opaque value",
+    "explanation": "PHPSESSID in cookie name reveals PHP.",
+    "fixSteps": ["Rename the session cookie to a generic opaque value"],
+    "codeExamples": [],
+    "references": []
+  },
+  {
+    "id": "rails-version-exposure",
+    "type": "header",
+    "title": "Rails version disclosure via cookies",
+    "category": "headers",
+    "severity": "low",
+    "description": "_<appname>_session cookie exposes the framework.",
+    "evidence": "Async / body / header check for rails-version-exposure.",
+    "riskImpact": "Set a custom session cookie name in config.session_store :key",
+    "explanation": "_<appname>_session cookie exposes the framework.",
+    "fixSteps": [
+      "Set a custom session cookie name in config.session_store :key"
+    ],
+    "codeExamples": [],
+    "references": []
+  },
+  {
+    "id": "django-csrftoken-cookie-exposed",
+    "type": "header",
+    "title": "Django CSRF cookie name reveals framework",
+    "category": "headers",
+    "severity": "info",
+    "description": "csrftoken and django-session cookies disclose the framework.",
+    "evidence": "Async / body / header check for django-csrftoken-cookie-exposed.",
+    "riskImpact": "Override CSRF_COOKIE_NAME and SESSION_COOKIE_NAME in settings",
+    "explanation": "csrftoken and django-session cookies disclose the framework.",
+    "fixSteps": [
+      "Override CSRF_COOKIE_NAME and SESSION_COOKIE_NAME in settings"
+    ],
+    "codeExamples": [],
+    "references": []
+  },
+  {
+    "id": "laravel-session-cookie-exposes",
+    "type": "header",
+    "title": "Laravel session cookie exposes framework",
+    "category": "headers",
+    "severity": "info",
+    "description": "<app>_session or XSRF-TOKEN cookies disclose Laravel.",
+    "evidence": "Async / body / header check for laravel-session-cookie-exposes.",
+    "riskImpact": "Set SESSION_COOKIE and XSRF_COOKIE in config/session.php",
+    "explanation": "<app>_session or XSRF-TOKEN cookies disclose Laravel.",
+    "fixSteps": ["Set SESSION_COOKIE and XSRF_COOKIE in config/session.php"],
+    "codeExamples": [],
+    "references": []
+  },
+  {
+    "id": "express-cookie-exposes",
+    "type": "header",
+    "title": "Express connect.sid cookie exposes framework",
+    "category": "headers",
+    "severity": "info",
+    "description": "connect.sid is the default Express session cookie name.",
+    "evidence": "Async / body / header check for express-cookie-exposes.",
+    "riskImpact": "Pass name: 'sid' (or similar) to express-session",
+    "explanation": "connect.sid is the default Express session cookie name.",
+    "fixSteps": ["Pass name: 'sid' (or similar) to express-session"],
+    "codeExamples": [],
+    "references": []
+  },
+  {
+    "id": "rails-cookie-httponly",
+    "type": "header",
+    "title": "Rails cookie missing HttpOnly",
+    "category": "headers",
+    "severity": "medium",
+    "description": "_<app>_session cookie should be HttpOnly.",
+    "evidence": "Async / body / header check for rails-cookie-httponly.",
+    "riskImpact": "Set config.session_store :httponly => true",
+    "explanation": "_<app>_session cookie should be HttpOnly.",
+    "fixSteps": ["Set config.session_store :httponly => true"],
+    "codeExamples": [],
+    "references": []
+  },
+  {
+    "id": "config-js-leaked",
+    "type": "header",
+    "title": "config.js / settings.js leaked",
+    "category": "headers",
+    "severity": "medium",
+    "description": "Public config.js / settings.js often leaks API keys, environment hints, or feature flags.",
+    "evidence": "Async / body / header check for config-js-leaked.",
+    "riskImpact": "Move secrets out of public config files",
+    "explanation": "Public config.js / settings.js often leaks API keys, environment hints, or feature flags.",
+    "fixSteps": ["Move secrets out of public config files"],
+    "codeExamples": [],
+    "references": []
+  },
+  {
+    "id": "env-js-leaked",
+    "type": "header",
+    "title": "env.js / environment.js exposed",
+    "category": "headers",
+    "severity": "medium",
+    "description": "env.js in /public/ exposes environment-level secrets.",
+    "evidence": "Async / body / header check for env-js-leaked.",
+    "riskImpact": "Never serve env.js from a public path",
+    "explanation": "env.js in /public/ exposes environment-level secrets.",
+    "fixSteps": ["Never serve env.js from a public path"],
+    "codeExamples": [],
+    "references": []
+  },
+  {
+    "id": "sitemap-public",
+    "type": "header",
+    "title": "Sitemap.xml publicly accessible",
+    "category": "headers",
+    "severity": "info",
+    "description": "Sitemap.xml is publicly accessible by design. Make sure it doesn't reference private endpoints.",
+    "evidence": "Async / body / header check for sitemap-public.",
+    "riskImpact": "Audit sitemap.xml for admin / private paths",
+    "explanation": "Sitemap.xml is publicly accessible by design. Make sure it doesn't reference private endpoints.",
+    "fixSteps": ["Audit sitemap.xml for admin / private paths"],
+    "codeExamples": [],
+    "references": []
+  },
+  {
+    "id": "robots-txt-allows-all",
+    "type": "header",
+    "title": "robots.txt allows everything",
+    "category": "headers",
+    "severity": "info",
+    "description": "robots.txt disallows nothing — that's fine but worth noting.",
+    "evidence": "Async / body / header check for robots-txt-allows-all.",
+    "riskImpact": "Add explicit Disallow for paths you don't want crawled",
+    "explanation": "robots.txt disallows nothing — that's fine but worth noting.",
+    "fixSteps": ["Add explicit Disallow for paths you don't want crawled"],
+    "codeExamples": [],
+    "references": []
+  },
+  {
+    "id": "open-api-schema-version-leak",
+    "type": "header",
+    "title": "OpenAPI version in URL",
+    "category": "headers",
+    "severity": "info",
+    "description": "OpenAPI / Swagger schema version is exposed in the URL.",
+    "evidence": "Async / body / header check for open-api-schema-version-leak.",
+    "riskImpact": "Move API version into the path prefix, not the version parameter",
+    "explanation": "OpenAPI / Swagger schema version is exposed in the URL.",
+    "fixSteps": [
+      "Move API version into the path prefix, not the version parameter"
+    ],
+    "codeExamples": [],
+    "references": []
+  },
+  {
+    "id": "cdn-cors-exposes-internal",
+    "type": "header",
+    "title": "CORS exposes internal CDN",
+    "category": "headers",
+    "severity": "low",
+    "description": "Access-Control-Allow-Origin includes internal CDN hostnames.",
+    "evidence": "Async / body / header check for cdn-cors-exposes-internal.",
+    "riskImpact": "Restrict ACAO to the customer-facing origin",
+    "explanation": "Access-Control-Allow-Origin includes internal CDN hostnames.",
+    "fixSteps": ["Restrict ACAO to the customer-facing origin"],
+    "codeExamples": [],
+    "references": []
+  },
+  {
+    "id": "recaptcha-key-leaked",
+    "type": "header",
+    "title": "reCAPTCHA site key exposure",
+    "category": "headers",
+    "severity": "info",
+    "description": "Google reCAPTCHA site key is exposed in client-side code by design. Site keys are not secret.",
+    "evidence": "Async / body / header check for recaptcha-key-leaked.",
+    "riskImpact": "This is informational; rotate site keys if you ever suspect abuse",
+    "explanation": "Google reCAPTCHA site key is exposed in client-side code by design. Site keys are not secret.",
+    "fixSteps": [
+      "This is informational; rotate site keys if you ever suspect abuse"
+    ],
+    "codeExamples": [],
+    "references": []
+  },
+  {
+    "id": "ga-tracking-id-leaked",
+    "type": "header",
+    "title": "Google Analytics tracking ID exposed",
+    "category": "headers",
+    "severity": "info",
+    "description": "GA tracking ID (UA-XXXX / G-XXXX) is publicly visible. Not a security issue by itself.",
+    "evidence": "Async / body / header check for ga-tracking-id-leaked.",
+    "riskImpact": "This is informational",
+    "explanation": "GA tracking ID (UA-XXXX / G-XXXX) is publicly visible. Not a security issue by itself.",
+    "fixSteps": ["This is informational"],
+    "codeExamples": [],
+    "references": []
+  },
+  {
+    "id": "nginx-version-404-disclosure",
+    "type": "body-pattern",
+    "title": "nginx version disclosed in 404 / error pages",
+    "category": "information-disclosure",
+    "severity": "low",
+    "description": "Default nginx error pages and the Server response header often expose the exact nginx version (e.g. 'nginx/1.18.0'). Knowing the version lets attackers map CVEs quickly.",
+    "evidence": "Async / body / header check for nginx-version-404-disclosure.",
+    "riskImpact": "Hide the nginx version in server_tokens off; remove or genericize the Server header.",
+    "explanation": "Default nginx error pages and the Server response header often expose the exact nginx version (e.g. 'nginx/1.18.0'). Knowing the version lets attackers map CVEs quickly.",
+    "fixSteps": [
+      "Add 'server_tokens off;' to nginx.conf.",
+      "Use a custom error page that does not include the server version.",
+      "Strip the Server header at the reverse proxy or CDN."
+    ],
+    "codeExamples": [],
+    "references": [
+      "https://nginx.org/en/docs/http/ngx_http_core_module.html#server_tokens"
+    ]
+  },
+  {
+    "id": "apache-version-404-disclosure",
+    "type": "body-pattern",
+    "title": "Apache version disclosed in 404 / error pages",
+    "category": "information-disclosure",
+    "severity": "low",
+    "description": "Default Apache error pages expose the full server version, loaded modules, and OS in the footer (e.g. 'Apache/2.4.57 (CentOS) Server at example.com Port 443').",
+    "evidence": "Async / body / header check for apache-version-404-disclosure.",
+    "riskImpact": "Set ServerTokens Prod and ServerSignature Off in httpd.conf.",
+    "explanation": "Default Apache error pages expose the full server version, loaded modules, and OS in the footer (e.g. 'Apache/2.4.57 (CentOS) Server at example.com Port 443').",
+    "fixSteps": [
+      "Set 'ServerTokens Prod' to expose only 'Apache'.",
+      "Set 'ServerSignature Off' to remove the version footer.",
+      "Use a custom ErrorDocument for all 4xx/5xx codes."
+    ],
+    "codeExamples": [],
+    "references": [
+      "https://httpd.apache.org/docs/2.4/mod/core.html#servertokens"
+    ]
+  },
+  {
+    "id": "iis-version-404-disclosure",
+    "type": "body-pattern",
+    "title": "IIS version disclosed in 404 / error pages",
+    "category": "information-disclosure",
+    "severity": "low",
+    "description": "Internet Information Services (IIS) leaks its version in the Server header and in detailed error pages, including the .NET CLR version and machine name.",
+    "evidence": "Async / body / header check for iis-version-404-disclosure.",
+    "riskImpact": "Hide the IIS version via httpResponseHeader and disable detailed error pages.",
+    "explanation": "Internet Information Services (IIS) leaks its version in the Server header and in detailed error pages, including the .NET CLR version and machine name.",
+    "fixSteps": [
+      "Use URL Rewrite or web.config to remove the Server header.",
+      "Set httpErrors mode=Custom to suppress detailed errors.",
+      "Disable 'Send Detailed Error Messages' in IIS Manager."
+    ],
+    "codeExamples": [],
+    "references": [
+      "https://learn.microsoft.com/en-us/iis/configuration/system.webserver/httpprotocol/"
+    ]
+  },
+  {
+    "id": "express-error-format-disclosure",
+    "type": "body-pattern",
+    "title": "Express.js default error page disclosed",
+    "category": "information-disclosure",
+    "severity": "medium",
+    "description": "Express in development mode renders a multi-line stack trace with file paths and line numbers. Even in production, misconfigured errorHandler() leaks the same stack.",
+    "evidence": "Async / body / header check for express-error-format-disclosure.",
+    "riskImpact": "Run Express with NODE_ENV=production and use a custom error handler that returns generic 500 messages.",
+    "explanation": "Express in development mode renders a multi-line stack trace with file paths and line numbers. Even in production, misconfigured errorHandler() leaks the same stack.",
+    "fixSteps": [
+      "Set NODE_ENV=production.",
+      "Replace app.use((err, req, res, next) => ...) with one that logs internally and returns a sanitized response.",
+      "Disable the 'x-powered-by' header with app.disable('x-powered-by')."
+    ],
+    "codeExamples": [],
+    "references": [
+      "https://expressjs.com/en/advanced/best-practice-security.html"
+    ]
+  },
+  {
+    "id": "flask-debug-page-exposure",
+    "type": "body-pattern",
+    "title": "Flask Werkzeug debugger PIN page exposed",
+    "category": "information-disclosure",
+    "severity": "critical",
+    "description": "Flask applications started with debug=True expose the interactive Werkzeug debugger, which allows arbitrary code execution via the browser console when the debugger PIN is bypassed or guessable.",
+    "evidence": "Async / body / header check for flask-debug-page-exposure.",
+    "riskImpact": "Disable debug mode in any environment reachable from the network.",
+    "explanation": "Flask applications started with debug=True expose the interactive Werkzeug debugger, which allows arbitrary code execution via the browser console when the debugger PIN is bypassed or guessable.",
+    "fixSteps": [
+      "Set debug=False (or FLASK_ENV=production) on every deploy.",
+      "Never run app.run(debug=True) in a public environment.",
+      "Wrap startup with a guard that refuses debug=True unless an explicit env flag is set."
+    ],
+    "codeExamples": [],
+    "references": ["https://flask.palletsprojects.com/en/latest/debugging/"]
+  },
+  {
+    "id": "django-debug-page-exposure",
+    "type": "body-pattern",
+    "title": "Django technical 500 page exposed",
+    "category": "information-disclosure",
+    "severity": "high",
+    "description": "Django renders a yellow technical 500 page with full stack traces, local variable values, and request metadata when DEBUG=True. This is intended for local development only.",
+    "evidence": "Async / body / header check for django-debug-page-exposure.",
+    "riskImpact": "Set DEBUG=False in production and configure a custom 500 error view.",
+    "explanation": "Django renders a yellow technical 500 page with full stack traces, local variable values, and request metadata when DEBUG=True. This is intended for local development only.",
+    "fixSteps": [
+      "Set DEBUG=False in settings.py for every production deploy.",
+      "Configure ADMINS and a custom 500 error view that hides internals.",
+      "Use django-environ or similar to source DEBUG from env."
+    ],
+    "codeExamples": [],
+    "references": [
+      "https://docs.djangoproject.com/en/stable/ref/settings/#debug"
+    ]
+  },
+  {
+    "id": "rails-error-page-disclosure",
+    "type": "body-pattern",
+    "title": "Rails default error page disclosed",
+    "category": "information-disclosure",
+    "severity": "medium",
+    "description": "Rails in development mode renders the 'Welcome aboard' and detailed exception pages with source code excerpts, routes, and request parameters. In production, exceptions through ActionDispatch::DebugExceptions can still leak similar information if not configured.",
+    "evidence": "Async / body / header check for rails-error-page-disclosure.",
+    "riskImpact": "Run with RAILS_ENV=production and configure consider_all_requests_local=false.",
+    "explanation": "Rails in development mode renders the 'Welcome aboard' and detailed exception pages with source code excerpts, routes, and request parameters. In production, exceptions through ActionDispatch::DebugExceptions can still leak similar information if not configured.",
+    "fixSteps": [
+      "Set RAILS_ENV=production.",
+      "Set config.consider_all_requests_local = false in production.rb.",
+      "Configure config.action_dispatch.show_exceptions = :rescuable."
+    ],
+    "codeExamples": [],
+    "references": [
+      "https://guides.rubyonrails.org/configuring.html#rails-environment-settings"
+    ]
+  },
+  {
+    "id": "spring-boot-actuator-exposed",
+    "type": "body-pattern",
+    "title": "Spring Boot Actuator endpoint exposed",
+    "category": "information-disclosure",
+    "severity": "high",
+    "description": "Spring Boot Actuator endpoints (/actuator/env, /actuator/heapdump, /actuator/mappings, /actuator/beans) leak environment variables, JVM heap state, and full route maps when exposed without authentication.",
+    "evidence": "Async / body / header check for spring-boot-actuator-exposed.",
+    "riskImpact": "Disable or strongly authenticate every Actuator endpoint; never expose /env or /heapdump on the internet.",
+    "explanation": "Spring Boot Actuator endpoints (/actuator/env, /actuator/heapdump, /actuator/mappings, /actuator/beans) leak environment variables, JVM heap state, and full route maps when exposed without authentication.",
+    "fixSteps": [
+      "Set management.endpoints.web.exposure.include to a minimal allowlist.",
+      "Place Actuator on a separate management port bound to localhost only.",
+      "Require authentication (Spring Security) for any Actuator endpoint."
+    ],
+    "codeExamples": [],
+    "references": [
+      "https://docs.spring.io/spring-boot/docs/current/reference/html/actuator.html"
+    ]
+  },
+  {
+    "id": "jenkins-version-exposure",
+    "type": "header",
+    "title": "Jenkins version disclosed in headers / login page",
+    "category": "information-disclosure",
+    "severity": "medium",
+    "description": "Jenkins exposes its exact version in the X-Jenkins response header and on the login page footer. Combined with the open script console, this is a high-value fingerprint.",
+    "evidence": "Async / body / header check for jenkins-version-exposure.",
+    "riskImpact": "Hide the Jenkins version via the System Property 'hudson.diyChunking' or by fronting with an authenticating reverse proxy.",
+    "explanation": "Jenkins exposes its exact version in the X-Jenkins response header and on the login page footer. Combined with the open script console, this is a high-value fingerprint.",
+    "fixSteps": [
+      "Set System.setProperty('hudson.diyChunking', 'true') and configure a frontend that strips X-Jenkins.",
+      "Require authentication on every Jenkins route.",
+      "Front Jenkins with a reverse proxy that adds its own security headers."
+    ],
+    "codeExamples": [],
+    "references": ["https://www.jenkins.io/doc/book/system-administration/"]
+  },
+  {
+    "id": "grafana-version-exposure",
+    "type": "header",
+    "title": "Grafana version disclosed",
+    "category": "information-disclosure",
+    "severity": "low",
+    "description": "Grafana discloses its exact version in the X-Grafana-Version response header on every request. Knowing the version lets attackers map CVEs (e.g. CVE-2024-9264).",
+    "evidence": "Async / body / header check for grafana-version-exposure.",
+    "riskImpact": "Place Grafana behind an authenticating reverse proxy that strips the X-Grafana-Version header.",
+    "explanation": "Grafana discloses its exact version in the X-Grafana-Version response header on every request. Knowing the version lets attackers map CVEs (e.g. CVE-2024-9264).",
+    "fixSteps": [
+      "Front Grafana with a reverse proxy that strips the X-Grafana-Version header.",
+      "Require authentication on /login and /api/health.",
+      "Subscribe to Grafana security advisories and patch promptly."
+    ],
+    "codeExamples": [],
+    "references": ["https://grafana.com/docs/grafana/latest/"]
+  },
+  {
+    "id": "nextjs-app-router-rsc-headers",
+    "type": "header",
+    "title": "Next.js 13+ App Router detected via RSC headers",
+    "category": "information-disclosure",
+    "severity": "info",
+    "description": "Next.js 13+ App Router identifies itself via the RSC (React Server Components) header (RSC: 1, Next-Router-State-Tree) on every page response. This is informational but useful for fingerprinting.",
+    "evidence": "Async / body / header check for nextjs-app-router-rsc-headers.",
+    "riskImpact": "No fix required, but be aware that fingerprinting reveals the framework version line; ensure all framework-level CVEs are patched.",
+    "explanation": "Next.js 13+ App Router identifies itself via the RSC (React Server Components) header (RSC: 1, Next-Router-State-Tree) on every page response. This is informational but useful for fingerprinting.",
+    "fixSteps": [
+      "Keep Next.js patched to the latest minor release.",
+      "Front the app with a CDN that standardizes response headers."
+    ],
+    "codeExamples": [],
+    "references": ["https://nextjs.org/docs/app"]
+  },
+  {
+    "id": "sveltekit-detection",
+    "type": "header",
+    "title": "SvelteKit framework detected via x-sveltekit-* headers",
+    "category": "information-disclosure",
+    "severity": "info",
+    "description": "SvelteKit responses include x-sveltekit-* debug headers and a __data.json preload convention that fingerprints the framework.",
+    "evidence": "Async / body / header check for sveltekit-detection.",
+    "riskImpact": "No fix required; keep SvelteKit updated and audit data-loading endpoints.",
+    "explanation": "SvelteKit responses include x-sveltekit-* debug headers and a __data.json preload convention that fingerprints the framework.",
+    "fixSteps": [
+      "Update SvelteKit regularly.",
+      "Strip debug headers at the reverse proxy if exposing them is undesirable."
+    ],
+    "codeExamples": [],
+    "references": ["https://kit.svelte.dev/docs"]
+  },
+  {
+    "id": "vite-client-exposed",
+    "type": "body-pattern",
+    "title": "Vite dev client exposed in production",
+    "category": "information-disclosure",
+    "severity": "high",
+    "description": "Vite serves @vite/client and module hot-reload scripts at /@vite/client when running in development. Finding these in a production build indicates the dev server was accidentally exposed.",
+    "evidence": "Async / body / header check for vite-client-exposed.",
+    "riskImpact": "Stop serving the Vite dev server; build with 'vite build' and serve the dist/ output from a static host.",
+    "explanation": "Vite serves @vite/client and module hot-reload scripts at /@vite/client when running in development. Finding these in a production build indicates the dev server was accidentally exposed.",
+    "fixSteps": [
+      "Run 'vite build' and serve the dist/ folder from a static-only host (nginx, S3+CloudFront).",
+      "Never expose 'vite' or 'vite preview' to the public internet.",
+      "Add a CSP that disallows inline scripts to mitigate live-reload code execution."
+    ],
+    "codeExamples": [],
+    "references": ["https://vitejs.dev/config/"]
+  },
+  {
+    "id": "aws-s3-nosuchbucket-error",
+    "type": "body-pattern",
+    "title": "AWS S3 NoSuchBucket error pattern exposed",
+    "category": "information-disclosure",
+    "severity": "low",
+    "description": "S3 bucket hosting exposes 'NoSuchBucket' or 'AccessDenied' XML error responses that reveal the bucket name, region, and AWS account ID via the x-amz-request-id header.",
+    "evidence": "Async / body / header check for aws-s3-nosuchbucket-error.",
+    "riskImpact": "Genericize S3 error responses with a CDN/WAF and avoid linking directly to bucket hostnames.",
+    "explanation": "S3 bucket hosting exposes 'NoSuchBucket' or 'AccessDenied' XML error responses that reveal the bucket name, region, and AWS account ID via the x-amz-request-id header.",
+    "fixSteps": [
+      "Front S3 with CloudFront or another CDN that rewrites error pages.",
+      "Disable direct bucket hostname access via bucket policies.",
+      "Use a vanity domain for S3-backed static sites."
+    ],
+    "codeExamples": [],
+    "references": [
+      "https://docs.aws.amazon.com/AmazonS3/latest/userguide/HostingWebsiteOnS3Setup.html"
+    ]
+  },
+  {
+    "id": "mysql-access-denied-error",
+    "type": "body-pattern",
+    "title": "MySQL 'Access denied' error pattern exposed",
+    "category": "information-disclosure",
+    "severity": "high",
+    "description": "Pages exposing 'Access denied for user 'X'@'Y' (using password: YES/NO)' leak the MySQL username, client host, and password status. Attackers use this to target MySQL brute-force and credential-stuffing lists.",
+    "evidence": "Async / body / header check for mysql-access-denied-error.",
+    "riskImpact": "Hide MySQL errors behind a custom error handler; never echo raw DB errors to clients.",
+    "explanation": "Pages exposing 'Access denied for user 'X'@'Y' (using password: YES/NO)' leak the MySQL username, client host, and password status. Attackers use this to target MySQL brute-force and credential-stuffing lists.",
+    "fixSteps": [
+      "Catch PDOException / mysql_error() in the application layer and return a generic 500.",
+      "Rotate any credentials that have appeared in a leaked error.",
+      "Restrict DB user privileges and restrict client hosts via GRANT ... TO 'user'@'host'."
+    ],
+    "codeExamples": [],
+    "references": ["https://dev.mysql.com/doc/refman/8.0/en/access-denied.html"]
+  }
+]

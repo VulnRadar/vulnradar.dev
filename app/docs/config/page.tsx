@@ -161,7 +161,7 @@ lib/types/
             </li>
             <li>
               <code>CONFIG_TOTAL_CHECKS_LABEL</code> — Marketing badge (default:{" "}
-              <code>310+</code>)
+              <code>700+</code>)
             </li>
             <li>
               <code>CONFIG_APP_URL</code> — Public URL
