@@ -32,7 +32,7 @@ export const CONFIG_TERMS_UPDATED_AT = "2026-03-16";
 
 // BRANDING - UPDATE THESE FOR YOUR DEPLOYMENT
 
-export const CONFIG_LOGO_URL = "/favicon-dark.svg";
+export const CONFIG_LOGO_URL = "/favicon.svg";
 export const CONFIG_PRIMARY_COLOR = "#6366f1";
 export const CONFIG_FOOTER_TEXT = "VulnRadar - Security Scanner";
 
