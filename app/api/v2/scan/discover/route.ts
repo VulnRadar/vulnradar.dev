@@ -4,6 +4,7 @@ import { validateApiKey } from "@/lib/api/api-keys";
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
 import dns from "dns/promises";
 import pool from "@/lib/database/db";
+import { safeFetch, validateScanTarget } from "@/lib/scanner/safe-fetch";
 
 // Subdomain Cache - 4 hour TTL using database for persistence across instances
 
@@ -673,20 +674,36 @@ async function batchHttpCheck(
     const batch = subdomains.slice(i, i + concurrency);
     const settled = await Promise.allSettled(
       batch.map(async (sub) => {
+        // SSRF guard: every candidate hostname must clear
+        // validateScanTarget before we connect. The old plain `fetch`
+        // happily followed redirects to private IPs (127.0.0.1,
+        // 169.254.169.254, etc.) and resolved DNS to whatever the
+        // attacker-controlled NS said.
+        const url = `https://${sub}`;
+        const safety = await validateScanTarget(url);
+        if (!safety.safe) {
+          return { sub, reachable: false };
+        }
         try {
-          const r = await fetch(`https://${sub}`, {
-            method: "HEAD",
-            redirect: "follow",
-            signal: AbortSignal.timeout(4000),
-          });
+          const r = await safeFetch(
+            url,
+            {
+              method: "HEAD",
+              signal: AbortSignal.timeout(4000),
+            },
+            [sub],
+          );
           return { sub, reachable: true, statusCode: r.status };
         } catch {
           try {
-            const r = await fetch(`http://${sub}`, {
-              method: "HEAD",
-              redirect: "follow",
-              signal: AbortSignal.timeout(3000),
-            });
+            const r = await safeFetch(
+              `http://${sub}`,
+              {
+                method: "HEAD",
+                signal: AbortSignal.timeout(3000),
+              },
+              [sub],
+            );
             return { sub, reachable: true, statusCode: r.status };
           } catch {
             return { sub, reachable: false };

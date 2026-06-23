@@ -80,6 +80,35 @@ export async function POST(req: Request) {
       );
     }
 
+    // SECURITY: action_url is rendered as an <a href> by the client-side
+    // notification UI. Without validation, a moderator with
+    // SEND_ANNOUNCEMENTS permission could store `javascript:...` and
+    // execute arbitrary JS in vulnradar.dev's origin the moment any
+    // user clicks the notification's CTA. Restrict to http(s) and
+    // same-origin paths only.
+    if (action_url != null && action_url !== "") {
+      if (typeof action_url !== "string") {
+        return NextResponse.json(
+          { error: "action_url must be a string" },
+          { status: 400 },
+        );
+      }
+      const lower = action_url.trim().toLowerCase();
+      const allowed =
+        lower.startsWith("https://") ||
+        lower.startsWith("http://") ||
+        lower.startsWith("/");
+      if (!allowed) {
+        return NextResponse.json(
+          {
+            error:
+              "action_url must start with https://, http://, or / (no javascript:, data:, or other schemes)",
+          },
+          { status: 400 },
+        );
+      }
+    }
+
     // Generate unique cookie_id: notif_ + 16 random hex chars
     const cookieId = `notif_${crypto.randomUUID().replace(/-/g, "").slice(0, 16)}`;
 

@@ -381,6 +381,18 @@ export async function register() {
         CREATE INDEX IF NOT EXISTS idx_team_invites_email ON team_invites(email);
       `);
 
+      // Stripe webhook idempotency: stores the event.id of every webhook
+      // we processed so Stripe retries and dashboard replays are
+      // ignored. Without this, a flaky network lets the user be
+      // plan-upgraded (and badge-granted) twice for the same event.
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS processed_stripe_events (
+          event_id TEXT PRIMARY KEY,
+          event_type TEXT NOT NULL,
+          received_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+        );
+      `);
+
       console.log(`[${APP_NAME}] Database schema verified successfully.`);
 
       // Run initial cleanup on startup

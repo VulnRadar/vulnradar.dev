@@ -16,6 +16,7 @@ import {
 import { DEVICE_TRUST_COOKIE_NAME } from "@/lib/config/constants";
 import { verifyDiscordState } from "@/lib/auth/discord-state";
 import { findTrustedDevice } from "@/lib/auth/device-trust";
+import { getClientIp } from "@/lib/api/request-utils";
 
 const DISCORD_CLIENT_ID = process.env.DISCORD_CLIENT_ID;
 const DISCORD_CLIENT_SECRET = process.env.DISCORD_CLIENT_SECRET;
@@ -66,16 +67,22 @@ export async function GET(request: Request) {
     );
   }
 
+  // Bind the state to the currently signed-in user (if any) so a leaked
+  // state URL can't be replayed by another session.
+  const session = await getSession();
+
   // H-5: Verify HMAC-signed state before parsing. The previous
   // implementation trusted the base64url-encoded JSON, which any caller
   // who observed a `state` value (or guessed one) could forge to log in
   // as a different linked user.
-  const verified = verifyDiscordState(state);
+  const verified = verifyDiscordState(state, session?.userId);
   if (!verified.ok) {
     const reason =
       verified.reason === "expired"
         ? "discord_expired"
-        : "discord_invalid_state";
+        : verified.reason === "user-mismatch"
+          ? "discord_invalid_state"
+          : "discord_invalid_state";
     return NextResponse.redirect(`${baseUrl}/login?error=${reason}`);
   }
   const action = verified.payload.action || "connect";
@@ -199,16 +206,18 @@ export async function GET(request: Request) {
         ? `https://cdn.discordapp.com/avatars/${discordUser.id}/${discordUser.avatar}.png`
         : null;
 
-      // Redirect with Discord profile info so user can choose to use it
+      // Redirect with Discord profile info so user can choose to use it.
+      // Note: discord_user.email is intentionally NOT passed via URL —
+      // the Discord email can correlate with the user's primary email and
+      // would end up in browser history, server access logs, and any
+      // outbound Referer header. The profile page can fetch it from the
+      // /api/v2/account endpoint instead.
       const redirectUrl = new URL(`${baseUrl}/profile`);
       redirectUrl.searchParams.set("tab", "social");
       redirectUrl.searchParams.set("discord_connected", "true");
       redirectUrl.searchParams.set("discord_username", discordUser.username);
       if (discordAvatarUrl) {
         redirectUrl.searchParams.set("discord_avatar", discordAvatarUrl);
-      }
-      if (discordUser.email) {
-        redirectUrl.searchParams.set("discord_email", discordUser.email);
       }
 
       return NextResponse.redirect(redirectUrl.toString());
@@ -240,9 +249,11 @@ export async function GET(request: Request) {
       if (user2FA?.totp_enabled) {
         // Check if device is trusted (skip 2FA for trusted devices)
         const cookieStore = await cookies();
-        const ip =
-          request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
-          "unknown";
+        // Use getClientIp() (right-to-left walk via TRUSTED_PROXY_CIDR) so
+        // an attacker can't forge X-Forwarded-For to spoof the IP that
+        // ends up in device_trust.ip_address, login-alert emails, and
+        // admin_audit_log.
+        const ip = (await getClientIp()) ?? "unknown";
         const userAgent = request.headers.get("user-agent") || "unknown";
         const deviceCookie = cookieStore.get(DEVICE_TRUST_COOKIE_NAME)?.value;
 
@@ -291,9 +302,7 @@ export async function GET(request: Request) {
       }
 
       // No 2FA - create session directly
-      const ip =
-        request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
-        "unknown";
+      const ip = (await getClientIp()) ?? "unknown";
       const userAgent = request.headers.get("user-agent") || "unknown";
       await createSession(userId, ip, userAgent);
 
