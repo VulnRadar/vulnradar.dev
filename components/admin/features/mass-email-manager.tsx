@@ -96,7 +96,7 @@ function generatePreviewHtml(title: string, content: string): string {
               <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
                 <tr>
                   <td align="center" style="padding-bottom: 12px;">
-                    <img src="https://vulnradar.dev/favicon-dark.svg" alt="VulnRadar" width="48" height="48" style="display: block; margin: 0 auto;" />
+                    <img src="/favicon.svg" alt="VulnRadar" width="48" height="48" style="display: block; margin: 0 auto;" />
                   </td>
                 </tr>
                 <tr>

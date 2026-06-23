@@ -39,10 +39,9 @@ export default function Head() {
       <meta name="twitter:description" content={APP_DESCRIPTION} />
       <meta name="twitter:image" content={image} />
 
-      {/* Icons */}
-      <link rel="icon" href="/favicon.ico" />
-      <link rel="icon" href="/favicon.png" type="image/png" />
-      <link rel="apple-touch-icon" href="/favicon.png" />
+      {/* Icons are declared via app/layout.tsx metadata (icons: { icon: [
+          /favicon.svg, /favicon.ico ], apple: /favicon.png }). No need to
+          duplicate <link> tags here. */}
     </>
   );
 }

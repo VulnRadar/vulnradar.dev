@@ -13,26 +13,16 @@ export function ThemedLogo({
   className = "",
   alt = "VulnRadar logo",
 }: ThemedLogoProps) {
-  // Use CSS-based theme detection to avoid hydration flash
-  // Both images render, CSS hides the wrong one instantly based on .dark class
+  // Single SVG icon (public/favicon.svg) is used for both light and dark mode.
+  // It has a dark slate background that contrasts against both light and dark
+  // browser chrome, so a separate light/dark variant isn't needed.
   return (
     <span className={`inline-flex ${className}`} style={{ width, height }}>
-      {/* Light mode logo - hidden when .dark is present */}
       <Image
-        src="/favicon-light.svg"
+        src="/favicon.svg"
         alt={alt}
         width={width}
         height={height}
-        className="dark:hidden block"
-        priority
-      />
-      {/* Dark mode logo - shown only when .dark is present */}
-      <Image
-        src="/favicon-dark.svg"
-        alt={alt}
-        width={width}
-        height={height}
-        className="hidden dark:block"
         priority
       />
     </span>
