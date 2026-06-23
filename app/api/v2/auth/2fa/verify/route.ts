@@ -176,17 +176,24 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     if (codeError) return ApiResponse.badRequest(codeError);
 
     if (method === "email") {
-      // Verify email 2FA code
-      const codeResult = await pool.query(
-        "SELECT id FROM email_2fa_codes WHERE user_id = $1 AND code_hash = encode(sha256($2::bytea), 'hex') AND expires_at > NOW()",
+      // Verify email 2FA code. Atomically consume the matching row so two
+      // concurrent requests with the same code cannot both pass verification
+      // (the prior SELECT+DELETE pattern let the second request reuse
+      // the just-matched code and open a parallel authenticated session).
+      const claim = await pool.query<{ id: number }>(
+        `DELETE FROM email_2fa_codes
+          WHERE id = (
+            SELECT id FROM email_2fa_codes
+            WHERE user_id = $1
+              AND code_hash = encode(sha256($2::bytea), 'hex')
+              AND expires_at > NOW()
+            LIMIT 1
+          )
+          RETURNING id`,
         [effectiveUserId, code],
       );
-      if (codeResult.rows.length > 0) {
+      if (claim.rowCount && claim.rowCount > 0) {
         verified = true;
-        // Delete used code
-        await pool.query("DELETE FROM email_2fa_codes WHERE user_id = $1", [
-          effectiveUserId,
-        ]);
       }
     } else {
       // Verify TOTP code (app-based)

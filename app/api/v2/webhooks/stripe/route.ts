@@ -81,6 +81,27 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid signature" }, { status: 400 });
   }
 
+  // Idempotency: Stripe retries events on any 5xx, and operators can also
+  // replay from the dashboard. Without this guard a single
+  // customer.subscription.created event would plan-upgrade the user
+  // twice (and re-grant the premium badge, etc.).
+  try {
+    const seen = await pool.query<{ event_id: string }>(
+      `INSERT INTO processed_stripe_events (event_id, event_type)
+       VALUES ($1, $2)
+       ON CONFLICT (event_id) DO NOTHING
+       RETURNING event_id`,
+      [event.id, event.type],
+    );
+    if (seen.rowCount === 0) {
+      return NextResponse.json({ received: true, replay: true });
+    }
+  } catch (err) {
+    // If the table doesn't exist yet (fresh deploy) we still want to
+    // process the event; fall through and log.
+    console.error("[Stripe] idempotency check failed (continuing):", err);
+  }
+
   try {
     switch (event.type) {
       case "checkout.session.completed": {

@@ -53,6 +53,33 @@ export async function PUT(
       priority,
     } = body;
 
+    // SECURITY: action_url is rendered as an <a href> by the client-side
+    // notification UI. Reject anything that isn't http(s) or a same-origin
+    // path so a moderator can't store a `javascript:` URL that would
+    // execute arbitrary JS in vulnradar.dev's origin.
+    if (action_url != null && action_url !== "") {
+      if (typeof action_url !== "string") {
+        return NextResponse.json(
+          { error: "action_url must be a string" },
+          { status: 400 },
+        );
+      }
+      const lower = action_url.trim().toLowerCase();
+      const allowed =
+        lower.startsWith("https://") ||
+        lower.startsWith("http://") ||
+        lower.startsWith("/");
+      if (!allowed) {
+        return NextResponse.json(
+          {
+            error:
+              "action_url must start with https://, http://, or / (no javascript:, data:, or other schemes)",
+          },
+          { status: 400 },
+        );
+      }
+    }
+
     const result = await pool.query(
       `UPDATE admin_notifications SET
         title = COALESCE($1, title),

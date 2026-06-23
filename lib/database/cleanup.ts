@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Database cleanup utilities
  * Handles automatic cleanup of expired records and old data
  */
@@ -26,7 +26,11 @@ export interface CleanupStats {
 
 /**
  * Execute database cleanup operations
- * Removes expired and old records to maintain database health
+ * Removes expired and old records to maintain database health.
+ *
+ * All deletes run inside a single SERIALIZABLE-style transaction so a
+ * mid-run failure rolls back the entire cleanup pass instead of leaving
+ * the database in a partially-cleaned state.
  */
 export async function performDatabaseCleanup(): Promise<CleanupStats> {
   const stats: CleanupStats = {
@@ -48,27 +52,33 @@ export async function performDatabaseCleanup(): Promise<CleanupStats> {
     oldStaffActivity: 0,
   };
 
+  const client = await pool.connect();
   try {
+    await client.query("BEGIN");
+    // Lower isolation to READ COMMITTED for cleanup — we don't need the
+    // extra row locks SERIALIZABLE adds and the rows we DELETE are
+    // independently chosen.
+    await client.query("SET TRANSACTION ISOLATION LEVEL READ COMMITTED");
     // Delete expired sessions
-    const sessionsRes = await pool.query(
+    const sessionsRes = await client.query(
       "DELETE FROM sessions WHERE expires_at < NOW()",
     );
     stats.expiredSessions = sessionsRes.rowCount || 0;
 
     // Delete old API usage logs (> 90 days)
-    const apiUsageRes = await pool.query(
+    const apiUsageRes = await client.query(
       "DELETE FROM api_usage WHERE used_at < NOW() - INTERVAL '90 days'",
     );
     stats.oldApiUsage = apiUsageRes.rowCount || 0;
 
     // Delete revoked API keys older than 30 days
-    const revokedKeysRes = await pool.query(
+    const revokedKeysRes = await client.query(
       "DELETE FROM api_keys WHERE revoked_at IS NOT NULL AND revoked_at < NOW() - INTERVAL '30 days'",
     );
     stats.revokedApiKeys = revokedKeysRes.rowCount || 0;
 
     // Delete old data requests (> 60 days)
-    const dataReqRes = await pool.query(
+    const dataReqRes = await client.query(
       "DELETE FROM data_requests WHERE requested_at < NOW() - INTERVAL '60 days'",
     );
     stats.oldDataRequests = dataReqRes.rowCount || 0;
@@ -80,7 +90,7 @@ export async function performDatabaseCleanup(): Promise<CleanupStats> {
 
     // Delete scans for free users (30-day retention)
     if (BILLING_HISTORY_RETENTION.free > 0) {
-      const freeScansRes = await pool.query(
+      const freeScansRes = await client.query(
         `DELETE FROM scan_history 
          WHERE scanned_at < NOW() - INTERVAL '${BILLING_HISTORY_RETENTION.free} days'
          AND user_id IN (SELECT id FROM users WHERE plan = 'free' OR plan IS NULL)`,
@@ -90,7 +100,7 @@ export async function performDatabaseCleanup(): Promise<CleanupStats> {
 
     // Delete scans for core_supporter users (90-day retention)
     if (BILLING_HISTORY_RETENTION.core_supporter > 0) {
-      const coreScansRes = await pool.query(
+      const coreScansRes = await client.query(
         `DELETE FROM scan_history 
          WHERE scanned_at < NOW() - INTERVAL '${BILLING_HISTORY_RETENTION.core_supporter} days'
          AND user_id IN (SELECT id FROM users WHERE plan = 'core_supporter')`,
@@ -103,48 +113,48 @@ export async function performDatabaseCleanup(): Promise<CleanupStats> {
     stats.oldScans = totalScansDeleted;
 
     // Delete old rate limit records (> 1 day)
-    const rateLimitsRes = await pool.query(
+    const rateLimitsRes = await client.query(
       "DELETE FROM rate_limits WHERE window_start < NOW() - INTERVAL '1 day'",
     );
     stats.oldRateLimits = rateLimitsRes.rowCount || 0;
 
     // Delete expired password reset and verification tokens
-    const tokensRes = await pool.query(
+    const tokensRes = await client.query(
       "DELETE FROM password_reset_tokens WHERE expires_at < NOW()",
     );
     stats.expiredTokens = tokensRes.rowCount || 0;
 
-    const verifyTokensRes = await pool.query(
+    const verifyTokensRes = await client.query(
       "DELETE FROM email_verification_tokens WHERE expires_at < NOW()",
     );
     stats.expiredTokens += verifyTokensRes.rowCount || 0;
 
     // Delete expired team invites that were never accepted
-    const invitesRes = await pool.query(
+    const invitesRes = await client.query(
       "DELETE FROM team_invites WHERE expires_at < NOW() AND accepted_at IS NULL",
     );
     stats.expiredInvites = invitesRes.rowCount || 0;
 
     // Delete expired email 2FA codes
-    const email2faRes = await pool.query(
+    const email2faRes = await client.query(
       "DELETE FROM email_2fa_codes WHERE expires_at < NOW()",
     );
     stats.expired2FACodes = email2faRes.rowCount || 0;
 
     // Delete expired billing verification codes
-    const billingVerifyRes = await pool.query(
+    const billingVerifyRes = await client.query(
       "DELETE FROM billing_verification_codes WHERE expires_at < NOW()",
     );
     stats.expiredBillingCodes = billingVerifyRes.rowCount || 0;
 
     // Delete expired device trust records
-    const deviceTrustRes = await pool.query(
+    const deviceTrustRes = await client.query(
       "DELETE FROM device_trust WHERE expires_at < NOW()",
     );
     stats.expiredDeviceTrust = deviceTrustRes.rowCount || 0;
 
     // Delete expired/ended admin notifications (ended more than 30 days ago)
-    const notificationsRes = await pool.query(
+    const notificationsRes = await client.query(
       "DELETE FROM admin_notifications WHERE ends_at IS NOT NULL AND ends_at < NOW() - INTERVAL '30 days'",
     );
     stats.expiredNotifications = notificationsRes.rowCount || 0;
@@ -152,13 +162,13 @@ export async function performDatabaseCleanup(): Promise<CleanupStats> {
     // Revoke premium badges for users whose gifted subscriptions just expired
     // Only revoke if user doesn't have a paid plan (free plan only)
     try {
-      const premiumBadge = await pool.query(
+      const premiumBadge = await client.query(
         "SELECT id FROM badges WHERE name = 'premium' LIMIT 1",
       );
       if (premiumBadge.rows.length > 0) {
         const badgeId = premiumBadge.rows[0].id;
         // Find users with expired gifts who are on free plan and remove their premium badge
-        const revokeResult = await pool.query(
+        const revokeResult = await client.query(
           `DELETE FROM user_badges 
            WHERE badge_id = $1 
            AND user_id IN (
@@ -192,33 +202,41 @@ export async function performDatabaseCleanup(): Promise<CleanupStats> {
     }
 
     // Delete expired gifted subscriptions that ended more than 90 days ago
-    const giftedSubsRes = await pool.query(
+    const giftedSubsRes = await client.query(
       "DELETE FROM gifted_subscriptions WHERE expires_at < NOW() - INTERVAL '90 days'",
     );
     stats.expiredGiftedSubs = giftedSubsRes.rowCount || 0;
 
     // Delete old admin audit logs (> 1 year)
-    const auditLogsRes = await pool.query(
+    const auditLogsRes = await client.query(
       "DELETE FROM admin_audit_log WHERE created_at < NOW() - INTERVAL '365 days'",
     );
     stats.oldAuditLogs = auditLogsRes.rowCount || 0;
 
     // Delete old admin user notes (> 1 year)
-    const adminNotesRes = await pool.query(
+    const adminNotesRes = await client.query(
       "DELETE FROM admin_user_notes WHERE created_at < NOW() - INTERVAL '365 days'",
     );
     stats.oldAdminNotes = adminNotesRes.rowCount || 0;
 
     // Delete old staff activity records (> 30 days)
-    const staffActivityRes = await pool.query(
+    const staffActivityRes = await client.query(
       "DELETE FROM staff_activity WHERE last_heartbeat < NOW() - INTERVAL '30 days'",
     );
     stats.oldStaffActivity = staffActivityRes.rowCount || 0;
+    await client.query("COMMIT");
 
     return stats;
   } catch (error) {
+    try {
+      await client.query("ROLLBACK");
+    } catch {
+      /* connection may be dead */
+    }
     console.error("[Database Cleanup] Error during cleanup:", error);
     throw error;
+  } finally {
+    client.release();
   }
 }
 
@@ -262,11 +280,20 @@ export function formatCleanupStats(stats: CleanupStats): string {
 /**
  * Schedule cleanup to run every 24 hours
  * Starts after initial delay to not overload startup
+ *
+ * Returns the timer handle so callers can `clearInterval` on shutdown.
+ * Module-level state tracks the active timer so subsequent calls cancel
+ * any previously scheduled one (prevents double-scheduling on hot reload).
  */
+let activeCleanupTimer: NodeJS.Timeout | null = null;
+
 export function schedulePeriodicCleanup(
   _initialDelayMs: number = 60000,
 ): NodeJS.Timeout {
-  return setInterval(
+  if (activeCleanupTimer) {
+    clearInterval(activeCleanupTimer);
+  }
+  activeCleanupTimer = setInterval(
     async () => {
       try {
         const stats = await performDatabaseCleanup();
@@ -279,4 +306,12 @@ export function schedulePeriodicCleanup(
     },
     24 * 60 * 60 * 1000,
   ); // Run every 24 hours
+  return activeCleanupTimer;
+}
+
+export function stopPeriodicCleanup(): void {
+  if (activeCleanupTimer) {
+    clearInterval(activeCleanupTimer);
+    activeCleanupTimer = null;
+  }
 }

@@ -3,15 +3,20 @@ import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 /**
  * HMAC-signed OAuth state for Discord (H-5).
  *
- * Format: `base64url(JSON({nonce,action,ts})).base64url(HMAC-SHA256(payload, secret))`
+ * Format: `base64url(JSON({nonce,action,userId,ts})).base64url(HMAC-SHA256(payload, secret))`
  *
  * The previous implementation base64url-encoded the payload without a
  * signature, so any caller who observed a `state` value (or guessed one)
  * could forge a callback to log in as a different linked user. The HMAC
  * ties the payload to a server-side secret.
+ *
+ * Binding: when the caller has a session, the userId is included in the
+ * signed payload and `verifyDiscordState` rejects any state whose userId
+ * doesn't match. This prevents an attacker who shares/leaks the state
+ * URL from replaying it on behalf of a different signed-in user.
  */
 
-const STATE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+const STATE_TTL_MS = 60 * 1000; // 60 seconds (tight enough to limit replay)
 
 function getStateSecret(): string {
   // The namespace used to be a hardcoded `"vulnradar-discord-state-v1"`
@@ -31,6 +36,9 @@ export interface DiscordStatePayload {
   nonce: string;
   action: string;
   ts: number;
+  // Optional user binding — when set, verify() rejects mismatches so
+  // a state URL shared with another signed-in user can't be replayed.
+  userId?: number;
 }
 
 export function signDiscordState(
@@ -41,6 +49,7 @@ export function signDiscordState(
     nonce: payload.nonce ?? randomBytes(16).toString("base64url"),
     action: payload.action,
     ts: payload.ts ?? Date.now(),
+    userId: payload.userId,
   };
   const json = Buffer.from(JSON.stringify(full)).toString("base64url");
   const sig = createHmac("sha256", getStateSecret())
@@ -51,9 +60,13 @@ export function signDiscordState(
 
 export function verifyDiscordState(
   state: string,
+  expectedUserId?: number,
 ):
   | { ok: true; payload: DiscordStatePayload }
-  | { ok: false; reason: "malformed" | "bad-signature" | "expired" } {
+  | {
+      ok: false;
+      reason: "malformed" | "bad-signature" | "expired" | "user-mismatch";
+    } {
   const dot = state.lastIndexOf(".");
   if (dot < 1 || dot >= state.length - 1) {
     return { ok: false, reason: "malformed" };
@@ -90,6 +103,13 @@ export function verifyDiscordState(
   }
   if (Date.now() - payload.ts > STATE_TTL_MS) {
     return { ok: false, reason: "expired" };
+  }
+  if (
+    typeof expectedUserId === "number" &&
+    payload.userId !== undefined &&
+    payload.userId !== expectedUserId
+  ) {
+    return { ok: false, reason: "user-mismatch" };
   }
   return { ok: true, payload };
 }

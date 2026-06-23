@@ -108,11 +108,120 @@ export function isPrivateIP(ip: string): boolean {
     return PRIVATE_IPV4_PATTERNS.some((pattern) => pattern.test(ip));
   }
   if (version === 6) {
-    // Apply IPv6 private and special-range checks
-    return PRIVATE_IPV6_PATTERNS.some((pattern) => pattern.test(ip));
+    // R6 hardening: detect IPv4-mapped/natted addresses in any notation
+    // (long expanded `0:0:0:0:0:ffff:127.0.0.1`, hex-encoded
+    // `::ffff:7f00:1`, RFC 6052 NAT64 `64:ff9b::7f00:1`) and check the
+    // embedded IPv4 against our IPv4 private ranges. The regex-based
+    // IPv6 patterns below cover the remaining native IPv6 private ranges.
+    const canonical = toCanonicalIPv6(ip);
+    const extractedV4 = ipv4MappedToDotted(canonical);
+    if (extractedV4 && PRIVATE_IPV4_PATTERNS.some((p) => p.test(extractedV4))) {
+      return true;
+    }
+    return PRIVATE_IPV6_PATTERNS.some((pattern) => pattern.test(canonical));
   }
   // Not a valid IP address: treat as unsafe/private to avoid bypassing checks
   return true;
+}
+
+/**
+ * If `canonicalIp` is an IPv4-mapped (::ffff:a.b.c.d) or RFC 6052 NAT64
+ * (64:ff9b::a.b.c.d) address, return the embedded IPv4 in dotted form.
+ * Returns null otherwise.
+ */
+function ipv4MappedToDotted(canonicalIp: string): string | null {
+  const groups = canonicalIp.split(":");
+  if (groups.length !== 8) return null;
+
+  // IPv4-mapped IPv6: ::ffff:X.X.X.X → groups[0..4] = 0, groups[5] = ffff
+  if (
+    groups[0] === "0000" &&
+    groups[1] === "0000" &&
+    groups[2] === "0000" &&
+    groups[3] === "0000" &&
+    groups[4] === "0000" &&
+    groups[5] === "ffff"
+  ) {
+    return hexGroupPairToDotted(groups[6], groups[7]);
+  }
+
+  // RFC 6052 well-known NAT64: 0064:ff9b::X.X.X.X
+  if (groups[0] === "0064" && groups[1] === "ff9b") {
+    return hexGroupPairToDotted(groups[6], groups[7]);
+  }
+
+  return null;
+}
+
+function hexGroupPairToDotted(hi: string, lo: string): string | null {
+  const hiNum = parseInt(hi, 16);
+  const loNum = parseInt(lo, 16);
+  if (Number.isNaN(hiNum) || Number.isNaN(loNum)) return null;
+  return `${(hiNum >> 8) & 0xff}.${hiNum & 0xff}.${(loNum >> 8) & 0xff}.${loNum & 0xff}`;
+}
+
+/**
+ * Canonicalize an IPv6 address into its full 8-group lowercase form, expanding
+ * any embedded IPv4 suffix (last 32 bits) into two 16-bit groups. This is the
+ * only safe form for regex-based private-range checks.
+ *
+ * Examples:
+ *   "::ffff:127.0.0.1"   → "0000:0000:0000:0000:0000:ffff:7f00:0001"
+ *   "::ffff:7f00:1"      → "0000:0000:0000:0000:0000:ffff:7f00:0001"
+ *   "0:0:0:0:0:ffff:127.0.0.1" → "0000:0000:0000:0000:0000:ffff:7f00:0001"
+ *   "64:ff9b::7f00:1"    → "0064:ff9b:0000:0000:0000:0000:7f00:0001"
+ *   "FE80::1"            → "fe80:0000:0000:0000:0000:0000:0000:0001"
+ */
+function toCanonicalIPv6(ip: string): string {
+  const lower = ip.toLowerCase();
+
+  // Split on "::" once. If absent, parts.length === 1.
+  const halves = lower.split("::");
+  if (halves.length > 2) {
+    // Malformed — return as-is; downstream regex checks will fail closed.
+    return lower;
+  }
+
+  const splitGroup = (s: string): string[] => (s === "" ? [] : s.split(":"));
+
+  const left = splitGroup(halves[0]);
+  const right = halves.length === 2 ? splitGroup(halves[1]) : [];
+
+  // Expand a final group that contains "." into two 16-bit hex groups.
+  // Returns a NEW array so callers can use it without worrying about
+  // mutation order with subsequent length-dependent operations.
+  const expandFinalV4 = (groups: readonly string[]): string[] => {
+    if (groups.length === 0) return [...groups];
+    const last = groups[groups.length - 1];
+    if (!last.includes(".")) return [...groups];
+    const octets = last.split(".");
+    if (octets.length !== 4 || !octets.every((o) => /^\d+$/.test(o))) {
+      return [...groups]; // Malformed — let downstream fail closed.
+    }
+    const [a, b, c, d] = octets.map((o) => Number(o));
+    if (![a, b, c, d].every((n) => n >= 0 && n <= 255)) return [...groups];
+    return [
+      ...groups.slice(0, -1),
+      ((a << 8) | b).toString(16).padStart(4, "0"),
+      ((c << 8) | d).toString(16).padStart(4, "0"),
+    ];
+  };
+
+  let groups: string[];
+  if (halves.length === 1) {
+    groups = expandFinalV4(left);
+  } else {
+    // Expand IPv4 in the rightmost half's final group first (if any).
+    // expandFinalV4 returns a fresh array so we can safely replace
+    // `right` without affecting the spread length calculation below.
+    const expandedRight = expandFinalV4(right);
+    const missing = 8 - (left.length + expandedRight.length);
+    if (missing < 0) return lower; // Malformed.
+    groups = [...left, ...Array(missing).fill("0"), ...expandedRight];
+  }
+
+  if (groups.length !== 8) return lower;
+  return groups.map((g) => g.padStart(4, "0")).join(":");
 }
 
 /**

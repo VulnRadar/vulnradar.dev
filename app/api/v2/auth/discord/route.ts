@@ -19,12 +19,14 @@ export async function GET(request: Request) {
     );
   }
 
-  // For "connect" action, require existing session
-  if (action === "connect") {
-    const session = await getSession();
-    if (!session) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+  // For "connect" action, require existing session.
+  // Even for "login", we may have a session — bind it into the state so
+  // a leaked/forwarded state URL can't be replayed by another signed-in
+  // user.
+  const session = await getSession();
+
+  if (action === "connect" && !session) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   // Build redirect URI from config or request URL
@@ -35,7 +37,11 @@ export async function GET(request: Request) {
   // Build Discord OAuth URL
   const scopes = ["identify", "email", "guilds.join"];
   // H-5: state is HMAC-signed (see lib/auth/discord-state.ts).
-  const state = signDiscordState({ action });
+  // Also bind userId when available to prevent replay by another session.
+  const state = signDiscordState({
+    action,
+    userId: session?.userId,
+  });
 
   const discordAuthUrl = new URL("https://discord.com/api/oauth2/authorize");
   discordAuthUrl.searchParams.set("client_id", DISCORD_CLIENT_ID);

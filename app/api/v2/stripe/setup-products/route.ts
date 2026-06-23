@@ -3,6 +3,8 @@ import type Stripe from "stripe";
 import { getStripe } from "@/lib/billing/stripe";
 import { PRODUCTS } from "@/lib/billing/products";
 import { BILLING_ENABLED } from "@/lib/config/constants";
+import { getSession } from "@/lib/auth";
+import { STAFF_ROLES, ERROR_MESSAGES } from "@/lib/config/constants";
 
 /**
  * GET /api/v2/stripe/setup-products
@@ -16,6 +18,23 @@ import { BILLING_ENABLED } from "@/lib/config/constants";
  * 3. Returns the created product/price IDs
  */
 export async function GET() {
+  // Setup endpoints must be admin-only — they write to the live Stripe
+  // catalog. Before this guard any anonymous caller could pollute the
+  // catalog (or grief-pricing a real product).
+  const session = await getSession();
+  if (!session) {
+    return NextResponse.json(
+      { error: ERROR_MESSAGES.UNAUTHORIZED },
+      { status: 401 },
+    );
+  }
+  if (session.role !== STAFF_ROLES.ADMIN) {
+    return NextResponse.json(
+      { error: ERROR_MESSAGES.FORBIDDEN },
+      { status: 403 },
+    );
+  }
+
   if (!BILLING_ENABLED) {
     return NextResponse.json(
       {

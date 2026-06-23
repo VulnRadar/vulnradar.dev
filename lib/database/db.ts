@@ -24,9 +24,16 @@ const ssl: false | { rejectUnauthorized: boolean; ca?: string } = useSSL
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl,
+  // Cap each connection at 10 simultaneous clients. statement_timeout
+  // prevents any single query from holding a slot indefinitely — without
+  // it, a 10-connection pool can be saturated by 10 slow queries and every
+  // other request (including login) blocks behind them.
   max: 10,
   idleTimeoutMillis: 30000,
   connectionTimeoutMillis: 5000,
+  statement_timeout: 30_000,
+  query_timeout: 30_000,
+  application_name: "vulnradar",
 });
 
 pool.on("error", (err) => {

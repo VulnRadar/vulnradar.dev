@@ -23,9 +23,31 @@ export default function LoginPage() {
   );
 }
 
+/**
+ * Restrict post-login redirects to a safe same-origin path. Anything
+ * with a scheme/host (e.g. `https://evil.com`, `//evil.com`, `\\evil.com`,
+ * `javascript:...`) is stripped to the dashboard default. Without
+ * this, an attacker can phish credentials by sending a victim
+ * `/login?redirect=https://evil.com` and capturing the post-login
+ * bounce (the victim briefly sees the real domain, then is sent to
+ * the attacker page styled as a "session expired" prompt).
+ */
+function safeRedirect(value: string | null): string {
+  const fallback = "/dashboard";
+  if (!value) return fallback;
+  const v = value.trim();
+  if (!v || v.length > 512) return fallback;
+  // Must start with `/` and not `//` or `/\` (both are protocol-relative
+  // URLs and will navigate off-origin).
+  if (!v.startsWith("/") || v.startsWith("//") || v.startsWith("/\\")) {
+    return fallback;
+  }
+  return v;
+}
+
 function LoginPageContent() {
   const searchParams = useSearchParams();
-  const redirectTo = searchParams.get("redirect") || "/dashboard";
+  const redirectTo = safeRedirect(searchParams.get("redirect"));
   const discordError = searchParams.get("error");
   const discord2FA = searchParams.get("discord_2fa");
   const discord2FAMethod = searchParams.get("method");

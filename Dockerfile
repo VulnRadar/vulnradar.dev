@@ -1,5 +1,7 @@
 # ── Build stage ─────────────────────────────────────────────────
-FROM node:20-alpine AS builder
+# Node 22 LTS only. Node 20 reached end-of-life on 2026-04-30 and is no
+# longer receiving security patches.
+FROM node:22-alpine AS builder
 
 WORKDIR /app
 
@@ -25,12 +27,15 @@ ENV DATABASE_URL="postgresql://placeholder:placeholder@localhost:5432/placeholde
 ENV STRIPE_SECRET_KEY="placeholder"
 ENV STRIPE_WEBHOOK_SECRET="placeholder"
 ENV STRIPE_PUBLISHABLE_KEY="placeholder"
-ENV API_KEY_ENCRYPTION_KEY="00000000000000000000000000000000000000000000000000000000000000000000"
+# NOTE: API_KEY_ENCRYPTION_KEY placeholder is intentionally NOT set
+# here. lib/config/env.ts validates the key length at startup; a 68-char
+# placeholder fails closed and forces operators to inject a real key
+# via docker-compose env / Kubernetes secret / etc.
 
 RUN npm run build
 
 # ── Production stage ───────────────────────────────────────────
-FROM node:20-alpine AS runner
+FROM node:22-alpine AS runner
 
 LABEL org.opencontainers.image.source="https://github.com/VulnRadar/vulnradar.dev"
 LABEL org.opencontainers.image.description="VulnRadar - Website Security Scanner"
