@@ -50,11 +50,11 @@ export function LandingFeatures() {
           </p>
         </div>
 
-        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4 min-w-0">
           {FEATURES.map((feature, i) => (
             <div
               key={i}
-              className="group p-5 rounded-xl border border-border/50 bg-card/30 hover:bg-card/50 hover:border-border/60 transition-all"
+              className="group p-4 sm:p-5 rounded-xl border border-border/50 bg-card/30 hover:bg-card/50 hover:border-border/60 transition-all"
             >
               <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center mb-4 group-hover:bg-primary/15 transition-colors">
                 <feature.icon className="h-4 w-4 text-primary" />
@@ -62,7 +62,7 @@ export function LandingFeatures() {
               <h3 className="text-base font-semibold mb-1.5">
                 {feature.title}
               </h3>
-              <p className="text-sm text-muted-foreground leading-relaxed">
+              <p className="text-sm text-muted-foreground leading-relaxed break-words">
                 {feature.desc}
               </p>
             </div>

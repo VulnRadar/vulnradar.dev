@@ -17,6 +17,131 @@
   .scrollbar-hide::-webkit-scrollbar {
     display: none;
   }
+
+  /* ------------------------------------------------------------------
+   * Landing-only utilities (Cloudflare / terminal security tier)
+   * Used by app/landing/* — do not adopt outside that scope.
+   * ------------------------------------------------------------------ */
+
+  /* Subtle background grid that fades to ink-950 at the edges. */
+  .bg-grid-fade {
+    background-image:
+      linear-gradient(rgba(124, 255, 178, 0.05) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(124, 255, 178, 0.05) 1px, transparent 1px);
+    background-size: 56px 56px;
+    background-position: -1px -1px;
+    -webkit-mask-image: radial-gradient(
+      ellipse 70% 60% at 50% 35%,
+      #000 30%,
+      transparent 100%
+    );
+    mask-image: radial-gradient(
+      ellipse 70% 60% at 50% 35%,
+      #000 30%,
+      transparent 100%
+    );
+  }
+
+  /* Inline radial highlight for hero glow. */
+  .bg-radar-glow {
+    background-image: radial-gradient(
+      circle at 50% 0%,
+      rgba(124, 255, 178, 0.18) 0%,
+      rgba(124, 255, 178, 0) 60%
+    );
+  }
+
+  /* Four corner brackets — "scope frame" used by terminal cards. */
+  .corner-brackets {
+    position: relative;
+  }
+  .corner-brackets::before,
+  .corner-brackets::after,
+  .corner-brackets > .cb-tl,
+  .corner-brackets > .cb-tr,
+  .corner-brackets > .cb-bl,
+  .corner-brackets > .cb-br {
+    content: "";
+    position: absolute;
+    width: 14px;
+    height: 14px;
+    pointer-events: none;
+  }
+  .corner-brackets::before,
+  .corner-brackets > .cb-tl {
+    top: -1px;
+    left: -1px;
+    border-top: 1px solid currentColor;
+    border-left: 1px solid currentColor;
+  }
+  .corner-brackets::after,
+  .corner-brackets > .cb-tr {
+    top: -1px;
+    right: -1px;
+    border-top: 1px solid currentColor;
+    border-right: 1px solid currentColor;
+  }
+  .corner-brackets > .cb-bl {
+    bottom: -1px;
+    left: -1px;
+    border-bottom: 1px solid currentColor;
+    border-left: 1px solid currentColor;
+  }
+  .corner-brackets > .cb-br {
+    bottom: -1px;
+    right: -1px;
+    border-bottom: 1px solid currentColor;
+    border-right: 1px solid currentColor;
+  }
+
+  /* Inline scope brackets variant for buttons. */
+  .cb-btn {
+    position: relative;
+  }
+  .cb-btn::before,
+  .cb-btn::after {
+    content: "";
+    position: absolute;
+    width: 8px;
+    height: 8px;
+    pointer-events: none;
+  }
+  .cb-btn::before {
+    top: -1px;
+    left: -1px;
+    border-top: 1px solid currentColor;
+    border-left: 1px solid currentColor;
+  }
+  .cb-btn::after {
+    bottom: -1px;
+    right: -1px;
+    border-bottom: 1px solid currentColor;
+    border-right: 1px solid currentColor;
+  }
+
+  /* Tabular nums for telemetry / monospace stat rows. */
+  .tabular-nums {
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Monospace text rendering. */
+  .font-mono-tight {
+    font-feature-settings:
+      "calt" 0,
+      "liga" 0;
+  }
+
+  /* Selection: terminal green highlight on landing. */
+  .landing-scope ::selection,
+  .landing-scope *::selection {
+    background-color: #7cffb2;
+    color: #07090c;
+  }
+  .landing-scope ::-moz-selection,
+  .landing-scope *::-moz-selection {
+    background-color: #7cffb2;
+    color: #07090c;
+  }
 }
 
 /* Smooth scroll behavior for anchor links */
@@ -73,6 +198,14 @@ html[data-scroll-locked] body {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
+  }
+  /* Landing-specific motion: kill the radar sweep, caret blink, and
+     radar ping. The radar-ping utility is intentionally not used in the
+     final design but kept defensive in case it lands later. */
+  .animate-scan-sweep,
+  .animate-caret-blink,
+  .animate-radar-ping {
+    animation: none !important;
   }
 }
 
