@@ -279,9 +279,10 @@ export const detectors: Record<string, DetectFn> = {
 
   "vary-cookie-on-static-resource": (url, headers) => {
     const vary = h(headers, "vary");
-    const isStatic = /\.(?:js|mjs|css|png|jpe?g|gif|svg|ico|webp|avif|woff2?|ttf|otf|mp4|webm|mp3|pdf)(?:\?|$)/i.test(
-      url,
-    );
+    const isStatic =
+      /\.(?:js|mjs|css|png|jpe?g|gif|svg|ico|webp|avif|woff2?|ttf|otf|mp4|webm|mp3|pdf)(?:\?|$)/i.test(
+        url,
+      );
     if (vary && /cookie/i.test(vary) && isStatic) {
       return "Vary: Cookie is set on a static asset — every cache stores one copy per Cookie value, defeating caching.";
     }
@@ -298,7 +299,10 @@ export const detectors: Record<string, DetectFn> = {
     if (acao && acao !== "*" && (!vary || !/origin/i.test(vary))) {
       return `Access-Control-Allow-Origin: ${acao} is dynamic but Vary: Origin is missing — cache poisoning risk across origins.`;
     }
-    if (hasHeader(headers, "content-type") && (!vary || !/origin/i.test(vary))) {
+    if (
+      hasHeader(headers, "content-type") &&
+      (!vary || !/origin/i.test(vary))
+    ) {
       return "Vary: Origin not set on this response — verify caching for endpoints with dynamic Access-Control-Allow-Origin.";
     }
     return null;
@@ -310,7 +314,11 @@ export const detectors: Record<string, DetectFn> = {
       return "Transfer-Encoding: chunked in use — verify cacheability and prefer Content-Length where possible.";
     }
     const ct = h(headers, "content-type") || "";
-    if (/text\/html/i.test(ct) && !hasHeader(headers, "content-length") && !te) {
+    if (
+      /text\/html/i.test(ct) &&
+      !hasHeader(headers, "content-length") &&
+      !te
+    ) {
       return "HTML response without explicit Content-Length and no Transfer-Encoding — server may stream/chunk.";
     }
     return null;
@@ -390,7 +398,8 @@ export const detectors: Record<string, DetectFn> = {
   // ── NEL (Network Error Logging) ──────────────────────────────────────────
 
   "nel-missing": (_url, headers) => {
-    if (hasHeader(headers, "nel") || hasHeader(headers, "report-to")) return null;
+    if (hasHeader(headers, "nel") || hasHeader(headers, "report-to"))
+      return null;
     const ct = h(headers, "content-type") || "";
     if (/text\/html/i.test(ct)) {
       return "HTML page has no NEL (Network Error Logging) or Report-To header — add for visibility into connectivity failures.";
@@ -483,13 +492,22 @@ export const detectors: Record<string, DetectFn> = {
   // ── RateLimit (draft RFC) ────────────────────────────────────────────────
 
   "ratelimit-policy-missing": (url, headers) => {
-    if (hasHeader(headers, "ratelimit-limit") && !hasHeader(headers, "ratelimit-policy")) {
+    if (
+      hasHeader(headers, "ratelimit-limit") &&
+      !hasHeader(headers, "ratelimit-policy")
+    ) {
       return "RateLimit-Limit is set without RateLimit-Policy — clients cannot interpret the window or quota unit.";
     }
-    if (/^https?:\/\/api\./i.test(url) && !hasHeader(headers, "ratelimit-limit")) {
+    if (
+      /^https?:\/\/api\./i.test(url) &&
+      !hasHeader(headers, "ratelimit-limit")
+    ) {
       return "API endpoint has no RateLimit-* family headers — consider emitting RateLimit-Limit and RateLimit-Policy.";
     }
-    if (hasHeader(headers, "authorization") && !hasHeader(headers, "ratelimit-limit")) {
+    if (
+      hasHeader(headers, "authorization") &&
+      !hasHeader(headers, "ratelimit-limit")
+    ) {
       return "Authenticated response has no RateLimit-* headers — add RateLimit-Limit + RateLimit-Policy for client backoff.";
     }
     return null;

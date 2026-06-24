@@ -890,9 +890,7 @@ export const detectors: Record<string, DetectFn> = {
   },
 
   "service-worker-insecure": (_url, _headers, body) => {
-    if (
-      /navigator\.serviceWorker\.register\s*\(\s*["']http:\/\//i.test(body)
-    ) {
+    if (/navigator\.serviceWorker\.register\s*\(\s*["']http:\/\//i.test(body)) {
       return "Service worker registered over insecure HTTP origin.";
     }
     if (/navigator\.serviceWorker\.register/i.test(body)) {
@@ -905,7 +903,11 @@ export const detectors: Record<string, DetectFn> = {
   },
 
   "push-api-usage": (_url, _headers, body) => {
-    if (/Notification\.requestPermission|push\.subscribe|serviceWorker.*push/i.test(body)) {
+    if (
+      /Notification\.requestPermission|push\.subscribe|serviceWorker.*push/i.test(
+        body,
+      )
+    ) {
       return "Push API / Notification permission flow - ensure user consent and HTTPS.";
     }
     if (/<html|<script/i.test(body) || /api\./.test(_url)) {
@@ -935,7 +937,9 @@ export const detectors: Record<string, DetectFn> = {
   },
 
   "webauthn-usage": (_url, _headers, body) => {
-    if (/navigator\.credentials\.(?:get|create)\s*\([^)]*publicKey/i.test(body)) {
+    if (
+      /navigator\.credentials\.(?:get|create)\s*\([^)]*publicKey/i.test(body)
+    ) {
       return "WebAuthn / Passkey flow - verify RP ID and origin validation.";
     }
     if (/<html|<script/i.test(body) || /api\./.test(_url)) {
@@ -945,7 +949,11 @@ export const detectors: Record<string, DetectFn> = {
   },
 
   "crypto-subtle-usage": (_url, _headers, body) => {
-    if (/crypto\.subtle\.(?:digest|encrypt|sign|deriveKey|generateKey)/i.test(body)) {
+    if (
+      /crypto\.subtle\.(?:digest|encrypt|sign|deriveKey|generateKey)/i.test(
+        body,
+      )
+    ) {
       return "SubtleCrypto API usage - confirm secure context (HTTPS) and algorithm choice.";
     }
     if (/<html|<script/i.test(body) || /api\./.test(_url)) {
@@ -989,7 +997,10 @@ export const detectors: Record<string, DetectFn> = {
   },
 
   "error-boundary-missing": (_url, _headers, body) => {
-    if (/React\.(?:Component|createElement)/.test(body) && !/componentDidCatch|ErrorBoundary|getDerivedStateFromError/.test(body)) {
+    if (
+      /React\.(?:Component|createElement)/.test(body) &&
+      !/componentDidCatch|ErrorBoundary|getDerivedStateFromError/.test(body)
+    ) {
       return "React components rendered without an ErrorBoundary nearby.";
     }
     if (/<html|<script/i.test(body) || /api\./.test(_url)) {
@@ -1064,7 +1075,9 @@ export const detectors: Record<string, DetectFn> = {
   },
 
   "code-xss-angular-bypass-dynamic": (_url, _headers, body) => {
-    if (/bypassSecurityTrust(Html|Script|Style|Url|ResourceUrl)\s*\(/i.test(body)) {
+    if (
+      /bypassSecurityTrust(Html|Script|Style|Url|ResourceUrl)\s*\(/i.test(body)
+    ) {
       return "Angular bypassSecurityTrust* defeats DomSanitizer - XSS risk.";
     }
     if (/ng-bind-html|innerHTML\s*=/i.test(body)) {
@@ -1090,7 +1103,10 @@ export const detectors: Record<string, DetectFn> = {
   },
 
   "code-xss-template-tag": (_url, _headers, body) => {
-    if (/\bhtml\s*`[\s\S]*\$\{/i.test(body) || /\bsvg\s*`[\s\S]*\$\{/i.test(body)) {
+    if (
+      /\bhtml\s*`[\s\S]*\$\{/i.test(body) ||
+      /\bsvg\s*`[\s\S]*\$\{/i.test(body)
+    ) {
       return "Tagged template literal (html`...`) - XSS if interpolations are unescaped.";
     }
     if (/<script[\s\S]*`[\s\S]*\$\{/i.test(body)) {
@@ -1153,7 +1169,9 @@ export const detectors: Record<string, DetectFn> = {
   },
 
   "code-cmdi-popen": (_url, _headers, body) => {
-    if (/subprocess\.(?:Popen|call|run)\s*\([^)]*shell\s*=\s*True/i.test(body)) {
+    if (
+      /subprocess\.(?:Popen|call|run)\s*\([^)]*shell\s*=\s*True/i.test(body)
+    ) {
       return "subprocess.Popen / call / run with shell=True - command injection risk.";
     }
     if (/os\.popen\s*\(/i.test(body)) {
@@ -1185,7 +1203,10 @@ export const detectors: Record<string, DetectFn> = {
   // ── SQL injection (code-sqli-*) ──────────────────────────────────────────
 
   "code-sqli-mongodb-where": (_url, _headers, body) => {
-    if (/\$where\s*:\s*["'`].*\+/i.test(body) || /\$where\s*:\s*Function/i.test(body)) {
+    if (
+      /\$where\s*:\s*["'`].*\+/i.test(body) ||
+      /\$where\s*:\s*Function/i.test(body)
+    ) {
       return "MongoDB $where clause built from concatenation - server-side JS injection.";
     }
     if (/\$where\s*:/i.test(body)) {
@@ -1231,7 +1252,9 @@ export const detectors: Record<string, DetectFn> = {
   },
 
   "code-sqli-template-literal-query": (_url, _headers, body) => {
-    if (/\.query\s*\(\s*`[^`]*\$\{(?:req|request|params|query|body)\./i.test(body)) {
+    if (
+      /\.query\s*\(\s*`[^`]*\$\{(?:req|request|params|query|body)\./i.test(body)
+    ) {
       return "SQL query via template literal interpolation - SQL injection.";
     }
     if (/\.query\s*\(\s*`/.test(body)) {
@@ -1260,7 +1283,11 @@ export const detectors: Record<string, DetectFn> = {
   },
 
   "code-sqli-sequelize-literal": (_url, _headers, body) => {
-    if (/Sequelize\.literal\s*\([^)]*(?:req|request|params|query|body)\./i.test(body)) {
+    if (
+      /Sequelize\.literal\s*\([^)]*(?:req|request|params|query|body)\./i.test(
+        body,
+      )
+    ) {
       return "Sequelize.literal with user input - SQL injection risk.";
     }
     if (/Sequelize\.literal\s*\(/i.test(body)) {
@@ -1317,7 +1344,9 @@ export const detectors: Record<string, DetectFn> = {
     if (/new\s+Function\s*\([^)]*JSON\.parse/i.test(body)) {
       return "new Function('return ' + JSON.parse(input)) - function body from attacker JSON.";
     }
-    if (/new\s+Function\s*\([^)]*(?:req|request|body|params|query)\./i.test(body)) {
+    if (
+      /new\s+Function\s*\([^)]*(?:req|request|body|params|query)\./i.test(body)
+    ) {
       return "new Function() with user-supplied source - arbitrary code execution.";
     }
     if (/<html|<script/i.test(body) || /api\./.test(_url)) {
@@ -1327,7 +1356,10 @@ export const detectors: Record<string, DetectFn> = {
   },
 
   "code-deser-node-serialize": (_url, _headers, body) => {
-    if (/require\s*\(\s*["']node-serialize["']\)/.test(body) || /serialize\.(?:unserialize|deserialize)\s*\(/i.test(body)) {
+    if (
+      /require\s*\(\s*["']node-serialize["']\)/.test(body) ||
+      /serialize\.(?:unserialize|deserialize)\s*\(/i.test(body)
+    ) {
       return "node-serialize deserialize() - IIFE payload can achieve RCE.";
     }
     if (/<html|<script/i.test(body) || /api\./.test(_url)) {
@@ -1380,7 +1412,9 @@ export const detectors: Record<string, DetectFn> = {
       /axios\s*\.\s*(?:get|post|put|patch|delete)\s*\(\s*(?:req|request|params|query|body)\./i.test(
         body,
       ) ||
-      /axios\s*\(\s*\{\s*url\s*:\s*(?:req|request|params|query|body|`[^`]*\$\{)/i.test(body)
+      /axios\s*\(\s*\{\s*url\s*:\s*(?:req|request|params|query|body|`[^`]*\$\{)/i.test(
+        body,
+      )
     ) {
       return "axios request with user-controlled URL - SSRF.";
     }
@@ -1482,7 +1516,9 @@ export const detectors: Record<string, DetectFn> = {
   },
 
   "code-redirect-location-replace": (_url, _headers, body) => {
-    if (/location\.replace\s*\(\s*(?:req|request|params|query|body)\./i.test(body)) {
+    if (
+      /location\.replace\s*\(\s*(?:req|request|params|query|body)\./i.test(body)
+    ) {
       return "location.replace() with user input - open redirect.";
     }
     if (/location\.replace\s*\(/i.test(body)) {
@@ -1542,7 +1578,9 @@ export const detectors: Record<string, DetectFn> = {
 
   "code-proto-pollution-object-assign-proto": (_url, _headers, body) => {
     if (
-      /Object\.assign\s*\(\s*\w+\s*,\s*(?:JSON\.parse|JSON\.stringify)/i.test(body) ||
+      /Object\.assign\s*\(\s*\w+\s*,\s*(?:JSON\.parse|JSON\.stringify)/i.test(
+        body,
+      ) ||
       /__proto__/i.test(body)
     ) {
       return "__proto__ assignment / Object.assign with parsed JSON - pollution risk.";
@@ -1704,7 +1742,10 @@ export const detectors: Record<string, DetectFn> = {
     if (/SameSite\s*=\s*None/i.test(body) && !/;\s*Secure/i.test(body)) {
       return "SameSite=None cookie without Secure flag - browsers reject, leaks via HTTP.";
     }
-    if (headers.has("set-cookie") && /SameSite\s*=\s*None/i.test(headers.get("set-cookie") || "")) {
+    if (
+      headers.has("set-cookie") &&
+      /SameSite\s*=\s*None/i.test(headers.get("set-cookie") || "")
+    ) {
       return "Set-Cookie uses SameSite=None without Secure - downgrade risk.";
     }
     if (/<html|<script/i.test(body) || /api\./.test(_url)) {
@@ -1714,10 +1755,16 @@ export const detectors: Record<string, DetectFn> = {
   },
 
   "code-cookie-missing-secure-http": (_url, headers, body) => {
-    if (/document\.cookie\s*=[^;]*(?:token|password|session)/i.test(body) && !/;\s*Secure/i.test(body)) {
+    if (
+      /document\.cookie\s*=[^;]*(?:token|password|session)/i.test(body) &&
+      !/;\s*Secure/i.test(body)
+    ) {
       return "document.cookie write missing Secure flag - cookie can travel over HTTP.";
     }
-    if (headers.has("set-cookie") && !/;\s*Secure/i.test(headers.get("set-cookie") || "")) {
+    if (
+      headers.has("set-cookie") &&
+      !/;\s*Secure/i.test(headers.get("set-cookie") || "")
+    ) {
       return "Set-Cookie header lacks Secure flag - sent on plaintext connections.";
     }
     if (/<html|<script/i.test(body) || /api\./.test(_url)) {
@@ -1745,10 +1792,16 @@ export const detectors: Record<string, DetectFn> = {
   },
 
   "code-clickjack-x-frame-options": (_url, headers, body) => {
-    if (!headers.has("x-frame-options") && !headers.has("content-security-policy")) {
+    if (
+      !headers.has("x-frame-options") &&
+      !headers.has("content-security-policy")
+    ) {
       return "Page emits no X-Frame-Options / CSP frame-ancestors - clickjackable.";
     }
-    if (headers.has("x-frame-options") && /ALLOWALL/i.test(headers.get("x-frame-options") || "")) {
+    if (
+      headers.has("x-frame-options") &&
+      /ALLOWALL/i.test(headers.get("x-frame-options") || "")
+    ) {
       return "X-Frame-Options: ALLOWALL - defeats clickjacking protection.";
     }
     if (/<html/i.test(body) && /api\./.test(_url)) {
@@ -1889,7 +1942,11 @@ export const detectors: Record<string, DetectFn> = {
   },
 
   "code-dangerously-setinnerhtml": (_url, headers, body) => {
-    if (/dangerouslySetInnerHTML\s*=\s*\{\s*\{\s*__html\s*:\s*["'][^"']+["']/i.test(body)) {
+    if (
+      /dangerouslySetInnerHTML\s*=\s*\{\s*\{\s*__html\s*:\s*["'][^"']+["']/i.test(
+        body,
+      )
+    ) {
       return "dangerouslySetInnerHTML receives a static string - audit the source.";
     }
     if (/dangerouslySetInnerHTML\b/i.test(body)) {
@@ -1948,7 +2005,10 @@ export const detectors: Record<string, DetectFn> = {
     ) {
       return "document.cookie write missing HttpOnly - readable from JS / XSS.";
     }
-    if (headers.has("set-cookie") && !/HttpOnly/i.test(headers.get("set-cookie") || "")) {
+    if (
+      headers.has("set-cookie") &&
+      !/HttpOnly/i.test(headers.get("set-cookie") || "")
+    ) {
       return "Set-Cookie header lacks HttpOnly - readable from JavaScript.";
     }
     if (/<html|<script/i.test(body) || /api\./.test(_url)) {
@@ -1964,7 +2024,10 @@ export const detectors: Record<string, DetectFn> = {
     ) {
       return "document.cookie write missing Secure flag.";
     }
-    if (headers.has("set-cookie") && !/;\s*Secure/i.test(headers.get("set-cookie") || "")) {
+    if (
+      headers.has("set-cookie") &&
+      !/;\s*Secure/i.test(headers.get("set-cookie") || "")
+    ) {
       return "Set-Cookie header lacks Secure flag - sent on plaintext connections.";
     }
     if (/<html|<script/i.test(body) || /api\./.test(_url)) {
@@ -1980,7 +2043,10 @@ export const detectors: Record<string, DetectFn> = {
     ) {
       return "document.cookie write missing SameSite attribute.";
     }
-    if (headers.has("set-cookie") && !/SameSite/i.test(headers.get("set-cookie") || "")) {
+    if (
+      headers.has("set-cookie") &&
+      !/SameSite/i.test(headers.get("set-cookie") || "")
+    ) {
       return "Set-Cookie header lacks SameSite attribute.";
     }
     if (/<html|<script/i.test(body) || /api\./.test(_url)) {
@@ -2007,7 +2073,9 @@ export const detectors: Record<string, DetectFn> = {
 
   "code-location-assign-with-user-input": (_url, headers, body) => {
     if (
-      /location(?:\.href)?\s*=\s*(?:req|request|params|query|body)\./i.test(body)
+      /location(?:\.href)?\s*=\s*(?:req|request|params|query|body)\./i.test(
+        body,
+      )
     ) {
       return "location.href assigned from user input - open redirect.";
     }
@@ -2031,7 +2099,9 @@ export const detectors: Record<string, DetectFn> = {
   },
 
   "code-angular-bypass-security": (_url, headers, body) => {
-    if (/bypassSecurityTrust(Html|Script|Style|Url|ResourceUrl)\s*\(/i.test(body)) {
+    if (
+      /bypassSecurityTrust(Html|Script|Style|Url|ResourceUrl)\s*\(/i.test(body)
+    ) {
       return "Angular bypassSecurityTrust* defeats DomSanitizer - XSS risk.";
     }
     if (/<html|<script/i.test(body) || /api\./.test(_url)) {
@@ -2129,7 +2199,10 @@ export const detectors: Record<string, DetectFn> = {
   },
 
   "code-angular-interpolation-bypass": (_url, headers, body) => {
-    if (/\[innerHTML\]\s*=/i.test(body) || /\[(?:ngStyle|ngClass)\]\s*=/i.test(body)) {
+    if (
+      /\[innerHTML\]\s*=/i.test(body) ||
+      /\[(?:ngStyle|ngClass)\]\s*=/i.test(body)
+    ) {
       return "Angular property-binding bypass of interpolation - audit user content.";
     }
     if (/<html|<script/i.test(body) || /api\./.test(_url)) {
@@ -2153,10 +2226,14 @@ export const detectors: Record<string, DetectFn> = {
   },
 
   "reflected-input": (_url, _headers, body) => {
-    if (/<[^>]*(?:location|search|hash|referrer|window\.name)[^>]*>/i.test(body)) {
+    if (
+      /<[^>]*(?:location|search|hash|referrer|window\.name)[^>]*>/i.test(body)
+    ) {
       return "Potentially reflected input detected - audit for XSS.";
     }
-    if (/document\.URL|document\.referrer|window\.location\.search/i.test(body)) {
+    if (
+      /document\.URL|document\.referrer|window\.location\.search/i.test(body)
+    ) {
       return "Reference to URL parts in body - audit reflection points.";
     }
     if (/<html|<script/i.test(body) || /api\./.test(_url)) {

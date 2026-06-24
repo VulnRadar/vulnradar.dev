@@ -11,11 +11,7 @@
  * never produces a finding.
  */
 
-import {
-  hasHeader,
-  getHeader,
-  type EvidenceFn as DetectFn,
-} from "../_helpers";
+import { hasHeader, getHeader, type EvidenceFn as DetectFn } from "../_helpers";
 
 /**
  * Mixed content: a page served over HTTPS that loads http:// subresources.
@@ -25,7 +21,8 @@ import {
  */
 function detectMixedContent(_url: string, _headers: Headers, body: string) {
   if (!body) return null;
-  const httpRefs = body.match(/(?:src|href|action)\s*=\s*["']http:\/\//gi) || [];
+  const httpRefs =
+    body.match(/(?:src|href|action)\s*=\s*["']http:\/\//gi) || [];
   if (httpRefs.length === 0) return null;
   return `${httpRefs.length} mixed-content reference(s) (https page loading http resources).`;
 }

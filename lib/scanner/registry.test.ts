@@ -139,7 +139,10 @@ const CATEGORIES_WITH_INLINE_DETECTORS = new Set<Category>([
 // exclusively from lib/scanner/async-checks.ts.
 const ASYNC_ONLY_CATEGORIES = new Set<Category>(["tls", "email", "dns"]);
 
-const ALL_INLINE_DETECTORS: Record<string, (url: string, headers: Headers, body: string) => string | null> = {
+const ALL_INLINE_DETECTORS: Record<
+  string,
+  (url: string, headers: Headers, body: string) => string | null
+> = {
   ...headerDetectors,
   ...sslDetectors,
   ...contentDetectors,
