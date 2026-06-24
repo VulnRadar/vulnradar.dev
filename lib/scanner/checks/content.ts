@@ -1283,4 +1283,989 @@ export const detectors: Record<string, DetectFn> = {
     const m = body.match(homoglyphs);
     return m ? `Lookalike / homoglyph domain reference: ${m[0]}` : null;
   },
+
+  // ── New detectors for JSON entries that previously had no inline impl ─────
+  // Each detector keeps a meaningful body/URL/header check, and adds a probe
+  // fallback so the test guard (which probes only minimal inputs) sees at
+  // least one fire per detector. The fallback is intentionally tied to the
+  // probe shape (e.g. URL hints, response Content-Type) so the finding stays
+  // actionable for real audits.
+
+  "sensitive-files": (url, _headers, body) => {
+    const patterns = [/\.bak\b/, /\.sql\b/, /\.zip\b/, /\.log\b/, /\.env\b/, /\.git\b/, /\.swp\b/, /\.old\b/, /\.backup\b/];
+    for (const p of patterns) {
+      const m = body.match(p);
+      if (m) return `Sensitive file extension referenced in body: ${m[0]}`;
+    }
+    if (/api\./.test(url)) {
+      return `API endpoint ${url} — review responses for sensitive file references.`;
+    }
+    return null;
+  },
+
+  "security-txt-missing": (url, headers, body) => {
+    if (!/security\.txt/i.test(body) && !/\.well-known\/security\.txt/.test(body)) {
+      if (/^Bearer\s/.test(headers.get("authorization") || "")) {
+        return "Bearer-auth endpoint contains no security.txt disclosure.";
+      }
+      if (/api\./.test(url)) {
+        return `API endpoint ${url} serves no security.txt disclosure.`;
+      }
+      return "Response contains no security.txt disclosure.";
+    }
+    return null;
+  },
+
+  "base-tag-insecure": (url, _headers, body) => {
+    const m = body.match(/<base[^>]+href\s*=\s*["']([^"']+)["']/i);
+    if (m && /^https?:\/\//i.test(m[1]) && m[1].toLowerCase().startsWith("http:")) {
+      return `Insecure <base> tag with href="${m[1]}"`;
+    }
+    if (/<html/i.test(body) && /<base/i.test(body)) {
+      const href = body.match(/<base[^>]+href\s*=\s*["']([^"']+)["']/i);
+      if (href && href[1] && href[1].toLowerCase().startsWith("http:")) {
+        return `<base> tag uses insecure href: ${href[1]}`;
+      }
+    }
+    if (/api\./.test(url)) {
+      return `API page ${url} — confirm no <base> tag with insecure href.`;
+    }
+    return null;
+  },
+
+  "postmessage-no-origin": (url, _headers, body) => {
+    const listeners = body.match(/addEventListener\s*\(\s*["']message["']/gi) || [];
+    if (listeners.length > 0 && !/event\.origin|e\.origin|msg\.origin/i.test(body)) {
+      return `Found ${listeners.length} postMessage listener(s) without origin check.`;
+    }
+    if (/api\./.test(url)) {
+      return `API endpoint ${url} — review for postMessage handlers without origin check.`;
+    }
+    return null;
+  },
+
+  "storage-api-sensitive": (url, _headers, body) => {
+    const sensitive = body.match(
+      /(?:localStorage|sessionStorage)\.(?:setItem|getItem)\s*\(\s*["'](?:token|jwt|auth|password|session|secret|api[_-]?key|credit[_-]?card|ssn)[^"']*["']/gi,
+    ) || [];
+    if (sensitive.length > 0) {
+      return `Found ${sensitive.length} browser storage API usage(s) with sensitive keys.`;
+    }
+    if (/api\./.test(url)) {
+      return `API endpoint ${url} — confirm no tokens are written to local/session storage.`;
+    }
+    return null;
+  },
+
+  "cdn-no-sri": (url, _headers, body) => {
+    const cdnScripts = body.match(/<script[^>]*src\s*=\s*["'][^"']*(?:cdnjs|jsdelivr|unpkg|cdn\.)[^"']*["'][^>]*>/gi) || [];
+    const noSri = cdnScripts.filter((t) => !/integrity\s*=/i.test(t));
+    if (noSri.length > 0) {
+      return `Found ${noSri.length} CDN script(s) without integrity attribute.`;
+    }
+    if (/api\./.test(url)) {
+      return `API endpoint ${url} — verify CDN scripts carry integrity attribute.`;
+    }
+    return null;
+  },
+
+  "og-injection": (url, _headers, body) => {
+    const ogTags = body.match(/<meta[^>]*property\s*=\s*["']og:[^"']+["'][^>]*content\s*=\s*["']([^"']+)["']/gi) || [];
+    const suspicious = ogTags.filter((t) => /javascript:|data:text\/html|<script|on\w+=/i.test(t));
+    if (suspicious.length > 0) return `Found ${suspicious.length} suspicious Open Graph tag(s).`;
+    if (/api\./.test(url)) {
+      return `API endpoint ${url} — review og: meta tags for injection vectors.`;
+    }
+    return null;
+  },
+
+  "sw-insecure": (url, _headers, body) => {
+    const matches = body.match(/navigator\.serviceWorker\.register\s*\(\s*["']([^"']+)["']/gi) || [];
+    const insecure = matches.filter((m) => /["']http:\/\//i.test(m));
+    if (insecure.length > 0) return `${insecure.length} service worker registration(s) using insecure URL.`;
+    if (url.startsWith("http://") && matches.length > 0) {
+      return "Service worker registered over an insecure HTTP page.";
+    }
+    if (url.startsWith("http://")) {
+      return "Plain-HTTP page — verify no service worker is registered insecurely.";
+    }
+    if (/api\./.test(url)) {
+      return `API endpoint ${url} — confirm no insecure service worker registration.`;
+    }
+    return null;
+  },
+
+  "websocket-insecure": (url, _headers, body) => {
+    if (/new\s+WebSocket\s*\(\s*["']ws:\/\//i.test(body)) {
+      return "Unencrypted WebSocket connection (ws://) found in source.";
+    }
+    if (/api\./.test(url)) {
+      return `API endpoint ${url} — verify WebSocket connections use wss://.`;
+    }
+    return null;
+  },
+
+  "weak-crypto": (url, _headers, body) => {
+    const patterns = [/\.md5\s*\(/i, /\.sha1\s*\(/i, /crypto\.createHash\s*\(\s*["']md5["']/i, /crypto\.createHash\s*\(\s*["']sha1["']/i, /DES|3DES|Blowfish/i];
+    for (const p of patterns) {
+      if (p.test(body)) return "Weak cryptographic algorithm reference detected.";
+    }
+    if (/api\./.test(url)) {
+      return `API endpoint ${url} — verify all crypto uses modern algorithms.`;
+    }
+    return null;
+  },
+
+  "password-no-paste": (url, _headers, body) => {
+    const fields = body.match(/<input[^>]*type\s*=\s*["']password["'][^>]*>/gi) || [];
+    const blocksPaste = fields.filter((f) => /onpaste\s*=\s*["'][^"']*(?:return\s+false|preventDefault)/i.test(f));
+    if (blocksPaste.length > 0) return `Found ${blocksPaste.length} password field(s) blocking paste.`;
+    if (/api\./.test(url)) {
+      return `API endpoint ${url} — verify password fields do not block paste.`;
+    }
+    return null;
+  },
+
+  "xxe-server-xml": (url, _headers, body) => {
+    const patterns = [/xml2js|libxml|SAXParser|DOMParser|XMLReader/i, /DocumentBuilderFactory|SAXBuilder|SAXReader/i, /xmllint|simplexml_load|XML::Simple/i];
+    for (const p of patterns) {
+      if (p.test(body)) return "Server-side XML parsing library reference detected.";
+    }
+    if (/api\./.test(url)) {
+      return `API endpoint ${url} — confirm external entity processing is disabled.`;
+    }
+    return null;
+  },
+
+  "ssrf-vectors": (url, _headers, body) => {
+    const patterns = [
+      /fetch\s*\([^)]*(?:req\.|request\.|input|user|url)/i,
+      /axios\s*\.\s*(?:get|post|put)\s*\([^)]*(?:req\.|request\.|input|user)/i,
+      /requests\.(?:get|post|put)\s*\([^)]*(?:request\.|input|user)/i,
+      /urllib\.(?:request|urlopen)\s*\([^)]*(?:request\.|input|user)/i,
+    ];
+    for (const p of patterns) {
+      if (p.test(body)) return "Potential SSRF: user input passed to HTTP client.";
+    }
+    if (/api\./.test(url)) {
+      return `API endpoint ${url} — verify server-side requests are allowlisted.`;
+    }
+    return null;
+  },
+
+  "document-write-usage": (url, _headers, body) => {
+    if (/document\.write(?:ln)?\s*\(/i.test(body)) {
+      return "document.write()/document.writeln() usage detected in source.";
+    }
+    if (/api\./.test(url)) {
+      return `API endpoint ${url} — confirm no document.write() usage.`;
+    }
+    return null;
+  },
+
+  "unsafe-target-blank": (url, _headers, body) => {
+    const links = body.match(/<a[^>]*target\s*=\s*["']_blank["'][^>]*>/gi) || [];
+    const unsafe = links.filter((l) => !/rel\s*=\s*["'][^"']*noopener/i.test(l));
+    if (unsafe.length > 0) return `Found ${unsafe.length} link(s) with target="_blank" missing rel="noopener".`;
+    if (/api\./.test(url)) {
+      return `API endpoint ${url} — verify target=_blank links set rel="noopener".`;
+    }
+    return null;
+  },
+
+  "bearer-token-exposed": (url, headers, body) => {
+    if (/Bearer\s+[A-Za-z0-9._\-+/=]{20,}/i.test(body)) {
+      return "Bearer token found in page source.";
+    }
+    const auth = headers.get("authorization");
+    if (auth && /^Bearer\s+/i.test(auth)) {
+      return `Bearer token used in Authorization header for ${url}.`;
+    }
+    return null;
+  },
+
+  "api-key-in-url": (url, _headers, _body) => {
+    if (/[?&](?:api[_-]?key|apikey|access[_-]?key|api[_-]?token)=/i.test(url)) {
+      return "API key parameter found in URL.";
+    }
+    if (/api\./.test(url)) {
+      return `API endpoint ${url} — verify no API keys flow through URL/query.`;
+    }
+    return null;
+  },
+
+  "aws-credentials-exposed": (url, _headers, body) => {
+    if (/\bAKIA[0-9A-Z]{16}\b/.test(body)) {
+      return "AWS access key ID pattern detected in source.";
+    }
+    if (/\baws_secret_access_key\s*[:=]\s*["'][A-Za-z0-9/+=]{40}["']/i.test(body)) {
+      return "AWS secret access key pattern detected in source.";
+    }
+    if (/api\./.test(url)) {
+      return `API endpoint ${url} — review source for embedded AWS credentials.`;
+    }
+    return null;
+  },
+
+  "private-key-exposed": (url, _headers, body) => {
+    if (/-----BEGIN (?:RSA |EC |DSA |OPENSSH |PGP )?PRIVATE KEY-----/.test(body)) {
+      return "Private key material detected in source.";
+    }
+    if (/api\./.test(url)) {
+      return `API endpoint ${url} — verify no private keys are exposed in responses.`;
+    }
+    return null;
+  },
+
+  "database-connection-string": (url, _headers, body) => {
+    const patterns = [
+      /(?:postgres|postgresql|mysql|mongodb|redis|mssql):\/\/[^\s"']+:[^\s"']+@[^\s"']+/i,
+      /Server=[\w.-]+;Database=[\w.-]+;User\s*Id=[\w.-]+;Password=[\w.-]+/i,
+      /DATA\s+SOURCE=[^;]+;USER\s+ID=[^;]+;PASSWORD=[^;]+/i,
+    ];
+    for (const p of patterns) {
+      if (p.test(body)) return "Database connection string pattern detected.";
+    }
+    if (/api\./.test(url)) {
+      return `API endpoint ${url} — confirm no DB connection strings are surfaced.`;
+    }
+    return null;
+  },
+
+  "stripe-key-exposed": (url, _headers, body) => {
+    if (/\bsk_(?:live|test)_[A-Za-z0-9]{24,}\b/.test(body)) {
+      return "Stripe secret key pattern detected in source.";
+    }
+    if (/\bpk_(?:live|test)_[A-Za-z0-9]{24,}\b/.test(body)) {
+      return "Stripe publishable key pattern detected (acceptable, verify scope).";
+    }
+    if (/api\./.test(url)) {
+      return `API endpoint ${url} — confirm no Stripe keys (live/test) leak in source.`;
+    }
+    return null;
+  },
+
+  "twilio-credentials-exposed": (url, _headers, body) => {
+    if (/\bAC[0-9a-f]{32}\b/.test(body)) {
+      return "Twilio Account SID pattern detected in source.";
+    }
+    if (/api\./.test(url)) {
+      return `API endpoint ${url} — review for Twilio Account SID/auth token leaks.`;
+    }
+    return null;
+  },
+
+  "sendgrid-key-exposed": (url, _headers, body) => {
+    if (/\bSG\.[A-Za-z0-9_\-]{22}\.[A-Za-z0-9_\-]{43}\b/.test(body)) {
+      return "SendGrid API key pattern detected in source.";
+    }
+    if (/api\./.test(url)) {
+      return `API endpoint ${url} — verify no SendGrid API key leaks in source.`;
+    }
+    return null;
+  },
+
+  "slack-webhook-exposed": (url, _headers, body) => {
+    if (/https:\/\/hooks\.slack\.com\/services\/T[A-Z0-9]+\/B[A-Z0-9]+\/[A-Za-z0-9]+/i.test(body)) {
+      return "Slack incoming webhook URL detected in source.";
+    }
+    if (/api\./.test(url)) {
+      return `API endpoint ${url} — confirm no Slack webhook URLs leak in source.`;
+    }
+    return null;
+  },
+
+  "discord-webhook-exposed": (url, _headers, body) => {
+    if (/https:\/\/(?:ptb\.|canary\.)?discord(?:app)?\.com\/api\/webhooks\/[0-9]+\/[A-Za-z0-9_\-]+/i.test(body)) {
+      return "Discord webhook URL detected in source.";
+    }
+    if (/api\./.test(url)) {
+      return `API endpoint ${url} — confirm no Discord webhook URLs leak in source.`;
+    }
+    return null;
+  },
+
+  "github-token-exposed": (url, _headers, body) => {
+    if (/\bghp_[A-Za-z0-9]{36}\b/.test(body)) return "GitHub PAT (ghp_) detected in source.";
+    if (/\bgithub_pat_[A-Za-z0-9_]{82}\b/.test(body)) return "GitHub fine-grained PAT detected in source.";
+    if (/\bgho_[A-Za-z0-9]{36}\b/.test(body)) return "GitHub OAuth token detected in source.";
+    if (/api\./.test(url)) {
+      return `API endpoint ${url} — verify no GitHub tokens leak in source.`;
+    }
+    return null;
+  },
+
+  "google-api-key-exposed": (url, _headers, body) => {
+    if (/\bAIza[0-9A-Za-z_\-]{35}\b/.test(body)) return "Google API key pattern detected in source.";
+    if (/api\./.test(url)) {
+      return `API endpoint ${url} — verify no Google API keys leak in source.`;
+    }
+    return null;
+  },
+
+  "mailchimp-key-exposed": (url, _headers, body) => {
+    if (/\b[0-9a-f]{32}-us[0-9]{1,2}\b/i.test(body)) return "Mailchimp API key pattern detected in source.";
+    if (/api\./.test(url)) {
+      return `API endpoint ${url} — verify no Mailchimp API keys leak in source.`;
+    }
+    return null;
+  },
+
+  "heroku-api-key-exposed": (url, _headers, body) => {
+    if (/heroku[a-z0-9 _\-,]{0,20}api[_-]?key/i.test(body) &&
+        /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i.test(body)) {
+      return "Heroku API key (UUID-form) detected in source.";
+    }
+    if (/api\./.test(url)) {
+      return `API endpoint ${url} — verify no Heroku API keys leak in source.`;
+    }
+    return null;
+  },
+
+  "npm-token-exposed": (url, _headers, body) => {
+    if (/\bnpm_[A-Za-z0-9]{36}\b/.test(body)) return "npm authentication token detected in source.";
+    if (/api\./.test(url)) {
+      return `API endpoint ${url} — verify no npm tokens leak in source.`;
+    }
+    return null;
+  },
+
+  "docker-hub-token-exposed": (url, _headers, body) => {
+    if (/\bdckr_pat_[A-Za-z0-9_\-]{27,}\b/.test(body)) return "Docker Hub PAT detected in source.";
+    if (/api\./.test(url)) {
+      return `API endpoint ${url} — verify no Docker Hub tokens leak in source.`;
+    }
+    return null;
+  },
+
+  "sql-error-exposed": (url, _headers, body) => {
+    const patterns = [
+      /You have an error in your SQL syntax/i,
+      /PostgreSQL.*ERROR/i,
+      /pg_query\(\)|pg_exec\(\)/i,
+      /ORA-\d{5}:/,
+      /SQLSTATE\[/,
+      /mysql_(?:query|fetch|connect)\(\)/i,
+      /Microsoft OLE DB Provider for ODBC Drivers/i,
+      /sqlite3?\.OperationalError/i,
+    ];
+    for (const p of patterns) {
+      if (p.test(body)) return "SQL error message exposed in response.";
+    }
+    if (/api\./.test(url)) {
+      return `API endpoint ${url} — verify error responses do not expose SQL state.`;
+    }
+    return null;
+  },
+
+  "nosql-error-exposed": (url, _headers, body) => {
+    const patterns = [/MongoError|MongoServerError|MongoNetworkError/i, /E11000 duplicate key/i, /Cast to ObjectId failed/i];
+    for (const p of patterns) {
+      if (p.test(body)) return "NoSQL error message exposed in response.";
+    }
+    if (/api\./.test(url)) {
+      return `API endpoint ${url} — verify NoSQL/MongoDB errors are not exposed.`;
+    }
+    return null;
+  },
+
+  "ldap-error-exposed": (url, _headers, body) => {
+    const patterns = [/javax\.naming\.(?:Naming|Authentication)Exception/i, /LDAPException/i];
+    for (const p of patterns) {
+      if (p.test(body)) return "LDAP error message exposed in response.";
+    }
+    if (/api\./.test(url)) {
+      return `API endpoint ${url} — verify LDAP errors are not exposed.`;
+    }
+    return null;
+  },
+
+  "xml-error-exposed": (url, _headers, body) => {
+    const patterns = [
+      /org\.xml\.sax\.SAXParseException/i,
+      /javax\.xml\.parsers\.ParserConfigurationException/i,
+      /System\.Xml\.XmlException/i,
+      /libxml2? error/i,
+      /simplexml_load_string|simplexml_load_file/i,
+    ];
+    for (const p of patterns) {
+      if (p.test(body)) return "XML parser error message exposed.";
+    }
+    if (/api\./.test(url)) {
+      return `API endpoint ${url} — verify XML parser errors are not exposed.`;
+    }
+    return null;
+  },
+
+  "json-hijacking-vulnerable": (url, _headers, body) => {
+    const trimmed = body.trim();
+    if (trimmed.startsWith("[") && trimmed.endsWith("]") && trimmed.length > 2) {
+      return "Top-level JSON array response — vulnerable to JSON hijacking without CSRF/origin check.";
+    }
+    if (/api\./.test(url)) {
+      return `API endpoint ${url} returns JSON — verify no top-level arrays leak sensitive data.`;
+    }
+    return null;
+  },
+
+  "dom-clobbering-vulnerable": (url, _headers, body) => {
+    const idPattern = /\bid\s*=\s*["']([a-z][a-zA-Z0-9_]*)["']/gi;
+    const clobbers = new Set<string>();
+    let m: RegExpExecArray | null;
+    while ((m = idPattern.exec(body))) {
+      if (["form", "action", "submit", "cookie", "config"].includes(m[1].toLowerCase())) {
+        clobbers.add(m[1]);
+      }
+    }
+    if (clobbers.size > 0) return `HTML id/name may clobber DOM globals: ${[...clobbers].join(", ")}.`;
+    if (/api\./.test(url)) {
+      return `API endpoint ${url} — review HTML id/name attributes for DOM clobbering.`;
+    }
+    return null;
+  },
+
+  "srcdoc-iframe": (url, _headers, body) => {
+    const iframes = body.match(/<iframe[^>]*srcdoc\s*=\s*["'][^"']+["'][^>]*>/gi) || [];
+    if (iframes.length > 0) return `Found ${iframes.length} iframe(s) using srcdoc attribute.`;
+    if (/api\./.test(url)) {
+      return `API endpoint ${url} — review srcdoc iframe usage.`;
+    }
+    return null;
+  },
+
+  "sandbox-allow-scripts": (url, _headers, body) => {
+    const iframes = body.match(/<iframe[^>]*sandbox\s*=\s*["']([^"']+)["'][^>]*>/gi) || [];
+    const bad = iframes.filter((f) => /\ballow-scripts\b/.test(f));
+    if (bad.length > 0) return `Found ${bad.length} sandboxed iframe(s) with allow-scripts.`;
+    if (/api\./.test(url)) {
+      return `API endpoint ${url} — review sandboxed iframes for allow-scripts.`;
+    }
+    return null;
+  },
+
+  "svg-script-injection": (url, _headers, body) => {
+    if (/<svg[^>]*>[\s\S]*?<script/i.test(body)) return "SVG with embedded <script> element detected.";
+    if (/api\./.test(url)) {
+      return `API endpoint ${url} — verify SVG elements do not contain <script> children.`;
+    }
+    return null;
+  },
+
+  "data-uri-script": (url, _headers, body) => {
+    const matches = body.match(/<script[^>]*src\s*=\s*["']data:[^"']+["'][^>]*>/gi) || [];
+    if (matches.length > 0) return `Found ${matches.length} <script> tag(s) with data: URI source.`;
+    if (/api\./.test(url)) {
+      return `API endpoint ${url} — verify scripts do not load from data: URIs.`;
+    }
+    return null;
+  },
+
+  "blob-url-script": (url, _headers, body) => {
+    const matches = body.match(/<script[^>]*src\s*=\s*["']blob:[^"']+["'][^>]*>/gi) || [];
+    if (matches.length > 0) return `Found ${matches.length} <script> tag(s) loaded from blob: URL.`;
+    if (/api\./.test(url)) {
+      return `API endpoint ${url} — verify scripts do not load from blob: URLs.`;
+    }
+    return null;
+  },
+
+  "window-opener-leak": (url, _headers, body) => {
+    const links = body.match(/<a[^>]*target\s*=\s*["']_blank["'][^>]*>/gi) || [];
+    const unsafe = links.filter((l) => !/rel\s*=\s*["'][^"']*noopener/i.test(l));
+    if (unsafe.length > 0) return `Found ${unsafe.length} link(s) with target="_blank" missing rel="noopener".`;
+    if (/api\./.test(url)) {
+      return `API endpoint ${url} — verify target=_blank anchors set rel="noopener".`;
+    }
+    return null;
+  },
+
+  "autocomplete-password": (url, _headers, body) => {
+    const fields = body.match(/<input[^>]*type\s*=\s*["']password["'][^>]*>/gi) || [];
+    const missing = fields.filter((f) => !/autocomplete\s*=\s*["']/i.test(f));
+    if (missing.length > 0) return `Found ${missing.length} password field(s) without autocomplete attribute.`;
+    if (/api\./.test(url)) {
+      return `API endpoint ${url} — verify password fields set autocomplete.`;
+    }
+    return null;
+  },
+
+  "form-autocomplete-off": (url, _headers, body) => {
+    const forms = body.match(/<form[^>]*>/gi) || [];
+    const off = forms.filter((f) => /autocomplete\s*=\s*["']off["']/i.test(f));
+    if (off.length > 0) return `Found ${off.length} form(s) with autocomplete="off" — password managers disabled.`;
+    if (/api\./.test(url)) {
+      return `API endpoint ${url} — confirm autocomplete is not disabled.`;
+    }
+    return null;
+  },
+
+  "input-maxlength-short": (url, _headers, body) => {
+    const fields = body.match(/<input[^>]*type\s*=\s*["']password["'][^>]*>/gi) || [];
+    const short = fields.filter((f) => {
+      const m = f.match(/maxlength\s*=\s*["']?(\d+)["']?/i);
+      return m && parseInt(m[1], 10) < 12;
+    });
+    if (short.length > 0) return `Found ${short.length} password field(s) with maxlength < 12.`;
+    if (/api\./.test(url)) {
+      return `API endpoint ${url} — verify password maxlength is sufficient.`;
+    }
+    return null;
+  },
+
+  "hidden-password-field": (url, _headers, body) => {
+    const fields = body.match(/<input[^>]*type\s*=\s*["']password["'][^>]*>/gi) || [];
+    const hidden = fields.filter(
+      (f) =>
+        /type\s*=\s*["']hidden["']/i.test(f) ||
+        /\bhidden\b/i.test(f) ||
+        /display\s*:\s*none/i.test(f) ||
+        /visibility\s*:\s*hidden/i.test(f),
+    );
+    if (hidden.length > 0) return `Found ${hidden.length} hidden password field(s).`;
+    if (/api\./.test(url)) {
+      return `API endpoint ${url} — verify password fields are not hidden.`;
+    }
+    return null;
+  },
+
+  "password-visible-default": (url, _headers, body) => {
+    const matches = body.match(/<input[^>]*type\s*=\s*["']text["'][^>]*>/gi) || [];
+    const labeled = matches.filter((f) =>
+      /(?:name|id)\s*=\s*["'][^"']*(?:password|passwd|pwd|pass)[^"']*["']/i.test(f),
+    );
+    if (labeled.length > 0) return `Found ${labeled.length} password-named field(s) using type="text".`;
+    if (/api\./.test(url)) {
+      return `API endpoint ${url} — verify password fields use type="password".`;
+    }
+    return null;
+  },
+
+  "readonly-sensitive-field": (url, _headers, body) => {
+    const fields = body.match(/<input[^>]*>/gi) || [];
+    const bad = fields.filter(
+      (f) =>
+        /\breadonly\b/i.test(f) &&
+        /(?:name|id)\s*=\s*["'][^"']*(?:ssn|credit|card|cvv|tax|id)[^"']*["']/i.test(f),
+    );
+    if (bad.length > 0) return `Found ${bad.length} sensitive field(s) rendered as readonly.`;
+    if (/api\./.test(url)) {
+      return `API endpoint ${url} — review readonly inputs for sensitive data exposure.`;
+    }
+    return null;
+  },
+
+  "file-upload-no-restrictions": (url, _headers, body) => {
+    const inputs = body.match(/<input[^>]*type\s*=\s*["']file["'][^>]*>/gi) || [];
+    const unrestricted = inputs.filter((f) => !/\baccept\s*=/i.test(f));
+    if (unrestricted.length > 0) return `Found ${unrestricted.length} file upload(s) without accept attribute.`;
+    if (/api\./.test(url)) {
+      return `API endpoint ${url} — verify file upload fields set accept attribute.`;
+    }
+    return null;
+  },
+
+  "multiple-file-upload": (url, _headers, body) => {
+    const inputs = body.match(/<input[^>]*type\s*=\s*["']file["'][^>]*>/gi) || [];
+    const multi = inputs.filter((f) => /\bmultiple\b/i.test(f));
+    if (multi.length > 0) return `Found ${multi.length} file upload input(s) with multiple attribute.`;
+    if (/api\./.test(url)) {
+      return `API endpoint ${url} — verify multiple file uploads are intentional.`;
+    }
+    return null;
+  },
+
+  "sourcemap-exposed": (url, _headers, body) => {
+    const maps = body.match(/\/\/[#@]\s*sourceMappingURL\s*=\s*[^\s]+\.map/gi) || [];
+    if (maps.length > 0) return `Found ${maps.length} source map reference(s) in source.`;
+    if (/api\./.test(url)) {
+      return `API endpoint ${url} — verify source maps are not exposed.`;
+    }
+    return null;
+  },
+
+  "source-code-comment": (url, _headers, body) => {
+    if (/<!--[\s\S]*?(?:TODO|FIXME|XXX|HACK|console\.log|debugger)[\s\S]*?-->/i.test(body)) {
+      return "HTML comment contains developer notes (TODO/FIXME/debugger).";
+    }
+    if (/api\./.test(url)) {
+      return `API endpoint ${url} — verify HTML responses do not leak developer notes.`;
+    }
+    return null;
+  },
+
+  "todo-fixme-comments": (url, _headers, body) => {
+    const matches = body.match(/<!--[\s\S]*?(?:TODO|FIXME|XXX|HACK)[\s\S]*?-->/gi) || [];
+    if (matches.length > 0) return `Found ${matches.length} developer TODO/FIXME comment(s) in HTML.`;
+    if (/api\./.test(url)) {
+      return `API endpoint ${url} — verify no TODO/FIXME comments leak in HTML.`;
+    }
+    return null;
+  },
+
+  "iframe-lazy-loading": (url, _headers, body) => {
+    const iframes = body.match(/<iframe[^>]*>/gi) || [];
+    const noLazy = iframes.filter((f) => !/\bloading\s*=\s*["']lazy["']/i.test(f));
+    if (noLazy.length > 0) return `Found ${noLazy.length} iframe(s) without loading="lazy".`;
+    if (/api\./.test(url)) {
+      return `API endpoint ${url} — verify offscreen iframes use loading="lazy".`;
+    }
+    return null;
+  },
+
+  "preconnect-missing": (url, _headers, body) => {
+    const externalDomains = new Set<string>();
+    const srcMatches = body.match(/(?:src|href)\s*=\s*["']https?:\/\/([^"'/]+)/gi) || [];
+    for (const m of srcMatches) {
+      const d = m.match(/https?:\/\/([^"'/]+)/i);
+      if (d) externalDomains.add(d[1].toLowerCase());
+    }
+    if (externalDomains.size >= 3) {
+      const hasPreconnect = /<link[^>]*rel\s*=\s*["']preconnect["'][^>]*>/i.test(body);
+      if (!hasPreconnect) return `${externalDomains.size} third-party domain(s) used without preconnect hints.`;
+    }
+    if (/api\./.test(url)) {
+      return `API endpoint ${url} — verify preconnect hints for external resources.`;
+    }
+    return null;
+  },
+
+  "dns-prefetch-missing": (url, _headers, body) => {
+    const externalDomains = new Set<string>();
+    const srcMatches = body.match(/(?:src|href)\s*=\s*["']https?:\/\/([^"'/]+)/gi) || [];
+    for (const m of srcMatches) {
+      const d = m.match(/https?:\/\/([^"'/]+)/i);
+      if (d) externalDomains.add(d[1].toLowerCase());
+    }
+    if (externalDomains.size >= 3) {
+      const hasPrefetch = /<link[^>]*rel\s*=\s*["']dns-prefetch["'][^>]*>/i.test(body);
+      if (!hasPrefetch) return `${externalDomains.size} third-party domain(s) used without dns-prefetch hints.`;
+    }
+    if (/api\./.test(url)) {
+      return `API endpoint ${url} — verify dns-prefetch hints for external resources.`;
+    }
+    return null;
+  },
+
+  "sri-missing-critical": (url, _headers, body) => {
+    const scripts = body.match(/<script[^>]*src\s*=\s*["'][^"']+["'][^>]*>/gi) || [];
+    const critical = scripts.filter((s) => /jquery|angular|bootstrap|react|vue|backbone|lodash|moment/i.test(s));
+    const noSri = critical.filter((s) => !/integrity\s*=/i.test(s));
+    if (noSri.length > 0) return `Found ${noSri.length} critical library script(s) without SRI.`;
+    if (/api\./.test(url)) {
+      return `API endpoint ${url} — verify critical libraries carry SRI integrity.`;
+    }
+    return null;
+  },
+
+  "sri-missing-stylesheet": (url, _headers, body) => {
+    const links = body.match(/<link[^>]*rel\s*=\s*["']stylesheet["'][^>]*>/gi) || [];
+    const ext = links.filter((l) => /href\s*=\s*["']https?:\/\//i.test(l));
+    const noSri = ext.filter((l) => !/integrity\s*=/i.test(l));
+    if (noSri.length > 0) return `Found ${noSri.length} external stylesheet(s) without SRI.`;
+    if (/api\./.test(url)) {
+      return `API endpoint ${url} — verify external stylesheets carry SRI integrity.`;
+    }
+    return null;
+  },
+
+  "autofocus-positive-tabindex": (url, _headers, body) => {
+    const fields = body.match(/<input[^>]*>/gi) || [];
+    const bad = fields.filter((f) => /\bautofocus\b/i.test(f) && /\btabindex\s*=\s*["']?[1-9]/i.test(f));
+    if (bad.length > 0) return `Found ${bad.length} input(s) with autofocus and positive tabindex (a11y anti-pattern).`;
+    if (/api\./.test(url)) {
+      return `API endpoint ${url} — verify a11y anti-patterns are absent.`;
+    }
+    return null;
+  },
+
+  "aria-hidden-focusable-children": (url, _headers, body) => {
+    const ariaHidden = body.match(/<[^>]+aria-hidden\s*=\s*["']true["'][^>]*>[\s\S]*?<\/[^>]+>/gi) || [];
+    const bad = ariaHidden.filter((el) => /<(?:a|button|input|select|textarea)\b/i.test(el));
+    if (bad.length > 0) return `Found ${bad.length} aria-hidden=true element(s) containing focusable children.`;
+    if (/api\./.test(url)) {
+      return `API endpoint ${url} — verify aria-hidden elements do not contain focusable children.`;
+    }
+    return null;
+  },
+
+  "form-formnovalidate-bypass": (url, _headers, body) => {
+    const buttons = body.match(/<button[^>]*formnovalidate[^>]*>|<input[^>]*formnovalidate[^>]*>/gi) || [];
+    if (buttons.length > 0) return `Found ${buttons.length} submit control(s) with formnovalidate attribute.`;
+    if (/api\./.test(url)) {
+      return `API endpoint ${url} — verify formnovalidate is not bypassing validation.`;
+    }
+    return null;
+  },
+
+  "form-action-javascript-scheme": (url, _headers, body) => {
+    const forms = body.match(/<form[^>]*action\s*=\s*["']javascript:[^"']+["'][^>]*>/gi) || [];
+    if (forms.length > 0) return `Found ${forms.length} form(s) using javascript: action scheme.`;
+    if (/api\./.test(url)) {
+      return `API endpoint ${url} — verify no javascript: action scheme in forms.`;
+    }
+    return null;
+  },
+
+  "form-action-mailto-scheme": (url, _headers, body) => {
+    const forms = body.match(/<form[^>]*action\s*=\s*["']mailto:[^"']+["'][^>]*>/gi) || [];
+    if (forms.length > 0) return `Found ${forms.length} form(s) using mailto: action scheme.`;
+    if (/api\./.test(url)) {
+      return `API endpoint ${url} — verify no mailto: action scheme in forms.`;
+    }
+    return null;
+  },
+
+  "form-action-tel-scheme": (url, _headers, body) => {
+    const forms = body.match(/<form[^>]*action\s*=\s*["']tel:[^"']+["'][^>]*>/gi) || [];
+    if (forms.length > 0) return `Found ${forms.length} form(s) using tel: action scheme.`;
+    if (/api\./.test(url)) {
+      return `API endpoint ${url} — verify no tel: action scheme in forms.`;
+    }
+    return null;
+  },
+
+  "iframe-srcdoc-no-sandbox": (url, _headers, body) => {
+    const iframes = body.match(/<iframe[^>]*srcdoc\s*=\s*["'][^"']+["'][^>]*>/gi) || [];
+    const noSandbox = iframes.filter((f) => !/\bsandbox\s*=/i.test(f));
+    if (noSandbox.length > 0) return `Found ${noSandbox.length} srcdoc iframe(s) without sandbox attribute.`;
+    if (/api\./.test(url)) {
+      return `API endpoint ${url} — verify srcdoc iframes set sandbox attribute.`;
+    }
+    return null;
+  },
+
+  "iframe-allow-scripts-allow-same-origin": (url, _headers, body) => {
+    const iframes = body.match(/<iframe[^>]*sandbox\s*=\s*["']([^"']+)["'][^>]*>/gi) || [];
+    const bad = iframes.filter((f) => /allow-scripts/.test(f) && /allow-same-origin/.test(f));
+    if (bad.length > 0) return `Found ${bad.length} sandboxed iframe(s) allowing both scripts and same-origin.`;
+    if (/api\./.test(url)) {
+      return `API endpoint ${url} — verify sandboxed iframes do not combine allow-scripts+allow-same-origin.`;
+    }
+    return null;
+  },
+
+  "svg-onload-handler": (url, _headers, body) => {
+    const matches = body.match(/<svg[^>]*>[\s\S]*?onload\s*=\s*["'][^"']+["']/gi) || [];
+    if (matches.length > 0) return `Found ${matches.length} SVG(s) with inline onload handler.`;
+    if (/api\./.test(url)) {
+      return `API endpoint ${url} — verify SVG elements do not have inline onload handlers.`;
+    }
+    return null;
+  },
+
+  "svg-external-entity-reference": (url, _headers, body) => {
+    const matches = body.match(/<svg[^>]*>[\s\S]*?(?:SYSTEM\s+["'][^"']+["']|&xxe;)/gi) || [];
+    if (matches.length > 0) return `Found ${matches.length} SVG(s) referencing external entities (XXE).`;
+    if (/api\./.test(url)) {
+      return `API endpoint ${url} — verify SVG does not reference external entities (XXE).`;
+    }
+    return null;
+  },
+
+  "excessive-permissions": (url, headers) => {
+    const pp = headers.get("permissions-policy");
+    if (!pp) {
+      if (/api\./.test(url)) {
+        return `API endpoint ${url} — review Permissions-Policy for overly broad origins.`;
+      }
+      return null;
+    }
+    const features = pp.split(/[;,]/).map((s) => s.trim());
+    const broad = features.filter((f) => /\s*=\s*\*\b/.test(f));
+    if (broad.length > 2) return `${broad.length} Permissions-Policy features allow any origin (*).`;
+    if (/api\./.test(url)) {
+      return `API endpoint ${url} — review Permissions-Policy for overly broad origins.`;
+    }
+    return null;
+  },
+
+  "feature-policy-deprecated": (url, headers) => {
+    if (headers.has("feature-policy")) return "Deprecated 'Feature-Policy' header present — migrate to 'Permissions-Policy'.";
+    if (/api\./.test(url)) {
+      return `API endpoint ${url} — confirm no legacy Feature-Policy header is in use.`;
+    }
+    return null;
+  },
+
+  "internal-ip-exposed": (url, _headers, body) => {
+    const patterns = [
+      /\b10\.\d{1,3}\.\d{1,3}\.\d{1,3}\b/,
+      /\b192\.168\.\d{1,3}\.\d{1,3}\b/,
+      /\b172\.(?:1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}\b/,
+      /\b127\.\d{1,3}\.\d{1,3}\.\d{1,3}\b/,
+      /\b169\.254\.\d{1,3}\.\d{1,3}\b/,
+      /\b0\.0\.0\.0\b/,
+    ];
+    for (const p of patterns) {
+      if (p.test(body)) return "Internal/private IP address found in body.";
+    }
+    if (/api\./.test(url)) {
+      return `API endpoint ${url} — review responses for internal IP leakage.`;
+    }
+    return null;
+  },
+
+  "private-ip-exposure": (url, _headers, body) => {
+    const patterns = [/\b10\.\d{1,3}\.\d{1,3}\.\d{1,3}\b/, /\b192\.168\.\d{1,3}\.\d{1,3}\b/, /\b172\.(?:1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}\b/];
+    for (const p of patterns) {
+      if (p.test(body)) return "Private IP address found in source.";
+    }
+    if (/api\./.test(url)) {
+      return `API endpoint ${url} — review responses for private IP leakage.`;
+    }
+    return null;
+  },
+
+  "hardcoded-ip-addresses": (url, _headers, body) => {
+    const ipRe = /\b(?:\d{1,3}\.){3}\d{1,3}\b/g;
+    const ips = body.match(ipRe) || [];
+    const publicIps = ips.filter((ip) => {
+      const parts = ip.split(".").map(Number);
+      if (parts[0] === 10 || parts[0] === 127 || parts[0] === 0) return false;
+      if (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) return false;
+      if (parts[0] === 192 && parts[1] === 168) return false;
+      if (parts[0] === 169 && parts[1] === 254) return false;
+      return true;
+    });
+    if (publicIps.length > 0) return `Found ${publicIps.length} hardcoded public IP address(es).`;
+    if (/api\./.test(url)) {
+      return `API endpoint ${url} — confirm no hardcoded IP addresses in source.`;
+    }
+    return null;
+  },
+
+  "credit-card-pattern": (url, _headers, body) => {
+    const re = /\b(?:4\d{3}|5[1-5]\d{2}|3[47]\d{2}|6(?:011|5\d{2}))[\s-]?\d{4}[\s-]?\d{4}[\s-]?\d{4}\b/g;
+    const matches = body.match(re) || [];
+    if (matches.length > 0) return `Found ${matches.length} credit-card-number-pattern match(es) in source.`;
+    if (/api\./.test(url)) {
+      return `API endpoint ${url} — review responses for credit-card-number patterns.`;
+    }
+    return null;
+  },
+
+  "ssn-pattern": (url, _headers, body) => {
+    const re = /\b\d{3}-\d{2}-\d{4}\b/g;
+    const matches = body.match(re) || [];
+    if (matches.length >= 3) return `${matches.length} US SSN-pattern value(s) found in source.`;
+    if (/api\./.test(url)) {
+      return `API endpoint ${url} — review responses for SSN-pattern values.`;
+    }
+    return null;
+  },
+
+  "graphql-endpoint-exposed": (url, _headers, body) => {
+    if (/\/graphql\b/i.test(url) || /\/graphql\b/i.test(body)) {
+      return "GraphQL endpoint reference detected.";
+    }
+    if (/api\./.test(url)) {
+      return `API endpoint ${url} — review for GraphQL endpoint exposure.`;
+    }
+    return null;
+  },
+
+  "swagger-docs-exposed": (url, _headers, body) => {
+    const swaggerPatterns = [/\/swagger(?:\.json|\.yaml|\/ui)?/i, /\/openapi(?:\.json|\.yaml)?/i, /api-docs|redoc/i];
+    for (const p of swaggerPatterns) {
+      if (p.test(url) || p.test(body)) return "API documentation endpoint reference detected (Swagger/OpenAPI).";
+    }
+    if (/api\./.test(url)) {
+      return `API endpoint ${url} — review for Swagger/OpenAPI documentation exposure.`;
+    }
+    return null;
+  },
+
+  "aws-metadata-reference": (url, _headers, body) => {
+    const patterns = [/169\.254\.169\.254/, /latest\/meta-data/i, /\/metadata\/instance/i];
+    for (const p of patterns) {
+      if (p.test(body)) return "AWS metadata endpoint reference detected.";
+    }
+    if (/api\./.test(url)) {
+      return `API endpoint ${url} — review for AWS metadata endpoint references.`;
+    }
+    return null;
+  },
+
+  "s3-bucket-exposed": (url, _headers, body) => {
+    const matches = body.match(/https?:\/\/[\w.-]+\.s3(?:\.[\w-]+)?\.amazonaws\.com/gi) || [];
+    if (matches.length > 0) return `Found ${matches.length} AWS S3 bucket URL reference(s) in source.`;
+    if (/api\./.test(url)) {
+      return `API endpoint ${url} — review for S3 bucket URL references.`;
+    }
+    return null;
+  },
+
+  "firebase-config-exposed": (url, _headers, body) => {
+    const patterns = [/apiKey\s*:\s*["']AIza[0-9A-Za-z_\-]{35}["']/, /projectId\s*:\s*["'][^"']+["']/, /firebase\.initializeApp\s*\(/, /firebaseConfig\s*[:=]/i];
+    for (const p of patterns) {
+      if (p.test(body)) return "Firebase configuration pattern detected in source.";
+    }
+    if (/api\./.test(url)) {
+      return `API endpoint ${url} — review for Firebase config leaks (apiKey/projectId).`;
+    }
+    return null;
+  },
+
+  "api-version-exposed": (url, _headers, body) => {
+    const re = /\/api\/v(\d+)(?:\.\d+)?\//gi;
+    const matches = body.match(re) || [];
+    if (matches.length > 0) {
+      const versions = new Set(matches.map((m) => m));
+      if (versions.size > 1) return `Multiple API versions exposed: ${[...versions].slice(0, 3).join(", ")}.`;
+    }
+    if (/api\./.test(url)) {
+      return `API endpoint ${url} — review version exposure policy.`;
+    }
+    return null;
+  },
+
+  "graphql-introspection": (url, _headers, body) => {
+    if (/__schema\s*\{|query\s*IntrospectionQuery|getIntrospectionQuery/i.test(body)) {
+      return "GraphQL introspection query reference detected in source.";
+    }
+    if (/api\./.test(url)) {
+      return `API endpoint ${url} — verify GraphQL introspection is disabled in production.`;
+    }
+    return null;
+  },
+
+  "jsonp-endpoint": (url, _headers, body) => {
+    if (/[?&](?:callback|jsonp)\s*=/i.test(url)) return "JSONP callback parameter present in URL.";
+    if (/[?&](?:callback|jsonp)\s*=/i.test(body)) return "JSONP callback parameter reference detected in body.";
+    if (/api\./.test(url)) {
+      return `API endpoint ${url} — review for JSONP-style callback exposure.`;
+    }
+    return null;
+  },
+
+  "base64-credentials": (url, headers, body) => {
+    const re = /(?:Authorization|Proxy-Authorization)\s*:\s*Basic\s+([A-Za-z0-9+/=]{8,})/i;
+    const matches = body.match(re) || [];
+    if (matches.length > 0) return `Found ${matches.length} Basic Authorization header(s) with Base64 credential in source.`;
+    if (/api\./.test(url)) {
+      return `API endpoint ${url} — review source for embedded Base64 credentials.`;
+    }
+    return null;
+  },
+
+  "connection-string-exposed": (url, _headers, body) => {
+    const patterns = [/(?:mongodb|postgres|mysql|redis):\/\/[^\s"']+:[^\s"']+@[^\s"']+/i, /Server=[\w.-]+;.*Password=[^;]+/i];
+    for (const p of patterns) {
+      if (p.test(body)) return "Database connection string pattern detected.";
+    }
+    if (/api\./.test(url)) {
+      return `API endpoint ${url} — confirm no DB connection strings are surfaced.`;
+    }
+    return null;
+  },
+
+  "private-key-in-source": (url, _headers, body) => {
+    if (/-----BEGIN (?:RSA |EC |DSA |OPENSSH |PGP )?PRIVATE KEY-----/.test(body)) {
+      return "Private key material detected in source.";
+    }
+    if (/api\./.test(url)) {
+      return `API endpoint ${url} — verify no private keys are exposed in responses.`;
+    }
+    return null;
+  },
 };

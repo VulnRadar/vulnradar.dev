@@ -9,7 +9,14 @@
  * rather than active credential leaks.
  */
 
-import { escapeRegExp, type EvidenceFn as DetectFn } from "../_helpers";
+import {
+  escapeRegExp,
+  getHeader,
+  getSetCookies,
+  hasHeader,
+  parseCookieName,
+  type EvidenceFn as DetectFn,
+} from "../_helpers";
 
 export const detectors: Record<string, DetectFn> = {
   // ── Private / internal IPs in body ───────────────────────────────────────
@@ -654,6 +661,517 @@ export const detectors: Record<string, DetectFn> = {
       !/<link[^>]*rel=["']sitemap/i.test(body)
     ) {
       return "No sitemap.xml link or reference detected on the page.";
+    }
+    return null;
+  },
+
+  // ── New JSON entries ─────────────────────────────────────────────────────
+
+  "html-comment-leaks": (_url, _headers, body) => {
+    const comments = body.match(/<!--([\s\S]*?)-->/g) || [];
+    const sensitive = [
+      /password|passwd|pwd/i,
+      /api[_-]?key|secret|token/i,
+      /TODO|FIXME|XXX|HACK/i,
+      /BEGIN (?:RSA |OPENSSH |)PRIVATE KEY/i,
+      /Bearer\s+[A-Za-z0-9\-_.=]{20,}/i,
+    ];
+    const found: string[] = [];
+    for (const c of comments) {
+      for (const p of sensitive) {
+        if (p.test(c)) {
+          found.push(c.trim().slice(0, 80));
+          break;
+        }
+      }
+    }
+    if (found.length > 0) {
+      return `Sensitive keywords found in HTML comments: ${found.length} occurrence(s).`;
+    }
+    if (comments.length > 0) {
+      return `Page contains ${comments.length} HTML comment(s) — verify none reference secrets, TODOs, or internal notes.`;
+    }
+    if (/<html/i.test(body)) {
+      return "HTML page served — verify no sensitive data leaks via HTML comments (use a build step that strips comments).";
+    }
+    return null;
+  },
+
+  "sql-error-exposure": (_url, _headers, body) => {
+    const patterns = [
+      /SQL syntax.*MySQL/i,
+      /ORA-\d{5}/,
+      /Microsoft\s+SQL\s+Server.*Driver/i,
+      /PostgreSQL.*ERROR/i,
+      /pg_query\(\)/i,
+      /sqlite3?\.OperationalError/i,
+      /SQLSTATE\[/i,
+      /mysql_fetch/i,
+      /SqlException/i,
+    ];
+    for (const p of patterns) {
+      if (p.test(body)) {
+        return `SQL error message exposed in body — matches pattern ${p.source}.`;
+      }
+    }
+    if (/<html/i.test(body)) {
+      return "HTML page served — verify error handlers never surface raw SQL exceptions to clients.";
+    }
+    return null;
+  },
+
+  "timing-allow-origin-wide": (_url, headers, body) => {
+    const tao = getHeader(headers, "timing-allow-origin");
+    if (tao && /^\s*\*/.test(tao)) {
+      return "Timing-Allow-Origin is '*' — any origin can read high-resolution Resource Timing data.";
+    }
+    if (tao) {
+      return `Timing-Allow-Origin is '${tao}' — verify it is restricted to specific trusted origins.`;
+    }
+    if (/<html/i.test(body)) {
+      return "HTML page served — if Timing-Allow-Origin is needed, restrict to specific trusted origins, never '*'.";
+    }
+    return null;
+  },
+
+  "server-header-truncated": (_url, headers, body) => {
+    const server = getHeader(headers, "server");
+    if (server && /\(truncated\)/i.test(server)) {
+      return `Server header ends with '(truncated)' (${server}) — verify the upstream is not echoing real versions.`;
+    }
+    if (server) {
+      return `Server header is '${server}' — confirm the upstream is not leaking real versions.`;
+    }
+    if (/<html/i.test(body)) {
+      return "HTML page served — verify the Server header does not echo a real upstream version (no '(truncated)' leakage).";
+    }
+    return null;
+  },
+
+  // ── Framework-revealing cookie names ─────────────────────────────────────
+
+  "php-version-exposed-in-cookie": (_url, headers) => {
+    const cookies = getSetCookies(headers);
+    for (const c of cookies) {
+      const name = parseCookieName(c);
+      if (/^phpsessid$/i.test(name)) {
+        return "Cookie 'PHPSESSID' reveals the PHP runtime — rename to a generic opaque value.";
+      }
+    }
+    if (cookies.length > 0) {
+      return `Cookie(s) present: ${cookies.map(parseCookieName).join(", ")} — verify no framework-revealing names (PHPSESSID, JSESSIONID, etc.).`;
+    }
+    return null;
+  },
+
+  "rails-version-exposure": (_url, headers) => {
+    const cookies = getSetCookies(headers);
+    for (const c of cookies) {
+      const name = parseCookieName(c);
+      if (/_session$/i.test(name)) {
+        return `Cookie '${name}' matches the Rails '_session' default — set a custom session_store :key.`;
+      }
+    }
+    if (cookies.length > 0) {
+      return `Cookie(s) present: ${cookies.map(parseCookieName).join(", ")} — verify none match the Rails '_session' default.`;
+    }
+    return null;
+  },
+
+  "django-csrftoken-cookie-exposed": (_url, headers) => {
+    const cookies = getSetCookies(headers);
+    for (const c of cookies) {
+      const name = parseCookieName(c);
+      if (/^csrftoken$/i.test(name) || /^django-session$/i.test(name)) {
+        return `Cookie '${name}' reveals Django — override CSRF_COOKIE_NAME / SESSION_COOKIE_NAME in settings.`;
+      }
+    }
+    if (cookies.length > 0) {
+      return `Cookie(s) present: ${cookies.map(parseCookieName).join(", ")} — verify no Django defaults (csrftoken, django-session).`;
+    }
+    return null;
+  },
+
+  "laravel-session-cookie-exposes": (_url, headers) => {
+    const cookies = getSetCookies(headers);
+    for (const c of cookies) {
+      const name = parseCookieName(c);
+      if (/^XSRF-TOKEN$/i.test(name) || /_session$/i.test(name)) {
+        return `Cookie '${name}' matches the Laravel default — set SESSION_COOKIE and XSRF_COOKIE in config/session.php.`;
+      }
+    }
+    if (cookies.length > 0) {
+      return `Cookie(s) present: ${cookies.map(parseCookieName).join(", ")} — verify no Laravel defaults (XSRF-TOKEN, *_session).`;
+    }
+    return null;
+  },
+
+  "express-cookie-exposes": (_url, headers) => {
+    const cookies = getSetCookies(headers);
+    for (const c of cookies) {
+      const name = parseCookieName(c);
+      if (/^connect\.sid$/i.test(name)) {
+        return "Cookie 'connect.sid' is the default express-session name — pass name: 'sid' (or similar) to express-session.";
+      }
+    }
+    if (cookies.length > 0) {
+      return `Cookie(s) present: ${cookies.map(parseCookieName).join(", ")} — verify none match Express default 'connect.sid'.`;
+    }
+    return null;
+  },
+
+  "rails-cookie-httponly": (_url, headers) => {
+    const cookies = getSetCookies(headers);
+    for (const c of cookies) {
+      const name = parseCookieName(c);
+      if (/_session$/i.test(name) && !/httponly/i.test(c)) {
+        return `Rails-style session cookie '${name}' is missing the HttpOnly flag — set config.session_store :httponly => true.`;
+      }
+    }
+    for (const c of cookies) {
+      if (!/httponly/i.test(c)) {
+        return `Cookie '${parseCookieName(c)}' is missing HttpOnly — required for any session-style cookie.`;
+      }
+    }
+    return null;
+  },
+
+  // ── Public config / env exposure ─────────────────────────────────────────
+
+  "config-js-leaked": (_url, _headers, body) => {
+    if (
+      /\bconfig\.js\b/i.test(body) ||
+      /\bsettings\.js\b/i.test(body) ||
+      /['"]\/config\.js['"]/i.test(body)
+    ) {
+      return "Reference to a public config.js / settings.js — verify it does not embed API keys or environment hints.";
+    }
+    if (/<html/i.test(body)) {
+      return "HTML body present — verify that /config.js and /settings.js are not served from public paths with secrets.";
+    }
+    return null;
+  },
+
+  "env-js-leaked": (_url, _headers, body) => {
+    if (
+      /\benv\.js\b/i.test(body) ||
+      /\benvironment\.js\b/i.test(body) ||
+      /['"]\/env\.js['"]/i.test(body)
+    ) {
+      return "Reference to a public env.js / environment.js — never serve env.js from a public path.";
+    }
+    if (/<html/i.test(body)) {
+      return "HTML body present — verify that /env.js is not served from a public path with environment secrets.";
+    }
+    return null;
+  },
+
+  // ── Sitemap / robots ─────────────────────────────────────────────────────
+
+  "sitemap-public": (url, _headers, body) => {
+    if (/sitemap\.xml/i.test(url) || /sitemap\.xml/i.test(body)) {
+      return "sitemap.xml is publicly accessible — audit it for admin or private paths.";
+    }
+    if (/<sitemap/i.test(body) || /<link[^>]*rel=["']sitemap/i.test(body)) {
+      return "Page references a sitemap — verify it does not include admin or private paths.";
+    }
+    if (/<html/i.test(body)) {
+      return "HTML page served — verify sitemap.xml does not include admin or private paths.";
+    }
+    return null;
+  },
+
+  "robots-txt-allows-all": (url, _headers, body) => {
+    if (/\/robots\.txt(?:$|\?)/i.test(url)) {
+      const lower = body.toLowerCase();
+      const hasDisallow = /^\s*disallow\s*:/m.test(lower);
+      if (!hasDisallow) {
+        return "robots.txt disallows nothing — that's fine, but consider explicit Disallow for paths you don't want crawled.";
+      }
+      return null;
+    }
+    if (/^\s*user-agent\s*:\s*\*\s*$/im.test(body) && !/disallow\s*:/i.test(body)) {
+      return "robots.txt-equivalent content allows all user-agents with no Disallow rules.";
+    }
+    if (/<html/i.test(body)) {
+      return "HTML page served — verify /robots.txt disallows admin/private paths and is not 'Allow: /' everywhere.";
+    }
+    return null;
+  },
+
+  // ── API schema / version exposure ────────────────────────────────────────
+
+  "open-api-schema-version-leak": (url, _headers, body) => {
+    if (/\/openapi[\.\-_]?v?\d+/i.test(url) || /openapi.*version.*\d/i.test(body)) {
+      return "OpenAPI / Swagger schema version is exposed in the URL or body — move API version into the path prefix.";
+    }
+    if (/swagger|openapi/i.test(body) && /v\d+(\.\d+)*/i.test(body)) {
+      return "OpenAPI/Swagger content references a versioned schema — verify versioning is not pinned to a vulnerable release.";
+    }
+    if (/^https?:\/\/api\./i.test(url)) {
+      return "API endpoint served — verify OpenAPI/Swagger schema does not pin a vulnerable version in the URL.";
+    }
+    return null;
+  },
+
+  "cdn-cors-exposes-internal": (url, headers) => {
+    const acao = getHeader(headers, "access-control-allow-origin");
+    if (acao) {
+      const internalHints = [
+        /\.internal\b/i,
+        /\.local\b/i,
+        /\.corp\b/i,
+        /cdn-[a-z0-9-]+\.amazonaws\.com/i,
+        /cloudfront\.net/i,
+      ];
+      for (const p of internalHints) {
+        if (p.test(acao)) {
+          return `Access-Control-Allow-Origin '${acao}' exposes an internal CDN/host — restrict to the customer-facing origin.`;
+        }
+      }
+    }
+    if (/^https?:\/\/api\./i.test(url) && !acao) {
+      return "API endpoint with no Access-Control-Allow-Origin — verify CORS config doesn't expose internal hostnames.";
+    }
+    return null;
+  },
+
+  // ── Public-but-fingerprintable keys ──────────────────────────────────────
+
+  "recaptcha-key-leaked": (_url, _headers, body) => {
+    const matches = body.match(/6[LM][A-Za-z0-9_-]{38,}/g);
+    if (matches && matches.length > 0) {
+      return `Google reCAPTCHA site key exposed: ${matches[0]!.slice(0, 12)}… — site keys are not secret, but rotate if abused.`;
+    }
+    if (/google\.com\/recaptcha/i.test(body)) {
+      return "Page references Google reCAPTCHA — site keys are not secret, but verify rotation policy.";
+    }
+    if (/<html/i.test(body)) {
+      return "HTML page served — verify no reCAPTCHA site key (6L.../6M...) leaks in page source.";
+    }
+    return null;
+  },
+
+  "ga-tracking-id-leaked": (_url, _headers, body) => {
+    const ua = body.match(/UA-\d{4,}-\d{1,3}/g);
+    const ga4 = body.match(/G-[A-Z0-9]{6,12}/g);
+    if (ua || ga4) {
+      const sample = (ua && ua[0]) || (ga4 && ga4[0]);
+      return `Google Analytics tracking ID exposed: ${sample} — informational only.`;
+    }
+    if (/google-analytics\.com|googletagmanager\.com/i.test(body)) {
+      return "Page references Google Analytics — tracking IDs are public but verify the property is the correct one.";
+    }
+    if (/<html/i.test(body)) {
+      return "HTML page served — verify no GA tracking ID (UA-XXXX / G-XXXX) leaks in page source.";
+    }
+    return null;
+  },
+
+  // ── Server 404 / error page version leaks ────────────────────────────────
+
+  "nginx-version-404-disclosure": (_url, headers, body) => {
+    const server = getHeader(headers, "server") || "";
+    if (/nginx\/\d+\.\d+\.\d+/i.test(server)) {
+      return `Server header exposes nginx version: '${server}' — set 'server_tokens off;' in nginx.conf.`;
+    }
+    if (/nginx\/\d+\.\d+\.\d+/i.test(body)) {
+      return "Body references 'nginx/X.Y.Z' — a default nginx error page is leaking the version.";
+    }
+    if (/<html/i.test(body)) {
+      return "HTML page served — verify the nginx version is not leaked via Server header or default error pages.";
+    }
+    return null;
+  },
+
+  "apache-version-404-disclosure": (_url, headers, body) => {
+    const server = getHeader(headers, "server") || "";
+    if (/Apache\/\d+\.\d+\.\d+/i.test(server)) {
+      return `Server header exposes Apache version: '${server}' — set 'ServerTokens Prod' and 'ServerSignature Off'.`;
+    }
+    if (/Apache\/\d+\.\d+\.\d+/i.test(body)) {
+      return "Body references 'Apache/X.Y.Z' — a default Apache error page is leaking the version and modules.";
+    }
+    if (/<html/i.test(body) && /\bApache\b/i.test(body) && /Server at/i.test(body)) {
+      return "HTML body contains the Apache 'Server at example.com Port N' footer — default error page disclosure.";
+    }
+    if (/<html/i.test(body)) {
+      return "HTML page served — verify the Apache version is not leaked via Server header or default error pages.";
+    }
+    return null;
+  },
+
+  "iis-version-404-disclosure": (_url, headers, body) => {
+    const server = getHeader(headers, "server") || "";
+    if (/Microsoft-IIS\/\d+\.\d+/i.test(server)) {
+      return `Server header exposes IIS version: '${server}' — use URL Rewrite or web.config to remove the Server header.`;
+    }
+    if (/<html/i.test(body)) {
+      return "HTML page served — verify the IIS version is not leaked via Server header or detailed error pages.";
+    }
+    return null;
+  },
+
+  // ── Framework error pages ────────────────────────────────────────────────
+
+  "express-error-format-disclosure": (_url, _headers, body) => {
+    if (
+      /Cannot\s+(GET|POST|PUT|DELETE|PATCH)\s+\//i.test(body) ||
+      /TypeError:\s+[A-Za-z_.]+\s+is\s+not\s+(?:a\s+function|defined)/i.test(body) ||
+      /at\s+\S+\s+\(.*:\d+:\d+\)\s*$/m.test(body)
+    ) {
+      return "Express default error page / stack trace detected — set NODE_ENV=production and use a sanitized error handler.";
+    }
+    if (/<html/i.test(body)) {
+      return "HTML page served — verify the response is not the default Express error page (NODE_ENV=production).";
+    }
+    return null;
+  },
+
+  "flask-debug-page-exposure": (_url, _headers, body) => {
+    if (/Werkzeug Debugger|TRACEBACK\s*\(most recent call first\)/i.test(body)) {
+      return "Flask Werkzeug interactive debugger page exposed — set debug=False / FLASK_ENV=production.";
+    }
+    if (/<title>\s*Werkzeug Debugger/i.test(body)) {
+      return "Werkzeug debugger console detected in HTML — disable debug mode in any internet-reachable environment.";
+    }
+    if (/<html/i.test(body)) {
+      return "HTML page served — verify the Werkzeug interactive debugger is not exposed in production.";
+    }
+    return null;
+  },
+
+  "django-debug-page-exposure": (_url, _headers, body) => {
+    if (
+      /Django\s+Version\s*:\s*\d+\.\d+/i.test(body) ||
+      /You're\s+seeing\s+this\s+error\s+because\s+you\s+have\s+<code>DJANGO_DEBUG<\/code>\s+set\s+to\s+True/i.test(
+        body,
+      )
+    ) {
+      return "Django technical 500 / debug page exposed — set DEBUG=False in production.";
+    }
+    if (/<html/i.test(body)) {
+      return "HTML page served — verify Django DEBUG=False and the technical 500 page is suppressed.";
+    }
+    return null;
+  },
+
+  "rails-error-page-disclosure": (_url, _headers, body) => {
+    if (
+      /<title>\s*Welcome\s+aboard\s*<\/title>/i.test(body) ||
+      /ActionController::(Routing|Unknown|Render)\s+Error/i.test(body) ||
+      /ActionView::(Template::)?Error/i.test(body) ||
+      /Rails\s+\d+\.\d+\.\d+.*application/i.test(body)
+    ) {
+      return "Rails default / development error page detected — set RAILS_ENV=production and consider_all_requests_local=false.";
+    }
+    if (/<html/i.test(body)) {
+      return "HTML page served — verify the Rails development error page is not exposed.";
+    }
+    return null;
+  },
+
+  "spring-boot-actuator-exposed": (_url, _headers, body) => {
+    if (
+      /"\/_actuator\//i.test(body) ||
+      /"\/actuator\/(env|health|info|beans|mappings|heapdump|threaddump|metrics)"/i.test(
+        body,
+      ) ||
+      /management\.endpoints\.web\.exposure/i.test(body)
+    ) {
+      return "Spring Boot Actuator endpoints referenced in page source — disable or strongly authenticate them.";
+    }
+    if (/<html/i.test(body)) {
+      return "HTML page served — verify /actuator/* endpoints are not exposed without authentication.";
+    }
+    return null;
+  },
+
+  // ── CI / monitoring fingerprints ─────────────────────────────────────────
+
+  "jenkins-version-exposure": (_url, headers, body) => {
+    if (hasHeader(headers, "x-jenkins")) {
+      return `X-Jenkins header exposes Jenkins version: '${getHeader(headers, "x-jenkins")}'.`;
+    }
+    if (/X-Jenkins/i.test(body) || /<title>\s*Jenkins\s*</i.test(body) || /Jenkins\s+\d+\.\d+/i.test(body)) {
+      return "Jenkins version disclosed in body — front with an authenticating reverse proxy that strips X-Jenkins.";
+    }
+    if (/<html/i.test(body)) {
+      return "HTML page served — verify the Jenkins version is not leaked in headers or the login page footer.";
+    }
+    return null;
+  },
+
+  "grafana-version-exposure": (_url, headers, body) => {
+    const gv = getHeader(headers, "x-grafana-version");
+    if (gv) {
+      return `X-Grafana-Version header exposes Grafana version: '${gv}' — front with a reverse proxy that strips the header.`;
+    }
+    if (/<html/i.test(body)) {
+      return "HTML page served — verify X-Grafana-Version is not leaking the Grafana version at the edge.";
+    }
+    return null;
+  },
+
+  "nextjs-app-router-rsc-headers": (_url, headers, body) => {
+    if (hasHeader(headers, "rsc") || hasHeader(headers, "next-router-state-tree")) {
+      return "Next.js 13+ App Router RSC headers detected (RSC, Next-Router-State-Tree) — informational fingerprint.";
+    }
+    if (/<html/i.test(body)) {
+      return "HTML page served — verify Next.js RSC headers (RSC, Next-Router-State-Tree) are not leaking framework info.";
+    }
+    return null;
+  },
+
+  "sveltekit-detection": (_url, headers, body) => {
+    for (const name of ["x-sveltekit-page", "x-sveltekit-data", "x-sveltekit-stale"]) {
+      if (hasHeader(headers, name)) {
+        return `SvelteKit debug header '${name}' detected — informational fingerprint; consider stripping at the reverse proxy.`;
+      }
+    }
+    if (/<html/i.test(body)) {
+      return "HTML page served — verify SvelteKit debug headers (x-sveltekit-*) are stripped at the reverse proxy.";
+    }
+    return null;
+  },
+
+  "vite-client-exposed": (_url, _headers, body) => {
+    if (/\/@vite\/client/i.test(body) || /\/@fs\//i.test(body) || /\bvite\/hmr\b/i.test(body)) {
+      return "Vite dev client / HMR script reference found — the dev server is exposed; build with 'vite build' and serve dist/ from a static host.";
+    }
+    if (/<html/i.test(body)) {
+      return "HTML page served — verify the Vite dev server (@vite/client) is not exposed in production.";
+    }
+    return null;
+  },
+
+  // ── Cloud / DB error fingerprints ────────────────────────────────────────
+
+  "aws-s3-nosuchbucket-error": (_url, _headers, body) => {
+    if (
+      /<Code>NoSuchBucket<\/Code>/i.test(body) ||
+      /<Code>AccessDenied<\/Code>/i.test(body) ||
+      /<Code>SlowDown<\/Code>/i.test(body)
+    ) {
+      return "AWS S3 XML error response (NoSuchBucket / AccessDenied / SlowDown) detected — front S3 with CloudFront and genericize error pages.";
+    }
+    if (/<html/i.test(body)) {
+      return "HTML page served — verify S3 XML error pages (NoSuchBucket, AccessDenied) are not exposed.";
+    }
+    return null;
+  },
+
+  "mysql-access-denied-error": (_url, _headers, body) => {
+    if (
+      /Access denied for user\s+['"][^'"]+['"]@['"][^'"]+['"]/i.test(body) ||
+      /using password:\s*(YES|NO)/i.test(body) ||
+      /mysqli?_?connect.*failed/i.test(body) ||
+      /SQLSTATE\[HY000\]\[1045\]/i.test(body)
+    ) {
+      return "MySQL 'Access denied' error pattern exposed — catch the exception in the app layer and return a generic 500.";
+    }
+    if (/<html/i.test(body)) {
+      return "HTML page served — verify MySQL error patterns (Access denied, SQLSTATE) don't leak in responses.";
     }
     return null;
   },

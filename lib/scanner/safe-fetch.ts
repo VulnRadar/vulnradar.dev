@@ -68,28 +68,33 @@ const PRIVATE_IPV4_PATTERNS = [
   /^(24[0-9]|25[0-5])\./, // Reserved/broadcast first octet range 240-255
 ];
 
-// IPv6 private/special ranges
+// IPv6 private/special ranges.
+// Patterns are tested against the canonical 8-group form returned by
+// toCanonicalIPv6() below (e.g. "0000:0000:0000:0000:0000:0000:0000:0001"
+// for "::1"). Shorthand forms (::1, fc00::1) are normalised first, so
+// these regexes need to match the expanded 8-group form.
 const PRIVATE_IPV6_PATTERNS = [
-  /^::1$/, // IPv6 loopback
-  /^fe80:/i, // IPv6 link-local
-  /^fc00:/i, // IPv6 unique local (ULA)
-  /^fd[0-9a-f]{2}:/i, // IPv6 unique local (ULA)
-  /^::$/, // Unspecified
-  /^::ffff:127\./i, // IPv4-mapped loopback
-  /^::ffff:10\./i, // IPv4-mapped private A
-  /^::ffff:172\.(1[6-9]|2[0-9]|3[0-1])\./i, // IPv4-mapped private B
-  /^::ffff:192\.168\./i, // IPv4-mapped private C
-  /^::ffff:169\.254\./i, // IPv4-mapped link-local (cloud metadata bypass)
-  /^::ffff:0\./i, // IPv4-mapped "current network"
-  /^::ffff:2(2[4-9]|3[0-9])\./i, // IPv4-mapped multicast
-  /^::ffff:(24[0-9]|25[0-5])\./i, // IPv4-mapped reserved/broadcast
-  /^64:ff9b::/i, // RFC 6052 IPv4/IPv6 translation (well-known prefix)
-  /^100::/i, // Discard prefix (RFC 6666)
-  /^2001:db8::/i, // Documentation prefix (RFC 3849)
-  /^2001::/i, // Teredo tunneling (RFC 4380) — covers 2001::/32
-  /^fc00:/i, // Duplicate of above; kept for readability of grouped private ranges
+  /^0000:0000:0000:0000:0000:0000:0000:0001$/i, // IPv6 loopback (::1)
+  /^fe80:/i, // IPv6 link-local (fe80::/10)
+  /^fc00:/i, // IPv6 unique local (ULA) (fc00::/7)
+  /^fd[0-9a-f]{2}:/i, // IPv6 unique local (ULA) (fd00::/8)
+  /^0000:0000:0000:0000:0000:0000:0000:0000$/, // Unspecified (::)
+  /^0000:0000:0000:0000:0000:ffff:7f00:/i, // IPv4-mapped 127.0.0.0/8
+  /^0000:0000:0000:0000:0000:ffff:0a00:/i, // IPv4-mapped 10.0.0.0/8
+  /^0000:0000:0000:0000:0000:ffff:ac1[0-9a-f]:/i, // IPv4-mapped 172.16.0.0/12 (172.16-172.31)
+  /^0000:0000:0000:0000:0000:ffff:ac2[0-9a-f]:/i, // 172.16.0.0/12
+  /^0000:0000:0000:0000:0000:ffff:ac3[01]:/i, // 172.16.0.0/12
+  /^0000:0000:0000:0000:0000:ffff:c0a8:/i, // IPv4-mapped 192.168.0.0/16
+  /^0000:0000:0000:0000:0000:ffff:a9fe:/i, // IPv4-mapped 169.254.0.0/16
+  /^0000:0000:0000:0000:0000:ffff:0000:/i, // IPv4-mapped 0.0.0.0/8
+  /^0000:0000:0000:0000:0000:ffff:e000:/i, // IPv4-mapped 224.0.0.0/4 multicast
+  /^0000:0000:0000:0000:0000:ffff:f[0-9a-f][0-9a-f][0-9a-f]:/i, // IPv4-mapped 240.0.0.0/4
+  /^0064:ff9b:0000:0000:0000:0000:/i, // RFC 6052 NAT64 well-known prefix
+  /^0100:0000:0000:0000:0000:0000:/i, // Discard prefix (RFC 6666) (100::/64)
+  /^2001:0db8:/i, // Documentation prefix (RFC 3849)
+  /^2001:0000:/i, // Teredo tunneling (RFC 4380) (2001::/32)
   /^fec0:/i, // IPv6 site-local (deprecated RFC 3879)
-  /^ff0[0-9a-f]::/i, // IPv6 multicast (ff00::/8)
+  /^ff0[0-9a-f]:/i, // IPv6 multicast (ff00::/8)
 ];
 
 export interface SafetyCheckResult {

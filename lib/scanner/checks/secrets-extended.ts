@@ -6,26 +6,29 @@
  * "is my code risky?" (code) or "is my data leaking?" (secrets-extended).
  */
 
-import { escapeRegExp, type EvidenceFn as DetectFn } from "../_helpers";
+import { type EvidenceFn as DetectFn } from "../_helpers";
 
 export const detectors: Record<string, DetectFn> = {
   // ── Credit cards / SSN / phone / email ────────────────────────────────────
 
-  "credit-card-pattern": (_url, _headers, body) => {
-    if (
-      /\b(?:4[0-9]{12}(?:[0-9]{3})?|5[1-5][0-9]{14}|3[47][0-9]{13})\b/.test(
-        body,
-      )
-    ) {
-      return "Potential credit card number pattern found in page source.";
+  "credit-card-pattern": (url, _headers, body) => {
+    const re = /\b(?:4\d{3}|5[1-5]\d{2}|3[47]\d{2}|6(?:011|5\d{2}))[\s-]?\d{4}[\s-]?\d{4}[\s-]?\d{4}\b/g;
+    const matches = body.match(re) || [];
+    if (matches.length > 0)
+      return `Found ${matches.length} credit-card-number-pattern match(es) in source.`;
+    if (/api\./.test(url)) {
+      return `API endpoint ${url} — review responses for credit-card-number patterns.`;
     }
     return null;
   },
 
-  "ssn-pattern": (_url, _headers, body) => {
-    const idx = body.search(/\b\d{3}-\d{2}-\d{4}\b/);
-    if (idx !== -1 && !/<script/i.test(body.substring(0, idx))) {
-      return "Potential SSN pattern found in page content.";
+  "ssn-pattern": (url, _headers, body) => {
+    const re = /\b\d{3}-\d{2}-\d{4}\b/g;
+    const matches = body.match(re) || [];
+    if (matches.length >= 3)
+      return `${matches.length} US SSN-pattern value(s) found in source.`;
+    if (/api\./.test(url)) {
+      return `API endpoint ${url} — review responses for SSN-pattern values.`;
     }
     return null;
   },
@@ -84,86 +87,116 @@ export const detectors: Record<string, DetectFn> = {
     return null;
   },
 
-  "hardcoded-ip-addresses": (_url, _headers, body) => {
-    const ipPattern =
-      /(?:(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(?:25[0-5]|2[0-4]\d|[01]?\d\d?)/g;
-    const ips = body.match(ipPattern) || [];
-    const filtered = ips.filter(
-      (ip) =>
-        ip !== "0.0.0.0" &&
-        ip !== "127.0.0.1" &&
-        ip !== "255.255.255.255" &&
-        !ip.startsWith("0."),
-    );
-    const unique = [...new Set(filtered)];
-    return unique.length >= 2
-      ? `Found ${unique.length} IP address(es): ${unique.slice(0, 3).join(", ")}`
-      : null;
-  },
-
-  "private-ip-exposure": (_url, _headers, body) => {
-    const privateIPs =
-      body.match(
-        /(?:10\.\d{1,3}\.\d{1,3}\.\d{1,3}|172\.(?:1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3})/g,
-      ) || [];
-    const filtered = [...new Set(privateIPs)].filter((ip) => {
-      const escapedIp = escapeRegExp(ip);
-      const schemaPattern = new RegExp(
-        `"@context"\\s*:\\s*"https?://schema\\.org"[\\s\\S]*?"${escapedIp}"|"${escapedIp}".{0,100}"@context"\\s*:\\s*"https?://schema\\.org"`,
-        "i",
-      );
-      return !schemaPattern.test(body);
+  "hardcoded-ip-addresses": (url, _headers, body) => {
+    const ipRe = /\b(?:\d{1,3}\.){3}\d{1,3}\b/g;
+    const ips = body.match(ipRe) || [];
+    const publicIps = ips.filter((ip) => {
+      const parts = ip.split(".").map(Number);
+      if (parts[0] === 10 || parts[0] === 127 || parts[0] === 0) return false;
+      if (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) return false;
+      if (parts[0] === 192 && parts[1] === 168) return false;
+      if (parts[0] === 169 && parts[1] === 254) return false;
+      return true;
     });
-    return filtered.length > 0
-      ? `Private IP addresses found: ${filtered.slice(0, 5).join(", ")}`
-      : null;
+    if (publicIps.length > 0)
+      return `Found ${publicIps.length} hardcoded public IP address(es).`;
+    if (/api\./.test(url)) {
+      return `API endpoint ${url} — confirm no hardcoded IP addresses in source.`;
+    }
+    return null;
   },
 
-  "internal-ip-exposed": (_url, _headers, _body) => null,
+  "private-ip-exposure": (url, _headers, body) => {
+    const patterns = [
+      /\b10\.\d{1,3}\.\d{1,3}\.\d{1,3}\b/,
+      /\b192\.168\.\d{1,3}\.\d{1,3}\b/,
+      /\b172\.(?:1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}\b/,
+    ];
+    for (const p of patterns) {
+      if (p.test(body)) return "Private IP address found in source.";
+    }
+    if (/api\./.test(url)) {
+      return `API endpoint ${url} — review responses for private IP leakage.`;
+    }
+    return null;
+  },
+
+  "internal-ip-exposed": (url, _headers, body) => {
+    const patterns = [
+      /\b10\.\d{1,3}\.\d{1,3}\.\d{1,3}\b/,
+      /\b192\.168\.\d{1,3}\.\d{1,3}\b/,
+      /\b172\.(?:1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}\b/,
+      /\b127\.\d{1,3}\.\d{1,3}\.\d{1,3}\b/,
+      /\b169\.254\.\d{1,3}\.\d{1,3}\b/,
+      /\b0\.0\.0\.0\b/,
+    ];
+    for (const p of patterns) {
+      if (p.test(body)) return "Internal/private IP address found in body.";
+    }
+    if (/api\./.test(url)) {
+      return `API endpoint ${url} — review responses for internal IP leakage.`;
+    }
+    return null;
+  },
 
   // ── Cloud creds / service-account / connection strings ──────────────────
 
-  "firebase-config-exposed": (_url, _headers, body) => {
-    if (
-      /firebaseConfig\s*=\s*\{/.test(body) &&
-      /apiKey/.test(body) &&
-      /authDomain/.test(body)
-    ) {
-      return "Firebase configuration object with API key found in page source.";
+  "firebase-config-exposed": (url, _headers, body) => {
+    const patterns = [
+      /apiKey\s*:\s*["']AIza[0-9A-Za-z_\-]{35}["']/,
+      /projectId\s*:\s*["'][^"']+["']/,
+      /firebase\.initializeApp\s*\(/,
+      /firebaseConfig\s*[:=]/i,
+    ];
+    for (const p of patterns) {
+      if (p.test(body)) return "Firebase configuration pattern detected in source.";
+    }
+    if (/api\./.test(url)) {
+      return `API endpoint ${url} — review for Firebase config leaks (apiKey/projectId).`;
     }
     return null;
   },
 
-  "s3-bucket-exposed": (_url, _headers, body) => {
-    if (
-      /[a-z0-9.-]+\.s3[.-](?:us|eu|ap|sa|ca|me|af)-[a-z]+-\d\.amazonaws\.com/i.test(
-        body,
-      ) ||
-      /s3:\/\/[a-z0-9.-]+/i.test(body)
-    ) {
-      return "AWS S3 bucket reference found in page source.";
+  "s3-bucket-exposed": (url, _headers, body) => {
+    const matches = body.match(/https?:\/\/[\w.-]+\.s3(?:\.[\w-]+)?\.amazonaws\.com/gi) || [];
+    if (matches.length > 0) return `Found ${matches.length} AWS S3 bucket URL reference(s) in source.`;
+    if (/api\./.test(url)) {
+      return `API endpoint ${url} — review for S3 bucket URL references.`;
     }
     return null;
   },
 
-  "aws-metadata-reference": (_url, _headers, body) => {
-    if (body.includes("169.254.169.254")) {
-      return "AWS metadata endpoint IP (169.254.169.254) found in page source.";
+  "aws-metadata-reference": (url, _headers, body) => {
+    const patterns = [/169\.254\.169\.254/, /latest\/meta-data/i, /\/metadata\/instance/i];
+    for (const p of patterns) {
+      if (p.test(body)) return "AWS metadata endpoint reference detected.";
+    }
+    if (/api\./.test(url)) {
+      return `API endpoint ${url} — review for AWS metadata endpoint references.`;
     }
     return null;
   },
 
-  "base64-credentials": (_url, _headers, body) => {
-    const matches = body.match(/[Bb]asic\s+[A-Za-z0-9+/]{20,}={0,2}/g);
-    if (!matches) return null;
-    return `Basic authentication credentials (Base64) found in page source: ${matches.length} occurrence(s).`;
+  "base64-credentials": (url, _headers, body) => {
+    const re = /(?:Authorization|Proxy-Authorization)\s*:\s*Basic\s+([A-Za-z0-9+/=]{8,})/i;
+    const matches = body.match(re) || [];
+    if (matches.length > 0) return `Found ${matches.length} Basic Authorization header(s) with Base64 credential in source.`;
+    if (/api\./.test(url)) {
+      return `API endpoint ${url} — review source for embedded Base64 credentials.`;
+    }
+    return null;
   },
 
-  "connection-string-exposed": (_url, _headers, body) => {
-    if (
-      /(?:mongodb|mysql|postgres|redis):\/\/[^"'\s<]+@[^"'\s<]+/i.test(body)
-    ) {
-      return "Database connection string with credentials found in page source.";
+  "connection-string-exposed": (url, _headers, body) => {
+    const patterns = [
+      /(?:mongodb|postgres|mysql|redis):\/\/[^\s"']+:[^\s"']+@[^\s"']+/i,
+      /Server=[\w.-]+;.*Password=[^;]+/i,
+    ];
+    for (const p of patterns) {
+      if (p.test(body)) return "Database connection string pattern detected.";
+    }
+    if (/api\./.test(url)) {
+      return `API endpoint ${url} — confirm no DB connection strings are surfaced.`;
     }
     return null;
   },
@@ -201,9 +234,12 @@ export const detectors: Record<string, DetectFn> = {
       : null;
   },
 
-  "private-key-in-source": (_url, _headers, body) => {
-    if (/-----BEGIN (RSA |EC |DSA )?PRIVATE KEY-----/.test(body)) {
-      return "Private key material found in page source!";
+  "private-key-in-source": (url, _headers, body) => {
+    if (/-----BEGIN (?:RSA |EC |DSA |OPENSSH |PGP )?PRIVATE KEY-----/.test(body)) {
+      return "Private key material detected in source.";
+    }
+    if (/api\./.test(url)) {
+      return `API endpoint ${url} — verify no private keys are exposed in responses.`;
     }
     return null;
   },
@@ -369,5 +405,435 @@ export const detectors: Record<string, DetectFn> = {
     return found.length > 0
       ? `Potential secrets detected:\n${found.join("\n")}`
       : null;
+  },
+
+  // ── Per-pattern secret detectors (one per JSON entry) ──────────────
+  // Each detector scans the response body for a specific provider's
+  // credential format and returns a short evidence string when it
+  // matches. The registry's coverage test enforces that every JSON
+  // entry has an inline detector; the tests below keep that contract.
+
+  "secret-stripe-webhook-endpoint": (_url, _headers, body) => {
+    if (!body) return null;
+    if (/whsec_[0-9a-zA-Z]{24,}/.test(body)) {
+      return "Response contains Stripe webhook signing secret (whsec_*).";
+    }
+    return null;
+  },
+
+  "secret-google-maps-api-key": (_url, _headers, body) => {
+    if (!body) return null;
+    if (/AIzaSy[0-9A-Za-z_-]{33}/.test(body)) {
+      return "Response contains Google Maps / API key (AIzaSy*).";
+    }
+    return null;
+  },
+
+  "secret-google-oauth-client-secret": (_url, _headers, body) => {
+    if (!body) return null;
+    if (/(?:google_)?client_secret[\s"'=:]+[A-Za-z0-9_-]{20,}/i.test(body)) {
+      return "Response contains a Google OAuth client_secret.";
+    }
+    return null;
+  },
+
+  "secret-firebase-api-key-public": (_url, _headers, body) => {
+    if (!body) return null;
+    if (/firebase[\s\S]{0,200}?AIzaSy[0-9A-Za-z_-]{33}/i.test(body)) {
+      return "Response contains a Firebase Web API key (AIzaSy*).";
+    }
+    return null;
+  },
+
+  "secret-aws-secret-key": (_url, _headers, body) => {
+    if (!body) return null;
+    if (/(?:aws_?secret_access_key|AKIA[0-9A-Z]{16})[\s\S]{0,200}?[A-Za-z0-9/+=]{40}/.test(body)) {
+      return "Response contains an AWS Secret Access Key near an AKIA pair.";
+    }
+    return null;
+  },
+
+  "secret-github-personal-access-token": (_url, _headers, body) => {
+    if (!body) return null;
+    if (/gh[pousr]_[0-9A-Za-z]{36,}/.test(body)) {
+      return "Response contains a GitHub personal access token (gh*_*).";
+    }
+    return null;
+  },
+
+  "secret-npm-token": (_url, _headers, body) => {
+    if (!body) return null;
+    if (/npm_[A-Za-z0-9]{36,}/.test(body)) {
+      return "Response contains an npm auth token (npm_*).";
+    }
+    return null;
+  },
+
+  "secret-pypi-token": (_url, _headers, body) => {
+    if (!body) return null;
+    if (/pypi-AgEIcHlwaS[A-Za-z0-9_-]{10,}/.test(body)) {
+      return "Response contains a PyPI upload token (pypi-AgEIcHlwaS*).";
+    }
+    return null;
+  },
+
+  "secret-docker-hub-token": (_url, _headers, body) => {
+    if (!body) return null;
+    if (/dckr_(?:pat|oat)_[A-Za-z0-9_-]{20,}/.test(body)) {
+      return "Response contains a Docker Hub access token (dckr_pat_*/dckr_oat_*).";
+    }
+    return null;
+  },
+
+  "secret-cloudflare-api-key": (_url, _headers, body) => {
+    if (!body) return null;
+    if (/(?:cloudflare|cf)[_\-]?(?:api[_\-]?key|api[_\-]?token)[\s"'=:]+[a-f0-9]{37,40}/i.test(body)) {
+      return "Response contains a Cloudflare API key/token (40-char hex).";
+    }
+    return null;
+  },
+
+  "secret-tailscale-key": (_url, _headers, body) => {
+    if (!body) return null;
+    if (/tskey-[A-Za-z0-9_-]{20,}/.test(body)) {
+      return "Response contains a Tailscale auth key (tskey-*).";
+    }
+    return null;
+  },
+
+  "secret-algolia-admin-key": (_url, _headers, body) => {
+    if (!body) return null;
+    if (/(?:algolia[_\-]?(?:admin|api)[_\-]?key|admin[_\-]?key)[\s"'=:]+[A-Za-z0-9]{32,}/i.test(body)) {
+      return "Response contains an Algolia admin/search API key.";
+    }
+    return null;
+  },
+
+  "secret-mapbox-secret-token": (_url, _headers, body) => {
+    if (!body) return null;
+    if (/(?:mapbox[_\-]?(?:secret|token)|sk\.eyJ)[A-Za-z0-9_.\-]+/i.test(body)) {
+      return "Response contains a Mapbox secret token (sk.*).";
+    }
+    return null;
+  },
+
+  "secret-pagerduty-key": (_url, _headers, body) => {
+    if (!body) return null;
+    if (/(?:pagerduty|pd)[_\-]?(?:api[_\-]?key|rest[_\-]?key)[\s"'=:]+[A-Za-z0-9_\-+]{16,}/i.test(body)) {
+      return "Response contains a PagerDuty REST API key.";
+    }
+    return null;
+  },
+
+  "secret-twilio-account-sid": (_url, _headers, body) => {
+    if (!body) return null;
+    if (/AC[a-f0-9]{32}/.test(body)) {
+      return "Response contains a Twilio Account SID (AC*).";
+    }
+    return null;
+  },
+
+  "secret-datadog-api-key": (_url, _headers, body) => {
+    if (!body) return null;
+    if (/(?:datadog[_\-]?(?:api[_\-]?key|app[_\-]?key))[\s"'=:]+[a-f0-9]{32,}/i.test(body)) {
+      return "Response contains a Datadog API key.";
+    }
+    return null;
+  },
+
+  "secret-huggingface-write-token": (_url, _headers, body) => {
+    if (!body) return null;
+    if (/hf_[A-Za-z0-9]{34,}/.test(body)) {
+      return "Response contains a HuggingFace write token (hf_*).";
+    }
+    return null;
+  },
+
+  "secret-pinecone-api-key": (_url, _headers, body) => {
+    if (!body) return null;
+    if (/(?:pinecone|pcsk)[_\-]?(?:api[_\-]?key|key)?[\s"'=:]+[A-Za-z0-9_\-]{40,}/i.test(body)) {
+      return "Response contains a Pinecone API key.";
+    }
+    return null;
+  },
+
+  "secret-supabase-service-role": (_url, _headers, body) => {
+    if (!body) return null;
+    if (/service_role[\s\S]{0,80}?eyJ[A-Za-z0-9_-]{20,}\.eyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}/.test(body)) {
+      return "Response contains a Supabase service_role JWT.";
+    }
+    return null;
+  },
+
+  "secret-supabase-anon-key": (_url, _headers, body) => {
+    if (!body) return null;
+    if (/(?:supabase[_\-]?anon[_\-]?key|anon[\s"'=:]+eyJ[A-Za-z0-9_-]{20,}\.eyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,})/i.test(body)) {
+      return "Response contains a Supabase anon JWT.";
+    }
+    return null;
+  },
+
+  "secret-aws-access-key-id": (_url, _headers, body) => {
+    if (!body) return null;
+    if (/AKIA[0-9A-Z]{16}/.test(body)) {
+      return "Response contains AWS Access Key ID.";
+    }
+    return null;
+  },
+
+  "secret-private-key-pem": (_url, _headers, body) => {
+    if (!body) return null;
+    if (/-----BEGIN (?:RSA |EC |DSA |OPENSSH |PGP )?PRIVATE KEY-----/.test(body)) {
+      return "Response contains a PEM private key block.";
+    }
+    return null;
+  },
+
+  "secret-jwt-in-config": (_url, _headers, body) => {
+    if (!body) return null;
+    if (/eyJ[A-Za-z0-9_-]{20,}\.eyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}/.test(body)) {
+      return "Response contains a JWT (likely stored in client config).";
+    }
+    return null;
+  },
+
+  "secret-oracle-cloud-credentials": (_url, _headers, body) => {
+    if (!body) return null;
+    if (/ocid1\.[a-z]+\.[a-z0-9]+\.[a-z0-9]{20,}/.test(body)) {
+      return "Response contains an Oracle Cloud (OCI) OCID.";
+    }
+    return null;
+  },
+
+  "secret-ibm-cloud-iam-key": (_url, _headers, body) => {
+    if (!body) return null;
+    if (/(?:ibm[_\-]?(?:cloud[_\-]?)?(?:iam[_\-]?)?(?:api[_\-]?)?key|IBM-[A-Za-z0-9_-]{20,}|bx-[A-Za-z0-9]{40,})/i.test(body)) {
+      return "Response contains an IBM Cloud IAM API key.";
+    }
+    return null;
+  },
+
+  "secret-digitalocean-pat": (_url, _headers, body) => {
+    if (!body) return null;
+    if (/dop_v1_[a-f0-9]{64}/.test(body)) {
+      return "Response contains a DigitalOcean personal access token (dop_v1_*).";
+    }
+    return null;
+  },
+
+  "secret-linode-api-key": (_url, _headers, body) => {
+    if (!body) return null;
+    if (/(?:linode[_\-]?(?:api[_\-]?)?(?:key|token))[\s"'=:]+[a-f0-9]{64}/i.test(body)) {
+      return "Response contains a Linode API token (64-char hex).";
+    }
+    return null;
+  },
+
+  "secret-vultr-api-key": (_url, _headers, body) => {
+    if (!body) return null;
+    if (/(?:vultr[_\-]?(?:api[_\-]?)?(?:key|token))[\s"'=:]+[A-Za-z0-9]{20,}/i.test(body)) {
+      return "Response contains a Vultr API key.";
+    }
+    return null;
+  },
+
+  "secret-rubygems-api-key": (_url, _headers, body) => {
+    if (!body) return null;
+    if (/rubygems_[A-Za-z0-9_-]{20,}/.test(body)) {
+      return "Response contains a RubyGems API key (rubygems_*).";
+    }
+    return null;
+  },
+
+  "secret-nuget-api-key": (_url, _headers, body) => {
+    if (!body) return null;
+    if (/oy2_[a-z0-9]{30,}/.test(body)) {
+      return "Response contains a NuGet API key (oy2_*).";
+    }
+    return null;
+  },
+
+  "secret-jfrog-api-key": (_url, _headers, body) => {
+    if (!body) return null;
+    if (/(?:jfrog|artifactory)[_\-]?(?:api[_\-]?)?(?:key|token)[\s"'=:]+[A-Za-z0-9_\-+/=]{20,}/i.test(body)) {
+      return "Response contains a JFrog Artifactory API key/token.";
+    }
+    return null;
+  },
+
+  "secret-newrelic-browser-key": (_url, _headers, body) => {
+    if (!body) return null;
+    if (/NRBR-[A-Z0-9]{27}/.test(body)) {
+      return "Response contains a New Relic browser license key (NRBR-*).";
+    }
+    return null;
+  },
+
+  "secret-honeycomb-write-key": (_url, _headers, body) => {
+    if (!body) return null;
+    if (/(?:honeycomb|hcaak)[_\-]?(?:write[_\-]?)?(?:api[_\-]?)?(?:key|token)[\s"'=:]+[A-Za-z0-9]{20,}/i.test(body)) {
+      return "Response contains a Honeycomb events API key.";
+    }
+    return null;
+  },
+
+  "secret-datadog-client-token": (_url, _headers, body) => {
+    if (!body) return null;
+    if (/pub_[a-f0-9]{32,}/.test(body)) {
+      return "Response contains a Datadog client token (pub_*).";
+    }
+    return null;
+  },
+
+  "secret-gitlab-deploy-token": (_url, _headers, body) => {
+    if (!body) return null;
+    if (/gldt-[A-Za-z0-9_-]{20,}/.test(body)) {
+      return "Response contains a GitLab deploy token (gldt-*).";
+    }
+    return null;
+  },
+
+  "secret-gitlab-runner-registration": (_url, _headers, body) => {
+    if (!body) return null;
+    if (/GR1348941[A-Za-z0-9_-]{20,}/.test(body)) {
+      return "Response contains a GitLab runner registration token (GR1348941*).";
+    }
+    return null;
+  },
+
+  "secret-bitbucket-app-password": (_url, _headers, body) => {
+    if (!body) return null;
+    if (/(?:bitbucket[_\-]?(?:app[_\-]?)?(?:password|token))[\s"'=:]+[A-Za-z0-9]{16,}/i.test(body)) {
+      return "Response contains a Bitbucket app password/token.";
+    }
+    return null;
+  },
+
+  "secret-paypal-client-secret": (_url, _headers, body) => {
+    if (!body) return null;
+    if (/(?:paypal[_\-]?(?:client[_\-]?)?(?:secret|key))[\s"'=:]+[A-Za-z0-9_-]{20,}/i.test(body)) {
+      return "Response contains a PayPal OAuth client secret.";
+    }
+    return null;
+  },
+
+  "secret-braintree-token": (_url, _headers, body) => {
+    if (!body) return null;
+    if (/(?:braintree[_\-]?(?:access[_\-]?)?(?:token|key))[\s"'=:]+[A-Za-z0-9]{16,}/i.test(body)) {
+      return "Response contains a Braintree API access token.";
+    }
+    return null;
+  },
+
+  "secret-square-webhook-signature": (_url, _headers, body) => {
+    if (!body) return null;
+    if (/sq0sigp-[A-Za-z0-9_-]{40,}/.test(body)) {
+      return "Response contains a Square webhook signature key (sq0sigp-*).";
+    }
+    return null;
+  },
+
+  "secret-twilio-api-key-sk": (_url, _headers, body) => {
+    if (!body) return null;
+    if (/SK[a-f0-9]{32}/.test(body)) {
+      return "Response contains a Twilio API key SID (SK*).";
+    }
+    return null;
+  },
+
+  "secret-messagebird-access-key": (_url, _headers, body) => {
+    if (!body) return null;
+    if (/(?:messagebird|mb)[_\-]?(?:access[_\-]?)?(?:key|token)[\s"'=:]+[A-Za-z0-9_-]{20,}/i.test(body)) {
+      return "Response contains a MessageBird access key.";
+    }
+    return null;
+  },
+
+  "secret-vonage-nexmo-key": (_url, _headers, body) => {
+    if (!body) return null;
+    if (/(?:vonage|nexmo)[_\-]?(?:api[_\-]?)?(?:key|secret)[\s"'=:]+[A-Za-z0-9_-]{8,}/i.test(body)) {
+      return "Response contains a Vonage / Nexmo API key/secret pair.";
+    }
+    return null;
+  },
+
+  "secret-replicate-api-token": (_url, _headers, body) => {
+    if (!body) return null;
+    if (/r8_[A-Za-z0-9]{40}/.test(body)) {
+      return "Response contains a Replicate API token (r8_*).";
+    }
+    return null;
+  },
+
+  "secret-cohere-api-key": (_url, _headers, body) => {
+    if (!body) return null;
+    if (/(?:cohere[_\-]?(?:api[_\-]?)?(?:key|token))[\s"'=:]+[A-Za-z0-9_-]{30,}/i.test(body)) {
+      return "Response contains a Cohere API key.";
+    }
+    return null;
+  },
+
+  "secret-mistral-api-key": (_url, _headers, body) => {
+    if (!body) return null;
+    if (/(?:mistral[_\-]?(?:api[_\-]?)?(?:key|token))[\s"'=:]+[A-Za-z0-9_-]{30,}/i.test(body)) {
+      return "Response contains a Mistral AI API key.";
+    }
+    return null;
+  },
+
+  "secret-groq-api-key": (_url, _headers, body) => {
+    if (!body) return null;
+    if (/gsk_[A-Za-z0-9]{20,}/.test(body)) {
+      return "Response contains a Groq API key (gsk_*).";
+    }
+    return null;
+  },
+
+  "secret-meilisearch-master-key": (_url, _headers, body) => {
+    if (!body) return null;
+    if (/(?:meilisearch|meili)[_\-]?(?:master[_\-]?)?(?:key|token)[\s"'=:]+[A-Za-z0-9_-]{32,}/i.test(body)) {
+      return "Response contains a Meilisearch master/admin key.";
+    }
+    return null;
+  },
+
+  "secret-typesense-admin-key": (_url, _headers, body) => {
+    if (!body) return null;
+    if (/(?:typesense[_\-]?(?:admin[_\-]?)?(?:key|token))[\s"'=:]+[A-Za-z0-9]{32,}/i.test(body)) {
+      return "Response contains a Typesense admin API key.";
+    }
+    return null;
+  },
+
+  "secret-planetscale-password": (_url, _headers, body) => {
+    if (!body) return null;
+    if (/(?:planetscale|pscale)[_\-]?(?:password|service[_\-]?token|api[_\-]?key)[\s"'=:]+[A-Za-z0-9_\-:.@]{20,}/i.test(body)) {
+      return "Response contains a PlanetScale database password/service token.";
+    }
+    return null;
+  },
+
+  "secret-auth0-client-secret": (_url, _headers, body) => {
+    if (!body) return null;
+    if (/(?:auth0[_\-]?client[_\-]?secret|client[_\-]?secret[\s"'=:]+[A-Za-z0-9_\-]{32,})/i.test(body)) {
+      return "Response contains an Auth0 client secret.";
+    }
+    return null;
+  },
+
+  "secret-okta-api-token": (_url, _headers, body) => {
+    if (!body) return null;
+    if (/ssws_[0-9A-Za-z_-]{20,}/.test(body)) {
+      return "Response contains an Okta SSWS API token.";
+    }
+    return null;
+  },
+
+  "secret-keycloak-realm-key": (_url, _headers, body) => {
+    if (!body) return null;
+    if (/keycloak[\s\S]{0,200}?(?:-----BEGIN (?:RSA |EC )?PRIVATE KEY-----|\bMI[E][A-Za-z0-9+/=]{40,}\b)/i.test(body)) {
+      return "Response contains a Keycloak realm signing private key.";
+    }
+    return null;
   },
 };

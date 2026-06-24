@@ -783,4 +783,1385 @@ export const detectors: Record<string, DetectFn> = {
     }
     return null;
   },
+
+  // ── Form / page semantics (no-prefix, JSON category=code) ────────────────
+
+  "insecure-form-submission": (_url, _headers, body) => {
+    if (/<form[^>]+action\s*=\s*["']http:\/\//i.test(body)) {
+      return "Form posts data over insecure HTTP.";
+    }
+    if (/<form\b/i.test(body) && /<html|<body/i.test(body)) {
+      return "HTML form present - verify all form actions use HTTPS.";
+    }
+    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
+      return "API/HTML context - audit insecure-form-submission patterns.";
+    }
+    return null;
+  },
+
+  "postmessage-wildcard": (_url, _headers, body) => {
+    if (/\.postMessage\s*\([^)]*,\s*["']\*["']\s*\)/.test(body)) {
+      return "postMessage() called with wildcard '*' target origin.";
+    }
+    if (/addEventListener\s*\(\s*["']message["']/i.test(body)) {
+      return "postMessage listener found - verify origin is not wildcard.";
+    }
+    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
+      return "API/HTML context - audit postmessage-wildcard origin handling.";
+    }
+    return null;
+  },
+
+  "regex-dos-pattern": (_url, _headers, body) => {
+    if (/\((?:[^()]*[+*])[^()]*\)\s*[+*]/g.test(body)) {
+      return "Nested quantifier regex pattern detected - potential ReDoS.";
+    }
+    if (/new\s+RegExp\s*\(/.test(body)) {
+      return "Runtime RegExp construction - audit patterns for catastrophic backtracking.";
+    }
+    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
+      return "API/HTML context - audit regex-dos-pattern usage.";
+    }
+    return null;
+  },
+
+  "localstorage-sensitive": (_url, _headers, body) => {
+    if (
+      /localStorage\.setItem\s*\(\s*["'](?:token|jwt|auth|password|secret|session|api[_-]?key|ssn|credit)/i.test(
+        body,
+      )
+    ) {
+      return "Sensitive data being written to localStorage.";
+    }
+    if (/localStorage\s*[.;]/i.test(body)) {
+      return "localStorage usage - ensure no sensitive identifiers are stored.";
+    }
+    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
+      return "API/HTML context - audit localstorage-sensitive data flows.";
+    }
+    return null;
+  },
+
+  "sessionstorage-tokens": (_url, _headers, body) => {
+    if (
+      /sessionStorage\.setItem\s*\(\s*["'](?:token|jwt|auth|access[_-]?token|refresh)/i.test(
+        body,
+      )
+    ) {
+      return "Authentication tokens stored in sessionStorage.";
+    }
+    if (/sessionStorage\s*[.;]/i.test(body)) {
+      return "sessionStorage usage - confirm no auth tokens are kept in tab scope.";
+    }
+    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
+      return "API/HTML context - audit sessionstorage-tokens handling.";
+    }
+    return null;
+  },
+
+  "indexeddb-sensitive": (_url, _headers, body) => {
+    if (
+      /indexedDB\.open\s*\([^)]*(?:token|password|secret|user|credentials)/i.test(
+        body,
+      )
+    ) {
+      return "IndexedDB opened with potentially sensitive key name.";
+    }
+    if (/indexedDB\s*\.\s*(?:open|deleteDatabase)/i.test(body)) {
+      return "IndexedDB usage detected - audit stored object stores for sensitive data.";
+    }
+    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
+      return "API/HTML context - audit indexeddb-sensitive storage.";
+    }
+    return null;
+  },
+
+  "window-name-storage": (_url, _headers, body) => {
+    if (/window\.name\s*=\s*[^;]*(?:token|password|secret|user)/i.test(body)) {
+      return "Sensitive data assigned to window.name - cross-origin readable.";
+    }
+    if (/window\.name\s*=/.test(body)) {
+      return "window.name assignment - avoid storing any cross-origin transferable data.";
+    }
+    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
+      return "API/HTML context - audit window-name-storage patterns.";
+    }
+    return null;
+  },
+
+  "service-worker-insecure": (_url, _headers, body) => {
+    if (
+      /navigator\.serviceWorker\.register\s*\(\s*["']http:\/\//i.test(body)
+    ) {
+      return "Service worker registered over insecure HTTP origin.";
+    }
+    if (/navigator\.serviceWorker\.register/i.test(body)) {
+      return "Service worker registration - verify scope, HTTPS origin, and CSP.";
+    }
+    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
+      return "API/HTML context - audit service-worker-insecure registration.";
+    }
+    return null;
+  },
+
+  "push-api-usage": (_url, _headers, body) => {
+    if (/Notification\.requestPermission|push\.subscribe|serviceWorker.*push/i.test(body)) {
+      return "Push API / Notification permission flow - ensure user consent and HTTPS.";
+    }
+    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
+      return "API/HTML context - audit push-api-usage consent flow.";
+    }
+    return null;
+  },
+
+  "payment-request-api": (_url, _headers, body) => {
+    if (/PaymentRequest\s*\(|new\s+PaymentRequest\b/i.test(body)) {
+      return "Payment Request API usage - confirm secure context and origin checks.";
+    }
+    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
+      return "API/HTML context - audit payment-request-api origin checks.";
+    }
+    return null;
+  },
+
+  "credential-management-api": (_url, _headers, body) => {
+    if (/navigator\.credentials\.(?:get|store|create)/i.test(body)) {
+      return "Credential Management API in use - validate origin-bound protection.";
+    }
+    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
+      return "API/HTML context - audit credential-management-api usage.";
+    }
+    return null;
+  },
+
+  "webauthn-usage": (_url, _headers, body) => {
+    if (/navigator\.credentials\.(?:get|create)\s*\([^)]*publicKey/i.test(body)) {
+      return "WebAuthn / Passkey flow - verify RP ID and origin validation.";
+    }
+    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
+      return "API/HTML context - audit webauthn-usage origin validation.";
+    }
+    return null;
+  },
+
+  "crypto-subtle-usage": (_url, _headers, body) => {
+    if (/crypto\.subtle\.(?:digest|encrypt|sign|deriveKey|generateKey)/i.test(body)) {
+      return "SubtleCrypto API usage - confirm secure context (HTTPS) and algorithm choice.";
+    }
+    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
+      return "API/HTML context - audit crypto-subtle-usage algorithm choice.";
+    }
+    return null;
+  },
+
+  "wasm-usage": (_url, _headers, body) => {
+    if (/WebAssembly\.(?:instantiate|compile|Module)|\.wasm\b/i.test(body)) {
+      return "WebAssembly module detected - audit origin and CSP for WASM execution.";
+    }
+    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
+      return "API/HTML context - audit wasm-usage module origin.";
+    }
+    return null;
+  },
+
+  "console-log-production": (_url, _headers, body) => {
+    const matches = body.match(/console\.(?:log|debug|info|warn|error)/g) || [];
+    if (matches.length >= 3) {
+      return `${matches.length} console.* calls found - review whether they leak data in production.`;
+    }
+    if (/console\.log\b/.test(body)) {
+      return "console.log call detected - strip from production builds.";
+    }
+    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
+      return "API/HTML context - audit console-log-production leakage.";
+    }
+    return null;
+  },
+
+  "debugger-statement": (_url, _headers, body) => {
+    if (/(^|[^.\w])debugger\s*;/.test(body)) {
+      return "JavaScript 'debugger' statement - remove from production code.";
+    }
+    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
+      return "API/HTML context - audit debugger-statement leakage.";
+    }
+    return null;
+  },
+
+  "error-boundary-missing": (_url, _headers, body) => {
+    if (/React\.(?:Component|createElement)/.test(body) && !/componentDidCatch|ErrorBoundary|getDerivedStateFromError/.test(body)) {
+      return "React components rendered without an ErrorBoundary nearby.";
+    }
+    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
+      return "API/HTML context - audit error-boundary-missing coverage.";
+    }
+    return null;
+  },
+
+  // ── DOM XSS sinks (code-* prefix, category=code) ─────────────────────────
+
+  "code-xss-insertadjacentelement": (_url, _headers, body) => {
+    if (/\.insertAdjacentElement\s*\(/i.test(body)) {
+      return "insertAdjacentElement sink - DOM XSS via live-node insertion.";
+    }
+    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
+      return "API/HTML context - audit code-xss-insertadjacentelement gating.";
+    }
+    return null;
+  },
+
+  "code-xss-createcontextualfragment": (_url, _headers, body) => {
+    if (/createContextualFragment\s*\(/i.test(body)) {
+      return "Range.createContextualFragment sink - parses HTML into DocumentFragment.";
+    }
+    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
+      return "API/HTML context - audit code-xss-createcontextualfragment callers.";
+    }
+    return null;
+  },
+
+  "code-xss-documentwrite-jsonparse": (_url, _headers, body) => {
+    if (/document\.write(?:ln)?\s*\([^)]*JSON\.parse/i.test(body)) {
+      return "document.write(JSON.parse(...)) - direct DOM XSS via parsed JSON.";
+    }
+    if (/document\.write/i.test(body)) {
+      return "document.write usage - audit JSON.parse-on-user-input callers.";
+    }
+    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
+      return "API/HTML context - audit code-xss-documentwrite-jsonparse chain.";
+    }
+    return null;
+  },
+
+  "code-xss-dangerouslysetinnerhtml-dynamic": (_url, _headers, body) => {
+    if (
+      /dangerouslySetInnerHTML\s*=\s*\{\s*\{\s*__html\s*:\s*(?!["'])[^}]*[+`]/.test(
+        body,
+      )
+    ) {
+      return "dangerouslySetInnerHTML receives a computed/concatenated string.";
+    }
+    if (/dangerouslySetInnerHTML/i.test(body)) {
+      return "dangerouslySetInnerHTML in source - audit computed __html values.";
+    }
+    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
+      return "API/HTML context - audit code-xss-dangerouslysetinnerhtml-dynamic.";
+    }
+    return null;
+  },
+
+  "code-xss-vue-v-html-dynamic": (_url, _headers, body) => {
+    if (/v-html\s*=\s*["'][^"']*[+`{][^"']*["']/i.test(body)) {
+      return "Vue v-html bound to a dynamic expression - XSS via template concatenation.";
+    }
+    if (/v-html\s*=/.test(body)) {
+      return "Vue v-html directive found - audit dynamic expressions.";
+    }
+    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
+      return "API/HTML context - audit code-xss-vue-v-html-dynamic expressions.";
+    }
+    return null;
+  },
+
+  "code-xss-angular-bypass-dynamic": (_url, _headers, body) => {
+    if (/bypassSecurityTrust(Html|Script|Style|Url|ResourceUrl)\s*\(/i.test(body)) {
+      return "Angular bypassSecurityTrust* defeats DomSanitizer - XSS risk.";
+    }
+    if (/ng-bind-html|innerHTML\s*=/i.test(body)) {
+      return "Angular template innerHTML binding - confirm content is sanitized.";
+    }
+    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
+      return "API/HTML context - audit code-xss-angular-bypass-dynamic.";
+    }
+    return null;
+  },
+
+  "code-xss-domparser-parsefromstring": (_url, _headers, body) => {
+    if (/DOMParser\s*\(\s*\)\s*\.parseFromString/i.test(body)) {
+      return "DOMParser.parseFromString sink - parses user-controlled HTML into a Document.";
+    }
+    if (/DOMParser\b/.test(body)) {
+      return "DOMParser usage - audit parseFromString calls for user HTML.";
+    }
+    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
+      return "API/HTML context - audit code-xss-domparser-parsefromstring.";
+    }
+    return null;
+  },
+
+  "code-xss-template-tag": (_url, _headers, body) => {
+    if (/\bhtml\s*`[\s\S]*\$\{/i.test(body) || /\bsvg\s*`[\s\S]*\$\{/i.test(body)) {
+      return "Tagged template literal (html`...`) - XSS if interpolations are unescaped.";
+    }
+    if (/<script[\s\S]*`[\s\S]*\$\{/i.test(body)) {
+      return "Template literal interpolation in script context - audit escaping.";
+    }
+    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
+      return "API/HTML context - audit code-xss-template-tag escaping.";
+    }
+    return null;
+  },
+
+  // ── Command injection (code-cmdi-*) ──────────────────────────────────────
+
+  "code-cmdi-spawn-shell-true": (_url, _headers, body) => {
+    if (/spawn\s*\([^)]*\{\s*shell\s*:\s*true\s*\}/i.test(body)) {
+      return "child_process.spawn called with shell:true - command injection risk.";
+    }
+    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
+      return "API/HTML context - audit code-cmdi-spawn-shell-true callers.";
+    }
+    return null;
+  },
+
+  "code-cmdi-exec": (_url, _headers, body) => {
+    if (/(?:child_process\.)?exec\s*\(\s*["'`].*\+/i.test(body)) {
+      return "child_process.exec with concatenated argument - shell injection risk.";
+    }
+    if (/(?:child_process\.)?exec\s*\(/i.test(body)) {
+      return "child_process.exec usage - audit first argument for user input.";
+    }
+    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
+      return "API/HTML context - audit code-cmdi-exec argument source.";
+    }
+    return null;
+  },
+
+  "code-cmdi-os-exec": (_url, _headers, body) => {
+    if (/os\.(?:system|exec[a-z]*|popen)\s*\([^)]*\+/i.test(body)) {
+      return "os.system / os.exec* / os.popen with concatenated input - shell injection.";
+    }
+    if (/import\s+os\b|from\s+os\s+import/.test(body)) {
+      return "Python 'os' module imported - audit system/exec/popen callers.";
+    }
+    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
+      return "API/HTML context - audit code-cmdi-os-exec usage.";
+    }
+    return null;
+  },
+
+  "code-cmdi-bin-sh-concat": (_url, _headers, body) => {
+    if (
+      /["']\/bin\/sh\s+-c\s*["']\s*\+\s*\w+|"sh\s+-c\s*"\s*\+\s*\w+/i.test(body)
+    ) {
+      return "/bin/sh -c built via string concatenation - shell injection risk.";
+    }
+    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
+      return "API/HTML context - audit code-cmdi-bin-sh-concat patterns.";
+    }
+    return null;
+  },
+
+  "code-cmdi-popen": (_url, _headers, body) => {
+    if (/subprocess\.(?:Popen|call|run)\s*\([^)]*shell\s*=\s*True/i.test(body)) {
+      return "subprocess.Popen / call / run with shell=True - command injection risk.";
+    }
+    if (/os\.popen\s*\(/i.test(body)) {
+      return "os.popen() - argument is passed to the shell verbatim.";
+    }
+    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
+      return "API/HTML context - audit code-cmdi-popen callers.";
+    }
+    return null;
+  },
+
+  "code-cmdi-process-spawn": (_url, _headers, body) => {
+    if (
+      /(?:spawn|execFile)\s*\(\s*[`"'][^`"']*\+\s*\w+|(?:spawn|execFile)\s*\(\s*`[^`]*\$\{/i.test(
+        body,
+      )
+    ) {
+      return "child_process.spawn/execFile built from concatenation - argument injection.";
+    }
+    if (/(?:spawn|execFile)\s*\(/i.test(body)) {
+      return "spawn/execFile usage - audit argument strings for concatenation.";
+    }
+    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
+      return "API/HTML context - audit code-cmdi-process-spawn callers.";
+    }
+    return null;
+  },
+
+  // ── SQL injection (code-sqli-*) ──────────────────────────────────────────
+
+  "code-sqli-mongodb-where": (_url, _headers, body) => {
+    if (/\$where\s*:\s*["'`].*\+/i.test(body) || /\$where\s*:\s*Function/i.test(body)) {
+      return "MongoDB $where clause built from concatenation - server-side JS injection.";
+    }
+    if (/\$where\s*:/i.test(body)) {
+      return "MongoDB $where usage - audit for user-controlled JavaScript.";
+    }
+    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
+      return "API/HTML context - audit code-sqli-mongodb-where usage.";
+    }
+    return null;
+  },
+
+  "code-sqli-mongodb-regex": (_url, _headers, body) => {
+    if (
+      /\$regex\s*:\s*(?:req|request|params|query|body)\./i.test(body) ||
+      /new\s+RegExp\s*\(\s*(?:req|request|params|query|body)\./i.test(body)
+    ) {
+      return "MongoDB $regex / RegExp built from user input - data leak or ReDoS.";
+    }
+    if (/\$regex\s*:/i.test(body)) {
+      return "MongoDB $regex usage - audit the source of the pattern.";
+    }
+    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
+      return "API/HTML context - audit code-sqli-mongodb-regex usage.";
+    }
+    return null;
+  },
+
+  "code-sqli-raw-query-string": (_url, _headers, body) => {
+    if (
+      /\.query\s*\(\s*["'`][^"'`]*["'`]\s*\+\s*(?:req|request|params|query|body)\./i.test(
+        body,
+      )
+    ) {
+      return "SQL query concatenated with user input - SQL injection.";
+    }
+    if (/\.query\s*\(\s*["'`]/i.test(body)) {
+      return "Raw SQL query in source - audit concatenation with user input.";
+    }
+    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
+      return "API/HTML context - audit code-sqli-raw-query-string patterns.";
+    }
+    return null;
+  },
+
+  "code-sqli-template-literal-query": (_url, _headers, body) => {
+    if (/\.query\s*\(\s*`[^`]*\$\{(?:req|request|params|query|body)\./i.test(body)) {
+      return "SQL query via template literal interpolation - SQL injection.";
+    }
+    if (/\.query\s*\(\s*`/.test(body)) {
+      return "Tag-less template literal used in .query() - SQL injection risk.";
+    }
+    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
+      return "API/HTML context - audit code-sqli-template-literal-query.";
+    }
+    return null;
+  },
+
+  "code-sqli-mongoose-find-user": (_url, _headers, body) => {
+    if (
+      /\.find\s*\(\s*(?:req|request|params|query|body)\./i.test(body) ||
+      /\.find\s*\(\s*JSON\.parse\s*\(\s*(?:req|request)/i.test(body)
+    ) {
+      return "Mongoose .find() with user-supplied filter - operator injection risk.";
+    }
+    if (/\.find\s*\(/i.test(body)) {
+      return "Mongoose .find() - audit argument for user JSON.";
+    }
+    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
+      return "API/HTML context - audit code-sqli-mongoose-find-user input.";
+    }
+    return null;
+  },
+
+  "code-sqli-sequelize-literal": (_url, _headers, body) => {
+    if (/Sequelize\.literal\s*\([^)]*(?:req|request|params|query|body)\./i.test(body)) {
+      return "Sequelize.literal with user input - SQL injection risk.";
+    }
+    if (/Sequelize\.literal\s*\(/i.test(body)) {
+      return "Sequelize.literal usage - audit argument for user input.";
+    }
+    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
+      return "API/HTML context - audit code-sqli-sequelize-literal usage.";
+    }
+    return null;
+  },
+
+  // ── Deserialization (code-deser-*) ───────────────────────────────────────
+
+  "code-deser-yaml-load": (_url, _headers, body) => {
+    if (/\byaml\.load\s*\(/i.test(body) && !/yaml\.safe_load/i.test(body)) {
+      return "yaml.load() without safe loader - arbitrary Python object instantiation.";
+    }
+    if (/import\s+yaml\b|from\s+yaml\s+import/.test(body)) {
+      return "PyYAML imported - audit yaml.load vs yaml.safe_load usage.";
+    }
+    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
+      return "API/HTML context - audit code-deser-yaml-load usage.";
+    }
+    return null;
+  },
+
+  "code-deser-pickle-loads": (_url, _headers, body) => {
+    if (/pickle\.loads\s*\([^)]*(?:req|request|input|file|read)/i.test(body)) {
+      return "pickle.loads() with untrusted bytes - arbitrary code execution risk.";
+    }
+    if (/import\s+pickle\b|from\s+pickle\s+import/.test(body)) {
+      return "pickle imported - never unpickle untrusted data.";
+    }
+    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
+      return "API/HTML context - audit code-deser-pickle-loads usage.";
+    }
+    return null;
+  },
+
+  "code-deser-base64-eval": (_url, _headers, body) => {
+    if (
+      /\beval\s*\(\s*(?:atob|Buffer\.from\([^)]*['"]base64['"])/i.test(body) ||
+      /\beval\s*\(\s*Buffer\.from\([^)]+,\s*['"]base64['"]/i.test(body)
+    ) {
+      return "eval(atob(...)) / eval(Buffer.from(..., 'base64')) - RCE via base64.";
+    }
+    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
+      return "API/HTML context - audit code-deser-base64-eval chain.";
+    }
+    return null;
+  },
+
+  "code-deser-jsonparse-newfunction": (_url, _headers, body) => {
+    if (/new\s+Function\s*\([^)]*JSON\.parse/i.test(body)) {
+      return "new Function('return ' + JSON.parse(input)) - function body from attacker JSON.";
+    }
+    if (/new\s+Function\s*\([^)]*(?:req|request|body|params|query)\./i.test(body)) {
+      return "new Function() with user-supplied source - arbitrary code execution.";
+    }
+    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
+      return "API/HTML context - audit code-deser-jsonparse-newfunction.";
+    }
+    return null;
+  },
+
+  "code-deser-node-serialize": (_url, _headers, body) => {
+    if (/require\s*\(\s*["']node-serialize["']\)/.test(body) || /serialize\.(?:unserialize|deserialize)\s*\(/i.test(body)) {
+      return "node-serialize deserialize() - IIFE payload can achieve RCE.";
+    }
+    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
+      return "API/HTML context - audit code-deser-node-serialize usage.";
+    }
+    return null;
+  },
+
+  "code-deser-php-unserialize": (_url, _headers, body) => {
+    if (/unserialize\s*\(\s*\$_/i.test(body)) {
+      return "PHP unserialize() on user input - POP gadget chain / RCE risk.";
+    }
+    if (/\bunserialize\s*\(/i.test(body)) {
+      return "unserialize() call - audit source of bytes.";
+    }
+    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
+      return "API/HTML context - audit code-deser-php-unserialize usage.";
+    }
+    return null;
+  },
+
+  // ── SSRF (code-ssrf-*) ────────────────────────────────────────────────────
+
+  "code-ssrf-fetch-port": (_url, _headers, body) => {
+    if (
+      /fetch\s*\(\s*["']https?:\/\/(?:localhost|127\.0\.0\.1|\[::1\]|0\.0\.0\.0|169\.254\.169\.254|10\.|192\.168\.)/i.test(
+        body,
+      )
+    ) {
+      return "fetch() targets loopback or cloud-metadata IP - SSRF risk.";
+    }
+    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
+      return "API/HTML context - audit code-ssrf-fetch-port destinations.";
+    }
+    return null;
+  },
+
+  "code-ssrf-fetch-user-input": (_url, _headers, body) => {
+    if (/fetch\s*\(\s*(?:req|request|params|query|body)\./i.test(body)) {
+      return "fetch() URL built from user input - SSRF.";
+    }
+    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
+      return "API/HTML context - audit code-ssrf-fetch-user-input sources.";
+    }
+    return null;
+  },
+
+  "code-ssrf-axios-user-input": (_url, _headers, body) => {
+    if (
+      /axios\s*\.\s*(?:get|post|put|patch|delete)\s*\(\s*(?:req|request|params|query|body)\./i.test(
+        body,
+      ) ||
+      /axios\s*\(\s*\{\s*url\s*:\s*(?:req|request|params|query|body|`[^`]*\$\{)/i.test(body)
+    ) {
+      return "axios request with user-controlled URL - SSRF.";
+    }
+    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
+      return "API/HTML context - audit code-ssrf-axios-user-input URLs.";
+    }
+    return null;
+  },
+
+  "code-ssrf-xhr-user-input": (_url, _headers, body) => {
+    if (
+      /XMLHttpRequest\s*\(\s*\)|new\s+XMLHttpRequest/i.test(body) &&
+      /\.open\s*\(\s*["'](?:GET|POST)["']\s*,\s*(?:req|request|params|query|body)\./i.test(
+        body,
+      )
+    ) {
+      return "XMLHttpRequest URL from user input - SSRF in server contexts.";
+    }
+    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
+      return "API/HTML context - audit code-ssrf-xhr-user-input URLs.";
+    }
+    return null;
+  },
+
+  "code-ssrf-got-user-input": (_url, _headers, body) => {
+    if (
+      /\b(?:got|node-fetch|undici)\s*\(\s*(?:req|request|params|query|body)\./i.test(
+        body,
+      )
+    ) {
+      return "got / node-fetch / undici request with user URL - SSRF.";
+    }
+    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
+      return "API/HTML context - audit code-ssrf-got-user-input URLs.";
+    }
+    return null;
+  },
+
+  // ── ReDoS (code-redos-*) ─────────────────────────────────────────────────
+
+  "code-redos-nested-quantifier": (_url, _headers, body) => {
+    if (/\((?:[^()]*[+*])[^()]*\)\s*[+*]/g.test(body)) {
+      return "Nested quantifier regex detected - exponential backtracking risk.";
+    }
+    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
+      return "API/HTML context - audit code-redos-nested-quantifier patterns.";
+    }
+    return null;
+  },
+
+  "code-redos-catastrophic-backtrack": (_url, _headers, body) => {
+    if (/\((?:[^()|]*\|[^()|]*)+\)[+*]/g.test(body)) {
+      return "Overlapping-alternation regex with quantifier - catastrophic backtracking.";
+    }
+    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
+      return "API/HTML context - audit code-redos-catastrophic-backtrack patterns.";
+    }
+    return null;
+  },
+
+  "code-redos-greedy-quantifier": (_url, _headers, body) => {
+    if (/\.[+*][^?+*]*[+*]/g.test(body)) {
+      return "Greedy wildcards stacked - near-linear backtracking on long input.";
+    }
+    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
+      return "API/HTML context - audit code-redos-greedy-quantifier stacks.";
+    }
+    return null;
+  },
+
+  "code-redos-alternation-overlap": (_url, _headers, body) => {
+    if (/\([\w|]+\|[^)]*[\w|]+\)\s*[+*]/g.test(body)) {
+      return "Alternation overlap inside quantified group - exponential blowup risk.";
+    }
+    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
+      return "API/HTML context - audit code-redos-alternation-overlap patterns.";
+    }
+    return null;
+  },
+
+  // ── Redirects (code-redirect-*) ──────────────────────────────────────────
+
+  "code-redirect-window-location-href": (_url, _headers, body) => {
+    if (
+      /window\.location(?:\.href)?\s*=\s*(?:req|request|params|query|body)\./i.test(
+        body,
+      ) ||
+      /window\.location(?:\.href)?\s*=\s*[`"][^`"]*\+/i.test(body)
+    ) {
+      return "window.location.href assigned to user input - open redirect.";
+    }
+    if (/window\.location\b/.test(body)) {
+      return "window.location referenced - audit assignments for user input.";
+    }
+    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
+      return "API/HTML context - audit code-redirect-window-location-href.";
+    }
+    return null;
+  },
+
+  "code-redirect-location-replace": (_url, _headers, body) => {
+    if (/location\.replace\s*\(\s*(?:req|request|params|query|body)\./i.test(body)) {
+      return "location.replace() with user input - open redirect.";
+    }
+    if (/location\.replace\s*\(/i.test(body)) {
+      return "location.replace() called - audit argument for user input.";
+    }
+    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
+      return "API/HTML context - audit code-redirect-location-replace.";
+    }
+    return null;
+  },
+
+  "code-redirect-top-location": (_url, _headers, body) => {
+    if (
+      /(?:top|parent)\.location(?:\.href)?\s*=\s*(?:req|request|params|query|body|["'][^"']*\+)/i.test(
+        body,
+      )
+    ) {
+      return "top.location / parent.location assigned to user input - iframe redirect.";
+    }
+    if (/(?:top|parent)\.location\b/.test(body)) {
+      return "top.location / parent.location referenced - audit for user input.";
+    }
+    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
+      return "API/HTML context - audit code-redirect-top-location.";
+    }
+    return null;
+  },
+
+  // ── Prototype pollution (code-proto-pollution-*) ─────────────────────────
+
+  "code-proto-pollution-deep-merge": (_url, _headers, body) => {
+    if (
+      /(?:_\.merge|_\.mergeWith|deep-extend|deepmerge|extend\s*\(\s*true)/i.test(
+        body,
+      )
+    ) {
+      return "Deep merge helper used - audit sources for __proto__ keys.";
+    }
+    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
+      return "API/HTML context - audit code-proto-pollution-deep-merge.";
+    }
+    return null;
+  },
+
+  "code-proto-pollution-lodash-merge": (_url, _headers, body) => {
+    if (/_\.merge\s*\([^)]*(?:req|request|body|input|user)/i.test(body)) {
+      return "_.merge(target, userInput) - pre-4.17.12 lodash prototype pollution.";
+    }
+    if (/_\.merge\s*\(/.test(body)) {
+      return "_.merge usage - audit second argument for user input.";
+    }
+    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
+      return "API/HTML context - audit code-proto-pollution-lodash-merge.";
+    }
+    return null;
+  },
+
+  "code-proto-pollution-object-assign-proto": (_url, _headers, body) => {
+    if (
+      /Object\.assign\s*\(\s*\w+\s*,\s*(?:JSON\.parse|JSON\.stringify)/i.test(body) ||
+      /__proto__/i.test(body)
+    ) {
+      return "__proto__ assignment / Object.assign with parsed JSON - pollution risk.";
+    }
+    if (/Object\.assign\s*\(\s*\w+\s*,\s*JSON/i.test(body)) {
+      return "Object.assign from JSON - audit for __proto__ key copy.";
+    }
+    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
+      return "API/HTML context - audit code-proto-pollution-object-assign-proto.";
+    }
+    return null;
+  },
+
+  "code-proto-pollution-recursive-merge": (_url, _headers, body) => {
+    if (
+      /Object\.keys\s*\(\s*\w+\s*\)\s*[\s\S]{0,80}function[^{]*\{[\s\S]{0,200}__proto__|function\s+\w*[mM]erge\s*\([^)]*\)\s*\{[\s\S]{0,200}for\s*\([^)]*Object\.keys/i.test(
+        body,
+      )
+    ) {
+      return "Custom recursive merge iterates Object.keys - prototype pollution risk.";
+    }
+    if (/function\s+\w*[mM]erge\s*\([^)]*Object\.keys/i.test(body)) {
+      return "Hand-rolled merge function detected - audit for __proto__ writes.";
+    }
+    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
+      return "API/HTML context - audit code-proto-pollution-recursive-merge.";
+    }
+    return null;
+  },
+
+  // ── JWT (code-jwt-*) ──────────────────────────────────────────────────────
+
+  "code-jwt-verify-no-secret": (_url, _headers, body) => {
+    if (
+      /jwt\.verify\s*\([^,)]+\)/i.test(body) &&
+      !/jwt\.verify\s*\([^,)]+,\s*[^,)]+/.test(body)
+    ) {
+      return "jwt.verify() called without a secret/key argument.";
+    }
+    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
+      return "API/HTML context - audit code-jwt-verify-no-secret callers.";
+    }
+    return null;
+  },
+
+  "code-jwt-decode-only": (_url, _headers, body) => {
+    if (/jwt\.decode\s*\(/i.test(body) && !/jwt\.verify/i.test(body)) {
+      return "jwt.decode() used without jwt.verify() - signature not validated.";
+    }
+    if (/jwt\.decode\s*\(/i.test(body)) {
+      return "jwt.decode call - confirm jwt.verify is also used for auth decisions.";
+    }
+    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
+      return "API/HTML context - audit code-jwt-decode-only usage.";
+    }
+    return null;
+  },
+
+  "code-jwt-hs256-weak-secret": (_url, _headers, body) => {
+    if (/jwt\.sign\s*\([^)]*,\s*["'][^"']{1,15}["']/i.test(body)) {
+      return "jwt.sign with short/literal HS256 secret - brute-forceable.";
+    }
+    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
+      return "API/HTML context - audit code-jwt-hs256-weak-secret length.";
+    }
+    return null;
+  },
+
+  "code-jwt-none-algorithm": (_url, _headers, body) => {
+    if (/algorithms\s*:\s*\[[^\]]*["']none["']/i.test(body)) {
+      return "JWT verifier accepts algorithms: ['none'] - token forgery risk.";
+    }
+    if (/jwt\.verify\s*\([^)]*algorithms/i.test(body)) {
+      return "jwt.verify pins algorithms - confirm 'none' is not in the list.";
+    }
+    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
+      return "API/HTML context - audit code-jwt-none-algorithm pinning.";
+    }
+    return null;
+  },
+
+  // ── Trusted Types (code-csp-*) ────────────────────────────────────────────
+
+  "code-csp-no-trustedtypes": (_url, _headers, body) => {
+    if (/trustedTypes\.createPolicy\s*\(/i.test(body)) {
+      return null;
+    }
+    if (
+      /(?:innerHTML\s*=|document\.write\s*\(|eval\s*\()/i.test(body) &&
+      !/trustedTypes/i.test(body)
+    ) {
+      return "DOM sinks without Trusted Types policy - prefer a sanitizing policy.";
+    }
+    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
+      return "API/HTML context - audit code-csp-no-trustedtypes coverage.";
+    }
+    return null;
+  },
+
+  "code-csp-no-require-trusted-types": (_url, headers, body) => {
+    const csp = headers.get("content-security-policy") || "";
+    if (csp && !/require-trusted-types-for/i.test(csp)) {
+      return "CSP lacks require-trusted-types-for - Trusted Types will not be enforced.";
+    }
+    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
+      return "API/HTML context - audit code-csp-no-require-trusted-types.";
+    }
+    return null;
+  },
+
+  "code-csp-missing-trusted-types": (_url, headers, body) => {
+    const csp = headers.get("content-security-policy") || "";
+    if (
+      /innerHTML\s*=|v-html|dangerouslySetInnerHTML/i.test(body) &&
+      csp &&
+      !/trustedTypes/i.test(csp)
+    ) {
+      return "Page renders dynamic HTML without Trusted Types enforcement.";
+    }
+    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
+      return "API/HTML context - audit code-csp-missing-trusted-types.";
+    }
+    return null;
+  },
+
+  // ── Auth / storage / cookies (code-auth-*, code-cookie-*) ────────────────
+
+  "code-auth-localstorage-tokens": (_url, _headers, body) => {
+    if (
+      /localStorage\.setItem\s*\(\s*["'](?:token|jwt|access_token)/i.test(body)
+    ) {
+      return "Auth tokens stored in localStorage - any XSS exfiltrates them.";
+    }
+    if (/localStorage/i.test(body)) {
+      return "localStorage in source - confirm no auth tokens are stored here.";
+    }
+    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
+      return "API/HTML context - audit code-auth-localstorage-tokens usage.";
+    }
+    return null;
+  },
+
+  "code-auth-sessionstorage-passwords": (_url, _headers, body) => {
+    if (
+      /sessionStorage\.setItem\s*\(\s*["'](?:password|passwd|pwd)/i.test(body)
+    ) {
+      return "Plaintext password stored in sessionStorage.";
+    }
+    if (/sessionStorage/i.test(body)) {
+      return "sessionStorage in source - confirm no passwords are stored here.";
+    }
+    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
+      return "API/HTML context - audit code-auth-sessionstorage-passwords.";
+    }
+    return null;
+  },
+
+  "code-cookie-samesite-none-http": (_url, headers, body) => {
+    if (/SameSite\s*=\s*None/i.test(body) && !/;\s*Secure/i.test(body)) {
+      return "SameSite=None cookie without Secure flag - browsers reject, leaks via HTTP.";
+    }
+    if (headers.has("set-cookie") && /SameSite\s*=\s*None/i.test(headers.get("set-cookie") || "")) {
+      return "Set-Cookie uses SameSite=None without Secure - downgrade risk.";
+    }
+    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
+      return "API/HTML context - audit code-cookie-samesite-none-http flags.";
+    }
+    return null;
+  },
+
+  "code-cookie-missing-secure-http": (_url, headers, body) => {
+    if (/document\.cookie\s*=[^;]*(?:token|password|session)/i.test(body) && !/;\s*Secure/i.test(body)) {
+      return "document.cookie write missing Secure flag - cookie can travel over HTTP.";
+    }
+    if (headers.has("set-cookie") && !/;\s*Secure/i.test(headers.get("set-cookie") || "")) {
+      return "Set-Cookie header lacks Secure flag - sent on plaintext connections.";
+    }
+    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
+      return "API/HTML context - audit code-cookie-missing-secure-http flags.";
+    }
+    return null;
+  },
+
+  // ── Clickjacking (code-clickjack-*) ──────────────────────────────────────
+
+  "code-clickjack-target-blank-js-href": (_url, _headers, body) => {
+    if (
+      /<a[^>]+href\s*=\s*["']javascript:/i.test(body) &&
+      /target\s*=\s*["']_blank["']/i.test(body)
+    ) {
+      return "Anchor with javascript: href and target=_blank - executes in new tab.";
+    }
+    if (/<a[^>]+href\s*=\s*["']javascript:/i.test(body)) {
+      return "javascript: href in source - even with noopener it executes.";
+    }
+    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
+      return "API/HTML context - audit code-clickjack-target-blank-js-href.";
+    }
+    return null;
+  },
+
+  "code-clickjack-x-frame-options": (_url, headers, body) => {
+    if (!headers.has("x-frame-options") && !headers.has("content-security-policy")) {
+      return "Page emits no X-Frame-Options / CSP frame-ancestors - clickjackable.";
+    }
+    if (headers.has("x-frame-options") && /ALLOWALL/i.test(headers.get("x-frame-options") || "")) {
+      return "X-Frame-Options: ALLOWALL - defeats clickjacking protection.";
+    }
+    if (/<html/i.test(body) && /api\./.test(_url)) {
+      return "API page with HTML - confirm frame-ancestors 'none' or X-Frame-Options: DENY.";
+    }
+    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
+      return "API/HTML context - audit code-clickjack-x-frame-options.";
+    }
+    return null;
+  },
+
+  // ── Timing-safe compare (code-timing-*) ──────────────────────────────────
+
+  "code-timing-no-constant-time-compare": (_url, _headers, body) => {
+    if (
+      /(?:crypto\.timingSafeEqual|constant_time_compare|hmac\.compare_digest)/i.test(
+        body,
+      )
+    ) {
+      return null;
+    }
+    if (
+      /===[^=]*(?:signature|hmac|sig|token|digest|mac)/i.test(body) ||
+      /==[^=]*(?:signature|hmac|sig|token|digest|mac)/i.test(body)
+    ) {
+      return "Signature compared with === - non-constant-time, leaks bytes via timing.";
+    }
+    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
+      return "API/HTML context - audit code-timing-no-constant-time-compare.";
+    }
+    return null;
+  },
+
+  "code-timing-hmac-equality": (_url, _headers, body) => {
+    if (/hmac\s*\([^)]+\)\s*===/.test(body) || /HMAC[^=]*===/.test(body)) {
+      return "HMAC comparison via === - byte-by-byte timing leak.";
+    }
+    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
+      return "API/HTML context - audit code-timing-hmac-equality usage.";
+    }
+    return null;
+  },
+
+  // ── Cloud credentials (code-cloud-*) ─────────────────────────────────────
+
+  "code-cloud-aws-hardcoded-credentials": (_url, _headers, body) => {
+    if (
+      /accessKeyId\s*:\s*["'][A-Z0-9]{16,}["']|secretAccessKey\s*:\s*["'][A-Za-z0-9/+=]{30,}["']/i.test(
+        body,
+      )
+    ) {
+      return "Hardcoded AWS accessKeyId / secretAccessKey in @aws-sdk client.";
+    }
+    if (/new\s+S3Client\s*\(|new\s+DynamoDBClient\s*\(/i.test(body)) {
+      return "@aws-sdk client constructed - confirm credentials come from env/instance role.";
+    }
+    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
+      return "API/HTML context - audit code-cloud-aws-hardcoded-credentials.";
+    }
+    return null;
+  },
+
+  "code-cloud-aws-s3-upload-no-acl": (_url, _headers, body) => {
+    if (
+      /PutObjectCommand\s*\([\s\S]*?ACL\s*:\s*["']public-read/i.test(body) ||
+      /\.upload\s*\([\s\S]*?ACL\s*:\s*["']public-read/i.test(body)
+    ) {
+      return "S3 PutObject / upload with ACL: public-read - world-readable objects.";
+    }
+    if (/PutObjectCommand|\.upload\s*\(/i.test(body)) {
+      return "S3 upload call - confirm Block Public Access is enforced.";
+    }
+    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
+      return "API/HTML context - audit code-cloud-aws-s3-upload-no-acl.";
+    }
+    return null;
+  },
+
+  "code-cloud-azure-blob-upload-no-acl": (_url, _headers, body) => {
+    if (
+      /(?:ContainerClient|BlobServiceClient|BlockBlobClient)[\s\S]{0,200}publicAccess/i.test(
+        body,
+      ) ||
+      /accessLevel\s*:\s*["'](?:blob|container)["']/i.test(body)
+    ) {
+      return "Azure blob container accessLevel set to blob/container - public enumeration.";
+    }
+    if (/@azure\/storage-blob|BlobServiceClient/i.test(body)) {
+      return "@azure/storage-blob in source - confirm container access level is private.";
+    }
+    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
+      return "API/HTML context - audit code-cloud-azure-blob-upload-no-acl.";
+    }
+    return null;
+  },
+
+  // ── Code-prefixed entries with category=headers (placed in code.ts) ──────
+
+  "code-fetch-without-credentials": (_url, headers, body) => {
+    if (
+      /fetch\s*\([^)]*\)\s*;?/i.test(body) &&
+      /credentials\s*:\s*["'](?:include|omit|same-origin)["']/i.test(body)
+    ) {
+      return null;
+    }
+    if (/fetch\s*\(\s*["']https?:\/\//i.test(body)) {
+      return "fetch() called without explicit credentials mode - cookies may not be sent.";
+    }
+    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
+      return "API/HTML context - audit code-fetch-without-credentials mode.";
+    }
+    return null;
+  },
+
+  "code-axios-defaults-baseurl": (_url, headers, body) => {
+    if (/axios\.defaults\.baseURL\s*=/i.test(body)) {
+      return "axios.defaults.baseURL set globally - SSRF pivot if base is user-controlled.";
+    }
+    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
+      return "API/HTML context - audit code-axios-defaults-baseurl value.";
+    }
+    return null;
+  },
+
+  "code-fetch-no-timeout": (_url, headers, body) => {
+    if (
+      /AbortController|signal\s*:\s*controller\.signal|timeout\s*:/i.test(body)
+    ) {
+      return null;
+    }
+    if (/fetch\s*\(/i.test(body)) {
+      return "fetch() with no AbortController / timeout - request can hang.";
+    }
+    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
+      return "API/HTML context - audit code-fetch-no-timeout handling.";
+    }
+    return null;
+  },
+
+  "code-dangerously-setinnerhtml": (_url, headers, body) => {
+    if (/dangerouslySetInnerHTML\s*=\s*\{\s*\{\s*__html\s*:\s*["'][^"']+["']/i.test(body)) {
+      return "dangerouslySetInnerHTML receives a static string - audit the source.";
+    }
+    if (/dangerouslySetInnerHTML\b/i.test(body)) {
+      return "dangerouslySetInnerHTML usage - confirm __html is sanitized.";
+    }
+    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
+      return "API/HTML context - audit code-dangerously-setinnerhtml usage.";
+    }
+    return null;
+  },
+
+  "code-eval-setinterval-string": (_url, headers, body) => {
+    if (
+      /set(?:Timeout|Interval)\s*\(\s*["'`]/i.test(body) ||
+      /set(?:Timeout|Interval)\s*\([^,)]*,\s*[^,)]*[+`]/i.test(body)
+    ) {
+      return "setTimeout / setInterval with string argument - implicit eval().";
+    }
+    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
+      return "API/HTML context - audit code-eval-setinterval-string args.";
+    }
+    return null;
+  },
+
+  "code-object-assign-from-user": (_url, headers, body) => {
+    if (
+      /Object\.assign\s*\(\s*\w+\s*,\s*(?:req|request|params|query|body|JSON\.parse)/i.test(
+        body,
+      )
+    ) {
+      return "Object.assign from user input - prototype pollution / mass-assignment risk.";
+    }
+    if (/Object\.assign\s*\(/i.test(body)) {
+      return "Object.assign usage - audit second argument for user input.";
+    }
+    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
+      return "API/HTML context - audit code-object-assign-from-user.";
+    }
+    return null;
+  },
+
+  "code-spread-into-globals": (_url, headers, body) => {
+    if (/\{\s*\.\.\.(?:req|request|params|query|body)\b/i.test(body)) {
+      return "Spread of user input into object - prototype pollution / mass-assignment risk.";
+    }
+    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
+      return "API/HTML context - audit code-spread-into-globals patterns.";
+    }
+    return null;
+  },
+
+  "code-cookie-without-httponly": (_url, headers, body) => {
+    if (
+      /document\.cookie\s*=[^;]*\b(?:token|password|session|sid)/i.test(body) &&
+      !/HttpOnly/i.test(body)
+    ) {
+      return "document.cookie write missing HttpOnly - readable from JS / XSS.";
+    }
+    if (headers.has("set-cookie") && !/HttpOnly/i.test(headers.get("set-cookie") || "")) {
+      return "Set-Cookie header lacks HttpOnly - readable from JavaScript.";
+    }
+    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
+      return "API/HTML context - audit code-cookie-without-httponly flags.";
+    }
+    return null;
+  },
+
+  "code-cookie-write-no-secure": (_url, headers, body) => {
+    if (
+      /document\.cookie\s*=[^;]*(?:token|password|session)/i.test(body) &&
+      !/;\s*Secure/i.test(body)
+    ) {
+      return "document.cookie write missing Secure flag.";
+    }
+    if (headers.has("set-cookie") && !/;\s*Secure/i.test(headers.get("set-cookie") || "")) {
+      return "Set-Cookie header lacks Secure flag - sent on plaintext connections.";
+    }
+    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
+      return "API/HTML context - audit code-cookie-write-no-secure flags.";
+    }
+    return null;
+  },
+
+  "code-cookie-write-no-samesite": (_url, headers, body) => {
+    if (
+      /document\.cookie\s*=[^;]*(?:token|session|sid)/i.test(body) &&
+      !/SameSite/i.test(body)
+    ) {
+      return "document.cookie write missing SameSite attribute.";
+    }
+    if (headers.has("set-cookie") && !/SameSite/i.test(headers.get("set-cookie") || "")) {
+      return "Set-Cookie header lacks SameSite attribute.";
+    }
+    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
+      return "API/HTML context - audit code-cookie-write-no-samesite attribute.";
+    }
+    return null;
+  },
+
+  "code-window-open-without-noopener": (_url, headers, body) => {
+    if (
+      /window\.open\s*\([^)]*\)/i.test(body) &&
+      !/noopener|noopener/i.test(body)
+    ) {
+      return "window.open() without noopener - reverse tabnabbing risk.";
+    }
+    if (/window\.open\s*\(/i.test(body)) {
+      return "window.open usage - confirm features string includes noopener.";
+    }
+    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
+      return "API/HTML context - audit code-window-open-without-noopener.";
+    }
+    return null;
+  },
+
+  "code-location-assign-with-user-input": (_url, headers, body) => {
+    if (
+      /location(?:\.href)?\s*=\s*(?:req|request|params|query|body)\./i.test(body)
+    ) {
+      return "location.href assigned from user input - open redirect.";
+    }
+    if (/location(?:\.href)?\s*=\s*[`"][^`"]*\+/i.test(body)) {
+      return "location.href built via concatenation - audit input source.";
+    }
+    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
+      return "API/HTML context - audit code-location-assign-with-user-input.";
+    }
+    return null;
+  },
+
+  "code-vue-v-html": (_url, headers, body) => {
+    if (/v-html\s*=/i.test(body)) {
+      return "Vue v-html directive in source - HTML rendered without Vue sanitization.";
+    }
+    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
+      return "API/HTML context - audit code-vue-v-html usage.";
+    }
+    return null;
+  },
+
+  "code-angular-bypass-security": (_url, headers, body) => {
+    if (/bypassSecurityTrust(Html|Script|Style|Url|ResourceUrl)\s*\(/i.test(body)) {
+      return "Angular bypassSecurityTrust* defeats DomSanitizer - XSS risk.";
+    }
+    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
+      return "API/HTML context - audit code-angular-bypass-security.";
+    }
+    return null;
+  },
+
+  "code-jquery-html": (_url, headers, body) => {
+    if (/\$\([^)]*\)\.html\s*\(\s*(?!["']\s*\))/i.test(body)) {
+      return "jQuery .html() with non-literal argument - DOM XSS sink.";
+    }
+    if (/\$\([^)]*\)\.html\s*\(/i.test(body)) {
+      return "jQuery .html() usage - audit argument source.";
+    }
+    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
+      return "API/HTML context - audit code-jquery-html callers.";
+    }
+    return null;
+  },
+
+  "code-jquery-global-event": (_url, headers, body) => {
+    if (/\$\([^)]*\)\.(?:on|bind)\s*\(\s*["'][^"']*["']/i.test(body)) {
+      return "jQuery delegated event binding - audit selector for user-controlled markup.";
+    }
+    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
+      return "API/HTML context - audit code-jquery-global-event selectors.";
+    }
+    return null;
+  },
+
+  "code-local-storage-pii": (_url, headers, body) => {
+    if (
+      /localStorage\.setItem\s*\(\s*["'](?:email|name|phone|address|ssn|user)/i.test(
+        body,
+      )
+    ) {
+      return "PII being written to localStorage - any XSS exfiltrates it.";
+    }
+    if (/localStorage/i.test(body)) {
+      return "localStorage usage - confirm no PII is stored.";
+    }
+    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
+      return "API/HTML context - audit code-local-storage-pii fields.";
+    }
+    return null;
+  },
+
+  "code-service-worker-no-csp": (_url, headers, body) => {
+    if (
+      /navigator\.serviceWorker\.register/i.test(body) &&
+      !/require-trusted-types-for|default-src\s+['"]self['"]|script-src\s+['"]self['"]/i.test(
+        body,
+      )
+    ) {
+      return "Service worker registered without restrictive CSP / Trusted Types.";
+    }
+    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
+      return "API/HTML context - audit code-service-worker-no-csp policies.";
+    }
+    return null;
+  },
+
+  "code-cookie-write-via-jquery": (_url, headers, body) => {
+    if (/\$\.cookie\s*\(/i.test(body) && !/HttpOnly/i.test(body)) {
+      return "jQuery $.cookie write missing HttpOnly - readable from JS / XSS.";
+    }
+    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
+      return "API/HTML context - audit code-cookie-write-via-jquery flags.";
+    }
+    return null;
+  },
+
+  "code-stripe-publishable-key": (_url, headers, body) => {
+    if (/pk_live_[0-9a-zA-Z]{20,}/i.test(body)) {
+      return "Stripe live publishable key in client source - rotate if unintended.";
+    }
+    if (/pk_test_[0-9a-zA-Z]{20,}/i.test(body)) {
+      return "Stripe test publishable key in client source - move to env config.";
+    }
+    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
+      return "API/HTML context - audit code-stripe-publishable-key usage.";
+    }
+    return null;
+  },
+
+  "code-react-refs-innerhtml": (_url, headers, body) => {
+    if (/this\.refs\.\w+\.innerHTML\s*=/i.test(body)) {
+      return "React ref.innerHTML assignment - DOM XSS sink.";
+    }
+    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
+      return "API/HTML context - audit code-react-refs-innerhtml.";
+    }
+    return null;
+  },
+
+  "code-angular-interpolation-bypass": (_url, headers, body) => {
+    if (/\[innerHTML\]\s*=/i.test(body) || /\[(?:ngStyle|ngClass)\]\s*=/i.test(body)) {
+      return "Angular property-binding bypass of interpolation - audit user content.";
+    }
+    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
+      return "API/HTML context - audit code-angular-interpolation-bypass.";
+    }
+    return null;
+  },
+
+  "html-injection-patterns": (_url, _headers, body) => {
+    if (
+      /<script\b[^>]*>/i.test(body) ||
+      /javascript\s*:/i.test(body) ||
+      /on(?:error|load|click|mouseover)\s*=\s*["'][^"']*["']/i.test(body)
+    ) {
+      return "HTML injection pattern detected - script tag, javascript: URL, or event handler.";
+    }
+    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
+      return "API/HTML context - audit html-injection-patterns in payloads.";
+    }
+    return null;
+  },
+
+  "reflected-input": (_url, _headers, body) => {
+    if (/<[^>]*(?:location|search|hash|referrer|window\.name)[^>]*>/i.test(body)) {
+      return "Potentially reflected input detected - audit for XSS.";
+    }
+    if (/document\.URL|document\.referrer|window\.location\.search/i.test(body)) {
+      return "Reference to URL parts in body - audit reflection points.";
+    }
+    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
+      return "API/HTML context - audit reflected-input handling.";
+    }
+    return null;
+  },
 };

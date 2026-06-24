@@ -7,6 +7,10 @@ describe("isPrivateIP IPv6 canonicalization", () => {
   // NAT64 prefix) bypassed the regex-based private-range checks because the
   // patterns only matched dotted-form ::ffff:X.X.X.X.
   it.each([
+    // Native IPv6 loopback (shorthand + long expanded)
+    "::1",
+    "0:0:0:0:0:0:0:1",
+    "0000:0000:0000:0000:0000:0000:0000:0001",
     // IPv4-mapped loopback (dotted, hex-encoded, long expanded, with extras)
     "::ffff:127.0.0.1",
     "::ffff:7f00:1",
@@ -15,6 +19,7 @@ describe("isPrivateIP IPv6 canonicalization", () => {
     "0000:0000:0000:0000:0000:ffff:7f00:0001",
     // RFC 6052 NAT64 prefix with hex-encoded embedded IPv4
     "64:ff9b::7f00:1",
+    "0064:ff9b:0000:0000:0000:0000:7f00:0001",
     // IPv4-mapped private A (10.0.0.0/8)
     "::ffff:10.0.0.1",
     "::ffff:a00:1",
@@ -27,6 +32,13 @@ describe("isPrivateIP IPv6 canonicalization", () => {
     // IPv4-mapped link-local / cloud metadata (169.254.169.254)
     "::ffff:169.254.169.254",
     "::ffff:a9fe:a9fe",
+    // Native IPv6 ULA
+    "fc00::1",
+    "fd00::1",
+    // Link-local
+    "fe80::1",
+    // Unspecified
+    "::",
   ])("blocks %s", (ip) => {
     expect(isPrivateIP(ip)).toBe(true);
   });
