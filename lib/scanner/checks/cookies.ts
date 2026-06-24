@@ -323,7 +323,8 @@ export const detectors: Record<string, DetectFn> = {
     for (const c of cookies) {
       if (/max-age\s*=\s*0\b/i.test(c)) count++;
     }
-    if (count > 0) return `${count} cookie(s) with Max-Age=0 (deletion pattern).`;
+    if (count > 0)
+      return `${count} cookie(s) with Max-Age=0 (deletion pattern).`;
     for (const c of cookies) {
       if (!/max-age\s*=\s*\d+/i.test(c)) {
         return `Cookie '${parseCookieName(c)}' has no Max-Age — verify lifetime policy.`;
@@ -347,7 +348,8 @@ export const detectors: Record<string, DetectFn> = {
     for (const c of cookies) {
       const name = parseCookieName(c).toLowerCase();
       if (
-        name === "phpsessid" || name === "jsessionid" ||
+        name === "phpsessid" ||
+        name === "jsessionid" ||
         /^asp\.net_sessionid$/i.test(name) ||
         /^express\.sess$/i.test(name)
       ) {

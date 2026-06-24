@@ -12,7 +12,8 @@ export const detectors: Record<string, DetectFn> = {
   // ── Credit cards / SSN / phone / email ────────────────────────────────────
 
   "credit-card-pattern": (url, _headers, body) => {
-    const re = /\b(?:4\d{3}|5[1-5]\d{2}|3[47]\d{2}|6(?:011|5\d{2}))[\s-]?\d{4}[\s-]?\d{4}[\s-]?\d{4}\b/g;
+    const re =
+      /\b(?:4\d{3}|5[1-5]\d{2}|3[47]\d{2}|6(?:011|5\d{2}))[\s-]?\d{4}[\s-]?\d{4}[\s-]?\d{4}\b/g;
     const matches = body.match(re) || [];
     if (matches.length > 0)
       return `Found ${matches.length} credit-card-number-pattern match(es) in source.`;
@@ -149,7 +150,8 @@ export const detectors: Record<string, DetectFn> = {
       /firebaseConfig\s*[:=]/i,
     ];
     for (const p of patterns) {
-      if (p.test(body)) return "Firebase configuration pattern detected in source.";
+      if (p.test(body))
+        return "Firebase configuration pattern detected in source.";
     }
     if (/api\./.test(url)) {
       return `API endpoint ${url} — review for Firebase config leaks (apiKey/projectId).`;
@@ -158,8 +160,10 @@ export const detectors: Record<string, DetectFn> = {
   },
 
   "s3-bucket-exposed": (url, _headers, body) => {
-    const matches = body.match(/https?:\/\/[\w.-]+\.s3(?:\.[\w-]+)?\.amazonaws\.com/gi) || [];
-    if (matches.length > 0) return `Found ${matches.length} AWS S3 bucket URL reference(s) in source.`;
+    const matches =
+      body.match(/https?:\/\/[\w.-]+\.s3(?:\.[\w-]+)?\.amazonaws\.com/gi) || [];
+    if (matches.length > 0)
+      return `Found ${matches.length} AWS S3 bucket URL reference(s) in source.`;
     if (/api\./.test(url)) {
       return `API endpoint ${url} — review for S3 bucket URL references.`;
     }
@@ -167,7 +171,11 @@ export const detectors: Record<string, DetectFn> = {
   },
 
   "aws-metadata-reference": (url, _headers, body) => {
-    const patterns = [/169\.254\.169\.254/, /latest\/meta-data/i, /\/metadata\/instance/i];
+    const patterns = [
+      /169\.254\.169\.254/,
+      /latest\/meta-data/i,
+      /\/metadata\/instance/i,
+    ];
     for (const p of patterns) {
       if (p.test(body)) return "AWS metadata endpoint reference detected.";
     }
@@ -178,9 +186,11 @@ export const detectors: Record<string, DetectFn> = {
   },
 
   "base64-credentials": (url, _headers, body) => {
-    const re = /(?:Authorization|Proxy-Authorization)\s*:\s*Basic\s+([A-Za-z0-9+/=]{8,})/i;
+    const re =
+      /(?:Authorization|Proxy-Authorization)\s*:\s*Basic\s+([A-Za-z0-9+/=]{8,})/i;
     const matches = body.match(re) || [];
-    if (matches.length > 0) return `Found ${matches.length} Basic Authorization header(s) with Base64 credential in source.`;
+    if (matches.length > 0)
+      return `Found ${matches.length} Basic Authorization header(s) with Base64 credential in source.`;
     if (/api\./.test(url)) {
       return `API endpoint ${url} — review source for embedded Base64 credentials.`;
     }
@@ -235,7 +245,9 @@ export const detectors: Record<string, DetectFn> = {
   },
 
   "private-key-in-source": (url, _headers, body) => {
-    if (/-----BEGIN (?:RSA |EC |DSA |OPENSSH |PGP )?PRIVATE KEY-----/.test(body)) {
+    if (
+      /-----BEGIN (?:RSA |EC |DSA |OPENSSH |PGP )?PRIVATE KEY-----/.test(body)
+    ) {
       return "Private key material detected in source.";
     }
     if (/api\./.test(url)) {
@@ -447,7 +459,11 @@ export const detectors: Record<string, DetectFn> = {
 
   "secret-aws-secret-key": (_url, _headers, body) => {
     if (!body) return null;
-    if (/(?:aws_?secret_access_key|AKIA[0-9A-Z]{16})[\s\S]{0,200}?[A-Za-z0-9/+=]{40}/.test(body)) {
+    if (
+      /(?:aws_?secret_access_key|AKIA[0-9A-Z]{16})[\s\S]{0,200}?[A-Za-z0-9/+=]{40}/.test(
+        body,
+      )
+    ) {
       return "Response contains an AWS Secret Access Key near an AKIA pair.";
     }
     return null;
@@ -487,7 +503,11 @@ export const detectors: Record<string, DetectFn> = {
 
   "secret-cloudflare-api-key": (_url, _headers, body) => {
     if (!body) return null;
-    if (/(?:cloudflare|cf)[_\-]?(?:api[_\-]?key|api[_\-]?token)[\s"'=:]+[a-f0-9]{37,40}/i.test(body)) {
+    if (
+      /(?:cloudflare|cf)[_\-]?(?:api[_\-]?key|api[_\-]?token)[\s"'=:]+[a-f0-9]{37,40}/i.test(
+        body,
+      )
+    ) {
       return "Response contains a Cloudflare API key/token (40-char hex).";
     }
     return null;
@@ -503,7 +523,11 @@ export const detectors: Record<string, DetectFn> = {
 
   "secret-algolia-admin-key": (_url, _headers, body) => {
     if (!body) return null;
-    if (/(?:algolia[_\-]?(?:admin|api)[_\-]?key|admin[_\-]?key)[\s"'=:]+[A-Za-z0-9]{32,}/i.test(body)) {
+    if (
+      /(?:algolia[_\-]?(?:admin|api)[_\-]?key|admin[_\-]?key)[\s"'=:]+[A-Za-z0-9]{32,}/i.test(
+        body,
+      )
+    ) {
       return "Response contains an Algolia admin/search API key.";
     }
     return null;
@@ -511,7 +535,9 @@ export const detectors: Record<string, DetectFn> = {
 
   "secret-mapbox-secret-token": (_url, _headers, body) => {
     if (!body) return null;
-    if (/(?:mapbox[_\-]?(?:secret|token)|sk\.eyJ)[A-Za-z0-9_.\-]+/i.test(body)) {
+    if (
+      /(?:mapbox[_\-]?(?:secret|token)|sk\.eyJ)[A-Za-z0-9_.\-]+/i.test(body)
+    ) {
       return "Response contains a Mapbox secret token (sk.*).";
     }
     return null;
@@ -519,7 +545,11 @@ export const detectors: Record<string, DetectFn> = {
 
   "secret-pagerduty-key": (_url, _headers, body) => {
     if (!body) return null;
-    if (/(?:pagerduty|pd)[_\-]?(?:api[_\-]?key|rest[_\-]?key)[\s"'=:]+[A-Za-z0-9_\-+]{16,}/i.test(body)) {
+    if (
+      /(?:pagerduty|pd)[_\-]?(?:api[_\-]?key|rest[_\-]?key)[\s"'=:]+[A-Za-z0-9_\-+]{16,}/i.test(
+        body,
+      )
+    ) {
       return "Response contains a PagerDuty REST API key.";
     }
     return null;
@@ -535,7 +565,11 @@ export const detectors: Record<string, DetectFn> = {
 
   "secret-datadog-api-key": (_url, _headers, body) => {
     if (!body) return null;
-    if (/(?:datadog[_\-]?(?:api[_\-]?key|app[_\-]?key))[\s"'=:]+[a-f0-9]{32,}/i.test(body)) {
+    if (
+      /(?:datadog[_\-]?(?:api[_\-]?key|app[_\-]?key))[\s"'=:]+[a-f0-9]{32,}/i.test(
+        body,
+      )
+    ) {
       return "Response contains a Datadog API key.";
     }
     return null;
@@ -551,7 +585,11 @@ export const detectors: Record<string, DetectFn> = {
 
   "secret-pinecone-api-key": (_url, _headers, body) => {
     if (!body) return null;
-    if (/(?:pinecone|pcsk)[_\-]?(?:api[_\-]?key|key)?[\s"'=:]+[A-Za-z0-9_\-]{40,}/i.test(body)) {
+    if (
+      /(?:pinecone|pcsk)[_\-]?(?:api[_\-]?key|key)?[\s"'=:]+[A-Za-z0-9_\-]{40,}/i.test(
+        body,
+      )
+    ) {
       return "Response contains a Pinecone API key.";
     }
     return null;
@@ -559,7 +597,11 @@ export const detectors: Record<string, DetectFn> = {
 
   "secret-supabase-service-role": (_url, _headers, body) => {
     if (!body) return null;
-    if (/service_role[\s\S]{0,80}?eyJ[A-Za-z0-9_-]{20,}\.eyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}/.test(body)) {
+    if (
+      /service_role[\s\S]{0,80}?eyJ[A-Za-z0-9_-]{20,}\.eyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}/.test(
+        body,
+      )
+    ) {
       return "Response contains a Supabase service_role JWT.";
     }
     return null;
@@ -567,7 +609,11 @@ export const detectors: Record<string, DetectFn> = {
 
   "secret-supabase-anon-key": (_url, _headers, body) => {
     if (!body) return null;
-    if (/(?:supabase[_\-]?anon[_\-]?key|anon[\s"'=:]+eyJ[A-Za-z0-9_-]{20,}\.eyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,})/i.test(body)) {
+    if (
+      /(?:supabase[_\-]?anon[_\-]?key|anon[\s"'=:]+eyJ[A-Za-z0-9_-]{20,}\.eyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,})/i.test(
+        body,
+      )
+    ) {
       return "Response contains a Supabase anon JWT.";
     }
     return null;
@@ -583,7 +629,9 @@ export const detectors: Record<string, DetectFn> = {
 
   "secret-private-key-pem": (_url, _headers, body) => {
     if (!body) return null;
-    if (/-----BEGIN (?:RSA |EC |DSA |OPENSSH |PGP )?PRIVATE KEY-----/.test(body)) {
+    if (
+      /-----BEGIN (?:RSA |EC |DSA |OPENSSH |PGP )?PRIVATE KEY-----/.test(body)
+    ) {
       return "Response contains a PEM private key block.";
     }
     return null;
@@ -591,7 +639,11 @@ export const detectors: Record<string, DetectFn> = {
 
   "secret-jwt-in-config": (_url, _headers, body) => {
     if (!body) return null;
-    if (/eyJ[A-Za-z0-9_-]{20,}\.eyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}/.test(body)) {
+    if (
+      /eyJ[A-Za-z0-9_-]{20,}\.eyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}/.test(
+        body,
+      )
+    ) {
       return "Response contains a JWT (likely stored in client config).";
     }
     return null;
@@ -607,7 +659,11 @@ export const detectors: Record<string, DetectFn> = {
 
   "secret-ibm-cloud-iam-key": (_url, _headers, body) => {
     if (!body) return null;
-    if (/(?:ibm[_\-]?(?:cloud[_\-]?)?(?:iam[_\-]?)?(?:api[_\-]?)?key|IBM-[A-Za-z0-9_-]{20,}|bx-[A-Za-z0-9]{40,})/i.test(body)) {
+    if (
+      /(?:ibm[_\-]?(?:cloud[_\-]?)?(?:iam[_\-]?)?(?:api[_\-]?)?key|IBM-[A-Za-z0-9_-]{20,}|bx-[A-Za-z0-9]{40,})/i.test(
+        body,
+      )
+    ) {
       return "Response contains an IBM Cloud IAM API key.";
     }
     return null;
@@ -623,7 +679,11 @@ export const detectors: Record<string, DetectFn> = {
 
   "secret-linode-api-key": (_url, _headers, body) => {
     if (!body) return null;
-    if (/(?:linode[_\-]?(?:api[_\-]?)?(?:key|token))[\s"'=:]+[a-f0-9]{64}/i.test(body)) {
+    if (
+      /(?:linode[_\-]?(?:api[_\-]?)?(?:key|token))[\s"'=:]+[a-f0-9]{64}/i.test(
+        body,
+      )
+    ) {
       return "Response contains a Linode API token (64-char hex).";
     }
     return null;
@@ -631,7 +691,11 @@ export const detectors: Record<string, DetectFn> = {
 
   "secret-vultr-api-key": (_url, _headers, body) => {
     if (!body) return null;
-    if (/(?:vultr[_\-]?(?:api[_\-]?)?(?:key|token))[\s"'=:]+[A-Za-z0-9]{20,}/i.test(body)) {
+    if (
+      /(?:vultr[_\-]?(?:api[_\-]?)?(?:key|token))[\s"'=:]+[A-Za-z0-9]{20,}/i.test(
+        body,
+      )
+    ) {
       return "Response contains a Vultr API key.";
     }
     return null;
@@ -655,7 +719,11 @@ export const detectors: Record<string, DetectFn> = {
 
   "secret-jfrog-api-key": (_url, _headers, body) => {
     if (!body) return null;
-    if (/(?:jfrog|artifactory)[_\-]?(?:api[_\-]?)?(?:key|token)[\s"'=:]+[A-Za-z0-9_\-+/=]{20,}/i.test(body)) {
+    if (
+      /(?:jfrog|artifactory)[_\-]?(?:api[_\-]?)?(?:key|token)[\s"'=:]+[A-Za-z0-9_\-+/=]{20,}/i.test(
+        body,
+      )
+    ) {
       return "Response contains a JFrog Artifactory API key/token.";
     }
     return null;
@@ -671,7 +739,11 @@ export const detectors: Record<string, DetectFn> = {
 
   "secret-honeycomb-write-key": (_url, _headers, body) => {
     if (!body) return null;
-    if (/(?:honeycomb|hcaak)[_\-]?(?:write[_\-]?)?(?:api[_\-]?)?(?:key|token)[\s"'=:]+[A-Za-z0-9]{20,}/i.test(body)) {
+    if (
+      /(?:honeycomb|hcaak)[_\-]?(?:write[_\-]?)?(?:api[_\-]?)?(?:key|token)[\s"'=:]+[A-Za-z0-9]{20,}/i.test(
+        body,
+      )
+    ) {
       return "Response contains a Honeycomb events API key.";
     }
     return null;
@@ -703,7 +775,11 @@ export const detectors: Record<string, DetectFn> = {
 
   "secret-bitbucket-app-password": (_url, _headers, body) => {
     if (!body) return null;
-    if (/(?:bitbucket[_\-]?(?:app[_\-]?)?(?:password|token))[\s"'=:]+[A-Za-z0-9]{16,}/i.test(body)) {
+    if (
+      /(?:bitbucket[_\-]?(?:app[_\-]?)?(?:password|token))[\s"'=:]+[A-Za-z0-9]{16,}/i.test(
+        body,
+      )
+    ) {
       return "Response contains a Bitbucket app password/token.";
     }
     return null;
@@ -711,7 +787,11 @@ export const detectors: Record<string, DetectFn> = {
 
   "secret-paypal-client-secret": (_url, _headers, body) => {
     if (!body) return null;
-    if (/(?:paypal[_\-]?(?:client[_\-]?)?(?:secret|key))[\s"'=:]+[A-Za-z0-9_-]{20,}/i.test(body)) {
+    if (
+      /(?:paypal[_\-]?(?:client[_\-]?)?(?:secret|key))[\s"'=:]+[A-Za-z0-9_-]{20,}/i.test(
+        body,
+      )
+    ) {
       return "Response contains a PayPal OAuth client secret.";
     }
     return null;
@@ -719,7 +799,11 @@ export const detectors: Record<string, DetectFn> = {
 
   "secret-braintree-token": (_url, _headers, body) => {
     if (!body) return null;
-    if (/(?:braintree[_\-]?(?:access[_\-]?)?(?:token|key))[\s"'=:]+[A-Za-z0-9]{16,}/i.test(body)) {
+    if (
+      /(?:braintree[_\-]?(?:access[_\-]?)?(?:token|key))[\s"'=:]+[A-Za-z0-9]{16,}/i.test(
+        body,
+      )
+    ) {
       return "Response contains a Braintree API access token.";
     }
     return null;
@@ -743,7 +827,11 @@ export const detectors: Record<string, DetectFn> = {
 
   "secret-messagebird-access-key": (_url, _headers, body) => {
     if (!body) return null;
-    if (/(?:messagebird|mb)[_\-]?(?:access[_\-]?)?(?:key|token)[\s"'=:]+[A-Za-z0-9_-]{20,}/i.test(body)) {
+    if (
+      /(?:messagebird|mb)[_\-]?(?:access[_\-]?)?(?:key|token)[\s"'=:]+[A-Za-z0-9_-]{20,}/i.test(
+        body,
+      )
+    ) {
       return "Response contains a MessageBird access key.";
     }
     return null;
@@ -751,7 +839,11 @@ export const detectors: Record<string, DetectFn> = {
 
   "secret-vonage-nexmo-key": (_url, _headers, body) => {
     if (!body) return null;
-    if (/(?:vonage|nexmo)[_\-]?(?:api[_\-]?)?(?:key|secret)[\s"'=:]+[A-Za-z0-9_-]{8,}/i.test(body)) {
+    if (
+      /(?:vonage|nexmo)[_\-]?(?:api[_\-]?)?(?:key|secret)[\s"'=:]+[A-Za-z0-9_-]{8,}/i.test(
+        body,
+      )
+    ) {
       return "Response contains a Vonage / Nexmo API key/secret pair.";
     }
     return null;
@@ -767,7 +859,11 @@ export const detectors: Record<string, DetectFn> = {
 
   "secret-cohere-api-key": (_url, _headers, body) => {
     if (!body) return null;
-    if (/(?:cohere[_\-]?(?:api[_\-]?)?(?:key|token))[\s"'=:]+[A-Za-z0-9_-]{30,}/i.test(body)) {
+    if (
+      /(?:cohere[_\-]?(?:api[_\-]?)?(?:key|token))[\s"'=:]+[A-Za-z0-9_-]{30,}/i.test(
+        body,
+      )
+    ) {
       return "Response contains a Cohere API key.";
     }
     return null;
@@ -775,7 +871,11 @@ export const detectors: Record<string, DetectFn> = {
 
   "secret-mistral-api-key": (_url, _headers, body) => {
     if (!body) return null;
-    if (/(?:mistral[_\-]?(?:api[_\-]?)?(?:key|token))[\s"'=:]+[A-Za-z0-9_-]{30,}/i.test(body)) {
+    if (
+      /(?:mistral[_\-]?(?:api[_\-]?)?(?:key|token))[\s"'=:]+[A-Za-z0-9_-]{30,}/i.test(
+        body,
+      )
+    ) {
       return "Response contains a Mistral AI API key.";
     }
     return null;
@@ -791,7 +891,11 @@ export const detectors: Record<string, DetectFn> = {
 
   "secret-meilisearch-master-key": (_url, _headers, body) => {
     if (!body) return null;
-    if (/(?:meilisearch|meili)[_\-]?(?:master[_\-]?)?(?:key|token)[\s"'=:]+[A-Za-z0-9_-]{32,}/i.test(body)) {
+    if (
+      /(?:meilisearch|meili)[_\-]?(?:master[_\-]?)?(?:key|token)[\s"'=:]+[A-Za-z0-9_-]{32,}/i.test(
+        body,
+      )
+    ) {
       return "Response contains a Meilisearch master/admin key.";
     }
     return null;
@@ -799,7 +903,11 @@ export const detectors: Record<string, DetectFn> = {
 
   "secret-typesense-admin-key": (_url, _headers, body) => {
     if (!body) return null;
-    if (/(?:typesense[_\-]?(?:admin[_\-]?)?(?:key|token))[\s"'=:]+[A-Za-z0-9]{32,}/i.test(body)) {
+    if (
+      /(?:typesense[_\-]?(?:admin[_\-]?)?(?:key|token))[\s"'=:]+[A-Za-z0-9]{32,}/i.test(
+        body,
+      )
+    ) {
       return "Response contains a Typesense admin API key.";
     }
     return null;
@@ -807,7 +915,11 @@ export const detectors: Record<string, DetectFn> = {
 
   "secret-planetscale-password": (_url, _headers, body) => {
     if (!body) return null;
-    if (/(?:planetscale|pscale)[_\-]?(?:password|service[_\-]?token|api[_\-]?key)[\s"'=:]+[A-Za-z0-9_\-:.@]{20,}/i.test(body)) {
+    if (
+      /(?:planetscale|pscale)[_\-]?(?:password|service[_\-]?token|api[_\-]?key)[\s"'=:]+[A-Za-z0-9_\-:.@]{20,}/i.test(
+        body,
+      )
+    ) {
       return "Response contains a PlanetScale database password/service token.";
     }
     return null;
@@ -815,7 +927,11 @@ export const detectors: Record<string, DetectFn> = {
 
   "secret-auth0-client-secret": (_url, _headers, body) => {
     if (!body) return null;
-    if (/(?:auth0[_\-]?client[_\-]?secret|client[_\-]?secret[\s"'=:]+[A-Za-z0-9_\-]{32,})/i.test(body)) {
+    if (
+      /(?:auth0[_\-]?client[_\-]?secret|client[_\-]?secret[\s"'=:]+[A-Za-z0-9_\-]{32,})/i.test(
+        body,
+      )
+    ) {
       return "Response contains an Auth0 client secret.";
     }
     return null;
@@ -831,7 +947,11 @@ export const detectors: Record<string, DetectFn> = {
 
   "secret-keycloak-realm-key": (_url, _headers, body) => {
     if (!body) return null;
-    if (/keycloak[\s\S]{0,200}?(?:-----BEGIN (?:RSA |EC )?PRIVATE KEY-----|\bMI[E][A-Za-z0-9+/=]{40,}\b)/i.test(body)) {
+    if (
+      /keycloak[\s\S]{0,200}?(?:-----BEGIN (?:RSA |EC )?PRIVATE KEY-----|\bMI[E][A-Za-z0-9+/=]{40,}\b)/i.test(
+        body,
+      )
+    ) {
       return "Response contains a Keycloak realm signing private key.";
     }
     return null;

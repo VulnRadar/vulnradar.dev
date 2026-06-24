@@ -958,13 +958,24 @@ export const detectors: Record<string, DetectFn> = {
     const csp = h(headers, "content-security-policy");
     if (!csp) return null;
     const issues: string[] = [];
-    if (/script-src[^;]*'none'/i.test(csp) && /script-src[^;]*'unsafe-inline'/i.test(csp)) {
-      issues.push("script-src 'none' combined with 'unsafe-inline' (none wins, but the conflict is suspicious)");
+    if (
+      /script-src[^;]*'none'/i.test(csp) &&
+      /script-src[^;]*'unsafe-inline'/i.test(csp)
+    ) {
+      issues.push(
+        "script-src 'none' combined with 'unsafe-inline' (none wins, but the conflict is suspicious)",
+      );
     }
-    if (/script-src[^;]*'none'/i.test(csp) && /script-src[^;]*'unsafe-eval'/i.test(csp)) {
+    if (
+      /script-src[^;]*'none'/i.test(csp) &&
+      /script-src[^;]*'unsafe-eval'/i.test(csp)
+    ) {
       issues.push("script-src 'none' combined with 'unsafe-eval'");
     }
-    if (/default-src[^;]*'none'/i.test(csp) && /script-src[^;]*\*\s*$/i.test(csp)) {
+    if (
+      /default-src[^;]*'none'/i.test(csp) &&
+      /script-src[^;]*\*\s*$/i.test(csp)
+    ) {
       issues.push("default-src 'none' but script-src allows wildcard");
     }
     if (/\ballow-http\b/i.test(csp)) {
@@ -1073,7 +1084,8 @@ export const detectors: Record<string, DetectFn> = {
   },
 
   "cross-origin-opener-policy-report-only-missing": (_url, headers) => {
-    if (hasHeader(headers, "cross-origin-opener-policy-report-only")) return null;
+    if (hasHeader(headers, "cross-origin-opener-policy-report-only"))
+      return null;
     return "Cross-Origin-Opener-Policy-Report-Only header is missing.";
   },
 
@@ -1087,7 +1099,8 @@ export const detectors: Record<string, DetectFn> = {
   },
 
   "cross-origin-resource-policy-report-only-missing": (_url, headers) => {
-    if (hasHeader(headers, "cross-origin-resource-policy-report-only")) return null;
+    if (hasHeader(headers, "cross-origin-resource-policy-report-only"))
+      return null;
     return "Cross-Origin-Resource-Policy-Report-Only header is missing.";
   },
 
@@ -1165,7 +1178,8 @@ export const detectors: Record<string, DetectFn> = {
 
   "link-rel-dns-prefetch-missing": (_url, _headers, body) => {
     if (!body) return null;
-    if (/<link[^>]+rel\s*=\s*["'][^"']*\bdns-prefetch\b/i.test(body)) return null;
+    if (/<link[^>]+rel\s*=\s*["'][^"']*\bdns-prefetch\b/i.test(body))
+      return null;
     return "HTML body does not include any <link rel='dns-prefetch'> hint.";
   },
 
@@ -1208,7 +1222,10 @@ export const detectors: Record<string, DetectFn> = {
 
   // ── Referrer-Policy strict variants ─────────────────────────────────────
 
-  "referrer-policy-no-referrer-strict-origin-when-cross-origin": (_url, headers) => {
+  "referrer-policy-no-referrer-strict-origin-when-cross-origin": (
+    _url,
+    headers,
+  ) => {
     const v = h(headers, "referrer-policy");
     if (!v) return null;
     const weak = [
@@ -1350,35 +1367,53 @@ export const detectors: Record<string, DetectFn> = {
   // ── Form / HTML element checks (last batch to close the coverage gap) ──
   "password-input-toggle": (_url, _headers, body) => {
     if (!body) return null;
-    if (/<input[^>]+type=["\']?password/i.test(body) && /<button[^>]+type=["\']?(button|submit)/i.test(body) && !/show|reveal|toggle/i.test(body)) {
+    if (
+      /<input[^>]+type=["\']?password/i.test(body) &&
+      /<button[^>]+type=["\']?(button|submit)/i.test(body) &&
+      !/show|reveal|toggle/i.test(body)
+    ) {
       return "Password input found without a show/hide toggle (UX, not security).";
     }
     return null;
   },
   "email-input-no-autocomplete": (_url, _headers, body) => {
     if (!body) return null;
-    if (/<input[^>]+type=["\']?email/i.test(body) && !/autocomplete=["\']?email/i.test(body)) {
+    if (
+      /<input[^>]+type=["\']?email/i.test(body) &&
+      !/autocomplete=["\']?email/i.test(body)
+    ) {
       return "Email input found without autocomplete attribute.";
     }
     return null;
   },
   "cc-input-no-autocomplete": (_url, _headers, body) => {
     if (!body) return null;
-    if (/<input[^>]*(name|id)=["\']?(cc|card|creditcard|cardnumber)/i.test(body) && !/autocomplete=["\']?cc-number/i.test(body)) {
-      return "Credit card input found without autocomplete=\"cc-number\".";
+    if (
+      /<input[^>]*(name|id)=["\']?(cc|card|creditcard|cardnumber)/i.test(
+        body,
+      ) &&
+      !/autocomplete=["\']?cc-number/i.test(body)
+    ) {
+      return 'Credit card input found without autocomplete="cc-number".';
     }
     return null;
   },
   "search-input-no-type": (_url, _headers, body) => {
     if (!body) return null;
-    if (/<input[^>]+name=["\']?q(?:uery|search)?["\']?/i.test(body) && !/type=["\']?search/i.test(body)) {
-      return "Search input found without type=\"search\" attribute.";
+    if (
+      /<input[^>]+name=["\']?q(?:uery|search)?["\']?/i.test(body) &&
+      !/type=["\']?search/i.test(body)
+    ) {
+      return 'Search input found without type="search" attribute.';
     }
     return null;
   },
   "tel-input-no-autocomplete": (_url, _headers, body) => {
     if (!body) return null;
-    if (/<input[^>]+type=["\']?tel/i.test(body) && !/autocomplete=["\']?tel/i.test(body)) {
+    if (
+      /<input[^>]+type=["\']?tel/i.test(body) &&
+      !/autocomplete=["\']?tel/i.test(body)
+    ) {
       return "Telephone input found without autocomplete attribute.";
     }
     return null;
@@ -1395,7 +1430,9 @@ export const detectors: Record<string, DetectFn> = {
   "link-no-rel": (_url, _headers, body) => {
     if (!body) return null;
     const links = body.match(/<a\b[^>]*>/gi) || [];
-    const externalNoRel = links.filter((t) => /href=["\']?https?:\/\//i.test(t) && !/\brel\s*=/i.test(t));
+    const externalNoRel = links.filter(
+      (t) => /href=["\']?https?:\/\//i.test(t) && !/\brel\s*=/i.test(t),
+    );
     if (externalNoRel.length >= 3) {
       return `${externalNoRel.length} external <a> tags lack rel attribute.`;
     }
@@ -1419,8 +1456,13 @@ export const detectors: Record<string, DetectFn> = {
   "iframe-missing-allowfullscreen": (_url, _headers, body) => {
     if (!body) return null;
     const iframes = body.match(/<iframe\b[^>]*>/gi) || [];
-    const youtube = iframes.filter((t) => /youtube\.com|youtu\.be|vimeo\.com/i.test(t));
-    if (youtube.length > 0 && youtube.every((t) => !/\ballowfullscreen\b/i.test(t))) {
+    const youtube = iframes.filter((t) =>
+      /youtube\.com|youtu\.be|vimeo\.com/i.test(t),
+    );
+    if (
+      youtube.length > 0 &&
+      youtube.every((t) => !/\ballowfullscreen\b/i.test(t))
+    ) {
       return `${youtube.length} video iframe(s) lack allowfullscreen attribute.`;
     }
     return null;
@@ -1438,8 +1480,13 @@ export const detectors: Record<string, DetectFn> = {
   },
   "autocomplete-username": (_url, _headers, body) => {
     if (!body) return null;
-    if (/<input[^>]+(?:name|id)=["\']?(?:username|user|login|email)/i.test(body) && !/autocomplete=["\']?username/i.test(body)) {
-      return "Login input found without autocomplete=\"username\".";
+    if (
+      /<input[^>]+(?:name|id)=["\']?(?:username|user|login|email)/i.test(
+        body,
+      ) &&
+      !/autocomplete=["\']?username/i.test(body)
+    ) {
+      return 'Login input found without autocomplete="username".';
     }
     return null;
   },
@@ -1452,8 +1499,11 @@ export const detectors: Record<string, DetectFn> = {
   },
   "open-graph-image-not-https": (_url, _headers, body) => {
     if (!body) return null;
-    const m = body.match(/<meta[^>]+property=["\']?og:image["\']?[^>]*content=["\']?http:\/\//i);
-    if (m) return "OG image is HTTP (will fail social previews on HTTPS sites).";
+    const m = body.match(
+      /<meta[^>]+property=["\']?og:image["\']?[^>]*content=["\']?http:\/\//i,
+    );
+    if (m)
+      return "OG image is HTTP (will fail social previews on HTTPS sites).";
     return null;
   },
   "canonical-link-missing": (_url, _headers, body) => {
@@ -1496,8 +1546,11 @@ export const detectors: Record<string, DetectFn> = {
   },
   "target-blank-no-noopener": (_url, _headers, body) => {
     if (!body) return null;
-    const links = body.match(/<a\b[^>]*target=["\']?_blank["\']?[^>]*>/gi) || [];
-    const noNoopener = links.filter((t) => !/\brel\s*=\s*["\']?[^"']*\bnoopener\b/i.test(t));
+    const links =
+      body.match(/<a\b[^>]*target=["\']?_blank["\']?[^>]*>/gi) || [];
+    const noNoopener = links.filter(
+      (t) => !/\brel\s*=\s*["\']?[^"']*\bnoopener\b/i.test(t),
+    );
     if (noNoopener.length > 0) {
       return `${noNoopener.length} target="_blank" link(s) lack rel="noopener" (reverse tabnabbing).`;
     }
@@ -1515,13 +1568,20 @@ export const detectors: Record<string, DetectFn> = {
   "iframe-third-party-without-sandbox": (_url, _headers, body) => {
     if (!body) return null;
     const iframes = body.match(/<iframe\b[^>]*>/gi) || [];
-    const thirdParty = iframes.filter((t) => /src=["\']?https?:\/\//i.test(t) && !new RegExp(`^https?://${new URL(_url).host}`, "i").test(t.match(/src=["\']?([^"']+)/i)?.[1] || ""));
+    const thirdParty = iframes.filter(
+      (t) =>
+        /src=["\']?https?:\/\//i.test(t) &&
+        !new RegExp(`^https?://${new URL(_url).host}`, "i").test(
+          t.match(/src=["\']?([^"']+)/i)?.[1] || "",
+        ),
+    );
     const noSandbox = thirdParty.filter((t) => !/\bsandbox\s*=/i.test(t));
     if (noSandbox.length > 0) {
       return `${noSandbox.length} third-party <iframe>(s) lack sandbox attribute.`;
     }
     return null;
-  },};
+  },
+};
 
 /**
  * Helper for the `permissions-policy-*-blocked` detectors.
@@ -1530,15 +1590,15 @@ export const detectors: Record<string, DetectFn> = {
  * with a `feature=()` token). Returns null when the policy is absent or
  * the feature is properly restricted.
  */
-function ppAllowsFeature(
-  headers: Headers,
-  feature: string,
-): string | null {
+function ppAllowsFeature(headers: Headers, feature: string): string | null {
   const pp = h(headers, "permissions-policy") || h(headers, "feature-policy");
   if (!pp) return null;
   // Look for `feature=` token and check its value. Without a value the
   // feature is unrestricted in the policy's syntax.
-  const tokenRe = new RegExp(`(?:^|[,\\s])${feature}\\s*(=\\s*([^,\\s]+))?`, "i");
+  const tokenRe = new RegExp(
+    `(?:^|[,\\s])${feature}\\s*(=\\s*([^,\\s]+))?`,
+    "i",
+  );
   const match = pp.match(tokenRe);
   if (!match) {
     // Feature not mentioned at all — in modern Permissions-Policy that
@@ -1560,4 +1620,3 @@ function ppAllowsFeature(
   }
   return null;
 }
-

@@ -890,7 +890,10 @@ export const detectors: Record<string, DetectFn> = {
       }
       return null;
     }
-    if (/^\s*user-agent\s*:\s*\*\s*$/im.test(body) && !/disallow\s*:/i.test(body)) {
+    if (
+      /^\s*user-agent\s*:\s*\*\s*$/im.test(body) &&
+      !/disallow\s*:/i.test(body)
+    ) {
       return "robots.txt-equivalent content allows all user-agents with no Disallow rules.";
     }
     if (/<html/i.test(body)) {
@@ -902,7 +905,10 @@ export const detectors: Record<string, DetectFn> = {
   // ── API schema / version exposure ────────────────────────────────────────
 
   "open-api-schema-version-leak": (url, _headers, body) => {
-    if (/\/openapi[\.\-_]?v?\d+/i.test(url) || /openapi.*version.*\d/i.test(body)) {
+    if (
+      /\/openapi[\.\-_]?v?\d+/i.test(url) ||
+      /openapi.*version.*\d/i.test(body)
+    ) {
       return "OpenAPI / Swagger schema version is exposed in the URL or body — move API version into the path prefix.";
     }
     if (/swagger|openapi/i.test(body) && /v\d+(\.\d+)*/i.test(body)) {
@@ -992,7 +998,11 @@ export const detectors: Record<string, DetectFn> = {
     if (/Apache\/\d+\.\d+\.\d+/i.test(body)) {
       return "Body references 'Apache/X.Y.Z' — a default Apache error page is leaking the version and modules.";
     }
-    if (/<html/i.test(body) && /\bApache\b/i.test(body) && /Server at/i.test(body)) {
+    if (
+      /<html/i.test(body) &&
+      /\bApache\b/i.test(body) &&
+      /Server at/i.test(body)
+    ) {
       return "HTML body contains the Apache 'Server at example.com Port N' footer — default error page disclosure.";
     }
     if (/<html/i.test(body)) {
@@ -1017,7 +1027,9 @@ export const detectors: Record<string, DetectFn> = {
   "express-error-format-disclosure": (_url, _headers, body) => {
     if (
       /Cannot\s+(GET|POST|PUT|DELETE|PATCH)\s+\//i.test(body) ||
-      /TypeError:\s+[A-Za-z_.]+\s+is\s+not\s+(?:a\s+function|defined)/i.test(body) ||
+      /TypeError:\s+[A-Za-z_.]+\s+is\s+not\s+(?:a\s+function|defined)/i.test(
+        body,
+      ) ||
       /at\s+\S+\s+\(.*:\d+:\d+\)\s*$/m.test(body)
     ) {
       return "Express default error page / stack trace detected — set NODE_ENV=production and use a sanitized error handler.";
@@ -1029,7 +1041,9 @@ export const detectors: Record<string, DetectFn> = {
   },
 
   "flask-debug-page-exposure": (_url, _headers, body) => {
-    if (/Werkzeug Debugger|TRACEBACK\s*\(most recent call first\)/i.test(body)) {
+    if (
+      /Werkzeug Debugger|TRACEBACK\s*\(most recent call first\)/i.test(body)
+    ) {
       return "Flask Werkzeug interactive debugger page exposed — set debug=False / FLASK_ENV=production.";
     }
     if (/<title>\s*Werkzeug Debugger/i.test(body)) {
@@ -1093,7 +1107,11 @@ export const detectors: Record<string, DetectFn> = {
     if (hasHeader(headers, "x-jenkins")) {
       return `X-Jenkins header exposes Jenkins version: '${getHeader(headers, "x-jenkins")}'.`;
     }
-    if (/X-Jenkins/i.test(body) || /<title>\s*Jenkins\s*</i.test(body) || /Jenkins\s+\d+\.\d+/i.test(body)) {
+    if (
+      /X-Jenkins/i.test(body) ||
+      /<title>\s*Jenkins\s*</i.test(body) ||
+      /Jenkins\s+\d+\.\d+/i.test(body)
+    ) {
       return "Jenkins version disclosed in body — front with an authenticating reverse proxy that strips X-Jenkins.";
     }
     if (/<html/i.test(body)) {
@@ -1114,7 +1132,10 @@ export const detectors: Record<string, DetectFn> = {
   },
 
   "nextjs-app-router-rsc-headers": (_url, headers, body) => {
-    if (hasHeader(headers, "rsc") || hasHeader(headers, "next-router-state-tree")) {
+    if (
+      hasHeader(headers, "rsc") ||
+      hasHeader(headers, "next-router-state-tree")
+    ) {
       return "Next.js 13+ App Router RSC headers detected (RSC, Next-Router-State-Tree) — informational fingerprint.";
     }
     if (/<html/i.test(body)) {
@@ -1124,7 +1145,11 @@ export const detectors: Record<string, DetectFn> = {
   },
 
   "sveltekit-detection": (_url, headers, body) => {
-    for (const name of ["x-sveltekit-page", "x-sveltekit-data", "x-sveltekit-stale"]) {
+    for (const name of [
+      "x-sveltekit-page",
+      "x-sveltekit-data",
+      "x-sveltekit-stale",
+    ]) {
       if (hasHeader(headers, name)) {
         return `SvelteKit debug header '${name}' detected — informational fingerprint; consider stripping at the reverse proxy.`;
       }
@@ -1136,7 +1161,11 @@ export const detectors: Record<string, DetectFn> = {
   },
 
   "vite-client-exposed": (_url, _headers, body) => {
-    if (/\/@vite\/client/i.test(body) || /\/@fs\//i.test(body) || /\bvite\/hmr\b/i.test(body)) {
+    if (
+      /\/@vite\/client/i.test(body) ||
+      /\/@fs\//i.test(body) ||
+      /\bvite\/hmr\b/i.test(body)
+    ) {
       return "Vite dev client / HMR script reference found — the dev server is exposed; build with 'vite build' and serve dist/ from a static host.";
     }
     if (/<html/i.test(body)) {

@@ -46,9 +46,14 @@ export const detectors: Record<string, DetectFn> = {
     if (/swagger-ui|\/api-docs|openapi\.json|\/swagger\.json/i.test(body)) {
       return "Swagger/OpenAPI documentation endpoints referenced in page source.";
     }
-    const swaggerPatterns = [/\/swagger(?:\.json|\.yaml|\/ui)?/i, /\/openapi(?:\.json|\.yaml)?/i, /api-docs|redoc/i];
+    const swaggerPatterns = [
+      /\/swagger(?:\.json|\.yaml|\/ui)?/i,
+      /\/openapi(?:\.json|\.yaml)?/i,
+      /api-docs|redoc/i,
+    ];
     for (const p of swaggerPatterns) {
-      if (p.test(url) || p.test(body)) return "API documentation endpoint reference detected (Swagger/OpenAPI).";
+      if (p.test(url) || p.test(body))
+        return "API documentation endpoint reference detected (Swagger/OpenAPI).";
     }
     if (/api\./.test(url)) {
       return `API endpoint ${url} — review for Swagger/OpenAPI documentation exposure.`;
@@ -145,8 +150,10 @@ export const detectors: Record<string, DetectFn> = {
     if (/["']\?(?:callback|cb|jsonp)\s*=/i.test(body)) {
       return "JSONP-style callback parameters detected - older API risk.";
     }
-    if (/[?&](?:callback|jsonp)\s*=/i.test(url)) return "JSONP callback parameter present in URL.";
-    if (/[?&](?:callback|jsonp)\s*=/i.test(body)) return "JSONP callback parameter reference detected in body.";
+    if (/[?&](?:callback|jsonp)\s*=/i.test(url))
+      return "JSONP callback parameter present in URL.";
+    if (/[?&](?:callback|jsonp)\s*=/i.test(body))
+      return "JSONP callback parameter reference detected in body.";
     if (/api\./.test(url)) {
       return `API endpoint ${url} — review for JSONP-style callback exposure.`;
     }
@@ -266,7 +273,10 @@ export const detectors: Record<string, DetectFn> = {
   // ── GraphQL ──────────────────────────────────────────────────────────────
 
   "api-graphql-introspection-enabled": (url, _headers, body) => {
-    if (/\/graphql/i.test(url) && /__schema|__type|introspectionQuery/i.test(body)) {
+    if (
+      /\/graphql/i.test(url) &&
+      /__schema|__type|introspectionQuery/i.test(body)
+    ) {
       return "GraphQL introspection appears enabled on /graphql endpoint.";
     }
     if (/["']__schema["']\s*\{/.test(body)) {
@@ -282,9 +292,7 @@ export const detectors: Record<string, DetectFn> = {
   },
 
   "api-graphql-batch-queries": (url, _headers, body) => {
-    if (
-      /\[.*{[\s\S]*?(?:query|mutation)[\s\S]*?}\s*[,;][\s\S]*?{/.test(body)
-    ) {
+    if (/\[.*{[\s\S]*?(?:query|mutation)[\s\S]*?}\s*[,;][\s\S]*?{/.test(body)) {
       return "GraphQL batch (array) query pattern detected in response body.";
     }
     if (/\/graphql/i.test(url)) {
@@ -297,7 +305,8 @@ export const detectors: Record<string, DetectFn> = {
   },
 
   "api-graphql-no-alias-depth-limit": (url, _headers, body) => {
-    const aliases = body.match(/\b\w+\s*:\s*(?:user|users|node|nodes|item|items)\b/g) || [];
+    const aliases =
+      body.match(/\b\w+\s*:\s*(?:user|users|node|nodes|item|items)\b/g) || [];
     if (aliases.length >= 3) {
       return `${aliases.length} GraphQL aliases detected - verify alias-aware cost analysis.`;
     }
@@ -311,7 +320,10 @@ export const detectors: Record<string, DetectFn> = {
   },
 
   "api-graphql-error-stack-trace": (url, _headers, body) => {
-    if (/"stacktrace"\s*:\s*"/i.test(body) || /"extensions"\s*:\s*{[^}]*"stacktrace"/i.test(body)) {
+    if (
+      /"stacktrace"\s*:\s*"/i.test(body) ||
+      /"extensions"\s*:\s*{[^}]*"stacktrace"/i.test(body)
+    ) {
       return "GraphQL error.extensions.stacktrace leaked in response.";
     }
     if (/\/graphql/i.test(url)) {
@@ -324,7 +336,10 @@ export const detectors: Record<string, DetectFn> = {
   },
 
   "api-graphql-query-cost-not-enforced": (url, _headers, body) => {
-    if (/@cost\s*\(\s*weight/i.test(body) || /queryComplexity|graphqlQueryComplexity/i.test(body)) {
+    if (
+      /@cost\s*\(\s*weight/i.test(body) ||
+      /queryComplexity|graphqlQueryComplexity/i.test(body)
+    ) {
       return null;
     }
     if (/\/graphql/i.test(url)) {
@@ -411,10 +426,17 @@ export const detectors: Record<string, DetectFn> = {
   // ── OpenAPI / Swagger ────────────────────────────────────────────────────
 
   "api-openapi-security-scheme-weak": (url, _headers, body) => {
-    if (/"securitySchemes"\s*:\s*{[\s\S]*?"basic"|"apiKey"\s*:\s*{[^}]*"in"\s*:\s*"query"/i.test(body)) {
+    if (
+      /"securitySchemes"\s*:\s*{[\s\S]*?"basic"|"apiKey"\s*:\s*{[^}]*"in"\s*:\s*"query"/i.test(
+        body,
+      )
+    ) {
       return "OpenAPI document declares weak security scheme (basic auth or apiKey in query).";
     }
-    if (/\/openapi\.json|\/swagger\.json|\/api-docs/i.test(url) || /openapi|swagger/i.test(body)) {
+    if (
+      /\/openapi\.json|\/swagger\.json|\/api-docs/i.test(url) ||
+      /openapi|swagger/i.test(body)
+    ) {
       return "OpenAPI document reachable - review declared securitySchemes.";
     }
     if (/\/api\//i.test(url) || /api\./i.test(url)) {
@@ -441,7 +463,11 @@ export const detectors: Record<string, DetectFn> = {
   },
 
   "api-openapi-server-url-leak": (url, _headers, body) => {
-    if (/"servers"\s*:\s*\[[^\]]*"https?:\/\/(?:localhost|127\.0\.0\.1|10\.|192\.168\.|internal|staging)/i.test(body)) {
+    if (
+      /"servers"\s*:\s*\[[^\]]*"https?:\/\/(?:localhost|127\.0\.0\.1|10\.|192\.168\.|internal|staging)/i.test(
+        body,
+      )
+    ) {
       return "OpenAPI document leaks internal/staging server URL in 'servers' array.";
     }
     if (/\/openapi\.json|\/swagger\.json/i.test(url)) {
@@ -487,7 +513,9 @@ export const detectors: Record<string, DetectFn> = {
 
   "api-jwt-missing-exp-claim": (url, headers, body) => {
     const auth = headers.get("authorization") || "";
-    const looksLikeJwt = /eyJ[A-Za-z0-9_-]+\.eyJ[A-Za-z0-9_-]+/.test(auth) || /eyJ[A-Za-z0-9_-]+\.eyJ[A-Za-z0-9_-]+/.test(body);
+    const looksLikeJwt =
+      /eyJ[A-Za-z0-9_-]+\.eyJ[A-Za-z0-9_-]+/.test(auth) ||
+      /eyJ[A-Za-z0-9_-]+\.eyJ[A-Za-z0-9_-]+/.test(body);
     if (looksLikeJwt && !/"exp"\s*:\s*\d+/i.test(auth + body)) {
       return "JWT payload without exp claim - tokens live forever once stolen.";
     }
@@ -606,7 +634,8 @@ export const detectors: Record<string, DetectFn> = {
   // ── Rate limiting ────────────────────────────────────────────────────────
 
   "api-rate-limit-not-429": (url, headers, _body) => {
-    const rate = headers.get("retry-after") || headers.get("x-ratelimit-remaining") || "";
+    const rate =
+      headers.get("retry-after") || headers.get("x-ratelimit-remaining") || "";
     if (rate && headers.get("status") === "200") {
       return "Rate-limit headers present with HTTP 200 - blocked requests should return 429.";
     }
@@ -770,10 +799,7 @@ export const detectors: Record<string, DetectFn> = {
   },
 
   "api-rest-etag-missing": (url, headers, _body) => {
-    if (
-      (/\/api\//i.test(url) || /api\./i.test(url)) &&
-      !headers.has("etag")
-    ) {
+    if ((/\/api\//i.test(url) || /api\./i.test(url)) && !headers.has("etag")) {
       return "REST endpoint has no ETag - clients re-download unchanged resources.";
     }
     if (/\/api\//i.test(url) || /api\./i.test(url)) {
