@@ -45,24 +45,27 @@ export function LandingUseCases() {
           </p>
         </div>
 
-        <div className="grid md:grid-cols-3 gap-4">
+        <div className="grid md:grid-cols-3 gap-4 min-w-0">
           {USE_CASES.map((useCase, i) => (
             <div
               key={i}
-              className="p-6 rounded-xl border border-border/50 bg-card/50 hover:bg-card hover:border-border/60 transition-all"
+              className="p-5 sm:p-6 rounded-xl border border-border/50 bg-card/50 hover:bg-card hover:border-border/60 transition-all"
             >
-              <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center mb-5">
+              <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center mb-5 shrink-0">
                 <useCase.icon className="h-5 w-5 text-primary" />
               </div>
               <h3 className="text-lg font-semibold mb-2">{useCase.title}</h3>
-              <p className="text-sm text-muted-foreground mb-5">
+              <p className="text-sm text-muted-foreground mb-5 break-words">
                 {useCase.desc}
               </p>
               <ul className="space-y-2">
                 {useCase.features.map((feature, j) => (
-                  <li key={j} className="flex items-center gap-2 text-sm">
-                    <CheckCircle className="h-3.5 w-3.5 text-primary shrink-0" />
-                    {feature}
+                  <li
+                    key={j}
+                    className="flex items-start gap-2 text-sm"
+                  >
+                    <CheckCircle className="h-3.5 w-3.5 text-primary shrink-0 mt-0.5" />
+                    <span className="break-words">{feature}</span>
                   </li>
                 ))}
               </ul>

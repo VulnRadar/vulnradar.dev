@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { Button } from "@/components/ui/button";
 import { ArrowRight, LayoutDashboard } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { APP_NAME, BILLING_ENABLED, ROUTES } from "@/lib/config/constants";
 import { ThemedLogo } from "@/components/shared/themed-logo";
 import { backdrops } from "@/lib/ui/animations";
@@ -21,7 +21,6 @@ export function LandingNav() {
       )}
     >
       <div className="max-w-6xl mx-auto px-4 sm:px-6 h-14 relative flex items-center">
-        {/* Logo - left */}
         <Link
           href="/"
           className="flex items-center gap-2.5 group shrink-0 z-10"
@@ -29,7 +28,7 @@ export function LandingNav() {
           <ThemedLogo
             width={26}
             height={26}
-            className="h-6 w-6 transition-transform group-hover:scale-105"
+            className="h-6 w-6"
             alt={`${APP_NAME} logo`}
           />
           <span className="font-semibold text-base tracking-tight">
@@ -37,7 +36,6 @@ export function LandingNav() {
           </span>
         </Link>
 
-        {/* Nav links - absolutely centered */}
         <div className="hidden md:flex items-center gap-6 absolute left-1/2 -translate-x-1/2">
           {BILLING_ENABLED && (
             <Link
@@ -54,14 +52,13 @@ export function LandingNav() {
             Docs
           </Link>
           <Link
-            href="/demo"
+            href={ROUTES.DEMO}
             className="text-sm text-muted-foreground hover:text-foreground transition-colors"
           >
             Demo
           </Link>
         </div>
 
-        {/* Right side actions */}
         <div className="flex items-center gap-2 ml-auto z-10">
           {isLoading ? (
             <div className="h-8 w-24 bg-muted/50 rounded animate-pulse" />

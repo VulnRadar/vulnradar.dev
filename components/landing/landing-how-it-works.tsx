@@ -18,7 +18,7 @@ const STEPS = [
 
 export function LandingHowItWorks() {
   return (
-    <section className="py-16 sm:py-20 border-y border-border/50 bg-muted/20">
+    <section className="py-16 sm:py-20 border-t border-border/50">
       <div className="max-w-6xl mx-auto px-4 sm:px-6">
         <div className="text-center mb-12">
           <p className="text-xs font-medium text-primary uppercase tracking-wider mb-2">
@@ -32,7 +32,7 @@ export function LandingHowItWorks() {
           </p>
         </div>
 
-        <div className="grid md:grid-cols-3 gap-6 lg:gap-10">
+        <div className="grid md:grid-cols-3 gap-6 lg:gap-10 min-w-0">
           {STEPS.map((item, i) => (
             <div key={i} className="relative text-center">
               <div className="inline-flex items-center justify-center w-11 h-11 rounded-full bg-primary text-primary-foreground text-lg font-bold mb-5">

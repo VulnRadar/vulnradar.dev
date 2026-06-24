@@ -1,15 +1,8 @@
 "use client";
 
 import Link from "next/link";
+import { ArrowRight, LayoutDashboard, Terminal } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import {
-  ArrowRight,
-  Terminal,
-  CheckCircle,
-  Activity,
-  LayoutDashboard,
-} from "lucide-react";
 import { TOTAL_CHECKS_LABEL, ROUTES } from "@/lib/config/constants";
 import { useAuth } from "@/components/providers/auth-provider";
 
@@ -18,65 +11,65 @@ export function LandingHero() {
   const isLoggedIn = !!me?.userId;
 
   return (
-    <section className="relative">
+    <section className="bg-background">
       <div className="max-w-6xl mx-auto px-4 sm:px-6 pt-16 pb-20 sm:pt-24 sm:pb-28">
         <div className="max-w-3xl mx-auto text-center">
-          <Badge
-            variant="outline"
-            className="mb-5 gap-1.5 py-1 px-3 border-primary/30 bg-primary/5 text-xs"
-          >
-            <Activity className="h-3 w-3 text-primary" />
-            {TOTAL_CHECKS_LABEL} vulnerability checks
-          </Badge>
-
-          <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold tracking-tight mb-5 text-balance">
+          <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight mb-6 text-balance">
             The complete platform for{" "}
-            <span className="text-muted-foreground">web security</span>
+            <span className="text-primary">web security</span>
           </h1>
 
-          <p className="text-base sm:text-lg text-muted-foreground max-w-xl mx-auto mb-8 text-pretty">
-            Detect vulnerabilities in seconds. Get actionable insights. Ship
-            secure code with confidence.
+          <p className="text-base sm:text-lg text-muted-foreground max-w-xl mx-auto mb-10 text-pretty">
+            {TOTAL_CHECKS_LABEL} deterministic checks across 12 categories.
+            Run a single-page scan in seconds, drop the engine into your CI,
+            and stream findings to a webhook.
           </p>
 
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-center gap-3 w-full sm:w-auto">
             {isLoggedIn ? (
-              <Link href={ROUTES.DASHBOARD}>
-                <Button size="lg" className="h-11 px-6 gap-2">
+              <Link href={ROUTES.DASHBOARD} className="w-full sm:w-auto">
+                <Button size="lg" className="h-11 px-6 gap-2 w-full sm:w-auto">
                   <LayoutDashboard className="h-4 w-4" />
                   Go to Dashboard
                 </Button>
               </Link>
             ) : (
-              <Link href={ROUTES.SIGNUP}>
-                <Button size="lg" className="h-11 px-6 gap-2">
+              <Link href={ROUTES.SIGNUP} className="w-full sm:w-auto">
+                <Button size="lg" className="h-11 px-6 gap-2 w-full sm:w-auto">
                   Start Scanning Free
                   <ArrowRight className="h-4 w-4" />
                 </Button>
               </Link>
             )}
-            <Link href={ROUTES.DEMO}>
-              <Button size="lg" variant="outline" className="h-11 px-6 gap-2">
+            <Link href={ROUTES.DEMO} className="w-full sm:w-auto">
+              <Button
+                size="lg"
+                variant="outline"
+                className="h-11 px-6 gap-2 w-full sm:w-auto"
+              >
                 <Terminal className="h-4 w-4" />
                 Live Demo
               </Button>
             </Link>
           </div>
 
-          {!isLoggedIn && (
-            <div className="mt-10 flex flex-wrap items-center justify-center gap-x-6 gap-y-3 text-sm text-muted-foreground">
-              {[
-                "No credit card required",
-                "Free forever tier",
-                "Open source",
-              ].map((item) => (
-                <div key={item} className="flex items-center gap-1.5">
-                  <CheckCircle className="h-3.5 w-3.5 text-primary" />
-                  <span>{item}</span>
-                </div>
-              ))}
-            </div>
-          )}
+          <div className="mt-6 flex flex-wrap items-center justify-center gap-x-5 gap-y-2 text-sm text-muted-foreground">
+            <span>No credit card required</span>
+            <span
+              aria-hidden
+              className="text-muted-foreground/50 select-none"
+            >
+              ·
+            </span>
+            <span>Free forever tier</span>
+            <span
+              aria-hidden
+              className="text-muted-foreground/50 select-none"
+            >
+              ·
+            </span>
+            <span>Open source · GPL-3.0</span>
+          </div>
         </div>
       </div>
     </section>
