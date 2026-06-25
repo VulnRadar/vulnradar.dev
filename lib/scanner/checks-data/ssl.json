@@ -73,7 +73,7 @@
     "id": "ssl-http-and-https-both",
     "type": "header",
     "title": "Site accessible on both HTTP and HTTPS",
-    "category": "headers",
+    "category": "ssl",
     "severity": "medium",
     "description": "Without HSTS or auto-redirect, the HTTP version is reachable and exploitable for SSL stripping.",
     "evidence": "Async / body / header check for ssl-http-and-https-both.",
@@ -89,13 +89,15 @@
     "id": "ssl-https-only-cookie-on-http",
     "type": "header",
     "title": "Secure cookie on HTTP endpoint",
-    "category": "headers",
+    "category": "ssl",
     "severity": "high",
     "description": "A cookie with Secure attribute on an HTTP-only site is still rejected by browsers.",
     "evidence": "Async / body / header check for ssl-https-only-cookie-on-http.",
     "riskImpact": "Force HTTPS via redirect + HSTS",
     "explanation": "A cookie with Secure attribute on an HTTP-only site is still rejected by browsers.",
-    "fixSteps": ["Force HTTPS via redirect + HSTS"],
+    "fixSteps": [
+      "Force HTTPS via redirect + HSTS"
+    ],
     "codeExamples": [],
     "references": []
   },
@@ -115,7 +117,9 @@
       "If a non-standard port must be exposed, add explicit HSTS for that hostname."
     ],
     "codeExamples": [],
-    "references": ["https://datatracker.ietf.org/doc/html/rfc2818"]
+    "references": [
+      "https://datatracker.ietf.org/doc/html/rfc2818"
+    ]
   },
   {
     "id": "x-forwarded-method-override",
@@ -133,7 +137,9 @@
       "Document allowed method-override behavior in your API gateway."
     ],
     "codeExamples": [],
-    "references": ["https://datatracker.ietf.org/doc/html/rfc7231#section-4"]
+    "references": [
+      "https://datatracker.ietf.org/doc/html/rfc7231#section-4"
+    ]
   },
   {
     "id": "http3-alt-svc-header",
@@ -150,7 +156,9 @@
       "If HTTP/3 is not yet ready, disable Alt-Svc emission at the proxy."
     ],
     "codeExamples": [],
-    "references": ["https://datatracker.ietf.org/doc/html/rfc7838"]
+    "references": [
+      "https://datatracker.ietf.org/doc/html/rfc7838"
+    ]
   },
   {
     "id": "ocsp-stapling-enabled",
@@ -168,7 +176,9 @@
       "Monitor the OCSP responder URL for outages that disable stapling."
     ],
     "codeExamples": [],
-    "references": ["https://datatracker.ietf.org/doc/html/rfc6960"]
+    "references": [
+      "https://datatracker.ietf.org/doc/html/rfc6960"
+    ]
   },
   {
     "id": "mixed-protocol-content",
@@ -186,6 +196,8 @@
       "Audit third-party widgets and ad tags for HTTP-only assets."
     ],
     "codeExamples": [],
-    "references": ["https://www.w3.org/TR/mixed-content/"]
+    "references": [
+      "https://www.w3.org/TR/mixed-content/"
+    ]
   }
 ]
