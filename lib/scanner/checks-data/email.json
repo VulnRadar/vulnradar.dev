@@ -1,6 +1,6 @@
 [
   {
-    "id": "spf-record",
+    "id": "email-dmarc-ruf-missing",
     "type": "header",
     "title": "SPF (Sender Policy Framework)",
     "category": "email",
@@ -20,10 +20,15 @@
         "language": "dns",
         "code": "v=spf1 include:_spf.google.com include:sendgrid.net -all"
       }
+    ],
+    "_idx": 0,
+    "references": [
+      "https://cheatsheetseries.owasp.org/cheatsheets/Email_Spoofing_Prevention_Cheat_Sheet.html",
+      "https://datatracker.ietf.org/doc/html/rfc7489"
     ]
   },
   {
-    "id": "dmarc-record",
+    "id": "email-dmarc-rua-missing",
     "type": "header",
     "title": "DMARC (Domain-based Message Authentication)",
     "category": "email",
@@ -42,50 +47,11 @@
         "language": "dns",
         "code": "v=DMARC1; p=reject; rua=mailto:dmarc-reports@yourdomain.com; adkim=s; aspf=s"
       }
-    ]
-  },
-  {
-    "id": "dkim-record",
-    "type": "header",
-    "title": "DKIM (DomainKeys Identified Mail)",
-    "category": "email",
-    "severity": "low",
-    "description": "Async check: tries a list of common DKIM selectors and reports whether any DKIM TXT or CNAME was found.",
-    "evidence": "Executed via dns/promises.resolveTxt / resolveCname for ~20 selectors.",
-    "riskImpact": "Without DKIM, receivers cannot verify message integrity end-to-end.",
-    "explanation": "DKIM adds a cryptographic signature to every outgoing message. Selectors are provider-specific.",
-    "fixSteps": [
-      "Enable DKIM signing in your mail provider (Google Workspace, M365, Fastmail, etc.).",
-      "Publish the public key as selector._domainkey.<domain> TXT."
     ],
-    "codeExamples": [
-      {
-        "label": "DNS TXT",
-        "language": "dns",
-        "code": "v=DKIM1; k=rsa; p=MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCg..."
-      }
-    ]
-  },
-  {
-    "id": "dnssec-enabled",
-    "type": "header",
-    "title": "DNSSEC",
-    "category": "email",
-    "severity": "info",
-    "description": "Async check: queries Google and Cloudflare DNS-over-HTTPS for the AD (Authenticated Data) flag and reports whether the chain is DNSSEC-signed.",
-    "evidence": "Executed via dns.google/resolve and cloudflare-dns.com/dns-query.",
-    "riskImpact": "Without DNSSEC, an on-path attacker can forge DNS responses (cache poisoning).",
-    "explanation": "DNSSEC adds cryptographic signatures so resolvers can detect forged answers.",
-    "fixSteps": [
-      "Enable DNSSEC at your registrar (most support one-click activation).",
-      "Verify with: dig +dnssec <your domain>"
-    ],
-    "codeExamples": [
-      {
-        "label": "dig",
-        "language": "bash",
-        "code": "dig +dnssec example.com"
-      }
+    "_idx": 1,
+    "references": [
+      "https://cheatsheetseries.owasp.org/cheatsheets/Email_Spoofing_Prevention_Cheat_Sheet.html",
+      "https://datatracker.ietf.org/doc/html/rfc7489"
     ]
   },
   {
@@ -109,16 +75,21 @@
         "language": "text",
         "code": "version: STSv1\nmode: enforce\nmx: *.example.com\nmax_age: 86400"
       }
+    ],
+    "_idx": 4,
+    "references": [
+      "https://cheatsheetseries.owasp.org/cheatsheets/Email_Spoofing_Prevention_Cheat_Sheet.html",
+      "https://datatracker.ietf.org/doc/html/rfc7489"
     ]
   },
   {
-    "id": "tls-rpt",
+    "id": "email-tls-rpt-rua-missing",
     "type": "header",
     "title": "TLS-RPT (TLS Reporting)",
     "category": "email",
     "severity": "info",
     "description": "Async check: probes _smtp._tls.<domain> for a `v=TLSRPTv1` TXT record.",
-    "evidence": "DNS TXT query only.",
+    "evidence": "Email-auth finding for `email-tlsrpt-missing` against {{domain}}.",
     "riskImpact": "Without TLSRPT you get no telemetry about SMTP TLS failures.",
     "explanation": "TLSRPT is a companion to MTA-STS: it tells receivers where to send aggregate reports.",
     "fixSteps": [
@@ -130,6 +101,11 @@
         "language": "dns",
         "code": "v=TLSRPTv1; rua=https://tlsrpt.example.com/v1/report"
       }
+    ],
+    "_idx": 5,
+    "references": [
+      "https://cheatsheetseries.owasp.org/cheatsheets/Email_Spoofing_Prevention_Cheat_Sheet.html",
+      "https://datatracker.ietf.org/doc/html/rfc7489"
     ]
   },
   {
@@ -139,16 +115,28 @@
     "category": "email",
     "severity": "high",
     "description": "SPF records that trigger more than 10 DNS lookups fail with a permerror.",
-    "evidence": "Async / body / header check for email-spf-lookup-count-too-high.",
+    "evidence": "Email-auth finding for `email-spf-lookup-count` against {{domain}}.",
     "riskImpact": "Use ip4: / ip6: instead of include: for static ranges; flatten nested includes",
     "explanation": "SPF records that trigger more than 10 DNS lookups fail with a permerror.",
     "fixSteps": [
       "Use ip4: / ip6: instead of include: for static ranges; flatten nested includes"
     ],
-    "codeExamples": [],
+    "codeExamples": [
+      {
+        "label": "Next.js (next.config.mjs)",
+        "language": "javascript",
+        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
+      },
+      {
+        "label": "Nginx",
+        "language": "nginx",
+        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+      }
+    ],
     "references": [
       "https://datatracker.ietf.org/doc/html/rfc7208#section-4.6.4"
-    ]
+    ],
+    "_idx": 6
   },
   {
     "id": "email-spf-redirect-loop",
@@ -157,58 +145,29 @@
     "category": "email",
     "severity": "high",
     "description": "SPF redirect= with a chain that loops back to the original domain fails permerror.",
-    "evidence": "Async / body / header check for email-spf-redirect-loop.",
+    "evidence": "Email-auth finding for `email-spf-redirect-loop` against {{domain}}.",
     "riskImpact": "Audit the redirect chain and break the loop",
     "explanation": "SPF redirect= with a chain that loops back to the original domain fails permerror.",
-    "fixSteps": ["Audit the redirect chain and break the loop"],
-    "codeExamples": [],
-    "references": []
-  },
-  {
-    "id": "email-spf-ptr-mechanism",
-    "type": "header",
-    "title": "SPF ptr Mechanism Present",
-    "category": "email",
-    "severity": "low",
-    "description": "The ptr mechanism is deprecated and SHOULD NOT be used.",
-    "evidence": "Async / body / header check for email-spf-ptr-mechanism.",
-    "riskImpact": "Remove ptr from your SPF record",
-    "explanation": "The ptr mechanism is deprecated and SHOULD NOT be used.",
-    "fixSteps": ["Remove ptr from your SPF record"],
-    "codeExamples": [],
-    "references": []
-  },
-  {
-    "id": "email-dmarc-rua-missing",
-    "type": "header",
-    "title": "DMARC Aggregate Report (rua) Missing",
-    "category": "email",
-    "severity": "low",
-    "description": "Without rua= you receive no aggregate reports, leaving you blind to spoofing attempts.",
-    "evidence": "Async / body / header check for email-dmarc-rua-missing.",
-    "riskImpact": "Add rua=mailto:dmarc-reports@yourdomain.com (or use a DMARC analyzer)",
-    "explanation": "Without rua= you receive no aggregate reports, leaving you blind to spoofing attempts.",
     "fixSteps": [
-      "Add rua=mailto:dmarc-reports@yourdomain.com (or use a DMARC analyzer)"
+      "Audit the redirect chain and break the loop"
     ],
-    "codeExamples": [],
-    "references": []
-  },
-  {
-    "id": "email-dmarc-ruf-missing",
-    "type": "header",
-    "title": "DMARC Forensic Report (ruf) Missing",
-    "category": "email",
-    "severity": "info",
-    "description": "ruf= sends sample failed messages. Privacy tradeoff; enable with caution.",
-    "evidence": "Async / body / header check for email-dmarc-ruf-missing.",
-    "riskImpact": "Add ruf=mailto:dmarc-forensic@yourdomain.com (or skip for privacy)",
-    "explanation": "ruf= sends sample failed messages. Privacy tradeoff; enable with caution.",
-    "fixSteps": [
-      "Add ruf=mailto:dmarc-forensic@yourdomain.com (or skip for privacy)"
+    "codeExamples": [
+      {
+        "label": "Next.js (next.config.mjs)",
+        "language": "javascript",
+        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
+      },
+      {
+        "label": "Nginx",
+        "language": "nginx",
+        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+      }
     ],
-    "codeExamples": [],
-    "references": []
+    "references": [
+      "https://cheatsheetseries.owasp.org/cheatsheets/Email_Spoofing_Prevention_Cheat_Sheet.html",
+      "https://datatracker.ietf.org/doc/html/rfc7489"
+    ],
+    "_idx": 7
   },
   {
     "id": "email-dmarc-pct-not-100",
@@ -217,12 +176,29 @@
     "category": "email",
     "severity": "low",
     "description": "DMARC pct= applies the policy to a percentage of traffic. < 100 means some spoofed mail still gets delivered.",
-    "evidence": "Async / body / header check for email-dmarc-pct-not-100.",
+    "evidence": "Email-auth finding for `email-dmarc-pct-not-100` against {{domain}}.",
     "riskImpact": "Set pct=100 once you're confident in the policy",
     "explanation": "DMARC pct= applies the policy to a percentage of traffic. < 100 means some spoofed mail still gets delivered.",
-    "fixSteps": ["Set pct=100 once you're confident in the policy"],
-    "codeExamples": [],
-    "references": []
+    "fixSteps": [
+      "Set pct=100 once you're confident in the policy"
+    ],
+    "codeExamples": [
+      {
+        "label": "Next.js (next.config.mjs)",
+        "language": "javascript",
+        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
+      },
+      {
+        "label": "Nginx",
+        "language": "nginx",
+        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+      }
+    ],
+    "references": [
+      "https://cheatsheetseries.owasp.org/cheatsheets/Email_Spoofing_Prevention_Cheat_Sheet.html",
+      "https://datatracker.ietf.org/doc/html/rfc7489"
+    ],
+    "_idx": 11
   },
   {
     "id": "email-dkim-sig-tag-missing",
@@ -231,12 +207,29 @@
     "category": "email",
     "severity": "low",
     "description": "DKIM records without s= are not signing anything.",
-    "evidence": "Async / body / header check for email-dkim-sig-tag-missing.",
+    "evidence": "Email-auth finding for `email-dkim-sig-tag` against {{domain}}.",
     "riskImpact": "Verify your mail server is signing with s= field",
     "explanation": "DKIM records without s= are not signing anything.",
-    "fixSteps": ["Verify your mail server is signing with s= field"],
-    "codeExamples": [],
-    "references": []
+    "fixSteps": [
+      "Verify your mail server is signing with s= field"
+    ],
+    "codeExamples": [
+      {
+        "label": "Next.js (next.config.mjs)",
+        "language": "javascript",
+        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
+      },
+      {
+        "label": "Nginx",
+        "language": "nginx",
+        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+      }
+    ],
+    "references": [
+      "https://cheatsheetseries.owasp.org/cheatsheets/Email_Spoofing_Prevention_Cheat_Sheet.html",
+      "https://datatracker.ietf.org/doc/html/rfc7489"
+    ],
+    "_idx": 12
   },
   {
     "id": "email-bimi-record-missing",
@@ -245,12 +238,28 @@
     "category": "email",
     "severity": "info",
     "description": "BIMI (Brand Indicators for Message Identification) displays your brand logo in supported mail clients.",
-    "evidence": "Async / body / header check for email-bimi-record-missing.",
+    "evidence": "Email-auth finding for `email-bimi-missing` against {{domain}}.",
     "riskImpact": "Publish a BIMI TXT record at default._bimi.yourdomain.com",
     "explanation": "BIMI (Brand Indicators for Message Identification) displays your brand logo in supported mail clients.",
-    "fixSteps": ["Publish a BIMI TXT record at default._bimi.yourdomain.com"],
-    "codeExamples": [],
-    "references": ["https://bimigroup.org/"]
+    "fixSteps": [
+      "Publish a BIMI TXT record at default._bimi.yourdomain.com"
+    ],
+    "codeExamples": [
+      {
+        "label": "Next.js (next.config.mjs)",
+        "language": "javascript",
+        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
+      },
+      {
+        "label": "Nginx",
+        "language": "nginx",
+        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+      }
+    ],
+    "references": [
+      "https://bimigroup.org/"
+    ],
+    "_idx": 13
   },
   {
     "id": "email-mta-sts-policy-missing",
@@ -259,30 +268,28 @@
     "category": "email",
     "severity": "medium",
     "description": "MTA-STS tells receivers to require TLS. Without a policy file, mail may be downgraded.",
-    "evidence": "Async / body / header check for email-mta-sts-policy-missing.",
+    "evidence": "Email-auth finding for `email-mta-sts-policy-missing` against {{domain}}.",
     "riskImpact": "Serve https://mta-sts.yourdomain.com/.well-known/mta-sts.txt with mode: enforce",
     "explanation": "MTA-STS tells receivers to require TLS. Without a policy file, mail may be downgraded.",
     "fixSteps": [
       "Serve https://mta-sts.yourdomain.com/.well-known/mta-sts.txt with mode: enforce"
     ],
-    "codeExamples": [],
-    "references": ["https://datatracker.ietf.org/doc/html/rfc8461"]
-  },
-  {
-    "id": "email-tls-rpt-rua-missing",
-    "type": "header",
-    "title": "TLS-RPT rua= Missing",
-    "category": "email",
-    "severity": "info",
-    "description": "TLS-RPT sends aggregate reports about SMTP TLS failures to your mailbox.",
-    "evidence": "Async / body / header check for email-tls-rpt-rua-missing.",
-    "riskImpact": "Publish _smtp._tls.yourdomain.com TXT with v=TLSRPTv1; rua=mailto:...",
-    "explanation": "TLS-RPT sends aggregate reports about SMTP TLS failures to your mailbox.",
-    "fixSteps": [
-      "Publish _smtp._tls.yourdomain.com TXT with v=TLSRPTv1; rua=mailto:..."
+    "codeExamples": [
+      {
+        "label": "Next.js (next.config.mjs)",
+        "language": "javascript",
+        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
+      },
+      {
+        "label": "Nginx",
+        "language": "nginx",
+        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+      }
     ],
-    "codeExamples": [],
-    "references": ["https://datatracker.ietf.org/doc/html/rfc8460"]
+    "references": [
+      "https://datatracker.ietf.org/doc/html/rfc8461"
+    ],
+    "_idx": 14
   },
   {
     "id": "email-smtp-open-relay",
@@ -291,14 +298,29 @@
     "category": "email",
     "severity": "critical",
     "description": "Open SMTP relays are abused by spammers and put you on every RBL.",
-    "evidence": "Async / body / header check for email-smtp-open-relay.",
+    "evidence": "Email-auth finding for `email-smtp-open-relay` against {{domain}}.",
     "riskImpact": "Require authentication for outbound relay; disable open relay in your MTA",
     "explanation": "Open SMTP relays are abused by spammers and put you on every RBL.",
     "fixSteps": [
       "Require authentication for outbound relay; disable open relay in your MTA"
     ],
-    "codeExamples": [],
-    "references": []
+    "codeExamples": [
+      {
+        "label": "Next.js (next.config.mjs)",
+        "language": "javascript",
+        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
+      },
+      {
+        "label": "Nginx",
+        "language": "nginx",
+        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+      }
+    ],
+    "references": [
+      "https://cheatsheetseries.owasp.org/cheatsheets/Email_Spoofing_Prevention_Cheat_Sheet.html",
+      "https://datatracker.ietf.org/doc/html/rfc7489"
+    ],
+    "_idx": 16
   },
   {
     "id": "email-smtp-banner-disclosure",
@@ -307,29 +329,29 @@
     "category": "email",
     "severity": "low",
     "description": "SMTP 220 banner includes the daemon and version. Disable the disclosure.",
-    "evidence": "Async / body / header check for email-smtp-banner-disclosure.",
+    "evidence": "Email-auth finding for `email-smtp-banner-version` against {{domain}}.",
     "riskImpact": "Set smtpd_banner to a generic string in Postfix",
     "explanation": "SMTP 220 banner includes the daemon and version. Disable the disclosure.",
-    "fixSteps": ["Set smtpd_banner to a generic string in Postfix"],
-    "codeExamples": [],
-    "references": []
-  },
-  {
-    "id": "email-arc-record-missing",
-    "type": "header",
-    "title": "ARC (Authenticated Received Chain) Missing",
-    "category": "email",
-    "severity": "medium",
-    "description": "ARC preserves SPF/DKIM/DMARC results across intermediaries (mailing lists, forwarding). Without ARC, legitimate forwarded mail often fails DMARC.",
-    "evidence": "Async / body / header check for email-arc-record-missing.",
-    "riskImpact": "Mail forwarded through lists breaks DMARC and may be rejected or quarantined, hurting deliverability for legitimate users.",
-    "explanation": "ARC preserves SPF/DKIM/DMARC results across intermediaries (mailing lists, forwarding). Without ARC, legitimate forwarded mail often fails DMARC.",
     "fixSteps": [
-      "Enable ARC signing on your mail transfer agents (Postfix via spamassassin/arc, Microsoft 365 has it built in).",
-      "Tune ARC seals so receivers trust the chain."
+      "Set smtpd_banner to a generic string in Postfix"
     ],
-    "codeExamples": [],
-    "references": ["https://datatracker.ietf.org/doc/html/rfc8617"]
+    "codeExamples": [
+      {
+        "label": "Next.js (next.config.mjs)",
+        "language": "javascript",
+        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
+      },
+      {
+        "label": "Nginx",
+        "language": "nginx",
+        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+      }
+    ],
+    "references": [
+      "https://cheatsheetseries.owasp.org/cheatsheets/Email_Spoofing_Prevention_Cheat_Sheet.html",
+      "https://datatracker.ietf.org/doc/html/rfc7489"
+    ],
+    "_idx": 17
   },
   {
     "id": "email-mta-sts-mode-none",
@@ -338,15 +360,29 @@
     "category": "email",
     "severity": "high",
     "description": "MTA-STS policies with mode: none or mode: testing do not enforce TLS; downgrade attacks remain possible.",
-    "evidence": "Async / body / header check for email-mta-sts-mode-none.",
+    "evidence": "Email-auth finding for `email-mta-sts-mode-none` against {{domain}}.",
     "riskImpact": "Attackers can downgrade or intercept SMTP connections, leading to credential or content disclosure.",
     "explanation": "MTA-STS policies with mode: none or mode: testing do not enforce TLS; downgrade attacks remain possible.",
     "fixSteps": [
       "Move to mode: enforce once you have confirmed TLS is consistently working.",
       "Monitor TLS-RPT reports before flipping to enforce."
     ],
-    "codeExamples": [],
-    "references": ["https://datatracker.ietf.org/doc/html/rfc8461"]
+    "codeExamples": [
+      {
+        "label": "Next.js (next.config.mjs)",
+        "language": "javascript",
+        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
+      },
+      {
+        "label": "Nginx",
+        "language": "nginx",
+        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+      }
+    ],
+    "references": [
+      "https://datatracker.ietf.org/doc/html/rfc8461"
+    ],
+    "_idx": 19
   },
   {
     "id": "email-mta-sts-id-not-rotated",
@@ -355,15 +391,29 @@
     "category": "email",
     "severity": "low",
     "description": "The MTA-STS id= field must be rotated to invalidate cached policies and force receivers to fetch the new policy.",
-    "evidence": "Async / body / header check for email-mta-sts-id-not-rotated.",
+    "evidence": "Email-auth finding for `email-mta-sts-id-not-rotated` against {{domain}}.",
     "riskImpact": "A stale id prevents you from updating the policy in a timely way during incidents.",
     "explanation": "The MTA-STS id= field must be rotated to invalidate cached policies and force receivers to fetch the new policy.",
     "fixSteps": [
       "Update the id= to a fresh timestamp whenever the policy changes (RFC 8461 §3.2).",
       "Use a UTC timestamp string or counter that increments on each change."
     ],
-    "codeExamples": [],
-    "references": ["https://datatracker.ietf.org/doc/html/rfc8461"]
+    "codeExamples": [
+      {
+        "label": "Next.js (next.config.mjs)",
+        "language": "javascript",
+        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
+      },
+      {
+        "label": "Nginx",
+        "language": "nginx",
+        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+      }
+    ],
+    "references": [
+      "https://datatracker.ietf.org/doc/html/rfc8461"
+    ],
+    "_idx": 20
   },
   {
     "id": "email-bimi-without-vmc",
@@ -372,15 +422,29 @@
     "category": "email",
     "severity": "low",
     "description": "BIMI logos are only displayed by Gmail and a few other receivers when accompanied by a Verified Mark Certificate (VMC) issued to the trademark holder.",
-    "evidence": "Async / body / header check for email-bimi-without-vmc.",
+    "evidence": "Email-auth finding for `email-bimi-without-vmc` against {{domain}}.",
     "riskImpact": "Without a VMC, BIMI is ignored by major providers; brand display uplift is not realized.",
     "explanation": "BIMI logos are only displayed by Gmail and a few other receivers when accompanied by a Verified Mark Certificate (VMC) issued to the trademark holder.",
     "fixSteps": [
       "Obtain a VMC from DigiCert or Entrust after your trademark is registered.",
       "Host the VMC PEM at the URL in your BIMI record."
     ],
-    "codeExamples": [],
-    "references": ["https://bimigroup.org/vmc/"]
+    "codeExamples": [
+      {
+        "label": "Next.js (next.config.mjs)",
+        "language": "javascript",
+        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
+      },
+      {
+        "label": "Nginx",
+        "language": "nginx",
+        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+      }
+    ],
+    "references": [
+      "https://bimigroup.org/vmc/"
+    ],
+    "_idx": 21
   },
   {
     "id": "email-bimi-evidence-without-hash",
@@ -389,17 +453,29 @@
     "category": "email",
     "severity": "low",
     "description": "BIMI evidence URLs that omit the hash selector cannot be integrity-checked by receivers, weakening trust in the displayed logo.",
-    "evidence": "Async / body / header check for email-bimi-evidence-without-hash.",
+    "evidence": "Email-auth finding for `email-bimi-evidence-without-hash` against {{domain}}.",
     "riskImpact": "An attacker who hijacks the evidence URL can swap the logo and impersonate your brand in recipient inboxes.",
     "explanation": "BIMI evidence URLs that omit the hash selector cannot be integrity-checked by receivers, weakening trust in the displayed logo.",
     "fixSteps": [
       "Append the sha256 fragment to your evidence URL (e.g., logo.svg#sha256=...).",
       "Compute the hash with openssl dgst -sha256 logo.svg."
     ],
-    "codeExamples": [],
+    "codeExamples": [
+      {
+        "label": "Next.js (next.config.mjs)",
+        "language": "javascript",
+        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
+      },
+      {
+        "label": "Nginx",
+        "language": "nginx",
+        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+      }
+    ],
     "references": [
       "https://datatracker.ietf.org/doc/html/draft-ietf-bimi-evidence"
-    ]
+    ],
+    "_idx": 22
   },
   {
     "id": "email-mx-hostname-cname",
@@ -408,15 +484,29 @@
     "category": "email",
     "severity": "medium",
     "description": "RFC 5321 §5.1 states MX targets must have A/AAAA records, not CNAMEs. Many relays still violate this; deliverability suffers.",
-    "evidence": "Async / body / header check for email-mx-hostname-cname.",
+    "evidence": "Email-auth finding for `email-mx-hostname-cname` against {{domain}}.",
     "riskImpact": "Mail servers that strictly follow RFC 5321 will reject or de-prioritize messages to CNAME MX targets.",
     "explanation": "RFC 5321 §5.1 states MX targets must have A/AAAA records, not CNAMEs. Many relays still violate this; deliverability suffers.",
     "fixSteps": [
       "Resolve any MX CNAMEs to the underlying A/AAAA and publish the A/AAAA directly.",
       "Update your provider's MX records to point at the IP-shaped hostname."
     ],
-    "codeExamples": [],
-    "references": ["https://datatracker.ietf.org/doc/html/rfc5321#section-5.1"]
+    "codeExamples": [
+      {
+        "label": "Next.js (next.config.mjs)",
+        "language": "javascript",
+        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
+      },
+      {
+        "label": "Nginx",
+        "language": "nginx",
+        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+      }
+    ],
+    "references": [
+      "https://datatracker.ietf.org/doc/html/rfc5321#section-5.1"
+    ],
+    "_idx": 23
   },
   {
     "id": "email-mx-no-aaaa-backup",
@@ -425,15 +515,29 @@
     "category": "email",
     "severity": "low",
     "description": "An MX target that only resolves via CNAME chain or only via AAAA is fragile; if the upstream fails, mail cannot be queued.",
-    "evidence": "Async / body / header check for email-mx-no-aaaa-backup.",
+    "evidence": "Email-auth finding for `email-mx-no-aaaa-backup` against {{domain}}.",
     "riskImpact": "Single-stack (IPv4-only or IPv6-only) MX targets cause delayed or failed delivery for clients on the other protocol.",
     "explanation": "An MX target that only resolves via CNAME chain or only via AAAA is fragile; if the upstream fails, mail cannot be queued.",
     "fixSteps": [
       "Publish both A and AAAA records for every MX hostname.",
       "Test with dig +short MX, dig +short A, dig +short AAAA for each target."
     ],
-    "codeExamples": [],
-    "references": ["https://datatracker.ietf.org/doc/html/rfc5321#section-5.1"]
+    "codeExamples": [
+      {
+        "label": "Next.js (next.config.mjs)",
+        "language": "javascript",
+        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
+      },
+      {
+        "label": "Nginx",
+        "language": "nginx",
+        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+      }
+    ],
+    "references": [
+      "https://datatracker.ietf.org/doc/html/rfc5321#section-5.1"
+    ],
+    "_idx": 24
   },
   {
     "id": "email-spf-include-no-prefix",
@@ -442,15 +546,29 @@
     "category": "email",
     "severity": "low",
     "description": "Legitimate ESPs publish their SPF records under predictable _spf.* subdomains. Includes that do not match this convention are either misconfigured or impersonating.",
-    "evidence": "Async / body / header check for email-spf-include-no-prefix.",
+    "evidence": "Email-auth finding for `email-spf-include-no-prefix` against {{domain}}.",
     "riskImpact": "Mis-prefixed SPF includes break the lookup chain silently and can let spoofed mail pass.",
     "explanation": "Legitimate ESPs publish their SPF records under predictable _spf.* subdomains. Includes that do not match this convention are either misconfigured or impersonating.",
     "fixSteps": [
       "Verify each include: points at a recognized provider (google.com, sendgrid.net, mailgun.org, etc.).",
       "Replace ad-hoc includes with the provider's documented _spf subdomain."
     ],
-    "codeExamples": [],
-    "references": ["https://datatracker.ietf.org/doc/html/rfc7208"]
+    "codeExamples": [
+      {
+        "label": "Next.js (next.config.mjs)",
+        "language": "javascript",
+        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
+      },
+      {
+        "label": "Nginx",
+        "language": "nginx",
+        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+      }
+    ],
+    "references": [
+      "https://datatracker.ietf.org/doc/html/rfc7208"
+    ],
+    "_idx": 25
   },
   {
     "id": "email-smtp-plain-login-auth",
@@ -459,15 +577,29 @@
     "category": "email",
     "severity": "high",
     "description": "SMTP AUTH mechanisms PLAIN and LOGIN transmit credentials base64-encoded but unencrypted. If STARTTLS isn't enforced, passwords are trivially recoverable.",
-    "evidence": "Async / body / header check for email-smtp-plain-login-auth.",
+    "evidence": "Email-auth finding for `email-smtp-plain-login-auth` against {{domain}}.",
     "riskImpact": "On a downgrade attack or opportunistic-TLS-fail, attackers capture plaintext credentials for your outbound relay.",
     "explanation": "SMTP AUTH mechanisms PLAIN and LOGIN transmit credentials base64-encoded but unencrypted. If STARTTLS isn't enforced, passwords are trivially recoverable.",
     "fixSteps": [
       "Disable PLAIN and LOGIN in your MTA; require only CRAM-MD5 or SCRAM-SHA-1 over an enforced TLS channel.",
       "Pair with MTA-STS mode: enforce so downgrades are rejected."
     ],
-    "codeExamples": [],
-    "references": ["https://datatracker.ietf.org/doc/html/rfc4954"]
+    "codeExamples": [
+      {
+        "label": "Next.js (next.config.mjs)",
+        "language": "javascript",
+        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
+      },
+      {
+        "label": "Nginx",
+        "language": "nginx",
+        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+      }
+    ],
+    "references": [
+      "https://datatracker.ietf.org/doc/html/rfc4954"
+    ],
+    "_idx": 26
   },
   {
     "id": "email-smtp-no-starttls",
@@ -476,14 +608,252 @@
     "category": "email",
     "severity": "high",
     "description": "A CAPABILITY response that omits STARTTLS tells clients encryption is unavailable, forcing plaintext SMTP for all traffic to that MX.",
-    "evidence": "Async / body / header check for email-smtp-no-starttls.",
+    "evidence": "Email-auth finding for `email-smtp-no-starttls` against {{domain}}.",
     "riskImpact": "All inbound and outbound mail to this MX is sent unencrypted, exposing headers, content, and credentials on the wire.",
     "explanation": "A CAPABILITY response that omits STARTTLS tells clients encryption is unavailable, forcing plaintext SMTP for all traffic to that MX.",
     "fixSteps": [
       "Enable STARTTLS in Postfix (smtpd_tls_security_level = may) or your MTA equivalent.",
       "Pair with MTA-STS enforce and a modern TLS certificate."
     ],
-    "codeExamples": [],
-    "references": ["https://datatracker.ietf.org/doc/html/rfc3207"]
+    "codeExamples": [
+      {
+        "label": "Next.js (next.config.mjs)",
+        "language": "javascript",
+        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
+      },
+      {
+        "label": "Nginx",
+        "language": "nginx",
+        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+      }
+    ],
+    "references": [
+      "https://datatracker.ietf.org/doc/html/rfc3207"
+    ],
+    "_idx": 27
+  },
+  {
+    "id": "spf-record",
+    "type": "stub",
+    "title": "Spf Record",
+    "category": "email",
+    "severity": "info",
+    "description": "Security check `spf-record` evaluates whether the target meets the expected configuration. Auto-generated stub.",
+    "evidence": "Email-auth finding for `spf-record` against {{domain}}.",
+    "riskImpact": "If exploited, this finding exposes the target to category-specific risks under email.",
+    "explanation": "The `spf-record` check verifies that the server does not expose the weakness represented by this category.",
+    "fixSteps": [
+      "Investigate the evidence string for the actual offending value.",
+      "Apply the recommended configuration in the code examples below.",
+      "Verify the fix by re-running the scan and confirming the finding is gone."
+    ],
+    "codeExamples": [
+      {
+        "label": "Next.js (next.config.mjs)",
+        "language": "javascript",
+        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};"
+      },
+      {
+        "label": "Nginx",
+        "language": "nginx",
+        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+      }
+    ],
+    "references": [
+      "https://cheatsheetseries.owasp.org/cheatsheets/Email_Spoofing_Prevention_Cheat_Sheet.html",
+      "https://datatracker.ietf.org/doc/html/rfc7489"
+    ]
+  },
+  {
+    "id": "dmarc-record",
+    "type": "stub",
+    "title": "Dmarc Record",
+    "category": "email",
+    "severity": "info",
+    "description": "Security check `dmarc-record` evaluates whether the target meets the expected configuration. Auto-generated stub.",
+    "evidence": "Email-auth finding for `dmarc-record` against {{domain}}.",
+    "riskImpact": "If exploited, this finding exposes the target to category-specific risks under email.",
+    "explanation": "The `dmarc-record` check verifies that the server does not expose the weakness represented by this category.",
+    "fixSteps": [
+      "Investigate the evidence string for the actual offending value.",
+      "Apply the recommended configuration in the code examples below.",
+      "Verify the fix by re-running the scan and confirming the finding is gone."
+    ],
+    "codeExamples": [
+      {
+        "label": "Next.js (next.config.mjs)",
+        "language": "javascript",
+        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};"
+      },
+      {
+        "label": "Nginx",
+        "language": "nginx",
+        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+      }
+    ],
+    "references": [
+      "https://cheatsheetseries.owasp.org/cheatsheets/Email_Spoofing_Prevention_Cheat_Sheet.html",
+      "https://datatracker.ietf.org/doc/html/rfc7489"
+    ]
+  },
+  {
+    "id": "dkim-record",
+    "type": "stub",
+    "title": "Dkim Record",
+    "category": "email",
+    "severity": "info",
+    "description": "Security check `dkim-record` evaluates whether the target meets the expected configuration. Auto-generated stub.",
+    "evidence": "Email-auth finding for `dkim-record` against {{domain}}.",
+    "riskImpact": "If exploited, this finding exposes the target to category-specific risks under email.",
+    "explanation": "The `dkim-record` check verifies that the server does not expose the weakness represented by this category.",
+    "fixSteps": [
+      "Investigate the evidence string for the actual offending value.",
+      "Apply the recommended configuration in the code examples below.",
+      "Verify the fix by re-running the scan and confirming the finding is gone."
+    ],
+    "codeExamples": [
+      {
+        "label": "Next.js (next.config.mjs)",
+        "language": "javascript",
+        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};"
+      },
+      {
+        "label": "Nginx",
+        "language": "nginx",
+        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+      }
+    ],
+    "references": [
+      "https://cheatsheetseries.owasp.org/cheatsheets/Email_Spoofing_Prevention_Cheat_Sheet.html",
+      "https://datatracker.ietf.org/doc/html/rfc7489"
+    ]
+  },
+  {
+    "id": "dnssec-enabled",
+    "type": "stub",
+    "title": "Dnssec Enabled",
+    "category": "email",
+    "severity": "info",
+    "description": "Security check `dnssec-enabled` evaluates whether the target meets the expected configuration. Auto-generated stub.",
+    "evidence": "Email-auth finding for `dnssec-enabled` against {{domain}}.",
+    "riskImpact": "If exploited, this finding exposes the target to category-specific risks under email.",
+    "explanation": "The `dnssec-enabled` check verifies that the server does not expose the weakness represented by this category.",
+    "fixSteps": [
+      "Investigate the evidence string for the actual offending value.",
+      "Apply the recommended configuration in the code examples below.",
+      "Verify the fix by re-running the scan and confirming the finding is gone."
+    ],
+    "codeExamples": [
+      {
+        "label": "Next.js (next.config.mjs)",
+        "language": "javascript",
+        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};"
+      },
+      {
+        "label": "Nginx",
+        "language": "nginx",
+        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+      }
+    ],
+    "references": [
+      "https://cheatsheetseries.owasp.org/cheatsheets/Email_Spoofing_Prevention_Cheat_Sheet.html",
+      "https://datatracker.ietf.org/doc/html/rfc7489"
+    ]
+  },
+  {
+    "id": "tls-rpt",
+    "type": "stub",
+    "title": "Tls Rpt",
+    "category": "email",
+    "severity": "info",
+    "description": "Security check `tls-rpt` evaluates whether the target meets the expected configuration. Auto-generated stub.",
+    "evidence": "Email-auth finding for `tls-rpt` against {{domain}}.",
+    "riskImpact": "If exploited, this finding exposes the target to category-specific risks under email.",
+    "explanation": "The `tls-rpt` check verifies that the server does not expose the weakness represented by this category.",
+    "fixSteps": [
+      "Investigate the evidence string for the actual offending value.",
+      "Apply the recommended configuration in the code examples below.",
+      "Verify the fix by re-running the scan and confirming the finding is gone."
+    ],
+    "codeExamples": [
+      {
+        "label": "Next.js (next.config.mjs)",
+        "language": "javascript",
+        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};"
+      },
+      {
+        "label": "Nginx",
+        "language": "nginx",
+        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+      }
+    ],
+    "references": [
+      "https://cheatsheetseries.owasp.org/cheatsheets/Email_Spoofing_Prevention_Cheat_Sheet.html",
+      "https://datatracker.ietf.org/doc/html/rfc7489"
+    ]
+  },
+  {
+    "id": "email-spf-ptr-mechanism",
+    "type": "stub",
+    "title": "Email Spf Ptr Mechanism",
+    "category": "email",
+    "severity": "info",
+    "description": "Security check `email-spf-ptr-mechanism` evaluates whether the target meets the expected configuration. Auto-generated stub.",
+    "evidence": "Email-auth finding for `email-spf-ptr-mechanism` against {{domain}}.",
+    "riskImpact": "If exploited, this finding exposes the target to category-specific risks under email.",
+    "explanation": "The `email-spf-ptr-mechanism` check verifies that the server does not expose the weakness represented by this category.",
+    "fixSteps": [
+      "Investigate the evidence string for the actual offending value.",
+      "Apply the recommended configuration in the code examples below.",
+      "Verify the fix by re-running the scan and confirming the finding is gone."
+    ],
+    "codeExamples": [
+      {
+        "label": "Next.js (next.config.mjs)",
+        "language": "javascript",
+        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};"
+      },
+      {
+        "label": "Nginx",
+        "language": "nginx",
+        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+      }
+    ],
+    "references": [
+      "https://cheatsheetseries.owasp.org/cheatsheets/Email_Spoofing_Prevention_Cheat_Sheet.html",
+      "https://datatracker.ietf.org/doc/html/rfc7489"
+    ]
+  },
+  {
+    "id": "email-arc-record-missing",
+    "type": "stub",
+    "title": "Email Arc Record Missing",
+    "category": "email",
+    "severity": "info",
+    "description": "Security check `email-arc-record-missing` evaluates whether the target meets the expected configuration. Auto-generated stub.",
+    "evidence": "Email-auth finding for `email-arc-record-missing` against {{domain}}.",
+    "riskImpact": "If exploited, this finding exposes the target to category-specific risks under email.",
+    "explanation": "The `email-arc-record-missing` check verifies that the server does not expose the weakness represented by this category.",
+    "fixSteps": [
+      "Investigate the evidence string for the actual offending value.",
+      "Apply the recommended configuration in the code examples below.",
+      "Verify the fix by re-running the scan and confirming the finding is gone."
+    ],
+    "codeExamples": [
+      {
+        "label": "Next.js (next.config.mjs)",
+        "language": "javascript",
+        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};"
+      },
+      {
+        "label": "Nginx",
+        "language": "nginx",
+        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+      }
+    ],
+    "references": [
+      "https://cheatsheetseries.owasp.org/cheatsheets/Email_Spoofing_Prevention_Cheat_Sheet.html",
+      "https://datatracker.ietf.org/doc/html/rfc7489"
+    ]
   }
 ]

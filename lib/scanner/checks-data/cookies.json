@@ -1,78 +1,127 @@
 [
   {
-    "id": "cookie-security",
-    "type": "combined",
-    "title": "Insecure Cookie Configuration",
-    "category": "cookies",
-    "severity": "MEDIUM",
-    "description": "One or more cookies are missing important security flags.",
-    "evidence": "Cookies missing HttpOnly, Secure, or SameSite flags.",
-    "riskImpact": "Cookies without proper security flags can be stolen via XSS attacks, sent over insecure connections, or exploited in CSRF attacks.",
-    "explanation": "Cookie security flags provide essential protection: HttpOnly prevents JavaScript access, Secure ensures HTTPS-only, SameSite prevents CSRF.",
-    "fixSteps": [
-      "Add HttpOnly flag to all session and authentication cookies.",
-      "Add Secure flag to ensure cookies are only sent over HTTPS.",
-      "Add SameSite=Lax or SameSite=Strict."
-    ],
-    "codeExamples": [
-      {
-        "label": "Secure cookie",
-        "language": "typescript",
-        "code": "response.cookies.set('session', token, { httpOnly: true, secure: true, sameSite: 'lax' });"
-      }
-    ]
-  },
-  {
     "id": "cookie-path-root",
     "type": "combined",
     "title": "Cookie with Root Path",
     "category": "cookies",
-    "severity": "INFO",
+    "severity": "info",
     "description": "Cookie available to entire site via path=/.",
     "evidence": "Cookie path is root.",
     "riskImpact": "Cookie accessible from all paths on the domain.",
     "explanation": "Consider restricting cookie path for isolation.",
-    "fixSteps": ["Set specific path for cookies when appropriate."],
-    "codeExamples": []
+    "fixSteps": [
+      "Set specific path for cookies when appropriate."
+    ],
+    "codeExamples": [
+      {
+        "label": "Next.js (next.config.mjs)",
+        "language": "javascript",
+        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
+      },
+      {
+        "label": "Nginx",
+        "language": "nginx",
+        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+      }
+    ],
+    "_idx": 1,
+    "references": [
+      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Cookies",
+      "https://datatracker.ietf.org/doc/html/rfc6265"
+    ]
   },
   {
     "id": "cookie-domain-broad",
     "type": "combined",
     "title": "Cookie with Broad Domain",
     "category": "cookies",
-    "severity": "MEDIUM",
+    "severity": "medium",
     "description": "Cookie set with leading dot domain (all subdomains).",
     "evidence": "Broad cookie domain.",
     "riskImpact": "Cookie shared across all subdomains.",
     "explanation": "Subdomain cookie sharing increases attack surface.",
-    "fixSteps": ["Restrict cookie domain unless sharing is needed."],
-    "codeExamples": []
+    "fixSteps": [
+      "Restrict cookie domain unless sharing is needed."
+    ],
+    "codeExamples": [
+      {
+        "label": "Next.js (next.config.mjs)",
+        "language": "javascript",
+        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
+      },
+      {
+        "label": "Nginx",
+        "language": "nginx",
+        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+      }
+    ],
+    "_idx": 2,
+    "references": [
+      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Cookies",
+      "https://datatracker.ietf.org/doc/html/rfc6265"
+    ]
   },
   {
-    "id": "cookie-prefix-missing",
+    "id": "cookie-secure-missing",
     "type": "combined",
     "title": "Sensitive Cookie Missing __Host- Prefix",
     "category": "cookies",
-    "severity": "LOW",
+    "severity": "low",
     "description": "Session cookie could use __Host- prefix.",
     "evidence": "Cookie without __Host- prefix.",
     "riskImpact": "__Host- ensures cookie is secure, same-domain, path=/.",
     "explanation": "Cookie prefixes provide additional protections.",
-    "fixSteps": ["Rename sensitive cookies with __Host- prefix."],
-    "codeExamples": []
+    "fixSteps": [
+      "Rename sensitive cookies with __Host- prefix."
+    ],
+    "codeExamples": [
+      {
+        "label": "Next.js (next.config.mjs)",
+        "language": "javascript",
+        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
+      },
+      {
+        "label": "Nginx",
+        "language": "nginx",
+        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+      }
+    ],
+    "_idx": 3,
+    "references": [
+      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Cookies",
+      "https://datatracker.ietf.org/doc/html/rfc6265"
+    ]
   },
   {
     "id": "cookie-partitioned-missing",
     "type": "combined",
     "title": "Third-Party Cookie Missing Partitioned",
     "category": "cookies",
-    "severity": "INFO",
+    "severity": "info",
     "description": "Third-party cookie missing Partitioned attribute.",
     "evidence": "Unpartitioned third-party cookie.",
     "riskImpact": "Cookie may be blocked in privacy-focused browsers.",
     "explanation": "CHIPS (Partitioned cookies) enable privacy-preserving third-party cookies.",
-    "fixSteps": ["Add Partitioned attribute for third-party cookies."],
-    "codeExamples": []
+    "fixSteps": [
+      "Add Partitioned attribute for third-party cookies."
+    ],
+    "codeExamples": [
+      {
+        "label": "Next.js (next.config.mjs)",
+        "language": "javascript",
+        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
+      },
+      {
+        "label": "Nginx",
+        "language": "nginx",
+        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+      }
+    ],
+    "_idx": 4,
+    "references": [
+      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Cookies",
+      "https://datatracker.ietf.org/doc/html/rfc6265"
+    ]
   },
   {
     "id": "cookie-host-prefix-not-secure",
@@ -81,12 +130,29 @@
     "category": "cookies",
     "severity": "high",
     "description": "__Host- prefixed cookies MUST have Secure and Path=/.",
-    "evidence": "Async / body / header check for cookie-host-prefix-not-secure.",
+    "evidence": "Cookie issue for `cookies-host-prefix-not-secure`. Set-Cookie observed: {{set_cookies}}.",
     "riskImpact": "Add Secure; SameSite=...; Path=/ to the __Host- cookie",
     "explanation": "__Host- prefixed cookies MUST have Secure and Path=/.",
-    "fixSteps": ["Add Secure; SameSite=...; Path=/ to the __Host- cookie"],
-    "codeExamples": [],
-    "references": []
+    "fixSteps": [
+      "Add Secure; SameSite=...; Path=/ to the __Host- cookie"
+    ],
+    "codeExamples": [
+      {
+        "label": "Next.js (next.config.mjs)",
+        "language": "javascript",
+        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
+      },
+      {
+        "label": "Nginx",
+        "language": "nginx",
+        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+      }
+    ],
+    "references": [
+      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Cookies",
+      "https://datatracker.ietf.org/doc/html/rfc6265"
+    ],
+    "_idx": 5
   },
   {
     "id": "cookie-host-prefix-wrong-path",
@@ -95,12 +161,29 @@
     "category": "cookies",
     "severity": "high",
     "description": "__Host- prefixed cookies MUST have Path=/.",
-    "evidence": "Async / body / header check for cookie-host-prefix-wrong-path.",
+    "evidence": "Cookie issue for `cookies-host-prefix-wrong-path`. Set-Cookie observed: {{set_cookies}}.",
     "riskImpact": "Set Path=/ on the __Host- cookie",
     "explanation": "__Host- prefixed cookies MUST have Path=/.",
-    "fixSteps": ["Set Path=/ on the __Host- cookie"],
-    "codeExamples": [],
-    "references": []
+    "fixSteps": [
+      "Set Path=/ on the __Host- cookie"
+    ],
+    "codeExamples": [
+      {
+        "label": "Next.js (next.config.mjs)",
+        "language": "javascript",
+        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
+      },
+      {
+        "label": "Nginx",
+        "language": "nginx",
+        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+      }
+    ],
+    "references": [
+      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Cookies",
+      "https://datatracker.ietf.org/doc/html/rfc6265"
+    ],
+    "_idx": 6
   },
   {
     "id": "cookie-secure-prefix-not-secure",
@@ -109,26 +192,60 @@
     "category": "cookies",
     "severity": "high",
     "description": "__Secure- prefixed cookies MUST have the Secure attribute.",
-    "evidence": "Async / body / header check for cookie-secure-prefix-not-secure.",
+    "evidence": "Cookie issue for `cookies-secure-prefix-not-secure`. Set-Cookie observed: {{set_cookies}}.",
     "riskImpact": "Add Secure to the __Secure- cookie",
     "explanation": "__Secure- prefixed cookies MUST have the Secure attribute.",
-    "fixSteps": ["Add Secure to the __Secure- cookie"],
-    "codeExamples": [],
-    "references": []
+    "fixSteps": [
+      "Add Secure to the __Secure- cookie"
+    ],
+    "codeExamples": [
+      {
+        "label": "Next.js (next.config.mjs)",
+        "language": "javascript",
+        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
+      },
+      {
+        "label": "Nginx",
+        "language": "nginx",
+        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+      }
+    ],
+    "references": [
+      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Cookies",
+      "https://datatracker.ietf.org/doc/html/rfc6265"
+    ],
+    "_idx": 7
   },
   {
-    "id": "cookie-domain-set-too-loose",
+    "id": "cookie-domain-parent-on-subdomain",
     "type": "header",
     "title": "Cookie Domain attribute is too loose",
     "category": "cookies",
     "severity": "low",
     "description": "Cookies with an explicit Domain= attribute are sent to every subdomain. Avoid Domain= when not necessary.",
-    "evidence": "Async / body / header check for cookie-domain-set-too-loose.",
+    "evidence": "Cookie issue for `cookies-domain-explicit-unnecessary`. Set-Cookie observed: {{set_cookies}}.",
     "riskImpact": "Drop Domain= or scope to the required host only",
     "explanation": "Cookies with an explicit Domain= attribute are sent to every subdomain. Avoid Domain= when not necessary.",
-    "fixSteps": ["Drop Domain= or scope to the required host only"],
-    "codeExamples": [],
-    "references": []
+    "fixSteps": [
+      "Drop Domain= or scope to the required host only"
+    ],
+    "codeExamples": [
+      {
+        "label": "Next.js (next.config.mjs)",
+        "language": "javascript",
+        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
+      },
+      {
+        "label": "Nginx",
+        "language": "nginx",
+        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+      }
+    ],
+    "references": [
+      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Cookies",
+      "https://datatracker.ietf.org/doc/html/rfc6265"
+    ],
+    "_idx": 8
   },
   {
     "id": "cookie-expires-too-far",
@@ -137,14 +254,29 @@
     "category": "cookies",
     "severity": "low",
     "description": "Cookies that last more than a year violate some privacy regulations and live forever in browser storage.",
-    "evidence": "Async / body / header check for cookie-expires-too-far.",
+    "evidence": "Cookie issue for `cookies-expires-too-far`. Set-Cookie observed: {{set_cookies}}.",
     "riskImpact": "Limit cookie lifetime to 90 days for sessions, 1 year for persistent preferences",
     "explanation": "Cookies that last more than a year violate some privacy regulations and live forever in browser storage.",
     "fixSteps": [
       "Limit cookie lifetime to 90 days for sessions, 1 year for persistent preferences"
     ],
-    "codeExamples": [],
-    "references": []
+    "codeExamples": [
+      {
+        "label": "Next.js (next.config.mjs)",
+        "language": "javascript",
+        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
+      },
+      {
+        "label": "Nginx",
+        "language": "nginx",
+        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+      }
+    ],
+    "references": [
+      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Cookies",
+      "https://datatracker.ietf.org/doc/html/rfc6265"
+    ],
+    "_idx": 9
   },
   {
     "id": "cookie-name-disclosure",
@@ -153,28 +285,29 @@
     "category": "cookies",
     "severity": "info",
     "description": "Cookies named like express.sid, JSESSIONID, PHPSESSID, ASP.NET_SessionId reveal the server framework to attackers.",
-    "evidence": "Async / body / header check for cookie-name-disclosure.",
+    "evidence": "Cookie issue for `cookies-name-disclosure`. Set-Cookie observed: {{set_cookies}}.",
     "riskImpact": "Rename the cookie to a generic opaque name (e.g. __Host-id)",
     "explanation": "Cookies named like express.sid, JSESSIONID, PHPSESSID, ASP.NET_SessionId reveal the server framework to attackers.",
-    "fixSteps": ["Rename the cookie to a generic opaque name (e.g. __Host-id)"],
-    "codeExamples": [],
-    "references": []
-  },
-  {
-    "id": "cookie-no-csrf-token",
-    "type": "header",
-    "title": "Session cookie without CSRF token",
-    "category": "cookies",
-    "severity": "medium",
-    "description": "Session cookies should be paired with a CSRF token (double-submit cookie or synchronizer).",
-    "evidence": "Async / body / header check for cookie-no-csrf-token.",
-    "riskImpact": "Add a CSRF token (X-CSRF-Token header, hidden form field, or sync-token pattern)",
-    "explanation": "Session cookies should be paired with a CSRF token (double-submit cookie or synchronizer).",
     "fixSteps": [
-      "Add a CSRF token (X-CSRF-Token header, hidden form field, or sync-token pattern)"
+      "Rename the cookie to a generic opaque name (e.g. __Host-id)"
     ],
-    "codeExamples": [],
-    "references": []
+    "codeExamples": [
+      {
+        "label": "Next.js (next.config.mjs)",
+        "language": "javascript",
+        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
+      },
+      {
+        "label": "Nginx",
+        "language": "nginx",
+        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+      }
+    ],
+    "references": [
+      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Cookies",
+      "https://datatracker.ietf.org/doc/html/rfc6265"
+    ],
+    "_idx": 10
   },
   {
     "id": "cookie-domain-no-leading-dot",
@@ -183,16 +316,28 @@
     "category": "cookies",
     "severity": "low",
     "description": "RFC 6265bis deprecated the leading dot in the Domain attribute (e.g. Domain=example.com instead of Domain=.example.com). Modern user agents ignore the leading dot and treat both the same, so a missing dot is purely cosmetic but indicates the application is following older guidance.",
-    "evidence": "Async / body / header check for cookie-domain-no-leading-dot.",
+    "evidence": "Cookie issue for `cookies-domain-no-leading-dot`. Set-Cookie observed: {{set_cookies}}.",
     "riskImpact": "Remove the leading dot from Domain= attributes to align with RFC 6265bis and modern browser behavior.",
     "explanation": "RFC 6265bis deprecated the leading dot in the Domain attribute (e.g. Domain=example.com instead of Domain=.example.com). Modern user agents ignore the leading dot and treat both the same, so a missing dot is purely cosmetic but indicates the application is following older guidance.",
     "fixSteps": [
       "Drop the leading dot from the Domain= attribute (use example.com, not .example.com)."
     ],
-    "codeExamples": [],
+    "codeExamples": [
+      {
+        "label": "Next.js (next.config.mjs)",
+        "language": "javascript",
+        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
+      },
+      {
+        "label": "Nginx",
+        "language": "nginx",
+        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+      }
+    ],
     "references": [
       "https://datatracker.ietf.org/doc/html/draft-ietf-httpbis-rfc6265bis"
-    ]
+    ],
+    "_idx": 12
   },
   {
     "id": "cookie-path-cross-app",
@@ -201,17 +346,29 @@
     "category": "cookies",
     "severity": "medium",
     "description": "A cookie Path=/ makes the cookie available to every route on the host, including unrelated apps served from subpaths (e.g. /admin, /api, /internal). This broadens cookie exposure across trust boundaries.",
-    "evidence": "Async / body / header check for cookie-path-cross-app.",
+    "evidence": "Cookie issue for `cookies-path-cross-app`. Set-Cookie observed: {{set_cookies}}.",
     "riskImpact": "Scope cookies to the smallest path needed (e.g. Path=/app, not Path=/) so unrelated apps cannot read them.",
     "explanation": "A cookie Path=/ makes the cookie available to every route on the host, including unrelated apps served from subpaths (e.g. /admin, /api, /internal). This broadens cookie exposure across trust boundaries.",
     "fixSteps": [
       "Set the Path= attribute to the most specific route that requires the cookie.",
       "Avoid Path=/ unless the cookie truly must be readable by every route."
     ],
-    "codeExamples": [],
+    "codeExamples": [
+      {
+        "label": "Next.js (next.config.mjs)",
+        "language": "javascript",
+        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
+      },
+      {
+        "label": "Nginx",
+        "language": "nginx",
+        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+      }
+    ],
     "references": [
       "https://datatracker.ietf.org/doc/html/rfc6265#section-5.2.1"
-    ]
+    ],
+    "_idx": 13
   },
   {
     "id": "cookie-expires-in-past",
@@ -220,7 +377,7 @@
     "category": "cookies",
     "severity": "info",
     "description": "Set-Cookie headers with an Expires value in the past cause immediate deletion by the user agent. This is sometimes intentional (logout) but often indicates a clock-skew bug or leftover debug cookie.",
-    "evidence": "Async / body / header check for cookie-expires-in-past.",
+    "evidence": "Cookie issue for `cookies-expires-in-past`. Set-Cookie observed: {{set_cookies}}.",
     "riskImpact": "Verify the past Expires is intentional; if it is, send Max-Age=0 instead and confirm it is only used on logout endpoints.",
     "explanation": "Set-Cookie headers with an Expires value in the past cause immediate deletion by the user agent. This is sometimes intentional (logout) but often indicates a clock-skew bug or leftover debug cookie.",
     "fixSteps": [
@@ -228,10 +385,22 @@
       "Prefer Max-Age=0 for explicit cookie deletion.",
       "Audit cookies served from non-logout paths for stale dates."
     ],
-    "codeExamples": [],
+    "codeExamples": [
+      {
+        "label": "Next.js (next.config.mjs)",
+        "language": "javascript",
+        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
+      },
+      {
+        "label": "Nginx",
+        "language": "nginx",
+        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+      }
+    ],
     "references": [
       "https://datatracker.ietf.org/doc/html/rfc6265#section-4.1.1"
-    ]
+    ],
+    "_idx": 14
   },
   {
     "id": "cookie-max-age-zero",
@@ -240,37 +409,29 @@
     "category": "cookies",
     "severity": "info",
     "description": "Max-Age=0 instructs the browser to delete the named cookie. This is the canonical logout / clear-cookie pattern. Repeated occurrences across the same scan usually indicate a buggy double-delete or a session cookie masquerading as a deletion.",
-    "evidence": "Async / body / header check for cookie-max-age-zero.",
+    "evidence": "Cookie issue for `cookies-max-age-zero`. Set-Cookie observed: {{set_cookies}}.",
     "riskImpact": "Limit Max-Age=0 Set-Cookie headers to logout endpoints; do not emit them on every authenticated request.",
     "explanation": "Max-Age=0 instructs the browser to delete the named cookie. This is the canonical logout / clear-cookie pattern. Repeated occurrences across the same scan usually indicate a buggy double-delete or a session cookie masquerading as a deletion.",
     "fixSteps": [
       "Restrict Max-Age=0 Set-Cookie emission to logout / reset endpoints.",
       "Verify the cookie being deleted is not the same one being set in the same response."
     ],
-    "codeExamples": [],
+    "codeExamples": [
+      {
+        "label": "Next.js (next.config.mjs)",
+        "language": "javascript",
+        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
+      },
+      {
+        "label": "Nginx",
+        "language": "nginx",
+        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+      }
+    ],
     "references": [
       "https://datatracker.ietf.org/doc/html/rfc6265#section-4.1.1"
-    ]
-  },
-  {
-    "id": "cookie-domain-parent-on-subdomain",
-    "type": "header",
-    "title": "Cookie Domain=parent set on subdomain response",
-    "category": "cookies",
-    "severity": "high",
-    "description": "A cookie set by a subdomain (e.g. app.example.com) with Domain=example.com is broadcast to every other subdomain (admin.example.com, staging.example.com, dev.example.com). If any subdomain is compromised or co-tenanted, the attacker can read or forge the session.",
-    "evidence": "Async / body / header check for cookie-domain-parent-on-subdomain.",
-    "riskImpact": "Drop Domain= on subdomain responses so the cookie becomes host-only; use __Host- prefix when possible.",
-    "explanation": "A cookie set by a subdomain (e.g. app.example.com) with Domain=example.com is broadcast to every other subdomain (admin.example.com, staging.example.com, dev.example.com). If any subdomain is compromised or co-tenanted, the attacker can read or forge the session.",
-    "fixSteps": [
-      "Remove the Domain= attribute so the cookie is host-only.",
-      "Rename sensitive cookies with the __Host- prefix to enforce host-only.",
-      "Audit co-tenanted subdomains and reduce blast radius."
     ],
-    "codeExamples": [],
-    "references": [
-      "https://datatracker.ietf.org/doc/html/draft-ietf-httpbis-rfc6265bis"
-    ]
+    "_idx": 15
   },
   {
     "id": "cookie-no-samesite-third-party",
@@ -279,7 +440,7 @@
     "category": "cookies",
     "severity": "medium",
     "description": "Cookies set in a third-party context (iframe embed, cross-site redirect) without SameSite=None will be blocked by modern browsers and will produce inconsistent behavior across browsers.",
-    "evidence": "Async / body / header check for cookie-no-samesite-third-party.",
+    "evidence": "Cookie issue for `cookies-no-samesite-third-party`. Set-Cookie observed: {{set_cookies}}.",
     "riskImpact": "Set SameSite=None; Secure on cookies that are intentionally third-party; otherwise set SameSite=Lax or Strict.",
     "explanation": "Cookies set in a third-party context (iframe embed, cross-site redirect) without SameSite=None will be blocked by modern browsers and will produce inconsistent behavior across browsers.",
     "fixSteps": [
@@ -287,10 +448,22 @@
       "If the cookie is not needed cross-site, add SameSite=Lax or Strict.",
       "Audit embedded iframes and cross-site redirect chains for unnecessary third-party cookies."
     ],
-    "codeExamples": [],
+    "codeExamples": [
+      {
+        "label": "Next.js (next.config.mjs)",
+        "language": "javascript",
+        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
+      },
+      {
+        "label": "Nginx",
+        "language": "nginx",
+        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+      }
+    ],
     "references": [
       "https://datatracker.ietf.org/doc/html/draft-ietf-httpbis-rfc6265bis#section-5.3.7"
-    ]
+    ],
+    "_idx": 17
   },
   {
     "id": "cookie-partitioned-without-secure",
@@ -299,17 +472,29 @@
     "category": "cookies",
     "severity": "high",
     "description": "Cookies carrying the Partitioned attribute (CHIPS) MUST also carry the Secure attribute, otherwise browsers will reject the cookie.",
-    "evidence": "Async / body / header check for cookie-partitioned-without-secure.",
+    "evidence": "Cookie issue for `cookies-partitioned-without-secure`. Set-Cookie observed: {{set_cookies}}.",
     "riskImpact": "Add Secure alongside Partitioned on every Set-Cookie that uses the CHIPS attribute.",
     "explanation": "Cookies carrying the Partitioned attribute (CHIPS) MUST also carry the Secure attribute, otherwise browsers will reject the cookie.",
     "fixSteps": [
       "Add Secure alongside Partitioned on every cookie that uses CHIPS.",
       "Validate the host is HTTPS-served before adding Partitioned."
     ],
-    "codeExamples": [],
+    "codeExamples": [
+      {
+        "label": "Next.js (next.config.mjs)",
+        "language": "javascript",
+        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
+      },
+      {
+        "label": "Nginx",
+        "language": "nginx",
+        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+      }
+    ],
     "references": [
       "https://datatracker.ietf.org/doc/html/draft-ietf-httpbis-rfc6265bis"
-    ]
+    ],
+    "_idx": 18
   },
   {
     "id": "cookie-missing-domain-host-only",
@@ -318,15 +503,29 @@
     "category": "cookies",
     "severity": "info",
     "description": "When Set-Cookie omits the Domain attribute, the cookie becomes host-only and is not sent to subdomains. This is the recommended setting per RFC 6265bis and the safest default.",
-    "evidence": "Async / body / header check for cookie-missing-domain-host-only.",
+    "evidence": "Cookie issue for `cookies-missing-domain-host-only`. Set-Cookie observed: {{set_cookies}}.",
     "riskImpact": "Keep the cookie host-only; if subdomain sharing is required, explicitly add a scoped Domain= value.",
     "explanation": "When Set-Cookie omits the Domain attribute, the cookie becomes host-only and is not sent to subdomains. This is the recommended setting per RFC 6265bis and the safest default.",
     "fixSteps": [
       "Confirm host-only behavior is intended.",
       "For sensitive cookies, rename with the __Host- prefix to enforce host-only at the user-agent level."
     ],
-    "codeExamples": [],
-    "references": ["https://datatracker.ietf.org/doc/html/rfc6265bis"]
+    "codeExamples": [
+      {
+        "label": "Next.js (next.config.mjs)",
+        "language": "javascript",
+        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
+      },
+      {
+        "label": "Nginx",
+        "language": "nginx",
+        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+      }
+    ],
+    "references": [
+      "https://datatracker.ietf.org/doc/html/rfc6265bis"
+    ],
+    "_idx": 19
   },
   {
     "id": "cookie-third-party-no-samesite-none-secure",
@@ -335,17 +534,29 @@
     "category": "cookies",
     "severity": "high",
     "description": "Cross-site cookies MUST be issued with SameSite=None; Secure in order to be accepted by modern browsers. Lacking this combination, the cookie is silently dropped in cross-site contexts.",
-    "evidence": "Async / body / header check for cookie-third-party-no-samesite-none-secure.",
+    "evidence": "Cookie issue for `cookies-third-party-no-samesite-none-secure`. Set-Cookie observed: {{set_cookies}}.",
     "riskImpact": "Emit SameSite=None; Secure on every cookie that is required in a third-party (iframe / cross-site) context.",
     "explanation": "Cross-site cookies MUST be issued with SameSite=None; Secure in order to be accepted by modern browsers. Lacking this combination, the cookie is silently dropped in cross-site contexts.",
     "fixSteps": [
       "Add SameSite=None and Secure to every cross-site cookie.",
       "Verify the response is HTTPS (Secure requires HTTPS)."
     ],
-    "codeExamples": [],
+    "codeExamples": [
+      {
+        "label": "Next.js (next.config.mjs)",
+        "language": "javascript",
+        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
+      },
+      {
+        "label": "Nginx",
+        "language": "nginx",
+        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+      }
+    ],
     "references": [
       "https://datatracker.ietf.org/doc/html/draft-ietf-httpbis-rfc6265bis#section-5.3.7"
-    ]
+    ],
+    "_idx": 20
   },
   {
     "id": "cookie-host-prefix-injection-subdomain",
@@ -354,7 +565,7 @@
     "category": "cookies",
     "severity": "high",
     "description": "If an application lets user-controlled values (subdomain names, host headers, redirect targets) flow into a cookie name without validation, an attacker can craft a __Host- or __Secure- prefixed cookie name from a controlled subdomain, enabling fixation-style attacks against __Host- cookie issuance policies.",
-    "evidence": "Async / body / header check for cookie-host-prefix-injection-subdomain.",
+    "evidence": "Cookie issue for `cookies-host-prefix-injection-subdomain`. Set-Cookie observed: {{set_cookies}}.",
     "riskImpact": "Reject cookie names that start with __Host- or __Secure- when the value is user-controlled; only the trusted server should set these prefixes.",
     "explanation": "If an application lets user-controlled values (subdomain names, host headers, redirect targets) flow into a cookie name without validation, an attacker can craft a __Host- or __Secure- prefixed cookie name from a controlled subdomain, enabling fixation-style attacks against __Host- cookie issuance policies.",
     "fixSteps": [
@@ -362,9 +573,373 @@
       "Hard-code __Host-/__Secure- cookie names on the trusted server only.",
       "Audit subdomain takeover surface and co-tenanted subdomains."
     ],
-    "codeExamples": [],
+    "codeExamples": [
+      {
+        "label": "Next.js (next.config.mjs)",
+        "language": "javascript",
+        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
+      },
+      {
+        "label": "Nginx",
+        "language": "nginx",
+        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+      }
+    ],
     "references": [
       "https://datatracker.ietf.org/doc/html/draft-ietf-httpbis-rfc6265bis#section-4.1.3.2"
+    ],
+    "_idx": 21
+  },
+  {
+    "id": "cookie-httponly-missing",
+    "type": "stub",
+    "title": "Cookie Httponly Missing",
+    "category": "cookies",
+    "severity": "info",
+    "description": "Security check `cookie-httponly-missing` evaluates whether the target meets the expected configuration. Auto-generated stub.",
+    "evidence": "Cookie issue for `cookie-httponly-missing`. Set-Cookie observed: {{set_cookies}}.",
+    "riskImpact": "If exploited, this finding exposes the target to category-specific risks under cookies.",
+    "explanation": "The `cookie-httponly-missing` check verifies that the server does not expose the weakness represented by this category.",
+    "fixSteps": [
+      "Investigate the evidence string for the actual offending value.",
+      "Apply the recommended configuration in the code examples below.",
+      "Verify the fix by re-running the scan and confirming the finding is gone."
+    ],
+    "codeExamples": [
+      {
+        "label": "Next.js (next.config.mjs)",
+        "language": "javascript",
+        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};"
+      },
+      {
+        "label": "Nginx",
+        "language": "nginx",
+        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+      }
+    ],
+    "references": [
+      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Cookies",
+      "https://datatracker.ietf.org/doc/html/rfc6265"
+    ]
+  },
+  {
+    "id": "cookie-samesite-missing",
+    "type": "stub",
+    "title": "Cookie Samesite Missing",
+    "category": "cookies",
+    "severity": "info",
+    "description": "Security check `cookie-samesite-missing` evaluates whether the target meets the expected configuration. Auto-generated stub.",
+    "evidence": "Cookie issue for `cookie-samesite-missing`. Set-Cookie observed: {{set_cookies}}.",
+    "riskImpact": "If exploited, this finding exposes the target to category-specific risks under cookies.",
+    "explanation": "The `cookie-samesite-missing` check verifies that the server does not expose the weakness represented by this category.",
+    "fixSteps": [
+      "Investigate the evidence string for the actual offending value.",
+      "Apply the recommended configuration in the code examples below.",
+      "Verify the fix by re-running the scan and confirming the finding is gone."
+    ],
+    "codeExamples": [
+      {
+        "label": "Next.js (next.config.mjs)",
+        "language": "javascript",
+        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};"
+      },
+      {
+        "label": "Nginx",
+        "language": "nginx",
+        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+      }
+    ],
+    "references": [
+      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Cookies",
+      "https://datatracker.ietf.org/doc/html/rfc6265"
+    ]
+  },
+  {
+    "id": "cookie-prefix-invalid",
+    "type": "stub",
+    "title": "Cookie Prefix Invalid",
+    "category": "cookies",
+    "severity": "info",
+    "description": "Security check `cookie-prefix-invalid` evaluates whether the target meets the expected configuration. Auto-generated stub.",
+    "evidence": "Cookie issue for `cookie-prefix-invalid`. Set-Cookie observed: {{set_cookies}}.",
+    "riskImpact": "If exploited, this finding exposes the target to category-specific risks under cookies.",
+    "explanation": "The `cookie-prefix-invalid` check verifies that the server does not expose the weakness represented by this category.",
+    "fixSteps": [
+      "Investigate the evidence string for the actual offending value.",
+      "Apply the recommended configuration in the code examples below.",
+      "Verify the fix by re-running the scan and confirming the finding is gone."
+    ],
+    "codeExamples": [
+      {
+        "label": "Next.js (next.config.mjs)",
+        "language": "javascript",
+        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};"
+      },
+      {
+        "label": "Nginx",
+        "language": "nginx",
+        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+      }
+    ],
+    "references": [
+      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Cookies",
+      "https://datatracker.ietf.org/doc/html/rfc6265"
+    ]
+  },
+  {
+    "id": "cookie-no-secure-prefix",
+    "type": "stub",
+    "title": "Cookie No Secure Prefix",
+    "category": "cookies",
+    "severity": "info",
+    "description": "Security check `cookie-no-secure-prefix` evaluates whether the target meets the expected configuration. Auto-generated stub.",
+    "evidence": "Cookie issue for `cookie-no-secure-prefix`. Set-Cookie observed: {{set_cookies}}.",
+    "riskImpact": "If exploited, this finding exposes the target to category-specific risks under cookies.",
+    "explanation": "The `cookie-no-secure-prefix` check verifies that the server does not expose the weakness represented by this category.",
+    "fixSteps": [
+      "Investigate the evidence string for the actual offending value.",
+      "Apply the recommended configuration in the code examples below.",
+      "Verify the fix by re-running the scan and confirming the finding is gone."
+    ],
+    "codeExamples": [
+      {
+        "label": "Next.js (next.config.mjs)",
+        "language": "javascript",
+        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};"
+      },
+      {
+        "label": "Nginx",
+        "language": "nginx",
+        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+      }
+    ],
+    "references": [
+      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Cookies",
+      "https://datatracker.ietf.org/doc/html/rfc6265"
+    ]
+  },
+  {
+    "id": "set-cookie-samesite-none-no-secure",
+    "type": "stub",
+    "title": "Set Cookie Samesite None No Secure",
+    "category": "cookies",
+    "severity": "info",
+    "description": "Security check `set-cookie-samesite-none-no-secure` evaluates whether the target meets the expected configuration. Auto-generated stub.",
+    "evidence": "Cookie issue for `set-cookie-samesite-none-no-secure`. Set-Cookie observed: {{set_cookies}}.",
+    "riskImpact": "If exploited, this finding exposes the target to category-specific risks under cookies.",
+    "explanation": "The `set-cookie-samesite-none-no-secure` check verifies that the server does not expose the weakness represented by this category.",
+    "fixSteps": [
+      "Investigate the evidence string for the actual offending value.",
+      "Apply the recommended configuration in the code examples below.",
+      "Verify the fix by re-running the scan and confirming the finding is gone."
+    ],
+    "codeExamples": [
+      {
+        "label": "Next.js (next.config.mjs)",
+        "language": "javascript",
+        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};"
+      },
+      {
+        "label": "Nginx",
+        "language": "nginx",
+        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+      }
+    ],
+    "references": [
+      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Cookies",
+      "https://datatracker.ietf.org/doc/html/rfc6265"
+    ]
+  },
+  {
+    "id": "cookie-max-age-excessive",
+    "type": "stub",
+    "title": "Cookie Max Age Excessive",
+    "category": "cookies",
+    "severity": "info",
+    "description": "Security check `cookie-max-age-excessive` evaluates whether the target meets the expected configuration. Auto-generated stub.",
+    "evidence": "Cookie issue for `cookie-max-age-excessive`. Set-Cookie observed: {{set_cookies}}.",
+    "riskImpact": "If exploited, this finding exposes the target to category-specific risks under cookies.",
+    "explanation": "The `cookie-max-age-excessive` check verifies that the server does not expose the weakness represented by this category.",
+    "fixSteps": [
+      "Investigate the evidence string for the actual offending value.",
+      "Apply the recommended configuration in the code examples below.",
+      "Verify the fix by re-running the scan and confirming the finding is gone."
+    ],
+    "codeExamples": [
+      {
+        "label": "Next.js (next.config.mjs)",
+        "language": "javascript",
+        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};"
+      },
+      {
+        "label": "Nginx",
+        "language": "nginx",
+        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+      }
+    ],
+    "references": [
+      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Cookies",
+      "https://datatracker.ietf.org/doc/html/rfc6265"
+    ]
+  },
+  {
+    "id": "cookie-path-broad",
+    "type": "stub",
+    "title": "Cookie Path Broad",
+    "category": "cookies",
+    "severity": "info",
+    "description": "Security check `cookie-path-broad` evaluates whether the target meets the expected configuration. Auto-generated stub.",
+    "evidence": "Cookie issue for `cookie-path-broad`. Set-Cookie observed: {{set_cookies}}.",
+    "riskImpact": "If exploited, this finding exposes the target to category-specific risks under cookies.",
+    "explanation": "The `cookie-path-broad` check verifies that the server does not expose the weakness represented by this category.",
+    "fixSteps": [
+      "Investigate the evidence string for the actual offending value.",
+      "Apply the recommended configuration in the code examples below.",
+      "Verify the fix by re-running the scan and confirming the finding is gone."
+    ],
+    "codeExamples": [
+      {
+        "label": "Next.js (next.config.mjs)",
+        "language": "javascript",
+        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};"
+      },
+      {
+        "label": "Nginx",
+        "language": "nginx",
+        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+      }
+    ],
+    "references": [
+      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Cookies",
+      "https://datatracker.ietf.org/doc/html/rfc6265"
+    ]
+  },
+  {
+    "id": "session-cookie-flags",
+    "type": "stub",
+    "title": "Session Cookie Flags",
+    "category": "cookies",
+    "severity": "info",
+    "description": "Security check `session-cookie-flags` evaluates whether the target meets the expected configuration. Auto-generated stub.",
+    "evidence": "Cookie issue for `session-cookie-flags`. Set-Cookie observed: {{set_cookies}}.",
+    "riskImpact": "If exploited, this finding exposes the target to category-specific risks under cookies.",
+    "explanation": "The `session-cookie-flags` check verifies that the server does not expose the weakness represented by this category.",
+    "fixSteps": [
+      "Investigate the evidence string for the actual offending value.",
+      "Apply the recommended configuration in the code examples below.",
+      "Verify the fix by re-running the scan and confirming the finding is gone."
+    ],
+    "codeExamples": [
+      {
+        "label": "Next.js (next.config.mjs)",
+        "language": "javascript",
+        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};"
+      },
+      {
+        "label": "Nginx",
+        "language": "nginx",
+        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+      }
+    ],
+    "references": [
+      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Cookies",
+      "https://datatracker.ietf.org/doc/html/rfc6265"
+    ]
+  },
+  {
+    "id": "cookie-domain-set-too-loose",
+    "type": "stub",
+    "title": "Cookie Domain Set Too Loose",
+    "category": "cookies",
+    "severity": "info",
+    "description": "Security check `cookie-domain-set-too-loose` evaluates whether the target meets the expected configuration. Auto-generated stub.",
+    "evidence": "Cookie issue for `cookie-domain-set-too-loose`. Set-Cookie observed: {{set_cookies}}.",
+    "riskImpact": "If exploited, this finding exposes the target to category-specific risks under cookies.",
+    "explanation": "The `cookie-domain-set-too-loose` check verifies that the server does not expose the weakness represented by this category.",
+    "fixSteps": [
+      "Investigate the evidence string for the actual offending value.",
+      "Apply the recommended configuration in the code examples below.",
+      "Verify the fix by re-running the scan and confirming the finding is gone."
+    ],
+    "codeExamples": [
+      {
+        "label": "Next.js (next.config.mjs)",
+        "language": "javascript",
+        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};"
+      },
+      {
+        "label": "Nginx",
+        "language": "nginx",
+        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+      }
+    ],
+    "references": [
+      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Cookies",
+      "https://datatracker.ietf.org/doc/html/rfc6265"
+    ]
+  },
+  {
+    "id": "cookie-no-csrf-token",
+    "type": "stub",
+    "title": "Cookie No Csrf Token",
+    "category": "cookies",
+    "severity": "info",
+    "description": "Security check `cookie-no-csrf-token` evaluates whether the target meets the expected configuration. Auto-generated stub.",
+    "evidence": "Cookie issue for `cookie-no-csrf-token`. Set-Cookie observed: {{set_cookies}}.",
+    "riskImpact": "If exploited, this finding exposes the target to category-specific risks under cookies.",
+    "explanation": "The `cookie-no-csrf-token` check verifies that the server does not expose the weakness represented by this category.",
+    "fixSteps": [
+      "Investigate the evidence string for the actual offending value.",
+      "Apply the recommended configuration in the code examples below.",
+      "Verify the fix by re-running the scan and confirming the finding is gone."
+    ],
+    "codeExamples": [
+      {
+        "label": "Next.js (next.config.mjs)",
+        "language": "javascript",
+        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};"
+      },
+      {
+        "label": "Nginx",
+        "language": "nginx",
+        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+      }
+    ],
+    "references": [
+      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Cookies",
+      "https://datatracker.ietf.org/doc/html/rfc6265"
+    ]
+  },
+  {
+    "id": "cookie-prefix-missing",
+    "type": "stub",
+    "title": "Cookie Prefix Missing",
+    "category": "cookies",
+    "severity": "info",
+    "description": "Security check `cookie-prefix-missing` evaluates whether the target meets the expected configuration. Auto-generated stub.",
+    "evidence": "Cookie issue for `cookie-prefix-missing`. Set-Cookie observed: {{set_cookies}}.",
+    "riskImpact": "If exploited, this finding exposes the target to category-specific risks under cookies.",
+    "explanation": "The `cookie-prefix-missing` check verifies that the server does not expose the weakness represented by this category.",
+    "fixSteps": [
+      "Investigate the evidence string for the actual offending value.",
+      "Apply the recommended configuration in the code examples below.",
+      "Verify the fix by re-running the scan and confirming the finding is gone."
+    ],
+    "codeExamples": [
+      {
+        "label": "Next.js (next.config.mjs)",
+        "language": "javascript",
+        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};"
+      },
+      {
+        "label": "Nginx",
+        "language": "nginx",
+        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+      }
+    ],
+    "references": [
+      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Cookies",
+      "https://datatracker.ietf.org/doc/html/rfc6265"
     ]
   }
 ]

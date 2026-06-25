@@ -1,6 +1,6 @@
 [
   {
-    "id": "dns-resolves",
+    "id": "dns-caa-record-missing",
     "type": "header",
     "title": "DNS A/AAAA Records",
     "category": "dns",
@@ -20,21 +20,12 @@
         "language": "bash",
         "code": "dig +short example.com A\tdig +short example.com AAAA"
       }
+    ],
+    "_idx": 0,
+    "references": [
+      "https://datatracker.ietf.org/doc/html/rfc1034",
+      "https://datatracker.ietf.org/doc/html/rfc1035"
     ]
-  },
-  {
-    "id": "dns-caa-record-missing",
-    "type": "header",
-    "title": "CAA Record Missing",
-    "category": "dns",
-    "severity": "low",
-    "description": "CAA records constrain which CAs can issue certificates for your domain.",
-    "evidence": "Async / body / header check for dns-caa-record-missing.",
-    "riskImpact": "Publish a CAA record: 0 issue 'letsencrypt.org'",
-    "explanation": "CAA records constrain which CAs can issue certificates for your domain.",
-    "fixSteps": ["Publish a CAA record: 0 issue 'letsencrypt.org'"],
-    "codeExamples": [],
-    "references": ["https://tools.ietf.org/html/rfc8659"]
   },
   {
     "id": "dns-ns-record-count",
@@ -43,14 +34,29 @@
     "category": "dns",
     "severity": "high",
     "description": "RFC 1035 requires at least two authoritative nameservers for redundancy.",
-    "evidence": "Async / body / header check for dns-ns-record-count.",
+    "evidence": "DNS-level finding for `dns-ns-count-low` against {{domain}}.",
     "riskImpact": "Add a second NS provider (or two SOA records at different subnets)",
     "explanation": "RFC 1035 requires at least two authoritative nameservers for redundancy.",
     "fixSteps": [
       "Add a second NS provider (or two SOA records at different subnets)"
     ],
-    "codeExamples": [],
-    "references": []
+    "codeExamples": [
+      {
+        "label": "Next.js (next.config.mjs)",
+        "language": "javascript",
+        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
+      },
+      {
+        "label": "Nginx",
+        "language": "nginx",
+        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+      }
+    ],
+    "references": [
+      "https://datatracker.ietf.org/doc/html/rfc1034",
+      "https://datatracker.ietf.org/doc/html/rfc1035"
+    ],
+    "_idx": 2
   },
   {
     "id": "dns-mx-record-missing",
@@ -59,12 +65,29 @@
     "category": "dns",
     "severity": "medium",
     "description": "Domains that send mail should have an MX record; missing MX means backscatter or rejected mail.",
-    "evidence": "Async / body / header check for dns-mx-record-missing.",
+    "evidence": "DNS-level finding for `dns-mx-missing` against {{domain}}.",
     "riskImpact": "Add an MX record if you send mail from this domain",
     "explanation": "Domains that send mail should have an MX record; missing MX means backscatter or rejected mail.",
-    "fixSteps": ["Add an MX record if you send mail from this domain"],
-    "codeExamples": [],
-    "references": []
+    "fixSteps": [
+      "Add an MX record if you send mail from this domain"
+    ],
+    "codeExamples": [
+      {
+        "label": "Next.js (next.config.mjs)",
+        "language": "javascript",
+        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
+      },
+      {
+        "label": "Nginx",
+        "language": "nginx",
+        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+      }
+    ],
+    "references": [
+      "https://datatracker.ietf.org/doc/html/rfc1034",
+      "https://datatracker.ietf.org/doc/html/rfc1035"
+    ],
+    "_idx": 3
   },
   {
     "id": "dns-mx-backup-record",
@@ -73,26 +96,60 @@
     "category": "dns",
     "severity": "low",
     "description": "Backup MX servers (priority > 20) catch mail when the primary is down.",
-    "evidence": "Async / body / header check for dns-mx-backup-record.",
+    "evidence": "DNS-level finding for `dns-mx-no-backup` against {{domain}}.",
     "riskImpact": "Add a backup MX with priority 20 or 30",
     "explanation": "Backup MX servers (priority > 20) catch mail when the primary is down.",
-    "fixSteps": ["Add a backup MX with priority 20 or 30"],
-    "codeExamples": [],
-    "references": []
+    "fixSteps": [
+      "Add a backup MX with priority 20 or 30"
+    ],
+    "codeExamples": [
+      {
+        "label": "Next.js (next.config.mjs)",
+        "language": "javascript",
+        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
+      },
+      {
+        "label": "Nginx",
+        "language": "nginx",
+        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+      }
+    ],
+    "references": [
+      "https://datatracker.ietf.org/doc/html/rfc1034",
+      "https://datatracker.ietf.org/doc/html/rfc1035"
+    ],
+    "_idx": 4
   },
   {
-    "id": "dns-srv-records-missing",
+    "id": "dns-ds-record-missing",
     "type": "header",
     "title": "No SRV records for common services",
     "category": "dns",
     "severity": "info",
     "description": "SRV records publish service endpoints (_autodiscover._tcp, _sip._udp, etc.).",
-    "evidence": "Async / body / header check for dns-srv-records-missing.",
+    "evidence": "DNS-level finding for `dns-srv-missing` against {{domain}}.",
     "riskImpact": "If you use Exchange / SIP / XMPP, publish the SRV records",
     "explanation": "SRV records publish service endpoints (_autodiscover._tcp, _sip._udp, etc.).",
-    "fixSteps": ["If you use Exchange / SIP / XMPP, publish the SRV records"],
-    "codeExamples": [],
-    "references": []
+    "fixSteps": [
+      "If you use Exchange / SIP / XMPP, publish the SRV records"
+    ],
+    "codeExamples": [
+      {
+        "label": "Next.js (next.config.mjs)",
+        "language": "javascript",
+        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
+      },
+      {
+        "label": "Nginx",
+        "language": "nginx",
+        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+      }
+    ],
+    "references": [
+      "https://datatracker.ietf.org/doc/html/rfc1034",
+      "https://datatracker.ietf.org/doc/html/rfc1035"
+    ],
+    "_idx": 5
   },
   {
     "id": "dns-soa-refresh-high",
@@ -101,12 +158,29 @@
     "category": "dns",
     "severity": "low",
     "description": "SOA refresh > 24h slows propagation when you change NS records.",
-    "evidence": "Async / body / header check for dns-soa-refresh-high.",
+    "evidence": "DNS-level finding for `dns-soa-refresh-high` against {{domain}}.",
     "riskImpact": "Lower refresh to 3600-7200 seconds for faster rollovers",
     "explanation": "SOA refresh > 24h slows propagation when you change NS records.",
-    "fixSteps": ["Lower refresh to 3600-7200 seconds for faster rollovers"],
-    "codeExamples": [],
-    "references": []
+    "fixSteps": [
+      "Lower refresh to 3600-7200 seconds for faster rollovers"
+    ],
+    "codeExamples": [
+      {
+        "label": "Next.js (next.config.mjs)",
+        "language": "javascript",
+        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
+      },
+      {
+        "label": "Nginx",
+        "language": "nginx",
+        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+      }
+    ],
+    "references": [
+      "https://datatracker.ietf.org/doc/html/rfc1034",
+      "https://datatracker.ietf.org/doc/html/rfc1035"
+    ],
+    "_idx": 6
   },
   {
     "id": "dns-tlsa-record-missing",
@@ -115,14 +189,28 @@
     "category": "dns",
     "severity": "info",
     "description": "TLSA records pin the certificate for TLS-over-DNS. Optional but defense-in-depth.",
-    "evidence": "Async / body / header check for dns-tlsa-record-missing.",
+    "evidence": "DNS-level finding for `dns-tlsa-missing` against {{domain}}.",
     "riskImpact": "Publish a TLSA record at _443._tcp.yourdomain.com if you want DANE",
     "explanation": "TLSA records pin the certificate for TLS-over-DNS. Optional but defense-in-depth.",
     "fixSteps": [
       "Publish a TLSA record at _443._tcp.yourdomain.com if you want DANE"
     ],
-    "codeExamples": [],
-    "references": ["https://datatracker.ietf.org/doc/html/rfc6698"]
+    "codeExamples": [
+      {
+        "label": "Next.js (next.config.mjs)",
+        "language": "javascript",
+        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
+      },
+      {
+        "label": "Nginx",
+        "language": "nginx",
+        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+      }
+    ],
+    "references": [
+      "https://datatracker.ietf.org/doc/html/rfc6698"
+    ],
+    "_idx": 7
   },
   {
     "id": "dns-open-dns-resolver",
@@ -131,12 +219,29 @@
     "category": "dns",
     "severity": "low",
     "description": "Authoritative nameservers reachable on the public internet can be queried directly, leaking your zone data.",
-    "evidence": "Async / body / header check for dns-open-dns-resolver.",
+    "evidence": "DNS-level finding for `dns-open-resolver` against {{domain}}.",
     "riskImpact": "Restrict AXFR to internal IPs only",
     "explanation": "Authoritative nameservers reachable on the public internet can be queried directly, leaking your zone data.",
-    "fixSteps": ["Restrict AXFR to internal IPs only"],
-    "codeExamples": [],
-    "references": []
+    "fixSteps": [
+      "Restrict AXFR to internal IPs only"
+    ],
+    "codeExamples": [
+      {
+        "label": "Next.js (next.config.mjs)",
+        "language": "javascript",
+        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
+      },
+      {
+        "label": "Nginx",
+        "language": "nginx",
+        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+      }
+    ],
+    "references": [
+      "https://datatracker.ietf.org/doc/html/rfc1034",
+      "https://datatracker.ietf.org/doc/html/rfc1035"
+    ],
+    "_idx": 8
   },
   {
     "id": "dns-dangling-cname",
@@ -145,30 +250,60 @@
     "category": "dns",
     "severity": "high",
     "description": "A CNAME pointing to a defunct service (heroku, aws, fastly) lets an attacker register the orphan and serve content on your subdomain.",
-    "evidence": "Async / body / header check for dns-dangling-cname.",
+    "evidence": "DNS-level finding for `dns-dangling-cname-generic` against {{domain}}.",
     "riskImpact": "Audit CNAMEs against the cloud providers you use; remove dangling entries",
     "explanation": "A CNAME pointing to a defunct service (heroku, aws, fastly) lets an attacker register the orphan and serve content on your subdomain.",
     "fixSteps": [
       "Audit CNAMEs against the cloud providers you use; remove dangling entries"
     ],
-    "codeExamples": [],
-    "references": []
+    "codeExamples": [
+      {
+        "label": "Next.js (next.config.mjs)",
+        "language": "javascript",
+        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
+      },
+      {
+        "label": "Nginx",
+        "language": "nginx",
+        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+      }
+    ],
+    "references": [
+      "https://datatracker.ietf.org/doc/html/rfc1034",
+      "https://datatracker.ietf.org/doc/html/rfc1035"
+    ],
+    "_idx": 9
   },
   {
-    "id": "dns-zone-transfer-allowed",
+    "id": "dns-resolves",
     "type": "header",
     "title": "DNS Zone Transfer (AXFR) Allowed",
     "category": "dns",
     "severity": "high",
     "description": "AXFR responses leak your entire zone. Restrict to authorized secondaries only.",
-    "evidence": "Async / body / header check for dns-zone-transfer-allowed.",
+    "evidence": "DNS-level finding for `dns-axfr-allowed` against {{domain}}.",
     "riskImpact": "Set allow-transfer { <slave-ips>; }; in BIND, or equivalent in your DNS provider",
     "explanation": "AXFR responses leak your entire zone. Restrict to authorized secondaries only.",
     "fixSteps": [
       "Set allow-transfer { <slave-ips>; }; in BIND, or equivalent in your DNS provider"
     ],
-    "codeExamples": [],
-    "references": []
+    "codeExamples": [
+      {
+        "label": "Next.js (next.config.mjs)",
+        "language": "javascript",
+        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
+      },
+      {
+        "label": "Nginx",
+        "language": "nginx",
+        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+      }
+    ],
+    "references": [
+      "https://datatracker.ietf.org/doc/html/rfc1034",
+      "https://datatracker.ietf.org/doc/html/rfc1035"
+    ],
+    "_idx": 10
   },
   {
     "id": "dns-recursion-enabled",
@@ -177,14 +312,29 @@
     "category": "dns",
     "severity": "medium",
     "description": "Authoritative nameservers shouldn't also be recursive resolvers (open resolver risk).",
-    "evidence": "Async / body / header check for dns-recursion-enabled.",
+    "evidence": "DNS-level finding for `dns-recursion-on-authoritative` against {{domain}}.",
     "riskImpact": "Set allow-recursion { none; }; or split authoritative and recursive roles",
     "explanation": "Authoritative nameservers shouldn't also be recursive resolvers (open resolver risk).",
     "fixSteps": [
       "Set allow-recursion { none; }; or split authoritative and recursive roles"
     ],
-    "codeExamples": [],
-    "references": []
+    "codeExamples": [
+      {
+        "label": "Next.js (next.config.mjs)",
+        "language": "javascript",
+        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
+      },
+      {
+        "label": "Nginx",
+        "language": "nginx",
+        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+      }
+    ],
+    "references": [
+      "https://datatracker.ietf.org/doc/html/rfc1034",
+      "https://datatracker.ietf.org/doc/html/rfc1035"
+    ],
+    "_idx": 11
   },
   {
     "id": "dns-nxdomain-hijack-risk",
@@ -193,48 +343,29 @@
     "category": "dns",
     "severity": "info",
     "description": "Some ISPs replace NXDOMAIN responses with ads. DNSSEC + a validating resolver prevents this.",
-    "evidence": "Async / body / header check for dns-nxdomain-hijack-risk.",
+    "evidence": "DNS-level finding for `dns-nxdomain-isp-hijack` against {{domain}}.",
     "riskImpact": "Enable DNSSEC and use a validating resolver (1.1.1.1, 8.8.8.8)",
     "explanation": "Some ISPs replace NXDOMAIN responses with ads. DNSSEC + a validating resolver prevents this.",
     "fixSteps": [
       "Enable DNSSEC and use a validating resolver (1.1.1.1, 8.8.8.8)"
     ],
-    "codeExamples": [],
-    "references": []
-  },
-  {
-    "id": "dns-naptr-record-present",
-    "type": "header",
-    "title": "NAPTR Records Present",
-    "category": "dns",
-    "severity": "info",
-    "description": "NAPTR (Naming Authority Pointer) records enable ENUM, SIP, and service discovery. Their presence reveals telephony or federation endpoints.",
-    "evidence": "Async / body / header check for dns-naptr-record-present.",
-    "riskImpact": "Discovered NAPTR targets can be probed by attackers for unauthorized federation or toll-fraud attempts.",
-    "explanation": "NAPTR (Naming Authority Pointer) records enable ENUM, SIP, and service discovery. Their presence reveals telephony or federation endpoints.",
-    "fixSteps": [
-      "Confirm NAPTR records are intentional and only point at approved carriers.",
-      "Restrict SIP/ENUM exposure with allowlists on your SBC."
+    "codeExamples": [
+      {
+        "label": "Next.js (next.config.mjs)",
+        "language": "javascript",
+        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
+      },
+      {
+        "label": "Nginx",
+        "language": "nginx",
+        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+      }
     ],
-    "codeExamples": [],
-    "references": ["https://datatracker.ietf.org/doc/html/rfc3403"]
-  },
-  {
-    "id": "dns-loc-record-present",
-    "type": "header",
-    "title": "LOC Records Disclose Geographic Location",
-    "category": "dns",
-    "severity": "low",
-    "description": "LOC records publish the geographic coordinates of a host. Public LOC records disclose physical location to anyone querying DNS.",
-    "evidence": "Async / body / header check for dns-loc-record-present.",
-    "riskImpact": "Attackers can use disclosed coordinates to map your infrastructure geography and plan physical or social-engineering attacks.",
-    "explanation": "LOC records publish the geographic coordinates of a host. Public LOC records disclose physical location to anyone querying DNS.",
-    "fixSteps": [
-      "Remove LOC records unless required by a public service.",
-      "If kept, round coordinates to nearest 0.1 degree to reduce precision."
+    "references": [
+      "https://datatracker.ietf.org/doc/html/rfc1034",
+      "https://datatracker.ietf.org/doc/html/rfc1035"
     ],
-    "codeExamples": [],
-    "references": ["https://datatracker.ietf.org/doc/html/rfc1876"]
+    "_idx": 12
   },
   {
     "id": "dns-sshfp-record-missing",
@@ -243,7 +374,7 @@
     "category": "dns",
     "severity": "info",
     "description": "SSHFP records publish SSH host-key fingerprints in DNS, enabling DNSSEC-validated TOFU and preventing MITM on SSH.",
-    "evidence": "Async / body / header check for dns-sshfp-record-missing.",
+    "evidence": "DNS-level finding for `dns-sshfp-missing` against {{domain}}.",
     "riskImpact": "Without SSHFP + DNSSEC, SSH clients cannot cryptographically verify host identity on first connect.",
     "explanation": "SSHFP records publish SSH host-key fingerprints in DNS, enabling DNSSEC-validated TOFU and preventing MITM on SSH.",
     "fixSteps": [
@@ -251,42 +382,22 @@
       "Publish them under <hostname> as SSHFP type 2 (SHA-256).",
       "Enable DNSSEC and use VerifyHostKeyDNS yes in ssh_config."
     ],
-    "codeExamples": [],
-    "references": ["https://datatracker.ietf.org/doc/html/rfc4255"]
-  },
-  {
-    "id": "dns-ds-record-missing",
-    "type": "header",
-    "title": "DNSSEC Delegation Signer (DS) Record Missing",
-    "category": "dns",
-    "severity": "medium",
-    "description": "DS records in the parent zone prove the chain of trust for DNSSEC. Missing DS means your signed zone is not validated by resolvers.",
-    "evidence": "Async / body / header check for dns-ds-record-missing.",
-    "riskImpact": "Without DS, resolvers treat your domain as DNSSEC-insecure, defeating the spoofing protection DNSSEC provides.",
-    "explanation": "DS records in the parent zone prove the chain of trust for DNSSEC. Missing DS means your signed zone is not validated by resolvers.",
-    "fixSteps": [
-      "Publish a DS record at the parent zone pointing at your DNSKEY.",
-      "Confirm with dig +short DS <your domain>."
+    "codeExamples": [
+      {
+        "label": "Next.js (next.config.mjs)",
+        "language": "javascript",
+        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
+      },
+      {
+        "label": "Nginx",
+        "language": "nginx",
+        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+      }
     ],
-    "codeExamples": [],
-    "references": ["https://datatracker.ietf.org/doc/html/rfc4034"]
-  },
-  {
-    "id": "dns-dnskey-record-missing",
-    "type": "header",
-    "title": "DNSSEC DNSKEY Record Missing",
-    "category": "dns",
-    "severity": "medium",
-    "description": "DNSKEY publishes the public key used to verify RRSIGs. Without it, no resolver can validate signatures for the zone.",
-    "evidence": "Async / body / header check for dns-dnskey-record-missing.",
-    "riskImpact": "Missing DNSKEY means DNSSEC validation cannot proceed past your zone, breaking trust-chain for subdomains.",
-    "explanation": "DNSKEY publishes the public key used to verify RRSIGs. Without it, no resolver can validate signatures for the zone.",
-    "fixSteps": [
-      "Enable DNSSEC at your DNS provider and publish both KSK and ZSK.",
-      "Roll keys per your operator policy (typically annually for KSK)."
+    "references": [
+      "https://datatracker.ietf.org/doc/html/rfc4255"
     ],
-    "codeExamples": [],
-    "references": ["https://datatracker.ietf.org/doc/html/rfc4034"]
+    "_idx": 15
   },
   {
     "id": "dns-rrsig-record-missing",
@@ -295,15 +406,29 @@
     "category": "dns",
     "severity": "medium",
     "description": "RRSIG records carry the cryptographic signature over a RRset. Without RRSIGs, validating resolvers reject your responses as bogus.",
-    "evidence": "Async / body / header check for dns-rrsig-record-missing.",
+    "evidence": "DNS-level finding for `dns-rrsig-missing` against {{domain}}.",
     "riskImpact": "Missing RRSIG causes SERVFAIL for DNSSEC-validating resolvers, breaking reachability for security-conscious users.",
     "explanation": "RRSIG records carry the cryptographic signature over a RRset. Without RRSIGs, validating resolvers reject your responses as bogus.",
     "fixSteps": [
       "Re-sign the zone with your DNSSEC-aware authoritative server (BIND, Knot, etc.).",
       "Verify with dig +dnssec <your domain> and check the ad flag in the response."
     ],
-    "codeExamples": [],
-    "references": ["https://datatracker.ietf.org/doc/html/rfc4034"]
+    "codeExamples": [
+      {
+        "label": "Next.js (next.config.mjs)",
+        "language": "javascript",
+        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
+      },
+      {
+        "label": "Nginx",
+        "language": "nginx",
+        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+      }
+    ],
+    "references": [
+      "https://datatracker.ietf.org/doc/html/rfc4034"
+    ],
+    "_idx": 18
   },
   {
     "id": "dns-nsec-zone-walking",
@@ -312,7 +437,7 @@
     "category": "dns",
     "severity": "medium",
     "description": "NSEC records form a linked list of existing names that can be walked to enumerate every name in the zone. NSEC3 with opt-out partially mitigates but still leaks hashed names.",
-    "evidence": "Async / body / header check for dns-nsec-zone-walking.",
+    "evidence": "DNS-level finding for `dns-nsec-walkable` against {{domain}}.",
     "riskImpact": "Attackers can enumerate internal hostnames (admin, staging, dev, vpn) you did not intend to publish.",
     "explanation": "NSEC records form a linked list of existing names that can be walked to enumerate every name in the zone. NSEC3 with opt-out partially mitigates but still leaks hashed names.",
     "fixSteps": [
@@ -320,8 +445,22 @@
       "Consider NSEC5 or aggressive cache-minimum if your server supports it.",
       "Avoid NSEC for zones that must hide internal names."
     ],
-    "codeExamples": [],
-    "references": ["https://datatracker.ietf.org/doc/html/rfc5155"]
+    "codeExamples": [
+      {
+        "label": "Next.js (next.config.mjs)",
+        "language": "javascript",
+        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
+      },
+      {
+        "label": "Nginx",
+        "language": "nginx",
+        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+      }
+    ],
+    "references": [
+      "https://datatracker.ietf.org/doc/html/rfc5155"
+    ],
+    "_idx": 19
   },
   {
     "id": "dns-dangling-cname-cdn-paas",
@@ -330,7 +469,7 @@
     "category": "dns",
     "severity": "high",
     "description": "CNAMEs pointing at GitHub Pages (github.io), Heroku (herokuapp.com), AWS CloudFront, Azure CDN (azurewebsites.net/azureedge.net), Fastly, or Netlify that no longer resolve let attackers register the orphan and serve content from your subdomain.",
-    "evidence": "Async / body / header check for dns-dangling-cname-cdn-paas.",
+    "evidence": "DNS-level finding for `dns-dangling-cname-cdn-paas` against {{domain}}.",
     "riskImpact": "Subdomain takeover via these providers enables phishing, cookie theft, and bypass of CSP/origin controls.",
     "explanation": "CNAMEs pointing at GitHub Pages (github.io), Heroku (herokuapp.com), AWS CloudFront, Azure CDN (azurewebsites.net/azureedge.net), Fastly, or Netlify that no longer resolve let attackers register the orphan and serve content from your subdomain.",
     "fixSteps": [
@@ -338,8 +477,22 @@
       "Remove CNAMEs whose backing service no longer exists.",
       "Use can-i-take-over-xyz to confirm takeover viability per provider."
     ],
-    "codeExamples": [],
-    "references": ["https://github.com/EdOverflow/can-i-take-over-xyz"]
+    "codeExamples": [
+      {
+        "label": "Next.js (next.config.mjs)",
+        "language": "javascript",
+        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
+      },
+      {
+        "label": "Nginx",
+        "language": "nginx",
+        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+      }
+    ],
+    "references": [
+      "https://github.com/EdOverflow/can-i-take-over-xyz"
+    ],
+    "_idx": 20
   },
   {
     "id": "dns-dangling-cname-saas",
@@ -348,7 +501,7 @@
     "category": "dns",
     "severity": "high",
     "description": "CNAMEs pointing at Zendesk, HelpScout, Intercom, Drift, statuspage.io, pingdom, Pantheon, Acquia, or WP Engine that no longer resolve let attackers claim the namespace on your subdomain.",
-    "evidence": "Async / body / header check for dns-dangling-cname-saas.",
+    "evidence": "DNS-level finding for `dns-dangling-cname-saas` against {{domain}}.",
     "riskImpact": "SaaS subdomain takeover enables phishing and impersonation of support/help-center pages, eroding customer trust.",
     "explanation": "CNAMEs pointing at Zendesk, HelpScout, Intercom, Drift, statuspage.io, pingdom, Pantheon, Acquia, or WP Engine that no longer resolve let attackers claim the namespace on your subdomain.",
     "fixSteps": [
@@ -356,8 +509,22 @@
       "Remove dangling entries; if the integration is still required, re-register and re-point.",
       "Monitor for stale CNAMEs with automated tooling (subjack, nuclei, can-i-take-over-xyz)."
     ],
-    "codeExamples": [],
-    "references": ["https://github.com/EdOverflow/can-i-take-over-xyz"]
+    "codeExamples": [
+      {
+        "label": "Next.js (next.config.mjs)",
+        "language": "javascript",
+        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
+      },
+      {
+        "label": "Nginx",
+        "language": "nginx",
+        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+      }
+    ],
+    "references": [
+      "https://github.com/EdOverflow/can-i-take-over-xyz"
+    ],
+    "_idx": 21
   },
   {
     "id": "dns-doh-provider-detected",
@@ -366,14 +533,188 @@
     "category": "dns",
     "severity": "info",
     "description": "DNS-over-HTTPS (DoH) endpoints reachable from your origin (1.1.1.1, 8.8.8.8, 9.9.9.9, dns.quad9.net) indicate upstream resolvers used by your stack and confirm DoH connectivity.",
-    "evidence": "Async / body / header check for dns-doh-provider-detected.",
+    "evidence": "DNS-level finding for `dns-doh-provider-detected` against {{domain}}.",
     "riskImpact": "Public DoH providers in your DNS path leak query patterns to third parties; document them in your data-flow diagram.",
     "explanation": "DNS-over-HTTPS (DoH) endpoints reachable from your origin (1.1.1.1, 8.8.8.8, 9.9.9.9, dns.quad9.net) indicate upstream resolvers used by your stack and confirm DoH connectivity.",
     "fixSteps": [
       "Document which DoH provider your resolvers use in the security policy.",
       "For sensitive workloads, run a validating recursive resolver (Unbound, Knot Resolver) and only allow egress to your chosen upstream."
     ],
-    "codeExamples": [],
-    "references": ["https://datatracker.ietf.org/doc/html/rfc8484"]
+    "codeExamples": [
+      {
+        "label": "Next.js (next.config.mjs)",
+        "language": "javascript",
+        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
+      },
+      {
+        "label": "Nginx",
+        "language": "nginx",
+        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+      }
+    ],
+    "references": [
+      "https://datatracker.ietf.org/doc/html/rfc8484"
+    ],
+    "_idx": 22
+  },
+  {
+    "id": "dns-srv-records-missing",
+    "type": "stub",
+    "title": "Dns Srv Records Missing",
+    "category": "dns",
+    "severity": "info",
+    "description": "Security check `dns-srv-records-missing` evaluates whether the target meets the expected configuration. Auto-generated stub.",
+    "evidence": "DNS-level finding for `dns-srv-records-missing` against {{domain}}.",
+    "riskImpact": "If exploited, this finding exposes the target to category-specific risks under dns.",
+    "explanation": "The `dns-srv-records-missing` check verifies that the server does not expose the weakness represented by this category.",
+    "fixSteps": [
+      "Investigate the evidence string for the actual offending value.",
+      "Apply the recommended configuration in the code examples below.",
+      "Verify the fix by re-running the scan and confirming the finding is gone."
+    ],
+    "codeExamples": [
+      {
+        "label": "Next.js (next.config.mjs)",
+        "language": "javascript",
+        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};"
+      },
+      {
+        "label": "Nginx",
+        "language": "nginx",
+        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+      }
+    ],
+    "references": [
+      "https://datatracker.ietf.org/doc/html/rfc1034",
+      "https://datatracker.ietf.org/doc/html/rfc1035"
+    ]
+  },
+  {
+    "id": "dns-zone-transfer-allowed",
+    "type": "stub",
+    "title": "Dns Zone Transfer Allowed",
+    "category": "dns",
+    "severity": "info",
+    "description": "Security check `dns-zone-transfer-allowed` evaluates whether the target meets the expected configuration. Auto-generated stub.",
+    "evidence": "DNS-level finding for `dns-zone-transfer-allowed` against {{domain}}.",
+    "riskImpact": "If exploited, this finding exposes the target to category-specific risks under dns.",
+    "explanation": "The `dns-zone-transfer-allowed` check verifies that the server does not expose the weakness represented by this category.",
+    "fixSteps": [
+      "Investigate the evidence string for the actual offending value.",
+      "Apply the recommended configuration in the code examples below.",
+      "Verify the fix by re-running the scan and confirming the finding is gone."
+    ],
+    "codeExamples": [
+      {
+        "label": "Next.js (next.config.mjs)",
+        "language": "javascript",
+        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};"
+      },
+      {
+        "label": "Nginx",
+        "language": "nginx",
+        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+      }
+    ],
+    "references": [
+      "https://datatracker.ietf.org/doc/html/rfc1034",
+      "https://datatracker.ietf.org/doc/html/rfc1035"
+    ]
+  },
+  {
+    "id": "dns-naptr-record-present",
+    "type": "stub",
+    "title": "Dns Naptr Record Present",
+    "category": "dns",
+    "severity": "info",
+    "description": "Security check `dns-naptr-record-present` evaluates whether the target meets the expected configuration. Auto-generated stub.",
+    "evidence": "DNS-level finding for `dns-naptr-record-present` against {{domain}}.",
+    "riskImpact": "If exploited, this finding exposes the target to category-specific risks under dns.",
+    "explanation": "The `dns-naptr-record-present` check verifies that the server does not expose the weakness represented by this category.",
+    "fixSteps": [
+      "Investigate the evidence string for the actual offending value.",
+      "Apply the recommended configuration in the code examples below.",
+      "Verify the fix by re-running the scan and confirming the finding is gone."
+    ],
+    "codeExamples": [
+      {
+        "label": "Next.js (next.config.mjs)",
+        "language": "javascript",
+        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};"
+      },
+      {
+        "label": "Nginx",
+        "language": "nginx",
+        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+      }
+    ],
+    "references": [
+      "https://datatracker.ietf.org/doc/html/rfc1034",
+      "https://datatracker.ietf.org/doc/html/rfc1035"
+    ]
+  },
+  {
+    "id": "dns-loc-record-present",
+    "type": "stub",
+    "title": "Dns Loc Record Present",
+    "category": "dns",
+    "severity": "info",
+    "description": "Security check `dns-loc-record-present` evaluates whether the target meets the expected configuration. Auto-generated stub.",
+    "evidence": "DNS-level finding for `dns-loc-record-present` against {{domain}}.",
+    "riskImpact": "If exploited, this finding exposes the target to category-specific risks under dns.",
+    "explanation": "The `dns-loc-record-present` check verifies that the server does not expose the weakness represented by this category.",
+    "fixSteps": [
+      "Investigate the evidence string for the actual offending value.",
+      "Apply the recommended configuration in the code examples below.",
+      "Verify the fix by re-running the scan and confirming the finding is gone."
+    ],
+    "codeExamples": [
+      {
+        "label": "Next.js (next.config.mjs)",
+        "language": "javascript",
+        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};"
+      },
+      {
+        "label": "Nginx",
+        "language": "nginx",
+        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+      }
+    ],
+    "references": [
+      "https://datatracker.ietf.org/doc/html/rfc1034",
+      "https://datatracker.ietf.org/doc/html/rfc1035"
+    ]
+  },
+  {
+    "id": "dns-dnskey-record-missing",
+    "type": "stub",
+    "title": "Dns Dnskey Record Missing",
+    "category": "dns",
+    "severity": "info",
+    "description": "Security check `dns-dnskey-record-missing` evaluates whether the target meets the expected configuration. Auto-generated stub.",
+    "evidence": "DNS-level finding for `dns-dnskey-record-missing` against {{domain}}.",
+    "riskImpact": "If exploited, this finding exposes the target to category-specific risks under dns.",
+    "explanation": "The `dns-dnskey-record-missing` check verifies that the server does not expose the weakness represented by this category.",
+    "fixSteps": [
+      "Investigate the evidence string for the actual offending value.",
+      "Apply the recommended configuration in the code examples below.",
+      "Verify the fix by re-running the scan and confirming the finding is gone."
+    ],
+    "codeExamples": [
+      {
+        "label": "Next.js (next.config.mjs)",
+        "language": "javascript",
+        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};"
+      },
+      {
+        "label": "Nginx",
+        "language": "nginx",
+        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+      }
+    ],
+    "references": [
+      "https://datatracker.ietf.org/doc/html/rfc1034",
+      "https://datatracker.ietf.org/doc/html/rfc1035"
+    ]
   }
 ]

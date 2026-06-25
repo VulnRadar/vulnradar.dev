@@ -6,12 +6,29 @@
     "category": "api",
     "severity": "medium",
     "description": "HTTP TRACE reflects the request body and is exploitable for Cross-Site Tracing (XST).",
-    "evidence": "Async / body / header check for api-rest-allow-methods-trace.",
+    "evidence": "API-endpoint finding for `api-rest-allow-methods-trace` against {{url}}.",
     "riskImpact": "Disable TRACE on the server / reverse proxy",
     "explanation": "HTTP TRACE reflects the request body and is exploitable for Cross-Site Tracing (XST).",
-    "fixSteps": ["Disable TRACE on the server / reverse proxy"],
-    "codeExamples": [],
-    "references": []
+    "fixSteps": [
+      "Disable TRACE on the server / reverse proxy"
+    ],
+    "codeExamples": [
+      {
+        "label": "Next.js (next.config.mjs)",
+        "language": "javascript",
+        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
+      },
+      {
+        "label": "Nginx",
+        "language": "nginx",
+        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+      }
+    ],
+    "references": [
+      "https://owasp.org/API-Security/editions/2023/en/0x11-t10/",
+      "https://owasp.org/API-Security/editions/2023/en/0x10-toc/"
+    ],
+    "_idx": 0
   },
   {
     "id": "api-rest-allow-methods-delete",
@@ -20,14 +37,29 @@
     "category": "api",
     "severity": "info",
     "description": "REST endpoint exposes DELETE without authentication.",
-    "evidence": "Async / body / header check for api-rest-allow-methods-delete.",
+    "evidence": "API-endpoint finding for `api-rest-allow-methods-delete` against {{url}}.",
     "riskImpact": "Require authentication on state-changing verbs (DELETE/PATCH/PUT/POST)",
     "explanation": "REST endpoint exposes DELETE without authentication.",
     "fixSteps": [
       "Require authentication on state-changing verbs (DELETE/PATCH/PUT/POST)"
     ],
-    "codeExamples": [],
-    "references": []
+    "codeExamples": [
+      {
+        "label": "Next.js (next.config.mjs)",
+        "language": "javascript",
+        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
+      },
+      {
+        "label": "Nginx",
+        "language": "nginx",
+        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+      }
+    ],
+    "references": [
+      "https://owasp.org/API-Security/editions/2023/en/0x11-t10/",
+      "https://owasp.org/API-Security/editions/2023/en/0x10-toc/"
+    ],
+    "_idx": 1
   },
   {
     "id": "api-graphql-suggestions-enabled",
@@ -36,12 +68,29 @@
     "category": "api",
     "severity": "low",
     "description": "Field suggestions on error responses let attackers enumerate the schema.",
-    "evidence": "Async / body / header check for api-graphql-suggestions-enabled.",
+    "evidence": "API-endpoint finding for `api-graphql-suggestions-enabled` against {{url}}.",
     "riskImpact": "Disable GraphQL field suggestions in production",
     "explanation": "Field suggestions on error responses let attackers enumerate the schema.",
-    "fixSteps": ["Disable GraphQL field suggestions in production"],
-    "codeExamples": [],
-    "references": []
+    "fixSteps": [
+      "Disable GraphQL field suggestions in production"
+    ],
+    "codeExamples": [
+      {
+        "label": "Next.js (next.config.mjs)",
+        "language": "javascript",
+        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
+      },
+      {
+        "label": "Nginx",
+        "language": "nginx",
+        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+      }
+    ],
+    "references": [
+      "https://owasp.org/API-Security/editions/2023/en/0x11-t10/",
+      "https://owasp.org/API-Security/editions/2023/en/0x10-toc/"
+    ],
+    "_idx": 2
   },
   {
     "id": "api-graphql-no-depth-limit",
@@ -50,14 +99,29 @@
     "category": "api",
     "severity": "medium",
     "description": "Without depth-limit, malicious queries can blow up the server with deeply nested queries.",
-    "evidence": "Async / body / header check for api-graphql-no-depth-limit.",
+    "evidence": "API-endpoint finding for `api-graphql-no-depth-limit` against {{url}}.",
     "riskImpact": "Add depth-limit / cost-analysis middleware (graphql-depth-limit, graphql-query-complexity)",
     "explanation": "Without depth-limit, malicious queries can blow up the server with deeply nested queries.",
     "fixSteps": [
       "Add depth-limit / cost-analysis middleware (graphql-depth-limit, graphql-query-complexity)"
     ],
-    "codeExamples": [],
-    "references": []
+    "codeExamples": [
+      {
+        "label": "Next.js (next.config.mjs)",
+        "language": "javascript",
+        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
+      },
+      {
+        "label": "Nginx",
+        "language": "nginx",
+        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+      }
+    ],
+    "references": [
+      "https://owasp.org/API-Security/editions/2023/en/0x11-t10/",
+      "https://owasp.org/API-Security/editions/2023/en/0x10-toc/"
+    ],
+    "_idx": 3
   },
   {
     "id": "api-graphql-no-rate-limit",
@@ -66,12 +130,29 @@
     "category": "api",
     "severity": "medium",
     "description": "GraphQL POST endpoints need rate-limiting because one query can touch many resolvers.",
-    "evidence": "Async / body / header check for api-graphql-no-rate-limit.",
+    "evidence": "API-endpoint finding for `api-graphql-no-rate-limit` against {{url}}.",
     "riskImpact": "Rate-limit by query cost / depth, not just request count",
     "explanation": "GraphQL POST endpoints need rate-limiting because one query can touch many resolvers.",
-    "fixSteps": ["Rate-limit by query cost / depth, not just request count"],
-    "codeExamples": [],
-    "references": []
+    "fixSteps": [
+      "Rate-limit by query cost / depth, not just request count"
+    ],
+    "codeExamples": [
+      {
+        "label": "Next.js (next.config.mjs)",
+        "language": "javascript",
+        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
+      },
+      {
+        "label": "Nginx",
+        "language": "nginx",
+        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+      }
+    ],
+    "references": [
+      "https://owasp.org/API-Security/editions/2023/en/0x11-t10/",
+      "https://owasp.org/API-Security/editions/2023/en/0x10-toc/"
+    ],
+    "_idx": 4
   },
   {
     "id": "api-graphql-persisted-queries",
@@ -80,12 +161,29 @@
     "category": "api",
     "severity": "info",
     "description": "Persisted queries (APQ) lock the schema surface to known queries.",
-    "evidence": "Async / body / header check for api-graphql-persisted-queries.",
+    "evidence": "API-endpoint finding for `api-graphql-persisted-queries` against {{url}}.",
     "riskImpact": "Enable Apollo Persisted Queries / Relay Compiler",
     "explanation": "Persisted queries (APQ) lock the schema surface to known queries.",
-    "fixSteps": ["Enable Apollo Persisted Queries / Relay Compiler"],
-    "codeExamples": [],
-    "references": []
+    "fixSteps": [
+      "Enable Apollo Persisted Queries / Relay Compiler"
+    ],
+    "codeExamples": [
+      {
+        "label": "Next.js (next.config.mjs)",
+        "language": "javascript",
+        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
+      },
+      {
+        "label": "Nginx",
+        "language": "nginx",
+        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+      }
+    ],
+    "references": [
+      "https://owasp.org/API-Security/editions/2023/en/0x11-t10/",
+      "https://owasp.org/API-Security/editions/2023/en/0x10-toc/"
+    ],
+    "_idx": 5
   },
   {
     "id": "api-openapi-server-url-leak",
@@ -94,12 +192,29 @@
     "category": "api",
     "severity": "low",
     "description": "swagger.json often contains the internal / staging host in the 'servers' array.",
-    "evidence": "Async / body / header check for api-openapi-server-url-leak.",
+    "evidence": "API-endpoint finding for `api-openapi-server-url-leak` against {{url}}.",
     "riskImpact": "Strip internal hosts from public OpenAPI documents",
     "explanation": "swagger.json often contains the internal / staging host in the 'servers' array.",
-    "fixSteps": ["Strip internal hosts from public OpenAPI documents"],
-    "codeExamples": [],
-    "references": []
+    "fixSteps": [
+      "Strip internal hosts from public OpenAPI documents"
+    ],
+    "codeExamples": [
+      {
+        "label": "Next.js (next.config.mjs)",
+        "language": "javascript",
+        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
+      },
+      {
+        "label": "Nginx",
+        "language": "nginx",
+        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+      }
+    ],
+    "references": [
+      "https://owasp.org/API-Security/editions/2023/en/0x11-t10/",
+      "https://owasp.org/API-Security/editions/2023/en/0x10-toc/"
+    ],
+    "_idx": 6
   },
   {
     "id": "api-cors-preflight-cache-missing",
@@ -108,14 +223,29 @@
     "category": "api",
     "severity": "low",
     "description": "Missing Access-Control-Max-Age forces browsers to send preflight OPTIONS on every cross-origin request.",
-    "evidence": "Async / body / header check for api-cors-preflight-cache-missing.",
+    "evidence": "API-endpoint finding for `api-cors-preflight-cache-missing` against {{url}}.",
     "riskImpact": "Add Access-Control-Max-Age: 600 (10 minutes) for stable CORS configs",
     "explanation": "Missing Access-Control-Max-Age forces browsers to send preflight OPTIONS on every cross-origin request.",
     "fixSteps": [
       "Add Access-Control-Max-Age: 600 (10 minutes) for stable CORS configs"
     ],
-    "codeExamples": [],
-    "references": []
+    "codeExamples": [
+      {
+        "label": "Next.js (next.config.mjs)",
+        "language": "javascript",
+        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
+      },
+      {
+        "label": "Nginx",
+        "language": "nginx",
+        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+      }
+    ],
+    "references": [
+      "https://owasp.org/API-Security/editions/2023/en/0x11-t10/",
+      "https://owasp.org/API-Security/editions/2023/en/0x10-toc/"
+    ],
+    "_idx": 7
   },
   {
     "id": "api-bearer-header-leak",
@@ -124,12 +254,28 @@
     "category": "api",
     "severity": "high",
     "description": "Authorization: Bearer is fine, but Bearer tokens in URL or cookies can leak via logs.",
-    "evidence": "Async / body / header check for api-bearer-header-leak.",
+    "evidence": "API-endpoint finding for `api-bearer-header-leak` against {{url}}.",
     "riskImpact": "Send Bearer tokens only in the Authorization header",
     "explanation": "Authorization: Bearer is fine, but Bearer tokens in URL or cookies can leak via logs.",
-    "fixSteps": ["Send Bearer tokens only in the Authorization header"],
-    "codeExamples": [],
-    "references": ["https://datatracker.ietf.org/doc/html/rfc6750"]
+    "fixSteps": [
+      "Send Bearer tokens only in the Authorization header"
+    ],
+    "codeExamples": [
+      {
+        "label": "Next.js (next.config.mjs)",
+        "language": "javascript",
+        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
+      },
+      {
+        "label": "Nginx",
+        "language": "nginx",
+        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+      }
+    ],
+    "references": [
+      "https://datatracker.ietf.org/doc/html/rfc6750"
+    ],
+    "_idx": 8
   },
   {
     "id": "api-no-cors-preflight-required",
@@ -138,14 +284,29 @@
     "category": "api",
     "severity": "low",
     "description": "Non-simple headers (Authorization, X-Custom) trigger a preflight OPTIONS.",
-    "evidence": "Async / body / header check for api-no-cors-preflight-required.",
+    "evidence": "API-endpoint finding for `api-no-cors-preflight-required` against {{url}}.",
     "riskImpact": "Document this in your API guide; consider a session-token pattern that uses cookies",
     "explanation": "Non-simple headers (Authorization, X-Custom) trigger a preflight OPTIONS.",
     "fixSteps": [
       "Document this in your API guide; consider a session-token pattern that uses cookies"
     ],
-    "codeExamples": [],
-    "references": []
+    "codeExamples": [
+      {
+        "label": "Next.js (next.config.mjs)",
+        "language": "javascript",
+        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
+      },
+      {
+        "label": "Nginx",
+        "language": "nginx",
+        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+      }
+    ],
+    "references": [
+      "https://owasp.org/API-Security/editions/2023/en/0x11-t10/",
+      "https://owasp.org/API-Security/editions/2023/en/0x10-toc/"
+    ],
+    "_idx": 9
   },
   {
     "id": "api-rate-limit-not-429",
@@ -154,12 +315,29 @@
     "category": "api",
     "severity": "low",
     "description": "Rate-limited responses should return HTTP 429 with Retry-After.",
-    "evidence": "Async / body / header check for api-rate-limit-not-429.",
+    "evidence": "API-endpoint finding for `api-rate-limit-not-429` against {{url}}.",
     "riskImpact": "Return 429 + Retry-After when limits are exceeded",
     "explanation": "Rate-limited responses should return HTTP 429 with Retry-After.",
-    "fixSteps": ["Return 429 + Retry-After when limits are exceeded"],
-    "codeExamples": [],
-    "references": []
+    "fixSteps": [
+      "Return 429 + Retry-After when limits are exceeded"
+    ],
+    "codeExamples": [
+      {
+        "label": "Next.js (next.config.mjs)",
+        "language": "javascript",
+        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
+      },
+      {
+        "label": "Nginx",
+        "language": "nginx",
+        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+      }
+    ],
+    "references": [
+      "https://owasp.org/API-Security/editions/2023/en/0x11-t10/",
+      "https://owasp.org/API-Security/editions/2023/en/0x10-toc/"
+    ],
+    "_idx": 10
   },
   {
     "id": "api-jsonp-callback",
@@ -168,14 +346,28 @@
     "category": "api",
     "severity": "medium",
     "description": "JSONP allows arbitrary JS to be loaded in the victim's origin. Prefer CORS.",
-    "evidence": "Async / body / header check for api-jsonp-callback.",
+    "evidence": "API-endpoint finding for `api-jsonp-callback` against {{url}}.",
     "riskImpact": "Disable JSONP; serve CORS-allowed JSON instead",
     "explanation": "JSONP allows arbitrary JS to be loaded in the victim's origin. Prefer CORS.",
-    "fixSteps": ["Disable JSONP; serve CORS-allowed JSON instead"],
-    "codeExamples": [],
+    "fixSteps": [
+      "Disable JSONP; serve CORS-allowed JSON instead"
+    ],
+    "codeExamples": [
+      {
+        "label": "Next.js (next.config.mjs)",
+        "language": "javascript",
+        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
+      },
+      {
+        "label": "Nginx",
+        "language": "nginx",
+        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+      }
+    ],
     "references": [
       "https://blog.mozilla.org/security/2014/08/26/jsonp-content-type-confusion-xss/"
-    ]
+    ],
+    "_idx": 11
   },
   {
     "id": "api-cors-origin-allow-all",
@@ -184,14 +376,29 @@
     "category": "api",
     "severity": "high",
     "description": "Access-Control-Allow-Origin: * with credentials is unsafe; without credentials it may still be too permissive for an internal API.",
-    "evidence": "Async / body / header check for api-cors-origin-allow-all.",
+    "evidence": "API-endpoint finding for `api-cors-origin-allow-all` against {{url}}.",
     "riskImpact": "Replace wildcard with the smallest allowlist of origins that need access",
     "explanation": "Access-Control-Allow-Origin: * with credentials is unsafe; without credentials it may still be too permissive for an internal API.",
     "fixSteps": [
       "Replace wildcard with the smallest allowlist of origins that need access"
     ],
-    "codeExamples": [],
-    "references": []
+    "codeExamples": [
+      {
+        "label": "Next.js (next.config.mjs)",
+        "language": "javascript",
+        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
+      },
+      {
+        "label": "Nginx",
+        "language": "nginx",
+        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+      }
+    ],
+    "references": [
+      "https://owasp.org/API-Security/editions/2023/en/0x11-t10/",
+      "https://owasp.org/API-Security/editions/2023/en/0x10-toc/"
+    ],
+    "_idx": 12
   },
   {
     "id": "api-rest-allow-methods-put-no-auth",
@@ -200,16 +407,28 @@
     "category": "api",
     "severity": "high",
     "description": "PUT changes server state. Without authentication, anyone reachable to the endpoint can overwrite resources (config, user profiles, files).",
-    "evidence": "Async / body / header check for api-rest-allow-methods-put-no-auth.",
+    "evidence": "API-endpoint finding for `api-rest-allow-methods-put-no-auth` against {{url}}.",
     "riskImpact": "Require authentication on PUT and reject anonymous writes at the proxy or framework layer.",
     "explanation": "PUT changes server state. Without authentication, anyone reachable to the endpoint can overwrite resources (config, user profiles, files).",
     "fixSteps": [
       "Require authentication on PUT and reject anonymous writes at the proxy or framework layer."
     ],
-    "codeExamples": [],
+    "codeExamples": [
+      {
+        "label": "Next.js (next.config.mjs)",
+        "language": "javascript",
+        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
+      },
+      {
+        "label": "Nginx",
+        "language": "nginx",
+        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+      }
+    ],
     "references": [
       "https://owasp.org/API-Security/editions/2023/en/0xa3-broken-object-property-level-authorization/"
-    ]
+    ],
+    "_idx": 13
   },
   {
     "id": "api-rest-allow-methods-patch-no-auth",
@@ -218,14 +437,29 @@
     "category": "api",
     "severity": "high",
     "description": "PATCH partially mutates a resource. Unauthenticated PATCH endpoints allow attackers to flip boolean fields, escalate privileges, or change ownership markers.",
-    "evidence": "Async / body / header check for api-rest-allow-methods-patch-no-auth.",
+    "evidence": "API-endpoint finding for `api-rest-allow-methods-patch-no-auth` against {{url}}.",
     "riskImpact": "Require authentication on PATCH and validate the JSON merge patch against an explicit allowlist of fields.",
     "explanation": "PATCH partially mutates a resource. Unauthenticated PATCH endpoints allow attackers to flip boolean fields, escalate privileges, or change ownership markers.",
     "fixSteps": [
       "Require authentication on PATCH and validate the JSON merge patch against an explicit allowlist of fields."
     ],
-    "codeExamples": [],
-    "references": []
+    "codeExamples": [
+      {
+        "label": "Next.js (next.config.mjs)",
+        "language": "javascript",
+        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
+      },
+      {
+        "label": "Nginx",
+        "language": "nginx",
+        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+      }
+    ],
+    "references": [
+      "https://owasp.org/API-Security/editions/2023/en/0x11-t10/",
+      "https://owasp.org/API-Security/editions/2023/en/0x10-toc/"
+    ],
+    "_idx": 14
   },
   {
     "id": "api-rest-allow-methods-options-exposed",
@@ -234,14 +468,29 @@
     "category": "api",
     "severity": "low",
     "description": "A verbose OPTIONS response (Allow: GET, POST, PUT, PATCH, DELETE) leaks the entire verb surface to attackers, simplifying endpoint enumeration.",
-    "evidence": "Async / body / header check for api-rest-allow-methods-options-exposed.",
+    "evidence": "API-endpoint finding for `api-rest-allow-methods-options-exposed` against {{url}}.",
     "riskImpact": "Restrict Allow to only the verbs you actually serve and disable unused HTTP methods on the listener.",
     "explanation": "A verbose OPTIONS response (Allow: GET, POST, PUT, PATCH, DELETE) leaks the entire verb surface to attackers, simplifying endpoint enumeration.",
     "fixSteps": [
       "Restrict Allow to only the verbs you actually serve and disable unused HTTP methods on the listener."
     ],
-    "codeExamples": [],
-    "references": []
+    "codeExamples": [
+      {
+        "label": "Next.js (next.config.mjs)",
+        "language": "javascript",
+        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
+      },
+      {
+        "label": "Nginx",
+        "language": "nginx",
+        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+      }
+    ],
+    "references": [
+      "https://owasp.org/API-Security/editions/2023/en/0x11-t10/",
+      "https://owasp.org/API-Security/editions/2023/en/0x10-toc/"
+    ],
+    "_idx": 15
   },
   {
     "id": "api-graphql-introspection-enabled",
@@ -250,14 +499,28 @@
     "category": "api",
     "severity": "high",
     "description": "__schema / __type queries dump the entire schema, including internal fields, admin-only mutations, and deprecation hints that aid targeted attacks.",
-    "evidence": "Async / body / header check for api-graphql-introspection-enabled.",
+    "evidence": "API-endpoint finding for `api-graphql-introspection-enabled` against {{url}}.",
     "riskImpact": "Disable introspection in production (Apollo: introspection: false, GraphQL.NET: ExposeMetadata=false).",
     "explanation": "__schema / __type queries dump the entire schema, including internal fields, admin-only mutations, and deprecation hints that aid targeted attacks.",
     "fixSteps": [
       "Disable introspection in production (Apollo: introspection: false, GraphQL.NET: ExposeMetadata=false)."
     ],
-    "codeExamples": [],
-    "references": ["https://graphql.org/learn/introspection/"]
+    "codeExamples": [
+      {
+        "label": "Next.js (next.config.mjs)",
+        "language": "javascript",
+        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
+      },
+      {
+        "label": "Nginx",
+        "language": "nginx",
+        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+      }
+    ],
+    "references": [
+      "https://graphql.org/learn/introspection/"
+    ],
+    "_idx": 16
   },
   {
     "id": "api-graphql-batch-queries",
@@ -266,14 +529,29 @@
     "category": "api",
     "severity": "medium",
     "description": "Accepting an array of queries lets a single HTTP request fan out to N independent operations, multiplying rate-limit cost and bypassing per-request throttles.",
-    "evidence": "Async / body / header check for api-graphql-batch-queries.",
+    "evidence": "API-endpoint finding for `api-graphql-batch-queries` against {{url}}.",
     "riskImpact": "Disable batch queries or charge each item in the array against the rate-limit budget.",
     "explanation": "Accepting an array of queries lets a single HTTP request fan out to N independent operations, multiplying rate-limit cost and bypassing per-request throttles.",
     "fixSteps": [
       "Disable batch queries or charge each item in the array against the rate-limit budget."
     ],
-    "codeExamples": [],
-    "references": []
+    "codeExamples": [
+      {
+        "label": "Next.js (next.config.mjs)",
+        "language": "javascript",
+        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
+      },
+      {
+        "label": "Nginx",
+        "language": "nginx",
+        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+      }
+    ],
+    "references": [
+      "https://owasp.org/API-Security/editions/2023/en/0x11-t10/",
+      "https://owasp.org/API-Security/editions/2023/en/0x10-toc/"
+    ],
+    "_idx": 17
   },
   {
     "id": "api-graphql-no-alias-depth-limit",
@@ -282,14 +560,28 @@
     "category": "api",
     "severity": "medium",
     "description": "A naive depth-limit can be evaded with aliases that rename the same field many times. Each alias resolves independently, multiplying cost.",
-    "evidence": "Async / body / header check for api-graphql-no-alias-depth-limit.",
+    "evidence": "API-endpoint finding for `api-graphql-no-alias-depth-limit` against {{url}}.",
     "riskImpact": "Combine depth-limit with query-cost analysis (graphql-query-complexity) and per-field cost limits.",
     "explanation": "A naive depth-limit can be evaded with aliases that rename the same field many times. Each alias resolves independently, multiplying cost.",
     "fixSteps": [
       "Combine depth-limit with query-cost analysis (graphql-query-complexity) and per-field cost limits."
     ],
-    "codeExamples": [],
-    "references": ["https://github.com/graphql/graphiql/issues/841"]
+    "codeExamples": [
+      {
+        "label": "Next.js (next.config.mjs)",
+        "language": "javascript",
+        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
+      },
+      {
+        "label": "Nginx",
+        "language": "nginx",
+        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+      }
+    ],
+    "references": [
+      "https://github.com/graphql/graphiql/issues/841"
+    ],
+    "_idx": 18
   },
   {
     "id": "api-graphql-error-stack-trace",
@@ -298,14 +590,29 @@
     "category": "api",
     "severity": "medium",
     "description": "Stack traces in error.extensions.stacktrace expose file paths, framework versions, and SQL fragments to any unauthenticated caller.",
-    "evidence": "Async / body / header check for api-graphql-error-stack-trace.",
+    "evidence": "API-endpoint finding for `api-graphql-error-stack-trace` against {{url}}.",
     "riskImpact": "Mask stacktrace in production and log it server-side only (Apollo: formatError, graphql-playground: HideStackTrace).",
     "explanation": "Stack traces in error.extensions.stacktrace expose file paths, framework versions, and SQL fragments to any unauthenticated caller.",
     "fixSteps": [
       "Mask stacktrace in production and log it server-side only (Apollo: formatError, graphql-playground: HideStackTrace)."
     ],
-    "codeExamples": [],
-    "references": []
+    "codeExamples": [
+      {
+        "label": "Next.js (next.config.mjs)",
+        "language": "javascript",
+        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
+      },
+      {
+        "label": "Nginx",
+        "language": "nginx",
+        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+      }
+    ],
+    "references": [
+      "https://owasp.org/API-Security/editions/2023/en/0x11-t10/",
+      "https://owasp.org/API-Security/editions/2023/en/0x10-toc/"
+    ],
+    "_idx": 19
   },
   {
     "id": "api-graphql-query-cost-not-enforced",
@@ -314,14 +621,28 @@
     "category": "api",
     "severity": "high",
     "description": "Without cost analysis, a query that joins every table or fires N+1 resolvers can pin a CPU for minutes. Depth-limit alone misses wide queries.",
-    "evidence": "Async / body / header check for api-graphql-query-cost-not-enforced.",
+    "evidence": "API-endpoint finding for `api-graphql-query-cost-not-enforced` against {{url}}.",
     "riskImpact": "Add graphql-query-complexity or graphql-cost-analysis and reject queries above your budget.",
     "explanation": "Without cost analysis, a query that joins every table or fires N+1 resolvers can pin a CPU for minutes. Depth-limit alone misses wide queries.",
     "fixSteps": [
       "Add graphql-query-complexity or graphql-cost-analysis and reject queries above your budget."
     ],
-    "codeExamples": [],
-    "references": ["https://github.com/slicknode/graphql-query-complexity"]
+    "codeExamples": [
+      {
+        "label": "Next.js (next.config.mjs)",
+        "language": "javascript",
+        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
+      },
+      {
+        "label": "Nginx",
+        "language": "nginx",
+        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+      }
+    ],
+    "references": [
+      "https://github.com/slicknode/graphql-query-complexity"
+    ],
+    "_idx": 20
   },
   {
     "id": "api-openapi-security-scheme-weak",
@@ -330,14 +651,28 @@
     "category": "api",
     "severity": "high",
     "description": "An OpenAPI document with no securitySchemes, or one that lists only apiKey in header, signals that the API does not enforce real authentication.",
-    "evidence": "Async / body / header check for api-openapi-security-scheme-weak.",
+    "evidence": "API-endpoint finding for `api-openapi-security-scheme-weak` against {{url}}.",
     "riskImpact": "Declare a strong security scheme (OAuth2 + JWT or mTLS) and require it on every operation.",
     "explanation": "An OpenAPI document with no securitySchemes, or one that lists only apiKey in header, signals that the API does not enforce real authentication.",
     "fixSteps": [
       "Declare a strong security scheme (OAuth2 + JWT or mTLS) and require it on every operation."
     ],
-    "codeExamples": [],
-    "references": ["https://swagger.io/docs/specification/authentication/"]
+    "codeExamples": [
+      {
+        "label": "Next.js (next.config.mjs)",
+        "language": "javascript",
+        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
+      },
+      {
+        "label": "Nginx",
+        "language": "nginx",
+        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+      }
+    ],
+    "references": [
+      "https://swagger.io/docs/specification/authentication/"
+    ],
+    "_idx": 21
   },
   {
     "id": "api-openapi-default-values-sensitive",
@@ -346,14 +681,29 @@
     "category": "api",
     "severity": "medium",
     "description": "Defaults such as isAdmin: false, role: user, or apiKey: REPLACE_ME teach attackers the shape of state and embed credentials in client SDKs.",
-    "evidence": "Async / body / header check for api-openapi-default-values-sensitive.",
+    "evidence": "API-endpoint finding for `api-openapi-default-values-sensitive` against {{url}}.",
     "riskImpact": "Remove default values from any field marked x-sensitive or whose name contains token / password / role.",
     "explanation": "Defaults such as isAdmin: false, role: user, or apiKey: REPLACE_ME teach attackers the shape of state and embed credentials in client SDKs.",
     "fixSteps": [
       "Remove default values from any field marked x-sensitive or whose name contains token / password / role."
     ],
-    "codeExamples": [],
-    "references": []
+    "codeExamples": [
+      {
+        "label": "Next.js (next.config.mjs)",
+        "language": "javascript",
+        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
+      },
+      {
+        "label": "Nginx",
+        "language": "nginx",
+        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+      }
+    ],
+    "references": [
+      "https://owasp.org/API-Security/editions/2023/en/0x11-t10/",
+      "https://owasp.org/API-Security/editions/2023/en/0x10-toc/"
+    ],
+    "_idx": 22
   },
   {
     "id": "api-jwt-alg-none",
@@ -362,14 +712,28 @@
     "category": "api",
     "severity": "critical",
     "description": "A token with alg=none carries no signature. Verifiers that accept it let attackers forge any subject, role, or expiry they want.",
-    "evidence": "Async / body / header check for api-jwt-alg-none.",
+    "evidence": "API-endpoint finding for `api-jwt-alg-none` against {{url}}.",
     "riskImpact": "Pin alg to RS256/ES256 explicitly; reject any token whose header alg is none or mismatched to the key type.",
     "explanation": "A token with alg=none carries no signature. Verifiers that accept it let attackers forge any subject, role, or expiry they want.",
     "fixSteps": [
       "Pin alg to RS256/ES256 explicitly; reject any token whose header alg is none or mismatched to the key type."
     ],
-    "codeExamples": [],
-    "references": ["https://datatracker.ietf.org/doc/html/rfc8725"]
+    "codeExamples": [
+      {
+        "label": "Next.js (next.config.mjs)",
+        "language": "javascript",
+        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
+      },
+      {
+        "label": "Nginx",
+        "language": "nginx",
+        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+      }
+    ],
+    "references": [
+      "https://datatracker.ietf.org/doc/html/rfc8725"
+    ],
+    "_idx": 23
   },
   {
     "id": "api-jwt-hs256-weak-secret",
@@ -378,16 +742,28 @@
     "category": "api",
     "severity": "critical",
     "description": "HS256 trusts a shared secret. If the secret is short, default, or checked into source, attackers can sign forged tokens offline.",
-    "evidence": "Async / body / header check for api-jwt-hs256-weak-secret.",
+    "evidence": "API-endpoint finding for `api-jwt-hs256-weak-secret` against {{url}}.",
     "riskImpact": "Use 256-bit+ random secrets from a KMS, rotate periodically, or switch to RS256 with a private key.",
     "explanation": "HS256 trusts a shared secret. If the secret is short, default, or checked into source, attackers can sign forged tokens offline.",
     "fixSteps": [
       "Use 256-bit+ random secrets from a KMS, rotate periodically, or switch to RS256 with a private key."
     ],
-    "codeExamples": [],
+    "codeExamples": [
+      {
+        "label": "Next.js (next.config.mjs)",
+        "language": "javascript",
+        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
+      },
+      {
+        "label": "Nginx",
+        "language": "nginx",
+        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+      }
+    ],
     "references": [
       "https://auth0.com/blog/critical-vulnerabilities-in-json-web-token-libraries/"
-    ]
+    ],
+    "_idx": 24
   },
   {
     "id": "api-jwt-missing-exp-claim",
@@ -396,14 +772,29 @@
     "category": "api",
     "severity": "high",
     "description": "Tokens without an explicit expiry live forever once stolen. Replay attacks succeed indefinitely and revocation is impossible.",
-    "evidence": "Async / body / header check for api-jwt-missing-exp-claim.",
+    "evidence": "API-endpoint finding for `api-jwt-missing-exp-claim` against {{url}}.",
     "riskImpact": "Always include exp (<=1h for access tokens) and validate exp server-side on every request.",
     "explanation": "Tokens without an explicit expiry live forever once stolen. Replay attacks succeed indefinitely and revocation is impossible.",
     "fixSteps": [
       "Always include exp (<=1h for access tokens) and validate exp server-side on every request."
     ],
-    "codeExamples": [],
-    "references": []
+    "codeExamples": [
+      {
+        "label": "Next.js (next.config.mjs)",
+        "language": "javascript",
+        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
+      },
+      {
+        "label": "Nginx",
+        "language": "nginx",
+        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+      }
+    ],
+    "references": [
+      "https://owasp.org/API-Security/editions/2023/en/0x11-t10/",
+      "https://owasp.org/API-Security/editions/2023/en/0x10-toc/"
+    ],
+    "_idx": 25
   },
   {
     "id": "api-cors-credentials-with-wildcard-origin",
@@ -412,16 +803,28 @@
     "category": "api",
     "severity": "critical",
     "description": "Sending Access-Control-Allow-Credentials: true alongside Access-Control-Allow-Origin: * (or a reflected Origin) lets any site issue authenticated requests as the victim.",
-    "evidence": "Async / body / header check for api-cors-credentials-with-wildcard-origin.",
+    "evidence": "API-endpoint finding for `api-cors-credentials-with-wildcard-origin` against {{url}}.",
     "riskImpact": "Replace wildcard with an explicit allowlist of origins and only set Allow-Credentials when the request matches.",
     "explanation": "Sending Access-Control-Allow-Credentials: true alongside Access-Control-Allow-Origin: * (or a reflected Origin) lets any site issue authenticated requests as the victim.",
     "fixSteps": [
       "Replace wildcard with an explicit allowlist of origins and only set Allow-Credentials when the request matches."
     ],
-    "codeExamples": [],
+    "codeExamples": [
+      {
+        "label": "Next.js (next.config.mjs)",
+        "language": "javascript",
+        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
+      },
+      {
+        "label": "Nginx",
+        "language": "nginx",
+        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+      }
+    ],
     "references": [
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Access-Control-Allow-Credentials"
-    ]
+    ],
+    "_idx": 26
   },
   {
     "id": "api-cors-null-origin-reflected",
@@ -430,14 +833,28 @@
     "category": "api",
     "severity": "high",
     "description": "Echoing the literal string 'null' as Access-Control-Allow-Origin is exploitable because sandboxed iframes, file://, and data: URIs all send Origin: null.",
-    "evidence": "Async / body / header check for api-cors-null-origin-reflected.",
+    "evidence": "API-endpoint finding for `api-cors-null-origin-reflected` against {{url}}.",
     "riskImpact": "Never echo 'null'; reject it or require an explicit origin match against your allowlist.",
     "explanation": "Echoing the literal string 'null' as Access-Control-Allow-Origin is exploitable because sandboxed iframes, file://, and data: URIs all send Origin: null.",
     "fixSteps": [
       "Never echo 'null'; reject it or require an explicit origin match against your allowlist."
     ],
-    "codeExamples": [],
-    "references": ["https://portswigger.net/web-security/cors"]
+    "codeExamples": [
+      {
+        "label": "Next.js (next.config.mjs)",
+        "language": "javascript",
+        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
+      },
+      {
+        "label": "Nginx",
+        "language": "nginx",
+        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+      }
+    ],
+    "references": [
+      "https://portswigger.net/web-security/cors"
+    ],
+    "_idx": 27
   },
   {
     "id": "api-cors-preflight-cache-over-24h",
@@ -446,14 +863,29 @@
     "category": "api",
     "severity": "low",
     "description": "Access-Control-Max-Age above 86400 pins browsers to a stale allowlist. New disallowed headers or origins take up to Max-Age seconds to take effect.",
-    "evidence": "Async / body / header check for api-cors-preflight-cache-over-24h.",
+    "evidence": "API-endpoint finding for `api-cors-preflight-cache-over-24h` against {{url}}.",
     "riskImpact": "Cap Max-Age at 600 (10 min) for production APIs; use shorter windows when rolling out CORS changes.",
     "explanation": "Access-Control-Max-Age above 86400 pins browsers to a stale allowlist. New disallowed headers or origins take up to Max-Age seconds to take effect.",
     "fixSteps": [
       "Cap Max-Age at 600 (10 min) for production APIs; use shorter windows when rolling out CORS changes."
     ],
-    "codeExamples": [],
-    "references": []
+    "codeExamples": [
+      {
+        "label": "Next.js (next.config.mjs)",
+        "language": "javascript",
+        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
+      },
+      {
+        "label": "Nginx",
+        "language": "nginx",
+        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+      }
+    ],
+    "references": [
+      "https://owasp.org/API-Security/editions/2023/en/0x11-t10/",
+      "https://owasp.org/API-Security/editions/2023/en/0x10-toc/"
+    ],
+    "_idx": 28
   },
   {
     "id": "api-rate-limit-per-ip-no-auth",
@@ -462,14 +894,29 @@
     "category": "api",
     "severity": "medium",
     "description": "Per-IP throttling is fine for anonymous traffic, but auth-less endpoints behind a shared NAT or proxy can be exhausted by one noisy neighbour.",
-    "evidence": "Async / body / header check for api-rate-limit-per-ip-no-auth.",
+    "evidence": "API-endpoint finding for `api-rate-limit-per-ip-no-auth` against {{url}}.",
     "riskImpact": "Require authentication on sensitive endpoints and key rate-limits on the authenticated principal.",
     "explanation": "Per-IP throttling is fine for anonymous traffic, but auth-less endpoints behind a shared NAT or proxy can be exhausted by one noisy neighbour.",
     "fixSteps": [
       "Require authentication on sensitive endpoints and key rate-limits on the authenticated principal."
     ],
-    "codeExamples": [],
-    "references": []
+    "codeExamples": [
+      {
+        "label": "Next.js (next.config.mjs)",
+        "language": "javascript",
+        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
+      },
+      {
+        "label": "Nginx",
+        "language": "nginx",
+        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+      }
+    ],
+    "references": [
+      "https://owasp.org/API-Security/editions/2023/en/0x11-t10/",
+      "https://owasp.org/API-Security/editions/2023/en/0x10-toc/"
+    ],
+    "_idx": 29
   },
   {
     "id": "api-rate-limit-headers-not-enforced-on-paths",
@@ -478,14 +925,29 @@
     "category": "api",
     "severity": "medium",
     "description": "Returning X-RateLimit-* headers without enforcing the cap is theatre. Callers see budgets they cannot exceed in the response but can hammer the server anyway.",
-    "evidence": "Async / body / header check for api-rate-limit-headers-not-enforced-on-paths.",
+    "evidence": "API-endpoint finding for `api-rate-limit-headers-not-enforced-on-paths` against {{url}}.",
     "riskImpact": "Verify that every endpoint emitting rate-limit headers actually blocks or throttles at the limit.",
     "explanation": "Returning X-RateLimit-* headers without enforcing the cap is theatre. Callers see budgets they cannot exceed in the response but can hammer the server anyway.",
     "fixSteps": [
       "Verify that every endpoint emitting rate-limit headers actually blocks or throttles at the limit."
     ],
-    "codeExamples": [],
-    "references": []
+    "codeExamples": [
+      {
+        "label": "Next.js (next.config.mjs)",
+        "language": "javascript",
+        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
+      },
+      {
+        "label": "Nginx",
+        "language": "nginx",
+        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+      }
+    ],
+    "references": [
+      "https://owasp.org/API-Security/editions/2023/en/0x11-t10/",
+      "https://owasp.org/API-Security/editions/2023/en/0x10-toc/"
+    ],
+    "_idx": 30
   },
   {
     "id": "api-soap-soapaction-injection",
@@ -494,14 +956,29 @@
     "category": "api",
     "severity": "high",
     "description": "If the SOAPAction header is passed verbatim to a downstream HTTP call without validation, attackers can pivot the request to internal services.",
-    "evidence": "Async / body / header check for api-soap-soapaction-injection.",
+    "evidence": "API-endpoint finding for `api-soap-soapaction-injection` against {{url}}.",
     "riskImpact": "Strict-allowlist the SOAPAction value; never concatenate it into outbound URLs.",
     "explanation": "If the SOAPAction header is passed verbatim to a downstream HTTP call without validation, attackers can pivot the request to internal services.",
     "fixSteps": [
       "Strict-allowlist the SOAPAction value; never concatenate it into outbound URLs."
     ],
-    "codeExamples": [],
-    "references": []
+    "codeExamples": [
+      {
+        "label": "Next.js (next.config.mjs)",
+        "language": "javascript",
+        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
+      },
+      {
+        "label": "Nginx",
+        "language": "nginx",
+        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+      }
+    ],
+    "references": [
+      "https://owasp.org/API-Security/editions/2023/en/0x11-t10/",
+      "https://owasp.org/API-Security/editions/2023/en/0x10-toc/"
+    ],
+    "_idx": 31
   },
   {
     "id": "api-soap-xxe-enabled",
@@ -510,16 +987,28 @@
     "category": "api",
     "severity": "critical",
     "description": "XML parsers with DOCTYPE / external entity processing enabled allow attackers to read local files, hit SSRF endpoints, and exfiltrate via DTD.",
-    "evidence": "Async / body / header check for api-soap-xxe-enabled.",
+    "evidence": "API-endpoint finding for `api-soap-xxe-enabled` against {{url}}.",
     "riskImpact": "Disable DTD processing and external entity resolution on every XML/SOAP parser; use a hardened factory.",
     "explanation": "XML parsers with DOCTYPE / external entity processing enabled allow attackers to read local files, hit SSRF endpoints, and exfiltrate via DTD.",
     "fixSteps": [
       "Disable DTD processing and external entity resolution on every XML/SOAP parser; use a hardened factory."
     ],
-    "codeExamples": [],
+    "codeExamples": [
+      {
+        "label": "Next.js (next.config.mjs)",
+        "language": "javascript",
+        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
+      },
+      {
+        "label": "Nginx",
+        "language": "nginx",
+        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+      }
+    ],
     "references": [
       "https://owasp.org/www-community/vulnerabilities/XML_External_Entity_Processing"
-    ]
+    ],
+    "_idx": 32
   },
   {
     "id": "api-soap-wsdl-publicly-accessible",
@@ -528,14 +1017,29 @@
     "category": "api",
     "severity": "medium",
     "description": "Auto-published WSDL files enumerate every operation, parameter type, and binding - a blueprint for crafting SOAP-level attacks.",
-    "evidence": "Async / body / header check for api-soap-wsdl-publicly-accessible.",
+    "evidence": "API-endpoint finding for `api-soap-wsdl-publicly-accessible` against {{url}}.",
     "riskImpact": "Restrict ?wsdl behind authentication or remove it from production endpoints.",
     "explanation": "Auto-published WSDL files enumerate every operation, parameter type, and binding - a blueprint for crafting SOAP-level attacks.",
     "fixSteps": [
       "Restrict ?wsdl behind authentication or remove it from production endpoints."
     ],
-    "codeExamples": [],
-    "references": []
+    "codeExamples": [
+      {
+        "label": "Next.js (next.config.mjs)",
+        "language": "javascript",
+        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
+      },
+      {
+        "label": "Nginx",
+        "language": "nginx",
+        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+      }
+    ],
+    "references": [
+      "https://owasp.org/API-Security/editions/2023/en/0x11-t10/",
+      "https://owasp.org/API-Security/editions/2023/en/0x10-toc/"
+    ],
+    "_idx": 33
   },
   {
     "id": "api-websocket-no-origin-validation",
@@ -544,14 +1048,28 @@
     "category": "api",
     "severity": "high",
     "description": "A WebSocket handshake that ignores the Origin header lets any malicious site open an authenticated WS connection and stream events to the victim.",
-    "evidence": "Async / body / header check for api-websocket-no-origin-validation.",
+    "evidence": "API-endpoint finding for `api-websocket-no-origin-validation` against {{url}}.",
     "riskImpact": "Validate the Origin header against an allowlist in the HTTP upgrade handler before completing the handshake.",
     "explanation": "A WebSocket handshake that ignores the Origin header lets any malicious site open an authenticated WS connection and stream events to the victim.",
     "fixSteps": [
       "Validate the Origin header against an allowlist in the HTTP upgrade handler before completing the handshake."
     ],
-    "codeExamples": [],
-    "references": ["https://portswigger.net/web-security/websockets"]
+    "codeExamples": [
+      {
+        "label": "Next.js (next.config.mjs)",
+        "language": "javascript",
+        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
+      },
+      {
+        "label": "Nginx",
+        "language": "nginx",
+        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+      }
+    ],
+    "references": [
+      "https://portswigger.net/web-security/websockets"
+    ],
+    "_idx": 34
   },
   {
     "id": "api-websocket-no-max-message-size",
@@ -560,14 +1078,29 @@
     "category": "api",
     "severity": "medium",
     "description": "Without a max message size, a single client can pin server memory by sending an oversized frame, or trigger decompressor-bombs if payloads are gzipped.",
-    "evidence": "Async / body / header check for api-websocket-no-max-message-size.",
+    "evidence": "API-endpoint finding for `api-websocket-no-max-message-size` against {{url}}.",
     "riskImpact": "Set maxPayload to a sane limit (e.g., 64KB) and reject larger frames at the server.",
     "explanation": "Without a max message size, a single client can pin server memory by sending an oversized frame, or trigger decompressor-bombs if payloads are gzipped.",
     "fixSteps": [
       "Set maxPayload to a sane limit (e.g., 64KB) and reject larger frames at the server."
     ],
-    "codeExamples": [],
-    "references": []
+    "codeExamples": [
+      {
+        "label": "Next.js (next.config.mjs)",
+        "language": "javascript",
+        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
+      },
+      {
+        "label": "Nginx",
+        "language": "nginx",
+        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+      }
+    ],
+    "references": [
+      "https://owasp.org/API-Security/editions/2023/en/0x11-t10/",
+      "https://owasp.org/API-Security/editions/2023/en/0x10-toc/"
+    ],
+    "_idx": 35
   },
   {
     "id": "api-websocket-no-idle-timeout",
@@ -576,14 +1109,29 @@
     "category": "api",
     "severity": "low",
     "description": "Idle WS connections accumulate as file descriptors and sockets. Eventually the process hits FD limits and refuses new connections.",
-    "evidence": "Async / body / header check for api-websocket-no-idle-timeout.",
+    "evidence": "API-endpoint finding for `api-websocket-no-idle-timeout` against {{url}}.",
     "riskImpact": "Close idle sockets after 60s of inactivity and ping every 30s to keep them warm.",
     "explanation": "Idle WS connections accumulate as file descriptors and sockets. Eventually the process hits FD limits and refuses new connections.",
     "fixSteps": [
       "Close idle sockets after 60s of inactivity and ping every 30s to keep them warm."
     ],
-    "codeExamples": [],
-    "references": []
+    "codeExamples": [
+      {
+        "label": "Next.js (next.config.mjs)",
+        "language": "javascript",
+        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
+      },
+      {
+        "label": "Nginx",
+        "language": "nginx",
+        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+      }
+    ],
+    "references": [
+      "https://owasp.org/API-Security/editions/2023/en/0x11-t10/",
+      "https://owasp.org/API-Security/editions/2023/en/0x10-toc/"
+    ],
+    "_idx": 36
   },
   {
     "id": "api-rest-no-idempotency-key",
@@ -592,16 +1140,28 @@
     "category": "api",
     "severity": "medium",
     "description": "Without an Idempotency-Key header, network retries can double-charge payments, duplicate records, or fire emails twice.",
-    "evidence": "Async / body / header check for api-rest-no-idempotency-key.",
+    "evidence": "API-endpoint finding for `api-rest-no-idempotency-key` against {{url}}.",
     "riskImpact": "Require Idempotency-Key on POST /payments, /webhooks and dedupe by key for >=24h.",
     "explanation": "Without an Idempotency-Key header, network retries can double-charge payments, duplicate records, or fire emails twice.",
     "fixSteps": [
       "Require Idempotency-Key on POST /payments, /webhooks and dedupe by key for >=24h."
     ],
-    "codeExamples": [],
+    "codeExamples": [
+      {
+        "label": "Next.js (next.config.mjs)",
+        "language": "javascript",
+        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
+      },
+      {
+        "label": "Nginx",
+        "language": "nginx",
+        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+      }
+    ],
     "references": [
       "https://datatracker.ietf.org/doc/html/draft-ietf-httpapi-idempotency-key-header"
-    ]
+    ],
+    "_idx": 37
   },
   {
     "id": "api-rest-mass-assignment-risk",
@@ -610,16 +1170,28 @@
     "category": "api",
     "severity": "high",
     "description": "Endpoints that bind a request body directly to a model (e.g., user.role, isAdmin, internalId) without an explicit allowlist let clients escalate privileges.",
-    "evidence": "Async / body / header check for api-rest-mass-assignment-risk.",
+    "evidence": "API-endpoint finding for `api-rest-mass-assignment-risk` against {{url}}.",
     "riskImpact": "Use explicit DTOs / allowlists; never spread req.body onto ORM models.",
     "explanation": "Endpoints that bind a request body directly to a model (e.g., user.role, isAdmin, internalId) without an explicit allowlist let clients escalate privileges.",
     "fixSteps": [
       "Use explicit DTOs / allowlists; never spread req.body onto ORM models."
     ],
-    "codeExamples": [],
+    "codeExamples": [
+      {
+        "label": "Next.js (next.config.mjs)",
+        "language": "javascript",
+        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
+      },
+      {
+        "label": "Nginx",
+        "language": "nginx",
+        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+      }
+    ],
     "references": [
       "https://cheatsheetseries.owasp.org/cheatsheets/Mass_Assignment_Cheat_Sheet.html"
-    ]
+    ],
+    "_idx": 38
   },
   {
     "id": "api-rest-pagination-headers-missing",
@@ -628,14 +1200,29 @@
     "category": "api",
     "severity": "low",
     "description": "List endpoints without X-Total-Count or Link: rel=\"next\" force clients to fetch until empty, enabling unbounded dumps and denial-of-service via huge queries.",
-    "evidence": "Async / body / header check for api-rest-pagination-headers-missing.",
+    "evidence": "API-endpoint finding for `api-rest-pagination-headers-missing` against {{url}}.",
     "riskImpact": "Cap page size (<=100), return total count and Link rel=next/prev headers.",
     "explanation": "List endpoints without X-Total-Count or Link: rel=\"next\" force clients to fetch until empty, enabling unbounded dumps and denial-of-service via huge queries.",
     "fixSteps": [
       "Cap page size (<=100), return total count and Link rel=next/prev headers."
     ],
-    "codeExamples": [],
-    "references": []
+    "codeExamples": [
+      {
+        "label": "Next.js (next.config.mjs)",
+        "language": "javascript",
+        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
+      },
+      {
+        "label": "Nginx",
+        "language": "nginx",
+        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+      }
+    ],
+    "references": [
+      "https://owasp.org/API-Security/editions/2023/en/0x11-t10/",
+      "https://owasp.org/API-Security/editions/2023/en/0x10-toc/"
+    ],
+    "_idx": 39
   },
   {
     "id": "api-rest-etag-missing",
@@ -644,14 +1231,29 @@
     "category": "api",
     "severity": "info",
     "description": "Without ETags, clients re-download unchanged resources, wasting bandwidth and amplifying scrape traffic.",
-    "evidence": "Async / body / header check for api-rest-etag-missing.",
+    "evidence": "API-endpoint finding for `api-rest-etag-missing` against {{url}}.",
     "riskImpact": "Emit strong ETags on GET responses and honour If-None-Match.",
     "explanation": "Without ETags, clients re-download unchanged resources, wasting bandwidth and amplifying scrape traffic.",
     "fixSteps": [
       "Emit strong ETags on GET responses and honour If-None-Match."
     ],
-    "codeExamples": [],
-    "references": []
+    "codeExamples": [
+      {
+        "label": "Next.js (next.config.mjs)",
+        "language": "javascript",
+        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
+      },
+      {
+        "label": "Nginx",
+        "language": "nginx",
+        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+      }
+    ],
+    "references": [
+      "https://owasp.org/API-Security/editions/2023/en/0x11-t10/",
+      "https://owasp.org/API-Security/editions/2023/en/0x10-toc/"
+    ],
+    "_idx": 40
   },
   {
     "id": "api-graphql-subscription-auth-missing",
@@ -660,14 +1262,28 @@
     "category": "api",
     "severity": "high",
     "description": "Subscriptions bypass query-time authorization checks. A user subscribed to onUserUpdated can be fed events for other tenants if authZ is on the resolver, not the source stream.",
-    "evidence": "Async / body / header check for api-graphql-subscription-auth-missing.",
+    "evidence": "API-endpoint finding for `api-graphql-subscription-auth-missing` against {{url}}.",
     "riskImpact": "Authorize on the subscribe step and re-check on every event emitted by the async iterator.",
     "explanation": "Subscriptions bypass query-time authorization checks. A user subscribed to onUserUpdated can be fed events for other tenants if authZ is on the resolver, not the source stream.",
     "fixSteps": [
       "Authorize on the subscribe step and re-check on every event emitted by the async iterator."
     ],
-    "codeExamples": [],
-    "references": ["https://www.apollographql.com/docs/graphql-subscriptions/"]
+    "codeExamples": [
+      {
+        "label": "Next.js (next.config.mjs)",
+        "language": "javascript",
+        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
+      },
+      {
+        "label": "Nginx",
+        "language": "nginx",
+        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+      }
+    ],
+    "references": [
+      "https://www.apollographql.com/docs/graphql-subscriptions/"
+    ],
+    "_idx": 41
   },
   {
     "id": "api-rest-no-hateoas-links",
@@ -676,13 +1292,188 @@
     "category": "api",
     "severity": "info",
     "description": "Without discoverable links in responses, clients hard-code URLs and break when paths change. Not a security issue but a maintainability one.",
-    "evidence": "Async / body / header check for api-rest-no-hateoas-links.",
+    "evidence": "API-endpoint finding for `api-rest-no-hateoas-links` against {{url}}.",
     "riskImpact": "Embed HAL / JSON-LD _links so clients follow relations instead of strings.",
     "explanation": "Without discoverable links in responses, clients hard-code URLs and break when paths change. Not a security issue but a maintainability one.",
     "fixSteps": [
       "Embed HAL / JSON-LD _links so clients follow relations instead of strings."
     ],
-    "codeExamples": [],
-    "references": []
+    "codeExamples": [
+      {
+        "label": "Next.js (next.config.mjs)",
+        "language": "javascript",
+        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
+      },
+      {
+        "label": "Nginx",
+        "language": "nginx",
+        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+      }
+    ],
+    "references": [
+      "https://owasp.org/API-Security/editions/2023/en/0x11-t10/",
+      "https://owasp.org/API-Security/editions/2023/en/0x10-toc/"
+    ],
+    "_idx": 42
+  },
+  {
+    "id": "rate-limiting",
+    "type": "stub",
+    "title": "Rate Limiting",
+    "category": "api",
+    "severity": "info",
+    "description": "Security check `rate-limiting` evaluates whether the target meets the expected configuration. Auto-generated stub.",
+    "evidence": "API-endpoint finding for `rate-limiting` against {{url}}.",
+    "riskImpact": "If exploited, this finding exposes the target to category-specific risks under api.",
+    "explanation": "The `rate-limiting` check verifies that the server does not expose the weakness represented by this category.",
+    "fixSteps": [
+      "Investigate the evidence string for the actual offending value.",
+      "Apply the recommended configuration in the code examples below.",
+      "Verify the fix by re-running the scan and confirming the finding is gone."
+    ],
+    "codeExamples": [
+      {
+        "label": "Next.js (next.config.mjs)",
+        "language": "javascript",
+        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};"
+      },
+      {
+        "label": "Nginx",
+        "language": "nginx",
+        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+      }
+    ],
+    "references": [
+      "https://owasp.org/API-Security/editions/2023/en/0x11-t10/",
+      "https://owasp.org/API-Security/editions/2023/en/0x10-toc/"
+    ]
+  },
+  {
+    "id": "options-method-exposed",
+    "type": "stub",
+    "title": "Options Method Exposed",
+    "category": "api",
+    "severity": "info",
+    "description": "Security check `options-method-exposed` evaluates whether the target meets the expected configuration. Auto-generated stub.",
+    "evidence": "API-endpoint finding for `options-method-exposed` against {{url}}.",
+    "riskImpact": "If exploited, this finding exposes the target to category-specific risks under api.",
+    "explanation": "The `options-method-exposed` check verifies that the server does not expose the weakness represented by this category.",
+    "fixSteps": [
+      "Investigate the evidence string for the actual offending value.",
+      "Apply the recommended configuration in the code examples below.",
+      "Verify the fix by re-running the scan and confirming the finding is gone."
+    ],
+    "codeExamples": [
+      {
+        "label": "Next.js (next.config.mjs)",
+        "language": "javascript",
+        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};"
+      },
+      {
+        "label": "Nginx",
+        "language": "nginx",
+        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+      }
+    ],
+    "references": [
+      "https://owasp.org/API-Security/editions/2023/en/0x11-t10/",
+      "https://owasp.org/API-Security/editions/2023/en/0x10-toc/"
+    ]
+  },
+  {
+    "id": "soap-endpoint",
+    "type": "stub",
+    "title": "Soap Endpoint",
+    "category": "api",
+    "severity": "info",
+    "description": "Security check `soap-endpoint` evaluates whether the target meets the expected configuration. Auto-generated stub.",
+    "evidence": "API-endpoint finding for `soap-endpoint` against {{url}}.",
+    "riskImpact": "If exploited, this finding exposes the target to category-specific risks under api.",
+    "explanation": "The `soap-endpoint` check verifies that the server does not expose the weakness represented by this category.",
+    "fixSteps": [
+      "Investigate the evidence string for the actual offending value.",
+      "Apply the recommended configuration in the code examples below.",
+      "Verify the fix by re-running the scan and confirming the finding is gone."
+    ],
+    "codeExamples": [
+      {
+        "label": "Next.js (next.config.mjs)",
+        "language": "javascript",
+        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};"
+      },
+      {
+        "label": "Nginx",
+        "language": "nginx",
+        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+      }
+    ],
+    "references": [
+      "https://owasp.org/API-Security/editions/2023/en/0x11-t10/",
+      "https://owasp.org/API-Security/editions/2023/en/0x10-toc/"
+    ]
+  },
+  {
+    "id": "xml-rpc",
+    "type": "stub",
+    "title": "Xml Rpc",
+    "category": "api",
+    "severity": "info",
+    "description": "Security check `xml-rpc` evaluates whether the target meets the expected configuration. Auto-generated stub.",
+    "evidence": "API-endpoint finding for `xml-rpc` against {{url}}.",
+    "riskImpact": "If exploited, this finding exposes the target to category-specific risks under api.",
+    "explanation": "The `xml-rpc` check verifies that the server does not expose the weakness represented by this category.",
+    "fixSteps": [
+      "Investigate the evidence string for the actual offending value.",
+      "Apply the recommended configuration in the code examples below.",
+      "Verify the fix by re-running the scan and confirming the finding is gone."
+    ],
+    "codeExamples": [
+      {
+        "label": "Next.js (next.config.mjs)",
+        "language": "javascript",
+        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};"
+      },
+      {
+        "label": "Nginx",
+        "language": "nginx",
+        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+      }
+    ],
+    "references": [
+      "https://owasp.org/API-Security/editions/2023/en/0x11-t10/",
+      "https://owasp.org/API-Security/editions/2023/en/0x10-toc/"
+    ]
+  },
+  {
+    "id": "trace-method-enabled",
+    "type": "stub",
+    "title": "Trace Method Enabled",
+    "category": "api",
+    "severity": "info",
+    "description": "Security check `trace-method-enabled` evaluates whether the target meets the expected configuration. Auto-generated stub.",
+    "evidence": "API-endpoint finding for `trace-method-enabled` against {{url}}.",
+    "riskImpact": "If exploited, this finding exposes the target to category-specific risks under api.",
+    "explanation": "The `trace-method-enabled` check verifies that the server does not expose the weakness represented by this category.",
+    "fixSteps": [
+      "Investigate the evidence string for the actual offending value.",
+      "Apply the recommended configuration in the code examples below.",
+      "Verify the fix by re-running the scan and confirming the finding is gone."
+    ],
+    "codeExamples": [
+      {
+        "label": "Next.js (next.config.mjs)",
+        "language": "javascript",
+        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};"
+      },
+      {
+        "label": "Nginx",
+        "language": "nginx",
+        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+      }
+    ],
+    "references": [
+      "https://owasp.org/API-Security/editions/2023/en/0x11-t10/",
+      "https://owasp.org/API-Security/editions/2023/en/0x10-toc/"
+    ]
   }
 ]
