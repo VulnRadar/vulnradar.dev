@@ -79,6 +79,7 @@ function DashboardContent() {
         url: string,
         crawlUrls?: string[],
         scanners?: string[],
+        mode?: ScanMode,
       ) => Promise<void>)
     | null
   >(null);
@@ -88,6 +89,10 @@ function DashboardContent() {
   const [scanHistoryId, setScanHistoryId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [errorDetails, setErrorDetails] = useState<string | null>(null);
+  const [errorStatus, setErrorStatus] = useState<number | null>(null);
+  const [errorUrl, setErrorUrl] = useState<string | null>(null);
+  const [scanningUrl, setScanningUrl] = useState<string | null>(null);
+  const [scanningMode, setScanningMode] = useState<ScanMode>("quick");
   const [selectedIssue, setSelectedIssue] = useState<Vulnerability | null>(
     null,
   );
@@ -176,6 +181,7 @@ function DashboardContent() {
       protocol?: string,
     ) => {
       setPendingScanners(scanners);
+      setScanningMode(mode);
       if (mode === "deep" && (!protocol || protocol.startsWith("http"))) {
         setPendingCrawlUrl(url);
         setShowCrawlSelector(true);
@@ -199,18 +205,27 @@ function DashboardContent() {
         return;
       }
 
-      runScanRef.current?.(url, undefined, scanners);
+      runScanRef.current?.(url, undefined, scanners, mode);
     },
     [],
   );
 
   const runScan = useCallback(
-    async (url: string, crawlUrls?: string[], scanners?: string[]) => {
+    async (
+      url: string,
+      crawlUrls?: string[],
+      scanners?: string[],
+      mode: ScanMode = "quick",
+    ) => {
       setStatus("scanning");
       setResult(null);
       setScanHistoryId(null);
       setError(null);
       setErrorDetails(null);
+      setErrorStatus(null);
+      setErrorUrl(null);
+      setScanningUrl(url);
+      setScanningMode(mode);
       setSelectedIssue(null);
       setScanNotes("");
       setCrawlInfo(null);
@@ -243,6 +258,8 @@ function DashboardContent() {
           }
           setError(data.error || "An unexpected error occurred.");
           setErrorDetails(data.details || null);
+          setErrorStatus(response.status);
+          setErrorUrl(url);
           setStatus("failed");
           return;
         }
@@ -279,6 +296,8 @@ function DashboardContent() {
         setError(
           "Failed to connect to the scanner. Please check your connection and try again.",
         );
+        setErrorStatus(null);
+        setErrorUrl(url);
         setStatus("failed");
       }
     },
@@ -294,7 +313,7 @@ function DashboardContent() {
   function handleCrawlConfirm(selectedUrls: string[]) {
     setShowCrawlSelector(false);
     setCrawlDiscoveryUrls([]);
-    runScan(pendingCrawlUrl, selectedUrls, pendingScanners);
+    runScan(pendingCrawlUrl, selectedUrls, pendingScanners, "deep");
   }
 
   function handleCrawlCancel() {
@@ -404,13 +423,20 @@ function DashboardContent() {
         {status === "idle" && <Dashboard />}
 
         {/* Scanning state */}
-        {status === "scanning" && <ScanningIndicator />}
+        {status === "scanning" && (
+          <ScanningIndicator
+            url={scanningUrl ?? undefined}
+            mode={scanningMode}
+          />
+        )}
 
         {/* Error state */}
         {status === "failed" && error && (
           <DashboardErrorState
             error={error}
             details={errorDetails || undefined}
+            url={errorUrl ?? undefined}
+            status={errorStatus ?? undefined}
             onRetry={handleReset}
           />
         )}
