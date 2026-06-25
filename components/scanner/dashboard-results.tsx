@@ -1,4 +1,4 @@
-import { Globe, ShieldCheck } from "lucide-react";
+import { Globe, ShieldCheck, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { RotateCcw } from "lucide-react";
 import dynamic from "next/dynamic";
@@ -67,20 +67,22 @@ export function DashboardResults({
 
   return (
     <div className="flex flex-col gap-6 pt-6">
-      {/* Header card */}
-      <div className="flex flex-col gap-4 p-4 rounded-xl border border-border/50 bg-card/50">
-        <div className="flex items-start gap-3">
-          <div className="p-2 rounded-lg bg-primary/10 shrink-0">
-            <Globe className="h-4 w-4 text-primary" />
-          </div>
-          <div className="min-w-0 flex-1">
-            <p className="text-xs text-muted-foreground mb-0.5">Scanned URL</p>
-            <p className="text-sm font-medium text-foreground break-all font-mono">
+      {/* Section header */}
+      <div className="flex items-end justify-between gap-3 flex-wrap">
+        <div className="min-w-0">
+          <p className="text-xs font-medium text-primary uppercase tracking-wider mb-2">
+            Scan results
+          </p>
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="p-2 rounded-lg bg-primary/10 shrink-0">
+              <Globe className="h-4 w-4 text-primary" />
+            </div>
+            <p className="text-base sm:text-lg font-semibold text-foreground break-all font-mono">
               {result.url}
             </p>
           </div>
         </div>
-        <div className="flex flex-wrap gap-2">
+        <div className="flex items-center gap-2 shrink-0">
           <Button
             variant="outline"
             onClick={onReset}
@@ -88,9 +90,8 @@ export function DashboardResults({
             className="bg-transparent"
           >
             <RotateCcw className="h-4 w-4 sm:mr-2" />
-            <span className="hidden sm:inline">New Scan</span>
+            <span className="hidden sm:inline">New scan</span>
           </Button>
-          <div className="flex-1" />
           <ExportButton result={result} />
           {scanHistoryId && <ShareButton scanId={scanHistoryId} />}
         </div>
@@ -122,14 +123,26 @@ export function DashboardResults({
       {result.findings.length > 0 ? (
         <ResultsList findings={result.findings} onSelectIssue={onSelectIssue} />
       ) : (
-        <div className="flex flex-col items-center gap-3 py-8 text-center rounded-xl border border-dashed border-border">
-          <div className="w-10 h-10 rounded-lg bg-emerald-500/10 flex items-center justify-center">
-            <ShieldCheck className="h-5 w-5 text-emerald-500" />
+        <div className="flex flex-col items-center gap-3 py-10 text-center rounded-2xl border border-border/50 bg-card/50">
+          <div className="w-12 h-12 rounded-xl bg-emerald-500/10 flex items-center justify-center">
+            <ShieldCheck className="h-6 w-6 text-emerald-500" />
           </div>
-          <p className="text-sm font-medium text-foreground">No issues found</p>
-          <p className="text-xs text-muted-foreground max-w-xs">
-            This scan came back clean with no detected vulnerabilities.
+          <p className="text-base font-semibold text-foreground">
+            No issues found
           </p>
+          <p className="text-sm text-muted-foreground max-w-md text-pretty">
+            This scan came back clean with no detected vulnerabilities. Add a
+            note to track when you ran it, or scan another URL.
+          </p>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={onReset}
+            className="bg-transparent mt-1"
+          >
+            <ExternalLink className="h-3.5 w-3.5 mr-2" />
+            Scan another URL
+          </Button>
         </div>
       )}
     </div>
