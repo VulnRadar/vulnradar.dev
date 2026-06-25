@@ -49,13 +49,15 @@
     "id": "tls-cert-key-size-rsa",
     "type": "header",
     "title": "RSA Key Size < 2048 bits",
-    "category": "headers",
+    "category": "tls",
     "severity": "medium",
     "description": "Modern TLS certs should use RSA ≥ 2048 bits (≥ 3072 recommended).",
     "evidence": "Async / body / header check for tls-cert-key-size-rsa.",
     "riskImpact": "Reissue the certificate with RSA 2048 or 3072",
     "explanation": "Modern TLS certs should use RSA ≥ 2048 bits (≥ 3072 recommended).",
-    "fixSteps": ["Reissue the certificate with RSA 2048 or 3072"],
+    "fixSteps": [
+      "Reissue the certificate with RSA 2048 or 3072"
+    ],
     "codeExamples": [],
     "references": []
   },
@@ -63,13 +65,15 @@
     "id": "tls-cert-key-size-ecdsa",
     "type": "header",
     "title": "ECDSA Key Size < 256 bits",
-    "category": "headers",
+    "category": "tls",
     "severity": "medium",
     "description": "ECDSA keys should use NIST P-256 or larger.",
     "evidence": "Async / body / header check for tls-cert-key-size-ecdsa.",
     "riskImpact": "Reissue with P-256 or P-384",
     "explanation": "ECDSA keys should use NIST P-256 or larger.",
-    "fixSteps": ["Reissue with P-256 or P-384"],
+    "fixSteps": [
+      "Reissue with P-256 or P-384"
+    ],
     "codeExamples": [],
     "references": []
   },
@@ -77,13 +81,15 @@
     "id": "tls-cert-sha1-sig",
     "type": "header",
     "title": "Certificate Signed with SHA-1",
-    "category": "headers",
+    "category": "tls",
     "severity": "high",
     "description": "SHA-1 signatures are deprecated by all major browsers and CAs.",
     "evidence": "Async / body / header check for tls-cert-sha1-sig.",
     "riskImpact": "Reissue with SHA-256",
     "explanation": "SHA-1 signatures are deprecated by all major browsers and CAs.",
-    "fixSteps": ["Reissue with SHA-256"],
+    "fixSteps": [
+      "Reissue with SHA-256"
+    ],
     "codeExamples": [],
     "references": []
   },
@@ -91,13 +97,15 @@
     "id": "tls-cert-self-signed",
     "type": "header",
     "title": "Self-Signed Certificate in Production",
-    "category": "headers",
+    "category": "tls",
     "severity": "high",
     "description": "Self-signed certs are fine for dev but break trust in production.",
     "evidence": "Async / body / header check for tls-cert-self-signed.",
     "riskImpact": "Use a publicly trusted CA (Let's Encrypt, DigiCert, etc.)",
     "explanation": "Self-signed certs are fine for dev but break trust in production.",
-    "fixSteps": ["Use a publicly trusted CA (Let's Encrypt, DigiCert, etc.)"],
+    "fixSteps": [
+      "Use a publicly trusted CA (Let's Encrypt, DigiCert, etc.)"
+    ],
     "codeExamples": [],
     "references": []
   },
@@ -105,13 +113,15 @@
     "id": "tls-ocsp-stapling-missing",
     "type": "header",
     "title": "OCSP Stapling Not Enabled",
-    "category": "headers",
+    "category": "tls",
     "severity": "info",
     "description": "OCSP stapling avoids leaking browsing activity to the CA's responder.",
     "evidence": "Async / body / header check for tls-ocsp-stapling-missing.",
     "riskImpact": "Enable OCSP stapling in your web server config",
     "explanation": "OCSP stapling avoids leaking browsing activity to the CA's responder.",
-    "fixSteps": ["Enable OCSP stapling in your web server config"],
+    "fixSteps": [
+      "Enable OCSP stapling in your web server config"
+    ],
     "codeExamples": [],
     "references": []
   },
@@ -119,7 +129,7 @@
     "id": "tls-ct-log-missing",
     "type": "header",
     "title": "Certificate Transparency Log Missing",
-    "category": "headers",
+    "category": "tls",
     "severity": "info",
     "description": "CAs submit public certs to CT logs. Submitting detects mis-issuance.",
     "evidence": "Async / body / header check for tls-ct-log-missing.",
@@ -129,19 +139,23 @@
       "Submit your cert to CT logs (most CAs do this automatically)"
     ],
     "codeExamples": [],
-    "references": ["https://certificate.transparency.dev/"]
+    "references": [
+      "https://certificate.transparency.dev/"
+    ]
   },
   {
     "id": "tls-hpkp-deprecated",
     "type": "header",
     "title": "HPKP Header Present",
-    "category": "headers",
+    "category": "tls",
     "severity": "info",
     "description": "Public Key Pinning is deprecated and dangerous if misconfigured.",
     "evidence": "Async / body / header check for tls-hpkp-deprecated.",
     "riskImpact": "Remove HPKP; rely on CA / CT log instead",
     "explanation": "Public Key Pinning is deprecated and dangerous if misconfigured.",
-    "fixSteps": ["Remove HPKP; rely on CA / CT log instead"],
+    "fixSteps": [
+      "Remove HPKP; rely on CA / CT log instead"
+    ],
     "codeExamples": [],
     "references": []
   },
@@ -149,13 +163,15 @@
     "id": "tls-tls-1-3-not-supported",
     "type": "header",
     "title": "TLS 1.3 Not Supported",
-    "category": "headers",
+    "category": "tls",
     "severity": "low",
     "description": "TLS 1.3 reduces handshake latency and improves forward secrecy. Negotiation fails back to 1.2 if 1.3 isn't enabled.",
     "evidence": "Async / body / header check for tls-tls-1-3-not-supported.",
     "riskImpact": "Enable TLS 1.3 in your server config",
     "explanation": "TLS 1.3 reduces handshake latency and improves forward secrecy. Negotiation fails back to 1.2 if 1.3 isn't enabled.",
-    "fixSteps": ["Enable TLS 1.3 in your server config"],
+    "fixSteps": [
+      "Enable TLS 1.3 in your server config"
+    ],
     "codeExamples": [],
     "references": []
   },
@@ -174,7 +190,9 @@
       "Submit to https://hstspreload.org once stable."
     ],
     "codeExamples": [],
-    "references": ["https://datatracker.ietf.org/doc/html/rfc6797"]
+    "references": [
+      "https://datatracker.ietf.org/doc/html/rfc6797"
+    ]
   },
   {
     "id": "tls-cert-must-staple-missing",
@@ -191,7 +209,9 @@
       "Enable OCSP stapling in the server (ssl_stapling on for Nginx)."
     ],
     "codeExamples": [],
-    "references": ["https://datatracker.ietf.org/doc/html/rfc7633"]
+    "references": [
+      "https://datatracker.ietf.org/doc/html/rfc7633"
+    ]
   },
   {
     "id": "tls-cert-san-missing",
@@ -265,7 +285,9 @@
       "Use only AEAD ciphers (AES-GCM, ChaCha20-Poly1305)."
     ],
     "codeExamples": [],
-    "references": ["https://sweet32.info/"]
+    "references": [
+      "https://sweet32.info/"
+    ]
   },
   {
     "id": "tls-cipher-rc4-offered",
@@ -282,7 +304,9 @@
       "Force-prefer AES-GCM and ChaCha20-Poly1305."
     ],
     "codeExamples": [],
-    "references": ["https://datatracker.ietf.org/doc/html/rfc7465"]
+    "references": [
+      "https://datatracker.ietf.org/doc/html/rfc7465"
+    ]
   },
   {
     "id": "tls-cipher-null-offered",
@@ -299,7 +323,9 @@
       "Verify with: nmap --script ssl-enum-ciphers -p 443 <host>."
     ],
     "codeExamples": [],
-    "references": ["https://datatracker.ietf.org/doc/html/rfc5246#appendix-A.5"]
+    "references": [
+      "https://datatracker.ietf.org/doc/html/rfc5246#appendix-A.5"
+    ]
   },
   {
     "id": "tls-cipher-export-offered",
@@ -316,7 +342,9 @@
       "Ensure DHE parameters are at least 2048 bits to also close Logjam."
     ],
     "codeExamples": [],
-    "references": ["https://datatracker.ietf.org/doc/html/rfc4346#appendix-A"]
+    "references": [
+      "https://datatracker.ietf.org/doc/html/rfc4346#appendix-A"
+    ]
   },
   {
     "id": "tls-cipher-anonymous-dh",
@@ -333,6 +361,8 @@
       "Require server certificates and ECDHE/ DHE-RSA key exchange."
     ],
     "codeExamples": [],
-    "references": ["https://datatracker.ietf.org/doc/html/rfc5246#appendix-A"]
+    "references": [
+      "https://datatracker.ietf.org/doc/html/rfc5246#appendix-A"
+    ]
   }
 ]
