@@ -60,10 +60,7 @@ export function LandingUseCases() {
               </p>
               <ul className="space-y-2">
                 {useCase.features.map((feature, j) => (
-                  <li
-                    key={j}
-                    className="flex items-start gap-2 text-sm"
-                  >
+                  <li key={j} className="flex items-start gap-2 text-sm">
                     <CheckCircle className="h-3.5 w-3.5 text-primary shrink-0 mt-0.5" />
                     <span className="break-words">{feature}</span>
                   </li>

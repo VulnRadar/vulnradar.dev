@@ -18,35 +18,35 @@ const CURL = `curl -X POST ${API_BASE}/api/v2/scan \\
 
 const RESPONSE = `{
   "url": "https://example.com",
-  "scannedAt": "2026-06-23T18:42:11.214Z",
+  "scannedAt": "2024-06-23T19:02:11.214Z",
   "duration": 2841,
   "checksRun": 412,
   "summary": {
-    "critical": 0, "high": 2, "medium": 5, "low": 3, "info": 1, "total": 11
+    "critical": 0, "high": 1, "medium": 0, "low": 0, "info": 0, "total": 1
   },
   "findings": [
     {
-      "id": "missing-hsts",
-      "title": "Strict-Transport-Security header is not set",
+      "id": "vuln-1719169331214-1",
+      "title": "Missing HTTP Strict Transport Security (HSTS)",
       "severity": "high",
       "category": "headers",
-      "description": "The response did not include the Strict-Transport-Security header.",
-      "evidence": "Response did not include Strict-Transport-Security.",
-      "riskImpact": "Without HSTS, a browser can be downgraded to HTTP by a network attacker.",
-      "explanation": "HSTS instructs the browser to refuse unencrypted connections to the domain.",
+      "description": "The server does not send the Strict-Transport-Security header, which tells browsers to only connect via HTTPS.",
+      "evidence": "Header 'Strict-Transport-Security' is not present in the response.",
+      "riskImpact": "Attackers could intercept traffic via man-in-the-middle attacks by downgrading the connection from HTTPS to HTTP.",
+      "explanation": "HSTS instructs browsers to only access the site over HTTPS for a specified duration.",
       "fixSteps": [
-        "Set Strict-Transport-Security: max-age=31536000; includeSubDomains; preload",
-        "Redirect all HTTP traffic to HTTPS first.",
-        "After 60 days of clean HSTS, submit to hstspreload.org."
+        "Add the Strict-Transport-Security header to all HTTPS responses.",
+        "Set a max-age of at least 31536000 (1 year).",
+        "Consider adding includeSubDomains and preload directives."
       ],
       "codeExamples": [
         {
-          "label": "nginx",
+          "label": "Nginx",
           "language": "nginx",
-          "code": "add_header Strict-Transport-Security \\"max-age=31536000; includeSubDomains; preload\\" always;"
+          "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
         }
       ],
-      "references": ["https://hstspreload.org", "CWE-319"]
+      "references": []
     }
   ]
 }`;
@@ -137,8 +137,8 @@ export function LandingApiExample() {
                 •
               </span>
               <span className="break-words">
-                Rate-limited per plan. Free: 25 scans/day. Supporter tiers
-                raise the cap.
+                Rate-limited per plan. Free: 25 scans/day. Supporter tiers raise
+                the cap.
               </span>
             </li>
             <li className="flex gap-2.5 min-w-0">
@@ -149,8 +149,8 @@ export function LandingApiExample() {
                 •
               </span>
               <span className="break-words">
-                Webhooks fire on completion. Pipe to Slack, Discord, or your
-                own endpoint.
+                Webhooks fire on completion. Pipe to Slack, Discord, or your own
+                endpoint.
               </span>
             </li>
             <li className="flex gap-2.5 min-w-0">
@@ -183,8 +183,8 @@ export function LandingApiExample() {
           <Snippet code={RESPONSE} label="response.json" />
           <p className="text-xs text-muted-foreground font-mono break-words">
             <Terminal className="inline h-3 w-3 -mt-0.5 mr-1" />
-            Every field is documented at /docs/api, including all stable
-            finding IDs and severity codes.
+            Every field is documented at /docs/api, including all stable finding
+            IDs and severity codes.
           </p>
         </div>
       </div>

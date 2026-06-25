@@ -77,32 +77,6 @@ const config: Config = {
           border: "hsl(var(--sidebar-border))",
           ring: "hsl(var(--sidebar-ring))",
         },
-        // Landing-only palette (Cloudflare / terminal security tier).
-        // Used by app/landing/* and the radar visual language.
-        // Do NOT use these tokens outside the landing scope.
-        ink: {
-          950: "#07090c",
-          900: "#0b0e13",
-          800: "#11151c",
-          700: "#1a2029",
-          600: "#2a313c",
-          500: "#3a4250",
-        },
-        chalk: {
-          50: "#f5f7fa",
-          100: "#e6ebf2",
-          200: "#c6cfdb",
-          300: "#9aa4b5",
-          400: "#6b7587",
-          500: "#4a5263",
-        },
-        radar: {
-          green: "#7CFFB2",
-          lime: "#D7FF7C",
-          amber: "#FFB454",
-          red: "#FF6B6B",
-          magenta: "#FF7AC6",
-        },
       },
       borderRadius: {
         lg: "var(--radius)",
@@ -162,22 +136,6 @@ const config: Config = {
           "0%, 100%": { transform: "translateY(0)" },
           "50%": { transform: "translateY(-10px)" },
         },
-        "scan-sweep": {
-          "0%": { transform: "rotate(0deg)" },
-          "100%": { transform: "rotate(360deg)" },
-        },
-        "caret-blink": {
-          "0%, 100%": { opacity: "1" },
-          "50%": { opacity: "0" },
-        },
-        "pulse-soft": {
-          "0%, 100%": { opacity: "0.45" },
-          "50%": { opacity: "1" },
-        },
-        "radar-ping": {
-          "0%": { transform: "scale(0.6)", opacity: "0.7" },
-          "80%, 100%": { transform: "scale(2.4)", opacity: "0" },
-        },
       },
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
@@ -193,10 +151,6 @@ const config: Config = {
         shimmer: "shimmer 2s linear infinite",
         glow: "glow 2s ease-in-out infinite",
         float: "float 3s ease-in-out infinite",
-        "scan-sweep": "scan-sweep 3.2s linear infinite",
-        "caret-blink": "caret-blink 1.1s steps(2) infinite",
-        "pulse-soft": "pulse-soft 2.4s ease-in-out infinite",
-        "radar-ping": "radar-ping 2.6s cubic-bezier(0, 0, 0.2, 1) infinite",
       },
     },
   },
