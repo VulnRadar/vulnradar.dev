@@ -30,7 +30,10 @@ export function ScanningIndicator() {
 
   return (
     <div className="flex flex-col items-center gap-8 py-12 sm:py-16 px-4">
-      {/* Spinner */}
+      <p className="text-xs font-medium text-primary uppercase tracking-wider">
+        Scanning
+      </p>
+
       <div className="relative">
         <div className="absolute inset-[-8px] rounded-full border-2 border-primary/20 animate-ping" />
         <div className="absolute inset-[-4px] rounded-full border border-primary/10 animate-pulse" />
@@ -39,7 +42,6 @@ export function ScanningIndicator() {
         </div>
       </div>
 
-      {/* Status text */}
       <div className="flex flex-col items-center gap-2 text-center">
         <div className="flex items-center gap-2">
           <Loader2 className="h-4 w-4 animate-spin text-primary" />
@@ -47,14 +49,13 @@ export function ScanningIndicator() {
             Scanning in progress
           </h2>
         </div>
-        <p className="text-sm text-muted-foreground max-w-sm">
+        <p className="text-sm text-muted-foreground max-w-sm text-pretty">
           Running {TOTAL_CHECKS_LABEL} different vulnerability checks against
           the target. This usually takes a few seconds.
         </p>
       </div>
 
-      {/* Progressive steps */}
-      <div className="flex flex-col gap-1.5 w-full max-w-xs">
+      <div className="flex flex-col gap-2 w-full max-w-sm rounded-xl border border-border/50 bg-card/50 p-4">
         {SCAN_STEPS.map((step, i) => {
           const isActive = i === activeStep;
           const isPast = i < activeStep;
@@ -63,7 +64,7 @@ export function ScanningIndicator() {
             <div
               key={i}
               className="flex items-center gap-2.5 text-xs transition-all duration-300"
-              style={{ opacity: isActive ? 1 : isPast ? 0.6 : 0.25 }}
+              style={{ opacity: isActive ? 1 : isPast ? 0.6 : 0.3 }}
             >
               <div
                 className={`w-1.5 h-1.5 rounded-full shrink-0 transition-all duration-300 ${

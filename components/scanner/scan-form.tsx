@@ -17,7 +17,9 @@ import {
   Eye,
   Settings,
   ChevronDown,
-  List,
+  ListChecks,
+  ListFilter,
+  X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -35,8 +37,6 @@ import {
 import { TOTAL_CHECKS_LABEL } from "@/lib/config/constants";
 import { cn } from "@/lib/ui/utils";
 import type { Category, ScanStatus } from "@/lib/scanner/types";
-// R7: SCAN_PROTOCOLS, ScanProtocol, and isHttpProtocol moved to
-// lib/scanner/protocols/index.ts (single source of truth).
 import {
   SCAN_PROTOCOLS,
   type ScanProtocol,
@@ -149,14 +149,13 @@ interface ScanFormProps {
   status: ScanStatus;
 }
 
-const FEATURES = [
-  "Security headers",
-  "SSL/TLS config",
-  "Cookie security",
-  "CORS policy",
-  "Mixed content",
-  `${TOTAL_CHECKS_LABEL} checks total`,
-];
+const MODE_DESCRIPTIONS: Record<ScanMode, (proto: string) => string> = {
+  quick: (proto) =>
+    `Scans the single ${proto.replace("://", "").toUpperCase()} endpoint for vulnerabilities.`,
+  deep: () => "Crawls the site to find internal pages, then scans each one.",
+  bulk: () =>
+    "Scan up to 10 URLs at once. Each URL counts toward your daily limit.",
+};
 
 export function ScanForm({
   onScan,
@@ -203,20 +202,17 @@ export function ScanForm({
       setError("Please enter a domain or URL");
       return false;
     }
-    // Strip any existing protocol for validation
     const cleaned = input.replace(/^(?:https?|wss?|ftps?):\/\//i, "").trim();
     if (!cleaned) {
       setError("Please enter a valid domain");
       return false;
     }
-    // Basic domain validation
     const domainRegex =
       /^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?)*(\.[a-zA-Z]{2,})?(:\d+)?(\/.*)?$/;
     if (!domainRegex.test(cleaned)) {
       setError("Please enter a valid domain (e.g., example.com)");
       return false;
     }
-    // Check if any selected scanners are available for this protocol
     const validScanners = Array.from(selectedScanners).filter((s) =>
       availableCategories.includes(s),
     );
@@ -230,7 +226,6 @@ export function ScanForm({
     return true;
   }
 
-  // Build full URL with selected protocol
   function buildFullUrl(input: string): string {
     const cleaned = input.replace(/^(?:https?|wss?|ftps?):\/\//i, "").trim();
     return protocol + cleaned;
@@ -276,7 +271,7 @@ export function ScanForm({
     });
     if (invalid.length > 0) {
       setBulkError(
-        `Invalid URLs: ${invalid.slice(0, 2).join(", ")}${invalid.length > 2 ? "…" : ""}`,
+        `Invalid URLs: ${invalid.slice(0, 2).join(", ")}${invalid.length > 2 ? "..." : ""}`,
       );
       return;
     }
@@ -285,101 +280,67 @@ export function ScanForm({
 
   const isScanning = status === "scanning";
   const isBulkScanning = bulkStatus === "scanning";
+  const protoLabel = protocol.replace("://", "").toUpperCase();
 
   return (
-    <div className="flex flex-col items-center gap-6 py-10 sm:py-16 px-4">
-      {/* Hero text */}
-      <div className="flex flex-col items-center gap-3 text-center max-w-xl">
-        <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-foreground text-balance">
-          Scan Your Website for Vulnerabilities
-        </h1>
-        <p className="text-sm sm:text-base text-muted-foreground leading-relaxed max-w-md">
-          Enter any URL to run security checks across headers, SSL, cookies,
-          content, and configuration.
+    <div className="flex flex-col gap-8 pt-6">
+      {/* Section header */}
+      <div>
+        <p className="text-xs font-medium text-primary uppercase tracking-wider mb-2">
+          Scanner
+        </p>
+        <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-balance">
+          Run a scan
+        </h2>
+        <p className="text-sm text-muted-foreground mt-2 max-w-xl text-pretty">
+          {MODE_DESCRIPTIONS[mode](protocol)} {TOTAL_CHECKS_LABEL} checks total.
         </p>
       </div>
 
-      {/* Feature pills */}
-      <div className="flex flex-wrap justify-center gap-2">
-        {FEATURES.map((f) => (
-          <span
-            key={f}
-            className="inline-flex items-center rounded-full border border-border bg-card px-3 py-1 text-xs text-muted-foreground"
-          >
-            {f}
-          </span>
-        ))}
+      {/* Mode toggle */}
+      <div className="flex items-center gap-1 p-1 rounded-lg bg-muted/40 border border-border/60 w-full sm:w-fit">
+        {[
+          { id: "quick" as const, label: "Quick", icon: Zap },
+          { id: "deep" as const, label: "Deep", icon: Globe },
+          { id: "bulk" as const, label: "Bulk", icon: ListChecks },
+        ].map(({ id, label, icon: Icon }) => {
+          const disabled = id === "deep" && !isHttpProtocol(protocol);
+          const active = mode === id;
+          return (
+            <button
+              key={id}
+              type="button"
+              onClick={() => !disabled && setMode(id)}
+              disabled={disabled}
+              title={
+                disabled
+                  ? "Deep crawl only available for HTTP/HTTPS"
+                  : undefined
+              }
+              className={cn(
+                "flex items-center justify-center gap-1.5 flex-1 sm:flex-none px-3.5 py-1.5 rounded-md text-sm font-medium transition-all",
+                active
+                  ? "bg-background text-foreground shadow-sm border border-border/60"
+                  : "text-muted-foreground hover:text-foreground",
+                disabled &&
+                  "opacity-50 cursor-not-allowed hover:text-muted-foreground",
+              )}
+            >
+              <Icon className="h-3.5 w-3.5" />
+              {label}
+            </button>
+          );
+        })}
       </div>
-
-      {/* Scan mode toggle */}
-      <div className="flex items-center gap-1 sm:gap-1.5 p-1 rounded-lg bg-muted/50 border border-border">
-        <button
-          type="button"
-          onClick={() => setMode("quick")}
-          className={cn(
-            "flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-3 py-2 sm:py-1.5 rounded-md text-xs font-medium transition-all min-h-[40px] sm:min-h-0",
-            mode === "quick"
-              ? "bg-background text-foreground shadow-sm border border-border"
-              : "text-muted-foreground hover:text-foreground active:bg-muted/80",
-          )}
-        >
-          <Zap className="h-3.5 w-3.5 sm:h-3 sm:w-3" />
-          <span className="hidden xs:inline">Quick</span>
-          <span className="xs:hidden">Quick</span>
-        </button>
-        <button
-          type="button"
-          onClick={() => isHttpProtocol(protocol) && setMode("deep")}
-          disabled={!isHttpProtocol(protocol)}
-          className={cn(
-            "flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-3 py-2 sm:py-1.5 rounded-md text-xs font-medium transition-all min-h-[40px] sm:min-h-0",
-            !isHttpProtocol(protocol) && "opacity-50 cursor-not-allowed",
-            mode === "deep"
-              ? "bg-background text-foreground shadow-sm border border-border"
-              : "text-muted-foreground hover:text-foreground active:bg-muted/80",
-          )}
-          title={
-            !isHttpProtocol(protocol)
-              ? "Deep crawl only available for HTTP/HTTPS"
-              : undefined
-          }
-        >
-          <Globe className="h-3.5 w-3.5 sm:h-3 sm:w-3" />
-          <span className="hidden xs:inline">Deep</span>
-          <span className="xs:hidden">Deep</span>
-        </button>
-        <button
-          type="button"
-          onClick={() => setMode("bulk")}
-          className={cn(
-            "flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-3 py-2 sm:py-1.5 rounded-md text-xs font-medium transition-all min-h-[40px] sm:min-h-0",
-            mode === "bulk"
-              ? "bg-background text-foreground shadow-sm border border-border"
-              : "text-muted-foreground hover:text-foreground active:bg-muted/80",
-          )}
-        >
-          <List className="h-3.5 w-3.5 sm:h-3 sm:w-3" />
-          <span className="hidden xs:inline">Bulk</span>
-          <span className="xs:hidden">Bulk</span>
-        </button>
-      </div>
-      <p className="text-[10px] text-muted-foreground text-center -mt-2">
-        {mode === "quick" &&
-          `Scans the single ${protocol.replace("://", "").toUpperCase()} endpoint for vulnerabilities.`}
-        {mode === "deep" &&
-          "Crawls the site to find internal pages, then scans each one."}
-        {mode === "bulk" &&
-          "Scan up to 10 URLs at once. Each URL counts toward your daily limit."}
-      </p>
 
       {/* Single URL form (Quick / Deep) */}
       {mode !== "bulk" && (
         <form
           onSubmit={handleSubmit}
-          className="flex flex-col gap-3 w-full max-w-lg"
+          className="flex flex-col gap-3 w-full max-w-2xl"
         >
           <div className="flex flex-col sm:flex-row gap-2">
-            <div className="relative flex-1 flex">
+            <div className="relative flex-1 flex rounded-lg border border-border bg-card focus-within:ring-2 focus-within:ring-primary/20 focus-within:border-primary/40 transition-all overflow-hidden">
               {/* Protocol dropdown */}
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
@@ -387,55 +348,65 @@ export function ScanForm({
                     type="button"
                     disabled={isScanning}
                     className={cn(
-                      "flex items-center gap-1 px-2.5 sm:px-3 h-12 sm:h-11 rounded-l-md border border-r-0 border-border bg-muted/50 text-xs font-mono font-medium text-muted-foreground hover:bg-muted active:bg-muted transition-colors shrink-0",
+                      "flex items-center gap-1.5 px-3 h-11 border-r border-border bg-muted/30 text-xs font-mono font-semibold text-foreground hover:bg-muted/50 transition-colors shrink-0 min-w-[64px]",
                       isScanning && "opacity-50 cursor-not-allowed",
                     )}
                   >
                     {protocol.replace("://", "")}
-                    <ChevronDown className="h-3 w-3" />
+                    <ChevronDown className="h-3 w-3 text-muted-foreground" />
                   </button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="start" className="w-48">
-                  {SCAN_PROTOCOLS.map((p) => (
-                    <DropdownMenuItem
-                      key={p.value}
-                      onClick={() => {
-                        setProtocol(p.value);
-                        const protoCfg = SCAN_PROTOCOLS.find(
-                          (pr) => pr.value === p.value,
-                        );
-                        if (protoCfg) {
-                          setSelectedScanners(
-                            new Set(
-                              protoCfg.categories.filter((c) =>
-                                ALL_CATEGORY_IDS.includes(c),
-                              ),
-                            ),
+                <DropdownMenuContent align="start" className="w-64 p-1">
+                  {SCAN_PROTOCOLS.map((p) => {
+                    const selected = protocol === p.value;
+                    return (
+                      <DropdownMenuItem
+                        key={p.value}
+                        onClick={() => {
+                          setProtocol(p.value);
+                          const protoCfg = SCAN_PROTOCOLS.find(
+                            (pr) => pr.value === p.value,
                           );
-                        }
-                        if (p.value !== "https://" && p.value !== "http://") {
-                          setMode("quick");
-                        }
-                      }}
-                      className={cn(
-                        "flex flex-col items-start gap-0.5 focus:bg-transparent",
-                        protocol === p.value
-                          ? "scanner-selected scanner-selected-hover"
-                          : "scanner-hover",
-                      )}
-                    >
-                      <span className="font-mono font-medium">{p.value}</span>
-                      <span className="text-[10px] text-muted-foreground">
-                        {p.description}
-                      </span>
-                    </DropdownMenuItem>
-                  ))}
+                          if (protoCfg) {
+                            setSelectedScanners(
+                              new Set(
+                                protoCfg.categories.filter((c) =>
+                                  ALL_CATEGORY_IDS.includes(c),
+                                ),
+                              ),
+                            );
+                          }
+                          if (p.value !== "https://" && p.value !== "http://") {
+                            setMode("quick");
+                          }
+                        }}
+                        className={cn(
+                          "flex flex-col items-start gap-0.5 py-2 px-2.5 cursor-pointer rounded-sm",
+                          selected
+                            ? "bg-primary/10 text-foreground"
+                            : "hover:bg-muted/60 text-foreground",
+                        )}
+                      >
+                        <div className="flex items-center gap-2 w-full">
+                          <span className="font-mono font-semibold text-sm">
+                            {p.value}
+                          </span>
+                          {selected && (
+                            <Check className="h-3.5 w-3.5 text-primary ml-auto" />
+                          )}
+                        </div>
+                        <span className="text-[10px] text-muted-foreground leading-tight">
+                          {p.description}
+                        </span>
+                      </DropdownMenuItem>
+                    );
+                  })}
                 </DropdownMenuContent>
               </DropdownMenu>
 
               {/* URL input */}
               <div className="relative flex-1">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
                 <Input
                   type="text"
                   placeholder="example.com"
@@ -449,18 +420,20 @@ export function ScanForm({
                     if (error) setError("");
                   }}
                   disabled={isScanning}
-                  className="pl-9 h-12 sm:h-11 rounded-l-none bg-card border-border text-foreground placeholder:text-muted-foreground text-base sm:text-sm"
+                  className="pl-9 h-11 border-0 bg-transparent text-foreground placeholder:text-muted-foreground text-sm shadow-none focus-visible:ring-0 focus-visible:ring-offset-0"
                   aria-label="Domain or URL to scan"
                   aria-invalid={!!error}
                   aria-describedby={error ? "url-error" : undefined}
                 />
               </div>
             </div>
-            <div className="flex gap-2">
+
+            <div className="flex gap-2 shrink-0">
               <Button
                 type="submit"
                 disabled={isScanning || noneSelected}
-                className="h-12 sm:h-11 px-6 font-medium shrink-0 flex-1 sm:flex-none min-w-[100px]"
+                size="lg"
+                className="h-11 px-6 font-medium min-w-[120px]"
               >
                 {isScanning ? (
                   <>
@@ -479,41 +452,42 @@ export function ScanForm({
                   <Button
                     type="button"
                     variant="outline"
+                    size="lg"
                     disabled={isScanning}
                     className={cn(
-                      "h-12 sm:h-11 px-3 bg-transparent shrink-0",
-                      !allSelected && "border-primary/50 text-primary",
+                      "h-11 px-3 bg-transparent shrink-0",
+                      !allSelected && "border-primary/40 text-primary",
                     )}
                     aria-label="Select scanners"
                   >
                     <SlidersHorizontal className="h-4 w-4" />
-                    <span className="hidden sm:inline ml-2 text-xs">
+                    <span className="hidden sm:inline ml-2 text-xs font-mono tabular-nums">
                       {allSelected
-                        ? "All Scanners"
+                        ? "All"
                         : `${selectedScanners.size}/${ALL_CATEGORY_IDS.length}`}
                     </span>
                   </Button>
                 </PopoverTrigger>
                 <PopoverContent align="end" className="w-80 p-0">
-                  <div className="px-3 py-2.5 border-b border-border flex items-center justify-between">
-                    <div className="flex flex-col">
-                      <span className="text-sm font-medium text-foreground">
-                        Select Scanners
+                  <div className="px-4 py-3 border-b border-border flex items-center justify-between gap-3">
+                    <div className="flex flex-col min-w-0">
+                      <span className="text-sm font-semibold text-foreground">
+                        Select scanners
                       </span>
                       <span className="text-[10px] text-muted-foreground">
-                        {availableCategories.length} available for{" "}
-                        {protocol.replace("://", "").toUpperCase()}
+                        {availableCategories.length} available for {protoLabel}
                       </span>
                     </div>
                     <button
                       type="button"
                       onClick={toggleAll}
-                      className="text-xs text-primary hover:underline"
+                      className="text-xs font-medium text-primary hover:underline shrink-0"
                     >
-                      {allSelected ? "Deselect All" : "Select All"}
+                      {allSelected ? "Clear" : "Select all"}
                     </button>
                   </div>
-                  <div className="p-1.5 max-h-72 overflow-y-auto">
+
+                  <div className="p-1.5 max-h-80 overflow-y-auto">
                     {SCANNER_CATEGORIES.map(
                       ({ id, label, icon: Icon, description }) => {
                         const checked = selectedScanners.has(id);
@@ -525,36 +499,41 @@ export function ScanForm({
                             onClick={() => isAvailable && toggleScanner(id)}
                             disabled={!isAvailable}
                             className={cn(
-                              "w-full flex items-start gap-2.5 px-2.5 py-2 rounded-md text-left transition-colors",
+                              "w-full flex items-start gap-3 px-2.5 py-2.5 rounded-md text-left transition-colors",
                               !isAvailable && "opacity-40 cursor-not-allowed",
-                              isAvailable && checked
-                                ? "scanner-selected scanner-selected-hover"
-                                : isAvailable && "scanner-hover",
+                              isAvailable && checked && "bg-primary/10",
+                              isAvailable && !checked && "hover:bg-muted/60",
                             )}
                           >
                             <div
                               className={cn(
-                                "flex items-center justify-center w-5 h-5 rounded border mt-0.5 shrink-0 transition-colors",
-                                checked && isAvailable
-                                  ? "bg-primary border-primary text-primary-foreground"
-                                  : "border-border",
+                                "flex items-center justify-center w-8 h-8 rounded-lg shrink-0 transition-colors",
+                                isAvailable && checked
+                                  ? "bg-primary text-primary-foreground"
+                                  : "bg-muted/60 text-muted-foreground",
                               )}
                             >
-                              {checked && isAvailable && (
-                                <Check className="h-3 w-3" />
-                              )}
+                              <Icon className="h-4 w-4" />
                             </div>
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center gap-1.5">
-                                <Icon className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                                <span className="text-sm font-medium text-foreground">
+                                <span
+                                  className={cn(
+                                    "text-sm font-medium",
+                                    isAvailable
+                                      ? "text-foreground"
+                                      : "text-muted-foreground",
+                                  )}
+                                >
                                   {label}
                                 </span>
                                 {!isAvailable && (
-                                  <span className="text-[9px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
-                                    N/A for{" "}
-                                    {protocol.replace("://", "").toUpperCase()}
+                                  <span className="text-[9px] font-medium text-muted-foreground bg-muted px-1.5 py-0.5 rounded uppercase tracking-wider">
+                                    N/A
                                   </span>
+                                )}
+                                {isAvailable && checked && (
+                                  <Check className="h-3.5 w-3.5 text-primary ml-auto shrink-0" />
                                 )}
                               </div>
                               <p className="text-[11px] text-muted-foreground leading-snug mt-0.5">
@@ -566,23 +545,36 @@ export function ScanForm({
                       },
                     )}
                   </div>
-                  <div className="px-3 py-2 border-t border-border">
-                    <p className="text-[10px] text-muted-foreground text-center">
+
+                  <div className="px-4 py-2.5 border-t border-border flex items-center justify-between text-xs">
+                    <span className="text-muted-foreground">
                       {
                         Array.from(selectedScanners).filter((s) =>
                           availableCategories.includes(s),
                         ).length
                       }{" "}
-                      of {availableCategories.length} available scanners
-                      selected
-                    </p>
+                      of {availableCategories.length} selected
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setSelectorOpen(false)}
+                      className="text-primary font-medium hover:underline"
+                    >
+                      Done
+                    </button>
                   </div>
                 </PopoverContent>
               </Popover>
             </div>
           </div>
+
           {error && (
-            <p id="url-error" className="text-sm text-destructive" role="alert">
+            <p
+              id="url-error"
+              className="text-sm text-destructive flex items-center gap-2"
+              role="alert"
+            >
+              <X className="h-3.5 w-3.5 shrink-0" />
               {error}
             </p>
           )}
@@ -593,76 +585,98 @@ export function ScanForm({
       {mode === "bulk" && (
         <form
           onSubmit={handleBulkSubmit}
-          className="flex flex-col gap-3 w-full max-w-lg"
+          className="flex flex-col gap-3 w-full max-w-2xl"
         >
-          <textarea
-            placeholder={
-              "https://example.com\nhttps://another-site.com\nhttps://third-site.com"
-            }
-            value={bulkUrls}
-            onChange={(e) => {
-              setBulkUrls(e.target.value);
-              if (bulkError) setBulkError("");
-            }}
-            rows={5}
-            disabled={isBulkScanning}
-            className="w-full rounded-lg border border-border bg-card px-3 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 resize-none font-mono disabled:opacity-50"
-            aria-label="URLs to bulk scan, one per line"
-          />
-          <div className="flex flex-col gap-2">
-            {/* Progress bar during scanning */}
-            {isBulkScanning && bulkProgress && (
-              <div className="flex flex-col gap-1.5">
-                <div className="flex items-center justify-between text-xs">
-                  <span className="text-muted-foreground">
-                    Scanning URL {bulkProgress.current} of {bulkProgress.total}
-                  </span>
-                  <span className="text-foreground font-medium">
-                    {Math.round(
-                      (bulkProgress.current / bulkProgress.total) * 100,
-                    )}
-                    %
-                  </span>
-                </div>
-                <div className="h-2 w-full bg-muted rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-primary transition-all duration-300 ease-out rounded-full"
-                    style={{
-                      width: `${(bulkProgress.current / bulkProgress.total) * 100}%`,
-                    }}
-                  />
-                </div>
+          <div className="rounded-lg border border-border bg-card focus-within:ring-2 focus-within:ring-primary/20 focus-within:border-primary/40 transition-all overflow-hidden">
+            <div className="flex items-center justify-between gap-2 px-3 py-2 border-b border-border bg-muted/30">
+              <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                <ListFilter className="h-3.5 w-3.5" />
+                <span className="font-mono font-medium tabular-nums">
+                  {bulkUrls.split("\n").filter((u) => u.trim()).length}/10
+                </span>
+                <span>URLs · one per line</span>
               </div>
-            )}
-            <div className="flex items-center justify-between gap-3">
-              <p className="text-[11px] text-muted-foreground">
-                {bulkUrls.split("\n").filter((u) => u.trim()).length} / 10 URLs
-                &middot; one per line
-              </p>
-              <Button
-                type="submit"
-                disabled={isBulkScanning || !bulkUrls.trim()}
-                className="h-10 px-5 font-medium shrink-0"
-              >
-                {isBulkScanning ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Scanning{" "}
-                    {bulkProgress
-                      ? `${bulkProgress.current}/${bulkProgress.total}`
-                      : "..."}
-                  </>
-                ) : (
-                  <>
-                    <List className="mr-2 h-4 w-4" />
-                    Start Bulk Scan
-                  </>
-                )}
-              </Button>
+              {bulkUrls && (
+                <button
+                  type="button"
+                  onClick={() => setBulkUrls("")}
+                  className="text-xs text-muted-foreground hover:text-foreground inline-flex items-center gap-1"
+                >
+                  <X className="h-3 w-3" />
+                  Clear
+                </button>
+              )}
             </div>
+            <textarea
+              placeholder={
+                "https://example.com\nhttps://another-site.com\nhttps://third-site.com"
+              }
+              value={bulkUrls}
+              onChange={(e) => {
+                setBulkUrls(e.target.value);
+                if (bulkError) setBulkError("");
+              }}
+              rows={6}
+              disabled={isBulkScanning}
+              className="w-full bg-transparent px-3 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none resize-none font-mono disabled:opacity-50"
+              aria-label="URLs to bulk scan, one per line"
+            />
           </div>
+
+          {isBulkScanning && bulkProgress && (
+            <div className="flex flex-col gap-1.5">
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-muted-foreground">
+                  Scanning URL {bulkProgress.current} of {bulkProgress.total}
+                </span>
+                <span className="text-foreground font-medium tabular-nums">
+                  {Math.round(
+                    (bulkProgress.current / bulkProgress.total) * 100,
+                  )}
+                  %
+                </span>
+              </div>
+              <div className="h-1.5 w-full bg-muted/60 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-primary transition-all duration-300 ease-out rounded-full"
+                  style={{
+                    width: `${(bulkProgress.current / bulkProgress.total) * 100}%`,
+                  }}
+                />
+              </div>
+            </div>
+          )}
+
+          <div className="flex justify-end">
+            <Button
+              type="submit"
+              disabled={isBulkScanning || !bulkUrls.trim()}
+              size="lg"
+              className="h-11 px-6 font-medium min-w-[160px]"
+            >
+              {isBulkScanning ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Scanning{" "}
+                  {bulkProgress
+                    ? `${bulkProgress.current}/${bulkProgress.total}`
+                    : "..."}
+                </>
+              ) : (
+                <>
+                  <ListChecks className="mr-2 h-4 w-4" />
+                  Start bulk scan
+                </>
+              )}
+            </Button>
+          </div>
+
           {bulkError && (
-            <p className="text-sm text-destructive" role="alert">
+            <p
+              className="text-sm text-destructive flex items-center gap-2"
+              role="alert"
+            >
+              <X className="h-3.5 w-3.5 shrink-0" />
               {bulkError}
             </p>
           )}
