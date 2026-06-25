@@ -20,9 +20,9 @@ export function LandingHero() {
           </h1>
 
           <p className="text-base sm:text-lg text-muted-foreground max-w-xl mx-auto mb-10 text-pretty">
-            {TOTAL_CHECKS_LABEL} deterministic checks across 12 categories.
-            Run a single-page scan in seconds, drop the engine into your CI,
-            and stream findings to a webhook.
+            {TOTAL_CHECKS_LABEL} deterministic checks across 12 categories. Run
+            a single-page scan in seconds, drop the engine into your CI, and
+            stream findings to a webhook.
           </p>
 
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-center gap-3 w-full sm:w-auto">
@@ -55,17 +55,11 @@ export function LandingHero() {
 
           <div className="mt-6 flex flex-wrap items-center justify-center gap-x-5 gap-y-2 text-sm text-muted-foreground">
             <span>No credit card required</span>
-            <span
-              aria-hidden
-              className="text-muted-foreground/50 select-none"
-            >
+            <span aria-hidden className="text-muted-foreground/50 select-none">
               ·
             </span>
             <span>Free forever tier</span>
-            <span
-              aria-hidden
-              className="text-muted-foreground/50 select-none"
-            >
+            <span aria-hidden className="text-muted-foreground/50 select-none">
               ·
             </span>
             <span>Open source · GPL-3.0</span>

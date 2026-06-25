@@ -1,10 +1,5 @@
 import Link from "next/link";
-import {
-  MessagesSquare,
-  Server,
-  BookOpen,
-  ArrowRight,
-} from "lucide-react";
+import { MessagesSquare, Server, BookOpen, ArrowRight } from "lucide-react";
 import { FaGithub } from "react-icons/fa";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -23,10 +18,10 @@ export function LandingOpenSource() {
             Built in public. Licensed GPL-3.0. Self-hostable.
           </h2>
           <p className="text-muted-foreground text-pretty">
-            Every check, every API route, every dashboard pixel is in the
-            public repo. Audit it, fork it, run it on your own infra. We
-            don&apos;t have a closed-source scanner engine bolted on the side.
-            the SaaS is the same code you can deploy.
+            Every check, every API route, every dashboard pixel is in the public
+            repo. Audit it, fork it, run it on your own infra. We don&apos;t
+            have a closed-source scanner engine bolted on the side. the SaaS is
+            the same code you can deploy.
           </p>
         </div>
 
@@ -38,7 +33,12 @@ export function LandingOpenSource() {
               Read the code, file issues, send PRs. Releases are tagged and
               changelogged per version.
             </p>
-            <Button asChild variant="outline" size="sm" className="h-8 w-full sm:w-auto">
+            <Button
+              asChild
+              variant="outline"
+              size="sm"
+              className="h-8 w-full sm:w-auto"
+            >
               <a
                 href={`https://github.com/${APP_REPO}`}
                 target="_blank"
@@ -57,7 +57,12 @@ export function LandingOpenSource() {
               Next.js process + Postgres. One Dockerfile, one .env. Self-host
               guide walks through the rest.
             </p>
-            <Button asChild variant="outline" size="sm" className="h-8 w-full sm:w-auto">
+            <Button
+              asChild
+              variant="outline"
+              size="sm"
+              className="h-8 w-full sm:w-auto"
+            >
               <Link href={`${ROUTES.DOCS}/self-hosting`}>
                 Read the guide
                 <ArrowRight className="h-3.5 w-3.5 ml-1 shrink-0" />
@@ -72,7 +77,12 @@ export function LandingOpenSource() {
               Discord for questions, bug reports, and request-a-check threads.
               Maintainers reply in-thread.
             </p>
-            <Button asChild variant="outline" size="sm" className="h-8 w-full sm:w-auto">
+            <Button
+              asChild
+              variant="outline"
+              size="sm"
+              className="h-8 w-full sm:w-auto"
+            >
               <a
                 href={CONFIG_DISCORD_INVITE_URL}
                 target="_blank"
@@ -90,17 +100,11 @@ export function LandingOpenSource() {
             <BookOpen className="h-3.5 w-3.5" />
             License: GPL-3.0
           </span>
-          <span
-            aria-hidden
-            className="text-muted-foreground/50 select-none"
-          >
+          <span aria-hidden className="text-muted-foreground/50 select-none">
             ·
           </span>
           <span>Stack: Next.js · PostgreSQL · TypeScript</span>
-          <span
-            aria-hidden
-            className="text-muted-foreground/50 select-none"
-          >
+          <span aria-hidden className="text-muted-foreground/50 select-none">
             ·
           </span>
           <span>No telemetry. No third-party trackers.</span>

@@ -44,7 +44,8 @@ const META: Record<Category, CategoryMeta> = {
   },
   cookies: {
     label: "Cookies",
-    blurb: "Secure, HttpOnly, SameSite, scope, and prefix (__Host-, __Secure-).",
+    blurb:
+      "Secure, HttpOnly, SameSite, scope, and prefix (__Host-, __Secure-).",
     icon: Cookie,
   },
   configuration: {
@@ -74,7 +75,8 @@ const META: Record<Category, CategoryMeta> = {
   },
   code: {
     label: "Code",
-    blurb: "Inline JS patterns, vulnerable library fingerprints, leaked tokens.",
+    blurb:
+      "Inline JS patterns, vulnerable library fingerprints, leaked tokens.",
     icon: Bug,
   },
   "secrets-extended": {

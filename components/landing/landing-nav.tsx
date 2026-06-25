@@ -21,10 +21,7 @@ export function LandingNav() {
       )}
     >
       <div className="max-w-6xl mx-auto px-4 sm:px-6 h-14 relative flex items-center">
-        <Link
-          href="/"
-          className="flex items-center gap-2.5 group shrink-0 z-10"
-        >
+        <Link href="/" className="flex items-center gap-2.5 shrink-0 z-10">
           <ThemedLogo
             width={26}
             height={26}

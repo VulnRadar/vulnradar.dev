@@ -1,10 +1,4 @@
-import {
-  Lightbulb,
-  Code2,
-  ShieldAlert,
-  Check,
-  ArrowRight,
-} from "lucide-react";
+import { Lightbulb, Code2, ShieldAlert, Check, ArrowRight } from "lucide-react";
 import { ROUTES } from "@/lib/config/constants";
 import { Card } from "@/components/ui/card";
 import Link from "next/link";
@@ -30,8 +24,11 @@ export function LandingSampleFinding() {
             <li className="flex items-start gap-2 min-w-0">
               <Check className="h-4 w-4 text-emerald-500 mt-0.5 shrink-0" />
               <span className="break-words">
-                Stable check IDs (<code className="text-xs px-1 py-0.5 rounded bg-muted text-foreground">hsts-missing</code>)
-                you can reference in CI, tickets, and changelogs.
+                Stable check IDs (
+                <code className="text-xs px-1 py-0.5 rounded bg-muted text-foreground">
+                  hsts-missing
+                </code>
+                ) you can reference in CI, tickets, and changelogs.
               </span>
             </li>
             <li className="flex items-start gap-2 min-w-0">
@@ -51,8 +48,8 @@ export function LandingSampleFinding() {
             <li className="flex items-start gap-2 min-w-0">
               <Check className="h-4 w-4 text-emerald-500 mt-0.5 shrink-0" />
               <span className="break-words">
-                Re-running the same URL returns the same IDs and severities.
-                No flakes, no churn.
+                Re-running the same URL returns the same IDs and severities. No
+                flakes, no churn.
               </span>
             </li>
           </ul>
@@ -73,7 +70,9 @@ export function LandingSampleFinding() {
           <div className="px-4 sm:px-5 py-4 border-b border-border/60 bg-muted/20 flex items-center justify-between gap-2">
             <div className="flex items-center gap-2 min-w-0">
               <ShieldAlert className="h-4 w-4 text-[hsl(var(--severity-high))] shrink-0" />
-              <span className="text-sm font-mono font-medium truncate">hsts-missing</span>
+              <span className="text-sm font-mono font-medium truncate">
+                hsts-missing
+              </span>
             </div>
             <span className="text-[10px] font-mono uppercase tracking-wider px-2 py-0.5 rounded-full border border-[hsl(var(--severity-high))]/40 bg-[hsl(var(--severity-high))]/10 text-[hsl(var(--severity-high))] shrink-0">
               high
@@ -90,9 +89,9 @@ export function LandingSampleFinding() {
                 <code className="text-xs px-1 py-0.5 rounded bg-muted text-foreground break-all">
                   Strict-Transport-Security
                 </code>{" "}
-                header, which tells browsers to only connect via HTTPS. Attackers
-                could intercept traffic via man-in-the-middle attacks by
-                downgrading the connection from HTTPS to HTTP.
+                header, which tells browsers to only connect via HTTPS.
+                Attackers could intercept traffic via man-in-the-middle attacks
+                by downgrading the connection from HTTPS to HTTP.
               </p>
             </div>
 
