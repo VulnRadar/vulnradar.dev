@@ -1,3 +1,19 @@
+/**
+ * Dashboard idle state.
+ *
+ * Polished to match the design language we landed on for `/landing`:
+ *  - Light bg, cyan/blue primary, no terminal/security aesthetic.
+ *  - Section eyebrow (`text-xs uppercase tracking-wider text-primary`).
+ *  - Cards use `rounded-xl border border-border/50 bg-card/50`.
+ *  - Icon chips `w-9 h-9 rounded-lg bg-primary/10`.
+ *  - `text-balance` / `text-pretty` on headings + paragraphs.
+ *  - No emoji, no terminal-redesign tokens.
+ *
+ * Structure (top → bottom):
+ *  1. Welcome / overview header
+ *  2. Stats row (Total Scans / Unique Sites / API Scans / Web Scans)
+ *  3. 2×2 grid: Severity breakdown / Activity / Top Issues / Recent Scans
+ */
 "use client";
 
 import { useState, useEffect } from "react";
@@ -14,9 +30,10 @@ import {
   Activity,
   Target,
   ChevronRight,
+  ScanSearch,
 } from "lucide-react";
 import { cn } from "@/lib/ui/utils";
-import { API } from "@/lib/config/constants";
+import { API, ROUTES } from "@/lib/config/constants";
 
 interface DashboardData {
   totalScans: number;
@@ -62,7 +79,6 @@ function StatCard({
   trend?: { value: number; label: string };
   color?: string;
 }) {
-  // Map text color to background with opacity
   const bgColorMap: Record<string, string> = {
     "text-primary": "bg-primary/10",
     "text-cyan-500": "bg-cyan-500/10",
@@ -74,18 +90,20 @@ function StatCard({
   const bgColor = bgColorMap[color] || "bg-primary/10";
 
   return (
-    <div className="flex items-center gap-3 p-4 rounded-xl border border-border/40 bg-card/30 hover:bg-card/50 hover:border-primary/30 transition-colors">
-      <div className={cn("p-2 rounded-lg", bgColor)}>
+    <div className="flex items-center gap-3 p-4 rounded-xl border border-border/50 bg-card/50 hover:bg-card hover:border-border/60 transition-all">
+      <div className={cn("p-2 rounded-lg shrink-0", bgColor)}>
         <Icon className={cn("h-4 w-4", color)} />
       </div>
-      <div>
-        <p className="text-2xl font-bold">{value}</p>
-        <p className="text-xs text-muted-foreground">{label}</p>
+      <div className="min-w-0">
+        <p className="text-2xl font-bold tracking-tight tabular-nums">
+          {value}
+        </p>
+        <p className="text-xs text-muted-foreground truncate">{label}</p>
       </div>
       {trend && (
         <div
           className={cn(
-            "ml-auto flex items-center gap-1 text-xs font-medium px-2 py-1 rounded-full",
+            "ml-auto flex items-center gap-1 text-xs font-medium px-2 py-1 rounded-full shrink-0",
             trend.value >= 0
               ? "text-emerald-500 bg-emerald-500/10"
               : "text-destructive bg-destructive/10",
@@ -106,13 +124,11 @@ function SeverityBar({
   count,
   total,
   color,
-  icon: _Icon,
 }: {
   label: string;
   count: number;
   total: number;
   color: string;
-  icon?: React.ElementType;
 }) {
   const pct = total > 0 ? (count / total) * 100 : 0;
   return (
@@ -159,7 +175,6 @@ function ActivityChart({
               key={i}
               className="flex-1 flex flex-col items-center justify-end h-full group relative"
             >
-              {/* Tooltip */}
               <div className="absolute -top-8 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10 whitespace-nowrap bg-popover border border-border rounded-lg px-3 py-2 shadow-xl">
                 <p className="text-xs font-medium text-foreground">
                   {d.scans} scan{d.scans !== 1 ? "s" : ""}
@@ -169,7 +184,6 @@ function ActivityChart({
                 </p>
               </div>
 
-              {/* Bar */}
               <div
                 className={cn(
                   "w-full rounded-t-sm transition-all duration-300 cursor-pointer",
@@ -188,7 +202,6 @@ function ActivityChart({
         })}
       </div>
 
-      {/* X-axis labels */}
       <div className="flex justify-between text-[10px] text-muted-foreground px-1">
         <span>
           {new Date(data[0]?.day + "T12:00:00").toLocaleDateString("en-US", {
@@ -203,8 +216,7 @@ function ActivityChart({
         </span>
       </div>
 
-      {/* Legend */}
-      <div className="flex items-center justify-between pt-3 border-t border-border">
+      <div className="flex items-center justify-between pt-3 border-t border-border/60">
         <div className="flex items-center gap-4 text-xs text-muted-foreground">
           <span className="flex items-center gap-1.5">
             <span className="w-2.5 h-2.5 rounded-sm bg-primary" />
@@ -215,7 +227,7 @@ function ActivityChart({
             Previous
           </span>
         </div>
-        <span className="text-xs font-medium text-foreground">
+        <span className="text-xs font-medium text-foreground tabular-nums">
           {data.reduce((acc, d) => acc + d.scans, 0)} total scans
         </span>
       </div>
@@ -249,16 +261,21 @@ export function Dashboard() {
 
   if (loading) {
     return (
-      <div className="flex flex-col gap-6 pt-8">
-        {/* Stats skeleton */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="flex flex-col gap-8 pt-6">
+        <div className="space-y-2">
+          <div className="h-3 w-20 rounded bg-muted animate-pulse" />
+          <div className="h-7 w-72 rounded bg-muted animate-pulse" />
+          <div className="h-4 w-96 rounded bg-muted animate-pulse" />
+        </div>
+
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
           {[...Array(4)].map((_, i) => (
             <div
               key={i}
-              className="flex items-center gap-3 p-4 rounded-xl border border-border/40 bg-card/30"
+              className="flex items-center gap-3 p-4 rounded-xl border border-border/50 bg-card/50"
             >
-              <div className="w-8 h-8 rounded-lg bg-muted animate-pulse" />
-              <div className="space-y-2">
+              <div className="w-8 h-8 rounded-lg bg-muted animate-pulse shrink-0" />
+              <div className="space-y-2 min-w-0">
                 <div className="h-6 w-12 rounded bg-muted animate-pulse" />
                 <div className="h-3 w-16 rounded bg-muted animate-pulse" />
               </div>
@@ -266,7 +283,6 @@ export function Dashboard() {
           ))}
         </div>
 
-        {/* Cards skeleton */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           {[...Array(4)].map((_, i) => (
             <div
@@ -336,51 +352,73 @@ export function Dashboard() {
     issues: Number(d.issues) || 0,
   }));
 
+  const hasScans = data.totalScans > 0;
+
   return (
-    <div className="flex flex-col gap-6 pt-8">
-      {/* Stats row */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard
-          value={data.totalScans}
-          label="Total Scans"
-          icon={BarChart3}
-          color="text-primary"
-        />
-        <StatCard
-          value={data.uniqueSites}
-          label="Unique Sites"
-          icon={Globe}
-          color="text-cyan-500"
-        />
-        <StatCard
-          value={apiCount}
-          label="API Scans"
-          icon={Terminal}
-          color="text-violet-500"
-        />
-        <StatCard
-          value={webCount}
-          label="Web Scans"
-          icon={Monitor}
-          color="text-amber-500"
-        />
+    <div className="flex flex-col gap-8 pt-6">
+      {/* Section header */}
+      <div>
+        <p className="text-xs font-medium text-primary uppercase tracking-wider mb-2">
+          Overview
+        </p>
+        <h2 className="text-2xl sm:text-3xl font-bold tracking-tight mb-2 text-balance">
+          Your security activity
+        </h2>
+        <p className="text-sm text-muted-foreground text-pretty">
+          {hasScans
+            ? `${data.totalScans} scan${data.totalScans === 1 ? "" : "s"} across ${data.uniqueSites} site${data.uniqueSites === 1 ? "" : "s"} in the last 14 days. ${totalIssues} issue${totalIssues === 1 ? "" : "s"} found.`
+            : "Run a scan to start tracking your security posture. Findings, severity, and activity will show up here."}
+        </p>
       </div>
+
+      {/* Stats row */}
+      <section aria-label="Scan stats">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 min-w-0">
+          <StatCard
+            value={data.totalScans}
+            label="Total scans"
+            icon={BarChart3}
+            color="text-primary"
+          />
+          <StatCard
+            value={data.uniqueSites}
+            label="Unique sites"
+            icon={Globe}
+            color="text-cyan-500"
+          />
+          <StatCard
+            value={apiCount}
+            label="API scans"
+            icon={Terminal}
+            color="text-violet-500"
+          />
+          <StatCard
+            value={webCount}
+            label="Web scans"
+            icon={Monitor}
+            color="text-amber-500"
+          />
+        </div>
+      </section>
 
       {/* Main content grid */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* Severity breakdown */}
-        <div className="p-5 rounded-xl border border-border/50 bg-card/50">
+        <section
+          aria-label="Severity breakdown"
+          className="p-5 rounded-xl border border-border/50 bg-card/50"
+        >
           <div className="flex items-center justify-between mb-5">
             <div className="flex items-center gap-2">
-              <div className="p-2 rounded-lg bg-primary/10">
+              <div className="p-2 rounded-lg bg-primary/10 shrink-0">
                 <Shield className="h-4 w-4 text-primary" />
               </div>
               <h3 className="text-sm font-medium text-foreground">
-                Severity Breakdown
+                Severity breakdown
               </h3>
             </div>
-            <span className="text-xs text-muted-foreground">
-              {totalIssues} total issues
+            <span className="text-xs text-muted-foreground tabular-nums">
+              {totalIssues} total
             </span>
           </div>
           <div className="space-y-1">
@@ -415,47 +453,56 @@ export function Dashboard() {
               color="bg-muted-foreground/50"
             />
           </div>
-        </div>
+        </section>
 
         {/* Scan Activity */}
-        <div className="p-5 rounded-xl border border-border/50 bg-card/50">
+        <section
+          aria-label="Scan activity"
+          className="p-5 rounded-xl border border-border/50 bg-card/50"
+        >
           <div className="flex items-center justify-between mb-5">
             <div className="flex items-center gap-2">
-              <div className="p-2 rounded-lg bg-primary/10">
+              <div className="p-2 rounded-lg bg-primary/10 shrink-0">
                 <Activity className="h-4 w-4 text-primary" />
               </div>
               <h3 className="text-sm font-medium text-foreground">
-                Scan Activity
+                Scan activity
               </h3>
             </div>
             <span className="text-xs text-muted-foreground">Last 14 days</span>
           </div>
           <ActivityChart data={activity} />
-        </div>
+        </section>
 
         {/* Top Issues */}
-        <div className="p-5 rounded-xl border border-border/50 bg-card/50">
+        <section
+          aria-label="Top issues"
+          className="p-5 rounded-xl border border-border/50 bg-card/50"
+        >
           <div className="flex items-center justify-between mb-5">
             <div className="flex items-center gap-2">
-              <div className="p-2 rounded-lg bg-[hsl(var(--severity-high))]/10">
+              <div className="p-2 rounded-lg bg-[hsl(var(--severity-high))]/10 shrink-0">
                 <AlertTriangle className="h-4 w-4 text-[hsl(var(--severity-high))]" />
               </div>
               <h3 className="text-sm font-medium text-foreground">
-                Top Issues
+                Top issues
               </h3>
             </div>
-            <span className="text-xs text-muted-foreground">
+            <span className="text-xs text-muted-foreground tabular-nums">
               {data.topVulnerabilities.length} types
             </span>
           </div>
           {data.topVulnerabilities.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-8 text-center">
-              <Target className="h-8 w-8 text-muted-foreground/30 mb-2" />
-              <p className="text-sm text-muted-foreground">
+              <div className="w-10 h-10 rounded-lg bg-muted flex items-center justify-center mb-3">
+                <Target className="h-5 w-5 text-muted-foreground/40" />
+              </div>
+              <p className="text-sm font-medium text-foreground">
                 No issues found yet
               </p>
-              <p className="text-xs text-muted-foreground/60">
-                Run a scan to detect vulnerabilities
+              <p className="text-xs text-muted-foreground/70 mt-1 max-w-xs">
+                Run a scan to surface the most common findings across your
+                targets.
               </p>
             </div>
           ) : (
@@ -479,10 +526,10 @@ export function Dashboard() {
                         severityColors[v.severity] || "bg-muted-foreground",
                       )}
                     />
-                    <span className="text-sm text-foreground truncate flex-1">
+                    <span className="text-sm text-foreground truncate flex-1 min-w-0">
                       {v.title}
                     </span>
-                    <span className="text-xs font-medium text-muted-foreground tabular-nums bg-muted/50 px-2 py-0.5 rounded-full">
+                    <span className="text-xs font-medium text-muted-foreground tabular-nums bg-muted/50 px-2 py-0.5 rounded-full shrink-0">
                       {v.count}x
                     </span>
                   </div>
@@ -490,21 +537,24 @@ export function Dashboard() {
               })}
             </div>
           )}
-        </div>
+        </section>
 
         {/* Recent Scans */}
-        <div className="p-5 rounded-xl border border-border/50 bg-card/50">
+        <section
+          aria-label="Recent scans"
+          className="p-5 rounded-xl border border-border/50 bg-card/50"
+        >
           <div className="flex items-center justify-between mb-5">
             <div className="flex items-center gap-2">
-              <div className="p-2 rounded-lg bg-primary/10">
+              <div className="p-2 rounded-lg bg-primary/10 shrink-0">
                 <Clock className="h-4 w-4 text-primary" />
               </div>
               <h3 className="text-sm font-medium text-foreground">
-                Recent Scans
+                Recent scans
               </h3>
             </div>
             <a
-              href="/history"
+              href={ROUTES.HISTORY}
               className="flex items-center gap-1 text-xs text-primary hover:text-primary/80 transition-colors font-medium"
             >
               View all
@@ -513,10 +563,14 @@ export function Dashboard() {
           </div>
           {data.recentScans.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-8 text-center">
-              <Globe className="h-8 w-8 text-muted-foreground/30 mb-2" />
-              <p className="text-sm text-muted-foreground">No scans yet</p>
-              <p className="text-xs text-muted-foreground/60">
-                Start scanning to see your history
+              <div className="w-10 h-10 rounded-lg bg-muted flex items-center justify-center mb-3">
+                <ScanSearch className="h-5 w-5 text-muted-foreground/40" />
+              </div>
+              <p className="text-sm font-medium text-foreground">
+                No scans yet
+              </p>
+              <p className="text-xs text-muted-foreground/70 mt-1 max-w-xs">
+                Enter a URL above to run your first scan.
               </p>
             </div>
           ) : (
@@ -524,7 +578,7 @@ export function Dashboard() {
               {data.recentScans.map((scan) => (
                 <a
                   key={scan.id}
-                  href={`/history#${scan.id}`}
+                  href={`${ROUTES.HISTORY}#${scan.id}`}
                   className="flex items-center gap-3 py-2.5 px-3 -mx-3 rounded-lg hover:bg-muted/30 transition-colors group"
                 >
                   <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-muted/50 shrink-0">
@@ -542,10 +596,10 @@ export function Dashboard() {
                       {formatRelativeTime(scan.scanned_at)}
                     </p>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 shrink-0">
                     <span
                       className={cn(
-                        "text-xs font-medium px-2 py-1 rounded-full",
+                        "text-xs font-medium px-2 py-1 rounded-full tabular-nums",
                         scan.findings_count > 0
                           ? "text-[hsl(var(--severity-high))] bg-[hsl(var(--severity-high))]/10"
                           : "text-emerald-500 bg-emerald-500/10",
@@ -561,7 +615,7 @@ export function Dashboard() {
               ))}
             </div>
           )}
-        </div>
+        </section>
       </div>
     </div>
   );
