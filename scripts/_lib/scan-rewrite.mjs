@@ -63,7 +63,8 @@ const CATEGORIES = [
 const ENTRY_OVERRIDES = {};
 
 function applyOverride(entry, category) {
-  const override = ENTRY_OVERRIDES[entry.id] || ENTRY_OVERRIDES[`${category}/${entry.id}`];
+  const override =
+    ENTRY_OVERRIDES[entry.id] || ENTRY_OVERRIDES[`${category}/${entry.id}`];
   if (!override) return entry;
   return { ...entry, ...override };
 }
@@ -83,9 +84,12 @@ const ID_RENAME = {
   "permissions-policy-missing": "headers-permissions-policy-missing",
   "cors-wildcard": "headers-cors-allow-origin-wildcard",
   "xxss-protection-missing": "headers-x-xss-protection-missing",
-  "cors-credentials-wildcard": "headers-cors-allow-origin-wildcard-with-credentials",
-  "cors-wildcard-credentials": "headers-cors-allow-origin-wildcard-with-credentials",
-  "cors-credentials-with-wildcard": "headers-cors-allow-origin-wildcard-with-credentials",
+  "cors-credentials-wildcard":
+    "headers-cors-allow-origin-wildcard-with-credentials",
+  "cors-wildcard-credentials":
+    "headers-cors-allow-origin-wildcard-with-credentials",
+  "cors-credentials-with-wildcard":
+    "headers-cors-allow-origin-wildcard-with-credentials",
   "access-control-allow-credentials-with-wildcard":
     "headers-cors-allow-origin-wildcard-with-credentials",
   "coop-missing": "headers-cross-origin-opener-policy-missing",
@@ -109,7 +113,8 @@ const ID_RENAME = {
   "csp-object-src-missing": "headers-csp-object-src-missing",
   "hsts-no-preload": "headers-hsts-missing-preload-or-includesubdomains",
   "csp-no-upgrade-insecure": "headers-csp-upgrade-insecure-requests-missing",
-  "csp-upgrade-insecure-missing": "headers-csp-upgrade-insecure-requests-missing",
+  "csp-upgrade-insecure-missing":
+    "headers-csp-upgrade-insecure-requests-missing",
   "coep-credentialless": "headers-coep-not-credentialless-or-require-corp",
   "csp-report-uri-deprecated": "headers-csp-report-uri-deprecated",
   "nosniff-incorrect": "headers-x-content-type-options-not-nosniff",
@@ -130,18 +135,23 @@ const ID_RENAME = {
   "csp-script-src-self-only": "headers-csp-script-src-self-only",
   "csp-block-all-mixed-content": "headers-csp-block-all-mixed-content-missing",
   "cors-methods-too-permissive": "headers-cors-allow-methods-wildcard",
-  "access-control-allow-methods-wildcard": "headers-cors-allow-methods-wildcard",
-  "frame-busting-header-only": "headers-x-frame-options-without-csp-frame-ancestors",
+  "access-control-allow-methods-wildcard":
+    "headers-cors-allow-methods-wildcard",
+  "frame-busting-header-only":
+    "headers-x-frame-options-without-csp-frame-ancestors",
   "x-frame-options-invalid": "headers-x-frame-options-invalid-value",
   "x-frame-options-allowall": "headers-x-frame-options-allowall",
-  "cache-control-no-store-missing": "headers-cache-control-no-store-on-sensitive-page",
+  "cache-control-no-store-missing":
+    "headers-cache-control-no-store-on-sensitive-page",
   "pragma-no-cache-legacy": "headers-pragma-no-cache-legacy",
   "expires-past": "headers-expires-past",
   "accept-ch-missing": "headers-accept-ch-missing",
   "accept-ch-lifetime-missing": "headers-accept-ch-lifetime-missing",
   "critical-ch-missing": "headers-critical-ch-missing",
-  "cross-origin-opener-policy-report-only-missing": "headers-coop-report-only-missing",
-  "cross-origin-resource-policy-report-only-missing": "headers-corp-report-only-missing",
+  "cross-origin-opener-policy-report-only-missing":
+    "headers-coop-report-only-missing",
+  "cross-origin-resource-policy-report-only-missing":
+    "headers-corp-report-only-missing",
   "origin-isolation-header-missing": "headers-origin-isolation-header-missing",
   "early-data-header-missing": "headers-early-data-header-missing",
   "sec-fetch-version-missing": "headers-sec-fetch-missing",
@@ -195,8 +205,10 @@ const ID_RENAME = {
     "headers-referrer-policy-not-strict",
   "strict-transport-security-include-subdomains":
     "headers-hsts-missing-includesubdomains",
-  "server-timing-sensitive-key-leak": "headers-server-timing-sensitive-key-leak",
-  "server-timing-no-allow-origin": "headers-server-timing-without-timing-allow-origin",
+  "server-timing-sensitive-key-leak":
+    "headers-server-timing-sensitive-key-leak",
+  "server-timing-no-allow-origin":
+    "headers-server-timing-without-timing-allow-origin",
   "speculation-rules-missing": "headers-speculation-rules-missing",
   "cookie-host-prefix-attribute-mismatch":
     "headers-cookie-host-prefix-attribute-mismatch",
@@ -269,7 +281,8 @@ const ID_RENAME = {
   "insecure-iframes": "content-insecure-iframes",
   "token-exposure": "content-token-exposure",
   "autocomplete-sensitive": "content-autocomplete-missing-on-sensitive-field",
-  "autocomplete-sensitive-fields": "content-autocomplete-missing-on-sensitive-field",
+  "autocomplete-sensitive-fields":
+    "content-autocomplete-missing-on-sensitive-field",
   "autocomplete-password": "content-password-input-missing-autocomplete",
   "form-target-blank": "content-form-target-blank",
   "meta-refresh": "content-meta-refresh",
@@ -424,7 +437,8 @@ const ID_RENAME = {
   "inline-style-attr": "content-inline-style-attr",
   "target-blank-no-noopener": "content-external-link-noopener",
   "email-mailto-spam": "content-mailto-link-spam-exposure",
-  "iframe-third-party-without-sandbox": "content-iframe-third-party-without-sandbox",
+  "iframe-third-party-without-sandbox":
+    "content-iframe-third-party-without-sandbox",
   "autofocus-positive-tabindex": "content-autofocus-positive-tabindex",
   "aria-hidden-focusable-children": "content-aria-hidden-focusable-children",
   "form-formnovalidate-bypass": "content-form-formnovalidate-bypass",
@@ -482,7 +496,8 @@ const ID_RENAME = {
   "x-backend-server-exposed": "configuration-backend-server-header-exposed",
   "age-header-reveals-cdn": "configuration-age-header-exposed",
   "x-debug-header-exposed": "configuration-debug-header-exposed",
-  "cache-control-public-sensitive": "configuration-cache-control-public-sensitive",
+  "cache-control-public-sensitive":
+    "configuration-cache-control-public-sensitive",
   "access-control-expose-broad": "configuration-cors-expose-headers-broad",
   "access-control-max-age-long": "configuration-cors-max-age-long",
   "etag-inode-leak": "configuration-etag-inode-leak",
@@ -573,7 +588,8 @@ const ID_RENAME = {
   "code-cookie-write-no-secure": "code-cookie-write-without-secure",
   "code-cookie-write-no-samesite": "code-cookie-write-without-samesite",
   "code-window-open-without-noopener": "code-window-open-without-noopener",
-  "code-location-assign-with-user-input": "code-location-assign-with-user-input",
+  "code-location-assign-with-user-input":
+    "code-location-assign-with-user-input",
   "code-vue-v-html": "code-vue-v-html",
   "code-angular-bypass-security": "code-angular-bypass-security",
   "code-jquery-html": "code-jquery-html",
@@ -627,7 +643,8 @@ const ID_RENAME = {
   "code-proto-pollution-lodash-merge": "code-proto-pollution-lodash-merge",
   "code-proto-pollution-object-assign-proto":
     "code-proto-pollution-object-assign-proto",
-  "code-proto-pollution-recursive-merge": "code-proto-pollution-recursive-merge",
+  "code-proto-pollution-recursive-merge":
+    "code-proto-pollution-recursive-merge",
   "code-jwt-verify-no-secret": "code-jwt-verify-no-secret",
   "code-jwt-decode-only": "code-jwt-decode-only",
   "code-jwt-hs256-weak-secret": "code-jwt-hs256-weak-secret",
@@ -641,9 +658,11 @@ const ID_RENAME = {
   "code-cookie-missing-secure-http": "code-cookie-missing-secure-http",
   "code-clickjack-target-blank-js-href": "code-clickjack-target-blank-js-href",
   "code-clickjack-x-frame-options": "code-clickjack-x-frame-options",
-  "code-timing-no-constant-time-compare": "code-timing-no-constant-time-compare",
+  "code-timing-no-constant-time-compare":
+    "code-timing-no-constant-time-compare",
   "code-timing-hmac-equality": "code-timing-hmac-equality",
-  "code-cloud-aws-hardcoded-credentials": "code-cloud-aws-hardcoded-credentials",
+  "code-cloud-aws-hardcoded-credentials":
+    "code-cloud-aws-hardcoded-credentials",
   "code-cloud-aws-s3-upload-no-acl": "code-cloud-aws-s3-upload-no-acl",
   "code-cloud-azure-blob-upload-no-acl": "code-cloud-azure-blob-upload-no-acl",
   "dangerous-inline-js": "code-dangerous-inline-js",
@@ -678,7 +697,8 @@ const ID_RENAME = {
   "hardcoded-secrets": "secrets-extended-hardcoded",
   "secret-stripe-webhook-endpoint": "secrets-extended-stripe-webhook-endpoint",
   "secret-google-maps-api-key": "secrets-extended-google-maps-api-key",
-  "secret-google-oauth-client-secret": "secrets-extended-google-oauth-client-secret",
+  "secret-google-oauth-client-secret":
+    "secrets-extended-google-oauth-client-secret",
   "secret-firebase-api-key-public": "secrets-extended-firebase-api-key-public",
   "secret-aws-secret-key": "secrets-extended-aws-secret-key",
   "secret-github-personal-access-token": "secrets-extended-github-pat",
@@ -699,7 +719,8 @@ const ID_RENAME = {
   "secret-aws-access-key-id": "secrets-extended-aws-access-key-id",
   "secret-private-key-pem": "secrets-extended-private-key-pem",
   "secret-jwt-in-config": "secrets-extended-jwt-in-config",
-  "secret-oracle-cloud-credentials": "secrets-extended-oracle-cloud-credentials",
+  "secret-oracle-cloud-credentials":
+    "secrets-extended-oracle-cloud-credentials",
   "secret-ibm-cloud-iam-key": "secrets-extended-ibm-cloud-iam-key",
   "secret-digitalocean-pat": "secrets-extended-digitalocean-pat",
   "secret-linode-api-key": "secrets-extended-linode-api-key",
@@ -711,11 +732,13 @@ const ID_RENAME = {
   "secret-honeycomb-write-key": "secrets-extended-honeycomb-write-key",
   "secret-datadog-client-token": "secrets-extended-datadog-client-token",
   "secret-gitlab-deploy-token": "secrets-extended-gitlab-deploy-token",
-  "secret-gitlab-runner-registration": "secrets-extended-gitlab-runner-registration",
+  "secret-gitlab-runner-registration":
+    "secrets-extended-gitlab-runner-registration",
   "secret-bitbucket-app-password": "secrets-extended-bitbucket-app-password",
   "secret-paypal-client-secret": "secrets-extended-paypal-client-secret",
   "secret-braintree-token": "secrets-extended-braintree-token",
-  "secret-square-webhook-signature": "secrets-extended-square-webhook-signature",
+  "secret-square-webhook-signature":
+    "secrets-extended-square-webhook-signature",
   "secret-twilio-api-key-sk": "secrets-extended-twilio-api-key-sk",
   "secret-messagebird-access-key": "secrets-extended-messagebird-access-key",
   "secret-vonage-nexmo-key": "secrets-extended-vonage-nexmo-key",
@@ -752,24 +775,29 @@ const ID_RENAME = {
   "sql-error-exposure": "information-disclosure-sql-error",
   "timing-allow-origin-wide": "information-disclosure-timing-allow-origin",
   "server-header-truncated": "information-disclosure-server-header-truncated",
-  "php-version-exposed-in-cookie": "information-disclosure-php-version-in-cookie",
+  "php-version-exposed-in-cookie":
+    "information-disclosure-php-version-in-cookie",
   "rails-version-exposure": "information-disclosure-rails-version",
-  "django-csrftoken-cookie-exposed": "information-disclosure-django-csrftoken-cookie",
-  "laravel-session-cookie-exposes": "information-disclosure-laravel-session-cookie",
+  "django-csrftoken-cookie-exposed":
+    "information-disclosure-django-csrftoken-cookie",
+  "laravel-session-cookie-exposes":
+    "information-disclosure-laravel-session-cookie",
   "express-cookie-exposes": "information-disclosure-express-cookie",
   "rails-cookie-httponly": "information-disclosure-rails-cookie-httponly",
   "config-js-leaked": "information-disclosure-config-js-leaked",
   "env-js-leaked": "information-disclosure-env-js-leaked",
   "sitemap-public": "information-disclosure-sitemap-public",
   "robots-txt-allows-all": "information-disclosure-robots-txt-allows-all",
-  "open-api-schema-version-leak": "information-disclosure-openapi-schema-version",
+  "open-api-schema-version-leak":
+    "information-disclosure-openapi-schema-version",
   "cdn-cors-exposes-internal": "information-disclosure-cdn-cors-internal",
   "recaptcha-key-leaked": "information-disclosure-recaptcha-key-leaked",
   "ga-tracking-id-leaked": "information-disclosure-ga-tracking-id-leaked",
   "nginx-version-404-disclosure": "information-disclosure-nginx-version-404",
   "apache-version-404-disclosure": "information-disclosure-apache-version-404",
   "iis-version-404-disclosure": "information-disclosure-iis-version-404",
-  "express-error-format-disclosure": "information-disclosure-express-error-page",
+  "express-error-format-disclosure":
+    "information-disclosure-express-error-page",
   "flask-debug-page-exposure": "information-disclosure-flask-debugger",
   "django-debug-page-exposure": "information-disclosure-django-debug",
   "rails-error-page-disclosure": "information-disclosure-rails-error",
@@ -917,21 +945,25 @@ const ID_RENAME = {
   "graphql-no-depth-limit": "api-graphql-no-depth-limit",
   "graphql-no-alias-depth-limit": "api-graphql-no-alias-depth-limit",
   "graphql-query-cost-not-enforced": "api-graphql-query-cost-not-enforced",
-  "graphql-mutation-rate-limit-missing": "api-graphql-mutation-rate-limit-missing",
+  "graphql-mutation-rate-limit-missing":
+    "api-graphql-mutation-rate-limit-missing",
   "openapi-security-scheme-weak": "api-openapi-security-scheme-weak",
   "cors-null-origin-reflected": "api-cors-null-origin-reflected",
-  "cors-credentials-with-wildcard-origin": "api-cors-credentials-with-wildcard-origin",
+  "cors-credentials-with-wildcard-origin":
+    "api-cors-credentials-with-wildcard-origin",
   "bearer-header-leak": "api-bearer-header-leak",
   "rest-no-idempotency-key": "api-rest-no-idempotency-key",
   "websocket-no-origin-validation": "api-websocket-no-origin-validation",
   "api-key-in-query-string": "api-api-key-in-query-string",
   "cors-preflight-cached-too-long": "api-cors-preflight-cached-too-long",
   "rate-limit-headers-missing": "api-rate-limit-headers-missing",
-  "cors-allow-credentials-with-wildcard": "api-cors-allow-credentials-with-wildcard",
+  "cors-allow-credentials-with-wildcard":
+    "api-cors-allow-credentials-with-wildcard",
   "rest-idempotency-key-missing": "api-rest-idempotency-key-missing",
   "graphql-no-persisted-queries": "api-graphql-no-persisted-queries",
   "rest-allow-all-origins": "api-rest-allow-all-origins",
-  "rest-content-type-validation-missing": "api-rest-content-type-validation-missing",
+  "rest-content-type-validation-missing":
+    "api-rest-content-type-validation-missing",
   "rest-request-size-limit-missing": "api-rest-request-size-limit-missing",
   "rest-rate-limit-bypass-headers": "api-rest-rate-limit-bypass-headers",
   "rest-trace-method-enabled": "api-rest-trace-method-enabled",
@@ -941,7 +973,8 @@ const ID_RENAME = {
   "rest-debug-headers": "api-rest-debug-headers",
   "rest-stack-trace-in-response": "api-rest-stack-trace-in-response",
   "cors-allow-headers-wildcard": "api-cors-allow-headers-wildcard",
-  "api-graphql-persisted-queries-disabled": "api-graphql-persisted-queries-disabled",
+  "api-graphql-persisted-queries-disabled":
+    "api-graphql-persisted-queries-disabled",
   "api-rest-no-input-validation": "api-rest-no-input-validation",
   "api-rest-no-output-encoding": "api-rest-no-output-encoding",
   "api-rest-graphql-introspection": "api-rest-graphql-introspection",
@@ -1091,8 +1124,10 @@ function defaultCodeExamples(category, newId) {
   // Default to Next.js + Nginx as the two minimum examples per the
   // acceptance criteria.
   const examples = [];
-  if (CODE_EXAMPLES["next-headers-hsts"]) examples.push(CODE_EXAMPLES["next-headers-hsts"]);
-  if (CODE_EXAMPLES["nginx-add-header"]) examples.push(CODE_EXAMPLES["nginx-add-header"]);
+  if (CODE_EXAMPLES["next-headers-hsts"])
+    examples.push(CODE_EXAMPLES["next-headers-hsts"]);
+  if (CODE_EXAMPLES["nginx-add-header"])
+    examples.push(CODE_EXAMPLES["nginx-add-header"]);
   if (examples.length === 0) examples.push(CODE_EXAMPLES["no-code-change"]);
   return examples;
 }
@@ -1210,8 +1245,7 @@ const EVIDENCE_TEMPLATES = {
 function transformEntry(entry, category) {
   const oldId = entry.id;
   const newId = renameId(oldId, category);
-  const severityFixed =
-    SEVERITY_FIX[newId] || entry.severity.toLowerCase();
+  const severityFixed = SEVERITY_FIX[newId] || entry.severity.toLowerCase();
   const ev = EVIDENCE_TEMPLATES[category] || defaultEvidence;
   const evidence = ev(entry, newId);
   const out = {
@@ -1279,9 +1313,7 @@ function main(dryRun = false) {
     const transformed = indexed.map((e) => transformEntry(e, category));
     const { entries, dupes } = dedupeById(transformed);
     totalDupes += dupes.length;
-    const renamed = transformed.filter(
-      (e, i) => e.id !== indexed[i].id,
-    ).length;
+    const renamed = transformed.filter((e, i) => e.id !== indexed[i].id).length;
     totalRenamed += renamed;
     totalFixed += transformed.length;
 

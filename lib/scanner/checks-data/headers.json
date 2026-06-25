@@ -815,9 +815,7 @@
     "evidence": "CSP exists but no base-uri directive.",
     "riskImpact": "An attacker who injects a <base> tag can redirect all relative URLs to their server.",
     "explanation": "Without base-uri, injected <base> tags can hijack relative resource loading.",
-    "fixSteps": [
-      "Add 'base-uri self' to your CSP."
-    ],
+    "fixSteps": ["Add 'base-uri self' to your CSP."],
     "codeExamples": [
       {
         "label": "CSP",
@@ -954,9 +952,7 @@
     "evidence": "Timing-Allow-Origin: * detected.",
     "riskImpact": "Exposes detailed timing data to any origin via the Resource Timing API.",
     "explanation": "This header controls which origins can read performance timing data.",
-    "fixSteps": [
-      "Restrict to trusted domains only."
-    ],
+    "fixSteps": ["Restrict to trusted domains only."],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -985,9 +981,7 @@
     "evidence": "CSP contains unsafe-inline in script-src.",
     "riskImpact": "Inline scripts negate most XSS protections CSP provides.",
     "explanation": "unsafe-inline without nonce/hash allows any inline script to execute.",
-    "fixSteps": [
-      "Use nonce-based or hash-based CSP instead of unsafe-inline."
-    ],
+    "fixSteps": ["Use nonce-based or hash-based CSP instead of unsafe-inline."],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -1016,9 +1010,7 @@
     "evidence": "CSP contains unsafe-eval.",
     "riskImpact": "eval() can execute attacker-injected strings as code.",
     "explanation": "unsafe-eval allows dynamic code execution via eval() and Function().",
-    "fixSteps": [
-      "Remove unsafe-eval and refactor code to avoid eval()."
-    ],
+    "fixSteps": ["Remove unsafe-eval and refactor code to avoid eval()."],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -1047,9 +1039,7 @@
     "evidence": "CSP contains wildcard source directive.",
     "riskImpact": "Any origin can serve content, defeating CSP protections.",
     "explanation": "Wildcard sources allow loading resources from any origin.",
-    "fixSteps": [
-      "Replace * with specific trusted domains."
-    ],
+    "fixSteps": ["Replace * with specific trusted domains."],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -1078,9 +1068,7 @@
     "evidence": "CSP lacks default-src fallback.",
     "riskImpact": "Undeclared resource types are completely unrestricted.",
     "explanation": "default-src acts as a fallback for all unspecified directives.",
-    "fixSteps": [
-      "Add default-src 'self' as a baseline to your CSP."
-    ],
+    "fixSteps": ["Add default-src 'self' as a baseline to your CSP."],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -1109,9 +1097,7 @@
     "evidence": "ACAO: null detected.",
     "riskImpact": "Sandboxed iframes and data: URLs use null origin.",
     "explanation": "Allowing null origin enables CORS bypass from sandboxed contexts.",
-    "fixSteps": [
-      "Never allow null as a CORS origin."
-    ],
+    "fixSteps": ["Never allow null as a CORS origin."],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -1140,9 +1126,7 @@
     "evidence": "Unsafe referrer policy value detected.",
     "riskImpact": "Full URLs including query params leaked to third parties.",
     "explanation": "unsafe-url and no-referrer-when-downgrade send full referrer to all destinations.",
-    "fixSteps": [
-      "Use strict-origin-when-cross-origin or no-referrer."
-    ],
+    "fixSteps": ["Use strict-origin-when-cross-origin or no-referrer."],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -1171,9 +1155,7 @@
     "evidence": "X-XSS-Protection: 0 detected.",
     "riskImpact": "While deprecated, explicitly disabling XSS filter removes a defense layer in older browsers.",
     "explanation": "Setting X-XSS-Protection to 0 turns off the built-in XSS auditor.",
-    "fixSteps": [
-      "Remove the header entirely or set to 1; mode=block."
-    ],
+    "fixSteps": ["Remove the header entirely or set to 1; mode=block."],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -1202,9 +1184,7 @@
     "evidence": "unsafe-hashes in CSP.",
     "riskImpact": "Allows inline event handlers which can be exploited for XSS.",
     "explanation": "unsafe-hashes enables specific inline handlers but weakens CSP.",
-    "fixSteps": [
-      "Migrate inline handlers to external scripts with nonces."
-    ],
+    "fixSteps": ["Migrate inline handlers to external scripts with nonces."],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -1233,9 +1213,7 @@
     "evidence": "CSP without frame-src.",
     "riskImpact": "Any content can be loaded in iframes.",
     "explanation": "frame-src controls which origins can be loaded in frames.",
-    "fixSteps": [
-      "Add frame-src 'self' or 'none' to CSP."
-    ],
+    "fixSteps": ["Add frame-src 'self' or 'none' to CSP."],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -1264,9 +1242,7 @@
     "evidence": "object-src not set to none.",
     "riskImpact": "Flash and other plugins can be exploited.",
     "explanation": "object-src should be 'none' unless plugins are required.",
-    "fixSteps": [
-      "Set object-src 'none' in CSP."
-    ],
+    "fixSteps": ["Set object-src 'none' in CSP."],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -1295,9 +1271,7 @@
     "evidence": "Restrictive script-src.",
     "riskImpact": "May break functionality if external scripts needed.",
     "explanation": "Very restrictive CSP may require code changes.",
-    "fixSteps": [
-      "Verify site functions correctly with this CSP."
-    ],
+    "fixSteps": ["Verify site functions correctly with this CSP."],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -1326,9 +1300,7 @@
     "evidence": "Mixed content not blocked by CSP.",
     "riskImpact": "HTTP resources may still load on HTTPS pages.",
     "explanation": "This directive blocks all mixed content.",
-    "fixSteps": [
-      "Add block-all-mixed-content to CSP."
-    ],
+    "fixSteps": ["Add block-all-mixed-content to CSP."],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -1357,9 +1329,7 @@
     "evidence": "Header-only frame protection.",
     "riskImpact": "Older browsers may not support headers.",
     "explanation": "JavaScript frame busting provides backup.",
-    "fixSteps": [
-      "Add JS frame busting for legacy browser support."
-    ],
+    "fixSteps": ["Add JS frame busting for legacy browser support."],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -1388,9 +1358,7 @@
     "evidence": "Header absent or misconfigured for `headers-x-frame-options-invalid-value`. Response observed headers: {{observed_headers}}.",
     "riskImpact": "Clickjacking protection may not work.",
     "explanation": "Only DENY, SAMEORIGIN, ALLOW-FROM are valid.",
-    "fixSteps": [
-      "Use DENY or SAMEORIGIN for X-Frame-Options."
-    ],
+    "fixSteps": ["Use DENY or SAMEORIGIN for X-Frame-Options."],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -1419,9 +1387,7 @@
     "evidence": "Missing no-store on sensitive page.",
     "riskImpact": "Sensitive data may be cached.",
     "explanation": "no-store prevents all caching.",
-    "fixSteps": [
-      "Add Cache-Control: no-store to sensitive pages."
-    ],
+    "fixSteps": ["Add Cache-Control: no-store to sensitive pages."],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -1450,9 +1416,7 @@
     "evidence": "Header absent or misconfigured for `headers-pragma-no-cache-legacy`. Response observed headers: {{observed_headers}}.",
     "riskImpact": "Legacy header, HTTP/1.0 only.",
     "explanation": "Cache-Control is preferred for HTTP/1.1+.",
-    "fixSteps": [
-      "Use Cache-Control instead of Pragma."
-    ],
+    "fixSteps": ["Use Cache-Control instead of Pragma."],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -1481,9 +1445,7 @@
     "evidence": "Header absent or misconfigured for `headers-expires-past`. Response observed headers: {{observed_headers}}.",
     "riskImpact": "Signals no caching to legacy proxies.",
     "explanation": "Past expiry prevents legacy caching.",
-    "fixSteps": [
-      "Use Cache-Control for modern caching control."
-    ],
+    "fixSteps": ["Use Cache-Control for modern caching control."],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -1542,9 +1504,7 @@
     "evidence": "Header absent or misconfigured for `headers-accept-ch-lifetime-missing`. Response observed headers: {{observed_headers}}.",
     "riskImpact": "Add Accept-CH-Lifetime: 86400 (1 day) or longer",
     "explanation": "Accept-CH-Lifetime tells the browser how long to remember the Accept-CH policy.",
-    "fixSteps": [
-      "Add Accept-CH-Lifetime: 86400 (1 day) or longer"
-    ],
+    "fixSteps": ["Add Accept-CH-Lifetime: 86400 (1 day) or longer"],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -1572,9 +1532,7 @@
     "evidence": "Header absent or misconfigured for `headers-critical-ch-missing`. Response observed headers: {{observed_headers}}.",
     "riskImpact": "Add Critical-CH: Sec-CH-UA, Sec-CH-UA-Mobile",
     "explanation": "Critical-CH lets servers require client hints to be present before the response is rendered.",
-    "fixSteps": [
-      "Add Critical-CH: Sec-CH-UA, Sec-CH-UA-Mobile"
-    ],
+    "fixSteps": ["Add Critical-CH: Sec-CH-UA, Sec-CH-UA-Mobile"],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -1634,9 +1592,7 @@
     "evidence": "Header absent or misconfigured for `headers-corp-report-only-missing`. Response observed headers: {{observed_headers}}.",
     "riskImpact": "Add Cross-Origin-Resource-Policy-Report-Only: same-site",
     "explanation": "CORP-Report-Only lets you monitor CORP violations without breaking the site.",
-    "fixSteps": [
-      "Add Cross-Origin-Resource-Policy-Report-Only: same-site"
-    ],
+    "fixSteps": ["Add Cross-Origin-Resource-Policy-Report-Only: same-site"],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -1696,9 +1652,7 @@
     "evidence": "Header absent or misconfigured for `headers-sec-fetch-missing`. Response observed headers: {{observed_headers}}.",
     "riskImpact": "Consider logging Sec-Fetch-* headers for anomaly detection",
     "explanation": "Sec-Fetch-Site / Sec-Fetch-Mode / Sec-Fetch-Dest are sent by modern browsers. Servers can use them to differentiate bots from real users.",
-    "fixSteps": [
-      "Consider logging Sec-Fetch-* headers for anomaly detection"
-    ],
+    "fixSteps": ["Consider logging Sec-Fetch-* headers for anomaly detection"],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -1851,9 +1805,7 @@
     "evidence": "Header absent or misconfigured for `headers-access-control-allow-headers-wildcard`. Response observed headers: {{observed_headers}}.",
     "riskImpact": "Replace * with an explicit allowlist",
     "explanation": "ACA-Headers: * lets any browser send any header. Restrict to the headers you actually use.",
-    "fixSteps": [
-      "Replace * with an explicit allowlist"
-    ],
+    "fixSteps": ["Replace * with an explicit allowlist"],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -1944,9 +1896,7 @@
     "evidence": "Header absent or misconfigured for `headers-csp-incompatible-directives`. Response observed headers: {{observed_headers}}.",
     "riskImpact": "Remove legacy directives like allow-http and reflected-xss",
     "explanation": "CSP allow-http (Chrome 41-65), reflected-xss (removed), and others are ignored.",
-    "fixSteps": [
-      "Remove legacy directives like allow-http and reflected-xss"
-    ],
+    "fixSteps": ["Remove legacy directives like allow-http and reflected-xss"],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -2037,9 +1987,7 @@
     "evidence": "Header absent or misconfigured for `headers-permissions-policy-camera-blocked`. Response observed headers: {{observed_headers}}.",
     "riskImpact": "Set Permissions-Policy: camera=() to block entirely",
     "explanation": "Camera should default to 'self' or be blocked.",
-    "fixSteps": [
-      "Set Permissions-Policy: camera=() to block entirely"
-    ],
+    "fixSteps": ["Set Permissions-Policy: camera=() to block entirely"],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -2068,9 +2016,7 @@
     "evidence": "Header absent or misconfigured for `headers-permissions-policy-microphone-blocked`. Response observed headers: {{observed_headers}}.",
     "riskImpact": "Set Permissions-Policy: microphone=() to block entirely",
     "explanation": "Microphone should default to 'self' or be blocked.",
-    "fixSteps": [
-      "Set Permissions-Policy: microphone=() to block entirely"
-    ],
+    "fixSteps": ["Set Permissions-Policy: microphone=() to block entirely"],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -2130,9 +2076,7 @@
     "evidence": "Header absent or misconfigured for `headers-permissions-policy-usb-blocked`. Response observed headers: {{observed_headers}}.",
     "riskImpact": "Set Permissions-Policy: usb=(self)",
     "explanation": "WebUSB should default to 'self'.",
-    "fixSteps": [
-      "Set Permissions-Policy: usb=(self)"
-    ],
+    "fixSteps": ["Set Permissions-Policy: usb=(self)"],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -2161,9 +2105,7 @@
     "evidence": "Header absent or misconfigured for `headers-permissions-policy-bluetooth-blocked`. Response observed headers: {{observed_headers}}.",
     "riskImpact": "Set Permissions-Policy: bluetooth=(self)",
     "explanation": "Web Bluetooth should default to 'self'.",
-    "fixSteps": [
-      "Set Permissions-Policy: bluetooth=(self)"
-    ],
+    "fixSteps": ["Set Permissions-Policy: bluetooth=(self)"],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -2192,9 +2134,7 @@
     "evidence": "Header absent or misconfigured for `headers-permissions-policy-serial-blocked`. Response observed headers: {{observed_headers}}.",
     "riskImpact": "Set Permissions-Policy: serial=(self)",
     "explanation": "Web Serial should default to 'self'.",
-    "fixSteps": [
-      "Set Permissions-Policy: serial=(self)"
-    ],
+    "fixSteps": ["Set Permissions-Policy: serial=(self)"],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -2223,9 +2163,7 @@
     "evidence": "Header absent or misconfigured for `headers-permissions-policy-screen-wake-lock-blocked`. Response observed headers: {{observed_headers}}.",
     "riskImpact": "Set Permissions-Policy: screen-wake-lock=(self)",
     "explanation": "Wake Lock should default to 'self'.",
-    "fixSteps": [
-      "Set Permissions-Policy: screen-wake-lock=(self)"
-    ],
+    "fixSteps": ["Set Permissions-Policy: screen-wake-lock=(self)"],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -2254,9 +2192,7 @@
     "evidence": "Header absent or misconfigured for `headers-permissions-policy-publickey-credentials-get-blocked`. Response observed headers: {{observed_headers}}.",
     "riskImpact": "Set Permissions-Policy: publickey-credentials-get=(self)",
     "explanation": "Passkey / WebAuthn should default to 'self'.",
-    "fixSteps": [
-      "Set Permissions-Policy: publickey-credentials-get=(self)"
-    ],
+    "fixSteps": ["Set Permissions-Policy: publickey-credentials-get=(self)"],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -2285,9 +2221,7 @@
     "evidence": "Header absent or misconfigured for `headers-permissions-policy-unload-blocked`. Response observed headers: {{observed_headers}}.",
     "riskImpact": "Set Permissions-Policy: unload=()",
     "explanation": "Permissions-Policy: unload=() is recommended to prevent third parties from intercepting the page-unload event.",
-    "fixSteps": [
-      "Set Permissions-Policy: unload=()"
-    ],
+    "fixSteps": ["Set Permissions-Policy: unload=()"],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -2556,9 +2490,7 @@
     "evidence": "Header absent or misconfigured for `headers-permissions-policy-midi-blocked`. Response observed headers: {{observed_headers}}.",
     "riskImpact": "Set Permissions-Policy: midi=() to block MIDI device access",
     "explanation": "Permissions-Policy does not restrict Web MIDI access.",
-    "fixSteps": [
-      "Set Permissions-Policy: midi=() to block MIDI device access"
-    ],
+    "fixSteps": ["Set Permissions-Policy: midi=() to block MIDI device access"],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -2767,9 +2699,7 @@
     "evidence": "Header absent or misconfigured for `headers-sec-ch-ua-arch-missing`. Response observed headers: {{observed_headers}}.",
     "riskImpact": "Add Accept-CH: Sec-CH-UA-Arch if you ship per-arch binaries",
     "explanation": "Sec-CH-UA-Arch lets servers see CPU architecture (e.g. arm, x86). Useful for shipping optimized binaries.",
-    "fixSteps": [
-      "Add Accept-CH: Sec-CH-UA-Arch if you ship per-arch binaries"
-    ],
+    "fixSteps": ["Add Accept-CH: Sec-CH-UA-Arch if you ship per-arch binaries"],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -2902,9 +2832,7 @@
         "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
       }
     ],
-    "references": [
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Cookies"
-    ],
+    "references": ["https://developer.mozilla.org/en-US/docs/Web/HTTP/Cookies"],
     "_idx": 106
   },
   {

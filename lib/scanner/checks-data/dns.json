@@ -68,9 +68,7 @@
     "evidence": "DNS-level finding for `dns-mx-missing` against {{domain}}.",
     "riskImpact": "Add an MX record if you send mail from this domain",
     "explanation": "Domains that send mail should have an MX record; missing MX means backscatter or rejected mail.",
-    "fixSteps": [
-      "Add an MX record if you send mail from this domain"
-    ],
+    "fixSteps": ["Add an MX record if you send mail from this domain"],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -99,9 +97,7 @@
     "evidence": "DNS-level finding for `dns-mx-no-backup` against {{domain}}.",
     "riskImpact": "Add a backup MX with priority 20 or 30",
     "explanation": "Backup MX servers (priority > 20) catch mail when the primary is down.",
-    "fixSteps": [
-      "Add a backup MX with priority 20 or 30"
-    ],
+    "fixSteps": ["Add a backup MX with priority 20 or 30"],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -130,9 +126,7 @@
     "evidence": "DNS-level finding for `dns-srv-missing` against {{domain}}.",
     "riskImpact": "If you use Exchange / SIP / XMPP, publish the SRV records",
     "explanation": "SRV records publish service endpoints (_autodiscover._tcp, _sip._udp, etc.).",
-    "fixSteps": [
-      "If you use Exchange / SIP / XMPP, publish the SRV records"
-    ],
+    "fixSteps": ["If you use Exchange / SIP / XMPP, publish the SRV records"],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -161,9 +155,7 @@
     "evidence": "DNS-level finding for `dns-soa-refresh-high` against {{domain}}.",
     "riskImpact": "Lower refresh to 3600-7200 seconds for faster rollovers",
     "explanation": "SOA refresh > 24h slows propagation when you change NS records.",
-    "fixSteps": [
-      "Lower refresh to 3600-7200 seconds for faster rollovers"
-    ],
+    "fixSteps": ["Lower refresh to 3600-7200 seconds for faster rollovers"],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -207,9 +199,7 @@
         "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
       }
     ],
-    "references": [
-      "https://datatracker.ietf.org/doc/html/rfc6698"
-    ],
+    "references": ["https://datatracker.ietf.org/doc/html/rfc6698"],
     "_idx": 7
   },
   {
@@ -222,9 +212,7 @@
     "evidence": "DNS-level finding for `dns-open-resolver` against {{domain}}.",
     "riskImpact": "Restrict AXFR to internal IPs only",
     "explanation": "Authoritative nameservers reachable on the public internet can be queried directly, leaking your zone data.",
-    "fixSteps": [
-      "Restrict AXFR to internal IPs only"
-    ],
+    "fixSteps": ["Restrict AXFR to internal IPs only"],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -394,9 +382,7 @@
         "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
       }
     ],
-    "references": [
-      "https://datatracker.ietf.org/doc/html/rfc4255"
-    ],
+    "references": ["https://datatracker.ietf.org/doc/html/rfc4255"],
     "_idx": 15
   },
   {
@@ -425,9 +411,7 @@
         "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
       }
     ],
-    "references": [
-      "https://datatracker.ietf.org/doc/html/rfc4034"
-    ],
+    "references": ["https://datatracker.ietf.org/doc/html/rfc4034"],
     "_idx": 18
   },
   {
@@ -457,9 +441,7 @@
         "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
       }
     ],
-    "references": [
-      "https://datatracker.ietf.org/doc/html/rfc5155"
-    ],
+    "references": ["https://datatracker.ietf.org/doc/html/rfc5155"],
     "_idx": 19
   },
   {
@@ -489,9 +471,7 @@
         "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
       }
     ],
-    "references": [
-      "https://github.com/EdOverflow/can-i-take-over-xyz"
-    ],
+    "references": ["https://github.com/EdOverflow/can-i-take-over-xyz"],
     "_idx": 20
   },
   {
@@ -521,9 +501,7 @@
         "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
       }
     ],
-    "references": [
-      "https://github.com/EdOverflow/can-i-take-over-xyz"
-    ],
+    "references": ["https://github.com/EdOverflow/can-i-take-over-xyz"],
     "_idx": 21
   },
   {
@@ -552,9 +530,7 @@
         "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
       }
     ],
-    "references": [
-      "https://datatracker.ietf.org/doc/html/rfc8484"
-    ],
+    "references": ["https://datatracker.ietf.org/doc/html/rfc8484"],
     "_idx": 22
   },
   {

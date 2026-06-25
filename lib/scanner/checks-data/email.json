@@ -148,9 +148,7 @@
     "evidence": "Email-auth finding for `email-spf-redirect-loop` against {{domain}}.",
     "riskImpact": "Audit the redirect chain and break the loop",
     "explanation": "SPF redirect= with a chain that loops back to the original domain fails permerror.",
-    "fixSteps": [
-      "Audit the redirect chain and break the loop"
-    ],
+    "fixSteps": ["Audit the redirect chain and break the loop"],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -179,9 +177,7 @@
     "evidence": "Email-auth finding for `email-dmarc-pct-not-100` against {{domain}}.",
     "riskImpact": "Set pct=100 once you're confident in the policy",
     "explanation": "DMARC pct= applies the policy to a percentage of traffic. < 100 means some spoofed mail still gets delivered.",
-    "fixSteps": [
-      "Set pct=100 once you're confident in the policy"
-    ],
+    "fixSteps": ["Set pct=100 once you're confident in the policy"],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -210,9 +206,7 @@
     "evidence": "Email-auth finding for `email-dkim-sig-tag` against {{domain}}.",
     "riskImpact": "Verify your mail server is signing with s= field",
     "explanation": "DKIM records without s= are not signing anything.",
-    "fixSteps": [
-      "Verify your mail server is signing with s= field"
-    ],
+    "fixSteps": ["Verify your mail server is signing with s= field"],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -241,9 +235,7 @@
     "evidence": "Email-auth finding for `email-bimi-missing` against {{domain}}.",
     "riskImpact": "Publish a BIMI TXT record at default._bimi.yourdomain.com",
     "explanation": "BIMI (Brand Indicators for Message Identification) displays your brand logo in supported mail clients.",
-    "fixSteps": [
-      "Publish a BIMI TXT record at default._bimi.yourdomain.com"
-    ],
+    "fixSteps": ["Publish a BIMI TXT record at default._bimi.yourdomain.com"],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -256,9 +248,7 @@
         "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
       }
     ],
-    "references": [
-      "https://bimigroup.org/"
-    ],
+    "references": ["https://bimigroup.org/"],
     "_idx": 13
   },
   {
@@ -286,9 +276,7 @@
         "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
       }
     ],
-    "references": [
-      "https://datatracker.ietf.org/doc/html/rfc8461"
-    ],
+    "references": ["https://datatracker.ietf.org/doc/html/rfc8461"],
     "_idx": 14
   },
   {
@@ -332,9 +320,7 @@
     "evidence": "Email-auth finding for `email-smtp-banner-version` against {{domain}}.",
     "riskImpact": "Set smtpd_banner to a generic string in Postfix",
     "explanation": "SMTP 220 banner includes the daemon and version. Disable the disclosure.",
-    "fixSteps": [
-      "Set smtpd_banner to a generic string in Postfix"
-    ],
+    "fixSteps": ["Set smtpd_banner to a generic string in Postfix"],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -379,9 +365,7 @@
         "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
       }
     ],
-    "references": [
-      "https://datatracker.ietf.org/doc/html/rfc8461"
-    ],
+    "references": ["https://datatracker.ietf.org/doc/html/rfc8461"],
     "_idx": 19
   },
   {
@@ -410,9 +394,7 @@
         "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
       }
     ],
-    "references": [
-      "https://datatracker.ietf.org/doc/html/rfc8461"
-    ],
+    "references": ["https://datatracker.ietf.org/doc/html/rfc8461"],
     "_idx": 20
   },
   {
@@ -441,9 +423,7 @@
         "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
       }
     ],
-    "references": [
-      "https://bimigroup.org/vmc/"
-    ],
+    "references": ["https://bimigroup.org/vmc/"],
     "_idx": 21
   },
   {
@@ -503,9 +483,7 @@
         "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
       }
     ],
-    "references": [
-      "https://datatracker.ietf.org/doc/html/rfc5321#section-5.1"
-    ],
+    "references": ["https://datatracker.ietf.org/doc/html/rfc5321#section-5.1"],
     "_idx": 23
   },
   {
@@ -534,9 +512,7 @@
         "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
       }
     ],
-    "references": [
-      "https://datatracker.ietf.org/doc/html/rfc5321#section-5.1"
-    ],
+    "references": ["https://datatracker.ietf.org/doc/html/rfc5321#section-5.1"],
     "_idx": 24
   },
   {
@@ -565,9 +541,7 @@
         "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
       }
     ],
-    "references": [
-      "https://datatracker.ietf.org/doc/html/rfc7208"
-    ],
+    "references": ["https://datatracker.ietf.org/doc/html/rfc7208"],
     "_idx": 25
   },
   {
@@ -596,9 +570,7 @@
         "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
       }
     ],
-    "references": [
-      "https://datatracker.ietf.org/doc/html/rfc4954"
-    ],
+    "references": ["https://datatracker.ietf.org/doc/html/rfc4954"],
     "_idx": 26
   },
   {
@@ -627,9 +599,7 @@
         "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
       }
     ],
-    "references": [
-      "https://datatracker.ietf.org/doc/html/rfc3207"
-    ],
+    "references": ["https://datatracker.ietf.org/doc/html/rfc3207"],
     "_idx": 27
   },
   {

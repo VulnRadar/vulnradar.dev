@@ -9,9 +9,7 @@
     "evidence": "API-endpoint finding for `api-rest-allow-methods-trace` against {{url}}.",
     "riskImpact": "Disable TRACE on the server / reverse proxy",
     "explanation": "HTTP TRACE reflects the request body and is exploitable for Cross-Site Tracing (XST).",
-    "fixSteps": [
-      "Disable TRACE on the server / reverse proxy"
-    ],
+    "fixSteps": ["Disable TRACE on the server / reverse proxy"],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -71,9 +69,7 @@
     "evidence": "API-endpoint finding for `api-graphql-suggestions-enabled` against {{url}}.",
     "riskImpact": "Disable GraphQL field suggestions in production",
     "explanation": "Field suggestions on error responses let attackers enumerate the schema.",
-    "fixSteps": [
-      "Disable GraphQL field suggestions in production"
-    ],
+    "fixSteps": ["Disable GraphQL field suggestions in production"],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -133,9 +129,7 @@
     "evidence": "API-endpoint finding for `api-graphql-no-rate-limit` against {{url}}.",
     "riskImpact": "Rate-limit by query cost / depth, not just request count",
     "explanation": "GraphQL POST endpoints need rate-limiting because one query can touch many resolvers.",
-    "fixSteps": [
-      "Rate-limit by query cost / depth, not just request count"
-    ],
+    "fixSteps": ["Rate-limit by query cost / depth, not just request count"],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -164,9 +158,7 @@
     "evidence": "API-endpoint finding for `api-graphql-persisted-queries` against {{url}}.",
     "riskImpact": "Enable Apollo Persisted Queries / Relay Compiler",
     "explanation": "Persisted queries (APQ) lock the schema surface to known queries.",
-    "fixSteps": [
-      "Enable Apollo Persisted Queries / Relay Compiler"
-    ],
+    "fixSteps": ["Enable Apollo Persisted Queries / Relay Compiler"],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -195,9 +187,7 @@
     "evidence": "API-endpoint finding for `api-openapi-server-url-leak` against {{url}}.",
     "riskImpact": "Strip internal hosts from public OpenAPI documents",
     "explanation": "swagger.json often contains the internal / staging host in the 'servers' array.",
-    "fixSteps": [
-      "Strip internal hosts from public OpenAPI documents"
-    ],
+    "fixSteps": ["Strip internal hosts from public OpenAPI documents"],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -257,9 +247,7 @@
     "evidence": "API-endpoint finding for `api-bearer-header-leak` against {{url}}.",
     "riskImpact": "Send Bearer tokens only in the Authorization header",
     "explanation": "Authorization: Bearer is fine, but Bearer tokens in URL or cookies can leak via logs.",
-    "fixSteps": [
-      "Send Bearer tokens only in the Authorization header"
-    ],
+    "fixSteps": ["Send Bearer tokens only in the Authorization header"],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -272,9 +260,7 @@
         "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
       }
     ],
-    "references": [
-      "https://datatracker.ietf.org/doc/html/rfc6750"
-    ],
+    "references": ["https://datatracker.ietf.org/doc/html/rfc6750"],
     "_idx": 8
   },
   {
@@ -318,9 +304,7 @@
     "evidence": "API-endpoint finding for `api-rate-limit-not-429` against {{url}}.",
     "riskImpact": "Return 429 + Retry-After when limits are exceeded",
     "explanation": "Rate-limited responses should return HTTP 429 with Retry-After.",
-    "fixSteps": [
-      "Return 429 + Retry-After when limits are exceeded"
-    ],
+    "fixSteps": ["Return 429 + Retry-After when limits are exceeded"],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -349,9 +333,7 @@
     "evidence": "API-endpoint finding for `api-jsonp-callback` against {{url}}.",
     "riskImpact": "Disable JSONP; serve CORS-allowed JSON instead",
     "explanation": "JSONP allows arbitrary JS to be loaded in the victim's origin. Prefer CORS.",
-    "fixSteps": [
-      "Disable JSONP; serve CORS-allowed JSON instead"
-    ],
+    "fixSteps": ["Disable JSONP; serve CORS-allowed JSON instead"],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -517,9 +499,7 @@
         "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
       }
     ],
-    "references": [
-      "https://graphql.org/learn/introspection/"
-    ],
+    "references": ["https://graphql.org/learn/introspection/"],
     "_idx": 16
   },
   {
@@ -578,9 +558,7 @@
         "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
       }
     ],
-    "references": [
-      "https://github.com/graphql/graphiql/issues/841"
-    ],
+    "references": ["https://github.com/graphql/graphiql/issues/841"],
     "_idx": 18
   },
   {
@@ -639,9 +617,7 @@
         "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
       }
     ],
-    "references": [
-      "https://github.com/slicknode/graphql-query-complexity"
-    ],
+    "references": ["https://github.com/slicknode/graphql-query-complexity"],
     "_idx": 20
   },
   {
@@ -669,9 +645,7 @@
         "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
       }
     ],
-    "references": [
-      "https://swagger.io/docs/specification/authentication/"
-    ],
+    "references": ["https://swagger.io/docs/specification/authentication/"],
     "_idx": 21
   },
   {
@@ -730,9 +704,7 @@
         "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
       }
     ],
-    "references": [
-      "https://datatracker.ietf.org/doc/html/rfc8725"
-    ],
+    "references": ["https://datatracker.ietf.org/doc/html/rfc8725"],
     "_idx": 23
   },
   {
@@ -851,9 +823,7 @@
         "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
       }
     ],
-    "references": [
-      "https://portswigger.net/web-security/cors"
-    ],
+    "references": ["https://portswigger.net/web-security/cors"],
     "_idx": 27
   },
   {
@@ -1066,9 +1036,7 @@
         "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
       }
     ],
-    "references": [
-      "https://portswigger.net/web-security/websockets"
-    ],
+    "references": ["https://portswigger.net/web-security/websockets"],
     "_idx": 34
   },
   {
@@ -1280,9 +1248,7 @@
         "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
       }
     ],
-    "references": [
-      "https://www.apollographql.com/docs/graphql-subscriptions/"
-    ],
+    "references": ["https://www.apollographql.com/docs/graphql-subscriptions/"],
     "_idx": 41
   },
   {

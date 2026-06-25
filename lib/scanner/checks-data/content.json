@@ -1473,9 +1473,7 @@
     "evidence": "AWS metadata IP found.",
     "riskImpact": "SSRF to metadata endpoint can steal IAM credentials.",
     "explanation": "The AWS metadata service provides instance credentials.",
-    "fixSteps": [
-      "Block metadata access from applications; use IMDSv2."
-    ],
+    "fixSteps": ["Block metadata access from applications; use IMDSv2."],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -1504,9 +1502,7 @@
     "evidence": ".git/ paths detected.",
     "riskImpact": "Exposed .git allows downloading entire source code history.",
     "explanation": "If .git is accessible, attackers can reconstruct your entire repository.",
-    "fixSteps": [
-      "Block access to .git directory in web server config."
-    ],
+    "fixSteps": ["Block access to .git directory in web server config."],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -1535,9 +1531,7 @@
     "evidence": ".env file reference detected.",
     "riskImpact": "Exposed .env files contain database credentials, API keys, and secrets.",
     "explanation": ".env files should never be web-accessible.",
-    "fixSteps": [
-      "Block .env access in web server config."
-    ],
+    "fixSteps": ["Block .env access in web server config."],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -1566,9 +1560,7 @@
     "evidence": "Backup file extension references detected.",
     "riskImpact": "Backup files may contain source code or database dumps.",
     "explanation": "Backup files on servers can expose previous code versions.",
-    "fixSteps": [
-      "Remove backup files from production servers."
-    ],
+    "fixSteps": ["Remove backup files from production servers."],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -1693,9 +1685,7 @@
     "evidence": "API documentation references detected.",
     "riskImpact": "API docs reveal all endpoints, parameters, and data models.",
     "explanation": "Public API documentation helps attackers understand your API surface.",
-    "fixSteps": [
-      "Restrict API docs access to authenticated users."
-    ],
+    "fixSteps": ["Restrict API docs access to authenticated users."],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -1756,9 +1746,7 @@
     "evidence": "Inline event handlers detected.",
     "riskImpact": "Inline handlers bypass CSP and complicate security auditing.",
     "explanation": "Inline event handlers are equivalent to inline scripts for XSS purposes.",
-    "fixSteps": [
-      "Use addEventListener() instead of inline handlers."
-    ],
+    "fixSteps": ["Use addEventListener() instead of inline handlers."],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -1787,9 +1775,7 @@
     "evidence": "document.domain usage detected.",
     "riskImpact": "Relaxes same-origin policy between subdomains.",
     "explanation": "document.domain is deprecated and weakens isolation.",
-    "fixSteps": [
-      "Use postMessage() for cross-subdomain communication."
-    ],
+    "fixSteps": ["Use postMessage() for cross-subdomain communication."],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -1818,9 +1804,7 @@
     "evidence": "postMessage with wildcard origin.",
     "riskImpact": "Sensitive data sent to any listening window.",
     "explanation": "Using * as target origin means any page can receive the message.",
-    "fixSteps": [
-      "Specify the exact target origin instead of *."
-    ],
+    "fixSteps": ["Specify the exact target origin instead of *."],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -1849,9 +1833,7 @@
     "evidence": "JWT pattern detected in HTML.",
     "riskImpact": "Exposed tokens allow session hijacking.",
     "explanation": "JWTs in page source can be stolen by XSS attacks.",
-    "fixSteps": [
-      "Never embed JWTs in HTML; use HttpOnly cookies."
-    ],
+    "fixSteps": ["Never embed JWTs in HTML; use HttpOnly cookies."],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -2070,9 +2052,7 @@
     "evidence": "Unsafe meta referrer value.",
     "riskImpact": "Full URLs including paths and query params leaked as referrer.",
     "explanation": "unsafe-url sends the complete URL to all destinations.",
-    "fixSteps": [
-      "Use strict-origin-when-cross-origin or no-referrer."
-    ],
+    "fixSteps": ["Use strict-origin-when-cross-origin or no-referrer."],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -2101,9 +2081,7 @@
     "evidence": "Session cookie security issues.",
     "riskImpact": "Session can be stolen via XSS or sent over HTTP.",
     "explanation": "Security flags protect cookies from common attacks.",
-    "fixSteps": [
-      "Add HttpOnly, Secure, and SameSite=Lax to session cookies."
-    ],
+    "fixSteps": ["Add HttpOnly, Secure, and SameSite=Lax to session cookies."],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -2132,9 +2110,7 @@
     "evidence": "Content-level finding for `information-disclosure-password-in-get` on the response body.",
     "riskImpact": "Credentials exposed in browser history, server logs, referrer.",
     "explanation": "GET parameters appear in URL and are logged everywhere.",
-    "fixSteps": [
-      "Use POST for all forms with passwords."
-    ],
+    "fixSteps": ["Use POST for all forms with passwords."],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -2163,9 +2139,7 @@
     "evidence": "Weak password minlength.",
     "riskImpact": "Users can set easily guessable passwords.",
     "explanation": "Short passwords are vulnerable to brute force attacks.",
-    "fixSteps": [
-      "Require minimum 8-12 characters for passwords."
-    ],
+    "fixSteps": ["Require minimum 8-12 characters for passwords."],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -2194,9 +2168,7 @@
     "evidence": "Remember token in URL.",
     "riskImpact": "Persistent auth token leaked in referrer and logs.",
     "explanation": "Remember-me tokens should be in cookies, not URLs.",
-    "fixSteps": [
-      "Store remember-me tokens in secure, HttpOnly cookies."
-    ],
+    "fixSteps": ["Store remember-me tokens in secure, HttpOnly cookies."],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -2225,9 +2197,7 @@
     "evidence": "OAuth without state.",
     "riskImpact": "Vulnerable to CSRF attacks on OAuth flow.",
     "explanation": "State parameter prevents cross-site request forgery in OAuth.",
-    "fixSteps": [
-      "Always include a cryptographically random state parameter."
-    ],
+    "fixSteps": ["Always include a cryptographically random state parameter."],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -2256,9 +2226,7 @@
     "evidence": "Debug endpoints referenced.",
     "riskImpact": "Debug endpoints often expose sensitive information.",
     "explanation": "Debug pages may show configs, stack traces, environment.",
-    "fixSteps": [
-      "Remove or restrict debug endpoints in production."
-    ],
+    "fixSteps": ["Remove or restrict debug endpoints in production."],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -2287,9 +2255,7 @@
     "evidence": "Admin endpoints referenced.",
     "riskImpact": "Reveals admin panel locations to attackers.",
     "explanation": "Knowing admin URLs helps attackers target them.",
-    "fixSteps": [
-      "Use obscure paths, add authentication, IP restrictions."
-    ],
+    "fixSteps": ["Use obscure paths, add authentication, IP restrictions."],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -2318,9 +2284,7 @@
     "evidence": "Email enumeration possible.",
     "riskImpact": "Attackers can verify which emails are registered.",
     "explanation": "Different messages for valid/invalid emails enable enumeration.",
-    "fixSteps": [
-      "Use generic messages like 'If this email exists...'"
-    ],
+    "fixSteps": ["Use generic messages like 'If this email exists...'"],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -2349,9 +2313,7 @@
     "evidence": "CDN scripts without fallback.",
     "riskImpact": "Site breaks if CDN is unavailable or compromised.",
     "explanation": "SRI helps but local fallback ensures availability.",
-    "fixSteps": [
-      "Add onerror fallback to local copy for critical scripts."
-    ],
+    "fixSteps": ["Add onerror fallback to local copy for critical scripts."],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -2380,9 +2342,7 @@
     "evidence": "Outdated jQuery detected.",
     "riskImpact": "Old jQuery versions have XSS vulnerabilities.",
     "explanation": "jQuery < 3.5.0 has known security issues.",
-    "fixSteps": [
-      "Update to latest jQuery version."
-    ],
+    "fixSteps": ["Update to latest jQuery version."],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -2411,9 +2371,7 @@
     "evidence": "AngularJS 1.x found.",
     "riskImpact": "No longer receives security updates.",
     "explanation": "AngularJS reached EOL Dec 2021, migrate to Angular.",
-    "fixSteps": [
-      "Migrate to Angular (2+) or another modern framework."
-    ],
+    "fixSteps": ["Migrate to Angular (2+) or another modern framework."],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -2442,9 +2400,7 @@
     "evidence": "Content-level finding for `information-disclosure-prototype-js-outdated` on the response body.",
     "riskImpact": "Unmaintained library with known vulnerabilities.",
     "explanation": "Prototype.js is no longer maintained.",
-    "fixSteps": [
-      "Remove Prototype.js, use modern alternatives."
-    ],
+    "fixSteps": ["Remove Prototype.js, use modern alternatives."],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -2473,9 +2429,7 @@
     "evidence": "Content-level finding for `information-disclosure-mootools-outdated` on the response body.",
     "riskImpact": "Unmaintained library with potential security issues.",
     "explanation": "MooTools has limited maintenance.",
-    "fixSteps": [
-      "Migrate to a modern, maintained framework."
-    ],
+    "fixSteps": ["Migrate to a modern, maintained framework."],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -2504,9 +2458,7 @@
     "evidence": "document.cookie usage.",
     "riskImpact": "Cookies may contain sensitive data accessible to scripts.",
     "explanation": "HttpOnly cookies prevent JavaScript access.",
-    "fixSteps": [
-      "Use HttpOnly flag for sensitive cookies."
-    ],
+    "fixSteps": ["Use HttpOnly flag for sensitive cookies."],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -2535,9 +2487,7 @@
     "evidence": "Credit card pattern found.",
     "riskImpact": "PCI DSS violation, data breach.",
     "explanation": "Card numbers should never appear in HTML.",
-    "fixSteps": [
-      "Never display full card numbers, mask or tokenize."
-    ],
+    "fixSteps": ["Never display full card numbers, mask or tokenize."],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -2566,9 +2516,7 @@
     "evidence": "Content-level finding for `information-disclosure-ssn-pattern` on the response body.",
     "riskImpact": "Severe privacy violation, identity theft risk.",
     "explanation": "SSNs should never appear in page content.",
-    "fixSteps": [
-      "Mask SSNs, never display in full."
-    ],
+    "fixSteps": ["Mask SSNs, never display in full."],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -2597,9 +2545,7 @@
     "evidence": "Phone numbers found.",
     "riskImpact": "Privacy concern, potential data leak.",
     "explanation": "Bulk phone numbers may indicate data exposure.",
-    "fixSteps": [
-      "Review if phone numbers should be displayed."
-    ],
+    "fixSteps": ["Review if phone numbers should be displayed."],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -2628,9 +2574,7 @@
     "evidence": "Content-level finding for `information-disclosure-email-address-leak` on the response body.",
     "riskImpact": "Privacy concern, spam/phishing target list.",
     "explanation": "Bulk emails may indicate data exposure.",
-    "fixSteps": [
-      "Review if emails should be displayed publicly."
-    ],
+    "fixSteps": ["Review if emails should be displayed publicly."],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -2659,9 +2603,7 @@
     "evidence": "Bearer token exposed.",
     "riskImpact": "Direct credential exposure.",
     "explanation": "Bearer tokens grant API access.",
-    "fixSteps": [
-      "Never embed tokens in HTML, use secure storage."
-    ],
+    "fixSteps": ["Never embed tokens in HTML, use secure storage."],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -2690,9 +2632,7 @@
     "evidence": "Content-level finding for `content-api-key-in-url` on the response body.",
     "riskImpact": "Key leaked in referrer, history, logs.",
     "explanation": "API keys in URLs are exposed in many places.",
-    "fixSteps": [
-      "Pass API keys in headers instead of URLs."
-    ],
+    "fixSteps": ["Pass API keys in headers instead of URLs."],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -2721,9 +2661,7 @@
     "evidence": "AWS credentials pattern.",
     "riskImpact": "Full AWS account compromise possible.",
     "explanation": "AWS keys grant access to cloud resources.",
-    "fixSteps": [
-      "Rotate exposed credentials immediately."
-    ],
+    "fixSteps": ["Rotate exposed credentials immediately."],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -2752,9 +2690,7 @@
     "evidence": "Private key pattern.",
     "riskImpact": "Complete compromise of encrypted data.",
     "explanation": "Private keys should never be in HTML.",
-    "fixSteps": [
-      "Rotate keys, investigate how they were exposed."
-    ],
+    "fixSteps": ["Rotate keys, investigate how they were exposed."],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -2783,9 +2719,7 @@
     "evidence": "Content-level finding for `content-stripe-key-exposed` on the response body.",
     "riskImpact": "May allow payment manipulation.",
     "explanation": "Live Stripe keys can process real payments.",
-    "fixSteps": [
-      "Rotate keys, use publishable keys only in frontend."
-    ],
+    "fixSteps": ["Rotate keys, use publishable keys only in frontend."],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -2814,9 +2748,7 @@
     "evidence": "Content-level finding for `content-twilio-credentials-exposed` on the response body.",
     "riskImpact": "Unauthorized SMS/calls, billing fraud.",
     "explanation": "Twilio credentials allow API access.",
-    "fixSteps": [
-      "Rotate credentials immediately."
-    ],
+    "fixSteps": ["Rotate credentials immediately."],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -2845,9 +2777,7 @@
     "evidence": "SendGrid key exposed.",
     "riskImpact": "Email sending abuse, phishing.",
     "explanation": "SendGrid keys allow email sending.",
-    "fixSteps": [
-      "Rotate API key immediately."
-    ],
+    "fixSteps": ["Rotate API key immediately."],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -2876,9 +2806,7 @@
     "evidence": "Slack webhook exposed.",
     "riskImpact": "Spam messages to Slack channel.",
     "explanation": "Anyone with webhook URL can post messages.",
-    "fixSteps": [
-      "Rotate webhook URL, keep it server-side."
-    ],
+    "fixSteps": ["Rotate webhook URL, keep it server-side."],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -2907,9 +2835,7 @@
     "evidence": "GitHub token pattern.",
     "riskImpact": "Repository access, code manipulation.",
     "explanation": "GitHub tokens grant repo access.",
-    "fixSteps": [
-      "Revoke token immediately, use fine-grained tokens."
-    ],
+    "fixSteps": ["Revoke token immediately, use fine-grained tokens."],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -2938,9 +2864,7 @@
     "evidence": "Content-level finding for `content-google-api-key-exposed` on the response body.",
     "riskImpact": "Quota theft, billing abuse.",
     "explanation": "Unrestricted Google keys can be abused.",
-    "fixSteps": [
-      "Restrict key to specific APIs and referrers."
-    ],
+    "fixSteps": ["Restrict key to specific APIs and referrers."],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -2969,9 +2893,7 @@
     "evidence": "Mailchimp key exposed.",
     "riskImpact": "Email list access, campaign manipulation.",
     "explanation": "Mailchimp keys grant full account access.",
-    "fixSteps": [
-      "Regenerate API key immediately."
-    ],
+    "fixSteps": ["Regenerate API key immediately."],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -3000,9 +2922,7 @@
     "evidence": "Content-level finding for `content-heroku-api-key-exposed` on the response body.",
     "riskImpact": "Full Heroku account control.",
     "explanation": "Heroku keys allow app deployment and deletion.",
-    "fixSteps": [
-      "Regenerate API key immediately."
-    ],
+    "fixSteps": ["Regenerate API key immediately."],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -3031,9 +2951,7 @@
     "evidence": "Content-level finding for `content-npm-token-exposed` on the response body.",
     "riskImpact": "Package publishing, supply chain attack.",
     "explanation": "NPM tokens allow package publishing.",
-    "fixSteps": [
-      "Revoke token, publish with 2FA."
-    ],
+    "fixSteps": ["Revoke token, publish with 2FA."],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -3062,9 +2980,7 @@
     "evidence": "Docker token exposed.",
     "riskImpact": "Container image manipulation.",
     "explanation": "Docker tokens allow image push/pull.",
-    "fixSteps": [
-      "Regenerate token immediately."
-    ],
+    "fixSteps": ["Regenerate token immediately."],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -3093,9 +3009,7 @@
     "evidence": "SQL error in output.",
     "riskImpact": "Reveals database structure, aids SQL injection.",
     "explanation": "SQL errors expose schema and query details.",
-    "fixSteps": [
-      "Use custom error pages, log errors server-side."
-    ],
+    "fixSteps": ["Use custom error pages, log errors server-side."],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -3124,9 +3038,7 @@
     "evidence": "NoSQL error exposed.",
     "riskImpact": "Reveals database type and query structure.",
     "explanation": "NoSQL errors aid injection attacks.",
-    "fixSteps": [
-      "Use custom error pages, handle errors gracefully."
-    ],
+    "fixSteps": ["Use custom error pages, handle errors gracefully."],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -3155,9 +3067,7 @@
     "evidence": "Content-level finding for `content-ldap-error-exposed` on the response body.",
     "riskImpact": "Reveals directory structure.",
     "explanation": "LDAP errors may expose user enumeration.",
-    "fixSteps": [
-      "Return generic error messages."
-    ],
+    "fixSteps": ["Return generic error messages."],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -3186,9 +3096,7 @@
     "evidence": "Content-level finding for `content-xml-error-exposed` on the response body.",
     "riskImpact": "May reveal XXE vulnerability.",
     "explanation": "XML errors can indicate parser misconfiguration.",
-    "fixSteps": [
-      "Handle XML errors gracefully."
-    ],
+    "fixSteps": ["Handle XML errors gracefully."],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -3217,9 +3125,7 @@
     "evidence": "Top-level JSON array.",
     "riskImpact": "Legacy browsers vulnerable to JSON hijacking.",
     "explanation": "Older browsers could include JSON in script tags.",
-    "fixSteps": [
-      "Wrap array in object, or use CORS properly."
-    ],
+    "fixSteps": ["Wrap array in object, or use CORS properly."],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -3248,9 +3154,7 @@
     "evidence": "Content-level finding for `api-jsonp-endpoint` on the response body.",
     "riskImpact": "JSONP can leak data cross-origin.",
     "explanation": "JSONP bypasses same-origin policy by design.",
-    "fixSteps": [
-      "Replace JSONP with CORS for cross-origin requests."
-    ],
+    "fixSteps": ["Replace JSONP with CORS for cross-origin requests."],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -3279,9 +3183,7 @@
     "evidence": "Potential DOM clobbering.",
     "riskImpact": "JavaScript globals can be overwritten.",
     "explanation": "HTML id/name attributes create global variables.",
-    "fixSteps": [
-      "Avoid relying on global variable names from DOM."
-    ],
+    "fixSteps": ["Avoid relying on global variable names from DOM."],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -3310,9 +3212,7 @@
     "evidence": "Content-level finding for `content-srcdoc-iframe` on the response body.",
     "riskImpact": "Inline HTML in iframes can be complex to secure.",
     "explanation": "srcdoc allows HTML directly in iframe.",
-    "fixSteps": [
-      "Ensure srcdoc content is properly sanitized."
-    ],
+    "fixSteps": ["Ensure srcdoc content is properly sanitized."],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -3341,9 +3241,7 @@
     "evidence": "Sandbox allows scripts.",
     "riskImpact": "Sandboxed content can still execute JavaScript.",
     "explanation": "allow-scripts re-enables JavaScript in sandbox.",
-    "fixSteps": [
-      "Only add allow-scripts if absolutely necessary."
-    ],
+    "fixSteps": ["Only add allow-scripts if absolutely necessary."],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -3372,9 +3270,7 @@
     "evidence": "Content-level finding for `content-svg-script-injection` on the response body.",
     "riskImpact": "If exploited, this finding exposes the target to category-specific risks under content. Severity reflects the realistic worst-case impact under default configurations.",
     "explanation": "SVG can contain executable JavaScript.",
-    "fixSteps": [
-      "Sanitize SVG uploads, use CSP."
-    ],
+    "fixSteps": ["Sanitize SVG uploads, use CSP."],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -3403,9 +3299,7 @@
     "evidence": "data: script source.",
     "riskImpact": "Inline script execution via data URI.",
     "explanation": "data: URIs can embed script content.",
-    "fixSteps": [
-      "Block data: in CSP script-src."
-    ],
+    "fixSteps": ["Block data: in CSP script-src."],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -3434,9 +3328,7 @@
     "evidence": "blob: script source.",
     "riskImpact": "Dynamic script generation.",
     "explanation": "Blob URLs can be used to execute dynamic scripts.",
-    "fixSteps": [
-      "Consider blocking blob: in CSP."
-    ],
+    "fixSteps": ["Consider blocking blob: in CSP."],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -3465,9 +3357,7 @@
     "evidence": "Password without autocomplete.",
     "riskImpact": "Browser may not offer to save password.",
     "explanation": "autocomplete helps password managers.",
-    "fixSteps": [
-      "Set autocomplete='current-password' or 'new-password'."
-    ],
+    "fixSteps": ["Set autocomplete='current-password' or 'new-password'."],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -3496,9 +3386,7 @@
     "evidence": "Autocomplete disabled.",
     "riskImpact": "Prevents password manager functionality.",
     "explanation": "Users may enter weaker manual passwords.",
-    "fixSteps": [
-      "Allow autocomplete unless there's a specific reason."
-    ],
+    "fixSteps": ["Allow autocomplete unless there's a specific reason."],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -3527,9 +3415,7 @@
     "evidence": "Short password limit.",
     "riskImpact": "Artificially limits password strength.",
     "explanation": "Short passwords are easier to crack.",
-    "fixSteps": [
-      "Allow at least 64-128 character passwords."
-    ],
+    "fixSteps": ["Allow at least 64-128 character passwords."],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -3558,9 +3444,7 @@
     "evidence": "Hidden password field.",
     "riskImpact": "May expose password in page source.",
     "explanation": "Hidden inputs are visible in HTML source.",
-    "fixSteps": [
-      "Never store passwords in hidden fields."
-    ],
+    "fixSteps": ["Never store passwords in hidden fields."],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -3589,9 +3473,7 @@
     "evidence": "Password in text field.",
     "riskImpact": "Password visible on screen.",
     "explanation": "Password fields should mask input.",
-    "fixSteps": [
-      "Use type='password' for password inputs."
-    ],
+    "fixSteps": ["Use type='password' for password inputs."],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -3620,9 +3502,7 @@
     "evidence": "Readonly sensitive data.",
     "riskImpact": "Users can still copy, data in DOM.",
     "explanation": "Readonly doesn't prevent data access.",
-    "fixSteps": [
-      "Consider masking or removing sensitive readonly data."
-    ],
+    "fixSteps": ["Consider masking or removing sensitive readonly data."],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -3651,9 +3531,7 @@
     "evidence": "Unrestricted file upload.",
     "riskImpact": "Malicious file uploads possible.",
     "explanation": "Accept attribute provides client-side hint.",
-    "fixSteps": [
-      "Set accept attribute and validate on server."
-    ],
+    "fixSteps": ["Set accept attribute and validate on server."],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -3682,9 +3560,7 @@
     "evidence": "Multiple file upload.",
     "riskImpact": "DoS via many file uploads.",
     "explanation": "Multiple files increases attack surface.",
-    "fixSteps": [
-      "Limit file count and total size server-side."
-    ],
+    "fixSteps": ["Limit file count and total size server-side."],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -3713,9 +3589,7 @@
     "evidence": "Source maps exposed.",
     "riskImpact": "Reveals original source code.",
     "explanation": "Source maps help reverse-engineer code.",
-    "fixSteps": [
-      "Remove source maps in production or restrict access."
-    ],
+    "fixSteps": ["Remove source maps in production or restrict access."],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -3744,9 +3618,7 @@
     "evidence": "TODO/FIXME comments.",
     "riskImpact": "Reveals incomplete security work.",
     "explanation": "May indicate known issues.",
-    "fixSteps": [
-      "Address and remove TODO comments before production."
-    ],
+    "fixSteps": ["Address and remove TODO comments before production."],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -3775,9 +3647,7 @@
     "evidence": "Iframe without lazy loading.",
     "riskImpact": "If exploited, this finding exposes the target to category-specific risks under content. Severity reflects the realistic worst-case impact under default configurations.",
     "explanation": "Lazy loading defers iframe loading.",
-    "fixSteps": [
-      "Add loading='lazy' to non-critical iframes."
-    ],
+    "fixSteps": ["Add loading='lazy' to non-critical iframes."],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -3806,9 +3676,7 @@
     "evidence": "Content-level finding for `content-preconnect-missing` on the response body.",
     "riskImpact": "Slower third-party resource loading.",
     "explanation": "Preconnect establishes early connections.",
-    "fixSteps": [
-      "Add preconnect for critical third-party origins."
-    ],
+    "fixSteps": ["Add preconnect for critical third-party origins."],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -3837,9 +3705,7 @@
     "evidence": "Missing dns-prefetch.",
     "riskImpact": "Slower DNS resolution.",
     "explanation": "DNS prefetch resolves domains early.",
-    "fixSteps": [
-      "Add dns-prefetch for third-party domains."
-    ],
+    "fixSteps": ["Add dns-prefetch for third-party domains."],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -3868,9 +3734,7 @@
     "evidence": "Content-level finding for `content-meta-redirect-no-url` on the response body.",
     "riskImpact": "Use HTTP 301/302 instead of meta refresh",
     "explanation": "<meta http-equiv=refresh content='5'> without url= is informational; with url= it's a redirect.",
-    "fixSteps": [
-      "Use HTTP 301/302 instead of meta refresh"
-    ],
+    "fixSteps": ["Use HTTP 301/302 instead of meta refresh"],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -3899,9 +3763,7 @@
     "evidence": "Content-level finding for `content-iframe-missing-allowfullscreen` on the response body.",
     "riskImpact": "Add allowfullscreen attribute",
     "explanation": "Iframes without allowfullscreen can't fill the viewport on mobile.",
-    "fixSteps": [
-      "Add allowfullscreen attribute"
-    ],
+    "fixSteps": ["Add allowfullscreen attribute"],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -3930,9 +3792,7 @@
     "evidence": "Content-level finding for `content-inline-style-attr` on the response body.",
     "riskImpact": "Move inline styles to external stylesheets",
     "explanation": "Inline styles can't be inspected by CSP and complicate theming.",
-    "fixSteps": [
-      "Move inline styles to external stylesheets"
-    ],
+    "fixSteps": ["Move inline styles to external stylesheets"],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",

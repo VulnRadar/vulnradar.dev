@@ -9,9 +9,7 @@
     "evidence": "Cookie path is root.",
     "riskImpact": "Cookie accessible from all paths on the domain.",
     "explanation": "Consider restricting cookie path for isolation.",
-    "fixSteps": [
-      "Set specific path for cookies when appropriate."
-    ],
+    "fixSteps": ["Set specific path for cookies when appropriate."],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -40,9 +38,7 @@
     "evidence": "Broad cookie domain.",
     "riskImpact": "Cookie shared across all subdomains.",
     "explanation": "Subdomain cookie sharing increases attack surface.",
-    "fixSteps": [
-      "Restrict cookie domain unless sharing is needed."
-    ],
+    "fixSteps": ["Restrict cookie domain unless sharing is needed."],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -71,9 +67,7 @@
     "evidence": "Cookie without __Host- prefix.",
     "riskImpact": "__Host- ensures cookie is secure, same-domain, path=/.",
     "explanation": "Cookie prefixes provide additional protections.",
-    "fixSteps": [
-      "Rename sensitive cookies with __Host- prefix."
-    ],
+    "fixSteps": ["Rename sensitive cookies with __Host- prefix."],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -102,9 +96,7 @@
     "evidence": "Unpartitioned third-party cookie.",
     "riskImpact": "Cookie may be blocked in privacy-focused browsers.",
     "explanation": "CHIPS (Partitioned cookies) enable privacy-preserving third-party cookies.",
-    "fixSteps": [
-      "Add Partitioned attribute for third-party cookies."
-    ],
+    "fixSteps": ["Add Partitioned attribute for third-party cookies."],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -133,9 +125,7 @@
     "evidence": "Cookie issue for `cookies-host-prefix-not-secure`. Set-Cookie observed: {{set_cookies}}.",
     "riskImpact": "Add Secure; SameSite=...; Path=/ to the __Host- cookie",
     "explanation": "__Host- prefixed cookies MUST have Secure and Path=/.",
-    "fixSteps": [
-      "Add Secure; SameSite=...; Path=/ to the __Host- cookie"
-    ],
+    "fixSteps": ["Add Secure; SameSite=...; Path=/ to the __Host- cookie"],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -164,9 +154,7 @@
     "evidence": "Cookie issue for `cookies-host-prefix-wrong-path`. Set-Cookie observed: {{set_cookies}}.",
     "riskImpact": "Set Path=/ on the __Host- cookie",
     "explanation": "__Host- prefixed cookies MUST have Path=/.",
-    "fixSteps": [
-      "Set Path=/ on the __Host- cookie"
-    ],
+    "fixSteps": ["Set Path=/ on the __Host- cookie"],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -195,9 +183,7 @@
     "evidence": "Cookie issue for `cookies-secure-prefix-not-secure`. Set-Cookie observed: {{set_cookies}}.",
     "riskImpact": "Add Secure to the __Secure- cookie",
     "explanation": "__Secure- prefixed cookies MUST have the Secure attribute.",
-    "fixSteps": [
-      "Add Secure to the __Secure- cookie"
-    ],
+    "fixSteps": ["Add Secure to the __Secure- cookie"],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -226,9 +212,7 @@
     "evidence": "Cookie issue for `cookies-domain-explicit-unnecessary`. Set-Cookie observed: {{set_cookies}}.",
     "riskImpact": "Drop Domain= or scope to the required host only",
     "explanation": "Cookies with an explicit Domain= attribute are sent to every subdomain. Avoid Domain= when not necessary.",
-    "fixSteps": [
-      "Drop Domain= or scope to the required host only"
-    ],
+    "fixSteps": ["Drop Domain= or scope to the required host only"],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -288,9 +272,7 @@
     "evidence": "Cookie issue for `cookies-name-disclosure`. Set-Cookie observed: {{set_cookies}}.",
     "riskImpact": "Rename the cookie to a generic opaque name (e.g. __Host-id)",
     "explanation": "Cookies named like express.sid, JSESSIONID, PHPSESSID, ASP.NET_SessionId reveal the server framework to attackers.",
-    "fixSteps": [
-      "Rename the cookie to a generic opaque name (e.g. __Host-id)"
-    ],
+    "fixSteps": ["Rename the cookie to a generic opaque name (e.g. __Host-id)"],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -522,9 +504,7 @@
         "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
       }
     ],
-    "references": [
-      "https://datatracker.ietf.org/doc/html/rfc6265bis"
-    ],
+    "references": ["https://datatracker.ietf.org/doc/html/rfc6265bis"],
     "_idx": 19
   },
   {
