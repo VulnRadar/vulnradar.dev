@@ -9,9 +9,7 @@
     "evidence": "No framing protection detected.",
     "riskImpact": "Page can be embedded in iframes by malicious sites.",
     "explanation": "Without X-Frame-Options or CSP frame-ancestors, clickjacking is possible.",
-    "fixSteps": [
-      "Add X-Frame-Options: DENY or CSP frame-ancestors 'self'."
-    ],
+    "fixSteps": ["Add X-Frame-Options: DENY or CSP frame-ancestors 'self'."],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -71,9 +69,7 @@
     "evidence": "Configuration-level finding for `configuration-cookie-too-large` against {{url}}.",
     "riskImpact": "Store less data in cookies; use server-side session storage",
     "explanation": "Browsers drop cookies larger than ~4KB.",
-    "fixSteps": [
-      "Store less data in cookies; use server-side session storage"
-    ],
+    "fixSteps": ["Store less data in cookies; use server-side session storage"],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -102,9 +98,7 @@
     "evidence": "Configuration-level finding for `configuration-vary-header-missing` against {{url}}.",
     "riskImpact": "Add Vary: Accept-Encoding to all compressed responses",
     "explanation": "When serving different content based on Accept-Encoding, the Vary header is required to avoid cache poisoning.",
-    "fixSteps": [
-      "Add Vary: Accept-Encoding to all compressed responses"
-    ],
+    "fixSteps": ["Add Vary: Accept-Encoding to all compressed responses"],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -133,9 +127,7 @@
     "evidence": "Configuration-level finding for `configuration-transfer-encoding-chunked` against {{url}}.",
     "riskImpact": "Prefer Content-Length where possible for cacheability",
     "explanation": "Transfer-Encoding: chunked is fine, but worth tracking.",
-    "fixSteps": [
-      "Prefer Content-Length where possible for cacheability"
-    ],
+    "fixSteps": ["Prefer Content-Length where possible for cacheability"],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -195,9 +187,7 @@
     "evidence": "Configuration-level finding for `configuration-x-xss-protection-deprecated` against {{url}}.",
     "riskImpact": "Remove X-XSS-Protection; rely on CSP instead",
     "explanation": "X-XSS-Protection is deprecated and the Chrome auditor has been removed. Modern browsers ignore this header.",
-    "fixSteps": [
-      "Remove X-XSS-Protection; rely on CSP instead"
-    ],
+    "fixSteps": ["Remove X-XSS-Protection; rely on CSP instead"],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -257,9 +247,7 @@
     "evidence": "Configuration-level finding for `configuration-vary-cookie-static-resource` against {{url}}.",
     "riskImpact": "Drop Vary: Cookie from responses on static asset paths",
     "explanation": "A static asset (image, JS, CSS) served with Vary: Cookie forces every cache to store one copy per Cookie value, defeating caching.",
-    "fixSteps": [
-      "Drop Vary: Cookie from responses on static asset paths"
-    ],
+    "fixSteps": ["Drop Vary: Cookie from responses on static asset paths"],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",

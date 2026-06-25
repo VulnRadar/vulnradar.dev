@@ -68,9 +68,7 @@
     "evidence": "Information disclosure finding for `information-disclosure-php-version-in-cookie` on the response body.",
     "riskImpact": "Rename the session cookie to a generic opaque value",
     "explanation": "PHPSESSID in cookie name reveals PHP.",
-    "fixSteps": [
-      "Rename the session cookie to a generic opaque value"
-    ],
+    "fixSteps": ["Rename the session cookie to a generic opaque value"],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -99,9 +97,7 @@
     "evidence": "Information disclosure finding for `information-disclosure-config-js-leaked` on the response body.",
     "riskImpact": "Move secrets out of public config files",
     "explanation": "Public config.js / settings.js often leaks API keys, environment hints, or feature flags.",
-    "fixSteps": [
-      "Move secrets out of public config files"
-    ],
+    "fixSteps": ["Move secrets out of public config files"],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -130,9 +126,7 @@
     "evidence": "Information disclosure finding for `information-disclosure-env-js-leaked` on the response body.",
     "riskImpact": "Never serve env.js from a public path",
     "explanation": "env.js in /public/ exposes environment-level secrets.",
-    "fixSteps": [
-      "Never serve env.js from a public path"
-    ],
+    "fixSteps": ["Never serve env.js from a public path"],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -161,9 +155,7 @@
     "evidence": "Information disclosure finding for `information-disclosure-sitemap-public` on the response body.",
     "riskImpact": "Audit sitemap.xml for admin / private paths",
     "explanation": "Sitemap.xml is publicly accessible by design. Make sure it doesn't reference private endpoints.",
-    "fixSteps": [
-      "Audit sitemap.xml for admin / private paths"
-    ],
+    "fixSteps": ["Audit sitemap.xml for admin / private paths"],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -192,9 +184,7 @@
     "evidence": "Information disclosure finding for `information-disclosure-robots-txt-allows-all` on the response body.",
     "riskImpact": "Add explicit Disallow for paths you don't want crawled",
     "explanation": "robots.txt disallows nothing — that's fine but worth noting.",
-    "fixSteps": [
-      "Add explicit Disallow for paths you don't want crawled"
-    ],
+    "fixSteps": ["Add explicit Disallow for paths you don't want crawled"],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -254,9 +244,7 @@
     "evidence": "Information disclosure finding for `information-disclosure-cdn-cors-internal` on the response body.",
     "riskImpact": "Restrict ACAO to the customer-facing origin",
     "explanation": "Access-Control-Allow-Origin includes internal CDN hostnames.",
-    "fixSteps": [
-      "Restrict ACAO to the customer-facing origin"
-    ],
+    "fixSteps": ["Restrict ACAO to the customer-facing origin"],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -316,9 +304,7 @@
     "evidence": "Information disclosure finding for `information-disclosure-ga-tracking-id-leaked` on the response body.",
     "riskImpact": "This is informational",
     "explanation": "GA tracking ID (UA-XXXX / G-XXXX) is publicly visible. Not a security issue by itself.",
-    "fixSteps": [
-      "This is informational"
-    ],
+    "fixSteps": ["This is informational"],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",

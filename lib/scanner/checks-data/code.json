@@ -208,9 +208,7 @@
     "evidence": "eval() detected in scripts.",
     "riskImpact": "eval() can execute arbitrary code if input is attacker-controlled.",
     "explanation": "eval() interprets strings as code, creating injection risks.",
-    "fixSteps": [
-      "Replace eval() with JSON.parse() or safe alternatives."
-    ],
+    "fixSteps": ["Replace eval() with JSON.parse() or safe alternatives."],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -270,9 +268,7 @@
     "evidence": "outerHTML assignment found.",
     "riskImpact": "Similar to innerHTML, can execute arbitrary scripts.",
     "explanation": "outerHTML replaces the element entirely with parsed HTML.",
-    "fixSteps": [
-      "Avoid outerHTML with user input, use safe DOM methods."
-    ],
+    "fixSteps": ["Avoid outerHTML with user input, use safe DOM methods."],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -394,9 +390,7 @@
     "evidence": "SSRF indicators found.",
     "riskImpact": "Attacker could make server fetch internal resources.",
     "explanation": "SSRF allows attackers to access internal services through the server.",
-    "fixSteps": [
-      "Validate and whitelist allowed URLs, block internal IPs."
-    ],
+    "fixSteps": ["Validate and whitelist allowed URLs, block internal IPs."],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -456,9 +450,7 @@
     "evidence": "Template syntax in output.",
     "riskImpact": "Server-Side Template Injection can lead to RCE.",
     "explanation": "Unescaped template expressions can execute arbitrary code.",
-    "fixSteps": [
-      "Escape all user input before template rendering."
-    ],
+    "fixSteps": ["Escape all user input before template rendering."],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -487,9 +479,7 @@
     "evidence": "XXE indicators found.",
     "riskImpact": "XXE can read local files, perform SSRF, or cause DoS.",
     "explanation": "External entities can reference local files or URLs.",
-    "fixSteps": [
-      "Disable external entity processing in XML parser."
-    ],
+    "fixSteps": ["Disable external entity processing in XML parser."],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -549,9 +539,7 @@
     "evidence": "Source-code pattern matched for `code-eval-usage`.",
     "riskImpact": "eval executes arbitrary code, enabling code injection.",
     "explanation": "eval() is one of the most dangerous JavaScript functions.",
-    "fixSteps": [
-      "Replace eval with JSON.parse or safer alternatives."
-    ],
+    "fixSteps": ["Replace eval with JSON.parse or safer alternatives."],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -611,9 +599,7 @@
     "evidence": "Timer with string argument.",
     "riskImpact": "String arguments are eval'd, enabling code injection.",
     "explanation": "setTimeout('code', 0) is equivalent to eval('code').",
-    "fixSteps": [
-      "Pass functions, not strings, to setTimeout/setInterval."
-    ],
+    "fixSteps": ["Pass functions, not strings, to setTimeout/setInterval."],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -642,9 +628,7 @@
     "evidence": "Media device access found.",
     "riskImpact": "Privacy concern - ensure user consent.",
     "explanation": "getUserMedia accesses camera and microphone.",
-    "fixSteps": [
-      "Ensure explicit user consent before accessing media."
-    ],
+    "fixSteps": ["Ensure explicit user consent before accessing media."],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -673,9 +657,7 @@
     "evidence": "Potentially slow regex.",
     "riskImpact": "CPU exhaustion via crafted input.",
     "explanation": "Nested quantifiers cause exponential backtracking.",
-    "fixSteps": [
-      "Review and simplify regex patterns."
-    ],
+    "fixSteps": ["Review and simplify regex patterns."],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -704,9 +686,7 @@
     "evidence": "Sensitive localStorage usage.",
     "riskImpact": "Data accessible to any script on the page.",
     "explanation": "localStorage is not encrypted and accessible via XSS.",
-    "fixSteps": [
-      "Use secure, HttpOnly cookies for sensitive data."
-    ],
+    "fixSteps": ["Use secure, HttpOnly cookies for sensitive data."],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -735,9 +715,7 @@
     "evidence": "Tokens in sessionStorage.",
     "riskImpact": "Vulnerable to XSS-based token theft.",
     "explanation": "sessionStorage is accessible via JavaScript.",
-    "fixSteps": [
-      "Store tokens in HttpOnly cookies."
-    ],
+    "fixSteps": ["Store tokens in HttpOnly cookies."],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -766,9 +744,7 @@
     "evidence": "IndexedDB sensitive data.",
     "riskImpact": "Data persists and is accessible to scripts.",
     "explanation": "IndexedDB can store large amounts of data.",
-    "fixSteps": [
-      "Encrypt sensitive data before storing in IndexedDB."
-    ],
+    "fixSteps": ["Encrypt sensitive data before storing in IndexedDB."],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -797,9 +773,7 @@
     "evidence": "window.name storage.",
     "riskImpact": "Data persists across navigations and can leak.",
     "explanation": "window.name is shared across origins in some cases.",
-    "fixSteps": [
-      "Clear window.name, use proper storage APIs."
-    ],
+    "fixSteps": ["Clear window.name, use proper storage APIs."],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -828,9 +802,7 @@
     "evidence": "Service worker found.",
     "riskImpact": "Compromised SW can intercept all requests.",
     "explanation": "Service workers are powerful and persistent.",
-    "fixSteps": [
-      "Ensure SW is properly secured and scoped."
-    ],
+    "fixSteps": ["Ensure SW is properly secured and scoped."],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -859,9 +831,7 @@
     "evidence": "Source-code pattern matched for `code-push-api-usage`.",
     "riskImpact": "Privacy concern if abused.",
     "explanation": "Push notifications require user consent.",
-    "fixSteps": [
-      "Ensure notifications are used appropriately."
-    ],
+    "fixSteps": ["Ensure notifications are used appropriately."],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -890,9 +860,7 @@
     "evidence": "Source-code pattern matched for `code-payment-request-api`.",
     "riskImpact": "Ensure secure payment handling.",
     "explanation": "Payment API handles financial transactions.",
-    "fixSteps": [
-      "Follow PCI DSS guidelines for payment handling."
-    ],
+    "fixSteps": ["Follow PCI DSS guidelines for payment handling."],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -921,9 +889,7 @@
     "evidence": "Credential API usage.",
     "riskImpact": "Handles sensitive credential storage.",
     "explanation": "This API stores and retrieves credentials.",
-    "fixSteps": [
-      "Use properly with HTTPS and security best practices."
-    ],
+    "fixSteps": ["Use properly with HTTPS and security best practices."],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -952,9 +918,7 @@
     "evidence": "Source-code pattern matched for `code-webauthn-usage`.",
     "riskImpact": "Strong authentication method.",
     "explanation": "WebAuthn enables passwordless authentication.",
-    "fixSteps": [
-      "Ensure proper implementation."
-    ],
+    "fixSteps": ["Ensure proper implementation."],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -983,9 +947,7 @@
     "evidence": "Source-code pattern matched for `code-subtle-crypto-usage`.",
     "riskImpact": "Ensure proper key management.",
     "explanation": "Web Crypto provides cryptographic operations.",
-    "fixSteps": [
-      "Use secure random generation and proper key storage."
-    ],
+    "fixSteps": ["Use secure random generation and proper key storage."],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -1014,9 +976,7 @@
     "evidence": "Source-code pattern matched for `code-wasm-usage`.",
     "riskImpact": "WASM code harder to audit.",
     "explanation": "WebAssembly runs compiled code in browser.",
-    "fixSteps": [
-      "Ensure WASM source is trusted."
-    ],
+    "fixSteps": ["Ensure WASM source is trusted."],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -1045,9 +1005,7 @@
     "evidence": "Console logging found.",
     "riskImpact": "May expose sensitive debug information.",
     "explanation": "Console logs can reveal internal state.",
-    "fixSteps": [
-      "Remove or disable console.log in production."
-    ],
+    "fixSteps": ["Remove or disable console.log in production."],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -1076,9 +1034,7 @@
     "evidence": "Source-code pattern matched for `code-debugger-statement`.",
     "riskImpact": "Pauses execution in dev tools.",
     "explanation": "Debugger statements should be removed.",
-    "fixSteps": [
-      "Remove debugger statements in production."
-    ],
+    "fixSteps": ["Remove debugger statements in production."],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -1107,9 +1063,7 @@
     "evidence": "React without error handling.",
     "riskImpact": "Unhandled errors may crash the app.",
     "explanation": "Error boundaries prevent full-page crashes.",
-    "fixSteps": [
-      "Implement React error boundaries."
-    ],
+    "fixSteps": ["Implement React error boundaries."],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -1138,9 +1092,7 @@
     "evidence": "Source-code pattern matched for `code-fetch-without-credentials`.",
     "riskImpact": "Explicitly set credentials: 'include' or 'same-origin'",
     "explanation": "fetch(url, { credentials: 'omit' }) prevents cookies from being sent, but auth tokens via cookies won't work.",
-    "fixSteps": [
-      "Explicitly set credentials: 'include' or 'same-origin'"
-    ],
+    "fixSteps": ["Explicitly set credentials: 'include' or 'same-origin'"],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -1169,9 +1121,7 @@
     "evidence": "Source-code pattern matched for `code-axios-defaults-baseurl`.",
     "riskImpact": "Move API base URLs to environment variables",
     "explanation": "Hard-coded axios.defaults.baseURL = 'http://localhost:3000' will leak into production builds.",
-    "fixSteps": [
-      "Move API base URLs to environment variables"
-    ],
+    "fixSteps": ["Move API base URLs to environment variables"],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -1200,9 +1150,7 @@
     "evidence": "Source-code pattern matched for `code-fetch-no-timeout`.",
     "riskImpact": "Add signal: AbortSignal.timeout(5000) to every fetch",
     "explanation": "fetch() with no timeout can hang indefinitely under network failure.",
-    "fixSteps": [
-      "Add signal: AbortSignal.timeout(5000) to every fetch"
-    ],
+    "fixSteps": ["Add signal: AbortSignal.timeout(5000) to every fetch"],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -1386,9 +1334,7 @@
     "evidence": "Source-code pattern matched for `code-cookie-write-without-secure`.",
     "riskImpact": "Add Secure; to every cookie set via document.cookie",
     "explanation": "Cookies set via document.cookie without Secure can be sent over HTTP.",
-    "fixSteps": [
-      "Add Secure; to every cookie set via document.cookie"
-    ],
+    "fixSteps": ["Add Secure; to every cookie set via document.cookie"],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -1417,9 +1363,7 @@
     "evidence": "Source-code pattern matched for `code-cookie-write-without-samesite`.",
     "riskImpact": "Add SameSite=Lax or SameSite=Strict",
     "explanation": "Cookies without SameSite are sent on cross-site requests (CSRF).",
-    "fixSteps": [
-      "Add SameSite=Lax or SameSite=Strict"
-    ],
+    "fixSteps": ["Add SameSite=Lax or SameSite=Strict"],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -1448,9 +1392,7 @@
     "evidence": "Source-code pattern matched for `code-window-open-without-noopener`.",
     "riskImpact": "Use window.open(url, '_blank', 'noopener,noreferrer')",
     "explanation": "window.open(url, '_blank') without 'noopener' lets the new tab navigate the source page.",
-    "fixSteps": [
-      "Use window.open(url, '_blank', 'noopener,noreferrer')"
-    ],
+    "fixSteps": ["Use window.open(url, '_blank', 'noopener,noreferrer')"],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -1603,9 +1545,7 @@
     "evidence": "Source-code pattern matched for `code-jquery-global-event`.",
     "riskImpact": "Bind handlers to specific elements, not document",
     "explanation": "$(document).on('click', sel, fn) can be triggered by an attacker-controlled selector.",
-    "fixSteps": [
-      "Bind handlers to specific elements, not document"
-    ],
+    "fixSteps": ["Bind handlers to specific elements, not document"],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -1665,9 +1605,7 @@
     "evidence": "Source-code pattern matched for `code-service-worker-no-csp`.",
     "riskImpact": "Add worker-src 'self'; restrict script-src to your origin",
     "explanation": "Service workers can intercept any request on the same origin. CSP without worker-src / script-src leaves them open.",
-    "fixSteps": [
-      "Add worker-src 'self'; restrict script-src to your origin"
-    ],
+    "fixSteps": ["Add worker-src 'self'; restrict script-src to your origin"],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -1696,9 +1634,7 @@
     "evidence": "Source-code pattern matched for `code-cookie-write-via-jquery`.",
     "riskImpact": "Use the server's Set-Cookie header instead",
     "explanation": "jQuery.cookie() sets cookies via JS and bypasses HttpOnly-equivalent protections.",
-    "fixSteps": [
-      "Use the server's Set-Cookie header instead"
-    ],
+    "fixSteps": ["Use the server's Set-Cookie header instead"],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -1727,9 +1663,7 @@
     "evidence": "Source-code pattern matched for `code-stripe-publishable-key`.",
     "riskImpact": "This is informational",
     "explanation": "Stripe publishable keys (pk_live_*) are designed to be client-side. Not a secret.",
-    "fixSteps": [
-      "This is informational"
-    ],
+    "fixSteps": ["This is informational"],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -1758,9 +1692,7 @@
     "evidence": "Source-code pattern matched for `code-react-refs-innerhtml`.",
     "riskImpact": "Use React state to update DOM instead of mutating via refs",
     "explanation": "Setting element.innerHTML via a ref after hydration bypasses React's rendering.",
-    "fixSteps": [
-      "Use React state to update DOM instead of mutating via refs"
-    ],
+    "fixSteps": ["Use React state to update DOM instead of mutating via refs"],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -1902,9 +1834,7 @@
         "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
       }
     ],
-    "references": [
-      "https://owasp.org/www-community/attacks/xss/"
-    ],
+    "references": ["https://owasp.org/www-community/attacks/xss/"],
     "_idx": 69
   },
   {
@@ -1966,9 +1896,7 @@
         "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
       }
     ],
-    "references": [
-      "https://vuejs.org/api/built-in-directives.html#v-html"
-    ],
+    "references": ["https://vuejs.org/api/built-in-directives.html#v-html"],
     "_idx": 71
   },
   {
@@ -1998,9 +1926,7 @@
         "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
       }
     ],
-    "references": [
-      "https://angular.dev/api/core/DomSanitizer"
-    ],
+    "references": ["https://angular.dev/api/core/DomSanitizer"],
     "_idx": 72
   },
   {
@@ -2094,9 +2020,7 @@
         "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
       }
     ],
-    "references": [
-      "https://docs.python.org/3/library/os.html#os.system"
-    ],
+    "references": ["https://docs.python.org/3/library/os.html#os.system"],
     "_idx": 77
   },
   {
@@ -2126,9 +2050,7 @@
         "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
       }
     ],
-    "references": [
-      "https://cwe.mitre.org/data/definitions/78.html"
-    ],
+    "references": ["https://cwe.mitre.org/data/definitions/78.html"],
     "_idx": 78
   },
   {
@@ -2286,9 +2208,7 @@
         "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
       }
     ],
-    "references": [
-      "https://owasp.org/www-community/attacks/SQL_Injection"
-    ],
+    "references": ["https://owasp.org/www-community/attacks/SQL_Injection"],
     "_idx": 83
   },
   {
@@ -2318,9 +2238,7 @@
         "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
       }
     ],
-    "references": [
-      "https://github.com/Poordeveloper/node-sql-template-tag"
-    ],
+    "references": ["https://github.com/Poordeveloper/node-sql-template-tag"],
     "_idx": 84
   },
   {
@@ -2350,9 +2268,7 @@
         "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
       }
     ],
-    "references": [
-      "https://www.npmjs.com/package/express-mongo-sanitize"
-    ],
+    "references": ["https://www.npmjs.com/package/express-mongo-sanitize"],
     "_idx": 85
   },
   {
@@ -2382,9 +2298,7 @@
         "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
       }
     ],
-    "references": [
-      "https://sequelize.org/docs/v6/core-concepts/raw-queries/"
-    ],
+    "references": ["https://sequelize.org/docs/v6/core-concepts/raw-queries/"],
     "_idx": 86
   },
   {
@@ -2414,9 +2328,7 @@
         "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
       }
     ],
-    "references": [
-      "https://pyyaml.org/wiki/PyYAMLDocumentation"
-    ],
+    "references": ["https://pyyaml.org/wiki/PyYAMLDocumentation"],
     "_idx": 87
   },
   {
@@ -2446,9 +2358,7 @@
         "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
       }
     ],
-    "references": [
-      "https://docs.python.org/3/library/pickle.html"
-    ],
+    "references": ["https://docs.python.org/3/library/pickle.html"],
     "_idx": 88
   },
   {
@@ -2478,9 +2388,7 @@
         "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
       }
     ],
-    "references": [
-      "https://owasp.org/www-community/attacks/Code_Injection"
-    ],
+    "references": ["https://owasp.org/www-community/attacks/Code_Injection"],
     "_idx": 89
   },
   {
@@ -2542,9 +2450,7 @@
         "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
       }
     ],
-    "references": [
-      "https://www.npmjs.com/package/node-serialize"
-    ],
+    "references": ["https://www.npmjs.com/package/node-serialize"],
     "_idx": 91
   },
   {
@@ -2574,9 +2480,7 @@
         "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
       }
     ],
-    "references": [
-      "https://www.php.net/manual/en/function.unserialize.php"
-    ],
+    "references": ["https://www.php.net/manual/en/function.unserialize.php"],
     "_idx": 92
   },
   {
@@ -2670,9 +2574,7 @@
         "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
       }
     ],
-    "references": [
-      "https://github.com/axios/axios"
-    ],
+    "references": ["https://github.com/axios/axios"],
     "_idx": 95
   },
   {
@@ -2734,9 +2636,7 @@
         "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
       }
     ],
-    "references": [
-      "https://github.com/sindresorhus/got"
-    ],
+    "references": ["https://github.com/sindresorhus/got"],
     "_idx": 97
   },
   {
@@ -2798,9 +2698,7 @@
         "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
       }
     ],
-    "references": [
-      "https://github.com/davisjam/vuln-regex-detector"
-    ],
+    "references": ["https://github.com/davisjam/vuln-regex-detector"],
     "_idx": 99
   },
   {
@@ -2830,9 +2728,7 @@
         "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
       }
     ],
-    "references": [
-      "https://www.regular-expressions.info/catastrophic.html"
-    ],
+    "references": ["https://www.regular-expressions.info/catastrophic.html"],
     "_idx": 100
   },
   {
@@ -2862,9 +2758,7 @@
         "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
       }
     ],
-    "references": [
-      "https://www.regular-expressions.info/alternation.html"
-    ],
+    "references": ["https://www.regular-expressions.info/alternation.html"],
     "_idx": 101
   },
   {
@@ -2990,9 +2884,7 @@
         "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
       }
     ],
-    "references": [
-      "https://github.com/lodash/lodash/pull/4759"
-    ],
+    "references": ["https://github.com/lodash/lodash/pull/4759"],
     "_idx": 105
   },
   {
@@ -3022,9 +2914,7 @@
         "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
       }
     ],
-    "references": [
-      "https://snyk.io/vuln/SNYK-JS-LODASH-590103"
-    ],
+    "references": ["https://snyk.io/vuln/SNYK-JS-LODASH-590103"],
     "_idx": 106
   },
   {
@@ -3086,9 +2976,7 @@
         "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
       }
     ],
-    "references": [
-      "https://github.com/HoLyVieR/prototype-pollution-nsec18"
-    ],
+    "references": ["https://github.com/HoLyVieR/prototype-pollution-nsec18"],
     "_idx": 108
   },
   {
@@ -3150,9 +3038,7 @@
         "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
       }
     ],
-    "references": [
-      "https://datatracker.ietf.org/doc/html/rfc7518#section-3.2"
-    ],
+    "references": ["https://datatracker.ietf.org/doc/html/rfc7518#section-3.2"],
     "_idx": 111
   },
   {
@@ -3214,9 +3100,7 @@
         "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
       }
     ],
-    "references": [
-      "https://w3c.github.io/trusted-types/dist/spec/"
-    ],
+    "references": ["https://w3c.github.io/trusted-types/dist/spec/"],
     "_idx": 113
   },
   {
@@ -3278,9 +3162,7 @@
         "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
       }
     ],
-    "references": [
-      "https://web.dev/articles/trusted-types"
-    ],
+    "references": ["https://web.dev/articles/trusted-types"],
     "_idx": 115
   },
   {
@@ -3310,9 +3192,7 @@
         "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
       }
     ],
-    "references": [
-      "https://owasp.org/www-community/HttpOnly"
-    ],
+    "references": ["https://owasp.org/www-community/HttpOnly"],
     "_idx": 116
   },
   {
@@ -3406,9 +3286,7 @@
         "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
       }
     ],
-    "references": [
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Cookies"
-    ],
+    "references": ["https://developer.mozilla.org/en-US/docs/Web/HTTP/Cookies"],
     "_idx": 119
   },
   {

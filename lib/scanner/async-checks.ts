@@ -48,7 +48,7 @@ function makeVuln(
 
 // ── Individual DNS sub-checks (run in parallel) ─────────────────────────────
 
-async function checkSPF(domain: string): Promise<Vulnerability[]> {
+export async function checkSPF(domain: string): Promise<Vulnerability[]> {
   const findings: Vulnerability[] = [];
   try {
     const txtRecords = await dns.resolveTxt(domain);
@@ -101,7 +101,7 @@ async function checkSPF(domain: string): Promise<Vulnerability[]> {
   return findings;
 }
 
-async function checkDMARC(domain: string): Promise<Vulnerability[]> {
+export async function checkDMARC(domain: string): Promise<Vulnerability[]> {
   const findings: Vulnerability[] = [];
   try {
     const dmarcRecords = await dns.resolveTxt(`_dmarc.${domain}`);
@@ -168,7 +168,7 @@ async function checkDMARC(domain: string): Promise<Vulnerability[]> {
   return findings;
 }
 
-async function checkDKIM(domain: string): Promise<Vulnerability[]> {
+export async function checkDKIM(domain: string): Promise<Vulnerability[]> {
   const selectors = [
     "default",
     "google",
@@ -257,7 +257,7 @@ async function checkDKIM(domain: string): Promise<Vulnerability[]> {
   return [];
 }
 
-async function checkDNSSEC(domain: string): Promise<Vulnerability[]> {
+export async function checkDNSSEC(domain: string): Promise<Vulnerability[]> {
   // Query Google and Cloudflare DoH in parallel for the AD (Authenticated Data) flag
   const [googleAD, cloudflareAD] = await Promise.allSettled([
     fetch(
@@ -304,7 +304,9 @@ async function checkDNSSEC(domain: string): Promise<Vulnerability[]> {
 
 // ── DNS Security (orchestrator: runs all sub-checks in parallel) ───────────
 
-async function checkDNSSecurity(domain: string): Promise<Vulnerability[]> {
+export async function checkDNSSecurity(
+  domain: string,
+): Promise<Vulnerability[]> {
   const results = await Promise.allSettled([
     checkSPF(domain),
     checkDMARC(domain),
@@ -321,7 +323,7 @@ async function checkDNSSecurity(domain: string): Promise<Vulnerability[]> {
 
 // ── TLS Certificate Checks ───────────────────────────────────────────────────
 
-function checkTLSCert(
+export function checkTLSCert(
   hostname: string,
   port: number = 443,
   emitCategory: Category = "ssl",
@@ -565,7 +567,7 @@ const FETCH_OPTS = {
   },
 };
 
-async function checkRobotsTxt(origin: string): Promise<Vulnerability[]> {
+export async function checkRobotsTxt(origin: string): Promise<Vulnerability[]> {
   const findings: Vulnerability[] = [];
   try {
     // Validate origin to prevent SSRF
@@ -623,7 +625,9 @@ async function checkRobotsTxt(origin: string): Promise<Vulnerability[]> {
   return findings;
 }
 
-async function checkSecurityTxt(origin: string): Promise<Vulnerability[]> {
+export async function checkSecurityTxt(
+  origin: string,
+): Promise<Vulnerability[]> {
   // Validate origin to prevent SSRF
   let parsed: URL;
   try {
@@ -681,7 +685,7 @@ async function checkSecurityTxt(origin: string): Promise<Vulnerability[]> {
   return [];
 }
 
-async function checkLiveFetch(url: string): Promise<Vulnerability[]> {
+export async function checkLiveFetch(url: string): Promise<Vulnerability[]> {
   let parsed: URL;
   try {
     parsed = new URL(url);

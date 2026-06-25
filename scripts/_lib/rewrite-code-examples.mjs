@@ -18,17 +18,17 @@ export const CODE_EXAMPLES = {
   "nginx-add-header": {
     label: "Nginx",
     language: "nginx",
-    code: "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;",
+    code: 'add_header Strict-Transport-Security "max-age=63072000; includeSubDomains; preload" always;',
   },
   "apache-header": {
     label: "Apache",
     language: "apache",
-    code: "Header always set Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\"",
+    code: 'Header always set Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"',
   },
   "caddy-header": {
     label: "Caddy",
     language: "plaintext",
-    code: "header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\"",
+    code: 'header Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"',
   },
   "express-header": {
     label: "Express (Node.js)",
@@ -67,7 +67,7 @@ export const CODE_EXAMPLES = {
   "nginx-cors-strict": {
     label: "Nginx",
     language: "nginx",
-    code: "map $http_origin $cors_origin {\n  default '';\n  ~^https://(app|admin)\\.example\\.com$ $http_origin;\n}\nadd_header Access-Control-Allow-Origin $cors_origin always;\nadd_header Access-Control-Allow-Credentials \"true\" always;\nadd_header Vary \"Origin\" always;",
+    code: 'map $http_origin $cors_origin {\n  default \'\';\n  ~^https://(app|admin)\\.example\\.com$ $http_origin;\n}\nadd_header Access-Control-Allow-Origin $cors_origin always;\nadd_header Access-Control-Allow-Credentials "true" always;\nadd_header Vary "Origin" always;',
   },
 
   // ── TLS / certs ─────────────────────────────────────────────────────
@@ -96,7 +96,7 @@ export const CODE_EXAMPLES = {
   "dns-caa-record": {
     label: "DNS TXT (CAA)",
     language: "dns",
-    code: "@ IN CAA 0 issue \"letsencrypt.org\"\n@ IN CAA 0 iodef \"mailto:security@example.com\"",
+    code: '@ IN CAA 0 issue "letsencrypt.org"\n@ IN CAA 0 iodef "mailto:security@example.com"',
   },
   "dns-mx-record": {
     label: "DNS MX",
@@ -111,17 +111,17 @@ export const CODE_EXAMPLES = {
   "dns-spf-record": {
     label: "DNS TXT (SPF)",
     language: "dns",
-    code: "@ IN TXT \"v=spf1 ip4:192.0.2.0/24 include:_spf.google.com -all\"",
+    code: '@ IN TXT "v=spf1 ip4:192.0.2.0/24 include:_spf.google.com -all"',
   },
   "dns-dmarc-record": {
     label: "DNS TXT (DMARC)",
     language: "dns",
-    code: "_dmarc IN TXT \"v=DMARC1; p=reject; rua=mailto:dmarc-reports@example.com; aspf=s; adkim=s\"",
+    code: '_dmarc IN TXT "v=DMARC1; p=reject; rua=mailto:dmarc-reports@example.com; aspf=s; adkim=s"',
   },
   "dns-dkim-record": {
     label: "DNS TXT (DKIM)",
     language: "dns",
-    code: "selector1._domainkey IN TXT \"v=DKIM1; k=rsa; s=email; p=MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA...\"",
+    code: 'selector1._domainkey IN TXT "v=DKIM1; k=rsa; s=email; p=MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA..."',
   },
   "dns-dnskey-record": {
     label: "BIND",
@@ -146,7 +146,7 @@ export const CODE_EXAMPLES = {
   "dns-mta-sts-record": {
     label: "DNS TXT (MTA-STS)",
     language: "dns",
-    code: "_mta-sts IN TXT \"v=STSv1; id=20240101000000Z\"",
+    code: '_mta-sts IN TXT "v=STSv1; id=20240101000000Z"',
   },
   "dns-mta-sts-policy": {
     label: "mta-sts.txt",
@@ -156,12 +156,12 @@ export const CODE_EXAMPLES = {
   "dns-tlsrpt-record": {
     label: "DNS TXT (TLSRPT)",
     language: "dns",
-    code: "_smtp._tls IN TXT \"v=TLSRPTv1; rua=https://tlsrpt.example.com/v1/report\"",
+    code: '_smtp._tls IN TXT "v=TLSRPTv1; rua=https://tlsrpt.example.com/v1/report"',
   },
   "dns-bimi-record": {
     label: "DNS TXT (BIMI)",
     language: "dns",
-    code: "default._bimi IN TXT \"v=BIMI1; l=https://bimi.example.com/logo.svg; a=https://bimi.example.com/vmc.pem\"",
+    code: 'default._bimi IN TXT "v=BIMI1; l=https://bimi.example.com/logo.svg; a=https://bimi.example.com/vmc.pem"',
   },
   "dns-axfr-blocked": {
     label: "BIND (named.conf)",
@@ -290,12 +290,12 @@ export const CODE_EXAMPLES = {
   "csp-report-to": {
     label: "Reporting-API endpoint",
     language: "javascript",
-    code: "POST /api/csp-report HTTP/1.1\nContent-Type: application/csp-report\n\n{\"csp-report\":{\"document-uri\":\"https://example.com/\",\"violated-directive\":\"script-src\",\"blocked-uri\":\"https://evil.example.com/x.js\"}}",
+    code: 'POST /api/csp-report HTTP/1.1\nContent-Type: application/csp-report\n\n{"csp-report":{"document-uri":"https://example.com/","violated-directive":"script-src","blocked-uri":"https://evil.example.com/x.js"}}',
   },
   "dmarc-rua": {
     label: "DNS TXT (DMARC with rua)",
     language: "dns",
-    code: "_dmarc IN TXT \"v=DMARC1; p=reject; rua=mailto:dmarc-reports@example.com; ruf=mailto:forensic@example.com; aspf=s; adkim=s; pct=100\"",
+    code: '_dmarc IN TXT "v=DMARC1; p=reject; rua=mailto:dmarc-reports@example.com; ruf=mailto:forensic@example.com; aspf=s; adkim=s; pct=100"',
   },
 
   // ── Cookie directives ──────────────────────────────────────────────

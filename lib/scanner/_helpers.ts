@@ -11,11 +11,28 @@ export function generateId(): string {
 }
 
 export function getHeader(headers: Headers, key: string): string | null {
-  return headers.get(key);
+  // Headers.get() throws TypeError for forbidden header names (those
+  // starting with ":" — pseudo-headers — and any name containing
+  // non-token characters). Detectors occasionally probe for these
+  // (e.g. http-no-redirect checks for ":status"); swallow the error
+  // and return null so the detector can fall back to a regular
+  // header check rather than crashing the scan.
+  try {
+    return headers.get(key);
+  } catch {
+    return null;
+  }
 }
 
 export function hasHeader(headers: Headers, key: string): boolean {
-  return headers.has(key);
+  // Same forbidden-name protection as getHeader: detect() will throw
+  // TypeError for keys starting with ":" or containing non-token
+  // characters, which would crash a scan mid-flight. Treat as absent.
+  try {
+    return headers.has(key);
+  } catch {
+    return false;
+  }
 }
 
 export function escapeRegExp(input: string): string {

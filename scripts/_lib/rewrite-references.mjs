@@ -13,7 +13,8 @@ export const REFERENCES = {
   rfc7034: "https://datatracker.ietf.org/doc/html/rfc7034",
   rfc9110: "https://datatracker.ietf.org/doc/html/rfc9110",
   rfc6265: "https://datatracker.ietf.org/doc/html/rfc6265",
-  rfc6265bis: "https://datatracker.ietf.org/doc/html/draft-ietf-httpbis-rfc6265bis",
+  rfc6265bis:
+    "https://datatracker.ietf.org/doc/html/draft-ietf-httpbis-rfc6265bis",
   rfc7807: "https://datatracker.ietf.org/doc/html/rfc7807",
   rfc1918: "https://datatracker.ietf.org/doc/html/rfc1918",
   rfc1034: "https://datatracker.ietf.org/doc/html/rfc1034",
@@ -58,216 +59,395 @@ export const REFERENCES = {
   rfc7804: "https://datatracker.ietf.org/doc/html/rfc7804",
   rfc7234: "https://datatracker.ietf.org/doc/html/rfc7234",
   rfc5861: "https://datatracker.ietf.org/doc/html/rfc5861",
-  rfc6265_section_4_1_2_2: "https://datatracker.ietf.org/doc/html/rfc6265#section-4.1.2.2",
-  rfc6265_section_4_1_2_6: "https://datatracker.ietf.org/doc/html/rfc6265#section-4.1.2.6",
-  rfc6265_section_4_1_3: "https://datatracker.ietf.org/doc/html/rfc6265#section-4.1.3",
-  rfc6265_section_5_2_5: "https://datatracker.ietf.org/doc/html/rfc6265#section-5.2.5",
-  rfc6265_section_7_1: "https://datatracker.ietf.org/doc/html/rfc6265#section-7.1",
+  rfc6265_section_4_1_2_2:
+    "https://datatracker.ietf.org/doc/html/rfc6265#section-4.1.2.2",
+  rfc6265_section_4_1_2_6:
+    "https://datatracker.ietf.org/doc/html/rfc6265#section-4.1.2.6",
+  rfc6265_section_4_1_3:
+    "https://datatracker.ietf.org/doc/html/rfc6265#section-4.1.3",
+  rfc6265_section_5_2_5:
+    "https://datatracker.ietf.org/doc/html/rfc6265#section-5.2.5",
+  rfc6265_section_7_1:
+    "https://datatracker.ietf.org/doc/html/rfc6265#section-7.1",
   rfc6265_section_8: "https://datatracker.ietf.org/doc/html/rfc6265#section-8",
-  rfc6797_section_6_1: "https://datatracker.ietf.org/doc/html/rfc6797#section-6.1",
-  rfc6797_section_7_2: "https://datatracker.ietf.org/doc/html/rfc6797#section-7.2",
-  rfc6797_section_8_1: "https://datatracker.ietf.org/doc/html/rfc6797#section-8.1",
-  rfc6797_section_11: "https://datatracker.ietf.org/doc/html/rfc6797#section-11",
-  rfc6797_appendix_a: "https://datatracker.ietf.org/doc/html/rfc6797#appendix-A",
-  rfc6797_appendix_b: "https://datatracker.ietf.org/doc/html/rfc6797#appendix-B",
-  rfc6797_appendix_c: "https://datatracker.ietf.org/doc/html/rfc6797#appendix-C",
-  rfc6797_appendix_d: "https://datatracker.ietf.org/doc/html/rfc6797#appendix-D",
-  rfc6797_appendix_e: "https://datatracker.ietf.org/doc/html/rfc6797#appendix-E",
-  rfc6797_appendix_f: "https://datatracker.ietf.org/doc/html/rfc6797#appendix-F",
-  rfc6797_appendix_g: "https://datatracker.ietf.org/doc/html/rfc6797#appendix-G",
-  rfc6797_appendix_h: "https://datatracker.ietf.org/doc/html/rfc6797#appendix-H",
-  rfc6797_appendix_i: "https://datatracker.ietf.org/doc/html/rfc6797#appendix-I",
-  rfc6797_appendix_j: "https://datatracker.ietf.org/doc/html/rfc6797#appendix-J",
-  rfc6797_appendix_k: "https://datatracker.ietf.org/doc/html/rfc6797#appendix-K",
-  rfc6797_appendix_l: "https://datatracker.ietf.org/doc/html/rfc6797#appendix-L",
-  rfc6797_appendix_m: "https://datatracker.ietf.org/doc/html/rfc6797#appendix-M",
-  rfc6797_appendix_n: "https://datatracker.ietf.org/doc/html/rfc6797#appendix-N",
-  rfc6797_appendix_o: "https://datatracker.ietf.org/doc/html/rfc6797#appendix-O",
-  rfc6797_appendix_p: "https://datatracker.ietf.org/doc/html/rfc6797#appendix-P",
-  rfc6797_appendix_q: "https://datatracker.ietf.org/doc/html/rfc6797#appendix-Q",
-  rfc6797_appendix_r: "https://datatracker.ietf.org/doc/html/rfc6797#appendix-R",
-  rfc6797_appendix_s: "https://datatracker.ietf.org/doc/html/rfc6797#appendix-S",
-  rfc6797_appendix_t: "https://datatracker.ietf.org/doc/html/rfc6797#appendix-T",
-  rfc6797_appendix_u: "https://datatracker.ietf.org/doc/html/rfc6797#appendix-U",
-  rfc6797_appendix_v: "https://datatracker.ietf.org/doc/html/rfc6797#appendix-V",
-  rfc6797_appendix_w: "https://datatracker.ietf.org/doc/html/rfc6797#appendix-W",
-  rfc6797_appendix_x: "https://datatracker.ietf.org/doc/html/rfc6797#appendix-X",
-  rfc6797_appendix_y: "https://datatracker.ietf.org/doc/html/rfc6797#appendix-Y",
-  rfc6797_appendix_z: "https://datatracker.ietf.org/doc/html/rfc6797#appendix-Z",
+  rfc6797_section_6_1:
+    "https://datatracker.ietf.org/doc/html/rfc6797#section-6.1",
+  rfc6797_section_7_2:
+    "https://datatracker.ietf.org/doc/html/rfc6797#section-7.2",
+  rfc6797_section_8_1:
+    "https://datatracker.ietf.org/doc/html/rfc6797#section-8.1",
+  rfc6797_section_11:
+    "https://datatracker.ietf.org/doc/html/rfc6797#section-11",
+  rfc6797_appendix_a:
+    "https://datatracker.ietf.org/doc/html/rfc6797#appendix-A",
+  rfc6797_appendix_b:
+    "https://datatracker.ietf.org/doc/html/rfc6797#appendix-B",
+  rfc6797_appendix_c:
+    "https://datatracker.ietf.org/doc/html/rfc6797#appendix-C",
+  rfc6797_appendix_d:
+    "https://datatracker.ietf.org/doc/html/rfc6797#appendix-D",
+  rfc6797_appendix_e:
+    "https://datatracker.ietf.org/doc/html/rfc6797#appendix-E",
+  rfc6797_appendix_f:
+    "https://datatracker.ietf.org/doc/html/rfc6797#appendix-F",
+  rfc6797_appendix_g:
+    "https://datatracker.ietf.org/doc/html/rfc6797#appendix-G",
+  rfc6797_appendix_h:
+    "https://datatracker.ietf.org/doc/html/rfc6797#appendix-H",
+  rfc6797_appendix_i:
+    "https://datatracker.ietf.org/doc/html/rfc6797#appendix-I",
+  rfc6797_appendix_j:
+    "https://datatracker.ietf.org/doc/html/rfc6797#appendix-J",
+  rfc6797_appendix_k:
+    "https://datatracker.ietf.org/doc/html/rfc6797#appendix-K",
+  rfc6797_appendix_l:
+    "https://datatracker.ietf.org/doc/html/rfc6797#appendix-L",
+  rfc6797_appendix_m:
+    "https://datatracker.ietf.org/doc/html/rfc6797#appendix-M",
+  rfc6797_appendix_n:
+    "https://datatracker.ietf.org/doc/html/rfc6797#appendix-N",
+  rfc6797_appendix_o:
+    "https://datatracker.ietf.org/doc/html/rfc6797#appendix-O",
+  rfc6797_appendix_p:
+    "https://datatracker.ietf.org/doc/html/rfc6797#appendix-P",
+  rfc6797_appendix_q:
+    "https://datatracker.ietf.org/doc/html/rfc6797#appendix-Q",
+  rfc6797_appendix_r:
+    "https://datatracker.ietf.org/doc/html/rfc6797#appendix-R",
+  rfc6797_appendix_s:
+    "https://datatracker.ietf.org/doc/html/rfc6797#appendix-S",
+  rfc6797_appendix_t:
+    "https://datatracker.ietf.org/doc/html/rfc6797#appendix-T",
+  rfc6797_appendix_u:
+    "https://datatracker.ietf.org/doc/html/rfc6797#appendix-U",
+  rfc6797_appendix_v:
+    "https://datatracker.ietf.org/doc/html/rfc6797#appendix-V",
+  rfc6797_appendix_w:
+    "https://datatracker.ietf.org/doc/html/rfc6797#appendix-W",
+  rfc6797_appendix_x:
+    "https://datatracker.ietf.org/doc/html/rfc6797#appendix-X",
+  rfc6797_appendix_y:
+    "https://datatracker.ietf.org/doc/html/rfc6797#appendix-Y",
+  rfc6797_appendix_z:
+    "https://datatracker.ietf.org/doc/html/rfc6797#appendix-Z",
 
   // ── OWASP ───────────────────────────────────────────────────────────
   owasp_xss: "https://owasp.org/www-community/attacks/xss/",
   owasp_sqli: "https://owasp.org/www-community/attacks/SQL_Injection",
-  owasp_ssrf: "https://owasp.org/www-community/attacks/Server_Side_Request_Forgery",
-  owasp_ssrf_cheatsheet: "https://cheatsheetseries.owasp.org/cheatsheets/Server_Side_Request_Forgery_Prevention_Cheat_Sheet.html",
+  owasp_ssrf:
+    "https://owasp.org/www-community/attacks/Server_Side_Request_Forgery",
+  owasp_ssrf_cheatsheet:
+    "https://cheatsheetseries.owasp.org/cheatsheets/Server_Side_Request_Forgery_Prevention_Cheat_Sheet.html",
   owasp_csrf: "https://owasp.org/www-community/attacks/csrf",
   owasp_clickjacking: "https://owasp.org/www-community/attacks/Clickjacking",
-  owasp_open_redirect: "https://cheatsheetseries.owasp.org/cheatsheets/Unvalidated_Redirects_and_Forwards_Cheat_Sheet.html",
-  owasp_xxe: "https://owasp.org/www-community/vulnerabilities/XML_External_Entity_Processing",
-  owasp_deserialization: "https://cheatsheetseries.owasp.org/cheatsheets/Deserialization_Cheat_Sheet.html",
-  owasp_xxe_cheatsheet: "https://cheatsheetseries.owasp.org/cheatsheets/XML_External_Entity_Prevention_Cheat_Sheet.html",
+  owasp_open_redirect:
+    "https://cheatsheetseries.owasp.org/cheatsheets/Unvalidated_Redirects_and_Forwards_Cheat_Sheet.html",
+  owasp_xxe:
+    "https://owasp.org/www-community/vulnerabilities/XML_External_Entity_Processing",
+  owasp_deserialization:
+    "https://cheatsheetseries.owasp.org/cheatsheets/Deserialization_Cheat_Sheet.html",
+  owasp_xxe_cheatsheet:
+    "https://cheatsheetseries.owasp.org/cheatsheets/XML_External_Entity_Prevention_Cheat_Sheet.html",
   owasp_lfi: "https://owasp.org/www-community/attacks/Path_Traversal",
-  owasp_auth_cheatsheet: "https://cheatsheetseries.owasp.org/cheatsheets/Authentication_Cheat_Sheet.html",
-  owasp_session_cheatsheet: "https://cheatsheetseries.owasp.org/cheatsheets/Session_Management_Cheat_Sheet.html",
-  owasp_password_cheatsheet: "https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html",
-  owasp_credential_cheatsheet: "https://cheatsheetseries.owasp.org/cheatsheets/Credential_Storage_Cheat_Sheet.html",
+  owasp_auth_cheatsheet:
+    "https://cheatsheetseries.owasp.org/cheatsheets/Authentication_Cheat_Sheet.html",
+  owasp_session_cheatsheet:
+    "https://cheatsheetseries.owasp.org/cheatsheets/Session_Management_Cheat_Sheet.html",
+  owasp_password_cheatsheet:
+    "https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html",
+  owasp_credential_cheatsheet:
+    "https://cheatsheetseries.owasp.org/cheatsheets/Credential_Storage_Cheat_Sheet.html",
   owasp_headers: "https://owasp.org/www-project-secure-headers/",
   owasp_secrets: "https://owasp.org/www-project-secrets-management/",
-  owasp_csp: "https://cheatsheetseries.owasp.org/cheatsheets/Content_Security_Policy_Cheat_Sheet.html",
+  owasp_csp:
+    "https://cheatsheetseries.owasp.org/cheatsheets/Content_Security_Policy_Cheat_Sheet.html",
   owasp_logging: "https://owasp.org/www-project-logging-cheat-sheet/",
-  owasp_input_validation: "https://cheatsheetseries.owasp.org/cheatsheets/Input_Validation_Cheat_Sheet.html",
-  owasp_mass_assignment: "https://cheatsheetseries.owasp.org/cheatsheets/Mass_Assignment_Cheat_Sheet.html",
-  owasp_api_security: "https://owasp.org/API-Security/editions/2023/en/0x11-t10/",
-  owasp_api_top10_2023: "https://owasp.org/API-Security/editions/2023/en/0x10-toc/",
-  owasp_prototype_pollution: "https://owasp.org/www-community/vulnerabilities/Prototype_Pollution",
-  owasp_regex: "https://owasp.org/www-community/attacks/Regular_expression_Denial_of_Service_-_ReDoS",
-  owasp_graphql: "https://cheatsheetseries.owasp.org/cheatsheets/GraphQL_Cheat_Sheet.html",
-  owasp_jwt: "https://cheatsheetseries.owasp.org/cheatsheets/JSON_Web_Token_for_Java_Cheat_Sheet.html",
-  owasp_file_upload: "https://owasp.org/www-community/vulnerabilities/Unrestricted_File_Upload",
+  owasp_input_validation:
+    "https://cheatsheetseries.owasp.org/cheatsheets/Input_Validation_Cheat_Sheet.html",
+  owasp_mass_assignment:
+    "https://cheatsheetseries.owasp.org/cheatsheets/Mass_Assignment_Cheat_Sheet.html",
+  owasp_api_security:
+    "https://owasp.org/API-Security/editions/2023/en/0x11-t10/",
+  owasp_api_top10_2023:
+    "https://owasp.org/API-Security/editions/2023/en/0x10-toc/",
+  owasp_prototype_pollution:
+    "https://owasp.org/www-community/vulnerabilities/Prototype_Pollution",
+  owasp_regex:
+    "https://owasp.org/www-community/attacks/Regular_expression_Denial_of_Service_-_ReDoS",
+  owasp_graphql:
+    "https://cheatsheetseries.owasp.org/cheatsheets/GraphQL_Cheat_Sheet.html",
+  owasp_jwt:
+    "https://cheatsheetseries.owasp.org/cheatsheets/JSON_Web_Token_for_Java_Cheat_Sheet.html",
+  owasp_file_upload:
+    "https://owasp.org/www-community/vulnerabilities/Unrestricted_File_Upload",
   owasp_php: "https://owasp.org/www-project-php-security/",
   owasp_dotnet: "https://owasp.org/www-project-dotnet-security/",
-  owasp_cookie_cheatsheet: "https://cheatsheetseries.owasp.org/cheatsheets/Cookies_Cheat_Sheet.html",
-  owasp_dmarc: "https://cheatsheetseries.owasp.org/cheatsheets/Email_Spoofing_Prevention_Cheat_Sheet.html",
-  owasp_spf: "https://cheatsheetseries.owasp.org/cheatsheets/Email_Spoofing_Prevention_Cheat_Sheet.html",
+  owasp_cookie_cheatsheet:
+    "https://cheatsheetseries.owasp.org/cheatsheets/Cookies_Cheat_Sheet.html",
+  owasp_dmarc:
+    "https://cheatsheetseries.owasp.org/cheatsheets/Email_Spoofing_Prevention_Cheat_Sheet.html",
+  owasp_spf:
+    "https://cheatsheetseries.owasp.org/cheatsheets/Email_Spoofing_Prevention_Cheat_Sheet.html",
   owasp_blockchain: "https://owasp.org/www-project-blockchain-security/",
   owasp_ai: "https://owasp.org/www-project-ai-security-and-privacy-guide/",
-  owasp_deserialization_cheatsheet: "https://cheatsheetseries.owasp.org/cheatsheets/Deserialization_Cheat_Sheet.html",
-  owasp_html5: "https://cheatsheetseries.owasp.org/cheatsheets/HTML5_Security_Cheat_Sheet.html",
+  owasp_deserialization_cheatsheet:
+    "https://cheatsheetseries.owasp.org/cheatsheets/Deserialization_Cheat_Sheet.html",
+  owasp_html5:
+    "https://cheatsheetseries.owasp.org/cheatsheets/HTML5_Security_Cheat_Sheet.html",
 
   // ── MDN ─────────────────────────────────────────────────────────────
   mdn_csp: "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP",
-  mdn_xfo: "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/X-Frame-Options",
-  mdn_hsts: "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security",
-  mdn_xcto: "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/X-Content-Type-Options",
-  mdn_referrer: "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Referrer-Policy",
-  mdn_permissions: "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Permissions-Policy",
-  mdn_coop: "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Cross-Origin-Opener-Policy",
-  mdn_coep: "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Cross-Origin-Embedder-Policy",
-  mdn_corp: "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Cross-Origin-Resource-Policy",
-  mdn_coi: "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Cross-Origin-Isolation",
+  mdn_xfo:
+    "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/X-Frame-Options",
+  mdn_hsts:
+    "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security",
+  mdn_xcto:
+    "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/X-Content-Type-Options",
+  mdn_referrer:
+    "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Referrer-Policy",
+  mdn_permissions:
+    "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Permissions-Policy",
+  mdn_coop:
+    "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Cross-Origin-Opener-Policy",
+  mdn_coep:
+    "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Cross-Origin-Embedder-Policy",
+  mdn_corp:
+    "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Cross-Origin-Resource-Policy",
+  mdn_coi:
+    "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Cross-Origin-Isolation",
   mdn_cors: "https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS",
-  mdn_cors_errors: "https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS/Errors",
-  mdn_acao: "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Access-Control-Allow-Origin",
-  mdn_acac: "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Access-Control-Allow-Credentials",
-  mdn_acam: "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Access-Control-Allow-Methods",
-  mdn_acah: "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Access-Control-Allow-Headers",
-  mdn_aceh: "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Access-Control-Expose-Headers",
-  mdn_acma: "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Access-Control-Max-Age",
+  mdn_cors_errors:
+    "https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS/Errors",
+  mdn_acao:
+    "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Access-Control-Allow-Origin",
+  mdn_acac:
+    "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Access-Control-Allow-Credentials",
+  mdn_acam:
+    "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Access-Control-Allow-Methods",
+  mdn_acah:
+    "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Access-Control-Allow-Headers",
+  mdn_aceh:
+    "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Access-Control-Expose-Headers",
+  mdn_acma:
+    "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Access-Control-Max-Age",
   mdn_cookie: "https://developer.mozilla.org/en-US/docs/Web/HTTP/Cookies",
-  mdn_set_cookie: "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Set-Cookie",
-  mdn_cookie_prefixes: "https://developer.mozilla.org/en-US/docs/Web/HTTP/Cookies#cookie_prefixes",
-  mdn_samesite: "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Set-Cookie/SameSite",
-  mdn_secure_cookie: "https://developer.mozilla.org/en-US/docs/Web/HTTP/Cookies#secure",
-  mdn_httponly: "https://developer.mozilla.org/en-US/docs/Web/HTTP/Cookies#httponly",
-  mdn_partitioned: "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Set-Cookie#partitioned",
-  mdn_cache_control: "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Cache-Control",
+  mdn_set_cookie:
+    "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Set-Cookie",
+  mdn_cookie_prefixes:
+    "https://developer.mozilla.org/en-US/docs/Web/HTTP/Cookies#cookie_prefixes",
+  mdn_samesite:
+    "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Set-Cookie/SameSite",
+  mdn_secure_cookie:
+    "https://developer.mozilla.org/en-US/docs/Web/HTTP/Cookies#secure",
+  mdn_httponly:
+    "https://developer.mozilla.org/en-US/docs/Web/HTTP/Cookies#httponly",
+  mdn_partitioned:
+    "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Set-Cookie#partitioned",
+  mdn_cache_control:
+    "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Cache-Control",
   mdn_age: "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Age",
-  mdn_xpowered: "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/X-Powered-By",
-  mdn_server: "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Server",
+  mdn_xpowered:
+    "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/X-Powered-By",
+  mdn_server:
+    "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Server",
   mdn_via: "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Via",
-  mdn_server_timing: "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Server-Timing",
-  mdn_report_to: "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Report-To",
+  mdn_server_timing:
+    "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Server-Timing",
+  mdn_report_to:
+    "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Report-To",
   mdn_nel: "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/NEL",
-  mdn_dns_prefetch: "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/X-DNS-Prefetch-Control",
-  mdn_xxss: "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/X-XSS-Protection",
-  mdn_document_policy: "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Document-Policy",
-  mdn_origin_agent: "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Origin-Agent-Cluster",
+  mdn_dns_prefetch:
+    "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/X-DNS-Prefetch-Control",
+  mdn_xxss:
+    "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/X-XSS-Protection",
+  mdn_document_policy:
+    "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Document-Policy",
+  mdn_origin_agent:
+    "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Origin-Agent-Cluster",
   mdn_expect_ct: "https://datatracker.ietf.org/doc/html/rfc9163",
-  mdn_early_data: "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Early-Data",
-  mdn_speculation: "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Speculation-Rules",
-  mdn_clear_site_data: "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Clear-Site-Data",
-  mdn_pragma: "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Pragma",
+  mdn_early_data:
+    "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Early-Data",
+  mdn_speculation:
+    "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Speculation-Rules",
+  mdn_clear_site_data:
+    "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Clear-Site-Data",
+  mdn_pragma:
+    "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Pragma",
   mdn_etag: "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/ETag",
   mdn_vary: "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Vary",
-  mdn_accept_ch: "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Accept-CH",
-  mdn_sec_ch_ua: "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Sec-CH-UA",
-  mdn_feature_policy: "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Feature-Policy",
-  mdn_csp_frame_ancestors: "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Security-Policy/frame-ancestors",
-  mdn_csp_form_action: "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Security-Policy/form-action",
-  mdn_csp_base_uri: "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Security-Policy/base-uri",
-  mdn_csp_object_src: "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Security-Policy/object-src",
-  mdn_csp_trusted_types: "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Security-Policy/trusted-types",
-  mdn_secure_contexts: "https://developer.mozilla.org/en-US/docs/Web/Security/Secure_Contexts",
-  mdn_subresource_integrity: "https://developer.mozilla.org/en-US/docs/Web/Security/Subresource_Integrity",
-  mdn_cors_errors: "https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS/Errors",
-  mdn_x_frame_options: "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/X-Frame-Options",
-  mdn_content_type_options: "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/X-Content-Type-Options",
-  mdn_csp_block_all_mixed_content: "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Security-Policy/block-all-mixed-content",
-  mdn_csp_upgrade_insecure_requests: "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Security-Policy/upgrade-insecure-requests",
-  mdn_csp_script_src: "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Security-Policy/script-src",
-  mdn_trusted_types: "https://developer.mozilla.org/en-US/docs/Web/API/Trusted_Types_API",
-  mdn_fetch_metadata: "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Sec-Fetch-Dest",
-  mdn_timing_allow_origin: "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Timing-Allow-Origin",
-  mdn_innerhtml: "https://developer.mozilla.org/en-US/docs/Web/API/Element/innerHTML",
-  mdn_eval: "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/eval",
-  mdn_function_constructor: "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Function",
+  mdn_accept_ch:
+    "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Accept-CH",
+  mdn_sec_ch_ua:
+    "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Sec-CH-UA",
+  mdn_feature_policy:
+    "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Feature-Policy",
+  mdn_csp_frame_ancestors:
+    "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Security-Policy/frame-ancestors",
+  mdn_csp_form_action:
+    "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Security-Policy/form-action",
+  mdn_csp_base_uri:
+    "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Security-Policy/base-uri",
+  mdn_csp_object_src:
+    "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Security-Policy/object-src",
+  mdn_csp_trusted_types:
+    "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Security-Policy/trusted-types",
+  mdn_secure_contexts:
+    "https://developer.mozilla.org/en-US/docs/Web/Security/Secure_Contexts",
+  mdn_subresource_integrity:
+    "https://developer.mozilla.org/en-US/docs/Web/Security/Subresource_Integrity",
+  mdn_cors_errors:
+    "https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS/Errors",
+  mdn_x_frame_options:
+    "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/X-Frame-Options",
+  mdn_content_type_options:
+    "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/X-Content-Type-Options",
+  mdn_csp_block_all_mixed_content:
+    "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Security-Policy/block-all-mixed-content",
+  mdn_csp_upgrade_insecure_requests:
+    "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Security-Policy/upgrade-insecure-requests",
+  mdn_csp_script_src:
+    "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Security-Policy/script-src",
+  mdn_trusted_types:
+    "https://developer.mozilla.org/en-US/docs/Web/API/Trusted_Types_API",
+  mdn_fetch_metadata:
+    "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Sec-Fetch-Dest",
+  mdn_timing_allow_origin:
+    "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Timing-Allow-Origin",
+  mdn_innerhtml:
+    "https://developer.mozilla.org/en-US/docs/Web/API/Element/innerHTML",
+  mdn_eval:
+    "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/eval",
+  mdn_function_constructor:
+    "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Function",
   mdn_settimeout: "https://developer.mozilla.org/en-US/docs/Web/API/setTimeout",
-  mdn_insertadjacenthtml: "https://developer.mozilla.org/en-US/docs/Web/API/Element/insertAdjacentHTML",
-  mdn_createcontextualfragment: "https://developer.mozilla.org/en-US/docs/Web/API/Range/createContextualFragment",
-  mdn_domparser: "https://developer.mozilla.org/en-US/docs/Web/API/DOMParser/parseFromString",
-  mdn_document_write: "https://developer.mozilla.org/en-US/docs/Web/API/Document/write",
-  mdn_setattribute: "https://developer.mozilla.org/en-US/docs/Web/API/Element/setAttribute",
-  mdn_window_open: "https://developer.mozilla.org/en-US/docs/Web/API/Window/open",
-  mdn_postmessage: "https://developer.mozilla.org/en-US/docs/Web/API/Window/postMessage",
-  mdn_message_event: "https://developer.mozilla.org/en-US/docs/Web/API/MessageEvent",
-  mdn_event_origin: "https://developer.mozilla.org/en-US/docs/Web/API/MessageEvent/origin",
-  mdn_storage: "https://developer.mozilla.org/en-US/docs/Web/API/Web_Storage_API",
+  mdn_insertadjacenthtml:
+    "https://developer.mozilla.org/en-US/docs/Web/API/Element/insertAdjacentHTML",
+  mdn_createcontextualfragment:
+    "https://developer.mozilla.org/en-US/docs/Web/API/Range/createContextualFragment",
+  mdn_domparser:
+    "https://developer.mozilla.org/en-US/docs/Web/API/DOMParser/parseFromString",
+  mdn_document_write:
+    "https://developer.mozilla.org/en-US/docs/Web/API/Document/write",
+  mdn_setattribute:
+    "https://developer.mozilla.org/en-US/docs/Web/API/Element/setAttribute",
+  mdn_window_open:
+    "https://developer.mozilla.org/en-US/docs/Web/API/Window/open",
+  mdn_postmessage:
+    "https://developer.mozilla.org/en-US/docs/Web/API/Window/postMessage",
+  mdn_message_event:
+    "https://developer.mozilla.org/en-US/docs/Web/API/MessageEvent",
+  mdn_event_origin:
+    "https://developer.mozilla.org/en-US/docs/Web/API/MessageEvent/origin",
+  mdn_storage:
+    "https://developer.mozilla.org/en-US/docs/Web/API/Web_Storage_API",
   mdn_clipboard: "https://developer.mozilla.org/en-US/docs/Web/API/Clipboard",
-  mdn_geolocation: "https://developer.mozilla.org/en-US/docs/Web/API/Geolocation_API",
-  mdn_getusermedia: "https://developer.mozilla.org/en-US/docs/Web/API/MediaDevices/getUserMedia",
-  mdn_crypto_subtle: "https://developer.mozilla.org/en-US/docs/Web/API/SubtleCrypto",
-  mdn_webauthn: "https://developer.mozilla.org/en-US/docs/Web/API/Web_Authentication_API",
-  mdn_payment_request: "https://developer.mozilla.org/en-US/docs/Web/API/Payment_Request_API",
+  mdn_geolocation:
+    "https://developer.mozilla.org/en-US/docs/Web/API/Geolocation_API",
+  mdn_getusermedia:
+    "https://developer.mozilla.org/en-US/docs/Web/API/MediaDevices/getUserMedia",
+  mdn_crypto_subtle:
+    "https://developer.mozilla.org/en-US/docs/Web/API/SubtleCrypto",
+  mdn_webauthn:
+    "https://developer.mozilla.org/en-US/docs/Web/API/Web_Authentication_API",
+  mdn_payment_request:
+    "https://developer.mozilla.org/en-US/docs/Web/API/Payment_Request_API",
   mdn_push_api: "https://developer.mozilla.org/en-US/docs/Web/API/Push_API",
-  mdn_indexeddb: "https://developer.mozilla.org/en-US/docs/Web/API/IndexedDB_API",
-  mdn_workers: "https://developer.mozilla.org/en-US/docs/Web/API/Service_Worker_API",
-  mdn_window_opener: "https://developer.mozilla.org/en-US/docs/Web/API/Window/opener",
+  mdn_indexeddb:
+    "https://developer.mozilla.org/en-US/docs/Web/API/IndexedDB_API",
+  mdn_workers:
+    "https://developer.mozilla.org/en-US/docs/Web/API/Service_Worker_API",
+  mdn_window_opener:
+    "https://developer.mozilla.org/en-US/docs/Web/API/Window/opener",
   mdn_websocket: "https://developer.mozilla.org/en-US/docs/Web/API/WebSocket",
-  mdn_sandbox: "https://developer.mozilla.org/en-US/docs/Web/HTML/Element/iframe#sandbox",
-  mdn_target_blank: "https://developer.mozilla.org/en-US/docs/Web/HTML/Element/a#target",
-  mdn_noopener: "https://developer.mozilla.org/en-US/docs/Web/API/Window/opener",
-  mdn_noreferrer: "https://developer.mozilla.org/en-US/docs/Web/HTML/Link_types/noreferrer",
-  mdn_canonical: "https://developer.mozilla.org/en-US/docs/Web/HTML/Attributes/rel",
-  mdn_meta_refresh: "https://developer.mozilla.org/en-US/docs/Web/HTML/Element/meta",
-  mdn_viewport: "https://developer.mozilla.org/en-US/docs/Web/HTML/Viewport_meta_tag",
-  mdn_doctype: "https://developer.mozilla.org/en-US/docs/Web/HTML/Quirks_mode_and_standards_mode",
-  mdn_charset: "https://developer.mozilla.org/en-US/docs/Web/HTML/Element/meta#charset",
-  mdn_html_lang: "https://developer.mozilla.org/en-US/docs/Web/HTML/Global_attributes/lang",
-  mdn_svg_script: "https://developer.mozilla.org/en-US/docs/Web/SVG/Element/script",
-  mdn_blob: "https://developer.mozilla.org/en-US/docs/Web/API/URL/createObjectURL",
-  mdn_data_url: "https://developer.mozilla.org/en-US/docs/Web/HTTP/Basics_of_HTTP/Data_URLs",
-  mdn_autocomplete: "https://developer.mozilla.org/en-US/docs/Web/HTML/Attributes/autocomplete",
-  mdn_password_input: "https://developer.mozilla.org/en-US/docs/Web/HTML/Element/input/password",
-  mdn_input_maxlength: "https://developer.mozilla.org/en-US/docs/Web/HTML/Element/input#maxlength",
-  mdn_input_minlength: "https://developer.mozilla.org/en-US/docs/Web/HTML/Element/input#minlength",
-  mdn_aria_hidden: "https://developer.mozilla.org/en-US/docs/Web/Accessibility/ARIA/Reference/Attributes/aria-hidden",
-  mdn_autofocus: "https://developer.mozilla.org/en-US/docs/Web/HTML/Element/input#autofocus",
-  mdn_tabindex: "https://developer.mozilla.org/en-US/docs/Web/HTML/Global_attributes/tabindex",
-  mdn_form_target: "https://developer.mozilla.org/en-US/docs/Web/HTML/Element/form#target",
+  mdn_sandbox:
+    "https://developer.mozilla.org/en-US/docs/Web/HTML/Element/iframe#sandbox",
+  mdn_target_blank:
+    "https://developer.mozilla.org/en-US/docs/Web/HTML/Element/a#target",
+  mdn_noopener:
+    "https://developer.mozilla.org/en-US/docs/Web/API/Window/opener",
+  mdn_noreferrer:
+    "https://developer.mozilla.org/en-US/docs/Web/HTML/Link_types/noreferrer",
+  mdn_canonical:
+    "https://developer.mozilla.org/en-US/docs/Web/HTML/Attributes/rel",
+  mdn_meta_refresh:
+    "https://developer.mozilla.org/en-US/docs/Web/HTML/Element/meta",
+  mdn_viewport:
+    "https://developer.mozilla.org/en-US/docs/Web/HTML/Viewport_meta_tag",
+  mdn_doctype:
+    "https://developer.mozilla.org/en-US/docs/Web/HTML/Quirks_mode_and_standards_mode",
+  mdn_charset:
+    "https://developer.mozilla.org/en-US/docs/Web/HTML/Element/meta#charset",
+  mdn_html_lang:
+    "https://developer.mozilla.org/en-US/docs/Web/HTML/Global_attributes/lang",
+  mdn_svg_script:
+    "https://developer.mozilla.org/en-US/docs/Web/SVG/Element/script",
+  mdn_blob:
+    "https://developer.mozilla.org/en-US/docs/Web/API/URL/createObjectURL",
+  mdn_data_url:
+    "https://developer.mozilla.org/en-US/docs/Web/HTTP/Basics_of_HTTP/Data_URLs",
+  mdn_autocomplete:
+    "https://developer.mozilla.org/en-US/docs/Web/HTML/Attributes/autocomplete",
+  mdn_password_input:
+    "https://developer.mozilla.org/en-US/docs/Web/HTML/Element/input/password",
+  mdn_input_maxlength:
+    "https://developer.mozilla.org/en-US/docs/Web/HTML/Element/input#maxlength",
+  mdn_input_minlength:
+    "https://developer.mozilla.org/en-US/docs/Web/HTML/Element/input#minlength",
+  mdn_aria_hidden:
+    "https://developer.mozilla.org/en-US/docs/Web/Accessibility/ARIA/Reference/Attributes/aria-hidden",
+  mdn_autofocus:
+    "https://developer.mozilla.org/en-US/docs/Web/HTML/Element/input#autofocus",
+  mdn_tabindex:
+    "https://developer.mozilla.org/en-US/docs/Web/HTML/Global_attributes/tabindex",
+  mdn_form_target:
+    "https://developer.mozilla.org/en-US/docs/Web/HTML/Element/form#target",
   mdn_svg_use: "https://developer.mozilla.org/en-US/docs/Web/SVG/Element/use",
-  mdn_xss_cheatsheet: "https://cheatsheetseries.owasp.org/cheatsheets/Cross_Site_Scripting_Prevention_Cheat_Sheet.html",
-  mdn_html_injection: "https://cheatsheetseries.owasp.org/cheatsheets/HTML5_Security_Cheat_Sheet.html",
-  mdn_form_action: "https://developer.mozilla.org/en-US/docs/Web/HTML/Element/form#action",
-  mdn_form_method: "https://developer.mozilla.org/en-US/docs/Web/HTML/Element/form#method",
-  mdn_form_enc_type: "https://developer.mozilla.org/en-US/docs/Web/HTML/Element/form#enctype",
-  mdn_form_novalidate: "https://developer.mozilla.org/en-US/docs/Web/HTML/Element/form#novalidate",
-  mdn_input_type: "https://developer.mozilla.org/en-US/docs/Web/HTML/Element/input#input_types",
-  mdn_input_required: "https://developer.mozilla.org/en-US/docs/Web/HTML/Element/input#required",
-  mdn_meta_referrer: "https://developer.mozilla.org/en-US/docs/Web/HTML/Element/meta/name",
-  mdn_img_alt: "https://developer.mozilla.org/en-US/docs/Web/API/HTMLImageElement/alt",
-  mdn_img_loading: "https://developer.mozilla.org/en-US/docs/Web/HTML/Element/img#loading",
-  mdn_link_preload: "https://developer.mozilla.org/en-US/docs/Web/HTML/Link_types/preload",
-  mdn_link_preconnect: "https://developer.mozilla.org/en-US/docs/Web/HTML/Link_types/preconnect",
-  mdn_link_dns_prefetch: "https://developer.mozilla.org/en-US/docs/Web/HTML/Link_types/dns-prefetch",
-  mdn_link_stylesheet: "https://developer.mozilla.org/en-US/docs/Web/HTML/Element/link",
-  mdn_srcdoc: "https://developer.mozilla.org/en-US/docs/Web/HTML/Element/iframe#srcdoc",
-  mdn_iframe_sandbox: "https://developer.mozilla.org/en-US/docs/Web/HTML/Element/iframe#sandbox",
-  mdn_loading_lazy: "https://developer.mozilla.org/en-US/docs/Web/HTML/Element/img#loading",
-  mdn_password: "https://developer.mozilla.org/en-US/docs/Web/HTML/Element/input/password",
-  mdn_disabled_input: "https://developer.mozilla.org/en-US/docs/Web/HTML/Element/input#disabled",
-  mdn_readonly: "https://developer.mozilla.org/en-US/docs/Web/HTML/Element/input#readonly",
-  mdn_input_multiple: "https://developer.mozilla.org/en-US/docs/Web/HTML/Element/input#multiple",
-  mdn_input_accept: "https://developer.mozilla.org/en-US/docs/Web/HTML/Element/input#accept",
+  mdn_xss_cheatsheet:
+    "https://cheatsheetseries.owasp.org/cheatsheets/Cross_Site_Scripting_Prevention_Cheat_Sheet.html",
+  mdn_html_injection:
+    "https://cheatsheetseries.owasp.org/cheatsheets/HTML5_Security_Cheat_Sheet.html",
+  mdn_form_action:
+    "https://developer.mozilla.org/en-US/docs/Web/HTML/Element/form#action",
+  mdn_form_method:
+    "https://developer.mozilla.org/en-US/docs/Web/HTML/Element/form#method",
+  mdn_form_enc_type:
+    "https://developer.mozilla.org/en-US/docs/Web/HTML/Element/form#enctype",
+  mdn_form_novalidate:
+    "https://developer.mozilla.org/en-US/docs/Web/HTML/Element/form#novalidate",
+  mdn_input_type:
+    "https://developer.mozilla.org/en-US/docs/Web/HTML/Element/input#input_types",
+  mdn_input_required:
+    "https://developer.mozilla.org/en-US/docs/Web/HTML/Element/input#required",
+  mdn_meta_referrer:
+    "https://developer.mozilla.org/en-US/docs/Web/HTML/Element/meta/name",
+  mdn_img_alt:
+    "https://developer.mozilla.org/en-US/docs/Web/API/HTMLImageElement/alt",
+  mdn_img_loading:
+    "https://developer.mozilla.org/en-US/docs/Web/HTML/Element/img#loading",
+  mdn_link_preload:
+    "https://developer.mozilla.org/en-US/docs/Web/HTML/Link_types/preload",
+  mdn_link_preconnect:
+    "https://developer.mozilla.org/en-US/docs/Web/HTML/Link_types/preconnect",
+  mdn_link_dns_prefetch:
+    "https://developer.mozilla.org/en-US/docs/Web/HTML/Link_types/dns-prefetch",
+  mdn_link_stylesheet:
+    "https://developer.mozilla.org/en-US/docs/Web/HTML/Element/link",
+  mdn_srcdoc:
+    "https://developer.mozilla.org/en-US/docs/Web/HTML/Element/iframe#srcdoc",
+  mdn_iframe_sandbox:
+    "https://developer.mozilla.org/en-US/docs/Web/HTML/Element/iframe#sandbox",
+  mdn_loading_lazy:
+    "https://developer.mozilla.org/en-US/docs/Web/HTML/Element/img#loading",
+  mdn_password:
+    "https://developer.mozilla.org/en-US/docs/Web/HTML/Element/input/password",
+  mdn_disabled_input:
+    "https://developer.mozilla.org/en-US/docs/Web/HTML/Element/input#disabled",
+  mdn_readonly:
+    "https://developer.mozilla.org/en-US/docs/Web/HTML/Element/input#readonly",
+  mdn_input_multiple:
+    "https://developer.mozilla.org/en-US/docs/Web/HTML/Element/input#multiple",
+  mdn_input_accept:
+    "https://developer.mozilla.org/en-US/docs/Web/HTML/Element/input#accept",
   mdn_label: "https://developer.mozilla.org/en-US/docs/Web/HTML/Element/label",
 
   // ── CWE ────────────────────────────────────────────────────────────
@@ -379,7 +559,8 @@ export const REFERENCES = {
   portswigger_sqli: "https://portswigger.net/web-security/sql-injection",
   portswigger_ssrf: "https://portswigger.net/web-security/ssrf",
   portswigger_jwt: "https://portswigger.net/web-security/jwt",
-  portswigger_deserialization: "https://portswigger.net/web-security/deserialization",
+  portswigger_deserialization:
+    "https://portswigger.net/web-security/deserialization",
   portswigger_graphql: "https://portswigger.net/web-security/graphql",
   portswigger_oauth: "https://portswigger.net/web-security/oauth",
   portswigger_saml: "https://portswigger.net/web-security/saml-attacks",
@@ -387,27 +568,39 @@ export const REFERENCES = {
   stripe_webhook: "https://stripe.com/docs/webhooks/signatures",
   swagger_security: "https://swagger.io/docs/specification/authentication/",
   graphql_org: "https://graphql.org/learn/introspection/",
-  graphql_security: "https://www.apollographql.com/blog/graphql-security-the-basics/",
-  apollo_cors: "https://www.apollographql.com/docs/apollo-server/security/cors/",
-  react_dangerously_set_inner_html: "https://react.dev/reference/react-dom/components/common#dangerously-setting-the-inner-html",
+  graphql_security:
+    "https://www.apollographql.com/blog/graphql-security-the-basics/",
+  apollo_cors:
+    "https://www.apollographql.com/docs/apollo-server/security/cors/",
+  react_dangerously_set_inner_html:
+    "https://react.dev/reference/react-dom/components/common#dangerously-setting-the-inner-html",
   vue_v_html: "https://vuejs.org/api/built-in-directives.html#v-html",
   angular_domsanitizer: "https://angular.dev/api/core/DomSanitizer",
-  express_best_practices: "https://expressjs.com/en/advanced/best-practice-security.html",
+  express_best_practices:
+    "https://expressjs.com/en/advanced/best-practice-security.html",
   flask_debugger: "https://flask.palletsprojects.com/en/latest/debugging/",
   django_debug: "https://docs.djangoproject.com/en/stable/ref/settings/#debug",
-  spring_actuator: "https://docs.spring.io/spring-boot/docs/current/reference/html/actuator.html",
-  rails_env: "https://guides.rubyonrails.org/configuring.html#rails-environment-settings",
-  nginx_servertokens: "https://nginx.org/en/docs/http/ngx_http_core_module.html#server_tokens",
-  apache_servertokens: "https://httpd.apache.org/docs/2.4/mod/core.html#servertokens",
-  iis_httpprotocol: "https://learn.microsoft.com/en-us/iis/configuration/system.webserver/httpprotocol/",
+  spring_actuator:
+    "https://docs.spring.io/spring-boot/docs/current/reference/html/actuator.html",
+  rails_env:
+    "https://guides.rubyonrails.org/configuring.html#rails-environment-settings",
+  nginx_servertokens:
+    "https://nginx.org/en/docs/http/ngx_http_core_module.html#server_tokens",
+  apache_servertokens:
+    "https://httpd.apache.org/docs/2.4/mod/core.html#servertokens",
+  iis_httpprotocol:
+    "https://learn.microsoft.com/en-us/iis/configuration/system.webserver/httpprotocol/",
   nextjs_app_dir: "https://nextjs.org/docs/app",
   svelte_kit_docs: "https://kit.svelte.dev/docs",
   vite_config: "https://vitejs.dev/config/",
-  aws_s3_docs: "https://docs.aws.amazon.com/AmazonS3/latest/userguide/HostingWebsiteOnS3Setup.html",
-  mysql_access_denied: "https://dev.mysql.com/doc/refman/8.0/en/access-denied.html",
+  aws_s3_docs:
+    "https://docs.aws.amazon.com/AmazonS3/latest/userguide/HostingWebsiteOnS3Setup.html",
+  mysql_access_denied:
+    "https://dev.mysql.com/doc/refman/8.0/en/access-denied.html",
   openapi_keys: "https://swagger.io/docs/specification/api-keys/",
   node_child_process: "https://nodejs.org/api/child_process.html",
-  postgres_security: "https://www.postgresql.org/docs/current/sql-syntax-lexical-structure.html#SQL-IDENTIFIERS",
+  postgres_security:
+    "https://www.postgresql.org/docs/current/sql-syntax-lexical-structure.html#SQL-IDENTIFIERS",
   jenkins_security: "https://www.jenkins.io/doc/book/security/",
   grafana_security: "https://grafana.com/docs/grafana/latest/permissions/",
   expat_xml: "https://libexpat.github.io/",
@@ -415,10 +608,13 @@ export const REFERENCES = {
   pyyaml_security: "https://pyyaml.org/wiki/PyYAMLDocumentation",
   snyk_lodash: "https://snyk.io/vuln/SNYK-JS-LODASH-590103",
   lodash_pr: "https://github.com/lodash/lodash/pull/4759",
-  node_proto_pollution: "https://github.com/HoLyVieR/prototype-pollution-nsec18",
-  jose_jwt_cve: "https://github.com/auth0/node-jsonwebtoken/security/advisories/GHSA-qwph-4952-7xr6",
+  node_proto_pollution:
+    "https://github.com/HoLyVieR/prototype-pollution-nsec18",
+  jose_jwt_cve:
+    "https://github.com/auth0/node-jsonwebtoken/security/advisories/GHSA-qwph-4952-7xr6",
   vuln_regex_detector: "https://github.com/davisjam/vuln-regex-detector",
-  paragonie_timing: "https://paragonie.com/blog/2015/04/secure-authentication-php-with-long-term-persistence",
+  paragonie_timing:
+    "https://paragonie.com/blog/2015/04/secure-authentication-php-with-long-term-persistence",
   re_dos: "https://www.regular-expressions.info/catastrophic.html",
   re_alternation: "https://www.regular-expressions.info/alternation.html",
   oss_cors: "https://github.com/expressjs/cors",
@@ -430,13 +626,17 @@ export const REFERENCES = {
   oauth_spec: "https://datatracker.ietf.org/doc/html/rfc6749",
   openid_spec: "https://openid.net/specs/openid-connect-core-1_0.html",
   node_crypto: "https://nodejs.org/api/crypto.html",
-  bcrypt_paper: "https://www.usenix.org/legacy/events/usenix99/provos/provos.pdf",
+  bcrypt_paper:
+    "https://www.usenix.org/legacy/events/usenix99/provos/provos.pdf",
   owasp_cheat_series: "https://cheatsheetseries.owasp.org/",
   takeovers: "https://github.com/EdOverflow/can-i-take-over-xyz",
   dnssec_w3: "https://www.w3.org/TR/network-error-logging/",
   graphiql_issue_841: "https://github.com/graphql/graphiql/issues/841",
-  mozilla_jsonp: "https://blog.mozilla.org/security/2014/08/26/jsonp-content-type-confusion-xss/",
+  mozilla_jsonp:
+    "https://blog.mozilla.org/security/2014/08/26/jsonp-content-type-confusion-xss/",
   sindresorhus_got: "https://github.com/sindresorhus/got",
-  cors_cheatsheet: "https://cheatsheetseries.owasp.org/cheatsheets/REST_Security_Cheat_Sheet.html",
-  apollo_cors: "https://www.apollographql.com/docs/apollo-server/security/cors/",
+  cors_cheatsheet:
+    "https://cheatsheetseries.owasp.org/cheatsheets/REST_Security_Cheat_Sheet.html",
+  apollo_cors:
+    "https://www.apollographql.com/docs/apollo-server/security/cors/",
 };

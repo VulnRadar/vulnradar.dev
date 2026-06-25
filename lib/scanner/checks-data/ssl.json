@@ -142,9 +142,7 @@
         "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
       }
     ],
-    "references": [
-      "https://datatracker.ietf.org/doc/html/rfc2818"
-    ],
+    "references": ["https://datatracker.ietf.org/doc/html/rfc2818"],
     "_idx": 5
   },
   {
@@ -174,9 +172,7 @@
         "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
       }
     ],
-    "references": [
-      "https://datatracker.ietf.org/doc/html/rfc7231#section-4"
-    ],
+    "references": ["https://datatracker.ietf.org/doc/html/rfc7231#section-4"],
     "_idx": 6
   },
   {
@@ -205,9 +201,7 @@
         "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
       }
     ],
-    "references": [
-      "https://datatracker.ietf.org/doc/html/rfc7838"
-    ],
+    "references": ["https://datatracker.ietf.org/doc/html/rfc7838"],
     "_idx": 7
   },
   {
@@ -237,9 +231,7 @@
         "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
       }
     ],
-    "references": [
-      "https://datatracker.ietf.org/doc/html/rfc6960"
-    ],
+    "references": ["https://datatracker.ietf.org/doc/html/rfc6960"],
     "_idx": 8
   },
   {
@@ -269,9 +261,7 @@
         "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
       }
     ],
-    "references": [
-      "https://www.w3.org/TR/mixed-content/"
-    ],
+    "references": ["https://www.w3.org/TR/mixed-content/"],
     "_idx": 9
   },
   {
