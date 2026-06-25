@@ -324,6 +324,7 @@ async function checkDNSSecurity(domain: string): Promise<Vulnerability[]> {
 function checkTLSCert(
   hostname: string,
   port: number = 443,
+  emitCategory: Category = "ssl",
 ): Promise<Vulnerability[]> {
   return new Promise((resolve) => {
     const findings: Vulnerability[] = [];
@@ -359,7 +360,7 @@ function checkTLSCert(
                   makeVuln(
                     "Self-Signed TLS Certificate",
                     "high",
-                    "ssl",
+                    emitCategory,
                     "The server uses a self-signed TLS certificate that is not trusted by browsers.",
                     `Certificate authorization error: ${authError}`,
                     "Browsers will show security warnings, making users vulnerable to real MITM attacks.",
@@ -375,7 +376,7 @@ function checkTLSCert(
                   makeVuln(
                     "Incomplete TLS Certificate Chain",
                     "medium",
-                    "ssl",
+                    emitCategory,
                     "The TLS certificate chain is incomplete. Intermediate certificates may be missing.",
                     `Certificate authorization error: ${authError}`,
                     "Some clients may not trust this certificate because the full chain to a root CA cannot be verified.",
@@ -400,7 +401,7 @@ function checkTLSCert(
                   makeVuln(
                     "Expired TLS Certificate",
                     "critical",
-                    "ssl",
+                    emitCategory,
                     "The TLS certificate has expired.",
                     `Certificate expired on ${cert.valid_to} (${Math.abs(daysUntilExpiry)} days ago).`,
                     "Browsers will block access with a full-page security warning.",
@@ -416,7 +417,7 @@ function checkTLSCert(
                   makeVuln(
                     "TLS Certificate Expiring Soon",
                     "high",
-                    "ssl",
+                    emitCategory,
                     "The TLS certificate will expire within 14 days.",
                     `Certificate expires on ${cert.valid_to} (${daysUntilExpiry} days remaining).`,
                     "If the certificate expires, browsers will show security warnings and block access.",
@@ -432,7 +433,7 @@ function checkTLSCert(
                   makeVuln(
                     "TLS Certificate Expiring Within 30 Days",
                     "medium",
-                    "ssl",
+                    emitCategory,
                     "The TLS certificate will expire within 30 days.",
                     `Certificate expires on ${cert.valid_to} (${daysUntilExpiry} days remaining).`,
                     "Plan to renew soon to avoid any disruption.",
@@ -453,7 +454,7 @@ function checkTLSCert(
                   makeVuln(
                     "Weak TLS Protocol Version",
                     "high",
-                    "ssl",
+                    emitCategory,
                     `The server negotiated ${protocol}, which is considered insecure.`,
                     `Negotiated protocol: ${protocol}`,
                     "Older TLS versions have known vulnerabilities (POODLE, BEAST, etc.).",
@@ -490,7 +491,7 @@ function checkTLSCert(
             makeVuln(
               "Expired TLS Certificate",
               "critical",
-              "ssl",
+              emitCategory,
               "The TLS certificate has expired.",
               `Certificate expired error: ${error.message}`,
               "Browsers will block access with a full-page security warning.",
@@ -509,7 +510,7 @@ function checkTLSCert(
             makeVuln(
               "Self-Signed TLS Certificate",
               "high",
-              "ssl",
+              emitCategory,
               "The server uses a self-signed TLS certificate that is not trusted by browsers.",
               `Certificate error: ${error.code}`,
               "Browsers will show security warnings, making users vulnerable to real MITM attacks.",
@@ -525,7 +526,7 @@ function checkTLSCert(
             makeVuln(
               "Incomplete TLS Certificate Chain",
               "medium",
-              "ssl",
+              emitCategory,
               "The TLS certificate chain is incomplete. Intermediate certificates may be missing.",
               `Certificate error: ${error.code}`,
               "Some clients may not trust this certificate because the full chain to a root CA cannot be verified.",
@@ -741,9 +742,14 @@ export async function runAsyncChecks(
     tasks.push(checkDNSSecurity(hostname));
   }
 
-  // TLS checks map to "ssl" category
-  if ((runAll || allowed!.has("ssl")) && isHTTPS) {
-    tasks.push(checkTLSCert(hostname));
+  // TLS checks map to "ssl" or "tls" category. The `ssl` category
+  // groups the most common cert-validity findings (expiry, self-signed,
+  // hostname mismatch). The `tls` category covers deeper protocol
+  // analysis (cipher suites, protocol version, HSTS preload status).
+  if ((runAll || allowed!.has("ssl") || allowed!.has("tls")) && isHTTPS) {
+    const emitCategory: Category =
+      allowed?.has("tls") && !allowed?.has("ssl") ? "tls" : "ssl";
+    tasks.push(checkTLSCert(hostname, 443, emitCategory));
   }
 
   // Live fetch checks (robots.txt → configuration/information-disclosure, security.txt → configuration)
