@@ -154,7 +154,7 @@ export function BillingVerificationModal({
     setUserContinued(true);
 
     try {
-      await fetch("/api/v2/billing/verify/send", { method: "POST" });
+      await fetch("/api/v3/billing/verify/send", { method: "POST" });
     } catch {
       toast({
         title: "Error sending code",
@@ -167,7 +167,7 @@ export function BillingVerificationModal({
   const handleResendCode = async () => {
     setResending(true);
     try {
-      const response = await fetch("/api/v2/billing/verify/send", {
+      const response = await fetch("/api/v3/billing/verify/send", {
         method: "POST",
       });
       if (!response.ok) {
@@ -205,7 +205,7 @@ export function BillingVerificationModal({
 
     setLoading(true);
     try {
-      const response = await fetch("/api/v2/billing/verify", {
+      const response = await fetch("/api/v3/billing/verify", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ code }),

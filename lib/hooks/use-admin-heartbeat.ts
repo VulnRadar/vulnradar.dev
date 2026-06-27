@@ -49,7 +49,7 @@ export function useAdminHeartbeat({
       else if (path.startsWith("/staff")) section = "staff";
 
       try {
-        await apiPost("/api/v2/admin/activity", { section });
+        await apiPost("/api/v3/admin/activity", { section });
       } catch {
         // Silently fail — never disrupt the UI
       }

@@ -193,7 +193,7 @@ export default function StaffPage() {
                           config.glow,
                         )}
                       >
-                        {/* Initials badge (avatar URL no longer exposed by /api/v2/staff) */}
+                        {/* Initials badge (avatar URL no longer exposed by /api/v3/staff) */}
                         <div
                           className={cn(
                             "relative flex items-center justify-center w-12 h-12 rounded-full shrink-0 overflow-hidden ring-2 ring-border",

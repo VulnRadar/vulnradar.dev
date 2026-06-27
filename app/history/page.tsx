@@ -16,6 +16,11 @@ import {
   usePagination,
 } from "@/components/ui/pagination-control";
 import { API, BILLING_HISTORY_RETENTION } from "@/lib/config/constants";
+import {
+  getQueryParamInt,
+  QUERY_CHANGE_EVENT,
+  setQueryParam,
+} from "@/lib/ui/url-state";
 import { useAuth } from "@/components/providers/auth-provider";
 import type { ScanResult, Vulnerability } from "@/lib/scanner/types";
 
@@ -64,16 +69,10 @@ export default function HistoryPage() {
     ? -1
     : (BILLING_HISTORY_RETENTION[userPlan] ?? BILLING_HISTORY_RETENTION.free);
 
-  // URL hash sync
+  // URL query param sync
   const updateUrlWithScan = useCallback(
     (id: number | null, replace = false) => {
-      if (typeof window === "undefined") return;
-      const method = replace ? "replaceState" : "pushState";
-      if (id) {
-        window.history[method](null, "", `/history#${id}`);
-      } else {
-        window.history.replaceState(null, "", "/history");
-      }
+      setQueryParam("scan", id === null ? null : String(id), { replace });
     },
     [],
   );
@@ -104,18 +103,11 @@ export default function HistoryPage() {
     }
   }, []);
 
-  const handleHashChange = useCallback(() => {
-    if (typeof window === "undefined") return;
-    const hash = window.location.hash.replace("#", "");
-    if (hash) {
-      const id = parseInt(hash, 10);
-      if (!isNaN(id)) {
-        setSelectedScanId(id);
-        loadScanDetail(id);
-      } else {
-        setSelectedScanId(null);
-        setScanDetail(null);
-      }
+  const handleQueryChange = useCallback(() => {
+    const id = getQueryParamInt("scan");
+    if (id !== null) {
+      setSelectedScanId(id);
+      loadScanDetail(id);
     } else {
       setSelectedScanId(null);
       setScanDetail(null);
@@ -123,10 +115,18 @@ export default function HistoryPage() {
   }, [loadScanDetail]);
 
   useEffect(() => {
-    handleHashChange();
-    window.addEventListener("hashchange", handleHashChange);
-    return () => window.removeEventListener("hashchange", handleHashChange);
-  }, [handleHashChange]);
+    handleQueryChange();
+    const onChange = (e: Event) => {
+      const detail = (e as CustomEvent<{ key: string }>).detail;
+      if (detail.key === "scan") handleQueryChange();
+    };
+    window.addEventListener(QUERY_CHANGE_EVENT, onChange);
+    window.addEventListener("popstate", handleQueryChange);
+    return () => {
+      window.removeEventListener(QUERY_CHANGE_EVENT, onChange);
+      window.removeEventListener("popstate", handleQueryChange);
+    };
+  }, [handleQueryChange]);
 
   const fetchHistory = useCallback(async () => {
     try {
@@ -260,7 +260,7 @@ export default function HistoryPage() {
     <div className="min-h-screen flex flex-col bg-background">
       <Header />
 
-      <main className="flex-1 w-full max-w-6xl mx-auto px-4 py-6 sm:py-8 flex flex-col gap-6">
+      <main className="flex-1 w-full max-w-6xl mx-auto px-4 py-6 sm:py-8 flex flex-col gap-5">
         {loading ? (
           <div className="flex flex-col items-center gap-3 py-20">
             <Loader2 className="h-6 w-6 animate-spin text-primary" />
@@ -357,18 +357,20 @@ export default function HistoryPage() {
         ) : (
           /* List View */
           <>
-            <div className="flex flex-col gap-1">
-              <h1 className="text-2xl font-semibold tracking-tight">
+            <section
+              aria-label="Scan history"
+              className="flex flex-col items-center text-center gap-1 pt-6 sm:pt-8 pb-2"
+            >
+              <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-foreground">
                 Scan History
               </h1>
-              <p className="text-sm text-muted-foreground">
-                View and manage your previous scans. History kept for{" "}
+              <p className="text-xs sm:text-sm text-muted-foreground">
+                {scans.length} scan{scans.length !== 1 ? "s" : ""} kept for{" "}
                 {retentionDays === -1
                   ? "unlimited time"
                   : `${retentionDays} days`}
-                .
               </p>
-            </div>
+            </section>
 
             <HistoryStats scans={scans} />
 

@@ -287,7 +287,7 @@ WHERE email = 'you@yourdomain.com';`}
               <li>
                 URL:{" "}
                 <code>
-                  https://scanner.yourdomain.com/api/v2/webhooks/stripe
+                  https://scanner.yourdomain.com/api/v3/webhooks/stripe
                 </code>
               </li>
               <li>
@@ -313,7 +313,7 @@ WHERE email = 'you@yourdomain.com';`}
           Option B: auto-setup endpoint
         </h4>
         <p className="text-sm text-muted-foreground mb-2">
-          <code>GET /api/v2/stripe/setup-webhook</code> registers the webhook in
+          <code>GET /api/v3/stripe/setup-webhook</code> registers the webhook in
           Stripe and returns the signing secret — but only when the secret is
           not yet stored. After first run it returns{" "}
           <code>{`{ success: true, configured: true }`}</code> with no secret.
@@ -328,7 +328,7 @@ WHERE email = 'you@yourdomain.com';`}
         <CodeBlock
           language="bash"
           code={`# Log in via the web UI as an admin user, then export the cookie:
-curl -b cookies.txt https://scanner.yourdomain.com/api/v2/stripe/setup-webhook
+curl -b cookies.txt https://scanner.yourdomain.com/api/v3/stripe/setup-webhook
 # First call: returns { success: true, webhookSecret: "whsec_..." }
 # Paste the secret into STRIPE_WEBHOOK_SECRET in .env and restart.`}
         />
@@ -408,7 +408,7 @@ docker compose up -d`}
             {
               symptom: "Login succeeds but 2FA code never arrives",
               cause: "SMTP not configured",
-              fix: "Set SMTP_HOST/PORT/USER/PASS/FROM in .env and restart, or disable 2FA via /api/v2/auth/2fa/disable.",
+              fix: "Set SMTP_HOST/PORT/USER/PASS/FROM in .env and restart, or disable 2FA via /api/v3/auth/2fa/disable.",
             },
           ]}
         />

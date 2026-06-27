@@ -518,7 +518,7 @@ export function SiteNotificationsWrapper() {
   useEffect(() => {
     const fetchNotifications = async () => {
       try {
-        const res = await fetch("/api/v2/notifications/active");
+        const res = await fetch("/api/v3/notifications/active");
         if (res.ok) {
           const data = await res.json();
           // API returns array directly, not { notifications: [...] }

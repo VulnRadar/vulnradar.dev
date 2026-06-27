@@ -57,7 +57,7 @@ export function SystemSettingsManager() {
   const fetchSettings = async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/v2/admin/features", {
+      const res = await fetch("/api/v3/admin/features", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "list", section: "system_settings" }),
@@ -91,7 +91,7 @@ export function SystemSettingsManager() {
     setSaving(true);
     try {
       for (const [key, value] of Object.entries(changes)) {
-        await fetch("/api/v2/admin/features", {
+        await fetch("/api/v3/admin/features", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({

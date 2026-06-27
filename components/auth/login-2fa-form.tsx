@@ -73,7 +73,7 @@ export function Login2FAForm({
     setResendingCode(true);
     setError("");
     try {
-      const res = await fetch("/api/v2/auth/2fa/email-send", {
+      const res = await fetch("/api/v3/auth/2fa/email-send", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
       });

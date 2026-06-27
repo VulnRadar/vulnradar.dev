@@ -167,10 +167,6 @@ export function DashboardErrorState({
 
   return (
     <div className="flex flex-col items-center gap-6 py-10 sm:py-14 px-4 text-center">
-      <p className="text-xs font-medium text-primary uppercase tracking-wider">
-        Scan
-      </p>
-
       <div
         className={cn(
           "flex items-center justify-center w-14 h-14 rounded-2xl border",
@@ -182,10 +178,10 @@ export function DashboardErrorState({
       </div>
 
       <div className="flex flex-col items-center gap-2 max-w-md">
-        <h2 className="text-xl font-semibold text-foreground tracking-tight text-balance">
+        <span className="text-base font-semibold text-foreground">
           {meta.title}
-        </h2>
-        <p className="text-sm text-muted-foreground leading-relaxed text-pretty">
+        </span>
+        <p className="text-sm text-muted-foreground leading-relaxed">
           {meta.description}
         </p>
       </div>
@@ -214,7 +210,7 @@ export function DashboardErrorState({
       {/* Original error message from the API */}
       <div className="w-full max-w-md p-3.5 rounded-xl border border-border/50 bg-card/50 text-left">
         <div className="flex items-center justify-between gap-2 mb-1.5">
-          <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
+          <span className="text-[10px] font-medium text-muted-foreground">
             From the scanner
           </span>
           <button

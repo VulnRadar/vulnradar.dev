@@ -43,8 +43,8 @@ export function useVerifySubscription(
     ];
 
     const url = sessionId
-      ? `/api/v2/checkout/verify-subscription?session_id=${encodeURIComponent(sessionId)}`
-      : "/api/v2/checkout/verify-subscription";
+      ? `/api/v3/checkout/verify-subscription?session_id=${encodeURIComponent(sessionId)}`
+      : "/api/v3/checkout/verify-subscription";
 
     for (let i = 0; i < pollIntervals.length; i++) {
       if (cancelledRef.current) return;

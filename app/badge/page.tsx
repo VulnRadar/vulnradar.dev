@@ -69,15 +69,18 @@ export default function BadgePage() {
       <Header />
       <main className="flex-1 w-full max-w-4xl mx-auto px-4 py-8">
         <div className="flex flex-col gap-6">
-          <div className="flex flex-col gap-1">
-            <h1 className="text-2xl font-semibold tracking-tight">
+          <section
+            aria-label="Security badge"
+            className="flex flex-col items-center text-center gap-1 pt-2"
+          >
+            <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">
               Security Badge
             </h1>
-            <p className="text-sm text-muted-foreground">
+            <p className="text-xs sm:text-sm text-muted-foreground">
               Generate embeddable badges to showcase your security status on
               your website.
             </p>
-          </div>
+          </section>
 
           {loading ? (
             <div className="flex flex-col items-center gap-3 py-20">

@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import React, { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -69,7 +69,7 @@ export function BlockedDataManager() {
   const fetchBlockedRules = async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/v2/admin/features", {
+      const res = await fetch("/api/v3/admin/features", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "list", section: "access_rules" }),
@@ -94,7 +94,7 @@ export function BlockedDataManager() {
   const fetchMatchingScans = async (ruleId: number, value: string) => {
     setLoadingScans(ruleId);
     try {
-      const res = await fetch("/api/v2/admin/blocked-data", {
+      const res = await fetch("/api/v3/admin/blocked-data", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "find_scans", value }),
@@ -124,7 +124,7 @@ export function BlockedDataManager() {
     if (!pendingDelete) return;
     setDeletingScans(pendingDelete.ruleId);
     try {
-      const res = await fetch("/api/v2/admin/blocked-data", {
+      const res = await fetch("/api/v3/admin/blocked-data", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

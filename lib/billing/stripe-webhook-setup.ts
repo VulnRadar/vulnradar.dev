@@ -55,7 +55,7 @@ export async function ensureStripeWebhook(): Promise<{
     return { success: false, error: "NEXT_PUBLIC_APP_URL is not set" };
   }
 
-  const webhookUrl = `${appUrl}/api/v2/webhooks/stripe`;
+  const webhookUrl = `${appUrl}/api/v3/webhooks/stripe`;
 
   const stripe = getStripe();
   if (!stripe) {

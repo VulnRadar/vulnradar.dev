@@ -262,57 +262,36 @@
     ]
   },
   {
-    "id": "reverse-tabnabbing",
+    "id": "version-disclosure",
     "type": "body-pattern",
-    "title": "Reverse Tabnabbing Vulnerability",
+    "title": "Server version disclosed in response header",
     "category": "content",
-    "severity": "medium",
-    "description": "Links with target=\"_blank\" are missing rel=\"noopener\".",
-    "evidence": "Anchor tags use target=\"_blank\" without rel=\"noopener\".",
-    "riskImpact": "The opened page gains access to window.opener, allowing it to redirect your page to a phishing site.",
-    "explanation": "When a link opens a new tab with target='_blank', the new page receives a reference to window.opener.",
+    "severity": "low",
+    "description": "A response header carries a value that matches a version-like pattern (e.g. '1.0', '2.3.1').",
+    "evidence": "First response header whose value matches the version pattern is reported.",
+    "riskImpact": "Version strings in headers give attackers a target list of CVEs without further probing.",
+    "explanation": "Headers like Server, X-Powered-By, X-AspNet-Version, NEL, and Report-To frequently leak exact upstream versions. Strip them at the edge or use generic placeholders.",
     "fixSteps": [
-      "Add rel=\"noopener noreferrer\" to all links with target=\"_blank\"."
+      "Set server_tokens off; in nginx or strip the Server header at the reverse proxy.",
+      "Disable X-Powered-By by setting `poweredByHeader: false` in Next.js or removing the Express x-powered-by setting.",
+      "Genericize NEL and Report-To headers or remove the 'version' field."
     ],
     "codeExamples": [
       {
-        "label": "Safe link",
-        "language": "html",
-        "code": "<a href=\"https://example.com\" target=\"_blank\" rel=\"noopener noreferrer\">Visit</a>"
-      }
-    ],
-    "_idx": 12,
-    "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
-    ]
-  },
-  {
-    "id": "version-disclosure",
-    "type": "body-pattern",
-    "title": "JavaScript Source Maps Exposed",
-    "category": "content",
-    "severity": "low",
-    "description": "Source map references found in the page.",
-    "evidence": "Detected sourceMappingURL directives or .js.map file references.",
-    "riskImpact": "Source maps reveal original variable names, function logic, comments, and application structure.",
-    "explanation": "Source maps are generated during the build process to aid debugging. In production, they expose your entire unminified source code.",
-    "fixSteps": [
-      "Disable source map generation in production builds.",
-      "Upload source maps privately to your error tracking service.",
-      "Configure your bundler to strip sourceMappingURL comments in production."
-    ],
-    "codeExamples": [
+        "label": "Nginx",
+        "language": "nginx",
+        "code": "server_tokens off;\nproxy_hide_header X-Powered-By;\nproxy_hide_header Server;"
+      },
       {
         "label": "Next.js",
         "language": "javascript",
-        "code": "const nextConfig = { productionBrowserSourceMaps: false };"
+        "code": "const nextConfig = { poweredByHeader: false };"
       }
     ],
     "_idx": 13,
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
+      "https://owasp.org/www-project-secure-headers/",
+      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers"
     ]
   },
   {
@@ -3784,15 +3763,20 @@
   },
   {
     "id": "config-file-leaked",
-    "type": "header",
-    "title": "Inline style attribute",
+    "type": "body-pattern",
+    "title": "Configuration file reference detected in body",
     "category": "content",
-    "severity": "low",
-    "description": "Inline styles can't be inspected by CSP and complicate theming.",
-    "evidence": "Content-level finding for `content-inline-style-attr` on the response body.",
-    "riskImpact": "Move inline styles to external stylesheets",
-    "explanation": "Inline styles can't be inspected by CSP and complicate theming.",
-    "fixSteps": ["Move inline styles to external stylesheets"],
+    "severity": "medium",
+    "description": "The page references a configuration filename (config.yaml, config.json, .env, docker-compose) that often indicates server-side configuration files.",
+    "evidence": "Configuration file reference found in body.",
+    "riskImpact": "References to sensitive configuration may indicate they are exposed at the URL mentioned.",
+    "explanation": "When a page surfaces the names of server-side configuration files, it provides a roadmap for an attacker probing for common misconfiguration paths.",
+    "fixSteps": [
+      "Verify that the referenced paths (e.g. /config.yaml, /.env, /docker-compose.yml) return 404 on the public origin.",
+      "Block access to dotfiles and config files at the reverse proxy (location ~ /\\. { deny all; }).",
+      "Remove in-content references unless they are user-facing documentation.",
+      "If these are documentation pages, ensure they are noindexed and not advertised in the sitemap."
+    ],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
@@ -5051,38 +5035,6 @@
     ]
   },
   {
-    "id": "unsafe-target-blank",
-    "type": "stub",
-    "title": "Unsafe Target Blank",
-    "category": "content",
-    "severity": "info",
-    "description": "Security check `unsafe-target-blank` evaluates whether the target meets the expected configuration. Auto-generated stub.",
-    "evidence": "Content-level finding for `unsafe-target-blank` on the response body.",
-    "riskImpact": "If exploited, this finding exposes the target to category-specific risks under content.",
-    "explanation": "The `unsafe-target-blank` check verifies that the server does not expose the weakness represented by this category.",
-    "fixSteps": [
-      "Investigate the evidence string for the actual offending value.",
-      "Apply the recommended configuration in the code examples below.",
-      "Verify the fix by re-running the scan and confirming the finding is gone."
-    ],
-    "codeExamples": [
-      {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
-      }
-    ],
-    "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
-    ]
-  },
-  {
     "id": "database-connection-string",
     "type": "stub",
     "title": "Database Connection String",
@@ -5124,38 +5076,6 @@
     "evidence": "Content-level finding for `sql-error-exposed` on the response body.",
     "riskImpact": "If exploited, this finding exposes the target to category-specific risks under content.",
     "explanation": "The `sql-error-exposed` check verifies that the server does not expose the weakness represented by this category.",
-    "fixSteps": [
-      "Investigate the evidence string for the actual offending value.",
-      "Apply the recommended configuration in the code examples below.",
-      "Verify the fix by re-running the scan and confirming the finding is gone."
-    ],
-    "codeExamples": [
-      {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
-      }
-    ],
-    "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
-    ]
-  },
-  {
-    "id": "window-opener-leak",
-    "type": "stub",
-    "title": "Window Opener Leak",
-    "category": "content",
-    "severity": "info",
-    "description": "Security check `window-opener-leak` evaluates whether the target meets the expected configuration. Auto-generated stub.",
-    "evidence": "Content-level finding for `window-opener-leak` on the response body.",
-    "riskImpact": "If exploited, this finding exposes the target to category-specific risks under content.",
-    "explanation": "The `window-opener-leak` check verifies that the server does not expose the weakness represented by this category.",
     "fixSteps": [
       "Investigate the evidence string for the actual offending value.",
       "Apply the recommended configuration in the code examples below.",

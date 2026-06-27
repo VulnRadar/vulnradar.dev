@@ -124,7 +124,7 @@ export default function WebhooksPage() {
       <DocsSection id="endpoints" title="API Endpoints" icon={Zap}>
         <p className="text-muted-foreground mb-6">
           Manage webhooks through these session-authenticated endpoints (the{" "}
-          <code>/api/v2/webhooks</code> family requires a logged-in user; API
+          <code>/api/v3/webhooks</code> family requires a logged-in user; API
           keys are not accepted).
         </p>
 

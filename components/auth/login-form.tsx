@@ -215,7 +215,7 @@ export function LoginForm({
         variant="outline"
         className="h-10 w-full border-border/40"
         onClick={() =>
-          (window.location.href = "/api/v2/auth/discord?action=login")
+          (window.location.href = "/api/v3/auth/discord?action=login")
         }
       >
         <svg className="mr-2 h-4 w-4" viewBox="0 0 24 24" fill="currentColor">

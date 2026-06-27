@@ -28,14 +28,14 @@ const endpoints: Endpoint[] = [
     path: "/scan",
     title: "Create a Scan",
     description:
-      "Initiate a vulnerability scan against a target URL. Supports http, https, ws, wss, ftp, and ftps. Returns findings with severity, category, evidence, and a fix recipe.",
+      "Initiate a vulnerability scan against a target. Pass a hostname or a full URL; we auto-prepend https:// if you omit the scheme. Service probes are opt-in via the probes field. Returns findings with severity, category, evidence, and a fix recipe.",
     requestBody: `{
-  "url": "https://example.com",
-  "scanners": ["headers", "ssl"]
+  "url": "example.com",
+  "probes": ["ssh:22", "smtp:587"]
 }`,
     responseExample: `{
   "url": "https://example.com",
-  "scannedAt": "2026-03-10T15:30:00.000Z",
+  "scannedAt": "2026-06-25T15:30:00.000Z",
   "duration": 1423,
   "findings": [
     {
@@ -61,13 +61,16 @@ const endpoints: Endpoint[] = [
       ]
     }
   ],
-  "checksRun": 215,
+  "checksRun": 739,
   "summary": { "critical": 0, "high": 1, "medium": 2, "low": 3, "info": 1, "total": 7 },
   "scanHistoryId": 12345
 }`,
     notes: [
-      "scanners accepts category names: headers, ssl, content, cookies, configuration, information-disclosure, dns. Omit to run all.",
-      "Protocols: http://, https://, ws://, wss://, ftp://, ftps://.",
+      "url accepts a bare hostname (auto-prepended https://), a full URL with http/https/ws/wss/ftp/ftps/ssh/smtp/smtp/imap/imaps/pop3/pop3s/mongodb scheme, or a public IPv4 literal (probe-only mode).",
+      "Raw IPv4: web checks (headers, ssl, tls, cookies, content, info, configuration, code, secrets, api) are skipped — there is no hostname context for them. DNS + email + your selected service probes still run.",
+      "probes is an array of \"<service>:<port>\" strings. Supported services: ssh, smtp, imap, pop3, ftp, mongodb. Default port is used if you omit it. Each probe opens a TCP socket to the hostname or IP, reads the banner, and reports version disclosure and reachability.",
+      "scanners (advanced) accepts category names to restrict web checks: headers, ssl, content, cookies, configuration, information-disclosure, dns, email, api, code, secrets-extended. Omit to run all 12 categories.",
+      "Service probes are independent of the URL scheme — you can ask for an SSH probe on a https:// target or a raw IPv4.",
       "SSRF protection rejects localhost and private IP targets.",
       "Scan results are saved to scan_history.",
     ],
@@ -146,7 +149,7 @@ const endpoints: Endpoint[] = [
   }
 }`,
     notes: [
-      "Max 15 pages (MAX_PAGES in app/api/v2/scan/crawl/route.ts).",
+      "Max 15 pages (MAX_PAGES in app/api/v3/scan/crawl/route.ts).",
       "All pages must share the entry URL's hostname (same-origin).",
       "For session auth, each scanned page counts as one daily quota unit.",
       "For Bearer auth, the entire crawl counts as one quota unit.",
@@ -177,7 +180,7 @@ const endpoints: Endpoint[] = [
   "total": 4
 }`,
     notes: [
-      "Returns up to 20 URLs (MAX_PAGES in app/api/v2/scan/crawl/discover/route.ts).",
+      "Returns up to 20 URLs (MAX_PAGES in app/api/v3/scan/crawl/discover/route.ts).",
       "Counts as 1 daily quota unit on either auth path.",
       "Subject to the standard per-IP scan rate limit (100/hour).",
     ],
@@ -321,6 +324,97 @@ const endpoints: Endpoint[] = [
     ],
   },
   {
+    id: "post-browser-sessions",
+    method: "POST",
+    path: "/browser/sessions",
+    title: "Start a Browser Session",
+    description:
+      "Open an ephemeral BrowserBase session so the user can view the scanned site from a remote, sandboxed browser. Sessions are time-limited and end automatically when the popup closes. Only enabled when BROWSERBASE_API_KEY + BROWSERBASE_PROJECT_ID are configured on the server.",
+    requestBody: `{
+  "url": "https://example.com",
+  "ttlSeconds": 300
+}`,
+    responseExample: `{
+  "session": {
+    "id": "01HXY...",
+    "status": "RUNNING",
+    "url": "https://example.com",
+    "debuggerUrl": "https://www.browserbase.com/devtools/inspector.html?wss=connect.browserbase.com%2Fdebug%2F...",
+    "debuggerFullscreenUrl": "https://www.browserbase.com/devtools-fullscreen/inspector.html?wss=connect.browserbase.com%2Fdebug%2F...",
+    "connectUrl": "wss://connect.browserbase.com/debug/...",
+    "liveViewerUrl": "https://www.browserbase.com/devtools-fullscreen/inspector.html?wss=...&navbar=false",
+    "expiresAt": "2026-06-26T18:25:55.722+00:00"
+  },
+  "expiresInSeconds": 300
+}`,
+    notes: [
+      "ttlSeconds is hard-clamped to BROWSERBASE_MAX_TTL_SECONDS (default 300 = 5 minutes, max 21600 enforced by BrowserBase).",
+      "Open the returned session.id at /browser/{id}?expiresIn={expiresInSeconds} to view in the popup. The iframe src is session.liveViewerUrl (debuggerFullscreenUrl + &navbar=false).",
+      "Under the hood: we POST /v1/sessions to BrowserBase (with projectId + timeout + browserSettings, no startUrl), then open a CDP WebSocket (Node 22 built-in, to the create response's connectUrl) to send Page.navigate to the target URL, then GET /v1/sessions/{id}/debug for the iframe-embed URL. Best-effort: if CDP fails the browser stays on about:blank.",
+      "BrowserBase does NOT accept a `?goto=` parameter — navigation must go through CDP. See https://docs.browserbase.com/platform/browser/observability/session-live-view for the embed pattern.",
+      "Server-only: the BrowserBase API key is never sent to the client.",
+    ],
+    errors: [
+      { code: 401, description: "Unauthorized" },
+      {
+        code: 503,
+        description: "BrowserBase is not configured on this server",
+      },
+    ],
+  },
+  {
+    id: "get-browser-sessions",
+    method: "GET",
+    path: "/browser/sessions?id={id}",
+    title: "Read Browser Session",
+    description:
+      "Fetch the latest BrowserBase session metadata (status, current URL, viewer URL). Used by the popup page to refresh after the user reconnects.",
+    queryParams: [
+      { name: "id", type: "string", description: "BrowserBase session id" },
+    ],
+    responseExample: `{
+  "session": {
+    "id": "bb_session_abc123",
+    "status": "RUNNING",
+    "url": "https://example.com/login",
+    "liveViewerUrl": "https://app.browserbase.com/..."
+  }
+}`,
+    errors: [
+      { code: 401, description: "Unauthorized" },
+      {
+        code: 503,
+        description: "BrowserBase is not configured on this server",
+      },
+      {
+        code: 502,
+        description: "BrowserBase read failed (network or upstream error)",
+      },
+    ],
+  },
+  {
+    id: "delete-browser-sessions",
+    method: "DELETE",
+    path: "/browser/sessions?id={id}",
+    title: "End Browser Session",
+    description:
+      "End a BrowserBase session early. Idempotent — safe to call from window.onbeforeunload.",
+    queryParams: [
+      { name: "id", type: "string", description: "BrowserBase session id" },
+    ],
+    responseExample: `{
+  "ended": true,
+  "id": "bb_session_abc123"
+}`,
+    errors: [
+      { code: 401, description: "Unauthorized" },
+      {
+        code: 503,
+        description: "BrowserBase is not configured on this server",
+      },
+    ],
+  },
+  {
     id: "get-version",
     method: "GET",
     path: "/api/version",
@@ -344,7 +438,7 @@ const endpoints: Endpoint[] = [
   {
     id: "get-finding-types",
     method: "GET",
-    path: "/api/v2/finding-types",
+    path: "/api/v3/finding-types",
     title: "Finding Types",
     description:
       "Returns the full catalogue of detection checks. Use this to display human-readable titles, categorize findings, or build SDKs that know every check ID ahead of time.",
@@ -495,31 +589,34 @@ const tocItems: TocItem[] = [
 
 const codeExamples = {
   curl: {
-    scan: `curl -X POST "${APP_URL}/api/v2/scan" \\
+    scan: `curl -X POST "${APP_URL}/api/v3/scan" \\
   -H "Authorization: Bearer YOUR_API_KEY" \\
   -H "Content-Type: application/json" \\
-  -d '{"url": "https://example.com"}'`,
-    history: `curl -X GET "${APP_URL}/api/v2/history" \\
+  -d '{"url": "example.com", "probes": ["ssh:22", "smtp:587"]}'`,
+    history: `curl -X GET "${APP_URL}/api/v3/history" \\
   -H "Authorization: Bearer YOUR_API_KEY"`,
-    detail: `curl -X GET "${APP_URL}/api/v2/history/123" \\
+    detail: `curl -X GET "${APP_URL}/api/v3/history/123" \\
   -H "Authorization: Bearer YOUR_API_KEY"`,
   },
   javascript: {
-    scan: `const response = await fetch('${APP_URL}/api/v2/scan', {
+    scan: `const response = await fetch('${APP_URL}/api/v3/scan', {
   method: 'POST',
   headers: {
     'Authorization': 'Bearer YOUR_API_KEY',
     'Content-Type': 'application/json',
   },
-  body: JSON.stringify({ url: 'https://example.com' })
+  body: JSON.stringify({
+    url: 'example.com',
+    probes: ['ssh:22', 'smtp:587']
+  })
 });
 const data = await response.json();
 console.log(data.findings);`,
-    history: `const response = await fetch('${APP_URL}/api/v2/history', {
+    history: `const response = await fetch('${APP_URL}/api/v3/history', {
   headers: { 'Authorization': 'Bearer YOUR_API_KEY' }
 });
 const { scans } = await response.json();`,
-    detail: `const response = await fetch('${APP_URL}/api/v2/history/123', {
+    detail: `const response = await fetch('${APP_URL}/api/v3/history/123', {
   headers: { 'Authorization': 'Bearer YOUR_API_KEY' }
 });
 const scan = await response.json();`,
@@ -528,23 +625,26 @@ const scan = await response.json();`,
     scan: `import requests
 
 response = requests.post(
-    '${APP_URL}/api/v2/scan',
+    '${APP_URL}/api/v3/scan',
     headers={'Authorization': 'Bearer YOUR_API_KEY'},
-    json={'url': 'https://example.com'}
+    json={
+        'url': 'example.com',
+        'probes': ['ssh:22', 'smtp:587']
+    }
 )
 data = response.json()
 print(f"Found {len(data['findings'])} vulnerabilities")`,
     history: `import requests
 
 response = requests.get(
-    '${APP_URL}/api/v2/history',
+    '${APP_URL}/api/v3/history',
     headers={'Authorization': 'Bearer YOUR_API_KEY'}
 )
 scans = response.json()['scans']`,
     detail: `import requests
 
 response = requests.get(
-    '${APP_URL}/api/v2/history/123',
+    '${APP_URL}/api/v3/history/123',
     headers={'Authorization': 'Bearer YOUR_API_KEY'}
 )
 scan = response.json()`,
@@ -590,7 +690,7 @@ export default function APIDocsPage() {
         title="API Reference"
         description={`Complete documentation for the ${APP_NAME} REST API. Integrate automated vulnerability scanning into your applications, CI/CD pipelines, or custom security tools.`}
         stats={[
-          { value: "v2", label: "Current API version" },
+          { value: "v3", label: "Current API version" },
           { value: "By plan", label: "Daily quota" },
           { value: "Bearer", label: "Auth method" },
         ]}
@@ -598,13 +698,12 @@ export default function APIDocsPage() {
 
       <DocsSection id="overview" title="Overview">
         <p className="text-sm sm:text-base text-muted-foreground">
-          The v2 API is the current, supported version. v1 is{" "}
-          <strong>deprecated</strong> with sunset 2026-12-01 (
-          <code>lib/api/api-deprecation.ts</code>); new integrations should
-          target v2.
+          The v3 API is the current, supported version. v1 and v2 are no
+          longer supported — older versions of VulnRadar retain their
+          historical endpoints.
         </p>
         <p className="text-sm sm:text-base text-muted-foreground">
-          All endpoints live under <code>{APP_URL}/api/v2/</code>.
+          All endpoints live under <code>{APP_URL}/api/v3/</code>.
           Authentication is either a session cookie or a Bearer API key with the{" "}
           <code>vr_live_</code> prefix (default{" "}
           <code>CONFIG_API_KEY_PREFIX</code>).
@@ -645,7 +744,7 @@ export default function APIDocsPage() {
             <p>
               Never share API keys or commit them to version control. Each
               account is limited to 3 active API keys. Rotate via{" "}
-              <code>POST /api/v2/keys/[id]/rotate</code>.
+              <code>POST /api/v3/keys/[id]/rotate</code>.
             </p>
           </DocsCallout>
         </Card>
@@ -923,7 +1022,7 @@ X-RateLimit-Reset: 2026-03-12T00:00:00.000Z`}
               {
                 title: "Cache findings",
                 description:
-                  "Use /api/v2/finding-types to look up stable IDs and titles. Cache scan results to avoid re-scanning unchanged targets.",
+                  "Use /api/v3/finding-types to look up stable IDs and titles. Cache scan results to avoid re-scanning unchanged targets.",
               },
               {
                 title: "Watch your quota",

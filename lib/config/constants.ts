@@ -56,6 +56,8 @@ import {
   CONFIG_API_KEY_PREFIX,
   CONFIG_DEFAULT_API_KEY_DAILY_LIMIT,
   CONFIG_API_CURRENT_VERSION,
+  CONFIG_BROWSERBASE_MAX_TTL_SECONDS,
+  CONFIG_BROWSERBASE_DEFAULT_TTL_SECONDS,
   CONFIG_DEMO_SCAN_LIMIT,
   CONFIG_DEMO_WINDOW_HOURS,
   CONFIG_MAX_EMAIL_LENGTH,
@@ -389,6 +391,16 @@ export const BETA_BANNER_MESSAGE = CONFIG_BETA_BANNER_MESSAGE;
 
 export const TURNSTILE_ENABLED = !!process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY;
 
+// BROWSERBASE / LIVE BROWSER VIEWER CONFIG
+
+export const BROWSERBASE_ENABLED = !!(
+  process.env.BROWSERBASE_API_KEY && process.env.BROWSERBASE_PROJECT_ID
+);
+export const BROWSERBASE_MAX_TTL_SECONDS =
+  CONFIG_BROWSERBASE_MAX_TTL_SECONDS;
+export const BROWSERBASE_DEFAULT_TTL_SECONDS =
+  CONFIG_BROWSERBASE_DEFAULT_TTL_SECONDS;
+
 // DEMO SCAN LIMITS (from config-values.ts)
 
 export const DEMO_SCAN_LIMIT = CONFIG_DEMO_SCAN_LIMIT;
@@ -416,55 +428,59 @@ export {
 // (PRICING_ROUTE and GDPR_REQUEST_ROUTE are aliases of ROUTES.PRICING and
 // ROUTES.GDPR_REQUEST respectively.)
 
-// API V2 ENDPOINTS
+// API V3 ENDPOINTS
 
-export const API_V2 = {
+export const API_V3 = {
   AUTH: {
-    ME: "/api/v2/auth/me",
-    LOGIN: "/api/v2/auth/login",
-    SIGNUP: "/api/v2/auth/signup",
-    LOGOUT: "/api/v2/auth/logout",
-    UPDATE: "/api/v2/auth/update",
-    FORGOT_PASSWORD: "/api/v2/auth/forgot-password",
-    RESET_PASSWORD: "/api/v2/auth/reset-password",
-    VERIFY_EMAIL: "/api/v2/auth/verify-email",
-    RESEND_VERIFICATION: "/api/v2/auth/resend-verification",
-    ACCEPT_TOS: "/api/v2/auth/accept-tos",
-    ONBOARDING: "/api/v2/auth/onboarding",
+    ME: "/api/v3/auth/me",
+    LOGIN: "/api/v3/auth/login",
+    SIGNUP: "/api/v3/auth/signup",
+    LOGOUT: "/api/v3/auth/logout",
+    UPDATE: "/api/v3/auth/update",
+    FORGOT_PASSWORD: "/api/v3/auth/forgot-password",
+    RESET_PASSWORD: "/api/v3/auth/reset-password",
+    VERIFY_EMAIL: "/api/v3/auth/verify-email",
+    RESEND_VERIFICATION: "/api/v3/auth/resend-verification",
+    ACCEPT_TOS: "/api/v3/auth/accept-tos",
+    ONBOARDING: "/api/v3/auth/onboarding",
     TWO_FA: {
-      SETUP: "/api/v2/auth/2fa/setup",
-      VERIFY: "/api/v2/auth/2fa/verify",
-      DISABLE: "/api/v2/auth/2fa/disable",
-      EMAIL_SETUP: "/api/v2/auth/2fa/email-setup",
-      EMAIL_SEND: "/api/v2/auth/2fa/email-send",
-      BACKUP_CODES: "/api/v2/auth/2fa/backup-codes",
+      SETUP: "/api/v3/auth/2fa/setup",
+      VERIFY: "/api/v3/auth/2fa/verify",
+      DISABLE: "/api/v3/auth/2fa/disable",
+      EMAIL_SETUP: "/api/v3/auth/2fa/email-setup",
+      EMAIL_SEND: "/api/v3/auth/2fa/email-send",
+      BACKUP_CODES: "/api/v3/auth/2fa/backup-codes",
     },
   },
-  SCAN: "/api/v2/scan",
-  SCAN_BULK: "/api/v2/scan/bulk",
-  SCAN_TAGS: "/api/v2/scan/tags",
-  SCAN_DISCOVER: "/api/v2/scan/discover",
-  SCAN_CRAWL_DISCOVER: "/api/v2/scan/crawl/discover",
-  DEMO_SCAN: "/api/v2/demo-scan",
-  HISTORY: "/api/v2/history",
-  DASHBOARD: "/api/v2/dashboard",
-  SHARES: "/api/v2/shares",
-  KEYS: "/api/v2/keys",
-  WEBHOOKS: "/api/v2/webhooks",
-  SCHEDULES: "/api/v2/schedules",
-  TEAMS: "/api/v2/teams",
-  TEAMS_MEMBERS: "/api/v2/teams/members",
-  TEAMS_ACCEPT_INVITE: "/api/v2/teams/accept-invite",
-  CONTACT: "/api/v2/contact",
-  LANDING_CONTACT: "/api/v2/landing-contact",
-  ADMIN: "/api/v2/admin",
-  STAFF: "/api/v2/staff",
-  BADGE_SCANS: "/api/v2/badge/scans",
-  DATA_REQUEST: "/api/v2/data-request",
-  ACCOUNT_DELETE: "/api/v2/account/delete",
-  ACCOUNT_NOTIFICATIONS: "/api/v2/account/notifications",
-  FINDING_TYPES: "/api/v2/finding-types",
+  SCAN: "/api/v3/scan",
+  SCAN_BULK: "/api/v3/scan/bulk",
+  SCAN_TAGS: "/api/v3/scan/tags",
+  SCAN_DISCOVER: "/api/v3/scan/discover",
+  SCAN_CRAWL_DISCOVER: "/api/v3/scan/crawl/discover",
+  DEMO_SCAN: "/api/v3/demo-scan",
+  HISTORY: "/api/v3/history",
+  DASHBOARD: "/api/v3/dashboard",
+  SHARES: "/api/v3/shares",
+  KEYS: "/api/v3/keys",
+  WEBHOOKS: "/api/v3/webhooks",
+  SCHEDULES: "/api/v3/schedules",
+  TEAMS: "/api/v3/teams",
+  TEAMS_MEMBERS: "/api/v3/teams/members",
+  TEAMS_ACCEPT_INVITE: "/api/v3/teams/accept-invite",
+  CONTACT: "/api/v3/contact",
+  LANDING_CONTACT: "/api/v3/landing-contact",
+  ADMIN: "/api/v3/admin",
+  STAFF: "/api/v3/staff",
+  BADGE_SCANS: "/api/v3/badge/scans",
+  DATA_REQUEST: "/api/v3/data-request",
+  ACCOUNT_DELETE: "/api/v3/account/delete",
+  ACCOUNT_NOTIFICATIONS: "/api/v3/account/notifications",
+  FINDING_TYPES: "/api/v3/finding-types",
+  COMPARE: "/api/v3/compare",
 } as const;
+
+// Backwards-compatible alias for the v2 constant name (now points to v3)
+export const API_V2 = API_V3;
 
 // FEATURE FLAGS (from config-values.ts)
 

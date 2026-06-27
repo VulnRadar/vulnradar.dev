@@ -189,42 +189,42 @@ export default function RateLimitsPage() {
           ]}
           data={[
             {
-              endpoint: "POST /api/v2/auth/login",
+              endpoint: "POST /api/v3/auth/login",
               attempts: "5",
               window: "15",
             },
             {
-              endpoint: "POST /api/v2/auth/signup",
+              endpoint: "POST /api/v3/auth/signup",
               attempts: "3",
               window: "60",
             },
             {
-              endpoint: "POST /api/v2/auth/forgot-password",
+              endpoint: "POST /api/v3/auth/forgot-password",
               attempts: "3",
               window: "10",
             },
             {
-              endpoint: "POST /api/v2/auth/2fa/verify",
+              endpoint: "POST /api/v3/auth/2fa/verify",
               attempts: "5",
               window: "5",
             },
             {
-              endpoint: "POST /api/v2/auth/2fa/email-send",
+              endpoint: "POST /api/v3/auth/2fa/email-send",
               attempts: "1",
               window: "1",
             },
             {
-              endpoint: "API requests per IP (any /api/v2/*)",
+              endpoint: "API requests per IP (any /api/v3/*)",
               attempts: "100",
               window: "60",
             },
             {
-              endpoint: "POST /api/v2/scan (and friends)",
+              endpoint: "POST /api/v3/scan (and friends)",
               attempts: "100",
               window: "60",
             },
             {
-              endpoint: "POST /api/v2/scan/bulk",
+              endpoint: "POST /api/v3/scan/bulk",
               attempts: "10",
               window: "60",
             },
@@ -234,11 +234,11 @@ export default function RateLimitsPage() {
         <DocsCallout variant="success" title="Crawl count semantics">
           <p>
             For Bearer-authenticated deep crawls (
-            <code>/api/v2/scan/crawl</code>
+            <code>/api/v3/scan/crawl</code>
             ), the call itself counts as <strong>1</strong> daily quota unit.
             For session-authenticated crawls, each scanned page counts as 1 unit
             (10 pages = 10 quota units). Discovery (
-            <code>/api/v2/scan/crawl/discover</code>) counts as 1 unit
+            <code>/api/v3/scan/crawl/discover</code>) counts as 1 unit
             regardless of how many URLs it returns.
           </p>
         </DocsCallout>
@@ -342,7 +342,7 @@ Retry-After: 43200
           <CodeBlock
             code={`async function scanWithRetry(url: string, maxRetries = 3) {
   for (let attempt = 0; attempt < maxRetries; attempt++) {
-    const response = await fetch('${APP_URL}/api/v2/scan', {
+    const response = await fetch('${APP_URL}/api/v3/scan', {
       method: 'POST',
       headers: {
         'Authorization': 'Bearer YOUR_API_KEY',
@@ -376,7 +376,7 @@ import time
 def scan_with_retry(url, max_retries=3):
     for attempt in range(max_retries):
         response = requests.post(
-            '${APP_URL}/api/v2/scan',
+            '${APP_URL}/api/v3/scan',
             headers={'Authorization': 'Bearer YOUR_API_KEY'},
             json={'url': url},
         )
@@ -411,7 +411,7 @@ def scan_with_retry(url, max_retries=3):
               },
               {
                 title: "Cache results locally",
-                desc: "Don't re-scan a target that hasn't changed. The /api/v2/finding-types endpoint exposes stable IDs.",
+                desc: "Don't re-scan a target that hasn't changed. The /api/v3/finding-types endpoint exposes stable IDs.",
               },
               {
                 title: "Spread requests",
@@ -423,7 +423,7 @@ def scan_with_retry(url, max_retries=3):
               },
               {
                 title: "Use the demo endpoint for testing",
-                desc: "/api/v2/demo-scan is IP-rate-limited (CONFIG_DEMO_SCAN_LIMIT=5 per 12h) and doesn't require an account.",
+                desc: "/api/v3/demo-scan is IP-rate-limited (CONFIG_DEMO_SCAN_LIMIT=5 per 12h) and doesn't require an account.",
               },
             ].map((item, i) => (
               <div

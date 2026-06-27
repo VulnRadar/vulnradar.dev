@@ -33,12 +33,14 @@
     "title": "Server header truncated",
     "category": "information-disclosure",
     "severity": "info",
-    "description": "Server: gunicorn/19.9.0 (truncated) — the truncated string indicates a configured but possibly lying value.",
-    "evidence": "Information disclosure finding for `information-disclosure-server-header-truncated` on the response body.",
+    "description": "The Server response header ends with the literal string '(truncated)', which indicates the upstream version was actively hidden but the truncation marker is itself a fingerprint.",
+    "evidence": "Server header ends with '(truncated)' — confirm the upstream is not leaking real versions.",
     "riskImpact": "Validate that your reverse proxy is not echoing real upstream version",
-    "explanation": "Server: gunicorn/19.9.0 (truncated) — the truncated string indicates a configured but possibly lying value.",
+    "explanation": "Some reverse proxies append '(truncated)' after the version string when server_tokens is configured to mask but not fully strip the value. The marker still confirms a real version is present upstream.",
     "fixSteps": [
-      "Validate that your reverse proxy is not echoing real upstream version"
+      "Set `server_tokens off;` in nginx.conf and remove the Server header entirely with `proxy_hide_header Server;`.",
+      "In Apache, set `ServerTokens Prod` and `ServerSignature Off`.",
+      "At Cloudflare, use a Transform Rule to strip Server before the response leaves the edge."
     ],
     "codeExamples": [
       {

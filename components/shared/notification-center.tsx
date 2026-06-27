@@ -245,7 +245,7 @@ export function NotificationBell() {
           staff: isStaff ? "true" : "false",
         });
         const data = await apiGet<ApiNotification[]>(
-          `/api/v2/notifications/active?${params}`,
+          `/api/v3/notifications/active?${params}`,
         );
         // Only show "bell" type notifications in the bell dropdown
         setNotifications(

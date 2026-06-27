@@ -9,7 +9,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Check, Loader2, Image as ImageIcon, User, Mail } from "lucide-react";
 import { cn } from "@/lib/ui/utils";
 
-const AUTH_UPDATE_ENDPOINT = "/api/v2/auth/update";
+const AUTH_UPDATE_ENDPOINT = "/api/v3/auth/update";
 
 export function DiscordProfileModal() {
   const router = useRouter();

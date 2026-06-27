@@ -440,7 +440,7 @@ lib/types/
               {
                 constant: "CONFIG_FEATURE_DEMO_MODE",
                 default: "true",
-                what: "/demo page and /api/v2/demo-scan",
+                what: "/demo page and /api/v3/demo-scan",
               },
               {
                 constant: "CONFIG_FEATURE_TEAMS",
@@ -460,12 +460,12 @@ lib/types/
               {
                 constant: "CONFIG_FEATURE_SCHEDULED_SCANS",
                 default: "true",
-                what: "Scheduled /api/v2/schedules",
+                what: "Scheduled /api/v3/schedules",
               },
               {
                 constant: "CONFIG_FEATURE_BULK_SCANS",
                 default: "true",
-                what: "POST /api/v2/scan/bulk",
+                what: "POST /api/v3/scan/bulk",
               },
               {
                 constant: "CONFIG_FEATURE_PDF_REPORTS",
@@ -613,7 +613,7 @@ lib/types/
             </li>
             <li>
               <code>STRIPE_WEBHOOK_SECRET</code> — set after running{" "}
-              <code>GET /api/v2/stripe/setup-webhook</code>
+              <code>GET /api/v3/stripe/setup-webhook</code>
             </li>
           </ul>
           <p className="text-sm text-muted-foreground">
@@ -625,7 +625,7 @@ lib/types/
           <ul className="list-disc pl-6 space-y-1 text-sm text-muted-foreground">
             <li>
               <code>DISCORD_CLIENT_ID</code>, <code>DISCORD_CLIENT_SECRET</code>{" "}
-              — required for <code>/api/v2/auth/discord</code>
+              — required for <code>/api/v3/auth/discord</code>
             </li>
             <li>
               <code>DISCORD_BOT_TOKEN</code>, <code>DISCORD_GUILD_ID</code> —
@@ -647,6 +647,36 @@ lib/types/
           <p className="text-sm text-muted-foreground">
             Turnstile is auto-enabled when the site key is present. It protects
             signup, password reset, contact form, and landing-contact.
+          </p>
+        </DocsSubSection>
+
+        <DocsSubSection title="BrowserBase (live browser sessions)">
+          <ul className="list-disc pl-6 space-y-1 text-sm text-muted-foreground">
+            <li>
+              <code>BROWSERBASE_API_KEY</code>
+            </li>
+            <li>
+              <code>BROWSERBASE_PROJECT_ID</code>
+            </li>
+          </ul>
+          <p className="text-sm text-muted-foreground">
+            Optional. When both are set, the &ldquo;View Page&rdquo; button on
+            scan results opens a 5-minute remote BrowserBase session in a
+            popup. The TTL is hard-clamped to 300 seconds. The popup auto-ends
+            the session when it closes, so no history is retained server-side.
+            See <a href="/docs/api#post-browser-sessions" className="text-primary hover:underline">POST /browser/sessions</a>.
+          </p>
+        </DocsSubSection>
+
+        <DocsSubSection title="Debug: DISABLE_CSP=1">
+          <p className="text-sm text-muted-foreground">
+            Set{" "}
+            <code>DISABLE_CSP=1</code> in <code>.env.local</code> to ship
+            the app <strong>without</strong> any CSP, COOP, CORP,
+            X-Frame-Options, or Permissions-Policy headers. Use this
+            when debugging a third-party embed (BrowserBase, Turnstile,
+            embedded videos, etc.) and you want to confirm whether CSP
+            is the blocker. <strong>Never set this in production.</strong>
           </p>
         </DocsSubSection>
 

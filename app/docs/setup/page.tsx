@@ -384,7 +384,7 @@ API_KEY_ENCRYPTION_KEY=your-64-character-hex-key`}
           <div>
             <h3 className="font-semibold mb-2">5. Run a scan</h3>
             <CodeBlock
-              code={`curl -X POST "${APP_URL}/api/v2/scan" \\
+              code={`curl -X POST "${APP_URL}/api/v3/scan" \\
   -H "Authorization: Bearer YOUR_API_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{"url":"https://example.com"}'`}

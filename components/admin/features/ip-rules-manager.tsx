@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import React, { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -62,7 +62,7 @@ export function IPRulesManager() {
   const fetchRules = async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/v2/admin/features", {
+      const res = await fetch("/api/v3/admin/features", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "list", section: "access_rules" }),
@@ -105,7 +105,7 @@ export function IPRulesManager() {
       const normalizedValue =
         valueType === "url" ? normalizeDomain(newValue) : newValue.trim();
 
-      const res = await fetch("/api/v2/admin/features", {
+      const res = await fetch("/api/v3/admin/features", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -137,7 +137,7 @@ export function IPRulesManager() {
     if (!pendingDelete) return;
     setDeleting(true);
     try {
-      const res = await fetch("/api/v2/admin/features", {
+      const res = await fetch("/api/v3/admin/features", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

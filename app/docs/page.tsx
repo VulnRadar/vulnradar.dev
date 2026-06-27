@@ -90,7 +90,7 @@ const quickStartSteps: Step[] = [
   {
     step: 3,
     title: "Make your first scan",
-    description: "POST /api/v2/scan with the target URL and your Bearer token.",
+    description: "POST /api/v3/scan with the target URL and your Bearer token.",
   },
   {
     step: 4,
@@ -236,10 +236,10 @@ export default function DocsPage() {
     return () => observerRef.current?.disconnect();
   }, [setActiveSection]);
 
-  const curlExample = `curl -X POST "${APP_URL}/api/v2/scan" \\
+  const curlExample = `curl -X POST "${APP_URL}/api/v3/scan" \\
   -H "Authorization: Bearer YOUR_API_KEY" \\
   -H "Content-Type: application/json" \\
-  -d '{"url": "https://example.com"}'`;
+  -d '{"url": "example.com", "probes": ["ssh:22", "smtp:587"]}'`;
 
   return (
     <div className="space-y-12 sm:space-y-16">
@@ -249,9 +249,9 @@ export default function DocsPage() {
         description={`Complete guide to using ${APP_NAME} for web vulnerability scanning. Integrate the API, self-host the platform, or extend the engine.`}
         stats={[
           { value: TOTAL_CHECKS_LABEL, label: "Detection Checks" },
-          { value: "6", label: "Protocols" },
+          { value: "12", label: "Categories" },
+          { value: "6", label: "Service Probes" },
           { value: "v2", label: "API Version" },
-          { value: "GPL-3.0", label: "License" },
         ]}
       />
 

@@ -3,8 +3,18 @@
 import { useState, useCallback, useEffect, Suspense, useRef } from "react";
 import { useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
+import { ROUTES } from "@/lib/config/client-constants";
+import {
+  setQueryParam,
+  removeQueryParam,
+} from "@/lib/ui/url-state";
 import { Header } from "@/components/scanner/header";
-import { ScanForm, type ScanMode } from "@/components/scanner/scan-form";
+import { ScanHero } from "@/components/scanner/scan-hero";
+import {
+  ScanForm,
+  type ScanMode,
+  type ScanFormPayload,
+} from "@/components/scanner/scan-form";
 import { ScanningIndicator } from "@/components/scanner/scanning-indicator";
 import { Dashboard } from "@/components/scanner/dashboard";
 import { Footer } from "@/components/scanner/footer";
@@ -78,8 +88,9 @@ function DashboardContent() {
     | ((
         url: string,
         crawlUrls?: string[],
-        scanners?: string[],
+        probes?: { id: string; port: number }[],
         mode?: ScanMode,
+        categoryFilter?: string[],
       ) => Promise<void>)
     | null
   >(null);
@@ -102,9 +113,9 @@ function DashboardContent() {
   const [crawlDiscovering, setCrawlDiscovering] = useState(false);
   const [showCrawlSelector, setShowCrawlSelector] = useState(false);
   const [pendingCrawlUrl, setPendingCrawlUrl] = useState("");
-  const [pendingScanners, setPendingScanners] = useState<string[] | undefined>(
-    undefined,
-  );
+  const [pendingScanners, setPendingScanners] = useState<
+    { id: string; port: number }[] | undefined
+  >(undefined);
   const [bulkStatus, setBulkStatus] = useState<"idle" | "scanning" | "done">(
     "idle",
   );
@@ -121,42 +132,41 @@ function DashboardContent() {
   const updateUrlWithScan = useCallback((id: number | null) => {
     if (typeof window === "undefined") return;
     if (id) {
-      window.history.pushState(null, "", `/dashboard#scan-${id}`);
+      setQueryParam("scan", String(id));
     } else {
-      window.history.replaceState(null, "", "/dashboard");
+      removeQueryParam("scan", { replace: true });
     }
   }, []);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    let prevHash = window.location.hash;
 
-    const checkHash = () => {
-      const hash = window.location.hash;
-      if (prevHash.startsWith("#scan-") && !hash && status === "done") {
-        prevHash = hash;
-        setStatus("idle");
-        setResult(null);
-        setScanHistoryId(null);
-        setError(null);
-        setErrorDetails(null);
-        setSelectedIssue(null);
-        setScanNotes("");
-        setCrawlInfo(null);
+    const syncFromUrl = () => {
+      const params = new URLSearchParams(window.location.search);
+      const scan = params.get("scan");
+      if (!scan) {
+        if (status === "done") {
+          setStatus("idle");
+          setResult(null);
+          setScanHistoryId(null);
+          setError(null);
+          setErrorDetails(null);
+          setSelectedIssue(null);
+          setScanNotes("");
+          setCrawlInfo(null);
+        }
         return;
       }
-      if (hash.startsWith("#scan-") && status === "idle") {
-        const id = hash.replace("#scan-", "");
-        if (id && !isNaN(parseInt(id, 10))) {
-          window.location.href = `/history#${id}`;
-        }
+      const parsed = parseInt(scan, 10);
+      if (!Number.isFinite(parsed)) return;
+      if (status === "idle") {
+        window.location.href = `${ROUTES.HISTORY}?scan=${parsed}`;
       }
-      prevHash = hash;
     };
 
-    checkHash();
-    window.addEventListener("hashchange", checkHash);
-    return () => window.removeEventListener("hashchange", checkHash);
+    syncFromUrl();
+    window.addEventListener("popstate", syncFromUrl);
+    return () => window.removeEventListener("popstate", syncFromUrl);
   }, [status]);
 
   async function handleSaveNotes(notes: string) {
@@ -174,15 +184,12 @@ function DashboardContent() {
   }
 
   const handleScan = useCallback(
-    async (
-      url: string,
-      mode: ScanMode = "quick",
-      scanners?: string[],
-      protocol?: string,
-    ) => {
-      setPendingScanners(scanners);
+    async (payload: ScanFormPayload) => {
+      const { url, mode, scanners, probes } = payload;
+      const probeEntries = probes.length > 0 ? probes : undefined;
+      setPendingScanners(probeEntries);
       setScanningMode(mode);
-      if (mode === "deep" && (!protocol || protocol.startsWith("http"))) {
+      if (mode === "deep") {
         setPendingCrawlUrl(url);
         setShowCrawlSelector(true);
         setCrawlDiscovering(true);
@@ -192,7 +199,7 @@ function DashboardContent() {
           const res = await fetch(API.SCAN_CRAWL_DISCOVER, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ url }),
+            body: JSON.stringify({ url: `https://${url}` }),
           });
           const data = await res.json();
           if (res.ok && data.urls) {
@@ -205,7 +212,7 @@ function DashboardContent() {
         return;
       }
 
-      runScanRef.current?.(url, undefined, scanners, mode);
+      runScanRef.current?.(url, undefined, probeEntries, mode, scanners);
     },
     [],
   );
@@ -214,8 +221,9 @@ function DashboardContent() {
     async (
       url: string,
       crawlUrls?: string[],
-      scanners?: string[],
+      probes?: { id: string; port: number }[],
       mode: ScanMode = "quick",
+      categoryFilter?: string[],
     ) => {
       setStatus("scanning");
       setResult(null);
@@ -230,11 +238,22 @@ function DashboardContent() {
       setScanNotes("");
       setCrawlInfo(null);
 
+      const probePayload = probes?.length
+        ? probes.map((p) => `${p.id}:${p.port}`)
+        : undefined;
+      const scannerPayload = categoryFilter && categoryFilter.length > 0
+        ? categoryFilter
+        : undefined;
       const isCrawl = !!crawlUrls;
       const endpoint = isCrawl ? API.SCAN_CRAWL : API.SCAN;
-      const payload = isCrawl
-        ? { url, urls: crawlUrls, ...(scanners ? { scanners } : {}) }
-        : { url, ...(scanners ? { scanners } : {}) };
+      const basePayload = isCrawl
+        ? { url, urls: crawlUrls }
+        : { url };
+      const payload = {
+        ...basePayload,
+        ...(scannerPayload ? { scanners: scannerPayload } : {}),
+        ...(probePayload ? { probes: probePayload } : {}),
+      };
 
       try {
         const response = await fetch(endpoint, {
@@ -370,7 +389,7 @@ function DashboardContent() {
   useEffect(() => {
     const scanUrl = searchParams.get("scan");
     if (scanUrl && status === "idle") {
-      handleScan(scanUrl);
+      handleScan({ url: scanUrl, mode: "quick", probes: [] });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
@@ -397,6 +416,9 @@ function DashboardContent() {
       <Header />
 
       <main className="flex-1 w-full max-w-5xl mx-auto px-4 pb-12">
+        {/* Hero copy + category pills */}
+        {status === "idle" && <ScanHero />}
+
         {/* Scan form */}
         {status !== "done" && (
           <ScanForm
@@ -451,7 +473,9 @@ function DashboardContent() {
             scanNotes={scanNotes}
             crawlInfo={crawlInfo}
             onReset={handleReset}
-            onScanSubdomain={(subUrl) => handleScan(subUrl)}
+            onScanSubdomain={(subUrl) =>
+              handleScan({ url: subUrl, mode: "quick", probes: [] })
+            }
             onSaveNotes={handleSaveNotes}
           />
         )}

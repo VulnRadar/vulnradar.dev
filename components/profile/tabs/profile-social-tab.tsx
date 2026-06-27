@@ -20,10 +20,10 @@ export function ProfileSocialTab({
 
   const handleDisconnectDiscord = async () => {
     try {
-      const res = await fetch("/api/v2/account/discord", { method: "DELETE" });
+      const res = await fetch("/api/v3/account/discord", { method: "DELETE" });
       if (res.ok) {
         setSuccess("Discord account disconnected");
-        const authRes = await fetch("/api/v2/auth/me");
+        const authRes = await fetch("/api/v3/auth/me");
         await authRes.json();
         // Trigger parent re-fetch of user data
         window.location.reload();
@@ -134,7 +134,7 @@ export function ProfileSocialTab({
                     onClick={() => {
                       setReconnecting(true);
                       window.location.href =
-                        "/api/v2/auth/discord?action=connect";
+                        "/api/v3/auth/discord?action=connect";
                     }}
                     disabled={reconnecting}
                   >
@@ -203,7 +203,7 @@ export function ProfileSocialTab({
                   className="w-full bg-[#5865F2] hover:bg-[#4752C4] text-white"
                   onClick={() => {
                     window.location.href =
-                      "/api/v2/auth/discord?action=connect";
+                      "/api/v3/auth/discord?action=connect";
                   }}
                 >
                   <svg

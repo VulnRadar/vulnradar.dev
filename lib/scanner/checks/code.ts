@@ -504,15 +504,7 @@ export const detectors: Record<string, DetectFn> = {
     return `${missing} external script(s) loaded without Subresource Integrity (SRI) hash.`;
   },
 
-  // ── Window opener abuse / reverse tabnabbing ────────────────────────────
-
-  "reverse-tabnabbing": (_url, _headers, body) => {
-    const links = body.match(/<a[^>]*target=["']_blank["'][^>]*>/gi) || [];
-    const unsafe = links.filter((l) => !/rel=["'][^"']*noopener/i.test(l));
-    return unsafe.length > 2
-      ? `Found ${unsafe.length} link(s) with target="_blank" missing rel="noopener".`
-      : null;
-  },
+  // ── Window opener abuse ──────────────────────────────────────────────────
 
   "window-opener-abuse": (_url, _headers, body) => {
     const openerUsage = body.match(/window\.opener\./g) || [];
@@ -793,9 +785,6 @@ export const detectors: Record<string, DetectFn> = {
     if (/<form\b/i.test(body) && /<html|<body/i.test(body)) {
       return "HTML form present - verify all form actions use HTTPS.";
     }
-    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
-      return "API/HTML context - audit insecure-form-submission patterns.";
-    }
     return null;
   },
 
@@ -806,9 +795,6 @@ export const detectors: Record<string, DetectFn> = {
     if (/addEventListener\s*\(\s*["']message["']/i.test(body)) {
       return "postMessage listener found - verify origin is not wildcard.";
     }
-    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
-      return "API/HTML context - audit postmessage-wildcard origin handling.";
-    }
     return null;
   },
 
@@ -818,9 +804,6 @@ export const detectors: Record<string, DetectFn> = {
     }
     if (/new\s+RegExp\s*\(/.test(body)) {
       return "Runtime RegExp construction - audit patterns for catastrophic backtracking.";
-    }
-    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
-      return "API/HTML context - audit regex-dos-pattern usage.";
     }
     return null;
   },
@@ -833,12 +816,6 @@ export const detectors: Record<string, DetectFn> = {
     ) {
       return "Sensitive data being written to localStorage.";
     }
-    if (/localStorage\s*[.;]/i.test(body)) {
-      return "localStorage usage - ensure no sensitive identifiers are stored.";
-    }
-    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
-      return "API/HTML context - audit localstorage-sensitive data flows.";
-    }
     return null;
   },
 
@@ -849,12 +826,6 @@ export const detectors: Record<string, DetectFn> = {
       )
     ) {
       return "Authentication tokens stored in sessionStorage.";
-    }
-    if (/sessionStorage\s*[.;]/i.test(body)) {
-      return "sessionStorage usage - confirm no auth tokens are kept in tab scope.";
-    }
-    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
-      return "API/HTML context - audit sessionstorage-tokens handling.";
     }
     return null;
   },
@@ -870,9 +841,6 @@ export const detectors: Record<string, DetectFn> = {
     if (/indexedDB\s*\.\s*(?:open|deleteDatabase)/i.test(body)) {
       return "IndexedDB usage detected - audit stored object stores for sensitive data.";
     }
-    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
-      return "API/HTML context - audit indexeddb-sensitive storage.";
-    }
     return null;
   },
 
@@ -883,9 +851,6 @@ export const detectors: Record<string, DetectFn> = {
     if (/window\.name\s*=/.test(body)) {
       return "window.name assignment - avoid storing any cross-origin transferable data.";
     }
-    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
-      return "API/HTML context - audit window-name-storage patterns.";
-    }
     return null;
   },
 
@@ -895,9 +860,6 @@ export const detectors: Record<string, DetectFn> = {
     }
     if (/navigator\.serviceWorker\.register/i.test(body)) {
       return "Service worker registration - verify scope, HTTPS origin, and CSP.";
-    }
-    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
-      return "API/HTML context - audit service-worker-insecure registration.";
     }
     return null;
   },
@@ -910,9 +872,6 @@ export const detectors: Record<string, DetectFn> = {
     ) {
       return "Push API / Notification permission flow - ensure user consent and HTTPS.";
     }
-    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
-      return "API/HTML context - audit push-api-usage consent flow.";
-    }
     return null;
   },
 
@@ -920,18 +879,12 @@ export const detectors: Record<string, DetectFn> = {
     if (/PaymentRequest\s*\(|new\s+PaymentRequest\b/i.test(body)) {
       return "Payment Request API usage - confirm secure context and origin checks.";
     }
-    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
-      return "API/HTML context - audit payment-request-api origin checks.";
-    }
     return null;
   },
 
   "credential-management-api": (_url, _headers, body) => {
     if (/navigator\.credentials\.(?:get|store|create)/i.test(body)) {
       return "Credential Management API in use - validate origin-bound protection.";
-    }
-    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
-      return "API/HTML context - audit credential-management-api usage.";
     }
     return null;
   },
@@ -941,9 +894,6 @@ export const detectors: Record<string, DetectFn> = {
       /navigator\.credentials\.(?:get|create)\s*\([^)]*publicKey/i.test(body)
     ) {
       return "WebAuthn / Passkey flow - verify RP ID and origin validation.";
-    }
-    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
-      return "API/HTML context - audit webauthn-usage origin validation.";
     }
     return null;
   },
@@ -956,18 +906,12 @@ export const detectors: Record<string, DetectFn> = {
     ) {
       return "SubtleCrypto API usage - confirm secure context (HTTPS) and algorithm choice.";
     }
-    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
-      return "API/HTML context - audit crypto-subtle-usage algorithm choice.";
-    }
     return null;
   },
 
   "wasm-usage": (_url, _headers, body) => {
     if (/WebAssembly\.(?:instantiate|compile|Module)|\.wasm\b/i.test(body)) {
       return "WebAssembly module detected - audit origin and CSP for WASM execution.";
-    }
-    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
-      return "API/HTML context - audit wasm-usage module origin.";
     }
     return null;
   },
@@ -980,18 +924,12 @@ export const detectors: Record<string, DetectFn> = {
     if (/console\.log\b/.test(body)) {
       return "console.log call detected - strip from production builds.";
     }
-    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
-      return "API/HTML context - audit console-log-production leakage.";
-    }
     return null;
   },
 
   "debugger-statement": (_url, _headers, body) => {
     if (/(^|[^.\w])debugger\s*;/.test(body)) {
       return "JavaScript 'debugger' statement - remove from production code.";
-    }
-    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
-      return "API/HTML context - audit debugger-statement leakage.";
     }
     return null;
   },
@@ -1003,9 +941,6 @@ export const detectors: Record<string, DetectFn> = {
     ) {
       return "React components rendered without an ErrorBoundary nearby.";
     }
-    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
-      return "API/HTML context - audit error-boundary-missing coverage.";
-    }
     return null;
   },
 
@@ -1015,18 +950,12 @@ export const detectors: Record<string, DetectFn> = {
     if (/\.insertAdjacentElement\s*\(/i.test(body)) {
       return "insertAdjacentElement sink - DOM XSS via live-node insertion.";
     }
-    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
-      return "API/HTML context - audit code-xss-insertadjacentelement gating.";
-    }
     return null;
   },
 
   "code-xss-createcontextualfragment": (_url, _headers, body) => {
     if (/createContextualFragment\s*\(/i.test(body)) {
       return "Range.createContextualFragment sink - parses HTML into DocumentFragment.";
-    }
-    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
-      return "API/HTML context - audit code-xss-createcontextualfragment callers.";
     }
     return null;
   },
@@ -1037,9 +966,6 @@ export const detectors: Record<string, DetectFn> = {
     }
     if (/document\.write/i.test(body)) {
       return "document.write usage - audit JSON.parse-on-user-input callers.";
-    }
-    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
-      return "API/HTML context - audit code-xss-documentwrite-jsonparse chain.";
     }
     return null;
   },
@@ -1052,12 +978,6 @@ export const detectors: Record<string, DetectFn> = {
     ) {
       return "dangerouslySetInnerHTML receives a computed/concatenated string.";
     }
-    if (/dangerouslySetInnerHTML/i.test(body)) {
-      return "dangerouslySetInnerHTML in source - audit computed __html values.";
-    }
-    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
-      return "API/HTML context - audit code-xss-dangerouslysetinnerhtml-dynamic.";
-    }
     return null;
   },
 
@@ -1068,9 +988,6 @@ export const detectors: Record<string, DetectFn> = {
     if (/v-html\s*=/.test(body)) {
       return "Vue v-html directive found - audit dynamic expressions.";
     }
-    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
-      return "API/HTML context - audit code-xss-vue-v-html-dynamic expressions.";
-    }
     return null;
   },
 
@@ -1080,11 +997,13 @@ export const detectors: Record<string, DetectFn> = {
     ) {
       return "Angular bypassSecurityTrust* defeats DomSanitizer - XSS risk.";
     }
-    if (/ng-bind-html|innerHTML\s*=/i.test(body)) {
-      return "Angular template innerHTML binding - confirm content is sanitized.";
+    // Match Angular-specific bindings only, not React's dangerouslySetInnerHTML.
+    // [innerHTML]="expr" or [attr.innerHTML]="expr" — Angular property binding.
+    if (/\[\s*(?:attr\.innerHTML|innerHTML)\s*\]\s*=/i.test(body)) {
+      return "Angular [innerHTML] property binding - confirm content is sanitized.";
     }
-    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
-      return "API/HTML context - audit code-xss-angular-bypass-dynamic.";
+    if (/\bng-bind-html\s*=/i.test(body)) {
+      return "Angular ng-bind-html directive - confirm content is sanitized.";
     }
     return null;
   },
@@ -1095,9 +1014,6 @@ export const detectors: Record<string, DetectFn> = {
     }
     if (/DOMParser\b/.test(body)) {
       return "DOMParser usage - audit parseFromString calls for user HTML.";
-    }
-    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
-      return "API/HTML context - audit code-xss-domparser-parsefromstring.";
     }
     return null;
   },
@@ -1112,9 +1028,6 @@ export const detectors: Record<string, DetectFn> = {
     if (/<script[\s\S]*`[\s\S]*\$\{/i.test(body)) {
       return "Template literal interpolation in script context - audit escaping.";
     }
-    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
-      return "API/HTML context - audit code-xss-template-tag escaping.";
-    }
     return null;
   },
 
@@ -1123,9 +1036,6 @@ export const detectors: Record<string, DetectFn> = {
   "code-cmdi-spawn-shell-true": (_url, _headers, body) => {
     if (/spawn\s*\([^)]*\{\s*shell\s*:\s*true\s*\}/i.test(body)) {
       return "child_process.spawn called with shell:true - command injection risk.";
-    }
-    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
-      return "API/HTML context - audit code-cmdi-spawn-shell-true callers.";
     }
     return null;
   },
@@ -1137,9 +1047,6 @@ export const detectors: Record<string, DetectFn> = {
     if (/(?:child_process\.)?exec\s*\(/i.test(body)) {
       return "child_process.exec usage - audit first argument for user input.";
     }
-    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
-      return "API/HTML context - audit code-cmdi-exec argument source.";
-    }
     return null;
   },
 
@@ -1150,9 +1057,6 @@ export const detectors: Record<string, DetectFn> = {
     if (/import\s+os\b|from\s+os\s+import/.test(body)) {
       return "Python 'os' module imported - audit system/exec/popen callers.";
     }
-    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
-      return "API/HTML context - audit code-cmdi-os-exec usage.";
-    }
     return null;
   },
 
@@ -1161,9 +1065,6 @@ export const detectors: Record<string, DetectFn> = {
       /["']\/bin\/sh\s+-c\s*["']\s*\+\s*\w+|"sh\s+-c\s*"\s*\+\s*\w+/i.test(body)
     ) {
       return "/bin/sh -c built via string concatenation - shell injection risk.";
-    }
-    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
-      return "API/HTML context - audit code-cmdi-bin-sh-concat patterns.";
     }
     return null;
   },
@@ -1176,9 +1077,6 @@ export const detectors: Record<string, DetectFn> = {
     }
     if (/os\.popen\s*\(/i.test(body)) {
       return "os.popen() - argument is passed to the shell verbatim.";
-    }
-    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
-      return "API/HTML context - audit code-cmdi-popen callers.";
     }
     return null;
   },
@@ -1193,9 +1091,6 @@ export const detectors: Record<string, DetectFn> = {
     }
     if (/(?:spawn|execFile)\s*\(/i.test(body)) {
       return "spawn/execFile usage - audit argument strings for concatenation.";
-    }
-    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
-      return "API/HTML context - audit code-cmdi-process-spawn callers.";
     }
     return null;
   },
@@ -1212,9 +1107,6 @@ export const detectors: Record<string, DetectFn> = {
     if (/\$where\s*:/i.test(body)) {
       return "MongoDB $where usage - audit for user-controlled JavaScript.";
     }
-    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
-      return "API/HTML context - audit code-sqli-mongodb-where usage.";
-    }
     return null;
   },
 
@@ -1227,9 +1119,6 @@ export const detectors: Record<string, DetectFn> = {
     }
     if (/\$regex\s*:/i.test(body)) {
       return "MongoDB $regex usage - audit the source of the pattern.";
-    }
-    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
-      return "API/HTML context - audit code-sqli-mongodb-regex usage.";
     }
     return null;
   },
@@ -1245,9 +1134,6 @@ export const detectors: Record<string, DetectFn> = {
     if (/\.query\s*\(\s*["'`]/i.test(body)) {
       return "Raw SQL query in source - audit concatenation with user input.";
     }
-    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
-      return "API/HTML context - audit code-sqli-raw-query-string patterns.";
-    }
     return null;
   },
 
@@ -1259,9 +1145,6 @@ export const detectors: Record<string, DetectFn> = {
     }
     if (/\.query\s*\(\s*`/.test(body)) {
       return "Tag-less template literal used in .query() - SQL injection risk.";
-    }
-    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
-      return "API/HTML context - audit code-sqli-template-literal-query.";
     }
     return null;
   },
@@ -1275,9 +1158,6 @@ export const detectors: Record<string, DetectFn> = {
     }
     if (/\.find\s*\(/i.test(body)) {
       return "Mongoose .find() - audit argument for user JSON.";
-    }
-    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
-      return "API/HTML context - audit code-sqli-mongoose-find-user input.";
     }
     return null;
   },
@@ -1293,9 +1173,6 @@ export const detectors: Record<string, DetectFn> = {
     if (/Sequelize\.literal\s*\(/i.test(body)) {
       return "Sequelize.literal usage - audit argument for user input.";
     }
-    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
-      return "API/HTML context - audit code-sqli-sequelize-literal usage.";
-    }
     return null;
   },
 
@@ -1308,9 +1185,6 @@ export const detectors: Record<string, DetectFn> = {
     if (/import\s+yaml\b|from\s+yaml\s+import/.test(body)) {
       return "PyYAML imported - audit yaml.load vs yaml.safe_load usage.";
     }
-    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
-      return "API/HTML context - audit code-deser-yaml-load usage.";
-    }
     return null;
   },
 
@@ -1321,9 +1195,6 @@ export const detectors: Record<string, DetectFn> = {
     if (/import\s+pickle\b|from\s+pickle\s+import/.test(body)) {
       return "pickle imported - never unpickle untrusted data.";
     }
-    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
-      return "API/HTML context - audit code-deser-pickle-loads usage.";
-    }
     return null;
   },
 
@@ -1333,9 +1204,6 @@ export const detectors: Record<string, DetectFn> = {
       /\beval\s*\(\s*Buffer\.from\([^)]+,\s*['"]base64['"]/i.test(body)
     ) {
       return "eval(atob(...)) / eval(Buffer.from(..., 'base64')) - RCE via base64.";
-    }
-    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
-      return "API/HTML context - audit code-deser-base64-eval chain.";
     }
     return null;
   },
@@ -1349,9 +1217,6 @@ export const detectors: Record<string, DetectFn> = {
     ) {
       return "new Function() with user-supplied source - arbitrary code execution.";
     }
-    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
-      return "API/HTML context - audit code-deser-jsonparse-newfunction.";
-    }
     return null;
   },
 
@@ -1362,9 +1227,6 @@ export const detectors: Record<string, DetectFn> = {
     ) {
       return "node-serialize deserialize() - IIFE payload can achieve RCE.";
     }
-    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
-      return "API/HTML context - audit code-deser-node-serialize usage.";
-    }
     return null;
   },
 
@@ -1374,9 +1236,6 @@ export const detectors: Record<string, DetectFn> = {
     }
     if (/\bunserialize\s*\(/i.test(body)) {
       return "unserialize() call - audit source of bytes.";
-    }
-    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
-      return "API/HTML context - audit code-deser-php-unserialize usage.";
     }
     return null;
   },
@@ -1391,18 +1250,12 @@ export const detectors: Record<string, DetectFn> = {
     ) {
       return "fetch() targets loopback or cloud-metadata IP - SSRF risk.";
     }
-    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
-      return "API/HTML context - audit code-ssrf-fetch-port destinations.";
-    }
     return null;
   },
 
   "code-ssrf-fetch-user-input": (_url, _headers, body) => {
     if (/fetch\s*\(\s*(?:req|request|params|query|body)\./i.test(body)) {
       return "fetch() URL built from user input - SSRF.";
-    }
-    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
-      return "API/HTML context - audit code-ssrf-fetch-user-input sources.";
     }
     return null;
   },
@@ -1418,9 +1271,6 @@ export const detectors: Record<string, DetectFn> = {
     ) {
       return "axios request with user-controlled URL - SSRF.";
     }
-    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
-      return "API/HTML context - audit code-ssrf-axios-user-input URLs.";
-    }
     return null;
   },
 
@@ -1433,9 +1283,6 @@ export const detectors: Record<string, DetectFn> = {
     ) {
       return "XMLHttpRequest URL from user input - SSRF in server contexts.";
     }
-    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
-      return "API/HTML context - audit code-ssrf-xhr-user-input URLs.";
-    }
     return null;
   },
 
@@ -1447,9 +1294,6 @@ export const detectors: Record<string, DetectFn> = {
     ) {
       return "got / node-fetch / undici request with user URL - SSRF.";
     }
-    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
-      return "API/HTML context - audit code-ssrf-got-user-input URLs.";
-    }
     return null;
   },
 
@@ -1459,18 +1303,12 @@ export const detectors: Record<string, DetectFn> = {
     if (/\((?:[^()]*[+*])[^()]*\)\s*[+*]/g.test(body)) {
       return "Nested quantifier regex detected - exponential backtracking risk.";
     }
-    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
-      return "API/HTML context - audit code-redos-nested-quantifier patterns.";
-    }
     return null;
   },
 
   "code-redos-catastrophic-backtrack": (_url, _headers, body) => {
     if (/\((?:[^()|]*\|[^()|]*)+\)[+*]/g.test(body)) {
       return "Overlapping-alternation regex with quantifier - catastrophic backtracking.";
-    }
-    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
-      return "API/HTML context - audit code-redos-catastrophic-backtrack patterns.";
     }
     return null;
   },
@@ -1479,18 +1317,12 @@ export const detectors: Record<string, DetectFn> = {
     if (/\.[+*][^?+*]*[+*]/g.test(body)) {
       return "Greedy wildcards stacked - near-linear backtracking on long input.";
     }
-    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
-      return "API/HTML context - audit code-redos-greedy-quantifier stacks.";
-    }
     return null;
   },
 
   "code-redos-alternation-overlap": (_url, _headers, body) => {
     if (/\([\w|]+\|[^)]*[\w|]+\)\s*[+*]/g.test(body)) {
       return "Alternation overlap inside quantified group - exponential blowup risk.";
-    }
-    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
-      return "API/HTML context - audit code-redos-alternation-overlap patterns.";
     }
     return null;
   },
@@ -1509,9 +1341,6 @@ export const detectors: Record<string, DetectFn> = {
     if (/window\.location\b/.test(body)) {
       return "window.location referenced - audit assignments for user input.";
     }
-    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
-      return "API/HTML context - audit code-redirect-window-location-href.";
-    }
     return null;
   },
 
@@ -1523,9 +1352,6 @@ export const detectors: Record<string, DetectFn> = {
     }
     if (/location\.replace\s*\(/i.test(body)) {
       return "location.replace() called - audit argument for user input.";
-    }
-    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
-      return "API/HTML context - audit code-redirect-location-replace.";
     }
     return null;
   },
@@ -1541,9 +1367,6 @@ export const detectors: Record<string, DetectFn> = {
     if (/(?:top|parent)\.location\b/.test(body)) {
       return "top.location / parent.location referenced - audit for user input.";
     }
-    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
-      return "API/HTML context - audit code-redirect-top-location.";
-    }
     return null;
   },
 
@@ -1557,9 +1380,6 @@ export const detectors: Record<string, DetectFn> = {
     ) {
       return "Deep merge helper used - audit sources for __proto__ keys.";
     }
-    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
-      return "API/HTML context - audit code-proto-pollution-deep-merge.";
-    }
     return null;
   },
 
@@ -1569,9 +1389,6 @@ export const detectors: Record<string, DetectFn> = {
     }
     if (/_\.merge\s*\(/.test(body)) {
       return "_.merge usage - audit second argument for user input.";
-    }
-    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
-      return "API/HTML context - audit code-proto-pollution-lodash-merge.";
     }
     return null;
   },
@@ -1588,9 +1405,6 @@ export const detectors: Record<string, DetectFn> = {
     if (/Object\.assign\s*\(\s*\w+\s*,\s*JSON/i.test(body)) {
       return "Object.assign from JSON - audit for __proto__ key copy.";
     }
-    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
-      return "API/HTML context - audit code-proto-pollution-object-assign-proto.";
-    }
     return null;
   },
 
@@ -1605,9 +1419,6 @@ export const detectors: Record<string, DetectFn> = {
     if (/function\s+\w*[mM]erge\s*\([^)]*Object\.keys/i.test(body)) {
       return "Hand-rolled merge function detected - audit for __proto__ writes.";
     }
-    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
-      return "API/HTML context - audit code-proto-pollution-recursive-merge.";
-    }
     return null;
   },
 
@@ -1620,9 +1431,6 @@ export const detectors: Record<string, DetectFn> = {
     ) {
       return "jwt.verify() called without a secret/key argument.";
     }
-    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
-      return "API/HTML context - audit code-jwt-verify-no-secret callers.";
-    }
     return null;
   },
 
@@ -1633,18 +1441,12 @@ export const detectors: Record<string, DetectFn> = {
     if (/jwt\.decode\s*\(/i.test(body)) {
       return "jwt.decode call - confirm jwt.verify is also used for auth decisions.";
     }
-    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
-      return "API/HTML context - audit code-jwt-decode-only usage.";
-    }
     return null;
   },
 
   "code-jwt-hs256-weak-secret": (_url, _headers, body) => {
     if (/jwt\.sign\s*\([^)]*,\s*["'][^"']{1,15}["']/i.test(body)) {
       return "jwt.sign with short/literal HS256 secret - brute-forceable.";
-    }
-    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
-      return "API/HTML context - audit code-jwt-hs256-weak-secret length.";
     }
     return null;
   },
@@ -1655,9 +1457,6 @@ export const detectors: Record<string, DetectFn> = {
     }
     if (/jwt\.verify\s*\([^)]*algorithms/i.test(body)) {
       return "jwt.verify pins algorithms - confirm 'none' is not in the list.";
-    }
-    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
-      return "API/HTML context - audit code-jwt-none-algorithm pinning.";
     }
     return null;
   },
@@ -1674,9 +1473,6 @@ export const detectors: Record<string, DetectFn> = {
     ) {
       return "DOM sinks without Trusted Types policy - prefer a sanitizing policy.";
     }
-    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
-      return "API/HTML context - audit code-csp-no-trustedtypes coverage.";
-    }
     return null;
   },
 
@@ -1684,9 +1480,6 @@ export const detectors: Record<string, DetectFn> = {
     const csp = headers.get("content-security-policy") || "";
     if (csp && !/require-trusted-types-for/i.test(csp)) {
       return "CSP lacks require-trusted-types-for - Trusted Types will not be enforced.";
-    }
-    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
-      return "API/HTML context - audit code-csp-no-require-trusted-types.";
     }
     return null;
   },
@@ -1700,9 +1493,6 @@ export const detectors: Record<string, DetectFn> = {
     ) {
       return "Page renders dynamic HTML without Trusted Types enforcement.";
     }
-    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
-      return "API/HTML context - audit code-csp-missing-trusted-types.";
-    }
     return null;
   },
 
@@ -1714,12 +1504,6 @@ export const detectors: Record<string, DetectFn> = {
     ) {
       return "Auth tokens stored in localStorage - any XSS exfiltrates them.";
     }
-    if (/localStorage/i.test(body)) {
-      return "localStorage in source - confirm no auth tokens are stored here.";
-    }
-    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
-      return "API/HTML context - audit code-auth-localstorage-tokens usage.";
-    }
     return null;
   },
 
@@ -1728,12 +1512,6 @@ export const detectors: Record<string, DetectFn> = {
       /sessionStorage\.setItem\s*\(\s*["'](?:password|passwd|pwd)/i.test(body)
     ) {
       return "Plaintext password stored in sessionStorage.";
-    }
-    if (/sessionStorage/i.test(body)) {
-      return "sessionStorage in source - confirm no passwords are stored here.";
-    }
-    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
-      return "API/HTML context - audit code-auth-sessionstorage-passwords.";
     }
     return null;
   },
@@ -1747,9 +1525,6 @@ export const detectors: Record<string, DetectFn> = {
       /SameSite\s*=\s*None/i.test(headers.get("set-cookie") || "")
     ) {
       return "Set-Cookie uses SameSite=None without Secure - downgrade risk.";
-    }
-    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
-      return "API/HTML context - audit code-cookie-samesite-none-http flags.";
     }
     return null;
   },
@@ -1767,9 +1542,6 @@ export const detectors: Record<string, DetectFn> = {
     ) {
       return "Set-Cookie header lacks Secure flag - sent on plaintext connections.";
     }
-    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
-      return "API/HTML context - audit code-cookie-missing-secure-http flags.";
-    }
     return null;
   },
 
@@ -1784,9 +1556,6 @@ export const detectors: Record<string, DetectFn> = {
     }
     if (/<a[^>]+href\s*=\s*["']javascript:/i.test(body)) {
       return "javascript: href in source - even with noopener it executes.";
-    }
-    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
-      return "API/HTML context - audit code-clickjack-target-blank-js-href.";
     }
     return null;
   },
@@ -1807,9 +1576,6 @@ export const detectors: Record<string, DetectFn> = {
     if (/<html/i.test(body) && /api\./.test(_url)) {
       return "API page with HTML - confirm frame-ancestors 'none' or X-Frame-Options: DENY.";
     }
-    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
-      return "API/HTML context - audit code-clickjack-x-frame-options.";
-    }
     return null;
   },
 
@@ -1823,14 +1589,18 @@ export const detectors: Record<string, DetectFn> = {
     ) {
       return null;
     }
+    // Match `===` or `==` between two security-sensitive variable names
+    // on either side. e.g. `token === stored`, `sig === expected`,
+    // `hmac === hmac.verify(...)`, `=== HMAC`.
     if (
-      /===[^=]*(?:signature|hmac|sig|token|digest|mac)/i.test(body) ||
-      /==[^=]*(?:signature|hmac|sig|token|digest|mac)/i.test(body)
+      /(?:signature|hmac|sig|token|digest|mac|expected|stored|received|computed|provided|secret|expected_sig|expected_hmac)\s*[!=]==[^=]*\w+/i.test(
+        body,
+      ) ||
+      /\w+\s*[!=]==[^=]*(?:signature|hmac|sig|token|digest|mac|expected|stored|received|computed|provided|secret|expected_sig|expected_hmac)/i.test(
+        body,
+      )
     ) {
-      return "Signature compared with === - non-constant-time, leaks bytes via timing.";
-    }
-    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
-      return "API/HTML context - audit code-timing-no-constant-time-compare.";
+      return "Signature or token compared with === - non-constant-time, leaks bytes via timing.";
     }
     return null;
   },
@@ -1838,9 +1608,6 @@ export const detectors: Record<string, DetectFn> = {
   "code-timing-hmac-equality": (_url, _headers, body) => {
     if (/hmac\s*\([^)]+\)\s*===/.test(body) || /HMAC[^=]*===/.test(body)) {
       return "HMAC comparison via === - byte-by-byte timing leak.";
-    }
-    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
-      return "API/HTML context - audit code-timing-hmac-equality usage.";
     }
     return null;
   },
@@ -1858,9 +1625,6 @@ export const detectors: Record<string, DetectFn> = {
     if (/new\s+S3Client\s*\(|new\s+DynamoDBClient\s*\(/i.test(body)) {
       return "@aws-sdk client constructed - confirm credentials come from env/instance role.";
     }
-    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
-      return "API/HTML context - audit code-cloud-aws-hardcoded-credentials.";
-    }
     return null;
   },
 
@@ -1873,9 +1637,6 @@ export const detectors: Record<string, DetectFn> = {
     }
     if (/PutObjectCommand|\.upload\s*\(/i.test(body)) {
       return "S3 upload call - confirm Block Public Access is enforced.";
-    }
-    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
-      return "API/HTML context - audit code-cloud-aws-s3-upload-no-acl.";
     }
     return null;
   },
@@ -1892,9 +1653,6 @@ export const detectors: Record<string, DetectFn> = {
     if (/@azure\/storage-blob|BlobServiceClient/i.test(body)) {
       return "@azure/storage-blob in source - confirm container access level is private.";
     }
-    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
-      return "API/HTML context - audit code-cloud-azure-blob-upload-no-acl.";
-    }
     return null;
   },
 
@@ -1910,18 +1668,12 @@ export const detectors: Record<string, DetectFn> = {
     if (/fetch\s*\(\s*["']https?:\/\//i.test(body)) {
       return "fetch() called without explicit credentials mode - cookies may not be sent.";
     }
-    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
-      return "API/HTML context - audit code-fetch-without-credentials mode.";
-    }
     return null;
   },
 
   "code-axios-defaults-baseurl": (_url, headers, body) => {
     if (/axios\.defaults\.baseURL\s*=/i.test(body)) {
       return "axios.defaults.baseURL set globally - SSRF pivot if base is user-controlled.";
-    }
-    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
-      return "API/HTML context - audit code-axios-defaults-baseurl value.";
     }
     return null;
   },
@@ -1935,9 +1687,6 @@ export const detectors: Record<string, DetectFn> = {
     if (/fetch\s*\(/i.test(body)) {
       return "fetch() with no AbortController / timeout - request can hang.";
     }
-    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
-      return "API/HTML context - audit code-fetch-no-timeout handling.";
-    }
     return null;
   },
 
@@ -1949,12 +1698,6 @@ export const detectors: Record<string, DetectFn> = {
     ) {
       return "dangerouslySetInnerHTML receives a static string - audit the source.";
     }
-    if (/dangerouslySetInnerHTML\b/i.test(body)) {
-      return "dangerouslySetInnerHTML usage - confirm __html is sanitized.";
-    }
-    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
-      return "API/HTML context - audit code-dangerously-setinnerhtml usage.";
-    }
     return null;
   },
 
@@ -1964,9 +1707,6 @@ export const detectors: Record<string, DetectFn> = {
       /set(?:Timeout|Interval)\s*\([^,)]*,\s*[^,)]*[+`]/i.test(body)
     ) {
       return "setTimeout / setInterval with string argument - implicit eval().";
-    }
-    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
-      return "API/HTML context - audit code-eval-setinterval-string args.";
     }
     return null;
   },
@@ -1982,18 +1722,12 @@ export const detectors: Record<string, DetectFn> = {
     if (/Object\.assign\s*\(/i.test(body)) {
       return "Object.assign usage - audit second argument for user input.";
     }
-    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
-      return "API/HTML context - audit code-object-assign-from-user.";
-    }
     return null;
   },
 
   "code-spread-into-globals": (_url, headers, body) => {
     if (/\{\s*\.\.\.(?:req|request|params|query|body)\b/i.test(body)) {
       return "Spread of user input into object - prototype pollution / mass-assignment risk.";
-    }
-    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
-      return "API/HTML context - audit code-spread-into-globals patterns.";
     }
     return null;
   },
@@ -2011,9 +1745,6 @@ export const detectors: Record<string, DetectFn> = {
     ) {
       return "Set-Cookie header lacks HttpOnly - readable from JavaScript.";
     }
-    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
-      return "API/HTML context - audit code-cookie-without-httponly flags.";
-    }
     return null;
   },
 
@@ -2029,9 +1760,6 @@ export const detectors: Record<string, DetectFn> = {
       !/;\s*Secure/i.test(headers.get("set-cookie") || "")
     ) {
       return "Set-Cookie header lacks Secure flag - sent on plaintext connections.";
-    }
-    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
-      return "API/HTML context - audit code-cookie-write-no-secure flags.";
     }
     return null;
   },
@@ -2049,9 +1777,6 @@ export const detectors: Record<string, DetectFn> = {
     ) {
       return "Set-Cookie header lacks SameSite attribute.";
     }
-    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
-      return "API/HTML context - audit code-cookie-write-no-samesite attribute.";
-    }
     return null;
   },
 
@@ -2064,9 +1789,6 @@ export const detectors: Record<string, DetectFn> = {
     }
     if (/window\.open\s*\(/i.test(body)) {
       return "window.open usage - confirm features string includes noopener.";
-    }
-    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
-      return "API/HTML context - audit code-window-open-without-noopener.";
     }
     return null;
   },
@@ -2082,18 +1804,12 @@ export const detectors: Record<string, DetectFn> = {
     if (/location(?:\.href)?\s*=\s*[`"][^`"]*\+/i.test(body)) {
       return "location.href built via concatenation - audit input source.";
     }
-    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
-      return "API/HTML context - audit code-location-assign-with-user-input.";
-    }
     return null;
   },
 
   "code-vue-v-html": (_url, headers, body) => {
     if (/v-html\s*=/i.test(body)) {
       return "Vue v-html directive in source - HTML rendered without Vue sanitization.";
-    }
-    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
-      return "API/HTML context - audit code-vue-v-html usage.";
     }
     return null;
   },
@@ -2103,9 +1819,6 @@ export const detectors: Record<string, DetectFn> = {
       /bypassSecurityTrust(Html|Script|Style|Url|ResourceUrl)\s*\(/i.test(body)
     ) {
       return "Angular bypassSecurityTrust* defeats DomSanitizer - XSS risk.";
-    }
-    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
-      return "API/HTML context - audit code-angular-bypass-security.";
     }
     return null;
   },
@@ -2117,18 +1830,12 @@ export const detectors: Record<string, DetectFn> = {
     if (/\$\([^)]*\)\.html\s*\(/i.test(body)) {
       return "jQuery .html() usage - audit argument source.";
     }
-    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
-      return "API/HTML context - audit code-jquery-html callers.";
-    }
     return null;
   },
 
   "code-jquery-global-event": (_url, headers, body) => {
     if (/\$\([^)]*\)\.(?:on|bind)\s*\(\s*["'][^"']*["']/i.test(body)) {
       return "jQuery delegated event binding - audit selector for user-controlled markup.";
-    }
-    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
-      return "API/HTML context - audit code-jquery-global-event selectors.";
     }
     return null;
   },
@@ -2140,12 +1847,6 @@ export const detectors: Record<string, DetectFn> = {
       )
     ) {
       return "PII being written to localStorage - any XSS exfiltrates it.";
-    }
-    if (/localStorage/i.test(body)) {
-      return "localStorage usage - confirm no PII is stored.";
-    }
-    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
-      return "API/HTML context - audit code-local-storage-pii fields.";
     }
     return null;
   },
@@ -2159,18 +1860,12 @@ export const detectors: Record<string, DetectFn> = {
     ) {
       return "Service worker registered without restrictive CSP / Trusted Types.";
     }
-    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
-      return "API/HTML context - audit code-service-worker-no-csp policies.";
-    }
     return null;
   },
 
   "code-cookie-write-via-jquery": (_url, headers, body) => {
     if (/\$\.cookie\s*\(/i.test(body) && !/HttpOnly/i.test(body)) {
       return "jQuery $.cookie write missing HttpOnly - readable from JS / XSS.";
-    }
-    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
-      return "API/HTML context - audit code-cookie-write-via-jquery flags.";
     }
     return null;
   },
@@ -2182,18 +1877,12 @@ export const detectors: Record<string, DetectFn> = {
     if (/pk_test_[0-9a-zA-Z]{20,}/i.test(body)) {
       return "Stripe test publishable key in client source - move to env config.";
     }
-    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
-      return "API/HTML context - audit code-stripe-publishable-key usage.";
-    }
     return null;
   },
 
   "code-react-refs-innerhtml": (_url, headers, body) => {
     if (/this\.refs\.\w+\.innerHTML\s*=/i.test(body)) {
       return "React ref.innerHTML assignment - DOM XSS sink.";
-    }
-    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
-      return "API/HTML context - audit code-react-refs-innerhtml.";
     }
     return null;
   },
@@ -2205,9 +1894,6 @@ export const detectors: Record<string, DetectFn> = {
     ) {
       return "Angular property-binding bypass of interpolation - audit user content.";
     }
-    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
-      return "API/HTML context - audit code-angular-interpolation-bypass.";
-    }
     return null;
   },
 
@@ -2218,9 +1904,6 @@ export const detectors: Record<string, DetectFn> = {
       /on(?:error|load|click|mouseover)\s*=\s*["'][^"']*["']/i.test(body)
     ) {
       return "HTML injection pattern detected - script tag, javascript: URL, or event handler.";
-    }
-    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
-      return "API/HTML context - audit html-injection-patterns in payloads.";
     }
     return null;
   },
@@ -2235,9 +1918,6 @@ export const detectors: Record<string, DetectFn> = {
       /document\.URL|document\.referrer|window\.location\.search/i.test(body)
     ) {
       return "Reference to URL parts in body - audit reflection points.";
-    }
-    if (/<html|<script/i.test(body) || /api\./.test(_url)) {
-      return "API/HTML context - audit reflected-input handling.";
     }
     return null;
   },

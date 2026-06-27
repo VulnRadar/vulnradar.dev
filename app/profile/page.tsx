@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
 import { cn } from "@/lib/ui/utils";
 import { API } from "@/lib/config/constants";
+import { useQueryParam } from "@/lib/ui/url-state";
 
 const ImageCropDialog = dynamic(
   () =>
@@ -69,41 +70,34 @@ function ProfileContent() {
     "notifications",
     "privacy",
   ];
-  const [activeProfileTab, setActiveProfileTab] =
-    useState<ProfileTab>("general");
+  const isValidProfileTab = (v: string | null): v is ProfileTab =>
+    v !== null && VALID_TABS.includes(v as ProfileTab);
+  const [activeProfileTab, setActiveProfileTabRaw] = useQueryParam<string>(
+    "tab",
+    "general",
+  );
+  const activeProfileTabSafe: ProfileTab = isValidProfileTab(activeProfileTab)
+    ? (activeProfileTab as ProfileTab)
+    : "general";
 
-  // On mount, read hash and listen for back/forward hash changes
   useEffect(() => {
-    const getProfileTab = (): ProfileTab => {
-      const hash = window.location.hash.replace("#", "") as ProfileTab;
-      return VALID_TABS.includes(hash) ? hash : "general";
-    };
-    // Set default hash to #general if none provided
-    if (!window.location.hash) {
-      window.history.replaceState(null, "", "/profile#general");
-    }
-    setActiveProfileTab(getProfileTab());
-    const onHashChange = () => {
-      const newProfileTab = getProfileTab();
-      // Clear pending changes when hash changes (browser nav)
+    if (typeof window === "undefined") return;
+    const onPopState = () => {
       setPendingChanges({});
       setShowSaveModal(false);
-      setActiveProfileTab(newProfileTab);
     };
-    window.addEventListener("hashchange", onHashChange);
-    return () => window.removeEventListener("hashchange", onHashChange);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
   }, []);
 
-  // Change tab — just update the hash, no page reload
+  // Change tab — just update the query param, no page reload
   const handleProfileTabChange = (tab: ProfileTab) => {
     // Clear any pending changes when switching tabs
     if (Object.keys(pendingChanges).length > 0 || showSaveModal) {
       setPendingChanges({});
       setShowSaveModal(false);
     }
-    setActiveProfileTab(tab);
-    window.location.hash = tab;
+    setActiveProfileTabRaw(tab);
   };
   const [user, setUser] = useState<ProfileUser | null>(null);
   const [loading, setLoading] = useState(true);
@@ -417,16 +411,19 @@ function ProfileContent() {
     <div className="min-h-screen bg-background flex flex-col">
       <Header />
 
-      <main className="flex-1 w-full max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-10 flex flex-col gap-8 min-w-0">
+      <main className="flex-1 w-full max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-10 flex flex-col gap-6 sm:gap-8 min-w-0">
         {/* Page Header */}
-        <div className="mb-2">
-          <h1 className="text-2xl font-semibold tracking-tight text-foreground">
+        <section
+          aria-label="Settings"
+          className="flex flex-col items-center text-center gap-1 pt-2 sm:pt-4"
+        >
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-foreground">
             Settings
           </h1>
-          <p className="text-sm text-muted-foreground mt-1">
+          <p className="text-xs sm:text-sm text-muted-foreground">
             Manage your account settings and preferences
           </p>
-        </div>
+        </section>
 
         {/* Toast messages */}
         {(error || success) && (
@@ -469,7 +466,7 @@ function ProfileContent() {
                     onClick={() => handleProfileTabChange(tab.id)}
                     className={cn(
                       "flex items-center gap-2 px-3.5 py-3 text-sm font-medium transition-all whitespace-nowrap border-b-2 -mb-px",
-                      activeProfileTab === tab.id
+                      activeProfileTabSafe === tab.id
                         ? "border-primary text-foreground"
                         : "border-transparent text-muted-foreground hover:text-foreground",
                     )}
@@ -486,7 +483,7 @@ function ProfileContent() {
               {TABS.map((tab) => (
                 <a
                   key={tab.id}
-                  href={`/profile#${tab.id}`}
+                  href={`/profile?tab=${tab.id}`}
                   onClick={(e) => {
                     if (!e.ctrlKey && !e.metaKey) {
                       e.preventDefault();
@@ -495,7 +492,7 @@ function ProfileContent() {
                   }}
                   className={cn(
                     "flex items-center gap-2.5 px-3 py-2.5 text-sm rounded-lg transition-colors",
-                    activeProfileTab === tab.id
+                    activeProfileTabSafe === tab.id
                       ? "bg-primary/10 text-primary font-medium"
                       : "text-muted-foreground hover:text-foreground hover:bg-muted/50",
                   )}
@@ -510,7 +507,7 @@ function ProfileContent() {
           {/* Main Content Area */}
           <div className="flex-1 min-w-0">
             {/* ===================== GENERAL TAB ===================== */}
-            {activeProfileTab === "general" && (
+            {activeProfileTabSafe === "general" && (
               <ProfileGeneralTab
                 user={user}
                 loading={loading}
@@ -531,7 +528,7 @@ function ProfileContent() {
             )}
 
             {/* ===================== SOCIAL TAB ===================== */}
-            {activeProfileTab === "social" && (
+            {activeProfileTabSafe === "social" && (
               <ProfileSocialTab
                 user={user}
                 loading={loading}
@@ -546,7 +543,7 @@ function ProfileContent() {
             )}
 
             {/* ===================== BILLING TAB ===================== */}
-            {activeProfileTab === "billing" && (
+            {activeProfileTabSafe === "billing" && (
               <ProfileBillingTab
                 user={user}
                 loading={loading}
@@ -562,7 +559,7 @@ function ProfileContent() {
             )}
 
             {/* ===================== SECURITY TAB ===================== */}
-            {activeProfileTab === "security" && (
+            {activeProfileTabSafe === "security" && (
               <ProfileSecurityTab
                 user={user}
                 loading={loading}
@@ -577,7 +574,7 @@ function ProfileContent() {
             )}
 
             {/* ===================== DEVELOPER TAB ===================== */}
-            {activeProfileTab === "developer" && (
+            {activeProfileTabSafe === "developer" && (
               <ProfileDeveloperTab
                 user={user}
                 loading={loading}
@@ -598,7 +595,7 @@ function ProfileContent() {
             )}
 
             {/* ===================== NOTIFICATIONS TAB ===================== */}
-            {activeProfileTab === "notifications" && (
+            {activeProfileTabSafe === "notifications" && (
               <ProfileNotificationsTab
                 user={user}
                 loading={loading}
@@ -616,7 +613,7 @@ function ProfileContent() {
             )}
 
             {/* ===================== PRIVACY TAB ===================== */}
-            {activeProfileTab === "privacy" && (
+            {activeProfileTabSafe === "privacy" && (
               <ProfilePrivacyTab
                 user={user}
                 loading={loading}

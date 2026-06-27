@@ -75,6 +75,11 @@ const OptionalSchema = z.object({
   TURNSTILE_SECRET_KEY: z.string().optional(),
   NEXT_PUBLIC_TURNSTILE_SITE_KEY: z.string().optional(),
 
+  // BrowserBase (removed — was unreliable; see ViewPageButton for
+  // the fallback that opens the scanned URL in a new tab)
+  BROWSERBASE_API_KEY: z.string().optional(),
+  BROWSERBASE_PROJECT_ID: z.string().optional(),
+
   // Database — strict bool so "1" / "yes" can't slip through and
   // leave production running without SSL.
   DATABASE_SSL: BoolString.optional(),

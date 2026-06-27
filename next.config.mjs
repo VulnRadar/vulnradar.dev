@@ -49,6 +49,20 @@ const nextConfig = {
     ];
   },
   async headers() {
+    // Set DISABLE_CSP=1 in .env.local to ship the app without any
+    // security headers. Useful when debugging a third-party embed
+    // (BrowserBase, Turnstile, etc.) and you want to confirm whether
+    // CSP/CORP/COOP is the blocker. Self-hosters: leave it unset.
+    if (process.env.DISABLE_CSP === "1") {
+      // Next.js requires at least one header in the array, so we ship
+      // a harmless debug marker that confirms the flag is active.
+      return [
+        {
+          source: "/(.*)",
+          headers: [{ key: "X-Debug-Csp-Disabled", value: "1" }],
+        },
+      ];
+    }
     return [
       {
         source: "/(.*)",
@@ -58,15 +72,20 @@ const nextConfig = {
             value:
               "default-src 'self'; " +
               // Removed trailing 'https:' wildcard — now explicit domains only
-              "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://challenges.cloudflare.com https://static.cloudflareinsights.com https://embed.tawk.to https://*.tawk.to; " +
-              "script-src-elem 'self' 'unsafe-inline' https://challenges.cloudflare.com https://static.cloudflareinsights.com https://embed.tawk.to https://*.tawk.to; " +
+              "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://challenges.cloudflare.com https://static.cloudflareinsights.com https://embed.tawk.to https://*.tawk.to https://www.browserbase.com; " +
+              "script-src-elem 'self' 'unsafe-inline' https://challenges.cloudflare.com https://static.cloudflareinsights.com https://embed.tawk.to https://*.tawk.to https://www.browserbase.com; " +
               // Removed trailing 'https:' wildcard from style-src
-              "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://embed.tawk.to https://*.tawk.to; " +
-              "style-src-elem 'self' 'unsafe-inline' https://fonts.googleapis.com https://embed.tawk.to https://*.tawk.to; " +
-              "font-src 'self' https://fonts.gstatic.com https://static.cloudflareinsights.com; " +
-              "img-src 'self' data: blob: https:; " +
-              "connect-src 'self' https://challenges.cloudflare.com https://embed.tawk.to https://*.tawk.to https://va.tawk.to wss://*.tawk.to https://static.cloudflareinsights.com https: wss:; " +
-              "frame-src https://challenges.cloudflare.com https://embed.tawk.to https://*.tawk.to; " +
+              "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://embed.tawk.to https://*.tawk.to https://www.browserbase.com 'unsafe-inline'; " +
+              "style-src-elem 'self' 'unsafe-inline' https://fonts.googleapis.com https://embed.tawk.to https://*.tawk.to https://www.browserbase.com; " +
+              "font-src 'self' https://fonts.gstatic.com https://static.cloudflareinsights.com https://www.browserbase.com; " +
+              "img-src 'self' data: blob: https: https://www.browserbase.com; " +
+              // BrowserBase: the live-view iframe connects to
+              // wss://connect.{region}.browserbase.com/. We also need
+              // connect-src https://api.browserbase.com for the popup
+              // to call /api/v3/browser/sessions. Must be a separate
+              // origin from app, but we list it explicitly.
+              "connect-src 'self' https://challenges.cloudflare.com https://embed.tawk.to https://*.tawk.to https://va.tawk.to https://static.cloudflareinsights.com https://api.browserbase.com wss://*.browserbase.com https: wss:; " +
+              "frame-src https://challenges.cloudflare.com https://embed.tawk.to https://*.tawk.to https://www.browserbase.com; " +
               "frame-ancestors 'none'; " +
               "base-uri 'self'; " +
               "form-action 'self'; " +

@@ -1,12 +1,13 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
+import Script from "next/script";
 import { Send, Shield, Users, Building2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { API } from "@/lib/config/constants";
+import { API, TURNSTILE_ENABLED } from "@/lib/config/constants";
 import { CATEGORIES, STAFF_ROLES } from "./contact-types";
 
 function getPlaceholder(category: string): string {
@@ -48,6 +49,45 @@ export function ContactForm({
   const [availability, setAvailability] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
+  const [scriptLoaded, setScriptLoaded] = useState(false);
+  const widgetRef = useRef<HTMLDivElement>(null);
+  const widgetIdRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (
+      !TURNSTILE_ENABLED ||
+      !scriptLoaded ||
+      !widgetRef.current ||
+      widgetIdRef.current
+    )
+      return;
+    const turnstile = (
+      window as unknown as {
+        turnstile?: {
+          render: (el: HTMLElement, opts: unknown) => string;
+          remove: (id: string) => void;
+        };
+      }
+    ).turnstile;
+    if (!turnstile) return;
+    try {
+      widgetIdRef.current = turnstile.render(widgetRef.current, {
+        sitekey: process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY,
+        theme: "dark",
+        callback: (token: string) => setTurnstileToken(token),
+        "expired-callback": () => setTurnstileToken(null),
+      });
+    } catch {}
+    return () => {
+      if (widgetIdRef.current && turnstile) {
+        try {
+          turnstile.remove(widgetIdRef.current);
+          widgetIdRef.current = null;
+        } catch {}
+      }
+    };
+  }, [scriptLoaded]);
 
   // Auto-fill email from logged-in user
   useEffect(() => {
@@ -80,6 +120,12 @@ export function ContactForm({
       return;
     }
 
+    if (TURNSTILE_ENABLED && !turnstileToken) {
+      setError("Please complete the captcha verification.");
+      onError("Please complete the captcha verification.");
+      return;
+    }
+
     setIsSubmitting(true);
     setError(null);
 
@@ -108,6 +154,7 @@ export function ContactForm({
           subject: finalSubject,
           message: finalMessage,
           category,
+          turnstileToken: TURNSTILE_ENABLED ? turnstileToken : null,
         }),
       });
 
@@ -342,10 +389,25 @@ export function ContactForm({
             . We will not use your contact information for marketing purposes.
           </p>
 
+          {TURNSTILE_ENABLED && (
+            <Script
+              src="https://challenges.cloudflare.com/turnstile/v0/api.js"
+              async
+              defer
+              onLoad={() => setScriptLoaded(true)}
+            />
+          )}
+
+          {TURNSTILE_ENABLED && (
+            <div className="flex justify-center sm:justify-start">
+              <div ref={widgetRef} className="cf-turnstile" />
+            </div>
+          )}
+
           <Button
             type="submit"
             className="w-full sm:w-auto self-end gap-1.5"
-            disabled={isSubmitting}
+            disabled={isSubmitting || (TURNSTILE_ENABLED && !turnstileToken)}
           >
             <Send className="h-3.5 w-3.5" />
             {isSubmitting ? "Sending..." : "Send Message"}

@@ -87,14 +87,17 @@ export default function ComparePage() {
       <main className="flex-1 container max-w-6xl mx-auto px-4 py-8">
         <div className="flex flex-col gap-8">
           {/* Page title */}
-          <div className="flex flex-col gap-1">
-            <h1 className="text-2xl font-semibold tracking-tight">
+          <section
+            aria-label="Compare scans"
+            className="flex flex-col items-center text-center gap-1"
+          >
+            <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">
               Compare Scans
             </h1>
-            <p className="text-sm text-muted-foreground">
+            <p className="text-xs sm:text-sm text-muted-foreground">
               Track security changes between scan results
             </p>
-          </div>
+          </section>
 
           {/* Selection UI */}
           {!diffResult && (
