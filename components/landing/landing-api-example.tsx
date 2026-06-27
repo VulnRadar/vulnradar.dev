@@ -8,7 +8,7 @@ import { APP_URL, ROUTES } from "@/lib/config/constants";
 
 const API_BASE = APP_URL.replace(/\/$/, "");
 
-const CURL = `curl -X POST ${API_BASE}/api/v2/scan \\
+const CURL = `curl -X POST ${API_BASE}/api/v3/scan \\
   -H "Authorization: Bearer $VULNRADAR_TOKEN" \\
   -H "Content-Type: application/json" \\
   -d '{
@@ -111,7 +111,7 @@ export function LandingApiExample() {
           <p className="text-muted-foreground mb-6 text-pretty">
             The same engine the dashboard uses is exposed at{" "}
             <code className="text-xs px-1.5 py-0.5 rounded bg-muted text-foreground">
-              /api/v2/scan
+              /api/v3/scan
             </code>
             . Drop it into a CI step, a GitHub Action, or a cron. Findings are
             identical to what you see in the UI, with stable IDs and severities
@@ -163,7 +163,7 @@ export function LandingApiExample() {
               <span className="break-words">
                 1000-URL bulk endpoint at{" "}
                 <code className="text-[11px] px-1 py-0.5 rounded bg-muted text-foreground break-all">
-                  /api/v2/scan/bulk
+                  /api/v3/scan/bulk
                 </code>{" "}
                 for fleet-wide sweeps. CSV or JSON output.
               </span>

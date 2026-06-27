@@ -57,7 +57,7 @@ export default function CheckoutPage({
   useEffect(() => {
     async function checkAuth() {
       try {
-        const meRes = await fetch("/api/v2/auth/me");
+        const meRes = await fetch("/api/v3/auth/me");
         if (!meRes.ok) {
           router.push(`/auth?redirect=/checkout/${productId}`);
           return;
@@ -80,7 +80,7 @@ export default function CheckoutPage({
   }, [productId, product, router]);
 
   const fetchClientSecret = useCallback(async () => {
-    const res = await fetch("/api/v2/checkout/create-session", {
+    const res = await fetch("/api/v3/checkout/create-session", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ productId }),

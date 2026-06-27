@@ -1076,13 +1076,6 @@ export const detectors: Record<string, DetectFn> = {
     return "Cross-Origin-Embedder-Policy (COEP) header is not set.";
   },
 
-  "cross-origin-embedder-policy-credentialless-missing": (_url, headers) => {
-    const v = h(headers, "cross-origin-embedder-policy");
-    if (!v) return null;
-    if (v.toLowerCase().trim() === "credentialless") return null;
-    return `COEP is '${v}', not 'credentialless' — opt in to credentialless for easier cross-origin isolation.`;
-  },
-
   "cross-origin-opener-policy-report-only-missing": (_url, headers) => {
     if (hasHeader(headers, "cross-origin-opener-policy-report-only"))
       return null;
@@ -1099,9 +1092,11 @@ export const detectors: Record<string, DetectFn> = {
   },
 
   "cross-origin-resource-policy-report-only-missing": (_url, headers) => {
-    if (hasHeader(headers, "cross-origin-resource-policy-report-only"))
-      return null;
-    return "Cross-Origin-Resource-Policy-Report-Only header is missing.";
+    // CORP does not have a Report-Only variant (that's a CSP concept).
+    // Only fire if the actual Cross-Origin-Resource-Policy header is missing AND
+    // the response carries resources that should be cross-origin-isolated.
+    if (hasHeader(headers, "cross-origin-resource-policy")) return null;
+    return "Cross-Origin-Resource-Policy header is not set.";
   },
 
   // ── Client Hints / Sec-CH-* ─────────────────────────────────────────────

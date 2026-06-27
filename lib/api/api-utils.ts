@@ -208,12 +208,24 @@ export async function parseBody<T>(
 
     // Only parse JSON if content-type indicates JSON
     if (contentType.includes("application/json")) {
+      // Empty body with content-type=application/json: treat as {}
+      if (contentLength === "0") {
+        return { success: true, data: {} as T };
+      }
       const data = await request.json();
       return { success: true, data };
     }
 
     // Fallback for missing content-type (assume JSON if not FormData)
     if (!contentType.includes("multipart/form-data")) {
+      // No body at all → empty object. (This happens when sendBeacon
+      // is called with no body, or a fetch fires with no body.)
+      if (
+        contentLength === null ||
+        contentLength === "0"
+      ) {
+        return { success: true, data: {} as T };
+      }
       try {
         const data = await request.json();
         return { success: true, data };

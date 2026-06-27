@@ -1,28 +1,18 @@
 /**
  * Dashboard idle state.
  *
- * Polished to match the design language we landed on for `/landing`:
- *  - Light bg, cyan/blue primary, no terminal/security aesthetic.
- *  - Section eyebrow (`text-xs uppercase tracking-wider text-primary`).
- *  - Cards use `rounded-xl border border-border/50 bg-card/50`.
- *  - Icon chips `w-9 h-9 rounded-lg bg-primary/10`.
- *  - `text-balance` / `text-pretty` on headings + paragraphs.
- *  - No emoji, no terminal-redesign tokens.
- *
- * Structure (top → bottom):
- *  1. Welcome / overview header
- *  2. Stats row (Total Scans / Unique Sites / API Scans / Web Scans)
- *  3. 2×2 grid: Severity breakdown / Activity / Top Issues / Recent Scans
+ * Power-user tool. Activity snapshot up top, then a 2x2 grid of severity,
+ * recent activity, top recurring issues, and recent scans. No section
+ * eyebrows, no marketing-style hero — this is a working surface.
  */
 "use client";
 
 import { useState, useEffect } from "react";
 import {
-  BarChart3,
+  Layers,
   Shield,
   Clock,
   Globe,
-  TrendingUp,
   AlertTriangle,
   Terminal,
   Monitor,
@@ -31,6 +21,9 @@ import {
   Target,
   ChevronRight,
   ScanSearch,
+  ArrowRight,
+  TrendingUp,
+  TrendingDown,
 } from "lucide-react";
 import { cn } from "@/lib/ui/utils";
 import { API, ROUTES } from "@/lib/config/constants";
@@ -70,13 +63,11 @@ function StatCard({
   value,
   label,
   icon: Icon,
-  trend,
   color = "text-primary",
 }: {
   value: string | number;
   label: string;
   icon: React.ElementType;
-  trend?: { value: number; label: string };
   color?: string;
 }) {
   const bgColorMap: Record<string, string> = {
@@ -85,36 +76,36 @@ function StatCard({
     "text-violet-500": "bg-violet-500/10",
     "text-amber-500": "bg-amber-500/10",
     "text-emerald-500": "bg-emerald-500/10",
-    "text-rose-500": "bg-rose-500/10",
+  };
+  const ringColorMap: Record<string, string> = {
+    "text-primary": "ring-primary/20",
+    "text-cyan-500": "ring-cyan-500/20",
+    "text-violet-500": "ring-violet-500/20",
+    "text-amber-500": "ring-amber-500/20",
+    "text-emerald-500": "ring-emerald-500/20",
   };
   const bgColor = bgColorMap[color] || "bg-primary/10";
+  const ringColor = ringColorMap[color] || "ring-primary/20";
 
   return (
-    <div className="flex items-center gap-3 p-4 rounded-xl border border-border/50 bg-card/50 hover:bg-card hover:border-border/60 transition-all">
-      <div className={cn("p-2 rounded-lg shrink-0", bgColor)}>
-        <Icon className={cn("h-4 w-4", color)} />
+    <div className="group relative flex items-center gap-3 p-3.5 sm:p-4 rounded-xl border border-border/50 bg-card/30 hover:bg-card/60 hover:border-border transition-all duration-200">
+      <div
+        className={cn(
+          "p-2 sm:p-2.5 rounded-lg shrink-0 ring-1 transition-transform duration-200 group-hover:scale-105",
+          bgColor,
+          ringColor,
+        )}
+      >
+        <Icon className={cn("h-4 w-4 sm:h-5 sm:w-5", color)} />
       </div>
-      <div className="min-w-0">
-        <p className="text-2xl font-bold tracking-tight tabular-nums">
+      <div className="min-w-0 flex-1">
+        <p className="text-xl sm:text-2xl font-bold tracking-tight tabular-nums leading-none">
           {value}
         </p>
-        <p className="text-xs text-muted-foreground truncate">{label}</p>
+        <p className="text-[11px] sm:text-xs text-muted-foreground truncate mt-1">
+          {label}
+        </p>
       </div>
-      {trend && (
-        <div
-          className={cn(
-            "ml-auto flex items-center gap-1 text-xs font-medium px-2 py-1 rounded-full shrink-0",
-            trend.value >= 0
-              ? "text-emerald-500 bg-emerald-500/10"
-              : "text-destructive bg-destructive/10",
-          )}
-        >
-          <TrendingUp
-            className={cn("h-3 w-3", trend.value < 0 && "rotate-180")}
-          />
-          {Math.abs(trend.value)}%
-        </div>
-      )}
     </div>
   );
 }
@@ -132,14 +123,14 @@ function SeverityBar({
 }) {
   const pct = total > 0 ? (count / total) * 100 : 0;
   return (
-    <div className="group flex items-center gap-4 py-2 px-3 -mx-3 rounded-lg hover:bg-muted/30 transition-colors">
-      <div className="flex items-center gap-2 w-20">
-        <span className={cn("w-2.5 h-2.5 rounded-full shrink-0", color)} />
-        <span className="text-sm text-muted-foreground capitalize">
+    <div className="group flex items-center gap-3 py-1.5 px-2 -mx-2 rounded-md hover:bg-muted/30 transition-colors">
+      <div className="flex items-center gap-1.5 w-16">
+        <span className={cn("w-2 h-2 rounded-full shrink-0", color)} />
+        <span className="text-xs text-muted-foreground capitalize">
           {label}
         </span>
       </div>
-      <div className="flex-1 h-2 rounded-full bg-muted/50 overflow-hidden">
+      <div className="flex-1 h-1.5 rounded-full bg-muted/50 overflow-hidden">
         <div
           className={cn(
             "h-full rounded-full transition-all duration-700 ease-out",
@@ -148,7 +139,7 @@ function SeverityBar({
           style={{ width: `${pct}%` }}
         />
       </div>
-      <span className="text-sm font-semibold text-foreground w-10 text-right tabular-nums">
+      <span className="text-xs font-semibold text-foreground w-8 text-right tabular-nums">
         {count}
       </span>
     </div>
@@ -163,8 +154,8 @@ function ActivityChart({
   const maxScans = Math.max(...data.map((d) => d.scans), 1);
 
   return (
-    <div className="space-y-3">
-      <div className="flex items-end gap-1 h-28">
+    <div className="space-y-2">
+      <div className="flex items-end gap-0.5 h-20">
         {data.map((d, i) => {
           const height = (d.scans / maxScans) * 100;
           const dayDate = new Date(d.day + "T12:00:00");
@@ -175,12 +166,9 @@ function ActivityChart({
               key={i}
               className="flex-1 flex flex-col items-center justify-end h-full group relative"
             >
-              <div className="absolute -top-8 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10 whitespace-nowrap bg-popover border border-border rounded-lg px-3 py-2 shadow-xl">
-                <p className="text-xs font-medium text-foreground">
+              <div className="absolute -top-7 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10 whitespace-nowrap bg-popover border border-border rounded-md px-2 py-1 shadow-xl">
+                <p className="text-[10px] font-medium text-foreground">
                   {d.scans} scan{d.scans !== 1 ? "s" : ""}
-                </p>
-                <p className="text-[10px] text-muted-foreground">
-                  {d.issues} issue{d.issues !== 1 ? "s" : ""}
                 </p>
               </div>
 
@@ -202,7 +190,7 @@ function ActivityChart({
         })}
       </div>
 
-      <div className="flex justify-between text-[10px] text-muted-foreground px-1">
+      <div className="flex justify-between text-[9px] text-muted-foreground px-0.5">
         <span>
           {new Date(data[0]?.day + "T12:00:00").toLocaleDateString("en-US", {
             month: "short",
@@ -215,23 +203,77 @@ function ActivityChart({
           ).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
         </span>
       </div>
-
-      <div className="flex items-center justify-between pt-3 border-t border-border/60">
-        <div className="flex items-center gap-4 text-xs text-muted-foreground">
-          <span className="flex items-center gap-1.5">
-            <span className="w-2.5 h-2.5 rounded-sm bg-primary" />
-            Today
-          </span>
-          <span className="flex items-center gap-1.5">
-            <span className="w-2.5 h-2.5 rounded-sm bg-primary/50" />
-            Previous
-          </span>
-        </div>
-        <span className="text-xs font-medium text-foreground tabular-nums">
-          {data.reduce((acc, d) => acc + d.scans, 0)} total scans
-        </span>
-      </div>
     </div>
+  );
+}
+
+function CardShell({
+  title,
+  subtitle,
+  icon: Icon,
+  iconClass,
+  action,
+  children,
+}: {
+  title: string;
+  subtitle?: string;
+  icon: React.ElementType;
+  iconClass: string;
+  action?: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  return (
+    <section
+      className="p-4 sm:p-5 rounded-xl border border-border/50 bg-card/30 hover:border-border transition-colors flex flex-col"
+    >
+      <div className="flex items-center justify-between mb-4 shrink-0">
+        <div className="flex items-center gap-2.5 min-w-0">
+          <div className={cn("p-1.5 rounded-md ring-1 shrink-0", iconClass)}>
+            <Icon className="h-3.5 w-3.5" />
+          </div>
+          <div className="flex flex-col min-w-0">
+            <h3 className="text-sm font-semibold text-foreground truncate">
+              {title}
+            </h3>
+            {subtitle && (
+              <span className="text-[10px] text-muted-foreground truncate">
+                {subtitle}
+              </span>
+            )}
+          </div>
+        </div>
+        {action}
+      </div>
+      <div className="flex-1 min-h-0">{children}</div>
+    </section>
+  );
+}
+
+function TrendBadge({
+  current,
+  previous,
+}: {
+  current: number;
+  previous: number;
+}) {
+  if (previous === 0) return null;
+  const delta = current - previous;
+  const pct = previous > 0 ? (delta / previous) * 100 : 0;
+  if (pct === 0) return null;
+  const positive = delta < 0;
+  const Icon = positive ? TrendingDown : TrendingUp;
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center gap-0.5 text-[10px] font-medium tabular-nums px-1.5 py-0.5 rounded",
+        positive
+          ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+          : "bg-amber-500/10 text-amber-600 dark:text-amber-400",
+      )}
+    >
+      <Icon className="h-2.5 w-2.5" />
+      {Math.abs(pct).toFixed(0)}%
+    </span>
   );
 }
 
@@ -261,45 +303,50 @@ export function Dashboard() {
 
   if (loading) {
     return (
-      <div className="flex flex-col gap-8 pt-6">
-        <div className="space-y-2">
-          <div className="h-3 w-20 rounded bg-muted animate-pulse" />
-          <div className="h-7 w-72 rounded bg-muted animate-pulse" />
-          <div className="h-4 w-96 rounded bg-muted animate-pulse" />
+      <div className="flex flex-col gap-5 pt-8 w-full">
+        <div className="flex flex-col gap-1">
+          <div className="flex items-center gap-2.5">
+            <div className="w-7 h-7 rounded-md bg-muted animate-pulse" />
+            <div className="h-4 w-20 rounded bg-muted animate-pulse" />
+            <div className="h-3 w-48 rounded bg-muted animate-pulse" />
+          </div>
         </div>
 
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3">
           {[...Array(4)].map((_, i) => (
             <div
               key={i}
-              className="flex items-center gap-3 p-4 rounded-xl border border-border/50 bg-card/50"
+              className="flex items-center gap-3 p-4 rounded-xl border border-border/50 bg-card/30"
             >
-              <div className="w-8 h-8 rounded-lg bg-muted animate-pulse shrink-0" />
-              <div className="space-y-2 min-w-0">
-                <div className="h-6 w-12 rounded bg-muted animate-pulse" />
-                <div className="h-3 w-16 rounded bg-muted animate-pulse" />
+              <div className="w-10 h-10 rounded-lg bg-muted animate-pulse shrink-0" />
+              <div className="space-y-2 min-w-0 flex-1">
+                <div className="h-6 w-14 rounded bg-muted animate-pulse" />
+                <div className="h-3 w-20 rounded bg-muted animate-pulse" />
               </div>
             </div>
           ))}
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4">
           {[...Array(4)].map((_, i) => (
             <div
               key={i}
-              className="p-5 rounded-xl border border-border/50 bg-card/50"
+              className="p-5 rounded-xl border border-border/50 bg-card/30"
             >
-              <div className="flex items-center gap-2 mb-4">
-                <div className="w-8 h-8 rounded-lg bg-muted animate-pulse" />
-                <div className="h-4 w-28 rounded bg-muted animate-pulse" />
+              <div className="flex items-center gap-2.5 mb-4">
+                <div className="w-7 h-7 rounded-md bg-muted animate-pulse" />
+                <div className="space-y-1.5 flex-1">
+                  <div className="h-3.5 w-32 rounded bg-muted animate-pulse" />
+                  <div className="h-2.5 w-20 rounded bg-muted animate-pulse" />
+                </div>
               </div>
-              <div className="space-y-3">
-                {[...Array(i === 1 ? 1 : 4)].map((_, j) => (
+              <div className="space-y-2">
+                {[...Array(i === 1 ? 1 : 3)].map((_, j) => (
                   <div
                     key={j}
                     className={cn(
                       "rounded bg-muted animate-pulse",
-                      i === 1 ? "h-28" : "h-4",
+                      i === 1 ? "h-20" : "h-3",
                     )}
                     style={{ width: i === 1 ? "100%" : `${90 - j * 10}%` }}
                   />
@@ -328,6 +375,17 @@ export function Dashboard() {
   const webCount =
     data.sourceBreakdown.find((s) => s.source === "web")?.count || 0;
 
+  // Previous-week scan count for trend badge
+  const midpoint = Math.floor(data.dailyActivity.length / 2);
+  const recentWeek = data.dailyActivity
+    .slice(midpoint)
+    .reduce((sum, d) => sum + (Number(d.scans) || 0), 0);
+  const priorWeek = data.dailyActivity
+    .slice(0, midpoint)
+    .reduce((sum, d) => sum + (Number(d.scans) || 0), 0);
+
+  const highPlusCritical = sb.critical + sb.high;
+
   function getHostname(url: string) {
     try {
       return new URL(url).hostname;
@@ -352,32 +410,30 @@ export function Dashboard() {
     issues: Number(d.issues) || 0,
   }));
 
-  const hasScans = data.totalScans > 0;
-
   return (
-    <div className="flex flex-col gap-8 pt-6">
-      {/* Section header */}
-      <div>
-        <p className="text-xs font-medium text-primary uppercase tracking-wider mb-2">
-          Overview
+    <div className="flex flex-col gap-5 pt-8 w-full">
+      {/* Activity section header */}
+      <section aria-label="Activity overview" className="flex flex-col gap-1">
+        <div className="flex items-center gap-2.5 flex-wrap">
+          <h2 className="text-base font-semibold text-foreground">
+            Your activity
+          </h2>
+          <TrendBadge current={recentWeek} previous={priorWeek} />
+        </div>
+        <p className="text-xs text-muted-foreground">
+          {data.totalScans} scan{data.totalScans !== 1 ? "s" : ""} across{" "}
+          {data.uniqueSites} site{data.uniqueSites !== 1 ? "s" : ""} in the last
+          14 days.
         </p>
-        <h2 className="text-2xl sm:text-3xl font-bold tracking-tight mb-2 text-balance">
-          Your security activity
-        </h2>
-        <p className="text-sm text-muted-foreground text-pretty">
-          {hasScans
-            ? `${data.totalScans} scan${data.totalScans === 1 ? "" : "s"} across ${data.uniqueSites} site${data.uniqueSites === 1 ? "" : "s"} in the last 14 days. ${totalIssues} issue${totalIssues === 1 ? "" : "s"} found.`
-            : "Run a scan to start tracking your security posture. Findings, severity, and activity will show up here."}
-        </p>
-      </div>
+      </section>
 
       {/* Stats row */}
       <section aria-label="Scan stats">
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 min-w-0">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3 min-w-0">
           <StatCard
             value={data.totalScans}
             label="Total scans"
-            icon={BarChart3}
+            icon={Layers}
             color="text-primary"
           />
           <StatCard
@@ -401,27 +457,16 @@ export function Dashboard() {
         </div>
       </section>
 
-      {/* Main content grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      {/* 2x2 grid */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4">
         {/* Severity breakdown */}
-        <section
-          aria-label="Severity breakdown"
-          className="p-5 rounded-xl border border-border/50 bg-card/50"
+        <CardShell
+          title="Severity breakdown"
+          subtitle={`${totalIssues} issue${totalIssues !== 1 ? "s" : ""} across all scans`}
+          icon={Shield}
+          iconClass="bg-primary/10 ring-primary/20 text-primary"
         >
-          <div className="flex items-center justify-between mb-5">
-            <div className="flex items-center gap-2">
-              <div className="p-2 rounded-lg bg-primary/10 shrink-0">
-                <Shield className="h-4 w-4 text-primary" />
-              </div>
-              <h3 className="text-sm font-medium text-foreground">
-                Severity breakdown
-              </h3>
-            </div>
-            <span className="text-xs text-muted-foreground tabular-nums">
-              {totalIssues} total
-            </span>
-          </div>
-          <div className="space-y-1">
+          <div className="space-y-0.5">
             <SeverityBar
               label="Critical"
               count={sb.critical}
@@ -453,60 +498,43 @@ export function Dashboard() {
               color="bg-muted-foreground/50"
             />
           </div>
-        </section>
+        </CardShell>
 
         {/* Scan Activity */}
-        <section
-          aria-label="Scan activity"
-          className="p-5 rounded-xl border border-border/50 bg-card/50"
+        <CardShell
+          title="Scan activity"
+          subtitle="Last 14 days"
+          icon={Activity}
+          iconClass="bg-primary/10 ring-primary/20 text-primary"
         >
-          <div className="flex items-center justify-between mb-5">
-            <div className="flex items-center gap-2">
-              <div className="p-2 rounded-lg bg-primary/10 shrink-0">
-                <Activity className="h-4 w-4 text-primary" />
-              </div>
-              <h3 className="text-sm font-medium text-foreground">
-                Scan activity
-              </h3>
-            </div>
-            <span className="text-xs text-muted-foreground">Last 14 days</span>
-          </div>
           <ActivityChart data={activity} />
-        </section>
+        </CardShell>
 
         {/* Top Issues */}
-        <section
-          aria-label="Top issues"
-          className="p-5 rounded-xl border border-border/50 bg-card/50"
+        <CardShell
+          title="Top recurring issues"
+          subtitle={
+            data.topVulnerabilities.length > 0
+              ? `${data.topVulnerabilities.length} type${data.topVulnerabilities.length === 1 ? "" : "s"}`
+              : undefined
+          }
+          icon={AlertTriangle}
+          iconClass="bg-[hsl(var(--severity-high))]/10 ring-[hsl(var(--severity-high))]/20 text-[hsl(var(--severity-high))]"
         >
-          <div className="flex items-center justify-between mb-5">
-            <div className="flex items-center gap-2">
-              <div className="p-2 rounded-lg bg-[hsl(var(--severity-high))]/10 shrink-0">
-                <AlertTriangle className="h-4 w-4 text-[hsl(var(--severity-high))]" />
-              </div>
-              <h3 className="text-sm font-medium text-foreground">
-                Top issues
-              </h3>
-            </div>
-            <span className="text-xs text-muted-foreground tabular-nums">
-              {data.topVulnerabilities.length} types
-            </span>
-          </div>
           {data.topVulnerabilities.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-8 text-center">
-              <div className="w-10 h-10 rounded-lg bg-muted flex items-center justify-center mb-3">
-                <Target className="h-5 w-5 text-muted-foreground/40" />
+            <div className="flex flex-col items-center justify-center py-6 text-center">
+              <div className="w-8 h-8 rounded-md bg-muted flex items-center justify-center mb-2">
+                <Target className="h-4 w-4 text-muted-foreground/40" />
               </div>
-              <p className="text-sm font-medium text-foreground">
-                No issues found yet
+              <p className="text-xs font-medium text-foreground">
+                No issues yet
               </p>
-              <p className="text-xs text-muted-foreground/70 mt-1 max-w-xs">
-                Run a scan to surface the most common findings across your
-                targets.
+              <p className="text-[10px] text-muted-foreground/70 mt-0.5">
+                Run a scan to surface findings.
               </p>
             </div>
           ) : (
-            <div className="space-y-2">
+            <div className="space-y-1">
               {data.topVulnerabilities.map((v, i) => {
                 const severityColors: Record<string, string> = {
                   critical: "bg-[hsl(var(--severity-critical))]",
@@ -518,18 +546,18 @@ export function Dashboard() {
                 return (
                   <div
                     key={i}
-                    className="flex items-center gap-3 py-2 px-3 -mx-3 rounded-lg hover:bg-muted/30 transition-colors group"
+                    className="flex items-center gap-2 py-1.5 px-2 -mx-2 rounded-md hover:bg-muted/30 transition-colors group"
                   >
                     <span
                       className={cn(
-                        "w-2 h-2 rounded-full shrink-0",
+                        "w-1.5 h-1.5 rounded-full shrink-0",
                         severityColors[v.severity] || "bg-muted-foreground",
                       )}
                     />
-                    <span className="text-sm text-foreground truncate flex-1 min-w-0">
+                    <span className="text-xs text-foreground truncate flex-1 min-w-0">
                       {v.title}
                     </span>
-                    <span className="text-xs font-medium text-muted-foreground tabular-nums bg-muted/50 px-2 py-0.5 rounded-full shrink-0">
+                    <span className="text-[10px] font-medium text-muted-foreground tabular-nums bg-muted/50 px-1.5 py-0.5 rounded shrink-0">
                       {v.count}x
                     </span>
                   </div>
@@ -537,85 +565,92 @@ export function Dashboard() {
               })}
             </div>
           )}
-        </section>
+        </CardShell>
 
         {/* Recent Scans */}
-        <section
-          aria-label="Recent scans"
-          className="p-5 rounded-xl border border-border/50 bg-card/50"
-        >
-          <div className="flex items-center justify-between mb-5">
-            <div className="flex items-center gap-2">
-              <div className="p-2 rounded-lg bg-primary/10 shrink-0">
-                <Clock className="h-4 w-4 text-primary" />
-              </div>
-              <h3 className="text-sm font-medium text-foreground">
-                Recent scans
-              </h3>
-            </div>
+        <CardShell
+          title="Recent scans"
+          subtitle={
+            data.recentScans.length > 0
+              ? `${data.recentScans.length} of your latest`
+              : undefined
+          }
+          icon={Clock}
+          iconClass="bg-primary/10 ring-primary/20 text-primary"
+          action={
             <a
               href={ROUTES.HISTORY}
-              className="flex items-center gap-1 text-xs text-primary hover:text-primary/80 transition-colors font-medium"
+              className="inline-flex items-center gap-1 text-[10px] font-medium text-primary hover:text-primary/80 transition-colors px-2 py-1 rounded-md hover:bg-primary/10"
             >
               View all
               <ArrowUpRight className="h-3 w-3" />
             </a>
-          </div>
+          }
+        >
           {data.recentScans.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-8 text-center">
-              <div className="w-10 h-10 rounded-lg bg-muted flex items-center justify-center mb-3">
-                <ScanSearch className="h-5 w-5 text-muted-foreground/40" />
+            <div className="flex flex-col items-center justify-center py-6 text-center">
+              <div className="w-8 h-8 rounded-md bg-muted flex items-center justify-center mb-2">
+                <ScanSearch className="h-4 w-4 text-muted-foreground/40" />
               </div>
-              <p className="text-sm font-medium text-foreground">
+              <p className="text-xs font-medium text-foreground">
                 No scans yet
               </p>
-              <p className="text-xs text-muted-foreground/70 mt-1 max-w-xs">
-                Enter a URL above to run your first scan.
+              <p className="text-[10px] text-muted-foreground/70 mt-0.5">
+                Enter a domain above to run your first scan.
               </p>
+              <a
+                href={ROUTES.DASHBOARD}
+                className="inline-flex items-center gap-1 text-[11px] font-medium text-primary hover:text-primary/80 transition-colors mt-2.5"
+              >
+                Start scanning
+                <ArrowRight className="h-3 w-3" />
+              </a>
             </div>
           ) : (
-            <div className="space-y-1">
+            <div className="space-y-0.5">
               {data.recentScans.map((scan) => (
                 <a
                   key={scan.id}
-                  href={`${ROUTES.HISTORY}#${scan.id}`}
-                  className="flex items-center gap-3 py-2.5 px-3 -mx-3 rounded-lg hover:bg-muted/30 transition-colors group"
+                  href={`${ROUTES.HISTORY}?scan=${scan.id}`}
+                  className="flex items-center gap-2 py-2 px-2 -mx-2 rounded-md hover:bg-muted/30 transition-colors group"
                 >
-                  <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-muted/50 shrink-0">
+                  <div className="flex items-center justify-center w-7 h-7 rounded-md bg-muted/50 shrink-0">
                     {scan.source === "api" ? (
-                      <Terminal className="h-3.5 w-3.5 text-violet-500" />
+                      <Terminal className="h-3 w-3 text-violet-500" />
                     ) : (
-                      <Globe className="h-3.5 w-3.5 text-cyan-500" />
+                      <Globe className="h-3 w-3 text-cyan-500" />
                     )}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-foreground truncate">
+                    <p className="text-xs font-medium text-foreground truncate">
                       {getHostname(scan.url)}
                     </p>
-                    <p className="text-xs text-muted-foreground">
+                    <p className="text-[10px] text-muted-foreground">
                       {formatRelativeTime(scan.scanned_at)}
                     </p>
                   </div>
-                  <div className="flex items-center gap-2 shrink-0">
+                  <div className="flex items-center gap-1.5 shrink-0">
                     <span
                       className={cn(
-                        "text-xs font-medium px-2 py-1 rounded-full tabular-nums",
+                        "text-[10px] font-medium px-1.5 py-0.5 rounded tabular-nums",
                         scan.findings_count > 0
-                          ? "text-[hsl(var(--severity-high))] bg-[hsl(var(--severity-high))]/10"
+                          ? scan.findings_count >= highPlusCritical && highPlusCritical > 0
+                            ? "text-[hsl(var(--severity-critical))] bg-[hsl(var(--severity-critical))]/10"
+                            : "text-[hsl(var(--severity-high))] bg-[hsl(var(--severity-high))]/10"
                           : "text-emerald-500 bg-emerald-500/10",
                       )}
                     >
                       {scan.findings_count > 0
-                        ? `${scan.findings_count} issues`
+                        ? `${scan.findings_count}`
                         : "Clean"}
                     </span>
-                    <ChevronRight className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+                    <ChevronRight className="h-3.5 w-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
                   </div>
                 </a>
               ))}
             </div>
           )}
-        </section>
+        </CardShell>
       </div>
     </div>
   );

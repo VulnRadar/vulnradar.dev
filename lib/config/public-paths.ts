@@ -18,21 +18,21 @@ export const PUBLIC_PATHS = [
   ROUTES.VERIFY_EMAIL,
 
   // ─── Authentication API Routes (v2) ────────────────────────────
-  API_V2.AUTH?.LOGIN || "/api/v2/auth/login",
-  API_V2.AUTH?.SIGNUP || "/api/v2/auth/signup",
-  API_V2.AUTH?.FORGOT_PASSWORD || "/api/v2/auth/forgot-password",
-  API_V2.AUTH?.RESET_PASSWORD || "/api/v2/auth/reset-password",
-  API_V2.AUTH?.ACCEPT_TOS || "/api/v2/auth/accept-tos",
-  API_V2.AUTH?.TWO_FA?.VERIFY || "/api/v2/auth/2fa/verify",
-  API_V2.AUTH?.VERIFY_EMAIL || "/api/v2/auth/verify-email",
-  API_V2.AUTH?.RESEND_VERIFICATION || "/api/v2/auth/resend-verification",
+  API_V2.AUTH?.LOGIN || "/api/v3/auth/login",
+  API_V2.AUTH?.SIGNUP || "/api/v3/auth/signup",
+  API_V2.AUTH?.FORGOT_PASSWORD || "/api/v3/auth/forgot-password",
+  API_V2.AUTH?.RESET_PASSWORD || "/api/v3/auth/reset-password",
+  API_V2.AUTH?.ACCEPT_TOS || "/api/v3/auth/accept-tos",
+  API_V2.AUTH?.TWO_FA?.VERIFY || "/api/v3/auth/2fa/verify",
+  API_V2.AUTH?.VERIFY_EMAIL || "/api/v3/auth/verify-email",
+  API_V2.AUTH?.RESEND_VERIFICATION || "/api/v3/auth/resend-verification",
 
   // ─── Discord OAuth (must be public for OAuth flow) ─────────────
-  "/api/v2/auth/discord",
-  "/api/v2/auth/discord/callback",
+  "/api/v3/auth/discord",
+  "/api/v3/auth/discord/callback",
 
   // ─── 2FA Email (needed for Discord login with email 2FA) ───────
-  "/api/v2/auth/2fa/email-send",
+  "/api/v3/auth/2fa/email-send",
 
   // ─── Legal Pages ───────────────────────────────────────────────
   ROUTES.LEGAL_TERMS,
@@ -54,28 +54,28 @@ export const PUBLIC_PATHS = [
   "/api/security-txt",
 
   // ─── Stripe Webhooks (must be public for Stripe to call) ───────
-  "/api/v2/webhooks/stripe",
-  "/api/v2/stripe/setup-webhook",
-  "/api/v2/stripe/setup-products",
+  "/api/v3/webhooks/stripe",
+  "/api/v3/stripe/setup-webhook",
+  "/api/v3/stripe/setup-products",
 
   // ─── Shared Scan Reports ───────────────────────────────────────
   "/shared",
-  "/api/v2/shared",
+  "/api/v3/shared",
 
   // ─── Public Demo (v2) ──────────────────────────────────────────
   ROUTES.DEMO,
-  API_V2.DEMO_SCAN || "/api/v2/demo-scan",
+  API_V2.DEMO_SCAN || "/api/v3/demo-scan",
 
   // ─── Public Staff Page (v2) ────────────────────────────────────
   ROUTES.STAFF,
-  API_V2.STAFF || "/api/v2/staff",
+  API_V2.STAFF || "/api/v3/staff",
 
   // ─── Public API Endpoints (v2) ─────────────────────────────────
-  API_V2.LANDING_CONTACT || "/api/v2/landing-contact",
+  API_V2.LANDING_CONTACT || "/api/v3/landing-contact",
 
   // ─── Public Badge Endpoints (v2) ────────────────────────────────
-  "/api/v2/badge",
+  "/api/v3/badge",
 
   // ─── Public Finding Types Endpoint (v2) ────────────────────────
-  API_V2.FINDING_TYPES || "/api/v2/finding-types",
+  API_V2.FINDING_TYPES || "/api/v3/finding-types",
 ];

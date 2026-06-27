@@ -21,14 +21,14 @@ export function ContactCategorySelector({
         </p>
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
         {CATEGORIES.map((cat) => (
           <button
             key={cat.id}
             type="button"
             onClick={() => onSelect(cat.id)}
             className={cn(
-              "flex flex-col items-center gap-2 p-4 rounded-xl border transition-all text-center",
+              "flex flex-col items-center gap-2 p-3 sm:p-4 rounded-xl border transition-all text-center",
               selected === cat.id
                 ? "border-primary bg-primary/5"
                 : "border-border/50 bg-card/50 hover:bg-card/80 hover:border-primary/30",
@@ -49,9 +49,11 @@ export function ContactCategorySelector({
                 )}
               />
             </div>
-            <div>
-              <p className="text-sm font-medium text-foreground">{cat.label}</p>
-              <p className="text-xs text-muted-foreground hidden sm:block">
+            <div className="min-w-0">
+              <p className="text-sm font-medium text-foreground truncate">
+                {cat.label}
+              </p>
+              <p className="text-xs text-muted-foreground hidden sm:block line-clamp-2">
                 {cat.desc}
               </p>
             </div>

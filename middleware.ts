@@ -9,14 +9,19 @@ const SECURITY_HEADERS: Record<string, string> = {
   // Next.js to function in dev/prod.
   "Content-Security-Policy": [
     "default-src 'self'",
-    "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://challenges.cloudflare.com https://static.cloudflareinsights.com https://embed.tawk.to https://*.tawk.to",
-    "script-src-elem 'self' 'unsafe-inline' https://challenges.cloudflare.com https://static.cloudflareinsights.com https://embed.tawk.to https://*.tawk.to",
-    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://embed.tawk.to https://*.tawk.to",
-    "style-src-elem 'self' 'unsafe-inline' https://fonts.googleapis.com https://embed.tawk.to https://*.tawk.to",
-    "font-src 'self' https://fonts.gstatic.com https://static.cloudflareinsights.com",
-    "img-src 'self' data: blob: https:",
-    "connect-src 'self' https://challenges.cloudflare.com https://embed.tawk.to https://*.tawk.to wss://*.tawk.to https://va.tawk.to https://static.cloudflareinsights.com",
-    "frame-src https://challenges.cloudflare.com https://embed.tawk.to https://*.tawk.to",
+    // BrowserBase additions for the live-view iframe:
+    //   - script/style/font: www.browserbase.com (DevTools frontend)
+    //   - img:           www.browserbase.com (icons)
+    //   - connect:       api.browserbase.com (REST) + wss://*.browserbase.com (CDP)
+    //   - frame:         www.browserbase.com (the embed target)
+    "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://challenges.cloudflare.com https://static.cloudflareinsights.com https://embed.tawk.to https://*.tawk.to https://www.browserbase.com",
+    "script-src-elem 'self' 'unsafe-inline' https://challenges.cloudflare.com https://static.cloudflareinsights.com https://embed.tawk.to https://*.tawk.to https://www.browserbase.com",
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://embed.tawk.to https://*.tawk.to https://www.browserbase.com",
+    "style-src-elem 'self' 'unsafe-inline' https://fonts.googleapis.com https://embed.tawk.to https://*.tawk.to https://www.browserbase.com",
+    "font-src 'self' https://fonts.gstatic.com https://static.cloudflareinsights.com https://www.browserbase.com",
+    "img-src 'self' data: blob: https: https://www.browserbase.com",
+    "connect-src 'self' https://challenges.cloudflare.com https://embed.tawk.to https://*.tawk.to wss://*.tawk.to https://va.tawk.to https://static.cloudflareinsights.com https://api.browserbase.com wss://*.browserbase.com",
+    "frame-src https://challenges.cloudflare.com https://embed.tawk.to https://*.tawk.to https://www.browserbase.com",
     "frame-ancestors 'none'",
     "base-uri 'self'",
     "form-action 'self'",
@@ -36,6 +41,19 @@ const SECURITY_HEADERS: Record<string, string> = {
 };
 
 function applySecurityHeaders(response: NextResponse): NextResponse {
+  // Set DISABLE_CSP=1 in .env.local to ship the app without any
+  // security headers. Useful when debugging a third-party embed
+  // (BrowserBase, Turnstile, etc.) and you want to confirm whether
+  // CSP/CORP/COOP is the blocker. Self-hosters: leave it unset.
+  if (process.env.DISABLE_CSP === "1") {
+    response.headers.delete("X-Powered-By");
+    response.headers.delete("Server");
+    response.headers.delete("X-AspNet-Version");
+    response.headers.delete("X-AspNetMvc-Version");
+    response.headers.delete("X-Runtime");
+    response.headers.delete("X-Version");
+    return response;
+  }
   for (const [key, value] of Object.entries(SECURITY_HEADERS)) {
     response.headers.set(key, value);
   }
@@ -91,7 +109,7 @@ export function middleware(request: NextRequest) {
   const hasBearerToken = request.headers
     .get("authorization")
     ?.startsWith("Bearer ");
-  if (hasBearerToken && pathname.startsWith("/api/v2/")) {
+  if (hasBearerToken && pathname.startsWith("/api/v3/")) {
     return applySecurityHeaders(NextResponse.next());
   }
 

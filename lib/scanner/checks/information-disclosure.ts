@@ -691,9 +691,6 @@ export const detectors: Record<string, DetectFn> = {
     if (comments.length > 0) {
       return `Page contains ${comments.length} HTML comment(s) — verify none reference secrets, TODOs, or internal notes.`;
     }
-    if (/<html/i.test(body)) {
-      return "HTML page served — verify no sensitive data leaks via HTML comments (use a build step that strips comments).";
-    }
     return null;
   },
 
@@ -714,9 +711,6 @@ export const detectors: Record<string, DetectFn> = {
         return `SQL error message exposed in body — matches pattern ${p.source}.`;
       }
     }
-    if (/<html/i.test(body)) {
-      return "HTML page served — verify error handlers never surface raw SQL exceptions to clients.";
-    }
     return null;
   },
 
@@ -728,22 +722,13 @@ export const detectors: Record<string, DetectFn> = {
     if (tao) {
       return `Timing-Allow-Origin is '${tao}' — verify it is restricted to specific trusted origins.`;
     }
-    if (/<html/i.test(body)) {
-      return "HTML page served — if Timing-Allow-Origin is needed, restrict to specific trusted origins, never '*'.";
-    }
     return null;
   },
 
-  "server-header-truncated": (_url, headers, body) => {
+  "server-header-truncated": (_url, headers, _body) => {
     const server = getHeader(headers, "server");
     if (server && /\(truncated\)/i.test(server)) {
       return `Server header ends with '(truncated)' (${server}) — verify the upstream is not echoing real versions.`;
-    }
-    if (server) {
-      return `Server header is '${server}' — confirm the upstream is not leaking real versions.`;
-    }
-    if (/<html/i.test(body)) {
-      return "HTML page served — verify the Server header does not echo a real upstream version (no '(truncated)' leakage).";
     }
     return null;
   },
@@ -846,9 +831,6 @@ export const detectors: Record<string, DetectFn> = {
     ) {
       return "Reference to a public config.js / settings.js — verify it does not embed API keys or environment hints.";
     }
-    if (/<html/i.test(body)) {
-      return "HTML body present — verify that /config.js and /settings.js are not served from public paths with secrets.";
-    }
     return null;
   },
 
@@ -859,9 +841,6 @@ export const detectors: Record<string, DetectFn> = {
       /['"]\/env\.js['"]/i.test(body)
     ) {
       return "Reference to a public env.js / environment.js — never serve env.js from a public path.";
-    }
-    if (/<html/i.test(body)) {
-      return "HTML body present — verify that /env.js is not served from a public path with environment secrets.";
     }
     return null;
   },
@@ -874,9 +853,6 @@ export const detectors: Record<string, DetectFn> = {
     }
     if (/<sitemap/i.test(body) || /<link[^>]*rel=["']sitemap/i.test(body)) {
       return "Page references a sitemap — verify it does not include admin or private paths.";
-    }
-    if (/<html/i.test(body)) {
-      return "HTML page served — verify sitemap.xml does not include admin or private paths.";
     }
     return null;
   },
@@ -895,9 +871,6 @@ export const detectors: Record<string, DetectFn> = {
       !/disallow\s*:/i.test(body)
     ) {
       return "robots.txt-equivalent content allows all user-agents with no Disallow rules.";
-    }
-    if (/<html/i.test(body)) {
-      return "HTML page served — verify /robots.txt disallows admin/private paths and is not 'Allow: /' everywhere.";
     }
     return null;
   },
@@ -949,11 +922,11 @@ export const detectors: Record<string, DetectFn> = {
     if (matches && matches.length > 0) {
       return `Google reCAPTCHA site key exposed: ${matches[0]!.slice(0, 12)}… — site keys are not secret, but rotate if abused.`;
     }
+    if (/(?:6[LM][A-Za-z0-9_-]{8,})/.test(body)) {
+      return "Possible Google reCAPTCHA site key pattern found in body — verify the value is benign.";
+    }
     if (/google\.com\/recaptcha/i.test(body)) {
       return "Page references Google reCAPTCHA — site keys are not secret, but verify rotation policy.";
-    }
-    if (/<html/i.test(body)) {
-      return "HTML page served — verify no reCAPTCHA site key (6L.../6M...) leaks in page source.";
     }
     return null;
   },
@@ -968,9 +941,6 @@ export const detectors: Record<string, DetectFn> = {
     if (/google-analytics\.com|googletagmanager\.com/i.test(body)) {
       return "Page references Google Analytics — tracking IDs are public but verify the property is the correct one.";
     }
-    if (/<html/i.test(body)) {
-      return "HTML page served — verify no GA tracking ID (UA-XXXX / G-XXXX) leaks in page source.";
-    }
     return null;
   },
 
@@ -983,9 +953,6 @@ export const detectors: Record<string, DetectFn> = {
     }
     if (/nginx\/\d+\.\d+\.\d+/i.test(body)) {
       return "Body references 'nginx/X.Y.Z' — a default nginx error page is leaking the version.";
-    }
-    if (/<html/i.test(body)) {
-      return "HTML page served — verify the nginx version is not leaked via Server header or default error pages.";
     }
     return null;
   },
@@ -1005,9 +972,6 @@ export const detectors: Record<string, DetectFn> = {
     ) {
       return "HTML body contains the Apache 'Server at example.com Port N' footer — default error page disclosure.";
     }
-    if (/<html/i.test(body)) {
-      return "HTML page served — verify the Apache version is not leaked via Server header or default error pages.";
-    }
     return null;
   },
 
@@ -1016,8 +980,8 @@ export const detectors: Record<string, DetectFn> = {
     if (/Microsoft-IIS\/\d+\.\d+/i.test(server)) {
       return `Server header exposes IIS version: '${server}' — use URL Rewrite or web.config to remove the Server header.`;
     }
-    if (/<html/i.test(body)) {
-      return "HTML page served — verify the IIS version is not leaked via Server header or detailed error pages.";
+    if (/Microsoft-IIS\/\d+\.\d+/i.test(body)) {
+      return "Body references 'Microsoft-IIS/X.Y' — a default IIS error page is leaking the version.";
     }
     return null;
   },
@@ -1034,23 +998,17 @@ export const detectors: Record<string, DetectFn> = {
     ) {
       return "Express default error page / stack trace detected — set NODE_ENV=production and use a sanitized error handler.";
     }
-    if (/<html/i.test(body)) {
-      return "HTML page served — verify the response is not the default Express error page (NODE_ENV=production).";
-    }
     return null;
   },
 
   "flask-debug-page-exposure": (_url, _headers, body) => {
     if (
-      /Werkzeug Debugger|TRACEBACK\s*\(most recent call first\)/i.test(body)
+      /Werkzeug Debugger|TRACEBACK\s*\(most recent call (?:first|last)\)/i.test(body)
     ) {
       return "Flask Werkzeug interactive debugger page exposed — set debug=False / FLASK_ENV=production.";
     }
     if (/<title>\s*Werkzeug Debugger/i.test(body)) {
       return "Werkzeug debugger console detected in HTML — disable debug mode in any internet-reachable environment.";
-    }
-    if (/<html/i.test(body)) {
-      return "HTML page served — verify the Werkzeug interactive debugger is not exposed in production.";
     }
     return null;
   },
@@ -1060,12 +1018,10 @@ export const detectors: Record<string, DetectFn> = {
       /Django\s+Version\s*:\s*\d+\.\d+/i.test(body) ||
       /You're\s+seeing\s+this\s+error\s+because\s+you\s+have\s+<code>DJANGO_DEBUG<\/code>\s+set\s+to\s+True/i.test(
         body,
-      )
+      ) ||
+      /DJANGO_SETTINGS_MODULE\s*=/i.test(body)
     ) {
       return "Django technical 500 / debug page exposed — set DEBUG=False in production.";
-    }
-    if (/<html/i.test(body)) {
-      return "HTML page served — verify Django DEBUG=False and the technical 500 page is suppressed.";
     }
     return null;
   },
@@ -1075,12 +1031,10 @@ export const detectors: Record<string, DetectFn> = {
       /<title>\s*Welcome\s+aboard\s*<\/title>/i.test(body) ||
       /ActionController::(Routing|Unknown|Render)\s+Error/i.test(body) ||
       /ActionView::(Template::)?Error/i.test(body) ||
-      /Rails\s+\d+\.\d+\.\d+.*application/i.test(body)
+      /Rails\s+\d+\.\d+\.\d+.*application/i.test(body) ||
+      /Rails\.root\s*:/i.test(body)
     ) {
       return "Rails default / development error page detected — set RAILS_ENV=production and consider_all_requests_local=false.";
-    }
-    if (/<html/i.test(body)) {
-      return "HTML page served — verify the Rails development error page is not exposed.";
     }
     return null;
   },
@@ -1095,9 +1049,6 @@ export const detectors: Record<string, DetectFn> = {
     ) {
       return "Spring Boot Actuator endpoints referenced in page source — disable or strongly authenticate them.";
     }
-    if (/<html/i.test(body)) {
-      return "HTML page served — verify /actuator/* endpoints are not exposed without authentication.";
-    }
     return null;
   },
 
@@ -1110,12 +1061,9 @@ export const detectors: Record<string, DetectFn> = {
     if (
       /X-Jenkins/i.test(body) ||
       /<title>\s*Jenkins\s*</i.test(body) ||
-      /Jenkins\s+\d+\.\d+/i.test(body)
+      /Jenkins\s+(?:ver\.?|v)?\s*\d+\.\d+/i.test(body)
     ) {
       return "Jenkins version disclosed in body — front with an authenticating reverse proxy that strips X-Jenkins.";
-    }
-    if (/<html/i.test(body)) {
-      return "HTML page served — verify the Jenkins version is not leaked in headers or the login page footer.";
     }
     return null;
   },
@@ -1125,8 +1073,8 @@ export const detectors: Record<string, DetectFn> = {
     if (gv) {
       return `X-Grafana-Version header exposes Grafana version: '${gv}' — front with a reverse proxy that strips the header.`;
     }
-    if (/<html/i.test(body)) {
-      return "HTML page served — verify X-Grafana-Version is not leaking the Grafana version at the edge.";
+    if (/Grafana\s+(?:v|ver\.?|version)?\s*\d+\.\d+/i.test(body)) {
+      return "Grafana version disclosed in body — front with a reverse proxy that strips version fingerprints.";
     }
     return null;
   },
@@ -1137,9 +1085,6 @@ export const detectors: Record<string, DetectFn> = {
       hasHeader(headers, "next-router-state-tree")
     ) {
       return "Next.js 13+ App Router RSC headers detected (RSC, Next-Router-State-Tree) — informational fingerprint.";
-    }
-    if (/<html/i.test(body)) {
-      return "HTML page served — verify Next.js RSC headers (RSC, Next-Router-State-Tree) are not leaking framework info.";
     }
     return null;
   },
@@ -1154,8 +1099,12 @@ export const detectors: Record<string, DetectFn> = {
         return `SvelteKit debug header '${name}' detected — informational fingerprint; consider stripping at the reverse proxy.`;
       }
     }
-    if (/<html/i.test(body)) {
-      return "HTML page served — verify SvelteKit debug headers (x-sveltekit-*) are stripped at the reverse proxy.";
+    if (
+      /\/__data\.json/i.test(body) ||
+      /data-sveltekit/i.test(body) ||
+      /sveltekit:\/\//i.test(body)
+    ) {
+      return "SvelteKit runtime fingerprint found in body (e.g. __data.json, data-sveltekit) — informational only.";
     }
     return null;
   },
@@ -1167,9 +1116,6 @@ export const detectors: Record<string, DetectFn> = {
       /\bvite\/hmr\b/i.test(body)
     ) {
       return "Vite dev client / HMR script reference found — the dev server is exposed; build with 'vite build' and serve dist/ from a static host.";
-    }
-    if (/<html/i.test(body)) {
-      return "HTML page served — verify the Vite dev server (@vite/client) is not exposed in production.";
     }
     return null;
   },
@@ -1184,8 +1130,12 @@ export const detectors: Record<string, DetectFn> = {
     ) {
       return "AWS S3 XML error response (NoSuchBucket / AccessDenied / SlowDown) detected — front S3 with CloudFront and genericize error pages.";
     }
-    if (/<html/i.test(body)) {
-      return "HTML page served — verify S3 XML error pages (NoSuchBucket, AccessDenied) are not exposed.";
+    if (
+      /NoSuchBucket[:\s]/i.test(body) ||
+      /The specified bucket does not exist/i.test(body) ||
+      /AccessDenied[:\s].*(?:s3|bucket)/i.test(body)
+    ) {
+      return "AWS S3 error message exposed in body (NoSuchBucket / bucket does not exist) — front S3 with CloudFront and genericize error pages.";
     }
     return null;
   },
@@ -1198,9 +1148,6 @@ export const detectors: Record<string, DetectFn> = {
       /SQLSTATE\[HY000\]\[1045\]/i.test(body)
     ) {
       return "MySQL 'Access denied' error pattern exposed — catch the exception in the app layer and return a generic 500.";
-    }
-    if (/<html/i.test(body)) {
-      return "HTML page served — verify MySQL error patterns (Access denied, SQLSTATE) don't leak in responses.";
     }
     return null;
   },

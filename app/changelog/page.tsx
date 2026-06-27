@@ -64,6 +64,7 @@ import {
   UserCog,
   CheckCircle2,
   Package,
+  Server,
   type LucideIcon,
 } from "lucide-react";
 import { APP_NAME } from "@/lib/config/constants";
@@ -120,6 +121,76 @@ interface Release {
 
 const CHANGELOG: Release[] = [
   {
+    version: "3.0.0",
+    date: "June 25, 2026",
+    title: "Simpler Scanner UX, Service Probes by Hostname, Detection Engine v3",
+    highlights: true,
+    summary:
+      "Major UX rewrite of the scanner. Drop the protocol dropdown — just type a domain. Service probes (SSH, SMTP, IMAP, POP3, FTP, MongoDB) are togglable on the right with per-probe port inputs. Detection Engine bumped to v3.0.0 with cleaner category coverage. URL state for /dashboard is query-param driven (mode, probes). API: send probes: [\"ssh:22\", \"smtp:587\"] in the scan request body.",
+    changes: [
+      {
+        icon: Layout,
+        label: "Simpler /dashboard — URL + Right-Side Service Probes",
+        desc: "Replaced the protocol dropdown (14 protocols) and scanners popover (12 categories) with a single domain input + a 6-chip service-probe panel. Mode toggle (Quick / Deep / Bulk) is always visible so you can switch out of Bulk back to a single scan. Each probe row has a port input with quick-pick chips for common ports. Web checks (12 categories) always run automatically.",
+        category: "changed",
+      },
+      {
+        icon: Server,
+        label: "Service Probes by Hostname, Not URL Scheme",
+        desc: "Probes open a TCP socket to the target hostname on a user-supplied port. Independent of URL scheme — you can ask \"does github.com also run SSH?\" with `probes: [\"ssh:22\"]` without constructing `ssh://github.com`. Default ports (22, 25, 143, 110, 21, 27017) are used if you omit the port. Each probe emits reachability + version-disclosure findings. Validated against an allowlist to prevent arbitrary port probing.",
+        category: "added",
+      },
+      {
+        icon: Link2,
+        label: "URL State for /dashboard (mode + probes + ports)",
+        desc: "Replaced all hash-based state with query params: /dashboard?mode=deep&probes=ssh:22,smtp:587. State is shareable, browser back/forward works, and the URL reflects the current scanner config. New lib/ui/url-state.ts helper exposes getQueryParam, setQueryParam, useQueryParam, useQueryParamInt with vr:query-change CustomEvent + popstate subscription.",
+        category: "added",
+      },
+      {
+        icon: Shield,
+        label: "Detection Engine v3.0.0",
+        desc: "Detection Engine version bumped 2.4.0 → 3.0.0 alongside the UX rewrite. Same 739 checks, same 12 categories, same severities. No detection regressions — the engine code is unchanged from v2.4.0's false-positive overhaul. The version bump reflects the new scanner UX surface (service probes as a first-class concept) rather than engine internals.",
+        category: "changed",
+      },
+      {
+        icon: Code,
+        label: "API: `probes` Field on /api/v3/scan",
+        desc: "New optional `probes` field on POST /api/v3/scan request body. Array of `\"<service>:<port>\"` strings. Example: `{\"url\": \"example.com\", \"probes\": [\"ssh:22\", \"smtp:587\"]}`. Old `scanners` field still accepted (advanced per-category override). URL normalization: bare hostnames auto-prepended with https://.",
+        category: "added",
+      },
+      {
+        icon: Settings,
+        label: "Per-Family Check Toggle (12 Categories, Auto-Disable for HTTP)",
+        desc: "New \"Check families\" panel in the scan form lets you enable/disable any of the 12 web check families (Headers, SSL, TLS, Cookies, Content, Info, Config, DNS, Email, API, Code, Secrets). When the URL starts with http:// (no TLS), SSL and TLS are auto-disabled but you can re-enable them manually if you want. State syncs to the URL via ?family_ssl=0 etc.",
+        category: "added",
+      },
+      {
+        icon: Code,
+        label: "API Moved to v3 — v1 and v2 Removed",
+        desc: "All endpoints moved from /api/v2/ to /api/v3/. v1 and v2 routes deleted. CONFIG_API_VERSION='v3', CONFIG_API_SUPPORTED_VERSIONS=['v3']. lib/config/constant.ts renamed API_V2 → API_V3 (API_V2 kept as alias for back-compat). All client fetch calls, middleware, public-paths allowlist, and the api-deprecation middleware updated. Docs only describe v3.",
+        category: "changed",
+      },
+      {
+        icon: Server,
+        label: "Raw IPv4 Targets + Probe-Only Mode",
+        desc: "API + scan form accept a public IPv4 literal as the target. Web checks (headers, SSL, TLS, cookies, content, info, configuration, code, secrets, API) are skipped — they need a hostname context — and DNS + email + any opted-in service probes still run. SSRF guards reject private/loopback IPs as before. Scanners UI auto-disables the affected families with a line-through and shows 'Raw IP detected — only DNS + service probes will run.' on the form.",
+        category: "added",
+      },
+      {
+        icon: Eye,
+        label: "BrowserBase Live Browser Sessions (View Page)",
+        desc: "Optional integration with BrowserBase. Set BROWSERBASE_API_KEY + BROWSERBASE_PROJECT_ID in .env and a 'View Page' button appears on scan results. It opens a 5-minute remote browser session in a popup at /browser/{id} with the iframe view, a live countdown timer, and an End session button. The session auto-ends when the popup closes (no history). TTL hard-clamped to 300s. POST/GET/DELETE /api/v3/browser/sessions documented in the API reference.",
+        category: "added",
+      },
+      {
+        icon: Settings,
+        label: "Dashboard: Scanners + Probes Split + Compact Controls",
+        desc: "Replaced the single 'All Scanners' button with two separate dropdowns — one for check families (12), one for service probes (6). Both fit inline next to the Scan button. Mode toggle, URL input, and buttons all compacted to size='sm' (h-9, text-xs) to match the power-tool aesthetic of the rest of the dashboard.",
+        category: "changed",
+      },
+    ],
+  },
+  {
     version: "2.3.1",
     date: "June 20, 2026",
     title: "Tooling Hardening, Node 22 LTS, Schema Version Gate",
@@ -169,6 +240,12 @@ const CHANGELOG: Release[] = [
         desc: "npm 10+ blocks install scripts by default. .npmrc now allow-scripts for bcrypt, esbuild, sharp, unrs-resolver, and core-js so the native postinstalls run automatically on every install. Without these, the app would break at runtime with no esbuild binary or missing sharp. Also sets audit-level=high, fund=false, and update-notifier=false for cleaner CI logs.",
         category: "changed",
       },
+      {
+        icon: Bug,
+        label: "Detection Engine v2.4.0 — False-Positive Overhaul",
+        desc: "Detection Engine bumped to v2.4.0 after a major false-positive sweep against vulnradar.dev and sandbox.vulnradar.dev. Removed 25 HTML-body-fallback stub branches in lib/scanner/checks/information-disclosure.ts that fired `verify ...` evidence on every HTML page. Removed 7 generic fallback messages in code.ts (dangerouslySetInnerHTML, localStorage, sessionStorage) that fired on every Next.js page because the framework's bundled JS contains the keywords. Removed 2 Server-Timing content-type fallbacks in configuration.ts. Fixed OG-injection regex bug where `on\\w+=` matched `ontent=` inside `content=` (false-positive on every Next.js page with SVG icons followed by streaming scripts). Fixed vary-origin-missing-cors detector to only fire when Access-Control-Allow-Origin is actually dynamic (was firing on every HTML page without CORS). Fixed weak-crypto regex with word boundaries so `des` inside `description` no longer matches (was firing on every Next.js page). Tightened phone-number-leak regex to require separator chars between digit groups so Cloudflare Ray IDs are not flagged as phone numbers. Tightened code-xss-angular-bypass-dynamic to match only Angular `[innerHTML]` bindings, not React's `dangerouslySetInnerHTML`. Removed duplicate detector implementations: `reverse-tabnabbing` (now consolidated to `target-blank-no-noopener` in headers.ts), `cross-origin-embedder-policy-credentialless-missing` (duplicate of `coep-credentialless`), and 12 other stub JSON entries with no backing detector. Fixed CORP-Report-Only detector (CORP doesn't have a Report-Only variant). Fixed JSON metadata mismatches where titles/evidence didn't match detector output (early-data-header-missing now correctly describes TLS 1.3 0-RTT instead of rate limiting; cf-ray-header now correctly describes CDN request ID; config-file-leaked no longer has inline-style-attr metadata; coep-credentialless-missing, unsafe-target-blank, window-opener-leak all removed). Net effect: vulnradar.dev scan findings 177 → ~70, with all remaining findings backed by real evidence or correctly marked info-level.",
+        category: "fixed",
+      },
       // ── Second-round security audit (post-release) ────────────────────
       {
         icon: ScanSearch,
@@ -180,13 +257,13 @@ const CHANGELOG: Release[] = [
         icon: Network,
         label:
           "9 New Protocols: SSH, SFTP, SMTP, SMTPS, IMAP, IMAPS, POP3, POP3S, MongoDB",
-        desc: "New lib/scanner/protocols/banner.ts with grabBanner() + bannerVersion() helpers. /api/v2/scan now dispatches these protocols to a real TCP banner-grab path (was HTTP-only). lib/scanner/protocols/index.ts has 14 protocol configs; lib/scanner/protocols/banner.ts returns a normalised { banner, version } pair regardless of protocol.",
+        desc: "New lib/scanner/protocols/banner.ts with grabBanner() + bannerVersion() helpers. /api/v3/scan now dispatches these protocols to a real TCP banner-grab path (was HTTP-only). lib/scanner/protocols/index.ts has 14 protocol configs; lib/scanner/protocols/banner.ts returns a normalised { banner, version } pair regardless of protocol.",
         category: "added",
       },
       {
         icon: Layers,
         label: "Scanner Categories UX: New Icons + Total Count Bumped",
-        desc: "components/scanner/scan-form.tsx extended to 12 categories with Cpu, KeyRound, Boxes, MailCheck, Network icons. lib/config/config-values.ts TOTAL_CHECKS_LABEL bumped 310+ → 700+. /api/v2/finding-types now returns {success, count, categories, data} from the new registry (was the monolithic 311-check JSON).",
+        desc: "components/scanner/scan-form.tsx extended to 12 categories with Cpu, KeyRound, Boxes, MailCheck, Network icons. lib/config/config-values.ts TOTAL_CHECKS_LABEL bumped 310+ → 700+. /api/v3/finding-types now returns {success, count, categories, data} from the new registry (was the monolithic 311-check JSON).",
         category: "changed",
       },
       {
@@ -1011,7 +1088,7 @@ const CHANGELOG: Release[] = [
       {
         icon: Trash2,
         label: "DELETE Handler for History",
-        desc: "Implemented missing DELETE handler for /api/v2/history/[id] endpoint. Users can now delete individual scans via API with proper authentication and rate limiting applied.",
+        desc: "Implemented missing DELETE handler for /api/v3/history/[id] endpoint. Users can now delete individual scans via API with proper authentication and rate limiting applied.",
         category: "added",
       },
       {
@@ -1029,7 +1106,7 @@ const CHANGELOG: Release[] = [
       {
         icon: AlertTriangle,
         label: "Rate Limit Exemption for Discovery",
-        desc: "Discover endpoint (/api/v2/scan/crawl/discover) properly exempted from rate limiting per documentation. Users can perform unlimited discovery operations without consuming daily API quota.",
+        desc: "Discover endpoint (/api/v3/scan/crawl/discover) properly exempted from rate limiting per documentation. Users can perform unlimited discovery operations without consuming daily API quota.",
         category: "changed",
       },
       {
@@ -1081,7 +1158,7 @@ const CHANGELOG: Release[] = [
       {
         icon: Key,
         label: "API Route Authentication Fix",
-        desc: "Fixed critical bug where /api/v2/scan/crawl, /api/v2/scan/bulk, /api/v2/history, and /api/v2/history/[id] routes only accepted session auth but not API key authentication. All endpoints now properly support Bearer token authentication with rate limiting.",
+        desc: "Fixed critical bug where /api/v3/scan/crawl, /api/v3/scan/bulk, /api/v3/history, and /api/v3/history/[id] routes only accepted session auth but not API key authentication. All endpoints now properly support Bearer token authentication with rate limiting.",
         category: "fixed",
       },
       {
@@ -1281,7 +1358,7 @@ const CHANGELOG: Release[] = [
       {
         icon: Zap,
         label: "API v2 Migration",
-        desc: "All API endpoints migrated from /api/v1/ to /api/v2/ with automatic deprecation warnings. New API_VERSION constant enables single-source version control. v1 endpoints return deprecation headers directing developers to upgrade. Full backward compatibility maintained during transition period.",
+        desc: "All API endpoints migrated from /api/v1/ to /api/v3/ with automatic deprecation warnings. New API_VERSION constant enables single-source version control. v1 endpoints return deprecation headers directing developers to upgrade. Full backward compatibility maintained during transition period.",
         category: "changed",
       },
       {

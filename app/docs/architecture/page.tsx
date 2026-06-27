@@ -263,11 +263,14 @@ export default function ArchitecturePage() {
         </DocsSubSection>
 
         <DocsSubSection title="4. Scanner Engine">
-          <p>The detection engine is split into four files:</p>
+          <p>The detection engine is split across per-category files:</p>
           <ul className="list-disc pl-6 space-y-2 text-muted-foreground">
             <li>
-              <code>lib/scanner/checks.ts</code> — 215 sync detector functions;
-              one <code>Finding</code> per match
+              <code>lib/scanner/checks/*.ts</code> — 9 per-category detector
+              modules (headers, ssl, content, cookies, configuration,
+              information-disclosure, code, api, secrets-extended). Each exports{" "}
+              <code>detectors: Record&lt;id, EvidenceFn&gt;</code> where{" "}
+              <code>EvidenceFn</code> returns <code>string | null</code>.
             </li>
             <li>
               <code>lib/scanner/checks-data/*.json</code> — human-readable
@@ -285,7 +288,9 @@ export default function ArchitecturePage() {
             <li>
               <code>lib/scanner/protocols/</code> — protocol-specific warnings:{" "}
               <code>https.ts</code>, <code>websocket.ts</code> (8 check IDs),{" "}
-              <code>ftp.ts</code> (4 check IDs)
+              <code>ftp.ts</code> (4 check IDs),{" "}
+              <code>banner.ts</code> (TCP banner-grab for service probes — ssh,
+              smtp, imap, pop3, ftp, mongodb)
             </li>
             <li>
               <code>lib/scanner/safe-fetch.ts</code> — SSRF protection: blocks
@@ -303,11 +308,25 @@ export default function ArchitecturePage() {
             </li>
           </ul>
           <p>
-            Categories (<code>lib/scanner/types.ts</code>): <code>headers</code>
-            , <code>ssl</code>, <code>content</code>, <code>cookies</code>,{" "}
+            Categories (<code>lib/scanner/types.ts</code>, 12 total):{" "}
+            <code>headers</code>, <code>ssl</code>, <code>tls</code>,{" "}
+            <code>content</code>, <code>cookies</code>,{" "}
             <code>configuration</code>, <code>information-disclosure</code>,{" "}
-            <code>dns</code>. Severities: <code>info</code>, <code>low</code>,{" "}
-            <code>medium</code>, <code>high</code>, <code>critical</code>.
+            <code>dns</code>, <code>email</code>, <code>api</code>,{" "}
+            <code>code</code>, <code>secrets-extended</code>. Severities:{" "}
+            <code>info</code>, <code>low</code>, <code>medium</code>,{" "}
+            <code>high</code>, <code>critical</code>.
+          </p>
+          <p>
+            Service probes (<code>lib/scanner/protocols/banner.ts</code>) open a
+            bounded TCP socket to the target hostname on a well-known or
+            user-supplied port, read the greeting, and report version
+            disclosure + reachability. The 6 supported probes are:{" "}
+            <code>ssh</code>, <code>smtp</code>, <code>imap</code>,{" "}
+            <code>pop3</code>, <code>ftp</code>, <code>mongodb</code>. Probes
+            are independent of the URL scheme — opt into{" "}
+            <code>"probes": ["ssh:2222"]</code> from the dashboard without
+            constructing <code>ssh://host</code>.
           </p>
         </DocsSubSection>
 
@@ -355,8 +374,8 @@ export default function ArchitecturePage() {
             </li>
             <li>
               Stripe products are auto-created on first call to{" "}
-              <code>GET /api/v2/stripe/setup-products</code>; webhooks via{" "}
-              <code>GET /api/v2/stripe/setup-webhook</code>
+              <code>GET /api/v3/stripe/setup-products</code>; webhooks via{" "}
+              <code>GET /api/v3/stripe/setup-webhook</code>
             </li>
             <li>
               Subscription state lives on the <code>users</code> row:{" "}
@@ -366,7 +385,7 @@ export default function ArchitecturePage() {
               <code>cancel_at_period_end</code>
             </li>
             <li>
-              Webhook handler: <code>app/api/v2/webhooks/stripe/route.ts</code>{" "}
+              Webhook handler: <code>app/api/v3/webhooks/stripe/route.ts</code>{" "}
               processes <code>checkout.session.completed</code>,{" "}
               <code>customer.subscription.created/updated/deleted</code>, and{" "}
               <code>invoice.payment_succeeded/failed</code>
@@ -418,14 +437,14 @@ export default function ArchitecturePage() {
   ▼
 middleware.ts
   - Allow public paths (lib/config/public-paths.ts)
-  - For /api/v2/* with Authorization: Bearer … → pass through
+  - For /api/v3/* with Authorization: Bearer … → pass through
     (the route handler performs API-key validation)
   - Otherwise: parse session cookie → look up session row
     - Disabled / expired session → destroy cookie, redirect to /login
   - Inject Cross-Origin-* security headers
   │
   ▼
-Route handler (app/api/v2/<resource>/route.ts)
+Route handler (app/api/v3/<resource>/route.ts)
   1. withErrorHandling wrapper
   2. Auth check (getSession OR validateApiKey)
   3. Rate limit check (lib/rate-limiting/rate-limit.ts)

@@ -60,24 +60,24 @@ export const adminApi = {
   // Teams
   getTeams: (params: { page?: number; limit?: number; search?: string }) =>
     apiGet<import("./types.responses").AdminTeamsResponse>(
-      "/api/v2/admin/teams",
+      "/api/v3/admin/teams",
       params,
     ),
 
   getTeamDetail: (teamId: number) =>
     apiGet<import("./types.responses").AdminTeamDetailResponse>(
-      `/api/v2/admin/teams/${teamId}`,
+      `/api/v3/admin/teams/${teamId}`,
     ),
 
   renameTeam: (teamId: number, name: string) =>
     apiPatch<import("./types.responses").TeamRenameResponse>(
-      "/api/v2/admin/teams",
+      "/api/v3/admin/teams",
       { teamId, name },
     ),
 
   deleteTeam: (teamId: number) =>
     apiDelete<import("./types.responses").TeamDeleteResponse>(
-      "/api/v2/admin/teams",
+      "/api/v3/admin/teams",
       { teamId },
     ),
 };

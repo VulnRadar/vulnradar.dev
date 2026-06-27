@@ -174,7 +174,7 @@ export function NotificationsManager() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/v2/admin/notifications");
+      const res = await fetch("/api/v3/admin/notifications");
       if (!res.ok) throw new Error("Failed to fetch notifications");
       const data = await res.json();
       setNotifications(data.notifications || []);
@@ -271,8 +271,8 @@ export function NotificationsManager() {
         priority: parseInt(formData.priority) || 0,
       };
       const url = editingNotification
-        ? `/api/v2/admin/notifications/${editingNotification.id}`
-        : "/api/v2/admin/notifications";
+        ? `/api/v3/admin/notifications/${editingNotification.id}`
+        : "/api/v3/admin/notifications";
       const res = await fetch(url, {
         method: editingNotification ? "PUT" : "POST",
         headers: { "Content-Type": "application/json" },
@@ -293,7 +293,7 @@ export function NotificationsManager() {
     setDeleting(true);
     try {
       const res = await fetch(
-        `/api/v2/admin/notifications/${pendingDelete.id}`,
+        `/api/v3/admin/notifications/${pendingDelete.id}`,
         { method: "DELETE" },
       );
       if (!res.ok) throw new Error("Failed to delete");
@@ -308,7 +308,7 @@ export function NotificationsManager() {
 
   const handleToggleActive = async (notif: AdminNotification) => {
     try {
-      const res = await fetch(`/api/v2/admin/notifications/${notif.id}`, {
+      const res = await fetch(`/api/v3/admin/notifications/${notif.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ...notif, is_active: !notif.is_active }),

@@ -24,7 +24,7 @@ export function addDeprecationHeaders(
   response.headers.set("Sunset", new Date(V1_SUNSET_DATE).toUTCString());
 
   // Link to v2 equivalent
-  const v2Endpoint = endpoint.replace("/api/v1/", "/api/v2/");
+  const v2Endpoint = endpoint.replace("/api/v1/", "/api/v3/");
   response.headers.set(
     "Link",
     `<${APP_URL}${v2Endpoint}>; rel="successor-version"`,
@@ -61,7 +61,7 @@ export function getDeprecationNotice(endpoint: string) {
       message:
         "This API version (v1) is deprecated and will be removed on " +
         V1_SUNSET_DATE,
-      successor: endpoint.replace("/api/v1/", "/api/v2/"),
+      successor: endpoint.replace("/api/v1/", "/api/v3/"),
       documentation: `${APP_URL}/docs/developers`,
       sunset_date: V1_SUNSET_DATE,
     },

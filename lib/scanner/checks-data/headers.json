@@ -641,30 +641,35 @@
   },
   {
     "id": "early-data-header-missing",
-    "type": "combined",
-    "title": "No Rate Limiting Headers Detected",
+    "type": "header",
+    "title": "Early-Data header (0RTT indicator) not advertised",
     "category": "headers",
-    "severity": "low",
-    "description": "Sensitive endpoints exist but no rate limiting headers are present.",
-    "evidence": "No rate limiting headers found.",
-    "riskImpact": "Without rate limiting, attackers can perform brute force, credential stuffing, and API abuse.",
-    "explanation": "Rate limiting is essential for protecting authentication endpoints and APIs.",
+    "severity": "info",
+    "description": "The Early-Data response header signals TLS 1.3 0-RTT support. Without it, intermediaries cannot tell whether a request was replayed.",
+    "evidence": "Early-Data header (0RTT indicator) is not advertised.",
+    "riskImpact": "Disable 0-RTT or only enable it for idempotent endpoints — replays of non-idempotent requests with 0-RTT can cause double-submits.",
+    "explanation": "TLS 1.3 supports 0-RTT data sent immediately on connection. If the Early-Data response header is missing, downstream caches and reverse proxies cannot apply 0-RTT replay protection.",
     "fixSteps": [
-      "Implement rate limiting on all authentication endpoints.",
-      "Add rate limiting to public APIs.",
-      "Return standard rate limit headers."
+      "If 0-RTT is enabled at the edge, ensure the origin sends `Early-Data: 1` on every response so caches can detect replays.",
+      "Disable 0-RTT (ssl_early_data off in NGINX) unless your application is fully idempotent.",
+      "Configure Cloudflare to disable 0-RTT for non-idempotent paths via the Network tab."
     ],
     "codeExamples": [
       {
-        "label": "Rate limiting",
-        "language": "typescript",
-        "code": "import rateLimit from 'express-rate-limit';\nconst limiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 100, standardHeaders: true });"
+        "label": "NGINX",
+        "language": "nginx",
+        "code": "ssl_early_data off;\nadd_header Early-Data $ssl_early_data always;"
+      },
+      {
+        "label": "Cloudflare",
+        "language": "http",
+        "code": "Early-Data: 1"
       }
     ],
     "_idx": 17,
     "references": [
-      "https://owasp.org/www-project-secure-headers/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
+      "https://blog.cloudflare.com/optimizing-tls-handshakes/",
+      "https://datatracker.ietf.org/doc/html/rfc8470/"
     ]
   },
   {
@@ -1089,31 +1094,34 @@
   },
   {
     "id": "timing-allow-origin-wide",
-    "type": "combined",
-    "title": "CORS Allows null Origin",
+    "type": "header",
+    "title": "Timing-Allow-Origin wildcard",
     "category": "headers",
-    "severity": "high",
-    "description": "Access-Control-Allow-Origin set to null.",
-    "evidence": "ACAO: null detected.",
-    "riskImpact": "Sandboxed iframes and data: URLs use null origin.",
-    "explanation": "Allowing null origin enables CORS bypass from sandboxed contexts.",
-    "fixSteps": ["Never allow null as a CORS origin."],
+    "severity": "low",
+    "description": "Timing-Allow-Origin is set to '*', allowing any origin to read Resource Timing API data exposed via Server-Timing.",
+    "evidence": "Timing-Allow-Origin is '*' — any origin can read high-resolution Resource Timing data.",
+    "riskImpact": "Cross-origin pages can fingerprint your backend by reading precise timing data.",
+    "explanation": "When Server-Timing is exposed and Timing-Allow-Origin is '*', any cross-origin page can read the timing entries and fingerprint the origin's backend.",
+    "fixSteps": [
+      "Remove Timing-Allow-Origin unless Server-Timing is intentionally exposed.",
+      "If Server-Timing is required, set Timing-Allow-Origin to a specific trusted origin."
+    ],
     "codeExamples": [
-      {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
-      },
       {
         "label": "Nginx",
         "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "code": "proxy_hide_header Timing-Allow-Origin;"
+      },
+      {
+        "label": "Next.js (next.config.mjs)",
+        "language": "javascript",
+        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Timing-Allow-Origin', value: 'https://your-trusted-origin.example' }],\n    }];\n  },\n};\nexport default nextConfig;"
       }
     ],
     "_idx": 37,
     "references": [
       "https://owasp.org/www-project-secure-headers/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
+      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Timing-Allow-Origin"
     ]
   },
   {
@@ -3765,34 +3773,28 @@
   },
   {
     "id": "cf-ray-header",
-    "type": "stub",
-    "title": "Cf Ray Header",
+    "type": "header",
+    "title": "Cloudflare CF-Ray request identifier present",
     "category": "headers",
     "severity": "info",
-    "description": "Security check `cf-ray-header` evaluates whether the target meets the expected configuration. Auto-generated stub.",
-    "evidence": "Header absent or misconfigured for `cf-ray-header`. Response observed headers: {{observed_headers}}.",
-    "riskImpact": "If exploited, this finding exposes the target to category-specific risks under headers.",
-    "explanation": "The `cf-ray-header` check verifies that the server does not expose the weakness represented by this category.",
+    "description": "The Cloudflare CF-Ray response header exposes the request identifier that Cloudflare assigns to every proxied request.",
+    "evidence": "Cloudflare CF-Ray header present - reveals CDN usage.",
+    "riskImpact": "CF-Ray alone does not leak sensitive information, but it confirms your origin sits behind Cloudflare and lets attackers correlate request IDs to logs.",
+    "explanation": "CF-Ray is informational — it lets support teams trace a specific request through Cloudflare's edge. It does not contain user data, PII, or session tokens.",
     "fixSteps": [
-      "Investigate the evidence string for the actual offending value.",
-      "Apply the recommended configuration in the code examples below.",
-      "Verify the fix by re-running the scan and confirming the finding is gone."
+      "CF-Ray cannot be removed from Cloudflare responses. If you want to hide CDN usage, terminate the proxy at the origin (no Cloudflare).",
+      "If you want to keep Cloudflare but reduce fingerprinting, ensure all other Cloudflare-specific headers (cf-ray, cf-cache-status, cf-worker) are also present so attackers cannot easily distinguish them."
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "Cloudflare Transform Rule",
+        "language": "http",
+        "code": "# Disable if you migrate off Cloudflare. Otherwise leave it for traceability.\n# In Cloudflare dashboard → Rules → Transform Rules → Modify Response Header\n# Action: Remove Header → Name: cf-ray"
       }
     ],
     "references": [
-      "https://owasp.org/www-project-secure-headers/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
+      "https://developers.cloudflare.com/fundamentals/reference/http-request-headers/",
+      "https://blog.cloudflare.com/cloudflare-ray-id/"
     ]
   },
   {
@@ -4628,38 +4630,6 @@
     ]
   },
   {
-    "id": "cross-origin-embedder-policy-credentialless-missing",
-    "type": "stub",
-    "title": "Cross Origin Embedder Policy Credentialless Missing",
-    "category": "headers",
-    "severity": "info",
-    "description": "Security check `cross-origin-embedder-policy-credentialless-missing` evaluates whether the target meets the expected configuration. Auto-generated stub.",
-    "evidence": "Header absent or misconfigured for `cross-origin-embedder-policy-credentialless-missing`. Response observed headers: {{observed_headers}}.",
-    "riskImpact": "If exploited, this finding exposes the target to category-specific risks under headers.",
-    "explanation": "The `cross-origin-embedder-policy-credentialless-missing` check verifies that the server does not expose the weakness represented by this category.",
-    "fixSteps": [
-      "Investigate the evidence string for the actual offending value.",
-      "Apply the recommended configuration in the code examples below.",
-      "Verify the fix by re-running the scan and confirming the finding is gone."
-    ],
-    "codeExamples": [
-      {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
-      }
-    ],
-    "references": [
-      "https://owasp.org/www-project-secure-headers/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
-    ]
-  },
-  {
     "id": "cross-origin-opener-policy-report-only-missing",
     "type": "stub",
     "title": "Cross Origin Opener Policy Report Only Missing",
@@ -4688,39 +4658,7 @@
     ],
     "references": [
       "https://owasp.org/www-project-secure-headers/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
-    ]
-  },
-  {
-    "id": "cross-origin-opener-policy-same-origin-allow-popups",
-    "type": "stub",
-    "title": "Cross Origin Opener Policy Same Origin Allow Popups",
-    "category": "headers",
-    "severity": "info",
-    "description": "Security check `cross-origin-opener-policy-same-origin-allow-popups` evaluates whether the target meets the expected configuration. Auto-generated stub.",
-    "evidence": "Header absent or misconfigured for `cross-origin-opener-policy-same-origin-allow-popups`. Response observed headers: {{observed_headers}}.",
-    "riskImpact": "If exploited, this finding exposes the target to category-specific risks under headers.",
-    "explanation": "The `cross-origin-opener-policy-same-origin-allow-popups` check verifies that the server does not expose the weakness represented by this category.",
-    "fixSteps": [
-      "Investigate the evidence string for the actual offending value.",
-      "Apply the recommended configuration in the code examples below.",
-      "Verify the fix by re-running the scan and confirming the finding is gone."
-    ],
-    "codeExamples": [
-      {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
-      }
-    ],
-    "references": [
-      "https://owasp.org/www-project-secure-headers/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
+"https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
     ]
   },
   {
@@ -5365,66 +5303,66 @@
   },
   {
     "id": "inline-style-attr",
-    "type": "stub",
-    "title": "Inline Style Attr",
+    "type": "body-pattern",
+    "title": "Excessive inline style attributes",
     "category": "headers",
     "severity": "info",
-    "description": "Security check `inline-style-attr` evaluates whether the target meets the expected configuration. Auto-generated stub.",
-    "evidence": "Header absent or misconfigured for `inline-style-attr`. Response observed headers: {{observed_headers}}.",
-    "riskImpact": "If exploited, this finding exposes the target to category-specific risks under headers.",
-    "explanation": "The `inline-style-attr` check verifies that the server does not expose the weakness represented by this category.",
+    "description": "The page contains 3 or more HTML elements with inline style attributes, which CSP cannot inspect and which complicate theming.",
+    "evidence": "${count} elements have inline style= attributes (CSP hygiene).",
+    "riskImpact": "Move inline styles to external stylesheets or design tokens.",
+    "explanation": "Inline style attributes cannot be validated against Content-Security-Policy rules like `style-src 'self'` and they couple layout to markup. External stylesheets or CSS modules make the page easier to theme and audit.",
     "fixSteps": [
-      "Investigate the evidence string for the actual offending value.",
-      "Apply the recommended configuration in the code examples below.",
-      "Verify the fix by re-running the scan and confirming the finding is gone."
+      "Move recurring inline styles into the global CSS or component-level CSS modules.",
+      "For dynamic styles (e.g. inline transform values), prefer CSS variables and `style={{ '--var': value }}` over raw inline rules.",
+      "Set a CSP `style-src` directive that excludes 'unsafe-inline' once inline styles are eliminated."
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};"
+        "label": "React with CSS variables",
+        "language": "tsx",
+        "code": "<div\n  className=\"card\"\n  style={{ '--card-width': `${width}px` } as React.CSSProperties}\n>"
       },
       {
-        "label": "Nginx",
+        "label": "Nginx CSP",
         "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "code": "add_header Content-Security-Policy \"style-src 'self'\" always;"
       }
     ],
     "references": [
-      "https://owasp.org/www-project-secure-headers/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
+      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP",
+      "https://web.dev/articles/style-scoping"
     ]
   },
   {
     "id": "target-blank-no-noopener",
-    "type": "stub",
-    "title": "Target Blank No Noopener",
+    "type": "body-pattern",
+    "title": "Reverse Tabnabbing — target=_blank without rel=noopener",
     "category": "headers",
-    "severity": "info",
-    "description": "Security check `target-blank-no-noopener` evaluates whether the target meets the expected configuration. Auto-generated stub.",
-    "evidence": "Header absent or misconfigured for `target-blank-no-noopener`. Response observed headers: {{observed_headers}}.",
-    "riskImpact": "If exploited, this finding exposes the target to category-specific risks under headers.",
-    "explanation": "The `target-blank-no-noopener` check verifies that the server does not expose the weakness represented by this category.",
+    "severity": "medium",
+    "description": "Anchor tags use target=\"_blank\" without rel=\"noopener\", allowing the opened page to call window.opener.location = '...' and redirect the source page to a phishing site.",
+    "evidence": "${count} target=\"_blank\" link(s) lack rel=\"noopener\" (reverse tabnabbing).",
+    "riskImpact": "Add rel=\"noopener noreferrer\" to every link with target=\"_blank\". Modern browsers (Chrome 88+, Firefox 79+) default rel=\"noopener\" for target=\"_blank\", but explicit is still recommended for older browsers.",
+    "explanation": "When a link opens a new tab with target='_blank' and no rel='noopener', the new page receives a reference to window.opener and can navigate the source page to any URL. This is the classic reverse-tabnabbing phishing vector.",
     "fixSteps": [
-      "Investigate the evidence string for the actual offending value.",
-      "Apply the recommended configuration in the code examples below.",
-      "Verify the fix by re-running the scan and confirming the finding is gone."
+      "Add rel=\"noopener noreferrer\" to all <a> tags with target=\"_blank\".",
+      "In Next.js / React, use <Link target=\"_blank\" rel=\"noopener noreferrer\"> for external links.",
+      "Audit third-party embed scripts (analytics, support widgets) that open links in new tabs."
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};"
+        "label": "Next.js / React",
+        "language": "tsx",
+        "code": "<a href=\"https://github.com/VulnRadar/vulnradar.dev\"\n   target=\"_blank\"\n   rel=\"noopener noreferrer\">\n   Star us on GitHub\n</a>"
       },
       {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "Static HTML",
+        "language": "html",
+        "code": "<a href=\"https://example.com\" target=\"_blank\" rel=\"noopener noreferrer\">Visit</a>"
       }
     ],
     "references": [
-      "https://owasp.org/www-project-secure-headers/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
+      "https://owasp.org/www-community/attacks/Reverse_Tabnabbing",
+      "https://developer.mozilla.org/en-US/docs/Web/HTML/Element/a#attr-target"
     ]
   },
   {

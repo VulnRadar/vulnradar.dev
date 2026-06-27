@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import type { LucideIcon } from "lucide-react";
@@ -40,6 +40,11 @@ import {
   ROLE_BADGE_STYLES,
   API,
 } from "@/lib/config/constants";
+import {
+  getAllQueryParams,
+  setQueryParam,
+  setQueryParams,
+} from "@/lib/ui/url-state";
 import { NotificationsManager } from "@/components/admin/notifications";
 
 const VALID_TABS = [
@@ -165,16 +170,21 @@ function AdminContent() {
     [],
   );
 
-  // Sync user/tab selection with URL hash
+  // Sync user/tab selection with URL query params
   const updateUrlWithUser = useCallback(
     (userId: number | null, tab?: string, replace = true) => {
-      if (typeof window === "undefined") return;
-      const parts: string[] = [];
-      if (tab) parts.push(tab);
-      if (userId) parts.push(`user-${userId}`);
-      const hash = parts.join("/");
-      const method = replace ? "replaceState" : "pushState";
-      window.history[method](null, "", `/admin${hash ? `#${hash}` : ""}`);
+      const updates: Record<string, string | null> = {};
+      if (tab) updates.tab = tab;
+      else updates.tab = null;
+      updates.user = userId ? `user-${userId}` : null;
+      const opts = { replace } as { replace: boolean };
+      const keys = Object.keys(updates);
+      if (keys.length === 0) return;
+      if (keys.length === 1) {
+        setQueryParam(keys[0], updates[keys[0]], opts);
+      } else {
+        setQueryParams(updates, opts);
+      }
     },
     [],
   );
@@ -251,7 +261,7 @@ function AdminContent() {
         const params = new URLSearchParams({ page: String(p), limit: "10" });
         const searchTerm = search !== undefined ? search : teamsSearch;
         if (searchTerm.trim()) params.set("search", searchTerm.trim());
-        const res = await fetch(`/api/v2/admin/teams?${params}`);
+        const res = await fetch(`/api/v3/admin/teams?${params}`);
         const data = await res.json();
         setTeams(data.teams || []);
         setTeamsPage(data.page || 1);
@@ -300,41 +310,40 @@ function AdminContent() {
     }
   }, []);
 
-  // Parse hash and load corresponding data
-  const handleHashChange = useCallback(() => {
+  // Parse query params and load corresponding data
+  const handleQueryChange = useCallback(() => {
     if (typeof window === "undefined") return;
-    const hash = window.location.hash.replace("#", "");
-    if (!hash) {
-      window.history.replaceState(null, "", "/admin#users");
+    const params = getAllQueryParams();
+    const tab = params.tab;
+    const user = params.user;
+    if (!tab && !user) {
+      setQueryParam("tab", "users", { replace: true });
       setSelectedUser(null);
       return;
     }
 
-    const parts = hash.split("/");
     let foundUser = false;
-    for (const part of parts) {
-      if (VALID_TABS.includes(part as (typeof VALID_TABS)[number])) {
-        setActiveTab(part as typeof activeTab);
-        if (part === "audit") fetchAudit();
-        if (part === "admins") fetchActiveAdmins();
-        if (part === "teams") fetchTeams();
-      }
-      if (part.startsWith("user-")) {
-        const id = parseInt(part.replace("user-", ""), 10);
-        if (!isNaN(id)) {
-          fetchUserDetail(id, true);
-          foundUser = true;
-        }
+    if (tab && VALID_TABS.includes(tab as (typeof VALID_TABS)[number])) {
+      setActiveTab(tab as typeof activeTab);
+      if (tab === "audit") fetchAudit();
+      if (tab === "admins") fetchActiveAdmins();
+      if (tab === "teams") fetchTeams();
+    }
+    if (user && user.startsWith("user-")) {
+      const id = parseInt(user.replace("user-", ""), 10);
+      if (!isNaN(id)) {
+        fetchUserDetail(id, true);
+        foundUser = true;
       }
     }
     if (!foundUser) setSelectedUser(null);
   }, [fetchAudit, fetchActiveAdmins, fetchTeams, fetchUserDetail]);
 
   useEffect(() => {
-    handleHashChange();
-    window.addEventListener("hashchange", handleHashChange);
-    return () => window.removeEventListener("hashchange", handleHashChange);
-  }, [handleHashChange]);
+    handleQueryChange();
+    window.addEventListener("popstate", handleQueryChange);
+    return () => window.removeEventListener("popstate", handleQueryChange);
+  }, [handleQueryChange]);
 
   useEffect(() => {
     if (activeTab === "audit") fetchAudit();
@@ -349,7 +358,7 @@ function AdminContent() {
   async function fetchTeamMembers(teamId: number) {
     setTeamMembersLoading(true);
     try {
-      const res = await fetch(`/api/v2/admin/teams/${teamId}`);
+      const res = await fetch(`/api/v3/admin/teams/${teamId}`);
       const data = await res.json();
       setTeamMembers(data);
     } catch {
@@ -361,7 +370,7 @@ function AdminContent() {
   async function handleTeamRename(teamId: number, newName: string) {
     setActionLoading(`team-rename-${teamId}`);
     try {
-      const res = await fetch(`/api/v2/admin/teams`, {
+      const res = await fetch(`/api/v3/admin/teams`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ teamId, name: newName }),
@@ -382,7 +391,7 @@ function AdminContent() {
   async function handleTeamDelete(teamId: number) {
     setActionLoading(`team-delete-${teamId}`);
     try {
-      const res = await fetch(`/api/v2/admin/teams`, {
+      const res = await fetch(`/api/v3/admin/teams`, {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ teamId }),

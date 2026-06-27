@@ -39,7 +39,7 @@ export function StripeCheckout({
     return clientSecret!;
   }, [productId, userId]);
 
-  // Poll /api/v2/auth/me to verify subscription update
+  // Poll /api/v3/auth/me to verify subscription update
   const verifySubscription = useCallback(async () => {
     setVerifying(true);
     setError(null);
@@ -54,7 +54,7 @@ export function StripeCheckout({
 
     for (let i = 0; i < pollIntervals.length; i++) {
       try {
-        const response = await fetch("/api/v2/auth/me");
+        const response = await fetch("/api/v3/auth/me");
         if (response.ok) {
           const data = await response.json();
           const currentPlan = data.data?.plan || "free";

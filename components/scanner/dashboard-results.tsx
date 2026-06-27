@@ -15,6 +15,13 @@ const ExportButton = dynamic(() =>
 const ShareButton = dynamic(() =>
   import("./share-button").then((m) => ({ default: m.ShareButton })),
 );
+const ViewPageButton = dynamic(
+  () =>
+    import("./view-page-button").then((m) => ({
+      default: m.ViewPageButton,
+    })),
+  { ssr: false },
+);
 const ResponseHeaders = dynamic(() =>
   import("./response-headers").then((m) => ({ default: m.ResponseHeaders })),
 );
@@ -67,20 +74,15 @@ export function DashboardResults({
 
   return (
     <div className="flex flex-col gap-6 pt-6">
-      {/* Section header */}
-      <div className="flex items-end justify-between gap-3 flex-wrap">
-        <div className="min-w-0">
-          <p className="text-xs font-medium text-primary uppercase tracking-wider mb-2">
-            Scan results
-          </p>
-          <div className="flex items-center gap-3 min-w-0">
-            <div className="p-2 rounded-lg bg-primary/10 shrink-0">
-              <Globe className="h-4 w-4 text-primary" />
-            </div>
-            <p className="text-base sm:text-lg font-semibold text-foreground break-all font-mono">
-              {result.url}
-            </p>
+      {/* URL + action row */}
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="p-2 rounded-lg bg-primary/10 shrink-0">
+            <Globe className="h-4 w-4 text-primary" />
           </div>
+          <p className="text-base sm:text-lg font-semibold text-foreground break-all font-mono">
+            {result.url}
+          </p>
         </div>
         <div className="flex items-center gap-2 shrink-0">
           <Button
@@ -94,6 +96,7 @@ export function DashboardResults({
           </Button>
           <ExportButton result={result} />
           {scanHistoryId && <ShareButton scanId={scanHistoryId} />}
+          <ViewPageButton url={result.url} />
         </div>
       </div>
 
@@ -130,7 +133,7 @@ export function DashboardResults({
           <p className="text-base font-semibold text-foreground">
             No issues found
           </p>
-          <p className="text-sm text-muted-foreground max-w-md text-pretty">
+          <p className="text-sm text-muted-foreground max-w-md">
             This scan came back clean with no detected vulnerabilities. Add a
             note to track when you ran it, or scan another URL.
           </p>

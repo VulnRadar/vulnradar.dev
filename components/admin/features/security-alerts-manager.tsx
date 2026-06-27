@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import React, { useState, useEffect, useCallback } from "react";
 import { Card } from "@/components/ui/card";
@@ -72,7 +72,7 @@ export function SecurityAlertsManager() {
   const fetchAlerts = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/v2/admin/features", {
+      const res = await fetch("/api/v3/admin/features", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -99,7 +99,7 @@ export function SecurityAlertsManager() {
     if (!pendingResolve) return;
     setResolving(true);
     try {
-      await fetch("/api/v2/admin/features", {
+      await fetch("/api/v3/admin/features", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

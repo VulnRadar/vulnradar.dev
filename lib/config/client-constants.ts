@@ -48,7 +48,7 @@ export const ROLE_BADGE_STYLES: Record<string, string> = {
 
 // API VERSION - Change this to switch all API calls between versions
 
-export const API_VERSION = "v2";
+export const API_VERSION = "v3";
 
 // API ENDPOINTS (dynamically versioned)
 
@@ -109,6 +109,7 @@ export const API = {
   BILLING: `/api/${API_VERSION}/billing`,
   SUBSCRIPTION_CANCEL: `/api/${API_VERSION}/billing/subscription/cancel`,
   SUBSCRIPTION_REACTIVATE: `/api/${API_VERSION}/billing/subscription/reactivate`,
+  BROWSER_SESSIONS: `/api/${API_VERSION}/browser/sessions`,
   VERSION: "/api/version",
 } as const;
 
@@ -146,6 +147,7 @@ export const ROUTES = {
   DOCS_SETUP: "/docs/setup",
   DOCS_DEVELOPERS: "/docs/developers",
   ADMIN: "/admin",
+  BROWSER: (id: string) => `/browser/${id}`,
 } as const;
 
 // SEVERITY LEVELS & COLORS

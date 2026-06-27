@@ -10,6 +10,7 @@ import {
   ContactSuccess,
   CATEGORIES,
 } from "@/components/contact";
+import { getQueryParam, setQueryParam } from "@/lib/ui/url-state";
 
 const VALID_CATEGORIES = CATEGORIES.map((c) => c.id);
 
@@ -18,49 +19,43 @@ export default function ContactPage() {
   const [submitted, setSubmitted] = useState(false);
   const [_error, setError] = useState<string | null>(null);
 
-  // Handle hash-based category selection (e.g., /contact#bug)
+  // Handle query param-based category selection (e.g., /contact?category=bug)
   useEffect(() => {
-    function handleHash() {
-      const hash = window.location.hash.slice(1); // Remove #
-      if (hash && VALID_CATEGORIES.includes(hash)) {
-        setCategory(hash);
-      }
+    const initial = getQueryParam("category");
+    if (initial && VALID_CATEGORIES.includes(initial)) {
+      setCategory(initial);
     }
-    handleHash();
-    window.addEventListener("hashchange", handleHash);
-    return () => window.removeEventListener("hashchange", handleHash);
   }, []);
 
-  // Update URL hash when category changes
+  // Update URL query param when category changes
   function handleCategoryChange(newCategory: string | null) {
     setCategory(newCategory);
-    if (newCategory) {
-      window.history.replaceState(null, "", `#${newCategory}`);
-    } else {
-      window.history.replaceState(null, "", window.location.pathname);
-    }
+    setQueryParam("category", newCategory, { replace: true });
   }
 
   function handleReset() {
     setSubmitted(false);
     setCategory(null);
     setError(null);
-    window.history.replaceState(null, "", window.location.pathname);
+    setQueryParam("category", null, { replace: true });
   }
 
   return (
     <div className="min-h-screen flex flex-col bg-background">
       <Header />
       <main className="flex-1 w-full max-w-3xl mx-auto px-4 py-6 sm:py-10">
-        <div className="flex flex-col gap-2 mb-8">
-          <h1 className="text-2xl font-bold text-foreground">
+        <section
+          aria-label="Contact and support"
+          className="flex flex-col items-center text-center gap-3 mb-8 sm:mb-10"
+        >
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-foreground">
             Contact & Support
           </h1>
-          <p className="text-sm text-muted-foreground leading-relaxed">
+          <p className="text-sm sm:text-base text-muted-foreground leading-relaxed max-w-xl">
             Need help? Found a bug? Have a great idea? {"We'd"} love to hear
             from you.
           </p>
-        </div>
+        </section>
 
         {submitted ? (
           <ContactSuccess category={category} onReset={handleReset} />

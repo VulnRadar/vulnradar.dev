@@ -185,7 +185,7 @@ export default function DevelopersPage() {
         <p>This page covers two audiences:</p>
         <ul className="list-disc pl-6 space-y-2 text-muted-foreground mt-3">
           <li>
-            <strong>SDK authors</strong> integrating with <code>/api/v2/*</code>{" "}
+            <strong>SDK authors</strong> integrating with <code>/api/v3/*</code>{" "}
             from another language.
           </li>
           <li>
@@ -214,7 +214,7 @@ export default function DevelopersPage() {
               GET
             </Badge>
             <code className="text-primary font-mono text-sm">
-              /api/v2/finding-types
+              /api/v3/finding-types
             </code>
             <Badge variant="outline" className="text-xs ml-auto">
               Public
@@ -227,7 +227,7 @@ export default function DevelopersPage() {
                 Request
               </h4>
               <CodeBlock
-                code={`curl ${APP_URL}/api/v2/finding-types`}
+                code={`curl ${APP_URL}/api/v3/finding-types`}
                 language="bash"
               />
             </div>
@@ -782,7 +782,7 @@ npm run lint:fix    # auto-fix`}
           </li>
           <li>
             <strong>Adding a new API route</strong> — copy an existing one in{" "}
-            <code>app/api/v2/.../route.ts</code>; wrap with{" "}
+            <code>app/api/v3/.../route.ts</code>; wrap with{" "}
             <code>withErrorHandling</code>, use <code>parseBody</code> +{" "}
             <code>Validate</code> for input, and pick the right rate-limit
             helper from <code>lib/rate-limiting/</code>.

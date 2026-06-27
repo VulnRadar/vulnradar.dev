@@ -6,15 +6,14 @@
 // App metadata - UPDATE THESE FOR YOUR DEPLOYMENT
 export const CONFIG_APP_NAME = "VulnRadar";
 export const CONFIG_APP_SLUG = "vulnradar";
-export const CONFIG_APP_VERSION = "2.3.1";
-// The minimum database schema version this app requires. App 2.3.1 uses
-// the v2 schema (v2.3.x = v2 in the migration framework — the only
-// difference is api_keys.key_locator, which instrumentation.ts auto-adds).
-// When you bump CONFIG_APP_VERSION to a release with a real schema change,
-// also bump this to the new schema version and add the migration in
-// scripts/migrate/versions/. See scripts/README.md for the full flow.
+export const CONFIG_APP_VERSION = "3.0.0";
+// The minimum database schema version this app requires. App 3.0.0 keeps
+// the v2 schema (no migration needed). When you bump CONFIG_APP_VERSION
+// to a release with a real schema change, also bump this to the new schema
+// version and add the migration in scripts/migrate/versions/. See
+// scripts/README.md for the full flow.
 export const CONFIG_MIN_SCHEMA_VERSION = "2.0.0";
-export const CONFIG_ENGINE_VERSION = "2.1.0";
+export const CONFIG_ENGINE_VERSION = "3.0.0";
 export const CONFIG_APP_DESCRIPTION =
   "Scan websites for security vulnerabilities. Get instant reports with severity ratings, actionable fix guidance, and team collaboration tools.";
 export const CONFIG_TOTAL_CHECKS_LABEL = "700+";
@@ -91,8 +90,22 @@ export const CONFIG_DEFAULT_SEVERITY_THRESHOLD = "low";
 
 export const CONFIG_API_KEY_PREFIX = "vr_live_";
 export const CONFIG_DEFAULT_API_KEY_DAILY_LIMIT = 50;
-export const CONFIG_API_CURRENT_VERSION = "v2";
-export const CONFIG_API_SUPPORTED_VERSIONS = ["v1", "v2"];
+export const CONFIG_API_CURRENT_VERSION = "v3";
+export const CONFIG_API_SUPPORTED_VERSIONS = ["v3"];
+
+// BROWSERBASE CONFIGURATION (live browser session viewer)
+//
+// To enable BrowserBase:
+//   1. Create a project at https://www.browserbase.com
+//   2. Set BROWSERBASE_API_KEY + BROWSERBASE_PROJECT_ID in .env
+//   3. Restart the server. If unset, the View Page button hides.
+//
+// Tunables:
+//   CONFIG_BROWSERBASE_MAX_TTL_SECONDS = 300 (5 min hard cap — matches the
+//     product promise and prevents runaway sessions).
+
+export const CONFIG_BROWSERBASE_MAX_TTL_SECONDS = 300;
+export const CONFIG_BROWSERBASE_DEFAULT_TTL_SECONDS = 300;
 
 // DEMO MODE CONFIGURATION - UPDATE IF NEEDED
 

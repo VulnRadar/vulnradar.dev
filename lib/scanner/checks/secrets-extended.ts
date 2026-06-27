@@ -36,7 +36,9 @@ export const detectors: Record<string, DetectFn> = {
 
   "phone-number-leak": (_url, _headers, body) => {
     const matches =
-      body.match(/(?:\+1|1)?[-.\s]?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}/g) || [];
+      body.match(
+        /(?:\+1[-.\s]?)?\(?\d{3}\)?[.\-](?:\d{3}[.\-]\d{4})|(?:\+1[-.\s]?)?\(\d{3}\)\s?\d{3}[-.\s]\d{4}|(?:\+1[-.\s]?\d{3}[-.\s]\d{3}[-.\s]\d{4})/g,
+      ) || [];
     if (matches.length > 5) {
       return `Multiple phone numbers (${matches.length}) found in page source.`;
     }

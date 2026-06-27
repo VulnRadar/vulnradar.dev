@@ -172,7 +172,7 @@ export function MassEmailManager() {
   async function fetchMessages() {
     setLoading(true);
     try {
-      const res = await fetch("/api/v2/admin/features", {
+      const res = await fetch("/api/v3/admin/features", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "list", section: "broadcast" }),
@@ -196,7 +196,7 @@ export function MassEmailManager() {
           ? { segment: `email:${specificEmail}` }
           : { segment };
 
-      const res = await fetch("/api/v2/admin/features", {
+      const res = await fetch("/api/v3/admin/features", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -225,7 +225,7 @@ export function MassEmailManager() {
   async function handleSend(id: string) {
     setSending(id);
     try {
-      await fetch("/api/v2/admin/features", {
+      await fetch("/api/v3/admin/features", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "send", section: "broadcast", id }),
@@ -241,7 +241,7 @@ export function MassEmailManager() {
   async function handleResend(id: string) {
     setSending(id);
     try {
-      await fetch("/api/v2/admin/features", {
+      await fetch("/api/v3/admin/features", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "resend", section: "broadcast", id }),
@@ -258,7 +258,7 @@ export function MassEmailManager() {
     if (!pendingDelete) return;
     setDeleting(pendingDelete.id);
     try {
-      await fetch("/api/v2/admin/features", {
+      await fetch("/api/v3/admin/features", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

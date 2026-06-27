@@ -51,23 +51,15 @@ export function Header() {
             className={`flex items-center gap-2.5 hover:opacity-80 shrink-0 z-10 ${transitions.opacity}`}
             aria-label="Go to scanner"
             onClick={(e) => {
-              // If already on dashboard with a hash (viewing scan results),
-              // clear the hash and dispatch hashchange event to reset state
-              if (pathname === ROUTES.DASHBOARD && window.location.hash) {
-                e.preventDefault();
-                // Clear hash first, then dispatch event
-                const prevHash = window.location.hash;
-                window.history.pushState(null, "", ROUTES.DASHBOARD);
-                // Dispatch hashchange so the dashboard component can reset
-                window.dispatchEvent(
-                  new HashChangeEvent("hashchange", {
-                    oldURL: window.location.href.replace(
-                      ROUTES.DASHBOARD,
-                      ROUTES.DASHBOARD + prevHash,
-                    ),
-                    newURL: window.location.href,
-                  }),
-                );
+              // If already on dashboard with a ?scan= param (viewing scan results),
+              // clear the param and dispatch popstate so the dashboard can reset
+              if (pathname === ROUTES.DASHBOARD) {
+                const params = new URLSearchParams(window.location.search);
+                if (params.has("scan")) {
+                  e.preventDefault();
+                  window.history.pushState(null, "", ROUTES.DASHBOARD);
+                  window.dispatchEvent(new PopStateEvent("popstate"));
+                }
               }
             }}
           >

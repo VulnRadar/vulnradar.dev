@@ -320,7 +320,7 @@ export const detectors: Record<string, DetectFn> = {
         /<meta[^>]*property=["']og:[^"']+["'][^>]*content=["']([^"']+)["']/gi,
       ) || [];
     const suspicious = ogTags.filter((t) =>
-      /javascript:|data:|on\w+=/i.test(t),
+      /javascript:|(?:^|[\s"'])data:(?:text\/html)?|(?:^|[\s"'])on\w+\s*=/i.test(t),
     );
     return suspicious.length > 0
       ? `Found ${suspicious.length} suspicious OpenGraph tag(s).`
@@ -750,14 +750,6 @@ export const detectors: Record<string, DetectFn> = {
       : null;
   },
 
-  "reverse-tabnabbing": (_url, _headers, body) => {
-    const links = body.match(/<a[^>]*target=["']_blank["'][^>]*>/gi) || [];
-    const unsafe = links.filter((l) => !/rel=["'][^"']*noopener/i.test(l));
-    return unsafe.length > 2
-      ? `Found ${unsafe.length} link(s) with target="_blank" missing rel="noopener".`
-      : null;
-  },
-
   "window-opener-abuse": (_url, _headers, body) => {
     const openerUsage = body.match(/window\.opener\./g) || [];
     return openerUsage.length > 0
@@ -1010,8 +1002,13 @@ export const detectors: Record<string, DetectFn> = {
   },
 
   "phone-number-leak": (_url, _headers, body) => {
+    // Require separators (parens, dashes, dots, or spaces) between the
+    // three digit groups so we don't false-positive on long numeric IDs
+    // (Cloudflare Ray IDs, telemetry IDs, etc. are 10–11 contiguous digits).
     const matches =
-      body.match(/(?:\+1|1)?[-.\s]?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}/g) || [];
+      body.match(
+        /(?:\+1[-.\s]?)?\(?\d{3}\)?[.\-](?:\d{3}[.\-]\d{4})|(?:\+1[-.\s]?)?\(\d{3}\)\s?\d{3}[-.\s]\d{4}|(?:\+1[-.\s]?\d{3}[-.\s]\d{3}[-.\s]\d{4})/g,
+      ) || [];
     if (matches.length > 5) {
       return `Multiple phone numbers (${matches.length}) found in page source.`;
     }
@@ -1400,7 +1397,7 @@ export const detectors: Record<string, DetectFn> = {
         /<meta[^>]*property\s*=\s*["']og:[^"']+["'][^>]*content\s*=\s*["']([^"']+)["']/gi,
       ) || [];
     const suspicious = ogTags.filter((t) =>
-      /javascript:|data:text\/html|<script|on\w+=/i.test(t),
+      /javascript:|(?:^|[\s"'])data:(?:text\/html)?|<script|(?:^|[\s"'])on\w+\s*=/i.test(t),
     );
     if (suspicious.length > 0)
       return `Found ${suspicious.length} suspicious Open Graph tag(s).`;
@@ -1441,12 +1438,15 @@ export const detectors: Record<string, DetectFn> = {
   },
 
   "weak-crypto": (url, _headers, body) => {
-    const patterns = [
+    // Word boundaries prevent matching substrings inside larger tokens —
+    // for example the previous regex matched `des` inside `description`,
+    // which fired on every Next.js page that rendered any descriptive copy.
+    const patterns: RegExp[] = [
       /\.md5\s*\(/i,
       /\.sha1\s*\(/i,
-      /crypto\.createHash\s*\(\s*["']md5["']/i,
-      /crypto\.createHash\s*\(\s*["']sha1["']/i,
-      /DES|3DES|Blowfish/i,
+      /\bcrypto\.createHash\s*\(\s*["'](?:md5|sha1)["']/i,
+      /\b(?:DES|3DES|TripleDES|Blowfish|RC4)\b/,
+      /\bECBD[A-Z]?\b/,
     ];
     for (const p of patterns) {
       if (p.test(body))
@@ -1840,11 +1840,15 @@ export const detectors: Record<string, DetectFn> = {
     return null;
   },
 
-  "svg-script-injection": (url, _headers, body) => {
-    if (/<svg[^>]*>[\s\S]*?<script/i.test(body))
+"svg-script-injection": (url, _headers, body) => {
+    // Match <svg ...> ... <script ...> ... </script> with the script INSIDE
+    // the svg element (before </svg>). Uses negative lookahead to prevent
+    // matching SVG icons that just happen to appear before Next.js's own
+    // streaming <script> tags further down the body.
+    if (/<svg\b[^>]*>(?:(?!<\/svg>)[\s\S])*?<script\b/i.test(body))
       return "SVG with embedded <script> element detected.";
     if (/api\./.test(url)) {
-      return `API endpoint ${url} — verify SVG elements do not contain <script> children.`;
+      return `API endpoint ${url} - verify SVG elements do not contain <script> children.`;
     }
     return null;
   },

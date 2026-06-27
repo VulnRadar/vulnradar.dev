@@ -213,7 +213,7 @@
     "category": "configuration",
     "severity": "low",
     "description": "Server-Timing values like cache;dur=12 or edge;dur=4 expose internal cache hit/miss timing to the client.",
-    "evidence": "Configuration-level finding for `configuration-server-timing-cache-leak` against {{url}}.",
+    "evidence": "Server-Timing exposes cache hit/miss timings (e.g. cache;dur=12) — strip cache-specific entries in production.",
     "riskImpact": "Drop cache-specific Server-Timing entries outside of debug builds",
     "explanation": "Server-Timing values like cache;dur=12 or edge;dur=4 expose internal cache hit/miss timing to the client.",
     "fixSteps": [
@@ -486,34 +486,34 @@
   },
   {
     "id": "server-timing-allow-origin-public",
-    "type": "stub",
-    "title": "Server Timing Allow Origin Public",
+    "type": "header",
+    "title": "Server-Timing exposed without Timing-Allow-Origin gate",
     "category": "configuration",
-    "severity": "info",
-    "description": "Security check `server-timing-allow-origin-public` evaluates whether the target meets the expected configuration. Auto-generated stub.",
-    "evidence": "Configuration-level finding for `server-timing-allow-origin-public` against {{url}}.",
-    "riskImpact": "If exploited, this finding exposes the target to category-specific risks under configuration.",
-    "explanation": "The `server-timing-allow-origin-public` check verifies that the server does not expose the weakness represented by this category.",
+    "severity": "low",
+    "description": "Server-Timing is exposed publicly without a Timing-Allow-Origin restriction, allowing any cross-origin page to read performance data.",
+    "evidence": "Server-Timing header is exposed publicly — restrict with Timing-Allow-Origin to specific trusted origins.",
+    "riskImpact": "Cross-origin attackers can read precise timing data and fingerprint the backend.",
+    "explanation": "Server-Timing carries per-request performance metrics. When exposed without a Timing-Allow-Origin restriction, the browser sends it to the cross-origin document and any timing-based fingerprinting attack can run.",
     "fixSteps": [
-      "Investigate the evidence string for the actual offending value.",
-      "Apply the recommended configuration in the code examples below.",
-      "Verify the fix by re-running the scan and confirming the finding is gone."
+      "Hide Server-Timing at the edge (proxy_hide_header Server-Timing) for public responses.",
+      "If you need to expose it for monitoring, set Timing-Allow-Origin to a specific trusted origin instead of '*'.",
+      "Strip cache;dur, db;dur, edge;dur style entries that reveal backend internals."
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};"
-      },
-      {
         "label": "Nginx",
         "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "code": "proxy_hide_header Server-Timing;\nproxy_hide_header Timing-Allow-Origin;"
+      },
+      {
+        "label": "Cloudflare",
+        "language": "http",
+        "code": "Server-Timing: miss=0; description=public-cache-hit (without server-internal metrics)"
       }
     ],
     "references": [
       "https://owasp.org/www-project-secure-headers/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Server"
+      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Server-Timing"
     ]
   },
   {

@@ -31,7 +31,7 @@ import {
   LogOut,
   AlertTriangle,
 } from "lucide-react";
-import { API } from "@/lib/config/constants";
+import { API, ROUTES } from "@/lib/config/constants";
 import type { ProfileTabProps } from "@/components/profile/types";
 
 export function ProfileSecurityTab(props: ProfileTabProps) {
@@ -959,7 +959,7 @@ export function ProfileSecurityTab(props: ProfileTabProps) {
             <Button
               variant="outline"
               onClick={() => {
-                window.location.hash = "notifications";
+                window.location.href = `${ROUTES.PROFILE}?tab=notifications`;
               }}
             >
               Manage Notification Settings

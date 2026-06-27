@@ -294,16 +294,14 @@ export const detectors: Record<string, DetectFn> = {
   },
 
   "vary-origin-missing-cors": (_url, headers) => {
+    // Only fires when the response actually uses dynamic CORS. Without
+    // Access-Control-Allow-Origin (or with wildcard '*'), there is no
+    // per-origin cache poisoning risk, so Vary: Origin is unnecessary.
     const acao = h(headers, "access-control-allow-origin");
     const vary = h(headers, "vary");
-    if (acao && acao !== "*" && (!vary || !/origin/i.test(vary))) {
+    if (!acao || acao === "*") return null;
+    if (!vary || !/origin/i.test(vary)) {
       return `Access-Control-Allow-Origin: ${acao} is dynamic but Vary: Origin is missing — cache poisoning risk across origins.`;
-    }
-    if (
-      hasHeader(headers, "content-type") &&
-      (!vary || !/origin/i.test(vary))
-    ) {
-      return "Vary: Origin not set on this response — verify caching for endpoints with dynamic Access-Control-Allow-Origin.";
     }
     return null;
   },
@@ -332,10 +330,6 @@ export const detectors: Record<string, DetectFn> = {
     if (st && (!tao || tao === "*")) {
       return "Server-Timing header is exposed publicly — restrict with Timing-Allow-Origin to specific trusted origins.";
     }
-    const ct = h(headers, "content-type") || "";
-    if (/text\/html/i.test(ct) && !st) {
-      return "HTML page has no Server-Timing header — verify timing exposure is intentional and not leaking server internals.";
-    }
     return null;
   },
 
@@ -343,13 +337,6 @@ export const detectors: Record<string, DetectFn> = {
     const st = h(headers, "server-timing");
     if (st && /cache|edge|origin/i.test(st) && /dur=/i.test(st)) {
       return "Server-Timing exposes cache hit/miss timings (e.g. cache;dur=12) — strip cache-specific entries in production.";
-    }
-    if (st) {
-      return "Server-Timing header is present — verify it does not leak cache or backend timings to clients.";
-    }
-    const ct = h(headers, "content-type") || "";
-    if (/text\/html/i.test(ct)) {
-      return "HTML page has no Server-Timing — confirm cache timings are not exposed elsewhere in the response.";
     }
     return null;
   },
