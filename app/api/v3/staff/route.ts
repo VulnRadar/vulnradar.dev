@@ -7,9 +7,9 @@ const STAFF_ROLES_FOR_DISPLAY = ["admin", "moderator", "support"];
 
 export async function GET() {
   try {
-    // H-7: Minimal exposure — return only display name + role. No
+    // privacy: minimal exposure — return only display name + role. No
     // avatar, no email, no created_at ordering (which would leak
-    // seniority / hiring order). Pages render names as "Staff Member"
+    // seniority / hiring order).
     // when name is null.
     const result = await pool.query(
       `SELECT name, role FROM users

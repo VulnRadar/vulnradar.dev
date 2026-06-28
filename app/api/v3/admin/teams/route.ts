@@ -124,7 +124,7 @@ export async function PATCH(request: Request) {
   ]);
 
   // Log audit
-  // SECURITY-AUDIT-2026-06-28 / M-7: trusted client IP only.
+  // audit-log: trusted client IP only.
   const ip = (await getClientIp()) || null;
   await pool.query(
     `INSERT INTO admin_audit_log (admin_id, action, target_user_id, details, ip_address)
@@ -198,7 +198,7 @@ export async function DELETE(request: Request) {
   }
 
   // Log audit
-  // SECURITY-AUDIT-2026-06-28 / M-7: trusted client IP only.
+  // audit-log: trusted client IP only.
   const ip = (await getClientIp()) || null;
   await pool.query(
     `INSERT INTO admin_audit_log (admin_id, action, target_user_id, details, ip_address)

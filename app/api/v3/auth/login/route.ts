@@ -47,12 +47,10 @@ export const POST = withErrorHandling(async (request: Request) => {
 
   const user = await getUserByEmail(email);
 
-  // SECURITY-AUDIT-2026-06-28 / M-1: timing-equality between "user
-  // exists" and "user does not exist" branches. Without this, the
-  // no-user path returns in ~5-20 ms while the user-exists path runs
-  // a full scrypt (N=131072, ~80-200 ms) regardless of password
-  // correctness. That delta is observable across many requests and
-  // exposes which emails are registered.
+  // auth: equalize timing between user-exists and user-doesn't-exist
+  // branches. Without this, the no-user path returns in ~5-20 ms
+  // while the user-exists path runs a full scrypt (N=131072,
+  // ~80-200 ms) — a registerable side channel.
   //
   // DUMMY_PASSWORD_HASH is the scrypt-of-deterministic-random-string
   // generated once at server startup; running verifyPassword against
@@ -114,11 +112,10 @@ export const POST = withErrorHandling(async (request: Request) => {
   const twoFactorMethod = userInfo?.two_factor_method || "app";
 
   if (has2FA) {
-    // H-3: device-trust cookie is now an opaque 32-byte random token
-    // (256 bits) stored server-side in device_trust. The previous
-    // implementation used a 32-bit hash of `${ip}-${userAgent}` which
-    // is brute-forceable for any attacker who can read the IP/UA
-    // pair (e.g. via login-alert email leakage).
+    // auth: device-trust cookie is an opaque 256-bit random token stored
+    // server-side in device_trust. A previous 32-bit hash of
+    // `${ip}-${userAgent}` was brute-forceable for any attacker who
+    // could read the IP/UA pair (e.g. via login-alert email leakage).
     const userAgent = await getUserAgent();
     const deviceCookie = (request as unknown as NextRequest).cookies?.get?.(
       DEVICE_TRUST_COOKIE_NAME,

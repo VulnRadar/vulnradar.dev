@@ -476,13 +476,13 @@ export async function safeFetch(
     finalInit = setHostHeader(init, urlObj.hostname);
   }
 
-  // SECURITY-AUDIT-2026-06-28 / C-1: manual redirect loop with per-hop
-  // re-validation. We deliberately set `redirect: "manual"` and walk
-  // each Location: ourselves, running the same `validateScanTarget`
-  // guard on every hop. Node's built-in `redirect: "follow"` blindly
-  // fetches whatever URL the target returns, which allowed an attacker
-  // hosting a public URL to 302-redirect the scanner into
-  // http://169.254.169.254/ (cloud metadata) or any RFC1918 address.
+  // ssrf: manual redirect loop with per-hop re-validation. We
+  // deliberately set `redirect: "manual"` and walk each Location:
+  // ourselves, running the same `validateScanTarget` guard on every
+  // hop. Node's built-in `redirect: "follow"` blindly fetches
+  // whatever URL the target returns, which allowed a public URL to
+  // 302-redirect the scanner into http://169.254.169.254/ (cloud
+  // metadata) or any RFC1918 address.
   //
   // Cross-host redirects are rejected outright. Same-host redirects
   // are allowed up to MAX_REDIRECT_HOPS, after which we stop and

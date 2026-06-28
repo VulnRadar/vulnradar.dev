@@ -89,16 +89,16 @@ const OptionalSchema = z.object({
   // right-to-left. A typo here silently disables IP trust.
   TRUSTED_PROXY_CIDR: z.string().optional(),
 
-  // SECURITY-AUDIT-2026-06-28 / H-5: When DISABLE_CSP is "1" the
-  // application strips every CSP / COOP / CORP / X-Frame-Options /
-  // Permissions-Policy header. Useful only for debugging third-party
-  // embed compatibility in development. Must NOT be enabled in
-  // production — schema validates that below.
+  // headers: when DISABLE_CSP is "1" the application strips every
+  // CSP / COOP / CORP / X-Frame-Options / Permissions-Policy header.
+  // Useful only for debugging third-party embed compatibility in
+  // development. Must NOT be enabled in production — see
+  // assertProductionSafe below.
   DISABLE_CSP: z.string().optional(),
 });
 
 /**
- * SECURITY-AUDIT-2026-06-28 / H-5: Production guardrail for DISABLE_CSP=1.
+ * headers: production guardrail for DISABLE_CSP=1.
  *
  * The DISABLE_CSP escape hatch is intended for local debugging only.
  * Leaving it on in production silently disables the entire security
@@ -140,8 +140,8 @@ let cached: Env | null = null;
 export function validateEnv(): Env {
   if (cached) return cached;
 
-  // SECURITY-AUDIT-2026-06-28 / H-5: refuse DISABLE_CSP=1 in production.
-  // Runs before zod parse so the operator gets an actionable error.
+  // headers: refuse DISABLE_CSP=1 in production. Runs before zod
+  // parse so the operator gets an actionable error.
   assertProductionSafe();
 
   const result = EnvSchema.safeParse(process.env);

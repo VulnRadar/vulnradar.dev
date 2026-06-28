@@ -1,0 +1,21 @@
+{
+  "id": "AUDIT-001",
+  "title": "Auth, session, and scanner hardening",
+  "scopes": [
+    "auth",
+    "session",
+    "crypto",
+    "ssrf",
+    "csrf",
+    "headers",
+    "rate-limit",
+    "db",
+    "secrets",
+    "scanner"
+  ],
+  "createdAt": "2026-06-28T14:35:00Z",
+  "closedAt": "2026-06-28T15:10:00Z",
+  "status": "shipped",
+  "summary": "Closed 1 critical (SSRF via open redirect), 8 high (server-action IDOR, password-change session invalidation, plaintext TOTP/Discord tokens, prod CSP escape hatch, CSRF gap, API-key rate-limit race, mutable Docker base + :latest tag), and 11 medium findings (login timing oracle, FK violations on user-delete, fail-open access-rules, plaintext emails in audit log, SMTP plaintext fallback, spoofable audit IPs, missing URL-length cap, Set-Cookie persisted in scan history, hardcoded bulk-scan cap, uncapped BrowserBase sessions, ms-precision rate-limit windows).",
+  "shipCommit": "bcc9e86"
+}

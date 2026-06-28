@@ -4,7 +4,8 @@ import pool from "@/lib/database/db";
 import { ApiResponse, parseBody, withErrorHandling } from "@/lib/api/api-utils";
 import { SUCCESS_MESSAGES } from "@/lib/config/constants";
 
-// M-2: hash incoming token with the same function used at generation.
+// auth: hash incoming token with the same function used at
+// generation so a DB dump can't replay raw tokens.
 function hashToken(token: string): string {
   return createHash("sha256").update(token).digest("hex");
 }

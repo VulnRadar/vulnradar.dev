@@ -1,37 +1,29 @@
 /**
- * SECURITY-AUDIT-2026-06-28 / H-6: CSRF protection via
- * Origin / Sec-Fetch-Site enforcement.
+ * csrf: CSRF protection via Origin / Sec-Fetch-Site enforcement.
  *
  * Browsers attach the `Origin` header to all fetch/XHR requests with
  * methods other than GET / HEAD. Modern browsers also send the
  * `Sec-Fetch-Site` header indicating the relationship between the
- * requesting origin and the target (same-origin / same-site / cross-site
- * / none). For state-changing endpoints (POST / PUT / PATCH / DELETE),
- * VulnRadar requires both:
+ * requesting origin and the target (same-origin / same-site /
+ * cross-site / none). For state-changing endpoints (POST / PUT /
+ * PATCH / DELETE), we require both:
  *
  *   - `Origin` (or `Referer` as fallback) matches the configured app URL
  *   - `Sec-Fetch-Site` is "same-origin" or "same-site" (when present)
  *
  * The check is intentionally strict-by-default:
  *
- *   - Missing Origin + missing Referer → reject (defensive against
- *     older browsers / non-browser clients that don't send either)
+ *   - Missing Origin + missing Referer → reject
  *   - Origin set but doesn't match → reject
  *   - Sec-Fetch-Site present and is "cross-site" → reject
- *   - Sec-Fetch-Site present and is "none" (typically a file:// or
- *     data:// URL, or a navigation) → reject for mutating verbs
+ *   - Sec-Fetch-Site present and is "none" → reject for mutating verbs
  *
- * The middleware already rejects unauthenticated requests to /api/v3/
- * (only Bearer-token-authenticated API clients bypass the session
- * cookie), so the only legitimate non-cookie callers are programmatic
- * API key clients. Those clients must send the Origin header to
- * themselves (or use the API key Bearer token, which middleware
- * allows through).
+ * Programmatic API key clients send the Origin header to themselves
+ * (or use the Bearer token path which middleware allows through).
  *
- * If you need to disable this in a non-browser testing harness, set
- * `process.env.SECURITY_ALLOW_NON_BROWSER_API=1`. (Production code
- * never sets this; the env var is documented for self-hosters running
- * curl-based integration tests against their own instance.)
+ * Set `process.env.SECURITY_ALLOW_NON_BROWSER_API=1` in development
+ * to skip this check for curl-based integration tests. Production
+ * code never sets this.
  */
 import { NextRequest } from "next/server";
 import { NextResponse } from "next/server";

@@ -1,0 +1,236 @@
+{
+  "auditId": "AUDIT-001",
+  "findings": [
+    {
+      "id": "ssrf-01",
+      "severity": "critical",
+      "scope": "ssrf",
+      "title": "safeFetch followed 3xx redirects without re-validating each hop",
+      "summary": "Node's built-in fetch follows Location: blindly. A target that 302s to 169.254.169.254 (or any private IP) bypassed validateScanTarget after the first hop.",
+      "files": ["lib/scanner/safe-fetch.ts"],
+      "fix": "Manual redirect loop with per-hop validateScanTarget; cross-host redirects rejected outright; same-host redirects capped at 5 hops.",
+      "commit": "bcc9e86"
+    },
+    {
+      "id": "auth-01",
+      "severity": "high",
+      "scope": "auth",
+      "title": "startCheckoutSession accepted userId from client (IDOR)",
+      "summary": "The userId parameter was stamped into Stripe metadata, letting any logged-in user upgrade a victim's plan by paying.",
+      "files": [
+        "app/actions/stripe.ts",
+        "components/billing/stripe-checkout.tsx"
+      ],
+      "fix": "Dropped the parameter. userId is now derived server-side from getSession().",
+      "commit": "bcc9e86"
+    },
+    {
+      "id": "session-01",
+      "severity": "high",
+      "scope": "session",
+      "title": "Password change did not invalidate other sessions",
+      "summary": "A stolen session cookie remained valid for the full 7-day TTL even after the legitimate user rotated their password.",
+      "files": ["app/api/v3/auth/update/route.ts"],
+      "fix": "Mirror reset-password: deleteAllSessions + createSession(current).",
+      "commit": "bcc9e86"
+    },
+    {
+      "id": "crypto-01",
+      "severity": "high",
+      "scope": "crypto",
+      "title": "TOTP seed stored plaintext at rest",
+      "summary": "users.totp_secret held the base32 TOTP seed unencrypted. DB read = full 2FA bypass.",
+      "files": [
+        "app/api/v3/auth/2fa/setup/route.ts",
+        "app/api/v3/auth/2fa/verify/route.ts",
+        "instrumentation.ts"
+      ],
+      "fix": "Route through encryptApiKey/decryptApiKey (AES-256-GCM). Added idempotent backfill on startup.",
+      "commit": "bcc9e86"
+    },
+    {
+      "id": "secrets-01",
+      "severity": "high",
+      "scope": "secrets",
+      "title": "Discord OAuth tokens stored plaintext at rest",
+      "summary": "discord_connections.access_token and refresh_token were plaintext. DB read = Discord account takeover via refresh token.",
+      "files": [
+        "app/api/v3/auth/discord/callback/route.ts",
+        "lib/discord/discord-utils.ts",
+        "lib/auth/security-migration.ts"
+      ],
+      "fix": "Encrypt via encryptApiKey; added getDiscordTokens() helper that decrypts inline; backfill migration on startup.",
+      "commit": "bcc9e86"
+    },
+    {
+      "id": "headers-01",
+      "severity": "high",
+      "scope": "headers",
+      "title": "DISABLE_CSP=1 was shipped in production env",
+      "summary": "Operator-set env var stripped every security header (CSP, COOP, CORP, XFO, Permissions-Policy, HSTS) silently.",
+      "files": [
+        ".env.local",
+        "lib/config/env.ts",
+        "middleware.ts",
+        "next.config.mjs"
+      ],
+      "fix": "env validator refuses DISABLE_CSP=1 when NODE_ENV=production. Removed from .env.local.",
+      "commit": "bcc9e86"
+    },
+    {
+      "id": "csrf-01",
+      "severity": "high",
+      "scope": "csrf",
+      "title": "No Origin/Referer check on mutating API routes",
+      "summary": "Cross-site POST could ride the session cookie and change the victim's email.",
+      "files": ["middleware.ts", "lib/api/csrf.ts"],
+      "fix": "Middleware enforces Origin match + Sec-Fetch-Site in same-origin/same-site on every mutating /api/v3/ request. Webhooks and Discord callback are explicitly exempt (signed-payload trust boundary).",
+      "commit": "bcc9e86"
+    },
+    {
+      "id": "rate-limit-01",
+      "severity": "high",
+      "scope": "rate-limit",
+      "title": "API-key daily cap race: concurrent requests bypass the limit",
+      "summary": "checkRateLimit + recordUsage were two separate statements. N concurrent requests at used=limit-1 all passed, all inserted.",
+      "files": ["lib/api/api-keys.ts"],
+      "fix": "Single transaction with SELECT ... FOR UPDATE on api_keys.id; recordUsage() is now a no-op kept only for back-compat.",
+      "commit": "bcc9e86"
+    },
+    {
+      "id": "infra-01",
+      "severity": "high",
+      "scope": "infra",
+      "title": "Docker base + compose tag both mutable",
+      "summary": "node:22-alpine and ghcr.io/vulnradar/vulnradar:latest are moving targets; a compromised registry push immediately ships to every self-hoster.",
+      "files": ["Dockerfile", "docker-compose.yml"],
+      "fix": "Pinned to node:22.11.0-alpine (self-hosters can replace with @sha256:<digest>). Compose uses :3.0.0. Added tini for PID 1 signal forwarding + HEALTHCHECK.",
+      "commit": "bcc9e86"
+    },
+    {
+      "id": "auth-02",
+      "severity": "medium",
+      "scope": "auth",
+      "title": "Login timing oracle leaks registered emails",
+      "summary": "No-user path returned ~5-20ms; user-exists path ran scrypt (80-200ms). Observable delta.",
+      "files": ["app/api/v3/auth/login/route.ts"],
+      "fix": "No-user path runs verifyPassword against a precomputed dummy hash to equalize timing.",
+      "commit": "bcc9e86"
+    },
+    {
+      "id": "db-01",
+      "severity": "medium",
+      "scope": "db",
+      "title": "account/delete blocked by FK violation on admin_audit_log",
+      "summary": "admin_audit_log.target_user_id and access_rules.created_by had no ON DELETE clause; user self-delete returned 500.",
+      "files": ["instrumentation.ts"],
+      "fix": "Self-healing idempotent migration adds fk_admin_audit_target_user ON DELETE SET NULL and fk_access_rules_created_by ON DELETE SET NULL on startup.",
+      "commit": "bcc9e86"
+    },
+    {
+      "id": "scanner-01",
+      "severity": "medium",
+      "scope": "scanner",
+      "title": "access-rules catch block failed open",
+      "summary": "DB error in blacklist query silently allowed every scan through — turning a DB outage into a blacklist bypass.",
+      "files": ["lib/scanner/access-rules.ts"],
+      "fix": "Catch block now returns { allowed: false } — fail-closed.",
+      "commit": "bcc9e86"
+    },
+    {
+      "id": "secrets-02",
+      "severity": "medium",
+      "scope": "secrets",
+      "title": "admin_audit_log.details stored raw user emails (365-day retention)",
+      "summary": "Emails leaked in audit log long after the user changed or deleted their address.",
+      "files": ["lib/auth/authorization.ts"],
+      "fix": "Central logAuditAction helper masks any email-like substring via redactEmailsInDetails before insert.",
+      "commit": "bcc9e86"
+    },
+    {
+      "id": "infra-02",
+      "severity": "medium",
+      "scope": "infra",
+      "title": "SMTP transport fell back to plaintext",
+      "summary": "secure:false without requireTLS meant misconfigured relays could send password-reset + 2FA codes in cleartext.",
+      "files": ["lib/email/email.ts"],
+      "fix": "Port 465 -> secure:true. Port 587/25 -> requireTLS:true. Min TLSv1.2.",
+      "commit": "bcc9e86"
+    },
+    {
+      "id": "infra-03",
+      "severity": "medium",
+      "scope": "infra",
+      "title": "Audit-log IPs read leftmost X-Forwarded-For (spoofable)",
+      "summary": "7 routes trusted the client-supplied IP without consulting TRUSTED_PROXY_CIDR.",
+      "files": [
+        "app/api/v3/auth/update/route.ts",
+        "app/api/v3/admin/teams/route.ts",
+        "app/api/v3/admin/notifications/route.ts",
+        "app/api/v3/admin/notifications/[id]/route.ts",
+        "app/api/v3/schedules/route.ts",
+        "app/api/v3/webhooks/route.ts"
+      ],
+      "fix": "Replace with await getClientIp() everywhere.",
+      "commit": "bcc9e86"
+    },
+    {
+      "id": "scanner-02",
+      "severity": "medium",
+      "scope": "scanner",
+      "title": "No URL length cap at scan API boundary",
+      "summary": "CONFIG_MAX_URL_LENGTH was defined but never enforced — a 50MB URL string hit DNS resolution and DB INSERT.",
+      "files": ["app/api/v3/scan/route.ts"],
+      "fix": "Reject with 400 before any DNS / DB work when url.length > SCANNING.MAX_URL_LENGTH.",
+      "commit": "bcc9e86"
+    },
+    {
+      "id": "scanner-03",
+      "severity": "medium",
+      "scope": "scanner",
+      "title": "scan_history.response_headers stored Set-Cookie values",
+      "summary": "Scan-target session cookies persisted to DB indefinitely.",
+      "files": [
+        "app/api/v3/scan/route.ts",
+        "app/api/v3/scan/bulk/route.ts",
+        "app/api/v3/scan/crawl/route.ts",
+        "lib/scanner/response-headers.ts"
+      ],
+      "fix": "redactSensitiveResponseHeaders strips Set-Cookie / Cookie / Authorization / etc. before insert.",
+      "commit": "bcc9e86"
+    },
+    {
+      "id": "scanner-04",
+      "severity": "medium",
+      "scope": "scanner",
+      "title": "Bulk scan limit hardcoded to 10 instead of MAX_URLS_IN_BULK (100)",
+      "summary": "Self-hosters configuring MAX_URLS_IN_BULK got silent bypass.",
+      "files": ["app/api/v3/scan/bulk/route.ts"],
+      "fix": "Use SCANNING.MAX_URLS_IN_BULK.",
+      "commit": "bcc9e86"
+    },
+    {
+      "id": "rate-limit-02",
+      "severity": "medium",
+      "scope": "rate-limit",
+      "title": "browser/sessions had no per-user cap (financial DoS)",
+      "summary": "A compromised session could rack up real BrowserBase costs by spawning unlimited sessions.",
+      "files": [
+        "app/api/v3/browser/sessions/route.ts",
+        "lib/config/constants.ts"
+      ],
+      "fix": "Added RATE_LIMITS.browserSession (20/hour per user).",
+      "commit": "bcc9e86"
+    },
+    {
+      "id": "rate-limit-03",
+      "severity": "medium",
+      "scope": "rate-limit",
+      "title": "window_start at ms precision created a fresh bucket per request",
+      "summary": "ON CONFLICT(key, window_start) matched exact ms; attacker firing N requests in 1ms got N buckets at count=1.",
+      "files": ["lib/rate-limiting/rate-limit.ts"],
+      "fix": "Quantize window_start to floor(epoch_ms / window_ms) * window_ms.",
+      "commit": "bcc9e86"
+    }
+  ]
+}

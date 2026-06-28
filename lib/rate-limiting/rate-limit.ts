@@ -22,13 +22,11 @@ export async function checkRateLimit({
   const now = new Date();
   const windowStart = new Date(now.getTime() - windowSeconds * 1000);
 
-  // SECURITY-AUDIT-2026-06-28 / M-15: quantize `now` to the start of
-  // the current window so the UPSERT's UNIQUE(key, window_start)
-  // constraint matches requests that land in the same bucket instead
-  // of every request creating its own bucket with ms-precision
-  // window_start. Without this, an attacker firing N requests in
-  // 1 ms gets N distinct buckets each starting at count=1, bypassing
-  // the cap entirely.
+  // rate-limit: quantize `now` to the start of the current window
+  // so the UPSERT's UNIQUE(key, window_start) constraint matches
+  // requests that land in the same bucket. Without this, an
+  // attacker firing N requests in 1 ms gets N distinct buckets each
+  // starting at count=1, bypassing the cap entirely.
   //
   // Bucket boundary = floor(epoch_ms / window_ms) * window_ms.
   const windowMs = windowSeconds * 1000;

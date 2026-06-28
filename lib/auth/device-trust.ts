@@ -3,7 +3,7 @@ import pool from "@/lib/database/db";
 import { DEVICE_TRUST_MAX_AGE } from "@/lib/config/constants";
 
 /**
- * H-3: Trusted-device helper.
+ * auth: trusted-device helper.
  *
  * Replaces the previous client-side 32-bit `deviceId` hash with an
  * opaque 256-bit random token. The token is stored in the

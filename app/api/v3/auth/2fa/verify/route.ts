@@ -71,11 +71,10 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     }
   }
 
-  // H-6: rate-limit 2FA attempts per userId (5 / 5 min). The previous
-  // implementation only rate-limited the email-2FA *send* endpoint; the
-  // primary /verify endpoint had no per-user cap, allowing brute force
-  // of 6-digit TOTP codes (10^6 ≈ 20 bits) once an attacker knew or
-  // guessed a userId.
+  // auth: rate-limit 2FA attempts per userId (5 / 5 min). The verify
+  // endpoint had no per-user cap — only the email-2FA *send*
+  // endpoint was throttled, which left brute force of 6-digit TOTP
+  // codes (10^6 ≈ 20 bits) open to anyone who knew a userId.
   if (effectiveUserId) {
     const rl = await checkRateLimit({
       key: `2fa-verify:${effectiveUserId}:${ip}`,
@@ -93,11 +92,10 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     if (!userId) {
       return ApiResponse.badRequest("User ID is required");
     }
-    // H-6: timing-safe compare of the pending cookie. The previous
-    // implementation used `pending !== String(userId)` which is fine
-    // for distinct string equality but exposes a side-channel if the
-    // format ever changes (e.g. hashed pending). The constant-length
-    // compare below is the safe default.
+    // auth: timing-safe compare of the pending cookie. Plain
+    // `pending !== String(userId)` is fine for distinct equality but
+    // exposes a side-channel if the format ever changes (e.g.
+    // hashed pending). Constant-length compare is the safe default.
     if (!pending) {
       return ApiResponse.unauthorized(ERROR_MESSAGES.INVALID_2FA_SESSION);
     }
@@ -201,10 +199,10 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
       if (!user.totp_secret) {
         return ApiResponse.badRequest("2FA is not configured properly.");
       }
-      // SECURITY-AUDIT-2026-06-28 / H-3: TOTP seed is stored AES-256-GCM
-      // encrypted. Decrypt inline at verify time so the plaintext seed
-      // never leaves memory. If decryption fails (corrupt / key mismatch),
-      // fail closed.
+      // crypto: TOTP seed is stored AES-256-GCM encrypted. Decrypt
+      // inline at verify time so the plaintext seed never leaves
+      // memory. Fail closed if decryption fails (corrupt / key
+      // mismatch).
       let decryptedSecret: string;
       try {
         decryptedSecret = decryptApiKey(user.totp_secret);
@@ -259,7 +257,8 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   // If user wants to remember this device, set device trust cookie
   // Use the rememberDevice value from the form submission for both normal and Discord logins
   if (rememberDevice === true) {
-    // H-3: 256-bit opaque random token stored server-side in device_trust.
+    // auth: 256-bit opaque random token stored server-side in
+    // device_trust (see lib/auth/device-trust.ts).
     const fingerprint = await upsertTrustedDevice(
       effectiveUserId,
       null,

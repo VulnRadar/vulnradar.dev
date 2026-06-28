@@ -48,10 +48,11 @@ export async function PATCH(request: NextRequest) {
     const body = await request.json();
     const { name, email, currentPassword, newPassword, avatarUrl } = body;
 
-    // H-4: Any sensitive profile change (name, email, avatar, password)
-    // requires the user to re-authenticate with their current password.
-    // Without this, a stolen session cookie is enough to take over the
-    // account by changing the email and then triggering a password reset.
+    // auth: any sensitive profile change (name, email, avatar, password)
+    // requires re-authentication with the current password. Without
+    // this, a stolen session cookie is enough to take over the
+    // account by changing the email and then triggering a password
+    // reset.
     const sensitiveChangeRequested =
       (typeof name === "string" && name.trim()) ||
       (typeof email === "string" && email.trim()) ||
@@ -82,10 +83,9 @@ export async function PATCH(request: NextRequest) {
     }
 
     // Get IP and user agent for security emails
-    // SECURITY-AUDIT-2026-06-28 / M-7: getClientIp respects
-    // TRUSTED_PROXY_CIDR so a forged X-Forwarded-For from an
-    // untrusted client can't poison the audit-log IP or the
-    // "password changed from 127.0.0.1" email.
+    // audit-log: getClientIp respects TRUSTED_PROXY_CIDR so a forged
+    // X-Forwarded-For from an untrusted client can't poison the
+    // audit-log IP or the "password changed from 127.0.0.1" email.
     const ip = (await getClientIp()) || "Unknown";
     const userAgent = request.headers.get("user-agent") || "Unknown";
 
@@ -223,7 +223,7 @@ export async function PATCH(request: NextRequest) {
 
     // Update password
     if (newPassword) {
-      // H-4: current password has already been verified above.
+      // auth: current password already verified above (sensitive-change branch).
       if (newPassword.length < 8) {
         return NextResponse.json(
           { error: "New password must be at least 8 characters." },
@@ -237,13 +237,12 @@ export async function PATCH(request: NextRequest) {
         session.userId,
       ]);
 
-      // SECURITY-AUDIT-2026-06-28 / H-2: invalidate ALL other sessions
-      // for this user when the password changes. The previous behavior
-      // kept stolen session cookies alive for the full 7-day TTL even
-      // after a password rotation, allowing an attacker who had a
-      // cookie to retain access indefinitely. We mirror the
-      // reset-password flow: kill all sessions, then re-create the
-      // current session so the user is not immediately logged out.
+      // session: invalidate ALL other sessions on password change.
+      // A stolen session cookie would otherwise stay valid for the
+      // full 7-day TTL even after a legitimate password rotation.
+      // Mirror the reset-password flow: kill all sessions, then
+      // re-create the current session so the user is not
+      // immediately logged out.
       await deleteAllSessions(session.userId);
       const uaForSession = await getUserAgent();
       const newSessionId = await createSession(

@@ -257,7 +257,7 @@ async function scanSingleUrl(
   headers.forEach((v, k) => {
     capturedHeaders[k] = v;
   });
-  // SECURITY-AUDIT-2026-06-28 / M-10: redact sensitive headers.
+  // scanner: redact sensitive headers.
   const redactedHeaders = redactSensitiveResponseHeaders(capturedHeaders);
 
   const checks = scanners

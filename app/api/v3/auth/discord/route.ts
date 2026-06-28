@@ -36,8 +36,8 @@ export async function GET(request: Request) {
 
   // Build Discord OAuth URL
   const scopes = ["identify", "email", "guilds.join"];
-  // H-5: state is HMAC-signed (see lib/auth/discord-state.ts).
-  // Also bind userId when available to prevent replay by another session.
+  // auth: state is HMAC-signed (see lib/auth/discord-state.ts). Also
+  // bind userId when available to prevent replay by another session.
   const state = signDiscordState({
     action,
     userId: session?.userId,

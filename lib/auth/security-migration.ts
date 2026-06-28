@@ -1,27 +1,27 @@
 /**
- * SECURITY-AUDIT-2026-06-28 / H-3 + H-4: One-time encryption
- * migration for the TOTP seed and Discord OAuth tokens.
+ * crypto: one-time encryption migration for the TOTP seed and
+ * Discord OAuth tokens.
  *
- * The schema columns `users.totp_secret`, `discord_connections.access_token`,
- * and `discord_connections.refresh_token` were previously stored as
- * plaintext. They are now stored as AES-256-GCM ciphertexts (base64)
- * using the same `encryptApiKey` / `decryptApiKey` pipeline that protects
- * API keys.
+ * The schema columns `users.totp_secret`,
+ * `discord_connections.access_token`, and
+ * `discord_connections.refresh_token` are now stored as AES-256-GCM
+ * ciphertexts (base64) using the same `encryptApiKey` /
+ * `decryptApiKey` pipeline that protects API keys.
  *
  * A plaintext TOTP seed is a 32-char uppercase base32 string.
  * A plaintext Discord token is a 24-30+ char alphanumeric string.
  * An AES-256-GCM ciphertext under this pipeline is always a base64
- * string that begins with a 16-byte (IV = 12 bytes + ≥4 bytes ciphertext)
- * prefix. So a stored value that:
+ * string that begins with a 16-byte (IV = 12 bytes + ≥4 bytes
+ * ciphertext) prefix. So a stored value that:
  *   - is non-null,
- *   - cannot be successfully base64-decoded and split into IV/ciphertext/tag, OR
- *   - base64-decodes but does not match the expected `iv(12)+cipher+tag(16)`
- *     layout,
+ *   - cannot be successfully base64-decoded and split into
+ *     IV/ciphertext/tag, OR
+ *   - base64-decodes but does not match the expected
+ *     `iv(12)+cipher+tag(16)` layout,
  * is treated as legacy plaintext and is re-encrypted in place.
  *
- * This is safe to run repeatedly: if a row is already encrypted,
- * `decryptApiKey` succeeds and we leave it alone. The migration
- * is idempotent.
+ * Safe to run repeatedly: if a row is already encrypted,
+ * `decryptApiKey` succeeds and we leave it alone. Idempotent.
  */
 import pool from "@/lib/database/db";
 import { encryptApiKey, decryptApiKey } from "@/lib/auth/crypto";

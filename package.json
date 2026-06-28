@@ -22,7 +22,11 @@
     "db:migrate:dry-run": "node scripts/migrate/migrate.mjs --dry-run",
     "db:create": "node scripts/create-fresh-db/create-fresh-db.mjs",
     "db:create:dry-run": "node scripts/create-fresh-db/create-fresh-db.mjs --dry-run",
-    "audit:v2-tables": "node scripts/_lib/audit-v2-tables.mjs"
+    "audit:v2-tables": "node scripts/_lib/audit-v2-tables.mjs",
+    "audit:new": "node scripts/audit/new.mjs",
+    "audit:list": "node scripts/audit/list.mjs",
+    "audit:show": "node scripts/audit/show.mjs",
+    "audit:close": "node scripts/audit/close.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "5.4.0",

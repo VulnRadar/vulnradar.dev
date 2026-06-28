@@ -53,7 +53,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // SECURITY-AUDIT-2026-06-28 / M-7: trusted client IP only.
+    // audit-log: trusted client IP only.
     const ip = (await getClientIp()) || null;
     const body = await req.json();
     const {

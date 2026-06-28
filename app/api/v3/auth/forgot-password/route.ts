@@ -16,9 +16,9 @@ import {
   Validate,
 } from "@/lib/api/api-utils";
 
-// M-2: hash the token before storage so a DB dump doesn't yield
-// working reset tokens. The verify route hashes the incoming token
-// with the same function before lookup.
+// auth: hash the token before storage so a DB dump doesn't yield
+// working reset tokens. The verify route hashes the incoming
+// token with the same function before lookup.
 function hashToken(token: string): string {
   return createHash("sha256").update(token).digest("hex");
 }
@@ -46,9 +46,9 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
 
   const normalizedEmail = email.trim().toLowerCase();
 
-  // L-3: per-email rate limit on top of the per-IP limit. Stops a
-  // residential NAT or botnet from spamming password resets for many
-  // distinct addresses from a single source.
+  // rate-limit: per-email rate limit on top of the per-IP limit.
+  // Stops a residential NAT or botnet from spamming password
+  // resets for many distinct addresses from a single source.
   const emailRl = await checkRateLimit({
     key: `forgot-email:${normalizedEmail}`,
     maxAttempts: 3,

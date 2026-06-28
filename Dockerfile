@@ -2,11 +2,11 @@
 # Node 22 LTS only. Node 20 reached end-of-life on 2026-04-30 and is no
 # longer receiving security patches.
 #
-# SECURITY-AUDIT-2026-06-28 / H-8: base image pinned to a specific
-# minor version (`node:22.11.0-alpine`) instead of the moving
-# `node:22-alpine` tag. Self-hosters who want a fully immutable build
-# should replace this with `node:22.11.0-alpine@sha256:<digest>` —
-# pull `node:22.11.0-alpine` locally and grab the digest via
+# infra: base image pinned to a specific minor version
+# (`node:22.11.0-alpine`) instead of the moving `node:22-alpine` tag.
+# Self-hosters who want a fully immutable build should replace this
+# with `node:22.11.0-alpine@sha256:<digest>` — pull
+# `node:22.11.0-alpine` locally and grab the digest via
 # `docker images --digests node:22.11.0-alpine`.
 FROM node:22.11.0-alpine AS builder
 
@@ -16,10 +16,10 @@ WORKDIR /app
 ARG NEXT_PUBLIC_APP_URL
 
 # Install dependencies first (better layer caching).
-# SECURITY-AUDIT-2026-06-28 / supply-chain: --ignore-scripts prevents
-# transitive postinstall scripts from running during image build.
-# Native deps (sharp, esbuild, unrs-resolver, core-js) are whitelisted
-# in .npmrc so they DO run via npm's `allow-scripts` mechanism.
+# infra: --ignore-scripts prevents transitive postinstall scripts
+# from running during image build. Native deps (sharp, esbuild,
+# unrs-resolver, core-js) are whitelisted in .npmrc so they DO run
+# via npm's `allow-scripts` mechanism.
 COPY package.json package-lock.json .npmrc ./
 RUN npm ci --silent --ignore-scripts
 
@@ -70,8 +70,8 @@ COPY --from=builder --chown=nextjs:nodejs /app/next.config.mjs ./next.config.mjs
 # container shutdown).
 RUN apk add --no-cache wget tini
 
-# SECURITY-AUDIT-2026-06-28 / build: HEALTHCHECK gives orchestrators
-# (k8s, ECS, compose) a real signal of app readiness.
+# infra: HEALTHCHECK gives orchestrators (k8s, ECS, compose) a real
+# signal of app readiness.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
   CMD wget --no-verbose --tries=1 --spider http://localhost:3000/api/version || exit 1
 
@@ -84,8 +84,8 @@ ENV NEXT_TELEMETRY_DISABLED=1
 ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
 
-# Start the app under tini so SIGTERM is forwarded to the Node worker
-# and in-flight requests are allowed to drain cleanly.
+# infra: run under tini so SIGTERM is forwarded to the Node worker
+# and in-flight requests drain cleanly on container shutdown.
 # (schema auto-creates via instrumentation.ts on startup)
 ENTRYPOINT ["/sbin/tini", "--"]
 CMD ["npm", "start"]

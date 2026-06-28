@@ -41,14 +41,13 @@ const COLORS = {
   WHITE: "#ffffff",
 } as const;
 
-// SECURITY-AUDIT-2026-06-28 / M-6: pin SMTP to TLS. Previously the
-// transport used `secure: false` without `requireTLS: true`, which
-// falls back to plaintext if the server strips STARTTLS. We pick
-// the right mode per port:
+// infra: pin SMTP to TLS. The transport used `secure: false` without
+// `requireTLS: true`, which falls back to plaintext if the server
+// strips STARTTLS. We pick the right mode per port:
 //   - 465 → implicit TLS (secure: true)
 //   - 587 → STARTTLS (requireTLS: true)
-//   - 25  → refuse to start in production (requireTLS enforced anyway,
-//     but plaintext port 25 should be blocked at the network layer).
+//   - 25  → STARTTLS required (plaintext port 25 should be blocked
+//     at the network layer)
 function buildSmtpTransport() {
   const port = Number(SMTP_PORT);
   // Use secure: true for port 465 (implicit TLS).
@@ -205,9 +204,9 @@ export async function sendEmail({
     console.warn("SMTP not configured. Email not sent:");
     console.warn(`  To: ${to}`);
     console.warn(`  Subject: ${subject}`);
-    // L-2: Log only metadata (length), never the email body. Email
-    // bodies can contain reset links, 2FA codes, or share tokens —
-    // they must never appear in logs even truncated.
+    // privacy: log only metadata (length), never the email body.
+    // Email bodies can contain reset links, 2FA codes, or share
+    // tokens — they must never appear in logs even truncated.
     console.warn(`  Length: ${text.length} chars`);
 
     // In development, just log and return successfully

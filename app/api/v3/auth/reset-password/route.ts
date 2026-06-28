@@ -12,7 +12,7 @@ import {
   withErrorHandling,
 } from "@/lib/api/api-utils";
 
-// M-2: hash the incoming token with the same function used at
+// auth: hash the incoming token with the same function used at
 // generation time so we never compare raw tokens against the DB.
 function hashToken(token: string): string {
   return createHash("sha256").update(token).digest("hex");
