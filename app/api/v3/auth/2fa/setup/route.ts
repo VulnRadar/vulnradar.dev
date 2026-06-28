@@ -39,10 +39,10 @@ export const GET = withErrorHandling(async () => {
   const secret = generateSecret();
   const uri = generateOtpAuthUri(secret, session.email);
 
-  // SECURITY-AUDIT-2026-06-28 / H-3: the TOTP seed is encrypted at rest
-  // using the same AES-256-GCM pipeline that protects API keys. Without
-  // this, a read-only DB compromise yields the user's TOTP seed and
-  // lets an attacker mint valid 6-digit codes for the lifetime of the
+  // crypto: TOTP seed is stored AES-256-GCM encrypted via the same
+  // encryptApiKey pipeline that protects API keys. Without this, a
+  // read-only DB compromise yields the user's TOTP seed and lets an
+  // attacker mint valid 6-digit codes for the lifetime of the
   // account (full 2FA bypass).
   await pool.query("UPDATE users SET totp_secret = $1 WHERE id = $2", [
     encryptApiKey(secret),
@@ -84,8 +84,8 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     );
   }
 
-  // SECURITY-AUDIT-2026-06-28 / H-3: decrypt the stored TOTP seed
-  // inline before verification. Fail closed if decryption fails.
+  // crypto: decrypt the stored TOTP seed inline before verification.
+  // Fail closed if decryption fails.
   let secret: string;
   try {
     secret = decryptApiKey(storedSecret);

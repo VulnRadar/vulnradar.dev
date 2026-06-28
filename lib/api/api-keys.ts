@@ -284,15 +284,12 @@ export async function validateApiKey(
   return null;
 }
 
-// Check rate limit - returns { allowed, remaining, limit, resetsAt }
-//
-// SECURITY-AUDIT-2026-06-28 / H-7: previously this was a read-then-write
-// across two SQL statements (`checkRateLimit` then `recordUsage`), which
-// let two concurrent requests both observe `used = limit - 1`, both
-// pass the check, and both insert — driving usage past the cap. The
-// new implementation holds a row-level lock on `api_keys.id` for the
-// duration of the count + insert, so two concurrent requests serialize
-// and the second sees the first's incremented counter.
+// rate-limit: atomic check-and-increment under a row lock.
+// Concurrent requests observing `used = limit - 1` would otherwise
+// both pass and both insert — a real billing-cap bypass for paid
+// API customers. The lock on api_keys.id serializes the count +
+// insert, so the second request sees the first's incremented
+// counter and is rejected.
 export async function checkRateLimit(keyId: number, dailyLimit: number) {
   // Use a dedicated client so the BEGIN / COMMIT is scoped to this
   // call and we can issue SELECT ... FOR UPDATE + INSERT + count on
@@ -379,13 +376,10 @@ export async function checkRateLimit(keyId: number, dailyLimit: number) {
   }
 }
 
-// Record a usage event — DEPRECATED. The atomic `checkRateLimit` above
-// now both counts AND inserts in a single transaction under a row lock.
-// This stub is kept only so existing call sites that pass through it
-// don't crash; new code must NOT call it.
-//
-// SECURITY-AUDIT-2026-06-28 / H-7: kept as a no-op so the old read-then-
-// write race cannot be reintroduced. Will be removed in a follow-up.
+// rate-limit: no-op stub. The atomic checkRateLimit above both
+// counts AND inserts under a row lock — the old read-then-write
+// race is gone. Kept only so existing call sites don't crash; new
+// code must not call this.
 export async function recordUsage(_keyId: number) {
   /* no-op: see checkRateLimit above for the atomic implementation */
   return;

@@ -3,10 +3,10 @@ import { PUBLIC_PATHS } from "./lib/config/public-paths";
 import { AUTH_SESSION_COOKIE_NAME, ROUTES } from "./lib/config/constants";
 
 const SECURITY_HEADERS: Record<string, string> = {
-  // L-1: CSP tightened to remove the broad `https:` wildcards. We
-  // keep only the explicit origins each integration actually needs.
-  // Note: 'unsafe-eval' and 'unsafe-inline' are still required for
-  // Next.js to function in dev/prod.
+  // headers: CSP tightened to remove the broad `https:` wildcards.
+  // We keep only the explicit origins each integration actually
+  // needs. Note: 'unsafe-eval' and 'unsafe-inline' are still
+  // required for Next.js to function in dev/prod.
   "Content-Security-Policy": [
     "default-src 'self'",
     // BrowserBase additions for the live-view iframe:
@@ -113,18 +113,19 @@ export function middleware(request: NextRequest) {
     return applySecurityHeaders(NextResponse.next());
   }
 
-  // SECURITY-AUDIT-2026-06-28 / H-6: enforce CSRF for state-changing
-  // requests to the API surface. We require that the request carries
-  // an Origin / Referer header matching the app's own origin AND a
+  // csrf: enforce CSRF for state-changing requests to the API
+  // surface. We require that the request carries an Origin /
+  // Referer header matching the app's own origin AND a
   // Sec-Fetch-Site header (when present) that is "same-origin" or
-  // "same-site". Without this, a malicious site can submit cross-origin
-  // POSTs against VulnRadar on behalf of an authenticated user.
+  // "same-site". Without this, a malicious site can submit
+  // cross-origin POSTs against VulnRadar on behalf of an
+  // authenticated user.
   //
-  // Webhooks from Stripe and Discord are exempt (they sign their
-  // payloads — see app/api/v3/webhooks/stripe/route.ts and
+  // Webhooks from Stripe and Discord are exempt — they sign their
+  // payloads (see app/api/v3/webhooks/stripe/route.ts and
   // app/api/v3/auth/discord/callback/route.ts). The exempt list
-  // below is intentionally narrow: webhook signature verification is
-  // the trust boundary for those endpoints, not the Origin header.
+  // below is intentionally narrow: webhook signature verification
+  // is the trust boundary for those endpoints, not the Origin header.
   if (pathname.startsWith("/api/v3/") && !isExemptFromCsrf(pathname)) {
     const csrfResponse = enforceCsrf(request);
     if (csrfResponse) {
@@ -147,13 +148,11 @@ export function middleware(request: NextRequest) {
 }
 
 /**
- * SECURITY-AUDIT-2026-06-28 / H-6: list of API paths that are exempt
- * from the CSRF check. Exempt endpoints authenticate the caller some
- * other way (signed payload, server-issued secret, etc.) so the
- * Origin header is not a useful signal.
- *
- * Keep this list narrow — every entry needs a clear non-CSRF trust
- * boundary.
+ * csrf: list of API paths exempt from the CSRF check. Exempt
+ * endpoints authenticate the caller some other way (signed payload,
+ * server-issued secret, etc.) so the Origin header is not a useful
+ * signal. Keep this list narrow — every entry needs a clear
+ * non-CSRF trust boundary.
  */
 function isExemptFromCsrf(pathname: string): boolean {
   // Stripe webhooks: signed via STRIPE_WEBHOOK_SECRET.
@@ -171,15 +170,14 @@ function isExemptFromCsrf(pathname: string): boolean {
 }
 
 /**
- * SECURITY-AUDIT-2026-06-28 / H-6: enforce that mutating requests
- * (POST / PUT / PATCH / DELETE) to the API carry an Origin / Referer
- * matching this app and (when present) a same-site Sec-Fetch-Site.
- *
- * Returns a 403 response if the check fails, or null if it passes.
+ * csrf: enforce that mutating requests (POST / PUT / PATCH / DELETE)
+ * to the API carry an Origin / Referer matching this app and (when
+ * present) a same-site Sec-Fetch-Site. Returns a 403 response if
+ * the check fails, or null if it passes.
  *
  * Self-hosters running curl-based integration tests can set
- * `process.env.SECURITY_ALLOW_NON_BROWSER_API=1` (development only) to
- * skip the check. Production code never sets this.
+ * `process.env.SECURITY_ALLOW_NON_BROWSER_API=1` (development only)
+ * to skip the check. Production code never sets this.
  */
 function enforceCsrf(request: NextRequest): NextResponse | null {
   const method = request.method.toUpperCase();

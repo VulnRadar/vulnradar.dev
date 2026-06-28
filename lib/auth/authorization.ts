@@ -46,15 +46,14 @@ export async function requireAdmin() {
 }
 
 /**
- * SECURITY-AUDIT-2026-06-28 / M-5: Mask an email address before it is
- * persisted into admin_audit_log.details or any other long-retention
- * audit field. The mask is lossy (a***@example.com) but preserves the
- * domain for audit purposes. Avoids the previous behavior of storing
- * the full plaintext email in a TEXT column with a 365-day retention,
- * which leaked old emails even after the user deleted their account
- * or changed their address.
+ * audit-log: mask an email before it is persisted into
+ * admin_audit_log.details or any other long-retention audit field.
+ * The mask is lossy (a***@example.com) but preserves the domain for
+ * audit purposes. Avoids storing full plaintext email in a TEXT
+ * column with 365-day retention, which leaked old emails even after
+ * the user deleted their account or changed their address.
  *
- * Callers should prefer passing the user_id and looking up the current
+ * Callers should prefer passing user_id and looking up the current
  * email separately. Use this helper only when a human-readable
  * description needs to reference the user inline.
  */
@@ -74,16 +73,14 @@ export function maskEmail(email: string | null | undefined): string {
 }
 
 /**
- * SECURITY-AUDIT-2026-06-28 / M-5: replace any email-like substring in
- * `details` with `maskEmail(email)`. Catches the case where a caller
- * builds a details string via template literal like:
+ * audit-log: replace any email-like substring in `details` with
+ * maskEmail(email). Catches the case where a caller builds a
+ * details string via template literal like
+ * `Granted admin to ${targetUser.email}` and forgot to mask.
  *
- *   `Granted admin to ${targetUser.email}`
- *
- * and forgot to mask. The regex matches the RFC-5322-lite pattern
- * (local@domain.tld) and is conservative — false positives are
- * possible but in audit-log context that's preferable to a real
- * email leak.
+ * The regex matches the RFC-5322-lite pattern (local@domain.tld)
+ * and is conservative — false positives are possible but in
+ * audit-log context that's preferable to a real email leak.
  */
 const EMAIL_PATTERN = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g;
 export function redactEmailsInDetails(
@@ -105,8 +102,8 @@ export async function logAuditAction(
   details?: string,
   ip?: string,
 ): Promise<void> {
-  // SECURITY-AUDIT-2026-06-28 / M-5: automatically mask any emails
-  // embedded in the details string before persisting.
+  // audit-log: mask any emails embedded in the details string
+  // before persisting.
   await pool.query(
     "INSERT INTO admin_audit_log (admin_id, target_user_id, action, details, ip_address) VALUES ($1, $2, $3, $4, $5)",
     [adminId, targetUserId, action, redactEmailsInDetails(details), ip || null],

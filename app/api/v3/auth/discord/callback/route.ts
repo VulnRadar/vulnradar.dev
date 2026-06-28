@@ -72,9 +72,9 @@ export async function GET(request: Request) {
   // state URL can't be replayed by another session.
   const session = await getSession();
 
-  // H-5: Verify HMAC-signed state before parsing. The previous
-  // implementation trusted the base64url-encoded JSON, which any caller
-  // who observed a `state` value (or guessed one) could forge to log in
+  // auth: verify HMAC-signed state before parsing. Plain
+  // base64url-encoded JSON would be forgeable by anyone who
+  // observed a state value — see lib/auth/discord-state.ts.
   // as a different linked user.
   const verified = verifyDiscordState(state, session?.userId);
   if (!verified.ok) {
@@ -173,10 +173,9 @@ export async function GET(request: Request) {
         );
       }
 
-      // Upsert discord connection
-      // SECURITY-AUDIT-2026-06-28 / H-4: tokens are encrypted at rest via
-      // the same AES-256-GCM pipeline that protects API keys. A read-only
-      // DB compromise must not yield Discord refresh tokens (which grant
+      // crypto: tokens are encrypted at rest via the same AES-256-GCM
+      // pipeline that protects API keys. A read-only DB compromise
+      // must not yield Discord refresh tokens (which grant
       // indefinite access to the linked Discord account).
       await pool.query(
         `INSERT INTO discord_connections 
@@ -262,7 +261,7 @@ export async function GET(request: Request) {
         const userAgent = request.headers.get("user-agent") || "unknown";
         const deviceCookie = cookieStore.get(DEVICE_TRUST_COOKIE_NAME)?.value;
 
-        // H-3: device-trust is now an opaque 256-bit random token stored
+        // auth: device-trust is an opaque 256-bit random token stored
         // server-side in device_trust, not a hash of IP+UA.
         if (deviceCookie && (await findTrustedDevice(userId, deviceCookie))) {
           // Device is trusted - create session directly without 2FA

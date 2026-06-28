@@ -40,9 +40,9 @@ services:
       - vulnradar-network
 
   # VulnRadar Application
-  # SECURITY-AUDIT-2026-06-28 / H-8: pin to a specific version tag instead
-  # of `:latest` (mutable). Self-hosters should bump intentionally and
-  # read the changelog before pulling. To pin to an immutable digest:
+  # infra: pin to a specific version tag instead of `:latest`
+  # (mutable). Self-hosters should bump intentionally and read the
+  # changelog before pulling. To pin to an immutable digest:
   #   1. `docker pull ghcr.io/vulnradar/vulnradar:3.0.0`
   #   2. `docker images --digests ghcr.io/vulnradar/vulnradar`
   #   3. Replace the tag below with `ghcr.io/vulnradar/vulnradar@sha256:<digest>`

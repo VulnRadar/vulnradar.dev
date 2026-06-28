@@ -57,10 +57,10 @@ export const POST = withErrorHandling(async (request: Request) => {
     return ApiResponse.unauthorized();
   }
 
-  // SECURITY-AUDIT-2026-06-28 / M-14: cap BrowserBase session
-  // creation per authenticated user. BrowserBase is a paid
-  // metered service — without this cap a compromised session
-  // cookie can rack up real costs by spawning unlimited sessions.
+  // rate-limit: cap BrowserBase session creation per authenticated
+  // user. BrowserBase is a paid metered service — without this cap
+  // a compromised session cookie can rack up real costs by spawning
+  // unlimited sessions.
   const ip = await getClientIp();
   const rl = await checkRateLimit({
     key: `browser-session:${session.userId}`,

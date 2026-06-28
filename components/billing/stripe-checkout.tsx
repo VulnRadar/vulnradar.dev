@@ -35,10 +35,9 @@ export function StripeCheckout({
   const expectedPlan = getPlanFromProductId(productId);
 
   const fetchClientSecret = useCallback(async () => {
-    // SECURITY-AUDIT-2026-06-28 / H-1: userId is now derived server-side
-    // from the session; the client cannot influence which account gets
-    // upgraded. The userId prop is kept for the subscription-verification
-    // poll below, not for the checkout call.
+    // auth: userId is derived server-side from the session. The
+    // userId prop is kept for the subscription-verification poll
+    // below, not for the checkout call.
     const clientSecret = await startCheckoutSession(productId);
     return clientSecret!;
   }, [productId]);

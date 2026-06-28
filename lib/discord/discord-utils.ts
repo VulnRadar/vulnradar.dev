@@ -50,7 +50,7 @@ export async function updateDiscordTokens(
   tokenExpiresAt: Date,
   guildJoined: boolean,
 ): Promise<void> {
-  // SECURITY-AUDIT-2026-06-28 / H-4: tokens encrypted at rest.
+  // crypto: tokens encrypted at rest via encryptApiKey.
   await pool.query(
     `UPDATE discord_connections SET 
      access_token = $1, refresh_token = $2, token_expires_at = $3,
@@ -68,12 +68,12 @@ export async function updateDiscordTokens(
 
 /**
  * Fetch and decrypt the stored Discord access + refresh tokens for a
- * given user. SECURITY-AUDIT-2026-06-28 / H-4: the column values are
- * AES-256-GCM ciphertexts; the plaintext is only materialised in the
- * caller's memory for the duration of one Discord API call.
+ * given user. The column values are AES-256-GCM ciphertexts; the
+ * plaintext is only materialised in the caller's memory for the
+ * duration of one Discord API call.
  *
- * Returns null if the user has no linked Discord account, throws on a
- * decrypt failure (indicates key rotation / corruption / tampering).
+ * Returns null if the user has no linked Discord account, throws on
+ * a decrypt failure (indicates key rotation / corruption / tampering).
  */
 export async function getDiscordTokens(userId: number): Promise<{
   accessToken: string;

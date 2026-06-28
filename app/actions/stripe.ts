@@ -5,11 +5,8 @@ import { PRODUCTS, getPlanFromProductId } from "@/lib/billing/products";
 import { getSession } from "@/lib/auth/auth";
 
 export async function startCheckoutSession(productId: string) {
-  // SECURITY-AUDIT-2026-06-28 / H-1: previously accepted `userId` from
-  // the client and stamped it into Stripe metadata, allowing any
-  // logged-in user to upgrade a victim's account. The userId is now
-  // derived from the server-side session and the client cannot
-  // influence it.
+  // auth: userId is derived from the session — client-supplied userId
+  // is never trusted (any session could otherwise upgrade a victim).
   const sessionUser = await getSession();
   if (!sessionUser) {
     throw new Error("User must be logged in to subscribe");

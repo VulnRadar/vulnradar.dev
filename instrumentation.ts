@@ -44,13 +44,12 @@ export async function register() {
       RELEASES_URL,
     } = await import("./lib/config/constants");
 
-    // SECURITY-AUDIT-2026-06-28 / H-3 + H-4: backfill any plaintext
-    // TOTP / Discord tokens that were stored before encryption was
-    // added. Idempotent — rows already in ciphertext form are skipped.
+    // crypto: backfill any plaintext TOTP / Discord tokens that were
+    // stored before encryption was added. Idempotent — rows already
+    // in ciphertext form are skipped.
     try {
-      const { migratePlaintextSecretsToEncrypted } = await import(
-        "./lib/auth/security-migration"
-      );
+      const { migratePlaintextSecretsToEncrypted } =
+        await import("./lib/auth/security-migration");
       await migratePlaintextSecretsToEncrypted();
     } catch (err) {
       console.error(
@@ -483,13 +482,13 @@ export async function register() {
         CREATE INDEX IF NOT EXISTS idx_admin_audit_created_at ON admin_audit_log(created_at);
       `);
 
-      // SECURITY-AUDIT-2026-06-28 / M-2: self-healing FK on
-      // admin_audit_log.target_user_id. The CREATE TABLE above
-      // declares the column as INTEGER (no FK) so legacy databases
-      // can be migrated without an explicit migration. We then
-      // add the FK with ON DELETE SET NULL so a user self-delete
-      // (`/api/v3/account/delete`) doesn't fail with a 500 due to
-      // orphan audit rows pointing at a non-existent user.
+      // db: self-healing FK on admin_audit_log.target_user_id. The
+      // CREATE TABLE above declares the column as INTEGER (no FK)
+      // so legacy databases can be migrated without an explicit
+      // migration. We then add the FK with ON DELETE SET NULL so a
+      // user self-delete (`/api/v3/account/delete`) doesn't fail
+      // with a 500 due to orphan audit rows pointing at a
+      // non-existent user.
       //
       // The check_information_schema query makes this idempotent: if
       // the constraint already exists on the live DB, the ALTER is
@@ -824,9 +823,9 @@ CREATE INDEX IF NOT EXISTS idx_access_rules_active ON access_rules(is_active,
         CREATE INDEX IF NOT EXISTS idx_access_rules_type ON access_rules(value_type);
       `);
 
-      // SECURITY-AUDIT-2026-06-28 / M-2: self-healing FK on
-      // access_rules.created_by. The CREATE TABLE above declares it
-      // as NOT NULL REFERENCES users(id) with no ON DELETE clause,
+      // db: self-healing FK on access_rules.created_by. The CREATE TABLE
+      // above declares it as NOT NULL REFERENCES users(id) with no
+      // ON DELETE clause,
       // which means deleting a user who ever created an access rule
       // fails with an FK violation. We migrate the column to
       // nullable with ON DELETE SET NULL so a user self-delete

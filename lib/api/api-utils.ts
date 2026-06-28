@@ -195,7 +195,7 @@ export async function parseBody<T>(
     const contentType = request.headers.get("content-type") || "";
     const contentLength = request.headers.get("content-length");
 
-    // L-10: Reject oversized payloads before reading them.
+    // api: reject oversized payloads before reading them.
     if (contentLength !== null) {
       const len = Number.parseInt(contentLength, 10);
       if (Number.isFinite(len) && len > MAX_REQUEST_BODY_BYTES) {

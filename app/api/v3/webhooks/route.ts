@@ -102,7 +102,7 @@ export async function POST(request: NextRequest) {
   );
 
   // Send notification email
-  // SECURITY-AUDIT-2026-06-28 / M-7: getClientIp respects
+  // audit-log: getClientIp respects
   // TRUSTED_PROXY_CIDR so a forged X-Forwarded-For can't poison
   // the audit-log IP.
   const ip = (await getClientIp()) || "Unknown";
@@ -153,9 +153,9 @@ export async function PATCH(request: NextRequest) {
 
   const webhook = result.rows[0];
 
-  // H-1: Re-run SSRF validation on the stored URL — the URL may have been
-  // written via DB migration, admin path, or any code path that bypasses
-  // POST validation. This closes the SSRF hole in the test endpoint.
+  // ssrf: re-run validation on the stored URL — it may have been
+  // written via DB migration, admin path, or any code path that
+  // bypassed POST validation.
   const targetCheck = await validateScanTarget(webhook.url);
   if (!targetCheck.safe) {
     return NextResponse.json(
@@ -292,7 +292,7 @@ export async function DELETE(request: NextRequest) {
 
   // Send notification email if webhook was found
   if (webhookResult.rows.length > 0) {
-    // SECURITY-AUDIT-2026-06-28 / M-7: trusted client IP only.
+    // audit-log: trusted client IP only.
     const ip = (await getClientIp()) || "Unknown";
     const userAgent = request.headers.get("user-agent") || "Unknown";
     const emailContent = webhookDeletedEmail(webhookResult.rows[0].name, {

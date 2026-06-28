@@ -112,7 +112,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
 
   // Generate verification token (raw token is emailed; we store the hash)
   const token = crypto.randomBytes(32).toString("hex");
-  // M-2: hash the token before storage so a DB dump doesn't yield
+  // auth: hash the token before storage so a DB dump doesn't yield
   // working verification tokens.
   const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
   const expiresAt = new Date(

@@ -325,10 +325,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "URL is required" }, { status: 400 });
     }
 
-    // SECURITY-AUDIT-2026-06-28 / M-8: enforce URL length cap at the
-    // API boundary. The CONFIG_MAX_URL_LENGTH constant is enforced
-    // here so a 50 MB URL string is rejected before any DNS
-    // resolution or DB write occurs. See lib/config/config-values.ts.
+    // api: enforce URL length cap at the API boundary. The
+    // CONFIG_MAX_URL_LENGTH constant is enforced here so a 50 MB
+    // URL string is rejected before any DNS resolution or DB write
+    // occurs. See lib/config/config-values.ts.
     if (url.length > SCANNING.MAX_URL_LENGTH) {
       return NextResponse.json(
         {
@@ -582,8 +582,8 @@ export async function POST(request: NextRequest) {
     }
 
     // Capture response headers as a plain object for evidence.
-    // SECURITY-AUDIT-2026-06-28 / M-10: redact Set-Cookie / Cookie /
-    // Authorization etc. before persisting.
+    // scanner: redact Set-Cookie / Cookie / Authorization etc. before
+    // persisting.
     const capturedHeaders: Record<string, string> = {};
     headers.forEach((value, key) => {
       capturedHeaders[key] = value;
@@ -911,7 +911,7 @@ export async function POST(request: NextRequest) {
     // Record API key usage and add rate limit headers
     if (isApiKeyAuth && apiKeyId) {
       await recordUsage(apiKeyId);
-      // M-5: use plan-derived dailyLimit instead of hardcoded 50.
+      // rate-limit: use plan-derived dailyLimit instead of hardcoded 50.
       const rateLimit = await checkRateLimit(apiKeyId, apiKeyDailyLimit);
       return NextResponse.json(responseData, {
         headers: {

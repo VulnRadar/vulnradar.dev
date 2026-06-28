@@ -260,8 +260,8 @@ async function runSingleScan(
   let scanHistoryId: number | null = null;
   try {
     const { DEFAULT_SCAN_NOTE } = await import("@/lib/config/constants");
-    // SECURITY-AUDIT-2026-06-28 / M-10: redact sensitive response
-    // headers (Set-Cookie, Cookie, Authorization) before persisting.
+    // scanner: redact sensitive response headers (Set-Cookie, Cookie,
+    // Authorization) before persisting.
     const redactedBulkHeaders = redactSensitiveResponseHeaders(capturedHeaders);
     const insertResult = await pool.query(
       `INSERT INTO scan_history (user_id, url, summary, findings, findings_count, duration, scanned_at, source, response_headers, notes)
@@ -398,8 +398,9 @@ export async function POST(request: NextRequest) {
       { status: 400 },
     );
   }
-  // SECURITY-AUDIT-2026-06-28 / M-12: enforce the configured
-  // MAX_URLS_IN_BULK (default 100) instead of the hardcoded 10.
+  // scanner: enforce the configured MAX_URLS_IN_BULK (default 100)
+  // instead of the hardcoded 10. Self-hosters configuring
+  // MAX_URLS_IN_BULK get the cap they expect.
   if (urls.length > SCANNING.MAX_URLS_IN_BULK) {
     return NextResponse.json(
       {

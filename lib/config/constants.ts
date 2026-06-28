@@ -268,9 +268,9 @@ export const RATE_LIMITS = {
     maxAttempts: CONFIG_RATE_LIMIT_BULK_SCAN_REQUESTS,
     windowSeconds: 60 * CONFIG_RATE_LIMIT_BULK_SCAN_WINDOW_MINUTES,
   },
-  // SECURITY-AUDIT-2026-06-28 / M-14: per-user cap on BrowserBase
-  // session creation. BrowserBase is a paid metered service; without
-  // this, a compromised session cookie can rack up real costs.
+  // rate-limit: per-user cap on BrowserBase session creation.
+  // BrowserBase is a paid metered service — without this, a
+  // compromised session cookie can rack up real costs.
   browserSession: {
     maxAttempts: 20, // 20 sessions / hour per user
     windowSeconds: 60 * 60,
@@ -403,8 +403,7 @@ export const TURNSTILE_ENABLED = !!process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY;
 export const BROWSERBASE_ENABLED = !!(
   process.env.BROWSERBASE_API_KEY && process.env.BROWSERBASE_PROJECT_ID
 );
-export const BROWSERBASE_MAX_TTL_SECONDS =
-  CONFIG_BROWSERBASE_MAX_TTL_SECONDS;
+export const BROWSERBASE_MAX_TTL_SECONDS = CONFIG_BROWSERBASE_MAX_TTL_SECONDS;
 export const BROWSERBASE_DEFAULT_TTL_SECONDS =
   CONFIG_BROWSERBASE_DEFAULT_TTL_SECONDS;
 

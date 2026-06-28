@@ -32,7 +32,7 @@ export async function PUT(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // SECURITY-AUDIT-2026-06-28 / M-7: trusted client IP only.
+    // audit-log: trusted client IP only.
     const ip = (await getClientIp()) || null;
     const { id } = await params;
     const body = await req.json();
@@ -159,7 +159,7 @@ export async function DELETE(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // SECURITY-AUDIT-2026-06-28 / M-7: trusted client IP only.
+    // audit-log: trusted client IP only.
     const ip = (await getClientIp()) || null;
     const { id } = await params;
 

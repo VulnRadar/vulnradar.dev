@@ -19,7 +19,7 @@ const FREQ_INTERVALS_DAYS: Record<string, number> = {
   monthly: 30,
 };
 
-// H-2: cap URL length on scheduled scans to prevent DoS / log abuse.
+// api: cap URL length on scheduled scans to prevent DoS / log abuse.
 const MAX_SCHEDULE_URL_LENGTH = 2048;
 
 export async function GET() {
@@ -63,8 +63,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Invalid URL" }, { status: 400 });
   }
 
-  // H-2: validate the URL is a public HTTP(S) target before storing it.
-  // The scheduled scan worker (future) will fetch this URL — we must not
+  // ssrf: validate the URL is a public HTTP(S) target before storing
+  // it. The scheduled scan worker will fetch this URL — we must not
   // allow private/loopback/link-local/metadata targets.
   const targetCheck = await validateScanTarget(url);
   if (!targetCheck.safe) {
@@ -97,7 +97,7 @@ export async function POST(request: NextRequest) {
   );
 
   // Send notification email
-  // SECURITY-AUDIT-2026-06-28 / M-7: trusted client IP only.
+  // audit-log: trusted client IP only.
   const ip = (await getClientIp()) || "Unknown";
   const userAgent = request.headers.get("user-agent") || "Unknown";
   const emailContent = scheduleCreatedEmail(url, freq, {
@@ -140,7 +140,7 @@ export async function DELETE(request: NextRequest) {
 
   // Send notification email if schedule was found
   if (scheduleResult.rows.length > 0) {
-    // SECURITY-AUDIT-2026-06-28 / M-7: trusted client IP only.
+    // audit-log: trusted client IP only.
     const ip = (await getClientIp()) || "Unknown";
     const userAgent = request.headers.get("user-agent") || "Unknown";
     const emailContent = scheduleDeletedEmail(scheduleResult.rows[0].url, {
